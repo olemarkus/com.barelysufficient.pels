@@ -69,17 +69,28 @@ const resolveNiceStep = (range: number): number => {
   return step ?? 10 * magnitude;
 };
 
+/** Enough decimals to write every multiple of `step` exactly (0.25 → 2, 0.002 → 3). */
 const stepDecimals = (step: number): number => {
-  if (step >= 1) return 0;
-  if (step >= 0.1) return 1;
-  return 2;
+  for (let decimals = 0; decimals < 6; decimals += 1) {
+    const scaled = step * 10 ** decimals;
+    if (Math.abs(scaled - Math.round(scaled)) < 1e-6) return decimals;
+  }
+  return 6;
 };
 
+/**
+ * Nice ticks from zero (or below it) to the highest price. When a series
+ * touches the bottom of the axis, typically an export price of zero, the axis
+ * gets one more step below so the line sits on a gridline inside the plot
+ * instead of on its bottom edge, where it would merge with the frame.
+ */
 const resolveYAxis = (prices: number[]): Pick<PriceWidgetChart, 'yMin' | 'yMax' | 'yTicks'> => {
-  const low = Math.min(0, ...prices);
+  const lowest = Math.min(...prices);
+  const low = Math.min(0, lowest);
   const high = Math.max(...prices);
   const step = resolveNiceStep(high - low);
-  const yMin = Math.floor(low / step) * step;
+  const floor = Math.floor(low / step) * step;
+  const yMin = lowest - floor < step / 4 ? floor - step : floor;
   const yMax = Math.max(yMin + step, Math.ceil(high / step) * step);
   const decimals = stepDecimals(step);
   const count = Math.round((yMax - yMin) / step) + 1;
@@ -228,6 +239,9 @@ const buildImportPayload = (
   const amountUnit = resolvePriceWidgetAmountUnit(timeline.priceUnit);
   const importSteps = toImportSteps(visible);
   const exportSteps = show === 'both' ? toExportSteps(visible) : [];
+  // An export price set up for other periods but none in the window draws
+  // nothing, so it gets no legend entry either.
+  const legendShow = exportSteps.length > 0 ? show : 'import';
   const shades = toShades(visible);
   const windowStartMs = Math.min(...visible.map((period) => period.startMs));
   const windowEndMs = Math.max(...visible.map((period) => period.endMs));
@@ -261,7 +275,7 @@ const buildImportPayload = (
       nowPrice: current.importPrice,
       axisUnit: resolvePriceWidgetAxisUnit(timeline.priceUnit),
     },
-    legend: buildLegend(shades, show),
+    legend: buildLegend(shades, legendShow),
     ariaLabel: `Price now ${priceText}. ${formatPriceWidgetLevelAria(current.level)}`,
   };
 };

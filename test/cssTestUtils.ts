@@ -96,3 +96,65 @@ export const registerHiddenGuardSuite = (options: HiddenGuardSuiteOptions): void
     });
   });
 };
+
+/** The widget stylesheet at `cssRelativePath` (repo-root relative), parsed. */
+export const readCssRuleBlocks = (cssRelativePath: string): CssRuleBlock[] => (
+  parseCssRuleBlocks(readFileSync(resolve(process.cwd(), cssRelativePath), 'utf8'))
+);
+
+/**
+ * The value the LAST rule targeting `sel` (as a complete selector member, not
+ * a descendant) gives `property`, or undefined when no rule sets it. Last wins,
+ * as in the cascade for equal-specificity rules.
+ */
+export const declaredValue = (
+  ruleBlocks: readonly CssRuleBlock[],
+  sel: string,
+  property: string,
+): string | undefined => {
+  const pattern = new RegExp(`(?:^|;|\\s)${property}\\s*:\\s*([^;]+)`);
+  let value: string | undefined;
+  for (const block of ruleBlocks) {
+    if (!block.selectors.split(',').some((member) => member.trim() === sel)) continue;
+    const match = pattern.exec(block.body);
+    if (match) value = match[1].trim();
+  }
+  return value;
+};
+
+export type FixedHeightFrameOptions = {
+  /** Suite name passed to `describe`. */
+  name: string;
+  /** Widget directory under `widgets/`, e.g. `price`. */
+  widget: string;
+};
+
+/**
+ * Register the fixed-height frame contract for one widget: the manifest sets
+ * the same aspect-ratio height as the Budget and Price widget, the shipped
+ * page fills the iframe (no body padding, root pinned to 100%), and the root
+ * never grows past the frame. Reads the BUILT `public/` files, so a stale
+ * `npm run build:widgets` fails here.
+ */
+export const registerFixedHeightFrameSuite = ({ name, widget }: FixedHeightFrameOptions): void => {
+  describe(name, () => {
+    const manifest = JSON.parse(
+      readFileSync(resolve(process.cwd(), `widgets/${widget}/widget.compose.json`), 'utf8'),
+    ) as { height?: unknown };
+    const html = readFileSync(resolve(process.cwd(), `widgets/${widget}/public/index.html`), 'utf8');
+    const ruleBlocks = readCssRuleBlocks(`widgets/${widget}/public/index.css`);
+
+    test('the manifest height is the Budget and Price aspect ratio', () => {
+      expect(manifest.height).toBe('100%');
+    });
+
+    test('the page fills the iframe and the root is pinned to it', () => {
+      expect(html).toMatch(/<body class="homey-widget-full">/);
+      expect(declaredValue(ruleBlocks, 'body', 'overflow')).toBe('hidden');
+      expect(declaredValue(ruleBlocks, 'body', 'height')).toBe('100%');
+      expect(declaredValue(ruleBlocks, '.widget-root', 'height')).toBe('100%');
+      expect(declaredValue(ruleBlocks, '.widget-root', 'display')).toBe('flex');
+      expect(declaredValue(ruleBlocks, '.widget-root', 'box-sizing')).toBe('border-box');
+    });
+  });
+};

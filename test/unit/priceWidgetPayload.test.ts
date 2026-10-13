@@ -244,6 +244,33 @@ describe('buildPriceWidgetPayload', () => {
     expect(payload.chart.axisUnit).toBe('øre/kWh');
   });
 
+  it('lifts an export price of zero off the bottom of the axis in the both view', () => {
+    // Export set up but paying nothing: the line would sit on the bottom edge
+    // of the plot and merge with it, so the axis gains one step below zero.
+    const periods = hourly(DAY).map((period) => ({ ...period, exportPrice: 0 }));
+    const payload = expectReady(build(ready(periods, true), 'both'));
+    expect(payload.chart.exportSteps.every((step) => step.price === 0)).toBe(true);
+    expect(payload.chart.yMin).toBeLessThan(0);
+    expect(payload.chart.yTicks.map((tick) => tick.value)).toContain(0);
+  });
+
+  it('drops the Export legend entry when no export price falls in the window', () => {
+    // Export set up for an earlier period only (before the window starts).
+    const periods = hourly(DAY).map((period, hour) => (hour === 0 ? { ...period, exportPrice: 10 } : period));
+    const payload = expectReady(build(ready(periods, true), 'both'));
+    expect(payload.chart.exportSteps).toEqual([]);
+    expect(payload.legend.map((item) => item.key)).not.toContain('export');
+  });
+
+  it('writes tick labels with the decimals a small step needs', () => {
+    // Currency prices a few hundredths apart: the axis must not repeat "0.0".
+    const cents = DAY.map((price) => 0.4 + price / 10000);
+    const payload = expectReady(build({ ...ready(hourly(cents)), priceUnit: 'EUR' }));
+    const labels = payload.chart.yTicks.map((tick) => tick.label);
+    expect(new Set(labels).size).toBe(labels.length);
+    for (const tick of payload.chart.yTicks) expect(Number(tick.label)).toBeCloseTo(tick.value, 6);
+  });
+
   it('reaches below zero for negative prices', () => {
     const negative = DAY.map((price, hour) => (hour === 13 ? -8 : price));
     const payload = expectReady(build(ready(hourly(negative))));

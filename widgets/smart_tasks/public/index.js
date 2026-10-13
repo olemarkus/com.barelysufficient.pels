@@ -702,6 +702,22 @@
   };
   var widgetErrorReporter = (widget, getHomey) => createWidgetErrorReporter({ widget, getHomey, now: () => Date.now() });
 
+  // widgets/_shared/widgetChartSize.ts
+  var measureBox = (el, fallback) => {
+    const rect = el.getBoundingClientRect();
+    const width = Math.floor(rect.width);
+    const height = Math.floor(rect.height);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return fallback;
+    return { width, height };
+  };
+  var observeBox = (widgetWindow, el, onResize) => {
+    if (typeof widgetWindow.ResizeObserver !== "function") return () => {
+    };
+    const observer = new widgetWindow.ResizeObserver(() => onResize());
+    observer.observe(el);
+    return () => observer.disconnect();
+  };
+
   // widgets/smart_tasks/src/public/previewPayloads.ts
   var T = 17e11;
   var H = 60 * 60 * 1e3;
@@ -936,25 +952,31 @@
   // widgets/smart_tasks/src/public/trajectoryChart.ts
   var MIN_LINE_POINTS = 2;
   var isDrawableLine = (points) => (points?.length ?? 0) >= MIN_LINE_POINTS;
-  var VIEW = { width: 480, height: 96 };
-  var PLOT = { left: 8, right: 472, top: 10, bottom: 86 };
-  var PLOT_WIDTH = PLOT.right - PLOT.left;
-  var PLOT_HEIGHT = PLOT.bottom - PLOT.top;
-  var makeXScale = (startMs, endMs) => {
+  var FALLBACK_SIZE = { width: 480, height: 96 };
+  var PLOT_INSET = { x: 8, y: 10 };
+  var resolveFrame = ({ width, height }) => ({
+    width,
+    height,
+    left: PLOT_INSET.x,
+    right: Math.max(PLOT_INSET.x + 1, width - PLOT_INSET.x),
+    top: PLOT_INSET.y,
+    bottom: Math.max(PLOT_INSET.y + 1, height - PLOT_INSET.y)
+  });
+  var makeXScale = (startMs, endMs, frame) => {
     const span = endMs - startMs;
-    if (!Number.isFinite(span) || span <= 0) return () => PLOT.left;
+    if (!Number.isFinite(span) || span <= 0) return () => frame.left;
     return (atMs) => {
       const fraction = Math.max(0, Math.min(1, (atMs - startMs) / span));
-      return PLOT.left + fraction * PLOT_WIDTH;
+      return frame.left + fraction * (frame.right - frame.left);
     };
   };
-  var makeYScale = (values) => {
+  var makeYScale = (values, frame) => {
     const min = Math.min(...values);
     const max = Math.max(...values);
     const pad = max > min ? (max - min) * 0.12 : Math.max(1, Math.abs(max) * 0.1);
     const lo = min - pad;
     const span = max + pad - lo;
-    return (value) => PLOT.bottom - (value - lo) / span * PLOT_HEIGHT;
+    return (value) => frame.bottom - (value - lo) / span * (frame.bottom - frame.top);
   };
   var buildPolyline = (points, xScale, yScale) => points.map((point, index) => `${index === 0 ? "M" : "L"}${xScale(point.atMs).toFixed(1)} ${yScale(point.value).toFixed(1)}`).join(" ");
   var buildSmoothPath = (points, xScale, yScale) => {
@@ -1028,7 +1050,8 @@
     }
     if (legend.childNodes.length > 0) container.appendChild(legend);
   };
-  var appendRunBands = (svg, doc, bands, xScale) => {
+  var appendRunBands = (svg, bands, xScale, frame) => {
+    const doc = svg.ownerDocument;
     for (const band of bands) {
       const x1 = xScale(band.fromMs);
       const x2 = xScale(band.toMs);
@@ -1036,9 +1059,9 @@
       svg.appendChild(createSvg(doc, "rect", {
         class: "tchart__band",
         x: x1.toFixed(1),
-        y: PLOT.top,
+        y: frame.top,
         width: (x2 - x1).toFixed(1),
-        height: PLOT_HEIGHT
+        height: frame.bottom - frame.top
       }));
     }
   };
@@ -1047,22 +1070,24 @@
     return rounded % 1 === 0 ? `${Math.round(rounded)}` : rounded.toFixed(1);
   };
   var Y_LABEL_GAP = 4;
-  var appendYAxisLabels = (svg, doc, values, unit, yScale) => {
+  var appendYAxisLabels = (svg, data, values, yScale, frame) => {
+    const doc = svg.ownerDocument;
+    const { unit } = data;
     const dataMin = Math.min(...values);
     const dataMax = Math.max(...values);
     if (dataMax <= dataMin) return;
     const maxLabel = unit ? `${formatAxisValue(dataMax)} ${unit}` : formatAxisValue(dataMax);
-    const maxLabelY = Math.max(10, yScale(dataMax) - Y_LABEL_GAP);
-    const minLabelY = Math.min(VIEW.height - 2, yScale(dataMin) + Y_LABEL_GAP + 8);
+    const maxLabelY = Math.max(14, yScale(dataMax) - Y_LABEL_GAP);
+    const minLabelY = Math.min(frame.height - 4, yScale(dataMin) + Y_LABEL_GAP + 12);
     svg.appendChild(createSvg(doc, "text", {
       class: "tchart__axis",
-      x: PLOT.left,
+      x: frame.left,
       y: maxLabelY,
       "text-anchor": "start"
     }, maxLabel));
     svg.appendChild(createSvg(doc, "text", {
       class: "tchart__axis",
-      x: PLOT.left,
+      x: frame.left,
       y: minLabelY,
       "text-anchor": "start"
     }, formatAxisValue(dataMin)));
@@ -1075,6 +1100,14 @@
     if (data.target !== null) values.push(data.target);
     return values.filter((value) => Number.isFinite(value));
   };
+  var mountSvg = (container, data) => {
+    appendLegend(container, data);
+    const svg = createSvg(container.ownerDocument, "svg", { class: "tchart", role: "img" });
+    container.appendChild(svg);
+    const frame = resolveFrame(measureBox(svg, FALLBACK_SIZE));
+    svg.setAttribute("viewBox", `0 0 ${frame.width} ${frame.height}`);
+    return { svg, frame };
+  };
   var renderTrajectoryChart = (container, data) => {
     const doc = container.ownerDocument;
     clearChildren(container);
@@ -1085,22 +1118,17 @@
     if (!hasPlanned && !hasRevised && !hasObserved) return false;
     const values = collectValues(data);
     if (values.length === 0) return false;
-    const xScale = makeXScale(data.windowStartMs, data.windowEndMs);
-    const yScale = makeYScale(values);
-    const svg = createSvg(doc, "svg", {
-      class: "tchart",
-      viewBox: `0 0 ${VIEW.width} ${VIEW.height}`,
-      preserveAspectRatio: "none",
-      role: "img"
-    });
-    appendRunBands(svg, doc, data.runBands, xScale);
+    const { svg, frame } = mountSvg(container, data);
+    const xScale = makeXScale(data.windowStartMs, data.windowEndMs, frame);
+    const yScale = makeYScale(values, frame);
+    appendRunBands(svg, data.runBands, xScale, frame);
     if (data.target !== null) {
       const y = yScale(data.target);
       svg.appendChild(createSvg(doc, "line", {
         class: "tchart__target",
-        x1: PLOT.left,
+        x1: frame.left,
         y1: y,
-        x2: PLOT.right,
+        x2: frame.right,
         y2: y
       }));
     }
@@ -1138,9 +1166,7 @@
         r: 4
       }));
     }
-    appendYAxisLabels(svg, doc, values, data.unit, yScale);
-    appendLegend(container, data);
-    container.appendChild(svg);
+    appendYAxisLabels(svg, data, values, yScale, frame);
     return true;
   };
 
@@ -1268,6 +1294,7 @@
     overflowEl.hidden = true;
   };
   var renderChart = (el, chart) => {
+    el.hidden = false;
     const drawn = chart !== null && renderTrajectoryChart(el, chart);
     el.hidden = !drawn;
   };
@@ -1289,11 +1316,11 @@
     setLine(detailDeadlineEl, `${row.etaVerb} ${row.deadlineLongLabel}`);
     detailTargetEl.textContent = targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
     detailTargetEl.hidden = false;
-    renderChart(detailChartEl, row.chart);
     setLine(detailWhyEl, row.whyLabel);
     setLine(detailRecourseEl, row.recourseHint);
     setLine(detailMetaEl, row.planMetaLabel);
     setLine(detailConfidenceEl, row.confidenceLabel);
+    renderChart(detailChartEl, row.chart);
   };
   var renderEndedDetail = (targets, row) => {
     const {
@@ -1313,11 +1340,11 @@
     setLine(detailDeadlineEl, row.finishedLabel);
     detailTargetEl.textContent = row.progressLabel ?? targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
     detailTargetEl.hidden = false;
-    renderChart(detailChartEl, row.chart);
     setLine(detailWhyEl, row.reachedAtLabel ?? row.whyLabel);
     setLine(detailRecourseEl, row.recourseHint);
     setLine(detailMetaEl, null);
     setLine(detailConfidenceEl, null);
+    renderChart(detailChartEl, row.chart);
   };
   var fallBackToList = (targets, payload) => {
     const { root, listView, detailView } = targets;
@@ -1396,33 +1423,6 @@
   // widgets/smart_tasks/src/public/widgetApp.ts
   var REFRESH_INTERVAL_MS = 60 * 1e3;
   var MAX_CONSECUTIVE_LOAD_FAILURES = 3;
-  var createHeightReporter = (root, widgetWindow, getHomey) => {
-    let observer = null;
-    let lastReportedHeight = 0;
-    const report = () => {
-      const homey = getHomey();
-      if (!homey?.setHeight) return;
-      const bodyStyle = widgetWindow.getComputedStyle(root.ownerDocument.body);
-      const bodyPadding = (Number.parseFloat(bodyStyle.paddingTop) || 0) + (Number.parseFloat(bodyStyle.paddingBottom) || 0);
-      const contentHeight = Math.max(root.scrollHeight, root.getBoundingClientRect().height);
-      const height = Math.ceil(contentHeight + bodyPadding);
-      if (height <= 0 || height === lastReportedHeight) return;
-      lastReportedHeight = height;
-      homey.setHeight(height);
-    };
-    return {
-      report,
-      observe: () => {
-        if (observer || typeof widgetWindow.ResizeObserver !== "function") return;
-        observer = new widgetWindow.ResizeObserver(() => report());
-        observer.observe(root);
-      },
-      disconnect: () => {
-        observer?.disconnect();
-        observer = null;
-      }
-    };
-  };
   var SECTION_DOM = {
     active: { buttonSelector: "[data-row-button]", datasetKey: "deviceId", listKey: "rowsList" },
     ended: { buttonSelector: "[data-ended-button]", datasetKey: "historyId", listKey: "endedRowsList" }
@@ -1508,7 +1508,7 @@
     return { root, rowTemplate, endedRowTemplate, detailBackBtn, ...generic };
   };
   var createWidgetController = (params) => {
-    const { targets, widgetDocument, widgetWindow, reportHeight } = params;
+    const { targets, widgetDocument, widgetWindow } = params;
     let homeyRef = null;
     let initialRenderDone = false;
     let loadSequence = 0;
@@ -1519,13 +1519,25 @@
     let destroyed = false;
     const reporter = widgetErrorReporter("smart_tasks", () => homeyRef);
     let everLoaded = false;
+    let stopObserving = null;
+    let chartSignature = "";
+    const NO_SIZE = { width: 0, height: 0 };
+    const measureChartSignature = () => {
+      const { width, height } = measureBox(targets.detailChartEl, NO_SIZE);
+      return `${width}x${height}`;
+    };
     const render = () => {
       if (lastPayload === null && !everLoaded) {
         renderLoading(targets);
       } else {
         renderWidget(targets, lastPayload, view);
       }
-      reportHeight?.();
+      chartSignature = measureChartSignature();
+    };
+    const handleChartResize = () => {
+      if (destroyed || view.kind !== "detail") return;
+      if (measureChartSignature() === chartSignature) return;
+      render();
     };
     const handleLoadFailure = (error) => {
       if (reloadIfOrphaned(error, widgetWindow)) return;
@@ -1574,6 +1586,7 @@
     const bootstrap = (homey) => {
       if (homey && homey === homeyRef) return;
       homeyRef = homey;
+      stopObserving ?? (stopObserving = observeBox(widgetWindow, targets.detailChartEl, handleChartResize));
       teardownInteraction ?? (teardownInteraction = wireInteraction(targets, {
         getView: () => view,
         setView: (next) => {
@@ -1591,39 +1604,17 @@
       refresh.stop();
       teardownInteraction?.();
       teardownInteraction = null;
+      stopObserving?.();
+      stopObserving = null;
     };
     return { bootstrap, destroy, loadAndRender };
   };
-  var installWidget2 = (widgetWindow, widgetDocument) => {
-    let activeHomey = null;
-    let heightReporter = null;
-    return installWidget({
-      widgetWindow,
-      widgetDocument,
-      resolveTargets,
-      createController: ({ targets, widgetDocument: doc, widgetWindow: win }) => {
-        heightReporter = createHeightReporter(targets.root, win, () => activeHomey);
-        return createWidgetController({
-          targets,
-          widgetDocument: doc,
-          widgetWindow: win,
-          reportHeight: () => heightReporter?.report()
-        });
-      },
-      onHomeyClient: (homey) => {
-        activeHomey = homey;
-        heightReporter?.observe();
-      },
-      wrapController: (controller) => ({
-        ...controller,
-        destroy: () => {
-          controller.destroy();
-          heightReporter?.disconnect();
-          activeHomey = null;
-        }
-      })
-    });
-  };
+  var installWidget2 = (widgetWindow, widgetDocument) => installWidget({
+    widgetWindow,
+    widgetDocument,
+    resolveTargets,
+    createController: createWidgetController
+  });
 
   // widgets/smart_tasks/src/public/index.ts
   var widgetController = installWidget2(window, document);

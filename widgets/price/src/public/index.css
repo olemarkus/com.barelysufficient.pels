@@ -1,68 +1,60 @@
-.widget-root {
-  display: flex;
-  flex-direction: column;
-  gap: var(--pw-su-1, 4px);
-  width: 100%;
-}
+/* Frame layout (`widget-frame.css`) and the summary header + chart furniture
+   (`widget-chart.css`) come from widgets/_shared, shared with the Budget and
+   Price widget; this file holds what only the price chart draws. */
 
-.headline {
+/* ----- Header ----- */
+
+/* The price and its level chip share a row and wrap onto two on a narrow tile. */
+.summary__row {
   display: flex;
-  align-items: baseline;
   flex-wrap: wrap;
-  gap: var(--pw-su-2, 8px);
+  align-items: center;
+  gap: var(--pw-su-1, 4px) var(--pw-su-2, 8px);
 }
 
-.headline__price {
-  font-size: var(--pw-font-size-display, 20px);
-  line-height: var(--pw-line-display, 28px);
-  font-weight: var(--pw-weight-bold, 700);
+.summary__headline {
   font-variant-numeric: var(--pw-numeric, tabular-nums);
-  color: var(--pw-text, inherit);
 }
 
-/* A normal level is plain muted text; a low or high one is the Homey-native
-   tag shared with the Headroom price chip. */
-.headline__level {
-  font-size: var(--pw-font-size-body, 14px);
-  line-height: var(--pw-line-body, 20px);
-  font-weight: var(--pw-weight-medium, 500);
-  color: var(--pw-text-muted, #6d7680);
-}
-
-.headline__level--chip {
-  padding: 0 var(--pw-su-2, 8px);
-  border-radius: var(--pw-radius-small, 6px);
-  border: 1px solid;
-}
-
-.headline__level--cheap {
-  background: color-mix(in srgb, var(--pw-success, #58c56a) 12%, transparent);
-  border-color: color-mix(in srgb, var(--pw-success, #58c56a) 30%, transparent);
-  color: var(--pw-text-success, #2f8f47);
-}
-
-.headline__level--expensive {
-  background: color-mix(in srgb, var(--pw-danger, #f0696c) 12%, transparent);
-  border-color: color-mix(in srgb, var(--pw-danger, #f0696c) 30%, transparent);
-  color: var(--pw-text-danger, #f0696c);
-}
-
-.subline,
-.caption {
+.summary__note {
   margin: 0;
   font-size: var(--pw-font-size-body, 14px);
   line-height: var(--pw-line-body, 20px);
   color: var(--pw-text-muted, #6d7680);
 }
 
+.summary__note[hidden] {
+  display: none;
+}
+
+/* ----- Chart panel ----- */
+
+/* The panel takes everything below the header. Its surface is the same wash,
+   hairline and radius as the Budget and Price chart panel; the SVG inside is
+   drawn at its measured size and the legend wraps under it. */
 .chart {
-  margin-top: var(--pw-su-1, 4px);
+  box-sizing: border-box;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid;
+  border-color: var(--pw-line, rgba(15, 23, 28, 0.12));
+  border-radius: var(--pw-radius-default, 10px);
+  background: color-mix(in srgb, var(--pw-text, currentColor) 6%, transparent);
 }
 
 .chart__svg {
   display: block;
+  flex: 1 1 auto;
   width: 100%;
-  height: auto;
+  min-height: 0;
+  font-family: inherit;
+}
+
+.chart__svg[hidden] {
+  display: none;
 }
 
 .chart__shade--cheap {
@@ -73,91 +65,126 @@
   fill: var(--pw-chart-level-expensive, rgba(240, 105, 108, 0.16));
 }
 
-.chart__grid {
-  stroke: var(--pw-line-light, rgba(15, 23, 28, 0.08));
-  stroke-width: 1;
-}
-
 .chart__divider {
   stroke: var(--pw-line, rgba(15, 23, 28, 0.12));
   stroke-width: 1;
   stroke-dasharray: 3 3;
 }
 
-.chart__label {
-  fill: var(--pw-text-muted, #6d7680);
-  font-size: var(--pw-font-size-body, 14px);
-}
-
+/* Import is the ink line the headline and levels follow; export is the
+   shared price violet (`.chart__price`). */
 .chart__import {
   fill: none;
-  stroke: var(--pw-text, #1f252a);
-  stroke-width: 1.75;
+  stroke: var(--pw-chart-actual, #1f252a);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
-.chart__export {
-  fill: none;
-  stroke: var(--pw-chart-price, #9a85c8);
-  stroke-width: 1.5;
-  stroke-dasharray: 4 2;
-}
-
-.chart__now-line {
-  stroke: var(--pw-chart-guide, #6d7680);
-  stroke-width: 1;
-  stroke-opacity: 0.5;
-}
-
-.chart__now-dot {
-  fill: var(--pw-background, #ffffff);
-  stroke: var(--pw-text, #1f252a);
+.chart__import-dot {
+  fill: var(--pw-chart-actual, #1f252a);
+  stroke: var(--pw-background, #ffffff);
   stroke-width: 2;
 }
 
-.legend {
+/* ----- Legend ----- */
+
+.chart__legend {
   display: flex;
+  flex: 0 0 auto;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--pw-su-1, 4px) var(--pw-su-3, 12px);
+  padding: 0 var(--pw-su-3, 12px) var(--pw-su-2, 8px);
   font-size: var(--pw-font-size-body, 14px);
   line-height: var(--pw-line-body, 20px);
   color: var(--pw-text-muted, #6d7680);
 }
 
-.legend:empty {
+.chart__legend[hidden] {
   display: none;
 }
 
-.legend__item {
+.chart__legend-item {
   display: inline-flex;
   align-items: center;
-  gap: var(--pw-su-1, 4px);
+  gap: var(--pw-su-2, 8px);
 }
 
-.legend__swatch {
-  width: 10px;
+.chart__legend-unit {
+  margin-left: auto;
+  font-weight: var(--pw-weight-bold, 700);
+}
+
+/* Swatches mirror the Budget and Price legend: a 16 px stroke for a line, a
+   10 px rounded block for an area. */
+.chart__legend-swatch {
+  flex: none;
+  width: 16px;
+}
+
+.chart__legend-swatch--import,
+.chart__legend-swatch--export {
+  height: 2px;
+  border-radius: 1px;
+}
+
+.chart__legend-swatch--import {
+  background: var(--pw-chart-actual, #1f252a);
+}
+
+.chart__legend-swatch--export {
+  background: var(--pw-chart-price, #8f87bd);
+}
+
+.chart__legend-swatch--cheap,
+.chart__legend-swatch--expensive {
+  box-sizing: border-box;
   height: 10px;
-  border-radius: 2px;
+  border-radius: 3px;
+  border: 1px solid;
 }
 
-.legend__swatch--cheap {
-  background: var(--pw-success, #58c56a);
+.chart__legend-swatch--cheap {
+  background: var(--pw-chart-level-cheap, rgba(88, 197, 106, 0.16));
+  border-color: color-mix(in srgb, var(--pw-success, #58c56a) 45%, transparent);
 }
 
-.legend__swatch--expensive {
-  background: var(--pw-danger, #f0696c);
+.chart__legend-swatch--expensive {
+  background: var(--pw-chart-level-expensive, rgba(240, 105, 108, 0.16));
+  border-color: color-mix(in srgb, var(--pw-danger, #f0696c) 45%, transparent);
 }
 
-.legend__swatch--import {
-  background: var(--pw-text, #1f252a);
+/* ----- Empty and error states ----- */
+
+/* Centred in the panel, like the Budget and Price empty state, but as HTML so
+   a long sentence wraps at the token size. */
+.chart__empty {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pw-su-1, 4px);
+  padding: var(--pw-su-3, 12px);
+  text-align: center;
 }
 
-.legend__swatch--export {
-  background: var(--pw-chart-price, #9a85c8);
+.chart__empty[hidden] {
+  display: none;
 }
 
-
-.widget-root[data-state="empty"] .headline__price {
+.chart__empty-title {
+  margin: 0;
   font-size: var(--pw-font-size-title, 17px);
   line-height: var(--pw-line-title, 24px);
+  font-weight: var(--pw-weight-bold, 700);
+  color: var(--pw-text, #1f252a);
+}
+
+.chart__empty-subtitle {
+  margin: 0;
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  color: var(--pw-text-muted, #6d7680);
 }

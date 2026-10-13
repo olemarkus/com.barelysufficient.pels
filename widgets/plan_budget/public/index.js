@@ -949,8 +949,8 @@
     };
   };
   var SUMMARY_TONE_CLASS = {
-    on_track: "summary--on-track",
-    over: "summary--over"
+    on_track: "summary--success",
+    over: "summary--danger"
   };
   var SUMMARY_TONE_CLASSES = Object.values(SUMMARY_TONE_CLASS);
   var applySummary = (targets, payload) => {

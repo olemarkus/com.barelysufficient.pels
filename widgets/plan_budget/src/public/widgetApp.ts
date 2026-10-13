@@ -143,8 +143,8 @@ const resolveTargets = (widgetDocument: Document): WidgetTargets | null => {
 // The kebab-case CSS modifier for a tone (the domain tone is snake_case; CSS
 // classes are kebab per the stylelint BEM pattern). One per non-null tone.
 const SUMMARY_TONE_CLASS = {
-  on_track: 'summary--on-track',
-  over: 'summary--over',
+  on_track: 'summary--success',
+  over: 'summary--danger',
 } as const;
 const SUMMARY_TONE_CLASSES = Object.values(SUMMARY_TONE_CLASS);
 

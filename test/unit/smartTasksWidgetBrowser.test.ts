@@ -5,7 +5,12 @@ import { PREVIEW_SMART_TASKS_PAYLOAD } from '../../widgets/smart_tasks/src/publi
 import { renderTrajectoryChart } from '../../widgets/smart_tasks/src/public/trajectoryChart';
 import type { DeferredPlanHistoryChartData } from '../../packages/shared-domain/src/deferredPlanHistoryChartData';
 import type { SmartTasksWidgetPayload } from '../../widgets/smart_tasks/src/smartTasksWidgetTypes';
-import { registerHiddenGuardSuite } from '../cssTestUtils';
+import {
+  declaredValue,
+  readCssRuleBlocks,
+  registerFixedHeightFrameSuite,
+  registerHiddenGuardSuite,
+} from '../cssTestUtils';
 
 // The renderer switches views (.list-view/.detail-view) and toggles the row
 // list (.rows) plus the empty/overflow/detail lines by setting the `hidden`
@@ -15,6 +20,33 @@ import { registerHiddenGuardSuite } from '../cssTestUtils';
 registerHiddenGuardSuite({
   name: 'smart tasks widget hidden-element CSS',
   cssRelativePath: 'widgets/smart_tasks/public/index.css',
+});
+
+// Homey clipped this widget at its old 220 px manifest height because the
+// runtime `setHeight` self-sizing never took effect. It now sits at the
+// Budget and Price aspect ratio and scrolls inside the frame instead.
+registerFixedHeightFrameSuite({ name: 'smart tasks widget frame', widget: 'smart_tasks' });
+
+describe('smart tasks widget scroll regions', () => {
+  const ruleBlocks = readCssRuleBlocks('widgets/smart_tasks/public/index.css');
+
+  test.each(['.list-view', '.detail-body'])('%s scrolls inside the widget', (selector) => {
+    expect(declaredValue(ruleBlocks, selector, 'overflow-y')).toBe('auto');
+    expect(declaredValue(ruleBlocks, selector, 'overscroll-behavior')).toBe('contain');
+    expect(declaredValue(ruleBlocks, selector, 'touch-action')).toBe('pan-y');
+    // A flex child only scrolls when it may shrink below its content.
+    expect(declaredValue(ruleBlocks, selector, 'min-height')).toBe('0');
+  });
+
+  test('the detail header stays put above the scrolling body', () => {
+    expect(declaredValue(ruleBlocks, '.detail-header', 'flex')).toBe('0 0 auto');
+  });
+
+  test('the detail chart fills the room the text lines leave', () => {
+    expect(declaredValue(ruleBlocks, '.detail-chart', 'flex')).toBe('1 1 auto');
+    expect(declaredValue(ruleBlocks, '.tchart', 'flex')).toBe('1 1 auto');
+    expect(declaredValue(ruleBlocks, '.detail-line', 'flex')).toBe('none');
+  });
 });
 
 // Mirrors the production index.html markup the renderer queries against, so the
@@ -200,46 +232,35 @@ describe('smart tasks widget detail view', () => {
     expect(chart.querySelectorAll('.tchart__axis').length).toBeGreaterThanOrEqual(2);
   });
 
-  test('reports the taller detail height synchronously on the list→detail swap', async () => {
-    // Regression: the detail panel (which adds the trajectory chart) is taller
-    // than the list. Homey widgets don't scroll internally, so the iframe must
-    // grow on tap or the chart sits clipped below the list-sized fold. The fix
-    // reports height eagerly from render() — not only via the async
-    // ResizeObserver. jsdom has NO ResizeObserver, so setHeight here can ONLY
-    // come from that eager per-render report: this guards it doesn't regress
-    // back to observer-only (which would leave the chart clipped for seconds).
+  test('never asks Homey to resize the widget, on load or on the list→detail swap', async () => {
+    // The old self-sizing called setHeight before Homey.ready() and deduped
+    // the height, so it never took effect. The widget now fills its fixed
+    // frame; a setHeight call would bring back the manifest-height mismatch.
     window.history.replaceState({}, '', '/');
     (window as WidgetWindow).Homey = {};
     const setHeight = vi.fn();
-    const homey: WidgetHomey = {
+    const ready = vi.fn();
+    const homey = {
       api: () => Promise.resolve(PREVIEW_SMART_TASKS_PAYLOAD),
-      ready: () => {},
+      ready,
       setHeight,
     };
-    // jsdom does no layout (scrollHeight is 0), so stub the content height to
-    // reflect the open view: the detail (chart) is taller than the list.
-    const root = document.getElementById('widget-root') as HTMLElement;
-    Object.defineProperty(root, 'scrollHeight', {
-      configurable: true,
-      get: () => ((document.querySelector('[data-detail-view]') as HTMLElement).hidden ? 120 : 320),
-    });
 
     activeController = installWidget(window as WidgetWindow, document);
-    // `WidgetWindowBase.onHomeyReady` declares its param as `never` (the bridge
-    // hands a widget-specific homey the installer narrows); the test drives the
-    // bridge entry point with the concrete `WidgetHomey`.
+    // `WidgetWindowBase.onHomeyReady` declares its param as `never`; the test
+    // drives the bridge entry point with a client that also offers setHeight.
     (window as WidgetWindow).onHomeyReady!(homey as never);
     await flushPromises();
-    expect(setHeight).toHaveBeenCalledWith(120);
+    expect(ready).toHaveBeenCalledTimes(1);
 
-    setHeight.mockClear();
     const row = document.querySelector(
       '[data-row-button][data-device-id="preview-hot-water"]',
     ) as HTMLElement | null;
     expect(row).not.toBeNull();
-    // No await between the click and the assertion: the grow must be synchronous.
     row?.click();
-    expect(setHeight).toHaveBeenCalledWith(320);
+    await flushPromises();
+    expect((document.querySelector('[data-detail-view]') as HTMLElement).hidden).toBe(false);
+    expect(setHeight).not.toHaveBeenCalled();
   });
 
   test('lists recently-ended tasks and opens their final-trajectory detail on tap', async () => {
@@ -347,6 +368,25 @@ describe('renderTrajectoryChart', () => {
     expect(drawn).toBe(true);
     expect(container.querySelector('.tchart__observed')).not.toBeNull();
     expect(container.querySelector('.tchart__planned')).toBeNull();
+  });
+
+  test('draws at the measured size so text keeps its token size', () => {
+    // A tall tile hands the chart 300 × 180 px; the viewBox must be exactly
+    // that (no fixed viewBox stretched onto the box), and the plot fills it.
+    vi.spyOn(SVGElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      width: 300, height: 180, top: 0, left: 0, right: 300, bottom: 180, x: 0, y: 0, toJSON: () => ({}),
+    } as DOMRect);
+    renderTrajectoryChart(container, baseChart({
+      plannedOriginal: [{ atMs: T, value: 42 }, { atMs: T + 3 * H, value: 55 }],
+      runBands: [{ fromMs: T, toMs: T + 3 * H }],
+    }));
+    const svg = container.querySelector('svg.tchart')!;
+    expect(svg.getAttribute('viewBox')).toBe('0 0 300 180');
+    expect(svg.hasAttribute('preserveAspectRatio')).toBe(false);
+    const band = container.querySelector('rect.tchart__band')!;
+    expect(Number(band.getAttribute('width'))).toBeCloseTo(284, 0);
+    expect(Number(band.getAttribute('height'))).toBeCloseTo(160, 0);
+    vi.restoreAllMocks();
   });
 
   test('hides the chart for the legacy_kwh fallback mode', () => {

@@ -39,8 +39,28 @@
     import: "Import",
     export: "Export"
   };
+  var PRICE_WIDGET_DAY_TOMORROW = "Tomorrow";
   var PRICE_WIDGET_TOMORROW_PENDING = "The lines can move when tomorrow's prices arrive.";
   var PRICE_WIDGET_EXPORT_SUBLINE = "Per kWh you export. Below zero, you pay to export.";
+  var priceDecimals = (value) => {
+    const magnitude = Math.abs(value);
+    if (magnitude >= 100) return 1;
+    if (magnitude >= 1) return 2;
+    return 3;
+  };
+  var withUnit = (text, amountUnit) => amountUnit === "" ? text : `${text} ${amountUnit}`;
+  var formatPriceWidgetPrice = (value, amountUnit) => withUnit(value.toFixed(priceDecimals(value)), amountUnit);
+  var formatPriceWidgetSubline = (facts) => {
+    const price = (value) => formatPriceWidgetPrice(value, facts.amountUnit);
+    if (!facts.hasCheap && !facts.hasExpensive) {
+      return `Prices stay close to the average of ${price(facts.average)}, so none count as low or high`;
+    }
+    const highLine = `High from ${price(facts.expensiveFrom)}`;
+    const lowLine = `low up to ${price(facts.cheapAtOrBelow)}`;
+    const high = facts.hasExpensive ? highLine : `${highLine}, highest ${price(facts.highest)}`;
+    const low = facts.hasCheap ? lowLine : `${lowLine}, lowest ${price(facts.lowest)}`;
+    return `${high} \xB7 ${low}`;
+  };
 
   // widgets/_shared/widgetRuntime.ts
   var applyPreviewTheme = (widgetDocument, searchParams) => {
@@ -223,20 +243,61 @@
     33.6,
     31.2
   ];
-  var quarterPrice = (quarter) => {
+  var FLAT_HOURLY = [
+    84.1,
+    83.6,
+    82.9,
+    82.4,
+    82,
+    82.3,
+    83.5,
+    85.2,
+    87.4,
+    86.1,
+    84.3,
+    82.8,
+    81.2,
+    79.6,
+    78.4,
+    79.1,
+    80.6,
+    82.9,
+    85.6,
+    88.1,
+    89,
+    86.4,
+    84.2,
+    83,
+    82.6,
+    82.1,
+    81.7,
+    81.5,
+    81.9,
+    82.8,
+    84.6,
+    86.9,
+    88.2,
+    87,
+    85.1,
+    83.4,
+    82.7
+  ];
+  var FLAT_QUARTERS = (FLAT_HOURLY.length - 1) * 4;
+  var FLAT_AVERAGE = 83.17;
+  var quarterPrice = (quarter, hourly = HOURLY) => {
     const hour = Math.floor(quarter / 4);
     const fraction = quarter % 4 / 4;
-    return Number((HOURLY[hour] + (HOURLY[hour + 1] - HOURLY[hour]) * fraction).toFixed(2));
+    return Number((hourly[hour] + (hourly[hour + 1] - hourly[hour]) * fraction).toFixed(2));
   };
   var levelOf = (price) => {
     if (price <= CHEAP_AT_OR_BELOW) return "cheap";
     if (price >= EXPENSIVE_FROM) return "expensive";
     return "normal";
   };
-  var buildSteps = (toPrice) => Array.from({ length: 96 }, (_, quarter) => ({
+  var buildSteps = (toPrice, hourly = HOURLY) => Array.from({ length: (hourly.length - 1) * 4 }, (_, quarter) => ({
     startMs: DAY_START_MS + quarter * QUARTER_MS,
     endMs: DAY_START_MS + (quarter + 1) * QUARTER_MS,
-    price: toPrice(quarterPrice(quarter))
+    price: toPrice(quarterPrice(quarter, hourly))
   })).filter((step) => step.endMs > WINDOW_START_MS);
   var buildShades = (steps) => steps.reduce(
     (shades, step) => {
@@ -309,33 +370,114 @@
       ariaLabel: `Price now ${currentImport.toFixed(2)} \xF8re. ${formatPriceWidgetLevelAria(level)}`
     };
   };
+  var priceAt = (steps) => steps.find((step) => step.startMs <= NOW_MS && NOW_MS < step.endMs)?.price ?? 0;
+  var flatPayload = (show) => {
+    const flatImport = buildSteps((price) => price, FLAT_HOURLY);
+    const flatExport = buildSteps((price) => Number(((price - 14.6) / 1.21).toFixed(2)), FLAT_HOURLY);
+    const prices = flatImport.map((step) => step.price);
+    const current = priceAt(flatImport);
+    return {
+      state: "ready",
+      title: PRICE_WIDGET_TITLE,
+      priceText: `${current.toFixed(2)} \xF8re`,
+      level: { label: PRICE_WIDGET_LEVEL_LABEL.normal, tone: null },
+      subline: formatPriceWidgetSubline({
+        average: FLAT_AVERAGE,
+        cheapAtOrBelow: 62.4,
+        expensiveFrom: 103.9,
+        lowest: Math.min(...prices),
+        highest: Math.max(...prices),
+        hasCheap: false,
+        hasExpensive: false,
+        amountUnit: "\xF8re"
+      }),
+      caption: PRICE_WIDGET_TOMORROW_PENDING,
+      chart: {
+        ...baseChart,
+        windowEndMs: DAY_START_MS + FLAT_QUARTERS * QUARTER_MS,
+        timeTicks: [6, 12, 18, 24, 30].map((hour) => ({
+          atMs: DAY_START_MS + hour * HOUR_MS,
+          label: String(hour % 24).padStart(2, "0")
+        })),
+        dayDividers: [{ atMs: DAY_START_MS + 24 * HOUR_MS, label: PRICE_WIDGET_DAY_TOMORROW }],
+        yMin: 0,
+        yMax: 100,
+        yTicks: [0, 20, 40, 60, 80, 100].map((value) => ({ value, label: String(value) })),
+        importSteps: flatImport,
+        exportSteps: show === "both" ? flatExport : [],
+        shades: [],
+        nowPrice: current
+      },
+      legend: show === "both" ? [
+        { key: "import", label: PRICE_WIDGET_LEGEND.import },
+        { key: "export", label: PRICE_WIDGET_LEGEND.export }
+      ] : [],
+      ariaLabel: `Price now ${current.toFixed(2)} \xF8re. ${formatPriceWidgetLevelAria("normal")}`
+    };
+  };
   var resolvePriceWidgetPreviewPayload = (state, show) => {
     if (state === "empty") {
       return { state: "empty", title: PRICE_WIDGET_EMPTY.noPrices, subtitle: PRICE_WIDGET_EMPTY.noPricesSubtitle };
     }
+    if (state === "flat" && show !== "export") return flatPayload(show);
     return readyPayload(show);
   };
 
-  // widgets/price/src/public/render.ts
-  var SVG_NS = "http://www.w3.org/2000/svg";
-  var WIDTH = 320;
-  var HEIGHT = 150;
-  var PLOT = { left: 36, right: 4, top: 20, bottom: 20 };
-  var EDGE_LABEL_ROOM = 10;
-  var svgEl = (doc, tag, attrs, text) => {
-    const el = doc.createElementNS(SVG_NS, tag);
-    for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, String(value));
-    if (text !== void 0) el.textContent = text;
-    return el;
+  // widgets/_shared/widgetChartSize.ts
+  var measureBox = (el, fallback) => {
+    const rect = el.getBoundingClientRect();
+    const width = Math.floor(rect.width);
+    const height = Math.floor(rect.height);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return fallback;
+    return { width, height };
   };
-  var createScale = (chart) => {
-    const plotWidth = WIDTH - PLOT.left - PLOT.right;
-    const plotHeight = HEIGHT - PLOT.top - PLOT.bottom;
+  var observeBox = (widgetWindow, el, onResize) => {
+    if (typeof widgetWindow.ResizeObserver !== "function") return () => {
+    };
+    const observer = new widgetWindow.ResizeObserver(() => onResize());
+    observer.observe(el);
+    return () => observer.disconnect();
+  };
+
+  // widgets/_shared/widgetSvg.ts
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var createSvg = (chartDocument, tagName, attributes = {}, textContent = "") => {
+    const node = chartDocument.createElementNS(SVG_NS, tagName);
+    for (const [key, value] of Object.entries(attributes)) {
+      if (value === void 0 || value === null) continue;
+      node.setAttribute(key, String(value));
+    }
+    if (textContent) {
+      node.textContent = textContent;
+    }
+    return node;
+  };
+
+  // widgets/price/src/public/render.ts
+  var FALLBACK_SIZE = { width: 320, height: 160 };
+  var INSET = { top: 26, right: 12, bottom: 28, left: 10 };
+  var Y_LABEL_GAP = 6;
+  var LABEL_CHAR_PX = 8.5;
+  var X_LABEL_BASELINE = 20;
+  var DIVIDER_LABEL_PX = 72;
+  var EDGE_LABEL_ROOM = 12;
+  var DOT_RADIUS = 4.5;
+  var resolvePlot = (chart, size) => {
+    const longest = Math.max(1, ...chart.yTicks.map((tick) => tick.label.length));
+    const left = INSET.left + longest * LABEL_CHAR_PX + Y_LABEL_GAP;
+    return {
+      left,
+      right: Math.max(left + 1, size.width - INSET.right),
+      top: INSET.top,
+      bottom: Math.max(INSET.top + 1, size.height - INSET.bottom)
+    };
+  };
+  var createScale = (chart, plot) => {
     const span = Math.max(1, chart.windowEndMs - chart.windowStartMs);
     const range = Math.max(Number.EPSILON, chart.yMax - chart.yMin);
     return {
-      x: (ms) => PLOT.left + (ms - chart.windowStartMs) / span * plotWidth,
-      y: (price) => PLOT.top + (chart.yMax - price) / range * plotHeight
+      x: (ms) => plot.left + (ms - chart.windowStartMs) / span * (plot.right - plot.left),
+      y: (price) => plot.top + (chart.yMax - price) / range * (plot.bottom - plot.top)
     };
   };
   var steppedPath = (steps, scale) => steps.map((step, index) => {
@@ -346,107 +488,173 @@
     const joined = previous !== void 0 && previous.endMs === step.startMs;
     return `${index === 0 || !joined ? "M" : "L"}${x0} ${y} H${x1}`;
   }).join(" ");
-  var renderChart = (doc, chart, ariaLabel) => {
-    const scale = createScale(chart);
-    const svg = svgEl(doc, "svg", {
-      viewBox: `0 0 ${WIDTH} ${HEIGHT}`,
-      class: "chart__svg",
-      role: "img",
-      "aria-label": ariaLabel
-    });
-    const plotTop = PLOT.top;
-    const plotBottom = HEIGHT - PLOT.bottom;
+  var appendShades = (svg, chart, scale, plot) => {
+    const doc = svg.ownerDocument;
     for (const shade of chart.shades) {
-      svg.appendChild(svgEl(doc, "rect", {
+      svg.appendChild(createSvg(doc, "rect", {
+        class: `chart__shade chart__shade--${shade.level}`,
         x: scale.x(shade.startMs).toFixed(1),
-        y: plotTop,
+        y: plot.top,
         width: Math.max(0, scale.x(shade.endMs) - scale.x(shade.startMs)).toFixed(1),
-        height: plotBottom - plotTop,
-        class: `chart__shade chart__shade--${shade.level}`
+        height: plot.bottom - plot.top
       }));
     }
+  };
+  var appendYAxis = (svg, chart, scale, plot) => {
+    const doc = svg.ownerDocument;
     for (const tick of chart.yTicks) {
-      const y = scale.y(tick.value).toFixed(1);
-      svg.appendChild(svgEl(doc, "line", { x1: PLOT.left, x2: WIDTH - PLOT.right, y1: y, y2: y, class: "chart__grid" }));
-      svg.appendChild(svgEl(doc, "text", {
-        x: PLOT.left - 5,
-        y: Number(y) + 5,
-        "text-anchor": "end",
-        class: "chart__label"
+      const y = scale.y(tick.value);
+      svg.appendChild(createSvg(doc, "line", {
+        class: "chart__grid",
+        x1: plot.left,
+        x2: plot.right,
+        y1: y.toFixed(1),
+        y2: y.toFixed(1)
+      }));
+      svg.appendChild(createSvg(doc, "text", {
+        class: "chart__axis-label",
+        x: plot.left - Y_LABEL_GAP,
+        y: (y + 5).toFixed(1),
+        "text-anchor": "end"
       }, tick.label));
     }
+  };
+  var appendTimeAxis = (svg, chart, scale, plot) => {
+    const doc = svg.ownerDocument;
     for (const tick of chart.timeTicks) {
       const x = scale.x(tick.atMs);
       let anchor = "middle";
-      if (x > WIDTH - EDGE_LABEL_ROOM) anchor = "end";
-      else if (x < PLOT.left + EDGE_LABEL_ROOM) anchor = "start";
-      svg.appendChild(svgEl(doc, "text", {
+      if (x > plot.right - EDGE_LABEL_ROOM) anchor = "end";
+      else if (x < plot.left + EDGE_LABEL_ROOM) anchor = "start";
+      svg.appendChild(createSvg(doc, "text", {
+        class: "chart__axis-label",
         x: x.toFixed(1),
-        y: HEIGHT - 4,
-        "text-anchor": anchor,
-        class: "chart__label"
+        y: plot.bottom + X_LABEL_BASELINE,
+        "text-anchor": anchor
       }, tick.label));
     }
     for (const divider of chart.dayDividers) {
-      const x = scale.x(divider.atMs).toFixed(1);
-      svg.appendChild(svgEl(doc, "line", { x1: x, x2: x, y1: plotTop - 16, y2: plotBottom, class: "chart__divider" }));
-      svg.appendChild(svgEl(doc, "text", { x: Number(x) + 4, y: plotTop - 6, class: "chart__label" }, divider.label));
+      const x = scale.x(divider.atMs);
+      svg.appendChild(createSvg(doc, "line", {
+        class: "chart__divider",
+        x1: x.toFixed(1),
+        x2: x.toFixed(1),
+        y1: plot.top - 18,
+        y2: plot.bottom
+      }));
+      const fitsRight = x + 4 + DIVIDER_LABEL_PX <= plot.right;
+      svg.appendChild(createSvg(doc, "text", {
+        class: "chart__axis-label",
+        x: (fitsRight ? x + 4 : x - 4).toFixed(1),
+        y: plot.top - 8,
+        "text-anchor": fitsRight ? "start" : "end"
+      }, divider.label));
     }
+  };
+  var appendSeries = (svg, chart, scale, plot) => {
+    const doc = svg.ownerDocument;
+    const nowX = scale.x(chart.nowMs).toFixed(1);
+    svg.appendChild(createSvg(doc, "line", {
+      class: "chart__now",
+      x1: nowX,
+      x2: nowX,
+      y1: plot.top,
+      y2: plot.bottom
+    }));
     if (chart.exportSteps.length > 0) {
-      svg.appendChild(svgEl(doc, "path", { d: steppedPath(chart.exportSteps, scale), class: "chart__export" }));
+      svg.appendChild(createSvg(doc, "path", { class: "chart__price", d: steppedPath(chart.exportSteps, scale) }));
     }
     if (chart.importSteps.length > 0) {
-      svg.appendChild(svgEl(doc, "path", { d: steppedPath(chart.importSteps, scale), class: "chart__import" }));
+      svg.appendChild(createSvg(doc, "path", { class: "chart__import", d: steppedPath(chart.importSteps, scale) }));
     }
-    const nowX = scale.x(chart.nowMs).toFixed(1);
-    svg.appendChild(svgEl(doc, "line", { x1: nowX, x2: nowX, y1: plotTop, y2: plotBottom, class: "chart__now-line" }));
-    svg.appendChild(svgEl(doc, "circle", {
+    svg.appendChild(createSvg(doc, "circle", {
+      class: chart.importSteps.length > 0 ? "chart__import-dot" : "chart__price-dot",
       cx: nowX,
       cy: scale.y(chart.nowPrice).toFixed(1),
-      r: 3.5,
-      class: "chart__now-dot"
+      r: DOT_RADIUS
     }));
-    return svg;
   };
-  var renderLegend = (doc, legendEl, items, axisUnit) => {
+  var renderChart = (svg, payload) => {
+    const size = measureBox(svg, FALLBACK_SIZE);
+    const { chart } = payload;
+    const plot = resolvePlot(chart, size);
+    const scale = createScale(chart, plot);
+    svg.replaceChildren();
+    svg.setAttribute("viewBox", `0 0 ${size.width} ${size.height}`);
+    svg.setAttribute("aria-label", payload.ariaLabel);
+    appendShades(svg, chart, scale, plot);
+    appendYAxis(svg, chart, scale, plot);
+    appendTimeAxis(svg, chart, scale, plot);
+    appendSeries(svg, chart, scale, plot);
+  };
+  var renderLegend = (legendEl, items, axisUnit) => {
+    const doc = legendEl.ownerDocument;
     legendEl.replaceChildren(...items.map((item) => {
       const entry = doc.createElement("span");
-      entry.className = "legend__item";
+      entry.className = "chart__legend-item";
       const swatch = doc.createElement("span");
-      swatch.className = `legend__swatch legend__swatch--${item.key}`;
+      swatch.className = `chart__legend-swatch chart__legend-swatch--${item.key}`;
       swatch.setAttribute("aria-hidden", "true");
       entry.append(swatch, doc.createTextNode(item.label));
       return entry;
     }));
     if (axisUnit !== "") {
       const unit = doc.createElement("span");
-      unit.className = "legend__unit";
+      unit.className = "chart__legend-unit";
       unit.textContent = axisUnit;
       legendEl.appendChild(unit);
     }
   };
-  var renderWidget = (targets, payload) => {
-    const { root, priceEl, levelEl, sublineEl, chartEl, legendEl, captionEl } = targets;
-    const doc = root.ownerDocument;
-    root.dataset.state = payload.state;
-    if (payload.state === "empty") {
-      priceEl.textContent = payload.title;
-      levelEl.hidden = true;
-      sublineEl.textContent = payload.subtitle;
-      chartEl.replaceChildren();
-      legendEl.replaceChildren();
-      captionEl.hidden = true;
-      return;
-    }
+  var LEVEL_TONE_CLASS = { cheap: "summary--success", expensive: "summary--danger" };
+  var renderReady = (targets, payload) => {
+    const {
+      summaryEl,
+      priceEl,
+      levelEl,
+      sublineEl,
+      captionEl,
+      chartSvg,
+      legendEl,
+      emptyEl
+    } = targets;
+    summaryEl.hidden = false;
+    summaryEl.classList.remove(...Object.values(LEVEL_TONE_CLASS));
+    if (payload.level?.tone) summaryEl.classList.add(LEVEL_TONE_CLASS[payload.level.tone]);
     priceEl.textContent = payload.priceText;
     levelEl.hidden = payload.level === null;
     levelEl.textContent = payload.level?.label ?? "";
-    levelEl.className = payload.level?.tone ? `headline__level headline__level--chip headline__level--${payload.level.tone}` : "headline__level";
     sublineEl.textContent = payload.subline;
-    chartEl.replaceChildren(renderChart(doc, payload.chart, payload.ariaLabel));
-    renderLegend(doc, legendEl, payload.legend, payload.chart.axisUnit);
     captionEl.hidden = payload.caption === null;
     captionEl.textContent = payload.caption ?? "";
+    emptyEl.hidden = true;
+    chartSvg.toggleAttribute("hidden", false);
+    renderLegend(legendEl, payload.legend, payload.chart.axisUnit);
+    legendEl.hidden = legendEl.childElementCount === 0;
+    renderChart(chartSvg, payload);
+  };
+  var renderWidget = (targets, payload) => {
+    const {
+      root,
+      summaryEl,
+      chartSvg,
+      legendEl,
+      emptyEl,
+      emptyTitleEl,
+      emptySubtitleEl
+    } = targets;
+    root.dataset.state = payload.state;
+    if (payload.state === "ready") {
+      renderReady(targets, payload);
+      return;
+    }
+    summaryEl.hidden = true;
+    chartSvg.toggleAttribute("hidden", true);
+    chartSvg.replaceChildren();
+    legendEl.replaceChildren();
+    legendEl.hidden = true;
+    emptyEl.hidden = false;
+    emptyTitleEl.textContent = payload.title;
+    emptySubtitleEl.textContent = payload.subtitle;
   };
 
   // widgets/price/src/public/widgetApp.ts
@@ -466,49 +674,38 @@
   };
   var resolveTargets = (widgetDocument) => {
     const root = widgetDocument.getElementById("widget-root");
-    const priceEl = widgetDocument.querySelector("[data-price]");
-    const levelEl = widgetDocument.querySelector("[data-level]");
-    const sublineEl = widgetDocument.querySelector("[data-subline]");
-    const chartEl = widgetDocument.querySelector("[data-chart]");
-    const legendEl = widgetDocument.querySelector("[data-legend]");
-    const captionEl = widgetDocument.querySelector("[data-caption]");
-    if (!(root instanceof HTMLElement) || !(priceEl instanceof HTMLElement) || !(levelEl instanceof HTMLElement) || !(sublineEl instanceof HTMLElement) || !(chartEl instanceof HTMLElement) || !(legendEl instanceof HTMLElement) || !(captionEl instanceof HTMLElement)) {
-      return null;
-    }
-    return { root, priceEl, levelEl, sublineEl, chartEl, legendEl, captionEl };
-  };
-  var createHeightReporter = (root, widgetWindow, getHomey) => {
-    let observer = null;
-    let lastReportedHeight = 0;
-    const report = () => {
-      const homey = getHomey();
-      if (!homey?.setHeight) return;
-      const bodyStyle = widgetWindow.getComputedStyle(root.ownerDocument.body);
-      const bodyPadding = (Number.parseFloat(bodyStyle.paddingTop) || 0) + (Number.parseFloat(bodyStyle.paddingBottom) || 0);
-      const height = Math.ceil(Math.max(root.scrollHeight, root.getBoundingClientRect().height) + bodyPadding);
-      if (height <= 0 || height === lastReportedHeight) return;
-      lastReportedHeight = height;
-      homey.setHeight(height);
+    const chartSvg = widgetDocument.querySelector("[data-chart-svg]");
+    const elements = {
+      summaryEl: widgetDocument.querySelector("[data-summary]"),
+      priceEl: widgetDocument.querySelector("[data-price]"),
+      levelEl: widgetDocument.querySelector("[data-level]"),
+      sublineEl: widgetDocument.querySelector("[data-subline]"),
+      captionEl: widgetDocument.querySelector("[data-caption]"),
+      legendEl: widgetDocument.querySelector("[data-legend]"),
+      emptyEl: widgetDocument.querySelector("[data-empty]"),
+      emptyTitleEl: widgetDocument.querySelector("[data-empty-title]"),
+      emptySubtitleEl: widgetDocument.querySelector("[data-empty-subtitle]")
     };
-    return {
-      report,
-      observe: () => {
-        if (observer || typeof widgetWindow.ResizeObserver !== "function") return;
-        observer = new widgetWindow.ResizeObserver(() => report());
-        observer.observe(root);
-      },
-      disconnect: () => {
-        observer?.disconnect();
-        observer = null;
-      }
-    };
+    if (!(root instanceof HTMLElement) || !(chartSvg instanceof SVGSVGElement)) return null;
+    if (!Object.values(elements).every((el) => el instanceof HTMLElement)) return null;
+    return { root, chartSvg, ...elements };
   };
-  var createWidgetController = (targets, widgetDocument, widgetWindow, reportHeight) => {
+  var createWidgetController = (targets, widgetDocument, widgetWindow) => {
     let homeyRef = null;
     let initialRenderDone = false;
     let loadSequence = 0;
     let destroyed = false;
+    let lastPayload = null;
+    let stopObserving = null;
     const reporter = widgetErrorReporter("price", () => homeyRef);
+    const present = (payload) => {
+      lastPayload = payload;
+      renderWidget(targets, payload);
+    };
+    const handleResize = () => {
+      if (destroyed || lastPayload?.state !== "ready") return;
+      renderChart(targets.chartSvg, lastPayload);
+    };
     const loadAndRender = async () => {
       const loadId = ++loadSequence;
       try {
@@ -519,16 +716,13 @@
         const response = preview || !homeyRef ? resolvePriceWidgetPreviewPayload(searchParams.get("state"), show) : await homeyRef.api("GET", `/timeline?show=${encodeURIComponent(show)}`);
         if (destroyed || loadId !== loadSequence) return;
         if (!isPriceWidgetPayload(response)) throw new Error("Unexpected price widget payload");
-        const payload = response;
-        renderWidget(targets, payload);
-        reportHeight();
+        present(response);
         reporter.flush();
       } catch (error) {
         if (destroyed || loadId !== loadSequence) return;
         if (reloadIfOrphaned(error, widgetWindow)) return;
         reporter.report("error", "Failed to load price widget", error);
-        renderWidget(targets, { state: "empty", title: PRICE_WIDGET_TITLE, subtitle: PRICE_WIDGET_EMPTY.loadError });
-        reportHeight();
+        present({ state: "empty", title: PRICE_WIDGET_TITLE, subtitle: PRICE_WIDGET_EMPTY.loadError });
       } finally {
         if (!destroyed && loadId === loadSequence && !initialRenderDone && homeyRef?.ready) {
           homeyRef.ready();
@@ -547,6 +741,7 @@
     const bootstrap = (homey) => {
       if (homey && homey === homeyRef) return;
       homeyRef = homey;
+      stopObserving ?? (stopObserving = observeBox(widgetWindow, targets.chartSvg, handleResize));
       void loadAndRender();
       refresh.start();
       refresh.bindVisibility();
@@ -554,34 +749,17 @@
     const destroy = () => {
       destroyed = true;
       refresh.stop();
+      stopObserving?.();
+      stopObserving = null;
     };
     return { bootstrap, destroy, loadAndRender };
   };
-  var installWidget2 = (widgetWindow, widgetDocument) => {
-    let activeHomey = null;
-    let heightReporter = null;
-    return installWidget({
-      widgetWindow,
-      widgetDocument,
-      resolveTargets,
-      createController: ({ targets, widgetDocument: doc, widgetWindow: win }) => {
-        heightReporter = createHeightReporter(targets.root, win, () => activeHomey);
-        return createWidgetController(targets, doc, win, () => heightReporter?.report());
-      },
-      onHomeyClient: (homey) => {
-        activeHomey = homey;
-        heightReporter?.observe();
-      },
-      wrapController: (controller) => ({
-        ...controller,
-        destroy: () => {
-          controller.destroy();
-          heightReporter?.disconnect();
-          activeHomey = null;
-        }
-      })
-    });
-  };
+  var installWidget2 = (widgetWindow, widgetDocument) => installWidget({
+    widgetWindow,
+    widgetDocument,
+    resolveTargets,
+    createController: ({ targets, widgetDocument: doc, widgetWindow: win }) => createWidgetController(targets, doc, win)
+  });
 
   // widgets/price/src/public/index.ts
   var widgetController = installWidget2(window, document);

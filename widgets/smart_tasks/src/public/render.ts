@@ -205,10 +205,13 @@ const renderListEmpty = (
 
 // Draws the trajectory chart, or hides the container when there's nothing
 // chartable so the text lines carry the panel.
+// Shown BEFORE drawing, so the chart measures its laid-out size.
 const renderChart = (el: HTMLElement, chart: SmartTasksWidgetRow['chart']): void => {
+  /* eslint-disable no-param-reassign -- `el` is a DOM write sink. */
+  el.hidden = false;
   const drawn = chart !== null && renderTrajectoryChart(el, chart);
-  // eslint-disable-next-line no-param-reassign -- `el` is a DOM write sink.
   el.hidden = !drawn;
+  /* eslint-enable no-param-reassign */
 };
 
 const renderActiveDetail = (targets: RenderTargets, row: SmartTasksWidgetRow): void => {
@@ -223,11 +226,12 @@ const renderActiveDetail = (targets: RenderTargets, row: SmartTasksWidgetRow): v
   // Detail target line repeats the action verb so it stands on its own.
   detailTargetEl.textContent = targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
   detailTargetEl.hidden = false;
-  renderChart(detailChartEl, row.chart);
   setLine(detailWhyEl, row.whyLabel);
   setLine(detailRecourseEl, row.recourseHint);
   setLine(detailMetaEl, row.planMetaLabel);
   setLine(detailConfidenceEl, row.confidenceLabel);
+  // Last: the chart fills the room the text lines leave.
+  renderChart(detailChartEl, row.chart);
 };
 
 const renderEndedDetail = (targets: RenderTargets, row: SmartTasksWidgetEndedRow): void => {
@@ -244,13 +248,14 @@ const renderEndedDetail = (targets: RenderTargets, row: SmartTasksWidgetEndedRow
   detailTargetEl.textContent = row.progressLabel
     ?? targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
   detailTargetEl.hidden = false;
-  renderChart(detailChartEl, row.chart);
   // Succeeded → "reached at HH:MM"; Missed → the blameless why sentence + the
   // budget/device recourse hint. Abandoned carries neither.
   setLine(detailWhyEl, row.reachedAtLabel ?? row.whyLabel);
   setLine(detailRecourseEl, row.recourseHint);
   setLine(detailMetaEl, null);
   setLine(detailConfidenceEl, null);
+  // Last: the chart fills the room the text lines leave.
+  renderChart(detailChartEl, row.chart);
 };
 
 // Falls the detail view back to the list (used when the selected row dropped

@@ -2397,7 +2397,7 @@
       "name": {
         "en": "Electricity price"
       },
-      "height": 260,
+      "height": "100%",
       "settings": [
         {
           "id": "show",
@@ -2444,7 +2444,7 @@
       "name": {
         "en": "Smart tasks"
       },
-      "height": 220,
+      "height": "100%",
       "api": {
         "getSmartTasks": {
           "method": "GET",

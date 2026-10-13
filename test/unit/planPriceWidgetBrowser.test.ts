@@ -262,7 +262,7 @@ describe('plan budget widget browser', () => {
     expect(targets.summaryHeadlineEl.textContent).toBe('Projected today 16.8 kWh · 19.60 kr');
     expect(targets.summaryStatusEl.textContent).toBe('On track');
     expect(targets.summaryStatusEl.hidden).toBe(false);
-    expect(targets.summaryEl.classList.contains('summary--on-track')).toBe(true);
+    expect(targets.summaryEl.classList.contains('summary--success')).toBe(true);
 
     controller.destroy();
   });
@@ -810,9 +810,11 @@ describe('plan budget widget nice-number Y axis', () => {
 //   - `white-space: normal` + `overflow-wrap: anywhere` → it wraps rather than
 //     clipping, even for a long unbreakable number/unit that can't break on the
 //     ` · ` separators.
+// The summary rule lives in the shared `widgets/_shared/widget-chart.css`
+// layer, so read the BUILT stylesheet the widget ships.
 describe('plan budget widget summary CSS', () => {
   const css = readFileSync(
-    resolve(process.cwd(), 'widgets/plan_budget/src/public/index.css'),
+    resolve(process.cwd(), 'widgets/plan_budget/public/index.css'),
     'utf8',
   );
   const summary = findRuleBlock(parseCssRuleBlocks(css), '.summary');

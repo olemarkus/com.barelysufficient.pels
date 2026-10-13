@@ -7,16 +7,24 @@
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="./index.css">
   </head>
-  <body class="homey-widget">
-    <main id="widget-root" class="widget-root" data-state="loading">
-      <div class="headline">
-        <span class="headline__price" data-price>—</span>
-        <span class="headline__level" data-level hidden></span>
+  <body class="homey-widget-full">
+    <main id="widget-root" class="homey-widget widget-root" data-state="loading">
+      <div class="summary" data-summary>
+        <div class="summary__row">
+          <span class="summary__headline" data-price>—</span>
+          <span class="summary__status" data-level hidden></span>
+        </div>
+        <p class="summary__note" data-subline></p>
+        <p class="summary__note" data-caption hidden></p>
       </div>
-      <p class="subline" data-subline></p>
-      <div class="chart" data-chart></div>
-      <div class="legend" data-legend></div>
-      <p class="caption" data-caption hidden></p>
+      <div class="chart" data-chart>
+        <svg class="chart__svg" data-chart-svg role="img" aria-label="Electricity price chart"></svg>
+        <div class="chart__legend" data-legend hidden></div>
+        <div class="chart__empty" data-empty hidden>
+          <p class="chart__empty-title" data-empty-title></p>
+          <p class="chart__empty-subtitle" data-empty-subtitle></p>
+        </div>
+      </div>
     </main>
     <script src="./index.js"></script>
   </body>

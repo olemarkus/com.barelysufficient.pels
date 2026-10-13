@@ -2,7 +2,7 @@
   "name": {
     "en": "Electricity price"
   },
-  "height": 260,
+  "height": "100%",
   "settings": [
     {
       "id": "show",

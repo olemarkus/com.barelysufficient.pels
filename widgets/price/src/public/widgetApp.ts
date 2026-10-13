@@ -10,7 +10,8 @@ import {
 } from '../../../_shared/widgetRuntime';
 import { widgetErrorReporter } from '../../../_shared/widgetClientLog';
 import { resolvePriceWidgetPreviewPayload } from './previewPayloads';
-import { renderWidget, type RenderTargets } from './render';
+import { observeBox } from '../../../_shared/widgetChartSize';
+import { renderChart, renderWidget, type RenderTargets } from './render';
 import type { PriceWidgetPayload, PriceWidgetShow } from '../priceWidgetTypes';
 
 // Prices change per period (15 min at the finest), and the "now" marker moves
@@ -21,7 +22,6 @@ export type WidgetWindow = WidgetWindowBase & { ResizeObserver?: typeof ResizeOb
 
 export type WidgetHomey = WidgetHomeyBase & {
   getSettings?: () => unknown;
-  setHeight?: (height: number) => void;
 };
 
 export type WidgetController = SharedWidgetController<WidgetHomey>;
@@ -61,72 +61,49 @@ const isPriceWidgetPayload = (value: unknown): value is PriceWidgetPayload => {
 
 const resolveTargets = (widgetDocument: Document): RenderTargets | null => {
   const root = widgetDocument.getElementById('widget-root');
-  const priceEl = widgetDocument.querySelector('[data-price]');
-  const levelEl = widgetDocument.querySelector('[data-level]');
-  const sublineEl = widgetDocument.querySelector('[data-subline]');
-  const chartEl = widgetDocument.querySelector('[data-chart]');
-  const legendEl = widgetDocument.querySelector('[data-legend]');
-  const captionEl = widgetDocument.querySelector('[data-caption]');
-  if (
-    !(root instanceof HTMLElement)
-    || !(priceEl instanceof HTMLElement)
-    || !(levelEl instanceof HTMLElement)
-    || !(sublineEl instanceof HTMLElement)
-    || !(chartEl instanceof HTMLElement)
-    || !(legendEl instanceof HTMLElement)
-    || !(captionEl instanceof HTMLElement)
-  ) {
-    return null;
-  }
-  return { root, priceEl, levelEl, sublineEl, chartEl, legendEl, captionEl };
+  const chartSvg = widgetDocument.querySelector('[data-chart-svg]');
+  const elements = {
+    summaryEl: widgetDocument.querySelector('[data-summary]'),
+    priceEl: widgetDocument.querySelector('[data-price]'),
+    levelEl: widgetDocument.querySelector('[data-level]'),
+    sublineEl: widgetDocument.querySelector('[data-subline]'),
+    captionEl: widgetDocument.querySelector('[data-caption]'),
+    legendEl: widgetDocument.querySelector('[data-legend]'),
+    emptyEl: widgetDocument.querySelector('[data-empty]'),
+    emptyTitleEl: widgetDocument.querySelector('[data-empty-title]'),
+    emptySubtitleEl: widgetDocument.querySelector('[data-empty-subtitle]'),
+  };
+  if (!(root instanceof HTMLElement) || !(chartSvg instanceof SVGSVGElement)) return null;
+  if (!Object.values(elements).every((el) => el instanceof HTMLElement)) return null;
+  return { root, chartSvg, ...(elements as Record<keyof typeof elements, HTMLElement>) };
 };
 
-// Sizes the iframe to the content: the subline and caption wrap on a narrow
-// dashboard, so a fixed height would either clip them or leave a gap. Homey
-// pads <body> around #widget-root, so that padding is added to the root height.
-const createHeightReporter = (
-  root: HTMLElement,
-  widgetWindow: WidgetWindow,
-  getHomey: () => WidgetHomey | null,
-): { observe: () => void; disconnect: () => void; report: () => void } => {
-  let observer: ResizeObserver | null = null;
-  let lastReportedHeight = 0;
-  const report = (): void => {
-    const homey = getHomey();
-    if (!homey?.setHeight) return;
-    const bodyStyle = widgetWindow.getComputedStyle(root.ownerDocument.body);
-    const bodyPadding = (Number.parseFloat(bodyStyle.paddingTop) || 0)
-      + (Number.parseFloat(bodyStyle.paddingBottom) || 0);
-    const height = Math.ceil(Math.max(root.scrollHeight, root.getBoundingClientRect().height) + bodyPadding);
-    if (height <= 0 || height === lastReportedHeight) return;
-    lastReportedHeight = height;
-    homey.setHeight(height);
-  };
-  return {
-    report,
-    observe: (): void => {
-      if (observer || typeof widgetWindow.ResizeObserver !== 'function') return;
-      observer = new widgetWindow.ResizeObserver(() => report());
-      observer.observe(root);
-    },
-    disconnect: (): void => {
-      observer?.disconnect();
-      observer = null;
-    },
-  };
-};
-
+// The widget sits at its manifest height and fills the frame (see
+// widgets/_shared/widget-frame.css); it never calls `Homey.setHeight`. The
+// chart is drawn at its measured size, so it is redrawn when that size changes.
 export const createWidgetController = (
   targets: RenderTargets,
   widgetDocument: Document,
   widgetWindow: WidgetWindow,
-  reportHeight: () => void,
 ): WidgetController => {
   let homeyRef: WidgetHomey | null = null;
   let initialRenderDone = false;
   let loadSequence = 0;
   let destroyed = false;
+  let lastPayload: PriceWidgetPayload | null = null;
+  let stopObserving: (() => void) | null = null;
   const reporter = widgetErrorReporter('price', () => homeyRef);
+
+  const present = (payload: PriceWidgetPayload): void => {
+    lastPayload = payload;
+    renderWidget(targets, payload);
+  };
+
+  // Redraw only the chart on a resize; the header keeps its text.
+  const handleResize = (): void => {
+    if (destroyed || lastPayload?.state !== 'ready') return;
+    renderChart(targets.chartSvg, lastPayload);
+  };
 
   const loadAndRender = async (): Promise<void> => {
     const loadId = ++loadSequence;
@@ -140,16 +117,13 @@ export const createWidgetController = (
         : await homeyRef.api('GET', `/timeline?show=${encodeURIComponent(show)}`);
       if (destroyed || loadId !== loadSequence) return;
       if (!isPriceWidgetPayload(response)) throw new Error('Unexpected price widget payload');
-      const payload = response;
-      renderWidget(targets, payload);
-      reportHeight();
+      present(response);
       reporter.flush();
     } catch (error) {
       if (destroyed || loadId !== loadSequence) return;
       if (reloadIfOrphaned(error, widgetWindow)) return;
       reporter.report('error', 'Failed to load price widget', error);
-      renderWidget(targets, { state: 'empty', title: PRICE_WIDGET_TITLE, subtitle: PRICE_WIDGET_EMPTY.loadError });
-      reportHeight();
+      present({ state: 'empty', title: PRICE_WIDGET_TITLE, subtitle: PRICE_WIDGET_EMPTY.loadError });
     } finally {
       if (!destroyed && loadId === loadSequence && !initialRenderDone && homeyRef?.ready) {
         homeyRef.ready();
@@ -168,6 +142,7 @@ export const createWidgetController = (
   const bootstrap = (homey: WidgetHomey | null): void => {
     if (homey && homey === homeyRef) return;
     homeyRef = homey;
+    stopObserving ??= observeBox(widgetWindow, targets.chartSvg, handleResize);
     void loadAndRender();
     refresh.start();
     refresh.bindVisibility();
@@ -176,6 +151,8 @@ export const createWidgetController = (
   const destroy = (): void => {
     destroyed = true;
     refresh.stop();
+    stopObserving?.();
+    stopObserving = null;
   };
 
   return { bootstrap, destroy, loadAndRender };
@@ -184,28 +161,11 @@ export const createWidgetController = (
 export const installWidget = (
   widgetWindow: WidgetWindow,
   widgetDocument: Document,
-): WidgetController | null => {
-  let activeHomey: WidgetHomey | null = null;
-  let heightReporter: ReturnType<typeof createHeightReporter> | null = null;
-  return installSharedWidget<RenderTargets, WidgetHomey, WidgetWindow>({
-    widgetWindow,
-    widgetDocument,
-    resolveTargets,
-    createController: ({ targets, widgetDocument: doc, widgetWindow: win }) => {
-      heightReporter = createHeightReporter(targets.root, win, () => activeHomey);
-      return createWidgetController(targets, doc, win, () => heightReporter?.report());
-    },
-    onHomeyClient: (homey) => {
-      activeHomey = homey;
-      heightReporter?.observe();
-    },
-    wrapController: (controller) => ({
-      ...controller,
-      destroy: (): void => {
-        controller.destroy();
-        heightReporter?.disconnect();
-        activeHomey = null;
-      },
-    }),
-  });
-};
+): WidgetController | null => installSharedWidget<RenderTargets, WidgetHomey, WidgetWindow>({
+  widgetWindow,
+  widgetDocument,
+  resolveTargets,
+  createController: ({ targets, widgetDocument: doc, widgetWindow: win }) => (
+    createWidgetController(targets, doc, win)
+  ),
+});

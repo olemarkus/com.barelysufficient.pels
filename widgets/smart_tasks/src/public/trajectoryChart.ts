@@ -8,6 +8,7 @@ import type {
   DeferredPlanHistoryChartData,
   DeferredPlanHistoryChartPoint,
 } from '../../../../packages/shared-domain/src/deferredPlanHistoryChartData';
+import { measureBox, type BoxSize } from '../../../_shared/widgetChartSize';
 import { clearChildren } from '../../../_shared/widgetDom';
 import { createSvg } from '../../../_shared/widgetSvg';
 
@@ -19,9 +20,10 @@ import { createSvg } from '../../../_shared/widgetSvg';
 // tapped on-going OR recently-ended task renders through this one path.
 //
 // Deliberately NOT the settings-UI ECharts trajectory — this is a self-contained
-// ~96px SVG sparkline that fits the fixed 220px widget without a chart library.
-// Colour/stroke come from CSS classes (tokenised `--pw-*` in index.css), never
-// inline, so it tracks the dashboard light/dark theme.
+// SVG without a chart library. It is drawn at the SVG's measured CSS-px size
+// (viewBox = px), so it fills whatever the detail panel leaves and its text
+// stays at the token size. Colour/stroke come from CSS classes (tokenised
+// `--pw-*` in index.css), never inline, so it tracks the dashboard theme.
 
 // A series needs at least two points to draw as a line. A lone planned anchor
 // (a `cannot_meet`/no-allocated-hours plan integrates to just the start point)
@@ -32,32 +34,49 @@ const isDrawableLine = (points: readonly DeferredPlanHistoryChartPoint[] | null 
   (points?.length ?? 0) >= MIN_LINE_POINTS
 );
 
-// viewBox units; the SVG scales to the container width via CSS (width:100%).
-const VIEW = { width: 480, height: 96 };
-const PLOT = { left: 8, right: 472, top: 10, bottom: 86 };
-const PLOT_WIDTH = PLOT.right - PLOT.left;
-const PLOT_HEIGHT = PLOT.bottom - PLOT.top;
+// Drawn before layout (jsdom, pre-paint) at this size; a real render measures.
+const FALLBACK_SIZE: BoxSize = { width: 480, height: 96 };
+const PLOT_INSET = { x: 8, y: 10 };
+
+// The drawing box for one render: the measured size and the plot inside it.
+type Frame = {
+  width: number;
+  height: number;
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+};
+
+const resolveFrame = ({ width, height }: BoxSize): Frame => ({
+  width,
+  height,
+  left: PLOT_INSET.x,
+  right: Math.max(PLOT_INSET.x + 1, width - PLOT_INSET.x),
+  top: PLOT_INSET.y,
+  bottom: Math.max(PLOT_INSET.y + 1, height - PLOT_INSET.y),
+});
 
 // Time → x across the [windowStart, windowEnd] span, clamped to the plot so a
 // point that sits exactly on (or just past) an edge doesn't draw outside it.
-const makeXScale = (startMs: number, endMs: number): ((atMs: number) => number) => {
+const makeXScale = (startMs: number, endMs: number, frame: Frame): ((atMs: number) => number) => {
   const span = endMs - startMs;
-  if (!Number.isFinite(span) || span <= 0) return () => PLOT.left;
+  if (!Number.isFinite(span) || span <= 0) return () => frame.left;
   return (atMs) => {
     const fraction = Math.max(0, Math.min(1, (atMs - startMs) / span));
-    return PLOT.left + fraction * PLOT_WIDTH;
+    return frame.left + fraction * (frame.right - frame.left);
   };
 };
 
 // Padded value → y so the lines never hug the top/bottom edge. Returns a
 // constant mid-line when every value is equal (or only one value).
-const makeYScale = (values: number[]): ((value: number) => number) => {
+const makeYScale = (values: number[], frame: Frame): ((value: number) => number) => {
   const min = Math.min(...values);
   const max = Math.max(...values);
   const pad = max > min ? (max - min) * 0.12 : Math.max(1, Math.abs(max) * 0.1);
   const lo = min - pad;
   const span = max + pad - lo;
-  return (value) => PLOT.bottom - ((value - lo) / span) * PLOT_HEIGHT;
+  return (value) => frame.bottom - ((value - lo) / span) * (frame.bottom - frame.top);
 };
 
 const buildPolyline = (
@@ -137,8 +156,7 @@ const buildStepPath = (
 };
 
 // Colour-coded legend so the two lines + target guide read without a manual.
-// Crisp HTML text (not in-SVG, which the `preserveAspectRatio:none` scaling
-// would squish). Each present series gets one labelled item; the target item
+// HTML text, so the items wrap on a narrow tile. Each present series gets one labelled item; the target item
 // carries the goal value + unit ("Target 55 °C"). The scheduled-run bands get
 // a swatch item (the band tint is too faint to colour a word legibly, so a
 // small tinted rect carries the colour and the label stays muted text).
@@ -174,15 +192,16 @@ const appendLegend = (container: HTMLElement, data: DeferredPlanHistoryChartData
 };
 
 // Scheduled-run bands — low-opacity rects behind everything, shading the spans
-// where the plan booked the device to run. Label-free ON the chart at this
-// 96-unit height (the HTML legend above the chart carries the band key);
-// xScale's clamp keeps a band that touches the window edge inside the plot.
+// where the plan booked the device to run. Label-free ON the chart (the HTML
+// legend above the chart carries the band key); xScale's clamp keeps a band
+// that touches the window edge inside the plot.
 const appendRunBands = (
   svg: SVGElement,
-  doc: Document,
   bands: DeferredPlanHistoryChartData['runBands'],
   xScale: (atMs: number) => number,
+  frame: Frame,
 ): void => {
+  const doc = svg.ownerDocument;
   for (const band of bands) {
     const x1 = xScale(band.fromMs);
     const x2 = xScale(band.toMs);
@@ -190,9 +209,9 @@ const appendRunBands = (
     svg.appendChild(createSvg(doc, 'rect', {
       class: 'tchart__band',
       x: x1.toFixed(1),
-      y: PLOT.top,
+      y: frame.top,
       width: (x2 - x1).toFixed(1),
-      height: PLOT_HEIGHT,
+      height: frame.bottom - frame.top,
     }));
   }
 };
@@ -215,24 +234,26 @@ const formatAxisValue = (value: number): string => {
 const Y_LABEL_GAP = 4;
 const appendYAxisLabels = (
   svg: SVGElement,
-  doc: Document,
+  data: DeferredPlanHistoryChartData,
   values: readonly number[],
-  unit: string | null,
   yScale: (value: number) => number,
+  frame: Frame,
 ): void => {
+  const doc = svg.ownerDocument;
+  const { unit } = data;
   const dataMin = Math.min(...values);
   const dataMax = Math.max(...values);
   if (dataMax <= dataMin) return;
   const maxLabel = unit ? `${formatAxisValue(dataMax)} ${unit}` : formatAxisValue(dataMax);
-  // Clamp into the viewBox so the squished in-SVG text (non-uniform scaling)
-  // keeps its ascenders/descenders on the canvas.
-  const maxLabelY = Math.max(10, yScale(dataMax) - Y_LABEL_GAP);
-  const minLabelY = Math.min(VIEW.height - 2, yScale(dataMin) + Y_LABEL_GAP + 8);
+  // Clamp into the viewBox so the text keeps its ascenders/descenders on the
+  // canvas.
+  const maxLabelY = Math.max(14, yScale(dataMax) - Y_LABEL_GAP);
+  const minLabelY = Math.min(frame.height - 4, yScale(dataMin) + Y_LABEL_GAP + 12);
   svg.appendChild(createSvg(doc, 'text', {
-    class: 'tchart__axis', x: PLOT.left, y: maxLabelY, 'text-anchor': 'start',
+    class: 'tchart__axis', x: frame.left, y: maxLabelY, 'text-anchor': 'start',
   }, maxLabel));
   svg.appendChild(createSvg(doc, 'text', {
-    class: 'tchart__axis', x: PLOT.left, y: minLabelY, 'text-anchor': 'start',
+    class: 'tchart__axis', x: frame.left, y: minLabelY, 'text-anchor': 'start',
   }, formatAxisValue(dataMin)));
 };
 
@@ -243,6 +264,21 @@ const collectValues = (data: DeferredPlanHistoryChartData): number[] => {
   for (const point of data.observed) values.push(point.value);
   if (data.target !== null) values.push(data.target);
   return values.filter((value) => Number.isFinite(value));
+};
+
+// Legend ABOVE the chart: in a tight layout a legend below it is the first
+// thing to fall out of view. The SVG goes in next so it is measured once the
+// legend has taken its row, and its viewBox is set to that size.
+const mountSvg = (
+  container: HTMLElement,
+  data: DeferredPlanHistoryChartData,
+): { svg: SVGSVGElement; frame: Frame } => {
+  appendLegend(container, data);
+  const svg = createSvg(container.ownerDocument, 'svg', { class: 'tchart', role: 'img' });
+  container.appendChild(svg);
+  const frame = resolveFrame(measureBox(svg, FALLBACK_SIZE));
+  svg.setAttribute('viewBox', `0 0 ${frame.width} ${frame.height}`);
+  return { svg, frame };
 };
 
 // Renders the trajectory chart into `container` (cleared first). Returns false
@@ -266,24 +302,19 @@ export const renderTrajectoryChart = (
   const values = collectValues(data);
   if (values.length === 0) return false;
 
-  const xScale = makeXScale(data.windowStartMs, data.windowEndMs);
-  const yScale = makeYScale(values);
+  const { svg, frame } = mountSvg(container, data);
 
-  const svg = createSvg(doc, 'svg', {
-    class: 'tchart',
-    viewBox: `0 0 ${VIEW.width} ${VIEW.height}`,
-    preserveAspectRatio: 'none',
-    role: 'img',
-  });
+  const xScale = makeXScale(data.windowStartMs, data.windowEndMs, frame);
+  const yScale = makeYScale(values, frame);
 
   // 0) Scheduled-run bands behind everything.
-  appendRunBands(svg, doc, data.runBands, xScale);
+  appendRunBands(svg, data.runBands, xScale, frame);
 
   // 1) Target reference line behind the series.
   if (data.target !== null) {
     const y = yScale(data.target);
     svg.appendChild(createSvg(doc, 'line', {
-      class: 'tchart__target', x1: PLOT.left, y1: y, x2: PLOT.right, y2: y,
+      class: 'tchart__target', x1: frame.left, y1: y, x2: frame.right, y2: y,
     }));
   }
 
@@ -324,12 +355,6 @@ export const renderTrajectoryChart = (
   }
 
   // 5) Y-axis scale labels so even a near-flat series reads against a value scale.
-  appendYAxisLabels(svg, doc, values, data.unit, yScale);
-
-  // Legend ABOVE the chart: the chart is the tallest element, so in tight
-  // vertical layouts a legend below it is the first thing to fall off-screen.
-  // Placing it first keeps the "what are these lines" key reliably visible.
-  appendLegend(container, data);
-  container.appendChild(svg);
+  appendYAxisLabels(svg, data, values, yScale, frame);
   return true;
 };

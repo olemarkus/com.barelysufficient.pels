@@ -9,6 +9,7 @@ import {
   type WidgetWindowBase,
 } from '../../../_shared/widgetRuntime';
 import { widgetErrorReporter } from '../../../_shared/widgetClientLog';
+import { measureBox, observeBox } from '../../../_shared/widgetChartSize';
 import { PREVIEW_SMART_TASKS_PAYLOAD } from './previewPayloads';
 import { renderLoading, renderWidget, type RenderTargets } from './render';
 import type { SmartTasksWidgetPayload } from '../smartTasksWidgetTypes';
@@ -19,69 +20,15 @@ const REFRESH_INTERVAL_MS = 60 * 1000;
 const MAX_CONSECUTIVE_LOAD_FAILURES = 3;
 
 export type WidgetWindow = WidgetWindowBase & {
-  // Declared so the typed lint resolves the constructor when the height
-  // reporter reads the global `ResizeObserver` off the widget window.
+  // Declared so the typed lint resolves the constructor when the detail chart's
+  // resize observer reads the global `ResizeObserver` off the widget window.
   ResizeObserver?: typeof globalThis.ResizeObserver;
 };
 
-export type WidgetHomey = WidgetHomeyBase & {
-  // Resize the widget iframe to fit content. The list (active rows + a
-  // "Recently ended" section) and the detail (chart + legend) both vary in
-  // height and exceed any single fixed compose height — Homey widgets don't
-  // scroll internally, so we measure and report the content height instead of
-  // clipping. Mirrors the create_smart_task widget.
-  setHeight?: (height: number) => void;
-};
-
-// Keep the widget iframe sized to its content. Two complementary triggers:
-// `report()` is called synchronously from the controller's render() so a
-// list↔detail swap grows the iframe in the same turn the chart is painted
-// (otherwise the taller detail sits clipped below the list-sized fold until the
-// observer fires); the ResizeObserver is the backstop for height changes that
-// land AFTER a render returns — first paint, web-font load, async payload
-// arrival. `getHomey` is read lazily so a reporter created before bootstrap
-// still sees the assigned client.
-const createHeightReporter = (
-  root: HTMLElement,
-  widgetWindow: WidgetWindow,
-  getHomey: () => WidgetHomey | null,
-): { observe: () => void; disconnect: () => void; report: () => void } => {
-  let observer: ResizeObserver | null = null;
-  let lastReportedHeight = 0;
-  const report = (): void => {
-    const homey = getHomey();
-    if (!homey?.setHeight) return;
-    // Homey pads <body> around #widget-root; the root's box excludes that, so
-    // add the body's vertical padding or the iframe lands a few px short and
-    // clips the bottom row.
-    const bodyStyle = widgetWindow.getComputedStyle(root.ownerDocument.body);
-    const bodyPadding = (Number.parseFloat(bodyStyle.paddingTop) || 0)
-      + (Number.parseFloat(bodyStyle.paddingBottom) || 0);
-    // Measure the true CONTENT height via `scrollHeight`, not the rendered box.
-    // When the eager report fires on a list→detail swap, the iframe is still at
-    // the (shorter) list height; `getBoundingClientRect().height` can return
-    // that clipped value, so we'd never report the growth and the chart would
-    // stay clipped below the fold. `scrollHeight` is the unclipped content
-    // height. Keep the rect as a floor for the rare case scrollHeight rounds low.
-    const contentHeight = Math.max(root.scrollHeight, root.getBoundingClientRect().height);
-    const height = Math.ceil(contentHeight + bodyPadding);
-    if (height <= 0 || height === lastReportedHeight) return;
-    lastReportedHeight = height;
-    homey.setHeight(height);
-  };
-  return {
-    report,
-    observe: (): void => {
-      if (observer || typeof widgetWindow.ResizeObserver !== 'function') return;
-      observer = new widgetWindow.ResizeObserver(() => report());
-      observer.observe(root);
-    },
-    disconnect: (): void => {
-      observer?.disconnect();
-      observer = null;
-    },
-  };
-};
+// The widget sits at its manifest height and fills the frame (see
+// widgets/_shared/widget-frame.css): the list and the detail body scroll
+// inside it, so it never calls `Homey.setHeight`.
+export type WidgetHomey = WidgetHomeyBase;
 
 export type WidgetController = SharedWidgetController<WidgetHomey>;
 
@@ -220,13 +167,8 @@ export const createWidgetController = (params: {
   targets: RenderTargets;
   widgetDocument: Document;
   widgetWindow: WidgetWindow;
-  // Report the widget's content height to Homey. Called synchronously after
-  // every render so a list→detail swap grows the iframe in the same turn the
-  // chart is painted, instead of waiting on the async ResizeObserver tick (the
-  // detail's chart would otherwise sit clipped below the list-sized fold).
-  reportHeight?: () => void;
 }): WidgetController => {
-  const { targets, widgetDocument, widgetWindow, reportHeight } = params;
+  const { targets, widgetDocument, widgetWindow } = params;
   let homeyRef: WidgetHomey | null = null;
   let initialRenderDone = false;
   let loadSequence = 0;
@@ -242,6 +184,15 @@ export const createWidgetController = (params: {
   // (cold-start device enumeration / busy event loop), and a blank panel for that
   // whole window reads as "nothing here" rather than "loading".
   let everLoaded = false;
+  let stopObserving: (() => void) | null = null;
+  // The detail chart's size at its last draw, so a resize tick that did not
+  // change it (or one from the hidden list view) skips the redraw.
+  let chartSignature = '';
+  const NO_SIZE = { width: 0, height: 0 };
+  const measureChartSignature = (): string => {
+    const { width, height } = measureBox(targets.detailChartEl, NO_SIZE);
+    return `${width}x${height}`;
+  };
 
   const render = (): void => {
     if (lastPayload === null && !everLoaded) {
@@ -249,10 +200,15 @@ export const createWidgetController = (params: {
     } else {
       renderWidget(targets, lastPayload, view);
     }
-    // Eagerly resize the iframe to the just-rendered content. `scrollHeight`
-    // (read inside the reporter) forces a synchronous reflow, so the new height
-    // is accurate the moment a list↔detail swap or payload arrival changes it.
-    reportHeight?.();
+    chartSignature = measureChartSignature();
+  };
+
+  // The detail chart is drawn at its measured size; redraw it when the tile
+  // (and so the chart's share of the detail panel) changes size.
+  const handleChartResize = (): void => {
+    if (destroyed || view.kind !== 'detail') return;
+    if (measureChartSignature() === chartSignature) return;
+    render();
   };
 
   const handleLoadFailure = (error: unknown): void => {
@@ -314,6 +270,7 @@ export const createWidgetController = (params: {
   const bootstrap = (homey: WidgetHomey | null): void => {
     if (homey && homey === homeyRef) return;
     homeyRef = homey;
+    stopObserving ??= observeBox(widgetWindow, targets.detailChartEl, handleChartResize);
     teardownInteraction ??= wireInteraction(targets, {
       getView: () => view,
       setView: (next) => { view = next; },
@@ -332,6 +289,8 @@ export const createWidgetController = (params: {
     refresh.stop();
     teardownInteraction?.();
     teardownInteraction = null;
+    stopObserving?.();
+    stopObserving = null;
   };
 
   return { bootstrap, destroy, loadAndRender };
@@ -340,41 +299,9 @@ export const createWidgetController = (params: {
 export const installWidget = (
   widgetWindow: WidgetWindow,
   widgetDocument: Document,
-): WidgetController | null => {
-  // Size the iframe to content (Homey.setHeight) once a real client is wired;
-  // the no-Homey preview/harness path renders at natural page size. The reporter
-  // is created lazily inside `createController` (once the targets resolve) so its
-  // `report` can be wired into every render, and its `observe`/`disconnect` are
-  // driven by the shared install's `onHomeyClient`/`wrapController` hooks.
-  let activeHomey: WidgetHomey | null = null;
-  let heightReporter: ReturnType<typeof createHeightReporter> | null = null;
-
-  return installSharedWidget<RenderTargets, WidgetHomey, WidgetWindow>({
-    widgetWindow,
-    widgetDocument,
-    resolveTargets,
-    createController: ({ targets, widgetDocument: doc, widgetWindow: win }) => {
-      heightReporter = createHeightReporter(targets.root, win, () => activeHomey);
-      return createWidgetController({
-        targets,
-        widgetDocument: doc,
-        widgetWindow: win,
-        reportHeight: () => heightReporter?.report(),
-      });
-    },
-    onHomeyClient: (homey) => {
-      activeHomey = homey;
-      heightReporter?.observe();
-    },
-    wrapController: (controller) => ({
-      ...controller,
-      destroy: (): void => {
-        controller.destroy();
-        heightReporter?.disconnect();
-        // Drop the client so a late ResizeObserver callback short-circuits in
-        // getHomey() instead of calling setHeight on a torn-down widget.
-        activeHomey = null;
-      },
-    }),
-  });
-};
+): WidgetController | null => installSharedWidget<RenderTargets, WidgetHomey, WidgetWindow>({
+  widgetWindow,
+  widgetDocument,
+  resolveTargets,
+  createController: createWidgetController,
+});

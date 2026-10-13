@@ -158,10 +158,10 @@ export const reloadIfOrphaned = (error: unknown, widgetWindow: Window): boolean 
 //
 // `onHomeyClient`/`wrapController` are the only legitimate per-widget
 // differences:
-//   • `onHomeyClient` — extra work when the real client arrives (smart_tasks /
-//     create_smart_task start their height-reporter's ResizeObserver here).
-//   • `wrapController` — wrap the returned controller's `destroy` (those same
-//     two widgets also disconnect the reporter + drop the client on teardown).
+//   • `onHomeyClient` — extra work when the real client arrives
+//     (create_smart_task starts its height-reporter's ResizeObserver here).
+//   • `wrapController` — wrap the returned controller's `destroy`
+//     (create_smart_task also disconnects the reporter + drops the client).
 // A widget that needs neither passes neither and gets the plain controller.
 export const installWidget = <TTargets, THomey, TWindow extends Window>(config: {
   widgetWindow: TWindow;

@@ -157,6 +157,17 @@ const SMART_TASKS = {
   },
   empty: { state: 'empty', subtitle: 'No smart tasks yet' },
 };
+// Three active rows and a full "Recently ended" group: more than a square tile
+// holds, so the list scrolls inside the widget.
+SMART_TASKS.overflow = {
+  ...SMART_TASKS.default,
+  endedRows: [
+    ...SMART_TASKS.default.endedRows,
+    { id: 'hist-ev-1', deviceId: 'ev', deviceName: 'EV charger', unitSymbol: '%', targetValue: 80, targetActionVerb: 'Charge to', outcomeLabel: 'Succeeded', outcomeTone: 'ok', finishedLabel: 'Today 06:30', progressLabel: '35 → 80 % · target 80 %', reachedAtLabel: 'reached at 06:00', whyLabel: null, recourseHint: null, chart: null },
+    { id: 'hist-hw-1', deviceId: 'hw', deviceName: 'Hot water', unitSymbol: '°C', targetValue: 60, targetActionVerb: 'Heat to', outcomeLabel: 'Succeeded', outcomeTone: 'ok', finishedLabel: 'Today 05:00', progressLabel: '44 → 60 °C · target 60 °C', reachedAtLabel: 'reached at 04:15', whyLabel: null, recourseHint: null, chart: null },
+    { id: 'hist-bed-1', deviceId: 'bed', deviceName: 'Bedroom heat', unitSymbol: '°C', targetValue: 21, targetActionVerb: 'Heat to', outcomeLabel: 'Abandoned', outcomeTone: 'muted', finishedLabel: 'Yesterday 22:10', progressLabel: null, reachedAtLabel: null, whyLabel: null, recourseHint: null, chart: null },
+  ],
+};
 
 // ── plan_budget ──────────────────────────────────────────────────────────────
 
@@ -179,7 +190,8 @@ export const WIDGETS = [
   { id: 'create_smart_task', label: 'New smart task', height: 380, scenarios: ['default', 'overflow', 'cannot_meet'] },
   { id: 'headroom', label: 'Available power', height: 100, scenarios: ['under', 'near', 'at_pace', 'over_cap'] },
   { id: 'plan_budget', label: 'Budget and Price', height: 560, scenarios: ['today'] },
-  { id: 'smart_tasks', label: 'Smart tasks', height: 220, scenarios: ['default', 'empty'] },
+  // Manifest height "100%": a square tile; 360 px is a phone-width dashboard.
+  { id: 'smart_tasks', label: 'Smart tasks', height: 360, scenarios: ['default', 'overflow', 'empty'] },
   { id: 'starvation_rescue', label: 'Get power now', height: 240, scenarios: ['default', 'all', 'empty'] },
 ];
 

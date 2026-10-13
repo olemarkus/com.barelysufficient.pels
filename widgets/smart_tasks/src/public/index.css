@@ -12,18 +12,14 @@
   display: none !important;
 }
 
-/* Content-height (NOT pinned to the iframe): widgetApp measures this element and
-   reports it to Homey via setHeight, so the iframe grows to fit the list /
-   detail instead of clipping at a fixed compose height. A fixed `height: 100%`
-   would re-introduce the clipping this widget had. */
-.widget-root {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  gap: var(--pw-su-2, 8px);
-  box-sizing: border-box;
-}
-
+/* The frame layout (`widget-frame.css`, shared with the chart widgets) pins
+   the root to the iframe at the manifest height; the widget never calls
+   `Homey.setHeight`. Each view is a flex column that takes the whole root, and
+   the part that can outgrow it scrolls INSIDE the widget: the whole list view
+   (active rows + "Recently ended"), and the detail view's body under its fixed
+   header. `overscroll-behavior: contain` keeps a scroll that hits the end from
+   dragging the dashboard, and `touch-action: pan-y` lets a vertical swipe
+   scroll the list on touch screens. */
 .list-view,
 .detail-view {
   display: flex;
@@ -31,6 +27,13 @@
   min-height: 0;
   flex: 1 1 auto;
   gap: var(--pw-su-2, 8px);
+}
+
+.list-view,
+.detail-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 /* ----- List view ----- */
@@ -42,8 +45,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--pw-su-1, 4px);
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: none;
 }
 
 .row {
@@ -218,6 +220,7 @@
   border-top-color: var(--pw-line-light, rgba(15, 23, 28, 0.08));
   padding-top: var(--pw-su-1, 4px);
   display: flex;
+  flex: none;
   flex-direction: column;
   gap: var(--pw-su-1, 4px);
 }
@@ -253,6 +256,7 @@
 
 .detail-header {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
   gap: var(--pw-su-2, 8px);
@@ -332,10 +336,11 @@
   gap: var(--pw-su-1, 4px);
   flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
 }
 
+/* Text lines keep their height; only the chart grows or yields. */
 .detail-line {
+  flex: none;
   margin: 0;
   font-size: var(--pw-font-size-body, 14px);
   line-height: var(--pw-line-body, 20px);
@@ -372,11 +377,14 @@
 
 /* ----- Detail trajectory chart ----- */
 
-/* Compact planned-vs-actual sparkline + its colour-coded legend, between the
-   deadline line and the why/meta copy. Column so the legend sits under the SVG;
-   `flex: none` stops the flex parent from stretching it. */
+/* Planned-vs-actual chart + its colour-coded legend, between the deadline
+   line and the why/meta copy. Like the Budget and Price chart it FILLS the room
+   the text leaves: the chart grows into a tall tile, and on a short one it
+   keeps a legible minimum while the body scrolls. The SVG is drawn at its
+   measured size, so its text stays at the token size. */
 .detail-chart {
-  flex: none;
+  flex: 1 1 auto;
+  min-height: 132px;
   width: 100%;
   margin: var(--pw-su-1, 4px) 0;
   display: flex;
@@ -386,15 +394,16 @@
 
 .tchart {
   display: block;
+  flex: 1 1 auto;
   width: 100%;
-  height: 84px;
+  min-height: 84px;
+  font-family: inherit;
 }
 
 /* Y-axis value labels (data min/max) at the chart's left edge, so a near-flat
    series still reads against a scale instead of looking like meaningless noise.
-   Squishes slightly under the non-uniform scale like the rest of the in-SVG
-   text — acceptable for short numbers. The renderer hangs each label off its
-   own value line (max above, min below) so no series strikes through it. */
+   The renderer hangs each label off its own value line (max above, min below)
+   so no series strikes through it. */
 .tchart__axis {
   fill: var(--pw-text-muted, #6d7680);
   font-size: var(--pw-font-size-body, 14px);
@@ -402,17 +411,15 @@
 }
 
 /* Scheduled-run bands — low-opacity plan-family shading behind every series,
-   marking the spans where the plan booked the device to run. Fill-only (no
-   stroke), so the non-uniform SVG scaling needs no vector-effect here. */
+   marking the spans where the plan booked the device to run. Fill-only. */
 .tchart__band {
   fill: var(--pw-chart-band, rgba(88, 197, 106, 0.1));
 }
 
-/* `vector-effect: non-scaling-stroke` keeps stroke WEIGHTS true regardless of
-   the non-uniform `preserveAspectRatio:none` scaling (the viewBox is wider than
-   the render box, which would otherwise thin vertical-vs-horizontal segments
-   unevenly). Geometry values (stroke-width / dasharray / r) are raw SVG (Homey
-   ships no token); every COLOUR stays tokenised. */
+/* `vector-effect: non-scaling-stroke` keeps stroke WEIGHTS true if the drawn
+   size and the rendered box ever disagree (a pre-layout fallback draw).
+   Geometry values (stroke-width / dasharray / r) are raw SVG (Homey ships no
+   token); every COLOUR stays tokenised. */
 .tchart__target,
 .tchart__planned,
 .tchart__planned-revised,

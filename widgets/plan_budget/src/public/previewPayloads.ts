@@ -67,7 +67,7 @@ export const PREVIEW_TOMORROW_PAYLOAD: PlanPriceWidgetReadyPayload = {
 };
 
 // An over-budget variant of the today payload, so the screenshot harness can
-// exercise the red status chip (`summary--over`) — the on_track + null tones are
+// exercise the red status chip (`summary--danger`) — the on_track + null tones are
 // already covered by the today/tomorrow payloads, leaving the red chip otherwise
 // unguarded. Selected via `?tone=over` in preview (see resolvePreviewPayload).
 export const PREVIEW_OVER_PAYLOAD: PlanPriceWidgetReadyPayload = {
