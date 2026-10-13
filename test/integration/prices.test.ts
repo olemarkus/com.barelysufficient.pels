@@ -551,6 +551,33 @@ describe('Spot price fetching', () => {
     }
   });
 
+  it('fetches the new area\'s spot prices as soon as the owner changes the price area', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+    mockHomeyInstance.settings.set('price_scheme', 'norway');
+    mockHomeyInstance.settings.set('price_area', 'NO1');
+
+    const fetchedUrls: string[] = [];
+    mockHttpsGet.mockImplementation((url: string, options: unknown, callback: Function) => {
+      fetchedUrls.push(url);
+      callback(createMockHttpsResponse(200, mockHvakosterStrommenResponse));
+      return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
+    });
+
+    const app = createApp();
+    await app.onInit();
+    await flushPromises();
+    fetchedUrls.length = 0;
+
+    // The owner picks NO3, or accepts it from the location suggestion.
+    mockHomeyInstance.settings.set('price_area', 'NO3');
+    await flushPromises();
+
+    expect(fetchedUrls.some((url) => url.includes('_NO3.json'))).toBe(true);
+  });
+
   it('refreshes prices after 12:15 UTC if tomorrow prices are missing', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({

@@ -536,6 +536,13 @@ function buildPriceSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerM
     [NORWAY_PRICE_MODEL]: async () => {
       await refreshPriceDerivedState(deps);
     },
+    // Another price area is another bidding zone: until its spot prices are
+    // fetched, every Norway price would be the old area's. Fetch first, then
+    // rebuild on what arrived, as for a new Power by the Hour device.
+    price_area: async () => {
+      await deps.priceService.refreshSpotPrices(true);
+      await refreshPriceDerivedState(deps);
+    },
     provider_surcharge: async () => refreshPriceDerivedState(deps),
     price_threshold_percent: async () => refreshPriceDerivedState(deps),
     price_min_diff_ore: async () => refreshPriceDerivedState(deps),
