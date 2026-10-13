@@ -482,7 +482,7 @@ const NorwaySection = ({ config, handlers, gridCompanyOptions, norwayChoices }: 
           onChange={(e) => handlers.onCountyChange(readValue(e))}
         >
           {COUNTIES.map((county) => (
-            <MdSelectOption key={county.code} value={county.code}>
+            <MdSelectOption key={county.code} value={county.code} displayText={county.name} typeaheadText={county.name}>
               <div slot="headline">{county.name}</div>
             </MdSelectOption>
           ))}
@@ -507,8 +507,17 @@ const NorwaySection = ({ config, handlers, gridCompanyOptions, norwayChoices }: 
           }}
         >
           <MdSelectOption value={GRID_COMPANY_NONE}><div slot="headline">Select grid company</div></MdSelectOption>
+          {/* The list is rebuilt when the saved county arrives, while the select
+              already holds the saved company, and md-select reads a new option's
+              label before the option has rendered it: given up front, the field
+              names the company instead of going blank. */}
           {gridCompanyOptions.map((c) => (
-            <MdSelectOption key={c.organizationNumber} value={c.organizationNumber}>
+            <MdSelectOption
+              key={c.organizationNumber}
+              value={c.organizationNumber}
+              displayText={c.name}
+              typeaheadText={c.name}
+            >
               <div slot="headline">{c.name}</div>
             </MdSelectOption>
           ))}

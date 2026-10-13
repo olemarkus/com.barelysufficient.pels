@@ -85,4 +85,23 @@ test.describe('Material select menus', () => {
       expectedSelected: optionTheme.expectedSelected,
     });
   });
+
+  test('shows the saved grid company once its county\'s companies load', async ({ page }) => {
+    // The company list is rebuilt when the saved county arrives, after the
+    // select already holds the saved company: the field must still name it.
+    await page.addInitScript(() => {
+      (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
+        settings: { price_scheme: 'norway', nettleie_fylke: '55', nettleie_orgnr: '979151950' },
+      };
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
+    await openSettingsSection(page, 'electricity-prices');
+
+    const gridCompany = page.locator('md-filled-select[aria-labelledby="electricity-prices-grid-company-label"]');
+    await expect(gridCompany).toBeVisible();
+    await expect.poll(() => gridCompany.evaluate((el) => (el as HTMLElement & { displayText: string }).displayText))
+      .toBe('ARVA AS');
+  });
 });
+
