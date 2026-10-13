@@ -11,6 +11,7 @@ import {
 const OTHER_MODULES_API_PATH = '/ui_hub_market';
 const callApi = vi.fn();
 const historyApi = vi.fn();
+const chargingApi = vi.fn();
 const refreshFlowConflictsApi = vi.fn();
 const getSetting = vi.fn();
 const getSettingFresh = vi.fn();
@@ -29,7 +30,7 @@ vi.mock('../src/ui/homey.ts', async () => {
     // Routed by path for the same reason as the settings below: this spec counts
     // the CAR inventory calls, and the hub-market read shares the seam.
     callApi: (...args: unknown[]) => {
-      if (args[1] === '/ui_charging_current') return Promise.resolve([]);
+      if (args[1] === '/ui_charging_current') return chargingApi(...args);
       if (args[1] === '/ui_charging_access') return Promise.resolve({ configured: false, state: 'not_configured' });
       if (args[1] === OTHER_MODULES_API_PATH) return Promise.resolve({ state: 'unavailable' });
       if (args[1] === SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH) return historyApi(...args);
@@ -128,6 +129,8 @@ beforeEach(() => {
   vi.resetModules();
   installSurfaces();
   sleep.mockResolvedValue(undefined);
+  chargingApi.mockReset();
+  chargingApi.mockResolvedValue([]);
   historyApi.mockReset();
   historyApi.mockResolvedValue({ version: 1, entriesByDeviceId: {} });
   refreshFlowConflictsApi.mockReset();
@@ -1159,4 +1162,37 @@ describe('recommendation loading', () => {
     expect(text).toContain('No suggestions from the checks that finished');
     expect(text).not.toContain('No setup suggestions right now');
   });
+});
+
+
+it.each(['failed_read', 'tab_revisit'] as const)('refreshes charging recommendations after %s without waiting for the cache', async (scenario) => {
+  const recommendations = await loadSubject([device({ isEvCharger: true })]);
+  getSetting.mockResolvedValue({});
+  callApi.mockResolvedValue(resolvedCars());
+  await recommendations.loadRecommendationData();
+  if (scenario === 'failed_read') chargingApi.mockRejectedValueOnce(new Error('Unavailable'));
+  const listeners = vi.spyOn(document, 'addEventListener');
+  recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+  try {
+    const initialCalls = chargingApi.mock.calls.length;
+    document.dispatchEvent(new Event('charging-control-changed'));
+    await vi.waitFor(() => expect(chargingApi.mock.calls.length).toBeGreaterThan(initialCalls));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const callsBeforeRetry = chargingApi.mock.calls.length;
+    chargingApi.mockResolvedValue([{ deviceId: 'device-1', name: 'Garage',
+      setup: { method: 'flow', confirmation: 'single_charger' },
+      scope: 'installation', capabilityWritable: true, sharedInstallation: false,
+      flowCheck: 'conflict', flowNames: ['Current bridge'] }]);
+    document.dispatchEvent(scenario === 'failed_read'
+      ? new Event('devices-updated')
+      : new CustomEvent('pels:tab-shown', { detail: { tabId: 'recommendations' } }));
+    await vi.waitFor(() => {
+      expect(chargingApi.mock.calls.length).toBeGreaterThan(callsBeforeRetry);
+      expect(document.getElementById('setup-recommendations-root')?.textContent)
+        .toContain('Remove duplicate current control for Garage');
+    });
+  } finally {
+    for (const [type, listener, options] of listeners.mock.calls) document.removeEventListener(type, listener, options);
+    listeners.mockRestore();
+  }
 });

@@ -1,3 +1,5 @@
+import { SteppedLoadRequestTimeoutError } from '../ports/steppedLoadWrite';
+import { isHomeyRequestTimeout } from '../utils/errorUtils';
 import { TeslaChargingSession, type HomeLocation } from './teslaChargingSession';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import { isTeslaChargingDevice } from './chargingCurrentAdapter';
@@ -171,6 +173,11 @@ export class ChargingCurrentControl {
       if (this.setup(device.id).method !== 'built_in') throw new Error('Charging-current control changed.');
       this.assertControlAllowed(device);
       this.assertInstallation(adapter);
+    }).catch((error: unknown) => {
+      if (error instanceof Error && isHomeyRequestTimeout(error)) {
+        throw new SteppedLoadRequestTimeoutError('homey_action', error);
+      }
+      throw error;
     });
     return 'homey_action';
   }

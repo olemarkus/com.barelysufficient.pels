@@ -97,7 +97,10 @@ async function loadChargingRecommendations(force = false): Promise<void> {
     if (generation !== chargingReadGeneration) return;
     currentChargingRecommendations = chargingRecommendations(devices, access);
     refreshRecommendationSurfaces();
-  } catch { /* Retain the last accepted recommendations during a failed read. */ }
+  } catch {
+    // Retain accepted recommendations, but let the next device update retry.
+    if (generation === chargingReadGeneration) chargingReadAt = 0;
+  }
 }
 
 let dismissalRead: DismissalReadState = { state: 'loading' };
@@ -525,6 +528,7 @@ export const initRecommendationSurfaces = (nextNavigation: RecommendationNavigat
         dismissalLoad,
         associationLoad,
         flowFactsLoad,
+        loadChargingRecommendations(true),
         loadSmartTaskUsage(),
       ]).then(refreshRecommendationSurfaces);
     } else if (panelId === 'overview' || panelId === 'settings') {

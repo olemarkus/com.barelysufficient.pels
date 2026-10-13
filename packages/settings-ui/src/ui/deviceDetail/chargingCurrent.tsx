@@ -2,7 +2,8 @@ import { render } from 'preact';
 import type { ChargingAccessStatus, ChargingCurrentRead, ChargingCurrentSetup } from '../../../../contracts/src/chargingControl.ts';
 import { CHARGING_ACCESS_PATH, CHARGING_ACCESS_CHECK_PATH, CHARGING_CURRENT_PATH } from '../../../../contracts/src/chargingControl.ts';
 import { callApi } from '../homey.ts';
-import { ChargingCurrentSetupView } from '../views/ChargingCurrentSetup.tsx';
+import { formatSettingsError } from '../toast.ts';
+import { ChargingCurrentSetupView, ChargingCurrentLoadView } from '../views/ChargingCurrentSetup.tsx';
 
 let selectedDeviceId = '';
 let loadVersion = 0;
@@ -34,7 +35,8 @@ export function setChargingCurrentDevice(deviceId: string): void {
       callApi<ChargingAccessStatus>('GET', CHARGING_ACCESS_PATH),
     ]);
     const match = devices.find((entry) => entry.deviceId === deviceId);
-    if (!match || version !== loadVersion) return;
+    if (version !== loadVersion) return;
+    if (!match) { render(null, container); return; }
     device = match;
     access = status;
     display();
@@ -43,11 +45,22 @@ export function setChargingCurrentDevice(deviceId: string): void {
     busy = true;
     error = '';
     display();
-    try { await operation(); await load(); document.dispatchEvent(new Event('charging-control-changed')); }
-    catch (failure) { error = failure instanceof Error ? failure.message : 'Charging setup could not be saved. Try again.'; }
+    try {
+      await operation(); await load(); document.dispatchEvent(new Event('charging-control-changed'));
+      return true;
+    } catch (failure) {
+      error = formatSettingsError(failure, 'Charging setup could not be saved. Try again.');
+      return false;
+    }
     finally { busy = false; display(); }
   };
-  void load().catch(() => {
-    if (version === loadVersion) selectedDeviceId = '';
-  });
+  const loadInitial = async (): Promise<void> => {
+    if (version !== loadVersion) return;
+    render(<ChargingCurrentLoadView busy onRetry={loadInitial} />, container);
+    try { await load(); }
+    catch {
+      if (version === loadVersion) render(<ChargingCurrentLoadView busy={false} onRetry={loadInitial} />, container);
+    }
+  };
+  void loadInitial();
 }

@@ -112,7 +112,15 @@ export = {
     { homey, params, body }: ApiContext & { params: { deviceId: string }; body?: unknown },
   ) => {
     await chargingCurrentControl(homey).save(params.deviceId, body);
-    await readPelsHost(homey)!.refreshTargetDevicesSnapshot();
+    try {
+      await readPelsHost(homey)!.refreshTargetDevicesSnapshot();
+    } catch (error) {
+      // The owner has committed the route and already gates commands and Flow
+      // reports. A projection failure must not report that this save failed.
+      readPelsHost(homey)?.getApiStructuredLogger()?.warn({
+        event: 'charging_control_snapshot_refresh_failed', deviceId: params.deviceId, err: normalizeError(error),
+      });
+    }
   }),
   ui_charging_access: withApiLogging('ui_charging_access', ({ homey }: ApiContext) => (
     chargingAccess(homey).status()

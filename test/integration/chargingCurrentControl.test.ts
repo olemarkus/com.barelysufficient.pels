@@ -1,3 +1,5 @@
+import { SteppedLoadRequestTimeoutError } from '../../lib/ports/steppedLoadWrite';
+import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { ChargingCurrentControl } from '../../lib/device/chargingCurrentControl';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import { getLogger } from '../../lib/logging/logger';
@@ -121,4 +123,25 @@ test.each(['missing key', 'conflicting Flow', 'unreadable Flows'])('Tesla contro
   expect(control.generation).toBeGreaterThan(generation);
   expect(() => control.assertControlAllowed(tesla)).toThrow('confirmed stationary AC charging session');
   await expect(control.save('tesla', { method: 'built_in', confirmation: 'vehicle' })).rejects.toThrow();
+});
+
+
+test.each([false, true])('current timeout preserves its actual writable=%s route', async (writable) => {
+  const { control, access, get } = fixture(zaptec(writable));
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ intersectedScopes: ['homey.flow'] })));
+  await access.save({ key: 'private-key' });
+  await control.save('charger', selected);
+  get.mockResolvedValue([{ id: 'homey:app:com.zaptec:go2_installation_current_control' }]);
+  const timeout = new HomeyRequestTimeoutError('POST', '/api/manager/flow/flowcardaction/current/run');
+  vi.spyOn(access, 'runCurrentAction').mockRejectedValue(timeout);
+  const capabilityWrite = vi.fn().mockRejectedValue(timeout);
+  const command = control.writeCurrent(zaptec(writable), 10, capabilityWrite);
+  if (writable) {
+    await expect(command).rejects.toBe(timeout);
+    expect(access.runCurrentAction).not.toHaveBeenCalled();
+  } else {
+    await expect(command).rejects.toBeInstanceOf(SteppedLoadRequestTimeoutError);
+    await expect(command).rejects.toMatchObject({ transport: 'homey_action', cause: timeout });
+    expect(capabilityWrite).not.toHaveBeenCalled();
+  }
 });

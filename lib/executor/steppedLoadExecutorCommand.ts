@@ -11,7 +11,8 @@ import type {
 import {
   PELS_TARGET_STEP_CAPABILITY_ID,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
-import type { SteppedLoadStepRequestResult, SteppedLoadStepRequestTransport } from '../ports/steppedLoadWrite';
+import { SteppedLoadRequestTimeoutError, type SteppedLoadStepRequestResult,
+  type SteppedLoadStepRequestTransport } from '../ports/steppedLoadWrite';
 import { getDebugEmitter, getLogger } from '../logging/logger';
 import { isHomeyRequestTimeout } from '../utils/errorUtils';
 import { isHeldByLifecycleLane, type ExecutorCommandContext } from './executorCommandContext';
@@ -108,14 +109,15 @@ export type SteppedCommandOptions = {
 };
 
 /**
- * Which channel left a command unacknowledged — both mean the same thing, and
- * each names its transport (`commandTransportFor`).
+ * Unacknowledged requests retain the established reason codes; typed timeouts
+ * additionally carry the transport that actually issued the request.
  */
 type UnacknowledgedReason = 'command_request_timed_out' | 'flow_trigger_timeout';
 
-const commandTransportFor = (reason: UnacknowledgedReason): SteppedLoadStepRequestTransport => (
-  reason === 'flow_trigger_timeout' ? 'flow' : 'native_capability'
-);
+const commandTransportFor = (reason: UnacknowledgedReason, error: unknown): SteppedLoadStepRequestTransport => {
+  if (error instanceof SteppedLoadRequestTimeoutError) return error.transport;
+  return reason === 'flow_trigger_timeout' ? 'flow' : 'native_capability';
+};
 
 const markAcceptedSteppedLoadCommand = (
   ctx: ExecutorCommandContext,
@@ -315,7 +317,7 @@ const logUnacknowledgedSteppedLoadCommand = (
     // cooldown clock the unacknowledged write stamped.
     effectiveTransition: transition?.effectiveTransition ?? 'steady',
     plannedDesiredStepId: transition?.plannedDesiredStepId ?? desiredStep.id,
-    commandTransport: commandTransportFor(unacknowledgedReason),
+    commandTransport: commandTransportFor(unacknowledgedReason, err),
     ...(err === undefined ? {} : { err }),
   });
 };
@@ -457,15 +459,15 @@ export const executeSteppedLoadCommand = async (
     accepted = recordAcceptedSteppedLoadCommand(ctx, action, desiredStep, now, options, result.transport);
     return accepted;
   } catch (error) {
-    if (isHomeyRequestTimeout(error)) {
+    if (error instanceof SteppedLoadRequestTimeoutError || isHomeyRequestTimeout(error)) {
       // Authority first, exactly as the accepted path does above: a command that
       // no longer owns the claim must not stamp bookkeeping the successor owns.
       // Checked as its own step, not folded into the condition above — a
       // superseded write is still an UNKNOWN one, and falling through to the
       // failure branch would log it as the definite failure it is not.
       if (!ctx.isAuthorityCurrent()) return false;
-      // Only the native branch can throw this: the Flow branch catches
-      // everything and reports its outcome as a typed result instead.
+      // Native writes and direct Homey actions throw timeouts. User Flow
+      // triggers report their unacknowledged outcome as a typed result instead.
       accepted = recordUnacknowledgedSteppedLoadCommand(
         ctx, action, desiredStep, now, options, 'command_request_timed_out', error,
       );

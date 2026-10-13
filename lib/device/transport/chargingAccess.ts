@@ -170,14 +170,26 @@ export class ChargingAccess {
     }
   }
 
+  private async resolveHomeyTarget(): Promise<[string, string]> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        Promise.all([this.homey.api.getLocalUrl(), this.homey.cloud.getHomeyId()]),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new ChargingAccessError('unavailable')), READ_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   private async request(
     key: string, path: string, method: 'GET' | 'POST',
     body?: unknown, generation?: number, assertAuthorized?: () => void,
   ): Promise<unknown> {
     try {
-      const [address, homeyId] = await Promise.all([
-        this.homey.api.getLocalUrl(), this.homey.cloud.getHomeyId(),
-      ]);
+      const [address, homeyId] = await this.resolveHomeyTarget();
       const url = new URL(address);
       if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || !homeyId) {
         throw new ChargingAccessError('unavailable');

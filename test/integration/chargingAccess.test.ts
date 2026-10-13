@@ -141,3 +141,22 @@ test('failed automatic access revalidation sends no device command', async () =>
   await expect(access.runCurrentAction('charger', action, () => {})).rejects.toThrow('unavailable');
   expect(fetchMock.mock.calls.map(([, options]) => options.method)).toEqual(['GET']);
 });
+
+test.each(['address', 'identity'])('bounds a stalled Homey %s lookup before making any HTTP request', async (lookup) => {
+  vi.useFakeTimers();
+  const fetchMock = vi.fn();
+  vi.stubGlobal('fetch', fetchMock);
+  const { access, homey, values } = fixture();
+  values.set(CHARGING_ACCESS_KEY, KEY);
+  let resolveLookup!: (value: string) => void;
+  const stalled = () => new Promise<string>((resolve) => { resolveLookup = resolve; });
+  if (lookup === 'address') homey.api.getLocalUrl = stalled;
+  else homey.cloud.getHomeyId = stalled;
+  const pending = access.check();
+  await vi.advanceTimersByTimeAsync(10_000);
+  await expect(pending).resolves.toEqual({ configured: true, state: 'unavailable' });
+  expect(fetchMock).not.toHaveBeenCalled();
+  resolveLookup(lookup === 'address' ? 'http://homey.local' : 'test-homey');
+  await vi.advanceTimersByTimeAsync(0);
+  expect(fetchMock).not.toHaveBeenCalled();
+});

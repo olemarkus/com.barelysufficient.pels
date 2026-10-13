@@ -96,3 +96,17 @@ The readiness runtime from `c3ad7a4a5` (manifest 3.13.0) was installed on SHS af
 Evidence is under `/tmp/pels-charging-readiness-20261013/`, including `readiness-results.json`, installation logs and `cleanup-result.json`. The temporary key was revoked, the simulator was deleted, all 12 edited settings were restored, and the previously installed SHS app was restored. Physical hardware and vendor cloud behavior remain outside this simulator evidence.
 
 The subsequent full push suite also caught PELS battery-report actions being included in the new vendor app-action write inventory. The normalizer now preserves the existing exclusion for PELS bridge/report cards; existing inventory tests and a new vendor-action case cover that correction. This final normalizer change was made after the SHS run.
+
+### PR review corrections, 2026-10-13
+
+Copilot and CodeRabbit reviewed head `a9310e224`. Verified findings were fixed:
+
+- Clamp the haversine term so antipodal rounding cannot authorize remote control.
+- Admit Flow step reports against the live selected route while a snapshot refresh is pending or fails. A committed configuration save remains successful if only its projection refresh fails.
+- Retain the actual Homey-action transport on unknown-outcome timeout diagnostics.
+- Bound SDK address/identity resolution before the HTTP timeout begins.
+- Provide a setup-load retry, retain entered keys after failed saves, and refresh charging recommendations after read failures and on tab revisits.
+
+The reported stale-map save race was rejected: `list()` calls `setup()`/`sync()` after its awaited Flow inventory read, and concurrent saves mutate the same owner-held map synchronously. No separate settings-import writer for this key exists in the current implementation.
+
+Focused regressions passed (115 runtime, 39 UI), and charging setup browser scenarios passed at 320/480 px in light/dark rendering. These review corrections were validated locally and remain subject to the final CI gate, not reinstalled on SHS; the SHS evidence above remains tied to its recorded commit.

@@ -7,11 +7,21 @@ export type ChargingCurrentSetupProps = {
   access: ChargingAccessStatus;
   busy: boolean;
   error: string;
-  onSaveKey: (key: string) => Promise<void>;
-  onCheck: () => Promise<void>;
-  onRemove: () => Promise<void>;
-  onSaveMethod: (setup: ChargingCurrentSetup) => Promise<void>;
+  onSaveKey: (key: string) => Promise<boolean>;
+  onCheck: () => Promise<boolean>;
+  onRemove: () => Promise<boolean>;
+  onSaveMethod: (setup: ChargingCurrentSetup) => Promise<boolean>;
 };
+
+export function ChargingCurrentLoadView(props: { busy: boolean; onRetry: () => Promise<void> }) {
+  return <section class="charging-current-setup">
+    <h3 class="pels-text-settings-label">Charging current</h3>
+    {props.busy
+      ? <p class="field__hint" role="status">Loading charging setup…</p>
+      : <p class="field__hint" role="alert">Charging setup could not be loaded. Try again.</p>}
+    <MdOutlinedButton disabled={props.busy} onClick={props.onRetry}>Try again</MdOutlinedButton>
+  </section>;
+}
 
 const GUIDE = 'https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro';
 const ACCESS_COPY: Record<ChargingAccessStatus['state'], string> = {
@@ -42,6 +52,7 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
   }
   return <section class="charging-current-setup">
     <h3 class="pels-text-settings-label">Charging current</h3>
+    {props.error && <p class="field__hint" role="alert">{props.error}</p>}
     <p class="field__hint">Start and stop work independently of the current-control method. Choose the EV charging steps and installation limit in Control model.</p>
     {device.setup.method === 'built_in' && <p class="field__hint">Built-in current control is selected.</p>}
     {device.setup.method === 'flow' && <p class="field__hint">Flow control is selected. Set up a current-setting Flow below, or choose built-in control.</p>}
@@ -74,9 +85,7 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
         onInput={(event: Event) => setKey((event.currentTarget as HTMLInputElement).value)} />
       <div class="form__actions">
         <MdFilledButton disabled={busy || !key.trim()} onClick={async () => {
-          const candidate = key;
-          setKey('');
-          await props.onSaveKey(candidate);
+          if (await props.onSaveKey(key)) setKey('');
         }}>{access.configured ? 'Replace key' : 'Save key'}</MdFilledButton>
         {access.configured && <MdOutlinedButton disabled={busy} onClick={props.onRemove}>Remove key</MdOutlinedButton>}
       </div>
@@ -91,6 +100,5 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
       <summary>Set up a Flow instead</summary>
       <p class="field__hint">Use PELS “Stepped device target changed” for this device. Check “Stepped-load request is still valid” with the Request ID tag immediately before the charger’s charging-current action, using the EV charger current (A) tag. Do not add a delay between the check and the action. PELS controls start and stop separately.</p>
     </details>
-    {props.error && <p class="field__hint" role="alert">{props.error}</p>}
   </section>;
 }

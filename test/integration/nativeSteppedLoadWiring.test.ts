@@ -24,6 +24,7 @@ import { createTestExecutorCommandContext, PRIOR_STEP_COMMAND_SESSION } from '..
 import { noStorageTransport } from '../helpers/storageTransportStub';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
+import { SteppedLoadRequestTimeoutError } from '../../lib/ports/steppedLoadWrite';
 import { buildExecutableObservedDeviceState } from '../../lib/executor/executablePlanProjection';
 import {
   buildExecutableSteppedLoadDevice,
@@ -923,9 +924,11 @@ describe('native stepped-load wiring', () => {
     }));
   });
 
-  it('treats a timed-out stepped write as issued-awaiting-confirmation, not as a failure', async () => {
+  it.each(['native_capability', 'homey_action'] as const)(
+    'treats a timed-out %s stepped write as issued-awaiting-confirmation with the actual route', async (transport) => {
+    const timeout = new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/hoiax-1/capability/max_power_3000');
     const requestSteppedLoadStep = vi.fn(async () => {
-      throw new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/hoiax-1/capability/max_power_3000');
+      throw transport === 'homey_action' ? new SteppedLoadRequestTimeoutError(transport, timeout) : timeout;
     });
     const markSteppedLoadDesiredStepIssued = vi.fn();
     const recordShedActuation = vi.fn();
@@ -976,6 +979,7 @@ describe('native stepped-load wiring', () => {
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'stepped_load_command_outcome_unknown',
       reasonCode: 'command_request_timed_out',
+      commandTransport: transport,
       deviceId: 'hoiax-1',
       desiredStepId: 'medium',
     }));

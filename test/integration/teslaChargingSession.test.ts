@@ -48,6 +48,15 @@ test('admits a home AC session and retains it while stationary telemetry stays q
   expect(owner.sessionId('battery')).toBe(first);
 });
 
+test('rejects antipodal coordinates despite floating-point distance rounding', () => {
+  const owner = new TeslaChargingSession({ getLatitude: () => 2.5, getLongitude: () => 0 });
+  const initial = devices();
+  initial[1]!.capabilitiesObj!.measure_location_latitude = cap(-2.5);
+  initial[1]!.capabilitiesObj!.measure_location_longitude = cap(180);
+  owner.observeDevices(initial);
+  expect(owner.isAllowed('battery')).toBe(false);
+});
+
 test.each([
   ['location', 'measure_location_latitude', 61],
   ['car', 'measure_car_drive_speed', 10],
@@ -192,6 +201,36 @@ test('transport discovers Tesla, permits home start/stop without a key, and revo
     await expect(transport.setCapability('battery', 'evcharger_charging', true)).rejects.toThrow('at home');
     expect(put).toHaveBeenCalledTimes(1);
   } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
+});
+
+test('live built-in current selection rejects old Flow feedback before its snapshot refresh', async () => {
+  vi.useRealTimers();
+  mockHomeyInstance.settings.set('charging_current_control', { battery: {
+    method: 'flow', confirmation: 'vehicle',
+  } });
+  const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App,
+    { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test') },
+    { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
+      getDeviceTargetPowerConfig: () => ({ enabled: true, preset: 'ev_charger_3_phase' }) });
+  try {
+    await initWithLiveFeed(transport);
+    await seedTransportDevices(transport, devices());
+    expect(transport.reportSteppedLoadActualStep('battery', '6a', 4140)).toMatchObject({ kind: 'accepted' });
+    const before = structuredClone(transport.getSnapshot()[0]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 200, ok: true,
+      headers: { get: () => 'mock-homey-id' }, json: async () => ({ intersectedScopes: ['homey.flow'] }) }));
+    await transport.chargingAccess.save({ key: 'test-private-key' });
+    setRestClient({ get: vi.fn().mockResolvedValue({}), put: vi.fn() });
+    await transport.chargingCurrentControl.save('battery', { method: 'built_in', confirmation: 'vehicle' });
+    // No successful device refresh has projected the committed method yet.
+    expect(transport.getSnapshot()[0]?.controlAdapter?.currentControl).toBeUndefined();
+    expect(transport.reportSteppedLoadActualStep('battery', '16a', 11040)).toEqual({ kind: 'native_control' });
+    expect(transport.getSnapshot()[0]).toEqual(before);
+  } finally {
+    transport.chargingAccess.remove();
+    mockHomeyInstance.settings.unset('charging_current_control');
+    vi.unstubAllGlobals();
+  }
 });
 
 

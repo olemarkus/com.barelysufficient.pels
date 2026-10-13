@@ -99,18 +99,20 @@ const stripHomeyApiPrefix = (message: string): string => (
   message.replace(HOMEY_API_ERROR_PREFIX_REGEX, '')
 );
 
-export const showToastError = async (error: unknown, fallback: string): Promise<void> => {
+export const formatSettingsError = (error: unknown, fallback: string): string => {
   const rawMessage = extractErrorMessage(error);
   const unwrapped = stripHomeyApiPrefix(rawMessage);
   // App-not-ready outlasted the bounded retry budget: prefer a stable "still
   // starting" message over the sentinel prefix or the caller's generic fallback.
   if (isAppNotReadyErrorMessage(rawMessage)) {
-    await showToast(APP_NOT_READY_FALLBACK, 'warn', { durationMs: ERROR_DURATION_MS });
-    return;
+    return APP_NOT_READY_FALLBACK;
   }
   // Hide low-signal transport errors behind the caller's fallback. The user
   // sees an actionable message instead of "socket hang up" or similar.
   const candidate = unwrapped && !isHomeyTransportErrorMessage(unwrapped) ? unwrapped : fallback;
-  const message = candidate.trim() || GENERIC_ERROR_FALLBACK;
-  await showToast(message, 'warn', { durationMs: ERROR_DURATION_MS });
+  return candidate.trim() || GENERIC_ERROR_FALLBACK;
+};
+
+export const showToastError = async (error: unknown, fallback: string): Promise<void> => {
+  await showToast(formatSettingsError(error, fallback), 'warn', { durationMs: ERROR_DURATION_MS });
 };

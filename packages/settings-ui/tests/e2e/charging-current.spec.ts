@@ -11,6 +11,7 @@ for (const width of [320, 480]) {
         await page.addInitScript(() => {
           const setup = { method: 'flow', confirmation: 'single_charger' };
           let configured = false;
+          let saveAttempts = 0;
           let conflict = true;
           const charger = { deviceId: 'charging-test', name: 'Garage charger', setup,
             capabilityWritable: false, scope: 'installation',
@@ -26,7 +27,10 @@ for (const width of [320, 480]) {
             apiHandlers: {
               'GET /ui_charging_current': () => [{ ...charger, flowCheck: conflict ? 'conflict' : 'clear' }],
               'GET /ui_charging_access': () => ({ configured, state: configured ? 'ready' : 'not_configured' }),
-              'PUT /ui_charging_access': () => { configured = true; return { configured, state: 'ready' }; },
+              'PUT /ui_charging_access': () => {
+                if (++saveAttempts === 1) throw new Error('Charging access could not be saved. Try again.');
+                configured = true; return { configured, state: 'ready' };
+              },
               'POST /ui_charging_access/check': () => { conflict = false; return { configured, state: 'ready' }; },
               'PUT /ui_charging_current/charging-test': () => { setup.method = 'built_in'; },
               'DELETE /ui_charging_access': () => { configured = false; return { configured, state: 'not_configured' }; },
@@ -43,6 +47,10 @@ for (const width of [320, 480]) {
         await expect(section).toContainText('Flow control is selected');
         await section.screenshot({ path: testInfo.outputPath('charging-current-before-key.png') });
         await setMdValue(page, '#device-detail-charging-current md-filled-text-field', 'test-private-key');
+        await section.getByRole('button', { name: 'Save key', exact: true }).click();
+        await expect(section).toContainText('Charging access could not be saved. Try again.');
+        await expect(section.locator('md-filled-text-field')).toHaveJSProperty('value', 'test-private-key');
+        await section.screenshot({ path: testInfo.outputPath('charging-current-save-failed.png') });
         await section.getByRole('button', { name: 'Save key', exact: true }).click();
         await expect(section).toContainText('Flow permission verified');
         await expect(section).toContainText('Remove the current-setting action');

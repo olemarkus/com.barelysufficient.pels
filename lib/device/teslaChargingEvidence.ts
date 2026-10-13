@@ -17,7 +17,8 @@ function distanceM(point: Coordinates, home: Coordinates): number {
   const a = Math.sin((point.latitude - home.latitude) * radians / 2) ** 2
     + Math.cos(point.latitude * radians) * Math.cos(home.latitude * radians)
     * Math.sin((point.longitude - home.longitude) * radians / 2) ** 2;
-  return 6_371_000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const boundedA = Math.min(1, Math.max(0, a));
+  return 6_371_000 * 2 * Math.atan2(Math.sqrt(boundedA), Math.sqrt(1 - boundedA));
 }
 
 function isStationaryOnlineCar(car: HomeyDeviceLike): boolean {

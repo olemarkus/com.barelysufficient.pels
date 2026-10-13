@@ -326,6 +326,9 @@ export class DeviceTransport {
 
     /** Raw Flow feedback is resolved once against the owner-selected control configuration. */
     reportSteppedLoadActualStep(deviceId: string, stepId: string, planningPowerW?: number): FlowSteppedLoadAdmission {
+        // Route selection commits before its snapshot refresh. Old Flow
+        // feedback cannot gain authority while that projection is pending.
+        if (this.chargingCurrentControl.setup(deviceId).method === 'built_in') return { kind: 'native_control' };
         return admitFlowSteppedLoadReport(
             this.snapshotStore,
             this.deviceConfigurationStore,

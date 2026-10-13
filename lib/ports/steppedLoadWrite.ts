@@ -13,6 +13,14 @@ export type SteppedLoadWrite = {
 /** Channel actually used to issue a stepped-load request. */
 export type SteppedLoadStepRequestTransport = 'native_capability' | 'homey_action' | 'flow';
 
+/** An issued request whose outcome is unknown, with its actual transport retained. */
+export class SteppedLoadRequestTimeoutError extends Error {
+  constructor(readonly transport: SteppedLoadStepRequestTransport, cause: Error) {
+    super(cause.message, { cause });
+    this.name = 'SteppedLoadRequestTimeoutError';
+  }
+}
+
 /**
  * Whether the request was issued, and over which channel. Acceptance only:
  * the device's reported step reaches the executor through the observer.
