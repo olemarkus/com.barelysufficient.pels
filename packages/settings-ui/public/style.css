@@ -260,44 +260,9 @@ body {
  * (or rebind primitive selectors to the same tokens) instead of reaching for
  * `--font-size-*` directly so the type scale stays a single source of truth.
  *
- *   .text-hero-number       36 / 400 / tight   big hero stat (e.g. "2.9 kW")
- *   .text-page-headline     28 / 400 / tight   page-level KPI / banner figure
- *   .text-section-headline  24 / 400 / tight   section <h2> headings
- *   .text-title             16 / 500 / tight   card titles, sub-headings
- *   .text-section-label     13 / 600 / tight   label rows above values
  *   .text-body              15 / 400 / normal  default supporting copy
  *   .text-caption           11 / 500 / tight   helper / meta text, eyebrows
  * --------------------------------------------------------------------------- */
-
-.text-hero-number {
-  font-size: var(--pels-text-display-font-size);
-  font-weight: var(--pels-text-display-font-weight);
-  line-height: var(--pels-text-display-font-line-height);
-}
-
-.text-page-headline {
-  font-size: var(--pels-text-headline-font-size);
-  font-weight: var(--pels-text-headline-font-weight);
-  line-height: var(--pels-text-headline-font-line-height);
-}
-
-.text-section-headline {
-  font-size: var(--pels-text-section-headline-font-size);
-  font-weight: var(--pels-text-section-headline-font-weight);
-  line-height: var(--pels-text-section-headline-font-line-height);
-}
-
-.text-title {
-  font-size: var(--pels-text-title-font-size);
-  font-weight: var(--pels-text-title-font-weight);
-  line-height: var(--pels-text-title-font-line-height);
-}
-
-.text-section-label {
-  font-size: var(--pels-text-section-label-font-size);
-  font-weight: var(--pels-text-section-label-font-weight);
-  line-height: var(--pels-text-section-label-font-line-height);
-}
 
 .text-body {
   font-size: var(--pels-text-body-font-size);
@@ -472,17 +437,6 @@ md-text-button.md-text-button--destructive {
 
 #shell-nav > md-primary-tab:not(:last-child) {
   margin-inline-end: 2px;
-}
-
-.device-group-header {
-  margin-top: var(--spacing-4);
-  padding: var(--spacing-2) 0;
-  border-bottom: 1px dashed var(--panel-border);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
 }
 
 .device-loading-notice {
@@ -913,14 +867,6 @@ md-primary-tab.tab[active] {
   box-shadow: var(--shadow-sm);
 }
 
-.settings-current-mode__field {
-  margin: 0;
-}
-
-.settings-current-mode__field md-filled-select {
-  width: 100%;
-}
-
 .settings-current-mode__rows {
   display: grid;
   gap: var(--spacing-4);
@@ -1281,46 +1227,6 @@ md-dialog > [slot="actions"] {
   flex-wrap: wrap;
 }
 
-/* Checkbox styling */
-.checkbox-field {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: var(--pels-touch-target-min);
-  cursor: pointer;
-}
-
-.checkbox-field__content {
-  display: grid;
-  gap: 2px;
-}
-
-.checkbox-field md-checkbox {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-}
-
-/* Icon-only checkbox for table columns */
-.checkbox-icon {
-  display: flex;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.toggle-label md-checkbox,
-.checkbox-icon md-checkbox {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-}
-
-.checkbox-icon.is-disabled,
-.checkbox-icon md-checkbox:disabled {
-  cursor: not-allowed;
-  opacity: var(--opacity-disabled);
-}
-
 /* Busy state for MD Web buttons (used by advanced.ts's setApiDeviceButtonsBusy
  * / setClearButtonBusy helpers on `md-outlined-button` hosts). The host's
  * `cursor` + `opacity` properties DO reach the user even though MD Web
@@ -1347,30 +1253,6 @@ md-filled-button.is-busy {
   font-size: var(--font-size-sm);
   border: 1px solid var(--panel-border);
   white-space: nowrap;
-}
-
-.plan-meta-section {
-  display: grid;
-  gap: 2px;
-}
-
-.plan-meta-title {
-  font-size: var(--font-size-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-secondary);
-  font-weight: var(--font-weight-semibold);
-}
-
-.plan-meta-line-text {
-  color: var(--text);
-}
-
-.plan-meta-divider {
-  height: 1px;
-  background: var(--panel-border);
-  opacity: 0.6;
-  margin: 2px 0;
 }
 
 .pill.ok {
@@ -1421,18 +1303,6 @@ md-filled-button.is-busy {
   grid-template-columns: 1fr 80px 40px 40px;
   align-items: center;
   gap: var(--spacing-2);
-}
-
-.device-row__inputs,
-.control-row__inputs {
-  display: contents;
-}
-
-.device-row__inputs .checkbox-icon,
-.control-row__inputs .checkbox-icon {
-  display: flex;
-  justify-content: center;
-  align-items: center;
 }
 
 .mode-row {
@@ -1541,45 +1411,9 @@ md-filled-button.is-busy {
   -webkit-tap-highlight-color: transparent;
 }
 
-.plan-row__meta {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--spacing-1);
-  color: var(--text);
-  font-size: var(--font-size-sm);
-}
-
-.plan-row__name {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-1);
-}
-
 /* `.plan-row__chip` retired 2026-05-24 (chip primitive consolidation) — the
    plan-row variant was replaced by the device-card layout in the redesign
    and had no consumers left. */
-
-.plan-state-indicator {
-  display: inline-block;
-  line-height: var(--font-line-height-flat);
-  transform: translateY(-1px);
-}
-
-.plan-state-indicator::before {
-  content: attr(data-icon);
-}
-
-.plan-meta-line {
-  display: flex;
-  gap: var(--spacing-1);
-  align-items: center;
-}
-
-.plan-label {
-  color: var(--text-secondary);
-  min-width: 78px;
-  font-weight: var(--font-weight-semibold);
-}
 
 .plan-hero,
 .pels-hero,
@@ -1964,9 +1798,6 @@ md-filled-button.is-busy {
 
 /* Deadline-plan tab strip (Current plan / History) uses the canonical
    `.segmented` primitive; only layout overrides live here. */
-.plan-tabs {
-  margin-bottom: var(--spacing-3);
-}
 
 /* Past plans list (History tab). Stacks vertically; each entry is a card. */
 .plan-history-list {
@@ -2068,13 +1899,6 @@ md-filled-button.is-busy {
   color: var(--pels-text-primary);
 }
 
-.plan-history-card__pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-1);
-  margin-top: var(--spacing-1);
-}
-
 /* `.plan-history-card--link` — link-role decorator on `.plan-history-card`
    (see canonical-primitives preamble above `.pels-surface-card`). Anchor-
    reset (no underline / inherit colour) marks the past-plan link as
@@ -2147,10 +1971,6 @@ md-filled-button.is-busy {
   color: var(--muted);
   font-weight: var(--font-weight-medium);
   font-variant-numeric: tabular-nums;
-}
-
-.plan-history-detail__device {
-  color: var(--pels-text-secondary);
 }
 
 .plan-history-detail__progress {
@@ -2473,10 +2293,6 @@ md-filled-button.is-busy {
 .plan-history-detail__abandoned-line {
   color: var(--pels-text-secondary);
   font-size: var(--font-size-sm);
-}
-
-.plan-history-empty {
-  padding: var(--spacing-3);
 }
 
 .pels-meter-track {
@@ -3951,46 +3767,6 @@ md-filled-button.is-busy {
   --md-circular-progress-active-indicator-color: var(--text-secondary);
 }
 
-.plan-card__load {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--spacing-3);
-}
-
-.plan-card__load-track {
-  position: relative;
-  height: 12px;
-  overflow: hidden;
-  border-radius: var(--radius-full);
-  border: 1px solid color-mix(in srgb, var(--panel-border) 90%, transparent);
-  background: color-mix(in srgb, var(--pels-surface-container-highest) 84%, transparent);
-}
-
-.plan-card__load-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: var(--radius-full);
-  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
-}
-
-.plan-card__load-tick {
-  position: absolute;
-  top: -2px;
-  bottom: -2px;
-  width: 2px;
-  border-radius: var(--radius-full);
-  background: color-mix(in srgb, var(--color-base-white) 75%, var(--text));
-  transform: translateX(-1px);
-}
-
-.plan-card__load-label {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
 /* ── Loading skeleton primitives ───────────────────────────────────────────────
  * Used as first-paint placeholders for the Overview panel before the bootstrap
  * fetch resolves. Other four panels (Budget, Usage, Smart tasks, Settings) can
@@ -4115,13 +3891,6 @@ md-filled-button.is-busy {
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
   color: var(--text);
-}
-
-.plan-card__temp-inline {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  white-space: nowrap;
-  flex-shrink: 0;
 }
 
 .plan-card__state-power {
@@ -4251,12 +4020,6 @@ md-filled-button.is-busy {
     font-size: var(--font-size-md);
   }
 
-  .plan-hero__status {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-  }
-
   .plan-hero__legend {
     font-size: var(--font-size-xs);
   }
@@ -4284,15 +4047,6 @@ md-filled-button.is-busy {
 
   .plan-card__header {
     align-items: flex-start;
-  }
-
-  .plan-card__load {
-    grid-template-columns: 1fr;
-    gap: var(--spacing-2);
-  }
-
-  .plan-card__load-label {
-    white-space: normal;
   }
 }
 
@@ -4345,43 +4099,6 @@ md-filled-button.is-busy {
   margin-bottom: var(--spacing-1);
 }
 
-.device-row__target {
-  display: block;
-}
-
-.power-day-header {
-  justify-content: flex-start;
-  padding: 14px 0 var(--spacing-2);
-  border-bottom: none;
-}
-
-.usage-row {
-  display: grid;
-  grid-template-columns: minmax(80px, 120px) 1fr 72px;
-  gap: var(--spacing-2);
-  align-items: center;
-  padding: var(--spacing-1) 0;
-  min-width: 0;
-}
-
-.usage-row__label {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-secondary);
-}
-
-.usage-row__bar {
-  width: 100%;
-  min-width: 0;
-}
-
-.usage-row__value {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  text-align: right;
-  color: var(--text);
-}
-
 .usage-legend {
   display: flex;
   flex-wrap: wrap;
@@ -4428,10 +4145,6 @@ md-filled-button.is-busy {
 .power-meter {
   position: relative;
   width: 100%;
-}
-
-.power-meter__fill--alert {
-  background: var(--color-state-warning-bg);
 }
 
 .mode-target-input {
@@ -4526,19 +4239,6 @@ md-filled-button.is-busy {
   margin-top: var(--spacing-2);
 }
 
-.hourly-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-3);
-  margin-bottom: var(--spacing-3);
-  flex-wrap: wrap;
-}
-
-.hourly-nav .muted {
-  margin: 0;
-}
-
 .inline-actions md-filled-text-field {
   min-width: 140px;
 }
@@ -4565,16 +4265,6 @@ md-filled-button.is-busy {
   border-radius: var(--radius-md);
   background: var(--panel);
   box-shadow: var(--shadow-sm);
-}
-
-#overview-panel .plan-meta-line {
-  display: grid;
-  grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
-  gap: var(--spacing-2);
-}
-
-#overview-panel .plan-label {
-  min-width: 0;
 }
 
 .toast {
@@ -4638,116 +4328,8 @@ md-filled-button.is-busy {
 }
 
 /* Toggle row for feature enable/disable */
-.toggle-row {
-  margin-bottom: var(--spacing-4);
-  padding: var(--spacing-3) var(--spacing-4);
-  min-height: var(--pels-touch-target-min);
-  background: var(--pels-surface-container-lowest);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-}
-
-.toggle-label {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-3);
-  min-height: var(--pels-touch-target-min);
-  cursor: pointer;
-  font-weight: var(--font-weight-semibold);
-}
-
-.toggle-row .field__hint {
-  margin-top: 6px;
-  margin-left: 30px;
-  font-size: var(--font-size-xs);
-}
 
 /* Price tab styles */
-.price-enable-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-4);
-  margin-bottom: var(--spacing-4);
-  padding: var(--spacing-3) var(--spacing-4);
-  min-height: var(--pels-touch-target-min);
-  background: var(--pels-surface-container-lowest);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-}
-
-.price-enable-text {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-1);
-}
-
-.price-enable-label {
-  font-weight: var(--font-weight-semibold);
-}
-
-.price-enable-row .field__hint {
-  margin: 0;
-}
-
-.price-info {
-  margin-bottom: var(--spacing-4);
-}
-
-.price-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: var(--spacing-3);
-}
-
-.price-row .device-row__target {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--spacing-2);
-}
-
-.price-row.current-hour {
-  background: var(--color-state-positive-bg);
-  border-radius: var(--radius-md);
-  margin: -4px -8px;
-  padding: var(--spacing-2);
-}
-
-.price-now-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px var(--spacing-2);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-state-info-border);
-  background: var(--color-state-info-bg);
-  color: var(--color-state-info-text);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.price-low {
-  background: var(--color-state-positive-bg);
-  border-color: var(--color-state-positive-border);
-  color: var(--color-role-accent);
-}
-
-.price-medium {
-  background: var(--color-state-warning-bg);
-  border-color: var(--color-state-warning-border);
-  color: var(--color-state-warning-text);
-}
-
-.price-high {
-  background: var(--color-state-negative-bg);
-  border-color: var(--color-state-negative-border);
-  color: var(--color-role-danger);
-}
 
 #tibber-token-field a {
   color: var(--accent);
@@ -4762,14 +4344,6 @@ md-filled-button.is-busy {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
-}
-
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-3);
-  margin: var(--spacing-3) 0 var(--spacing-2);
 }
 
 .section-title {
@@ -4796,42 +4370,6 @@ md-filled-button.is-busy {
  * family tokens — the previous 8 px radius drifted 2 px below the sibling notices'
  * `--radius-md` (10 px), so the rebind both removes the literal AND normalizes the
  * card-family corner shape. */
-.price-summary {
-  padding: var(--spacing-3);
-  margin-bottom: var(--spacing-3);
-  background: var(--panel-bg);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-}
-
-.price-summary-item {
-  padding: 6px 0;
-  font-size: var(--font-size-sm);
-  color: var(--text);
-}
-
-.price-summary-item:first-child {
-  padding-top: 0;
-}
-
-.price-summary-item:last-child {
-  padding-bottom: 0;
-}
-
-.price-indicator {
-  margin-right: var(--spacing-1);
-}
-
-.price-indicator.neutral {
-  opacity: 0.5;
-}
-
-.price-notice {
-  padding: var(--spacing-4) 0;
-  text-align: center;
-  color: var(--muted);
-  font-style: italic;
-}
 
 /* Inline contextual notices — same M3 status pattern as the tonal cards /
    heroes (TODO M3 alignment items #3/#7 "reduce orange weight"): a calm
@@ -4860,11 +4398,6 @@ md-filled-button.is-busy {
   color: var(--text);
 }
 
-.price-notice-info {
-  color: var(--color-state-info-text);
-  margin-bottom: var(--spacing-3);
-}
-
 /* Railed warning-notice primitive: the left warning rail + contained surface
    carry the signal. The generalized `.pels-notice-warning` keeps body text in
    the normal tone (no wall-of-yellow prose); the original `.price-notice-warning`
@@ -4885,38 +4418,6 @@ md-filled-button.is-busy {
 
 .pels-notice-warning {
   color: var(--text);
-}
-
-.price-notice-warning {
-  color: var(--color-state-warning-text);
-  margin-top: var(--spacing-3);
-}
-
-.flow-status-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-3);
-}
-
-.flow-status-row + .flow-status-row {
-  margin-top: var(--spacing-2);
-}
-
-.flow-status-label {
-  font-weight: var(--font-weight-semibold);
-}
-
-.flow-status-value.ok {
-  color: var(--color-state-positive-text);
-}
-
-.flow-status-value.warn {
-  color: var(--color-state-warning-text);
-}
-
-.daily-budget-warning {
-  margin-top: var(--spacing-3);
 }
 
 /* Global banner for warnings/notices */
@@ -5023,68 +4524,6 @@ md-filled-button.is-busy {
   margin-top: var(--spacing-4);
 }
 
-.price-last-fetched {
-  color: var(--muted);
-  font-size: var(--font-size-xs);
-  text-align: right;
-  margin-top: var(--spacing-3);
-  opacity: 0.7;
-}
-
-/* `.price-row .chip.price-normal` retired 2026-05-24 (chip primitive
-   consolidation) — the legacy `.price-row` markup it targeted is no longer
-   rendered. */
-
-/* Price optimization inputs */
-#price-optimization-section {
-  --price-opt-input-width: var(--temp-input-width);
-}
-
-.price-optimization-header,
-.device-row.price-optimization-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--price-opt-input-width) var(--price-opt-input-width);
-  gap: var(--spacing-1);
-  align-items: center;
-}
-
-.price-optimization-header {
-  padding: var(--spacing-2) 0;
-  border-bottom: 1px solid var(--panel-border);
-}
-
-.price-optimization-header > * {
-  font-size: var(--font-size-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin: 0;
-}
-
-.price-optimization-header .header-delta {
-  width: var(--price-opt-input-width);
-  text-align: center;
-}
-
-.price-opt-input {
-  width: var(--price-opt-input-width);
-  padding: var(--spacing-1) 28px var(--spacing-1) var(--spacing-2);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-strong);
-  background: var(--pels-surface-container-high);
-  color: var(--text);
-  font-size: var(--font-size-sm);
-  text-align: center;
-}
-
-.price-opt-input:focus {
-  outline: 2px solid var(--color-focus-ring);
-  border-color: transparent;
-}
-
-.price-opt-hours {
-  width: 50px;
-}
-
 /* Collapsible settings sections */
 .settings-collapse {
   background: var(--panel);
@@ -5097,14 +4536,6 @@ md-filled-button.is-busy {
   cursor: pointer;
   padding: var(--spacing-4);
   list-style: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-3);
-}
-
-.settings-collapse-header {
-  padding: var(--spacing-4);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -5139,14 +4570,6 @@ details[open] > summary .disclosure-chevron {
   border-top: 1px solid var(--panel-border);
 }
 
-.usage-section-header {
-  margin: var(--spacing-2) 0 var(--spacing-3);
-}
-
-.usage-section-header h4 {
-  margin: 0;
-}
-
 .detail-diagnostics-card h4 {
   margin: 0 0 var(--spacing-3);
   font-size: var(--font-size-sm);
@@ -5165,25 +4588,6 @@ details[open] > summary .disclosure-chevron {
 
 .settings-collapse .collapse-content h4:first-child {
   margin-top: var(--spacing-3);
-}
-
-@media (max-width: 360px) {
-  .device-row.price-optimization-row {
-    grid-template-columns: 1fr;
-    gap: 6px;
-  }
-  
-  .price-optimization-header {
-    display: none;
-  }
-  
-  .device-row.price-optimization-row .device-row__name {
-    margin-bottom: var(--spacing-1);
-  }
-  
-  .price-opt-input {
-    width: 100%;
-  }
 }
 
 /* ========================================
@@ -5238,12 +4642,6 @@ details[open] > summary .disclosure-chevron {
   flex: 1;
   overflow-y: auto;
   padding: var(--spacing-4);
-}
-
-.slide-panel__footer {
-  padding: var(--spacing-4);
-  border-top: 1px solid var(--panel-border);
-  background: var(--panel);
 }
 
 .detail-section {
@@ -5687,26 +5085,6 @@ details[open] > summary .disclosure-chevron {
   margin: 0;
 }
 
-.detail-deadline-form {
-  display: grid;
-  gap: var(--spacing-4);
-}
-
-.detail-deadline-form .form-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-bottom: 0;
-}
-
-.detail-deadline-error {
-  color: var(--color-semantic-danger);
-}
-
-.detail-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-2);
-}
-
 .detail-stepped-actions {
   display: flex;
   gap: var(--spacing-2);
@@ -5803,10 +5181,6 @@ details[open] > summary .disclosure-chevron {
   .detail-mode-row,
   .detail-stepped-row {
     grid-template-columns: 1fr;
-  }
-
-  .device-detail-row--toggle {
-    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .detail-stepped-header {
@@ -6014,10 +5388,6 @@ details[open] > summary .disclosure-chevron {
 .budget-card-header > div:first-child,
 .budget-card-header > .section-title {
   flex: 1 1 auto;
-  min-width: 0;
-}
-
-.budget-toggle-mount {
   min-width: 0;
 }
 
@@ -6381,10 +5751,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   width: 140px;
 }
 
-.budget-redesign-field--select {
-  width: 160px;
-}
-
 .budget-redesign-comparison .budget-comparison__current {
   color: var(--color-semantic-text-secondary);
 }
@@ -6467,14 +5833,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 .budget-chart-caveat,
 .budget-next-action {
   margin: 0;
-}
-
-.budget-next-action {
-  padding: var(--spacing-3) var(--spacing-4);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  background: var(--pels-surface-container-low);
-  color: var(--text-secondary);
 }
 
 .budget-settings-list {
@@ -6597,44 +5955,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   justify-self: stretch;
   background: var(--pels-surface-container-high) !important;
   border-color: var(--pels-surface-outline) !important;
-}
-
-.budget-setting-row--link {
-  width: 100%;
-  border-left: 0;
-  border-right: 0;
-  border-top: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-
-.budget-setting-row--link:last-child {
-  border-bottom: 0;
-}
-
-.budget-setting-row--link:hover {
-  background: color-mix(in srgb, var(--pels-surface-container-highest) 40%, transparent);
-}
-
-.budget-setting-row--link:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: -2px;
-}
-
-.budget-setting-row__chevron {
-  background: transparent !important;
-  color: var(--muted) !important;
-  font-size: var(--font-size-lg) !important;
-  font-weight: var(--font-weight-bold) !important;
-  padding: 0 !important;
-}
-
-.budget-setting-row--link .budget-setting-row__value {
-  cursor: inherit;
 }
 
 .deadline-plan-panel {
@@ -7091,34 +6411,10 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 /* Day view foundation */
-.day-view-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-3);
-  margin-bottom: var(--spacing-4);
-  flex-wrap: wrap;
-}
-
-.day-view-header .muted {
-  margin: 0;
-}
-
-.day-view-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-  flex-wrap: wrap;
-}
 
 .budget-chart-card .budget-card-header .segmented {
   max-width: 220px;
   justify-self: start;
-}
-
-.usage-history-actions {
-  margin: 0 0 var(--spacing-3);
-  justify-content: flex-end;
 }
 
 #budget-panel {
@@ -7160,10 +6456,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 /* Usage page stacks its sections on the shared `.card.panel` rhythm
    (`gap: --spacing-3`) like every other page — no per-page override. */
 
-.usage-day-summary {
-  margin-bottom: var(--spacing-4);
-}
-
 .day-view-chart {
   display: grid;
   gap: var(--spacing-2);
@@ -7199,181 +6491,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   min-width: 0;
   overflow: hidden;
   -webkit-tap-highlight-color: transparent;
-}
-
-.day-view-bar,
-.daily-budget-bar {
-  position: relative;
-  height: 100%;
-}
-
-.day-view-bar__stack,
-.daily-budget-bar__stack {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  width: 100%;
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column-reverse;
-  transition: height var(--transition-fast);
-}
-
-.day-view-bar__segment,
-.daily-budget-bar__segment {
-  width: 100%;
-  transition: height var(--transition-fast), background var(--transition-fast), opacity var(--transition-fast);
-}
-
-.day-view-bar__segment--primary {
-  background: var(--day-view-color-primary, var(--accent));
-}
-
-.day-view-bar__segment--planned,
-.daily-budget-bar__segment--planned {
-  background: var(--day-view-color-planned, var(--day-view-color-primary, var(--accent)));
-}
-
-.day-view-bar__segment--warn {
-  background: var(--day-view-color-warn, var(--color-role-warn));
-}
-
-.day-view-bar__segment--cheap {
-  background: var(--day-view-color-cheap, var(--color-role-accent));
-}
-
-.day-view-bar__segment--normal {
-  background: var(--day-view-color-normal, var(--pels-surface-container-highest));
-}
-
-.day-view-bar__segment--expensive {
-  background: var(--day-view-color-expensive, var(--color-role-danger));
-}
-
-.day-view-bar.is-past .day-view-bar__segment,
-.daily-budget-bar.is-past .daily-budget-bar__segment {
-  opacity: 0.4;
-}
-
-.day-view-bar.is-current .day-view-bar__segment,
-.daily-budget-bar.is-current .daily-budget-bar__segment {
-  box-shadow: inset 0 0 0 1px var(--color-state-warning-border);
-}
-
-.day-view-bar.is-warn .day-view-bar__segment {
-  background: var(--day-view-color-warn, var(--color-role-warn));
-}
-
-.day-view-chart.is-disabled .day-view-bar__segment {
-  background: var(--pels-surface-container-high);
-  opacity: 0.6;
-}
-
-.day-view-marker,
-.daily-budget-dot {
-  position: absolute;
-  left: 50%;
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-full);
-  background: var(--day-view-color-actual, var(--pels-chart-actual));
-  border: 2px solid var(--pels-surface-container-lowest);
-  transform: translate(-50%, 50%);
-  pointer-events: none;
-}
-
-.day-view-marker--budget {
-  background: var(--day-view-color-budget, var(--color-role-info));
-}
-
-.day-view-marker--actual {
-  background: var(--day-view-color-actual, var(--pels-chart-actual));
-}
-
-.day-view-marker--now {
-  background: var(--day-view-color-now, var(--color-state-info-border));
-}
-
-.day-view-marker.is-over,
-.daily-budget-dot.is-over {
-  background: var(--day-view-color-warn, var(--color-state-negative-border));
-}
-
-.day-view-chart.is-disabled .day-view-marker {
-  opacity: 0.4;
-}
-
-.day-view-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-3);
-  align-items: center;
-  font-size: var(--font-size-xs);
-  margin-bottom: var(--spacing-4);
-}
-
-.day-view-legend__item {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--spacing-2);
-}
-
-.day-view-legend__swatch {
-  width: 12px;
-  height: 8px;
-  border-radius: var(--radius-sm);
-  background: var(--day-view-color-planned, var(--day-view-color-primary, var(--accent)));
-  box-shadow: inset 0 0 0 1px var(--color-border-strong);
-}
-
-.day-view-legend__swatch--primary {
-  background: var(--day-view-color-primary, var(--accent));
-}
-
-.day-view-legend__swatch--planned {
-  background: var(--day-view-color-planned, var(--day-view-color-primary, var(--accent)));
-}
-
-.day-view-legend__swatch--uncontrolled {
-  background: var(--pels-chart-background, var(--color-role-info));
-}
-
-.day-view-legend__swatch--controlled {
-  background: var(--pels-chart-managed, var(--color-role-warn));
-}
-
-.day-view-legend__swatch--measured {
-  background: var(--day-view-color-primary, var(--accent));
-}
-
-.day-view-legend__swatch--budget {
-  background: var(--day-view-color-budget, var(--color-role-info));
-}
-
-.day-view-legend__swatch--warn {
-  background: var(--day-view-color-warn, var(--color-role-warn));
-}
-
-.day-view-legend__swatch--cheap {
-  background: var(--day-view-color-cheap, var(--color-role-accent));
-}
-
-.day-view-legend__swatch--normal {
-  background: var(--day-view-color-normal, var(--pels-surface-container-highest));
-}
-
-.day-view-legend__swatch--expensive {
-  background: var(--day-view-color-expensive, var(--color-role-danger));
-}
-
-.day-view-legend__swatch--actual {
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-full);
-  background: var(--day-view-color-actual, var(--pels-chart-actual));
-  border: 2px solid var(--pels-surface-container-lowest);
 }
 
 .day-view-labels {
@@ -8834,14 +7951,6 @@ md-switch {
   list-style: none;
 }
 
-#devices-panel .device-group-header {
-  margin: var(--spacing-2) 0 0;
-  padding: var(--spacing-2) var(--spacing-1) 0;
-  border-bottom: 0;
-  color: var(--pels-text-muted);
-  letter-spacing: 0.04em;
-}
-
 #devices-panel .control-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) repeat(3, minmax(44px, 64px));
@@ -8868,17 +7977,6 @@ md-switch {
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
-}
-
-#devices-panel .device-row__inputs .checkbox-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  min-height: var(--pels-touch-target-min);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  background: var(--pels-surface-container);
 }
 
 #devices-panel .device-row.clickable:hover {
@@ -9096,28 +8194,6 @@ md-switch {
   #devices-panel .pels-device-card__cell {
     justify-content: center;
     min-height: 40px;
-  }
-
-  #devices-panel .device-row__inputs .checkbox-icon {
-    flex-direction: column;
-    gap: var(--spacing-1);
-    min-height: 52px;
-    padding: var(--spacing-2) var(--spacing-1);
-    color: var(--pels-text-muted);
-    font-size: var(--font-size-xs);
-    line-height: var(--font-line-height-flat);
-  }
-
-  #devices-panel .device-row__inputs .checkbox-icon:nth-child(1)::after {
-    content: "Managed";
-  }
-
-  #devices-panel .device-row__inputs .checkbox-icon:nth-child(2)::after {
-    content: "Limit";
-  }
-
-  #devices-panel .device-row__inputs .checkbox-icon:nth-child(3)::after {
-    content: "Price";
   }
 
 

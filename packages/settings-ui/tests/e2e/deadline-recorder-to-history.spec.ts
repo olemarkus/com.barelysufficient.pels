@@ -393,6 +393,13 @@ test.describe('Deadline recorder → history UI round-trip', () => {
       // decorator so an accidental drop on either side fails fast.
       await page.locator('button.pels-button.plan-history-detail__chart-toggle').click();
 
+      const header = page.locator('.deadline-horizon-card > .budget-card-header');
+      const titleBox = await header.locator('h2').boundingBox();
+      const toggleBox = await header.locator('button').boundingBox();
+      const headerBox = await header.boundingBox();
+      expect(titleBox!.width).toBeGreaterThan(0);
+      expect(toggleBox!.width).toBeLessThan(headerBox!.width * 0.6);
+
       const chart = page.locator('.deadline-horizon-chart');
       await expect(chart).toBeVisible();
       await expect(chart.locator('svg')).toBeVisible();

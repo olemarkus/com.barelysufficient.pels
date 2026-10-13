@@ -23,7 +23,6 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     include: ['test/**/*.test.ts'],
-    exclude: ['test/settings-ui.test.ts'],
     setupFiles: ['test/setup.ts'],
     clearMocks: true,
     // The heavier settings-UI tests `boot()` the full UI behind a per-test

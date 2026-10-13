@@ -95,7 +95,60 @@ test.describe('settings shell layout regressions', () => {
         ).toHaveCount(1);
       }
     });
+
+    test(`keeps switch rows and segmented controls at least 48px tall at ${width}px`, async ({ page }) => {
+      await openApp(page, width);
+      await openSettingsSection(page, 'simulation');
+      const switchRow = page.locator('#simulation-panel .md-switch-row');
+      await expect(switchRow).toBeVisible();
+      expect((await switchRow.boundingBox())!.height).toBeGreaterThanOrEqual(48);
+
+      await openTopTab(page, 'Budget');
+      const segments = page.locator('#budget-panel .segmented__option:visible');
+      await expect(segments.first()).toBeVisible();
+      const heights = await segments.evaluateAll((buttons) => (
+        buttons.map((button) => button.getBoundingClientRect().height)
+      ));
+      expect(heights.length).toBeGreaterThan(0);
+      expect(heights.every((height) => height >= 48), JSON.stringify(heights)).toBe(true);
+    });
   }
+
+  test('lets touch gestures scroll Modes outside its drag handles', async ({ browser, browserName, baseURL }) => {
+    test.skip(browserName !== 'chromium', 'Touch emulation needs chromium.');
+    const context = await browser.newContext({
+      baseURL,
+      viewport: { width: 480, height: 600 },
+      isMobile: true,
+      hasTouch: true,
+    });
+    try {
+      const page = await context.newPage();
+      await injectHomeyHostCss(page);
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      await openSettingsSection(page, 'modes');
+      const row = page.locator('#priority-list .device-row').first();
+      await expect(row).toBeVisible();
+      expect(await row.evaluate((element) => getComputedStyle(element).touchAction)).not.toBe('none');
+      await expect(row.locator('.drag-handle')).toHaveCSS('touch-action', 'none');
+      await page.evaluate(() => window.scrollTo(0, 0));
+      const before = await page.evaluate(() => window.scrollY);
+      const client = await context.newCDPSession(page);
+      await client.send('Input.dispatchTouchEvent', {
+        type: 'touchStart', touchPoints: [{ x: 200, y: 500 }],
+      });
+      for (let step = 1; step <= 5; step += 1) {
+        await client.send('Input.dispatchTouchEvent', {
+          type: 'touchMove', touchPoints: [{ x: 200, y: 500 - step * 60 }],
+        });
+        await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+      }
+      await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before);
+    } finally {
+      await context.close();
+    }
+  });
 
   test('keeps redesigned shell navigation compact at 320px', async ({ page }) => {
     await openApp(page, 320);

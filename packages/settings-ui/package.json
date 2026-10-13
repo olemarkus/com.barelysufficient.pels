@@ -13,9 +13,9 @@
     "build:tokens": "style-dictionary build --config style-dictionary.config.mjs",
     "copy:public": "node scripts/copy-public.mjs",
     "lint": "eslint src test tests ../contracts/src ../shared-domain/src --max-warnings=0",
-    "test": "npm run build && npm run test:unit && npm run test:layout",
+    "test": "npm run build && npm run test:unit && PELS_E2E_BUILD=0 npm run test:layout",
     "test:unit": "node ../../scripts/with-validation-lock.mjs settings-ui:test:unit -- vitest run --config vitest.config.ts",
-    "test:layout": "node ../../scripts/with-validation-lock.mjs settings-ui:test:layout -- vitest run --config vitest.config.layout.ts",
+    "test:layout": "npm run test:e2e -- tests/e2e/layout-regressions.spec.ts --project=chromium-mobile-width",
     "test:e2e": "node ../../scripts/with-validation-lock.mjs settings-ui:test:e2e -- playwright test --config playwright.config.ts",
     "test:e2e:capture": "node ../../scripts/with-validation-lock.mjs settings-ui:test:e2e:capture -- playwright test --config playwright.capture.config.ts"
   }

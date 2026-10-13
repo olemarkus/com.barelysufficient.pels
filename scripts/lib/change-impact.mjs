@@ -66,7 +66,6 @@ export const SETTINGS_UI_TEST_WIRING_PATHS = Object.freeze([
   'packages/settings-ui/test/setup.ts',
   'packages/settings-ui/public/',
   'packages/settings-ui/vitest.config.ts',
-  'packages/settings-ui/vitest.config.layout.ts',
   'packages/settings-ui/style-dictionary.config.mjs',
   'packages/settings-ui/package.json',
   'packages/contracts/package.json',
