@@ -7,6 +7,8 @@ export const SHED_COOLDOWN_MS = 60000; // Wait 60s after shedding before conside
 export const STARTUP_RESTORE_BLOCK_MS = 60 * 1000;
 
 export const RESTORE_COOLDOWN_MS = 60000; // Base cooldown after restore for power to stabilize
+// Hold an active EV charger's increases after its own capacity-driven reduction.
+export const CHARGER_STEP_RECOVERY_HOLD_MS = 180_000;
 
 /**
  * Headroom a build must see before it releases the shedding latch

@@ -64,15 +64,17 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
     vi.useRealTimers();
   });
 
-  it('reaches the device as the rung the deficit was priced against, not as an off', async () => {
+  it('reaches the device as the required lower rung even during charger recovery', async () => {
     // 3.77 kW open against a charger at 28a. `28a -> 24a` frees 0.92 kW and
     // cannot close it; `10a` frees 4.14 kW and does. Before the chosen rung
     // crossed the boundary, materialization answered the off step here — the
     // whole 6.44 kW cut for a 3.77 kW breach, and the credited rung inert.
     const state = createPlanEngineState();
+    state.actuation.markShed('charger', Date.now() - 2_000);
     const charger = steppedInputDevice({
       id: 'charger',
       name: 'EV charger',
+      isEvCharger: true,
       steppedLoadProfile: chargerProfile,
       selectedStepId: '28a',
       currentDrawKw: 6.44,

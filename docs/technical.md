@@ -134,6 +134,14 @@ To prevent rapid on/off cycling that could damage equipment or annoy occupants, 
 - Every held device waits out the cooldown; the one that resumes first (turned-off devices before stepped increases before thermostat raises, by priority within each) shows the countdown and the rest show that other devices are ahead
 - Prevents an unbounded set of devices turning on simultaneously before measurements settle
 
+### EV Charger Step Recovery Hold (3 minutes)
+
+- An active EV charger waits three minutes after its own latest capacity- or budget-driven reduction before PELS admits a current increase
+- A further reduction restarts the window; the hold also applies after a capacity-driven turn-off once the charger is running again
+- The device card shows **Waiting to increase** with a countdown; Boost does not bypass this hold
+- Initial activation, necessary reductions and other devices retain their existing timing. Global cooldowns and admission checks still apply, and an increase is reconsidered on the next meter-driven plan after the hold expires
+- The hold uses in-memory actuation history, so restarting PELS clears it
+
 ### Available-Power Flow Card Step-Down Cooldown (60 seconds)
 
 - The **"Is there available power for device?"** Flow condition checks available power for the selected device. The card tracks the same device's **expected/usable** power estimate (prefers `expectedPowerKw` over raw `measuredPowerKw` when available)
