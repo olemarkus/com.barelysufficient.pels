@@ -10,6 +10,8 @@ import { normalizeError } from '../../lib/utils/errorUtils';
 import type { AppContext } from '../../lib/app/appContext';
 import type { SubHomeRuntime } from '../../lib/home/subHomeRuntime';
 import type { SubHomeMembershipReadyEdge } from '../../lib/home/subHomeMembershipReadyEdge';
+import type { SubHomeOwnershipGeneration } from '../../lib/home/subHomeOwnershipGeneration';
+import type { HomeRuntimeDiagnostics } from '../../lib/home/homeRuntimeRead';
 import type { PlanService } from '../../lib/plan/planService';
 import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
 import { resolveCurrentMonthQuarterPeakKw } from '../../lib/power/capacityPeak';
@@ -22,20 +24,9 @@ import {
 } from '../../lib/power/capacitySettingsStore';
 import type { createHomePowerPipeline } from './createHomePowerPipeline';
 import type { HomeScope } from './homeScope';
-import type {
-  HomeCapacityBundle,
-  HomeCapacityBundleDiagnostics,
-} from './createHomeCapacityBundle';
+import type { HomeCapacityBundle } from './createHomeCapacityBundle';
 import type { HomeTrackerPersistence } from '../../lib/power/homeTrackerPersistence';
-import type { StableSampleRevision } from '../powerSamplePipeline';
 import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
-// Re-exported, not re-implemented: the blank-name rule belongs in shared-domain
-// next to the home names so the settings UI answers it identically (it cannot
-// import `setup/**`). It travels through this module only because
-// `createHomeCapacityBundle.ts` sits at its 20/20 `import-x/max-dependencies`
-// ceiling and already depends on this one.
-export { resolveHomeAreaDisplayName } from '../../packages/shared-domain/src/homeNames';
-
 export const startHomeCapacityBundle = (
   planService: PlanService,
   logger: () => ReturnType<AppContext['getStructuredLogger']>,
@@ -59,99 +50,6 @@ export const startHomeCapacityBundle = (
   });
 };
 
-const isStableRevision = (sample: StableSampleRevision, revision: number): boolean => (
-  sample.state === 'stable' && sample.revision === revision
-);
-
-/** The ownership-generation lane: a rebuild lane plus the sample fence it reconciles against. */
-type HomeOwnershipGenerationDeps = HomeRebuildLaneDeps & Pick<
-  HomeCapacityBundleApiParams,
-  'pipeline' | 'beginPreparedOwnershipReconcile'
-  | 'membershipReadyEdge' | 'flushDeferredShortfallSideEffect'
->;
-
-const buildOwnershipGenerationOperations = (params: HomeOwnershipGenerationDeps): Pick<
-  HomeCapacityBundle,
-  'rebuildForMembershipChange'
-  | 'prepareOwnershipGeneration'
-  | 'isPreparedOwnershipGenerationCurrent'
-  | 'reconcilePreparedOwnershipGeneration'
-> => {
-  const {
-    runtime: { homeId, isTornDown },
-    logger,
-    planService,
-    pipeline,
-    beginPreparedOwnershipReconcile,
-    membershipReadyEdge,
-    flushDeferredShortfallSideEffect,
-  } = params;
-  const rebuildMembershipPlan = async (): Promise<boolean> => {
-    if (isTornDown()) return false;
-    try {
-      const outcome = await planService.rebuildPlanFromCache('home_membership_changed');
-      return !outcome.failed && !isTornDown();
-    } catch (error: unknown) {
-      logger()?.error({
-        event: 'home_membership_bundle_rebuild_failed',
-        homeId,
-        err: normalizeError(error),
-      });
-      return false;
-    }
-  };
-  return {
-    rebuildForMembershipChange: rebuildMembershipPlan,
-    prepareOwnershipGeneration: async () => {
-      const sample = pipeline.getStableSampleRevision();
-      if (sample.state === 'pending') return sample;
-      const rebuilt = await rebuildMembershipPlan();
-      const current = pipeline.getStableSampleRevision();
-      return rebuilt
-        && current.state === 'stable'
-        && current.revision === sample.revision
-        ? sample
-        : { state: 'pending' };
-    },
-    isPreparedOwnershipGenerationCurrent: (sampleRevision) => (
-      !isTornDown() && isStableRevision(pipeline.getStableSampleRevision(), sampleRevision)
-    ),
-    reconcilePreparedOwnershipGeneration: async (sampleRevision) => {
-      let aborted = false;
-      // A full rebuild can FAIL where the decision-free reconcile it replaced
-      // could only no-op, and `rebuildPlanFromCache` contains planner errors and
-      // resolves `{failed:true}` instead of throwing. Treat that as
-      // not-converged, or the generation finalizes and side effects flush as
-      // though the prepared actions had been applied.
-      let failed: boolean;
-      const endPreparedReconcile = beginPreparedOwnershipReconcile(sampleRevision);
-      try {
-        const outcome = await planService.rebuildPlanFromCache('home_ownership_generation_prepared', {
-          shouldAbort: () => {
-            const current = pipeline.getStableSampleRevision();
-            return isTornDown()
-              || current.state !== 'stable'
-              || current.revision !== sampleRevision;
-          },
-          onAbort: () => { aborted = true; },
-        });
-        failed = outcome.failed;
-      } finally {
-        endPreparedReconcile();
-      }
-      const stable = pipeline.getStableSampleRevision();
-      const current = !aborted
-        && !failed
-        && !isTornDown()
-        && stable.state === 'stable'
-        && stable.revision === sampleRevision;
-      const sideEffectFlushed = current && await flushDeferredShortfallSideEffect();
-      if (sideEffectFlushed) membershipReadyEdge.markPreparedOwnershipGenerationReconciled();
-      return sideEffectFlushed;
-    },
-  };
-};
-
 /**
  * Rebuild after this area's coherent catalog snapshot reloads. The explicit
  * trigger matters for a silent-meter area, which may receive no power-driven
@@ -170,9 +68,9 @@ const buildSettingsRebuild = (
   // `rebuildPlanFromCache` CONTAINS planner errors and resolves `failed: true`
   // (the catch below only sees non-contained throws), so the resolved outcome
   // must be inspected too — the `home_membership_bundle_rebuild_failed` site
-  // above is the precedent. No retry here: the next mode/settings write or
-  // power-sample rebuild re-runs the closures, and the log makes the miss
-  // visible instead of silent.
+  // in `lib/home/subHomeOwnershipGeneration.ts` is the precedent. No retry
+  // here: the next mode/settings write or power-sample rebuild re-runs the
+  // closures, and the log makes the miss visible instead of silent.
   void params.planService.rebuildPlanFromCache('settings', { detail: settingsSource })
     .then((outcome) => {
       if (!outcome.failed || params.runtime.isTornDown()) return;
@@ -222,7 +120,7 @@ const buildHomeCapacityBundleReads = (
     ctx, runtime, planEngine, planService, tracker, getOperatingMode,
   } = deps;
   const { homeId } = runtime;
-  const readDiagnostics = (): HomeCapacityBundleDiagnostics => ({
+  const readDiagnostics = (): HomeRuntimeDiagnostics => ({
     homeId,
     meterDeviceId: runtime.getHomeConfig().meterDeviceId,
     operatingMode: getOperatingMode(),
@@ -258,10 +156,10 @@ type HomeCapacityBundleApiParams = {
   pipeline: ReturnType<typeof createHomePowerPipeline>;
   planRebuildScheduler: PlanRebuildScheduler;
   capacityStore: ReturnType<typeof createCapacitySettingsStore>;
-  /** The area's membership-ready apply-edge (`lib/home/subHomeRecovery.ts`). */
+  /** The area's membership-ready apply-edge (`lib/home/subHomeMembershipReadyEdge.ts`). */
   membershipReadyEdge: SubHomeMembershipReadyEdge;
-  beginPreparedOwnershipReconcile: (sampleRevision: number) => () => void;
-  flushDeferredShortfallSideEffect: () => Promise<boolean>;
+  /** The area's side of the ownership-generation protocol (`lib/home/subHomeOwnershipGeneration.ts`). */
+  ownershipGeneration: SubHomeOwnershipGeneration;
   reloadModeCatalog: (allowPendingOwnershipGeneration?: boolean) => void;
   isModeCatalogInitialized: () => boolean;
   /** THIS bundle's own rebuild throttle (never main's) — see `OwningHomeHooks`. */
@@ -272,10 +170,9 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
   const {
     ctx, runtime, logger, timerKey, planEngine, planService, scope, tracker,
     pipeline, planRebuildScheduler, capacityStore, membershipReadyEdge,
-    flushDeferredShortfallSideEffect, reloadModeCatalog, isModeCatalogInitialized,
+    ownershipGeneration, reloadModeCatalog, isModeCatalogInitialized,
   } = params;
   const { homeId, isTornDown } = runtime;
-  const ownershipGenerationOperations = buildOwnershipGenerationOperations(params);
   const readOperations = buildHomeCapacityBundleReads({ ...params, getOperatingMode: scope.getOperatingMode });
   // When this home re-reads its capacity block, and whether the read rebuilds,
   // is the capacity owner's (`createCapacitySettingsReloader`); the wiring only
@@ -354,8 +251,10 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
     reloadModeCatalog,
     isModeCatalogInitialized,
     applyMembershipReadyEdge: membershipReadyEdge.apply,
-    ...ownershipGenerationOperations,
-    flushDeferredShortfallSideEffect,
+    rebuildForMembershipChange: ownershipGeneration.rebuildForMembershipChange,
+    prepareOwnershipGeneration: ownershipGeneration.prepare,
+    isPreparedOwnershipGenerationCurrent: ownershipGeneration.isPreparedCurrent,
+    reconcilePreparedOwnershipGeneration: ownershipGeneration.reconcilePrepared,
     recordMeterSample: (powerW, sampleNowMs) => {
       if (isTornDown()) return;
       // The ready-edge is DECOUPLED from sample arrival (also fired by the
@@ -370,7 +269,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
         });
     },
     reloadCapacityScalars,
-    onCapacityScalarWritten: (baseKey) => capacitySettingsReloader.reloadAfterWrite(baseKey),
+    onScopedSettingWritten: (baseKey) => capacitySettingsReloader.reloadAfterWrite(baseKey),
     teardown: (options) => {
       // A failed durable reset leaves this runtime fenced but retained by the
       // registry as a tombstone. Repeated teardown(reset) calls are therefore

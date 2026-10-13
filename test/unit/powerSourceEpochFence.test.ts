@@ -2,7 +2,7 @@
 // (`lib/power/powerSourceEpochFence.ts`), the pure generation/latch
 // machine `HomeRuntimeRegistry` uses to decide whether per-meter samples may be
 // consumed. The boundary read is injected, so there is no SDK here — the fence
-// itself is a state machine over `PowerSource | null`.
+// itself is a state machine over the classified source read.
 //
 // Invariants under test: a failed read is UNKNOWN (fail-closed placeholder,
 // latch open), an observed change advances the generation and closes
@@ -10,18 +10,20 @@
 // generation reopens it.
 import { describe, expect, it } from 'vitest';
 import { PowerSourceEpochFence } from '../../lib/power/powerSourceEpochFence';
-import type { PowerSource } from '../../lib/power/powerSource';
+import type { ConfiguredPowerSourceRead, PowerSource } from '../../lib/power/powerSource';
 
-// Serves `reads` in order, then latches on the last one. The FIRST entry is
-// consumed by the constructor's boot read, so `fenceReading(a, b)` means
-// "booted on a, every later read sees b".
+// Serves `reads` in order, then latches on the last one; `null` is a failed
+// (suspect) read. The FIRST entry is consumed by the constructor's boot read,
+// so `fenceReading(a, b)` means "booted on a, every later read sees b".
 const fenceReading = (...reads: Array<PowerSource | null>) => {
   const queue = [...reads];
   let last: PowerSource | null = reads[0] ?? null;
-  return new PowerSourceEpochFence(() => {
+  return new PowerSourceEpochFence((): ConfiguredPowerSourceRead => {
     const next = queue.shift();
     if (next !== undefined) last = next;
-    return last;
+    return last === null
+      ? { state: 'suspect', reason: 'read_failed', error: new Error('power source read failed') }
+      : { state: 'resolved', value: last };
   });
 };
 

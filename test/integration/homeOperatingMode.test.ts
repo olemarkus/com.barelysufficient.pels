@@ -44,7 +44,7 @@ import {
   HOME_CONFIG_ACTIVATION_VERSION,
   type HomeConfig,
 } from '../../lib/home/homeConfig';
-import { HomeRuntimeRegistry } from '../../setup/homeRuntime/homeRuntimeRegistry';
+import { createHomeRuntimeRegistry, type HomeRuntimeRegistry } from '../../setup/homeRuntime/homeRuntimeRegistry';
 import { resolveOperatingModeForDevice } from '../../setup/homeRuntime/homeOperatingMode';
 import { seedTemperatureShedFloorDefaults } from '../../setup/appDeviceSupport';
 import { HomeMembershipService } from '../../lib/home/homeMembershipService';
@@ -127,14 +127,14 @@ const buildRig = (): Rig => {
     Home: { 'dev-1': 1 },
     Cooler: { 'dev-1': 7 },
   } });
-  const registry = new HomeRuntimeRegistry({
+  const registry = createHomeRuntimeRegistry(
     ctx,
-    mainModeCatalog: getHomeModeCatalogForTest(ctx),
-    isMembershipReady: () => true,
-    isRuntimeActive: () => true,
-    homesStore: createRawHomesStore(ctx.homey.settings),
-    modeOwnershipTransfer: createModeOwnershipTransfer(ctx, getHomeModeCatalogForTest(ctx)),
-  });
+    getHomeModeCatalogForTest(ctx),
+    () => true,
+    () => true,
+    createRawHomesStore(ctx.homey.settings),
+    createModeOwnershipTransfer(ctx, getHomeModeCatalogForTest(ctx)),
+  );
   return { ctx, registry };
 };
 

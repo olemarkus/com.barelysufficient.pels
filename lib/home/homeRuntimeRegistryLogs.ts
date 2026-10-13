@@ -4,15 +4,15 @@
  * to keep the event names + `detail` wording of the registry's five reportable
  * conditions in one place (the same reason `lib/plan/planLogging.ts` exists).
  *
- * Every emitter is a no-op when the `homes` logger is unavailable, exactly as
- * the optional-chained call sites were. Event names and payload shapes are
- * byte-for-byte what the registry emitted inline — log audits keyed on them
- * keep matching.
+ * Every emitter takes the registry's `homes` logger and is a no-op when it is
+ * unavailable, exactly as the optional-chained call sites were. Event names
+ * and payload shapes are byte-for-byte what the registry emitted inline — log
+ * audits keyed on them keep matching.
  */
-import type { AppContext } from '../../lib/app/appContext';
-import type { SubHomeConfig } from '../../lib/home/homeConfig';
-import type { PowerSource } from '../../lib/power/powerSource';
-import { normalizeError } from '../../lib/utils/errorUtils';
+import type { Logger as PinoLogger } from '../logging/logger';
+import type { PowerSource } from '../ports/configuredPowerSource';
+import { normalizeError } from '../utils/errorUtils';
+import type { SubHomeConfig } from './homeConfig';
 
 /**
  * Sub-home bundles are driven ONLY by the per-meter fan-out of the
@@ -20,8 +20,8 @@ import { normalizeError } from '../../lib/utils/errorUtils';
  * The caller edge-triggers this so it logs once per transition into the
  * misconfigured state, not on every reconcile.
  */
-export function logSubHomesUnderFlowSource(ctx: AppContext, subHomeCount: number): void {
-  ctx.getStructuredLogger('homes')?.warn({
+export function logSubHomesUnderFlowSource(logger: PinoLogger | undefined, subHomeCount: number): void {
+  logger?.warn({
     event: 'sub_homes_configured_under_flow_power_source',
     subHomeCount,
     detail: 'sub-home meters are only sampled by the Homey Energy poll; under '
@@ -31,11 +31,11 @@ export function logSubHomesUnderFlowSource(ctx: AppContext, subHomeCount: number
 
 /** A suffixed write arrived for a homeId with no live bundle (transient). */
 export function logHomeScopedSettingForUnknownHome(
-  ctx: AppContext,
+  logger: PinoLogger | undefined,
   homeId: string,
   baseKey: string,
 ): void {
-  ctx.getStructuredLogger('homes')?.debug({
+  logger?.debug({
     event: 'home_scoped_setting_for_unknown_home',
     homeId,
     baseKey,
@@ -44,8 +44,8 @@ export function logHomeScopedSettingForUnknownHome(
 }
 
 /** A meter-identity replacement could not clear the old meter's durable freshness. */
-export function logIncompleteIdentityTransition(ctx: AppContext, home: SubHomeConfig): void {
-  ctx.getStructuredLogger('homes')?.warn({
+export function logIncompleteIdentityTransition(logger: PinoLogger | undefined, home: SubHomeConfig): void {
+  logger?.warn({
     event: 'home_meter_identity_transition_incomplete',
     homeId: home.homeId,
     meterDeviceId: home.meterDeviceId,
@@ -54,8 +54,8 @@ export function logIncompleteIdentityTransition(ctx: AppContext, home: SubHomeCo
 }
 
 /** A per-home UI read threw; the caller is told `unavailable` rather than failing. */
-export function logHomeReadFailed(ctx: AppContext, homeId: string, error: unknown): void {
-  ctx.getStructuredLogger('homes')?.warn({
+export function logHomeReadFailed(logger: PinoLogger | undefined, homeId: string, error: unknown): void {
+  logger?.warn({
     event: 'home_runtime_read_failed',
     homeId,
     detail: 'already-committed read threw; reported unavailable',
@@ -65,11 +65,11 @@ export function logHomeReadFailed(ctx: AppContext, homeId: string, error: unknow
 
 /** Constructing the replacement bundle threw; the old runtime stays fenced. */
 export function logBundleReplacementFailure(
-  ctx: AppContext,
+  logger: PinoLogger | undefined,
   home: SubHomeConfig,
   error: unknown,
 ): void {
-  ctx.getStructuredLogger('homes')?.error({
+  logger?.error({
     event: 'home_meter_identity_transition_incomplete',
     homeId: home.homeId,
     meterDeviceId: home.meterDeviceId,
@@ -89,10 +89,9 @@ export type PowerSourceTransitionFailure =
   | { generation: number; powerSource: PowerSource; cause: 'bundle_replacement'; error: unknown };
 
 export function logPowerSourceTransitionIncomplete(
-  ctx: AppContext,
+  logger: PinoLogger | undefined,
   params: PowerSourceTransitionFailure,
 ): void {
-  const logger = ctx.getStructuredLogger('homes');
   if (!logger) return;
   const base = {
     event: 'home_power_source_transition_incomplete',

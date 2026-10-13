@@ -182,7 +182,6 @@ setup/flowConflictProbe.ts 1
 setup/homeMeterOwnership.ts 1
 setup/homeRuntime/homeModeOwnershipStore.ts 1
 setup/homeRuntime/homeTrackerConfigSafety.ts 4
-setup/homeRuntime/resetPersistedHomeTrackerFreshness.ts 1
 setup/lifecycleFallbackRequest.ts 1
 setup/steppedProfileRepair.ts 1
 setup/targetPowerReachabilitySettings.ts 1

@@ -39,9 +39,7 @@
  * UI, and calibration piggybacks. Teardown stops timers; persisted state stays.
  */
 import type { AppContext } from '../../lib/app/appContext';
-import type { SubHomeConfig } from '../../lib/home/homeConfig';
-import type { HomeRuntimeDiagnostics, HomeRuntimeReading } from '../../lib/home/homeRuntimeRead';
-import type { HomeId } from '../../lib/utils/settingsKeys';
+import type { SubHomeBundle } from '../../lib/home/homeRuntimeRegistry';
 import type {
   PowerTrackerMeterIdentity,
   PowerTrackerState,
@@ -55,11 +53,8 @@ import type { PlanEngine } from '../../lib/plan/planEngine';
 import { buildHomePlanDevices } from './planDevicePrePass';
 import { createHomePowerPipeline, createUnobservedHomeProduction } from './createHomePowerPipeline';
 import { MeterSilenceMonitor } from '../../lib/power/meterSilence';
-import {
-  buildHomeCapacityBundleApi,
-  resolveHomeAreaDisplayName,
-  startHomeCapacityBundle,
-} from './homeCapacityBundleApi';
+import { buildHomeCapacityBundleApi, startHomeCapacityBundle } from './homeCapacityBundleApi';
+import { resolveHomeAreaDisplayName } from '../../packages/shared-domain/src/homeNames';
 import { MeterSilenceEscalation } from '../../lib/power/meterSilenceEscalation';
 import { requireDeviceManager } from '../appInit/contextGuards';
 import {
@@ -69,6 +64,7 @@ import {
 import type { SubHomeRecoveryDeps } from '../../lib/home/subHomeRecovery';
 import { SubHomeMembershipReadyEdge } from '../../lib/home/subHomeMembershipReadyEdge';
 import { SubHomeSourceRecovery } from '../../lib/home/subHomeSourceRecovery';
+import { SubHomeOwnershipGeneration } from '../../lib/home/subHomeOwnershipGeneration';
 import type { HomeScope } from './homeScope';
 import { createHomePlanRuntime } from './createHomePlanRuntime';
 import { createHomeCommandReachability } from './createHomeCommandReachability';
@@ -79,28 +75,9 @@ import {
   type HomeTrackerPersistenceDeps,
 } from '../../lib/power/homeTrackerPersistence';
 import type { SubHomeRuntime } from '../../lib/home/subHomeRuntime';
-import type { StableSampleRevision } from '../powerSamplePipeline';
 import { createHomeCapacityGuard } from './createHomeCapacityGuard';
 import type { PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
 import { PriceLevel } from '../../lib/price/priceLevels';
-
-export type HomeCapacityBundleDeps = {
-  ctx: AppContext;
-  mainModeCatalog: HomeModeCatalog;
-  /** The area's state and the registry's membership and meter-source gates. */
-  runtime: SubHomeRuntime;
-  /** Already safety-resolved against persisted state by the owning registry. */
-  initialPowerTrackerState: PowerTrackerState;
-  /** Identity every tracker persist from this runtime must carry. */
-  powerTrackerMeterIdentity: PowerTrackerMeterIdentity;
-};
-
-/**
- * Read-only per-bundle diagnostics. ONE declaration, owned by the read port's
- * contract in `lib/home` — the legal direction is `setup → lib`, so there is no
- * boundary reason to keep a second copy here (the field docs live there).
- */
-export type HomeCapacityBundleDiagnostics = HomeRuntimeDiagnostics;
 
 /**
  * Every seam that must be answered by the home that OWNS a device rather than by
@@ -149,70 +126,13 @@ export type OwningHomeHooks = {
   isDeviceLimited: (deviceId: string) => boolean;
 };
 
-export type HomeCapacityBundle = {
-  homeId: HomeId;
-  /** True after teardown has closed every writer/actuator seam. */
-  isTornDown: () => boolean;
-  /** Current reconciled config, used when a source transition replaces the runtime. */
-  getHomeConfig: () => SubHomeConfig;
-  /** This home's meter device id (fresh from the last reconciled config). */
-  getMeterDeviceId: () => string | null;
-  getDiagnostics: () => HomeCapacityBundleDiagnostics;
+/** One sub-home's bundle: lib/home's contract, routing through this area's plan seams. */
+export type HomeCapacityBundle = SubHomeBundle<OwningHomeHooks> & {
   /**
-   * This home's already-committed state for the per-home UI read seam
-   * (`lib/home/homeRuntimeRead.ts`): the last committed plan snapshot, this
-   * home's tracker state, and the diagnostics above. Pure reads — no rebuild,
-   * no snapshot refresh/decorate, no actuation.
+   * Reload the capacity scalars into the guard + request a rebuild. The
+   * factory below asks it once, when the area's first read was unavailable.
    */
-  getReadModel: () => HomeRuntimeReading;
-  /**
-   * Owning-home routing hooks (see {@link OwningHomeHooks}): the observed-control-state
-   * wiring binds these for a device this home owns, so the hold, the suppressions
-   * and any rebuild are answered by THIS bundle rather than main's.
-   */
-  getOwningHomeHooks: () => OwningHomeHooks;
-  /** Adopt a same-meter config change (root-zone/name) without teardown. */
-  updateHomeConfig: (home: SubHomeConfig) => void;
-  /** Rebuild the plan after this area's mode catalog changes. */
-  rebuildForModeSettingsChange: () => void;
-  /** Rebuild after a global per-device command-authority policy change. */
-  rebuildForDeviceControlSettingsChange: () => void;
-  /** Re-read this area's coherent suffixed mode catalog. */
-  reloadModeCatalog: (allowPendingOwnershipGeneration?: boolean) => void;
-  isModeCatalogInitialized: () => boolean;
-  /**
-   * Apply the once-only membership-ready edge (rebuild → reconcile). Idempotent
-   * and latched; a no-op until the execution gate opens. Driven by the registry
-   * from the membership tree-commit transition (decoupled from sample arrival).
-   */
-  applyMembershipReadyEdge: () => void;
-  /**
-   * Rebuild this home's committed plan after a pin/zone/config ownership
-   * change so the new complement is adopted promptly. Point-of-use ownership
-   * fencing remains the immediate safety boundary for any older continuation.
-   */
-  rebuildForMembershipChange: () => Promise<boolean>;
-  /** Commit a fresh plan behind the ownership fence; token is its sample revision. */
-  prepareOwnershipGeneration: () => Promise<StableSampleRevision>;
-  isPreparedOwnershipGenerationCurrent: (sampleRevision: number) => boolean;
-  /** Reconcile with the same point-of-use sample-revision abort as the ready edge. */
-  reconcilePreparedOwnershipGeneration: (sampleRevision: number) => Promise<boolean>;
-  flushDeferredShortfallSideEffect: () => Promise<boolean>;
-  /** Feed one meter reading (W) into this home's sample pipeline. */
-  recordMeterSample: (powerW: number, nowMs: number) => void;
-  /** Suffix-hook: reload the capacity scalars into the guard + request a rebuild. */
   reloadCapacityScalars: () => void;
-  /** A home-scoped capacity scalar key (`baseKey`) was written: note the write, then reload. */
-  onCapacityScalarWritten: (baseKey: string) => void;
-  /**
-   * Stop timers/scheduler. Identity changes additionally clear and durably
-   * persist meter freshness after the final pending-state flush.
-   *
-   * Returns false only when the requested durable freshness reset failed. The
-   * runtime is already fenced in that case; callers must retain it as a
-   * tombstone and retry the reset before constructing a replacement.
-   */
-  teardown: (options?: { resetMeterFreshness?: boolean }) => boolean;
 };
 
 // The sub-home `HomeScope`: capacity-only policy block, suffixed persisted-
@@ -445,8 +365,16 @@ function createAreaTrackerDeps(ctx: AppContext, runtime: SubHomeRuntime): HomeTr
   };
 }
 
-export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapacityBundle {
-  const { ctx, runtime } = deps;
+export function createHomeCapacityBundle(
+  ctx: AppContext,
+  mainModeCatalog: HomeModeCatalog,
+  /** The area's state and the registry's membership and meter-source gates. */
+  runtime: SubHomeRuntime,
+  /** Already resolved against this meter identity (`requireTrackerForMeter`). */
+  initialPowerTrackerState: PowerTrackerState,
+  /** Identity every tracker persist from this runtime must carry. */
+  powerTrackerMeterIdentity: PowerTrackerMeterIdentity,
+): HomeCapacityBundle {
   const { homeId } = runtime;
   const logger = () => ctx.getStructuredLogger('homes');
   const timerKey = (suffix: string) => `home:${homeId}:${suffix}`;
@@ -461,14 +389,14 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
   const tracker = createHomeTrackerPersistence({
     deps: createAreaTrackerDeps(ctx, runtime),
     homeId,
-    initialState: deps.initialPowerTrackerState,
-    meterBinding: { kind: 'bound', identity: deps.powerTrackerMeterIdentity },
+    initialState: initialPowerTrackerState,
+    meterBinding: { kind: 'bound', identity: powerTrackerMeterIdentity },
     timerKey,
   });
   const modeCatalog = createHomeModeCatalog(
     homeId,
     ctx.homey.settings,
-    () => deps.mainModeCatalog.getSnapshot(),
+    () => mainModeCatalog.getSnapshot(),
     () => ctx.deviceControlSettings.managedDevices,
     () => ctx.homeMembership,
     () => ctx.getStructuredLogger('homes'),
@@ -486,7 +414,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     planRebuildThrottle,
     meterSilenceMonitor,
   } = createBundlePlanningRuntime(ctx, runtime, timerKey, tracker, modeCatalog);
-  const beginPreparedOwnershipReconcile = (sampleRevision: number): (() => void) => {
+  const beginPreparedReconcile = (sampleRevision: number): (() => void) => {
     holdDeferredShortfallSideEffect();
     return pipeline.preparedReconcileFence.begin(sampleRevision);
   };
@@ -497,7 +425,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     getLogger: logger,
     planService,
     pipeline,
-    beginPreparedReconcile: beginPreparedOwnershipReconcile,
+    beginPreparedReconcile,
     flushDeferredShortfallSideEffect,
   };
   runtime.bindSourceActuationRetry(new SubHomeSourceRecovery(recoveryDeps).schedule);
@@ -506,6 +434,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
   // Readiness apply-edge (decoupled from sample arrival; fired by the registry
   // from the membership tree-commit transition) and its no-tree warn timer.
   const membershipReadyEdge = new SubHomeMembershipReadyEdge(recoveryDeps);
+  const ownershipGeneration = new SubHomeOwnershipGeneration(recoveryDeps, membershipReadyEdge);
   // This home's one silent-meter clock. Shared with main
   // (`lib/power/meterSilenceEscalation.ts`) so both escalate on the same rule.
   new MeterSilenceEscalation({
@@ -531,7 +460,7 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     ctx, runtime, logger, timerKey,
     planEngine, planService, scope,
     tracker, pipeline, planRebuildScheduler, planRebuildThrottle, capacityStore,
-    membershipReadyEdge, beginPreparedOwnershipReconcile, flushDeferredShortfallSideEffect,
+    membershipReadyEdge, ownershipGeneration,
     reloadModeCatalog: modeCatalog.reload,
     isModeCatalogInitialized: modeCatalog.isInitialized,
   });

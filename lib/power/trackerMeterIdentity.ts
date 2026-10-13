@@ -3,14 +3,17 @@
  * stamped on every persisted state, and history recorded against another
  * meter keeps completed accounting but loses its held sample and unfinished
  * capacity quarter when the area is (re)bound. This module owns that policy over the tracker store — preparing
- * a stored tracker for the meter a new runtime will consume, and the
- * freshness reset a homes-config commit performs first, with the rollback
- * that commit needs when its own write does not land.
+ * a stored tracker for the meter a new runtime will consume, the freshness
+ * reset a homes-config commit performs first, with the rollback that commit
+ * needs when its own write does not land, and the reset a dormant area takes
+ * before its runtime is activated.
  *
  * Everything here reads and writes the store only; an area that has no rows
  * yet carries its identity in memory until its first ordinary persist.
  */
 import type { PowerTrackerMeterIdentity, PowerTrackerState } from './trackerTypes';
+import type { Logger as PinoLogger } from '../logging/logger';
+import { normalizeError } from '../utils/errorUtils';
 import type { HomeId } from '../utils/settingsKeys';
 import type { TrackerStore } from './trackerStore';
 import { withHeldReadingAfterRestart } from './heldReading';
@@ -72,6 +75,23 @@ export const prepareTrackerForMeter = (
     onFailure(new Error(`failed to persist the meter identity for ${homeId}`, { cause: error }));
     return { ok: false };
   }
+};
+
+/**
+ * {@link prepareTrackerForMeter} for a construction that cannot proceed
+ * without it: a store failure throws, so the caller keeps its old runtime
+ * fenced and retries the construction.
+ */
+export const requireTrackerForMeter = (
+  store: TrackerStore,
+  homeId: HomeId,
+  meterIdentity: PowerTrackerMeterIdentity,
+): PowerTrackerState => {
+  const prepared = prepareTrackerForMeter(store, homeId, meterIdentity, (error) => {
+    throw error;
+  });
+  if (!prepared.ok) throw new Error(`tracker preparation failed for ${homeId}`);
+  return prepared.state;
 };
 
 export type TrackerFreshnessFailure = {
@@ -136,3 +156,23 @@ export const beginTrackerFreshnessReset = (
     },
   };
 };
+
+/**
+ * Clear a dormant sub-home meter's freshness before its runtime is activated.
+ * Completed accounting remains intact; the last meter sample and unfinished
+ * capacity quarter are removed, and the area keeps the identity it last ran
+ * on. A store failure is logged and answered false, so the registry can retain
+ * the pending activation and retry it.
+ */
+export const resetDormantTrackerFreshness = (
+  store: TrackerStore,
+  homeId: HomeId,
+  getLogger: () => PinoLogger | undefined,
+): boolean => beginTrackerFreshnessReset(store, homeId, undefined, (failure) => {
+  getLogger()?.error({
+    event: 'home_dormant_tracker_freshness_reset_failed',
+    homeId,
+    phase: failure.phase,
+    err: normalizeError(failure.error),
+  });
+}).state === 'prepared';

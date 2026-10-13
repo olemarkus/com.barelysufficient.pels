@@ -17,7 +17,7 @@ import type { DeviceTransportParseProviders } from '../../lib/device/transport/m
 import type { HomeRuntimeReadPort } from '../../lib/home/homeRuntimeRead';
 import type { HomeModeCatalog } from '../../lib/home/homeModeCatalog';
 import { createHomesStore } from '../../lib/home/homeRegistryStore';
-import { HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
+import { createHomeRuntimeRegistry, type HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
 import { createModeOwnershipTransfer } from '../homeRuntime/createModeOwnershipTransfer';
 import { emitPlanStatusPublishedForApp } from '../settingsUiAppRuntime';
 
@@ -28,14 +28,14 @@ export const createHomeRuntimeRegistryForApp = (
   isMembershipReady: () => boolean,
   isRuntimeActive: () => boolean,
 ): HomeRuntimeRegistry => {
-  const registry = new HomeRuntimeRegistry({
+  const registry = createHomeRuntimeRegistry(
     ctx,
-    mainModeCatalog: homeModeCatalog,
+    homeModeCatalog,
     isMembershipReady,
     isRuntimeActive,
-    homesStore: createHomesStore(ctx.homey.settings),
-    modeOwnershipTransfer: createModeOwnershipTransfer(ctx, homeModeCatalog),
-  });
+    createHomesStore(ctx.homey.settings),
+    createModeOwnershipTransfer(ctx, homeModeCatalog),
+  );
   registry.reconcile();
   return registry;
 };

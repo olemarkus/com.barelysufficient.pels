@@ -493,7 +493,7 @@ export class HomeMembershipService implements HomeMembershipPort {
     return storesReady && this.zoneTree !== null && !this.hasPendingOwnershipGeneration();
   }
 
-  /** Setup-internal activation gate for the per-home runtime registry. */
+  /** Activation gate for the per-home runtime registry (`lib/home/homeRuntimeRegistry.ts`). */
   isRuntimeActive(): boolean {
     return this.runtimeActive;
   }

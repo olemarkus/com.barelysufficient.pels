@@ -213,8 +213,6 @@ const CAPACITY_SCALAR_KEYS: ReadonlySet<string> = new Set([
   CAPACITY_PERIOD_MINUTES,
 ]);
 
-export const isCapacityScalarSettingKey = (key: string): boolean => CAPACITY_SCALAR_KEYS.has(key);
-
 /** Settings-backed capacity reader; setup supplies the SDK-free port and owns no interpretation. */
 export function createCapacitySettingsStore(
   settings: SettingsPort,
@@ -366,7 +364,12 @@ export type CapacitySettingsReloader = {
    * be read.
    */
   recoverAfterSkippedWrite(baseKey: string): void;
-  /** An explicit settings write of `baseKey` landed on a path with no dedupe: reload it as a change. */
+  /**
+   * An explicit settings write of `baseKey` landed on a path with no dedupe:
+   * reload it as a change when it is one of the capacity scalars. Any other key
+   * is ignored, so a meter area's suffix hook may forward every write it does
+   * not own itself.
+   */
   reloadAfterWrite(baseKey: string): void;
 };
 
@@ -418,6 +421,7 @@ export function createCapacitySettingsReloader(ports: CapacitySettingsReloaderPo
       reloadFrom('retry');
     },
     reloadAfterWrite: (baseKey) => {
+      if (!CAPACITY_SCALAR_KEYS.has(baseKey)) return;
       ports.store.noteWrite(baseKey);
       reloadFrom('change');
     },

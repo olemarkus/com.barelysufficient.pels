@@ -110,6 +110,16 @@ describe('capacity settings reloader', () => {
     expect(rebuild).toHaveBeenCalledWith('change');
   });
 
+  it('ignores a write on that path for a key that is not a capacity scalar', () => {
+    const store = scriptedStore([RESOLVED]);
+    const { reloader, install, rebuild } = build(store, true);
+    reloader.reloadAfterWrite('capacity_in_shortfall');
+    expect(store.noteWrite).not.toHaveBeenCalled();
+    expect(store.read).not.toHaveBeenCalled();
+    expect(install).not.toHaveBeenCalled();
+    expect(rebuild).not.toHaveBeenCalled();
+  });
+
   it('reads nothing once its home has stopped', () => {
     const store = scriptedStore([RESOLVED]);
     const { reloader, install } = build(store, true, () => true);

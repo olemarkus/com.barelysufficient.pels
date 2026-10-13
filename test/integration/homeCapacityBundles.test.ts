@@ -1,5 +1,6 @@
 // Integration coverage for the R7b per-home capacity runtime bundles
-// (`setup/homeRuntime/homeRuntimeRegistry.ts` + `createHomeCapacityBundle.ts`):
+// (`lib/home/homeRuntimeRegistry.ts`, wired by `setup/homeRuntime/homeRuntimeRegistry.ts`
+// + `createHomeCapacityBundle.ts`):
 // - registry lifecycle against `homes_config` (create / teardown / suspect-keeps);
 // - per-meter sample routing (each bundle's guard sees ONLY its own meter; a
 //   missing reading yields NO sample — never a fabricated zero);
@@ -29,7 +30,7 @@ import {
   type HomeConfig,
 } from '../../lib/home/homeConfig';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import { HomeRuntimeRegistry } from '../../setup/homeRuntime/homeRuntimeRegistry';
+import { createHomeRuntimeRegistry, type HomeRuntimeRegistry } from '../../setup/homeRuntime/homeRuntimeRegistry';
 import { filterDevicesForHome } from '../../lib/home/homeMembershipService';
 import { createHomesStore as createRawHomesStore } from '../../lib/home/homeRegistryStore';
 import { registerSettingsHandler } from '../../setup/appInit/registerSettingsHandler';
@@ -112,17 +113,17 @@ const buildRig = (): Rig => {
   let membershipReady = true;
   let membershipAuthorityFailing = false;
   let runtimeActive = true;
-  const registry = new HomeRuntimeRegistry({
+  const registry = createHomeRuntimeRegistry(
     ctx,
-    mainModeCatalog: getHomeModeCatalogForTest(ctx),
-    isMembershipReady: () => {
+    getHomeModeCatalogForTest(ctx),
+    () => {
       if (membershipAuthorityFailing) throw new Error('membership authority unavailable');
       return membershipReady;
     },
-    isRuntimeActive: () => runtimeActive,
-    homesStore: createRawHomesStore(ctx.homey.settings),
-    modeOwnershipTransfer: createModeOwnershipTransfer(ctx, getHomeModeCatalogForTest(ctx)),
-  });
+    () => runtimeActive,
+    createRawHomesStore(ctx.homey.settings),
+    createModeOwnershipTransfer(ctx, getHomeModeCatalogForTest(ctx)),
+  );
   return {
     ctx,
     registry,
@@ -1574,6 +1575,32 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     rig.registry.routeMeterReadings({ 'm-a': 3000 }, Date.now());
     await drainPending();
     expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBeCloseTo(3);
+  });
+
+  it('warns once on the homes logger per transition into sub-homes under the flow source', async () => {
+    const homesLogger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    vi.spyOn(rig.ctx, 'getStructuredLogger').mockImplementation((component) => (
+      (component === 'homes' ? homesLogger : undefined) as ReturnType<AppContext['getStructuredLogger']>
+    ));
+    const flowWarnings = () => homesLogger.warn.mock.calls.filter(([payload]) => (
+      payload.event === 'sub_homes_configured_under_flow_power_source'
+    ));
+
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'flow');
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    rig.registry.reconcile();
+    await drainPending();
+    expect(flowWarnings()).toHaveLength(1);
+    expect(flowWarnings()[0][0]).toMatchObject({ subHomeCount: 1 });
+
+    // Leaving the misconfigured state re-arms the edge.
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
+    rig.registry.reconcile();
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'flow');
+    rig.registry.reconcile();
+    await drainPending();
+    expect(flowWarnings()).toHaveLength(2);
   });
 
   // ---- multi-home GA release-blocker coverage (meter swap; flow-mode execution) ----

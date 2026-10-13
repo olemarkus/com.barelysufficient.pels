@@ -1,12 +1,14 @@
 /**
- * A meter area's two recovery lanes (multi-home R7b), each one prepared rebuild
+ * A meter area's prepared-rebuild lanes (multi-home R7b), each one rebuild
  * behind the area's prepared-reconcile fence: the membership-ready apply-edge,
- * and the actuation retry after a transient meter-source read closed the write
- * seam. Both keep state across attempts — the edge's latch and the retry's
- * backoff — so they live in lib/home with the area's `SubHomeRuntime`, and the wiring
+ * the actuation retry after a transient meter-source read closed the write
+ * seam, and the area's side of the ownership-generation protocol. They keep
+ * state across attempts or decide whether a prepared apply is current — the
+ * edge's latch, the retry's backoff, the generation's currency — so they live
+ * in lib/home with the area's `SubHomeRuntime`, and the wiring
  * (`setup/homeRuntime/createHomeCapacityBundle.ts`) only connects them. The
- * lanes are `subHomeMembershipReadyEdge.ts` and `subHomeSourceRecovery.ts`;
- * this module holds what both rebuild through.
+ * lanes are `subHomeMembershipReadyEdge.ts`, `subHomeSourceRecovery.ts` and
+ * `subHomeOwnershipGeneration.ts`; this module holds what they rebuild through.
  *
  * Home imports no other domain: the plan rebuild and the sample ledger arrive
  * as the structural ports below, which `PlanService` and the area's sample
@@ -24,20 +26,25 @@ export type SubHomeSampleRevision =
   | { state: 'stable'; revision: number }
   | { state: 'pending' };
 
-/** The area's plan as a recovery lane asks it: one rebuild that both plans and actuates. */
+/**
+ * The area's plan as a lane asks it: one rebuild that both plans and actuates.
+ * A rebuild prepared against a sample revision carries the point-of-use abort;
+ * the ownership-change rebuild is the one that does not.
+ */
 export type SubHomePlanRebuild = {
+  rebuildPlanFromCache(trigger: 'home_membership_changed'): Promise<{ failed: boolean; gated: boolean }>;
   rebuildPlanFromCache(
-    trigger: 'home_membership_ready' | 'home_source_authority_recovered',
+    trigger: 'home_membership_ready' | 'home_source_authority_recovered' | 'home_ownership_generation_prepared',
     options: { shouldAbort: () => boolean; onAbort: () => void },
   ): Promise<{ failed: boolean; gated: boolean }>;
 };
 
-/** The area's sample pipeline as a recovery lane reads it. */
+/** The area's sample pipeline as a lane reads it. */
 export type SubHomeSampleLedger = {
   getStableSampleRevision(): SubHomeSampleRevision;
 };
 
-/** What both lanes rebuild through: the area's plan, its sample ledger and its prepared-reconcile protocol. */
+/** What the lanes rebuild through: the area's plan, its sample ledger and its prepared-reconcile protocol. */
 export type SubHomeRecoveryDeps = {
   runtime: SubHomeRuntime;
   timers: TimerRegistry;

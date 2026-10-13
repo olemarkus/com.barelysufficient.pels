@@ -3,10 +3,10 @@
  * power source has been durably handled, and therefore whether a sub-home
  * bundle may consume meter samples right now.
  *
- * `HomeRuntimeRegistry` (`setup/homeRuntime/`) is its only caller, but the
- * question it answers is a power question, so the state lives here and the
- * registry is handed the fence. It takes the settings boundary as a
- * `() => PowerSource | null` reader; `null` means the read failed, and the
+ * `HomeRuntimeRegistry` (`lib/home/homeRuntimeRegistry.ts`) is its only
+ * caller, but the question it answers is a power question, so the state lives
+ * here and the wiring hands the registry the fence. It takes the settings
+ * boundary's classified read; a suspect read means the read failed, and the
  * fence is the thing that decides that is UNKNOWN rather than Flow.
  *
  * A sub-home bundle is only allowed to consume meter samples while the
@@ -22,7 +22,7 @@
  * `reconcileObservedFromSettings` (the caller's read plus `observeChange`'s),
  * same latch points, same predicates.
  */
-import type { PowerSource } from './powerSource';
+import type { ConfiguredPowerSourceRead, PowerSource } from './powerSource';
 
 export type PowerSourceEpochFenceOutcome = 'unchanged' | 'observed' | 'unreadable';
 
@@ -33,8 +33,8 @@ export class PowerSourceEpochFence {
   private handledGenerationCount = 0;
   private transitionIncomplete = false;
 
-  constructor(private readonly readSource: () => PowerSource | null) {
-    const initial = readSource();
+  constructor(private readonly readConfigured: () => ConfiguredPowerSourceRead) {
+    const initial = this.readSource();
     // A failed boot read is UNKNOWN, not authoritative Flow configuration.
     // Keep Flow only as a fail-closed placeholder and require a successful
     // reread before the first bundle can be committed or authorized.
@@ -46,6 +46,14 @@ export class PowerSourceEpochFence {
   /** The source every currently-committed bundle was constructed against. */
   get handledPowerSource(): PowerSource {
     return this.handledSource;
+  }
+
+  /**
+   * The configured source as the settings boundary classified it, read fresh
+   * on every call: the registry's misconfiguration warning asks it directly.
+   */
+  readConfiguredSource(): ConfiguredPowerSourceRead {
+    return this.readConfigured();
   }
 
   /** Latest observed generation; the value a transition attempt commits against. */
@@ -145,5 +153,11 @@ export class PowerSourceEpochFence {
     this.handledSource = powerSource;
     this.handledGenerationCount = generation;
     this.transitionIncomplete = false;
+  }
+
+  /** A suspect read is UNKNOWN: `null`, never a placeholder source. */
+  private readSource(): PowerSource | null {
+    const read = this.readConfigured();
+    return read.state === 'resolved' ? read.value : null;
   }
 }

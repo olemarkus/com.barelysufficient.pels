@@ -122,11 +122,13 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
 
 ## Per-home runtime bundles (R7b)
 
-- Each configured sub-home gets its own capacity runtime **bundle** in
-  `setup/homeRuntime/` (`homeRuntimeRegistry.ts` keys a `Map<homeId, bundle>`):
-  its own suffixed `CapacitySettingsStore`, `CapacityGuard`, `PowerTrackerState`
-  (+ suffixed persist), `PlanRebuildScheduler`, `PowerSamplePipeline`, and a
-  `PlanEngine`/`PlanService` assembled through a **`HomeScope`** closure bundle.
+- Each configured sub-home gets its own capacity runtime **bundle**, built in
+  `setup/homeRuntime/` and held by the registry in `lib/home/homeRuntimeRegistry.ts`
+  (a `Map<homeId, bundle>` with its reconcile, retry and ownership-generation
+  state): its own suffixed `CapacitySettingsStore`, `CapacityGuard`,
+  `PowerTrackerState` (+ suffixed persist), `PlanRebuildScheduler`,
+  `PowerSamplePipeline`, and a `PlanEngine`/`PlanService` assembled through a
+  **`HomeScope`** closure bundle.
 - Bundles are strictly **capacity-only** by construction — the sub-home
   `HomeScope` hard-wires `getDailyBudgetSnapshot: () => null`,
   `getPriceOptimizationEnabled: () => false`, and
@@ -415,7 +417,7 @@ area exists).
 | Membership resolver (pure) | `lib/home/membership.ts` |
 | Membership service (cache, recompute triggers) | `lib/home/homeMembershipService.ts` |
 | Complement filter (one seam, provenance-free) | `filterDevicesForHome` in `lib/home/homeMembershipService.ts` |
-| Per-home bundle registry + lifecycle | `setup/homeRuntime/homeRuntimeRegistry.ts` |
+| Per-home bundle registry + lifecycle | `lib/home/homeRuntimeRegistry.ts` (bundle construction: `setup/homeRuntime/homeRuntimeRegistry.ts`) |
 | HomeScope (main vs sub) | `setup/homeRuntime/homeScope.ts` |
 | Per-meter live read | `extractLiveMeterPowerWatts` (power source) |
 | Suffixed key helper (`homeScopedSettingsKey`) | `packages/shared-domain/src/settings/settingsKeys.ts` (inverse parse: `lib/utils/settingsKeys.ts`) |

@@ -614,7 +614,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
       **A second arm is required, not a variant: a sub-home meter area under `power_source = flow`
       renders nothing, forever.** `routeMeterReadings`
-      (`setup/homeRuntime/homeRuntimeRegistry.ts`) drops every reading unless the source is
+      (`lib/home/homeRuntimeRegistry.ts`) drops every reading unless the source is
       `homey_energy`, and a sub-home pipeline has no other sample entry — so its tracker never
       latches a sample, `hasPowerMeasurement` stays false, `PowerMeasurementGate` never opens, and no
       plan (and therefore no status) is ever published for that area. Its state is
@@ -1579,13 +1579,13 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `homeRuntime/homeModeOwnershipTransfer.ts` is DONE, as
       `lib/home/modeOwnershipTransfer.ts`. `HomeMembershipService`, its settings stores and
       activation reads, and Main-meter authority now live in `lib/home/`; device membership arrives
-      as a narrowed snapshot and sampled-meter identity through a neutral port. The only remaining
-      home-state move is `homeRuntime/homeRuntimeRegistry.ts` (7 declarations), whose device and
-      planner inputs still need narrowing before it can move under `no-home-to-peer`;
+      as a narrowed snapshot and sampled-meter identity through a neutral port. The registry's
+      state is DONE too, as `lib/home/homeRuntimeRegistry.ts`, with bundle construction and the
+      power-source epoch fence injected as ports, so the home lane holds no setup state;
       (e) composition root and leftovers — DONE. `appServiceWiring.ts`'s late-bound service handles
       are `PelsApp` fields reached through getter/setter pairs (the `AppNativeWiring` shape), its
       membership teardown is a `TeardownRegistry` key, and the prepared-reconcile fence is
-      constructed by `app.ts`. The background teardown handles are an injected
+      created by the sample ingest queue in `lib/power`, which owns the revision it reads. The background teardown handles are an injected
       `TeardownRegistry` (`lib/utils/`), the dump counter is `lib/diagnostics/deviceDumpId.ts`, and
       the scheduler telemetry observer moved to `lib/plan/rebuildScheduler/` rather than
       `lib/logging/` as this entry used to say — it names `RebuildIntent` and

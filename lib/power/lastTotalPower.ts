@@ -14,7 +14,7 @@ import { resolveFrozenSinceMs, resolveSuspectSinceMs } from './heldReading';
  *
  * `null` means no trustworthy reading: either no sample has landed yet, or the
  * meter identity changed and the freshness reset cleared the latch
- * (`resetPersistedHomeTrackerFreshness`). Junk is gated here rather than at each
+ * (`lib/power/trackerMeterIdentity.ts`). Junk is gated here rather than at each
  * caller, so a non-finite latch can never reach a sum, comparison or control
  * decision.
  *

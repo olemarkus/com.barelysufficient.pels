@@ -36,7 +36,6 @@ setup/appInit/priceServices.ts 2
 setup/appServiceWiring.ts 1
 setup/appSnapshotHelpers.ts 1
 setup/backgroundTasksController.ts 1
-setup/homeRuntime/homeRuntimeRegistryLogs.ts 1
 setup/homeRuntime/homeTrackerConfigSafety.ts 1
 setup/settingsUiApi.ts 2
 
@@ -60,6 +59,7 @@ lib/dailyBudget/dailyBudgetManager.ts 1
 lib/dailyBudget/dailyBudgetService.ts 2
 lib/diagnostics/deviceDiagnosticsPersistence.ts 1
 lib/diagnostics/deviceDiagnosticsService.ts 1
+lib/home/homeRuntimeRegistryLogs.ts 1
 lib/objectives/deferredObjectives/activePlanRecorder.ts 1
 lib/objectives/deferredObjectives/diagnosticAnnounce.ts 1
 lib/power/soleMeterAdoption.ts 2

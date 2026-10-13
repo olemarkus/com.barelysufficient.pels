@@ -31,7 +31,7 @@
  * the shipped bundle).
  *
  * {@link HomeRuntimeDiagnostics} is the single declaration of that block; the
- * setup-layer bundle aliases it, since `setup → lib` is the legal direction.
+ * bundle contract (`SubHomeBundle`, `lib/home/homeRuntimeRegistry.ts`) serves it.
  * The capacity scalar block is `CapacityScalarSettings` from contracts, the
  * same declaration `lib/power` reads and writes.
  */
@@ -40,10 +40,7 @@ import type { PowerTrackerState } from '../../packages/contracts/src/powerTracke
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import type { HomeId } from './homeConfig';
 
-/**
- * A home runtime's diagnostics block — the single declaration, aliased by
- * `HomeCapacityBundleDiagnostics` in the setup layer that produces it.
- */
+/** A home runtime's diagnostics block — the single declaration, served by each `SubHomeBundle`. */
 export type HomeRuntimeDiagnostics = Readonly<{
   homeId: HomeId;
   meterDeviceId: string | null;
