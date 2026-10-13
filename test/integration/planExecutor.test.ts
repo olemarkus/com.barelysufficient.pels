@@ -2264,43 +2264,202 @@ describe('PlanExecutor stepped loads', () => {
     }))).toBe(true);
   });
 
-  it('does not mark a kept step-down actuatable while the plan holds the device for restore admission', async () => {
-    // Under a restore-admission hold the stepped projection holds the device
-    // where it is, so dispatch issues no step command. Marking the step-down
-    // stable work applied a plan that did nothing for the device.
+  // A kept device's plan reason other than keep / restore need: a restore held
+  // on headroom (not a restore-admission hold), and a restore-admission hold.
+  const keptDeviceHoldReasons = [
+    {
+      code: PLAN_REASON_CODES.insufficientHeadroom,
+      needKw: 1.75,
+      availableKw: 0.5,
+      marginKw: 0.25,
+      penaltyExtraKw: null,
+      swapReserveKw: null,
+      effectiveAvailableKw: null,
+    },
+    { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
+  ] as const;
+
+  it.each(keptDeviceHoldReasons)('steps a kept, running device down under plan reason $code', async (reason) => {
+    // A hold blocks raising a device, never lowering it: the step-down is
+    // written, and the binary axis is left alone.
+    const plan = steppedPlan({
+      selectedStepId: 'max',
+      reportedStepId: 'max',
+      desiredStepId: 'low',
+      reason,
+    });
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(
+      undefined,
+      steppedSnapshot({ reportedStepId: 'max' }),
+    );
+
+    expect(executor.hasStablePlanActuation(plan)).toBe(true);
+    await expect(executor.applyPlanActions(plan)).resolves.toEqual(expect.objectContaining({
+      commandRequestCount: 1,
+    }));
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
+      { deviceId: 'dev-1' },
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_command_requested',
+      effectiveTransition: 'step_down_while_on',
+      desiredStepId: 'low',
+      binaryTarget: null,
+    }));
+  });
+
+  it.each(keptDeviceHoldReasons)('does not step a kept, running device up under plan reason $code', async (reason) => {
+    const plan = steppedPlan({ reason });
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(undefined, steppedSnapshot());
+
+    expect(executor.hasStablePlanActuation(plan)).toBe(false);
+    await executor.applyPlanActions(plan);
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it.each(keptDeviceHoldReasons)('does not step a kept device observed off under plan reason $code', async (reason) => {
+    const plan = steppedPlan({
+      currentState: 'off',
+      selectedStepId: 'max',
+      reportedStepId: 'max',
+      desiredStepId: 'low',
+      reason,
+    });
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(
+      undefined,
+      steppedSnapshot({ binaryControl: { on: false }, reportedStepId: 'max' }),
+    );
+
+    expect(executor.hasStablePlanActuation(plan)).toBe(false);
+    await executor.applyPlanActions(plan);
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  // The plan judges a held step-down against its own view of the device; the
+  // write is checked against the device's latest report, which can land while
+  // the plan is being built.
+  const fourStepProfile = {
+    steps: [
+      { id: 'off', planningPowerW: 0 },
+      { id: 'low', planningPowerW: 1250 },
+      { id: 'medium', planningPowerW: 2000 },
+      { id: 'max', planningPowerW: 3000 },
+    ],
+  };
+
+  it.each(keptDeviceHoldReasons)('does not raise a held device whose report dropped below the planned step under $code', async (reason) => {
+    const plan = steppedPlan({
+      steppedLoadProfile: fourStepProfile,
+      selectedStepId: 'max',
+      reportedStepId: 'max',
+      desiredStepId: 'medium',
+      reason,
+    });
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(
+      undefined,
+      steppedSnapshot({ steppedLoadProfile: fourStepProfile, reportedStepId: 'low' }),
+    );
+
+    expect(executor.hasStablePlanActuation(plan)).toBe(true);
+    await expect(executor.applyPlanActions(plan)).resolves.toEqual(expect.objectContaining({
+      commandRequestCount: 0,
+    }));
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_command_skipped',
+      reasonCode: 'not_below_reported_step',
+      desiredStepId: 'medium',
+      reportedStepId: 'low',
+    }));
+  });
+
+  it('does not resume a held step-only device reported at its off step', async () => {
+    // No on/off handle: the step axis alone says the device is off, and a
+    // positive step written to it would start it under the hold.
     const plan = steppedPlan({
       selectedStepId: 'max',
       reportedStepId: 'max',
       desiredStepId: 'low',
       reason: { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
     });
-    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, steppedSnapshot({ reportedStepId: 'max' }));
+    const stepOnlyPlan: DevicePlan = {
+      ...plan,
+      devices: plan.devices.map((device) => withBinaryDiscriminant({
+        ...device, currentOn: undefined,
+      }) as DevicePlanDevice),
+    };
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(
+      undefined,
+      steppedSnapshot({ binaryCapabilityId: undefined, binaryControl: undefined, reportedStepId: 'off' }),
+    );
 
-    expect(executor.hasStablePlanActuation(plan)).toBe(false);
-    await expect(executor.applyPlanActions(plan)).resolves.toEqual(expect.objectContaining({
-      deviceWriteCount: 0,
+    expect(executor.hasStablePlanActuation(stepOnlyPlan)).toBe(true);
+    await expect(executor.applyPlanActions(stepOnlyPlan)).resolves.toEqual(expect.objectContaining({
       commandRequestCount: 0,
     }));
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
-  });
-
-  it('does not mark off stepped keep step-down intent actuatable during restore hold', () => {
-    const { executor } = buildExecutor();
-
-    expect(executor.hasStablePlanActuation(steppedPlan({
-      currentState: 'off',
-      selectedStepId: 'max',
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_command_skipped',
+      reasonCode: 'not_below_reported_step',
       desiredStepId: 'low',
-      reason: { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
-    }))).toBe(false);
+      reportedStepId: 'off',
+    }));
   });
 
-  it('does not mark stable stepped step-up intent actuatable when restore is not admitted', () => {
-    const { executor } = buildExecutor();
-
-    expect(executor.hasStablePlanActuation(steppedPlan({
+  it.each(['low', 'off'])('reads the report at the write, after an earlier write kept dispatch waiting (report %s)', async (
+    laterReport,
+  ) => {
+    // Two held devices, each planned max -> medium. The first device's write
+    // stays in flight; while dispatch waits on it the second device reports a
+    // lower step, and its `medium` would now raise it under the hold.
+    const heldDevice = (id: string) => steppedPlan({
+      id,
+      steppedLoadProfile: fourStepProfile,
+      selectedStepId: 'max',
+      reportedStepId: 'max',
+      desiredStepId: 'medium',
       reason: { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
-    }))).toBe(false);
+    }).devices[0]!;
+    const plan: DevicePlan = { ...steppedPlan(), devices: [heldDevice('dev-1'), heldDevice('dev-2')] };
+    const snapshot = [
+      ...steppedSnapshot({ steppedLoadProfile: fourStepProfile, reportedStepId: 'max' }),
+      ...steppedSnapshot({ id: 'dev-2', steppedLoadProfile: fourStepProfile, reportedStepId: 'max' }),
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+    const writes: string[] = [];
+    let markFirstWriteStarted!: () => void;
+    const firstWriteStarted = new Promise<void>((resolve) => { markFirstWriteStarted = resolve; });
+    let releaseFirstWrite!: () => void;
+    const firstWriteReleased = new Promise<void>((resolve) => { releaseFirstWrite = resolve; });
+    deviceManager.requestSteppedLoadStep.mockImplementation(async ({ deviceId, desiredStepId }) => {
+      writes.push(`${deviceId}:${desiredStepId}`);
+      if (deviceId === 'dev-1') {
+        markFirstWriteStarted();
+        await firstWriteReleased;
+      }
+      return { requested: true, transport: 'flow' as const };
+    });
+
+    const applying = executor.applyPlanActions(plan);
+    await firstWriteStarted;
+    Object.assign(snapshot[1]!, { reportedStepId: laterReport });
+    releaseFirstWrite();
+    await applying;
+
+    expect(writes).toEqual(['dev-1:medium']);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_command_skipped',
+      reasonCode: 'not_below_reported_step',
+      deviceId: 'dev-2',
+      desiredStepId: 'medium',
+      reportedStepId: laterReport,
+    }));
   });
 
   it('does not mark stable stepped step-up intent actuatable while the same command is pending', () => {

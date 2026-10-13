@@ -67,7 +67,7 @@ const buildSteppedLoadIntent = (
   id: 'dev-1',
   name: 'Device 1',
   steppedLoadProfile: buildSteppedLoadProfile(),
-  desiredOn: true, desired: { stepId: 'high' },
+  desiredOn: true, desired: { stepId: 'high' }, stepDirection: 'any',
   transition: null,
   matchingCommandAttempt: null,
   stepCommandRetryCount: 0,

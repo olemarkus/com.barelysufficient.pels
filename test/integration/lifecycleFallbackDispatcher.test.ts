@@ -296,7 +296,7 @@ const buildDryRunRequests = (): { axis: string; request: LifecycleFallbackReques
           name: stepDevice.name,
           plannedShedTarget: { kind: 'step', stepId: 'low' },
           steppedLoadProfile: profile,
-          desiredOn: true, desired: { stepId: 'low' },
+          desiredOn: true, desired: { stepId: 'low' }, stepDirection: 'any',
           transition: null,
           matchingCommandAttempt: null,
           stepCommandRetryCount: 0,
@@ -1081,7 +1081,7 @@ describe('LifecycleFallbackDispatcher', () => {
       name: 'Stepped heater',
       steppedLoadProfile: profile,
       plannedShedTarget: { kind: 'step', stepId: desiredStepId },
-      desiredOn: true, desired: { stepId: desiredStepId },
+      desiredOn: true, desired: { stepId: desiredStepId }, stepDirection: 'any',
       previousStepId: 'high',
       transition: null,
       matchingCommandAttempt: null,
@@ -1142,7 +1142,7 @@ describe('LifecycleFallbackDispatcher', () => {
     });
     const action = steppedAction({
       id: device.id, name: device.name, steppedLoadProfile: profile,
-      desiredOn: true, desired: { stepId: 'high' }, previousStepId: 'low', transition: null,
+      desiredOn: true, desired: { stepId: 'high' }, stepDirection: 'any', previousStepId: 'low', transition: null,
       matchingCommandAttempt: null, stepCommandRetryCount: 0,
     }, { on: true, stepId: 'low', stepIsOffStep: false }, true);
     expect(await applySteppedLoadCommand(ordinaryContext, action)).toBe(false);
@@ -1912,7 +1912,7 @@ describe('LifecycleFallbackDispatcher', () => {
     });
     const action = steppedAction({
       id: 'heater-1', name: 'Stepped heater', steppedLoadProfile: profile,
-      desiredOn: true, desired: { stepId: 'low' }, previousStepId: 'low', transition: null,
+      desiredOn: true, desired: { stepId: 'low' }, stepDirection: 'any', previousStepId: 'low', transition: null,
       matchingCommandAttempt: null, stepCommandRetryCount: 0,
     }, { on: false, stepId: 'low', stepIsOffStep: false }, false);
     const dispatcher = new ExecutorLifecycleFallbackDispatcher(ordinaryContext);
@@ -1960,7 +1960,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const action = steppedAction({
       id: 'heater-1', name: 'Stepped heater', steppedLoadProfile: profile,
       plannedShedTarget: { kind: 'binary_off' },
-      desiredOn: false, desired: { stepId: 'off' }, previousStepId: 'low', transition: null,
+      desiredOn: false, desired: { stepId: 'off' }, stepDirection: 'any', previousStepId: 'low', transition: null,
       matchingCommandAttempt: null, stepCommandRetryCount: 0,
     }, { on: true, stepId: 'low', stepIsOffStep: false }, false);
 
@@ -2044,7 +2044,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const action = steppedAction({
       id: 'heater-1', name: 'Heater', steppedLoadProfile: profile,
       plannedShedTarget: { kind: 'step', stepId: 'high' },
-      desiredOn: true, desired: { stepId: 'high' }, previousStepId: 'low', transition: null,
+      desiredOn: true, desired: { stepId: 'high' }, stepDirection: 'any', previousStepId: 'low', transition: null,
       matchingCommandAttempt: null, stepCommandRetryCount: 0,
     }, { on: true, stepId: 'low', stepIsOffStep: false }, true);
     let observedStepId = 'low';
@@ -2069,7 +2069,7 @@ describe('LifecycleFallbackDispatcher', () => {
         name: action.intent.name,
         plannedShedTarget: { kind: 'step', stepId: 'low' },
         steppedLoadProfile: profile,
-        desiredOn: true, desired: { stepId: 'low' },
+        desiredOn: true, desired: { stepId: 'low' }, stepDirection: 'any',
         transition: null,
         matchingCommandAttempt: null,
         stepCommandRetryCount: 0,
@@ -2095,7 +2095,7 @@ describe('LifecycleFallbackDispatcher', () => {
       observed: buildExecutableObservedDeviceState(buildObservedDevice(), undefined),
       steppedLoad: {
         id: action.intent.id, name: action.intent.name, plannedShedTarget: { kind: 'step', stepId: 'low' }, steppedLoadProfile: profile,
-        desiredOn: true, desired: { stepId: 'low' }, transition: null,
+        desiredOn: true, desired: { stepId: 'low' }, stepDirection: 'any', transition: null,
         matchingCommandAttempt: null, stepCommandRetryCount: 0,
       },
     })).toEqual({ settled: false });
@@ -2105,7 +2105,7 @@ describe('LifecycleFallbackDispatcher', () => {
       observed: buildExecutableObservedDeviceState(buildObservedDevice(), undefined),
       steppedLoad: {
         id: action.intent.id, name: action.intent.name, plannedShedTarget: { kind: 'step', stepId: 'low' }, steppedLoadProfile: profile,
-        desiredOn: true, desired: { stepId: 'low' }, transition: null,
+        desiredOn: true, desired: { stepId: 'low' }, stepDirection: 'any', transition: null,
         matchingCommandAttempt: null, stepCommandRetryCount: 0,
       },
     })).toEqual({ settled: true });

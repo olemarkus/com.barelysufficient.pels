@@ -76,7 +76,8 @@ export const logSteppedLoadCommandSkip = (
     | 'missing_step'
     | 'waiting_for_confirmation'
     | 'retry_backoff'
-    | 'command_unavailable',
+    | 'command_unavailable'
+    | 'not_below_reported_step',
   logMessage: string,
   fields: Record<string, unknown>,
 ): false => {

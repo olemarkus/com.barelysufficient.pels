@@ -246,6 +246,25 @@ describe('planExecutableSteppedLoad', () => {
     expect(intent).toBeUndefined();
   });
 
+  it('projects a held running device\'s step-down as a step-only intent', () => {
+    // A hold never blocks lowering a device, but it still blocks turning one on:
+    // the intent moves the step and leaves the binary axis undriven, so a device
+    // read off at dispatch is not switched on under the hold.
+    const intent = buildExecutableSteppedLoadIntent(steppedPlanDevice({
+      binaryCapabilityId: 'onoff',
+      currentState: 'on',
+      currentOn: true,
+      plannedState: 'keep',
+      selectedStepId: 'max',
+      desiredStepId: 'low',
+      reason: { code: 'meter_settling', remainingSec: 30 },
+    }));
+
+    expect(intent?.desired.stepId).toBe('low');
+    expect(intent?.transition?.effectiveTransition).toBe('step_down_while_on');
+    expect(intent && isBinaryDrivenIntent(intent)).toBe(false);
+  });
+
   it('returns null for non stepped-load devices', () => {
     expect(buildExecutableSteppedLoadIntent(steppedPlanDevice({
       steppedLoadProfile: undefined,

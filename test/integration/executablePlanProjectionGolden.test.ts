@@ -150,6 +150,7 @@ describe('executable plan projection (characterization)', () => {
             "plannedShedTarget": undefined,
             "previousStepId": "low",
             "stepCommandRetryCount": 0,
+            "stepDirection": "any",
             "steppedLoadProfile": {
               "steps": [
                 {
@@ -210,6 +211,7 @@ describe('executable plan projection (characterization)', () => {
             },
             "previousStepId": "low",
             "stepCommandRetryCount": 0,
+            "stepDirection": "any",
             "steppedLoadProfile": {
               "steps": [
                 {
@@ -268,6 +270,7 @@ describe('executable plan projection (characterization)', () => {
             "plannedShedTarget": undefined,
             "previousStepId": "off",
             "stepCommandRetryCount": 0,
+            "stepDirection": "any",
             "steppedLoadProfile": {
               "steps": [
                 {

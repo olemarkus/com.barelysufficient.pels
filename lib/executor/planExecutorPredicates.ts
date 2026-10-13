@@ -83,8 +83,9 @@ const shouldInitializeUnknownRunningStep = (
  * projection holds a device the plan does not let change step (a
  * restore-admission hold, or a keep reason other than `keep` / `restoreNeed`),
  * so dispatch issues nothing for it and this must not ask for an apply either.
- * That holds for a step-down too: a kept device's step-down under such a hold
- * waits for the hold to clear, in both this gate and dispatch.
+ * A hold never blocks lowering a device, so a running device's step-down under
+ * one still has an intent and this gate reports it; dispatch writes it only
+ * while the device's latest report is still above the target (`down_only`).
  */
 export function hasStableSteppedLoadStepActuation(
   dev: DevicePlan['devices'][number],

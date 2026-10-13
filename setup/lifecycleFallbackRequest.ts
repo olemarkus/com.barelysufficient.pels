@@ -126,6 +126,7 @@ const buildSteppedIntent = (
   plannedShedTarget: { kind: 'step', stepId: posture.stepId },
   desiredOn: false,
   desired: {},
+  stepDirection: 'any',
   previousStepId: device.selectedStepId ?? device.previousStepId,
   transition: null,
   matchingCommandAttempt: resolveMatchingStepCommandAttempt(device, posture.stepId, nowMs),

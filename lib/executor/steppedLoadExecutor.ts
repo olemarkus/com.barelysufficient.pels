@@ -3,10 +3,12 @@ import {
   isBinaryOnOrUnknown,
 } from '../../packages/shared-domain/src/binaryControlState';
 import { isBinaryDrivenIntent } from './executableDesiredState';
-import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
+import { getSteppedLoadStep, isSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
+import type { SteppedLoadStep } from '../../packages/contracts/src/types';
 import { runBinaryControl } from './binaryControlShared';
 import type {
   ExecutableSteppedLoadDevice,
+  ExecutableSteppedLoadIntent,
   ExecutorDeviceSnapshot,
 } from './executablePlan';
 import { getDebugEmitter, getLogger } from '../logging/logger';
@@ -125,8 +127,42 @@ export const applySteppedLoadCommand = async (
       { desiredStepId: commandStepId, plannedDesiredStepId: intent.desired.plannedStepId ?? null },
     );
   }
+  if (skipsHeldStepRaise(ctx, intent, desiredStep)) return false;
   if (!forceCommand && maybeLogSteppedLoadCommandPendingSkip(intent, commandStepId)) return false;
   return executeSteppedLoadCommand(ctx, action, desiredStep, options);
+};
+
+/**
+ * A `down_only` command (a step-down under a plan hold) may only lower the
+ * device, judged against the observer's record as it stands at the write, not
+ * the read this dispatch captured: an earlier device's write can keep the loop
+ * waiting while a new report lands. The device must be on and report an active
+ * step drawing more than `desiredStep`; otherwise the write is skipped. The
+ * command session's reported step is this same record's field, so there is no
+ * second report to order against.
+ */
+const skipsHeldStepRaise = (
+  ctx: ExecutorCommandContext,
+  intent: ExecutableSteppedLoadIntent,
+  desiredStep: SteppedLoadStep,
+): boolean => {
+  if (intent.stepDirection !== 'down_only') return false;
+  const { steppedLoadProfile: profile } = intent;
+  const live = ctx.readDevice(intent.id);
+  const liveOn = live !== undefined && isBinaryOnOrUnknown(live);
+  const reported = liveOn ? getSteppedLoadStep(profile, live.reportedStepId) : null;
+  if (
+    reported !== null
+    && !isSteppedLoadOffStep(profile, reported.id)
+    && desiredStep.planningPowerW < reported.planningPowerW
+  ) return false;
+  logSteppedLoadCommandSkip(
+    intent,
+    'not_below_reported_step',
+    `Capacity: skip stepped-load command for ${intent.name}, ${desiredStep.id} would not lower its reported step`,
+    { desiredStepId: desiredStep.id, reportedStepId: live?.reportedStepId ?? null, observedOn: liveOn },
+  );
+  return true;
 };
 
 export const applySteppedLoadRestore = async (

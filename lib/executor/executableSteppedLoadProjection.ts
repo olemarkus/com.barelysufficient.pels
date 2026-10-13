@@ -4,7 +4,7 @@ import {
   isBinaryOnOrUnknown,
 } from '../../packages/shared-domain/src/binaryControlState';
 import { isBinaryPlanDevice } from '../plan/planBinaryDevice';
-import type { DevicePlan } from '../plan/planTypes';
+import type { DevicePlan, SteppedPlanDevice } from '../plan/planTypes';
 import {
   isPlanDeviceObservedOff,
   isPlanDeviceObservedOn,
@@ -48,7 +48,6 @@ const resolvePlanDeviceObservedOn = (device: PlanDevice): boolean | null => {
 
 export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSteppedLoadIntent | undefined {
   if (!isSteppedLoadDevice(dev)) return undefined;
-  if (shouldHoldCurrentState(dev)) return undefined;
   const planningCurrent = {
     on: resolvePlanDeviceObservedOn(dev),
     stepId: dev.selectedStepId,
@@ -56,10 +55,15 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
     stepIsOffStep: isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId),
   };
   const plannedStepId = resolveSteppedKeepDesiredStepId(dev);
+  const held = isHeldByPlanReason(dev);
+  if (held && !isKeptStepDown(dev, planningCurrent, plannedStepId)) return undefined;
   const plannedTransition = resolveSteppedLoadTransition(dev, plannedStepId);
   const desiredStepId = resolveDesiredStepId(dev, planningCurrent, plannedStepId, plannedTransition);
   const desired = { stepId: desiredStepId, plannedStepId };
-  const desiredOn = resolveDesiredOn(dev, planningCurrent, plannedTransition, desiredStepId);
+  // A held step-down moves the step only, and only down (`stepDirection`): the
+  // hold still blocks the binary axis, so a device read off at dispatch is not
+  // turned on.
+  const desiredOn = held ? null : resolveDesiredOn(dev, planningCurrent, plannedTransition, desiredStepId);
   if (isUnderspecifiedSetStepShedIntent(dev, desired)) return undefined;
   const transition = desiredMatchesTransition(desired, desiredOn, plannedTransition)
     ? plannedTransition
@@ -74,6 +78,7 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
     controlAdapter: dev.controlAdapter,
     plannedShedTarget: toExecutableShedTarget(dev.plannedShedTargetKind, desired.stepId),
     desired,
+    stepDirection: held ? 'down_only' : 'any',
     // The binary axis is attached ONLY when this cycle's decision moves it.
     // `resolveDesiredOn` answers `null` for the steady / step-up / step-down
     // transitions, where the plan has something to say about the step and
@@ -354,10 +359,32 @@ const resolveDesiredOn = (
   return null;
 };
 
-const shouldHoldCurrentState = (dev: PlanDevice): boolean => (
+/**
+ * The plan holds this device where it is: a restore-admission hold, or a keep
+ * reason other than `keep` / `restoreNeed`. Only a kept step-down passes it
+ * (`isKeptStepDown`).
+ */
+const isHeldByPlanReason = (dev: PlanDevice): boolean => (
   Boolean(dev.reason && isRestoreAdmissionHoldReason(dev.reason))
   || Boolean(dev.reason && dev.plannedState === 'keep' && !allowsSteppedLoadKeepInvariantRestore(dev.reason))
 );
+
+/**
+ * Owner ruling: a hold blocks raising a device, never lowering it. A kept
+ * device the plan sees running, planned to a lower step than its current one,
+ * steps down whatever reason the plan carries. A shed device, a step-up and a
+ * device observed off stay held. This judges the plan's view; dispatch checks
+ * the live report again (`stepDirection: 'down_only'`).
+ */
+const isKeptStepDown = (
+  dev: SteppedPlanDevice,
+  current: ExecutableSteppedLoadCurrentState,
+  plannedStepId: string | undefined,
+): boolean => {
+  if (dev.plannedState !== 'keep' || isPlanDeviceObservedOff(dev) || !current.stepForShed) return false;
+  const plannedStep = getSteppedLoadStep(dev.steppedLoadProfile, plannedStepId);
+  return plannedStep !== null && plannedStep.planningPowerW < current.stepForShed.planningPowerW;
+};
 
 const resolveCurrentStepForShed = (
   dev: PlanDevice,

@@ -350,6 +350,15 @@ export type ExecutableSteppedLoadIntent = {
   /** This cycle's shed end state — see `ExecutableShedTarget`. */
   plannedShedTarget?: ExecutableShedTarget;
   desired: ExecutableSteppedLoadDesiredState;
+  /**
+   * Which way this cycle's decision may move the step. `down_only` is a kept
+   * device's step-down the plan decided while it holds the device: a hold
+   * blocks raising a device, never lowering it, and the plan judged the
+   * step-down against its own view of the device. Dispatch writes it only while
+   * the observer's record, read at the write, has the device on and reporting a
+   * step strictly above the target (`applySteppedLoadCommand`).
+   */
+  stepDirection: 'any' | 'down_only';
   previousStepId?: string;
   transition: ExecutableSteppedLoadTransition | null;
   /** Read by both the restore lane and the command lane: one attempt, one answer. */

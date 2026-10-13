@@ -213,6 +213,7 @@ const buildShedReleaseSteppedAction = (
       stepId: targetStep.id,
       plannedStepId: targetStep.id,
     },
+    stepDirection: 'any',
     previousStepId: currentStepId,
     transition: null,
     matchingCommandAttempt: null,
