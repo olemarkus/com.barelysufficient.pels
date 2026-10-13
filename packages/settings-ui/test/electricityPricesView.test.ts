@@ -35,7 +35,7 @@ const buildConfig = (overrides: Partial<PriceConfigState> = {}): PriceConfigStat
   priceSetup: { state: 'unavailable' },
   priceLevelSummary: { state: 'unavailable' },
   priceSetupStatus: { state: 'unavailable' },
-  priceSetupSuggestion: { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' } },
+  priceSetupSuggestion: { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind: 'none' } },
   ...overrides,
 });
 
@@ -903,6 +903,43 @@ describe('ElectricityPricesView, cheap and expensive lines', () => {
 
   it('states no lines without the read', () => {
     expect(render({ state: 'unavailable' }).querySelector('#electricity-prices-level-lines')).toBeNull();
+  });
+});
+
+describe('ElectricityPricesView, Homey Energy without prices', () => {
+  const noPricesStatus = {
+    hasPrices: false,
+    currency: 'Unknown',
+    currencyTone: 'warn' as const,
+    today: { text: 'No data received', tone: 'warn' as const },
+    tomorrow: { text: 'No data received', tone: 'warn' as const },
+    priceSetupIssue: null,
+  };
+
+  it('offers Power by the Hour when it has a price device on this Homey', () => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+    const onSchemeChange = vi.fn();
+    renderElectricityPricesView(mount, buildProps({
+      priceScheme: 'homey',
+      homeyStatus: noPricesStatus,
+      priceSetupSuggestion: { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind: 'has_price_device' } },
+    }, { handlers: buildHandlers({ onSchemeChange }) }));
+
+    expect(mount.textContent).toContain('Or use Power by the Hour, which has a price device on this Homey.');
+    const use = Array.from(mount.querySelectorAll('md-outlined-button'))
+      .find((button) => button.textContent?.trim() === 'Use Power by the Hour') as HTMLElement | undefined;
+    use?.click();
+    expect(onSchemeChange).toHaveBeenCalledWith('powerhour');
+  });
+
+  it('points to the other sources when Power by the Hour has none', () => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+    renderElectricityPricesView(mount, buildProps({ priceScheme: 'homey', homeyStatus: noPricesStatus }));
+
+    expect(mount.textContent).toContain('Or choose another source above.');
+    expect(mount.textContent).not.toContain('Use Power by the Hour');
   });
 });
 

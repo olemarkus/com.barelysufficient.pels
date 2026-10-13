@@ -249,7 +249,7 @@ Price support is optional, but it makes the app more useful for thermal loads, d
 
 | Setting | What it does |
 | --- | --- |
-| **Price source** | Choose **Norway (spot + grid tariff)**, **Homey Energy (dynamic prices)**, **Power by the Hour (app)**, or **Flow (prices from a Flow card)**. Until you choose, PELS uses **Norway (spot + grid tariff)** on a Homey in Norway and **Homey Energy** elsewhere, going by the country Homey reports for its location. The page then says **Not chosen yet** with a button to keep that source. If Homey Energy has no prices for your Homey, the page says so; turn on dynamic prices under **Energy > Electricity** in the Homey app, or choose another source. |
+| **Price source** | Choose **Norway (spot + grid tariff)**, **Homey Energy (dynamic prices)**, **Power by the Hour (app)**, or **Flow (prices from a Flow card)**. Until you choose, PELS uses **Norway (spot + grid tariff)** on a Homey in Norway and **Homey Energy** elsewhere, going by the country Homey reports for its location. The page then says **Not chosen yet** with a button to keep that source. If Homey Energy has no prices for your Homey, the page says so; turn on dynamic prices under **Energy > Electricity** in the Homey app, or choose another source. When Power by the Hour is installed with a price device, the page offers **Use Power by the Hour**. |
 
 **Power by the Hour** reads prices straight from that app, with no Flow to build. Install
 [Power by the Hour](https://homey.app/a/com.gruijter.powerhour/) (version 8.10.0 or newer), add a price device

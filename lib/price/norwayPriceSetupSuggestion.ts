@@ -2,7 +2,7 @@ import type { Logger as PinoLogger } from '../logging/logger';
 import type { HomeyWebApiGet } from './homeyPriceFormula';
 import type {
   NorwayPriceSetup,
-  PriceSetupSuggestion,
+  NorwayPriceSetupSuggestion,
   SettingsUiHubMarketRead,
 } from '../../packages/contracts/src/settingsUiApi';
 
@@ -124,14 +124,14 @@ const lookUpCounty = async (latitude: number, longitude: number): Promise<Lookup
   }
 };
 
-type SuggestedGridCompany = PriceSetupSuggestion['gridCompany'];
-type SuggestedPriceArea = PriceSetupSuggestion['priceArea'];
+type SuggestedGridCompany = NorwayPriceSetupSuggestion['gridCompany'];
+type SuggestedPriceArea = NorwayPriceSetupSuggestion['priceArea'];
 
 const NO_GRID_COMPANY: SuggestedGridCompany = { kind: 'none' };
 const NO_PRICE_AREA: SuggestedPriceArea = { kind: 'none' };
 
 /** A suggestion with nothing to offer. */
-export const NO_PRICE_SETUP_SUGGESTION: PriceSetupSuggestion = {
+export const NO_NORWAY_PRICE_SETUP_SUGGESTION: NorwayPriceSetupSuggestion = {
   gridCompany: NO_GRID_COMPANY,
   priceArea: NO_PRICE_AREA,
 };
@@ -162,7 +162,7 @@ export class NorwayPriceSetupSuggester {
 
   constructor(private readonly ports: NorwayPriceSetupSuggestionPorts) {}
 
-  async suggest(norway: NorwayPriceSetup): Promise<PriceSetupSuggestion> {
+  async suggest(norway: NorwayPriceSetup): Promise<NorwayPriceSetupSuggestion> {
     const [gridCompany, priceArea] = await Promise.all([
       norway.gridCompany.kind === 'none' ? this.suggestGridCompany() : gridCompanyAnswer(NO_GRID_COMPANY, 'not_needed'),
       norway.priceArea.chosen ? NO_PRICE_AREA : this.readHomeyEnergyArea(),

@@ -57,7 +57,6 @@ import {
   updateSettingsUiSmartTask,
 } from './setup/settingsUiSmartTaskApi';
 import { refreshSettingsUiFlowConflicts } from './setup/settingsUiFlowConflictApi';
-import { NO_PRICE_SETUP_SUGGESTION } from './lib/price/norwayPriceSetupSuggestion';
 
 type ApiContext = {
   homey: Homey.App['homey'];
@@ -207,7 +206,9 @@ export = {
     { homey }: ApiContext,
   ): Promise<PriceSetupSuggestion> => {
     const host = readPelsHost(homey);
-    return host ? host.suggestNorwayPriceSetup() : NO_PRICE_SETUP_SUGGESTION;
+    return host
+      ? host.suggestPriceSetup()
+      : { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind: 'none' } };
   }),
   // Backs both whole-home meter pickers: the meters the Homey Energy live report
   // actually exposes (the same seam a selection is read against), so every pick

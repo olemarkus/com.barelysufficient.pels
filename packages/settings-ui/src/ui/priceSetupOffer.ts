@@ -12,7 +12,11 @@ const ORGANIZATION_NUMBER = /^\d{9}$/;
 const COUNTY_CODE = /^\d{2}$/;
 const PRICE_AREA = /^NO[1-5]$/;
 
-const NO_SUGGESTION: PriceSetupSuggestion = { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' } };
+const NO_SUGGESTION: PriceSetupSuggestion = {
+  gridCompany: { kind: 'none' },
+  priceArea: { kind: 'none' },
+  powerhour: { kind: 'none' },
+};
 
 const asRecord = (value: unknown): Record<string, unknown> | null => (
   typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null
@@ -50,7 +54,13 @@ const parsePriceArea = (value: unknown): PriceSetupSuggestion['priceArea'] => {
 export const parsePriceSetupSuggestion = (value: unknown): PriceSetupSuggestion => {
   const read = asRecord(value);
   return read
-    ? { gridCompany: parseGridCompany(read.gridCompany), priceArea: parsePriceArea(read.priceArea) }
+    ? {
+      gridCompany: parseGridCompany(read.gridCompany),
+      priceArea: parsePriceArea(read.priceArea),
+      powerhour: asRecord(read.powerhour)?.kind === 'has_price_device'
+        ? { kind: 'has_price_device' }
+        : { kind: 'none' },
+    }
     : NO_SUGGESTION;
 };
 
@@ -88,9 +98,15 @@ export type PriceSetupOffer =
 
 const NO_OFFER: PriceSetupOffer = { kind: 'none' };
 
-/** Whether the page should ask for a suggestion: a Norway setup still missing its grid company or price area. */
-export const priceSetupNeedsSuggestion = (read: PriceSetupRead): boolean => {
-  if (read.state !== 'resolved' || read.setup.source.scheme !== 'norway') return false;
+/**
+ * Whether the page should ask for a suggestion: a Norway setup still missing
+ * its grid company or price area, or Homey Energy with no prices, where Power
+ * by the Hour may have them.
+ */
+export const priceSetupNeedsSuggestion = (read: PriceSetupRead, homeyHasPrices: boolean): boolean => {
+  if (read.state !== 'resolved') return false;
+  if (read.setup.source.scheme === 'homey') return !homeyHasPrices;
+  if (read.setup.source.scheme !== 'norway') return false;
   const { norway } = read.setup;
   return norway.gridCompany.kind === 'none' || !norway.priceArea.chosen;
 };

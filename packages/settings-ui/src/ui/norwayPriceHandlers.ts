@@ -121,14 +121,20 @@ export const createNorwayPriceHandlers = (ctx: NorwayPriceHandlersContext) => {
     }
   };
 
-  // Asked once per visit to the settings: the lookup sends the hub's
+  // Asked once per visit to the settings: the Norway lookup sends the hub's
   // coordinates to NVE and Kartverket, so it runs only when the owner opens the
-  // page and something is still missing, and never again after an answer.
-  let suggestionRequested = false;
+  // page and something is still missing, and never again after an answer. The
+  // same answer says whether Power by the Hour could price a Homey Energy home
+  // that has no prices.
+  // Per source: an answer for Homey Energy says nothing about Norway, so an
+  // owner who switches source in the same visit is asked about the new one.
+  let suggestionRequestedFor: string | null = null;
   const suggestFromLocation = async (): Promise<void> => {
-    const { priceSetup } = ctx.getState();
-    if (suggestionRequested || !priceSetupNeedsSuggestion(priceSetup)) return;
-    suggestionRequested = true;
+    const { priceSetup, homeyStatus, priceScheme } = ctx.getState();
+    // No Homey status yet reads as having prices: nothing is asked on a guess.
+    if (suggestionRequestedFor === priceScheme) return;
+    if (!priceSetupNeedsSuggestion(priceSetup, homeyStatus?.hasPrices ?? true)) return;
+    suggestionRequestedFor = priceScheme;
     ctx.patchState({ priceSetupSuggestion: await loadPriceSetupSuggestion() });
     ctx.rerender();
   };

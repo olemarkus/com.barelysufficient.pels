@@ -51,7 +51,7 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     readHardCapConfiguration: () => ({ state: 'unavailable' }),
     readPriceOptimizationSetup: () => ({ state: 'unavailable' }),
     readPriceSetup: () => ({ state: 'unavailable' }),
-    suggestNorwayPriceSetup: async () => ({ gridCompany: { kind: 'none' }, priceArea: { kind: 'none' } }),
+    suggestPriceSetup: async () => ({ gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind: 'none' } }),
     readPriceLevelSummary: () => ({ state: 'unavailable' }),
     previewDailyBudgetModel: notWired('previewDailyBudgetModel'),
     applyDailyBudgetModel: notWired('applyDailyBudgetModel'),

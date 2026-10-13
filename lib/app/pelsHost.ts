@@ -70,7 +70,7 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
   readHardCapConfiguration(): SettingsUiHardCapConfigurationRead;
   readPriceOptimizationSetup(): PriceOptimizationSetupRead;
   readPriceSetup(): PriceSetupRead;
-  suggestNorwayPriceSetup(): Promise<PriceSetupSuggestion>;
+  suggestPriceSetup(): Promise<PriceSetupSuggestion>;
   readPriceLevelSummary(): PriceLevelSummaryRead;
   previewDailyBudgetModel(settings: Partial<DailyBudgetModelSettings>): DailyBudgetModelPreviewResponse;
   applyDailyBudgetModel(settings: Partial<DailyBudgetModelSettings>): DailyBudgetUiRead;

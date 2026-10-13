@@ -1397,7 +1397,9 @@ never saw). On Electricity prices:
 - Homey Energy without prices, whoever chose it: `Homey Energy has no electricity
   prices for your Homey yet.`, then where to turn them on (`Energy >
   Electricity` in the Homey app, then Refresh prices) or to choose another
-  source. Its status row reads `Prices found` / `No prices`: whether PELS can
+  source. When Power by the Hour has a price device on the Homey, the line ends
+  `Or use Power by the Hour, which has a price device on this Homey.` with a
+  `Use Power by the Hour` button. Its status row reads `Prices found` / `No prices`: whether PELS can
   use them is the `Price setup` row's to say.
 - Norway settings: `Not chosen yet. PELS uses NO1.` / `… Strømstøtte.` under a
   `Select price area` / `Select pricing model` placeholder, so picking the value

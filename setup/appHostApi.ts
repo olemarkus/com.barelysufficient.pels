@@ -128,11 +128,13 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     return coordinator ? coordinator.getPriceTimeline() : { state: 'unavailable', reason: 'no_prices' };
   };
 
-  public suggestNorwayPriceSetup = async (): Promise<PriceSetupSuggestion> => {
+  public suggestPriceSetup = async (): Promise<PriceSetupSuggestion> => {
     const coordinator = this.context.priceCoordinator;
     // Before the price coordinator is wired there is nothing to suggest yet.
-    if (!coordinator) return { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' } };
-    return coordinator.suggestNorwayPriceSetup();
+    if (!coordinator) {
+      return { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind: 'none' } };
+    }
+    return coordinator.suggestPriceSetup();
   };
 
   public getCurrentMonthCapacityPeakKw = (): number | null => resolveCurrentMonthQuarterPeakKw(

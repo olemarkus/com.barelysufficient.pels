@@ -26,12 +26,21 @@ const norwayRead = (norway: Partial<NorwayPriceSetup> = {}, scheme: 'norway' | '
 const TENSIO_NO3: PriceSetupSuggestion = {
   gridCompany: { kind: 'found', organizationNumber: '978631029', name: 'TENSIO TS AS', countyCode: '50' },
   priceArea: { kind: 'from_homey_energy', area: 'NO3' },
+  powerhour: { kind: 'none' },
 };
-const NOTHING: PriceSetupSuggestion = { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' } };
+const NOTHING: PriceSetupSuggestion = {
+  gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind: 'none' },
+};
 
 describe('parsePriceSetupSuggestion', () => {
   it('accepts a whole suggestion', () => {
     expect(parsePriceSetupSuggestion(TENSIO_NO3)).toEqual(TENSIO_NO3);
+  });
+
+  it('reads whether Power by the Hour has a price device', () => {
+    expect(parsePriceSetupSuggestion({ ...NOTHING, powerhour: { kind: 'has_price_device' } }).powerhour)
+      .toEqual({ kind: 'has_price_device' });
+    expect(parsePriceSetupSuggestion({ ...NOTHING, powerhour: 'yes' }).powerhour).toEqual({ kind: 'none' });
   });
 
   it('drops a malformed part on its own, and anything else is no suggestion', () => {
@@ -44,17 +53,19 @@ describe('parsePriceSetupSuggestion', () => {
 });
 
 describe('priceSetupNeedsSuggestion', () => {
-  it('asks only on Norway while the grid company or price area is missing', () => {
-    expect(priceSetupNeedsSuggestion(norwayRead())).toBe(true);
+  it('asks on Norway while the grid company or price area is missing, and on Homey Energy without prices', () => {
+    expect(priceSetupNeedsSuggestion(norwayRead(), true)).toBe(true);
     expect(priceSetupNeedsSuggestion(norwayRead({
       gridCompany: { kind: 'chosen', organizationNumber: '978631029' },
-    }))).toBe(true);
+    }), true)).toBe(true);
     expect(priceSetupNeedsSuggestion(norwayRead({
       gridCompany: { kind: 'chosen', organizationNumber: '978631029' },
       priceArea: { value: 'NO3', chosen: true },
-    }))).toBe(false);
-    expect(priceSetupNeedsSuggestion(norwayRead({}, 'homey'))).toBe(false);
-    expect(priceSetupNeedsSuggestion({ state: 'unavailable' })).toBe(false);
+    }), true)).toBe(false);
+    expect(priceSetupNeedsSuggestion(norwayRead({}, 'homey'), true)).toBe(false);
+    // Homey Energy without prices: Power by the Hour may have them.
+    expect(priceSetupNeedsSuggestion(norwayRead({}, 'homey'), false)).toBe(true);
+    expect(priceSetupNeedsSuggestion({ state: 'unavailable' }, true)).toBe(false);
   });
 });
 
@@ -98,6 +109,7 @@ describe('resolvePriceSetupOffer', () => {
     const elsewhere: PriceSetupSuggestion = {
       gridCompany: { ...TENSIO_NO3.gridCompany, countyCode: '03' } as PriceSetupSuggestion['gridCompany'],
       priceArea: { kind: 'none' },
+      powerhour: { kind: 'none' },
     };
     expect(resolvePriceSetupOffer(elsewhere, norwayRead())).toEqual({ kind: 'none' });
   });

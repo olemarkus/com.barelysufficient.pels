@@ -744,13 +744,26 @@ const resolveSourceStatusLines = (props: ElectricityPricesViewProps): SourceStat
   const { config, handlers } = props;
   const name = SOURCE_NAMES[config.priceScheme];
   if (config.priceScheme === 'homey' && config.homeyStatus?.hasPrices === false) {
+    // Power by the Hour, installed with a price device, can price the home now.
+    const powerhourReady = config.priceSetupSuggestion.powerhour.kind === 'has_price_device';
     return {
       hint: <small class="field__hint field__hint--alert">Homey Energy has no electricity prices for your Homey yet.</small>,
       followUp: (
-        <p class="pels-card-supporting">
-          Turn on dynamic prices in the Homey app under Energy &gt; Electricity, then press Refresh prices.
-          Or choose another source above.
-        </p>
+        <>
+          <p class="pels-card-supporting">
+            Turn on dynamic prices in the Homey app under Energy &gt; Electricity, then press Refresh prices.
+            {powerhourReady
+              ? ' Or use Power by the Hour, which has a price device on this Homey.'
+              : ' Or choose another source above.'}
+          </p>
+          {powerhourReady && (
+            <div class="form__actions">
+              <MdOutlinedButton type="button" onClick={() => handlers.onSchemeChange('powerhour')}>
+                Use Power by the Hour
+              </MdOutlinedButton>
+            </div>
+          )}
+        </>
       ),
     };
   }

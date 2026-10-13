@@ -96,7 +96,7 @@ let configState: PriceConfigState = {
   pvForecastStatus: { kind: 'unknown' },
   priceSetup: { state: 'unavailable' },
   priceSetupStatus: { state: 'unavailable' },
-  priceSetupSuggestion: { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' } },
+  priceSetupSuggestion: { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind: 'none' } },
   priceLevelSummary: { state: 'unavailable' },
 };
 

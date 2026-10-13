@@ -1940,7 +1940,7 @@
     // no suggestion is the baseline, so no spec sends the hub's location
     // anywhere; a spec seeds one via `window.__PELS_HOMEY_STUB__.priceSetupSuggestion`.
     'GET /ui_price_setup_suggestion': () => (
-      initialOverrides.priceSetupSuggestion ?? { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' } }
+      initialOverrides.priceSetupSuggestion ?? { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind: 'none' } }
     ),
     'GET /homey_energy_meters': () => {
       // Backs both whole-home meter pickers: the meters the endpoint resolved

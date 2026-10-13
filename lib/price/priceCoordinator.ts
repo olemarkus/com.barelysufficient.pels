@@ -29,10 +29,11 @@ import type {
   SettingsUiPriceSourcePayloads,
 } from '../../packages/contracts/src/settingsUiApi';
 import {
-  NO_PRICE_SETUP_SUGGESTION,
+  NO_NORWAY_PRICE_SETUP_SUGGESTION,
   NorwayPriceSetupSuggester,
   type HubLocationRead,
 } from './norwayPriceSetupSuggestion';
+import { fetchPowerhourPrices } from './powerhourPriceFetch';
 import { readPriceSetup } from './priceSetupRead';
 import type { PriceSourceSwitch } from './priceSchemeResolution';
 import type { BudgetPriceInputs } from './budgetPrice';
@@ -58,6 +59,8 @@ import { getNextLocalDayStartUtcMs } from '../../packages/shared-domain/src/util
 import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
+
+const NO_POWERHOUR: PriceSetupSuggestion['powerhour'] = { kind: 'none' };
 
 const moduleLogger = getLogger('price/coordinator');
 
@@ -179,14 +182,29 @@ export class PriceCoordinator {
   }
 
   /**
-   * The Norway price settings for the hub's location that the owner has not
-   * chosen, looked up when the settings UI asks. Without the settings read
-   * nothing is looked up, since every part might already be chosen.
+   * What the settings UI can offer for the price setup, looked up when it asks
+   * and only for the source in force: on Norway, the settings for the hub's
+   * location the owner has not chosen; on Homey Energy, whether Power by the
+   * Hour has a price device to read prices from instead. Without the settings
+   * read nothing is looked up, since every part might already be chosen.
    */
-  async suggestNorwayPriceSetup(): Promise<PriceSetupSuggestion> {
+  async suggestPriceSetup(): Promise<PriceSetupSuggestion> {
     const read = this.readPriceSetup();
-    if (read.state !== 'resolved') return NO_PRICE_SETUP_SUGGESTION;
-    return this.norwayPriceSetupSuggester.suggest(read.setup.norway);
+    if (read.state !== 'resolved') return { ...NO_NORWAY_PRICE_SETUP_SUGGESTION, powerhour: NO_POWERHOUR };
+    const { scheme } = read.setup.source;
+    const [norway, powerhour] = await Promise.all([
+      scheme === 'norway'
+        ? this.norwayPriceSetupSuggester.suggest(read.setup.norway)
+        : NO_NORWAY_PRICE_SETUP_SUGGESTION,
+      scheme === 'homey' ? this.probePowerhourPriceDevice() : NO_POWERHOUR,
+    ]);
+    return { ...norway, powerhour };
+  }
+
+  // A local app-to-app read: Power by the Hour answers from the Homey itself.
+  private async probePowerhourPriceDevice(): Promise<PriceSetupSuggestion['powerhour']> {
+    const read = await fetchPowerhourPrices(this.deps.homey.api);
+    return read.kind === 'resolved' && read.devices.length > 0 ? { kind: 'has_price_device' } : NO_POWERHOUR;
   }
 
   updatePriceOptimizationEnabled(logChange = false): void {

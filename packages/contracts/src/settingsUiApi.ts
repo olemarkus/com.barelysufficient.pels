@@ -838,7 +838,7 @@ export type PriceSetupRead =
  * company covers, or a lookup that failed. PELS writes none of it until the
  * owner confirms.
  */
-export type PriceSetupSuggestion = {
+export type NorwayPriceSetupSuggestion = {
   readonly gridCompany:
     | {
       readonly kind: 'found';
@@ -850,6 +850,15 @@ export type PriceSetupSuggestion = {
   readonly priceArea:
     | { readonly kind: 'from_homey_energy'; readonly area: string }
     | { readonly kind: 'none' };
+};
+
+/**
+ * What PELS can suggest for the price setup: the Norway settings above, and,
+ * while Homey Energy is the source, whether Power by the Hour is installed
+ * with a price device PELS could read prices from instead.
+ */
+export type PriceSetupSuggestion = NorwayPriceSetupSuggestion & {
+  readonly powerhour: { readonly kind: 'has_price_device' } | { readonly kind: 'none' };
 };
 
 /**

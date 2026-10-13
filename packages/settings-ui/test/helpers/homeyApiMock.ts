@@ -433,7 +433,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   // No suggestion is the baseline; a spec seeds one via the
   // `priceSetupSuggestion` override.
   [buildRouteKey('GET', SETTINGS_UI_PRICE_SETUP_SUGGESTION_PATH)]: (homey) => async () => (
-    getUiOverride(homey, 'priceSetupSuggestion') ?? { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' } }
+    getUiOverride(homey, 'priceSetupSuggestion') ?? { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind: 'none' } }
   ),
   [buildRouteKey('GET', HOMEY_ENERGY_METERS_PATH)]: (homey) => async () => (
     getUiOverride(homey, 'homeyEnergyMeters') ?? []
