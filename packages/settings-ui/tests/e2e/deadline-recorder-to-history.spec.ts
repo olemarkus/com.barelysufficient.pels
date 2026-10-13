@@ -62,14 +62,20 @@ type DeferredObjectiveDiagnosticLike = {
   expectedStepId: string | null;
 };
 
+// The active-plan roster the recorder reads. Production always hands it one
+// (an empty roster when no task has a plan), so the spec builds it with the
+// runtime's own constructor rather than restating the shape.
+type ActivePlansLike = { readonly plansByDeviceId: Readonly<Record<string, unknown>> };
+
 type PlanHistoryRecorderLike = {
-  observe(diagnostics: ReadonlyArray<DeferredObjectiveDiagnosticLike>, nowMs: number, activePlans: null): void;
+  observe(diagnostics: ReadonlyArray<DeferredObjectiveDiagnosticLike>, nowMs: number, activePlans: ActivePlansLike): void;
   flushIfDirty(): boolean;
 };
 
 // Mirrors `PlanHistoryPersistDeps` by hand: the recorder is loaded from a bundle
 // at run time, so tsc cannot hold this seam to the real contract.
 type PlanHistoryRuntimeModule = {
+  createEmptyActivePlans: () => ActivePlansLike;
   DeferredObjectivePlanHistoryRecorder: new (deps: {
     load: () => {
       snapshot: DeferredObjectivePlanHistoryV6;
@@ -99,6 +105,7 @@ const loadPlanHistoryRuntime = (): Promise<PlanHistoryRuntimeModule> => {
       stdin: {
         contents: [
           "export { DeferredObjectivePlanHistoryRecorder } from './lib/objectives/deferredObjectives/planHistory';",
+          "export { createEmptyActivePlans } from './lib/objectives/deferredObjectives/activePlanSettings';",
         ].join('\n'),
         resolveDir: repoRoot,
         sourcefile: path.join(repoRoot, 'plan-history-recorder.runtime.ts'),
@@ -172,7 +179,8 @@ const buildTemperatureDiag = (overrides: TemperatureDiagOverrides): DeferredObje
 });
 
 const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV6> => {
-  const { DeferredObjectivePlanHistoryRecorder } = await loadPlanHistoryRuntime();
+  const { DeferredObjectivePlanHistoryRecorder, createEmptyActivePlans } = await loadPlanHistoryRuntime();
+  const activePlans = createEmptyActivePlans();
   let saved: DeferredObjectivePlanHistoryV6 | null = null;
   const recorder = new DeferredObjectivePlanHistoryRecorder({
     load: () => ({ snapshot: { version: 6, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
@@ -215,18 +223,18 @@ const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV6> => {
   recorder.observe([
     connected300Diag({ kind: 'resolved', status: 'on_track' }, 50),
     poolPumpDiag({ kind: 'resolved', status: 'at_risk' }, 50),
-  ], T0, null);
+  ], T0, activePlans);
   recorder.observe([
     connected300Diag({ kind: 'resolved', status: 'on_track' }, 60),
     poolPumpDiag({ kind: 'resolved', status: 'at_risk' }, 55),
-  ], T0 + 3 * HOUR_MS, null);
+  ], T0 + 3 * HOUR_MS, activePlans);
   recorder.observe([
     connected300Diag({ kind: 'resolved', status: 'satisfied' }, 65),
     poolPumpDiag({ kind: 'resolved', status: 'cannot_meet' }, 58),
-  ], T0 + 5 * HOUR_MS, null);
+  ], T0 + 5 * HOUR_MS, activePlans);
 
   // Final tick past both deadlines — no live diagnostics, both records finalize as deadline_passed.
-  recorder.observe([], MISSED_DEADLINE_MS + 1, null);
+  recorder.observe([], MISSED_DEADLINE_MS + 1, activePlans);
   recorder.flushIfDirty();
 
   if (!saved) {
