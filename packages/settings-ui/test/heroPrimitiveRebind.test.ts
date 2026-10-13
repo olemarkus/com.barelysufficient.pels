@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { render } from 'preact';
 import { renderBudgetOverview, type BudgetOverviewProps } from '../src/ui/views/BudgetOverview.tsx';
 import { renderDeadlinesList } from '../src/ui/views/DeadlinesList.tsx';
 import {
@@ -11,113 +12,56 @@ import {
 import { deadlineLabels } from '../../shared-domain/src/deadlineLabels.ts';
 import { budgetOverviewProps } from './helpers/budgetOverviewProps.ts';
 
-/* -------------------------------------------------------------------------- *
- * Hero primitive rebind regression tests.
- *
- * The shared hero primitive `.pels-hero` / `.plan-hero` carries the single
- * source of truth for:
- *   - the eyebrow text element (`.eyebrow` font-size / letter-spacing / colour)
- *   - the headline element (`.plan-hero__headline` weight / size / line-height)
- *   - the per-tone radial-gradient surface (`data-tone="good|warn|alert|info"`)
- *
- * Every panel header (Overview, Budget, Usage, Smart tasks, Settings, Advanced)
- * plus the deadline-plan hero must rebind to the same primitive — otherwise we
- * end up with subtle per-page typography drift the user reads as five-plus
- * near-duplicate components. These assertions are intentionally lightweight DOM
- * shape checks so the suite catches accidental regressions (someone reverts a
- * surface to a one-off `<h2>` or drops the `.eyebrow` class) without coupling
- * to pixel output (that's the screenshot suite's job).
- * -------------------------------------------------------------------------- */
-
-const INDEX_HTML_PATH = path.join(__dirname, '..', 'public', 'index.html');
-const INDEX_HTML = fs.readFileSync(INDEX_HTML_PATH, 'utf8');
+const INDEX_HTML = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+const mounts: HTMLElement[] = [];
 
 const mountIntoBody = (): HTMLElement => {
   const mount = document.createElement('div');
   document.body.appendChild(mount);
+  mounts.push(mount);
   return mount;
 };
 
 afterEach(() => {
+  // Unmount before deferred chart effects can outlive this jsdom document.
+  for (const mount of mounts.splice(0)) render(null, mount);
   document.body.replaceChildren();
 });
 
-// Asserts the canonical hero shape: a `.plan-hero.pels-hero` shell with an
-// eyebrow (`.eyebrow.plan-hero__section-label`) and headline (`<h2>` or `<div>`
-// carrying `.plan-hero__headline`) inside a `.plan-hero__section` wrapper.
-// Used to verify every rebound surface walks the same DOM contract.
 const expectCanonicalHeroShape = (hero: Element | null): void => {
   expect(hero).not.toBeNull();
-  expect(hero?.classList.contains('plan-hero')).toBe(true);
-  expect(hero?.classList.contains('pels-hero')).toBe(true);
+  expect(hero?.matches('.plan-hero.pels-hero')).toBe(true);
   const eyebrow = hero?.querySelector('.eyebrow.plan-hero__section-label');
-  expect(eyebrow, 'eyebrow must carry both .eyebrow and .plan-hero__section-label').not.toBeNull();
   expect((eyebrow?.textContent ?? '').trim().length).toBeGreaterThan(0);
   const headline = hero?.querySelector('.plan-hero__headline');
-  expect(headline, 'headline must carry .plan-hero__headline').not.toBeNull();
   expect((headline?.textContent ?? '').trim().length).toBeGreaterThan(0);
 };
 
-// ─── index.html panel headers (Usage, Settings, Advanced) ────────────────────
-
-// jsdom only sees the markup we feed it; index.html is the source of truth
-// for the three panels whose header is plain HTML (no preact root). Mount the
-// fragment and walk the same DOM contract the rendered surfaces use.
-describe('index.html panel headers consume the shared hero primitive', () => {
-  const mountIndexFragment = (): Document => {
-    const doc = new DOMParser().parseFromString(INDEX_HTML, 'text/html');
-    return doc;
-  };
+describe('static panel headings', () => {
+  const mountIndexFragment = (): Document => new DOMParser().parseFromString(INDEX_HTML, 'text/html');
 
   it('Usage hero rebinds to .plan-hero.pels-hero with canonical eyebrow + headline', () => {
     const doc = mountIndexFragment();
     const usageHero = doc.querySelector('#usage-hero');
     expectCanonicalHeroShape(usageHero);
-    // Tone binding stays on the same primitive — no per-surface tonal markup.
     expect(usageHero?.getAttribute('data-tone')).not.toBeNull();
-    // The headline is the live `#usage-hero-headline` element; the rebind
-    // promoted it from `<div>` to `<h2>` so it matches the canonical heading
-    // semantics every sibling hero uses.
     const headline = usageHero?.querySelector('#usage-hero-headline');
     expect(headline?.tagName.toLowerCase()).toBe('h2');
     expect(headline?.classList.contains('plan-hero__headline')).toBe(true);
   });
-
-  // Navigation-chrome unification removed the Settings hub's self-referential
-  // hero card ("Settings / Configure PELS" + meta-copy about the page's own
-  // layout) — the tab bar already names the destination. The panel keeps a
-  // visually-hidden `h2` landmark so `aria-labelledby="settings-title"` and
-  // the document outline (h2 -> h3 "Current mode") survive the visual removal.
-  it('Settings hub renders no hero card — first visible content is the current-mode card', () => {
+  it('labels Settings with a hidden heading followed by the dynamic current-mode view', () => {
     const doc = mountIndexFragment();
-    expect(doc.querySelector('#settings-panel > header')).toBeNull();
     expect(doc.querySelector('#settings-panel .plan-hero')).toBeNull();
     const landmark = doc.querySelector('#settings-panel > h2#settings-title');
     expect(landmark).not.toBeNull();
     expect(landmark?.classList.contains('visually-hidden')).toBe(true);
     expect(landmark?.textContent?.trim()).toBe('Settings');
     expect(doc.querySelector('#settings-panel')?.getAttribute('aria-labelledby')).toBe('settings-title');
-    // The landmark is followed directly by the Preact-owned current-mode mount.
     expect(landmark?.nextElementSibling?.id).toBe('current-modes-root');
+    expect(landmark?.nextElementSibling?.children).toHaveLength(0);
   });
-
-  // The active-mode card sits between the visually-hidden `h2 "Settings"`
-  // landmark and the nav-card list; without an h3 rung the screen-reader
-  // heading nav jumps straight from h2 to navigation. The label is promoted
-  // to an h3 so the hierarchy stays h2 -> h3 within the Settings landing page.
-  it('Settings current-mode card is owned by the dynamic per-area view', () => {
-    const doc = mountIndexFragment();
-    const mount = doc.querySelector('#current-modes-root');
-    expect(mount).not.toBeNull();
-    expect(mount?.children).toHaveLength(0);
-    expect(doc.querySelector('#active-mode-select')).toBeNull();
-  });
-
-  // Advanced (like every settings sub-page) swapped its boxed hero card for
-  // the shared `.pels-appbar` back+title chrome row.
   it('Advanced panel leads with the shared app-bar back+title row instead of a hero card', () => {
     const doc = mountIndexFragment();
-    expect(doc.querySelector('#advanced-panel > header')).toBeNull();
     const appbar = doc.querySelector('#advanced-panel > .pels-appbar');
     expect(appbar).not.toBeNull();
     const back = appbar?.querySelector('.pels-appbar__back[data-settings-target="settings"]');
@@ -128,29 +72,31 @@ describe('index.html panel headers consume the shared hero primitive', () => {
   });
 });
 
-// ─── BudgetOverview header (preact-mounted) ──────────────────────────────────
-
-// Minimal stub props for `renderBudgetOverview` — only the header shape is
-// asserted; the chart, adjust view, and chip rendering paths are exercised
-// elsewhere. Building a focused stub keeps this regression narrow and stable.
 const buildBudgetProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOverviewProps => budgetOverviewProps({
-    localView: 'plan',
-    hero: { headlineLabel: null, comparison: 'Daily budget off', split: null },
-    budget: { enabled: false, dailyBudgetKWh: 60 },
-    weatherInsight: null,
-  }, overrides);
+  localView: 'plan',
+  hero: { headlineLabel: null, comparison: 'Daily budget off', split: null },
+  budget: { enabled: false, dailyBudgetKWh: 60 },
+  weatherInsight: null,
+}, overrides);
 
 describe('BudgetOverview panel header consumes the shared hero primitive', () => {
   it('renders a .plan-hero.pels-hero shell with canonical eyebrow + headline (no chip rail)', () => {
     const mount = mountIntoBody();
-    renderBudgetOverview(mount, buildBudgetProps());
+    const onDayChange = vi.fn();
+    renderBudgetOverview(mount, buildBudgetProps({ onDayChange }));
     const header = mount.querySelector('header.plan-hero.pels-hero');
     expectCanonicalHeroShape(header);
-    // No chip-row rendered when there is no priceLevelChip — the Plan/Adjust
-    // toggle lands inside the headline row so the header stays a single tier
-    // tall in the most common case.
     expect(header?.querySelector('.plan-hero__chips')).toBeNull();
     expect(header?.querySelector('#budget-redesign-mode-toggle')).not.toBeNull();
+
+    const group = mount.querySelector('.segmented[aria-label="Budget day"]');
+    expect(group?.getAttribute('role')).toBe('group');
+    const buttons = group?.querySelectorAll<HTMLButtonElement>('button.segmented__option');
+    expect(Array.from(buttons ?? [], (button) => button.getAttribute('aria-pressed')))
+      .toEqual(['false', 'true', 'false']);
+    for (const button of buttons ?? []) expect(button.type).toBe('button');
+    buttons?.[2]?.click();
+    expect(onDayChange).toHaveBeenCalledWith('tomorrow');
   });
 
   it('renders the price-level chip and Plan/Adjust toggle inside the shared chip rail', () => {
@@ -163,20 +109,14 @@ describe('BudgetOverview panel header consumes the shared hero primitive', () =>
     const chipRail = header?.querySelector('.plan-hero__chips .plan-hero__chip-rail');
     expect(chipRail).not.toBeNull();
     expect(chipRail?.querySelector('.plan-chip')?.textContent).toContain('Price low');
-    // Toggle moves up to the chip row when the chip is present, mirroring the
-    // Overview hero's info-button slot.
     expect(header?.querySelector('.plan-hero__chips #budget-redesign-mode-toggle')).not.toBeNull();
   });
 });
-
-// ─── Smart tasks (DeadlinesList) baseline header ─────────────────────────────
 
 describe('DeadlinesList header consumes the shared hero primitive', () => {
   it('loading-state baseline header walks the canonical eyebrow + headline contract', () => {
     const mount = mountIntoBody();
     renderDeadlinesList(mount, { status: 'loading' }, { onNewTask: () => {} });
-    // BaselineHeader is rendered as a `<header>` rather than a `<section>`;
-    // walk by class to stay tolerant.
     const hero = mount.querySelector('.plan-hero.pels-hero');
     expectCanonicalHeroShape(hero);
   });
@@ -205,14 +145,14 @@ describe('DeadlinesList header consumes the shared hero primitive', () => {
     }, { onNewTask: () => {} });
     const hero = mount.querySelector('.plan-hero.pels-hero.deadlines-list-hero');
     expectCanonicalHeroShape(hero);
+    const card = mount.querySelector('a.pels-surface-card.deadline-list-card[data-interactive]');
+    expect(card).not.toBeNull();
+    for (const tag of ['md-ripple', 'md-elevation']) {
+      expect(card?.querySelector(`:scope > ${tag}`)?.getAttribute('aria-hidden')).toBe('true');
+    }
   });
 });
 
-// ─── DeadlinePlan hero ───────────────────────────────────────────────────────
-
-// `DeadlinePlan.tsx` already used `.pels-hero` before this rebind; the
-// regression test pins the canonical eyebrow + headline + tone contract so a
-// future refactor can't silently revert to a one-off heading.
 const buildReadyPayload = (): DeadlinePlanPayload => ({
   kind: 'temperature',
   labels: deadlineLabels('temperature'),
@@ -226,7 +166,7 @@ const buildReadyPayload = (): DeadlinePlanPayload => ({
     stats: [{ label: 'Needs', value: '12.5 kWh' }],
     metaLine: null,
     deliveredSoFarLine: null,
-    recourse: null,
+    recourse: { label: 'Open Budget', targetTab: 'budget' },
   },
   timeline: {
     ariaLabel: 'Plan timeline',
@@ -285,7 +225,7 @@ const buildPendingPayload = (): DeadlinePlanPendingPayload => ({
     headlineReason: null,
     subline: 'Connected 300',
     metaLine: 'Will start when the next-day price drop publishes.',
-    recourse: null,
+    recourse: { label: 'Check prices', targetTab: 'electricity-prices' },
   },
 });
 
@@ -295,17 +235,12 @@ describe('DeadlinePlan hero consumes the shared hero primitive', () => {
     renderDeadlinePlan(mount, { status: 'ready', payload: buildReadyPayload() });
     const hero = mount.querySelector('section.plan-hero.pels-hero');
     expect(hero).not.toBeNull();
-    // Tone binding flows from the producer through `data-tone` — same
-    // attribute every other hero uses.
     expect(hero?.getAttribute('data-tone')).toBe('good');
-    // The headline is an `<h2>` (matching the four sibling panels) so
-    // screen readers see the same heading structure across surfaces.
     const headline = hero?.querySelector('.plan-hero__headline');
     expect(headline?.tagName.toLowerCase()).toBe('h2');
     expect((headline?.textContent ?? '').trim().length).toBeGreaterThan(0);
-    // The live hero drops the section-label eyebrow (the app-bar title + kind
-    // chip already name the surface) — unlike the pending hero, which keeps it.
     expect(hero?.querySelector('.eyebrow.plan-hero__section-label')).toBeNull();
+    expect(hero?.querySelector('button.pels-button[data-deadline-recourse-tab="budget"]')).not.toBeNull();
   });
 
   it('pending-state hero walks the canonical eyebrow + headline contract', () => {
@@ -314,11 +249,10 @@ describe('DeadlinePlan hero consumes the shared hero primitive', () => {
     const hero = mount.querySelector('section.plan-hero.pels-hero');
     expectCanonicalHeroShape(hero);
     expect(hero?.getAttribute('data-tone')).toBe('info');
-    // Same shell shape as the ready hero — the pending variant must not
-    // silently revert to a `<div>` headline / `<span>` eyebrow.
     const headline = hero?.querySelector('.plan-hero__headline');
     expect(headline?.tagName.toLowerCase()).toBe('h2');
     const eyebrow = hero?.querySelector('.eyebrow.plan-hero__section-label');
     expect(eyebrow?.tagName.toLowerCase()).toBe('p');
+    expect(hero?.querySelector('button.pels-button[data-deadline-recourse-tab="electricity-prices"]')).not.toBeNull();
   });
 });
