@@ -257,7 +257,7 @@ const buildSettingsUiDeviceList = (
     // stored device snapshot is rebuilt on the device poll, so its observed half
     // is up to one poll interval behind, and the car association is resolved per
     // call by the transport so a plug-in shows within the probe's settle.
-    const observed = host.getObservedRecord(device.id);
+    const observed = host.observer.getObservedRecord(device.id);
     const associatedCar = host.deviceManager?.getAssociatedCar(device.id);
     const stateOfCharge = resolveStateOfCharge(device, readObservedStateOfCharge(observed));
     return {

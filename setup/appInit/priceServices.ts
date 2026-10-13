@@ -20,7 +20,6 @@ export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
     getPowerTracker: () => ctx.powerTracker,
     homeyWebApiGet: createHomeyWebApiGet(),
     readHubMarket: createHubMarketRead(),
-    getCurrentPriceLevel: () => ctx.getCurrentHourPriceLevel(),
     log: (...args: unknown[]) => ctx.log(...args),
     debugStructured: getDebugEmitter('price', 'price'),
     error: (...args: unknown[]) => ctx.error(...args),

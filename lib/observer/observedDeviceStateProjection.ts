@@ -169,6 +169,84 @@ export function readObservedTemperatureState(
     };
 }
 
+/**
+ * The observer's reads as everything outside the projection's writer holds
+ * them: the general observed read, the whole record for the consumers that
+ * hold it, one named read per observed cluster, and the accepted-write counter.
+ * `ObservedDeviceStateProjection` satisfies it; the app context carries it as
+ * this port, so no consumer reaches the dispatcher-fed writes.
+ */
+export type ObservedDeviceReads = {
+    /**
+     * The general observed read: the base state, and no observed cluster.
+     *
+     * Declared narrow on purpose. The projection physically stores every cluster
+     * — state of charge, temperature, EV plug-state, measured power, reported step
+     * — and while this handed out `ProjectedObservedDeviceState`, every consumer
+     * wired to it could read any of them raw, bypassing the named reads that
+     * RESOLVE them. `observed.stateOfCharge.report.percent` is now a compile error
+     * here; a caller that wants a cluster asks for it by name and gets a semantic
+     * result (`readObservedStateOfCharge`, `readObservedTemperatureState`).
+     *
+     * Because every cluster field is optional, the narrow type is still
+     * structurally assignable to the wide one — so this does not break the one
+     * consumer that legitimately needs the whole record, which asks for it below.
+     */
+    getObservedState(deviceId: string): ObservedDeviceState | undefined;
+    /**
+     * The whole observed record, for the consumers that HOLD it rather than ask a
+     * question of it. They are worth naming:
+     *
+     * - the joins that compose it with device configuration or inventory metadata
+     *   (planner input, device surfaces, the Flow-card device list);
+     * - the settings-UI payload refresh, which overlays a fixed list of
+     *   raw-observed fields onto the served device (`LIVE_OBSERVED_FIELDS`);
+     * - the executor's drift check, which reads the reported step, measured power
+     *   and EV state together to decide whether the device has moved off plan
+     *   (`ObserverDeviceRead`, `lib/executor/executorDeviceRead.ts`), joined with
+     *   the configuration's charger identity;
+     * - external-off hold detection, which reads the binary observation and the
+     *   plug state beside the configuration's charger identity.
+     *
+     * Separate from `getObservedState` and named for what it is, so holding the
+     * record stays a deliberate choice. Before this split the drift path took the
+     * base-typed read and structurally widened it, which compiled and worked only
+     * because the object underneath was physically wider than its type — so a
+     * `getObservedState` that ever returned a genuinely narrowed copy would have
+     * changed drift decisions with no type error anywhere.
+     *
+     * A new holder is the general exit re-opening. Anything wanting one cluster
+     * wants a named read.
+     */
+    getObservedRecord(deviceId: string): ProjectedObservedDeviceState | undefined;
+    /**
+     * The named cluster reads. One accessor per observed fact, each returning what
+     * the observer RESOLVED rather than the record it resolved from — so the
+     * question "what is this device's charge" has exactly one answer and exactly
+     * one way to ask it.
+     *
+     * They read the stored record directly rather than being handed a value from
+     * `getObservedState`, which does not declare the clusters. Passing one across
+     * would compile (every cluster field is optional, so the narrow type is
+     * assignable to the wide one) and would work only because the object underneath
+     * is physically wider than its type — which is the kind of accident that
+     * survives until someone returns a genuinely narrowed copy.
+     */
+    getObservedStateOfCharge(deviceId: string): ObservedStateOfChargeRead;
+    getObservedTemperature(deviceId: string): ObservedTemperatureRead;
+    getObservedEvChargingState(deviceId: string): ObservedEvChargingStateRead;
+    /** Which way this device's setpoint moves demand. */
+    getThermalDirection(deviceId: string): ThermalDirection;
+    /**
+     * Whether this device's power reading is a live measurement of its draw, not
+     * a rate derived from a cumulative meter. Read by the energy-task delivery
+     * count, which books only live readings.
+     */
+    isLiveMeasuredDraw(deviceId: string): boolean;
+    /** The accepted-write counter; see `ObservedDeviceStateProjection.getRevision`. */
+    getRevision(): number;
+};
+
 type ProjectionEntry = {
     value: ProjectedObservedDeviceState;
     seq?: number;
@@ -239,7 +317,7 @@ function freezeObserved(value: ProjectedObservedDeviceState): ProjectedObservedD
  * anywhere that would outlive a transport rebuild, or a fresh transport's early
  * deltas (lower seqs) would be dropped.
  */
-export class ObservedDeviceStateProjection {
+export class ObservedDeviceStateProjection implements ObservedDeviceReads {
     private byId: Map<string, ProjectionEntry> = new Map();
 
     private revision = 0;
@@ -300,19 +378,28 @@ export class ObservedDeviceStateProjection {
      * been recorded. The value is frozen (see {@link apply}) so a consumer cannot
      * mutate the projection's stored state by reference.
      *
-     * Wide, and deliberately so: this is the OWNER's read, and the record is what
-     * the owner holds. It has exactly one caller — `setup/appRuntimeApi.ts` — and
-     * that is where the narrowing happens: the app hands consumers
-     * `ObservedDeviceState` from `getObservedState`, resolves each cluster through
-     * its own named read, and passes the whole record only to the settings-UI
-     * payload refresh, which overlays raw fields and so genuinely holds it.
-     *
-     * Keep that one caller. A second one is the general exit re-opening: while the
-     * app's own getter handed this out, every consumer wired to it could read any
-     * cluster raw, and the raw way won by being shorter than the resolved one.
+     * Declared narrow (see {@link ObservedDeviceReads.getObservedState}); the
+     * record it hands back is the same one {@link getObservedRecord} returns.
      */
-    getObservedState(deviceId: string): ProjectedObservedDeviceState | undefined {
+    getObservedState(deviceId: string): ObservedDeviceState | undefined {
+        return this.getObservedRecord(deviceId);
+    }
+
+    /** The whole stored record (see {@link ObservedDeviceReads.getObservedRecord}). */
+    getObservedRecord(deviceId: string): ProjectedObservedDeviceState | undefined {
         return this.byId.get(deviceId)?.value;
+    }
+
+    getObservedStateOfCharge(deviceId: string): ObservedStateOfChargeRead {
+        return readObservedStateOfCharge(this.getObservedRecord(deviceId));
+    }
+
+    getObservedTemperature(deviceId: string): ObservedTemperatureRead {
+        return readObservedTemperatureState(this.getObservedRecord(deviceId));
+    }
+
+    getObservedEvChargingState(deviceId: string): ObservedEvChargingStateRead {
+        return readObservedEvChargingState(this.getObservedRecord(deviceId));
     }
 
     /**
@@ -337,11 +424,11 @@ export class ObservedDeviceStateProjection {
     }
 
     /**
-     * Narrow, unlike its single-device sibling above: that one has an owner-side
-     * caller that needs the record, this one has no production caller at all —
-     * only the projection's own specs. Closing it before it acquires one costs
-     * nothing, and a caller enumerating devices has no more business reading a raw
-     * cluster than one asking about a single device.
+     * Narrow, like `getObservedState`, and with no wide sibling: it has no
+     * production caller at all — only the projection's own specs. Closing it
+     * before it acquires one costs nothing, and a caller enumerating devices has
+     * no more business reading a raw cluster than one asking about a single
+     * device.
      */
     getAllObservedStates(): ObservedDeviceState[] {
         return Array.from(this.byId.values(), (entry) => entry.value);

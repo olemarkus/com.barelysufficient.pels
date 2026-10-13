@@ -28,7 +28,7 @@
  * target with no capacity pressure at all — exactly as main does. That is the
  * restore anchor; see `getModeDeviceTargets` below.
  */
-import { requireBatteryControl, requirePlanService } from '../appInit/contextGuards';
+import { requireBatteryControl, requirePlanService, requirePriceCoordinator } from '../appInit/contextGuards';
 import { mainStorageLane } from '../appInit/createBatteryControl';
 import type { HomeId } from '../../lib/power/capacitySettingsStore';
 import type { MeterSilenceMonitor } from '../../lib/power/meterSilence';
@@ -192,7 +192,7 @@ export type HomeScope = {
  * persisted-signal writers exactly as a meter area's bundle fences its own.
  * `isHomeWideFenced` is the cycle-stable half of Main's actuation fence, folded
  * into the effective dry-run for the same reason a meter area folds its
- * membership and source-epoch gates into `resolveEffectiveDryRun`.
+ * membership and source-epoch gates into `SubHomeRuntime.isEffectiveDryRunForExecution`.
  */
 export function buildMainHomeScope(
   ctx: AppContext,
@@ -272,8 +272,8 @@ export function buildMainHomeScope(
     // uninit could still publish a status and, worse, write
     // `device_last_controlled_ms`, which the next boot hydrates from.
     ...createHomeSignalWriters(ctx, homeId, isTornDown),
-    getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
-    getCurrentHourPriceLevel: () => ctx.getCurrentHourPriceLevel(),
+    getPriceOptimizationEnabled: () => requirePriceCoordinator(ctx).getPriceOptimizationEnabled(),
+    getCurrentHourPriceLevel: () => requirePriceCoordinator(ctx).getCurrentHourPriceLevel(),
     // Late-bound closure: the curtailment estimator is wired post-startup
     // (`wireCurtailmentSurplus`), after the engine exists. A home whose
     // estimator has not been wired yet has 0 kW of inferred surplus, which is

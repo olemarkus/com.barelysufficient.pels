@@ -1,4 +1,4 @@
-import { installPowerSampleFreshnessEscalation } from './powerSampleFreshnessEscalation';
+import { MeterSilenceEscalation } from '../lib/power/meterSilenceEscalation';
 import { requireDeviceManager, requirePlanService } from './appInit/contextGuards';
 import { MAIN_HOME_ID } from '../lib/utils/settingsKeys';
 import type { AppContext } from '../lib/app/appContext';
@@ -18,9 +18,9 @@ export function installMainFreshnessEscalation(
   isTornDown: () => boolean,
   isActuationFenced: () => boolean,
 ): void {
-  installPowerSampleFreshnessEscalation({
-    ctx,
+  new MeterSilenceEscalation({
     homeId: MAIN_HOME_ID,
+    timers: ctx.timers,
     timerKey: 'mainFreshnessEscalation',
     logger: () => ctx.getStructuredLogger('power'),
     rebuild: () => requirePlanService(ctx).rebuildPlanFromCache('freshness_heartbeat'),
@@ -29,5 +29,5 @@ export function installMainFreshnessEscalation(
     isMeterSampled: () => true,
     isSnapshotWarm: () => requireDeviceManager(ctx).hasWarmSnapshot(),
     isActuationFenced,
-  });
+  }).start();
 }

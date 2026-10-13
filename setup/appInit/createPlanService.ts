@@ -53,18 +53,18 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     // mid-serialization is O(n²) and re-entrant-unsafe (it breaks the SDK-boundary
     // shed e2es). The bootstrap refresh publishes the boot snapshot to Observer
     // before the warmup gate admits the first plan cycle.
-    getObservedEvChargingState: (deviceId) => ctx.getObservedEvChargingState(deviceId),
+    getObservedEvChargingState: (deviceId) => ctx.observer.getObservedEvChargingState(deviceId),
     // Read live from the transport, not off a snapshot: the association is
     // resolved per read and moves within seconds of a plug edge.
     getAssociatedCarChargingState: (deviceId) => deviceManager.getAssociatedCar(deviceId)?.chargingState,
     // The card's battery level. Same seam and same reason as the plug-state
     // above: the plan device carries the boost DECISION, not the reading it was
     // made from.
-    getObservedStateOfCharge: (deviceId) => ctx.getObservedStateOfCharge(deviceId),
-    getObservedTemperature: (deviceId) => ctx.getObservedTemperature(deviceId),
+    getObservedStateOfCharge: (deviceId) => ctx.observer.getObservedStateOfCharge(deviceId),
+    getObservedTemperature: (deviceId) => ctx.observer.getObservedTemperature(deviceId),
     getHomeBatteryCard: (deviceId) => readHomeBatteryCard(
       deviceManager.getSnapshotByDeviceId(deviceId),
-      ctx.getObservedRecord(deviceId),
+      ctx.observer.getObservedRecord(deviceId),
       scope.isBatteryWatchOnly(deviceId),
     ),
     getSteppedLoadProfileById: () => {

@@ -171,7 +171,6 @@ packages/shared-domain/src/utils/dateUtils.ts 1
 packages/shared-domain/src/weatherInsightCopy.ts 7
 setup/appDebugHelpers.ts 2
 setup/appDeviceSupport.ts 1
-setup/appInit/appHomeMembershipOptions.ts 1
 setup/appInit/wireHomeMembership.ts 5
 setup/appLifecycleHelpers.ts 1
 setup/appPriceLowestTrigger.ts 1
@@ -181,8 +180,6 @@ setup/capacityShortfallSideEffectGate.ts 1
 setup/externalOffHoldDetection.ts 3
 setup/flowConflictProbe.ts 1
 setup/homeMeterOwnership.ts 1
-setup/homeRuntime/createHomeCapacityBundle.ts 3
-setup/homeRuntime/homeCapacityBundleReadiness.ts 1
 setup/homeRuntime/homeModeOwnershipStore.ts 1
 setup/homeRuntime/homeTrackerConfigSafety.ts 4
 setup/homeRuntime/resetPersistedHomeTrackerFreshness.ts 1

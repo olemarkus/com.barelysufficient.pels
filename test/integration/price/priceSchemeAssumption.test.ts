@@ -3,7 +3,6 @@ import { mockHomeyInstance, resetMockHomey } from '../../mocks/homey';
 import { PriceCoordinator } from '../../../lib/price/priceCoordinator';
 import { createPriceOptimizationSettingsStore } from '../../../lib/price/priceOptimizationSettingsStore';
 import { createPriceDataStore } from '../../../lib/price/priceDataStore';
-import { PriceLevel } from '../../../lib/price/priceLevels';
 import {
   EXPORT_FIXED, EXPORT_PRICE_ENABLED, EXPORT_SPOT_FACTOR, PRICE_SCHEME,
 } from '../../../lib/utils/settingsKeys';
@@ -24,7 +23,6 @@ const createCoordinator = (readHubMarket: () => Promise<SettingsUiHubMarketRead>
     getPowerTracker: () => ({}),
     homeyWebApiGet: webApi.get,
     readHubMarket,
-    getCurrentPriceLevel: () => PriceLevel.NORMAL,
     log: () => undefined,
     debugStructured: () => undefined,
     error: () => undefined,

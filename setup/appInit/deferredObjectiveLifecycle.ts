@@ -83,7 +83,7 @@ const convergeLifecycleFallback = (
   deviceId: string,
 ): 'settled' | 'pending' | 'unavailable' | 'undriveable' => {
   const commandState = projectLifecycleFallbackCommandState(
-    ctx.deviceControlHelpers.getLifecycleFallbackDevice(deviceId), ctx.getObservedState(deviceId),
+    ctx.deviceControlHelpers.getLifecycleFallbackDevice(deviceId), ctx.observer.getObservedState(deviceId),
   );
   if (commandState.state === 'unavailable') return 'unavailable';
   // Resolved BEFORE the executor port is required: answering "there is nothing

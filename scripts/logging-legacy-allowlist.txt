@@ -38,7 +38,6 @@ setup/appSnapshotHelpers.ts 1
 setup/backgroundTasksController.ts 1
 setup/homeRuntime/homeRuntimeRegistryLogs.ts 1
 setup/homeRuntime/homeTrackerConfigSafety.ts 1
-setup/powerSampleFreshnessEscalation.ts 2
 setup/settingsUiApi.ts 2
 
 # --- Plan and observer lane -------------------------------------------------

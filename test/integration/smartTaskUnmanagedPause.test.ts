@@ -1,5 +1,6 @@
 import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
+import { observedDeviceReadsDouble } from '../helpers/observedDeviceReadsDouble';
 import { deviceControlSettingsFixture } from '../helpers/deviceControlSettingsFixture';
 // Integration coverage for the "device is no longer managed" smart-task pause
 import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
@@ -344,13 +345,15 @@ const buildTerminalFallbackCtx = (managedDevices: Record<string, boolean>) => {
         stepAxis: { state: 'unavailable' },
       }),
     } as unknown as AppContext['deviceControlHelpers'],
-    getObservedState: () => ({
-      id: 'd1',
-      name: 'Bathroom heater',
-      available: true,
-      binaryControl: { on: true },
-      targets: [],
-      measuredPowerKw: 0,
+    observer: observedDeviceReadsDouble(undefined, {
+      getObservedState: () => ({
+        id: 'd1',
+        name: 'Bathroom heater',
+        available: true,
+        binaryControl: { on: true },
+        targets: [],
+        measuredPowerKw: 0,
+      }),
     }),
     deferredObjectiveStatusBus: { forgetDevice: vi.fn() } as unknown as AppContext['deferredObjectiveStatusBus'],
     deferredObjectiveActivePlanRecorder: {

@@ -66,7 +66,6 @@ import { FlowConflictRefreshCoordinator } from './lib/flowApi/flowConflictRefres
 import {
   AppServiceWiring,
   createHomeRuntimeRegistryForApp,
-  createPreparedMainReconcileFence,
   buildHomeRuntimeReadPort,
 } from './setup/appServiceWiring';
 import type { PowerTrackerState } from './lib/power/trackerTypes';
@@ -194,7 +193,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   public getDeviceSurfaces() {
     return joinObservedDeviceDescriptors(
       this.deviceReads.descriptors(),
-      (deviceId) => this.getObservedRecord(deviceId),
+      (deviceId) => this.observer.getObservedRecord(deviceId),
     );
   }
   /**
@@ -213,12 +212,11 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   // dispatcher; Homey Energy sample paths use the co-temporal transport return.
   private readonly observedHomePower: ObservedHomePower = new ObservedHomePower();
   // Observer-owned maintained projection of `ObservedDeviceState`, fed by the
-  // dispatcher push (per-capability deltas + full-refresh batches). Stage 4a of
-  // the snapshot decomposition: stood up + shadow-verified only — NO existing
-  // reader is routed through it yet (zero behaviour change). Same lifecycle as
-  // the device manager and emitter: one per run.
-  protected readonly observedDeviceStateProjection: ObservedDeviceStateProjection
-    = new ObservedDeviceStateProjection();
+  // dispatcher push (per-capability deltas + full-refresh batches). The context
+  // hands it out as its read port (`AppContext.observer`); the service wiring
+  // holds the concrete class to subscribe its writes. Same lifecycle as the
+  // device manager and emitter: one per run.
+  public readonly observer = new ObservedDeviceStateProjection();
   public planEngine!: PlanEngine;
   public planService!: PlanService;
   // Created in `onInit` (after the structured logger is wired) and released
@@ -522,10 +520,6 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   // registry itself never reaches the context.
   public readonly homeRuntimeRead = buildHomeRuntimeReadPort(() => this.runtime.homeRuntimeRegistry);
 
-  private readonly preparedMainReconcileFence = createPreparedMainReconcileFence(
-    () => this.powerSamplePipeline.getStableSampleRevision(),
-  );
-
   // Boot/teardown orchestration + per-service construction.
   protected readonly serviceWiring = new AppServiceWiring({
     ctx: this.ctx,
@@ -542,19 +536,16 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     handles: this.runtime,
     shutdown: this.shutdown,
     teardown: this.backgroundTaskBundle.teardown,
-    preparedMainReconcileFence: this.preparedMainReconcileFence,
+    mainPowerSamplePipeline: this.powerSamplePipeline,
     homeyApp: this,
     backgroundTasks: this.backgroundTasks,
     timers: this.timers,
     nativeWiring: this.nativeWiring,
-    flowBacked: this.flowBacked,
     powerTrackerHelpers: this.powerTrackerHelpers,
     planRebuildScheduler: this.planRebuildScheduler,
-    getStablePowerSampleRevision: () => this.powerSamplePipeline.getStableSampleRevision(),
-    getPowerCalibrationStore: () => this.getPowerCalibrationStore(),
     observedStateEmitter: this.observedStateEmitter,
     observedHomePower: this.observedHomePower,
-    observedDeviceStateProjection: this.observedDeviceStateProjection,
+    observedDeviceStateProjection: this.observer,
     retryDeferredOvershootSeed: (membership, allowPending) => this.snapshotHelpers.retryDeferredOvershootSeed(
       (deviceId) => this.homeModeCatalog.resolveOperatingModeForDevice(deviceId, membership, allowPending),
     ),

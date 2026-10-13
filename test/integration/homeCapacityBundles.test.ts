@@ -19,6 +19,7 @@
 // in-memory userdata store backs the tracker persistence; the bundles run
 // their REAL plan engine/service/guard/pipeline.
 import { createModeOwnershipTransfer } from '../../setup/homeRuntime/createModeOwnershipTransfer';
+import { createExternalOffHoldPolicy } from '../../setup/externalOffHoldAdapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
 import type { AppContext } from '../../lib/app/appContext';
@@ -87,6 +88,8 @@ type Rig = {
 const buildRig = (): Rig => {
   const ctx = createAppContextMock({
     homey: homeyLike,
+    // Built with the device transport in production, before the settings handler.
+    externalOffHold: createExternalOffHoldPolicy(homeyLike.settings),
     // `getSnapshot` lets a real plan rebuild complete (the status writer reads
     // the raw snapshot via `deviceManager.getSnapshot()`); without it the rebuild
     // throws and resolves `{ failed: true }`, masking the ready-edge/status paths.
@@ -1450,10 +1453,10 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     rig.ctx.latestTargetSnapshot.push(load);
     rig.ctx.resolveManagedState = vi.fn(() => true);
     rig.ctx.isCapacityControlEnabled = vi.fn(() => true);
-    rig.ctx.getObservedState = vi.fn(() => load);
+    vi.mocked(rig.ctx.observer.getObservedState).mockImplementation(() => load);
     // The executor's drift check holds the observed RECORD, which is a separate
     // accessor from the base read — stubbing only the latter used to serve both.
-    rig.ctx.getObservedRecord = vi.fn(() => load);
+    vi.mocked(rig.ctx.observer.getObservedRecord).mockImplementation(() => load);
     // The executor's device read is the descriptor joined with that record
     // (stage 5); the mock context's descriptor reads default to nothing.
     rig.ctx.getDeviceDescriptor = vi.fn((id: string) => deviceManager.getSnapshotByDeviceId(id));

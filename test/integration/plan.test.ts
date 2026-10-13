@@ -136,7 +136,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-    app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
+    vi.spyOn(app.priceCoordinator, 'getCurrentHourPriceLevel').mockReturnValue(PriceLevel.CHEAP);
 
     // Clear events from initialization
     mockHomeyInstance.api.clearRealtimeEvents();
@@ -174,7 +174,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-    app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
+    vi.spyOn(app.priceCoordinator, 'getCurrentHourPriceLevel').mockReturnValue(PriceLevel.CHEAP);
 
     // Deterministic soft limit for the test.
     app.computeDynamicSoftLimit = () => 9;
@@ -1824,7 +1824,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-    app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
+    vi.spyOn(app.priceCoordinator, 'getCurrentHourPriceLevel').mockReturnValue(PriceLevel.CHEAP);
 
     await app['powerSamplePipeline'].recordPowerSample(500000);
     expect(triggerSpy).toHaveBeenCalledTimes(1);
@@ -2968,7 +2968,7 @@ describe('Dry run mode', () => {
 
     const app = createApp();
     await app.onInit();
-    app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
+    vi.spyOn(app.priceCoordinator, 'getCurrentHourPriceLevel').mockReturnValue(PriceLevel.CHEAP);
 
     // Temperature should NOT have been changed in dry run mode
     // (would be 65 if price optimization was applied: 55 + 10)
@@ -3002,13 +3002,13 @@ describe('Dry run mode', () => {
 
     const app = createApp();
     await app.onInit();
-    app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
+    vi.spyOn(app.priceCoordinator, 'getCurrentHourPriceLevel').mockReturnValue(PriceLevel.CHEAP);
 
     // Verify dry run is enabled by default
     expect(app.capacityDryRun).toBe(true);
 
     // Mock the cheap/expensive detection to return cheap
-    app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
+    vi.spyOn(app.priceCoordinator, 'getCurrentHourPriceLevel').mockReturnValue(PriceLevel.CHEAP);
 
     // A reading rebuilds the plan with the cheap price in force.
     await app['powerSamplePipeline'].recordPowerSample(1000);
@@ -3055,7 +3055,7 @@ describe('Dry run mode', () => {
 
     const app = createApp();
     await app.onInit();
-    app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
+    vi.spyOn(app.priceCoordinator, 'getCurrentHourPriceLevel').mockReturnValue(PriceLevel.CHEAP);
     app.computeDynamicSoftLimit = () => 3;
     app.computeDynamicSoftLimit = () => 3;
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
@@ -3099,7 +3099,7 @@ describe('Dry run mode', () => {
 
     const app = createApp();
     await app.onInit();
-    app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
+    vi.spyOn(app.priceCoordinator, 'getCurrentHourPriceLevel').mockReturnValue(PriceLevel.CHEAP);
 
     await app.planService.rebuildPlanFromCache('unknown');
 
@@ -3147,7 +3147,7 @@ describe('Dry run mode', () => {
 
     const app = createApp();
     await app.onInit();
-    app.getCurrentHourPriceLevel = () => PriceLevel.CHEAP;
+    vi.spyOn(app.priceCoordinator, 'getCurrentHourPriceLevel').mockReturnValue(PriceLevel.CHEAP);
 
     // createApp seeds a fresh 0 kW sample; the 4 kW limit leaves room for the
     // first-seen load and isolates the price-versus-temperature behavior.

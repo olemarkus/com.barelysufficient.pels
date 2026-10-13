@@ -2,17 +2,17 @@
  * The per-home capacity bundle's public handle (multi-home R7b). Split out of
  * `createHomeCapacityBundle` so that factory stays within the setup-layer
  * per-function/per-file size ceilings. Every handler closes over the passed
- * service handles; the bundle's mutable state (`home`, capacity scalars, sample
- * revision, teardown fence) is reached through getter/setter closures so it
- * stays owned by the factory. Type imports are erased at compile time.
+ * service handles; the bundle's mutable state (config, capacity scalars,
+ * teardown latch) lives in its `SubHomeRuntime` (`lib/home/subHomeRuntime.ts`).
+ * Type imports are erased at compile time.
  */
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { AppContext } from '../../lib/app/appContext';
-import type { SubHomeConfig } from '../../lib/home/homeConfig';
-import type { HomeId } from '../../lib/utils/settingsKeys';
-import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
+import type { SubHomeRuntime } from '../../lib/home/subHomeRuntime';
+import type { SubHomeMembershipReadyEdge } from '../../lib/home/subHomeMembershipReadyEdge';
 import type { PlanService } from '../../lib/plan/planService';
 import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
+import { resolveCurrentMonthQuarterPeakKw } from '../../lib/power/capacityPeak';
 import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import type { PlanEngine } from '../../lib/plan/planEngine';
 import {
@@ -24,7 +24,6 @@ import type { createHomePowerPipeline } from './createHomePowerPipeline';
 import type { HomeScope } from './homeScope';
 import type {
   HomeCapacityBundle,
-  HomeCapacityBundleDeps,
   HomeCapacityBundleDiagnostics,
 } from './createHomeCapacityBundle';
 import type { HomeTrackerPersistence } from '../../lib/power/homeTrackerPersistence';
@@ -37,57 +36,26 @@ import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/thrott
 // ceiling and already depends on this one.
 export { resolveHomeAreaDisplayName } from '../../packages/shared-domain/src/homeNames';
 
-export type PreparedBundleSampleFence = {
-  bindReader: (reader: () => StableSampleRevision) => void;
-  begin: (sampleRevision: number) => () => void;
-  isActive: () => boolean;
-  isSuperseded: () => boolean;
-};
-
-/**
- * Reference-counted final-actuator fence for prepared sub-home plan work.
- * Handles are identity-keyed so ending one overlapping reconcile cannot remove
- * another reconcile's protection, even when both use the same sample revision.
- */
-export const createPreparedBundleSampleFence = (): PreparedBundleSampleFence => {
-  const activeRevisions = new Map<symbol, number>();
-  let readStableRevision = (): StableSampleRevision => ({ state: 'stable', revision: 0 });
-  return {
-    bindReader: (reader) => { readStableRevision = reader; },
-    begin: (sampleRevision) => {
-      const handle = Symbol('preparedBundleReconcile');
-      activeRevisions.set(handle, sampleRevision);
-      return () => { activeRevisions.delete(handle); };
-    },
-    isActive: () => activeRevisions.size > 0,
-    isSuperseded: () => {
-      if (activeRevisions.size === 0) return false;
-      const current = readStableRevision();
-      return current.state !== 'stable'
-        || [...activeRevisions.values()].some((revision) => revision !== current.revision);
-    },
-  };
-};
-
 export const startHomeCapacityBundle = (
   planService: PlanService,
   logger: () => ReturnType<AppContext['getStructuredLogger']>,
-  home: SubHomeConfig,
-  capacityScalars: CapacityScalarSettings,
+  runtime: SubHomeRuntime,
 ): void => {
   void planService.rebuildPlanFromCache('home_bundle_created').catch((error: unknown) => {
     logger()?.error({
       event: 'home_bundle_initial_rebuild_failed',
-      homeId: home.homeId,
+      homeId: runtime.homeId,
       err: normalizeError(error),
     });
   });
+  const { meterDeviceId } = runtime.getHomeConfig();
+  const { limitKw, dryRun } = runtime.getCapacityScalars();
   logger()?.info({
     event: 'home_capacity_bundle_created',
-    homeId: home.homeId,
-    meterDeviceId: home.meterDeviceId,
-    limitKw: capacityScalars.limitKw,
-    dryRun: capacityScalars.dryRun,
+    homeId: runtime.homeId,
+    meterDeviceId,
+    limitKw,
+    dryRun,
   });
 };
 
@@ -98,8 +66,8 @@ const isStableRevision = (sample: StableSampleRevision, revision: number): boole
 /** The ownership-generation lane: a rebuild lane plus the sample fence it reconciles against. */
 type HomeOwnershipGenerationDeps = HomeRebuildLaneDeps & Pick<
   HomeCapacityBundleApiParams,
-  'getStableSampleRevision' | 'beginPreparedOwnershipReconcile'
-  | 'markPreparedOwnershipGenerationReconciled' | 'flushDeferredShortfallSideEffect'
+  'pipeline' | 'beginPreparedOwnershipReconcile'
+  | 'membershipReadyEdge' | 'flushDeferredShortfallSideEffect'
 >;
 
 const buildOwnershipGenerationOperations = (params: HomeOwnershipGenerationDeps): Pick<
@@ -110,13 +78,12 @@ const buildOwnershipGenerationOperations = (params: HomeOwnershipGenerationDeps)
   | 'reconcilePreparedOwnershipGeneration'
 > => {
   const {
-    homeId,
+    runtime: { homeId, isTornDown },
     logger,
     planService,
-    isTornDown,
-    getStableSampleRevision,
+    pipeline,
     beginPreparedOwnershipReconcile,
-    markPreparedOwnershipGenerationReconciled,
+    membershipReadyEdge,
     flushDeferredShortfallSideEffect,
   } = params;
   const rebuildMembershipPlan = async (): Promise<boolean> => {
@@ -136,10 +103,10 @@ const buildOwnershipGenerationOperations = (params: HomeOwnershipGenerationDeps)
   return {
     rebuildForMembershipChange: rebuildMembershipPlan,
     prepareOwnershipGeneration: async () => {
-      const sample = getStableSampleRevision();
+      const sample = pipeline.getStableSampleRevision();
       if (sample.state === 'pending') return sample;
       const rebuilt = await rebuildMembershipPlan();
-      const current = getStableSampleRevision();
+      const current = pipeline.getStableSampleRevision();
       return rebuilt
         && current.state === 'stable'
         && current.revision === sample.revision
@@ -147,7 +114,7 @@ const buildOwnershipGenerationOperations = (params: HomeOwnershipGenerationDeps)
         : { state: 'pending' };
     },
     isPreparedOwnershipGenerationCurrent: (sampleRevision) => (
-      !isTornDown() && isStableRevision(getStableSampleRevision(), sampleRevision)
+      !isTornDown() && isStableRevision(pipeline.getStableSampleRevision(), sampleRevision)
     ),
     reconcilePreparedOwnershipGeneration: async (sampleRevision) => {
       let aborted = false;
@@ -161,7 +128,7 @@ const buildOwnershipGenerationOperations = (params: HomeOwnershipGenerationDeps)
       try {
         const outcome = await planService.rebuildPlanFromCache('home_ownership_generation_prepared', {
           shouldAbort: () => {
-            const current = getStableSampleRevision();
+            const current = pipeline.getStableSampleRevision();
             return isTornDown()
               || current.state !== 'stable'
               || current.revision !== sampleRevision;
@@ -172,14 +139,14 @@ const buildOwnershipGenerationOperations = (params: HomeOwnershipGenerationDeps)
       } finally {
         endPreparedReconcile();
       }
-      const stable = getStableSampleRevision();
+      const stable = pipeline.getStableSampleRevision();
       const current = !aborted
         && !failed
         && !isTornDown()
         && stable.state === 'stable'
         && stable.revision === sampleRevision;
       const sideEffectFlushed = current && await flushDeferredShortfallSideEffect();
-      if (sideEffectFlushed) markPreparedOwnershipGenerationReconciled();
+      if (sideEffectFlushed) membershipReadyEdge.markPreparedOwnershipGenerationReconciled();
       return sideEffectFlushed;
     },
   };
@@ -192,17 +159,14 @@ const buildOwnershipGenerationOperations = (params: HomeOwnershipGenerationDeps)
  * marker-last migration completes.
  */
 /** A contained rebuild lane: identity, logging, the plan service, the fence. */
-type HomeRebuildLaneDeps = Pick<
-  HomeCapacityBundleApiParams,
-  'homeId' | 'logger' | 'planService' | 'isTornDown'
->;
+type HomeRebuildLaneDeps = Pick<HomeCapacityBundleApiParams, 'runtime' | 'logger' | 'planService'>;
 
 const buildSettingsRebuild = (
   params: HomeRebuildLaneDeps,
   settingsSource: string,
   failureEvent: string,
 ): (() => void) => () => {
-  if (params.isTornDown()) return;
+  if (params.runtime.isTornDown()) return;
   // `rebuildPlanFromCache` CONTAINS planner errors and resolves `failed: true`
   // (the catch below only sees non-contained throws), so the resolved outcome
   // must be inspected too — the `home_membership_bundle_rebuild_failed` site
@@ -211,46 +175,19 @@ const buildSettingsRebuild = (
   // visible instead of silent.
   void params.planService.rebuildPlanFromCache('settings', { detail: settingsSource })
     .then((outcome) => {
-      if (!outcome.failed || params.isTornDown()) return;
+      if (!outcome.failed || params.runtime.isTornDown()) return;
       params.logger()?.error({
         event: failureEvent,
-        homeId: params.homeId,
+        homeId: params.runtime.homeId,
       });
     }).catch((error: unknown) => {
       params.logger()?.error({
         event: failureEvent,
-        homeId: params.homeId,
+        homeId: params.runtime.homeId,
         err: normalizeError(error),
       });
     });
 };
-
-/**
- * The canonical effective no-actuation switch: both external trust boundaries
- * fold into the persisted per-home toggle — membership must be committed and
- * this meter-bearing source epoch must be authorized before writes are enabled.
- *
- * Parameterized by the source predicate ON PURPOSE. The bundle's EXECUTION
- * predicate arms a source-recovery retry (rebuild + reconcile) as a side effect
- * of being asked, so only the control path may pass it; the READ seam passes
- * the registry's raw predicate and gets the same value with no side effect.
- * Lives here rather than in a new file because `createHomeCapacityBundle.ts`
- * already value-imports this module and is at its `import-x/max-dependencies`
- * ceiling.
- */
-export type HomeDryRunGates = {
-  isTornDown: () => boolean;
-  isMembershipReady: () => boolean;
-  isMeterSourceAuthorized: () => boolean;
-  getScalars: () => CapacityScalarSettings;
-};
-
-export const resolveEffectiveDryRun = (gates: HomeDryRunGates): boolean => (
-  gates.isTornDown()
-  || !gates.isMembershipReady()
-  || !gates.isMeterSourceAuthorized()
-  || gates.getScalars().dryRun
-);
 
 /**
  * What the read surface may touch. `getOperatingMode` is the scope's mode
@@ -259,8 +196,7 @@ export const resolveEffectiveDryRun = (gates: HomeDryRunGates): boolean => (
  */
 type HomeCapacityBundleReadDeps = Pick<
   HomeCapacityBundleApiParams,
-  'homeId' | 'planEngine' | 'planService' | 'tracker' | 'getHome' | 'getScalars'
-  | 'readCapacityPeak' | 'isTornDown' | 'readDryRunGates'
+  'ctx' | 'runtime' | 'planEngine' | 'planService' | 'tracker'
 > & { getOperatingMode: () => string };
 
 /**
@@ -273,7 +209,7 @@ type HomeCapacityBundleReadDeps = Pick<
  * predicate, which schedules a recovery rebuild+reconcile when the source is
  * unauthorized — a UI poll landing in a transient `power_source` read failure
  * would otherwise start background actuation work. The read surface therefore
- * resolves its own dry-run from the RAW registry gates below.
+ * resolves its dry-run from the RAW registry gates (`readEffectiveDryRun`).
  *
  * Deliberately NO device list either: `scope.getPlanDevices()` seeds observed
  * state, evicts caches and decorates the whole snapshot, so serving it here
@@ -283,23 +219,15 @@ const buildHomeCapacityBundleReads = (
   deps: HomeCapacityBundleReadDeps,
 ): Pick<HomeCapacityBundle, 'getDiagnostics' | 'getReadModel'> => {
   const {
-    homeId, planEngine, planService, tracker, getHome, getScalars, readCapacityPeak,
-    isTornDown, readDryRunGates, getOperatingMode,
+    ctx, runtime, planEngine, planService, tracker, getOperatingMode,
   } = deps;
-  // Named, not spread: `isTornDown` is bundle-local and must never be shadowed
-  // by a same-named key arriving from the registry side.
-  const readEffectiveDryRun = (): boolean => resolveEffectiveDryRun({
-    isTornDown,
-    isMembershipReady: readDryRunGates.isMembershipReady,
-    isMeterSourceAuthorized: readDryRunGates.isMeterSourceAuthorized,
-    getScalars,
-  });
+  const { homeId } = runtime;
   const readDiagnostics = (): HomeCapacityBundleDiagnostics => ({
     homeId,
-    meterDeviceId: getHome().meterDeviceId,
+    meterDeviceId: runtime.getHomeConfig().meterDeviceId,
     operatingMode: getOperatingMode(),
-    capacityScalars: { ...getScalars() },
-    dryRunEffective: readEffectiveDryRun(),
+    capacityScalars: { ...runtime.getCapacityScalars() },
+    dryRunEffective: runtime.readEffectiveDryRun(),
     lastMeterPowerKw: resolveLastTotalPowerKw(tracker.getState()),
     lastDeviceControlledMs: { ...planEngine.state.actuation.lastDeviceControlledMs },
   });
@@ -311,7 +239,7 @@ const buildHomeCapacityBundleReads = (
       plan: planService.getLatestPlanSnapshotForUi(),
       planUpdatedAtMs: planService.getLatestPlanSnapshotUpdatedAtMs(),
       powerTracker: tracker.getState(),
-      currentMonthCapacityPeakKw: readCapacityPeak(),
+      currentMonthCapacityPeakKw: resolveCurrentMonthQuarterPeakKw(tracker.getState(), ctx.getTimeZone(), Date.now()),
       diagnostics: readDiagnostics(),
     }),
   };
@@ -319,34 +247,21 @@ const buildHomeCapacityBundleReads = (
 
 type HomeCapacityBundleApiParams = {
   ctx: AppContext;
-  homeId: HomeId;
+  /** The area's config, capacity scalars, teardown latch and dry-run gates. */
+  runtime: SubHomeRuntime;
   logger: () => ReturnType<AppContext['getStructuredLogger']>;
   timerKey: (suffix: string) => string;
   planEngine: PlanEngine;
   planService: PlanService;
   scope: HomeScope;
-  /**
-   * The registry's RAW membership/source predicates. The scope's execution
-   * predicate arms a source-recovery rebuild+reconcile as a side effect of
-   * being asked, so the READ surface resolves its dry-run through these.
-   */
-  readDryRunGates: Pick<HomeCapacityBundleDeps, 'isMembershipReady' | 'isMeterSourceAuthorized'>;
   tracker: HomeTrackerPersistence;
   pipeline: ReturnType<typeof createHomePowerPipeline>;
   planRebuildScheduler: PlanRebuildScheduler;
   capacityStore: ReturnType<typeof createCapacitySettingsStore>;
-  applyMembershipReadyEdge: () => void;
-  markPreparedOwnershipGenerationReconciled: () => void;
-  getHome: () => SubHomeConfig;
-  setHome: (home: SubHomeConfig) => void;
-  getScalars: () => CapacityScalarSettings;
-  readCapacityPeak: () => number | null;
-  setScalars: (scalars: CapacityScalarSettings) => void;
-  getStableSampleRevision: () => StableSampleRevision;
+  /** The area's membership-ready apply-edge (`lib/home/subHomeRecovery.ts`). */
+  membershipReadyEdge: SubHomeMembershipReadyEdge;
   beginPreparedOwnershipReconcile: (sampleRevision: number) => () => void;
   flushDeferredShortfallSideEffect: () => Promise<boolean>;
-  isTornDown: () => boolean;
-  markTornDown: () => void;
   reloadModeCatalog: (allowPendingOwnershipGeneration?: boolean) => void;
   isModeCatalogInitialized: () => boolean;
   /** THIS bundle's own rebuild throttle (never main's) — see `OwningHomeHooks`. */
@@ -355,11 +270,11 @@ type HomeCapacityBundleApiParams = {
 
 export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams): HomeCapacityBundle {
   const {
-    ctx, homeId, logger, timerKey, planEngine, planService, scope, tracker,
-    pipeline, planRebuildScheduler, capacityStore, applyMembershipReadyEdge,
-    getHome, setHome, getScalars, setScalars, flushDeferredShortfallSideEffect,
-    isTornDown, markTornDown, reloadModeCatalog, isModeCatalogInitialized,
+    ctx, runtime, logger, timerKey, planEngine, planService, scope, tracker,
+    pipeline, planRebuildScheduler, capacityStore, membershipReadyEdge,
+    flushDeferredShortfallSideEffect, reloadModeCatalog, isModeCatalogInitialized,
   } = params;
+  const { homeId, isTornDown } = runtime;
   const ownershipGenerationOperations = buildOwnershipGenerationOperations(params);
   const readOperations = buildHomeCapacityBundleReads({ ...params, getOperatingMode: scope.getOperatingMode });
   // When this home re-reads its capacity block, and whether the read rebuilds,
@@ -372,7 +287,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
     timerKey: capacitySettingsRetryTimer,
     isStopped: isTornDown,
     // The capacity scalars live in their own store; nothing mirrors them now.
-    install: (read) => setScalars(resolveInstalledCapacityScalars(read, getScalars())),
+    install: (read) => runtime.setCapacityScalars(resolveInstalledCapacityScalars(read, runtime.getCapacityScalars())),
     rebuildOnChange: true,
     rebuild: () => {
       // Sub-homes DEFAULT dry_run=true, so flipping it false is the normal
@@ -405,8 +320,8 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
   return {
     homeId,
     isTornDown,
-    getHomeConfig: () => ({ ...getHome() }),
-    getMeterDeviceId: () => getHome().meterDeviceId,
+    getHomeConfig: () => ({ ...runtime.getHomeConfig() }),
+    getMeterDeviceId: () => runtime.getHomeConfig().meterDeviceId,
     ...readOperations,
     // Owning-home routing (P1#1): bound when an observed device resolves to THIS
     // home. Every member must come from THIS bundle — main's pending store never
@@ -428,7 +343,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       isDeviceLimited: (deviceId) => planService.isDeviceLimitedInLatestPlan(deviceId),
     }),
     updateHomeConfig: (next) => {
-      setHome(next);
+      runtime.updateHomeConfig(next);
     },
     rebuildForModeSettingsChange: buildSettingsRebuild(
       params, 'mode_targets', 'home_mode_targets_rebuild_failed',
@@ -438,7 +353,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
     ),
     reloadModeCatalog,
     isModeCatalogInitialized,
-    applyMembershipReadyEdge,
+    applyMembershipReadyEdge: membershipReadyEdge.apply,
     ...ownershipGenerationOperations,
     flushDeferredShortfallSideEffect,
     recordMeterSample: (powerW, sampleNowMs) => {
@@ -449,7 +364,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       // superseded re-armed its latch, and the next settled sample re-applies the
       // fresh committed decision (a no-op once latched).
       void pipeline.recordPowerSample(powerW, sampleNowMs)
-        .then(() => { applyMembershipReadyEdge(); })
+        .then(() => { membershipReadyEdge.apply(); })
         .catch((error: unknown) => {
           logger()?.error({ event: 'home_meter_sample_failed', homeId, err: normalizeError(error) });
         });
@@ -467,7 +382,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       // Setting the fence FIRST nulls the actuator seam and gates the suffixed
       // writers/tracker-save, so any in-flight rebuild/reconcile/heartbeat/sample
       // continuation dispatched before this point can neither actuate nor persist.
-      markTornDown();
+      runtime.markTornDown();
       // A torn-down home has no status: the registry serves `absent` for it
       // from here on, and the fenced writer cannot publish one again.
       ctx.planStatuses.retire(homeId);

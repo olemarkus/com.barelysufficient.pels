@@ -6,11 +6,11 @@
 //   freshness heartbeats do not fire on one phase-aligned tick.
 import { describe, expect, it, vi } from 'vitest';
 import { createFencedActuator } from '../../setup/appInit/createPlanEngine';
-import { createPreparedBundleSampleFence } from '../../setup/homeRuntime/homeCapacityBundleApi';
-import { freshnessEscalationIntervalMs } from '../../setup/powerSampleFreshnessEscalation';
+import { PreparedReconcileFence } from '../../lib/power/preparedReconcileFence';
+import { freshnessEscalationIntervalMs } from '../../lib/power/meterSilenceEscalation';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { ActuatorOutcome, DeviceCommand } from '../../lib/actuator/deviceCommand';
-import type { StableSampleRevision } from '../../setup/powerSamplePipeline';
+import type { StableSampleRevision } from '../../lib/power/sampleIngestQueue';
 
 const command: DeviceCommand = { kind: 'target', deviceId: 'd1', target: 'temperature', value: 21 };
 const acceptedTargetOutcome = (): ActuatorOutcome => ({
@@ -66,11 +66,10 @@ describe('createFencedActuator (point-of-use actuation fence)', () => {
   });
 });
 
-describe('prepared bundle sample fence', () => {
+describe('prepared reconcile fence', () => {
   it('keeps overlapping same-revision handles independent until each owner ends', async () => {
     let sample: StableSampleRevision = { state: 'stable', revision: 7 };
-    const fence = createPreparedBundleSampleFence();
-    fence.bindReader(() => sample);
+    const fence = new PreparedReconcileFence(() => sample);
     const endFirst = fence.begin(7);
     const endSecond = fence.begin(7);
     const apply = vi.fn(async (): Promise<ActuatorOutcome> => acceptedTargetOutcome());

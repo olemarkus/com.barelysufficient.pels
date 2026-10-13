@@ -7,8 +7,6 @@ import type { ObservedHomePower } from '../lib/observer/observedHomePower';
 import type { ObservedDeviceStateProjection } from '../lib/observer/observedDeviceStateProjection';
 import { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';
 import type { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
-import type { PowerCalibrationStore } from '../lib/device/devicePowerCalibrationStore';
-import type { FlowBackedDeviceState } from '../lib/device/flowBackedDeviceState';
 import { createRootLogger, setRootLogger, type Logger as PinoLogger } from '../lib/logging/logger';
 import { createHomeyDestination } from '../lib/logging/homeyDestination';
 import { normalizeError } from '../lib/utils/errorUtils';
@@ -42,6 +40,7 @@ import { buildMainHomeScope, type HomeScope } from './homeRuntime/homeScope';
 import { createHomePlanRuntime } from './homeRuntime/createHomePlanRuntime';
 import { createHomeCapacityGuard } from './homeRuntime/createHomeCapacityGuard';
 import type { HomeRuntimeRegistry } from './homeRuntime/homeRuntimeRegistry';
+import type { PowerSamplePipeline } from './powerSamplePipeline';
 import {
   buildHomeRuntimeReadPort, createHomeRuntimeRegistryForApp, wirePlanStatusRealtime,
 } from './appInit/wireHomeRuntimeRegistry';
@@ -56,7 +55,7 @@ import {
 } from './appLifecycleHelpers';
 import { wireHomeMembership } from './appInit/wireHomeMembership';
 import {
-  buildAppHomeMembershipOptions, createPreparedMainReconcileFence, type StableSampleRevisionReader,
+  buildAppHomeMembershipOptions,
 } from './appInit/appHomeMembershipOptions';
 import { registerSettingsHandler } from './appInit/registerSettingsHandler';
 import { startPostStartupBackgroundTasks } from './appInit/startPostStartupBackgroundTasks';
@@ -93,17 +92,17 @@ const usesProductionStartupOrder = (): boolean => (
   process.env.NODE_ENV !== 'test' || process.env.PELS_ASYNC_STARTUP === '1'
 );
 
-// Re-exported so `app.ts` can construct the fence it owns without taking a
-// second module dependency — its `import-x/max-dependencies` ceiling is a
-// ratchet, and this wiring already imports the factory.
-export { createPreparedMainReconcileFence };
-// Re-exported for the same reason: `app.ts` builds the per-home read port over
-// the registry handle it owns.
+// Re-exported so `app.ts` can build the per-home read port over the registry
+// handle it owns without taking a second module dependency — its
+// `import-x/max-dependencies` ceiling is a ratchet, and this wiring already
+// imports the factory.
 export { buildHomeRuntimeReadPort };
 export type { HomeRuntimeRegistry };
 
 /** Detaches the membership recompute triggers: refresh subscription + zone-tree-commit callback. */
 const MEMBERSHIP_TEARDOWN_KEY = 'homeMembership';
+/** Detaches the settings `set`/`unset` listeners and stops the handler's debounced sync. */
+const SETTINGS_HANDLER_TEARDOWN_KEY = 'settingsHandler';
 
 export type AppServiceWiringDeps = {
   ctx: AppContext;
@@ -117,16 +116,14 @@ export type AppServiceWiringDeps = {
   shutdown: ShutdownLatch;
   /** Where this wiring's own stop callbacks live. See `lib/utils/teardownRegistry.ts`. */
   teardown: TeardownRegistry;
-  preparedMainReconcileFence: ReturnType<typeof createPreparedMainReconcileFence>;
+  /** Main's sample pipeline: its stable revision and the prepared-reconcile fence over it. */
+  mainPowerSamplePipeline: PowerSamplePipeline;
   homeyApp: Homey.App;
   backgroundTasks: BackgroundTasksController;
   timers: TimerRegistry;
   nativeWiring: AppNativeWiring;
-  flowBacked: FlowBackedDeviceState;
   powerTrackerHelpers: AppPowerTracker;
   planRebuildScheduler: PlanRebuildScheduler;
-  getStablePowerSampleRevision: StableSampleRevisionReader;
-  getPowerCalibrationStore: () => PowerCalibrationStore;
   observedStateEmitter: ObservedStateEmitter;
   observedHomePower: ObservedHomePower;
   observedDeviceStateProjection: ObservedDeviceStateProjection;
@@ -205,7 +202,7 @@ export class AppServiceWiring {
     await runStartupStep('initDailyBudgetService', () => this.initDailyBudgetService(), logStartupStepFailure);
     await runStartupStep(
       'loadPersistedState',
-      () => this.deps.flowBacked.loadPersistedState(),
+      () => ctx.flowBacked.loadPersistedState(),
       logStartupStepFailure,
     );
     await runStartupStep(
@@ -300,7 +297,6 @@ export class AppServiceWiring {
       handles.structuredLogger ?? this.installStructuredLogger(),
       this.deps.nativeWiring,
       () => handles.homeRuntimeRegistry,
-      this.deps.getPowerCalibrationStore,
       observedStateEmitter.asDispatcher(this.deps.observedHomePower),
     );
     subscribeObservedStateProjection(observedStateEmitter, this.deps.observedDeviceStateProjection);
@@ -319,19 +315,17 @@ export class AppServiceWiring {
     const { handles } = this.deps;
     const wiring = wireHomeMembership(this.deps.ctx,
       (listener) => this.deps.observedStateEmitter.onObservedStateRefresh(listener),
-      buildAppHomeMembershipOptions({
-        getRegistry: () => handles.homeRuntimeRegistry,
-        getMembership: () => handles.homeMembershipService,
-        getMainStableSampleRevision: this.deps.getStablePowerSampleRevision,
-        beginMainPreparedReconcile: (sampleRevision) => {
+      buildAppHomeMembershipOptions(
+        () => handles.homeRuntimeRegistry,
+        () => handles.homeMembershipService,
+        () => this.deps.mainPowerSamplePipeline.getStableSampleRevision(),
+        (sampleRevision) => {
           handles.mainShortfallSideEffectGate?.holdDeferredUntilPreparedApply();
-          return this.deps.preparedMainReconcileFence.begin(sampleRevision);
+          return this.deps.mainPowerSamplePipeline.preparedReconcileFence.begin(sampleRevision);
         },
-        flushMainShortfallSideEffect: async () => (
-          handles.mainShortfallSideEffectGate?.flushAfterPreparedApply() ?? true
-        ),
-        retryDeferredOvershootSeed: this.deps.retryDeferredOvershootSeed,
-      }),
+        async () => handles.mainShortfallSideEffectGate?.flushAfterPreparedApply() ?? true,
+        this.deps.retryDeferredOvershootSeed,
+      ),
     );
     this.deps.ctx.homeMembership = wiring.service;
     handles.homeMembershipService = wiring.service;
@@ -385,7 +379,7 @@ export class AppServiceWiring {
       // factory for what each one licenses.
       () => this.deps.shutdown.isStopped(),
       () => this.isMainHomeWideFenced(),
-      this.deps.preparedMainReconcileFence.isActive,
+      () => this.deps.mainPowerSamplePipeline.preparedReconcileFence.isActive(),
     );
     ctx.capacityGuard = runtime.guard;
     this.deps.handles.mainShortfallSideEffectGate = runtime.shortfallSideEffectGate;
@@ -470,7 +464,7 @@ export class AppServiceWiring {
    * Being cycle-stable is what lets it be a DRY-RUN gate rather than only a
    * write fence — Main's scope folds it into `getCapacityDryRun`, exactly as a
    * meter area folds its membership and source-epoch gates into
-   * `resolveEffectiveDryRun`. The planner still builds; the executor simply
+   * `SubHomeRuntime.isEffectiveDryRunForExecution`. The planner still builds; the executor simply
    * does not dispatch writes it already knows cannot land.
    */
   private isMainHomeWideFenced(): boolean {
@@ -493,7 +487,7 @@ export class AppServiceWiring {
    */
   private isMainActuationFenced(): boolean {
     return this.isMainHomeWideFenced()
-      || this.deps.preparedMainReconcileFence.isSuperseded();
+      || this.deps.mainPowerSamplePipeline.preparedReconcileFence.isSuperseded();
   }
 
   /**
@@ -568,7 +562,7 @@ export class AppServiceWiring {
     // `initHomeRuntimeRegistry` runs after this step; until then a suffixed
     // write is dropped here and absorbed by the registry's boot-time reconcile.
     const { handles } = this.deps;
-    handles.stopSettingsHandler = registerSettingsHandler(
+    this.deps.teardown.register(SETTINGS_HANDLER_TEARDOWN_KEY, registerSettingsHandler(
       this.deps.ctx,
       this.deps.getHomeOperatingMode,
       () => handles.homeRuntimeRegistry,
@@ -586,7 +580,7 @@ export class AppServiceWiring {
         forecast.refreshSourceSetting();
         void forecast.refresh();
       },
-    );
+    ));
   }
 
   // Body in `setup/appObservedControlStateRuntime.ts`; kept as a method so the
@@ -676,7 +670,7 @@ export class AppServiceWiring {
     // The learned peaks are rate-limited to one write a minute: the peak
     // observed in the last minute of a run is precisely the one a restart would
     // drop, and the trailing flush timer is already gone by now.
-    this.deps.flowBacked.flushLearnedPeaks();
+    ctx.flowBacked.flushLearnedPeaks();
     // Mark how far we've observed; back-fill on next startup picks up from here. Skipped if
     // the recorder is still dirty (save failed), so the next start re-scans the missed window.
     persistDeferredObjectiveObservationWatermark(ctx, ctx.deferredObjectivePlanHistoryRecorder);
@@ -697,6 +691,6 @@ export class AppServiceWiring {
 
   private stopUninitServices(): void {
     this.deps.backgroundTasks.stopAll();
-    this.deps.handles.stopSettingsHandler?.();
+    this.deps.teardown.clear(SETTINGS_HANDLER_TEARDOWN_KEY);
   }
 }

@@ -1,5 +1,6 @@
 import type { Mock } from 'vitest';
-import { createSettingsHandler, type SettingsHandlerDeps } from '../../lib/utils/settingsHandlers';
+import { createSettingsHandler } from '../../lib/utils/settingsHandlers';
+import { settingsHandlerDepsDouble, settingsHandlerPriceServiceDouble } from '../helpers/settingsHandlerDepsDouble';
 import { createTemperatureControlFencedActuator } from '../../setup/appInit/buildDeviceActuator';
 import {
   BUDGET_EXEMPT_DEVICES,
@@ -60,42 +61,7 @@ const flushMicrotasks = async () => {
 
 const expectedForcedDailyBudgetPersist = { forcePlanRebuild: true, persistReason: 'manual' };
 
-const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandlerDeps => {
-  const homey = {
-    settings: {
-      get: vi.fn(),
-      set: vi.fn(),
-    },
-  } as unknown as SettingsHandlerDeps['homey'];
-
-  return {
-    homey,
-    onPvForecastSourceObserved: vi.fn(),
-    loadCapacitySettings: vi.fn(),
-    noteCapacitySettingWritten: vi.fn(),
-    recoverCapacitySettingsAfterSkippedWrite: vi.fn(),
-    reloadExpectedPowerOverrides: vi.fn(),
-    applyBatteryControlSettings: vi.fn(),
-    rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),
-    refreshTargetDevicesSnapshot: vi.fn().mockResolvedValue(undefined),
-    getCapacitySettings: vi.fn().mockReturnValue({ limitKw: 10, marginKw: 1, periodMinutes: 60 }),
-    getCapacityDryRun: vi.fn().mockReturnValue(false),
-    loadPriceOptimizationSettings: vi.fn(),
-    loadDailyBudgetSettings: vi.fn(),
-    updateDailyBudgetState: vi.fn(),
-    resetDailyBudgetLearning: vi.fn(),
-    priceService: {
-      refreshGridTariffData: vi.fn().mockResolvedValue(undefined),
-      refreshSpotPrices: vi.fn().mockResolvedValue(undefined),
-      updateCombinedPrices: vi.fn(),
-    },
-    updatePriceOptimizationEnabled: vi.fn(),
-    updateOverheadToken: vi.fn().mockResolvedValue(undefined),
-    updateDebugLoggingEnabled: vi.fn(),
-    restartHomeyEnergyPoll: vi.fn(),
-    ...overrides,
-  };
-};
+const buildDeps = settingsHandlerDepsDouble;
 
 describe('createSettingsHandler', () => {
   beforeEach(() => {
@@ -333,7 +299,7 @@ describe('createSettingsHandler', () => {
 
     await handler(PRICE_OPTIMIZATION_SETTINGS);
 
-    expect(deps.loadPriceOptimizationSettings).toHaveBeenCalled();
+    expect(deps.priceService.loadPriceOptimizationSettings).toHaveBeenCalled();
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith(PRICE_OPTIMIZATION_SETTINGS);
   });
@@ -354,11 +320,9 @@ describe('createSettingsHandler', () => {
 
   it('logs when grid tariff refresh fails', async () => {
     const deps = buildDeps({
-      priceService: {
+      priceService: settingsHandlerPriceServiceDouble({
         refreshGridTariffData: vi.fn().mockRejectedValue(new Error('fail')),
-        refreshSpotPrices: vi.fn().mockResolvedValue(undefined),
-        updateCombinedPrices: vi.fn(),
-      },
+      }),
     });
     const handler = createSettingsHandler(deps);
 
@@ -861,7 +825,7 @@ describe('createSettingsHandler', () => {
     expect(onHomeScopedSettingChanged).toHaveBeenCalledWith(CAPACITY_MARGIN_KW, 'cabin');
   });
 
-  it('ignores home-suffixed writes when no hook is wired', async () => {
+  it('never runs the main home\'s handler for a home-suffixed write', async () => {
     const deps = buildDeps();
     const handler = createSettingsHandler(deps);
 

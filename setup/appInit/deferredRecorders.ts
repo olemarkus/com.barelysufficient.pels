@@ -171,7 +171,7 @@ export function createDeferredObjectivePlanHistoryRecorder(
     getStallClassification: (deviceId) => requirePlanService(ctx).getStallEvidence(deviceId),
     getDeviceConstraint: (deviceId) => requireDeviceManager(ctx).getTaskDeliveryConstraint(deviceId),
     getDeliveryControl: (deviceId) => requirePlanService(ctx).getTaskDeliveryControl(deviceId),
-    isLiveMeasuredDraw: (deviceId) => ctx.isLiveMeasuredDraw(deviceId),
+    isLiveMeasuredDraw: (deviceId) => ctx.observer.isLiveMeasuredDraw(deviceId),
   });
   runStartupBackfill(ctx, recorder);
   return recorder;
@@ -352,7 +352,7 @@ export function runPendingDeferredObjectiveBackfill(
 export function createDeferredObjectiveEnergyDelivery(ctx: AppContext): EnergyTaskDeliveryTracker {
   return new EnergyTaskDeliveryTracker(
     createEnergyDeliveryStore(ctx.getUserdataDatabase()),
-    (deviceId) => ctx.isLiveMeasuredDraw(deviceId),
+    (deviceId) => ctx.observer.isLiveMeasuredDraw(deviceId),
   );
 }
 
@@ -439,7 +439,7 @@ export const buildDeferredObjectiveDeviceWriteDeps = (
     nowMs,
     readCurrentTaskEvaluation: createCurrentTaskEvaluationReader({
       getDevices: () => requirePlanService(ctx).getPlanDevices(),
-      getThermalDirection: (deviceId) => ctx.getThermalDirection(deviceId),
+      getThermalDirection: (deviceId) => ctx.observer.getThermalDirection(deviceId),
       getDeliveredEnergyKWh: requireDeferredObjectiveEnergyDelivery(ctx).getDeliveredKWh,
       getStallClassification: (deviceId) => requirePlanService(ctx).getStallEvidence(deviceId),
       hasObservedTask: (deviceId, objective) => planHistoryRecorder.hasObservedTask(deviceId, objective),

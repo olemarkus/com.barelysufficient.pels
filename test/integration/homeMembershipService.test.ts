@@ -39,6 +39,7 @@ import {
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
 import { createSettingsHandler, type SettingsHandlerDeps } from '../../lib/utils/settingsHandlers';
+import { settingsHandlerDepsDouble } from '../helpers/settingsHandlerDepsDouble';
 import {
   DEVICE_HOME_ASSIGNMENTS,
   DEVICE_HOME_ASSIGNMENTS_INITIALIZED,
@@ -513,31 +514,9 @@ describe('post-refresh recompute through the transport seam', () => {
 });
 
 describe('settings-change recompute triggers', () => {
-  const buildHandlerDeps = (recompute: () => void): SettingsHandlerDeps => ({
+  const buildHandlerDeps = (recompute: () => void): SettingsHandlerDeps => settingsHandlerDepsDouble({
     homey: mockHomeyInstance as unknown as SettingsHandlerDeps['homey'],
     recomputeHomeMembership: recompute,
-    onPvForecastSourceObserved: vi.fn(),
-    loadCapacitySettings: vi.fn(),
-    noteCapacitySettingWritten: vi.fn(),
-    recoverCapacitySettingsAfterSkippedWrite: vi.fn(),
-    reloadExpectedPowerOverrides: vi.fn(),
-    applyBatteryControlSettings: vi.fn(),
-    rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),
-    refreshTargetDevicesSnapshot: vi.fn().mockResolvedValue(undefined),
-    getCapacitySettings: vi.fn().mockReturnValue({ limitKw: 10, marginKw: 1, periodMinutes: 60 }),
-    getCapacityDryRun: vi.fn().mockReturnValue(false),
-    loadPriceOptimizationSettings: vi.fn(),
-    loadDailyBudgetSettings: vi.fn(),
-    updateDailyBudgetState: vi.fn(),
-    resetDailyBudgetLearning: vi.fn(),
-    priceService: {
-      refreshGridTariffData: vi.fn().mockResolvedValue(undefined),
-      refreshSpotPrices: vi.fn().mockResolvedValue(undefined),
-      updateCombinedPrices: vi.fn(),
-    },
-    updatePriceOptimizationEnabled: vi.fn(),
-    updateOverheadToken: vi.fn().mockResolvedValue(undefined),
-    updateDebugLoggingEnabled: vi.fn(),
   });
 
   it('homes_config and pin writes recompute through the serialized handler; suspect keeps the previous map', async () => {

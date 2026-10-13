@@ -22,12 +22,12 @@ export const createDeviceControlHelpers = (
   const control = new SteppedDeviceControl(ctx.steppedCommandStore, ctx.steppedReportedStore, {
     getDeviceConfiguration: (deviceId) => ctx.deviceConfiguration.get(deviceId),
     getDeviceConfigurations: () => ctx.deviceConfiguration.getAll(),
-    getObservedState: (deviceId) => ctx.getObservedRecord(deviceId),
+    getObservedState: (deviceId) => ctx.observer.getObservedRecord(deviceId),
   }, targetPower,
   (deviceId, stepId, powerW) => requireDeviceManager(ctx).reportSteppedLoadActualStep(deviceId, stepId, powerW),
   (deviceId, profile) => requirePlanService(ctx).getLatestPlannedStepId(deviceId, profile), loggers);
   const projection = new DeviceControlProjection(ctx.steppedCommandStore, ctx.deviceConfiguration,
-    (deviceId) => ctx.getObservedRecord(deviceId),
+    (deviceId) => ctx.observer.getObservedRecord(deviceId),
     (deviceId) => ctx.isTemperatureControlDisabled(deviceId),
     (deviceId) => ctx.observedTemperatureModeUpdates.allowsAutomaticAdjustments(deviceId));
   return {

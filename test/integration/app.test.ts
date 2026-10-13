@@ -133,7 +133,7 @@ const initApp = async (app: MyApp) => {
   // The removed settings-reload hook used to refresh the daily budget's
   // snapshot here; keep that side effect for the specs that read it.
   app.dailyBudgetService.updateState({ refreshObservedStats: false });
-  app['loadPriceOptimizationSettings']();
+  app.priceCoordinator.loadPriceOptimizationSettings();
   await wiring.initDeviceManager();
   wiring.initHomeMembership();
   wiring.initBatteryControl();
@@ -246,8 +246,7 @@ describe('MyApp initialization', () => {
     const freshMs = Date.parse('2026-03-21T12:00:00Z');
     let freshnessSeenBySync: number | undefined;
     vi.spyOn(app.planService, 'syncLivePlanState').mockImplementation(async () => {
-      freshnessSeenBySync = app['observedDeviceStateProjection']
-        .getObservedState('dev-1')?.lastFreshDataMs;
+      freshnessSeenBySync = app.observer.getObservedState('dev-1')?.lastFreshDataMs;
       return false;
     });
 

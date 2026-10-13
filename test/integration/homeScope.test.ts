@@ -35,7 +35,7 @@ describe('buildMainHomeScope', () => {
     // at the actuator seam — so it dispatched writes that were then dropped,
     // and `pels_status.dryRunEffective` read "active" for a home that could not
     // actuate. The fence is a dry-run gate now, exactly as a meter area folds
-    // its membership and source-epoch gates into `resolveEffectiveDryRun`.
+    // its membership and source-epoch gates into `SubHomeRuntime.isEffectiveDryRunForExecution`.
     const ctx = createAppContextMock();
     ctx.capacityDryRun = false;
     let homeWideFenced = false;

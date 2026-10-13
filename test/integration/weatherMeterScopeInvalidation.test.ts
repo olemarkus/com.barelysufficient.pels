@@ -2,6 +2,7 @@ import type Homey from 'homey';
 import type { Logger as PinoLogger } from 'pino';
 import { MockSettings } from '../mocks/homey';
 import { createSettingsHandler, type SettingsHandlerDeps } from '../../lib/utils/settingsHandlers';
+import { settingsHandlerDepsDouble } from '../helpers/settingsHandlerDepsDouble';
 import { createWeatherHistoryStore, type WeatherHistoryStore } from '../../lib/weather/weatherHistoryStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import { readMainMeterSelection } from '../../lib/home/mainMeterSelection';
@@ -143,37 +144,14 @@ const buildHarness = (
     logger: weatherLogger as unknown as PinoLogger,
     ...overrides,
   });
-  const deps: SettingsHandlerDeps = {
+  const deps: SettingsHandlerDeps = settingsHandlerDepsDouble({
     homey: homeyCast as unknown as SettingsHandlerDeps['homey'],
-    onPvForecastSourceObserved: vi.fn(),
-    loadCapacitySettings: vi.fn(),
-    noteCapacitySettingWritten: vi.fn(),
-    recoverCapacitySettingsAfterSkippedWrite: vi.fn(),
-    reloadExpectedPowerOverrides: vi.fn(),
-    applyBatteryControlSettings: vi.fn(),
-    rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),
-    refreshTargetDevicesSnapshot: vi.fn().mockResolvedValue(undefined),
-    getCapacitySettings: vi.fn().mockReturnValue({ limitKw: 10, marginKw: 1, periodMinutes: 60 }),
-    getCapacityDryRun: vi.fn().mockReturnValue(false),
-    loadPriceOptimizationSettings: vi.fn(),
-    loadDailyBudgetSettings: vi.fn(),
-    updateDailyBudgetState: vi.fn(),
-    resetDailyBudgetLearning: vi.fn(),
-    priceService: {
-      refreshGridTariffData: vi.fn().mockResolvedValue(undefined),
-      refreshSpotPrices: vi.fn().mockResolvedValue(undefined),
-      updateCombinedPrices: vi.fn(),
-    },
-    updatePriceOptimizationEnabled: vi.fn(),
-    updateOverheadToken: vi.fn().mockResolvedValue(undefined),
-    updateDebugLoggingEnabled: vi.fn(),
-    restartHomeyEnergyPoll: vi.fn(),
     // Approximates the production hook (`ctx.reloadWeatherCollector`), which
     // goes through `BackgroundTasksController.startWeatherCollector` — that
     // path also swaps the teardown registration, and the ordering it depends on
     // is pinned in `test/integration/backgroundTasksTeardown.test.ts` rather than here.
     reloadWeatherAdvisor: () => { collector.start(); },
-  };
+  });
   const handler = createSettingsHandler(deps);
   collector.start();
   return {

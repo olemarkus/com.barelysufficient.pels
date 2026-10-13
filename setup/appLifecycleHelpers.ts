@@ -126,7 +126,7 @@ export async function startAppServices(ctx: InitializedAppContext): Promise<void
     ...appContext.startupBootstrap,
   };
   await runStep('hydratePowerTracker', async () => appContext.hydratePowerTracker());
-  await runStep('loadPriceOptimizationSettings', async () => appContext.loadPriceOptimizationSettings());
+  await runStep('loadPriceOptimizationSettings', async () => priceCoordinator.loadPriceOptimizationSettings());
   scheduleBackgroundTask(
     'startup_update_overhead_token',
     () => appContext.updateOverheadToken(),

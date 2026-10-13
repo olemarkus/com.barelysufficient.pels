@@ -36,7 +36,7 @@ const buildContext = () => {
       component === 'startup' ? (startupLogger as unknown as Logger) : undefined,
   });
   const hydratePowerTracker = vi.mocked(ctx.hydratePowerTracker);
-  const loadPriceOptimizationSettings = vi.mocked(ctx.loadPriceOptimizationSettings);
+  const loadPriceOptimizationSettings = vi.mocked(ctx.priceCoordinator!.loadPriceOptimizationSettings);
   const updateOverheadToken = vi.mocked(ctx.updateOverheadToken);
   const updateDailyBudgetState = vi.mocked(ctx.dailyBudgetService!.updateState);
   const refreshTargetDevicesSnapshot = vi.mocked(ctx.refreshTargetDevicesSnapshot);

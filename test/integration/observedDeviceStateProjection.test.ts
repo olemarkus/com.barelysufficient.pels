@@ -177,7 +177,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         mockApiGet.mockResolvedValue({ dev1: temperatureDevice('dev1') });
         await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
-        const admitted = h.projection.getObservedState('dev1');
+        const admitted = h.projection.getObservedRecord('dev1');
         if (!admitted || !hasObservedTemperature(admitted)) {
             throw new Error('expected complete temperature observation');
         }
@@ -190,7 +190,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
 
         await emitCapability('dev1', 'measure_temperature', Number.NaN);
 
-        const demoted = h.projection.getObservedState('dev1');
+        const demoted = h.projection.getObservedRecord('dev1');
         expect(demoted).toBeDefined();
         expect(demoted?.binaryControl).toEqual({ on: true });
         expect(hasObservedTemperature(demoted!)).toBe(false);
@@ -209,17 +209,17 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         mockApiGet.mockResolvedValue({ dev1: heatPumpDevice('dev1', 'cooling') });
         await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
-        expect(h.projection.getObservedState('dev1')?.thermostatMode).toBe('cooling');
+        expect(h.projection.getObservedRecord('dev1')?.thermostatMode).toBe('cooling');
         expect(resolveThermalDirection({
-            thermostatMode: h.projection.getObservedState('dev1')?.thermostatMode,
+            thermostatMode: h.projection.getObservedRecord('dev1')?.thermostatMode,
         })).toBe('cooling');
 
         // Only the mode moves. Every other capability reports its held value.
         emitDeviceUpdate(heatPumpDevice('dev1', 'heat', '2026-03-20T06:05:00.000Z'));
 
-        expect(h.projection.getObservedState('dev1')?.thermostatMode).toBe('heat');
+        expect(h.projection.getObservedRecord('dev1')?.thermostatMode).toBe('heat');
         expect(resolveThermalDirection({
-            thermostatMode: h.projection.getObservedState('dev1')?.thermostatMode,
+            thermostatMode: h.projection.getObservedRecord('dev1')?.thermostatMode,
         })).toBe('heating');
         assertShadowEquality(h);
         h.transport.destroy();
@@ -348,13 +348,13 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
             await h.transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
 
             await emitCapability('dev1', 'measure_power', 0);
-            const afterFirst = h.projection.getObservedState('dev1')?.measuredPowerObservedAtMs;
+            const afterFirst = h.projection.getObservedRecord('dev1')?.measuredPowerObservedAtMs;
             expect(afterFirst).toBe(Date.UTC(2026, 2, 20, 6, 0, 0));
 
             vi.setSystemTime(Date.UTC(2026, 2, 20, 6, 1, 30));
             // Same value again: `changed` is false, and the stamp must still travel.
             await emitCapability('dev1', 'measure_power', 0);
-            expect(h.projection.getObservedState('dev1')?.measuredPowerObservedAtMs)
+            expect(h.projection.getObservedRecord('dev1')?.measuredPowerObservedAtMs)
                 .toBe(Date.UTC(2026, 2, 20, 6, 1, 30));
             assertShadowEquality(h);
             h.transport.destroy();
@@ -606,7 +606,7 @@ describe('ObservedDeviceStateProjection apply guard', () => {
         p.applyDelta({
             source: 'realtime_capability', deviceId: 'dev1', observationSeq: 1, observed,
         });
-        const stored = p.getObservedState('dev1');
+        const stored = p.getObservedRecord('dev1');
         if (!stored || !hasObservedStateOfCharge(stored)) throw new Error('expected a state-of-charge bag');
         const soc = stored.stateOfCharge;
         expect(Object.isFrozen(soc)).toBe(true);

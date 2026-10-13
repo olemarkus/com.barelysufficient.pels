@@ -4,7 +4,6 @@ import { PriceCoordinator } from '../../../lib/price/priceCoordinator';
 import { createPriceOptimizationSettingsStore } from '../../../lib/price/priceOptimizationSettingsStore';
 import { createPriceDataStore } from '../../../lib/price/priceDataStore';
 import { createInMemoryPriceCache } from '../../helpers/priceCacheForTests';
-import { PriceLevel } from '../../../lib/price/priceLevels';
 import {
   COMBINED_PRICES, FLOW_PRICES_TODAY, POWERHOUR_PRICES_TODAY, PRICE_SCHEME,
 } from '../../../lib/utils/settingsKeys';
@@ -21,7 +20,6 @@ const createCoordinator = () => new PriceCoordinator({
   getPowerTracker: () => ({}),
   homeyWebApiGet: noHomeyWebApi,
   readHubMarket: unknownHubMarket,
-  getCurrentPriceLevel: () => PriceLevel.NORMAL,
   log: () => undefined,
   debugStructured: () => undefined,
   error: () => undefined,
@@ -90,7 +88,6 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
       getPowerTracker: () => ({}),
       homeyWebApiGet: noHomeyWebApi,
       readHubMarket: unknownHubMarket,
-      getCurrentPriceLevel: () => PriceLevel.NORMAL,
       log: () => undefined,
       debugStructured: () => undefined,
       error: () => undefined,
@@ -298,7 +295,6 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
       getPowerTracker: () => ({}),
       homeyWebApiGet: noHomeyWebApi,
       readHubMarket: unknownHubMarket,
-      getCurrentPriceLevel: () => PriceLevel.NORMAL,
       log: () => undefined,
       debugStructured: () => undefined,
       error: () => undefined,

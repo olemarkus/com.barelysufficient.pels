@@ -46,13 +46,9 @@ import type {
   PowerTrackerMeterIdentity,
   PowerTrackerState,
 } from '../../lib/power/trackerTypes';
-import type { CapacityScalarSettings, PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
-import { resolveCurrentMonthQuarterPeakKw } from '../../lib/power/capacityPeak';
 import type { PlanService } from '../../lib/plan/planService';
 import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import type CapacityGuard from '../../lib/power/capacityGuard';
-import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
-import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import { createHomeRebuildRuntime } from '../../lib/plan/rebuildScheduler/homeRebuildRuntime';
 import { createCapacitySettingsStore } from '../../lib/power/capacitySettingsStore';
 import type { PlanEngine } from '../../lib/plan/planEngine';
@@ -61,67 +57,42 @@ import { createHomePowerPipeline, createUnobservedHomeProduction } from './creat
 import { MeterSilenceMonitor } from '../../lib/power/meterSilence';
 import {
   buildHomeCapacityBundleApi,
-  createPreparedBundleSampleFence,
-  resolveEffectiveDryRun,
   resolveHomeAreaDisplayName,
   startHomeCapacityBundle,
 } from './homeCapacityBundleApi';
-import { installBundleReadinessAndFreshness } from './homeCapacityBundleReadiness';
+import { MeterSilenceEscalation } from '../../lib/power/meterSilenceEscalation';
+import { requireDeviceManager } from '../appInit/contextGuards';
 import {
   createHomeModeCatalog,
   type HomeModeCatalog,
 } from '../../lib/home/homeModeCatalog';
-import { installHomeCapacityBundleSourceRecovery } from './homeCapacityBundleSourceRecovery';
+import type { SubHomeRecoveryDeps } from '../../lib/home/subHomeRecovery';
+import { SubHomeMembershipReadyEdge } from '../../lib/home/subHomeMembershipReadyEdge';
+import { SubHomeSourceRecovery } from '../../lib/home/subHomeSourceRecovery';
 import type { HomeScope } from './homeScope';
 import { createHomePlanRuntime } from './createHomePlanRuntime';
 import { createHomeCommandReachability } from './createHomeCommandReachability';
 import { createHomeSignalWriters } from './homeSignalWriters';
 import {
   createHomeTrackerPersistence,
+  type HomeTrackerPersistence,
   type HomeTrackerPersistenceDeps,
 } from '../../lib/power/homeTrackerPersistence';
+import type { SubHomeRuntime } from '../../lib/home/subHomeRuntime';
 import type { StableSampleRevision } from '../powerSamplePipeline';
 import { createHomeCapacityGuard } from './createHomeCapacityGuard';
 import type { PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
-// A sub-home's OWN fallback seed for its capacity store. Mirrors the app-boot
-// defaults (`PelsApp.capacitySettings` / `capacityDryRun`) but is deliberately
-// a per-home constant — NEVER main's live snapshot: seeding a sub-home from
-// main's configured hard cap would silently run a second controller against
-// main's contract limit. Dry-run defaults TRUE (the safe boot default): an
-// unconfigured sub-home plans but never actuates.
-const SUB_HOME_CAPACITY_DEFAULTS: CapacityScalarSettings = {
-  capacityEnabled: true,
-  gridImportLimitKw: null,
-  limitKw: 10,
-  marginKw: 0.2,
-  dryRun: true,
-  periodMinutes: 60,
-};
-
-// Mirrors `STARTUP_RESTORE_STABILIZATION_MS` in `setup/appServiceWiring.ts`:
 export type HomeCapacityBundleDeps = {
   ctx: AppContext;
   mainModeCatalog: HomeModeCatalog;
-  home: SubHomeConfig;
+  /** The area's state and the registry's membership and meter-source gates. */
+  runtime: SubHomeRuntime;
   /** Already safety-resolved against persisted state by the owning registry. */
   initialPowerTrackerState: PowerTrackerState;
   /** Identity every tracker persist from this runtime must carry. */
   powerTrackerMeterIdentity: PowerTrackerMeterIdentity;
-  /** Membership-readiness signal (a committed zone tree has been joined). */
-  isMembershipReady: () => boolean;
-  /**
-   * Source-epoch gate resolved by the registry. True only while the current
-   * global source and the last fully handled source epoch are Homey Energy.
-   */
-  isMeterSourceAuthorized: () => boolean;
-  /**
-   * Permanent source-epoch invalidation for this runtime. Unlike a transient
-   * settings-read failure, this means a deferred global Flow transition belongs
-   * to a superseded meter epoch and must be discarded.
-   */
-  isMeterSourceEpochDiscarded: () => boolean;
 };
 
 /**
@@ -246,30 +217,20 @@ export type HomeCapacityBundle = {
 
 // The sub-home `HomeScope`: capacity-only policy block, suffixed persisted-
 // signal writers, membership-partitioned plan input (fail-closed for sub-home
-// scopes — see `filterDevicesForHome`).
-function buildSubHomeScope(params: {
-  ctx: AppContext;
-  homeId: HomeId;
-  /** Live read: a rename lands via `updateHomeConfig` without a teardown. */
-  getHome: () => SubHomeConfig;
-  isMembershipReady: () => boolean;
-  isMeterSourceAuthorizedForExecution: () => boolean;
-  /** Teardown fence: gate the suffixed-key writers so a post-teardown continuation cannot persist. */
-  isTornDown: () => boolean;
-  getScalars: () => CapacityScalarSettings;
-  getTracker: () => PowerTrackerState;
-  /** Late-bound: the bundle's own service (created after the engine). */
-  getServiceForSync: () => PlanService | undefined;
-  /** Late-bound: the bundle's OWN engine, for the sub-home PELS-OFF provenance cleanup. */
-  getPlanEngineForCommandProvenance: () => PlanEngine | undefined;
-  modeCatalog: HomeModeCatalog;
-  meterSilenceMonitor: MeterSilenceMonitor;
-}): HomeScope {
-  const {
-    ctx, homeId, getHome, isMembershipReady, isMeterSourceAuthorizedForExecution, isTornDown, getScalars,
-    getTracker, getServiceForSync, getPlanEngineForCommandProvenance, modeCatalog,
-    meterSilenceMonitor,
-  } = params;
+// scopes — see `filterDevicesForHome`). `getServiceForSync` and
+// `getPlanEngineForCommandProvenance` are late-bound: the bundle's OWN service
+// and engine are created after the scope (the engine is read for the sub-home
+// PELS-OFF provenance cleanup).
+function buildSubHomeScope(
+  ctx: AppContext,
+  runtime: SubHomeRuntime,
+  getPowerTracker: () => PowerTrackerState,
+  getServiceForSync: () => PlanService | undefined,
+  getPlanEngineForCommandProvenance: () => PlanEngine | undefined,
+  modeCatalog: HomeModeCatalog,
+  meterSilenceMonitor: MeterSilenceMonitor,
+): HomeScope {
+  const { homeId, isTornDown } = runtime;
   // Same lane the main home wires, with this area's own way of reaching its
   // plan service: a torn-down bundle drops the rebuild rather than driving a
   // service it no longer owns. The scheduled timer key is cleared either way,
@@ -281,19 +242,17 @@ function buildSubHomeScope(params: {
     homeId,
     // Names THIS area on the global hard-cap Flow triggers, which every home
     // shares — without it an area's alert reads as the Main home's.
-    getHomeDisplayName: () => resolveHomeAreaDisplayName(getHome().name),
+    // Live read: a rename lands via `updateHomeConfig` without a teardown.
+    getHomeDisplayName: () => resolveHomeAreaDisplayName(runtime.getHomeConfig().name),
     getCapacitySettings: () => {
-      const { dryRun: _dryRun, ...capacitySettings } = getScalars();
+      const { dryRun: _dryRun, ...capacitySettings } = runtime.getCapacityScalars();
       return capacitySettings;
     },
-    // The canonical no-actuation switch (see `resolveEffectiveDryRun`). This is
-    // the CONTROL path, so it passes the execution source predicate — the one
-    // that also arms source recovery.
-    getCapacityDryRun: () => resolveEffectiveDryRun({
-      isTornDown, isMembershipReady, isMeterSourceAuthorized: isMeterSourceAuthorizedForExecution, getScalars,
-    }),
-    readSimulationSetting: () => getScalars().dryRun,
-    getPowerTracker: getTracker,
+    // The canonical no-actuation switch. This is the CONTROL path, so it asks
+    // the execution form — the one that also arms source recovery.
+    getCapacityDryRun: runtime.isEffectiveDryRunForExecution,
+    readSimulationSetting: () => runtime.getCapacityScalars().dryRun,
+    getPowerTracker,
     getMeterSilenceMonitor: () => meterSilenceMonitor,
     getDailyBudgetSnapshot: () => null,
     getPlanDevices: () => {
@@ -316,6 +275,7 @@ function buildSubHomeScope(params: {
     isBatteryWatchOnly: () => false,
     binaryCommandLifecycle: binaryCommandReachability.lifecycle,
     disposeBinaryCommandReachability: binaryCommandReachability.dispose,
+    // Teardown fence: a post-teardown continuation cannot persist a suffixed key.
     ...createHomeSignalWriters(ctx, homeId, isTornDown),
     // Capacity-only policy: no price optimization, no price level (so its status
     // reads UNKNOWN and `price_level_changed` never fires against MAIN's level),
@@ -361,40 +321,34 @@ function buildSubHomeScope(params: {
 // scheduler and the sample pipeline wired over it. Returns both so `teardown`
 // can cancel the scheduler. Extracted to keep `createHomeCapacityBundle` within
 // the setup-layer size ceilings.
-function createBundleSamplePipeline(params: {
-  ctx: AppContext;
-  homeId: HomeId;
-  timerKey: (suffix: string) => string;
-  getPlanEngine: () => PlanEngine;
-  getPlanService: () => PlanService;
-  getCapacityGuard: () => CapacityGuard;
-  getCapacitySettings: () => PowerLimitSettings;
-  savePowerTracker: (state: PowerTrackerState) => void;
-  getPowerTracker: () => PowerTrackerState;
-}): {
-  pipeline: ReturnType<typeof createHomePowerPipeline>;
-  scheduler: PlanRebuildScheduler;
-  throttle: PlanRebuildThrottle;
-} {
+function createBundleSamplePipeline(
+  ctx: AppContext,
+  scope: HomeScope,
+  timerKey: (suffix: string) => string,
+  planEngine: PlanEngine,
+  planService: PlanService,
+  guard: CapacityGuard,
+  tracker: HomeTrackerPersistence,
+) {
   const { scheduler, throttle } = createHomeRebuildRuntime(
-    params.homeId,
-    params.ctx.timers,
-    params.timerKey,
-    params.getCapacityGuard,
-    params.getPlanService,
-    () => params.ctx.getStructuredLogger('plan'),
-    (topic) => params.ctx.debugLoggingTopics.has(topic),
+    scope.homeId,
+    ctx.timers,
+    timerKey,
+    () => guard,
+    () => planService,
+    () => ctx.getStructuredLogger('plan'),
+    (topic) => ctx.debugLoggingTopics.has(topic),
   );
   const pipeline = createHomePowerPipeline({
-    ctx: params.ctx,
-    homeId: params.homeId,
+    ctx,
+    homeId: scope.homeId,
     planRebuildThrottle: throttle,
-    getPlanEngine: params.getPlanEngine,
-    getPlanService: params.getPlanService,
-    savePowerTracker: params.savePowerTracker,
-    getPowerTracker: params.getPowerTracker,
-    getCapacitySettings: params.getCapacitySettings,
-    getCapacityGuard: params.getCapacityGuard,
+    getPlanEngine: () => planEngine,
+    getPlanService: () => planService,
+    savePowerTracker: tracker.save,
+    getPowerTracker: tracker.getState,
+    getCapacitySettings: scope.getCapacitySettings,
+    getCapacityGuard: () => guard,
     // A meter area's meter is not the whole-home meter, so this area has no
     // identity to publish into membership's sampled-meter ownership fence —
     // adopting one would settle or latch MAIN's write fence from a meter Main
@@ -410,52 +364,30 @@ function createBundleSamplePipeline(params: {
   return { pipeline, scheduler, throttle };
 }
 
-function createBundlePlanningRuntime(params: {
-  ctx: AppContext;
-  homeId: HomeId;
-  timerKey: (suffix: string) => string;
-  isTornDown: () => boolean;
-  isMembershipReady: () => boolean;
-  isMeterSourceAuthorized: () => boolean;
-  isMeterSourceEpochDiscarded: () => boolean;
-  isMeterSourceAuthorizedForExecution: () => boolean;
-  preparedSampleFence: ReturnType<typeof createPreparedBundleSampleFence>;
-  tracker: ReturnType<typeof createHomeTrackerPersistence>;
-  getHome: () => SubHomeConfig;
-  getCapacityScalars: () => CapacityScalarSettings;
-  modeCatalog: HomeModeCatalog;
-}) {
+function createBundlePlanningRuntime(
+  ctx: AppContext,
+  runtime: SubHomeRuntime,
+  timerKey: (suffix: string) => string,
+  tracker: HomeTrackerPersistence,
+  modeCatalog: HomeModeCatalog,
+) {
   // This home's meter-silence policy: shared by the composed plan-build gate
   // (via the scope), the pipeline's admitted-sample push, and the freshness
   // escalation's shed-pass protocol.
   const meterSilenceMonitor = new MeterSilenceMonitor({
-    homeId: params.homeId,
-    getPowerTracker: params.tracker.getState,
+    homeId: runtime.homeId,
+    getPowerTracker: tracker.getState,
     nowMs: () => Date.now(),
-    structuredLog: () => params.ctx.getStructuredLogger('power'),
+    structuredLog: () => ctx.getStructuredLogger('power'),
   });
-  const scope = buildSubHomeScope({
-    ctx: params.ctx,
-    homeId: params.homeId,
-    getHome: params.getHome,
-    isMembershipReady: params.isMembershipReady,
-    isMeterSourceAuthorizedForExecution: params.isMeterSourceAuthorizedForExecution,
-    isTornDown: params.isTornDown,
-    getScalars: params.getCapacityScalars,
-    getTracker: params.tracker.getState,
-    getServiceForSync: () => planService,
-    getPlanEngineForCommandProvenance: () => planEngine,
-    modeCatalog: params.modeCatalog,
-    meterSilenceMonitor,
-  });
-  const isActuationFenced = (): boolean => {
-    if (
-      params.isTornDown()
-      || !params.isMembershipReady()
-      || params.preparedSampleFence.isSuperseded()
-    ) return true;
-    return !params.isMeterSourceAuthorizedForExecution();
-  };
+  const scope = buildSubHomeScope(
+    ctx, runtime, tracker.getState, () => planService, () => planEngine, modeCatalog, meterSilenceMonitor,
+  );
+  // The pipeline is built below; its prepared-reconcile fence is asked only at
+  // actuation, which needs the finished bundle.
+  const isActuationFenced = (): boolean => runtime.isActuationFenced(
+    () => pipeline.preparedReconcileFence.isSuperseded(),
+  );
   // Lifecycle/source authority, composed here for the same reason the main home
   // composes its own at its boot step: an area has two inputs Main does not
   // (membership, meter-source authority), and they are this bundle's signals,
@@ -465,31 +397,23 @@ function createBundlePlanningRuntime(params: {
   // epoch can commit again — so a transition observed behind it is dropped
   // rather than held for a reopening that will not come.
   const { guard, shortfallSideEffectGate } = createHomeCapacityGuard(
-    params.ctx,
+    ctx,
     scope,
-    params.timerKey,
+    timerKey,
     () => planService,
-    () => params.isTornDown() || params.isMeterSourceEpochDiscarded(),
-    () => !params.isMembershipReady() || !params.isMeterSourceAuthorized(),
-    params.preparedSampleFence.isActive,
+    runtime.isDiscarded,
+    runtime.isAuthorityClosed,
+    () => pipeline.preparedReconcileFence.isActive(),
   );
   const { planEngine, planService } = createHomePlanRuntime(
-    params.ctx,
+    ctx,
     scope,
     // Home-battery control is Main only (v1): a meter area builds no storage lane.
     { capacityGuard: guard, isActuationFenced, storageLane: { kind: 'none' } },
   );
-  const { pipeline, scheduler: planRebuildScheduler, throttle: planRebuildThrottle } = createBundleSamplePipeline({
-    ctx: params.ctx,
-    homeId: params.homeId,
-    timerKey: params.timerKey,
-    getPlanEngine: () => planEngine,
-    getPlanService: () => planService,
-    getCapacityGuard: () => guard,
-    getCapacitySettings: scope.getCapacitySettings,
-    savePowerTracker: params.tracker.save,
-    getPowerTracker: params.tracker.getState,
-  });
+  const { pipeline, scheduler: planRebuildScheduler, throttle: planRebuildThrottle } = createBundleSamplePipeline(
+    ctx, scope, timerKey, planEngine, planService, guard, tracker,
+  );
   return {
     scope,
     planEngine,
@@ -504,12 +428,9 @@ function createBundlePlanningRuntime(params: {
   };
 }
 
-/** A meter area's tracker collaborators, on the app context and this home's id. */
-function createAreaTrackerDeps(
-  ctx: AppContext,
-  homeId: HomeId,
-  isTornDown: () => boolean,
-): HomeTrackerPersistenceDeps {
+/** A meter area's tracker collaborators, on the app context and this area's runtime. */
+function createAreaTrackerDeps(ctx: AppContext, runtime: SubHomeRuntime): HomeTrackerPersistenceDeps {
+  const { homeId, isTornDown } = runtime;
   return {
     getStore: () => ctx.getTrackerStore(),
     timers: ctx.timers,
@@ -525,24 +446,20 @@ function createAreaTrackerDeps(
 }
 
 export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapacityBundle {
-  const { ctx, home: { homeId } } = deps;
+  const { ctx, runtime } = deps;
+  const { homeId } = runtime;
   const logger = () => ctx.getStructuredLogger('homes');
   const timerKey = (suffix: string) => `home:${homeId}:${suffix}`;
 
-  let home = deps.home;
-  let tornDown = false;
-  const preparedSampleFence = createPreparedBundleSampleFence();
-  const isTornDown = (): boolean => tornDown;
-  // Last-good capacity scalars, seeded from the home's OWN defaults (never
-  // main's live snapshot — see SUB_HOME_CAPACITY_DEFAULTS). The store is
-  // constructed ONCE per bundle and is the ONLY capacity source for this scope.
-  let capacityScalars: CapacityScalarSettings = SUB_HOME_CAPACITY_DEFAULTS;
-  const capacityStore = createCapacitySettingsStore(ctx.homey.settings, homeId, () => capacityScalars);
+  // The store is constructed ONCE per bundle and is the ONLY capacity source
+  // for this scope; its last-good fallback is the runtime's own seed (never
+  // Main's live snapshot).
+  const capacityStore = createCapacitySettingsStore(ctx.homey.settings, homeId, runtime.getCapacityScalars);
   const initialCapacityRead = capacityStore.read();
-  if (initialCapacityRead.state !== 'unavailable') capacityScalars = initialCapacityRead.value;
+  if (initialCapacityRead.state !== 'unavailable') runtime.setCapacityScalars(initialCapacityRead.value);
 
   const tracker = createHomeTrackerPersistence({
-    deps: createAreaTrackerDeps(ctx, homeId, isTornDown),
+    deps: createAreaTrackerDeps(ctx, runtime),
     homeId,
     initialState: deps.initialPowerTrackerState,
     meterBinding: { kind: 'bound', identity: deps.powerTrackerMeterIdentity },
@@ -557,12 +474,6 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     () => ctx.getStructuredLogger('homes'),
     () => ctx.readHomeBatteryDevices(),
   );
-  let scheduleSourceActuationRetry = (): void => undefined;
-  const isMeterSourceAuthorizedForExecution = (): boolean => {
-    const authorized = deps.isMeterSourceAuthorized();
-    if (!authorized && !deps.isMeterSourceEpochDiscarded()) scheduleSourceActuationRetry();
-    return authorized;
-  };
   const {
     scope,
     planEngine,
@@ -574,78 +485,53 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     planRebuildScheduler,
     planRebuildThrottle,
     meterSilenceMonitor,
-  } = createBundlePlanningRuntime({
-    ctx, homeId,
-    isMembershipReady: deps.isMembershipReady,
-    isMeterSourceAuthorized: deps.isMeterSourceAuthorized,
-    isMeterSourceEpochDiscarded: deps.isMeterSourceEpochDiscarded,
-    isMeterSourceAuthorizedForExecution,
-    isTornDown,
-    timerKey, preparedSampleFence, tracker,
-    getHome: () => home,
-    getCapacityScalars: () => capacityScalars,
-    modeCatalog,
-  });
-  preparedSampleFence.bindReader(() => pipeline.getStableSampleRevision());
+  } = createBundlePlanningRuntime(ctx, runtime, timerKey, tracker, modeCatalog);
   const beginPreparedOwnershipReconcile = (sampleRevision: number): (() => void) => {
     holdDeferredShortfallSideEffect();
-    return preparedSampleFence.begin(sampleRevision);
+    return pipeline.preparedReconcileFence.begin(sampleRevision);
   };
-  scheduleSourceActuationRetry = installHomeCapacityBundleSourceRecovery({
-    ctx,
-    homeId,
-    timerKey: timerKey('sourceActuationRetry'),
+  const recoveryDeps: SubHomeRecoveryDeps = {
+    runtime,
+    timers: ctx.timers,
+    timerKey,
+    getLogger: logger,
     planService,
-    isTornDown,
-    isMembershipReady: deps.isMembershipReady,
-    isMeterSourceAuthorized: deps.isMeterSourceAuthorized,
-    isMeterSourceEpochDiscarded: deps.isMeterSourceEpochDiscarded,
-    getStableSampleRevision: () => pipeline.getStableSampleRevision(),
+    pipeline,
     beginPreparedReconcile: beginPreparedOwnershipReconcile,
     flushDeferredShortfallSideEffect,
-  }).schedule;
+  };
+  runtime.bindSourceActuationRetry(new SubHomeSourceRecovery(recoveryDeps).schedule);
   tracker.startPruning();
 
   // Readiness apply-edge (decoupled from sample arrival; fired by the registry
-  // from the membership tree-commit transition or the trust-fallback timer) plus
-  // the trust-fallback and freshness-heartbeat timers.
-  const {
-    applyMembershipReadyEdge,
-    markPreparedOwnershipGenerationReconciled,
-  } = installBundleReadinessAndFreshness({
-    ctx, homeId, timerKey, logger, planService,
+  // from the membership tree-commit transition) and its no-tree warn timer.
+  const membershipReadyEdge = new SubHomeMembershipReadyEdge(recoveryDeps);
+  // This home's one silent-meter clock. Shared with main
+  // (`lib/power/meterSilenceEscalation.ts`) so both escalate on the same rule.
+  new MeterSilenceEscalation({
+    homeId,
+    timers: ctx.timers,
+    timerKey: timerKey('freshnessHeartbeat'),
+    logger,
+    rebuild: () => planService.rebuildPlanFromCache('freshness_heartbeat'),
     meterSilence: meterSilenceMonitor,
-    getStableSampleRevision: () => pipeline.getStableSampleRevision(),
-    beginPreparedOwnershipReconcile,
-    isMembershipReady: deps.isMembershipReady,
-    isMeterSourceAuthorized: deps.isMeterSourceAuthorized,
-    isTornDown, isActuationFenced, flushDeferredShortfallSideEffect,
-  });
+    isTornDown: runtime.isTornDown,
+    // Sub-home meters are fanned out ONLY by the Homey Energy poll
+    // (`routeMeterReadings` drops readings under flow), so a bundle whose source
+    // has been switched to flow has an orphaned timestamp that will never refresh.
+    isMeterSampled: runtime.isMeterSourceAuthorized,
+    isSnapshotWarm: () => requireDeviceManager(ctx).hasWarmSnapshot(),
+    isActuationFenced,
+  }).start();
 
   // Initial signals build awaits the shared snapshot warmup gate; contained.
-  startHomeCapacityBundle(planService, logger, home, capacityScalars);
+  startHomeCapacityBundle(planService, logger, runtime);
 
   const bundle = buildHomeCapacityBundleApi({
-    ctx, homeId, logger, timerKey,
+    ctx, runtime, logger, timerKey,
     planEngine, planService, scope,
-    // The registry's RAW predicates: unlike the scope's execution predicate they
-    // arm no source recovery, so the read surface stays inert. Listed
-    // explicitly rather than passed as `deps`, so the declared two-key shape and
-    // the runtime object cannot disagree (the consumer spreads this).
-    readDryRunGates: {
-      isMembershipReady: deps.isMembershipReady,
-      isMeterSourceAuthorized: deps.isMeterSourceAuthorized,
-    },
     tracker, pipeline, planRebuildScheduler, planRebuildThrottle, capacityStore,
-    applyMembershipReadyEdge, markPreparedOwnershipGenerationReconciled,
-    getHome: () => home,
-    setHome: (next) => { home = next; },
-    getScalars: () => capacityScalars,
-    readCapacityPeak: () => resolveCurrentMonthQuarterPeakKw(tracker.getState(), ctx.getTimeZone(), Date.now()),
-    setScalars: (next) => { capacityScalars = next; },
-    getStableSampleRevision: () => pipeline.getStableSampleRevision(),
-    beginPreparedOwnershipReconcile, flushDeferredShortfallSideEffect, isTornDown,
-    markTornDown: () => { tornDown = true; },
+    membershipReadyEdge, beginPreparedOwnershipReconcile, flushDeferredShortfallSideEffect,
     reloadModeCatalog: modeCatalog.reload,
     isModeCatalogInitialized: modeCatalog.isInitialized,
   });

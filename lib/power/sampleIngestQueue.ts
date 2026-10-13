@@ -1,5 +1,6 @@
 import { incPerfCounter } from '../utils/perfCounters';
 import { createSingleFlightLoop } from '../utils/singleFlightLoop';
+import { PreparedReconcileFence } from './preparedReconcileFence';
 
 /**
  * One whole-home sample ingest at a time, and the ledger that says whose sample
@@ -48,6 +49,8 @@ export type SampleIngestQueue<TRequest> = {
    */
   submit: (buildRequest: (revision: number) => TRequest) => Promise<SampleAdmission>;
   getStableRevision: () => StableSampleRevision;
+  /** The fence a prepared reconcile holds against this ledger's stable revision. */
+  preparedReconcileFence: PreparedReconcileFence;
 };
 
 export type SampleIngestQueueDeps<TRequest> = {
@@ -114,5 +117,6 @@ export const createSampleIngestQueue = <TRequest>(
       return resolveAdmission(revision);
     },
     getStableRevision,
+    preparedReconcileFence: new PreparedReconcileFence(getStableRevision),
   };
 };

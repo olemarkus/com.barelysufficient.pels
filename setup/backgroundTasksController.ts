@@ -5,6 +5,7 @@ import { installHeapSnapshotHandler } from '../lib/diagnostics/heapSnapshotHandl
 import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from './appPriceLowestTrigger';
 import { getDebugEmitter } from '../lib/logging/logger';
 import type { AppContext } from '../lib/app/appContext';
+import { requirePriceCoordinator } from './appInit/contextGuards';
 import { startDeferredObjectiveLifecycleClock } from './deferredObjectiveLifecycleClock';
 import type { DeferredObjectiveLifecycleEmitter } from '../lib/objectives/deferredObjectives/lifecycleEmitter';
 import type { WeatherCollector } from '../lib/weather/weatherCollector';
@@ -101,7 +102,7 @@ export class BackgroundTasksController {
     this.restart('priceLowestTrigger', () => startPriceLowestTriggers({
       getNow: () => this.ctx.getNow(),
       getTimeZone: () => this.ctx.getTimeZone(),
-      getCombinedHourlyPrices: () => this.ctx.getCombinedHourlyPrices(),
+      getCombinedHourlyPrices: () => requirePriceCoordinator(this.ctx).getCombinedHourlyPrices(),
       getTriggerCard: (id) => this.ctx.homey.flow.getTriggerCard(id),
       debugStructured: getDebugEmitter('price', 'price'),
       error: (message, error) => this.ctx.error(message, error),

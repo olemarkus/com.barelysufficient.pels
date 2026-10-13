@@ -4,6 +4,7 @@ import { createPlanStatusRegistry } from '../../lib/plan/planStatusRegistry';
 import { createEmptyPowerCalibrationSnapshot } from '../../lib/device/devicePowerCalibration';
 import { NO_PRICE_SOURCE_PAYLOADS } from '../../setup/settingsUiApi';
 import { createFixturePriorityQuery } from './modePriorityFixtures';
+import { observedDeviceReadsDouble } from './observedDeviceReadsDouble';
 
 const notWired = (member: string) => (): never => {
   throw new Error(`pelsHostDouble: ${member} is not wired in this fixture`);
@@ -32,7 +33,7 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     homeRuntimeRead: { readHome: () => ({ state: 'unavailable' }) },
     powerTracker: {},
     getTrackerStore: notWired('getTrackerStore'),
-    getObservedRecord: () => undefined,
+    observer: observedDeviceReadsDouble(),
     isSurplusPoolReachable: () => false,
     getLatestPlanSnapshotForUi: () => null,
     getPowerCalibrationSnapshot: () => createEmptyPowerCalibrationSnapshot(),

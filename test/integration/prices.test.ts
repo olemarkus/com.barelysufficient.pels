@@ -1347,7 +1347,6 @@ describe('Price optimization', () => {
     getPowerTracker: () => ({}),
     homeyWebApiGet: noHomeyWebApi,
     readHubMarket: unknownHubMarket,
-    getCurrentPriceLevel: () => PriceLevel.NORMAL,
     log: () => undefined,
     debugStructured: () => undefined,
     error: () => undefined,
@@ -1952,7 +1951,7 @@ describe('Price optimization', () => {
     await app.onInit();
     await flushPromises();
 
-    const result = app['storeFlowPriceData']('today', "{'0':0.2747,'1':0.2678,'2':0.261}");
+    const result = app.priceCoordinator.storeFlowPriceData('today', "{'0':0.2747,'1':0.2678,'2':0.261}");
     expect(result.storedCount).toBe(3);
 
     const combined = getStoredPriceCacheForTests('combined_prices') as CombinedPricesV2 | null;
@@ -2298,7 +2297,7 @@ describe('Price optimization', () => {
       await flushPromises();
 
       // Verify that it's detected as expensive hour
-      expect((app.getCurrentHourPriceLevel() === PriceLevel.EXPENSIVE)).toBe(true);
+      expect((app.priceCoordinator.getCurrentHourPriceLevel() === PriceLevel.EXPENSIVE)).toBe(true);
 
       // The price-shifted setpoint arrives with the first reading once prices are
       // loaded: a price change does not rebuild the plan on its own.
@@ -2336,7 +2335,7 @@ describe('Price optimization', () => {
       await app.onInit();
       await flushPromises();
 
-      const isCheap = (app.getCurrentHourPriceLevel() === PriceLevel.CHEAP);
+      const isCheap = (app.priceCoordinator.getCurrentHourPriceLevel() === PriceLevel.CHEAP);
       expect(isCheap).toBe(true);
     });
   });
@@ -2367,7 +2366,7 @@ describe('Price optimization', () => {
       await app.onInit();
       await flushPromises();
 
-      const isExpensive = (app.getCurrentHourPriceLevel() === PriceLevel.EXPENSIVE);
+      const isExpensive = (app.priceCoordinator.getCurrentHourPriceLevel() === PriceLevel.EXPENSIVE);
       expect(isExpensive).toBe(true);
     });
   });
@@ -2396,11 +2395,11 @@ describe('Price optimization', () => {
       // With default 25% threshold, 20% deviation is NOT cheap
       await app.onInit();
       await flushPromises();
-      expect((app.getCurrentHourPriceLevel() === PriceLevel.CHEAP)).toBe(false);
+      expect((app.priceCoordinator.getCurrentHourPriceLevel() === PriceLevel.CHEAP)).toBe(false);
 
       // Set threshold to 15% - now 20% deviation IS cheap
       mockHomeyInstance.settings.set('price_threshold_percent', 15);
-      expect((app.getCurrentHourPriceLevel() === PriceLevel.CHEAP)).toBe(true);
+      expect((app.priceCoordinator.getCurrentHourPriceLevel() === PriceLevel.CHEAP)).toBe(true);
     });
   });
 
@@ -2430,15 +2429,15 @@ describe('Price optimization', () => {
       mockHomeyInstance.settings.set('price_min_diff_ore', 0);
       await app.onInit();
       await flushPromises();
-      expect((app.getCurrentHourPriceLevel() === PriceLevel.CHEAP)).toBe(true);
+      expect((app.priceCoordinator.getCurrentHourPriceLevel() === PriceLevel.CHEAP)).toBe(true);
 
       // With 20 øre min diff, 15 øre difference is NOT enough to be cheap
       mockHomeyInstance.settings.set('price_min_diff_ore', 20);
-      expect((app.getCurrentHourPriceLevel() === PriceLevel.CHEAP)).toBe(false);
+      expect((app.priceCoordinator.getCurrentHourPriceLevel() === PriceLevel.CHEAP)).toBe(false);
 
       // With 10 øre min diff, 15 øre difference IS enough
       mockHomeyInstance.settings.set('price_min_diff_ore', 10);
-      expect((app.getCurrentHourPriceLevel() === PriceLevel.CHEAP)).toBe(true);
+      expect((app.priceCoordinator.getCurrentHourPriceLevel() === PriceLevel.CHEAP)).toBe(true);
     });
   });
 

@@ -108,7 +108,7 @@ const buildBootstrapContext = () => {
   // Avoid touching real Homey internals during background bootstrap.
   vi.spyOn(ctx.snapshotHelpers, 'startPeriodicSnapshotRefresh').mockImplementation(() => undefined);
   vi.spyOn(ctx.homeyEnergyHelpers, 'start').mockImplementation(() => undefined);
-  vi.mocked(ctx.loadPriceOptimizationSettings).mockImplementation(() => undefined);
+  vi.mocked(ctx.priceCoordinator!.loadPriceOptimizationSettings).mockImplementation(() => undefined);
   vi.mocked(ctx.updateOverheadToken).mockImplementation(async () => undefined);
   vi.mocked(ctx.registerFlowCards).mockImplementation(() => undefined);
   vi.mocked(ctx.dailyBudgetService!.updateState).mockImplementation(() => undefined);

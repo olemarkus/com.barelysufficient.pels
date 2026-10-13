@@ -4,6 +4,7 @@ import {
   requireDailyBudgetService,
   requireDeviceManager,
   requireFlowHomey,
+  requirePriceCoordinator,
 } from './contextGuards';
 import { registerFlowCards, type FlowCardDeps } from '../../flowCards/registerFlowCards';
 import type { AppContext } from '../../lib/app/appContext';
@@ -40,8 +41,8 @@ export function registerAppFlowCards(
     getAllModes,
     getCurrentOperatingMode,
     handleOperatingModeChange: (rawMode) => ctx.handleOperatingModeChange(rawMode),
-    getCurrentPriceLevel: () => ctx.getCurrentHourPriceLevel(),
-    getPriceLevelChangesWithin: (window) => ctx.getPriceLevelChangesWithin(window),
+    getCurrentPriceLevel: () => requirePriceCoordinator(ctx).getCurrentHourPriceLevel(),
+    getPriceLevelChangesWithin: (window) => requirePriceCoordinator(ctx).getPriceLevelChangesWithin(window),
     areFlowBackedCardsAvailable: () => ctx.flowBacked.areFlowBackedCardsAvailable(),
     recordPowerSample: async (powerW) => {
       const source = readConfiguredPowerSource(ctx.homey.settings);
@@ -93,7 +94,7 @@ export function registerAppFlowCards(
       ctx.deviceControlHelpers.reportSteppedLoadActualStep(deviceId, stepId, planningPowerW)
     ),
     setExpectedOverride: (deviceId, kw) => ctx.flowBacked.setExpectedOverride(deviceId, kw),
-    storeFlowPriceData: (kind, raw) => ctx.storeFlowPriceData(kind, raw),
+    storeFlowPriceData: (kind, raw) => requirePriceCoordinator(ctx).storeFlowPriceData(kind, raw),
     getDeferredObjectiveSettings: () => {
       // Self-heal a boot-time empty-`getKeys()` flake that skipped the one-shot
       // migration: idempotent + marker-gated (a cheap single `get` once done), so
@@ -130,7 +131,7 @@ export function registerAppFlowCards(
     evaluateHeadroomForDevice: (params) => ctx.evaluateHeadroomForDevice(params),
     loadDailyBudgetSettings: () => requireDailyBudgetService(ctx).loadSettings(),
     updateDailyBudgetState: (options) => ctx.updateDailyBudgetState(options),
-    getCombinedHourlyPrices: () => ctx.getCombinedHourlyPrices(),
+    getCombinedHourlyPrices: () => requirePriceCoordinator(ctx).getCombinedHourlyPrices(),
     getTimeZone: () => ctx.getTimeZone(),
     getNow: () => ctx.getNow(),
     getStructuredLogger: (component) => ctx.getStructuredLogger(component),

@@ -1,6 +1,8 @@
 import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { pelsHostDouble } from '../helpers/pelsHostDouble';
+import { observedDeviceReadsDouble } from '../helpers/observedDeviceReadsDouble';
+import type { ProjectedObservedDeviceState } from '../../packages/contracts/src/types';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
   buildSettingsUiBootstrap,
@@ -273,11 +275,12 @@ describe('settingsUiApi', () => {
       },
       getSettingsUiManagedDevices: () => latestDevices,
       getUiPickerDevices: () => options.uiPickerDevices ?? [],
-      getObservedState: (deviceId: string) => options.observedStateById?.[deviceId],
       // The payload refresh reads the whole observed record through its own
       // accessor, separate from the general `getObservedState` the control paths
       // use — same backing store, different question.
-      getObservedRecord: (deviceId: string) => options.observedStateById?.[deviceId],
+      observer: observedDeviceReadsDouble((deviceId) => (
+        options.observedStateById?.[deviceId] as ProjectedObservedDeviceState | undefined
+      )),
       get powerTracker() {
         return powerTracker;
       },

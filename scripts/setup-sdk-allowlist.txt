@@ -8,7 +8,7 @@
 # Regenerate with `node scripts/check-setup-boundaries.mjs --seed`, never by
 # hand. When the last line goes, DELETE THIS FILE.
 #
-# Seeded at 27 files.
+# Seeded at 23 files.
 
 setup/appBootMigrations.ts
 setup/appDeviceSupport.ts

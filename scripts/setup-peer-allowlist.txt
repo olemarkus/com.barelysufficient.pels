@@ -7,10 +7,10 @@
 # Regenerate with `node scripts/check-setup-boundaries.mjs --seed`, never by
 # hand. When the last line goes, DELETE THIS FILE.
 #
-# Seeded at 45 files.
+# Seeded at 39 files.
 
 setup/appDeviceControlHelpers.ts 2  # device, executor
-setup/appHostApi.ts 6  # dailyBudget, device, objectives, power, price, weather
+setup/appHostApi.ts 5  # dailyBudget, device, objectives, power, weather
 setup/appInit/composedPlanEngine.ts 3  # executor, observer, plan
 setup/appInit/createGenerationPollSource.ts 3  # device, observer, power
 setup/appInit/createHomeyEnergyPollSource.ts 2  # device, power
@@ -27,8 +27,8 @@ setup/appInit/wireDeviceTransport.ts 2  # device, observer
 setup/appInit/wireHomeRuntimeRegistry.ts 2  # device, home
 setup/appNativeWiring.ts 2  # device, plan
 setup/appPowerTracker.ts 3  # dailyBudget, device, power
-setup/appRuntimeApi.ts 5  # dailyBudget, device, observer, plan, power
-setup/appServiceWiring.ts 3  # device, observer, plan
+setup/appRuntimeApi.ts 4  # dailyBudget, device, plan, power
+setup/appServiceWiring.ts 2  # observer, plan
 setup/appSnapshotHelpers.ts 3  # device, plan, power
 setup/appTargetPowerReachabilityWiring.ts 2  # device, plan
 setup/backgroundTasksController.ts 2  # objectives, weather
@@ -36,7 +36,6 @@ setup/homeRuntime/createHomeCapacityBundle.ts 4  # home, plan, power, price
 setup/homeRuntime/createHomeCapacityGuard.ts 2  # plan, power
 setup/homeRuntime/createHomePowerPipeline.ts 2  # observer, power
 setup/homeRuntime/homeCapacityBundleApi.ts 3  # home, plan, power
-setup/homeRuntime/homeCapacityBundleReadiness.ts 2  # plan, power
 setup/homeRuntime/homeRuntimeRegistry.ts 2  # home, power
 setup/homeRuntime/homeRuntimeRegistryLogs.ts 2  # home, power
 setup/homeRuntime/homeScope.ts 5  # objectives, observer, plan, power, price

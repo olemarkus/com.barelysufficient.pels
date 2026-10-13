@@ -5,21 +5,7 @@ import type { AppContext } from '../lib/app/appContext';
 import type { FlowConflictRefreshResult } from '../lib/flowApi/flowConflictRefreshCoordinator';
 import type Homey from 'homey';
 import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
-import type {
-  ObservedDeviceState,
-  ProjectedObservedDeviceState,
-  ThermalDirection,
-} from '../packages/contracts/src/types';
-import {
-  readObservedEvChargingState,
-  readObservedStateOfCharge,
-  readObservedTemperatureState,
-} from '../lib/observer/observedDeviceStateProjection';
-import type {
-  ObservedEvChargingStateRead,
-  ObservedStateOfChargeRead,
-  ObservedTemperatureRead,
-} from '../lib/observer/observedDeviceStateProjection';
+import type { ThermalDirection } from '../packages/contracts/src/types';
 import type { DebugLoggingTopic } from '../packages/shared-domain/src/utils/debugLogging';
 import { getDebugTopics, setDebugTopics } from '../lib/logging/logger';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
@@ -50,7 +36,6 @@ import type { AppNativeWiring } from './appNativeWiring';
 import type { AppPowerTracker } from './appPowerTracker';
 import type { AppServiceWiring } from './appServiceWiring';
 import type { PowerCalibrationStore } from '../lib/device/devicePowerCalibrationStore';
-import type { ObservedDeviceStateProjection } from '../lib/observer/observedDeviceStateProjection';
 import type { PowerSamplePipeline } from './powerSamplePipeline';
 import { withAppHostApi } from './appHostApi';
 
@@ -63,7 +48,6 @@ abstract class AppRuntimeApi extends Base {
   protected abstract readonly timers: TimerRegistry;
   protected abstract readonly backgroundTasks: BackgroundTasksController;
   protected abstract readonly powerSamplePipeline: PowerSamplePipeline;
-  protected abstract readonly observedDeviceStateProjection: ObservedDeviceStateProjection;
   public abstract getPowerCalibrationStore(): PowerCalibrationStore;
   protected abstract readonly serviceWiring: AppServiceWiring;
   protected abstract readonly nativeWiring: AppNativeWiring;
@@ -83,91 +67,9 @@ abstract class AppRuntimeApi extends Base {
   public updateDailyBudgetState(options?: DailyBudgetUpdateStateOptions): void {
     this.updateDailyBudgetAndRecordCap(options);
   }
-  public getObservationRevision(): number {
-    return this.observedDeviceStateProjection.getRevision();
-  }
-
-  /**
-   * The general observed read: the base state, and no observed cluster.
-   *
-   * Declared narrow on purpose. The projection physically stores every cluster
-   * — state of charge, temperature, EV plug-state, measured power, reported step
-   * — and while this handed out `ProjectedObservedDeviceState`, every consumer
-   * wired to it could read any of them raw, bypassing the named reads that
-   * RESOLVE them. `observed.stateOfCharge.report.percent` is now a compile error
-   * here; a caller that wants a cluster asks for it by name and gets a semantic
-   * result (`readObservedStateOfCharge`, `readObservedTemperatureState`).
-   *
-   * Because every cluster field is optional, the narrow type is still
-   * structurally assignable to the wide one — so this does not break the one
-   * consumer that legitimately needs the whole record, which asks for it below.
-   */
-  public getObservedState(deviceId: string): ObservedDeviceState | undefined {
-    return this.observedDeviceStateProjection.getObservedState(deviceId);
-  }
-
-  /**
-   * The whole observed record, for the consumers that HOLD it rather than ask a
-   * question of it. They are worth naming:
-   *
-   * - the joins that compose it with device configuration or inventory metadata
-   *   (planner input, device surfaces, the Flow-card device list);
-   * - the settings-UI payload refresh, which overlays a fixed list of
-   *   raw-observed fields onto the served device (`LIVE_OBSERVED_FIELDS`);
-   * - the executor's drift check, which reads the reported step, measured power
-   *   and EV state together to decide whether the device has moved off plan
-   *   (`ObserverDeviceRead`, `lib/executor/executorDeviceRead.ts`), joined with
-   *   the configuration's charger identity;
-   * - external-off hold detection, which reads the binary observation and the
-   *   plug state beside the configuration's charger identity.
-   *
-   * Separate from `getObservedState` and named for what it is, so holding the
-   * record stays a deliberate choice. Before this split the drift path took the
-   * base-typed read and structurally widened it, which compiled and worked only
-   * because the object underneath was physically wider than its type — so a
-   * `getObservedState` that ever returned a genuinely narrowed copy would have
-   * changed drift decisions with no type error anywhere.
-   *
-   * A new holder is the general exit re-opening. Anything wanting one cluster
-   * wants a named read.
-   */
-  public getObservedRecord(deviceId: string): ProjectedObservedDeviceState | undefined {
-    return this.observedDeviceStateProjection.getObservedState(deviceId);
-  }
-
-  /**
-   * The named cluster reads. One accessor per observed fact, each returning what
-   * the observer RESOLVED rather than the record it resolved from — so the
-   * question "what is this device's charge" has exactly one answer and exactly
-   * one way to ask it.
-   *
-   * They read the projection directly rather than being handed a value from
-   * `getObservedState`, which no longer declares the clusters. Passing one across
-   * would compile (every cluster field is optional, so the narrow type is
-   * assignable to the wide one) and would work only because the object underneath
-   * is physically wider than its type — which is the kind of accident that
-   * survives until someone returns a genuinely narrowed copy.
-   */
-  public getObservedStateOfCharge(deviceId: string): ObservedStateOfChargeRead {
-    return readObservedStateOfCharge(this.observedDeviceStateProjection.getObservedState(deviceId));
-  }
-
-  public getObservedTemperature(deviceId: string): ObservedTemperatureRead {
-    return readObservedTemperatureState(this.observedDeviceStateProjection.getObservedState(deviceId));
-  }
-
-  public getObservedEvChargingState(deviceId: string): ObservedEvChargingStateRead {
-    return readObservedEvChargingState(this.observedDeviceStateProjection.getObservedState(deviceId));
-  }
-
-  /** Which way this device's setpoint moves demand — the observer projection's answer. */
+  /** Which way this device's setpoint moves demand — the observer's answer. */
   public getThermalDirection(deviceId: string): ThermalDirection {
-    return this.observedDeviceStateProjection.getThermalDirection(deviceId);
-  }
-
-  /** Whether this device's power reading is a live measurement — the observer projection's answer. */
-  public isLiveMeasuredDraw(deviceId: string): boolean {
-    return this.observedDeviceStateProjection.isLiveMeasuredDraw(deviceId);
+    return this.context.observer.getThermalDirection(deviceId);
   }
   public syncLivePlanStateAfterTargetActuation(source: PendingTargetObservationSource): boolean | void {
     return requirePlanService(this.context).syncLivePlanStateInline(source);
@@ -203,9 +105,6 @@ abstract class AppRuntimeApi extends Base {
     const value = this.computeDynamicSoftLimit();
     return Number.isFinite(value) ? value : null;
   }
-  public updatePriceOptimizationEnabled = (logChange = false): void => {
-    requirePriceCoordinator(this.context).updatePriceOptimizationEnabled(logChange);
-  };
   public get priceOptimizationEnabled(): boolean {
     return requirePriceCoordinator(this.context).getPriceOptimizationEnabled();
   }
@@ -284,7 +183,7 @@ abstract class AppRuntimeApi extends Base {
     this.context.capacitySettings = capacitySettings;
     this.context.capacityDryRun = dryRun;
     this.reloadHomeModeCatalog();
-    this.updatePriceOptimizationEnabled();
+    requirePriceCoordinator(this.context).updatePriceOptimizationEnabled();
     void this.updateOverheadToken(this.context.capacitySettings.marginKw);
   }
 
@@ -294,9 +193,6 @@ abstract class AppRuntimeApi extends Base {
       detail: 'capacity_settings_read_recovered',
     });
   }
-  public loadPriceOptimizationSettings = (): void => {
-    requirePriceCoordinator(this.context).loadPriceOptimizationSettings();
-  };
   public updateOverheadToken = async (value?: number): Promise<void> => {
     const overhead = Number.isFinite(value) ? Number(value) : this.context.capacitySettings.marginKw;
     try {

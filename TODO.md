@@ -1486,8 +1486,8 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       now enforces (55 cross-peer, 33 SDK) include files no one has named: `setup/settingsUiHomesApi.ts`
       gained a second peer (`home` + `power`) and `setup/settingsUiApi.ts` went 3 → 4 (added
       `objectives`) while the rule was written but unmerged against `4d5a6488f`, and
-      `setup/appRuntimeApi.ts` composes five (`dailyBudget`, `device`, `observer`, `plan`, `power`)
-      — its sixth, `weather`, went with the weather-history repository. None is a rule violation the
+      `setup/appRuntimeApi.ts` composes four (`dailyBudget`, `device`, `plan`, `power`) — `weather`
+      went with the weather-history repository and `observer` when its reads became a port. None is a rule violation the
       guard let through — it was not running — but each is a concept nobody has named, and seeding
       froze them as permanent budget. Change: give each its name. The two settings-UI handler files
       are read-model composition and want a projection module in a neutral contract package rather

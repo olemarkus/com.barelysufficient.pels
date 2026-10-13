@@ -72,7 +72,7 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
     getPlanEngine: deps.getPlanEngine,
     getPlanService: deps.getPlanService,
     planRebuildThrottle: deps.planRebuildThrottle,
-    getThermalDirection: (deviceId) => ctx.getThermalDirection(deviceId),
+    getThermalDirection: (deviceId) => ctx.observer.getThermalDirection(deviceId),
     // Power attribution needs inventory class and Observer measurements. Use
     // the explicit joined read here; planner input intentionally carries
     // neither class nor zone.

@@ -10,16 +10,16 @@ const buildOptions = (
     membership: HomeMembershipService,
     allowPendingOwnershipGeneration: boolean,
   ) => void,
-) => buildAppHomeMembershipOptions({
-  getRegistry: () => ({
+) => buildAppHomeMembershipOptions(
+  () => ({
     prepareModeCatalogsForOwnership,
   } as unknown as HomeRuntimeRegistry),
-  getMembership: () => membership,
-  getMainStableSampleRevision: () => ({ state: 'stable', revision: 1 }),
-  beginMainPreparedReconcile: () => () => undefined,
-  flushMainShortfallSideEffect: async () => true,
+  () => membership,
+  () => ({ state: 'stable', revision: 1 }),
+  () => () => undefined,
+  async () => true,
   retryDeferredOvershootSeed,
-});
+);
 
 describe('owner-aware support seed ordering', () => {
   it('initializes area mode catalogs before deriving overshoot defaults', () => {

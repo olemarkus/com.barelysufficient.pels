@@ -14,7 +14,6 @@ import {
   POWER_SOURCE,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
 } from '../../lib/utils/settingsKeys';
-import { PriceLevel } from '../../lib/price/priceLevels';
 
 // One store for the file: no spec here persists a tracker, the context only needs the seam.
 const trackerStore = createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
@@ -66,9 +65,8 @@ const buildContext = () => {
     loadCapacitySettings: vi.fn(),
     noteCapacitySettingWritten: vi.fn(),
     recoverCapacitySettingsAfterSkippedWrite: vi.fn(),
-    loadPriceOptimizationSettings: vi.fn(),
-    updatePriceOptimizationEnabled: vi.fn(),
     updateDebugLoggingEnabled: vi.fn(),
+    reloadWeatherCollector: vi.fn(),
     updateOverheadToken: vi.fn(async () => undefined),
     registerFlowCards: vi.fn(),
     refreshTargetDevicesSnapshot: vi.fn(async () => undefined),
@@ -76,9 +74,7 @@ const buildContext = () => {
     handleOperatingModeChange: vi.fn(async () => undefined),
     getFlowSnapshot: vi.fn(async () => []),
     getCurrentPriceLevel: vi.fn(),
-    getCurrentHourPriceLevel: vi.fn(() => PriceLevel.UNKNOWN),
     setExpectedOverride: vi.fn(() => false),
-    storeFlowPriceData: vi.fn(),
     loadDailyBudgetSettings: vi.fn(),
     updateDailyBudgetState: vi.fn(),
     resolveManagedState: vi.fn(() => false),
@@ -87,7 +83,6 @@ const buildContext = () => {
     computeDynamicSoftLimit: vi.fn(() => 0),
     getDynamicSoftLimitOverride: vi.fn(() => null),
     evaluateHeadroomForDevice: vi.fn(() => null),
-    getCombinedHourlyPrices: vi.fn(() => []),
     getDailyBudgetUiPayload: vi.fn(() => ({ kind: 'unavailable' as const })),
     getLatestPlanSnapshotForUi: vi.fn(() => null),
     get powerTracker() { return {}; },
@@ -134,6 +129,9 @@ const buildContext = () => {
     } as never,
     batteryControl: {
       applyControlSettings: vi.fn(),
+    } as never,
+    externalOffHold: {
+      releaseDeOptedHolds: vi.fn(() => []),
     } as never,
     timers,
   } as unknown as AppContext;
@@ -239,6 +237,7 @@ describe('registerSettingsHandler', () => {
     ['planService', 'PlanService must be initialized before use.'],
     ['batteryControl', 'Battery control must be initialized before the plan stack and settings handler setup.'],
     ['dailyBudgetService', 'DailyBudgetService must be initialized before use.'],
+    ['externalOffHold', 'The external-off hold policy must be initialized before the settings handler setup.'],
   ] as const)('fails fast when %s wiring is missing', (member, message) => {
     const rig = buildContext();
     delete rig.ctx[member];

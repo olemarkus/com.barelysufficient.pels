@@ -88,13 +88,13 @@ describe('handleDeferredDeadlineReached — unavailable device must not disarm w
       targetAxis: { state: 'unavailable' },
       stepAxis: { state: 'unavailable' },
     });
-    built.ctx.getObservedState = () => ({
+    vi.mocked(built.ctx.observer.getObservedState).mockImplementation(() => ({
       id: 'd1',
       name: 'EV charger',
       available: false,
       binaryControl: { on: false },
       targets: [],
-    });
+    }));
     return built;
   };
 
@@ -134,14 +134,14 @@ describe('handleDeferredDeadlineReached — observer availability is authoritati
       targetAxis: { state: 'unavailable' },
       stepAxis: { state: 'unavailable' },
     });
-    ctx.getObservedState = () => ({
+    vi.mocked(ctx.observer.getObservedState).mockImplementation(() => ({
       id: 'd1',
       name: 'EV charger',
       available: true,
       binaryControl: { on: false },
       targets: [],
       measuredPowerKw: 0,
-    });
+    }));
     const converge = vi.fn(() => ({ settled: true }));
     ctx.lifecycleFallback = { converge, abandon: vi.fn() };
 
@@ -171,12 +171,12 @@ describe('handleDeferredDeadlineReached — undriveable device must not disarm w
       targetAxis: { state: 'unavailable' },
       stepAxis: { state: 'unavailable' },
     });
-    built.ctx.getObservedState = () => ({
+    vi.mocked(built.ctx.observer.getObservedState).mockImplementation(() => ({
       id: 'd1',
       name: 'Thermostat',
       available: true,
       targets: [],
-    }) as unknown as ReturnType<AppContext['getObservedState']>;
+    }) as unknown as ReturnType<AppContext['observer']['getObservedState']>);
     return built;
   };
 

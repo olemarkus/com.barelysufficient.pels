@@ -1,10 +1,12 @@
-import { normalizeError } from '../lib/utils/errorUtils';
-import type { AppContext } from '../lib/app/appContext';
-import type { MeterSilenceMonitor } from '../lib/power/meterSilence';
-import type { PlanRebuildOutcome } from '../lib/planContract/planActuationResult';
-import type { HomeId } from '../lib/utils/settingsKeys';
+import { getDebugEmitter, type Logger as PinoLogger } from '../logging/logger';
+import { normalizeError } from '../utils/errorUtils';
+import type { HomeId } from '../utils/settingsKeys';
+import type { TimerRegistry } from '../utils/timerRegistry';
+import type { MeterSilenceMonitor } from './meterSilence';
 
 const BASE_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 5000 : 30 * 1000;
+
+const debugEscalation = getDebugEmitter('power', 'plan');
 
 /**
  * Per-home jitter so every bundle does not escalate on one phase-aligned tick.
@@ -19,12 +21,25 @@ export const freshnessEscalationIntervalMs = (homeId: HomeId): number => {
   return BASE_INTERVAL_MS + jitterMs;
 };
 
-export type FreshnessEscalationParams = {
-  ctx: AppContext;
+/**
+ * What the shed pass's rebuild reports back, as the planner's rebuild outcome
+ * carries it (`PlanRebuildOutcome`, `lib/plan/planTypes.ts`). Restated
+ * structurally: power imports no planner, and the planner's outcome satisfies it.
+ */
+export type MeterSilenceShedPassOutcome = {
+  failed: boolean;
+  isDryRun: boolean;
+  gated: boolean;
+  deviceApplyFailureCount: number;
+};
+
+export type MeterSilenceEscalationDeps = {
   homeId: HomeId;
+  timers: TimerRegistry;
   timerKey: string;
-  logger: () => ReturnType<AppContext['getStructuredLogger']>;
-  rebuild: () => Promise<PlanRebuildOutcome>;
+  logger: () => PinoLogger | undefined;
+  /** One rebuild of this home's plan, which both plans and actuates. */
+  rebuild: () => Promise<MeterSilenceShedPassOutcome>;
   /**
    * This home's silence policy: owns "is the one shed pass still owed" and
    * the completed-pass latch, shared with the composed plan-build gate so the
@@ -85,15 +100,22 @@ export type FreshnessEscalationParams = {
  * blocked until a new reading returns. It polls on an interval only to
  * notice the window opening; the escalation itself is the one-shot.
  */
-export function installPowerSampleFreshnessEscalation(params: FreshnessEscalationParams): void {
-  const {
-    ctx, homeId, timerKey, logger, rebuild, meterSilence, isTornDown, isMeterSampled,
-    isSnapshotWarm, isActuationFenced,
-  } = params;
-  let inFlight = false;
+export class MeterSilenceEscalation {
+  private inFlight = false;
 
-  const maybeEscalate = (): void => {
-    if (isTornDown() || inFlight) return;
+  constructor(private readonly deps: MeterSilenceEscalationDeps) {}
+
+  /** Arm the poll that notices the silence window opening. */
+  start(): void {
+    const { timers, timerKey, homeId } = this.deps;
+    timers.registerInterval(timerKey, setInterval(() => this.maybeEscalate(), freshnessEscalationIntervalMs(homeId)));
+  }
+
+  private maybeEscalate(): void {
+    const {
+      homeId, logger, rebuild, meterSilence, isTornDown, isMeterSampled, isSnapshotWarm, isActuationFenced,
+    } = this.deps;
+    if (isTornDown() || this.inFlight) return;
     if (!isMeterSampled()) return;
     // The one-shot policy — silence past the timeout on the stamp's own clock
     // (a restart does not reset it), exactly one owed pass — lives in the
@@ -112,7 +134,7 @@ export function installPowerSampleFreshnessEscalation(params: FreshnessEscalatio
       logger()?.warn({ event: 'home_freshness_heartbeat_actuation_fenced', homeId });
       return;
     }
-    inFlight = true;
+    this.inFlight = true;
     void rebuild()
       .then((outcome) => {
         // Latch this stale period ONLY after a rebuild that both SUCCEEDED and
@@ -125,11 +147,11 @@ export function installPowerSampleFreshnessEscalation(params: FreshnessEscalatio
           return;
         }
         if (outcome.isDryRun) {
-          logger()?.debug({ event: 'home_freshness_heartbeat_rebuild_dry_run_skipped', homeId });
+          debugEscalation({ event: 'home_freshness_heartbeat_rebuild_dry_run_skipped', homeId });
           return;
         }
         if (outcome.gated) {
-          logger()?.debug({ event: 'home_freshness_heartbeat_rebuild_gated_skipped', homeId });
+          debugEscalation({ event: 'home_freshness_heartbeat_rebuild_gated_skipped', homeId });
           return;
         }
         if (outcome.deviceApplyFailureCount > 0) {
@@ -163,8 +185,6 @@ export function installPowerSampleFreshnessEscalation(params: FreshnessEscalatio
       .catch((error: unknown) => {
         logger()?.error({ event: 'home_freshness_heartbeat_rebuild_failed', homeId, err: normalizeError(error) });
       })
-      .finally(() => { inFlight = false; });
-  };
-
-  ctx.timers.registerInterval(timerKey, setInterval(maybeEscalate, freshnessEscalationIntervalMs(homeId)));
+      .finally(() => { this.inFlight = false; });
+  }
 }

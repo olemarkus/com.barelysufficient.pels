@@ -4,11 +4,8 @@ import type { TrackerStore } from '../power/trackerStore';
 import type { CapacitySettingsStore } from '../power/capacitySettingsStore';
 import type { CapacityScalarSettings, PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { UserdataDatabase } from '../store/userdataDatabase';
-import type {
-  ObservedEvChargingStateRead,
-  ObservedStateOfChargeRead,
-  ObservedTemperatureRead,
-} from '../observer/observedDeviceStateProjection';
+import type { PowerCalibrationStore } from '../device/devicePowerCalibrationStore';
+import type { ObservedDeviceReads } from '../observer/observedDeviceStateProjection';
 import type { ExpectedPowerOverridesByDeviceId, LearnedPeaksByDeviceId } from '../device/devicePowerPeak';
 import type Homey from 'homey';
 import type CapacityGuard from '../power/capacityGuard';
@@ -43,19 +40,14 @@ import type { LifecycleFallbackPort } from '../executor/lifecycleFallbackDispatc
 import type { BatteryControlOwner } from '../ports/batteryControlOwner';
 import type { BatteryManagedSettings } from '../battery/batteryControlSettings';
 import type { HomeBatteryDevicesRead } from '../ports/homeBatteryDevices';
-import type { PriceLevel } from '../price/priceLevels';
-import type { PriceLevelChangesRead, PriceLevelLookahead } from '../price/priceLevelUtils';
 import type { PriceCoordinator } from '../price/priceCoordinator';
 import type { PriceFlowTagPublisher } from '../price/priceFlowTags';
 import type { PriceOptimizationSettings } from '../price/priceOptimizer';
-import type { CombinedHourlyPrice } from '../price/priceTypes';
 import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
 import type { CreateSmartTaskCandidateDevicesRead } from '../../packages/contracts/src/widgetHostApi';
 import type {
   DecoratedDeviceSnapshot,
   DeviceDescriptorRead,
-  ObservedDeviceState,
-  ProjectedObservedDeviceState,
   TargetDeviceSnapshot,
   ThermalDirection,
 } from '../../packages/contracts/src/types';
@@ -116,6 +108,12 @@ export type AppContext = {
    * the boot step that opens it.
    */
   getUserdataDatabase: () => UserdataDatabase;
+  /**
+   * The device power calibration store on the userdata database, which the
+   * device transport feeds from its first observation; throws before the boot
+   * step that opens it, and outlives the database close (see `app.ts`).
+   */
+  getPowerCalibrationStore: () => PowerCalibrationStore;
   /** Tell the settings UI a home's tracker persisted (the store produces no settings echo). */
   emitPowerTrackerPersisted: (homeId: string) => void;
   /** SDK-bound Main-home capacity reader, constructed once at the composition root. */
@@ -129,30 +127,15 @@ export type AppContext = {
   noteCapacitySettingWritten: (key: string) => void;
   /** The settings handler's dedupe skipped this key (`CapacitySettingsReloader.recoverAfterSkippedWrite`). */
   recoverCapacitySettingsAfterSkippedWrite: (key: string) => void;
-  loadPriceOptimizationSettings: () => void;
-  updatePriceOptimizationEnabled: (logChange?: boolean) => void;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
   /** Restarts the hidden weather-history collector after its settings blob changes. */
-  reloadWeatherCollector?: () => void;
+  reloadWeatherCollector: () => void;
   updateOverheadToken: (value?: number) => Promise<void>;
   registerFlowCards: () => void;
   refreshTargetDevicesSnapshot: (options?: RefreshTargetDevicesSnapshotOptions) => Promise<void>;
   recordPowerSample: (powerW: number, nowMs?: number) => Promise<PowerSampleAdmission>;
   handleOperatingModeChange: (rawMode: string) => Promise<void>;
   getFlowSnapshot: () => Promise<TargetDeviceSnapshot[]>;
-  /**
-   * The current-hour price level from ONE combined-series build — see
-   * `PriceService.getCurrentHourPriceLevel`. The series is uncached, so asking
-   * for the cheap and expensive flags separately would build it twice.
-   */
-  getCurrentHourPriceLevel: () => PriceLevel;
-  /** The levels the price changes to inside a window — see `PriceService.getPriceLevelChangesWithin`. */
-  getPriceLevelChangesWithin: (window: PriceLevelLookahead) => PriceLevelChangesRead;
-  storeFlowPriceData: (kind: 'today' | 'tomorrow', raw: unknown) => {
-    dateKey: string;
-    storedCount: number;
-    missingHours: number[];
-  };
   loadDailyBudgetSettings: () => void;
   updateDailyBudgetState: (options?: DailyBudgetUpdateStateOptions) => void;
   /** App-wiring route to the PlanService that owns one device (main or sub-home). */
@@ -170,38 +153,16 @@ export type AppContext = {
   // The home batteries the device layer knows, `unavailable` before it exists
   // or has settled them (`lib/device/deviceRoleReads.ts`).
   readHomeBatteryDevices: () => HomeBatteryDevicesRead;
-  // Observer-owned maintained observed truth for a device, fed by the dispatcher
-  // push (`lib/observer/observedDeviceStateProjection.ts`). `undefined` until the
-  // first observation lands.
-  getObservedState: (deviceId: string) => ObservedDeviceState | undefined;
-  // One named read per observed cluster, each returning what the observer
-  // RESOLVED. `getObservedState` above deliberately carries none of them: while
-  // it handed out the whole record, the same fact was reachable two ways — raw
-  // off the record, or resolved through a read — and the raw way won by being
-  // shorter.
-  // The whole record, for the consumers that HOLD it: the configuration and
-  // inventory joins, the settings-UI payload refresh, the executor's drift check
-  // and external-off hold detection. Everything else asks a question, and gets
-  // `getObservedState` or a named read above.
-  getObservedRecord: (deviceId: string) => ProjectedObservedDeviceState | undefined;
-  getObservedStateOfCharge: (deviceId: string) => ObservedStateOfChargeRead;
-  getObservedTemperature: (deviceId: string) => ObservedTemperatureRead;
   /**
-   * The observer's resolution of which way this device's setpoint moves demand
-   * (`resolveThermalDirection`), asked through the context so the seams that
-   * compose it with other domains — the shed-behaviour resolution in
-   * `appHostApi` — do not each import the observer to get it.
+   * Observer-owned maintained observed truth, fed by the dispatcher push
+   * (`lib/observer/observedDeviceStateProjection.ts`): the general read, the
+   * whole record for the consumers that hold it, one named read per observed
+   * cluster, and the accepted-write counter. A port, so no consumer reaches the
+   * projection's writes.
    */
+  readonly observer: ObservedDeviceReads;
+  /** The observer's `getThermalDirection`, for the smart-task evaluator wiring. */
   getThermalDirection: (deviceId: string) => ThermalDirection;
-  /**
-   * The observer's answer to whether a device's power reading is a live
-   * measurement of its draw, not a rate derived from a cumulative meter. Read by
-   * the energy-task delivery count, which books only live readings.
-   */
-  isLiveMeasuredDraw: (deviceId: string) => boolean;
-  getObservedEvChargingState: (deviceId: string) => ObservedEvChargingStateRead;
-  /** Observer-owned accepted-write counter; see `ObservedDeviceStateProjection.getRevision`. */
-  getObservationRevision: () => number;
   isCapacityControlEnabled: (deviceId: string) => boolean;
   isTemperatureControlDisabled: (deviceId: string) => boolean;
   getShedBehavior: (deviceId: string) => ShedBehavior;
@@ -225,7 +186,6 @@ export type AppContext = {
   evaluateHeadroomForDevice: (
     params: Parameters<PlanService['evaluateHeadroomForDevice']>[0],
   ) => HeadroomForDeviceDecision;
-  getCombinedHourlyPrices: () => CombinedHourlyPrice[];
   getDailyBudgetUiPayload: () => DailyBudgetUiRead;
   getLatestPlanSnapshotForUi: () => SettingsUiPlanSnapshot | null;
   getPowerCalibrationSnapshot: () => PowerCalibrationSnapshot;

@@ -19,7 +19,7 @@ export const bindTemperatureSetpoints = (scope: HomeScope, ctx: AppContext): Res
     getPriceOptimizationEnabled: scope.getPriceOptimizationEnabled,
     getPriceOptimizationSettings: scope.getPriceOptimizationSettings,
     getCurrentHourPriceLevel: scope.getCurrentHourPriceLevel,
-    getThermalDirection: (deviceId) => ctx.getThermalDirection(deviceId),
+    getThermalDirection: (deviceId) => ctx.observer.getThermalDirection(deviceId),
     getShedBehavior: (deviceId) => ctx.getShedBehavior(deviceId),
   })
 );

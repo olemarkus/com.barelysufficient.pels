@@ -5,6 +5,7 @@ import type { HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
 import {
   requireBatteryControl,
   requireDailyBudgetService,
+  requireExternalOffHold,
   requirePlanService,
   requirePriceCoordinator,
 } from './contextGuards';
@@ -27,6 +28,7 @@ export const registerSettingsHandler = (
   const planService = requirePlanService(ctx);
   const dailyBudgetService = requireDailyBudgetService(ctx);
   const batteryControl = requireBatteryControl(ctx);
+  const externalOffHold = requireExternalOffHold(ctx);
   const homeRuntimeHooks = buildHomeRuntimeSettingsHooks(getHomeRuntimeRegistry);
   const settingsHandler = createSettingsHandler({
     homey: ctx.homey,
@@ -64,12 +66,10 @@ export const registerSettingsHandler = (
     refreshTargetDevicesSnapshot: () => ctx.refreshTargetDevicesSnapshot(),
     getCapacitySettings: () => ctx.capacitySettings,
     getCapacityDryRun: () => ctx.capacityDryRun,
-    loadPriceOptimizationSettings: ctx.loadPriceOptimizationSettings,
     loadDailyBudgetSettings: () => dailyBudgetService.loadSettings(),
     updateDailyBudgetState: (options) => ctx.updateDailyBudgetState(options),
     resetDailyBudgetLearning: () => dailyBudgetService.resetLearning(),
     priceService: requirePriceCoordinator(ctx),
-    updatePriceOptimizationEnabled: ctx.updatePriceOptimizationEnabled,
     updateOverheadToken: ctx.updateOverheadToken,
     updateDebugLoggingEnabled: ctx.updateDebugLoggingEnabled,
     restartHomeyEnergyPoll: () => {
@@ -78,8 +78,8 @@ export const registerSettingsHandler = (
       // source change must re-evaluate both or the home ends up with neither.
       ctx.generationPollSource.restart();
     },
-    reloadWeatherAdvisor: () => ctx.reloadWeatherCollector?.(),
-    releaseDeOptedExternalOffHolds: () => ctx.externalOffHold?.releaseDeOptedHolds() ?? [],
+    reloadWeatherAdvisor: () => ctx.reloadWeatherCollector(),
+    releaseDeOptedExternalOffHolds: () => { externalOffHold.releaseDeOptedHolds(); },
     reloadExpectedPowerOverrides: () => ctx.flowBacked.reloadExpectedPowerOverrides(),
     applyBatteryControlSettings: () => batteryControl.applyControlSettings(),
   });

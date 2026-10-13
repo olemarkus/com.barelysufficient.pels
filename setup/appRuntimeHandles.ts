@@ -18,7 +18,6 @@ export type AppRuntimeHandles = {
   mainShortfallSideEffectGate?: ReturnType<typeof createHomeCapacityGuard>['shortfallSideEffectGate'];
   /** Ask Main to re-establish meter authority, now or on the next scheduled pass. */
   requestMainAuthorityRecovery?: (timing?: 'scheduled' | 'immediate') => void;
-  stopSettingsHandler?: () => void;
   /**
    * The weather collector and both solar-forecast controllers, started together
    * by the post-startup background step. Absent until then: the settings hook,

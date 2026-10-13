@@ -339,7 +339,7 @@ export class DeviceTransport {
      * turns it cold again — the device list is no longer known. Targeted
      * by-id reads and the car-link producer's snapshot writes do not move it.
      * The silent-meter escalation refuses to spend its one fail-closed shed
-     * pass while this is false (`setup/powerSampleFreshnessEscalation.ts`).
+     * pass while this is false (`lib/power/meterSilenceEscalation.ts`).
      */
     hasWarmSnapshot(): boolean { return this.refreshState.isWarm(); }
 

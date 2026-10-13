@@ -22,7 +22,6 @@ import { buildDeviceParseProviders } from './buildDeviceParseProviders';
 import { createExternalOffHoldPolicy } from '../externalOffHoldAdapter';
 import { createEvCarLinkAccessForApp } from './evCarLinkAccess';
 import type { AppContext } from '../../lib/app/appContext';
-import type { PowerCalibrationStore } from '../../lib/device/devicePowerCalibrationStore';
 import type { HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
 import type { AppNativeWiring } from '../appNativeWiring';
 
@@ -85,7 +84,6 @@ export function buildDeviceTransport(
   structuredLogger: PinoLogger,
   nativeWiring: AppNativeWiring,
   getHomeRuntimeRegistry: () => HomeRuntimeRegistry | undefined,
-  getPowerCalibrationStore: () => PowerCalibrationStore,
   observedStateDispatcher: ObservedStateEmitterDispatcher,
 ): DeviceTransport {
   const structuredLog = structuredLogger.child({ component: 'devices' });
@@ -99,7 +97,7 @@ export function buildDeviceTransport(
   // eslint-disable-next-line functional/immutable-data, no-param-reassign -- shared AppContext write
   ctx.externalOffHold = createExternalOffHoldPolicy(ctx.homey.settings);
   const observeCalibrationSnapshotMutation = createCalibrationSnapshotMutationHook(
-    getPowerCalibrationStore(),
+    ctx.getPowerCalibrationStore(),
     getDebugEmitter('power_calibration', 'power_calibration'),
   );
   return new DeviceTransport(homeyApp, {

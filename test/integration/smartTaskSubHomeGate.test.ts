@@ -1,5 +1,6 @@
 import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { inactiveTaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
+import { observedDeviceReadsDouble } from '../helpers/observedDeviceReadsDouble';
 import { resolveObjectiveTargetValue } from '../../packages/shared-domain/src/deferredObjectiveValues';
 import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
@@ -565,13 +566,15 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
           stepAxis: { state: 'unavailable' },
         }),
       } as unknown as AppContext['deviceControlHelpers'],
-      getObservedState: () => ({
-        id: 'd1',
-        name: 'Cabin heater',
-        available: true,
-        binaryControl: { on: deviceOn },
-        targets: [],
-        measuredPowerKw: 0,
+      observer: observedDeviceReadsDouble(undefined, {
+        getObservedState: () => ({
+          id: 'd1',
+          name: 'Cabin heater',
+          available: true,
+          binaryControl: { on: deviceOn },
+          targets: [],
+          measuredPowerKw: 0,
+        }),
       }),
       // Present, available, metered, ON binary device — the exact fixture that
       // WOULD actuate a binary-off terminal release without the sub-home gate

@@ -124,6 +124,17 @@ export function requireFlowHomey(ctx: AppContext): FlowHomeyLike {
 }
 
 /** The Main home's battery control owner, built by its own startup step after the device transport. */
+/**
+ * "Leave off until turned on again", built with the device transport at the
+ * `initDeviceManager` step, before the settings handler and the plan stack.
+ */
+export function requireExternalOffHold(ctx: AppContext): NonNullable<AppContext['externalOffHold']> {
+  if (!ctx.externalOffHold) {
+    throw new Error('The external-off hold policy must be initialized before the settings handler setup.');
+  }
+  return ctx.externalOffHold;
+}
+
 export function requireBatteryControl(ctx: AppContext) {
   if (!ctx.batteryControl) {
     throw new Error('Battery control must be initialized before the plan stack and settings handler setup.');

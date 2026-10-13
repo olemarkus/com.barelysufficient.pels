@@ -28,14 +28,15 @@ const createDailyBudgetStateStoreForApp = (ctx: AppContext): DailyBudgetStateSto
  * calls.
  */
 export function createDailyBudgetService(ctx: AppContext): DailyBudgetService {
+  const priceCoordinator = requirePriceCoordinator(ctx);
   return new DailyBudgetService({
     getTimeZone: () => ctx.getTimeZone(),
     log: (...args: unknown[]) => ctx.log(...args),
     isDebugTopicEnabled: (topic) => ctx.debugLoggingTopics.has(topic),
     getPowerTracker: () => ctx.powerTracker,
-    getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
+    getPriceOptimizationEnabled: () => priceCoordinator.getPriceOptimizationEnabled(),
     getCapacitySettings: () => ctx.capacitySettings,
-    combinedPricesReader: requirePriceCoordinator(ctx).combinedPricesReader,
+    combinedPricesReader: priceCoordinator.combinedPricesReader,
     dailyBudgetSettingsStore: createDailyBudgetSettingsStore(ctx.homey),
     dailyBudgetStateStore: createDailyBudgetStateStoreForApp(ctx),
     structuredLog: ctx.getStructuredLogger('daily_budget'),

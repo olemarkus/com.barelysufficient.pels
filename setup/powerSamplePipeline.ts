@@ -13,6 +13,7 @@ import { resolveObjectiveSampleDevices } from '../lib/objectives/samples';
 import { buildPublishedPlanCapacityStateSummary } from '../lib/plan/planLogging';
 import { resolvePlanRebuildPosture } from '../lib/plan/planRebuildPosture';
 import { addPerfDuration, incPerfCounter } from '../lib/utils/perfCounters';
+import type { PreparedReconcileFence } from '../lib/power/preparedReconcileFence';
 import type {
   SampleIngestQueue,
   SampleIngestQueueDeps,
@@ -113,7 +114,7 @@ type PowerSampleOptions = {
 };
 
 // Declared with the queue that owns the ledger; re-exported so the existing
-// import sites (`setup/homeRuntime/homeCapacityBundleReadiness.ts`) are unchanged.
+// setup import sites (`setup/homeRuntime/createHomeCapacityBundle.ts`) are unchanged.
 export type { StableSampleRevision };
 
 type PowerSampleRequest = {
@@ -245,6 +246,11 @@ export class PowerSamplePipeline {
 
   getStableSampleRevision(): StableSampleRevision {
     return this.queue.getStableRevision();
+  }
+
+  /** The prepared-reconcile fence over that revision, owned by the queue with its ledger. */
+  get preparedReconcileFence(): PreparedReconcileFence {
+    return this.queue.preparedReconcileFence;
   }
 
   /**

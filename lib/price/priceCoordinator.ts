@@ -78,7 +78,6 @@ export type PriceCoordinatorDeps = {
    * price source PELS assumes while the owner has not chosen one.
    */
   readHubMarket: () => Promise<SettingsUiHubMarketRead>;
-  getCurrentPriceLevel: () => PriceLevel;
   log: (...args: unknown[]) => void;
   debugStructured: StructuredDebugEmitter;
   error: (...args: unknown[]) => void;

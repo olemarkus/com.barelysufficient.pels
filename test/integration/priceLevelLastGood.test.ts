@@ -15,7 +15,6 @@ const createCoordinator = (): PriceCoordinator => new PriceCoordinator({
   getPowerTracker: () => ({}),
   homeyWebApiGet: noHomeyWebApi,
   readHubMarket: unknownHubMarket,
-  getCurrentPriceLevel: () => PriceLevel.NORMAL,
   log: () => undefined,
   debugStructured: () => undefined,
   error: () => undefined,

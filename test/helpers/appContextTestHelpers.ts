@@ -39,11 +39,16 @@ import { createPlanStatusRegistry } from '../../lib/plan/planStatusRegistry';
 import { SnapshotWarmupGate } from '../../lib/plan/snapshotWarmupGate';
 import type { PriceOptimizationSettings } from '../../lib/price/priceOptimizer';
 import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
-import type { ThermalDirection } from '../../packages/contracts/src/types';
+import type { PriceCoordinator } from '../../lib/price/priceCoordinator';
+import { observedDeviceReadsDouble } from './observedDeviceReadsDouble';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { FlowCard, FlowHomeyLike } from '../../lib/utils/types';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import { createEmptyPowerCalibrationSnapshot } from '../../lib/device/devicePowerCalibration';
+import {
+  PowerCalibrationStore,
+  createPowerCalibrationRepository,
+} from '../../lib/device/devicePowerCalibrationStore';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import type { HeadroomForDeviceDecision } from '../../lib/plan/planHeadroomDevice';
 import { createHomeModeCatalog } from '../../lib/home/homeModeCatalog';
@@ -252,6 +257,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
   });
   const userdataDatabase = openUserdataDatabase(IN_MEMORY_DATABASE);
   const trackerStore = createTrackerStore(userdataDatabase);
+  const powerCalibrationStore = new PowerCalibrationStore(createPowerCalibrationRepository(userdataDatabase));
   // The real component over the mock settings, observing this helper's tracker
   // the way the Main tracker component observes every state it adopts.
   const surplusPoolReachability = new SurplusPoolReachability(
@@ -279,7 +285,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getPlanInputSnapshot: () => context.deviceControlHelpers.decorateTargetSnapshotList(
       readRuntimeDevices(
         getDeviceConfigurationStore().getAll(),
-        (deviceId) => context.getObservedRecord(deviceId),
+        (deviceId) => context.observer.getObservedRecord(deviceId),
       ),
     ),
     isSurplusPoolReachable: () => surplusPoolReachability.isReachable(),
@@ -313,22 +319,19 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     hydratePowerTracker: vi.fn(),
     getTrackerStore: () => trackerStore,
     getUserdataDatabase: () => userdataDatabase,
+    getPowerCalibrationStore: () => powerCalibrationStore,
     emitPowerTrackerPersisted: vi.fn(),
     loadCapacitySettings: vi.fn(),
     noteCapacitySettingWritten: vi.fn(),
     recoverCapacitySettingsAfterSkippedWrite: vi.fn(),
-    loadPriceOptimizationSettings: vi.fn(),
-    updatePriceOptimizationEnabled: vi.fn(),
     updateDebugLoggingEnabled: vi.fn(),
+    reloadWeatherCollector: vi.fn(),
     updateOverheadToken: vi.fn(async () => undefined),
     registerFlowCards: vi.fn(),
     refreshTargetDevicesSnapshot: vi.fn(async () => undefined),
     recordPowerSample: vi.fn(async () => ({ state: 'admitted' as const, revision: 1 })),
     handleOperatingModeChange: vi.fn(async () => undefined),
     getFlowSnapshot: vi.fn(async () => []),
-    getCurrentHourPriceLevel: vi.fn(() => PriceLevel.UNKNOWN),
-    getPriceLevelChangesWithin: vi.fn(() => ({ state: 'resolved' as const, levels: [] })),
-    storeFlowPriceData: vi.fn(),
     loadDailyBudgetSettings: vi.fn(),
     updateDailyBudgetState: vi.fn(),
     flowBacked: partialDouble<FlowBackedDeviceState>({
@@ -348,11 +351,13 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
       ? context.deviceManager.readHomeBatteryDevices()
       : { status: 'resolved', deviceIds: new Set<string>() }),
     batteryManaged: new BatteryManagedSettings(homey.settings),
-    getObservedState: vi.fn(() => undefined),
-    getObservedRecord: (deviceId: string) => {
+    // The whole record is the fixture's device projected the way the transport
+    // projects it; the named reads resolve it as the observer does
+    // (`observedDeviceReadsDouble`).
+    observer: observedDeviceReadsDouble((deviceId) => {
       const snapshot = latestTargetSnapshot.find((device) => device.id === deviceId);
       return snapshot ? projectObservedState(snapshot as unknown as TransportDeviceSnapshot) : undefined;
-    },
+    }),
     getDeviceSurfaces: () => joinObservedDeviceDescriptors(
       deviceReads.descriptors(),
       (deviceId) => {
@@ -363,22 +368,13 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getFlowDeviceDescriptors: vi.fn(async () => []),
     getDeviceDescriptors: vi.fn(() => []),
     getDeviceDescriptor: vi.fn(() => undefined),
-    // One stub per named cluster read. Each states ABSENCE explicitly rather than
-    // leaning on `getObservedState` returning nothing — which is the point of the
-    // split: the record no longer answers these questions.
-    getObservedStateOfCharge: vi.fn(() => ({ kind: 'absent' } as const)),
-    getObservedTemperature: vi.fn(() => ({ kind: 'absent' } as const)),
-    getThermalDirection: vi.fn((): ThermalDirection => 'heating'),
-    isLiveMeasuredDraw: vi.fn(() => true),
-    getObservedEvChargingState: vi.fn(() => ({ kind: 'absent' } as const)),
-    getObservationRevision: vi.fn(() => 0),
+    getThermalDirection: (deviceId) => context.observer.getThermalDirection(deviceId),
     isCapacityControlEnabled: vi.fn(() => false),
     isTemperatureControlDisabled: vi.fn(() => false),
     getShedBehavior: vi.fn((): ReturnType<AppContext['getShedBehavior']> => ({ action: 'turn_off' })),
     computeDynamicSoftLimit: vi.fn(() => 0),
     getDynamicSoftLimitOverride: vi.fn(() => null),
     evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
-    getCombinedHourlyPrices: vi.fn(() => []),
     getDailyBudgetUiPayload: vi.fn((): DailyBudgetUiRead => ({ kind: 'unavailable' })),
     getLatestPlanSnapshotForUi: vi.fn((): SettingsUiPlanSnapshot | null => null),
     getPowerCalibrationSnapshot: vi.fn(() => createEmptyPowerCalibrationSnapshot()),
@@ -472,7 +468,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
       isWatchOnly: vi.fn(() => false),
       readControlCapability: vi.fn(() => 'observe_only' as const),
     },
-    priceCoordinator: {
+    priceCoordinator: partialDouble<PriceCoordinator>({
       // The reader every combined-prices consumer takes from the coordinator,
       // over an empty in-memory price cache.
       combinedPricesReader: createCombinedPricesReader(
@@ -482,8 +478,14 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
       refreshSpotPrices: vi.fn(async () => undefined),
       refreshGridTariffData: vi.fn(async () => undefined),
       startPriceRefresh: vi.fn(),
+      loadPriceOptimizationSettings: vi.fn(),
+      updatePriceOptimizationEnabled: vi.fn(),
+      getPriceOptimizationEnabled: () => priceOptimizationEnabled,
       getCurrentHourPriceLevel: vi.fn(() => PriceLevel.UNKNOWN),
-    } as never,
+      getPriceLevelChangesWithin: vi.fn(() => ({ state: 'resolved' as const, levels: [] })),
+      storeFlowPriceData: vi.fn(),
+      getCombinedHourlyPrices: vi.fn(() => []),
+    }),
     planService: {
       rebuildPlanFromCache: vi.fn(async () => undefined),
       evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),

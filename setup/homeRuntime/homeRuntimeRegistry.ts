@@ -63,6 +63,7 @@ import {
 import { prepareTrackerForMeter } from '../../lib/power/trackerMeterIdentity';
 import { resetPersistedHomeTrackerFreshness } from './resetPersistedHomeTrackerFreshness';
 import type { ModeOwnershipTransfer } from '../../lib/home/modeOwnershipTransfer';
+import { SubHomeRuntime } from '../../lib/home/subHomeRuntime';
 
 const MODE_CATALOG_BASE_KEYS: ReadonlySet<string> = new Set([
   OPERATING_MODE_SETTING,
@@ -543,12 +544,14 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
     return createHomeCapacityBundle({
       ctx: this.deps.ctx,
       mainModeCatalog: this.deps.mainModeCatalog,
-      home,
+      runtime: new SubHomeRuntime(
+        home,
+        this.deps.isMembershipReady,
+        () => this.isMeterSourceAuthorized(),
+        () => this.isMeterSourceEpochDiscarded(),
+      ),
       initialPowerTrackerState: prepared.state,
       powerTrackerMeterIdentity: meterIdentity,
-      isMembershipReady: this.deps.isMembershipReady,
-      isMeterSourceAuthorized: () => this.isMeterSourceAuthorized(),
-      isMeterSourceEpochDiscarded: () => this.isMeterSourceEpochDiscarded(),
     });
   }
 

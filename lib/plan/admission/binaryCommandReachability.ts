@@ -133,7 +133,7 @@ export function createBinaryCommandReachability(
       // two such claims look true and are not. `POWER_SAMPLE_REBUILD_CADENCE.maxIntervalMs`
       // (30 s) is evaluated per ARRIVING sample, so it bounds nothing on
       // `power_source = flow`, where cadence is the owner's Flow cadence and
-      // `installPowerSampleFreshnessEscalation` is explicitly not a heartbeat. And
+      // `MeterSilenceEscalation` is explicitly not a heartbeat. And
       // on `homey_energy` the tight-noop backoff returns `false` ABOVE the
       // max-interval escape (`lib/plan/rebuildScheduler/policy.ts`), holding
       // rebuilds up to `TIGHT_NOOP_BACKOFF_MAX_MS` (120 s) in exactly the

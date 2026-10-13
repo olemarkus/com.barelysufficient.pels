@@ -632,7 +632,7 @@ describe('external-off hold — real configuration and Observer reads', () => {
     const ctx = await buildParsedCtx();
     expect(ctx.deviceConfiguration.get(CHARGER_ID)?.isEvCharger).toBe(true);
     expect(ctx.deviceConfiguration.get(SOCKET_ID)?.isEvCharger).toBe(false);
-    expect(ctx.getObservedRecord(CHARGER_ID)).toMatchObject({ evChargingState: 'plugged_out' });
+    expect(ctx.observer.getObservedRecord(CHARGER_ID)).toMatchObject({ evChargingState: 'plugged_out' });
   });
 
   it('does not start a hold when an unplugged charger folds its charging switch to OFF', async () => {

@@ -64,7 +64,7 @@ import {
 // existing static form (`#settings-limits-form`), untouched and byte-identical:
 // this controller only toggles that form's visibility and never writes its keys.
 
-// Mirrors SUB_HOME_CAPACITY_DEFAULTS (setup/homeRuntime/createHomeCapacityBundle.ts):
+// Mirrors SUB_HOME_CAPACITY_DEFAULTS (lib/home/subHomeRuntime.ts):
 // a meter area boots at 10 kW / 0.2 kW and — critically — dry-run TRUE, so it
 // simulates until the user turns simulation off here.
 const DEFAULT_LIMIT_KW = 10;

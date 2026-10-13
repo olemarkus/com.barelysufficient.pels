@@ -69,6 +69,8 @@ export type PriceServiceLike = {
   refreshGridTariffData: (forceRefresh?: boolean) => Promise<void>;
   refreshSpotPrices: (forceRefresh?: boolean) => Promise<void>;
   updateCombinedPrices: () => void;
+  loadPriceOptimizationSettings: () => void;
+  updatePriceOptimizationEnabled: (logChange?: boolean) => void;
 };
 
 export type SettingsHandlerDeps = {
@@ -99,73 +101,65 @@ export type SettingsHandlerDeps = {
   refreshTargetDevicesSnapshot: () => Promise<void>;
   getCapacitySettings: () => CapacitySettings;
   getCapacityDryRun: () => boolean;
-  loadPriceOptimizationSettings: () => void;
   loadDailyBudgetSettings: () => void;
   updateDailyBudgetState: (options?: DailyBudgetUpdateStateOptions) => void;
   resetDailyBudgetLearning: () => void;
   priceService: PriceServiceLike;
-  updatePriceOptimizationEnabled: (logChange?: boolean) => void;
   updateOverheadToken: (value?: number) => Promise<void>;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
-  restartHomeyEnergyPoll?: () => void;
+  restartHomeyEnergyPoll: () => void;
   /** Synchronous meter-event edge: invalidate the old poll and meter sample now. */
-  onHomeyEnergyMeterObserved?: () => void;
+  onHomeyEnergyMeterObserved: () => void;
   /** A `pv_forecast_source` write was observed — kick the Homey solar-forecast
    *  probe so a flip to `homey_energy`/`auto` does not wait out the 3 h tick.
    *  Required: the write has exactly one meaning, and an absent hook would be a
    *  wiring that forgot to answer, not a home with no answer to give. */
   onPvForecastSourceObserved: () => void;
   /** Schedule bounded Main authority repair after an explicit-meter event. */
-  onMainMeterSelectionObserved?: () => void;
+  onMainMeterSelectionObserved: () => void;
   /**
    * Synchronously close the shared ownership generation before a homes/pins
    * event waits behind the serialized settings queue.
    */
-  onHomeOwnershipConfigurationObserved?: () => void;
-  reloadWeatherAdvisor?: () => void;
+  onHomeOwnershipConfigurationObserved: () => void;
+  reloadWeatherAdvisor: () => void;
   /**
    * Re-read the "Leave off until turned on again" opt-in and release any hold
-   * whose device is no longer opted in. Returns the released device ids.
+   * whose device is no longer opted in.
    */
-  releaseDeOptedExternalOffHolds?: () => string[];
+  releaseDeOptedExternalOffHolds: () => void;
   /**
    * Adopt the persisted manual expected-power figures into the live map the
    * runtime resolves against. The map is otherwise loaded only at boot, so a
    * settings-UI write to `DEVICE_EXPECTED_POWER_OVERRIDES` needs this to take
    * effect without a restart.
-   *
-   * REQUIRED, unlike the optional hooks above: absence is not a state a caller
-   * can be in — an unwired seam here means the write silently does nothing
-   * until the next restart, which is precisely the bug this closes.
    */
   reloadExpectedPowerOverrides: () => void;
   /**
    * Hand the owner's `battery_control_devices` change (a battery's Managed
    * toggle) to the battery control owner, which hands back every claimed
    * battery the owner just turned off.
-   * REQUIRED for the same reason as `reloadExpectedPowerOverrides`: an unwired
-   * seam would leave an opted-out battery under PELS's control until restart.
    */
   applyBatteryControlSettings: () => void;
   /**
    * Synchronously observe a source settings event before it enters the async
    * settings queue. This closes per-home authorization for the new generation.
    */
-  onHomeRuntimePowerSourceObserved?: () => void;
+  onHomeRuntimePowerSourceObserved: () => void;
   /**
    * Durably reset and replace per-home meter runtimes for the latest observed
    * source generation. Runs before the Homey Energy poll is restarted.
    */
-  onHomeRuntimePowerSourceChanged?: () => void;
+  onHomeRuntimePowerSourceChanged: () => void;
   /** Synchronously publish the latest validated temperature-command policy before queueing. */
-  onTemperatureControlPolicyObserved?: () => void;
+  onTemperatureControlPolicyObserved: () => void;
   /**
    * Writes to home-suffixed keys (`<base>:<homeId>`, non-main home, see
    * `parseHomeScopedSettingsKey`) route here instead of the exact-key
    * handlers — a `capacity_limit_kw:<homeId>` write must never reload the
-   * main home's capacity scalars. The multi-home runtime registry provides the
-   * consumer; the optional seam remains absent in single-home/test contexts,
-   * where the write is ignored.
+   * main home's capacity scalars. The multi-home runtime registry is the
+   * consumer; before it exists the write is ignored and absorbed by its
+   * boot-time reconcile.
    * Rejections and throws are contained and logged; they never propagate to
    * the settings `set` listener.
    *
@@ -178,27 +172,26 @@ export type SettingsHandlerDeps = {
    * deduplicated command. An unknown homeId is transient: dirty-mark and
    * reconcile — never a destructive reset, never a dropped write.
    */
-  onHomeScopedSettingChanged?: (baseKey: string, homeId: string) => void | Promise<void>;
+  onHomeScopedSettingChanged: (baseKey: string, homeId: string) => void | Promise<void>;
   /**
    * Recompute the cached device→home membership after a `homes_config` /
    * `device_home_assignments` write (both UNSUFFIXED global keys — ordinary
-   * exact-key serialized dispatch, unlike the suffixed hook above). Optional
-   * and read-only: when absent the write still persists — membership simply
+   * exact-key serialized dispatch, unlike the suffixed hook above). Read-only:
+   * before membership is wired the write still persists, and membership
    * recomputes on the next snapshot refresh.
    */
-  recomputeHomeMembership?: () => void;
+  recomputeHomeMembership: () => void;
   /**
    * Reconcile the per-home capacity bundles after a `homes_config` write
    * (create new sub-home runtimes, tear down removed ones). Runs AFTER
    * `recomputeHomeMembership` so a freshly created bundle's first plan input
-   * reads the recomputed membership. Optional: when absent the registry
-   * still self-reconciles on the next suffixed-write dirty-mark.
+   * reads the recomputed membership.
    */
-  reconcileHomeRuntimes?: () => void;
+  reconcileHomeRuntimes: () => void;
   /** Rebuild pre-migration area followers after a Main catalog write. */
-  rebuildHomeRuntimePlansForModeChange?: () => void;
+  rebuildHomeRuntimePlansForModeChange: () => void;
   /** Rebuild every live sub-home after a global per-device control policy changes. */
-  rebuildAllHomeRuntimePlansForDeviceControlChange?: () => void;
+  rebuildAllHomeRuntimePlansForDeviceControlChange: () => void;
 };
 
 const DAILY_BUDGET_SETTINGS_REBUILD_DEBOUNCE_MS = 500;
@@ -277,16 +270,16 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
     // Load-bearing synchronous edge: an async function executes through its
     // first await immediately, so rapid un-awaited POWER_SOURCE events cannot
     // collapse back to the original value before the registry observes them.
-    if (key === POWER_SOURCE) deps.onHomeRuntimePowerSourceObserved?.();
+    if (key === POWER_SOURCE) deps.onHomeRuntimePowerSourceObserved();
     if ([TEMPERATURE_CONTROL_DISABLED_DEVICES, TEMPERATURE_CONTROL_MODES].includes(key)) {
-      deps.onTemperatureControlPolicyObserved?.();
+      deps.onTemperatureControlPolicyObserved();
     }
     if (key === HOMEY_ENERGY_METER_DEVICE_ID) {
-      deps.onHomeyEnergyMeterObserved?.();
-      deps.onMainMeterSelectionObserved?.();
+      deps.onHomeyEnergyMeterObserved();
+      deps.onMainMeterSelectionObserved();
     }
     if (key === HOMES_CONFIG || key === DEVICE_HOME_ASSIGNMENTS) {
-      deps.onHomeOwnershipConfigurationObserved?.();
+      deps.onHomeOwnershipConfigurationObserved();
     }
     const scoped = parseHomeScopedSettingsKey(key);
     if (scoped.homeId !== MAIN_HOME_ID) {
@@ -296,7 +289,7 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
       // Awaiting inside the try contains async-hook rejections too — the
       // settings `set` listener at the SDK seam must never see one.
       try {
-        await deps.onHomeScopedSettingChanged?.(scoped.baseKey, scoped.homeId);
+        await deps.onHomeScopedSettingChanged(scoped.baseKey, scoped.homeId);
       } catch (error) {
         settingsLogger.error({
           event: 'home_scoped_settings_hook_failed',
@@ -385,21 +378,21 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       deps.loadCapacitySettings();
       // Initialized meter areas own their aliases; this only keeps a legacy
       // follower coherent until marker-last migration succeeds.
-      deps.rebuildHomeRuntimePlansForModeChange?.();
+      deps.rebuildHomeRuntimePlansForModeChange();
     },
     capacity_priorities: async () => {
       deps.loadCapacitySettings();
       await rebuildPlanFromSettings(deps, 'capacity_priorities');
       // Initialized meter areas own their priorities; fan out only to a
       // pre-migration follower.
-      deps.rebuildHomeRuntimePlansForModeChange?.();
+      deps.rebuildHomeRuntimePlansForModeChange();
     },
     ...buildSnapshotReparseHandlers(deps),
     [TEMPERATURE_CONTROL_MODES]: async () => {
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'temperature_control_mode_change');
       await rebuildPlanFromSettings(deps, TEMPERATURE_CONTROL_MODES);
-      deps.rebuildAllHomeRuntimePlansForDeviceControlChange?.();
+      deps.rebuildAllHomeRuntimePlansForDeviceControlChange();
     },
     [TEMPERATURE_CONTROL_DISABLED_DEVICES]: async () => {
       // Load synchronously before the first await: every actuator reads this
@@ -410,7 +403,7 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       await rebuildPlanFromSettings(deps, TEMPERATURE_CONTROL_DISABLED_DEVICES);
       // The setting is global and applies to every initialized meter-area
       // runtime, not only legacy areas that still follow Main's mode catalog.
-      deps.rebuildAllHomeRuntimePlansForDeviceControlChange?.();
+      deps.rebuildAllHomeRuntimePlansForDeviceControlChange();
     },
     [BUDGET_EXEMPT_DEVICES]: async () => {
       deps.loadCapacitySettings();
@@ -421,7 +414,7 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
     [RESPECT_EXTERNAL_OFF_DEVICES]: async () => {
       // Clear holds for de-opted devices BEFORE the rebuild, so the same rebuild
       // that observes the new config also sees those devices manageable again.
-      deps.releaseDeOptedExternalOffHolds?.();
+      deps.releaseDeOptedExternalOffHolds();
       // No snapshot refresh: the opt-in changes neither which devices are
       // fetched nor how they parse. It is read live at detection time, and
       // `externalOffHoldActive` is re-resolved from the cached snapshot by the
@@ -460,7 +453,7 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       // device assigned to a sub-home is replanned by that home's runtime and
       // not by the rebuild above. Without this fan-out it would keep sizing
       // against the figure the owner just replaced until the next restart.
-      deps.rebuildAllHomeRuntimePlansForDeviceControlChange?.();
+      deps.rebuildAllHomeRuntimePlansForDeviceControlChange();
     },
     [TEMPERATURE_BOOST_SETTINGS]: async () => {
       deps.loadCapacitySettings();
@@ -488,7 +481,7 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       // especially important when a deferred temperature-only-device seed
       // finally succeeds: a silent/Flow-backed area may have no later meter
       // event to replace its previously committed turn_off default.
-      deps.rebuildHomeRuntimePlansForModeChange?.();
+      deps.rebuildHomeRuntimePlansForModeChange();
     },
     refresh_target_devices_snapshot: async () => {
       await refreshSnapshotWithLog(deps, 'manual_snapshot_refresh');
@@ -557,7 +550,7 @@ function buildPriceSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerM
     [EXPORT_SPOT_FACTOR]: async () => refreshPriceDerivedState(deps),
     [EXPORT_FIXED]: async () => refreshPriceDerivedState(deps),
     [PRICE_OPTIMIZATION_SETTINGS]: async () => {
-      deps.loadPriceOptimizationSettings();
+      deps.priceService.loadPriceOptimizationSettings();
       await refreshSnapshotWithLog(deps, 'price_optimization_settings_change');
       // A device's price adjustment changes its setpoint this hour, so the owner's
       // edit is decided now; a snapshot refresh alone waits for the next meter
@@ -567,7 +560,7 @@ function buildPriceSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerM
     [POWER_SOURCE]: async () => handlePowerSourceChange(deps),
     [HOMEY_ENERGY_METER_DEVICE_ID]: async () => handleHomeyEnergyMeterChange(deps),
     [PRICE_OPTIMIZATION_ENABLED]: async () => {
-      deps.updatePriceOptimizationEnabled(true);
+      deps.priceService.updatePriceOptimizationEnabled(true);
       deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
       await rebuildPlanFromSettings(deps, 'price_optimization_enabled');
     },
@@ -582,16 +575,16 @@ function buildMiscSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMa
     // Still deliberately NO snapshot refresh here; membership's own
     // change-gated invalidation covers the main plan.
     [HOMES_CONFIG]: async () => {
-      deps.recomputeHomeMembership?.();
-      deps.reconcileHomeRuntimes?.();
+      deps.recomputeHomeMembership();
+      deps.reconcileHomeRuntimes();
       // The active area-meter roster may have changed: restart the weather
       // collector so its start()-time meter-scope reconcile can invalidate the
       // learned energy signature (`lib/weather/weatherCollector.ts`). A
       // scope-neutral write (rename, zone move) restarts but forgets nothing.
-      deps.reloadWeatherAdvisor?.();
+      deps.reloadWeatherAdvisor();
     },
     [DEVICE_HOME_ASSIGNMENTS]: async () => {
-      deps.recomputeHomeMembership?.();
+      deps.recomputeHomeMembership();
     },
     [DAILY_BUDGET_RESET]: async () => {
       deps.resetDailyBudgetLearning();
@@ -601,7 +594,7 @@ function buildMiscSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMa
     },
     debug_logging_enabled: async () => deps.updateDebugLoggingEnabled(true),
     [DEBUG_LOGGING_TOPICS]: async () => deps.updateDebugLoggingEnabled(true),
-    [WEATHER_ADVISOR_SETTINGS]: async () => deps.reloadWeatherAdvisor?.(),
+    [WEATHER_ADVISOR_SETTINGS]: async () => deps.reloadWeatherAdvisor(),
     settings_ui_log: async () => handleSettingsUiLog(deps),
   };
 }
@@ -621,7 +614,7 @@ async function handleModeTargetsChange(deps: SettingsHandlerDeps): Promise<void>
   // After the snapshot refresh (plan inputs read the same DeviceConfiguration
   // and Observer values),
   // so a sub-home's rebuild sees fresh device state alongside the new targets.
-  deps.rebuildHomeRuntimePlansForModeChange?.();
+  deps.rebuildHomeRuntimePlansForModeChange();
 }
 
 async function handlePowerLimitsChange(deps: SettingsHandlerDeps): Promise<void> {
@@ -650,24 +643,24 @@ async function handleHomeyEnergyMeterChange(deps: SettingsHandlerDeps): Promise<
   // The meter id is read fresh per poll, so no restart is strictly required —
   // but restart's immediate pollNow() surfaces the new meter's reading within
   // seconds instead of up to 10s. No-ops unless the source is homey_energy.
-  deps.restartHomeyEnergyPoll?.();
+  deps.restartHomeyEnergyPoll();
   // Main's measured scope changed with its meter: restart the weather
   // collector so its start()-time meter-scope reconcile can invalidate the
   // learned energy signature (`lib/weather/weatherCollector.ts`).
-  deps.reloadWeatherAdvisor?.();
+  deps.reloadWeatherAdvisor();
   await rebuildPlanFromSettings(deps, 'homey_energy_meter');
 }
 
 async function handlePowerSourceChange(deps: SettingsHandlerDeps): Promise<void> {
   settingsLogger.info({ event: 'power_source_changed' });
-  deps.onHomeRuntimePowerSourceChanged?.();
-  deps.restartHomeyEnergyPoll?.();
+  deps.onHomeRuntimePowerSourceChanged();
+  deps.restartHomeyEnergyPoll();
   // Flow and Homey Energy are different producers of the power-tracker
   // history the weather insight's kWh layer consumes, so the source is part
   // of the meter-scope fingerprint: restart the collector so its start()-time
   // reconcile can invalidate the learned energy signature
   // (`lib/weather/weatherCollector.ts`).
-  deps.reloadWeatherAdvisor?.();
+  deps.reloadWeatherAdvisor();
   await refreshSnapshotWithLog(deps, 'power_source_change');
   await rebuildPlanFromSettings(deps, 'power_source');
 }

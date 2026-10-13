@@ -63,7 +63,7 @@ const runSnapshotPrePass = (
     deviceIds: snapshot.map((device) => device.id),
     // Affirmative evidence only — see `isAffirmativelyOn`. Release is the one
     // direction where silence must not count as consent.
-    isObservedOn: (deviceId) => isAffirmativelyOn(ctx.getObservedRecord(deviceId)),
+    isObservedOn: (deviceId) => isAffirmativelyOn(ctx.observer.getObservedRecord(deviceId)),
     onObservedOn: (deviceId) => {
       const device = snapshot.find((entry) => entry.id === deviceId);
       // Planner input carries both the observation and the resolved identity.

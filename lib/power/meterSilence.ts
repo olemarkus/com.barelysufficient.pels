@@ -93,7 +93,7 @@ const isSameSilence = (a: MeterSilence | null, b: MeterSilence): boolean => (
  * firmware reboot of two or three minutes lands inside the window, and the
  * meter app has the rest of it to report before the silence completes. A sub-home's escalation clock refuses to age a
  * stamp whose meter source is not authorised at all
- * (`setup/homeRuntime/homeCapacityBundleReadiness.ts`); main's clock has no
+ * (`setup/homeRuntime/createHomeCapacityBundle.ts`); main's clock has no
  * such guard, so a main home whose meter stopped for good sheds once per
  * boot and then blocks — a dead meter is an outage, and the no-readings
  * banner is the owner's cue.
@@ -101,7 +101,7 @@ const isSameSilence = (a: MeterSilence | null, b: MeterSilence): boolean => (
  * "One shed pass" is one ESCALATION pass, and one that could shed: the
  * escalation clock refuses to spend it while no full device read has
  * committed or the write seam is fenced, so it stays owed and the next tick
- * retries (`setup/powerSampleFreshnessEscalation.ts`). While the pass is
+ * retries (`lib/power/meterSilenceEscalation.ts`). While the pass is
  * owed the block is
  * deliberately not engaged, so a foreign trigger inside that window (a
  * settings write, a price hour) also builds fail-closed — a second identical

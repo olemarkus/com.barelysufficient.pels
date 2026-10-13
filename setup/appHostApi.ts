@@ -10,10 +10,7 @@ import {
   type PlanInputSnapshotDevice,
 } from '../lib/planInput/runtimeDeviceRead';
 import { readFlowDevices } from '../lib/device/deviceFlowRead';
-import { PriceLevel } from '../lib/price/priceLevels';
-import type { PriceLevelChangesRead, PriceLevelLookahead } from '../lib/price/priceLevelUtils';
 import type { FlowCardDeps } from '../flowCards/registerFlowCards';
-import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
 import type { PowerSource } from '../lib/power/powerSource';
 import type {
   DailyBudgetModelPreviewResponse,
@@ -58,7 +55,6 @@ import {
   requireDailyBudgetService,
   requireDeviceDiagnosticsService,
   requirePlanService,
-  requirePriceCoordinator,
 } from './appInit/contextGuards';
 import type { AppSmartTaskApi, SmartTaskWriteResult } from './appSmartTaskApi';
 import type { AppSmartTaskPayloads } from './appSmartTaskPayloads';
@@ -171,7 +167,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     return this.context.deviceControlHelpers.decorateTargetSnapshotList(
       readFlowDevices(
         await this.readFlowDeviceDescriptors(),
-        (deviceId) => this.context.getObservedRecord(deviceId),
+        (deviceId) => this.context.observer.getObservedRecord(deviceId),
       ),
     );
   }
@@ -222,14 +218,14 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   private getRuntimeDevices() {
     return readRuntimeDevices(
       this.context.deviceConfiguration.getAll(),
-      (deviceId) => this.context.getObservedRecord(deviceId),
+      (deviceId) => this.context.observer.getObservedRecord(deviceId),
     );
   }
 
   private getRuntimeDevice(deviceId: string): PlanInputSnapshotDevice | undefined {
     const device = readRuntimeDevice(
       this.context.deviceConfiguration.get(deviceId),
-      this.context.getObservedRecord(deviceId),
+      this.context.observer.getObservedRecord(deviceId),
     );
     return device
       ? this.context.deviceControlHelpers.decorateTargetSnapshotList([device])[0]
@@ -259,24 +255,9 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     await this.context.snapshotHelpers.refreshTargetDevicesSnapshot(options);
   }
 
-  public getCombinedHourlyPrices = (): CombinedHourlyPrice[] => (
-    requirePriceCoordinator(this.context).getCombinedHourlyPrices()
-  );
   public getTimeZone = (): string => this.homey.clock.getTimezone();
   public getPowerSource = (): PowerSource => requireConfiguredPowerSource(this.homey.settings);
   public getNow = (): Date => new Date();
-  public getCurrentHourPriceLevel = (): PriceLevel => (
-    requirePriceCoordinator(this.context).getCurrentHourPriceLevel()
-  );
-  public getPriceLevelChangesWithin = (window: PriceLevelLookahead): PriceLevelChangesRead => (
-    requirePriceCoordinator(this.context).getPriceLevelChangesWithin(window)
-  );
-
-  public storeFlowPriceData(kind: 'today' | 'tomorrow', raw: unknown): {
-    dateKey: string; storedCount: number; missingHours: number[];
-  } {
-    return requirePriceCoordinator(this.context).storeFlowPriceData(kind, raw);
-  }
 
   public readHomeBatteryDevices = (): HomeBatteryDevicesRead => readHomeBatteryDevices(this.context.deviceManager);
   public resolveManagedState = (deviceId: string): boolean => resolveDeviceManagedState(
@@ -299,7 +280,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     // The observer's answer, so the configured pair collapses to the one limit
     // for the direction the device is moving demand in — the same resolution
     // `toPlanDevice` asks for the price shift.
-    this.context.getThermalDirection(deviceId),
+    this.context.observer.getThermalDirection(deviceId),
   );
 
   public computeDynamicSoftLimit = (): number | null => requirePlanService(this.context).computePhysicalPowerLimit();

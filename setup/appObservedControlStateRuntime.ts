@@ -64,7 +64,7 @@ export function syncExternalOffHoldForObservation(
     },
     deviceId: event.deviceId,
     observedDevice: toExternalOffHoldObservedDevice(
-      ctx.getObservedRecord(event.deviceId),
+      ctx.observer.getObservedRecord(event.deviceId),
       ctx.deviceConfiguration.get(event.deviceId),
     ),
     changes: event.changes,

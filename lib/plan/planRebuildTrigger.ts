@@ -57,7 +57,7 @@ export const PLAN_REBUILD_TRIGGERS = [
   // fail-closed pass and sheds instead of holding an "under the limits" decision taken
   // before the meter died; the composed plan-build gate then blocks every
   // further rebuild until a new reading returns
-  // (`setup/powerSampleFreshnessEscalation.ts`, `lib/power/meterSilence.ts`).
+  // (`lib/power/meterSilenceEscalation.ts`, `lib/power/meterSilence.ts`).
   'freshness_heartbeat',
 
   // An input other than the reading changed, so a re-decision is owed regardless

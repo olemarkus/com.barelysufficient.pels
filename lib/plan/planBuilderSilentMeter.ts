@@ -2,7 +2,7 @@
  * The silent-meter pass: the ONE plan build that runs without a measurement.
  *
  * When a home's meter has been silent past `POWER_SAMPLE_STALE_SHED_TIMEOUT_MS`
- * the escalation clock (`setup/powerSampleFreshnessEscalation.ts`) runs one
+ * the escalation clock (`lib/power/meterSilenceEscalation.ts`) runs one
  * rebuild so the house sheds rather than holding an "under the limits" decision taken
  * before the meter died, and the composed plan-build gate then blocks every
  * further rebuild until an admitted sample returns (`lib/power/meterSilence.ts`).

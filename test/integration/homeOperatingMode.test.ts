@@ -1,4 +1,5 @@
 import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
+import { createExternalOffHoldPolicy } from '../../setup/externalOffHoldAdapter';
 // Integration coverage for the per-home operating mode (multi-home):
 // - the settings→bundle seam: an `operating_mode:<homeId>` write routes
 //   through the REAL settings handler to ONE bundle's mode rebuild — never to
@@ -101,6 +102,8 @@ const createCatalogFor = (ctx: AppContext, homeId: string) => createHomeModeCata
 const buildRig = (): Rig => {
   const ctx = createAppContextMock({
     homey: homeyLike,
+    // Built with the device transport in production, before the settings handler.
+    externalOffHold: createExternalOffHoldPolicy(homeyLike.settings),
     deviceManager: {
       getSnapshot: () => [],
       getBinaryCommandConfirmationSnapshot: () => [],

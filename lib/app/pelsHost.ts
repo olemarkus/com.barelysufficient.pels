@@ -49,7 +49,7 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
   | 'homeRuntimeRead'
   | 'powerTracker'
   | 'getTrackerStore'
-  | 'getObservedRecord'
+  | 'observer'
   | 'isSurplusPoolReachable'
   | 'getLatestPlanSnapshotForUi'
   | 'getPowerCalibrationSnapshot'

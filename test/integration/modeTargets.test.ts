@@ -17,7 +17,7 @@ vi.mock('../../setup/appLifecycleHelpers', async (importOriginal) => ({
   // the startup rebuild silently and leave this spec green on a shorter start.
   startAppServices: async (ctx: InitializedAppContext) => {
     ctx.hydratePowerTracker();
-    ctx.loadPriceOptimizationSettings();
+    ctx.priceCoordinator.loadPriceOptimizationSettings();
     await ctx.updateOverheadToken();
     await ctx.refreshTargetDevicesSnapshot({ fast: true, recordHomeyEnergySample: false });
     await ctx.planService.rebuildPlanFromCache('startup_snapshot_bootstrap');

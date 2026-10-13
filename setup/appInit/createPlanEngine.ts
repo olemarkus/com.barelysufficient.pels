@@ -99,7 +99,7 @@ export function createPlanEngineComposition(
   // of "held".
   const state = createPlanEngineState(Date.now(), (deviceId) => isExternalOffHeldForObservedDevice(
     ctx.externalOffHold?.isHeld(deviceId) === true,
-    ctx.getObservedRecord(deviceId),
+    ctx.observer.getObservedRecord(deviceId),
   ));
   const pendingBinaryCommandStore = createPendingBinaryCommandStore(
     state.pendingBinaryCommands,
@@ -160,8 +160,8 @@ export function createPlanEngineComposition(
     // `getObservedState` here compiles — narrow is assignable to wide, since
     // every cluster field is optional — and would work only for as long as the
     // object stayed physically wider than its type.
-    getObservedState: (deviceId: string) => ctx.getObservedRecord(deviceId),
-    getObservationRevision: () => ctx.getObservationRevision(),
+    getObservedState: (deviceId: string) => ctx.observer.getObservedRecord(deviceId),
+    getObservationRevision: () => ctx.observer.getRevision(),
     actuator,
     capacityGuard: options.capacityGuard,
     getCapacitySettings: scope.getCapacitySettings,
