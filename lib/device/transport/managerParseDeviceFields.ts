@@ -1,13 +1,9 @@
 import type { RetainedPowerReading } from '../retainedPowerStore';
 import { hasObservedMeasuredPower } from '../../../packages/shared-domain/src/measuredPowerObservedState';
 import type {
-  DeviceStateOfChargeSnapshot,
-  EvChargingState,
-  SteppedLoadProfile,
   TargetDeviceSnapshot,
-  TargetPowerSteppedLoadConfig,
 } from '../../../packages/contracts/src/types';
-import type { MeasuredPowerSource, MeteredPowerReading, TransportDeviceSnapshot } from '../transportDeviceSnapshot';
+import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import {
     isReportedThermostatMode,
     normalizeReportedThermostatMode,
@@ -20,12 +16,8 @@ import {
     resolveZoneId,
     resolveZoneLabel,
 } from './managerHelpers';
-import { estimatePower } from '../devicePowerEstimate';
-import { type FlowReportedCapabilityId } from './flowReportedCapabilities';
 import {
   getControlCapabilityId,
-  getEvCharging,
-  getEvChargingState,
   toCapabilityTimestampMs,
 } from '../managerControl';
 import {
@@ -46,6 +38,7 @@ import {
 import { shouldSkipFlowBackedCandidate } from '../managerFlowSupport';
 import {
     resolveBinaryControlObservation,
+    type DeviceSnapshotControl,
 } from './managerParseSnapshot';
 import {
     resolveStateOfChargeSnapshot,
@@ -64,7 +57,7 @@ import type {
     RetainedMeasurement,
 } from './managerParseDevice';
 import { resolveDevicePowerState } from './managerParsePowerState';
-import { resolveParsedLastFreshDataMs } from './managerParseFreshness';
+import { resolveLastFreshDataMs } from './managerParseFreshness';
 import { withHomeBatteryParseFields } from './homeBatteryObservation';
 import {
     resolveTargetDeviceType,
@@ -79,17 +72,6 @@ type ParsedDeviceSettings = Pick<
 type DeviceCapabilityProfile = {
     overlay: ReturnType<typeof resolveFlowCapabilityOverlay>;
     capsStatus: NonNullable<ReturnType<typeof resolveDeviceCapabilities>>;
-};
-
-type DeviceControlBundle = {
-    binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
-    hasObservedBinaryControl: boolean;
-    evCharging: TargetDeviceSnapshot['evCharging'];
-    evChargingState: EvChargingState | undefined;
-    binaryControl: TargetDeviceSnapshot['binaryControl'];
-    canSetControl: boolean | undefined;
-    available: boolean;
-    powerCapable: boolean;
 };
 
 export function resolveDeviceCapabilityProfile(
@@ -167,7 +149,7 @@ function resolveRetainedMeasuredPower(
     };
 }
 
-function resolveDeviceControlBundle(params: {
+function resolveDeviceSnapshotControl(params: {
     identity: ParsedDeviceIdentity;
     deps: DeviceTransportParseDeps;
     overlay: DeviceCapabilityProfile['overlay'];
@@ -178,34 +160,19 @@ function resolveDeviceControlBundle(params: {
     retainedReading: RetainedMeasurement | undefined;
     purpose: ParseDevicePurpose;
     managedDecision: ManagedFilterDecision;
-}): DeviceControlBundle | null {
+}): DeviceSnapshotControl | null {
     const {
         identity, deps, overlay, capsStatus, binaryCapabilityId, measuredPower,
         previousSnapshot, retainedReading, purpose, managedDecision,
     } = params;
-    const { effectiveDevice, deviceId, deviceClassKey, deviceLabel } = identity;
+    const { effectiveDevice, deviceClassKey } = identity;
     const { logger, isPowerCapable } = deps;
-    const evCharging = getEvCharging(overlay.capabilityObj);
-    // A declared plug state is a member of the Homey enum by the time a read
-    // reaches the parse: the read contract (`deviceReadContract.ts`) ignored any
-    // read — native or converted — whose state was missing or out of the enum.
-    const evChargingState = getEvChargingState(overlay.capabilityObj);
     const {
         resolvedOn, binaryControl, canSetControl, observedCurrentOn, hasTrustedControlState,
-    }
-        = resolveDeviceParsedControlState({
-        logger,
-        deviceId, deviceName: effectiveDevice.name ?? null,
-        deviceLabel,
-        binaryCapabilityId,
-        binaryWriteCapabilityId: overlay.binaryWriteCapabilityId,
-        capabilityObj: overlay.capabilityObj,
-        evCharging,
-        evChargingState,
-        flowBackedCapabilityIds: overlay.flowBackedCapabilityIds,
-        previousSnapshot,
-        suppressDropLog: purpose === 'ui_picker',
-    });
+        evCharging, evChargingState,
+    } = resolveDeviceParsedControlState(
+        identity, logger, overlay, binaryCapabilityId, previousSnapshot, purpose === 'ui_picker',
+    );
     if (shouldDropAfterControlState({
         purpose, decision: managedDecision, currentOn: resolvedOn, deviceClassKey,
     })) {
@@ -246,7 +213,7 @@ export function assembleDeviceSnapshot(params: {
     const { effectiveDevice, deviceId, deviceClassKey, deviceLabel } = identity;
     const { providers, debugStructured, resolveLatestLocalWriteMs } = deps;
     // Resolved once here and handed to both consumers: the power estimate needs it
-    // for the EV rung of its default, and the control bundle needs it for
+    // for the EV rung of its default, and the snapshot control needs it for
     // everything else. It is a pure function of (deviceClassKey, capabilities), so
     // a second call could not disagree — but one call is one fewer thing to keep
     // in step.
@@ -254,18 +221,9 @@ export function assembleDeviceSnapshot(params: {
         deviceClassKey,
         capabilities: overlay.capabilities,
     });
-    const { currentTemperature, measuredPower, powerEstimate } = resolveDevicePowerState({
-        device: effectiveDevice,
-        deviceId,
-        deviceLabel,
-        binaryCapabilityId,
-        capabilities: overlay.capabilities,
-        capabilityObj: overlay.capabilityObj,
-        livePowerWByDeviceId,
-        now,
-        measuredPowerResolver: deps.measuredPowerResolver,
-        powerState: deps.powerState,
-    });
+    const { currentTemperature, measuredPower, powerEstimate } = resolveDevicePowerState(
+        identity, deps, overlay, binaryCapabilityId, livePowerWByDeviceId, now,
+    );
     // Keep the last trusted measurement when a refresh has no newer sample.
     // In particular, re-reading one `meter_power` sample must not drop admission.
     const retainedReading = resolveRetainedReading(previousSnapshot, deps.getRestoredPowerReading(deviceId));
@@ -278,8 +236,7 @@ export function assembleDeviceSnapshot(params: {
     });
     const temperature = resolveTemperatureObservation(currentTemperature, candidateTargets);
     const thermostatMode = readReportedThermostatMode(overlay);
-    const targets = temperature ? [temperature.target] : [];
-    const control = resolveDeviceControlBundle({
+    const control = resolveDeviceSnapshotControl({
         identity, deps, overlay, capsStatus, binaryCapabilityId,
         measuredPower: resolvedMeasuredPower,
         previousSnapshot, retainedReading, purpose, managedDecision,
@@ -291,188 +248,69 @@ export function assembleDeviceSnapshot(params: {
         && !control.binaryCapabilityId
         && !overlay.steppedLoadProfile
     ) return null;
-    const lastFreshDataMs = resolveParsedLastFreshDataMs({
-        capabilityObj: overlay.capabilityObj,
-        binaryCapabilityId: control.binaryCapabilityId,
-        hasObservedBinaryControl: control.hasObservedBinaryControl,
-        evChargingState: control.evChargingState,
-        hasTemperature: temperature !== undefined,
-        reportedStepObservedAtMs: overlay.reportedStepObservedAtMs,
-        measuredPowerObservedAtMs: measuredPower.observedAtMs,
-    });
-    const parsed = buildParsedDeviceSnapshot({
-        device: effectiveDevice,
-        deviceId,
-        deviceClassKey,
-        providers,
-        targets,
-        temperature,
-        binaryCapabilityId: control.binaryCapabilityId,
-        powerEstimate,
-        measuredPowerKw: resolvedMeasuredPower.measuredPowerKw, measuredPowerReading: resolvedMeasuredPower.reading,
-        measuredPowerSource: resolvedMeasuredPower.source,
-        powerCapable: control.powerCapable,
-        binaryControl: control.binaryControl,
-        evCharging: control.evCharging,
-        evChargingObservedAtMs: toCapabilityTimestampMs(
-            overlay.capabilityObj.evcharger_charging?.lastUpdated,
-        ),
-        evChargingState: control.evChargingState,
-        evChargingStateObservedAtMs: toCapabilityTimestampMs(
-            overlay.capabilityObj.evcharger_charging_state?.lastUpdated,
-        ),
-        thermostatMode,
-        stateOfCharge: resolveStateOfChargeSnapshot(
-            deviceClassKey,
-            overlay.capabilityObj,
-            overlay.reportedCapabilities,
-            previousSnapshot?.stateOfCharge,
-            providers.getEvCarAssociationCarIds?.(deviceId) ?? [],
-        ),
-        capabilities: overlay.capabilities,
-        flowBackedCapabilityIds: overlay.flowBackedCapabilityIds,
-        controlAdapter: overlay.controlAdapter,
-        binaryWriteCapabilityId: overlay.binaryWriteCapabilityId,
-        binaryObservationCapabilityId: overlay.binaryObservationCapabilityId,
+    const lastFreshDataMs = resolveLastFreshDataMs(overlay, control, temperature !== undefined, measuredPower);
+    const evChargingObservedAtMs = toCapabilityTimestampMs(overlay.capabilityObj.evcharger_charging?.lastUpdated);
+    const evChargingStateObservedAtMs = toCapabilityTimestampMs(
+        overlay.capabilityObj.evcharger_charging_state?.lastUpdated,
+    );
+    const stateOfCharge = resolveStateOfChargeSnapshot(
+        deviceClassKey, overlay.capabilityObj, overlay.reportedCapabilities, previousSnapshot?.stateOfCharge,
+        providers.getEvCarAssociationCarIds?.(deviceId) ?? [],
+    );
+    const binaryControlObservation = resolveBinaryControlObservation(overlay, control.binaryCapabilityId);
+    const lastLocalWriteMs = resolveLatestLocalWriteMs(deviceId);
+    const parsed: TransportDeviceSnapshot = {
+        id: deviceId,
+        name: effectiveDevice.name,
+        targets: temperature ? [temperature.target] : [],
+        deviceClass: deviceClassKey,
+        deviceType: resolveTargetDeviceType(temperature),
+        ...resolveParsedDeviceSettings(effectiveDevice, deviceId, providers),
         controlModel: overlay.controlModel,
+        binaryControllable: control.binaryControl !== undefined,
+        isEvCharger: deviceClassKey === 'evcharger',
+        isBatteryOrSolar: isBatteryOrSolarClassKey(deviceClassKey),
         steppedLoadProfile: overlay.steppedLoadProfile,
         nativeWriteCapabilities: overlay.nativeWriteCapabilities,
         targetPowerConfig: overlay.targetPowerConfig,
-        canSetControl: control.canSetControl,
-        binaryControlObservation: resolveBinaryControlObservation({
-            capabilityObj: overlay.capabilityObj,
-            binaryCapabilityId: control.binaryCapabilityId,
-            binaryObservationCapabilityId: overlay.binaryObservationCapabilityId,
-        }),
-        available: control.available,
-        reportedStepId: overlay.reportedStepId, reportedStepPowerW: overlay.reportedStepPowerW,
-        reportedStepObservedAtMs: overlay.reportedStepObservedAtMs,
-        suggestedSteppedLoadProfile: overlay.suggestedSteppedLoadProfile,
-        measuredPowerObservedAtMs: resolvedMeasuredPower.observedAtMs,
-        lastFreshDataMs,
-        lastLocalWriteMs: resolveLatestLocalWriteMs(deviceId),
-    });
-    return withHomeBatteryParseFields(parsed, effectiveDevice, deviceClassKey, overlay, previousSnapshot);
-}
-
-function buildParsedDeviceSnapshot(params: {
-    device: HomeyDeviceLike;
-    deviceId: string;
-    deviceClassKey: string;
-    providers: DeviceTransportParseProviders;
-    targets: TargetDeviceSnapshot['targets'];
-    temperature: TransportDeviceSnapshot['temperature'];
-    binaryCapabilityId?: TransportDeviceSnapshot['binaryCapabilityId'];
-    powerEstimate: ReturnType<typeof estimatePower>;
-    powerCapable: boolean;
-    binaryControl: TargetDeviceSnapshot['binaryControl'];
-    evCharging: TargetDeviceSnapshot['evCharging'];
-    evChargingObservedAtMs?: number;
-    evChargingState: EvChargingState | undefined;
-    evChargingStateObservedAtMs?: number;
-    thermostatMode?: string;
-    stateOfCharge: DeviceStateOfChargeSnapshot | undefined;
-    capabilities: string[];
-    flowBackedCapabilityIds: FlowReportedCapabilityId[];
-    controlAdapter?: TargetDeviceSnapshot['controlAdapter'];
-    binaryWriteCapabilityId?: string;
-    binaryObservationCapabilityId?: string;
-    controlModel?: TargetDeviceSnapshot['controlModel'];
-    steppedLoadProfile?: SteppedLoadProfile;
-    nativeWriteCapabilities?: TargetDeviceSnapshot['nativeWriteCapabilities'];
-    targetPowerConfig?: TargetPowerSteppedLoadConfig;
-    canSetControl: boolean | undefined;
-    binaryControlObservation: TargetDeviceSnapshot['binaryControlObservation'];
-    available: boolean;
-    reportedStepId?: string; reportedStepPowerW?: number; reportedStepObservedAtMs?: number;
-    suggestedSteppedLoadProfile?: TargetDeviceSnapshot['suggestedSteppedLoadProfile'];
-    measuredPowerKw?: number; measuredPowerObservedAtMs?: number; measuredPowerReading?: MeteredPowerReading;
-    measuredPowerSource?: MeasuredPowerSource;
-    lastFreshDataMs?: number;
-    lastLocalWriteMs?: number;
-}): TransportDeviceSnapshot {
-    const {
-        device,
-        deviceId,
-        deviceClassKey,
-        providers,
-        targets,
-        temperature,
-        binaryCapabilityId,
-        powerEstimate,
-        powerCapable,
-        binaryControl,
-        evCharging,
-        evChargingObservedAtMs,
-        evChargingState,
-        evChargingStateObservedAtMs,
-        stateOfCharge,
-        capabilities,
-        flowBackedCapabilityIds,
-        controlAdapter,
-        binaryWriteCapabilityId,
-        binaryObservationCapabilityId,
-        controlModel,
-        steppedLoadProfile,
-        nativeWriteCapabilities,
-        targetPowerConfig,
-        canSetControl,
-        binaryControlObservation,
-        available,
-        reportedStepId, reportedStepPowerW, reportedStepObservedAtMs,
-        suggestedSteppedLoadProfile,
-        measuredPowerKw, measuredPowerObservedAtMs, measuredPowerReading, measuredPowerSource,
-        lastFreshDataMs,
-        lastLocalWriteMs,
-    } = params;
-    return {
-        id: deviceId,
-        name: device.name,
-        targets,
-        deviceClass: deviceClassKey,
-        deviceType: resolveTargetDeviceType(temperature),
-        ...resolveParsedDeviceSettings(device, deviceId, providers),
-        controlModel,
-        binaryControllable: binaryControl !== undefined,
-        isEvCharger: deviceClassKey === 'evcharger',
-        isBatteryOrSolar: isBatteryOrSolarClassKey(deviceClassKey),
-        steppedLoadProfile,
-        nativeWriteCapabilities,
-        targetPowerConfig,
-        binaryCapabilityId,
+        binaryCapabilityId: control.binaryCapabilityId,
         expectedPowerKw: powerEstimate.expectedPowerKw,
         expectedPowerSource: powerEstimate.expectedPowerSource,
-        powerCapable,
-        binaryControl,
-        evCharging,
+        powerCapable: control.powerCapable,
+        binaryControl: control.binaryControl,
+        evCharging: control.evCharging,
         evChargingObservedAtMs,
-        evChargingState,
+        evChargingState: control.evChargingState,
         evChargingStateObservedAtMs,
-        // Read off `params` rather than destructured with its siblings: this
-        // function sits one line under the max-lines cap.
-        thermostatMode: params.thermostatMode,
+        thermostatMode,
         stateOfCharge,
         temperature,
-        measuredPowerKw, measuredPowerObservedAtMs, measuredPowerReading, measuredPowerSource,
-        zone: resolveZoneLabel(device),
-        zoneId: resolveZoneId(device),
-        capabilities,
-        controlAdapter,
-        binaryWriteCapabilityId,
-        binaryObservationCapabilityId,
+        measuredPowerKw: resolvedMeasuredPower.measuredPowerKw,
+        measuredPowerObservedAtMs: resolvedMeasuredPower.observedAtMs,
+        measuredPowerReading: resolvedMeasuredPower.reading,
+        measuredPowerSource: resolvedMeasuredPower.source,
+        zone: resolveZoneLabel(effectiveDevice),
+        zoneId: resolveZoneId(effectiveDevice),
+        capabilities: overlay.capabilities,
+        controlAdapter: overlay.controlAdapter,
+        binaryWriteCapabilityId: overlay.binaryWriteCapabilityId,
+        binaryObservationCapabilityId: overlay.binaryObservationCapabilityId,
         binaryControlObservation,
-        reportedStepId, reportedStepPowerW, reportedStepObservedAtMs,
-        suggestedSteppedLoadProfile,
-        ...(flowBackedCapabilityIds.length > 0 ? {
+        reportedStepId: overlay.reportedStepId,
+        reportedStepPowerW: overlay.reportedStepPowerW,
+        reportedStepObservedAtMs: overlay.reportedStepObservedAtMs,
+        suggestedSteppedLoadProfile: overlay.suggestedSteppedLoadProfile,
+        ...(overlay.flowBackedCapabilityIds.length > 0 ? {
             flowBacked: true,
-            flowBackedCapabilityIds,
+            flowBackedCapabilityIds: overlay.flowBackedCapabilityIds,
         } : {}),
-        canSetControl,
-        available,
+        canSetControl: control.canSetControl,
+        available: control.available,
         lastFreshDataMs,
         lastLocalWriteMs,
         lastUpdated: lastFreshDataMs,
     };
+    return withHomeBatteryParseFields(parsed, effectiveDevice, deviceClassKey, overlay, previousSnapshot);
 }
 
 function resolveParsedDeviceSettings(
