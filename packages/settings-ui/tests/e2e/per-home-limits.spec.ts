@@ -8,6 +8,7 @@ import {
   seedRentalMeterSnapshot,
   seedStubSetting,
 } from './fixtures/homes';
+import type { StubWindow } from './stubWindow';
 
 /* -------------------------------------------------------------------------- *
  * Per-home Limits & safety flow (multi-home U3): the shell's global scope bar
@@ -110,14 +111,10 @@ test('a meter area activates control: switch, turn control on, set a cap', async
   await page.locator('#home-limits-simulation-switch').click();
   await expect(page.locator('#home-limits-sim-notice')).toHaveCount(0);
   await expect.poll(() => readStubSetting(page, `capacity_dry_run:${AREA_ID}`)).toBe(false);
-  // The controller disables the switch while its write is in flight, so waiting
-  // for it to come back is the signal that the write COMMITTED and the editor
-  // repainted. Without it the repaint can land between the fill and the blur
-  // below, resetting the field to its stored value so the blur commits nothing —
-  // an intermittent failure that reads as "the cap never persisted".
-  await expect(page.locator('#home-limits-simulation-switch')).toBeEnabled();
 
   // Set a hard cap for the area — persists the suffixed key, never the bare one.
+  // Typed straight after the toggle, as a user would: the toggle's own
+  // `settings.set` echo re-reads the area mid-edit and must not reset the field.
   await page.locator('#home-limits-hard-cap').fill('9');
   await expect(page.locator('#home-limits-hard-cap')).toHaveValue('9');
   await page.locator('#home-limits-hard-cap').blur();
@@ -193,9 +190,21 @@ test('a Main-home-only deep link selects the Main home before landing', async ({
 
   // The stale-data banner promises the Power source control. Following it while
   // an area is selected must not land on a page where that control is hidden.
+  // The whole-home readings go stale the way production's do (as in
+  // power-source.spec.ts): the tracker keeps its latch while its stamp ages past
+  // the banner threshold, and the published status says so, so the app shows
+  // the banner itself rather than racing a hand-forced one.
+  await page.evaluate(() => {
+    const stub = (window as unknown as StubWindow).Homey.__stub;
+    stub.setSetting('power_tracker_state', { lastPowerW: 5200, lastTimestamp: Date.now() - 120_000 });
+    stub.setSetting('pels_status', { lastPowerUpdate: Date.now() - 120_000 });
+    stub.setSetting('app_heartbeat', Date.now());
+    stub.emitHomeyEvent('plan_status_published', { homeId: 'main' });
+  });
   await page.getByRole('tab', { name: 'Overview' }).click();
-  await page.evaluate(() => { document.getElementById('stale-data-banner')!.hidden = false; });
-  await page.locator('#stale-data-action').click();
+  const staleBanner = page.locator('#stale-data-banner');
+  await expect(staleBanner).toBeVisible();
+  await staleBanner.locator('#stale-data-action').click();
   await expect(page.locator('#limits-panel')).toBeVisible();
   await expect(page.locator('#settings-limits-global')).toBeVisible();
   await expect(page.locator('#settings-power-source')).toBeVisible();

@@ -122,7 +122,6 @@ packages/settings-ui/src/ui/deviceDetail/targetPowerConfig.ts 1
 packages/settings-ui/src/ui/devices.ts 2
 packages/settings-ui/src/ui/echartsRegistry.ts 1
 packages/settings-ui/src/ui/exportPriceSettings.ts 1
-packages/settings-ui/src/ui/homeLimits.ts 2
 packages/settings-ui/src/ui/modeRename.ts 1
 packages/settings-ui/src/ui/powerStats.ts 3
 packages/settings-ui/src/ui/powerUsageSplit.ts 1

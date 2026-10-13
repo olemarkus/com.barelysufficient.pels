@@ -368,6 +368,330 @@ describe('control toggle — optimistic rollback + serialization', () => {
   });
 });
 
+describe('a realtime refresh of the open area keeps what the user owns', () => {
+  const capKey = `capacity_limit_kw:${AREA_ID}`;
+  const marginKey = `capacity_margin_kw:${AREA_ID}`;
+  const dryRunKey = `capacity_dry_run:${AREA_ID}`;
+  const hardCapInput = () => document.querySelector<HTMLInputElement>('#home-limits-hard-cap')!;
+  const marginInput = () => document.querySelector<HTMLInputElement>('#home-limits-margin')!;
+  const controlSwitch = () => document.querySelector('#home-limits-simulation-switch') as HTMLElement & { selected: boolean };
+  const typeInto = (input: HTMLInputElement, value: string) => {
+    input.value = value;
+    input.dispatchEvent(new Event('input'));
+  };
+
+  beforeEach(async () => {
+    install({ [capKey]: 7, [marginKey]: 0.3, [dryRunKey]: true });
+    await refreshHomeLimitsOnLimitsPanel();
+    await flushAsync();
+    await selectArea(AREA_ID);
+  });
+
+  it('a cap typed while the control write echoes back is still the one committed', async () => {
+    // Turn control on, then type a cap at once: the toggle's own
+    // `settings.set` echo starts a re-read that lands mid-edit.
+    controlSwitch().selected = true;
+    controlSwitch().dispatchEvent(new Event('change'));
+    await flushAsync();
+    expect(homey.__settingsStore[dryRunKey]).toBe(false);
+
+    notifyHomeLimitsSettingChanged(dryRunKey);
+    typeInto(hardCapInput(), '9');
+    await flushAsync();
+    expect(hardCapInput().value).toBe('9');
+
+    hardCapInput().dispatchEvent(new Event('change'));
+    await flushAsync();
+    expect(homey.__settingsStore[capKey]).toBe(9);
+    expect(controlSwitch().selected).toBe(true);
+  });
+
+  it('a field the user has not edited follows an external write; an edited one does not', async () => {
+    typeInto(marginInput(), '0.5');
+    // A second WebView raises the cap while this one has a margin draft open.
+    homey.__settingsStore[capKey] = 12;
+    notifyHomeLimitsSettingChanged(capKey);
+    await flushAsync();
+    expect(hardCapInput().value).toBe('12');
+    expect(marginInput().value).toBe('0.5');
+
+    marginInput().dispatchEvent(new Event('change'));
+    await flushAsync();
+    expect(homey.__settingsStore[marginKey]).toBe(0.5);
+    expect(homey.__settingsStore[capKey]).toBe(12);
+  });
+
+  it('a draft kept through an outside change stays a draft even when it later matches it', async () => {
+    typeInto(hardCapInput(), '9');
+    homey.__settingsStore[capKey] = 8;
+    notifyHomeLimitsSettingChanged(capKey);
+    await flushAsync();
+    expect(hardCapInput().value).toBe('9');
+
+    // The user now types the value the outside change wrote. It is still their
+    // uncommitted input, so the next outside change must not replace it.
+    typeInto(hardCapInput(), '8');
+    homey.__settingsStore[capKey] = 12;
+    notifyHomeLimitsSettingChanged(capKey);
+    await flushAsync();
+    expect(hardCapInput().value).toBe('8');
+  });
+
+  it('the newer of two refreshes wins when they resolve out of order', async () => {
+    // Hold the area's scalar reads so two refreshes can be released in reverse
+    // order; each read returns what the store held when it was issued.
+    const areaScalarKeys = new Set([capKey, marginKey, dryRunKey, `capacity_period_minutes:${AREA_ID}`]);
+    const heldReads: Array<() => void> = [];
+    homey.get.mockImplementation((key: string, cb: (err: Error | null, value?: unknown) => void) => {
+      const value = Object.prototype.hasOwnProperty.call(homey.__settingsStore, key) ? homey.__settingsStore[key] : null;
+      if (areaScalarKeys.has(key)) heldReads.push(() => cb(null, value));
+      else cb(null, value);
+    });
+    homey.__settingsStore[capKey] = 8;
+    notifyHomeLimitsSettingChanged(capKey);
+    const olderRead = heldReads.splice(0);
+    homey.__settingsStore[capKey] = 9;
+    notifyHomeLimitsSettingChanged(capKey);
+    const newerRead = heldReads.splice(0);
+    expect([olderRead.length, newerRead.length]).toEqual([4, 4]);
+
+    newerRead.forEach((release) => release());
+    await flushAsync();
+    expect(hardCapInput().value).toBe('9');
+    olderRead.forEach((release) => release());
+    await flushAsync();
+    expect(hardCapInput().value).toBe('9');
+
+    // Nor did the stale read become the saved baseline: setting the cap back to
+    // 8 is a real change against the stored 9, so it must write.
+    typeInto(hardCapInput(), '8');
+    hardCapInput().dispatchEvent(new Event('change'));
+    await flushAsync();
+    expect(homey.__settingsStore[capKey]).toBe(8);
+  });
+
+  // The cap write lands in the store at once but its callback is held, the way
+  // Homey stores a value before it acknowledges the write.
+  const holdCapWriteCallback = (): { complete: () => void } => {
+    const held = { complete: () => {} };
+    homey.set.mockImplementation((key: string, value: unknown, cb?: (err: Error | null) => void) => {
+      homey.__settingsStore[key] = value;
+      if (key === capKey) held.complete = () => cb?.(null);
+      else cb?.(null);
+    });
+    return held;
+  };
+
+  it('an outside change to the untouched field lands once the other field saves', async () => {
+    const capWrite = holdCapWriteCallback();
+    typeInto(hardCapInput(), '9');
+    hardCapInput().dispatchEvent(new Event('change'));
+    await flushAsync();
+
+    // Before the cap write returns, a second WebView sets the margin. The read
+    // it triggers may predate the cap write, so it waits for the write.
+    homey.__settingsStore[marginKey] = 0.5;
+    notifyHomeLimitsSettingChanged(marginKey);
+    await flushAsync();
+    expect(hardCapInput().value).toBe('9');
+
+    capWrite.complete();
+    await flushAsync();
+    expect(marginInput().value).toBe('0.5');
+    // The cap save never wrote the margin it did not change.
+    expect(homey.__settingsStore[marginKey]).toBe(0.5);
+
+    // Setting the margin back to 0.3 is a real change against the stored 0.5.
+    typeInto(marginInput(), '0.3');
+    marginInput().dispatchEvent(new Event('change'));
+    await flushAsync();
+    expect(homey.__settingsStore[marginKey]).toBe(0.3);
+    expect(homey.__settingsStore[capKey]).toBe(9);
+  });
+
+  it('a pending field takes an outside change that landed mid-save once its save settles', async () => {
+    const capWrite = holdCapWriteCallback();
+    typeInto(hardCapInput(), '9');
+    hardCapInput().dispatchEvent(new Event('change'));
+    await flushAsync();
+
+    // A second WebView writes 12 after this one's 9 landed but before it was
+    // acknowledged. The read may predate the pending write, so the field holds.
+    homey.__settingsStore[capKey] = 12;
+    notifyHomeLimitsSettingChanged(capKey);
+    await flushAsync();
+    expect(hardCapInput().value).toBe('9');
+
+    capWrite.complete();
+    await flushAsync();
+    expect(hardCapInput().value).toBe('12');
+
+    typeInto(hardCapInput(), '9');
+    hardCapInput().dispatchEvent(new Event('change'));
+    await flushAsync();
+    capWrite.complete();
+    await flushAsync();
+    expect(homey.__settingsStore[capKey]).toBe(9);
+    expect(hardCapInput().value).toBe('9');
+  });
+
+  it('an outside change that lands while control is being turned on still reaches the switch', async () => {
+    let completeControlWrite: () => void = () => {};
+    homey.set.mockImplementation((key: string, value: unknown, cb?: (err: Error | null) => void) => {
+      homey.__settingsStore[key] = value;
+      if (key === dryRunKey) completeControlWrite = () => cb?.(null);
+      else cb?.(null);
+    });
+    controlSwitch().selected = true;
+    controlSwitch().dispatchEvent(new Event('change'));
+    await flushAsync();
+
+    // Another WebView restores simulation after this write landed but before
+    // its callback returned; the refresh reads simulation mid-write.
+    homey.__settingsStore[dryRunKey] = true;
+    notifyHomeLimitsSettingChanged(dryRunKey);
+    await flushAsync();
+
+    completeControlWrite();
+    await flushAsync();
+    expect(controlSwitch().selected).toBeFalsy();
+    expect(document.querySelector('#home-limits-sim-notice')).not.toBeNull();
+  });
+
+  it('a read that started before a completed save never replaces it', async () => {
+    const areaScalarKeys = new Set([capKey, marginKey, dryRunKey, `capacity_period_minutes:${AREA_ID}`]);
+    const heldReads: Array<() => void> = [];
+    let areaReads: 'hold' | 'fail' | 'pass' = 'hold';
+    homey.get.mockImplementation((key: string, cb: (err: Error | null, value?: unknown) => void) => {
+      const value = Object.prototype.hasOwnProperty.call(homey.__settingsStore, key) ? homey.__settingsStore[key] : null;
+      if (!areaScalarKeys.has(key) || areaReads === 'pass') cb(null, value);
+      else if (areaReads === 'fail') cb(new Error('read failed'));
+      else heldReads.push(() => cb(null, value));
+    });
+
+    // A refresh reads the stored 7 and is held...
+    notifyHomeLimitsSettingChanged(capKey);
+    const heldRefresh = heldReads.splice(0);
+    // ...while the user saves 9, and the save's own refresh fails.
+    typeInto(hardCapInput(), '9');
+    hardCapInput().dispatchEvent(new Event('change'));
+    await flushAsync();
+    expect(homey.__settingsStore[capKey]).toBe(9);
+    areaReads = 'fail';
+    notifyHomeLimitsSettingChanged(capKey);
+    await flushAsync();
+
+    areaReads = 'pass';
+    heldRefresh.forEach((release) => release());
+    await flushAsync();
+    expect(hardCapInput().value).toBe('9');
+    // The baseline is the stored 9 too: setting 7 again is a real change.
+    typeInto(hardCapInput(), '7');
+    hardCapInput().dispatchEvent(new Event('change'));
+    await flushAsync();
+    expect(homey.__settingsStore[capKey]).toBe(7);
+  });
+
+  it('a reopened area renders its stored values at once while a write to it is still in flight', async () => {
+    let completeCapWrite: () => void = () => {};
+    homey.set.mockImplementation((key: string, value: unknown, cb?: (err: Error | null) => void) => {
+      if (key !== capKey) {
+        homey.__settingsStore[key] = value;
+        cb?.(null);
+        return;
+      }
+      completeCapWrite = () => {
+        homey.__settingsStore[key] = value;
+        cb?.(null);
+      };
+    });
+    typeInto(hardCapInput(), '9');
+    hardCapInput().dispatchEvent(new Event('change'));
+    await flushAsync();
+
+    // The write's callback has not returned when the panel is opened again.
+    await refreshHomeLimitsOnLimitsPanel();
+    await flushAsync();
+    expect(hardCapInput().value).toBe('7');
+    expect(marginInput().value).toBe('0.3');
+
+    // When the callback does return, the area is read again.
+    completeCapWrite();
+    await flushAsync();
+    expect(hardCapInput().value).toBe('9');
+  });
+
+  it('another area\'s read never discards the selected area\'s only good read', async () => {
+    const otherAreaId = 'h_two';
+    homey.__uiState.homes = {
+      ...homesPayload(),
+      homes: [
+        ...homesPayload().homes,
+        { homeId: otherAreaId, name: 'Hytta', rootZoneId: 'z2', meterDeviceId: 'dev_b' },
+      ],
+    };
+    notifyHomeScopeSettingChanged(HOMES_CONFIG);
+    await flushAsync();
+    homey.__settingsStore[`capacity_limit_kw:${otherAreaId}`] = 4;
+
+    const isThisAreaScalar = (key: string) => key.startsWith('capacity_') && key.endsWith(`:${AREA_ID}`);
+    const heldReads: Array<() => void> = [];
+    let failThisAreaReads = false;
+    homey.get.mockImplementation((key: string, cb: (err: Error | null, value?: unknown) => void) => {
+      const value = Object.prototype.hasOwnProperty.call(homey.__settingsStore, key) ? homey.__settingsStore[key] : null;
+      if (!isThisAreaScalar(key)) cb(null, value);
+      else if (failThisAreaReads) cb(new Error('read failed'));
+      else heldReads.push(() => cb(null, value));
+    });
+
+    // A refresh of this area is held while the user visits the other area...
+    notifyHomeLimitsSettingChanged(capKey);
+    const heldRefresh = heldReads.splice(0);
+    await selectArea(otherAreaId);
+    expect(hardCapInput().value).toBe('4');
+    // ...and coming back reads this area again, which fails.
+    failThisAreaReads = true;
+    await selectArea(AREA_ID);
+    expect(document.querySelector('#home-limits-hard-cap')).toBeNull();
+
+    // The held read is now the only good one for this area: it must apply.
+    heldRefresh.forEach((release) => release());
+    await flushAsync();
+    expect(document.querySelector<HTMLInputElement>('#home-limits-hard-cap')?.value).toBe('7');
+  });
+
+  it('keeps the control switch busy until its own write returns', async () => {
+    let completeControlWrite: () => void = () => {};
+    homey.set.mockImplementation((key: string, value: unknown, cb?: (err: Error | null) => void) => {
+      if (key === dryRunKey) {
+        completeControlWrite = () => {
+          homey.__settingsStore[key] = value;
+          cb?.(null);
+        };
+        return;
+      }
+      homey.__settingsStore[key] = value;
+      cb?.(null);
+    });
+    controlSwitch().selected = true;
+    controlSwitch().dispatchEvent(new Event('change'));
+    await flushAsync();
+
+    // An unrelated key's refresh lands while the control write is in flight
+    // and still reads the old stored flag.
+    notifyHomeLimitsSettingChanged(capKey);
+    await flushAsync();
+    expect(controlSwitch().hasAttribute('disabled')).toBe(true);
+    expect(controlSwitch().selected).toBe(true);
+
+    completeControlWrite();
+    await flushAsync();
+    expect(controlSwitch().hasAttribute('disabled')).toBe(false);
+    expect(controlSwitch().selected).toBe(true);
+    expect(document.querySelector('#home-limits-sim-notice')).toBeNull();
+  });
+});
+
 describe('per-home writes hit the suffixed keys', () => {
   it('writes capacity_limit_kw:<homeId> / capacity_margin_kw:<homeId> on a cap edit', async () => {
     install({ [`capacity_limit_kw:${AREA_ID}`]: 7, [`capacity_margin_kw:${AREA_ID}`]: 0.3, [`capacity_dry_run:${AREA_ID}`]: true });
@@ -561,7 +885,7 @@ describe('per-home writes hit the suffixed keys', () => {
     expect(homey.__settingsStore[capKey]).toBe(6);
   });
 
-  it('preserves per-home intent order across a realtime editor replacement', async () => {
+  it('preserves per-home intent order across a realtime refresh', async () => {
     const capKey = `capacity_limit_kw:${AREA_ID}`;
     install({ [capKey]: 7, [`capacity_margin_kw:${AREA_ID}`]: 0.3, [`capacity_dry_run:${AREA_ID}`]: true });
     await refreshHomeLimitsOnLimitsPanel();
@@ -598,11 +922,12 @@ describe('per-home writes hit the suffixed keys', () => {
     document.querySelector<HTMLInputElement>('#home-limits-hard-cap')!.dispatchEvent(new Event('change'));
     await flushAsync();
 
-    // A same-home realtime read replaces the editor with the still-persisted
-    // value while 9 → 6 remains queued on this area's write chain.
+    // A same-home realtime read lands while 9 → 6 is still queued on this
+    // area's write chain: the field keeps the user's newest intent rather than
+    // falling back to the still-persisted 7.
     notifyHomeLimitsSettingChanged(capKey);
     await flushAsync();
-    expect(document.querySelector<HTMLInputElement>('#home-limits-hard-cap')?.value).toBe('7');
+    expect(document.querySelector<HTMLInputElement>('#home-limits-hard-cap')?.value).toBe('6');
 
     const newestInput = document.querySelector<HTMLInputElement>('#home-limits-hard-cap')!;
     newestInput.value = '5';
@@ -625,7 +950,7 @@ describe('per-home writes hit the suffixed keys', () => {
     expect(document.querySelector<HTMLInputElement>('#home-limits-hard-cap')?.value).toBe('5');
   });
 
-  it('keeps period writes ordered across a realtime editor replacement', async () => {
+  it('keeps period writes ordered across a realtime refresh', async () => {
     const periodKey = `capacity_period_minutes:${AREA_ID}`;
     install({
       [`capacity_limit_kw:${AREA_ID}`]: 7,
