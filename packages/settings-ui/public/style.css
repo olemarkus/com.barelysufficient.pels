@@ -7558,8 +7558,12 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
     display: none;
   }
 
+  /* The two adjusters sit side by side only when each fits at its full width
+     (two 48 px touch targets and a value up to "↓19.5 °C"); otherwise each
+     takes its own line. Fixed columns made a 320 px phone's row wider than the
+     card, which pushed every card on the page past the screen edge. */
   .price-aware-grid__row {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(7 * var(--spacing-6))), 1fr));
     gap: var(--spacing-2);
     padding: var(--spacing-3) 0 var(--spacing-1);
     border-top: 1px solid var(--panel-border);

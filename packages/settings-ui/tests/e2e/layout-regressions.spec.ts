@@ -1,4 +1,4 @@
-import { expect, loadSpaceGrotesk, test, type Page } from './fixtures/test';
+import { expect, injectHomeyHostCss, loadSpaceGrotesk, test, type Page } from './fixtures/test';
 
 // A computed `background-color` reads as transparent in two forms across
 // engines: the keyword `transparent` and an `rgba(...)` with zero alpha
@@ -268,6 +268,36 @@ test.describe('settings shell layout regressions', () => {
           .map((opt) => ({ label: opt.textContent?.trim(), scrollWidth: opt.scrollWidth, clientWidth: opt.clientWidth }))
       ));
       expect(clippedSegments, `${appPage.label}: segment labels must not clip at 320px`).toEqual([]);
+    });
+  }
+
+  // The page clips rather than scrolls, so the page scroll width stays at the
+  // viewport while a card runs past the edge: check each card's own right edge.
+  // With the Homey host's CSS, as on a real Homey, and the widest adjustment a
+  // device can hold, so the adjusters' minimum width is at its largest.
+  for (const width of [320, 360, 480] as const) {
+    test(`keeps every Price-aware devices card within ${width}px`, async ({ page }) => {
+      await page.addInitScript(() => {
+        (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
+          settings: {
+            price_optimization_settings: {
+              dev_heatpump: { enabled: true, cheapDelta: 19.5, expensiveDelta: -19.5 },
+              dev_floorheat: { enabled: true, cheapDelta: 12.5, expensiveDelta: -12.5, surplusWilling: true },
+            },
+          },
+        };
+      });
+      await injectHomeyHostCss(page);
+      await openApp(page, width);
+      await openSettingsSection(page, 'price-aware-devices');
+      await page.locator('#price-aware-devices-surface .value-adjuster').first().waitFor();
+      const cardsPastEdge = await page.evaluate(() => {
+        const viewportWidth = document.documentElement.clientWidth;
+        return [...document.querySelectorAll<HTMLElement>('#price-aware-devices-surface .settings-form-card')]
+          .map((card) => Math.round(card.getBoundingClientRect().right))
+          .filter((right) => right > viewportWidth + 1);
+      });
+      expect(cardsPastEdge).toEqual([]);
     });
   }
 
