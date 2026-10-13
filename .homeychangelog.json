@@ -616,5 +616,8 @@
   },
   "3.12.2": {
     "en": "A smart task now leaves room for the full power of higher-priority devices that have no active task, so it no longer plans on power those devices may need. PELS now keeps learned power steps and EV charger history in its own storage instead of app settings, and does less processing when it updates the daily budget."
+  },
+  "3.13.0": {
+    "en": "You can now create Smart tasks in PELS settings, and the task page shows who starts the device after the task ends. Price settings now show which values PELS assumed and which you chose, and setup asks for prices when a device uses them. If your Homey is outside Norway and you never chose a price source, PELS now uses Homey Energy prices and turns off a fixed export price. In Norway, setup asks you to choose your price area and pricing model if you have not done so. PELS can now lower a stepped device's power step even while it is holding off on turning devices back on, and a refresh no longer resets a meter area's unsaved Capacity limit."
   }
 }
