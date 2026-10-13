@@ -1374,7 +1374,7 @@ the ceiling, and each exists because its page mission needs it:
 |---|---|---|
 | Overview hero | The one *actionable* price fact for the set-and-forget owner | `Cheapest hour ahead: 02:00, 0.18 kr/kWh.` subline (`formatCheapestUpcomingHour`) — nothing else |
 | Budget tab | Price as *planning context* for the Optimiser | Exception-only `Price low` / `Price high` header chip + the shaping tagline (`Using cheaper hours`) + prosumer `Export price now:` subline |
-| Settings → Electricity prices | Price as *configuration + verification* | The `Right now` card (current price level, export row) + source settings |
+| Settings → Electricity prices | Price as *configuration + verification* | The `Right now` card (current price level, on the Norway source the price now and its parts, export row) + source settings |
 | Electricity price widget (owner-requested 2026-10-05) | Price as *expectation*: what counts as low or high, and when that changes | Current price + `Price low` / `Price normal` / `Price high` (chip only for low/high), a subline that always states the lines (`High from 40.90 øre · low up to 24.60 øre`, or `High from 0.412 EUR` on a currency source; a line no period reaches adds `highest …` / `lowest …`; neither reached reads `Prices stay close to the average of …, so none count as low or high`), a rolling curve from three hours back (never before today's midnight) to the last known price with low/high shades, a `Tomorrow` divider once tomorrow is published, screen-reader phrase `Price now <price>. Price: low|normal|high`, and `The lines can move when tomorrow's prices arrive.` until tomorrow is published. Lines are the producer's effective ones (percentage and minimum difference), never widget-derived. |
 
 The other widgets reuse the same exception-only `Price low` / `Price high` pair
@@ -1416,6 +1416,24 @@ never saw). On Electricity prices:
   offered only for a grid company PELS lists, and is asked for only when the
   owner opens the page with the grid company or price area missing, because the
   lookup sends the hub's coordinates to NVE and Kartverket.
+- `Right now` card, Norway source only (its hourly price is the price now;
+  another source may publish quarter-hours, where an hourly figure is an
+  average): a `Price` row (`Import price` beside an export price) and the parts
+  that add up to it, with VAT, in the card's unit:
+  `Spot 0.50 · grid tariff 0.25 · surcharge 0.03 · taxes 0.10 · support −0.04`
+  (under Norgespris, `Norgespris −0.70` after `Spot`: the signed adjustment to
+  the fixed price, partial or zero under the monthly cap; no `support`). A part
+  that is zero is left out; shown rounded, the spot price takes the rounding so
+  the parts add up to the price. Without a grid company: `Grid tariff not
+  included. Choose your grid company below.`; with one whose tariff has not
+  arrived: `Grid tariff not included yet. If it stays missing, press Refresh
+  tariffs below.`
+- Cheap and expensive prices: the price widget's subline, word for word
+  (`High from 94.20 øre · low up to 56.50 øre`, or `Prices stay close to the
+  average of 75.30 øre, so none count as low or high`). When nothing is cheap or
+  expensive and a lower threshold separates the cheapest quarter: `At 9 %, the
+  cheapest quarter of these prices, up to 68.00 øre, counts as low.` with a
+  `Use 9 %` button. Never below 5 %, the field's minimum.
 - A Smart task with no price for the current hour says `PELS has no electricity
   prices` with a `Check prices` recourse, not `Waiting for tomorrow’s prices`
   (a Flow price source keeps its own Flow copy).

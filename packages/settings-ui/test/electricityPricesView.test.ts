@@ -6,6 +6,7 @@ import {
 } from '../src/ui/views/ElectricityPricesView.tsx';
 import type { HomeyStatus, PowerhourStatus, PriceConfigState } from '../src/ui/priceConfigTypes.ts';
 import type { LiveSummarySignals } from '../src/ui/livePriceSignals.ts';
+import type { PriceLevelSummaryRead } from '../../contracts/src/settingsUiApi.ts';
 import type { PowerhourSourceUiStatus } from '../../contracts/src/settingsUiApi.ts';
 
 const buildConfig = (overrides: Partial<PriceConfigState> = {}): PriceConfigState => ({
@@ -24,7 +25,7 @@ const buildConfig = (overrides: Partial<PriceConfigState> = {}): PriceConfigStat
   powerhourStatus: null,
   powerhourDeviceId: null,
   currentPriceLevel: null,
-  liveSummary: { lastFetchedShort: null, exportText: null },
+  liveSummary: { lastFetchedShort: null, exportText: null, priceText: null, breakdownText: null, gridTariffMissing: false },
   exportPriceEnabled: false,
   exportPriceSource: 'manual',
   exportSpotFactor: 0,
@@ -32,6 +33,7 @@ const buildConfig = (overrides: Partial<PriceConfigState> = {}): PriceConfigStat
   pvForecastSource: 'auto',
   pvForecastStatus: { kind: 'unknown' },
   priceSetup: { state: 'unavailable' },
+  priceLevelSummary: { state: 'unavailable' },
   priceSetupStatus: { state: 'unavailable' },
   priceSetupSuggestion: { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' } },
   ...overrides,
@@ -80,6 +82,9 @@ const buildProps = (
 const liveSummary = (overrides: Partial<LiveSummarySignals>): LiveSummarySignals => ({
   lastFetchedShort: null,
   exportText: null,
+  priceText: null,
+  breakdownText: null,
+  gridTariffMissing: false,
   ...overrides,
 });
 
@@ -805,3 +810,99 @@ describe('ElectricityPricesView, suggestion from the hub\'s location', () => {
     expect(mount.textContent).not.toContain('Suggested from your Homey');
   });
 });
+
+describe('ElectricityPricesView, price now', () => {
+  const render = (config: Partial<PriceConfigState>) => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+    renderElectricityPricesView(mount, buildProps(config));
+    return mount.querySelector('.electricity-prices-live-summary');
+  };
+
+  it('shows the Norway price with the parts it adds up from', () => {
+    const summary = render({
+      currentPriceLevel: 'normal',
+      liveSummary: liveSummary({ priceText: '0.82 kr/kWh', breakdownText: 'Spot 0.50 · grid tariff 0.25 · taxes 0.10' }),
+    });
+
+    expect(summary?.textContent).toContain('Price0.82 kr/kWh');
+    expect(summary?.querySelector('.electricity-prices-breakdown')?.textContent)
+      .toBe('Spot 0.50 · grid tariff 0.25 · taxes 0.10');
+    expect(summary?.querySelector('.field__hint--alert')).toBeNull();
+  });
+
+  it('says the grid tariff is missing while no grid company is chosen', () => {
+    const summary = render({
+      organizationNumber: '',
+      liveSummary: liveSummary({ priceText: '0.57 kr/kWh', breakdownText: 'Spot 0.47 · taxes 0.10' }),
+    });
+
+    expect(summary?.querySelector('.field__hint--alert')?.textContent)
+      .toBe('Grid tariff not included. Choose your grid company below.');
+  });
+
+  it('calls it the import price beside an export price', () => {
+    const summary = render({
+      exportPriceEnabled: true,
+      liveSummary: liveSummary({ priceText: '0.82 kr/kWh', exportText: '0.34 kr/kWh' }),
+    });
+
+    expect(summary?.textContent).toContain('Import price0.82 kr/kWh');
+  });
+
+  it('shows no price on a source that may publish quarter-hours, where the hourly figure is an average', () => {
+    const summary = render({
+      priceScheme: 'homey',
+      liveSummary: liveSummary({ priceText: '0.31 EUR/kWh', breakdownText: null }),
+    });
+
+    expect(summary?.textContent).not.toContain('0.31 EUR/kWh');
+    expect(summary?.querySelector('.electricity-prices-breakdown')).toBeNull();
+  });
+});
+
+describe('ElectricityPricesView, cheap and expensive lines', () => {
+  const summary = (overrides: Partial<Extract<PriceLevelSummaryRead, { state: 'ready' }>> = {}): PriceLevelSummaryRead => ({
+    state: 'ready',
+    lines: { average: 75.3, cheapAtOrBelow: 56.5, expensiveFrom: 94.2 },
+    lowest: 68,
+    highest: 79,
+    hasCheap: false,
+    hasExpensive: false,
+    priceUnit: 'øre/kWh',
+    suggestion: { kind: 'none' },
+    ...overrides,
+  });
+
+  const render = (priceLevelSummary: PriceLevelSummaryRead, onThresholdChange = vi.fn()) => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+    renderElectricityPricesView(mount, buildProps({ priceLevelSummary }, { handlers: buildHandlers({ onThresholdChange }) }));
+    return mount;
+  };
+
+  it('states where the lines are, in the price widget\'s words', () => {
+    const mount = render(summary({ lowest: 40, highest: 120, hasCheap: true, hasExpensive: true }));
+
+    expect(mount.querySelector('#electricity-prices-level-lines')?.textContent)
+      .toBe('High from 94.20 øre · low up to 56.50 øre');
+  });
+
+  it('offers a lower threshold when no price counts as cheap or expensive', () => {
+    const onThresholdChange = vi.fn();
+    const mount = render(summary({ suggestion: { kind: 'lower_threshold', percent: 9, cheapUpTo: 68 } }), onThresholdChange);
+
+    expect(mount.querySelector('#electricity-prices-level-lines')?.textContent)
+      .toBe('Prices stay close to the average of 75.30 øre, so none count as low or high');
+    expect(mount.textContent).toContain('At 9 %, the cheapest quarter of these prices, up to 68.00 øre, counts as low.');
+    const use = Array.from(mount.querySelectorAll('md-outlined-button'))
+      .find((button) => button.textContent === 'Use 9 %') as HTMLElement | undefined;
+    use?.click();
+    expect(onThresholdChange).toHaveBeenCalledWith(9);
+  });
+
+  it('states no lines without the read', () => {
+    expect(render({ state: 'unavailable' }).querySelector('#electricity-prices-level-lines')).toBeNull();
+  });
+});
+

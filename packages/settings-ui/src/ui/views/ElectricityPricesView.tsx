@@ -18,7 +18,7 @@ import type {
 import { resolvePriceLevelChip } from '../../../../shared-domain/src/priceLevelChips.ts';
 import { resolvePvForecastStatusLine } from '../../../../shared-domain/src/solar/pvForecastSourceStatus.ts';
 import { isPvForecastSourceSetting } from '../../../../shared-domain/src/settings/pvForecastSource.ts';
-import { EXPORT_PRICE_LABEL } from '../../../../shared-domain/src/price/planningPrice.ts';
+import { EXPORT_PRICE_LABEL, IMPORT_PRICE_LABEL } from '../../../../shared-domain/src/price/planningPrice.ts';
 import {
   MdFilledSelect,
   MdFilledTextField,
@@ -39,6 +39,12 @@ import {
   EXPORT_SPOT_FACTOR_MIN,
 } from '../exportPriceSettings.ts';
 import type { ExportPriceSourceSetting } from '../../../../shared-domain/src/settings/exportPriceSource.ts';
+import {
+  formatPriceWidgetPrice,
+  formatPriceWidgetSubline,
+  resolvePriceWidgetAmountUnit,
+} from '../../../../shared-domain/src/priceWidgetCopy.ts';
+import type { PriceLevelSummaryRead } from '../../../../contracts/src/settingsUiApi.ts';
 
 type ValueElement = HTMLElement & { value: string };
 type SwitchElement = HTMLElement & { selected: boolean };
@@ -155,6 +161,8 @@ const LiveSummaryCard = ({ config }: { config: PriceConfigState }) => {
   // "Awaiting prices" reads as a contradiction ("fetched at 06:31" yet "no
   // price"). Suppress the row until a current price exists.
   const hasUsablePriceLevel = chip !== null || currentPriceLevel === 'normal';
+  // The price now and the parts it adds up from, on the Norway source.
+  const isNorway = config.priceScheme === 'norway';
   return (
     <section class="settings-form-card electricity-prices-live-summary">
       {/* "Right now" is the row's own heading — the former separate
@@ -170,6 +178,26 @@ const LiveSummaryCard = ({ config }: { config: PriceConfigState }) => {
           <span class="price-config-status-value">{calmValue}</span>
         )}
       </div>
+      {/* Norway only: its hourly price is the price now. Other sources may
+          publish quarter-hours, where the hourly figure here is an average. */}
+      {isNorway && liveSummary.priceText !== null ? (
+        // `Import price` only beside an export price, as the price glossary has it.
+        <StatusRow
+          label={currentExportPriceText !== null ? IMPORT_PRICE_LABEL : 'Price'}
+          value={liveSummary.priceText}
+        />
+      ) : null}
+      {isNorway && liveSummary.breakdownText !== null ? (
+        <p class="pels-card-supporting electricity-prices-breakdown">{liveSummary.breakdownText}</p>
+      ) : null}
+      {isNorway && liveSummary.priceText !== null && config.organizationNumber === '' ? (
+        <small class="field__hint field__hint--alert">Grid tariff not included. Choose your grid company below.</small>
+      ) : null}
+      {isNorway && config.organizationNumber !== '' && liveSummary.gridTariffMissing ? (
+        <small class="field__hint field__hint--alert">
+          Grid tariff not included yet. If it stays missing, press Refresh tariffs below.
+        </small>
+      ) : null}
       {currentExportPriceText !== null ? (
         <StatusRow label={EXPORT_PRICE_LABEL} value={currentExportPriceText} />
       ) : null}
@@ -1004,6 +1032,41 @@ const ExportPriceForm = ({ config, handlers }: {
   );
 };
 
+/**
+ * Where the owner's band puts the lines over the known prices, in the price
+ * widget's own words, so the form shows what its two numbers do. When nothing
+ * is cheap or expensive and a lower threshold would mark the cheapest hours,
+ * it offers that threshold.
+ */
+const PriceLevelLines = ({ summary, onUseThreshold }: {
+  summary: PriceLevelSummaryRead;
+  onUseThreshold: (percent: number) => void;
+}) => {
+  if (summary.state !== 'ready') return null;
+  const amountUnit = resolvePriceWidgetAmountUnit(summary.priceUnit);
+  const { suggestion } = summary;
+  return (
+    <>
+      <p class="pels-card-supporting" id="electricity-prices-level-lines">
+        {formatPriceWidgetSubline({ ...summary.lines, ...summary, amountUnit })}
+      </p>
+      {suggestion.kind === 'lower_threshold' && (
+        <>
+          <p class="pels-card-supporting">
+            {`At ${suggestion.percent} %, the cheapest quarter of these prices, up to `
+              + `${formatPriceWidgetPrice(suggestion.cheapUpTo, amountUnit)}, counts as low.`}
+          </p>
+          <div class="form__actions">
+            <MdOutlinedButton type="button" onClick={() => onUseThreshold(suggestion.percent)}>
+              {`Use ${suggestion.percent} %`}
+            </MdOutlinedButton>
+          </div>
+        </>
+      )}
+    </>
+  );
+};
+
 const ThresholdForm = ({ config, handlers }: {
   config: PriceConfigState;
   handlers: ElectricityPricesHandlers;
@@ -1011,6 +1074,7 @@ const ThresholdForm = ({ config, handlers }: {
   <form class="form-grid settings-form-card" onSubmit={(e) => e.preventDefault()}>
     <h3 class="section-title">Cheap and expensive prices</h3>
     <p class="muted">Defines what counts as cheap or expensive.</p>
+    <PriceLevelLines summary={config.priceLevelSummary} onUseThreshold={handlers.onThresholdChange} />
     <label class="field">
       <span class="field__label pels-text-settings-label" id="electricity-prices-threshold-label">Price threshold</span>
       <MdFilledTextField

@@ -61,8 +61,10 @@ export const planningPriceDivergesFromImport = (
 };
 
 // Reason line attached to a planning-price figure that diverges from the import
-// price, and the "Export price" row/label. Registered in
+// price, the "Export price" row/label, and "Import price", the disambiguator a
+// surface showing both uses for the billed price. Registered in
 // `notes/ui-terminology.md` § "Solar and export price vocabulary" — keep these
 // strings in lockstep with that note.
 export const PLANNING_PRICE_REASON_LINE = 'using your solar';
 export const EXPORT_PRICE_LABEL = 'Export price';
+export const IMPORT_PRICE_LABEL = 'Import price';

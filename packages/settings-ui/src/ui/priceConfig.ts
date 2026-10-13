@@ -85,7 +85,9 @@ let configState: PriceConfigState = {
   powerhourStatus: null,
   powerhourDeviceId: null,
   currentPriceLevel: null,
-  liveSummary: { lastFetchedShort: null, exportText: null },
+  liveSummary: {
+    lastFetchedShort: null, exportText: null, priceText: null, breakdownText: null, gridTariffMissing: false,
+  },
   exportPriceEnabled: false,
   exportPriceSource: EXPORT_PRICE_SOURCE_DEFAULT,
   exportSpotFactor: 0,
@@ -95,6 +97,7 @@ let configState: PriceConfigState = {
   priceSetup: { state: 'unavailable' },
   priceSetupStatus: { state: 'unavailable' },
   priceSetupSuggestion: { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' } },
+  priceLevelSummary: { state: 'unavailable' },
 };
 
 let electricityPricesSurface: HTMLElement | null = null;
@@ -321,10 +324,20 @@ const handleProviderSurchargeChange = async (val: number) => {
   }
 };
 
+// The band moves the cheap and expensive lines the form states, so after a
+// save the page shows the field as saved and reads the lines again.
+const showBandChange = async () => {
+  renderAll();
+  invalidateApiCache(SETTINGS_UI_PRICES_PATH);
+  await refreshStatusInfo();
+  renderAll();
+};
+
 const handleThresholdChange = async (val: number) => {
   configState = { ...configState, thresholdPercent: val };
   try {
     await validateAndSavePriceSettings();
+    await showBandChange();
     await showToast('Price settings saved.', 'ok');
   } catch (error) {
     await logSettingsError('Failed to save price threshold', error, 'priceConfig');
@@ -336,6 +349,7 @@ const handleMinDiffChange = async (val: number) => {
   configState = { ...configState, minDiffOre: val };
   try {
     await validateAndSavePriceSettings();
+    await showBandChange();
     await showToast('Price settings saved.', 'ok');
   } catch (error) {
     await logSettingsError('Failed to save min diff', error, 'priceConfig');
@@ -479,6 +493,7 @@ const refreshStatusInfo = async () => {
       ...configState,
       priceSetup,
       priceSetupStatus: resolvePriceSetupStatus({ ...payload, priceSetup }),
+      priceLevelSummary: payload.priceLevelSummary,
       flowStatus: configState.priceScheme === 'flow' ? buildFlowStatus(payload) : null,
       homeyStatus: configState.priceScheme === 'homey' ? buildHomeyStatus(payload) : null,
       powerhourStatus: configState.priceScheme === 'powerhour' ? buildPowerhourStatus(payload) : null,

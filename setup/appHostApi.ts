@@ -22,6 +22,7 @@ import type {
   DeviceDescriptorRead,
 } from '../packages/contracts/src/types';
 import type {
+  PriceLevelSummaryRead,
   PriceSetupRead,
   PriceSetupSuggestion,
   SettingsUiHardCapConfigurationRead,
@@ -114,6 +115,11 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   public readPriceSetup = (): PriceSetupRead => {
     const coordinator = this.context.priceCoordinator;
     return coordinator ? coordinator.readPriceSetup() : { state: 'unavailable' };
+  };
+
+  public readPriceLevelSummary = (): PriceLevelSummaryRead => {
+    const coordinator = this.context.priceCoordinator;
+    return coordinator ? coordinator.readPriceLevelSummary() : { state: 'unavailable' };
   };
 
   // `unavailable` until the price coordinator is wired, like the setup read above.

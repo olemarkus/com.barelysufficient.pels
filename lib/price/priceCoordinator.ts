@@ -22,6 +22,7 @@ import { resolveHomeyPriceFormulaUiStatus } from './homeyScheme';
 import type {
   HomeyPriceFormulaUiStatus,
   PowerhourSourceUiStatus,
+  PriceLevelSummaryRead,
   PriceSetupRead,
   PriceSetupSuggestion,
   SettingsUiHubMarketRead,
@@ -472,6 +473,16 @@ export class PriceCoordinator {
     } catch (error) {
       moduleLogger.warn({ event: 'price_timeline_read_failed', err: normalizeError(error) });
       return { state: 'unavailable', reason: 'read_failed' };
+    }
+  }
+
+  /** The band's lines over the known prices, for the settings UI; `unavailable` when the build fails. */
+  readPriceLevelSummary(): PriceLevelSummaryRead {
+    try {
+      return this.priceService.getPriceLevelSummary();
+    } catch (error) {
+      moduleLogger.warn({ event: 'price_level_summary_read_failed', err: normalizeError(error) });
+      return { state: 'unavailable' };
     }
   }
 

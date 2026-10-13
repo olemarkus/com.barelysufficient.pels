@@ -3,7 +3,9 @@ import {
   FLOW_PRICES_TODAY, FLOW_PRICES_TOMORROW, HOMEY_PRICES_TODAY, HOMEY_PRICES_TOMORROW,
   POWERHOUR_PRICES_TODAY, POWERHOUR_PRICES_TOMORROW, PRICE_THRESHOLD_PERCENT, PRICE_MIN_DIFF_ORE,
 } from '../utils/settingsKeys';
-import type { ResolvedPriceScheme, SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUiApi';
+import type {
+  PriceLevelSummaryRead, ResolvedPriceScheme, SettingsUiHubMarketRead,
+} from '../../packages/contracts/src/settingsUiApi';
 import {
   addDays,
   getSpotPriceCacheDecision,
@@ -47,6 +49,7 @@ import { mirrorPowerhourPrices, type PowerhourSourceUiStatus } from './powerhour
 import { applyExportPrices, type ExportPriceConfig } from './exportPrice';
 import { applyBudgetPrices, type BudgetPriceInputs } from './budgetPrice';
 import { buildPriceTimeline } from './priceTimeline';
+import { summarizePriceLevels } from './priceLevelSummary';
 import { fetchSpotPricesForDate } from './spotPriceFetch';
 import {
   resolveCurrentPricePeriodLevel,
@@ -535,6 +538,13 @@ export default class PriceService {
       priceUnit: this.getPriceUnitLabel(),
     };
   }
+  /** The band's lines over the known prices, for the threshold form; see `summarizePriceLevels`. */
+  getPriceLevelSummary(): PriceLevelSummaryRead {
+    const timeline = this.getPriceTimeline();
+    if (timeline.state !== 'ready') return { state: 'unavailable' };
+    return { state: 'ready', ...summarizePriceLevels(timeline, this.priceLevelBand) };
+  }
+
 
   private get norwaySchemeSettings(): NorwaySchemeSettings {
     return readNorwaySchemeSettings({ getRaw: (key) => this.getSettingValue(key) });

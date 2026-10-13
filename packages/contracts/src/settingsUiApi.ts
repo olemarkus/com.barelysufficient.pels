@@ -5,6 +5,7 @@ import type { ResolvedDeferredObjectivePlanHistoryEntry } from './deferredObject
 import type { SettingsUiDeviceDiagnosticsPayload } from './deviceDiagnosticsTypes.js';
 import type { SettingsUiPowerTracker } from './powerTrackerTypes.js';
 import type { PriceOptimizationSetupRead } from './priceOptimizationSettings.js';
+import type { PriceTimelineLines } from './priceTimeline.js';
 import type {
   DecoratedDeviceSnapshot,
   DeviceStartPolicy,
@@ -851,6 +852,36 @@ export type PriceSetupSuggestion = {
     | { readonly kind: 'none' };
 };
 
+/**
+ * A lower threshold that would make the cheapest quarter of the known prices
+ * count as cheap, offered only while no price is cheap or expensive at the
+ * owner's band: `cheapUpTo` is the highest of those prices. `none` when no
+ * period misses the band, when the prices are too flat for a threshold of 5 %
+ * or more to separate them, or when the minimum difference keeps them normal.
+ */
+export type PriceThresholdSuggestion =
+  | { readonly kind: 'lower_threshold'; readonly percent: number; readonly cheapUpTo: number }
+  | { readonly kind: 'none' };
+
+/**
+ * Where the owner's band puts the cheap and expensive lines over the known
+ * prices, as the live classifier draws them, and what those prices reach.
+ * Prices are in the source's own unit (`priceUnit`).
+ */
+export type PriceLevelSummary = {
+  readonly lines: PriceTimelineLines;
+  readonly lowest: number;
+  readonly highest: number;
+  readonly hasCheap: boolean;
+  readonly hasExpensive: boolean;
+  readonly priceUnit: string;
+  readonly suggestion: PriceThresholdSuggestion;
+};
+
+export type PriceLevelSummaryRead =
+  | ({ readonly state: 'ready' } & PriceLevelSummary)
+  | { readonly state: 'unavailable' };
+
 export type SettingsUiPricesPayload = SettingsUiPriceSourcePayloads & {
   combinedPrices: unknown | null;
   priceArea: string | null;
@@ -864,6 +895,8 @@ export type SettingsUiPricesPayload = SettingsUiPriceSourcePayloads & {
   priceOptimizationSetup: PriceOptimizationSetupRead;
   /** The price source and Norway settings in force, each marked chosen or assumed. */
   priceSetup: PriceSetupRead;
+  /** The cheap and expensive lines over the known prices, for the threshold form. */
+  priceLevelSummary: PriceLevelSummaryRead;
 };
 
 export type SettingsUiDeviceDiagnosticsResponse = SettingsUiDeviceDiagnosticsPayload;

@@ -5,6 +5,7 @@ import {
 import { getApiReadModel } from './homey.ts';
 import { classifyPriceOptimizationSetupRead } from './priceOptimizationSetupRead.ts';
 import { classifyPriceSetupRead } from './priceSetupRead.ts';
+import { classifyPriceLevelSummaryRead } from './priceLevelSummaryRead.ts';
 
 const EMPTY_PRICES_PAYLOAD: SettingsUiPricesPayload = {
   combinedPrices: null,
@@ -22,6 +23,7 @@ const EMPTY_PRICES_PAYLOAD: SettingsUiPricesPayload = {
   powerhourSource: { kind: 'unknown' },
   priceOptimizationSetup: { state: 'unavailable' },
   priceSetup: { state: 'unavailable' },
+  priceLevelSummary: { state: 'unavailable' },
 };
 
 /**
@@ -38,5 +40,6 @@ export const getPricesReadModel = async (): Promise<SettingsUiPricesPayload> => 
     homeyPriceFormula: payload.homeyPriceFormula ?? EMPTY_PRICES_PAYLOAD.homeyPriceFormula,
     priceOptimizationSetup: classifyPriceOptimizationSetupRead(payload.priceOptimizationSetup),
     priceSetup: classifyPriceSetupRead(payload.priceSetup),
+    priceLevelSummary: classifyPriceLevelSummaryRead(payload.priceLevelSummary),
   };
 };

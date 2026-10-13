@@ -23,6 +23,12 @@ export const resolvePriceUnitLabel = (display: CostDisplay): string => {
   return normalizeUnitWithKwh(unit);
 };
 
+/** The number {@link formatScaledPriceValue} shows, without its unit. */
+export const formatScaledPriceNumber = (rawPrice: number, display: CostDisplay): string => {
+  const scaledValue = rawPrice / Math.max(1, display.divisor);
+  return (Math.abs(scaledValue) < 0.005 ? 0 : scaledValue).toFixed(2);
+};
+
 /**
  * Format a RAW per-hour price (e.g. an øre value from the price store) as a
  * display string scaled through the {@link CostDisplay} divisor (øre → kr ÷ 100),
@@ -34,8 +40,7 @@ export const resolvePriceUnitLabel = (display: CostDisplay): string => {
  * Electricity-prices "Right now" export row so the two never drift.
  */
 export const formatScaledPriceValue = (rawPrice: number, display: CostDisplay): string => {
-  const scaledValue = rawPrice / Math.max(1, display.divisor);
-  const scaled = (Math.abs(scaledValue) < 0.005 ? 0 : scaledValue).toFixed(2);
+  const scaled = formatScaledPriceNumber(rawPrice, display);
   return display.unit.trim() ? `${scaled} ${resolvePriceUnitLabel(display)}` : scaled;
 };
 

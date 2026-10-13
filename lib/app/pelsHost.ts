@@ -12,6 +12,7 @@ import type { DeferredObjectivePlanPreviewCandidate } from '../../packages/contr
 import type { SettingsUiDeviceDiagnosticsPayload } from '../../packages/contracts/src/deviceDiagnosticsTypes';
 import type { PriceOptimizationSetupRead } from '../../packages/contracts/src/priceOptimizationSettings';
 import type {
+  PriceLevelSummaryRead,
   PriceSetupRead,
   PriceSetupSuggestion,
   SettingsUiDeviceLogPayload,
@@ -70,6 +71,7 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
   readPriceOptimizationSetup(): PriceOptimizationSetupRead;
   readPriceSetup(): PriceSetupRead;
   suggestNorwayPriceSetup(): Promise<PriceSetupSuggestion>;
+  readPriceLevelSummary(): PriceLevelSummaryRead;
   previewDailyBudgetModel(settings: Partial<DailyBudgetModelSettings>): DailyBudgetModelPreviewResponse;
   applyDailyBudgetModel(settings: Partial<DailyBudgetModelSettings>): DailyBudgetUiRead;
   getDeviceDiagnosticsUiPayload(): SettingsUiDeviceDiagnosticsPayload;

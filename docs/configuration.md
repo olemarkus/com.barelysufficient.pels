@@ -271,6 +271,10 @@ A setting you have not chosen says **Not chosen yet** and what PELS uses in its 
 
 When you open **Electricity prices** with the Norway source and no grid company or price area chosen, PELS looks up your Homey's location once and shows **Suggested from your Homey's location**: the grid company whose area your Homey is in, its county, and the price area Homey Energy uses for your Homey. **Use these** saves them as your choices. Nothing is saved until you tap it. To find the grid company and county, PELS sends your Homey's coordinates to NVE (the Norwegian Water Resources and Energy Directorate) and Kartverket (the Norwegian Mapping Authority), only when you open the page with a setting missing.
 
+On the Norway source the **Right now** card shows the price for the current hour and the parts that add up to it, with VAT: the spot price, the Norgespris adjustment that brings it to the fixed price (smaller or none once the monthly cap is used), the grid tariff, your provider surcharge, taxes (the consumption tax and the Enova fee), and, under Strømstøtte, the support taken off. When the grid tariff is not in the price, because no grid company is chosen or its tariff has not been fetched yet, the card says so.
+
+**Cheap and expensive prices** says where your threshold and minimum difference put the lines over the prices PELS knows, for example *High from 94.20 øre · low up to 56.50 øre*. When no price is far enough from the average to count as cheap or expensive, it says so. It then offers a lower threshold when that would make the cheapest quarter of the prices count as low, for example under Norgespris, where only the grid tariff moves the price. Tap **Use 9 %** (or the percentage shown) to save it. PELS suggests nothing below 5 %, and nothing your minimum difference would overrule.
+
 If you use external flow tags:
 
 1. Set **Price source** to **Flow (prices from a Flow card)**.

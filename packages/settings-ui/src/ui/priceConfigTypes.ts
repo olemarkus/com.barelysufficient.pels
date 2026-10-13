@@ -1,4 +1,5 @@
 import type {
+  PriceLevelSummaryRead,
   PriceSetupRead,
   PriceSetupSuggestion,
   PowerhourSourceUiStatus,
@@ -129,6 +130,8 @@ export type PriceConfigState = {
   priceSetupStatus: PriceSetupStatus;
   /** The Norway settings found for the hub's location, asked for once when the page opens. */
   priceSetupSuggestion: PriceSetupSuggestion;
+  /** Where the band's cheap and expensive lines fall over the known prices. */
+  priceLevelSummary: PriceLevelSummaryRead;
 };
 
 /** Everything the page's config state takes from the settings store. */

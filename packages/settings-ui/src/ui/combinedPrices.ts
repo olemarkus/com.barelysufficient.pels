@@ -33,6 +33,57 @@ export type CombinedPriceRow = {
   budgetPrice?: number;
   isCheap?: boolean;
   isExpensive?: boolean;
+  // The Norway source's parts of the price. Present only on a Norway row that
+  // carries every part, so a breakdown always adds up to `total`.
+  norwayParts?: NorwayPriceParts;
+};
+
+/**
+ * The parts the Norway source adds up into an hour's price, in the price's own
+ * unit. Taxes are the consumption tax and the Enova fee. VAT applies to every
+ * part ex VAT; Strømstøtte and the Norgespris adjustment are given with VAT.
+ */
+export type NorwayPriceParts = {
+  spotExVat: number;
+  gridTariffExVat: number;
+  providerSurchargeExVat: number;
+  taxesExVat: number;
+  vatMultiplier: number;
+  relief:
+    | { kind: 'stromstotte'; supportIncVat: number }
+    | { kind: 'norgespris'; adjustmentIncVat: number };
+};
+
+const parseNorwayPriceParts = (entry: Record<string, unknown>): NorwayPriceParts | null => {
+  const {
+    spotPriceExVat, gridTariffExVat, providerSurchargeExVat, consumptionTaxExVat, enovaFeeExVat, vatMultiplier,
+  } = entry;
+  if (
+    !isFiniteNumber(spotPriceExVat) || !isFiniteNumber(gridTariffExVat) || !isFiniteNumber(providerSurchargeExVat)
+    || !isFiniteNumber(consumptionTaxExVat) || !isFiniteNumber(enovaFeeExVat) || !isFiniteNumber(vatMultiplier)
+  ) {
+    return null;
+  }
+  // A relief field that is there but unreadable makes the parts unreadable:
+  // read past it, a Norgespris hour would show as Strømstøtte.
+  if ('norgesprisAdjustment' in entry && !isFiniteNumber(entry.norgesprisAdjustment)) return null;
+  if ('electricitySupport' in entry && !isFiniteNumber(entry.electricitySupport)) return null;
+  let relief: NorwayPriceParts['relief'];
+  if (isFiniteNumber(entry.norgesprisAdjustment)) {
+    relief = { kind: 'norgespris', adjustmentIncVat: entry.norgesprisAdjustment };
+  } else if (isFiniteNumber(entry.electricitySupport)) {
+    relief = { kind: 'stromstotte', supportIncVat: entry.electricitySupport };
+  } else {
+    return null;
+  }
+  return {
+    spotExVat: spotPriceExVat,
+    gridTariffExVat,
+    providerSurchargeExVat,
+    taxesExVat: consumptionTaxExVat + enovaFeeExVat,
+    vatMultiplier,
+    relief,
+  };
 };
 
 type CombinedPricesShape = {
@@ -62,6 +113,7 @@ export const normalizeCombinedPrices = (combined: unknown): CombinedPriceRow[] =
     if (isFiniteNumber(entry.total)) total = entry.total;
     else if (isFiniteNumber(entry.totalPrice)) total = entry.totalPrice;
     if (total === null) return [];
+    const norwayParts = parseNorwayPriceParts(entry);
     return [{
       startsAt: entry.startsAt,
       total,
@@ -71,6 +123,7 @@ export const normalizeCombinedPrices = (combined: unknown): CombinedPriceRow[] =
       ...(isFiniteNumber(entry.budgetPrice) ? { budgetPrice: entry.budgetPrice } : {}),
       ...(entry.isCheap === true ? { isCheap: true } : {}),
       ...(entry.isExpensive === true ? { isExpensive: true } : {}),
+      ...(norwayParts ? { norwayParts } : {}),
     }];
   });
 };
