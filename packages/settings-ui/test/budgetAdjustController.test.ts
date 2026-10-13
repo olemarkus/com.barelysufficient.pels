@@ -304,7 +304,7 @@ describe('budgetAdjustController', () => {
     expect(view.candidate).toBeNull();
   });
 
-  it('tolerates stringified on/off and kWh settings, and reads stringified options as the runtime does', async () => {
+  it('reads stored values as the runtime budgets by them, whatever their type', async () => {
     await installHomey(
       {
         daily_budget_enabled: 'true',
@@ -318,13 +318,32 @@ describe('budgetAdjustController', () => {
     const controller = await import('../src/ui/budgetAdjustController.ts');
     await controller.loadBudgetAdjust();
     const view = controller.getBudgetAdjustView();
-    expect(view.draft.enabled).toBe(true);
-    expect(view.draft.dailyBudgetKWh).toBe(75);
-    expect(view.draft.priceShaping).toBe(false);
+    // The runtime reads only `true` as on, only a number as a budget, and
+    // anything but `false` as shaping on; the editor shows the same.
+    expect(view.draft.enabled).toBe(false);
+    expect(view.draft.dailyBudgetKWh).toBe(MIN_DAILY_BUDGET_KWH);
+    expect(view.draft.priceShaping).toBe(true);
     // The runtime plans a stored string option as the default, so the draft
     // shows the default rather than the option the string spells.
     expect(view.draft.controlledWeight).toBe(UNMANAGED_RESERVE_MODE);
     expect(view.draft.priceFlexShare).toBe(PRICE_SHAPING_FLEX_SHARE);
+  });
+
+  it('shows the budget off while its stored amount is not one the runtime budgets by', async () => {
+    // The runtime budgets only with a number above zero, whatever the switch says.
+    await installHomey(
+      {
+        daily_budget_enabled: true,
+        daily_budget_kwh: '75',
+        daily_budget_price_shaping_enabled: true,
+        daily_budget_controlled_weight: UNMANAGED_RESERVE_BALANCED_MODE,
+        daily_budget_price_flex_share: PRICE_FLEX_MEDIUM,
+      },
+      () => null,
+    );
+    const controller = await import('../src/ui/budgetAdjustController.ts');
+    await controller.loadBudgetAdjust();
+    expect(controller.getBudgetAdjustView().draft.enabled).toBe(false);
   });
 
   it('returns to dirty when preview API throws', async () => {

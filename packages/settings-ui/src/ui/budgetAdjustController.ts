@@ -22,6 +22,8 @@ import {
   UNMANAGED_RESERVE_MODE,
   normalizePriceFlexShare,
   normalizeUnmanagedReserveMode,
+  readDailyBudgetEnabledSetting,
+  readDailyBudgetPriceShapingSetting,
 } from '../../../shared-domain/src/settings/dailyBudgetSettings.ts';
 import { callApi, getSetting, getSettingFresh } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
@@ -37,27 +39,11 @@ export type BudgetAdjustDraft = {
   priceFlexShare: number;
 };
 
-const parseNumber = (value: unknown): number | null => {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const parsed = Number.parseFloat(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-};
-
-const parseFlexible = (value: unknown, fallback: number): number => parseNumber(value) ?? fallback;
-
-const parseFlexibleBool = (value: unknown, fallback: boolean): boolean => {
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'string') {
-    const v = value.toLowerCase();
-    if (v === 'true' || v === '1') return true;
-    if (v === 'false' || v === '0') return false;
-  }
-  if (typeof value === 'number') return value !== 0;
-  return fallback;
-};
+// The stored budget as the runtime budgets by it: a number above zero, or no
+// budget. A string that spells a number is not one there, so not here either.
+const readStoredKWh = (value: unknown): number => (
+  typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
+);
 
 const clampKWh = (value: number): number => (
   Math.min(MAX_DAILY_BUDGET_KWH, Math.max(MIN_DAILY_BUDGET_KWH, value))
@@ -124,10 +110,14 @@ const readDraftFromSettings = async (fresh = false): Promise<BudgetAdjustDraft> 
     read(DAILY_BUDGET_CONTROLLED_WEIGHT),
     read(DAILY_BUDGET_PRICE_FLEX_SHARE),
   ]);
+  const storedKWh = readStoredKWh(dailyBudgetKWh);
   return {
-    enabled: parseFlexibleBool(enabled, false),
-    dailyBudgetKWh: clampKWh(parseFlexible(dailyBudgetKWh, MIN_DAILY_BUDGET_KWH)),
-    priceShaping: parseFlexibleBool(priceShaping, true),
+    // The switches through the runtime's own read policy, and on only with a
+    // budget to keep, as the runtime has it: the editor shows what the budget
+    // does, so an Apply never switches on a budget the owner never set.
+    enabled: readDailyBudgetEnabledSetting(enabled) && storedKWh > 0,
+    dailyBudgetKWh: clampKWh(storedKWh > 0 ? storedKWh : MIN_DAILY_BUDGET_KWH),
+    priceShaping: readDailyBudgetPriceShapingSetting(priceShaping),
     controlledWeight: normalizeUnmanagedReserveMode(controlledWeightRaw),
     priceFlexShare: normalizePriceFlexShare(priceFlexRaw),
   };
