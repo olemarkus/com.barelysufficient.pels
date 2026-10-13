@@ -255,12 +255,12 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
       } as unknown as NonNullable<ReturnType<typeof createAppContextMock>['homeMembership']>,
     });
 
-    expect(buildMainHomeScopeForTest(ctx, () => false, () => false).getPlanDevices()).toEqual([]);
+    expect(buildMainHomeScopeForTest(ctx, () => false).getPlanDevices()).toEqual([]);
   });
 
   it('includes every device while no sub-homes exist', () => {
     const ctx = makeCtx(makeMembershipService(membershipInputs));
-    const scope = buildMainHomeScopeForTest(ctx, () => false, () => false);
+    const scope = buildMainHomeScopeForTest(ctx, () => false);
     expect(scope.getPlanDevices().map((device) => device.id)).toEqual(['device-main', 'device-sub']);
   });
 
@@ -274,7 +274,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
       resolveManagedState: vi.fn(() => true),
     });
 
-    expect(buildMainHomeScopeForTest(ctx, () => false, () => false).getPlanDevices()).toEqual([]);
+    expect(buildMainHomeScopeForTest(ctx, () => false).getPlanDevices()).toEqual([]);
   });
 
   it('plans a temperature device without a power reading for its setpoints, with no power axis', () => {
@@ -296,7 +296,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
       resolveManagedState: vi.fn(() => true),
     });
 
-    const planned = buildMainHomeScopeForTest(ctx, () => false, () => false).getPlanDevices();
+    const planned = buildMainHomeScopeForTest(ctx, () => false).getPlanDevices();
     expect(planned.map((device) => device.id)).toEqual(['device-main']);
     expect('currentDrawKw' in planned[0]!).toBe(false);
     expect(planned[0]!.control.commandAuthority).toBe(false);
@@ -305,7 +305,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
   it('excludes a sub-home zone member from the main plan devices', () => {
     createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME] });
     const ctx = makeCtx(makeMembershipService(membershipInputs));
-    const scope = buildMainHomeScopeForTest(ctx, () => false, () => false);
+    const scope = buildMainHomeScopeForTest(ctx, () => false);
     expect(scope.getPlanDevices().map((device) => device.id)).toEqual(['device-main']);
   });
 
@@ -313,7 +313,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
     createHomesStore(homeyLike.settings).write({ subHomes: [SUB_HOME] });
     createDeviceHomeAssignmentsStore(homeyLike.settings).write({ 'device-sub': 'main' });
     const ctx = makeCtx(makeMembershipService(membershipInputs));
-    const scope = buildMainHomeScopeForTest(ctx, () => false, () => false);
+    const scope = buildMainHomeScopeForTest(ctx, () => false);
     expect(scope.getPlanDevices().map((device) => device.id)).toEqual(['device-main', 'device-sub']);
   });
 
@@ -326,7 +326,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
       // Simulate persisted gaps left by devices that are no longer active.
       modeCatalog: { priorities: { Home: { 'device-main': 5, 'device-sub': 9 } }, operatingMode: 'Home' },
     });
-    const scope = buildMainHomeScopeForTest(ctx, () => false, () => false);
+    const scope = buildMainHomeScopeForTest(ctx, () => false);
     const priorities = () => Object.fromEntries(
       scope.getPlanDevices().map((device) => [device.id, device.priority]),
     );
@@ -403,7 +403,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
       modeCatalog: { priorities: { Home: { 'device-sub': 100 } }, operatingMode: 'Home' },
     });
 
-    expect(buildMainHomeScopeForTest(ctx, () => false, () => false).getPlanDevices().map(({ id, priority }) => ({ id, priority }))).toEqual([
+    expect(buildMainHomeScopeForTest(ctx, () => false).getPlanDevices().map(({ id, priority }) => ({ id, priority }))).toEqual([
       { id: 'device-main', priority: 2 },
       { id: 'device-sub', priority: 1 },
     ]);

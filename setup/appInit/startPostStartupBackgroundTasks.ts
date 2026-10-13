@@ -1,5 +1,5 @@
 import type { InitializedAppContext } from '../../lib/app/appContext';
-import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
+import type { TaskEvaluationSource } from '../../lib/objectives/deferredObjectives';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { TimerRegistry } from '../../lib/utils/timerRegistry';
 import type { BackgroundTasksController } from '../backgroundTasksController';
@@ -22,7 +22,7 @@ const NATIVE_WIRING_REQUERY_INTERVAL_MS = 30 * 60 * 1000;
  */
 export const startPostStartupBackgroundTasks = (
   ctx: InitializedAppContext,
-  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder,
+  taskEvaluationSource: TaskEvaluationSource,
   backgroundTasks: BackgroundTasksController,
   timers: TimerRegistry,
   handles: AppRuntimeHandles,
@@ -98,7 +98,7 @@ export const startPostStartupBackgroundTasks = (
   // eslint-disable-next-line functional/immutable-data, no-param-reassign
   ctx.canContributeCurtailmentSurplus = () => curtailment.canContributeSurplus();
   backgroundTasks.startDeferredObjectiveLifecycleClock(
-    createDeferredObjectiveLifecycleEmitter(ctx, getPrioritiesForDevices),
+    createDeferredObjectiveLifecycleEmitter(ctx, taskEvaluationSource),
   );
   nativeWiring.runNativeWiringDetectionBestEffort();
   timers.registerInterval('nativeWiringRequery', setInterval(

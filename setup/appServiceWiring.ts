@@ -18,6 +18,7 @@ import {
 } from '../lib/app/appContext';
 import type { ResolveOperatingModeForDevice } from './appDeviceSupport';
 import type { ModePriorityOrder } from '../packages/shared-domain/src/settings/modePriorities';
+import { buildTaskEvaluationSource } from './appInit/taskEvaluationSource';
 import {
   createDeferredObjectiveActivePlanRecorder,
   createDeferredObjectiveEnergyDelivery,
@@ -110,7 +111,9 @@ export type AppServiceWiringDeps = {
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
   getModeDeviceTargets: () => Record<string, Record<string, number>>;
   resolveOperatingModeForDevice: ResolveOperatingModeForDevice;
-  createHomeRuntimeRegistry: (isMembershipReady: () => boolean, isRuntimeActive: () => boolean) => HomeRuntimeRegistry;
+  createHomeRuntimeRegistry: (
+    membership: Pick<HomeMembershipService, 'isSubHomeExecutionReady' | 'isRuntimeActive'>,
+  ) => HomeRuntimeRegistry;
   handles: AppRuntimeHandles;
   /** The app's one-way teardown signal: tripped as the first edge of uninit. */
   shutdown: ShutdownLatch;
@@ -146,6 +149,13 @@ export type AppServiceWiringDeps = {
  * directly.
  */
 export class AppServiceWiring {
+  /**
+   * The main home's smart-task evaluation source, built once: the plan
+   * engine's decoration lane, the lifecycle clock and the app's create-task
+   * preview all read the household through this instance. The wiring only
+   * hands it on, so it holds it as whatever the builder builds.
+   */
+  readonly taskEvaluationSource: ReturnType<typeof buildTaskEvaluationSource>;
   // The main home's closure bundle for the plan factories. Built once (the
   // capacity-settings store port inside it is constructed a single time at
   // this wiring site) and shared by `initPlanRuntime`.
@@ -153,9 +163,10 @@ export class AppServiceWiring {
 
   constructor(private readonly deps: AppServiceWiringDeps) {
     const { ctx } = deps;
+    this.taskEvaluationSource = buildTaskEvaluationSource(ctx, deps.getPrioritiesForDevices);
     this.mainHomeScope = buildMainHomeScope(
-      deps.ctx, deps.getPrioritiesForDevices, deps.getHomeOperatingMode,
-      deps.getModeDeviceTargets, () => deps.shutdown.isStopped(),
+      deps.ctx, this.taskEvaluationSource, deps.getPrioritiesForDevices, deps.getHomeOperatingMode,
+      deps.getModeDeviceTargets, deps.shutdown,
       () => this.isMainHomeWideFenced());
     ctx.rebuildOwningHomePlanForDevice = (deviceId, trigger) => (
       this.rebuildOwningHomePlanForDevice(deviceId, trigger)
@@ -249,7 +260,7 @@ export class AppServiceWiring {
     this.deps.powerTrackerHelpers.startPowerTrackerPruning();
     startPostStartupBackgroundTasks(
       ctx,
-      this.deps.getPrioritiesForDevices,
+      this.taskEvaluationSource,
       this.deps.backgroundTasks,
       this.deps.timers,
       this.deps.handles,
@@ -352,10 +363,11 @@ export class AppServiceWiring {
    */
   initHomeRuntimeRegistry(): void {
     const { handles } = this.deps;
-    handles.homeRuntimeRegistry = this.deps.createHomeRuntimeRegistry(
-      () => handles.homeMembershipService?.isSubHomeExecutionReady() === true,
-      () => handles.homeMembershipService?.isRuntimeActive() === true,
-    );
+    // Lazy over the handle, so both answers fail closed once uninit clears it.
+    handles.homeRuntimeRegistry = this.deps.createHomeRuntimeRegistry({
+      isSubHomeExecutionReady: () => handles.homeMembershipService?.isSubHomeExecutionReady() === true,
+      isRuntimeActive: () => handles.homeMembershipService?.isRuntimeActive() === true,
+    });
     wirePlanStatusRealtime(this.deps.ctx);
   }
 

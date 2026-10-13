@@ -1,8 +1,6 @@
 import { getDebugEmitter } from '../../lib/logging/logger';
 import type { AppContext } from '../../lib/app/appContext';
-import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
 import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
-import { buildTaskEvaluationSource } from './taskEvaluationSource';
 import {
   resolveSmartTaskDeviceExclusion,
   resolveSmartTaskHomeScope,
@@ -12,6 +10,7 @@ import {
 } from '../../lib/objectives/deferredObjectives/lifecycleEmitter';
 import {
   createTrustedDeferredObjectiveSettingsReader,
+  type TaskEvaluationSource,
 } from '../../lib/objectives/deferredObjectives';
 import {
   disableDeferredObjectiveInSettings,
@@ -211,12 +210,12 @@ export const handleDeferredDeadlineReached = (
  */
 export function createDeferredObjectiveLifecycleEmitter(
   ctx: AppContext,
-  getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder,
+  taskEvaluationSource: TaskEvaluationSource,
 ): DeferredObjectiveLifecycleEmitter {
   let lastWatermarkPersistMs = 0;
   const readTrustedObjectiveSettings = createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings);
   return new DeferredObjectiveLifecycleEmitter({
-    source: buildTaskEvaluationSource(ctx, getPrioritiesForDevices),
+    source: taskEvaluationSource,
     getDeferredObjectiveSettings: () => {
       // Self-heal a boot-time empty-`getKeys()` flake that skipped the one-shot
       // migration: idempotent + marker-gated (a cheap single `get` once done),

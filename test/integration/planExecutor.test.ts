@@ -1320,7 +1320,6 @@ describe('PlanExecutor pending target commands', () => {
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
     expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
-      target: 'temperature',
       desired: 23,
       retryCount: 0,
     });
@@ -1333,7 +1332,6 @@ describe('PlanExecutor pending target commands', () => {
 
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(2);
     expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
-      target: 'temperature',
       desired: 23,
       retryCount: 1,
     });
@@ -1373,7 +1371,6 @@ describe('PlanExecutor pending target commands', () => {
 
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
     expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
-      target: 'temperature',
       desired: 23,
       retryCount: 0,
       status: 'temporary_unavailable',
@@ -1554,7 +1551,6 @@ describe('PlanExecutor pending target commands', () => {
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 45);
     expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
-      target: 'temperature',
       desired: 45,
       retryCount: 0,
     });
@@ -1621,7 +1617,6 @@ describe('PlanExecutor pending target commands', () => {
   it('respects pending target retry backoff instead of writing again immediately', async () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-1'] = {
-      target: 'temperature',
       desired: 23,
       startedMs: Date.now() - 5_000,
       lastAttemptMs: Date.now() - 5_000,
@@ -1658,7 +1653,6 @@ describe('PlanExecutor pending target commands', () => {
   it('clears a pending target retry when the live snapshot is already confirmed after actuation', async () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-1'] = {
-      target: 'temperature',
       desired: 23,
       startedMs: Date.now() - 5_000,
       lastAttemptMs: Date.now() - 5_000,
@@ -1714,7 +1708,6 @@ describe('PlanExecutor pending target commands', () => {
   it('keeps retry observation metadata aligned with the live snapshot instead of a stale plan currentTarget', async () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-1'] = {
-      target: 'temperature',
       desired: 23,
       startedMs: Date.now() - 5_000,
       lastAttemptMs: Date.now() - 5_000,

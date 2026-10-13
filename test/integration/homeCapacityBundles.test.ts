@@ -116,11 +116,13 @@ const buildRig = (): Rig => {
   const registry = createHomeRuntimeRegistry(
     ctx,
     getHomeModeCatalogForTest(ctx),
-    () => {
-      if (membershipAuthorityFailing) throw new Error('membership authority unavailable');
-      return membershipReady;
+    {
+      isSubHomeExecutionReady: () => {
+        if (membershipAuthorityFailing) throw new Error('membership authority unavailable');
+        return membershipReady;
+      },
+      isRuntimeActive: () => runtimeActive,
     },
-    () => runtimeActive,
     createRawHomesStore(ctx.homey.settings),
     createModeOwnershipTransfer(ctx, getHomeModeCatalogForTest(ctx)),
   );

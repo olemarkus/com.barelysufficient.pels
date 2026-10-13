@@ -177,6 +177,8 @@ type MeterSourceEpoch = {
   readonly handledPowerSource: PowerSource;
   /** Latest observed generation; the value a transition attempt commits against. */
   readonly observedGeneration: number;
+  /** The source the latest successful read observed; valid after `refreshObservedSource` answers true. */
+  readonly observedPowerSource: PowerSource;
   readConfiguredSource(): ConfiguredPowerSourceRead;
   observeChange(): void;
   isTransitionPending(): boolean;
@@ -184,8 +186,8 @@ type MeterSourceEpoch = {
   reconcileObservedFromSettings(): 'unchanged' | 'observed' | 'unreadable';
   isMeterSourceAuthorized(): boolean;
   isHandledCurrent(generation: number): boolean;
-  /** `null` = the read failed, which latches the fence closed. */
-  resolveAuthoritativeSource(): PowerSource | null;
+  /** Re-read and adopt a change; false = the read failed, which latches the fence closed. */
+  refreshObservedSource(): boolean;
   isTransitionCurrent(powerSource: PowerSource, generation: number): boolean;
   commitTransition(powerSource: PowerSource, generation: number): void;
 };
@@ -624,8 +626,8 @@ export class HomeRuntimeRegistry<THooks> implements HomeRuntimeReadPort {
   }
 
   private completeObservedPowerSourceTransition(): boolean {
-    const authoritativeSource = this.sourceEpoch.resolveAuthoritativeSource();
-    if (authoritativeSource === null) return false;
+    if (!this.sourceEpoch.refreshObservedSource()) return false;
+    const authoritativeSource = this.sourceEpoch.observedPowerSource;
     const generation = this.sourceEpoch.observedGeneration;
     if (this.sourceEpoch.isHandledCurrent(generation)) return true;
 

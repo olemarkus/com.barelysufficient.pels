@@ -5,10 +5,8 @@
  */
 import type { PlanActuationResult } from '../planContract/planActuationResult';
 import type { SteppedSettleDevice } from '../observer/steppedSettleSnapshot';
-import type {
-  PendingBinaryCommandStore,
-  PendingBinaryLiveDevice,
-} from '../observer/pendingBinaryCommands';
+import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
+import type { PendingBinaryLiveDevice } from '../ports/controlCommandConfirmation';
 import type {
   HeadroomCardDeviceLike,
   HeadroomCardQuery,

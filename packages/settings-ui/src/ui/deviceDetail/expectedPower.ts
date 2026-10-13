@@ -107,7 +107,7 @@ type ExpectedPowerHandlerDeps = {
 };
 
 export const initExpectedPowerHandlers = (deps: ExpectedPowerHandlerDeps) => {
-  const persist = async (deviceId: string, entry: { kind: 'clear' } | { kind: 'set'; kw: number }) => {
+  const persist = async (deviceId: string, entry: Exclude<ExpectedPowerFieldEntry, { kind: 'invalid' }>) => {
     await runSerializedExpectedPowerWrite(async () => {
       await writeFreshSetting<DeviceExpectedPowerOverrides>({
         key: DEVICE_EXPECTED_POWER_OVERRIDES,

@@ -35,6 +35,14 @@
 // literal (a TypeScript `TypeLiteral`) declaring 3 or more members. Two members
 // or fewer is a small structural constraint, not a bag, and stays legal.
 //
+// Intersections and unions count the same way: `deps: Deps & { a: A; b: B; c: C }`
+// is a bag with a named type glued on, and `params: { a: A; b: B; c: C } | undefined`
+// is a bag that may be absent; the literal part is just as anonymous either way.
+// The members of every literal in the intersection or union are summed. An
+// earlier version looked only at a bare `TypeLiteral`, so a 10-member bag on the
+// plan layer's binary-control decision passed by being written as an
+// intersection, and a 5-member one in overshoot attribution by being `| undefined`.
+//
 // Detection runs on the TypeScript AST, not on a regex over the text. A regex
 // has to guess at layout, and every guess is a hole: an earlier version of this
 // script required the opening brace to end the line, so the single-line
@@ -98,8 +106,27 @@ function sourceFiles() {
   return found.sort();
 }
 
-// Returns the number of parameters typed as an inline object literal carrying
-// >= MIN_PROPERTIES members, anywhere in the file, at any layout.
+// How many members a parameter type declares inline: the literal itself, the
+// SUM across an intersection's parts (they all arrive in one argument), and the
+// LARGEST of a union's alternatives (only one arrives, so a small discriminated
+// union is not a bag). Parenthesized and nested types count the same way. A
+// literal behind a type reference (`Array<{ … }>`, `Pick<{ … }, …>`) describes
+// some other value's shape, not the argument list, and is not counted.
+function inlineMemberCount(type) {
+  if (ts.isParenthesizedTypeNode(type)) return inlineMemberCount(type.type);
+  if (ts.isTypeLiteralNode(type)) return type.members.length;
+  if (ts.isIntersectionTypeNode(type)) {
+    return type.types.reduce((total, part) => total + inlineMemberCount(part), 0);
+  }
+  if (ts.isUnionTypeNode(type)) {
+    return type.types.reduce((largest, part) => Math.max(largest, inlineMemberCount(part)), 0);
+  }
+  return 0;
+}
+
+// Returns the number of parameters typed as an inline object literal (alone or
+// inside an intersection or union) carrying >= MIN_PROPERTIES members, anywhere
+// in the file, at any layout.
 function countBundles(path, text) {
   const source = ts.createSourceFile(
     path,
@@ -110,11 +137,8 @@ function countBundles(path, text) {
   );
   let sites = 0;
   const visit = (node) => {
-    if (ts.isParameter(node)
-      && node.type !== undefined
-      && ts.isTypeLiteralNode(node.type)
-      && node.type.members.length >= MIN_PROPERTIES) {
-      sites += 1;
+    if (ts.isParameter(node) && node.type !== undefined) {
+      if (inlineMemberCount(node.type) >= MIN_PROPERTIES) sites += 1;
     }
     ts.forEachChild(node, visit);
   };

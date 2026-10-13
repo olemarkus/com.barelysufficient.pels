@@ -1,5 +1,5 @@
+import type { DeviceExpectedPowerOverrides } from '../../packages/contracts/src/types';
 import type {
-  ExpectedPowerOverridesByDeviceId,
   ExpectedPowerOverridesRead,
   LearnedPeaksByDeviceId,
   LearnedPeaksRead,
@@ -31,5 +31,5 @@ export type DevicePersistencePort = {
   loadLearnedPeaks(): LearnedPeaksRead;
   saveLearnedPeaks(peaks: LearnedPeaksByDeviceId, nowMs: number): void;
   loadExpectedPowerOverrides(): ExpectedPowerOverridesRead;
-  saveExpectedPowerOverrides(overrides: ExpectedPowerOverridesByDeviceId): void;
+  saveExpectedPowerOverrides(overrides: DeviceExpectedPowerOverrides): void;
 };

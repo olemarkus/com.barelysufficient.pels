@@ -607,7 +607,6 @@ describe('buildSheddingPlan', () => {
   it('marks temperature candidate with unconfirmedRelief when a pending target command matches shed temperature', async () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-heater'] = {
-      target: 'temperature',
       desired: 15,
       startedMs: Date.now() - 5000,
       lastAttemptMs: Date.now() - 5000,
@@ -687,7 +686,6 @@ describe('buildSheddingPlan', () => {
   it('does not treat temporarily unavailable target writes as unconfirmed relief', async () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-heater'] = {
-      target: 'temperature',
       desired: 15,
       startedMs: Date.now() - 5000,
       lastAttemptMs: Date.now() - 5000,

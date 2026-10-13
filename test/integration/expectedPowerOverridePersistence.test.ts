@@ -5,7 +5,7 @@ import { createFlowBackedDeviceState } from '../../setup/flowBackedCardAccess';
 import { SettingsRepository } from '../../setup/settingsRepository';
 import { DEVICE_EXPECTED_POWER_OVERRIDES } from '../../lib/utils/settingsKeys';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
-import type { ExpectedPowerOverridesByDeviceId } from '../../lib/device/devicePowerPeak';
+import type { DeviceExpectedPowerOverrides } from '../../packages/contracts/src/types';
 
 const NOW = Date.UTC(2026, 7, 9, 12, 0, 0);
 
@@ -15,7 +15,7 @@ const NOW = Date.UTC(2026, 7, 9, 12, 0, 0);
  * consults is real.
  */
 describe('expected power override persistence', () => {
-  let overrides: ExpectedPowerOverridesByDeviceId;
+  let overrides: DeviceExpectedPowerOverrides;
   let timers: TimerRegistry;
 
   const buildFlowBacked = (

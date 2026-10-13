@@ -5,7 +5,6 @@ import type { AppContext } from '../lib/app/appContext';
 import type { FlowConflictRefreshResult } from '../lib/flowApi/flowConflictRefreshCoordinator';
 import type Homey from 'homey';
 import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
-import type { ThermalDirection } from '../packages/contracts/src/types';
 import type { DebugLoggingTopic } from '../packages/shared-domain/src/utils/debugLogging';
 import { getDebugTopics, setDebugTopics } from '../lib/logging/logger';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
@@ -67,10 +66,6 @@ abstract class AppRuntimeApi extends Base {
   public updateDailyBudgetState(options?: DailyBudgetUpdateStateOptions): void {
     this.updateDailyBudgetAndRecordCap(options);
   }
-  /** Which way this device's setpoint moves demand — the observer's answer. */
-  public getThermalDirection(deviceId: string): ThermalDirection {
-    return this.context.observer.getThermalDirection(deviceId);
-  }
   public syncLivePlanStateAfterTargetActuation(source: PendingTargetObservationSource): boolean | void {
     return requirePlanService(this.context).syncLivePlanStateInline(source);
   }
@@ -104,9 +99,6 @@ abstract class AppRuntimeApi extends Base {
     }
     const value = this.computeDynamicSoftLimit();
     return Number.isFinite(value) ? value : null;
-  }
-  public get priceOptimizationEnabled(): boolean {
-    return requirePriceCoordinator(this.context).getPriceOptimizationEnabled();
   }
   public get priceOptimizationSettings() {
     return temperaturePolicyPriceSettings(

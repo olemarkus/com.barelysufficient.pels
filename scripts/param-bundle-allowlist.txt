@@ -32,12 +32,10 @@ lib/device/deviceResidualKw.ts 2
 lib/device/evCarLink.ts 3
 lib/device/evCarLinkObservation.ts 2
 lib/device/evCarLinkReadModel.ts 1
-lib/device/expectedPowerOverrideState.ts 1
 lib/device/learnedPowerPeakState.ts 1
 lib/device/liveFeed.ts 2
 lib/device/managerFlowSupport.ts 3
 lib/device/managerMeasuredPower.ts 1
-lib/device/managerNativeEv.ts 6
 lib/device/managerRuntime.ts 2
 lib/device/measuredPowerReader.ts 1
 lib/device/measuredPowerResolver.ts 1
@@ -48,12 +46,10 @@ lib/device/targetPowerProbeScheduler.ts 1
 lib/device/targetPowerReachability.ts 2
 lib/device/transport/binarySettleEvidence.ts 1
 lib/device/transport/deviceUpdateHandling.ts 1
-lib/device/transport/flowReportedCapabilities.ts 1
 lib/device/transport/managerFetch.ts 1
 lib/device/transport/managerHomeyApi.ts 2
 lib/device/transport/managerManagedFilter.ts 1
 lib/device/transport/managerParse.ts 3
-lib/device/transport/managerParseDevice.ts 3
 lib/device/transport/managerParseDeviceFields.ts 3
 lib/device/transport/managerParseFreshness.ts 1
 lib/device/transport/managerParsePowerState.ts 1
@@ -73,7 +69,6 @@ lib/logging/logDedupe.ts 1
 lib/observer/generationFreshness.ts 1
 lib/observer/idleClassifier.ts 2
 lib/observer/steppedReportedStep.ts 2
-lib/plan/planSurplusAbsorb.ts 2
 lib/planInput/calibrationViews.ts 1
 lib/planInput/residualKwForPlanDevice.ts 1
 lib/ports/homeyRuntime.ts 1

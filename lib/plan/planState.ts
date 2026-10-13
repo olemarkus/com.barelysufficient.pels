@@ -17,7 +17,6 @@ import type {
 export type ActivationAttemptSource = 'pels_restore' | 'tracked_step_up';
 
 export type PendingTargetCommandState = {
-  target: 'temperature';
   desired: number;
   startedMs: number;
   lastAttemptMs: number;

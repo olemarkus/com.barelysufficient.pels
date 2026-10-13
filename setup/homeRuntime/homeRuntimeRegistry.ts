@@ -9,6 +9,7 @@
  */
 import type { AppContext } from '../../lib/app/appContext';
 import type { HomesStore } from '../../lib/home/homeConfig';
+import type { HomeMembershipService } from '../../lib/home/homeMembershipService';
 import type { HomeModeCatalog } from '../../lib/home/homeModeCatalog';
 import {
   HomeRuntimeRegistry as SubHomeRegistry,
@@ -30,10 +31,12 @@ export type HomeRuntimeRegistry = SubHomeRegistry<OwningHomeHooks>;
 export function createHomeRuntimeRegistry(
   ctx: AppContext,
   mainModeCatalog: HomeModeCatalog,
-  /** Membership-readiness signal handed to every bundle (execution gate). */
-  isMembershipReady: () => boolean,
-  /** Producer-resolved GA activation posture from the membership service. */
-  isRuntimeActive: () => boolean,
+  /**
+   * The membership service's two answers the registry needs: the readiness
+   * signal handed to every bundle (execution gate), and the producer-resolved
+   * GA activation posture.
+   */
+  membership: Pick<HomeMembershipService, 'isSubHomeExecutionReady' | 'isRuntimeActive'>,
   homesStore: HomesStore,
   modeOwnershipTransfer: ModeOwnershipTransfer,
 ): HomeRuntimeRegistry {
@@ -47,7 +50,7 @@ export function createHomeRuntimeRegistry(
         mainModeCatalog,
         new SubHomeRuntime(
           home,
-          isMembershipReady,
+          () => membership.isSubHomeExecutionReady(),
           () => sourceEpoch.isMeterSourceAuthorized(),
           () => sourceEpoch.isEpochDiscarded(),
         ),
@@ -65,7 +68,7 @@ export function createHomeRuntimeRegistry(
     homesStore,
     modeOwnershipTransfer,
     {
-      isRuntimeActive,
+      isRuntimeActive: () => membership.isRuntimeActive(),
       // The registry exists only while membership does (built after
       // `initHomeMembership`, dropped before `runUninit` clears it).
       getHomeIdForDevice: (deviceId) => requireHomeMembership(ctx).getHomeIdForDevice(deviceId),

@@ -1934,14 +1934,14 @@ describe('Price optimization', () => {
     await flushPromises();
 
     // Verify it's disabled
-    expect(app['priceOptimizationEnabled']).toBe(false);
+    expect(app.priceCoordinator.getPriceOptimizationEnabled()).toBe(false);
 
     // Enable it at runtime
     mockHomeyInstance.settings.set('price_optimization_enabled', true);
     await flushPromises();
 
     // Verify it's now enabled
-    expect(app['priceOptimizationEnabled']).toBe(true);
+    expect(app.priceCoordinator.getPriceOptimizationEnabled()).toBe(true);
   });
 
   it('stores flow price data from single-quote JSON and builds combined prices', async () => {

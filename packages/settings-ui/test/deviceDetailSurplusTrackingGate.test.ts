@@ -1,5 +1,6 @@
 // The per-device "Charge on solar surplus" / "Match solar surplus" control gates
-// on the same full candidacy the runtime `resolveSurplusTrackingPosture` does:
+// on the same full candidacy the runtime producer does
+// (`resolveSurplusPostureForDevice`, then `resolveSurplusTrackingPosture`):
 // the home's surplus pool must be reachable, and the device must be managed,
 // manageable, non-temperature, and carry a usable step ladder. The switch is
 // additionally disabled while the device has an active smart task (mirroring the

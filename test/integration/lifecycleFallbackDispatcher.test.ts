@@ -1433,7 +1433,6 @@ describe('LifecycleFallbackDispatcher', () => {
     resolveActuator?.({ requested: true });
     await flush();
     expect(dispatcher.getOwnedTargetPending(device.id)).toMatchObject({
-      target: 'temperature',
       desired: 5,
     });
     expect(planState.pendingTargetCommands[device.id]).toBeUndefined();

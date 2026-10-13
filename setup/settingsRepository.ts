@@ -7,13 +7,13 @@ import {
   classifyExpectedPowerOverridesSetting,
   classifyLearnedPeaksSetting,
   pruneExpiredLearnedPeaks,
-  type ExpectedPowerOverridesByDeviceId,
   type ExpectedPowerOverridesRead,
   type LearnedPeaksByDeviceId,
   type LearnedPeaksRead,
   type PersistedRecordReadEvidence,
 } from '../lib/device/devicePowerPeak';
 import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSelection';
+import type { DeviceExpectedPowerOverrides } from '../packages/contracts/src/types';
 import { readMainMeterSelection } from './mainMeterSettings';
 import {
   DEVICE_EXPECTED_POWER_OVERRIDES,
@@ -104,7 +104,7 @@ export class SettingsRepository {
     return evidence ? classifyExpectedPowerOverridesSetting(evidence) : { state: 'unavailable' };
   }
 
-  saveExpectedPowerOverrides(overrides: ExpectedPowerOverridesByDeviceId): void {
+  saveExpectedPowerOverrides(overrides: DeviceExpectedPowerOverrides): void {
     this.homey.settings.set(DEVICE_EXPECTED_POWER_OVERRIDES, overrides);
   }
 

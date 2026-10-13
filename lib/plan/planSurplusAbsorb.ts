@@ -5,9 +5,9 @@ import type { MeteredPlanInputDevice, PlanInputDevice } from './planTypes';
 import { isMeteredPlanDevice } from './planMeteredDevice';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import type {
-  SteppedLoadProfile,
+  ObservedDeviceState,
+  SteppedLoadDescriptorProbe,
   SteppedLoadStep,
-  TargetCapabilitySnapshot,
 } from '../../packages/contracts/src/types';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { getHighestKnownPowerKw } from '../observer/observedPower';
@@ -84,53 +84,32 @@ const willingWithLift = (config: SurplusConfig | undefined): boolean => (
  * runtime candidacy never disagrees with what the toggle offers — a device the
  * UI classifies continuous/preset/stepped is never stamped `surplusOnly`.
  *
- * Candidacy is SOURCE-INDEPENDENT but NOT unconditional. It used to carry a
- * `meteredPowerSource` bit on the premise that surplus "physically cannot exist
- * on the flow power source". That reasoning was wrong — both sources report
- * signed net, and the measured pool is `-signedNetKw` (`composeSurplusPool`)
- * with no production term in its path — but the bit was doing real work, and
- * dropping it outright re-opened the trap it had been holding shut: a device
- * stamped `surplusOnly` in a home whose pool can never open is held OFF
- * forever by `resolveSurplusHold`, with no time-based escape.
- *
- * `surplusPoolReachable` replaces it with the honest question — has this home
- * been observed to export, or can its curtailment estimator contribute? — which
- * is a runtime fact about accumulated evidence rather than a property of the
- * configured source. A flow home sending `import − export` passes it; a flow
- * home whose Flow predates signed watts does not, and its dump load keeps
- * running. Resolved at the producer (`resolveSurplusPoolReachable`) so this
- * helper carries no tracker or estimator branch.
+ * This answers which modality the device's shape and control allow. Whether
+ * the owner opted the device in, and whether the home's surplus pool can ever
+ * open, are asked once for both postures by the producer before either
+ * predicate runs (`resolveSurplusPostureForDevice`).
  */
-export function resolveSurplusOnlyPosture(params: {
-  surplusWilling: boolean;
-  hasBinaryControl: boolean;
-  // Producer-resolved: being off means going without. A dump load qualifies; a
-  // charger does not, because its demand arrives with a car. Asked as this bit
-  // rather than as the device's kind — the planner does not get to know which
-  // kinds exist (`PlanInputDevice.hasStandingDemand`).
-  hasStandingDemand: boolean;
-  targets: readonly TargetCapabilitySnapshot[] | undefined;
-  steppedLoadProfile: SteppedLoadProfile | undefined;
+export function resolveSurplusOnlyPosture(
+  device: Pick<ObservedDeviceState, 'targets' | 'binaryControl'> & SteppedLoadDescriptorProbe,
+  control: DeviceControlPosture,
   // Producer-resolved: true only for a plain binary-power control device — i.e.
   // NOT an enabled continuous / target-power (EV-preset) config and NOT a
   // non-binary control model. Resolved at the producer so this planner helper
   // carries no target-power / control-model branch.
-  plainBinaryControlModel: boolean;
-  control: DeviceControlPosture;
-  // Producer-resolved: can this home's surplus pool ever be non-zero? False
-  // means no surplus can arrive, so stamping the posture would hold the device
-  // off indefinitely rather than merely leaving it idle.
-  surplusPoolReachable: boolean;
-}): boolean {
-  return params.surplusWilling
-    && params.surplusPoolReachable
-    && params.hasBinaryControl
-    && params.hasStandingDemand
-    && !isSteppedLoadSnapshot(params)
-    && params.plainBinaryControlModel
-    && params.targets?.some((target) => target.id === 'target_temperature') !== true
-    && params.control.commandAuthority
-    && params.control.managed;
+  plainBinaryControlModel: boolean,
+  // Producer-resolved: being off means going without. A dump load qualifies; a
+  // charger does not, because its demand arrives with a car. Asked as this bit
+  // rather than as the device's kind — the planner does not get to know which
+  // kinds exist (`PlanInputDevice.hasStandingDemand`).
+  hasStandingDemand: boolean,
+): boolean {
+  return device.binaryControl !== undefined
+    && hasStandingDemand
+    && !isSteppedLoadSnapshot(device)
+    && plainBinaryControlModel
+    && !hasTemperatureTarget(device)
+    && control.commandAuthority
+    && control.managed;
 }
 
 /**
@@ -160,24 +139,23 @@ export function resolveSurplusOnlyPosture(params: {
  *   second is real, and is answered at the allocator by `commandableNow` (an
  *   unplugged charger claims nothing), which is the honest mechanism rather than
  *   a bit that only names EVs.
+ *
+ * The opt-in and the pool-reachability gates are the producer's, shared with
+ * the binary posture (`resolveSurplusPostureForDevice`).
  */
-export function resolveSurplusTrackingPosture(params: {
-  surplusWilling: boolean;
-  targets: readonly TargetCapabilitySnapshot[] | undefined;
-  steppedLoadProfile: SteppedLoadProfile | undefined;
-  control: DeviceControlPosture;
-  // Same producer-resolved question as the binary posture: can this home's
-  // surplus pool ever be non-zero? False means stamping the posture would clamp
-  // the device to its floor forever rather than merely leaving it unmodulated.
-  surplusPoolReachable: boolean;
-}): boolean {
-  return params.surplusWilling
-    && params.surplusPoolReachable
-    && isSteppedLoadSnapshot(params)
-    && params.targets?.some((target) => target.id === 'target_temperature') !== true
-    && params.control.commandAuthority
-    && params.control.managed;
+export function resolveSurplusTrackingPosture(
+  device: Pick<ObservedDeviceState, 'targets'> & SteppedLoadDescriptorProbe,
+  control: DeviceControlPosture,
+): boolean {
+  return isSteppedLoadSnapshot(device)
+    && !hasTemperatureTarget(device)
+    && control.commandAuthority
+    && control.managed;
 }
+
+const hasTemperatureTarget = (device: Pick<ObservedDeviceState, 'targets'>): boolean => (
+  device.targets.some((target) => target.id === 'target_temperature')
+);
 
 // Hard-off: the release condition is unambiguous — the whole-home signal is
 // lost, or the home is drawing sustained grid import beyond what a zero-export

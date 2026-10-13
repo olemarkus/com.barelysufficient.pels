@@ -500,19 +500,16 @@ function resolveOvershootDevicePower(
 }
 
 function hasPendingWindow(
-  device: {
-    pendingBinaryOnCommand?: boolean;
-    pendingBinaryOffCommand?: boolean;
-    binaryCommandPending?: boolean;
-    stepCommandPending?: boolean;
-    pendingTargetCommand?: boolean | DevicePlanDevice['pendingTargetCommand'];
-  } | undefined,
+  device: Pick<
+    OvershootTrackedPlanDevice,
+    'pendingBinaryOnCommand' | 'pendingBinaryOffCommand' | 'stepCommandPending' | 'pendingTargetCommand'
+  > | undefined,
 ): boolean {
   if (!device) return false;
-  return device.pendingBinaryOnCommand === true
-    || device.pendingBinaryOffCommand === true
+  return device.pendingBinaryOnCommand
+    || device.pendingBinaryOffCommand
     || device.stepCommandPending === true
-    || Boolean(device.pendingTargetCommand);
+    || device.pendingTargetCommand;
 }
 
 function isCooldownBlocked(

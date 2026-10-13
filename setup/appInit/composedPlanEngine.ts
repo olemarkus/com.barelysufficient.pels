@@ -10,8 +10,8 @@ import { getLogger, type Logger as PinoLogger, type StructuredDebugEmitter } fro
 import {
   syncPendingBinaryCommands,
   type PendingBinaryCommandStore,
-  type PendingBinaryLiveDevice,
 } from '../../lib/observer/pendingBinaryCommands';
+import type { PendingBinaryLiveDevice } from '../../lib/ports/controlCommandConfirmation';
 import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { PlanBuilder } from '../../lib/plan/planBuilder';
 import {

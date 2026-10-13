@@ -55,7 +55,6 @@ describe('isPlanActivelyConverging', () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands = {
       dev1: {
-        target: 'temperature',
         desired: 21,
         startedMs: Date.now(),
         lastAttemptMs: Date.now(),

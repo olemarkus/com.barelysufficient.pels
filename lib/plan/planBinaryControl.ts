@@ -2,7 +2,6 @@ import {
   type BinaryControlDecision,
   type BinaryControlDecisionSnapshot,
   type BinaryControlDeps,
-  type BinaryControlLogContext,
   shouldSkipBinaryControl,
 } from './planBinaryControlHelpers';
 // `getBinaryControlPlan` moved to `lib/device/deviceActionProjection.ts` as
@@ -24,32 +23,23 @@ export { type BinaryControlDecision } from './planBinaryControlHelpers';
  * observer-owned pending-binary-command store (PR #4 of the
  * observer/transport split).
  */
-export function decideBinaryControl(params: BinaryControlDeps & {
-  deviceId: string;
-  name: string;
-  desired: boolean;
-  snapshot?: BinaryControlDecisionSnapshot;
-  logContext: BinaryControlLogContext;
-  lifecycleRelease?: boolean;
-  forceAgainstReleasedOpposing?: boolean;
-}): BinaryControlDecision | null {
-  const {
-    deviceId, name, desired, snapshot, logContext,
-    lifecycleRelease,
-    forceAgainstReleasedOpposing,
-  } = params;
+export function decideBinaryControl(
+  deps: BinaryControlDeps,
+  command: BinaryControlDecision,
+  snapshot: BinaryControlDecisionSnapshot | undefined,
+  forceAgainstReleasedOpposing: boolean,
+): BinaryControlDecision | null {
   const controlPlan = getBinaryControlPlan(snapshot);
   const decision: BinaryControlDecision = {
-    deviceId,
-    name,
-    desired,
-    logContext,
-    ...(lifecycleRelease ? { lifecycleRelease: true } : {}),
+    deviceId: command.deviceId,
+    name: command.name,
+    desired: command.desired,
+    logContext: command.logContext,
+    ...(command.lifecycleRelease ? { lifecycleRelease: true } : {}),
   };
-  if (shouldSkipBinaryControl(params, controlPlan, decision, snapshot, forceAgainstReleasedOpposing)) {
+  if (shouldSkipBinaryControl(deps, controlPlan, decision, snapshot, forceAgainstReleasedOpposing)) {
     return null;
   }
-  if (!controlPlan) return null;
   return decision;
 }
 

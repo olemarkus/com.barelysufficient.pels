@@ -140,15 +140,17 @@ describe('PowerSourceEpochFence reconcileObservedFromSettings', () => {
 });
 
 describe('PowerSourceEpochFence transition resolution', () => {
-  it('returns null and latches when the authoritative read fails', () => {
+  it('answers false, keeps the accepted source and latches when the authoritative read fails', () => {
     const fence = fenceReading('homey_energy', null);
-    expect(fence.resolveAuthoritativeSource()).toBeNull();
+    expect(fence.refreshObservedSource()).toBe(false);
+    expect(fence.observedPowerSource).toBe('homey_energy');
     expect(fence.isTransitionPending()).toBe(true);
   });
 
   it('adopts a source change seen at resolve time as a new observed generation', () => {
     const fence = fenceReading('homey_energy', 'flow');
-    expect(fence.resolveAuthoritativeSource()).toBe('flow');
+    expect(fence.refreshObservedSource()).toBe(true);
+    expect(fence.observedPowerSource).toBe('flow');
     expect(fence.observedGeneration).toBe(1);
     expect(fence.isTransitionPending()).toBe(true);
   });
@@ -158,7 +160,7 @@ describe('PowerSourceEpochFence transition resolution', () => {
     expect(fence.isTransitionCurrent('homey_energy', 0)).toBe(false);
   });
 
-  // Isolates the SOURCE clause: `resolveAuthoritativeSource` has already bumped
+  // Isolates the SOURCE clause: `refreshObservedSource` has already bumped
   // the generation to 1 by the time the comparison runs, so asserting against
   // generation 0 above would still pass with the source check deleted.
   it('rejects a moved source even at the post-observe generation', () => {

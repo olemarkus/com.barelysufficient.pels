@@ -46,7 +46,6 @@ export function prunePendingTargetCommandsForPlan(
       reason: 'plan_no_longer_wants',
       deviceId,
       deviceName: device?.name,
-      target: pending.target,
       desired: pending.desired,
     });
   }
@@ -68,7 +67,7 @@ export function syncPendingTargetCommands(
   for (const [deviceId, pending] of Object.entries(state.pendingTargetCommands)) {
     const liveDevice = liveById.get(deviceId);
     if (!liveDevice) {
-      if (clearPendingTargetCommandForMissingDevice(state, deviceId, pending, source, debugStructured)) {
+      if (clearPendingTargetCommandForMissingDevice(state, deviceId, source, debugStructured)) {
         changed = true;
       }
       continue;
@@ -147,7 +146,6 @@ function getObservedTargetValue(liveDevice: PlanInputDevice): unknown {
 function clearPendingTargetCommandForMissingDevice(
   state: PlanEngineState,
   deviceId: string,
-  pending: PendingTargetCommandState,
   source: PendingTargetObservationSource,
   debugStructured: StructuredDebugEmitter | undefined,
 ): boolean {
@@ -158,7 +156,6 @@ function clearPendingTargetCommandForMissingDevice(
     event: 'pending_target_command_cleared',
     reason: 'device_missing',
     deviceId,
-    target: pending.target,
     source,
   });
   return true;
@@ -186,7 +183,6 @@ function handleConfirmedPendingTargetObservation(
     event: 'pending_target_command_confirmed',
     deviceId: liveDevice.id,
     deviceName: liveDevice.name,
-    target: pending.target,
     desired: pending.desired,
     source,
   });
@@ -217,7 +213,6 @@ function handleTemporaryUnavailablePendingTargetObservation(
     event: 'pending_target_command_unavailable',
     deviceId: liveDevice.id,
     deviceName: liveDevice.name,
-    target: pending.target,
     observed: formatObservedTarget(observedValue),
     source,
     retryInSec: remainingSec,
@@ -244,7 +239,6 @@ function updatePendingTargetWaitingObservation(
     event: 'pending_target_command_waiting',
     deviceId: liveDevice.id,
     deviceName: liveDevice.name,
-    target: pending.target,
     observed: formatObservedTarget(observedValue),
     source,
     expected: pending.desired,
@@ -259,7 +253,6 @@ function updatePendingTargetWaitingObservation(
       event: 'target_waiting_for_confirmation',
       deviceId: liveDevice.id,
       deviceName: liveDevice.name,
-      target: pending.target,
       observed: formatObservedTarget(observedValue),
       previousObserved: previousObservedSource !== undefined
         ? formatObservedTarget(previousObservedValue)
@@ -292,7 +285,6 @@ function maybeEmitRepeatedPendingConfirmation(
     event: 'target_waiting_for_confirmation',
     deviceId: liveDevice.id,
     deviceName: liveDevice.name,
-    target: pending.target,
     observed: formatObservedTarget(observedValue),
     source,
     expected: pending.desired,

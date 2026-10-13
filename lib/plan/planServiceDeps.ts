@@ -3,7 +3,7 @@ import type { SteppedSettleDevice } from '../observer/steppedSettleSnapshot';
 import type { Loggers, StructuredDebugEmitter } from '../logging/logger';
 import type { SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import type { DeviceOverviewLogRecorder } from './deviceOverviewLog';
-import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
+import type { PendingBinaryLiveDevice } from '../ports/controlCommandConfirmation';
 import type {
   HomeBatteryCardRead,
   ObservedEvChargingStateRead,

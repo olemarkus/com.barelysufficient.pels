@@ -32,33 +32,36 @@ const AWAITING: DeviceReason = { code: PLAN_REASON_CODES.awaitingSolarSurplus };
 
 // ─── Candidacy: resolveSurplusOnlyPosture ─────────────────────────────────────
 
-const candidateParams = (overrides: Partial<Parameters<typeof resolveSurplusOnlyPosture>[0]> = {}) => ({
-  surplusWilling: true,
-  hasBinaryControl: true,
-  hasStandingDemand: true,
-  confirmedNotDrawing: false,
-  deviceClass: 'socket',
-  targets: [],
-  steppedLoadProfile: undefined,
-  plainBinaryControlModel: true,
-  control: { managed: true, commandAuthority: true },
-  surplusPoolReachable: true,
-  ...overrides,
-});
+type CandidateDevice = Parameters<typeof resolveSurplusOnlyPosture>[0];
+type CandidateControl = Parameters<typeof resolveSurplusOnlyPosture>[1];
+
+const isCandidate = (overrides: {
+  device?: Partial<CandidateDevice>;
+  control?: CandidateControl;
+  plainBinaryControlModel?: boolean;
+  hasStandingDemand?: boolean;
+} = {}): boolean => resolveSurplusOnlyPosture(
+  { targets: [], binaryControl: { on: false }, ...overrides.device },
+  overrides.control ?? { managed: true, commandAuthority: true },
+  overrides.plainBinaryControlModel ?? true,
+  overrides.hasStandingDemand ?? true,
+);
 
 describe('resolveSurplusOnlyPosture (dump-load candidacy)', () => {
-  it('admits a willing, managed, controllable plain binary device', () => {
-    expect(resolveSurplusOnlyPosture(candidateParams())).toBe(true);
+  it('admits a managed, controllable plain binary device', () => {
+    expect(isCandidate()).toBe(true);
   });
 
+  // The opt-in and the pool-reachability gates are the producer's, asked once
+  // for both postures; `appInitToPlanDeviceScoped.test.ts` covers them through
+  // the real `toPlanDevice`.
   it.each([
-    ['not willing', { surplusWilling: false }],
-    ['no binary control capability', { hasBinaryControl: false }],
+    ['no binary control capability', { device: { binaryControl: undefined } }],
     // A charger: its demand arrives with a car, so being off is not going
     // without, and it is not a dump load.
     ['no standing demand', { hasStandingDemand: false }],
-    ['stepped-load profile', { steppedLoadProfile: steppedProfile }],
-    ['temperature target', { targets: [{ id: 'target_temperature', value: 20, unit: 'C' }] }],
+    ['stepped-load profile', { device: { steppedLoadProfile: steppedProfile } }],
+    ['temperature target', { device: { targets: [{ id: 'target_temperature', value: 20, unit: 'C' }] } }],
     // Continuous / target-power / non-binary control is pre-resolved at the
     // producer into `plainBinaryControlModel` (the raw targetPowerConfig /
     // controlModel → false mapping is covered by the `toPlanDevice` producer
@@ -67,16 +70,8 @@ describe('resolveSurplusOnlyPosture (dump-load candidacy)', () => {
     ['not a plain binary control model', { plainBinaryControlModel: false }],
     ['power-limit control off', { control: { managed: true, commandAuthority: false } }],
     ['unmanaged', { control: { managed: false, commandAuthority: false } }],
-    // Restored guard. This row was deleted when the `meteredPowerSource` gate
-    // came out, and the trap it had been holding shut re-opened immediately: a
-    // device stamped `surplusOnly` in a home whose pool can never open is held
-    // OFF forever by `resolveSurplusHold` — no time-based escape, no UI
-    // recourse. The gate is now the honest runtime question
-    // (`resolveSurplusPoolReachable`) rather than the source name, but the
-    // reason it must exist is unchanged.
-    ['surplus pool unreachable', { surplusPoolReachable: false }],
   ])('excludes: %s', (_label, overrides) => {
-    expect(resolveSurplusOnlyPosture(candidateParams(overrides))).toBe(false);
+    expect(isCandidate(overrides)).toBe(false);
   });
 });
 

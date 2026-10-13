@@ -1,5 +1,4 @@
 import type { AppContext } from '../lib/app/appContext';
-import type { ModePriorityOrder } from '../packages/shared-domain/src/settings/modePriorities';
 import type { DailyBudgetUiPayload } from '../packages/contracts/src/dailyBudgetTypes';
 import type { PlanInputSnapshotDevice } from '../lib/planInput/runtimeDeviceRead';
 import type { DeferredObjectivePlanPreviewEstimate } from '../packages/contracts/src/deferredObjectivePlanPreview';
@@ -31,7 +30,6 @@ import {
 } from './appInit';
 import type { CancelDeferredObjectiveOutcome } from '../lib/app/pelsHost';
 import type { NewSmartTaskWriteResult } from '../packages/contracts/src/smartTaskEdit';
-import { buildTaskEvaluationSource } from './appInit/taskEvaluationSource';
 import { requirePlanService } from './appInit/contextGuards';
 import { requireDeferredObjectiveActivePlanRecorder } from './appInit/deferredRecorders';
 import { resolveObjectiveTargetValue } from '../packages/shared-domain/src/deferredObjectiveValues';
@@ -77,16 +75,12 @@ type SmartTaskWriteRejectReason = Extract<WidgetObjectiveWriteResult, { ok: fals
  * takes the context directly rather than a bespoke dependency bag.
  */
 export class AppSmartTaskApi {
-  // The main home's evaluation source: the preview reads the household through
-  // the same binding as the live lanes.
-  private readonly taskEvaluationSource: TaskEvaluationSource;
-
   constructor(
     private readonly ctx: AppContext,
-    private readonly getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder,
-  ) {
-    this.taskEvaluationSource = buildTaskEvaluationSource(ctx, getPrioritiesForDevices);
-  }
+    // The main home's evaluation source: the preview reads the household through
+    // the same binding as the live lanes.
+    private readonly taskEvaluationSource: TaskEvaluationSource,
+  ) {}
 
   // Open-task predicate; semantics documented on the store helper.
   public hasDeferredObjectiveForDevice(deviceId: string): boolean {
@@ -170,7 +164,7 @@ export class AppSmartTaskApi {
     requireDeferredObjectiveActivePlanRecorder(this.ctx);
     const roster = readDeferredObjectiveRoster(this.ctx.homey.settings);
     if (roster.status === 'unavailable') {
-      return buildUnavailableDeferredObjectivePlanEstimate('settings_unavailable', candidate, false);
+      return buildUnavailableDeferredObjectivePlanEstimate('settings_unavailable');
     }
     // Preview uses the same configuration + Observer inputs as runtime planning.
     const snapshotDevice = this.ctx.getPlanInputSnapshot().find((device) => device.id === deviceId);
@@ -188,7 +182,7 @@ export class AppSmartTaskApi {
     const previewDevices = candidateDevice && !planDevices.some((device) => device.id === candidateDevice.id)
       ? [...planDevices, candidateDevice]
       : planDevices;
-    const previewPriorities = this.getPrioritiesForDevices(
+    const previewPriorities = this.taskEvaluationSource.getPrioritiesForDevices(
       previewDevices.map((device) => device.id),
     );
     const devices = previewDevices.map((device) => ({

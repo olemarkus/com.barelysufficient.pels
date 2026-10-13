@@ -75,13 +75,7 @@ export async function decideAndDispatchBinaryControl(
   snapshot: BinaryControlDecisionSnapshot | undefined,
   forceAgainstReleasedOpposing = false,
 ): Promise<BinaryControlOutcome> {
-  const decision = decideBinaryControl({
-    pendingBinaryCommandStore: transport.pendingBinaryCommandStore,
-    getObservedBinaryControl: transport.getObservedState,
-    ...command,
-    snapshot,
-    forceAgainstReleasedOpposing,
-  });
+  const decision = decideBinaryControl(transport, command, snapshot, forceAgainstReleasedOpposing);
   if (!decision) return { applied: false };
   const result = await dispatchBinaryControlDecision({ decision, transport });
   if (!result.ok) return { applied: false };

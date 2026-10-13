@@ -18,7 +18,7 @@ import {
   type IdleClassifierDeviceInput,
 } from '../observer/idleClassifier';
 import type { StallEvidence } from '../../packages/contracts/src/idleClassification';
-import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
+import type { PendingBinaryLiveDevice } from '../ports/controlCommandConfirmation';
 import { PlanStatusWriter } from './planStatusWriter';
 import type {
   DevicePlan,

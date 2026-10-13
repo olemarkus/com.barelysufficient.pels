@@ -120,6 +120,7 @@ export const resolvePlanInputDeviceFacts = (
     device,
     options,
     control,
+    hasStandingDemand,
   );
   const boostInput: BoostResolveInput = {
     commandableNow: physicallyCommandable,

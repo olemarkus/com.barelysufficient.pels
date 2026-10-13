@@ -228,6 +228,32 @@ describe('toPlanDevice — R7b per-home options', () => {
     expect(result.surplusOnly).toBe(true);
   });
 
+  it('does not stamp surplusOnly on a dump load the owner never opted in', () => {
+    const ctx = createAppContextMock({ powerTracker: { exportDailyTotals: { '2026-08-05': 4 } } });
+    ctx.isCapacityControlEnabled = vi.fn(() => true);
+    ctx.resolveManagedState = vi.fn(() => true);
+    expect(toPlanDevice(ctx, withDeviceConfiguration(buildSurplusWillingSnapshot())).surplusOnly).toBeUndefined();
+  });
+
+  it('does not stamp surplusOnly in a home whose surplus pool can never open', () => {
+    // This guard was deleted once, when the `meteredPowerSource` gate came out,
+    // and the trap it had been holding shut re-opened immediately: a device
+    // stamped `surplusOnly` in a home whose pool can never open is held OFF
+    // forever by `resolveSurplusHold`, with no time-based escape and no UI
+    // recourse. The gate is now the honest runtime question
+    // (`resolveSurplusPoolReachable`) rather than the source name, but the
+    // reason it must exist is unchanged.
+    const ctx = createAppContextMock({
+      priceOptimizationSettings: { [SURPLUS_DEVICE_ID]: { surplusWilling: true, surplusDelta: 1 } as never },
+    });
+    // A store that answers: another key is listed, the export bit is not. An
+    // empty key list is a flake, which leaves the export latch unreadable.
+    vi.mocked(ctx.homey.settings.getKeys).mockReturnValue([POWER_SOURCE]);
+    ctx.isCapacityControlEnabled = vi.fn(() => true);
+    ctx.resolveManagedState = vi.fn(() => true);
+    expect(toPlanDevice(ctx, withDeviceConfiguration(buildSurplusWillingSnapshot())).surplusOnly).toBeUndefined();
+  });
+
   it('byte-identity guard: the main-home projection policy matches the wired default', () => {
     const ctx = buildSurplusCtx();
     const implicitDefault = toPlanDevice(ctx, withDeviceConfiguration(buildSurplusWillingSnapshot()));

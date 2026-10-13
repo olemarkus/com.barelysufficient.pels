@@ -73,10 +73,13 @@ export type BinaryControlDecision = {
   lifecycleRelease?: boolean;
 };
 
-/** The two live reads the binary-control decision makes. */
+/**
+ * The two live reads the binary-control decision makes. The executor's command
+ * context carries both under these names, so it passes itself.
+ */
 export type BinaryControlDeps = {
   pendingBinaryCommandStore: PendingBinaryCommandStore;
-  getObservedBinaryControl: ObservedBinaryControlRead;
+  getObservedState: ObservedBinaryControlRead;
 };
 
 export function shouldSkipBinaryControl(
@@ -85,7 +88,7 @@ export function shouldSkipBinaryControl(
   /** The decision this cycle would hand the executor if nothing skips it. */
   decision: BinaryControlDecision,
   snapshot: BinaryControlDecisionSnapshot | undefined,
-  forceAgainstReleasedOpposing: boolean | undefined,
+  forceAgainstReleasedOpposing: boolean,
 ): boolean {
   const {
     deviceId, name, desired, logContext,
@@ -147,18 +150,18 @@ export function shouldSkipAlreadyMatched(
   deps: BinaryControlDeps,
   decision: BinaryControlDecision,
   snapshot: BinaryControlDecisionSnapshot | undefined,
-  forceAgainstReleasedOpposing: boolean | undefined,
+  forceAgainstReleasedOpposing: boolean,
 ): boolean {
   const { deviceId, desired } = decision;
   // A lifecycle release judges against the snapshot it was handed, not the live read.
   const latestObservedSnapshot = decision.lifecycleRelease === true
     ? snapshot
-    : deps.getObservedBinaryControl(deviceId) ?? snapshot;
+    : deps.getObservedState(deviceId) ?? snapshot;
   // An opposite pending command must be superseded even when the current
   // observation already matches the new intent: the older command may still
   // materialize after this decision.
   if (
-    forceAgainstReleasedOpposing === true
+    forceAgainstReleasedOpposing
     || hasOppositePendingBinaryCommand(deps.pendingBinaryCommandStore, deviceId, desired)
   ) {
     return false;

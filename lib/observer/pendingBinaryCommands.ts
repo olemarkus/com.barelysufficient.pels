@@ -35,7 +35,6 @@ import { getLogger } from '../logging/logger';
 export type {
   PendingBinaryCommand,
 } from './pendingBinaryCommandTypes';
-export type { PendingBinaryLiveDevice };
 
 const logger = getLogger('observer/pending-binary-commands');
 export const RECENT_CONFIRMED_BINARY_OFF_MS = 5 * 60 * 1000;

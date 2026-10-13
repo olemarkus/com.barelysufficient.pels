@@ -103,26 +103,21 @@ const resolveGrantedRescuePermissions = (
   };
 };
 
+// No plan could be projected: null numerics rather than an invented plan. It
+// carries no granted rescue permissions; only a caller that has gated the
+// candidate (`buildEstimateFromDiagnostic`) knows which survive, and adds them.
 export const buildUnavailableDeferredObjectivePlanEstimate = (
   reason: DeferredObjectivePlanPreviewUnavailableReason,
-  candidate: DeferredObjectivePlanPreviewCandidate,
-  includeGrantedRescuePermissions: boolean,
-): DeferredObjectivePlanPreviewEstimate => {
-  const grantedRescuePermissions = includeGrantedRescuePermissions
-    ? resolveGrantedRescuePermissions(candidate.rescue)
-    : undefined;
-  return {
-    status: 'unavailable',
-    budgetRole: 'none',
-    unavailableReason: reason,
-    scheduledHours: [],
-    projectedFinishAtMs: null,
-    energyEstimateKWh: null,
-    energyExpectedKWh: null,
-    costEstimate: null,
-    ...(grantedRescuePermissions ? { grantedRescuePermissions } : {}),
-  };
-};
+): DeferredObjectivePlanPreviewEstimate => ({
+  status: 'unavailable',
+  budgetRole: 'none',
+  unavailableReason: reason,
+  scheduledHours: [],
+  projectedFinishAtMs: null,
+  energyEstimateKWh: null,
+  energyExpectedKWh: null,
+  costEstimate: null,
+});
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 // Fraction of the hard cap the measured draw must reach to count as "at cap".
@@ -232,6 +227,11 @@ const buildEstimateFromDiagnostic = (
 ): DeferredObjectivePlanPreviewEstimate => {
   const { dailyBudgetSnapshot, nowMs } = snapshot;
   const { deadlineAtMs } = candidate;
+  // The candidate handed to this producer is ALREADY gated by the caller
+  // (`AppSmartTaskApi.gateCandidateExtraPermissions` runs before this), so its `rescue`
+  // is the surviving permission set — reflect it onto the estimate verbatim.
+  const grantedRescuePermissions = resolveGrantedRescuePermissions(candidate.rescue);
+  const granted = grantedRescuePermissions ? { grantedRescuePermissions } : {};
   // No horizon plan attached → the planner could not project (missing prices,
   // missing device reading, price feature off, …). Surface `unavailable` with
   // null numerics rather than inventing a plan. When the cause is specifically a
@@ -239,12 +239,8 @@ const buildEstimateFromDiagnostic = (
   // tag it so the UI can say "PELS must observe this device first" instead of
   // falsely blaming prices.
   if (!diag.horizonPlan) {
-    return buildUnavailableDeferredObjectivePlanEstimate(resolvePreviewUnavailableReason(diag), candidate, true);
+    return { ...buildUnavailableDeferredObjectivePlanEstimate(resolvePreviewUnavailableReason(diag)), ...granted };
   }
-  // The candidate handed to this producer is ALREADY gated by the caller
-  // (`AppSmartTaskApi.gateCandidateExtraPermissions` runs before this), so its `rescue`
-  // is the surviving permission set — reflect it onto the estimate verbatim.
-  const grantedRescuePermissions = resolveGrantedRescuePermissions(candidate.rescue);
   // The hours the device is planned to run; a 0 kWh booking promises nothing to show.
   const scheduledHours: DeferredObjectivePlanPreviewHour[] = hoursWithPlannedEnergy(
     buildHoursFromHorizonPlan(diag.evaluation) ?? [],
@@ -278,7 +274,7 @@ const buildEstimateFromDiagnostic = (
     ...(cost !== null && costUnit ? { costUnit } : {}),
     ...(priceSeries.length > 0 ? { priceSeries } : {}),
     ...(atPowerLimitNow !== undefined ? { atPowerLimitNow } : {}),
-    ...(grantedRescuePermissions ? { grantedRescuePermissions } : {}),
+    ...granted,
   };
 };
 

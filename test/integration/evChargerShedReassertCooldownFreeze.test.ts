@@ -104,9 +104,7 @@ const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
   },
   measuredPowerResolver: new DeviceMeasuredPowerResolver(),
   getCapabilityObj: (device) => (device.capabilitiesObj ?? {}) as never,
-  isPowerCapable: (device, capsStatus, measuredPower, retainedReading) => (
-    isDevicePowerCapable({ device, capsStatus, measuredPower, retainedReading })
-  ),
+  isPowerCapable: isDevicePowerCapable,
   // No restart in these specs: nothing was restored.
   getRestoredPowerReading: () => undefined,
   resolveLatestLocalWriteMs: () => undefined,
@@ -149,11 +147,14 @@ const parseChargerSnapshot = (
   logger: Logger,
 ): TransportDeviceSnapshot => {
   const nowIso = new Date(params.nowMs).toISOString();
-  const parsed = parseDevice({
-    device: buildChargerDevice({ charging: params.charging, nowIso }),
-    now: params.nowMs + 1_000,
-    deps: buildParseDeps(logger),
-  });
+  const parsed = parseDevice(
+    buildChargerDevice({ charging: params.charging, nowIso }),
+    params.nowMs + 1_000,
+    {},
+    undefined,
+    buildParseDeps(logger),
+    'runtime',
+  );
   if (!parsed) throw new Error('parseDevice returned null for the charger mock device');
   return parsed;
 };

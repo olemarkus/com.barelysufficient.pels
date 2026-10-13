@@ -17,7 +17,6 @@ describe('recordTargetCommandAttempt', () => {
   it('does not carry stale observed metadata into a fresh non-retry pending command', () => {
     const state = createPlanEngineState();
     state.pendingTargetCommands['dev-1'] = {
-      target: 'temperature',
       desired: 23,
       startedMs: Date.now() - 10_000,
       lastAttemptMs: Date.now() - 10_000,
@@ -32,7 +31,6 @@ describe('recordTargetCommandAttempt', () => {
     const pending = recordTargetCommandAttempt(state, 'dev-1', 18, Date.now(), 'waiting_confirmation', undefined);
 
     expect(pending).toMatchObject({
-      target: 'temperature',
       desired: 18,
       retryCount: 0,
     });
@@ -47,7 +45,6 @@ describe('recordTargetCommandAttempt', () => {
     const pending = recordTargetCommandAttempt(state, 'dev-1', 18, Date.now(), 'temporary_unavailable', 21);
 
     expect(pending).toMatchObject({
-      target: 'temperature',
       desired: 18,
       retryCount: 0,
       status: 'temporary_unavailable',

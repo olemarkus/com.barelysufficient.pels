@@ -48,9 +48,9 @@ export type DeviceStartRuleRead =
   | { state: 'resolved'; rule: DeviceStartRule };
 
 // The runtime applies a surplus posture only where the surplus pool can fund
-// it, and only to a Main-home device (`resolveSurplusOnlyPosture`,
-// `resolveSurplusTrackingPosture`): elsewhere the saved opt-in is kept but
-// inert, and ordinary capacity control starts the device.
+// it, and only to a Main-home device (`resolveSurplusPostureForDevice`):
+// elsewhere the saved opt-in is kept but inert, and ordinary capacity control
+// starts the device.
 const optsIntoSolarSurplus = (
   device: SettingsUiDeviceDetailItem,
   controlState: ReturnType<typeof resolveDeviceDetailControlState>,

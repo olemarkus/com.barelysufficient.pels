@@ -85,7 +85,6 @@ export function buildTemperatureCandidate(
   const pending = pendingTargetCommands[device.id];
   const unconfirmedRelief = pending !== undefined
     && pending.status === 'waiting_confirmation'
-    && pending.target === 'temperature'
     && pending.desired === shedTemperature;
   return {
     ...device,

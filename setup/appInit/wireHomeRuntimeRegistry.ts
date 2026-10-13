@@ -16,6 +16,7 @@ import type { AppContext } from '../../lib/app/appContext';
 import type { DeviceTransportParseProviders } from '../../lib/device/transport/managerParseDevice';
 import type { HomeRuntimeReadPort } from '../../lib/home/homeRuntimeRead';
 import type { HomeModeCatalog } from '../../lib/home/homeModeCatalog';
+import type { HomeMembershipService } from '../../lib/home/homeMembershipService';
 import { createHomesStore } from '../../lib/home/homeRegistryStore';
 import { createHomeRuntimeRegistry, type HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
 import { createModeOwnershipTransfer } from '../homeRuntime/createModeOwnershipTransfer';
@@ -25,14 +26,12 @@ import { emitPlanStatusPublishedForApp } from '../settingsUiAppRuntime';
 export const createHomeRuntimeRegistryForApp = (
   ctx: AppContext,
   homeModeCatalog: HomeModeCatalog,
-  isMembershipReady: () => boolean,
-  isRuntimeActive: () => boolean,
+  membership: Pick<HomeMembershipService, 'isSubHomeExecutionReady' | 'isRuntimeActive'>,
 ): HomeRuntimeRegistry => {
   const registry = createHomeRuntimeRegistry(
     ctx,
     homeModeCatalog,
-    isMembershipReady,
-    isRuntimeActive,
+    membership,
     createHomesStore(ctx.homey.settings),
     createModeOwnershipTransfer(ctx, homeModeCatalog),
   );

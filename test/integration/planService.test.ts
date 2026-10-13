@@ -39,7 +39,7 @@ import {
   getLogger,
   setRootLogger,
 } from '../../lib/logging/logger';
-import type { PendingBinaryLiveDevice } from '../../lib/observer/pendingBinaryCommands';
+import type { PendingBinaryLiveDevice } from '../../lib/ports/controlCommandConfirmation';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import type { PlanActuationResult } from '../../lib/planContract/planActuationResult';
 import { executionStateFixture } from '../utils/deviceStatusFixture';

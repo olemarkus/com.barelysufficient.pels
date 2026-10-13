@@ -580,7 +580,6 @@ describe('Device plan snapshot', () => {
     structuredEvents.length = 0;
 
     app.planEngine.state.pendingTargetCommands['dev-target-pending'] = {
-      target: 'temperature',
       desired: 23,
       startedMs: Date.now(),
       lastAttemptMs: Date.now(),

@@ -103,9 +103,7 @@ const buildParseDeps = (logger: Logger, profile: SteppedLoadProfile): DeviceTran
   },
   measuredPowerResolver: new DeviceMeasuredPowerResolver(),
   getCapabilityObj: (device) => (device.capabilitiesObj ?? {}) as never,
-  isPowerCapable: (device, capsStatus, measuredPower, retainedReading) => (
-    isDevicePowerCapable({ device, capsStatus, measuredPower, retainedReading })
-  ),
+  isPowerCapable: isDevicePowerCapable,
   // No restart in these specs: nothing was restored.
   getRestoredPowerReading: () => undefined,
   resolveLatestLocalWriteMs: () => undefined,
@@ -143,11 +141,14 @@ const parseEaseeSnapshot = (params: {
   logger: Logger;
   charging?: boolean;
 }, profile: SteppedLoadProfile): TransportDeviceSnapshot => {
-  const parsed = parseDevice({
-    device: buildEaseeDevice(params.freshIso, params.charging),
-    now: params.nowMs,
-    deps: buildParseDeps(params.logger, profile),
-  });
+  const parsed = parseDevice(
+    buildEaseeDevice(params.freshIso, params.charging),
+    params.nowMs,
+    {},
+    undefined,
+    buildParseDeps(params.logger, profile),
+    'runtime',
+  );
   if (!parsed) throw new Error('parseDevice returned null for the Easee mock device');
   return parsed;
 };

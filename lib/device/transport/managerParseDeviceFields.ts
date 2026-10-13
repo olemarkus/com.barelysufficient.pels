@@ -92,33 +92,16 @@ type DeviceControlBundle = {
     powerCapable: boolean;
 };
 
-export function resolveDeviceCapabilityProfile(params: {
-    identity: ParsedDeviceIdentity;
-    deps: DeviceTransportParseDeps;
-}): DeviceCapabilityProfile | null {
-    const { identity, deps } = params;
-    const { effectiveDevice, deviceClassKey, deviceId, deviceLabel } = identity;
+export function resolveDeviceCapabilityProfile(
+    identity: ParsedDeviceIdentity,
+    deps: DeviceTransportParseDeps,
+): DeviceCapabilityProfile | null {
+    const { effectiveDevice } = identity;
     const { providers, logger, getCapabilityObj, debugStructured } = deps;
     const rawCapabilities = getCapabilities(effectiveDevice);
     const rawCapabilityObj = getCapabilityObj(effectiveDevice);
-    const overlay = resolveFlowCapabilityOverlay({
-        device: effectiveDevice,
-        deviceClassKey,
-        deviceId,
-        rawCapabilities,
-        rawCapabilityObj,
-        providers,
-        logger,
-    });
-    const capsStatus = resolveCandidateCapabilities({
-        deviceClassKey,
-        deviceId,
-        deviceLabel,
-        capabilities: overlay.capabilities,
-        controlAdapter: overlay.controlAdapter,
-        steppedLoadProfile: overlay.steppedLoadProfile,
-        debugStructured,
-    });
+    const overlay = resolveFlowCapabilityOverlay(identity, rawCapabilities, rawCapabilityObj, providers, logger);
+    const capsStatus = resolveCandidateCapabilities(identity, overlay, debugStructured);
     if (!capsStatus) return null;
     return { overlay, capsStatus };
 }

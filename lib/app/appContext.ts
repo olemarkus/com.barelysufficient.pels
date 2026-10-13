@@ -6,7 +6,7 @@ import type { CapacityScalarSettings, PowerLimitSettings } from '../../packages/
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import type { PowerCalibrationStore } from '../device/devicePowerCalibrationStore';
 import type { ObservedDeviceReads } from '../observer/observedDeviceStateProjection';
-import type { ExpectedPowerOverridesByDeviceId, LearnedPeaksByDeviceId } from '../device/devicePowerPeak';
+import type { LearnedPeaksByDeviceId } from '../device/devicePowerPeak';
 import type Homey from 'homey';
 import type CapacityGuard from '../power/capacityGuard';
 import type { DeviceReads } from '../device/deviceReads';
@@ -48,8 +48,8 @@ import type { CreateSmartTaskCandidateDevicesRead } from '../../packages/contrac
 import type {
   DecoratedDeviceSnapshot,
   DeviceDescriptorRead,
+  DeviceExpectedPowerOverrides,
   TargetDeviceSnapshot,
-  ThermalDirection,
 } from '../../packages/contracts/src/types';
 import type { DeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
 import type { SteppedCommandStore } from '../executor/steppedCommandStore';
@@ -161,8 +161,6 @@ export type AppContext = {
    * projection's writes.
    */
   readonly observer: ObservedDeviceReads;
-  /** The observer's `getThermalDirection`, for the smart-task evaluator wiring. */
-  getThermalDirection: (deviceId: string) => ThermalDirection;
   isCapacityControlEnabled: (deviceId: string) => boolean;
   isTemperatureControlDisabled: (deviceId: string) => boolean;
   getShedBehavior: (deviceId: string) => ShedBehavior;
@@ -208,7 +206,7 @@ export type AppContext = {
   get defaultComputeDynamicSoftLimit(): (() => number | null) | undefined;
   set defaultComputeDynamicSoftLimit(value: (() => number | null) | undefined);
   get lastKnownPowerKw(): LearnedPeaksByDeviceId;
-  get expectedPowerKwOverrides(): ExpectedPowerOverridesByDeviceId;
+  get expectedPowerKwOverrides(): DeviceExpectedPowerOverrides;
   get lastNotifiedOperatingMode(): string;
   set lastNotifiedOperatingMode(value: string);
   /** The main home's rebuild throttle (`lib/plan/rebuildScheduler/throttle.ts`); sub-homes own their own. */
@@ -241,7 +239,6 @@ export type AppContext = {
   /** Runtime configuration source, separate from inventory reads and observations. */
   readonly deviceConfiguration: DeviceConfiguration;
   getCreateSmartTaskCandidateDevices(): CreateSmartTaskCandidateDevicesRead;
-  get priceOptimizationEnabled(): boolean;
   get priceOptimizationSettings(): Record<string, PriceOptimizationSettings>;
   capacityGuard: CapacityGuard;
   /**

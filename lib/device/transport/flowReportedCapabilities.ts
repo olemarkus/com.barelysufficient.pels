@@ -247,22 +247,16 @@ export function getFlowEffectiveRequiredCapabilitiesForType(
 }
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function augmentCapabilitiesWithFlowReports(params: {
-  deviceType: FlowAugmentedDeviceType;
-  capabilities: readonly string[];
-  capabilityObj: DeviceCapabilityMap;
-  reportedCapabilities: Partial<Record<FlowReportedCapabilityId, FlowReportedCapabilityEntry>>;
-}): {
+export function augmentCapabilitiesWithFlowReports(
+  deviceType: FlowAugmentedDeviceType,
+  capabilities: readonly string[],
+  capabilityObj: DeviceCapabilityMap,
+  reportedCapabilities: Partial<Record<FlowReportedCapabilityId, FlowReportedCapabilityEntry>>,
+): {
   capabilities: string[];
   capabilityObj: DeviceCapabilityMap;
   flowBackedCapabilityIds: FlowReportedCapabilityId[];
 } {
-  const {
-    deviceType,
-    capabilities,
-    capabilityObj,
-    reportedCapabilities,
-  } = params;
   if (deviceType === 'unsupported') {
     return {
       capabilities: [...capabilities],

@@ -1,4 +1,4 @@
-import type { ExpectedPowerOverridesByDeviceId, LearnedPeaksByDeviceId } from './devicePowerPeak';
+import type { LearnedPeaksByDeviceId } from './devicePowerPeak';
 import {
   createLearnedPowerPeakState,
   type LearnedPowerPeakState,
@@ -33,6 +33,7 @@ import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 import type { DevicePersistencePort } from './devicePersistencePort';
 import type { FlowBackedRefreshTrigger } from './flowBackedRefreshTrigger';
 import type {
+  DeviceExpectedPowerOverrides,
   StateOfChargeObservedProbe,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
@@ -92,7 +93,7 @@ export type FlowBackedDeviceStateDeps = {
   getDeviceConfiguration: () => DeviceConfigurationRead[];
   resolveManagedState: (deviceId: string) => boolean;
   getSteppedLoadProfile: (deviceId: string) => unknown;
-  getExpectedPowerKwOverrides: () => ExpectedPowerOverridesByDeviceId;
+  getExpectedPowerKwOverrides: () => DeviceExpectedPowerOverrides;
   getLearnedPowerPeaks: () => LearnedPeaksByDeviceId;
   /** Owns the learned-peak trailing flush registered by `learnedPowerPeakState`. */
   timers: TimerRegistry;
@@ -182,7 +183,7 @@ export class FlowBackedDeviceState {
    */
   private persistExpectedPowerOverrides(
     deviceId: string,
-    overrides: ExpectedPowerOverridesByDeviceId,
+    overrides: DeviceExpectedPowerOverrides,
   ): void {
     // Never write over a record nobody has read. The boot read classifies an
     // unreadable key as `unavailable`, and writing the map we happen to hold
@@ -227,12 +228,12 @@ export class FlowBackedDeviceState {
     authority: ExpectedOverrideAuthority;
     onOverrideChanged: (deviceId: string, kw: number) => void;
   }): boolean {
-    const resolved = applyExpectedPowerOverrides({
-      read: this.deps.persistence.loadExpectedPowerOverrides(),
-      target: this.deps.getExpectedPowerKwOverrides(),
-      authority: params.authority,
-      onOverrideChanged: params.onOverrideChanged,
-    });
+    const resolved = applyExpectedPowerOverrides(
+      this.deps.persistence.loadExpectedPowerOverrides(),
+      this.deps.getExpectedPowerKwOverrides(),
+      params.authority,
+      params.onOverrideChanged,
+    );
     // Any read that resolved — a stored record or a confirmed-empty one — is
     // proof the key is legible, which is all the write fence was waiting for.
     if (resolved) this.expectedPowerOverridesUnread = false;

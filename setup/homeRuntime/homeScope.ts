@@ -45,15 +45,16 @@ import type { BinaryCommandLifecycleListener } from '../../lib/observer/pendingB
 // exports the plan factories, which import this module — going through the
 // barrel would create a module cycle.
 import { buildHomePlanDevices } from './planDevicePrePass';
-import { buildTaskEvaluationSource } from '../appInit/taskEvaluationSource';
 import {
   createTrustedDeferredObjectiveSettingsReader,
   DeferredObjectiveDecorationController,
+  type TaskEvaluationSource,
 } from '../../lib/objectives/deferredObjectives';
 import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import { createHomeCommandReachability } from './createHomeCommandReachability';
 import { createHomeSignalWriters } from './homeSignalWriters';
+import type { ShutdownLatch } from '../../lib/utils/shutdownLatch';
 
 /**
  * The closure bundle one home hands to its plan engine/service factories.
@@ -188,18 +189,20 @@ export type HomeScope = {
  * lane. Main's `pels_status` now carries its own actuation posture like every
  * other home's, and its posture flips force a status write the same way.
  *
- * `isTornDown` is Main's teardown edge (`stopMainActuation`), fencing the
- * persisted-signal writers exactly as a meter area's bundle fences its own.
+ * `shutdown` is Main's teardown edge (the app's latch, tripped first in
+ * uninit), fencing the persisted-signal writers exactly as a meter area's
+ * bundle fences its own.
  * `isHomeWideFenced` is the cycle-stable half of Main's actuation fence, folded
  * into the effective dry-run for the same reason a meter area folds its
  * membership and source-epoch gates into `SubHomeRuntime.isEffectiveDryRunForExecution`.
  */
 export function buildMainHomeScope(
   ctx: AppContext,
+  taskEvaluationSource: TaskEvaluationSource,
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder,
   getOperatingMode: () => string,
   getModeDeviceTargets: () => Record<string, Record<string, number>>,
-  isTornDown: () => boolean,
+  shutdown: ShutdownLatch,
   isHomeWideFenced: () => boolean,
 ): HomeScope {
   const homeId: HomeId = MAIN_HOME_ID;
@@ -212,7 +215,7 @@ export function buildMainHomeScope(
   // source member is a lazy getter, so building it before the price/plan
   // services exist is safe.
   const deferredObjectiveController = new DeferredObjectiveDecorationController(
-    buildTaskEvaluationSource(ctx, getPrioritiesForDevices),
+    taskEvaluationSource,
     // Self-heal a boot-time empty-`getKeys()` flake that skipped the one-shot
     // migration: idempotent + marker-gated (a cheap single `get` once done), so
     // retrying on the plan cycle makes legacy objectives visible within seconds
@@ -264,14 +267,14 @@ export function buildMainHomeScope(
     isBatteryWatchOnly: (deviceId) => requireBatteryControl(ctx).isWatchOnly(deviceId),
     binaryCommandLifecycle: binaryCommandReachability.lifecycle,
     disposeBinaryCommandReachability: binaryCommandReachability.dispose,
-    // Main has a teardown edge like any other home: `runUninit` calls
-    // `stopMainActuation()` as its FIRST statement, to "close the final Main
-    // write seam before any awaited or synchronous cleanup". Its persisted
+    // Main has a teardown edge like any other home: `runUninit` trips the
+    // shutdown latch as its FIRST statement, to "close the final Main write
+    // seam before any awaited or synchronous cleanup". Its persisted
     // writers were the one Main component that did not read that signal —
     // `mainTracker` already does — so a rebuild continuation dispatched before
     // uninit could still publish a status and, worse, write
     // `device_last_controlled_ms`, which the next boot hydrates from.
-    ...createHomeSignalWriters(ctx, homeId, isTornDown),
+    ...createHomeSignalWriters(ctx, homeId, () => shutdown.isStopped()),
     getPriceOptimizationEnabled: () => requirePriceCoordinator(ctx).getPriceOptimizationEnabled(),
     getCurrentHourPriceLevel: () => requirePriceCoordinator(ctx).getCurrentHourPriceLevel(),
     // Late-bound closure: the curtailment estimator is wired post-startup

@@ -19,6 +19,7 @@ import {
 import { toCapabilityTimestampMs, type DeviceCapabilityMap } from './managerControl';
 import { resolveDeviceCapabilities } from './transport/managerParse';
 import type { DeviceTransportParseProviders } from './transport/managerParseDevice';
+import type { ParsedDeviceIdentity } from './transport/managerParseIdentity';
 import {
   AVAILABLE_INSTALLATION_CURRENT_CAPABILITY_ID,
   EASEE_CHARGER_CURRENT_CAPABILITY_ID,
@@ -52,15 +53,13 @@ export type FlowEffectiveRequiredCapabilityId =
   | 'pels_evcharger_resumable'
   | 'evcharger_charging_state';
 
-export function resolveFlowCapabilityOverlay(params: {
-  device: HomeyDeviceLike;
-  deviceClassKey: string;
-  deviceId: string;
-  rawCapabilities: string[];
-  rawCapabilityObj: DeviceCapabilityMap;
-  providers: DeviceTransportParseProviders;
-  logger: Logger;
-}): {
+export function resolveFlowCapabilityOverlay(
+  identity: Pick<ParsedDeviceIdentity, 'effectiveDevice' | 'deviceClassKey' | 'deviceId'>,
+  rawCapabilities: string[],
+  rawCapabilityObj: DeviceCapabilityMap,
+  providers: DeviceTransportParseProviders,
+  logger: Logger,
+): {
   capabilities: string[];
   capabilityObj: DeviceCapabilityMap;
   controlAdapter?: DeviceControlAdapterSnapshot;
@@ -80,14 +79,7 @@ export function resolveFlowCapabilityOverlay(params: {
   targetPowerConfig?: TargetPowerSteppedLoadConfig;
   allReportedCapabilities: FlowReportedCapabilitiesForDevice;
 } {
-  const {
-    device,
-    deviceClassKey,
-    deviceId,
-    rawCapabilities,
-    rawCapabilityObj,
-    providers, logger,
-  } = params;
+  const { effectiveDevice: device, deviceClassKey, deviceId } = identity;
   const nativeEvOverlay = applyNativeEvWiringOverlay({
     device,
     capabilities: rawCapabilities,
@@ -121,12 +113,12 @@ export function resolveFlowCapabilityOverlay(params: {
     capabilities,
     capabilityObj,
     flowBackedCapabilityIds,
-  } = augmentCapabilitiesWithFlowReports({
-    deviceType: flowAugmentedDeviceType,
-    capabilities: targetPowerOverlay.capabilities,
-    capabilityObj: targetPowerOverlay.capabilityObj,
+  } = augmentCapabilitiesWithFlowReports(
+    flowAugmentedDeviceType,
+    targetPowerOverlay.capabilities,
+    targetPowerOverlay.capabilityObj,
     reportedCapabilities,
-  });
+  );
   const controlAdapter = resolveOverlayControlAdapter({
     nativeEvControlAdapter: nativeEvOverlay.controlAdapter,
     nativeSteppedControlAdapter: nativeSteppedOverlay.controlAdapter,
@@ -137,7 +129,7 @@ export function resolveFlowCapabilityOverlay(params: {
     ?? targetPowerOverlay.steppedLoadProfile
     ?? (hasUsableSteppedLoadLadder(savedFlowProfile) ? savedFlowProfile : undefined);
   const nativeWriteCapabilities = nativeSteppedOverlay.controlAdapter
-    ? resolveCandidateNativeWriteCapabilities({ device, rawCapabilities, rawCapabilityObj })
+    ? resolveCandidateNativeWriteCapabilities(device, rawCapabilities, rawCapabilityObj)
     : undefined;
   const finalCapabilities = steppedLoad
     ? stripNativeSteppedLoadControlCapabilities({ device, capabilities, capabilityObj })
@@ -183,18 +175,18 @@ export function resolveFlowCapabilityOverlay(params: {
  * the conflict gate exists for are still covered. Returns undefined when not a
  * native candidate or no native-write capability is present.
  */
-function resolveCandidateNativeWriteCapabilities(params: {
-  device: HomeyDeviceLike;
-  rawCapabilities: readonly string[];
-  rawCapabilityObj: DeviceCapabilityMap;
-}): string[] | undefined {
+function resolveCandidateNativeWriteCapabilities(
+  device: HomeyDeviceLike,
+  rawCapabilities: readonly string[],
+  rawCapabilityObj: DeviceCapabilityMap,
+): string[] | undefined {
   const isCandidate = isNativeSteppedLoadWiringCandidate({
-    device: params.device,
-    capabilities: params.rawCapabilities,
-    capabilityObj: params.rawCapabilityObj,
+    device,
+    capabilities: rawCapabilities,
+    capabilityObj: rawCapabilityObj,
   });
   if (!isCandidate) return undefined;
-  const owned = resolveNativeSteppedLoadWriteCapabilities(params.rawCapabilities);
+  const owned = resolveNativeSteppedLoadWriteCapabilities(rawCapabilities);
   return owned.length > 0 ? owned : undefined;
 }
 
@@ -220,23 +212,14 @@ function applySteppedLoadOverlays(
     capabilities: nativeEvOverlay.capabilities,
     capabilityObj: nativeEvOverlay.capabilityObj,
   });
-  const targetPowerOverlay = applySyntheticTargetPowerOverlay({
+  const targetPowerOverlay = applySyntheticTargetPowerOverlay(
     device,
     deviceId,
-    capabilities: nativeEvOverlay.capabilities,
-    capabilityObj: nativeEvOverlay.capabilityObj,
-    evPresetOnly: isNativeEvControlAdapterActive(nativeEvOverlay),
+    nativeEvOverlay,
+    isNativeEvControlAdapterActive(nativeEvOverlay),
     providers,
-  });
-  const nativeSteppedOverlay = resolveNativeSteppedLoadOverlay({
-    device,
-    deviceId,
-    capabilities: targetPowerOverlay.capabilities,
-    capabilityObj: targetPowerOverlay.capabilityObj,
-    profileOverride: targetPowerOverlay.steppedLoadProfile,
-    targetPowerConfig: targetPowerOverlay.targetPowerConfig,
-    providers,
-  });
+  );
+  const nativeSteppedOverlay = resolveNativeSteppedLoadOverlay(device, deviceId, targetPowerOverlay, providers);
   return { targetPowerOverlay, nativeSteppedOverlay };
 }
 
@@ -295,14 +278,13 @@ function resolveInstallationCurrentCapabilityId(
     : AVAILABLE_INSTALLATION_CURRENT_CAPABILITY_ID;
 }
 
-function applySyntheticTargetPowerOverlay(params: {
-  device: HomeyDeviceLike;
-  deviceId: string;
-  capabilities: string[];
-  capabilityObj: DeviceCapabilityMap;
-  evPresetOnly?: boolean;
-  providers: DeviceTransportParseProviders;
-}): {
+function applySyntheticTargetPowerOverlay(
+  device: HomeyDeviceLike,
+  deviceId: string,
+  nativeEvOverlay: Pick<ReturnType<typeof applyNativeEvWiringOverlay>, 'capabilities' | 'capabilityObj'>,
+  evPresetOnly: boolean,
+  providers: DeviceTransportParseProviders,
+): {
   capabilities: string[];
   capabilityObj: DeviceCapabilityMap;
   steppedLoadProfile?: SteppedLoadProfile;
@@ -311,42 +293,42 @@ function applySyntheticTargetPowerOverlay(params: {
   reportedStepObservedAtMs?: number;
   targetPowerConfig?: TargetPowerSteppedLoadConfig;
 } {
-  const config = params.providers.getDeviceTargetPowerConfig?.(params.deviceId)
-    ?? resolveDeviceCompatibilityTargetPowerConfig(params.device);
-  if (!config || (params.evPresetOnly === true && !isEvTargetPowerPresetConfig(config))) {
+  const config = providers.getDeviceTargetPowerConfig?.(deviceId)
+    ?? resolveDeviceCompatibilityTargetPowerConfig(device);
+  if (!config || (evPresetOnly && !isEvTargetPowerPresetConfig(config))) {
     return {
-      capabilities: params.capabilities,
-      capabilityObj: params.capabilityObj,
+      capabilities: nativeEvOverlay.capabilities,
+      capabilityObj: nativeEvOverlay.capabilityObj,
     };
   }
-  const capabilities = hasTargetPowerCapability(params.capabilities)
-    ? params.capabilities
-    : [...params.capabilities, 'target_power'];
-  const installationCurrent = params.capabilityObj[resolveInstallationCurrentCapabilityId(
-    params.device,
-    params.deviceId,
-    params.capabilityObj,
-    params.providers,
+  const capabilities = hasTargetPowerCapability(nativeEvOverlay.capabilities)
+    ? nativeEvOverlay.capabilities
+    : [...nativeEvOverlay.capabilities, 'target_power'];
+  const installationCurrent = nativeEvOverlay.capabilityObj[resolveInstallationCurrentCapabilityId(
+    device,
+    deviceId,
+    nativeEvOverlay.capabilityObj,
+    providers,
   )];
   const observedTargetPower = installationCurrent
     && resolveInstallationCurrentTargetPowerObservation(config, installationCurrent);
-  const reportedStepPowerW = resolveReportedTargetPowerW(params.capabilityObj, observedTargetPower?.value);
+  const reportedStepPowerW = resolveReportedTargetPowerW(nativeEvOverlay.capabilityObj, observedTargetPower?.value);
   // All-or-nothing: no ladder means no stepped control, so the synthetic
   // `target_power` capability is not injected either and the device is left to
   // whatever axis it exposes natively.
   const steppedControl = resolveTargetPowerSteppedControl(config, reportedStepPowerW);
   if (!steppedControl) {
     return {
-      capabilities: params.capabilities,
-      capabilityObj: params.capabilityObj,
+      capabilities: nativeEvOverlay.capabilities,
+      capabilityObj: nativeEvOverlay.capabilityObj,
     };
   }
   const steppedLoadProfile = steppedControl.profile;
   const capabilityObj = buildSyntheticTargetPowerCapabilityMap({
-    capabilityObj: params.capabilityObj,
+    capabilityObj: nativeEvOverlay.capabilityObj,
     config,
     observedValue: reportedStepPowerW,
-    observedAt: observedTargetPower?.observedAt ?? params.capabilityObj.target_power?.lastUpdated,
+    observedAt: observedTargetPower?.observedAt ?? nativeEvOverlay.capabilityObj.target_power?.lastUpdated,
   });
   return {
     capabilities,
@@ -388,40 +370,31 @@ function resolveInstallationCurrentTargetPowerObservation(
   };
 }
 
-function resolveNativeSteppedLoadOverlay(params: {
-  device: HomeyDeviceLike;
-  deviceId: string;
-  capabilities: string[];
-  capabilityObj: DeviceCapabilityMap;
-  profileOverride?: SteppedLoadProfile;
-  targetPowerConfig?: TargetPowerSteppedLoadConfig;
-  providers: DeviceTransportParseProviders;
-}): {
+/**
+ * The native stepped-load overlay on top of the target-power one: the
+ * owner-configured target-power ladder, when there is one, overrides the native
+ * profile suggestion.
+ */
+function resolveNativeSteppedLoadOverlay(
+  device: HomeyDeviceLike,
+  deviceId: string,
+  targetPowerOverlay: ReturnType<typeof applySyntheticTargetPowerOverlay>,
+  providers: DeviceTransportParseProviders,
+): {
   controlAdapter?: DeviceControlAdapterSnapshot;
   reportedStepId?: string;
   reportedStepObservedAtMs?: number;
   suggestedSteppedLoadProfile?: SteppedLoadProfile;
 } {
-  const {
-    device,
-    deviceId,
-    capabilities,
-    capabilityObj,
-    profileOverride,
-    targetPowerConfig,
-    providers,
-  } = params;
+  const { capabilities, capabilityObj, targetPowerConfig } = targetPowerOverlay;
   const targetPowerSteppedCandidate = isTargetPowerSteppedLoadWiringCandidate({ capabilities, capabilityObj });
   const nativeSteppedCandidate = isNativeSteppedLoadWiringCandidate({
     device,
     capabilities,
     capabilityObj,
   });
-  const suggestedSteppedLoadProfile = profileOverride ?? resolveNativeSteppedLoadProfileSuggestion({
-    device,
-    capabilities,
-    capabilityObj,
-  });
+  const suggestedSteppedLoadProfile = targetPowerOverlay.steppedLoadProfile
+    ?? resolveNativeSteppedLoadProfileSuggestion({ device, capabilities, capabilityObj });
   if (!nativeSteppedCandidate || !suggestedSteppedLoadProfile) return {};
   // Easee's native capability accepts amps. Only an EV preset resolves every
   // watt rung to an installation current; a continuous watt ladder must keep
@@ -446,24 +419,19 @@ function resolveNativeSteppedLoadOverlay(params: {
     }),
     reportedStepId,
     reportedStepObservedAtMs: reportedStepId
-      ? resolveNativeSteppedLoadObservedAtMs({ device, capabilities, capabilityObj })
+      ? resolveNativeSteppedLoadObservedAtMs(capabilities, capabilityObj)
       : undefined,
     suggestedSteppedLoadProfile,
   };
 }
 
-function resolveNativeSteppedLoadObservedAtMs(params: {
-  device: HomeyDeviceLike;
-  capabilities: readonly string[];
-  capabilityObj: DeviceCapabilityMap;
-}): number | undefined {
-  void params.device;
-  const nativeCapabilityId = resolveNativeSteppedLoadObservationCapabilityId({
-    capabilities: params.capabilities,
-    capabilityObj: params.capabilityObj,
-  });
+function resolveNativeSteppedLoadObservedAtMs(
+  capabilities: readonly string[],
+  capabilityObj: DeviceCapabilityMap,
+): number | undefined {
+  const nativeCapabilityId = resolveNativeSteppedLoadObservationCapabilityId({ capabilities, capabilityObj });
   return toCapabilityTimestampMs(
-    nativeCapabilityId ? params.capabilityObj[nativeCapabilityId]?.lastUpdated : undefined,
+    nativeCapabilityId ? capabilityObj[nativeCapabilityId]?.lastUpdated : undefined,
   );
 }
 
@@ -475,24 +443,16 @@ function pickSupplementalFlowReports(
     : {};
 }
 
-export function resolveCandidateCapabilities(params: {
-  deviceClassKey: string;
-  deviceId: string;
-  deviceLabel: string;
-  capabilities: string[];
-  controlAdapter?: DeviceControlAdapterSnapshot;
-  steppedLoadProfile?: SteppedLoadProfile;
-  debugStructured?: StructuredDebugEmitter;
-}): { targetCaps: string[]; hasPower: boolean } | null {
-  const {
-    deviceClassKey,
-    deviceId,
-    deviceLabel,
-    capabilities,
-    controlAdapter,
-    steppedLoadProfile,
-    debugStructured,
-  } = params;
+export function resolveCandidateCapabilities(
+  identity: Pick<ParsedDeviceIdentity, 'deviceClassKey' | 'deviceId' | 'deviceLabel'>,
+  overlay: Pick<
+    ReturnType<typeof resolveFlowCapabilityOverlay>,
+    'capabilities' | 'controlAdapter' | 'steppedLoadProfile'
+  >,
+  debugStructured: StructuredDebugEmitter | undefined,
+): { targetCaps: string[]; hasPower: boolean } | null {
+  const { deviceClassKey, deviceId, deviceLabel } = identity;
+  const { capabilities, controlAdapter, steppedLoadProfile } = overlay;
   // The plug-state capability is required of EVERY EV charger, ahead of both
   // control-axis bypasses below. `target_power` / stepped-load is the amp/step
   // axis; it says nothing about whether a car is connected, so a charger driven

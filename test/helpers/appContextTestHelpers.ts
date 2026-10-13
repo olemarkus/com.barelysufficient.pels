@@ -29,6 +29,7 @@ import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
 import { AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
 import { normalizePowerSource } from '../../lib/power/powerSource';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
+import { ShutdownLatch } from '../../lib/utils/shutdownLatch';
 import { MeterSilenceMonitor } from '../../lib/power/meterSilence';
 import { createCombinedPricesReader } from '../../lib/price/combinedPricesReader';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
@@ -61,6 +62,8 @@ import {
 } from '../../lib/utils/settingsKeys';
 import type { HomeModeCatalog, HomeModeCatalogSnapshot } from '../../lib/home/homeModeCatalog';
 import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
+import { buildTaskEvaluationSource } from '../../setup/appInit/taskEvaluationSource';
+import type { TaskEvaluationSource } from '../../lib/objectives/deferredObjectives';
 
 const homeModeCatalogByContext = new WeakMap<AppContext, HomeModeCatalog>();
 
@@ -74,7 +77,7 @@ type MockHomey = FlowHomeyLike & {
   };
 };
 
-type AppContextMockOptions = Omit<Partial<AppContext>, 'priceOptimizationEnabled' | 'priceOptimizationSettings'> & {
+type AppContextMockOptions = Omit<Partial<AppContext>, 'priceOptimizationSettings'> & {
   latestTargetSnapshot?: TransportDeviceSnapshot[];
   priceOptimizationEnabled?: boolean;
   priceOptimizationSettings?: Record<string, PriceOptimizationSettings>;
@@ -103,18 +106,26 @@ export function getHomeModeCatalogForTest(context: AppContext): HomeModeCatalog 
   return catalog;
 }
 
+/** Main's smart-task evaluation source over the test context's mode catalog, as the app builds it. */
+export function buildTaskEvaluationSourceForTest(context: AppContext): TaskEvaluationSource {
+  return buildTaskEvaluationSource(
+    context,
+    (deviceIds) => getHomeModeCatalogForTest(context).getPrioritiesForDevices(deviceIds),
+  );
+}
+
 export function buildMainHomeScopeForTest(
   context: AppContext,
-  isTornDown: () => boolean,
   isHomeWideFenced: () => boolean,
 ): ReturnType<typeof buildMainHomeScope> {
   const catalog = getHomeModeCatalogForTest(context);
   return buildMainHomeScope(
     context,
+    buildTaskEvaluationSourceForTest(context),
     (deviceIds) => catalog.getPrioritiesForDevices(deviceIds),
     () => catalog.getOperatingMode(),
     () => catalog.getModeDeviceTargets(),
-    isTornDown,
+    new ShutdownLatch(),
     isHomeWideFenced,
   );
 }
@@ -368,7 +379,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getFlowDeviceDescriptors: vi.fn(async () => []),
     getDeviceDescriptors: vi.fn(() => []),
     getDeviceDescriptor: vi.fn(() => undefined),
-    getThermalDirection: (deviceId) => context.observer.getThermalDirection(deviceId),
     isCapacityControlEnabled: vi.fn(() => false),
     isTemperatureControlDisabled: vi.fn(() => false),
     getShedBehavior: vi.fn((): ReturnType<AppContext['getShedBehavior']> => ({ action: 'turn_off' })),
@@ -405,7 +415,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getUiPickerDevices: () => latestTargetSnapshot,
     settingsUiDeviceReads,
     getCreateSmartTaskCandidateDevices: () => ({ state: 'ready', devices: latestTargetSnapshot }),
-    get priceOptimizationEnabled() { return priceOptimizationEnabled; },
     get priceOptimizationSettings() { return priceOptimizationSettings; },
     // Production's port with no registry behind it (`buildHomeRuntimeReadPort`).
     homeRuntimeRead: { readHome: () => ({ state: 'unavailable' }) },

@@ -23,14 +23,15 @@ const CHARGER_ID = 'charger';
 // steppedProfile rungs: off 0 W, low 1250 W, medium 2000 W, max 3000 W — so the
 // ladder floor is 1.25 kW and the engage bar is 1.5 kW with the 0.25 reserve.
 
-const candidateParams = (overrides: Partial<Parameters<typeof resolveSurplusTrackingPosture>[0]> = {}) => ({
-  surplusWilling: true,
-  targets: undefined,
-  steppedLoadProfile: steppedProfile,
-  control: { managed: true, commandAuthority: true },
-  surplusPoolReachable: true,
-  ...overrides,
-});
+type CandidateDevice = Parameters<typeof resolveSurplusTrackingPosture>[0];
+type CandidateControl = Parameters<typeof resolveSurplusTrackingPosture>[1];
+
+const isCandidate = (overrides: { device?: Partial<CandidateDevice>; control?: CandidateControl } = {}): boolean => (
+  resolveSurplusTrackingPosture(
+    { targets: [], steppedLoadProfile: steppedProfile, ...overrides.device },
+    overrides.control ?? { managed: true, commandAuthority: true },
+  )
+);
 
 const buildTracker = (overrides: Partial<MeteredPlanInputDevice> = {}): MeteredPlanInputDevice => (
   buildPlanInputDevice({
@@ -100,31 +101,32 @@ const stopped = (state: PlanEngineState, id: string = CHARGER_ID): boolean => (
 );
 
 describe('resolveSurplusTrackingPosture — candidacy', () => {
-  it('accepts a managed, controllable stepped load in a home whose pool can open', () => {
-    expect(resolveSurplusTrackingPosture(candidateParams())).toBe(true);
+  it('accepts a managed, controllable stepped load', () => {
+    expect(isCandidate()).toBe(true);
   });
 
+  // The opt-in and the pool-reachability gates are the producer's, asked once
+  // for both postures; `surplusTrackingProducer.test.ts` covers them through the
+  // real `toPlanDevice`.
   it.each([
-    ['not opted in', { surplusWilling: false }],
-    ['pool can never open', { surplusPoolReachable: false }],
-    ['no step ladder', { steppedLoadProfile: undefined }],
+    ['no step ladder', { device: { steppedLoadProfile: undefined } }],
     ['not controllable', { control: { managed: true, commandAuthority: false } }],
     ['not managed', { control: { managed: false, commandAuthority: false } }],
   ])('rejects when %s', (_label, overrides) => {
-    expect(resolveSurplusTrackingPosture(candidateParams(overrides))).toBe(false);
+    expect(isCandidate(overrides)).toBe(false);
   });
 
   it('rejects a temperature device — that modality gets the setpoint lift, not a ceiling', () => {
-    expect(resolveSurplusTrackingPosture(candidateParams({
-      targets: [{ id: 'target_temperature', value: 20, unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }))).toBe(false);
+    expect(isCandidate({
+      device: { targets: [{ id: 'target_temperature', value: 20, unit: 'C', min: 5, max: 30, step: 0.5 }] },
+    })).toBe(false);
   });
 
   it('does NOT ask for standing demand — a charger qualifies where the dump-load posture will not', () => {
     // The binary posture's `hasStandingDemand` gate has no counterpart here; the
     // unplugged-charger concern it carries is answered by `commandableNow` at the
     // allocator instead (see the claim tests below).
-    expect(resolveSurplusTrackingPosture(candidateParams())).toBe(true);
+    expect(isCandidate()).toBe(true);
   });
 });
 

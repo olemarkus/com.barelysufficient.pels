@@ -371,7 +371,6 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       // in-flight command (observation has not caught up).
       expect(harness.state.pendingTargetCommands[thermostat.id]).toBeDefined();
       expect(harness.state.pendingTargetCommands[thermostat.id]).toMatchObject({
-        target: 'temperature',
         desired: shedTemperature,
       });
 

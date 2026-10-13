@@ -35,7 +35,7 @@ import type {
   StatusPlanChanges,
 } from './planTypes';
 import type { PlanRebuildOutcome } from '../planContract/planActuationResult';
-import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
+import type { PendingBinaryLiveDevice } from '../ports/controlCommandConfirmation';
 
 const logger = getLogger('plan/service');
 

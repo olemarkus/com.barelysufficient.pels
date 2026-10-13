@@ -10,7 +10,6 @@ import {
   parseDeviceList,
   type DeviceTransportParseProviders,
   type ParseDevicePurpose,
-  type RetainedMeasurement,
 } from './managerParseDevice';
 import { resolveLatestLocalWriteMs } from './managerObservation';
 import type { ResolvedTransportPowerState } from './transportTypes';
@@ -46,13 +45,14 @@ export class DeviceSnapshotReader {
     now: number,
     livePowerWByDeviceId: LiveDevicePowerWatts,
   ): TargetDeviceSnapshot | null {
-    return parseDevice({
+    return parseDevice(
       device,
       now,
       livePowerWByDeviceId,
-      previousSnapshot: this.snapshotStore.getSnapshotIndex().get(getDeviceId(device)),
-      deps: this.parseDependencies(),
-    });
+      this.snapshotStore.getSnapshotIndex().get(getDeviceId(device)),
+      this.parseDependencies(),
+      'runtime',
+    );
   }
 
   parseDeviceList(
@@ -60,13 +60,13 @@ export class DeviceSnapshotReader {
     livePowerWByDeviceId: LiveDevicePowerWatts = {},
     purpose: ParseDevicePurpose = 'runtime',
   ): TransportDeviceSnapshot[] {
-    return parseDeviceList({
+    return parseDeviceList(
       list,
       livePowerWByDeviceId,
-      previousSnapshotById: this.snapshotStore.getSnapshotIndex(),
-      deps: this.parseDependencies(),
+      this.snapshotStore.getSnapshotIndex(),
+      this.parseDependencies(),
       purpose,
-    });
+    );
   }
 
   getUiPickerDevices(): TransportDeviceSnapshot[] {
@@ -136,12 +136,7 @@ export class DeviceSnapshotReader {
       powerState: this.powerState,
       measuredPowerResolver: this.retainedPower.resolver,
       getCapabilityObj: getCapabilityObj,
-      isPowerCapable: (
-        device: HomeyDeviceLike,
-        capsStatus: { hasPower: boolean },
-        measuredPower: { measuredPowerKw?: number },
-        retainedReading: RetainedMeasurement | undefined,
-      ) => isDevicePowerCapable({ device, capsStatus, measuredPower, retainedReading }),
+      isPowerCapable: isDevicePowerCapable,
       getRestoredPowerReading: (deviceId: string) => this.retainedPower.restoredReading(deviceId),
       resolveLatestLocalWriteMs: (deviceId: string) => resolveLatestLocalWriteMs(
         this.observationBridge.state.getObservationState(),

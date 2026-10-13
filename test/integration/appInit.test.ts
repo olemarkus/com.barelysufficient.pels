@@ -65,7 +65,12 @@ import {
 } from '../../lib/utils/settingsKeys';
 import type { AppContext } from '../../lib/app/appContext';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
-import { buildMainHomeScopeForTest, getHomeModeCatalogForTest, createAppContextMock } from '../helpers/appContextTestHelpers';
+import {
+  buildMainHomeScopeForTest,
+  buildTaskEvaluationSourceForTest,
+  getHomeModeCatalogForTest,
+  createAppContextMock,
+} from '../helpers/appContextTestHelpers';
 import { transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
 import type { DeferredObjectivePlanHistoryEntry } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 
@@ -75,7 +80,7 @@ describe('app init plan service wiring', () => {
       deviceManager: undefined,
     });
 
-    expect(() => createPlanEngineComposition(ctx, buildMainHomeScopeForTest(ctx, () => false, () => false), { capacityGuard: ctx.capacityGuard, isActuationFenced: () => false, storageLane: { kind: 'none' } })).toThrow(
+    expect(() => createPlanEngineComposition(ctx, buildMainHomeScopeForTest(ctx, () => false), { capacityGuard: ctx.capacityGuard, isActuationFenced: () => false, storageLane: { kind: 'none' } })).toThrow(
       'DeviceTransport must be initialized before use.',
     );
   });
@@ -109,7 +114,7 @@ describe('app init plan service wiring', () => {
     vi.mocked(engineCtx.homey.settings.get).mockImplementation((key) => (
       key === 'temperature_control_modes' ? {} : null
     ));
-    createPlanEngineComposition(engineCtx, buildMainHomeScopeForTest(engineCtx, () => false, () => false), {
+    createPlanEngineComposition(engineCtx, buildMainHomeScopeForTest(engineCtx, () => false), {
       capacityGuard: engineCtx.capacityGuard,
       isActuationFenced: () => fenced,
       storageLane: { kind: 'none' },
@@ -186,7 +191,7 @@ describe('app init plan service wiring', () => {
       getAssociatedCar: () => undefined,
       getSnapshot: () => serviceCtx.latestTargetSnapshot,
     } as unknown as AppContext['deviceManager'];
-    const service = createPlanService(serviceCtx, buildMainHomeScopeForTest(serviceCtx, () => false, () => false), planEngine);
+    const service = createPlanService(serviceCtx, buildMainHomeScopeForTest(serviceCtx, () => false), planEngine);
 
     const planDevices = (service as unknown as {
       deps: { getPlanDevices: () => Array<{ id: string; currentOn?: boolean; objectiveKind?: string }> };
@@ -207,7 +212,7 @@ describe('app init plan service wiring', () => {
       deviceManager: undefined,
     });
 
-    expect(() => createPlanService(ctx, buildMainHomeScopeForTest(ctx, () => false, () => false), planEngine)).toThrow(
+    expect(() => createPlanService(ctx, buildMainHomeScopeForTest(ctx, () => false), planEngine)).toThrow(
       'DeviceTransport must be initialized before use.',
     );
   });
@@ -587,7 +592,7 @@ describe('app init plan service wiring', () => {
 
     capturedEmitterDeps.current = null;
     ctx.deferredObjectiveEnergyDelivery = createInertEnergyDelivery();
-    createDeferredObjectiveLifecycleEmitter(ctx, (deviceIds) => getHomeModeCatalogForTest(ctx).getPrioritiesForDevices(deviceIds));
+    createDeferredObjectiveLifecycleEmitter(ctx, buildTaskEvaluationSourceForTest(ctx));
     const observe = (capturedEmitterDeps.current as unknown as {
       observeDeferredObjectivePlanHistory: (
         diagnostics: readonly unknown[],
@@ -629,7 +634,7 @@ describe('app init plan service wiring', () => {
     setSpy.mockClear();
     capturedEmitterDeps.current = null;
     ctx.deferredObjectiveEnergyDelivery = createInertEnergyDelivery();
-    createDeferredObjectiveLifecycleEmitter(ctx, (deviceIds) => getHomeModeCatalogForTest(ctx).getPrioritiesForDevices(deviceIds));
+    createDeferredObjectiveLifecycleEmitter(ctx, buildTaskEvaluationSourceForTest(ctx));
     const observe = (capturedEmitterDeps.current as unknown as {
       observeDeferredObjectivePlanHistory: (
         diagnostics: readonly DeferredObjectiveDiagnostic[],
@@ -730,7 +735,7 @@ describe('app init plan service wiring', () => {
 
     capturedEmitterDeps.current = null;
     ctx.deferredObjectiveEnergyDelivery = createInertEnergyDelivery();
-    createDeferredObjectiveLifecycleEmitter(ctx, (deviceIds) => getHomeModeCatalogForTest(ctx).getPrioritiesForDevices(deviceIds));
+    createDeferredObjectiveLifecycleEmitter(ctx, buildTaskEvaluationSourceForTest(ctx));
     const observe = (capturedEmitterDeps.current as unknown as {
       observeDeferredObjectivePlanHistory: (
         diagnostics: readonly unknown[],

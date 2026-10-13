@@ -26,18 +26,6 @@ export const resolveTargetPowerProbeRetryAtMs = (
   return nowMs + (PROBE_RETRY_DELAYS_MS[index] ?? PROBE_RETRY_DELAYS_MS[0]);
 };
 
-const buildReachability = (
-  profileFingerprint: string,
-  maxReachedPowerW: number,
-  probeFailureCount: number,
-  nextProbeAtMs: number | undefined,
-): TargetPowerReachabilityState => ({
-  profileFingerprint,
-  maxReachedPowerW,
-  probeFailureCount,
-  ...(nextProbeAtMs !== undefined ? { nextProbeAtMs } : {}),
-});
-
 type ExactObservation = { planningPowerW: number; observedAtMs: number };
 
 const resolveObservationAtOrAfter = (
@@ -59,12 +47,11 @@ const buildConfirmedTransition = (
   observation: ExactObservation,
 ): TargetPowerReachabilityTransition => ({
   kind: 'confirmed',
-  reachability: buildReachability(
+  reachability: {
     profileFingerprint,
-    Math.max(resolveProvenMaximum(currentReachability, command), observation.planningPowerW),
-    0,
-    undefined,
-  ),
+    maxReachedPowerW: Math.max(resolveProvenMaximum(currentReachability, command), observation.planningPowerW),
+    probeFailureCount: 0,
+  },
 });
 
 const buildFailedTransition = (
@@ -78,12 +65,15 @@ const buildFailedTransition = (
   const failureCount = (currentReachability?.probeFailureCount ?? 0) + 1;
   const transition: TargetPowerReachabilityTransition = {
     kind: 'failed',
-    reachability: buildReachability(
+    reachability: {
       profileFingerprint,
-      Math.max(resolveProvenMaximum(currentReachability, command), maximumObservation?.planningPowerW ?? 0),
-      failureCount,
-      resolveTargetPowerProbeRetryAtMs(nowMs, failureCount),
-    ),
+      maxReachedPowerW: Math.max(
+        resolveProvenMaximum(currentReachability, command),
+        maximumObservation?.planningPowerW ?? 0,
+      ),
+      probeFailureCount: failureCount,
+      nextProbeAtMs: resolveTargetPowerProbeRetryAtMs(nowMs, failureCount),
+    },
   };
   return settledObservation
     ? { ...transition, observedPowerW: settledObservation.planningPowerW }

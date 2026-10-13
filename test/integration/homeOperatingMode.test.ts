@@ -130,8 +130,7 @@ const buildRig = (): Rig => {
   const registry = createHomeRuntimeRegistry(
     ctx,
     getHomeModeCatalogForTest(ctx),
-    () => true,
-    () => true,
+    { isSubHomeExecutionReady: () => true, isRuntimeActive: () => true },
     createRawHomesStore(ctx.homey.settings),
     createModeOwnershipTransfer(ctx, getHomeModeCatalogForTest(ctx)),
   );

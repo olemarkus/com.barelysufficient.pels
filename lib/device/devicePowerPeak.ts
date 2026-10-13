@@ -142,9 +142,6 @@ export const pruneExpiredLearnedPeaks = (
 };
 /* eslint-enable functional/immutable-data */
 
-/** The contracts map, under the name its app-layer readers import it by. */
-export type ExpectedPowerOverridesByDeviceId = DeviceExpectedPowerOverrides;
-
 const isFinitePositive = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value) && value > 0
 );
@@ -193,10 +190,10 @@ export const parseLearnedPeaks = (raw: unknown): LearnedPeaksByDeviceId => {
  * The empty device id is rejected here too, and for the same reason.
  */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export const parseExpectedPowerOverrides = (raw: unknown): ExpectedPowerOverridesByDeviceId => {
+export const parseExpectedPowerOverrides = (raw: unknown): DeviceExpectedPowerOverrides => {
   const record = asRecord(raw);
   if (!record) return {};
-  const parsed: ExpectedPowerOverridesByDeviceId = {};
+  const parsed: DeviceExpectedPowerOverrides = {};
   for (const [deviceId, value] of Object.entries(record)) {
     if (!deviceId) continue;
     const entry = asRecord(value);
@@ -248,7 +245,7 @@ export type LearnedPeaksRead =
 
 /** The owner's manual figures, on the same resolved/unavailable contract. */
 export type ExpectedPowerOverridesRead =
-  | { state: 'resolved'; overrides: ExpectedPowerOverridesByDeviceId }
+  | { state: 'resolved'; overrides: DeviceExpectedPowerOverrides }
   | { state: 'unavailable' };
 
 /**

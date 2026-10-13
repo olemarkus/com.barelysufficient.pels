@@ -11,21 +11,22 @@ import {
 import { resolveSmartTaskDeviceExclusion } from './smartTaskHomeScope';
 
 /**
- * The one binding of what the main home's smart-task evaluations read. The plan
- * engine's decoration lane, the lifecycle clock and the create-task preview each
- * take their source from here, so the three differ only in the per-cycle inputs
- * they hand the snapshot (clock, devices, objective roster, daily budget). Every
- * member is a live closure, re-read on each call, so building the source before
- * the price and plan services exist is safe.
+ * The one binding of what the main home's smart-task evaluations read. The
+ * service wiring builds it once and hands the instance to the plan engine's
+ * decoration lane, the lifecycle clock and the create-task preview, so the
+ * three differ only in the per-cycle inputs they hand the snapshot (clock,
+ * devices, objective roster, daily budget). Every member is a live closure,
+ * re-read on each call, so building the source before the price and plan
+ * services exist is safe.
  */
 export const buildTaskEvaluationSource = (
   ctx: AppContext,
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder,
 ): TaskEvaluationSource => ({
   getTimeZone: () => ctx.getTimeZone(),
-  getThermalDirection: (deviceId) => ctx.getThermalDirection(deviceId),
+  getThermalDirection: (deviceId) => ctx.observer.getThermalDirection(deviceId),
   getPowerTracker: () => ctx.powerTracker,
-  getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
+  getPriceOptimizationEnabled: () => requirePriceCoordinator(ctx).getPriceOptimizationEnabled(),
   getDeferredObjectiveActivePlans: () => requireDeferredObjectiveActivePlanRecorder(ctx).getActivePlansSnapshot(),
   getCapacitySettings: () => ctx.capacitySettings,
   hasSolarProduction: () => ctx.deviceReads.hasProductionCandidate(),

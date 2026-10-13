@@ -72,9 +72,7 @@ const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
   },
   measuredPowerResolver: new DeviceMeasuredPowerResolver(),
   getCapabilityObj: (device) => (device.capabilitiesObj ?? {}) as never,
-  isPowerCapable: (device, capsStatus, measuredPower, retainedReading) => (
-    isDevicePowerCapable({ device, capsStatus, measuredPower, retainedReading })
-  ),
+  isPowerCapable: isDevicePowerCapable,
   // No restart in these specs: nothing was restored.
   getRestoredPowerReading: () => undefined,
   resolveLatestLocalWriteMs: () => undefined,
@@ -128,11 +126,14 @@ const buildHoiaxDevice = (onoff: OnoffVariant): HomeyDeviceLike => {
 };
 
 const parseHoiaxSnapshot = (onoff: OnoffVariant, logger: Logger): TransportDeviceSnapshot => {
-  const parsed = parseDevice({
-    device: buildHoiaxDevice(onoff),
-    now: Date.parse(FRESH_ISO) + 1_000,
-    deps: buildParseDeps(logger),
-  });
+  const parsed = parseDevice(
+    buildHoiaxDevice(onoff),
+    Date.parse(FRESH_ISO) + 1_000,
+    {},
+    undefined,
+    buildParseDeps(logger),
+    'runtime',
+  );
   if (!parsed) throw new Error('parseDevice returned null for the Høiax mock device');
   return parsed;
 };

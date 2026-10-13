@@ -338,9 +338,9 @@ store, because:
    the descriptor (`getDeviceDescriptor` on `AppHostApi`, surface 2 from stage 6.5)
    joined per device with the observer's record (`getObservedState`). `PlanExecutorDeps`
    lost `deviceManager`; the binary-control decision's one observed read is
-   `getObservedBinaryControl` (`ObservedBinaryControlRead`, the projection's binary
-   axis); `PlanExecutorSteppedContext.observation` turned out to have no reader and
-   went with it. `DeviceObservation` is deleted and both cruiser rules tightened:
+   `getObservedState` (`ObservedBinaryControlRead`, the projection's binary axis,
+   read through the executor's command context); `PlanExecutorSteppedContext.observation`
+   turned out to have no reader and went with it. `DeviceObservation` is deleted and both cruiser rules tightened:
    `no-executor-to-device-internals` allows the executor nothing from `lib/device`,
    `no-plan-to-device` only the two producer seams.
    Faithfulness: every observed field the executor reads was already load-bearing on

@@ -108,43 +108,41 @@ export type DeviceTransportParseDeps = {
 
 export type ParseDevicePurpose = 'runtime' | 'ui_picker';
 
-export function parseDeviceList(params: {
-    list: HomeyDeviceLike[];
-    livePowerWByDeviceId?: LiveDevicePowerWatts;
-    previousSnapshotById?: ReadonlyMap<string, TransportDeviceSnapshot>;
-    deps: DeviceTransportParseDeps;
-    purpose?: ParseDevicePurpose;
-}): TransportDeviceSnapshot[] {
-    const { list, livePowerWByDeviceId = {}, previousSnapshotById, deps, purpose = 'runtime' } = params;
+export function parseDeviceList(
+    list: HomeyDeviceLike[],
+    livePowerWByDeviceId: LiveDevicePowerWatts,
+    previousSnapshotById: ReadonlyMap<string, TransportDeviceSnapshot>,
+    deps: DeviceTransportParseDeps,
+    purpose: ParseDevicePurpose,
+): TransportDeviceSnapshot[] {
     const now = Date.now();
     return list
-        .map((device) => parseDevice({
+        .map((device) => parseDevice(
             device,
             now,
             livePowerWByDeviceId,
-            previousSnapshot: previousSnapshotById?.get(getDeviceId(device)),
+            previousSnapshotById.get(getDeviceId(device)),
             deps,
             purpose,
-        }))
+        ))
         .filter(Boolean) as TransportDeviceSnapshot[];
 }
 
-export function parseDevice(params: {
-    device: HomeyDeviceLike;
-    now: number;
-    livePowerWByDeviceId?: LiveDevicePowerWatts;
-    previousSnapshot?: TransportDeviceSnapshot;
-    deps: DeviceTransportParseDeps;
-    purpose?: ParseDevicePurpose;
-}): TransportDeviceSnapshot | null {
-    const { device, now, livePowerWByDeviceId = {}, previousSnapshot, deps, purpose = 'runtime' } = params;
+export function parseDevice(
+    device: HomeyDeviceLike,
+    now: number,
+    livePowerWByDeviceId: LiveDevicePowerWatts,
+    previousSnapshot: TransportDeviceSnapshot | undefined,
+    deps: DeviceTransportParseDeps,
+    purpose: ParseDevicePurpose,
+): TransportDeviceSnapshot | null {
     const identity = resolveParseDeviceIdentity({ device });
     if (!identity) return null;
     const managedDecision = resolveManagedFilterDecision({
         providers: deps.providers, deviceId: identity.deviceId,
     });
     if (shouldDropEarly(purpose, managedDecision, isHomeBatteryDevice(device))) return null;
-    const profile = resolveDeviceCapabilityProfile({ identity, deps });
+    const profile = resolveDeviceCapabilityProfile(identity, deps);
     if (!profile) return null;
     return assembleDeviceSnapshot({
         identity,
@@ -178,13 +176,12 @@ export function parseDevice(params: {
  * device usable after the transport receives it; until then the absence is an
  * unresolved input and leaves saved owner choices untouched.
  */
-export function isDevicePowerCapable(params: {
-    device: HomeyDeviceLike;
-    capsStatus: { hasPower: boolean };
-    measuredPower: { measuredPowerKw?: number };
-    retainedReading: RetainedMeasurement | undefined;
-}): boolean {
-    const { device, capsStatus, measuredPower, retainedReading } = params;
+export function isDevicePowerCapable(
+    device: HomeyDeviceLike,
+    capsStatus: { hasPower: boolean },
+    measuredPower: { measuredPowerKw?: number },
+    retainedReading: RetainedMeasurement | undefined,
+): boolean {
     return capsStatus.hasPower
         || hasPotentialHomeyEnergyEstimate(device)
         || typeof measuredPower.measuredPowerKw === 'number'

@@ -1,3 +1,5 @@
+import type { DeviceDescriptor, ObservedDeviceState } from '../../contracts/src/types';
+
 /**
  * Device-KIND classification for binary (on/off) control, shared so the planner
  * (`lib/plan`), observer (`lib/observer`) and executor (`lib/executor`) branch on
@@ -37,7 +39,10 @@
  * snapshot still tests for it separately; this predicate narrows nothing.
  */
 export const hasBinaryControlCapability = (
-  dev: { binaryControl?: unknown; currentOn?: boolean; binaryControllable?: boolean } | null | undefined,
+  dev: (
+    Partial<Pick<DeviceDescriptor, 'binaryControllable'> & Pick<ObservedDeviceState, 'binaryControl'>>
+    & { currentOn?: boolean }
+  ) | null | undefined,
 ): boolean => Boolean(dev && (
   dev.binaryControl !== undefined
   || 'currentOn' in dev

@@ -74,7 +74,6 @@ export function recordTargetCommandAttempt(
   const waitingConfirmation = status === 'waiting_confirmation';
   const retainedObservedValue = isRetry ? previous.lastObservedValue : undefined;
   const entry: PendingTargetCommandState = {
-    target: 'temperature',
     desired,
     startedMs: isRetry ? previous.startedMs : nowMs,
     lastAttemptMs: nowMs,

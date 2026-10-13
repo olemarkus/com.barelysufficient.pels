@@ -76,13 +76,18 @@ export function resolvePlanCommandability(
  * snapshot, the tracking bit requires a step ladder. One `surplusWilling`
  * opt-in, three modalities, and the device's own shape picks which one it gets.
  *
- * Gated on whether the home's surplus pool can EVER open
+ * The two gates both postures share are asked here, once: the owner's opt-in,
+ * and whether the home's surplus pool can EVER open
  * (`resolveSurplusPoolReachable`), not on the power source. The source-name gate
  * this replaces reasoned from "the flow boundary rejects negative watts", which
- * stopped being true when that card began accepting signed watts — but deleting
+ * stopped being true when that card began accepting signed watts — both sources
+ * report signed net, and the measured pool is `-signedNetKw`
+ * (`composeSurplusPool`) with no production term in its path — but deleting
  * it outright re-opened the trap it had been holding shut. Stamping the posture
  * where no surplus can arrive does not leave a device merely idle: the standing
- * hold keeps it OFF indefinitely, with no time-based escape and no UI recourse.
+ * hold keeps a dump load OFF indefinitely, and a tracking device is clamped to
+ * its floor forever rather than merely left unmodulated, with no time-based
+ * escape and no UI recourse.
  * Every flow install whose Flow predates signed watts is in exactly that state,
  * through no fault of its own.
  *
@@ -106,9 +111,10 @@ export function resolvePlanCommandability(
  */
 export function resolveSurplusPostureForDevice(
   source: PlanInputProjectionSource,
-  device: ToPlanDeviceInput & EvObservedProbe & MeasuredPowerObservedProbe,
+  device: ToPlanDeviceInput,
   opts: ToPlanDeviceOptions,
   control: DeviceControlPosture,
+  hasStandingDemand: boolean,
 ): { surplusOnly: boolean; surplusTracking: boolean } {
   const none = { surplusOnly: false, surplusTracking: false };
   if (device.temperatureControlDisabled === true) return none;
@@ -116,34 +122,18 @@ export function resolveSurplusPostureForDevice(
   // A missing per-device entry means the owner has not opted this device in.
   // Resolve that absence here so the planner receives a complete decision and
   // can trust the boolean without knowing settings-map provenance.
-  const surplusWilling = source.getPriceOptimizationSettings(device.id)?.surplusWilling ?? false;
-  const surplusPoolReachable = source.isSurplusPoolReachable();
+  if (source.getPriceOptimizationSettings(device.id)?.surplusWilling !== true) return none;
+  if (!source.isSurplusPoolReachable()) return none;
   const plainBinaryControlModel = isPlainBinaryControlDevice(
     device.targetPowerConfig,
     device.controlModel,
   );
-  const hasStandingDemand = !isEvObserved(device);
   // The two postures are mutually exclusive by construction — the binary one
   // requires `plainBinaryControlModel` and a non-stepped snapshot, the tracking
   // one requires a step ladder — so this is a modality split, not a precedence.
   return {
-    surplusOnly: resolveSurplusOnlyPosture({
-      surplusWilling,
-      hasBinaryControl: device.binaryControl !== undefined,
-      hasStandingDemand,
-      targets: device.targets,
-      steppedLoadProfile: device.steppedLoadProfile,
-      plainBinaryControlModel,
-      control,
-      surplusPoolReachable,
-    }),
-    surplusTracking: resolveSurplusTrackingPosture({
-      surplusWilling,
-      targets: device.targets,
-      steppedLoadProfile: device.steppedLoadProfile,
-      control,
-      surplusPoolReachable,
-    }),
+    surplusOnly: resolveSurplusOnlyPosture(device, control, plainBinaryControlModel, hasStandingDemand),
+    surplusTracking: resolveSurplusTrackingPosture(device, control),
   };
 }
 

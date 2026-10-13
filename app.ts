@@ -1,6 +1,7 @@
 import { createHomeModeCatalog } from './lib/home/homeModeCatalog';
 import Homey from 'homey';
-import type { ExpectedPowerOverridesByDeviceId, LearnedPeaksByDeviceId } from './lib/device/devicePowerPeak';
+import type { LearnedPeaksByDeviceId } from './lib/device/devicePowerPeak';
+import type { DeviceExpectedPowerOverrides } from './packages/contracts/src/types';
 import type CapacityGuard from './lib/power/capacityGuard';
 import type { DeviceTransport } from './lib/device/deviceTransport';
 import { SettingsUiDeviceReads } from './lib/device/settingsUiDeviceReads';
@@ -245,7 +246,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   public isSurplusPoolReachable = (): boolean => this.surplusPoolReachability.isReachable();
   public defaultComputeDynamicSoftLimit: (() => number | null) | undefined = undefined;
   public lastKnownPowerKw: LearnedPeaksByDeviceId = {};
-  public expectedPowerKwOverrides: ExpectedPowerOverridesByDeviceId = {};
+  public expectedPowerKwOverrides: DeviceExpectedPowerOverrides = {};
   protected overheadToken?: Homey.FlowToken;
   public lastNotifiedOperatingMode = 'Home';
   private readonly settingsRepository = new SettingsRepository(this.homey);
@@ -504,12 +505,6 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     updateDailyBudgetAndRecordCap: (options) => this.updateDailyBudgetAndRecordCap(options),
   });
   private readonly ctx = this.context;
-  // Smart-task (deferred-objective) preview/create/cancel/rescue + history
-  // payload bodies. Declared after `ctx` so the context field is initialized.
-  protected readonly smartTaskApi = new AppSmartTaskApi(
-    this.ctx,
-    (deviceIds) => this.homeModeCatalog.getPrioritiesForDevices(deviceIds),
-  );
   protected readonly smartTaskPayloads = new AppSmartTaskPayloads(this.ctx);
   // The snapshot refresh's mode-target fill pass, built once so the entries it
   // already filled are remembered for the life of the process. Declared after
@@ -527,11 +522,10 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     getPrioritiesForDevices: (deviceIds) => this.homeModeCatalog.getPrioritiesForDevices(deviceIds),
     getModeDeviceTargets: () => this.homeModeCatalog.getModeDeviceTargets(),
     resolveOperatingModeForDevice: (deviceId) => this.homeModeCatalog.resolveOperatingModeForDevice(deviceId),
-    createHomeRuntimeRegistry: (isMembershipReady, isRuntimeActive) => createHomeRuntimeRegistryForApp(
+    createHomeRuntimeRegistry: (membership) => createHomeRuntimeRegistryForApp(
       this.ctx,
       this.homeModeCatalog,
-      isMembershipReady,
-      isRuntimeActive,
+      membership,
     ),
     handles: this.runtime,
     shutdown: this.shutdown,
@@ -553,6 +547,10 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     reloadMainModeCatalog: () => this.homeModeCatalog.reload(),
     closeUserdataDatabase: () => this.closeUserdataDatabase(),
   });
+  // Smart-task (deferred-objective) preview/create/cancel/rescue + history
+  // payload bodies. Declared after `serviceWiring`, which builds the main
+  // home's evaluation source the preview shares with the live lanes.
+  protected readonly smartTaskApi = new AppSmartTaskApi(this.ctx, this.serviceWiring.taskEvaluationSource);
 
   public readonly observedTemperatureModeUpdates = this.serviceWiring.createObservedTemperatureModeUpdates();
 }

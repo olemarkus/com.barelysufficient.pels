@@ -1,7 +1,5 @@
-import type {
-  ExpectedPowerOverridesByDeviceId,
-  ExpectedPowerOverridesRead,
-} from './devicePowerPeak';
+import type { DeviceExpectedPowerOverrides } from '../../packages/contracts/src/types';
+import type { ExpectedPowerOverridesRead } from './devicePowerPeak';
 
 /**
  * Two manual figures this close together are the same figure. Guards the
@@ -47,16 +45,13 @@ export type ExpectedOverrideAuthority = 'held' | 'persisted';
  * adoption) says so with an explicit empty callback, so a caller that MEANT to
  * react and forgot is a compile error instead of a silent no-op.
  */
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export const applyExpectedPowerOverrides = (params: {
-  read: ExpectedPowerOverridesRead;
-  target: ExpectedPowerOverridesByDeviceId;
-  authority: ExpectedOverrideAuthority;
-  onOverrideChanged: (deviceId: string, kw: number) => void;
-}): boolean => {
-  const {
-    read, target, authority, onOverrideChanged,
-  } = params;
+/* eslint-disable functional/immutable-data, no-param-reassign -- In-place update keeps the transport's object. */
+export const applyExpectedPowerOverrides = (
+  read: ExpectedPowerOverridesRead,
+  target: DeviceExpectedPowerOverrides,
+  authority: ExpectedOverrideAuthority,
+  onOverrideChanged: (deviceId: string, kw: number) => void,
+): boolean => {
   if (read.state === 'unavailable') return false;
 
   const next = authority === 'held'
@@ -76,4 +71,4 @@ export const applyExpectedPowerOverrides = (params: {
   for (const [deviceId, entry] of changed) onOverrideChanged(deviceId, entry.kw);
   return true;
 };
-/* eslint-enable functional/immutable-data */
+/* eslint-enable functional/immutable-data, no-param-reassign */

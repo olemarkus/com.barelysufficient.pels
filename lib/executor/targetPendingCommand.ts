@@ -56,13 +56,13 @@ export const logPendingTargetRetry = (
   pending: PendingTargetCommandStore['pendingTargetCommands'][string],
   retryDelaySec: number,
 ): void => {
-  const { target, desired, retryCount, lastObservedValue, lastObservedSource } = pending;
+  const { desired, retryCount, lastObservedValue, lastObservedSource } = pending;
   logger.info({ event: 'executor_target_log', msg: `Target mismatch still present for ${name}; observed `
     + `${formatObservedTarget(lastObservedValue)} `
-    + `via ${lastObservedSource ?? 'unknown'}, retrying ${target} to ${desired}°C` });
+    + `via ${lastObservedSource ?? 'unknown'}, retrying temperature to ${desired}°C` });
   emitExecutorDebug({
     event: 'executor_target_log_debug',
-    msg: `Capacity: retried ${target} for ${name} to ${desired}°C `
+    msg: `Capacity: retried temperature for ${name} to ${desired}°C `
     + `(retry ${retryCount}, next retry in ${retryDelaySec}s)` });
 };
 
