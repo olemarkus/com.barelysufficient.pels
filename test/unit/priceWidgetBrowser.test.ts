@@ -15,8 +15,9 @@ import { declaredValue, readCssRuleBlocks, registerFixedHeightFrameSuite } from 
 // The shipped markup, so the tests wire up exactly as the Homey webview does.
 const shippedMarkup = (): string => {
   const html = readFileSync(resolve(process.cwd(), 'widgets/price/public/index.html'), 'utf8');
-  const body = /<body[^>]*>([\s\S]*)<\/body>/.exec(html)?.[1] ?? '';
-  return body.replace(/<script[\s\S]*?<\/script>/g, '');
+  const { body } = new DOMParser().parseFromString(html, 'text/html');
+  body.querySelectorAll('script').forEach((script) => script.remove());
+  return body.innerHTML;
 };
 
 const resolveTargets = (): RenderTargets => ({
