@@ -505,6 +505,47 @@ test.describe('settings shell layout regressions', () => {
     expect(metrics.maxGap).toBeLessThanOrEqual(16);
   });
 
+  for (const width of [320, 480]) {
+    test(`keeps the charger activity log reachable below its smart task at ${width}px`, async ({ page }) => {
+      await injectHomeyHostCss(page);
+      await page.addInitScript(() => {
+        (window as Window & { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = {
+          settings: {
+            deferred_objectives: {
+              version: 1,
+              objectivesByDeviceId: {
+                dev_zaptec: {
+                  enabled: true,
+                  kind: 'ev_soc',
+                  enforcement: 'soft',
+                  targetPercent: 80,
+                  deadlineAtMs: Date.now() + 12 * 3600_000,
+                },
+              },
+            },
+          },
+        };
+      });
+      await openApp(page, width);
+      await openSettingsSection(page, 'devices');
+      await page.getByRole('button', { name: 'Open settings for Zaptec Go', exact: true }).click();
+      const smartTask = page.locator('#device-detail-smart-task');
+      const log = page.locator('#device-detail-activity-log-disclosure');
+      const diagnostics = page.locator('#device-detail-diagnostics-disclosure');
+      await expect(smartTask).toContainText('Target 80%');
+      const taskBounds = await smartTask.boundingBox();
+      const logBounds = await log.boundingBox();
+      const diagnosticsBounds = await diagnostics.boundingBox();
+      expect(logBounds!.y).toBeGreaterThanOrEqual(taskBounds!.y + taskBounds!.height);
+      expect(diagnosticsBounds!.y).toBeGreaterThanOrEqual(logBounds!.y + logBounds!.height);
+      await log.locator('summary').click();
+      await expect(page.locator('#device-detail-activity-log-body')).toContainText('No activity recorded yet');
+      await diagnostics.locator('summary').click();
+      await expect(diagnostics).toHaveAttribute('open', '');
+      await expectNoHorizontalOverflow(page, 'Charger activity log');
+    });
+  }
+
   test('does not strand a tooltip after tapping through to device detail on touch', async ({ browser, browserName, baseURL }) => {
     test.skip(browserName !== 'chromium', 'Touch emulation needs chromium isMobile.');
     const context = await browser.newContext({

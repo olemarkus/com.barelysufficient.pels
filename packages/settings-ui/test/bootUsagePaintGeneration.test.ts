@@ -65,6 +65,7 @@ const SETTINGS_STORE: Record<string, unknown> = {
 // whose Phase-2 bare `/ui_power` read is the hold this race needs.
 const IMMEDIATE_GET_RESPONSES: Record<string, unknown> = {
   '/ui_homes': ROSTER_PAYLOAD,
+  [BARE_POWER_URI]: mainPowerPayload(),
   [SCOPED_POWER_URI]: areaPowerPayload(),
   '/ui_plan': { plan: null },
   '/ui_devices': {
@@ -141,7 +142,7 @@ type DeferredClient = {
   pendingCount: (uri: string) => number;
 };
 
-const installBootClient = async (): Promise<DeferredClient> => {
+const installBootClient = async (heldUris = [BARE_POWER_URI]): Promise<DeferredClient> => {
   const pendingByUri = new Map<string, HomeyCallback<unknown>[]>();
   const client: HomeySettingsClient = {
     ready: () => Promise.resolve(),
@@ -149,7 +150,7 @@ const installBootClient = async (): Promise<DeferredClient> => {
     set: (_key, _value, cb) => cb(null),
     api: (method, uri, bodyOrCallback, cb) => {
       const callback = (typeof bodyOrCallback === 'function' ? bodyOrCallback : cb) as HomeyCallback<unknown>;
-      if (method === 'GET' && uri === BARE_POWER_URI) {
+      if (method === 'GET' && heldUris.includes(uri)) {
         const queue = pendingByUri.get(uri) ?? [];
         queue.push(callback);
         pendingByUri.set(uri, queue);
@@ -251,5 +252,26 @@ describe('bootstrap Usage paint vs a mid-boot scope pick', () => {
     expect(dayTotalText()).toBe('0.7 kWh');
     expect(heroText()).toBe('0.7 kWh today');
     expect(scopeReadState()).toBe('served');
+  });
+
+  it('enables device settings while the advanced device logger is still loading', async () => {
+    document.body.insertAdjacentHTML('beforeend', `
+      <md-filled-select id="advanced-api-device-select"></md-filled-select>
+      <md-outlined-button id="advanced-api-device-refresh"></md-outlined-button>
+      <md-outlined-button id="advanced-api-device-log"></md-outlined-button>
+    `);
+    const uri = '/homey_devices';
+    const client = await installBootClient([uri]);
+    const { boot } = await import('../src/ui/boot.ts');
+    const { state } = await import('../src/ui/state.ts');
+    const bootPromise = boot();
+    try {
+      await vi.waitFor(() => expect(client.pendingCount(uri)).toBeGreaterThan(0), { timeout: 5000 });
+      await vi.waitFor(() => expect(state.initialLoadComplete).toBe(true));
+      expect(client.pendingCount(uri)).toBeGreaterThan(0);
+    } finally {
+      while (client.pendingCount(uri) > 0) client.respond(uri, null, []);
+      await bootPromise;
+    }
   });
 });

@@ -8100,6 +8100,9 @@ md-switch {
 
 #device-detail-panel .slide-panel__content {
   display: grid;
+  /* Reserve each card's full height. Firefox otherwise gives the Smart task
+   * card a zero-height auto row, covering the activity log below it. */
+  grid-auto-rows: max-content;
   /* `start` keeps the auto rows content-sized. Without it the default
    * `align-content: stretch` distributes the panel's leftover viewport
    * height (the slide panel is 100vh and this grid is its `flex: 1` body)

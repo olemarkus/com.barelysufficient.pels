@@ -484,7 +484,8 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
   // it.
   await refreshPowerData();
   renderModeOptions();
-  await refreshAdvancedDeviceLogger();
+  // The support-only device picker must not delay enabling device settings.
+  void refreshAdvancedDeviceLogger();
 
   // Phase 4: Mark initial load complete - enables save operations
   state.initialLoadComplete = true;
