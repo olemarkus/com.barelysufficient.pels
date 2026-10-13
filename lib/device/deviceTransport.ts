@@ -1,3 +1,4 @@
+import { ChargingCurrentControl } from './chargingCurrentControl';
 import type { TaskDeviceConstraint } from '../../packages/contracts/src/taskDelivery';
 /**
  * Device-layer hub: owns observed current device state and the device-specific
@@ -64,8 +65,6 @@ import { BinarySettleEvidenceService } from './transport/binarySettleEvidence';
 import {
     buildBinaryCommandConfirmationSnapshot, resolveTemperatureTarget,
 } from './transport/semanticControlResolution';
-import {
-} from './transport/realtimeCapabilityHandling';
 import { DeviceWriteService } from './transport/deviceWrites';
 import type { ZoneTree } from './transport/managerZones';
 import { TransportSnapshotStore } from './transport/transportSnapshotStore';
@@ -109,6 +108,8 @@ export type {
 export type DeviceTransportPort = Omit<DeviceTransport, 'getSnapshot'>;
 
 export class DeviceTransport {
+    get chargingAccess() { return this.chargingCurrentControl.access; }
+    readonly chargingCurrentControl: ChargingCurrentControl;
     private readonly deviceSdk: DeviceHomeySdk;
     private readonly logger: Logger;
     // Owner-side widened shape: these stored objects are mutated in place across
@@ -156,6 +157,13 @@ export class DeviceTransport {
         this.realtimeIngest.handleCapabilityUpdate(deviceId, capabilityId, value);
     };
 
+    invalidateSteppedRequests(): void { this.writeService.flowRequests.invalidateAll(); }
+
+    isSteppedRequestValid(deviceId: string, requestId: string): boolean {
+        this.chargingCurrentControl.synchronizeTrust();
+        return this.writeService.flowRequests.isValid(deviceId, requestId);
+    }
+
     /** Heartbeat for the EV car-link probe's elapsed-time decisions. */
     tickEvCarLink(nowMs: number): void { this.observationProducers.evCarLink.tick(nowMs); }
 
@@ -179,6 +187,13 @@ export class DeviceTransport {
             this.logger,
             this.handleRealtimeDeviceUpdate,
             this.handleRealtimeCapabilityUpdate,
+        );
+        this.chargingCurrentControl = new ChargingCurrentControl(
+            this.deviceSdk.runtime, logger, () => this.snapshotStore.getLatestRawDevices(),
+            () => {
+                const health = this.deviceSdk.getHealth();
+                return { connected: health?.subscriptionState === 'subscribed', revision: health?.reconnectCount ?? 0 };
+            },
         );
         this.observationProducers = createObservationProducers(
             (p) => this.logger.structuredLog.info(p),
@@ -208,10 +223,10 @@ export class DeviceTransport {
             this.snapshotStore,
             this.observationBridge.state,
             this.logger,
-            this.observationProducers.temperature,
+            this.chargingCurrentControl,
+            this.observationProducers,
             (cardId) => this.getFlowTriggerCard?.(cardId),
             (deviceId, capabilityId) => this.dispatchObservedStateForDevice(deviceId, capabilityId),
-            (deviceId, nowMs) => this.observationProducers.evCarLink.noteStopCommand(deviceId, nowMs),
         );
         this.powerState = {
             expectedPowerKwOverrides: powerState?.expectedPowerKwOverrides ?? {},
@@ -251,6 +266,7 @@ export class DeviceTransport {
             this.powerState,
             this.retainedPower,
             this.logger,
+            this.chargingCurrentControl,
         );
         this.refreshService = new SnapshotRefreshService(
             this.refreshState,
@@ -414,7 +430,10 @@ export class DeviceTransport {
     getBinarySettleEvidenceByDeviceId(id: string): BinaryControlObservation | undefined {
         return this.observationBridge.state.getBinarySettleEvidence(id); }
 
-    async init(): Promise<void> { await this.deviceSdk.initialize(); }
+    async init(): Promise<void> {
+        await this.deviceSdk.initialize();
+        await this.chargingAccess.check();
+    }
 
     async refreshSnapshot(
         options: SnapshotRefreshOptions,

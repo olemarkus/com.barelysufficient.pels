@@ -1,6 +1,6 @@
 import { isSteppedLoadSnapshot } from '../packages/shared-domain/src/steppedLoadObservedState';
 import type { ReportSteppedLoadActualStepResult } from '../lib/executor/steppedCommandState';
-import { isNativeSteppedLoadControlEnabled } from '../lib/device/nativeSteppedLoadWiring';
+import { isBuiltInSteppedLoadControlEnabled } from '../lib/device/nativeSteppedLoadWiring';
 import { buildDeviceAutocompleteOptions } from './deviceArgs';
 import {
   readFlowDeviceArg,
@@ -29,6 +29,16 @@ export function registerSteppedLoadCards(deps: FlowCardDeps): void {
     return chosenDeviceId === stateDeviceId;
   });
   desiredChangedTrigger.registerArgumentAutocompleteListener('device', async (query: string) => (
+    getSteppedLoadDeviceOptions(deps, query)
+  ));
+
+  const requestValid = deps.homey.flow.getConditionCard('stepped_load_request_valid');
+  requestValid.registerRunListener((args: unknown) => {
+    const deviceId = readFlowDeviceArg(args);
+    const requestId = readFlowStringArg(args, 'request_id');
+    return Boolean(deviceId && requestId && deps.isSteppedRequestValid(deviceId, requestId));
+  });
+  requestValid.registerArgumentAutocompleteListener('device', async (query: string) => (
     getSteppedLoadDeviceOptions(deps, query)
   ));
 
@@ -147,7 +157,7 @@ async function resolveNativeSteppedLoadFlowReportIgnore(
   try {
     const descriptors = await deps.getDeviceDescriptors();
     const device = descriptors.find((entry) => entry.id === deviceId);
-    if (!device || !isNativeSteppedLoadControlEnabled(device)) return null;
+    if (!device || !isBuiltInSteppedLoadControlEnabled(device)) return null;
     return { deviceName: device.name.trim() || deviceId };
   } catch {
     return null;

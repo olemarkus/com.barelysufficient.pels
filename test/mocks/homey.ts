@@ -475,6 +475,10 @@ export const mockHomeyInstance = {
     _longitude: 10.75,
   },
   images: createMockImagesManager(),
+  geolocation: {
+    getLatitude: () => 60,
+    getLongitude: () => 10,
+  },
   cloud: {
     getHomeyId: async () => 'mock-homey-id',
   },

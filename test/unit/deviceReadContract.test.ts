@@ -239,3 +239,50 @@ describe('device-read contract', () => {
     }))).toEqual({ reason: 'unexpected_value', capabilityId: 'evcharger_charging_state' });
   });
 });
+
+
+describe('Tesla home-session read contract', () => {
+  it.each([
+    ['battery', 'charging_port_cable', 'IEC'],
+    ['battery', 'measure_charge_current_max', 16],
+    ['battery', 'measure_charge_current', 6],
+    ['battery', 'measure_charge_power_dc', 0],
+    ['location', 'measure_location_latitude', 60],
+    ['location', 'measure_location_longitude', 10],
+    ['car', 'car_state', 'online'],
+    ['car', 'car_shift_state', 'P'],
+    ['car', 'measure_car_drive_speed', 0],
+  ] as const)('requires typed dated %s %s evidence before accepting a device read', (driver, capabilityId, value) => {
+    const device: RawDeviceRead = {
+      id: 'tesla', name: 'Tesla', class: driver === 'car' ? 'car' : 'sensor',
+      driverId: `homey:app:com.tesla.car:${driver}`,
+      capabilities: [capabilityId], capabilitiesObj: { [capabilityId]: entry(value) },
+    };
+    expect(findDeviceReadContractViolation(asRead(device))).toBeNull();
+    device.capabilitiesObj = { [capabilityId]: { value } };
+    expect(findDeviceReadContractViolation(asRead(device))).toEqual({ reason: 'missing_stamp', capabilityId });
+    device.capabilitiesObj = { [capabilityId]: entry(null) };
+    expect(findDeviceReadContractViolation(asRead(device))).toEqual({ reason: 'unexpected_value', capabilityId });
+  });
+});
+
+
+describe('Tesla vendor state without an EV equivalent', () => {
+  const tesla = (state: unknown): HomeyDeviceLike => asRead({
+    id: 'tesla', name: 'Tesla battery', class: 'sensor', driverId: 'homey:app:com.tesla.car:battery',
+    capabilities: ['charging_on', 'charging_state', 'measure_charge_power', 'measure_soc_level'],
+    capabilitiesObj: { charging_on: entry(false), charging_state: entry(state),
+      measure_charge_power: entry(0), measure_soc_level: entry(55) },
+  });
+  it.each(['Calibrating', 'NoPower', 'Unknown'])('accepts a complete known %s vendor read', (state) => {
+    expect(findDeviceReadContractViolation(tesla(state))).toBeNull();
+  });
+  it.each(['not-a-vendor-state', null, 12])('rejects malformed vendor state %s', (state) => {
+    expect(findDeviceReadContractViolation(tesla(state))).toEqual({ reason: 'unexpected_value', capabilityId: 'charging_state' });
+  });
+  it('still rejects an otherwise malformed Unknown read as a whole', () => {
+    const device = tesla('Unknown');
+    delete device.capabilitiesObj!.measure_soc_level;
+    expect(findDeviceReadContractViolation(device)).toEqual({ reason: 'missing_capability_entry', capabilityId: 'measure_soc_level' });
+  });
+});

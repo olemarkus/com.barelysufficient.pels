@@ -247,3 +247,9 @@ writes thresholds first, then the switch being turned on, then the one being
 turned off, and never writes a switch the owner did not change. These keys are
 Main-only, not home-scopable. Disabled control axes are `null`, never large
 stand-in limits.
+
+Charging setup is backend-owned: `charging_current_control` belongs to
+`lib/device/chargingCurrentControl.ts`, and `_homey_flow_api_key` belongs to
+`lib/device/transport/chargingAccess.ts`. The settings UI uses their dedicated
+API endpoints and receives resolved setup/access status. The saved key is never
+returned by those endpoints or included in the settings bootstrap or diagnostics.

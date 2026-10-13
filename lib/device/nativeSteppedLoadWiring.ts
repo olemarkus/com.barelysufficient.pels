@@ -403,6 +403,13 @@ export function isNativeSteppedLoadControlEnabled(snapshot: {
     && snapshot.controlAdapter.activationEnabled === true;
 }
 
+/** Current commands and their observations are owned by a built-in adapter. */
+export function isBuiltInSteppedLoadControlEnabled(snapshot: {
+  controlAdapter?: DeviceControlAdapterSnapshot;
+}): boolean {
+  return snapshot.controlAdapter?.currentControl === 'built_in' || isNativeSteppedLoadControlEnabled(snapshot);
+}
+
 export function isNativeSteppedLoadControlCapabilityId(params: {
   capabilityId: string;
   capabilities: readonly string[];

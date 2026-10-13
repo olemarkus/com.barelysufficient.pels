@@ -1,3 +1,6 @@
+import { chargingRecommendations } from './chargingRecommendations.ts';
+import type { ChargingAccessStatus, ChargingCurrentRead } from '../../../contracts/src/chargingControl.ts';
+import { CHARGING_ACCESS_PATH, CHARGING_CURRENT_PATH } from '../../../contracts/src/chargingControl.ts';
 import {
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
   SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
@@ -78,6 +81,25 @@ type RecommendationReadiness = 'loading' | 'partial' | 'resolved';
 
 type LoadedDismissalReadState = Extract<DismissalReadState, { state: 'resolved' | 'stale' }>;
 
+let currentChargingRecommendations: SetupRecommendation[] = [];
+let chargingReadGeneration = 0;
+let chargingReadAt = 0;
+async function loadChargingRecommendations(force = false): Promise<void> {
+  if (!state.latestDevices.some((device) => device.isEvCharger)) return;
+  if (!force && Date.now() - chargingReadAt < 30_000) return;
+  chargingReadAt = Date.now();
+  const generation = ++chargingReadGeneration;
+  try {
+    const [devices, access] = await Promise.all([
+      callApi<ChargingCurrentRead[]>('GET', CHARGING_CURRENT_PATH),
+      callApi<ChargingAccessStatus>('GET', CHARGING_ACCESS_PATH),
+    ]);
+    if (generation !== chargingReadGeneration) return;
+    currentChargingRecommendations = chargingRecommendations(devices, access);
+    refreshRecommendationSurfaces();
+  } catch { /* Retain the last accepted recommendations during a failed read. */ }
+}
+
 let dismissalRead: DismissalReadState = { state: 'loading' };
 let carInventory: CarInventoryState = { state: 'loading' };
 let navigationRead: NavigationState = { state: 'uninitialized' };
@@ -155,6 +177,8 @@ const resolveCurrentRecommendations = (afterSetupRead: AfterSetupFactsRead): Set
   // setup path's lede names them. The second group is not sorted into the
   // first: a wiring fix for one device outranks an optional feature.
   return [
+    ...currentChargingRecommendations.filter(({ target }) => target.kind === 'device'
+      && state.latestDevices.some((device) => device.id === target.deviceId)),
     ...resolveSetupRecommendations(
       state.latestDevices,
       cars,
@@ -427,6 +451,7 @@ const loadRecommendationFlowFacts = async (
 export const loadRecommendationData = async (): Promise<void> => {
   await Promise.all([
     loadRecommendationDismissals(),
+    loadChargingRecommendations(),
     refreshCarInventory(),
     loadSmartTaskUsage(),
     loadAfterSetupFacts().then(refreshRecommendationSurfaces),
@@ -470,7 +495,11 @@ export const initRecommendationSurfaces = (nextNavigation: RecommendationNavigat
   // Recommendation applicability depends on the identities of Main-home
   // devices, not only on the setup path's aggregate counts.
   subscribeToHomeScope(refreshRecommendationSurfaces);
-  document.addEventListener('devices-updated', () => { void refreshCarInventory(); });
+  document.addEventListener('devices-updated', () => {
+    void refreshCarInventory();
+    void loadChargingRecommendations();
+  });
+  document.addEventListener('charging-control-changed', () => { void loadChargingRecommendations(true); });
   document.addEventListener('ev-car-associations-updated', refreshRecommendationSurfaces);
   onSetupPathChange(refreshRecommendationSurfaces);
   // The device list is one of the path's facts, and it lands without any of the

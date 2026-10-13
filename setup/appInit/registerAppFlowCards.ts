@@ -35,6 +35,9 @@ export function registerAppFlowCards(
   setDeviceModeTarget: FlowCardDeps['setDeviceModeTarget'],
 ): void {
   registerFlowCards({
+    isSteppedRequestValid: (deviceId, requestId) => (
+      requireDeviceManager(ctx).isSteppedRequestValid(deviceId, requestId)
+    ),
     homey: requireFlowHomey(ctx),
     structuredLog: ctx.getStructuredLogger('devices'),
     resolveModeName,

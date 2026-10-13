@@ -1,3 +1,4 @@
+import { isRequestedStepMaterialized } from './steppedLoadActuation';
 import {
   isBinaryObservedOff,
   isBinaryOnOrUnknown,
@@ -206,6 +207,15 @@ export const applySteppedLoadRestore = async (
   if (suppressRecentSteppedBinaryRestore(ctx, action, snapshot)) return { ready: true, wroteBinary: false };
   const binaryRestoreSkip = maybeSkipSteppedLoadRestoreBinary(ctx, intent, snapshot, stepNeedsAdjustment);
   if (binaryRestoreSkip === false) return NOT_RESTORED;
+  return restorePreparedBinary(ctx, action, snapshot);
+};
+
+const restorePreparedBinary = async (
+  ctx: ExecutorCommandContext,
+  action: ExecutableSteppedLoadDevice,
+  snapshot: ExecutorDeviceSnapshot | undefined,
+): Promise<SteppedLoadRestoreResult> => {
+  const { intent } = action;
   // `maybeSkipSteppedLoadRestoreBinary` already returns `false` (handled above)
   // when the snapshot is missing, so it is defined here; this guard only narrows
   // the type for the dispatch call below.
@@ -213,6 +223,8 @@ export const applySteppedLoadRestore = async (
   // Binary already on (no write needed) but the restore is "ready" so the caller
   // can proceed to issue the step command.
   if (isBinaryOnOrUnknown(snapshot)) return { ready: true, wroteBinary: false };
+  if (intent.controlAdapter?.activationOrder === 'current_before_start'
+    && !isRequestedStepMaterialized(action.stepActuation)) return NOT_RESTORED;
   const wroteBinary = await executeSteppedLoadRestoreBinary(ctx, intent, snapshot);
   return { ready: wroteBinary, wroteBinary };
 };

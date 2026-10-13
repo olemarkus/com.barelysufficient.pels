@@ -1,3 +1,4 @@
+import { isTeslaChargingDevice } from '../chargingCurrentAdapter';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { isHomeBatteryDevice, isSolarPanelDevice } from '../managerEnergy';
 
@@ -68,6 +69,7 @@ export const resolveDeviceClassKey = (device: HomeyDeviceLike): string | null =>
   // the supported set) still resolves to 'battery', so it survives identity and every
   // downstream `deviceClassKey === 'battery'` gate fires consistently. A battery is
   // then stamped non-controllable structurally in `resolveParsedDeviceSettings`.
+  if (isTeslaChargingDevice(device)) return 'evcharger';
   if (isHomeBatteryDevice(device)) return 'battery';
   // Same machinery for a role-detected solar device — by class:'solarpanel' OR the
   // `meterPowerExportedCapability` producer designation — normalized to the

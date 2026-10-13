@@ -166,6 +166,7 @@ const buildRestoreTo6aPlan = (
       ...steppedPlanDevice({
         id: DEVICE_ID,
         name: DEVICE_NAME,
+        controlAdapter: decorated.controlAdapter,
         isEvCharger: true,
         currentState: 'off',
         plannedState: 'keep',
@@ -195,6 +196,7 @@ const buildRunningTo8aPlan = (decorated: DecoratedDeviceSnapshot): DevicePlan =>
       ...steppedPlanDevice({
         id: DEVICE_ID,
         name: DEVICE_NAME,
+        controlAdapter: decorated.controlAdapter,
         isEvCharger: true,
         currentState: 'on',
         plannedState: 'keep',
@@ -429,6 +431,23 @@ describe('flow-backed stepped restore-from-off — binary activation before step
       previous_step_id: '',
     }, { deviceId: DEVICE_ID });
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(3);
+  });
+
+  it('prepares a current-before-start adapter and waits for its observation before binary ON', async () => {
+    const now = Date.parse('2026-10-13T10:00:00Z');
+    vi.useFakeTimers(); vi.setSystemTime(now);
+    const snapshot = parseEaseeSnapshot({ freshIso: new Date(now).toISOString(), nowMs: now, logger: createLogger() }, EV_PROFILE);
+    snapshot.controlAdapter = { kind: 'capability_adapter', activationRequired: false,
+      activationEnabled: true, activationOrder: 'current_before_start' };
+    const { executor, deviceManager, helpers, decorate, desiredSteppedTrigger } = buildHarness(snapshot);
+    await executor.applyPlanActions(buildRestoreTo6aPlan(decorate()));
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(1);
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1000);
+    helpers.reportSteppedLoadActualStep(DEVICE_ID, '6a');
+    await executor.applyPlanActions(buildRestoreTo6aPlan(decorate()));
+    expect(deviceManager.setCapability).toHaveBeenCalledWith(DEVICE_ID, 'evcharger_charging', true);
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(1);
   });
 
   it('dispatches evcharger_charging=true before requesting the post-activation 6a step', async () => {

@@ -1,3 +1,4 @@
+import { setChargingCurrentDevice } from './chargingCurrent.tsx';
 import { NATIVE_EV_WIRING_DEVICES } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   deviceDetailFlowConflictBody,
@@ -76,6 +77,7 @@ const syncSetupAutoExpand = (device: SettingsUiDeviceDetailItem | null, shouldEx
 };
 
 export const setDeviceDetailNativeWiringState = (device: SettingsUiDeviceDetailItem | null) => {
+  setChargingCurrentDevice(device?.id ?? '');
   const nativeWiringSupported = supportsNativeWiringActivation(device);
   const nativeWiringEffectiveEnabled = device
     ? state.nativeWiringMap[device.id] === true || device.controlAdapter?.activationEnabled === true

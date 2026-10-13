@@ -104,10 +104,6 @@ function notifyDeviceZoneChangeContained(
 
 export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, device: HomeyDeviceLike): void {
     const deviceId = getDeviceId(device);
-    if (deviceId && !ingest.reader.shouldTrackRealtimeDeviceRead(deviceId, device)) {
-        ingest.binaryEvidence.clearBinarySettleEvidence(deviceId);
-        ingest.reader.snapshotStore.untrackRawDevice(deviceId);
-    }
     const effectiveDevice = ingest.reader.applyDeviceDriverOverride(device);
     // The read contract (`deviceReadContract.ts`), before anything reads the
     // payload: an update that does not conform is ignored whole. No producer,
@@ -115,6 +111,11 @@ export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, d
     // stands as it was — a no-op, never a partial merge.
     const contractEmitter = moduleLogger;
     if (isIgnoredDeviceRead(ingest.reader.snapshotStore, effectiveDevice, 'device_update', contractEmitter)) return;
+    ingest.observeChargingDevice(effectiveDevice);
+    if (deviceId && !ingest.reader.shouldTrackRealtimeDeviceRead(deviceId, device)) {
+        ingest.binaryEvidence.clearBinarySettleEvidence(deviceId);
+        ingest.reader.snapshotStore.untrackRawDevice(deviceId);
+    }
     // Keep the battery membership set non-empty for a present battery even before
     // the first full refresh — the realtime path parses the battery (stamped
     // non-controllable structurally, its Managed toggle read by id), so the

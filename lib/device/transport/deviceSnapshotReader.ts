@@ -1,3 +1,5 @@
+import { hasTeslaChargingStateWithoutEvProjection } from '../teslaChargingWiring';
+import type { ChargingCurrentControl } from '../chargingCurrentControl';
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import type { LiveDevicePowerWatts } from '../managerEnergy';
@@ -18,7 +20,7 @@ import type { ObservationBridge } from './observationBridge';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
 import { getDeviceId } from './managerHelpers';
 import { isHomeBatteryDevice } from '../managerEnergy';
-import { isRuntimeTrackedDevice, resolveManagedFilterDecision } from './managerManagedFilter';
+import { isRuntimeTrackedDevice, resolveManagedFilterDecision, shouldDropEarly } from './managerManagedFilter';
 import { isHomeBatterySnapshot, toBatteryControlRead } from './homeBatteryObservation';
 import type { BatteryControlRead } from '../../ports/batteryControlOwner';
 
@@ -33,6 +35,7 @@ export class DeviceSnapshotReader {
     readonly powerState: ResolvedTransportPowerState,
     readonly retainedPower: RetainedPowerPersistence,
     readonly logger: Logger,
+    readonly chargingCurrentControl: ChargingCurrentControl,
   ) {}
 
   /** The device as the battery control owner reads it (`toBatteryControlRead`). */
@@ -45,7 +48,8 @@ export class DeviceSnapshotReader {
     now: number,
     livePowerWByDeviceId: LiveDevicePowerWatts,
   ): TargetDeviceSnapshot | null {
-    return parseDevice(
+    if (hasTeslaChargingStateWithoutEvProjection(device)) return this.retainBlockedTesla(device, 'runtime') ?? null;
+    const parsed = parseDevice(
       device,
       now,
       livePowerWByDeviceId,
@@ -53,6 +57,7 @@ export class DeviceSnapshotReader {
       this.parseDependencies(),
       'runtime',
     );
+    return parsed && this.chargingCurrentControl.projectHomeControl(parsed);
   }
 
   parseDeviceList(
@@ -60,13 +65,32 @@ export class DeviceSnapshotReader {
     livePowerWByDeviceId: LiveDevicePowerWatts = {},
     purpose: ParseDevicePurpose = 'runtime',
   ): TransportDeviceSnapshot[] {
-    return parseDeviceList(
-      list,
+    this.chargingCurrentControl.observeDevices(list);
+    const parsed = parseDeviceList(
+      list.filter((device) => !hasTeslaChargingStateWithoutEvProjection(device)),
       livePowerWByDeviceId,
       this.snapshotStore.getSnapshotIndex(),
       this.parseDependencies(),
       purpose,
-    );
+    ).map((snapshot) => this.chargingCurrentControl.projectHomeControl(snapshot));
+    for (const device of list) {
+      if (!hasTeslaChargingStateWithoutEvProjection(device)) continue;
+      const retained = this.retainBlockedTesla(device, purpose);
+      if (retained) parsed.push(retained);
+    }
+    return parsed;
+  }
+
+  private retainBlockedTesla(
+    device: HomeyDeviceLike, purpose: ParseDevicePurpose,
+  ): TransportDeviceSnapshot | undefined {
+    const decision = resolveManagedFilterDecision({ providers: this.providers, deviceId: device.id });
+    if (shouldDropEarly(purpose, decision, false) || (purpose === 'ui_picker' && decision.isManaged)) return undefined;
+    const previous = this.snapshotStore.getSnapshotByDeviceId(device.id);
+    if (!previous) return undefined;
+    // Keep the last real plug observation and its source timestamp. Unknown,
+    // NoPower and Calibrating must never fabricate an unplug or a new session.
+    return { ...previous, managed: decision.isManaged, available: false, measuredPowerKw: 0 };
   }
 
   getUiPickerDevices(): TransportDeviceSnapshot[] {
@@ -90,18 +114,21 @@ export class DeviceSnapshotReader {
    * {@link shouldTrackRealtimeDeviceRead}.
    */
   shouldTrackRealtimeDevice(deviceId: string): boolean {
-    return this.isTracked(deviceId, this.isKnownHomeBattery(deviceId));
+    return this.chargingCurrentControl.homeSession.observes(deviceId)
+      || this.isTracked(deviceId, this.isKnownHomeBattery(deviceId));
   }
 
   /** {@link shouldTrackRealtimeDevice} for a device read in hand, which names its own class. */
   shouldTrackRealtimeDeviceRead(deviceId: string, device: HomeyDeviceLike): boolean {
-    return this.isTracked(deviceId, isHomeBatteryDevice(device) || this.isKnownHomeBattery(deviceId));
+    return this.chargingCurrentControl.homeSession.observes(deviceId)
+      || this.isTracked(deviceId, isHomeBatteryDevice(device) || this.isKnownHomeBattery(deviceId));
   }
 
   syncTrackedDevices(devices: HomeyDeviceLike[]): void {
     const tracked = devices.filter((device) => {
       const deviceId = getDeviceId(device);
-      return deviceId !== undefined && this.isTracked(deviceId, isHomeBatteryDevice(device));
+      return deviceId !== undefined && (this.chargingCurrentControl.homeSession.observes(deviceId)
+        || this.isTracked(deviceId, isHomeBatteryDevice(device)));
     });
     this.snapshotStore.replaceTrackedRawDevices(tracked);
     this.syncNativeSteppedLoadCommandAdapters();

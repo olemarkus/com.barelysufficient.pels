@@ -1,3 +1,6 @@
+import { SteppedFlowRequests } from './steppedFlowRequests';
+import type { ChargingCurrentControl } from '../chargingCurrentControl';
+import { resolveChargingCurrentAdapter } from '../chargingCurrentAdapter';
 /**
  * Device write service for `DeviceTransport`. Applies capability writes without
  * fabricating observed truth, plus target batches, previews, and stepped-load
@@ -24,7 +27,7 @@ import type { SteppedLoadFlowTriggerCard } from './transportTypes';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
 import type { Logger } from '../../utils/types';
-import type { TemperatureAdjustmentObserver } from '../temperatureAdjustmentObserver';
+import type { ObservationProducers } from '../observationProducers';
 import { isCanSetControl } from '../deviceActionProjection';
 import { HOME_BATTERY_SETPOINT_CAPABILITY_ID, toTargetPowerCapabilityValue } from '../batteryControlWiring';
 import { isHomeBatterySnapshot } from './homeBatteryObservation';
@@ -127,15 +130,26 @@ function routeSwitchWrite(snapshot: TransportDeviceSnapshot, requested: Capabili
 }
 
 export class DeviceWriteService {
+  readonly flowRequests: SteppedFlowRequests;
+
   constructor(
     private readonly snapshotStore: TransportSnapshotStore,
     private readonly observationState: TransportObservationState,
     private readonly logger: Logger,
-    private readonly temperatureAdjustments: TemperatureAdjustmentObserver,
+    private readonly chargingCurrentControl: ChargingCurrentControl,
+    private readonly observationProducers: ObservationProducers,
     private readonly getFlowTriggerCard: (cardId: string) => SteppedLoadFlowTriggerCard | undefined,
     private readonly dispatchObservedStateForDevice: (deviceId: string, capabilityId?: string) => void,
-    private readonly noteStopCommand: (deviceId: string, nowMs: number) => void,
-  ) {}
+  ) { this.flowRequests = new SteppedFlowRequests(snapshotStore, chargingCurrentControl); }
+
+  private assertControlAllowed(deviceId: string): HomeyDeviceLike | undefined {
+    const raw = this.snapshotStore.getTrackedRawDevice(deviceId);
+    if (!raw && this.snapshotStore.getSnapshotByDeviceId(deviceId)?.binaryWriteCapabilityId === 'charging_on') {
+      throw new Error('Tesla device metadata is unavailable.');
+    }
+    if (raw) this.chargingCurrentControl.assertControlAllowed(raw);
+    return raw;
+  }
 
   /** Actuator preflight, resolved against the current transport snapshot. */
   canTurnOnDevice(deviceId: string): boolean {
@@ -147,6 +161,8 @@ export class DeviceWriteService {
 
   async setCapability(deviceId: string, capabilityId: string, value: unknown): Promise<unknown> {
     if (!hasRestClient()) throw new Error('REST client not ready');
+    this.assertControlAllowed(deviceId);
+    if (value === false) this.flowRequests.invalidate(deviceId);
     const normalizedValue = normalizeCapabilityValue(this.snapshotStore, deviceId, capabilityId, value);
     const snapshotBefore = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     const requested: CapabilityWrite = { capabilityId, value: normalizedValue };
@@ -160,7 +176,7 @@ export class DeviceWriteService {
     logEvCapabilityRequest(deviceId, capabilityId, normalizedValue, snapshotBefore);
 
     if (capabilityId === 'target_temperature' && typeof normalizedValue === 'number') {
-        this.temperatureAdjustments.recordCommand(deviceId, normalizedValue, Date.now());
+        this.observationProducers.temperature.recordCommand(deviceId, normalizedValue, Date.now());
     }
     incPerfCounter('device_action_total');
     incPerfCounter(`device_action.capability.${capabilityId}`);
@@ -186,7 +202,7 @@ export class DeviceWriteService {
         write,
     );
 
-    if (readBackAsWritten) {
+    if (readBackAsWritten && snapshotBefore?.binaryWriteCapabilityId !== 'charging_on') {
         recordLocalWriteObservation({
             state: this.observationState.getObservationState(),
             latestSnapshot: this.snapshotStore.getSnapshot(),
@@ -281,12 +297,26 @@ export class DeviceWriteService {
       deviceId,
       profile,
       desiredStepId,
-      planningPowerW,
       planningCurrentA,
-      previousStepId,
     } = params;
-    if (isSteppedLoadOffStep(profile, desiredStepId)) this.noteStopCommand(deviceId, Date.now());
+    this.flowRequests.invalidate(deviceId);
+    if (isSteppedLoadOffStep(profile, desiredStepId)) {
+      this.observationProducers.evCarLink.noteStopCommand(deviceId, Date.now());
+    }
     const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
+    const rawDevice = this.assertControlAllowed(deviceId);
+    if (rawDevice && resolveChargingCurrentAdapter(rawDevice)) {
+      if (isSteppedLoadOffStep(profile, desiredStepId)) {
+        if (!snapshot?.binaryCapabilityId) return { requested: false };
+        await this.setCapability(deviceId, snapshot.binaryCapabilityId, false);
+        return { requested: true, transport: 'native_capability' };
+      }
+      if (this.chargingCurrentControl.setup(deviceId).method === 'built_in') {
+        const transport = await this.chargingCurrentControl.writeCurrent(rawDevice, planningCurrentA,
+          (capabilityId, value) => this.setCapability(deviceId, capabilityId, value));
+        return { requested: true, transport };
+      }
+    }
     if (snapshot && isNativeSteppedLoadControlEnabled(snapshot)) {
       const nativeRequested = await this.snapshotStore.nativeSteppedAdapters.setStep(
         deviceId,
@@ -297,11 +327,21 @@ export class DeviceWriteService {
       return nativeRequested ? { requested: true, transport: 'native_capability' } : { requested: false };
     }
 
+    return this.triggerSteppedFlow(params, snapshot);
+  }
+
+  private async triggerSteppedFlow(
+    params: SteppedLoadWrite,
+    snapshot: TransportDeviceSnapshot | undefined,
+  ): Promise<SteppedLoadStepRequestResult> {
+    const { deviceId, desiredStepId, planningPowerW, planningCurrentA, previousStepId } = params;
+    const requestId = this.flowRequests.issue(deviceId);
     const triggerCard = this.getFlowTriggerCard('desired_stepped_load_changed');
     if (!triggerCard?.trigger) return { requested: false };
 
     try {
       const outcome = await awaitFlowTriggerAcceptance(() => triggerCard.trigger({
+        request_id: requestId,
         step_id: desiredStepId,
         planning_power_w: planningPowerW,
         planning_current_a: planningCurrentA,

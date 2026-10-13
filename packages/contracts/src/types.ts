@@ -195,6 +195,8 @@ export type AssociatedCarSnapshot = {
 };
 
 export type DeviceControlAdapterSnapshot = {
+    activationOrder?: 'current_before_start';
+    currentControl?: 'built_in';
     kind: 'capability_adapter';
     activationAvailable?: boolean;
     activationRequired: boolean;

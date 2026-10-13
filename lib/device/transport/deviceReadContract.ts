@@ -32,13 +32,14 @@
  */
 import { isUnknownRecord, type HomeyDeviceLike } from '../../utils/types';
 import { isEvCarDeviceClass } from '../evCarDeviceClass';
+import { hasTeslaChargingStateWithoutEvProjection, isTeslaChargingState } from '../teslaChargingWiring';
 import { toCapabilityTimestampMs, type DeviceCapabilityMap } from '../managerControl';
 import { applyNativeEvWiringOverlay } from '../nativeEvWiring';
 import { EASEE_CHARGER_CURRENT_CAPABILITY_ID, isEaseeChargerDevice } from '../nativeSteppedLoadWiring';
 import { isEvChargingState } from '../../../packages/shared-domain/src/evPlugState';
 import { isBatteryOrSolarClassKey, resolveDeviceClassKey } from './managerHelpers';
 
-type ModelValueType = 'boolean' | 'number' | 'string';
+type ModelValueType = 'boolean' | 'number' | 'string' | 'tesla_charging_state';
 
 /**
  * Every Homey capability PELS reads as device state from a parsed device, with
@@ -111,6 +112,21 @@ const EASEE_MODEL_CAPABILITY_TYPES: Readonly<Record<string, ModelValueType>> = {
     [EASEE_CHARGER_CURRENT_CAPABILITY_ID]: 'number',
 };
 
+/** Tesla companion devices are read for home authorization even though they are not loads. */
+const TESLA_MODEL_CAPABILITY_TYPES: Readonly<Record<string, Readonly<Record<string, ModelValueType>>>> = {
+    'homey:app:com.tesla.car:battery': {
+        charging_on: 'boolean', charging_state: 'tesla_charging_state', charging_port_cable: 'string',
+        measure_charge_current_max: 'number', measure_charge_current: 'number',
+        measure_charge_power: 'number', measure_charge_power_dc: 'number',
+    },
+    'homey:app:com.tesla.car:location': {
+        measure_location_latitude: 'number', measure_location_longitude: 'number',
+    },
+    'homey:app:com.tesla.car:car': {
+        car_state: 'string', car_shift_state: 'string', measure_car_drive_speed: 'number',
+    },
+};
+
 const NO_MODEL_CAPABILITIES: Readonly<Record<string, ModelValueType>> = {};
 
 /**
@@ -160,6 +176,7 @@ export type DeviceReadContractViolation =
     | { reason: 'missing_stamp'; capabilityId: string };
 
 const hasModelType = (value: unknown, type: ModelValueType): boolean => {
+    if (type === 'tesla_charging_state') return isTeslaChargingState(value);
     if (type === 'number') return typeof value === 'number' && Number.isFinite(value);
     return typeof value === type;
 };
@@ -183,8 +200,17 @@ export function findDeviceReadContractViolation(device: HomeyDeviceLike): Device
         capabilities,
         capabilityObj: capabilitiesObj as DeviceCapabilityMap,
     });
-    const modelTypes = resolveModelCapabilityTypes(device, model.capabilities);
-    for (const capabilityId of model.capabilities) {
+    const teslaTypes = TESLA_MODEL_CAPABILITY_TYPES[device.driverId ?? ''] ?? NO_MODEL_CAPABILITIES;
+    const modelTypes = { ...resolveModelCapabilityTypes(device, model.capabilities), ...teslaTypes };
+    // Session evidence also reads vendor entries present in capabilitiesObj;
+    // validate those before it can retain any part of this device read.
+    const readCapabilities = new Set([...model.capabilities,
+        ...Object.keys(teslaTypes).filter((id) => Object.hasOwn(capabilitiesObj, id))]);
+    const noEvProjection = hasTeslaChargingStateWithoutEvProjection(device);
+    for (const capabilityId of readCapabilities) {
+        // These complete vendor reads are valid, but cannot assert a new EV
+        // plug observation. Session ingestion still needs them to revoke control.
+        if (noEvProjection && capabilityId === 'evcharger_charging_state') continue;
         const type = modelTypes[capabilityId];
         if (type === undefined) continue;
         const entry: unknown = model.capabilityObj[capabilityId];

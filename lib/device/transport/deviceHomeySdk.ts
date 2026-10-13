@@ -29,6 +29,8 @@ export class DeviceHomeySdk {
     ) => void,
   ) {}
 
+  get runtime(): Homey.App['homey'] { return resolveHomeyInstance(this.homey); }
+
   async initialize(): Promise<void> {
     if (this.ready) return;
 

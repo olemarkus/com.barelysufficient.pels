@@ -240,6 +240,7 @@ function commitRefreshedSnapshot(refresh: SnapshotRefreshService, params: {
     // limited to the device poll, which loses the timing of individual reports.
     refresh.deviceSdk.updateTrackedDevices([
         ...snapshot.map((d) => d.id),
+        ...refresh.reader.chargingCurrentControl.homeSession.observedIds(),
         ...refresh.observationProducers.evCarLink.getObservedCarDeviceIds(),
     ]);
     fireSnapshotMutatedForRefresh(refresh, snapshot, previousSnapshot);
@@ -288,7 +289,10 @@ function adoptCommittedDeviceList(
             priorRawById: refresh.reader.snapshotStore.getTrackedRawDevicesById(),
         });
     refresh.reader.syncTrackedDevices(trackingList);
-    if (isFullRead) refresh.reader.snapshotStore.replaceLatestRawDevices(effectiveList);
+    if (isFullRead) {
+        refresh.reader.snapshotStore.replaceLatestRawDevices(effectiveList);
+        refresh.reader.chargingCurrentControl.homeSession.retainDevices(effectiveList);
+    }
 }
 
 // Rebuild the realtime tracking map and (re)sync native stepped-load command
@@ -531,7 +535,9 @@ export class SnapshotRefreshService {
         // from the raw list.
         observeEvCarLinkAndResubscribe(
             this.observationProducers.evCarLink,
-            (deviceIds) => this.deviceSdk.updateTrackedDevices(deviceIds),
+            (deviceIds) => this.deviceSdk.updateTrackedDevices([
+                ...deviceIds, ...this.reader.chargingCurrentControl.homeSession.observedIds(),
+            ]),
             read,
             fetchSource,
             snapshot,

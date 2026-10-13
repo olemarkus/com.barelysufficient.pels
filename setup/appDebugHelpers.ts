@@ -3,7 +3,7 @@ import { nextDeviceDumpId } from '../lib/diagnostics/deviceDumpId';
 import type { AppContext } from '../lib/app/appContext';
 import type { DeviceTransportPort } from '../lib/device/deviceTransport';
 import { fetchLiveMeterItems } from '../lib/device/transport/managerFetch';
-import { isPickableMeterItem } from '../lib/device/transport/managerHelpers';
+import { isPickableMeterItem, resolveDeviceClassKey } from '../lib/device/transport/managerHelpers';
 import type { HomeyEnergyMeterEntry } from '../packages/contracts/src/settingsUiApi';
 import { DEVICES_API_PATH, getRawDevices } from '../lib/device/transport/managerHomeyApi';
 import type { HomeyDeviceLike } from '../lib/utils/types';
@@ -91,7 +91,9 @@ export async function getHomeyEnergyMetersFromApp(
     .filter((device): device is HomeyDeviceLike & { id: string } => typeof device.id === 'string');
   if (devices.length === 0) throw new Error('Homey device list unavailable');
   const nameById = new Map(devices.map((device) => [device.id, device.name] as const));
-  const classById = new Map(devices.map((device) => [device.id, device.class] as const));
+  const classById = new Map(devices.map((device) => (
+    [device.id, resolveDeviceClassKey(device) ?? device.class] as const
+  )));
   return items
     .filter((item) => isPickableMeterItem({
       isCumulativeItem: item.type === 'cumulative',

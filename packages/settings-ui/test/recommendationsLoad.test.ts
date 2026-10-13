@@ -29,6 +29,8 @@ vi.mock('../src/ui/homey.ts', async () => {
     // Routed by path for the same reason as the settings below: this spec counts
     // the CAR inventory calls, and the hub-market read shares the seam.
     callApi: (...args: unknown[]) => {
+      if (args[1] === '/ui_charging_current') return Promise.resolve([]);
+      if (args[1] === '/ui_charging_access') return Promise.resolve({ configured: false, state: 'not_configured' });
       if (args[1] === OTHER_MODULES_API_PATH) return Promise.resolve({ state: 'unavailable' });
       if (args[1] === SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH) return historyApi(...args);
       if (args[1] === SETTINGS_UI_REFRESH_FLOW_CONFLICTS_PATH) return refreshFlowConflictsApi(...args);

@@ -1,4 +1,4 @@
-import { isNativeSteppedLoadControlEnabled } from '../nativeSteppedLoadWiring';
+import { isBuiltInSteppedLoadControlEnabled } from '../nativeSteppedLoadWiring';
 import { resolveSteppedLoadCeilingStep } from '../steppedLoadPowerCeiling';
 import { isEvTargetPowerConfig, resolveEvTargetPowerExactStep } from '../targetPowerReachability';
 import { resolveTargetPowerObservationProfile } from '../targetPowerObservationProfile';
@@ -12,7 +12,7 @@ export function preserveNewerReportedStepObservation(
     snapshot: TransportDeviceSnapshot,
 ): void {
     const next = snapshot;
-    if (isNativeSteppedLoadControlEnabled(previous) !== isNativeSteppedLoadControlEnabled(next)) return;
+    if (isBuiltInSteppedLoadControlEnabled(previous) !== isBuiltInSteppedLoadControlEnabled(next)) return;
     if (!next.steppedLoadProfile || !previous.reportedStepId) return;
     const previousObservedAtMs = previous.reportedStepObservedAtMs;
     const nextObservedAtMs = next.reportedStepObservedAtMs;

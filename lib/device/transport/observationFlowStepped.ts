@@ -1,5 +1,5 @@
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
-import { isNativeSteppedLoadControlEnabled } from '../nativeSteppedLoadWiring';
+import { isBuiltInSteppedLoadControlEnabled } from '../nativeSteppedLoadWiring';
 import {
     isEvTargetPowerConfig, resolveEvTargetPowerExactStep, resolveEvTargetPowerExactStepById,
 } from '../targetPowerReachability';
@@ -25,7 +25,7 @@ export function admitFlowSteppedLoadReport(
     const observedAtMs = Date.now();
     const snapshot = snapshotStore.getSnapshotByDeviceId(deviceId);
     if (!snapshot) return { kind: 'invalid' };
-    if (isNativeSteppedLoadControlEnabled(snapshot)) return { kind: 'native_control' };
+    if (isBuiltInSteppedLoadControlEnabled(snapshot)) return { kind: 'native_control' };
     if (!snapshot.steppedLoadProfile || isInvalidFlowFeedback(stepId, planningPowerW, observedAtMs)) {
         return { kind: 'invalid' };
     }

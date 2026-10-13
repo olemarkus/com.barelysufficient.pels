@@ -11,7 +11,7 @@ export type SteppedLoadWrite = {
 };
 
 /** Channel actually used to issue a stepped-load request. */
-export type SteppedLoadStepRequestTransport = 'native_capability' | 'flow';
+export type SteppedLoadStepRequestTransport = 'native_capability' | 'homey_action' | 'flow';
 
 /**
  * Whether the request was issued, and over which channel. Acceptance only:

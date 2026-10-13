@@ -211,9 +211,15 @@ const applySteppedRestoreFromOffIntent = async (
     if (await applyTargetIntent(ctx, targetCommand, observed)) deviceWriteCount += 1;
     return delta(deviceWriteCount, commandRequestCount);
   }
+  const prepareCurrentFirst = steppedAction.intent.controlAdapter?.activationOrder === 'current_before_start';
+  if (prepareCurrentFirst && !isRequestedStepMaterialized(steppedAction.stepActuation)) {
+    const requested = await applySteppedLoadCommand(ctx, steppedAction, snapshot);
+    return delta(deviceWriteCount, Number(requested));
+  }
   const stepRestore = await applySteppedLoadRestore(ctx, steppedAction, snapshot, hasShedDevices);
   if (
     stepRestore.ready
+    && !prepareCurrentFirst
     && (
       stepRestore.wroteBinary
       || !isRequestedStepMaterialized(steppedAction.stepActuation)

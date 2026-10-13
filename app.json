@@ -389,7 +389,8 @@
   },
   "permissions": [
     "homey:manager:api",
-    "homey:app:com.gruijter.powerhour"
+    "homey:app:com.gruijter.powerhour",
+    "homey:manager:geolocation"
   ],
   "api": {
     "ui_bootstrap": {
@@ -543,6 +544,30 @@
     "diagnostics_budget_decisions": {
       "method": "GET",
       "path": "/diagnostics/budget/decisions"
+    },
+    "ui_charging_access": {
+      "method": "GET",
+      "path": "/ui_charging_access"
+    },
+    "ui_charging_access_check": {
+      "method": "POST",
+      "path": "/ui_charging_access/check"
+    },
+    "ui_charging_access_save": {
+      "method": "PUT",
+      "path": "/ui_charging_access"
+    },
+    "ui_charging_access_remove": {
+      "method": "DELETE",
+      "path": "/ui_charging_access"
+    },
+    "ui_charging_current": {
+      "method": "GET",
+      "path": "/ui_charging_current"
+    },
+    "ui_charging_current_save": {
+      "method": "PUT",
+      "path": "/ui_charging_current/:deviceId"
     }
   },
   "images": {
@@ -851,6 +876,13 @@
             "type": "string",
             "title": {
               "en": "Previous step"
+            }
+          },
+          {
+            "name": "request_id",
+            "type": "string",
+            "title": {
+              "en": "Request ID"
             }
           }
         ],
@@ -1463,6 +1495,34 @@
           }
         ],
         "id": "price_lowest_today"
+      },
+      {
+        "title": {
+          "en": "Stepped-load request is still valid"
+        },
+        "titleFormatted": {
+          "en": "Stepped-load request [[request_id]] for [[device]] is still valid"
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            }
+          },
+          {
+            "name": "request_id",
+            "type": "text",
+            "title": {
+              "en": "Request ID"
+            }
+          }
+        ],
+        "hint": {
+          "en": "Check immediately before setting charging current, using the Request ID tag from Stepped device target changed. Do not add delays between this check and the action."
+        },
+        "id": "stepped_load_request_valid"
       }
     ],
     "actions": [

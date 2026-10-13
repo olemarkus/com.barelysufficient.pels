@@ -246,7 +246,7 @@ function isNativeEvControlAdapterActive(params: {
 }): boolean {
   return params.controlAdapter?.kind === 'capability_adapter'
     && params.controlAdapter.activationEnabled === true
-    && params.binaryWriteCapabilityId === 'charging_button';
+    && (params.binaryWriteCapabilityId === 'charging_button' || params.binaryWriteCapabilityId === 'charging_on');
 }
 
 function resolveActiveNativeSteppedProfile(params: {

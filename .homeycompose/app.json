@@ -388,7 +388,8 @@
   },
   "permissions": [
     "homey:manager:api",
-    "homey:app:com.gruijter.powerhour"
+    "homey:app:com.gruijter.powerhour",
+    "homey:manager:geolocation"
   ],
   "api": {
     "ui_bootstrap": {
@@ -542,6 +543,30 @@
     "diagnostics_budget_decisions": {
       "method": "GET",
       "path": "/diagnostics/budget/decisions"
+    },
+    "ui_charging_access": {
+      "method": "GET",
+      "path": "/ui_charging_access"
+    },
+    "ui_charging_access_check": {
+      "method": "POST",
+      "path": "/ui_charging_access/check"
+    },
+    "ui_charging_access_save": {
+      "method": "PUT",
+      "path": "/ui_charging_access"
+    },
+    "ui_charging_access_remove": {
+      "method": "DELETE",
+      "path": "/ui_charging_access"
+    },
+    "ui_charging_current": {
+      "method": "GET",
+      "path": "/ui_charging_current"
+    },
+    "ui_charging_current_save": {
+      "method": "PUT",
+      "path": "/ui_charging_current/:deviceId"
     }
   },
   "images": {

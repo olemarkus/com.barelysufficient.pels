@@ -128,7 +128,8 @@ const markAcceptedSteppedLoadCommand = (
     options.preserveMaterializedConfirmation === true
     && isRequestedStepMaterialized(action.stepActuation)
   ) return;
-  if (action.intent.transition?.effectiveTransition === 'initialize_unknown_step_at_low') {
+  if (action.intent.transition?.effectiveTransition === 'initialize_unknown_step_at_low'
+    && action.intent.controlAdapter?.activationOrder !== 'current_before_start') {
     ctx.markSteppedLoadDesiredStepIssued({
       deviceId: action.intent.id,
       desiredStepId: desiredStep.id,

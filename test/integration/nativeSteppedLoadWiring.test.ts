@@ -1535,6 +1535,7 @@ describe('native stepped-load wiring', () => {
 
     expect(mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed).toEqual([{
       tokens: {
+        request_id: expect.any(String),
         step_id: '6a',
         planning_power_w: 1380,
         planning_current_a: 0,
@@ -1580,6 +1581,7 @@ describe('native stepped-load wiring', () => {
       expect(put).not.toHaveBeenCalled();
       expect(mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed).toEqual([{
         tokens: {
+          request_id: expect.any(String),
           step_id: 'medium',
           planning_power_w: 1750,
           planning_current_a: 0,

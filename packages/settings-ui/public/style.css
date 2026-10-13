@@ -1159,6 +1159,32 @@ md-primary-tab.tab[active] {
   font-weight: var(--font-weight-medium);
 }
 
+.charging-current-setup {
+  display: grid;
+  padding-inline: var(--spacing-1);
+  gap: var(--spacing-3);
+  min-width: 0;
+}
+
+.charging-current-setup md-filled-text-field {
+  width: 100%;
+  min-width: 0;
+}
+
+.charging-current-setup .field__hint {
+  color: var(--text-secondary);
+}
+
+/* Homey's universal padding reset also applies to Material button hosts. */
+.charging-current-setup :is(md-filled-button, md-outlined-button) {
+  padding-inline: var(--spacing-6);
+}
+
+#device-detail-charging-current,
+.charging-current-setup > * {
+  min-width: 0;
+}
+
 /* Homey's reset reaches the dialog host and slotted content. Restore Material's
    centering and spacing here; shadow-root defaults lose to host-page rules. */
 md-dialog {

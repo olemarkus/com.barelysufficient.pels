@@ -57,6 +57,7 @@ passes without a reading. To use the longer durations there, have your Flow repo
 | --- | --- |
 | **Is there enough available power?** | Checks whether current available power can fit a specified extra load in kW. |
 | **Is there available power for device?** | Checks whether current available power can fit the selected device's estimated draw plus a specified extra load. Useful for stepped devices. |
+| **Stepped-load request is still valid** | Checks the Request ID from Stepped device target changed immediately before a user Flow sets charging current. A newer request, stop, control-setting change, or lost home session invalidates it. Do not add a delay between the check and action. |
 | **Operating mode is...** | Checks which mode is active. |
 | **Price level is...** | Checks the current price bucket. |
 | **Price level changes to... within...** | True when a coming price period switches to the chosen level within the number of hours you set. Only a switch counts: if the price is already at that level, a following period at the same level is not a change. The first period after missing prices counts as a change too. Use it to start heating ahead of expensive hours. It reads the prices PELS has now, so the answer can change when tomorrow's prices arrive or a new day starts. If PELS has no price for the current period, the Flow fails instead of answering. |
@@ -140,7 +141,7 @@ For water heaters and similar non-EV devices using the built-in stepped-load mod
 
 The full worked example lives in [Wire a Flow-Based Load Device](/how-to-headroom-expected-power-flow-control).
 
-For EV chargers, prefer the EV charger control mode and wire the **EV charger current (A)** tag directly to the charger app's available-current action. See [Configure an EV Charger](/ev-charger). Zaptec-specific notes live in [Configure a Zaptec EV Charger](/zaptec-ev-charger). An Easee charger needs neither card: PELS sets and reads its current directly, see [Configure an Easee EV Charger](/easee-ev-charger).
+For EV chargers, prefer the EV charger control mode and wire the **EV charger current (A)** tag directly to the charger app's available-current action. See [Configure an EV Charger](/ev-charger). Zaptec and Tesla also offer built-in current control using a Homey API key: see [Configure a Zaptec EV Charger](/zaptec-ev-charger) and [Tesla vehicle charging](/tesla-charging). If using a current-setting Flow, check **Stepped-load request is still valid** with its **Request ID** tag immediately before the action. An Easee charger needs neither card: PELS sets and reads its current directly, see [Configure an Easee EV Charger](/easee-ev-charger).
 
 ### EV battery reporting
 

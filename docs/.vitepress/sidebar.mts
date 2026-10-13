@@ -75,6 +75,7 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
       { text: 'Configure an EV Charger', link: '/ev-charger' },
       { text: 'Configure an Easee EV Charger', link: '/easee-ev-charger' },
       { text: 'Configure a Zaptec EV Charger', link: '/zaptec-ev-charger' },
+      { text: 'Tesla vehicle charging', link: '/tesla-charging' },
     ],
   },
   {

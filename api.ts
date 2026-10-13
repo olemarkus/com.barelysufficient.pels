@@ -92,7 +92,40 @@ const withApiLogging = <Ctx extends ApiContext, R>(
   }
 };
 
+function chargingAccess(homey: ApiContext['homey']) {
+  const transport = readPelsHost(homey)?.deviceManager;
+  if (!transport) throw new Error('PELS is starting. Try again shortly.');
+  return transport.chargingAccess;
+}
+
+function chargingCurrentControl(homey: ApiContext['homey']) {
+  const transport = readPelsHost(homey)?.deviceManager;
+  if (!transport) throw new Error('PELS is starting. Try again shortly.');
+  return transport.chargingCurrentControl;
+}
+
 export = {
+  ui_charging_current: withApiLogging('ui_charging_current', ({ homey }: ApiContext) => (
+    chargingCurrentControl(homey).list()
+  )),
+  ui_charging_current_save: withApiLogging('ui_charging_current_save', async (
+    { homey, params, body }: ApiContext & { params: { deviceId: string }; body?: unknown },
+  ) => {
+    await chargingCurrentControl(homey).save(params.deviceId, body);
+    await readPelsHost(homey)!.refreshTargetDevicesSnapshot();
+  }),
+  ui_charging_access: withApiLogging('ui_charging_access', ({ homey }: ApiContext) => (
+    chargingAccess(homey).status()
+  )),
+  ui_charging_access_check: withApiLogging('ui_charging_access_check', ({ homey }: ApiContext) => (
+    chargingAccess(homey).check()
+  )),
+  ui_charging_access_save: withApiLogging('ui_charging_access_save', (
+    { homey, body }: ApiContext & { body?: unknown },
+  ) => chargingAccess(homey).save(body)),
+  ui_charging_access_remove: withApiLogging('ui_charging_access_remove', ({ homey }: ApiContext) => (
+    chargingAccess(homey).remove()
+  )),
   ui_bootstrap: withApiLogging('ui_bootstrap', ({ homey }: ApiContext) => (
     buildSettingsUiBootstrap({ homey })
   )),

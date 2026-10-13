@@ -1,3 +1,7 @@
+import { isTeslaChargingDevice } from './chargingCurrentAdapter';
+import {
+  teslaChargingCapabilities, normalizeTeslaChargingUpdate, hasTeslaChargingSurface,
+} from './teslaChargingWiring';
 import type { DeviceControlAdapterSnapshot } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../utils/types';
@@ -185,6 +189,15 @@ export function applyNativeEvWiringOverlay(params: {
     capabilities,
     capabilityObj,
   } = params;
+  if (isTeslaChargingDevice(device)) {
+    return {
+      capabilities: [...new Set([...capabilities, 'evcharger_charging', 'evcharger_charging_state', 'measure_power'])],
+      capabilityObj: teslaChargingCapabilities(device, capabilityObj),
+      controlAdapter: { kind: 'capability_adapter', activationRequired: false, activationEnabled: true,
+        activationOrder: 'current_before_start' },
+      binaryWriteCapabilityId: 'charging_on', binaryObservationCapabilityId: 'evcharger_charging',
+    };
+  }
   const nativeWiringSupported = isZaptecGoNativeWiringCandidate(device);
   const nativeEvCapabilitiesPresent = hasOfficialEvChargerCapabilities(capabilities);
   if (!nativeWiringSupported) {
@@ -260,6 +273,8 @@ export function normalizeNativeEvCapabilityUpdate(params: {
 
   if (isEaseeUnderBuiltInControl(snapshot)) return resolveEaseeRealtimeUpdates(snapshot, capabilityId, value);
 
+  if (hasTeslaChargingSurface(snapshot)) return normalizeTeslaChargingUpdate(capabilityId, value);
+
   if (capabilityId === 'charging_button' && typeof value === 'boolean') {
     return [{ capabilityId: 'evcharger_charging', value }];
   }
@@ -295,8 +310,7 @@ export function normalizeNativeEvCapabilityUpdate(params: {
     // the ambiguous state.
     return [{
       capabilityId: 'evcharger_charging_state',
-      value: snapshot.evChargingState !== undefined
-        && isEvPlugStateConnected(snapshot.evChargingState)
+      value: isConnectedChargingState(snapshot.evChargingState)
         ? snapshot.evChargingState
         : 'plugged_in',
     }];
@@ -317,6 +331,7 @@ export function buildNativeEvObservationCapabilityObj(params: {
   const nextCapabilityObj: DeviceCapabilityMap = {
     ...((device.capabilitiesObj ?? {}) as DeviceCapabilityMap),
   };
+  if (isTeslaChargingDevice(device)) return teslaChargingCapabilities(device, nextCapabilityObj);
   if (previousSnapshot?.controlAdapter?.activationEnabled !== true) {
     return nextCapabilityObj;
   }
@@ -361,4 +376,8 @@ export function buildNativeEvObservationDevice(params: {
       previousSnapshot,
     }),
   };
+}
+
+function isConnectedChargingState(state: TransportDeviceSnapshot['evChargingState']): boolean {
+  return state !== undefined && isEvPlugStateConnected(state);
 }
