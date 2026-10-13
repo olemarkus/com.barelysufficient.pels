@@ -1,4 +1,6 @@
 import type Homey from 'homey';
+import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
+import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices, onObservedState } from '../helpers/deviceTransportHarness';
 import { emitCapability, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 import { mockHomeyInstance } from '../mocks/homey';
@@ -220,6 +222,9 @@ test.each(['device_update', 'device_fetch'] as const)(
       const initial = devices();
       await seedTransportDevices(transport, initial);
       const before = transport.getSnapshot()[0]!;
+      if (!hasObservedMeasuredPower(before)) throw new Error('Expected Tesla power observation');
+      const powerObservedAt = before.measuredPowerObservedAtMs;
+      expect(Number.isFinite(powerObservedAt)).toBe(true);
       expect(before).toMatchObject({ available: true, measuredPowerKw: 4 });
       const malformed = initial.map((device) => ({ ...device, available: false,
         capabilitiesObj: { ...device.capabilitiesObj } }));
@@ -232,7 +237,7 @@ test.each(['device_update', 'device_fetch'] as const)(
         await seedTransportDevices(transport, malformed);
       }
       expect(transport.getSnapshot()[0]).toMatchObject({ available: true, measuredPowerKw: 4,
-        measuredPowerObservedAtMs: before.measuredPowerObservedAtMs });
+        measuredPowerObservedAtMs: powerObservedAt });
       const put = vi.fn().mockResolvedValue(undefined);
       setRestClient({ get: vi.fn(), put });
       await transport.setCapability('battery', 'evcharger_charging', false);
@@ -259,7 +264,10 @@ test('fresh home evidence restores availability without restoring old power or o
     initial[0]!.available = true;
     await seedTransportDevices(transport, initial);
     await emitCapability('location', 'measure_location_latitude', 61);
-    const excludedPowerAt = transport.getSnapshot()[0]!.measuredPowerObservedAtMs;
+    const away = transport.getSnapshot()[0]!;
+    if (!hasObservedMeasuredPower(away)) throw new Error('Expected excluded home-power observation');
+    const excludedPowerAt = away.measuredPowerObservedAtMs;
+    expect(Number.isFinite(excludedPowerAt)).toBe(true);
     expect(transport.getSnapshot()[0]).toMatchObject({ available: false, measuredPowerKw: 0 });
     const observed = vi.fn();
     onObservedState(transport, observed);
@@ -292,12 +300,16 @@ test.each([
     const initial = devices();
     await seedTransportDevices(transport, initial);
     const previous = transport.getSnapshot()[0]!;
+    if (!isEvObserved(previous)) throw new Error('Expected Tesla EV observation');
+    const plugObservedAt = previous.evChargingStateObservedAtMs;
+    expect(previous.evChargingState).toBe('plugged_in_charging');
+    expect(Number.isFinite(plugObservedAt)).toBe(true);
     const updated = initial.map((device) => device.id === 'battery'
       ? { ...device, capabilitiesObj: { ...device.capabilitiesObj, charging_state: cap(state) } } : device);
     if (source === 'device_update') emitDeviceUpdate(updated[0]);
     else await seedTransportDevices(transport, updated);
     expect(transport.getSnapshot()[0]).toMatchObject({ available: false, measuredPowerKw: 0,
-      evChargingState: previous.evChargingState, evChargingStateObservedAtMs: previous.evChargingStateObservedAtMs });
+      evChargingState: 'plugged_in_charging', evChargingStateObservedAtMs: plugObservedAt });
     const put = vi.fn().mockResolvedValue(undefined);
     setRestClient({ get: vi.fn(), put });
     await expect(transport.setCapability('battery', 'evcharger_charging', true)).rejects.toThrow('at home');
