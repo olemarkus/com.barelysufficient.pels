@@ -1,6 +1,6 @@
 PELS gebruikt je zonne-overschot om water te verwarmen, je woning voor te verwarmen of te koelen en je auto te laden. Het laadvermogen wordt aangepast aan de beschikbare zonnestroom. Laadpalen van onder meer Easee en Zaptec, warmtepompen, thermostaten, boilers en thuisbatterijen worden aangestuurd via de functies die hun Homey-apps bieden, ook als de apparaten van verschillende merken zijn.
 
-Je terugleverprijs telt mee in de planning, ook wanneer die negatief is. PELS leert van de productie en benut daardoor ook ongebruikte zonnestroom bij nul-teruglevering. Op de Usage-pagina zie je de productie, het eigen verbruik, de teruglevering en de bespaarde kosten voor stroom uit het net.
+Je terugleverprijs telt mee in de planning, ook wanneer die negatief is. Bij geschikte installaties kan PELS ook ongebruikte zonneproductie benutten wanneer teruglevering is uitgeschakeld. Op de Usage-pagina zie je de productie, het eigen verbruik, de teruglevering en de bespaarde kosten voor stroom uit het net.
 
 Een thuisbatterij, zoals een Sessy of Marstek Venus, slaat het zonne-overschot op dat de andere apparaten niet gebruiken. PELS verlaagt het laadvermogen van de batterij als een apparaat met hogere prioriteit stroom nodig heeft. De batterij kan ook ontladen om het verbruik onder je ingestelde vermogensgrens te houden.
 
