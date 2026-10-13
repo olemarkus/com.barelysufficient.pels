@@ -10,7 +10,7 @@ import {
   type PlanInputDevice,
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
-import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
+import { buildBindingDailyBudgetSnapshot } from '../helpers/bindingDailyBudgetFixture';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
@@ -23,7 +23,6 @@ import { planBuilderWiring } from '../helpers/planBuilderWiring';
 // shed a device in cycle 1, reject its restore on headroom in cycle 2, and assert
 // the finalized reason names the constraint that actually binds.
 
-const HOUR_MS = 60 * 60 * 1000;
 const DEVICE_ID = 'dev_heater';
 const DAY_START_UTC = Date.UTC(2026, 4, 10, 0, 0, 0);
 const SECOND_BUILD_AT_MS = DAY_START_UTC + 10 * 60 * 1000;
@@ -31,64 +30,6 @@ const SECOND_BUILD_AT_MS = DAY_START_UTC + 10 * 60 * 1000;
 // fresh 60 s shed cooldown (`getShedCooldownState` keys on the most recent of
 // instability/recovery), so the headroom rejection only surfaces one cycle later.
 const THIRD_BUILD_AT_MS = SECOND_BUILD_AT_MS + 3 * 60 * 1000;
-
-// A binding daily budget: 1.1 kWh per hourly bucket keeps the daily pace (~1.1-1.4 kW)
-// below the (large) capacity soft limit, so softLimitSource === 'daily', while
-// leaving positive headroom in cycle 2 (no shortfall guard) — matching the prod
-// shape where restores were rejected on reserves, not on a breach.
-const buildDay = (): DailyBudgetDayPayload => {
-  const hours = 24;
-  const startUtc: string[] = [];
-  const startLocalLabels: string[] = [];
-  const plannedKWh: number[] = [];
-  const plannedWeight: number[] = [];
-  const allowedCumKWh: number[] = [];
-  const actualKWh: number[] = [];
-  for (let i = 0; i < hours; i += 1) {
-    startUtc.push(new Date(DAY_START_UTC + i * HOUR_MS).toISOString());
-    startLocalLabels.push(String(i).padStart(2, '0'));
-    plannedKWh.push(1.1);
-    plannedWeight.push(1);
-    actualKWh.push(0);
-    allowedCumKWh.push(1.1 * (i + 1));
-  }
-  return {
-    dateKey: '2026-05-10',
-    timeZone: 'UTC',
-    nowUtc: new Date(DAY_START_UTC).toISOString(),
-    dayStartUtc: new Date(DAY_START_UTC).toISOString(),
-    currentBucketIndex: 0,
-    budget: { enabled: true, dailyBudgetKWh: 26.4, priceShapingEnabled: false },
-    state: {
-      usedNowKWh: 0,
-      allowedNowKWh: 1.1,
-      remainingKWh: 25.3,
-      deviationKWh: 0,
-      exceeded: false,
-      frozen: false,
-      confidence: 1,
-      priceShapingActive: false,
-    },
-    buckets: {
-      startUtc,
-      startLocalLabels,
-      plannedWeight,
-      plannedKWh,
-      plannedUncontrolledKWh: Array.from({ length: hours }, () => 0),
-      plannedControlledKWh: plannedKWh.slice(),
-      actualKWh,
-      actualControlledKWh: Array.from({ length: hours }, () => 0),
-      actualUncontrolledKWh: Array.from({ length: hours }, () => 0),
-      allowedCumKWh,
-      price: Array.from({ length: hours }, () => 30),
-    },
-  };
-};
-
-const buildDailyBudgetSnapshot = (): DailyBudgetUiPayload => ({
-  todayKey: '2026-05-10',
-  days: { '2026-05-10': buildDay() },
-});
 
 const buildDevice = (on: boolean): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({
   available: true,
@@ -125,7 +66,7 @@ const buildBuilder = (params: {
   capacityGuard: params.capacityGuard,
   getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: params.limitKw, marginKw: 0, periodMinutes: 60 }),
   getPowerTracker: () => params.tracker,
-  getDailyBudgetSnapshot: () => (params.dailyBudget ? buildDailyBudgetSnapshot() : null),
+  getDailyBudgetSnapshot: () => (params.dailyBudget ? buildBindingDailyBudgetSnapshot(DAY_START_UTC) : null),
 }, createPlanEngineState());
 
 // Shed in cycle 1 (device on, draw over the binding pace), then advance past the

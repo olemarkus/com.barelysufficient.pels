@@ -392,22 +392,24 @@ const combinedFromSnapshot = (snapshot: DailyBudgetUiPayload | null): CombinedPr
   };
 };
 
-// Wrapper: inject the price-layer `combinedPrices` derived from the same snapshot
-// the test already supplies, so existing budget-overlay assertions stay intact.
-type RawDiagnosticsParams = TaskEvaluationFixture;
-// Fixture defaults for the live-wiring inputs: no committed plans, no excluded
-// devices, and no device parked at its target.
-type DefaultedDiagnosticsParam =
-  | 'isReservationSuppressed'
-  | 'getPrioritiesForDevices'
-  | 'activePlans'
-  | 'resolveDeviceExclusion'
-  | 'getStallClassification'
-  | 'getDeliveredEnergyKWh';
+// Each case supplies only what differs from a fresh EV task at NOW_MS. Keep the
+// snapshot's legacy field presence intact, and derive prices from that same
+// snapshot so the budget and price layers see identical per-hour values.
 const buildDeferredObjectiveDiagnostics = (
-  params: Omit<RawDiagnosticsParams, 'buildPriceHorizon' | DefaultedDiagnosticsParam>
-    & Partial<Pick<RawDiagnosticsParams, DefaultedDiagnosticsParam>>,
+  overrides: Partial<Omit<TaskEvaluationFixture, 'buildPriceHorizon'>> = {},
 ): ReturnType<typeof buildDeferredObjectiveDiagnosticsRaw> => {
+  const params = {
+    hasSolarProduction: false,
+    powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
+    nowMs: NOW_MS,
+    timeZone: 'UTC',
+    devices: [buildDevice()],
+    settings: normalizeDeferredObjectiveSettings(buildSettings()),
+    powerTracker: buildPowerTracker(),
+    dailyBudgetSnapshot: buildSnapshot(),
+    priceOptimizationEnabled: true,
+    ...overrides,
+  };
   const combined = combinedFromSnapshot(params.dailyBudgetSnapshot);
   return buildFixtureDiagnostics({
     ...params,
@@ -424,7 +426,7 @@ const buildDeferredObjectiveDiagnostics = (
 // The lifecycle lane: the batch build, then the stall status rewrite it alone
 // applies over the result.
 const buildReportedDiagnostics = (
-  params: Parameters<typeof buildDeferredObjectiveDiagnostics>[0],
+  params: Partial<Omit<TaskEvaluationFixture, 'buildPriceHorizon'>>,
 ): ReturnType<typeof buildDeferredObjectiveDiagnosticsRaw> => reportStalledTasksAsSatisfied(
   buildDeferredObjectiveDiagnostics(params),
   params.getStallClassification ?? (() => undefined),
@@ -435,15 +437,29 @@ const buildReportedDiagnostics = (
 // supplies, sourced through the production builder so the horizon entries match
 // what the live cycle would derive from the price layer.
 const buildDeferredObjectivePolicyHorizon = (
-  params: Omit<Parameters<typeof buildDeferredObjectivePolicyHorizonRaw>[0], 'priceHorizon'>,
-): ReturnType<typeof buildDeferredObjectivePolicyHorizonRaw> => buildDeferredObjectivePolicyHorizonRaw({
-  ...params,
-  priceHorizon: buildPriceHorizonFromCombined(
-    combinedFromSnapshot(params.dailyBudgetSnapshot),
-    params.nowMs,
-    params.deadlineAtMs,
-  ),
-});
+  overrides: Partial<Omit<Parameters<typeof buildDeferredObjectivePolicyHorizonRaw>[0], 'priceHorizon'>> = {},
+): ReturnType<typeof buildDeferredObjectivePolicyHorizonRaw> => {
+  const params = {
+    hasSolarProduction: false,
+    powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
+    nowMs: NOW_MS,
+    deadlineAtMs: NOW_MS + 4 * HOUR_MS,
+    priceOptimizationEnabled: true,
+    dailyBudgetSnapshot: buildSnapshot(),
+    exemptFromBudget: false,
+    higherPriorityUnbookedPowerKw: 0,
+    higherPriorityReservations: [],
+    ...overrides,
+  };
+  return buildDeferredObjectivePolicyHorizonRaw({
+    ...params,
+    priceHorizon: buildPriceHorizonFromCombined(
+      combinedFromSnapshot(params.dailyBudgetSnapshot),
+      params.nowMs,
+      params.deadlineAtMs,
+    ),
+  });
+};
 
 const sumReserveAllocation = (plannedBuckets: readonly DeferredObjectivePlannedBucket[]): number => (
   plannedBuckets.reduce((sum, bucket) => sum + (bucket.reserve ? bucket.plannedUsefulEnergyKWh : 0), 0)
@@ -598,17 +614,9 @@ describe('resolveDeferredObjectiveDeadline', () => {
 describe('buildDeferredObjectivePolicyHorizon', () => {
   it('carries the raw per-bucket price through to the horizon buckets', () => {
     const result = buildDeferredObjectivePolicyHorizon({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
-      priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot({
         prices: Array.from({ length: 24 }, (_, index) => (index === 18 ? 100 : 10)),
       }),
-      exemptFromBudget: false,
-      higherPriorityUnbookedPowerKw: 0,
-      higherPriorityReservations: [],
     });
 
     expect(result.reasonCode).toBeNull();
@@ -621,18 +629,10 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
 
   it("sets per-bucket maxUsefulEnergyKWh from the hour's own controlled share", () => {
     const result = buildDeferredObjectivePolicyHorizon({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
-      priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot({
         plannedControlledKWh: Array.from({ length: 24 }, () => 2.5),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
       }),
-      exemptFromBudget: false,
-      higherPriorityUnbookedPowerKw: 0,
-      higherPriorityReservations: [],
     });
     expect(result.reasonCode).toBeNull();
     for (const bucket of result.buckets) {
@@ -648,19 +648,11 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
     // be offered it. Differencing the plateaued cumulative used to return 0 here
     // and silently unbook the entire tail of the day.
     const result = buildDeferredObjectivePolicyHorizon({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
-      priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot({
         allowedCumKWh: Array.from({ length: 24 }, (_, index) => Math.min((index + 1) * 2, 20)),
         plannedControlledKWh: Array.from({ length: 24 }, () => 0.75),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.25),
       }),
-      exemptFromBudget: false,
-      higherPriorityUnbookedPowerKw: 0,
-      higherPriorityReservations: [],
     });
     expect(result.reasonCode).toBeNull();
     expect(result.buckets.length).toBeGreaterThan(0);
@@ -673,18 +665,10 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
     // The producer already floors the share at zero (`buildPlanBreakdown`), so a
     // background-swamped hour arrives as a plain 0 rather than a negative to clamp.
     const result = buildDeferredObjectivePolicyHorizon({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
-      priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot({
         plannedControlledKWh: Array.from({ length: 24 }, () => 0),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 5),
       }),
-      exemptFromBudget: false,
-      higherPriorityUnbookedPowerKw: 0,
-      higherPriorityReservations: [],
     });
     expect(result.reasonCode).toBeNull();
     for (const bucket of result.buckets) {
@@ -698,18 +682,10 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
     // same silent unbooking this whole change fixes, arriving from the other
     // direction. Resolve to "no daily-budget cap" and let the hard cap bind.
     const result = buildDeferredObjectivePolicyHorizon({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
-      priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot({
         plannedControlledKWh: Array.from({ length: 24 }, () => -1),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
       }),
-      exemptFromBudget: false,
-      higherPriorityUnbookedPowerKw: 0,
-      higherPriorityReservations: [],
     });
     expect(result.reasonCode).toBeNull();
     expect(result.buckets.length).toBeGreaterThan(0);
@@ -719,17 +695,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
   });
 
   it('omits the per-bucket cap when the controlled share is missing (legacy snapshot)', () => {
-    const result = buildDeferredObjectivePolicyHorizon({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
-      priceOptimizationEnabled: true,
-      dailyBudgetSnapshot: buildSnapshot(),
-      exemptFromBudget: false,
-      higherPriorityUnbookedPowerKw: 0,
-      higherPriorityReservations: [],
-    });
+    const result = buildDeferredObjectivePolicyHorizon();
     expect(result.reasonCode).toBeNull();
     for (const bucket of result.buckets) {
       expect(bucket.maxUsefulEnergyKWh).toBeUndefined();
@@ -745,26 +711,11 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
       plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
     };
     const capped = buildDeferredObjectivePolicyHorizon({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
-      priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot(snapshot),
-      exemptFromBudget: false,
-      higherPriorityUnbookedPowerKw: 0,
-      higherPriorityReservations: [],
     });
     const exempt = buildDeferredObjectivePolicyHorizon({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
-      priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot(snapshot),
       exemptFromBudget: true,
-      higherPriorityUnbookedPowerKw: 0,
-      higherPriorityReservations: [],
     });
     expect(capped.buckets.length).toBeGreaterThan(0);
     expect(capped.buckets.every((bucket) => bucket.maxUsefulEnergyKWh === 0)).toBe(true);
@@ -774,16 +725,11 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
 
   it('deducts higher-priority physical and energy reservations from the matching hour', () => {
     const result = buildDeferredObjectivePolicyHorizon({
-      hasSolarProduction: false,
-      nowMs: NOW_MS,
-      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
-      priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot({
         plannedControlledKWh: Array.from({ length: 24 }, () => 3.5),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
       }),
       powerLimits: capacityOnlyPowerLimits(10),
-      higherPriorityUnbookedPowerKw: 0,
       higherPriorityReservations: [{
         deviceId: 'higher-device',
         topologyKey: 'hour-0',
@@ -793,7 +739,6 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
         exemptFromBudget: false,
         energySegments: [{ startMs: NOW_MS, endMs: NOW_MS + HOUR_MS, plannedKWh: 2 }],
       }],
-      exemptFromBudget: false,
     });
     expect(result.reasonCode).toBeNull();
     expect(result.buckets[0]?.reservedHeadroomKw).toBeCloseTo(6.5);
@@ -807,10 +752,7 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
 
   it('adds an unbooked higher device maximum to timed higher-task bookings', () => {
     const result = buildDeferredObjectivePolicyHorizon({
-      hasSolarProduction: false,
-      nowMs: NOW_MS,
       deadlineAtMs: NOW_MS + 2 * HOUR_MS,
-      priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot({
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
       }),
@@ -833,16 +775,12 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
   it('keeps different higher-priority physical steps exact within one source hour', () => {
     const splitMs = NOW_MS + HOUR_MS / 2;
     const result = buildDeferredObjectivePolicyHorizon({
-      hasSolarProduction: false,
-      nowMs: NOW_MS,
       deadlineAtMs: NOW_MS + 2 * HOUR_MS,
-      priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot({
         allowedCumKWh: Array.from({ length: 24 }, (_, index) => (index + 1) * 10),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
       }),
       powerLimits: capacityOnlyPowerLimits(10),
-      higherPriorityUnbookedPowerKw: 0,
       higherPriorityReservations: [
         {
           deviceId: 'higher-device',
@@ -863,7 +801,6 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
           energySegments: [{ startMs: splitMs, endMs: NOW_MS + HOUR_MS, plannedKWh: 0.5 }],
         },
       ],
-      exemptFromBudget: false,
     });
 
     expect(result.reasonCode).toBeNull();
@@ -939,19 +876,12 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
 
   it("uses gross background for reservedHeadroomKw and the hour's share for the daily-budget cap", () => {
     const result = buildDeferredObjectivePolicyHorizon({
-      hasSolarProduction: false,
-      nowMs: NOW_MS,
-      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
-      priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot({
         plannedControlledKWh: Array.from({ length: 24 }, () => 1.5),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
         plannedGrossUncontrolledKWh: Array.from({ length: 24 }, () => 2.5),
       }),
       powerLimits: capacityOnlyPowerLimits(5),
-      exemptFromBudget: false,
-      higherPriorityUnbookedPowerKw: 0,
-      higherPriorityReservations: [],
     });
 
     expect(result.reasonCode).toBeNull();
@@ -963,17 +893,10 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
 
   it('does not let negative net-background fallback raise reservedHeadroomKw above the hard cap', () => {
     const result = buildDeferredObjectivePolicyHorizon({
-      hasSolarProduction: false,
-      nowMs: NOW_MS,
-      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
-      priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot({
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => -1),
       }),
       powerLimits: capacityOnlyPowerLimits(5),
-      exemptFromBudget: false,
-      higherPriorityUnbookedPowerKw: 0,
-      higherPriorityReservations: [],
     });
 
     expect(result.reasonCode).toBeNull();
@@ -987,16 +910,10 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
     // forecast, which the allocator reads as "no headroom cap" and the rate test
     // against a higher-priority claim never applies.
     const result = buildDeferredObjectivePolicyHorizon({
-      hasSolarProduction: false,
-      nowMs: NOW_MS,
-      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
-      priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot({
         plannedGrossUncontrolledKWh: Array.from({ length: 24 }, () => 2.5),
       }),
       powerLimits: powerLimits({ enabled: false, limitKw: 10, marginKw: 0 }, null),
-      exemptFromBudget: false,
-      higherPriorityUnbookedPowerKw: 0,
       higherPriorityReservations: [{
         deviceId: 'higher-device',
         topologyKey: 'hour-0',
@@ -1067,9 +984,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
     const profile = buildPowerTracker().objectiveProfiles?.['ev-1'];
     const diagnostics = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [buildDevice({ priority: 1 }), buildDevice({ id: 'ev-2', name: 'Second EV', priority: 2 })],
       settings,
       powerTracker: buildPowerTracker({ objectiveProfiles: { 'ev-1': profile!, 'ev-2': profile! } }),
@@ -1080,7 +994,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           index < 17 ? 0 : (index - 16) * 2
         )),
       }),
-      priceOptimizationEnabled: true,
       powerLimits: capacityOnlyPowerLimits(1.5),
     });
     const high = diagnostics.find((diagnostic) => diagnostic.deviceId === 'ev-1');
@@ -1122,9 +1035,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
     const profile = buildPowerTracker().objectiveProfiles?.['ev-1'];
     const diagnostics = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [buildDevice({ priority: 1 }), buildDevice({ id: 'ev-2', name: 'Second EV', priority: 2 })],
       settings,
       powerTracker: buildPowerTracker({ objectiveProfiles: { 'ev-1': profile!, 'ev-2': profile! } }),
@@ -1135,7 +1045,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           index < 17 ? 0 : (index - 16) * 2
         )),
       }),
-      priceOptimizationEnabled: true,
       powerLimits: capacityOnlyPowerLimits(2.1),
     });
     const low = diagnostics.find((diagnostic) => diagnostic.deviceId === 'ev-2');
@@ -1166,7 +1075,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       priceOptimizationEnabled: true,
       powerLimits: capacityOnlyPowerLimits(1.5),
     };
-    const first = buildDeferredObjectiveDiagnostics({ hasSolarProduction: false, ...common, devices: [highPending, lowDevice] });
+    const first = buildDeferredObjectiveDiagnostics({ ...common, devices: [highPending, lowDevice] });
     const firstLow = first.find((diagnostic) => diagnostic.deviceId === 'ev-2')!;
     const firstLowHours = buildHoursFromHorizonPlan(firstLow.evaluation)!;
     const lowLatest = {
@@ -1207,7 +1116,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     };
 
     const coordinated = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
       ...common,
       nowMs: NOW_MS + 30 * 60 * 1000,
       devices: [highReady, lowDevice],
@@ -1276,14 +1184,11 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
     const profile = buildPowerTracker().objectiveProfiles?.['ev-1'];
     const diagnostics = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
       nowMs: NOW_MS + 30 * 60 * 1000,
-      timeZone: 'UTC',
       devices: [buildDevice({ priority: 1 }), buildDevice({ id: 'ev-2', name: 'Second EV', priority: 2 })],
       settings,
       powerTracker: buildPowerTracker({ objectiveProfiles: { 'ev-1': profile!, 'ev-2': profile! } }),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
       powerLimits: capacityOnlyPowerLimits(1.5),
       activePlans: {
         version: 1,
@@ -1355,9 +1260,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     tracker.observe([high, { ...low, priority: 2 }], NOW_MS - 30_000, () => false);
     const profile = buildPowerTracker().objectiveProfiles?.['ev-1'];
     const diagnostics = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [low],
       settings,
       powerTracker: buildPowerTracker({ objectiveProfiles: { 'z-high': profile!, 'a-low': profile! } }),
@@ -1365,7 +1267,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         prices: Array.from({ length: 24 }, () => 5),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
       }),
-      priceOptimizationEnabled: true,
       activePlans,
       powerLimits: capacityOnlyPowerLimits(1.5),
       priorityAllocationTracker: tracker,
@@ -1387,9 +1288,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(lowHours).not.toContain(NOW_MS + 2 * HOUR_MS);
 
     const afterGrace = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
       nowMs: NOW_MS + ELIGIBILITY_ABANDON_GRACE_MS + 1,
-      timeZone: 'UTC',
       devices: [low],
       settings,
       powerTracker: buildPowerTracker({ objectiveProfiles: { 'z-high': profile!, 'a-low': profile! } }),
@@ -1397,7 +1296,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         prices: Array.from({ length: 24 }, () => 5),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
       }),
-      priceOptimizationEnabled: true,
       activePlans,
       powerLimits: capacityOnlyPowerLimits(1.5),
       priorityAllocationTracker: tracker,
@@ -1472,14 +1370,11 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     tracker.observe([high, low], NOW_MS, () => false);
     const profile = buildPowerTracker().objectiveProfiles?.['ev-1'];
     const diagnostics = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
       nowMs: NOW_MS + 30 * 60 * 1000,
-      timeZone: 'UTC',
       devices: [low],
       settings,
       powerTracker: buildPowerTracker({ objectiveProfiles: { 'ev-1': profile!, 'ev-2': profile! } }),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
       powerLimits: capacityOnlyPowerLimits(1.5),
       priorityAllocationTracker: tracker,
       activePlans: {
@@ -1557,13 +1452,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     };
     const device = buildDevice({ priority: 1 });
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [device],
       settings,
-      powerTracker: buildPowerTracker(),
-      dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: false,
       activePlans,
       powerLimits: capacityOnlyPowerLimits(10),
@@ -1645,13 +1535,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // 20 minutes into the first booked hour.
     const nowMs = NOW_MS + 20 * 60 * 1000;
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
       nowMs,
-      timeZone: 'UTC',
       devices: [device],
       settings,
-      powerTracker: buildPowerTracker(),
-      dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: false,
       activePlans,
       powerLimits: capacityOnlyPowerLimits(10),
@@ -1684,15 +1570,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // adds one more hour, so deadline at 22:00 (5 hours after NOW_MS=17:00)
     // keeps the plan on_track with the reserve untouched.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' })),
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic).toMatchObject({
@@ -1722,15 +1601,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
     };
     const run = (settings: typeof baseSettings) => buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings,
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(exhausted),
-      priceOptimizationEnabled: true,
     })[0];
 
     // Control: without rescue the spent budget collapses the per-bucket caps to zero
@@ -1796,15 +1668,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     prices[new Date(NOW_MS + HOUR_MS).getUTCHours()] = 5;
 
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings,
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ ...exhausted, prices }),
-      priceOptimizationEnabled: true,
       activePlans,
     });
 
@@ -1871,15 +1736,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     prices[new Date(NOW_MS + HOUR_MS).getUTCHours()] = 5;
 
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings,
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices }),
-      priceOptimizationEnabled: true,
       activePlans,
     });
 
@@ -1939,15 +1797,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
     const activePlans = buildCommittedEvPlans(deadlineAtMs);
     const run = (nowMs: number) => buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
       nowMs,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings,
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
-      priceOptimizationEnabled: true,
       activePlans,
     })[0];
 
@@ -1981,15 +1833,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       [{ startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1 }],
     );
     return buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings,
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
-      priceOptimizationEnabled: true,
       activePlans,
     })[0]?.horizonPlan?.currentHourClaim;
   };
@@ -2021,15 +1866,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       stateOfCharge: stateOfChargeFixture({ percent: 43, observedAtMs: NOW_MS }),
     });
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [device],
       settings,
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
-      priceOptimizationEnabled: true,
       activePlans: buildCommittedEvPlans(deadlineAtMs),
     });
 
@@ -2043,15 +1882,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   it('runs the allocator at bootstrap when no commitment covers the active hour', () => {
     // No activePlans ⇒ resolveCommittedHours undefined ⇒ fresh allocation even mid-hour.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 })),
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
-      priceOptimizationEnabled: true,
       activePlans: createEmptyActivePlans(),
     });
     const buckets = diagnostic?.horizonPlan?.plannedBuckets ?? [];
@@ -2063,13 +1895,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings,
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
       priceOptimizationEnabled: false, // deliberate config off — NOT a transient gap
       activePlans: buildCommittedEvPlans(deadlineAtMs),
@@ -2117,15 +1943,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
     };
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings,
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
-      priceOptimizationEnabled: true,
       activePlans,
     });
     // Frozen read mid-hour ⇒ current bucket reflects the SETTLED 3 kWh, not the stale 1.
@@ -2170,15 +1989,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     };
 
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings,
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
-      priceOptimizationEnabled: true,
       activePlans,
     });
     const buckets = diagnostic?.horizonPlan?.plannedBuckets ?? [];
@@ -2227,15 +2039,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     };
 
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [buildDevice({ stateOfCharge: stateOfChargeFixture({ percent: 43, observedAtMs: NOW_MS }) })],
       settings,
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
-      priceOptimizationEnabled: true,
       activePlans,
     });
 
@@ -2288,10 +2094,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     prices[new Date(NOW_MS + HOUR_MS).getUTCHours()] = 5;
 
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
       nowMs: settleNowMs,
-      timeZone: 'UTC',
       devices: [buildDevice({ stateOfCharge: stateOfChargeFixture({ percent: 43, observedAtMs: settleNowMs }) })],
       settings,
       powerTracker: buildPowerTracker({
@@ -2314,7 +2117,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         },
       }),
       dailyBudgetSnapshot: buildSnapshot({ nowMs: settleNowMs, prices }),
-      priceOptimizationEnabled: true,
       activePlans,
     });
 
@@ -2366,15 +2168,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
     };
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings,
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
-      priceOptimizationEnabled: true,
       activePlans,
     });
     const buckets = diagnostic?.horizonPlan?.plannedBuckets ?? [];
@@ -2425,15 +2220,10 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       };
     };
     const run = (plans: DeferredObjectiveActivePlansV1) => buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [buildTemperatureDevice()],
       settings,
       powerTracker: buildTemperaturePowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
-      priceOptimizationEnabled: true,
       activePlans: plans,
     })[0];
 
@@ -2456,15 +2246,10 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('plans a persisted temperature objective from learned kWh per degree', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [buildTemperatureDevice()],
       settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
       powerTracker: buildTemperaturePowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic).toMatchObject({
@@ -2482,10 +2267,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('plans cooling progress toward a lower temperature target', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: resolveObjectiveDeviceInputs(
         [buildTemperatureDevice({ currentTemperature: 26 })],
         () => 'cooling',
@@ -2517,7 +2298,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         },
       },
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic).toMatchObject({
@@ -2553,15 +2333,10 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
     });
     const run = (m2: number) => buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [buildTemperatureDevice()],
       settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
       powerTracker: buildVarianceTracker(m2),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     })[0];
 
     const buffered = run(0.48); // σ = 0.4
@@ -2592,15 +2367,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
     });
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ enforcement: 'hard' })),
       powerTracker: tracker,
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     });
     expect(diagnostic?.energyNeededKWh).toBeCloseTo(6);
     expect(diagnostic?.kWhPerUnitBanded).toBeCloseTo(0.2);
@@ -2613,10 +2382,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // must surface `cannot_meet`, not silently accept the inflated rate.
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00'); // 4 hours after NOW_MS
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [buildTemperatureDevice({
         currentTemperature: 20,
         steppedLoadProfile: {
@@ -2651,7 +2416,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         allowedCumKWh: Array.from({ length: 24 }, (_, index) => (index + 1) * 2),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 1),
       }),
-      priceOptimizationEnabled: true,
     });
 
     // 45 °C × 0.62 kWh/°C = 27.9 kWh of need, but each bucket caps at min(2 kW × 1h, 2 − 1) = 1 kWh.
@@ -2666,19 +2430,11 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // diagnostic must carry that so the UI can tell the user the budget — not the
     // device or the schedule — is the constraint.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
-      settings: normalizeDeferredObjectiveSettings(buildSettings()),
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({
         prices: Array.from({ length: 24 }, () => 5),
         plannedControlledKWh: Array.from({ length: 24 }, () => 0),
         plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
       }),
-      priceOptimizationEnabled: true,
     });
 
     // Budget-bound (uncapped it would fit), so the verdict is
@@ -2691,15 +2447,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // Use a 22:00 deadline so the 4 kWh need at 1 kW fits inside the primary
     // window without dipping into the 1-hour deadline reserve.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' })),
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('on_track');
@@ -2714,15 +2463,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // resolver asks a value question only. See `lib/observer/AGENTS.md` for the
     // doctrine and `diagnosticProgress.ts` for the gate.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [buildTemperatureDevice()],
       settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
       powerTracker: buildTemperaturePowerTracker(),
-      dailyBudgetSnapshot: buildSnapshot(),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic?.objectiveKind).toBe('temperature');
@@ -2733,15 +2476,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('does not plan a temperature objective for a device that has never reported a value', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [buildTemperatureDevice({ currentTemperature: undefined })],
       settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
       powerTracker: buildTemperaturePowerTracker(),
-      dailyBudgetSnapshot: buildSnapshot(),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic).toMatchObject({
@@ -2760,15 +2497,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // field is gone from `ObjectiveDeviceInput` entirely, so there is no stamp
     // left here to refuse a reading over.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [buildTemperatureDevice({ currentTemperature: 55 })],
       settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
       powerTracker: buildTemperaturePowerTracker(),
-      dailyBudgetSnapshot: buildSnapshot(),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic?.objectiveKind).toBe('temperature');
@@ -2783,15 +2514,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // could not reach the satisfied path and the energy resolver computed zero
     // need — the task planned no hours and never admitted the charger.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [buildDevice({ evChargingState: 'plugged_in' })],
-      settings: normalizeDeferredObjectiveSettings(buildSettings()),
-      powerTracker: buildPowerTracker(),
-      dailyBudgetSnapshot: buildSnapshot(),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic).toMatchObject({ objectiveKind: 'ev_soc' });
@@ -2800,15 +2523,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('rolls a past local deadline to tomorrow and waits when tomorrow prices are missing', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '16:00' })),
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ includeTomorrow: false }),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic).toMatchObject({
@@ -2823,15 +2539,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('plans a next-day objective once tomorrow price horizon is available', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '16:00' })),
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ includeTomorrow: true }),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic).toMatchObject({
@@ -2842,14 +2551,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('does not plan when the price feature is disabled', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
-      settings: normalizeDeferredObjectiveSettings(buildSettings()),
-      powerTracker: buildPowerTracker(),
-      dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: false,
     });
 
@@ -2864,16 +2565,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('does not surface stale EV progress when the price feature is disabled', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [buildDevice({
         stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS - HOUR_MS, unavailable: 'not_reported' }),
       })],
-      settings: normalizeDeferredObjectiveSettings(buildSettings()),
-      powerTracker: buildPowerTracker(),
-      dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: false,
     });
 
@@ -2890,29 +2584,18 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const { recorder, saved } = buildHistoryRecorder();
     const [satisfied] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [buildDevice({
         stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS }),
       })],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineAtMs })),
-      powerTracker: buildPowerTracker(),
-      dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: false,
     });
     const [staleBelowTarget] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
       nowMs: NOW_MS + HOUR_MS,
-      timeZone: 'UTC',
       devices: [buildDevice({
         stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS, unavailable: 'not_reported' }),
       })],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineAtMs })),
-      powerTracker: buildPowerTracker(),
-      dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: false,
     });
 
@@ -2934,16 +2617,11 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('marks a met EV objective as satisfied even when price planning is disabled', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [buildDevice({
         stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS }),
       })],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
       powerTracker: {},
-      dailyBudgetSnapshot: buildSnapshot(),
       priceOptimizationEnabled: false,
     });
 
@@ -2965,18 +2643,12 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // classifies only `plugged_out` / `plugged_in_discharging`), so nothing
     // upstream may divert it.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [buildDevice({
         evChargingState: 'plugged_in',
         stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS }),
       })],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
       powerTracker: {},
-      dailyBudgetSnapshot: buildSnapshot(),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic).toMatchObject({
@@ -2990,10 +2662,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('marks a met EV objective as satisfied while waiting for tomorrow prices', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [buildDevice({
         stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS }),
       })],
@@ -3003,7 +2671,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       })),
       powerTracker: {},
       dailyBudgetSnapshot: buildSnapshot({ includeTomorrow: false }),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic).toMatchObject({
@@ -3023,10 +2690,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       { priceOptimizationEnabled: true, dailyBudgetSnapshot: buildSnapshot({ includeTomorrow: false }) },
     ]) {
       const [diagnostic] = buildDeferredObjectiveDiagnostics({
-        hasSolarProduction: false,
-        powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-        nowMs: NOW_MS,
-        timeZone: 'UTC',
         devices: [buildTemperatureDevice({ currentTemperature: 66 })],
         settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings({
           deadlineLocalTime: '16:00',
@@ -3056,30 +2719,18 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       deadlineLocalTime: '22:00',
     }));
     const satisfied = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [buildDevice({
         stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS }),
       })],
       settings: trackingSettings,
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     })[0];
     const tracking = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [buildDevice({
         stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS }),
       })],
       settings: trackingSettings,
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     })[0];
 
     expect(satisfied).toMatchObject({
@@ -3099,15 +2750,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // Target = current + 2% so a bootstrap of 1.0 kWh/% yields a feasible 2 kWh
     // within the ~4h horizon of the default test deadline.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 42 })),
       powerTracker: {},
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic).toMatchObject({
@@ -3124,15 +2769,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('uses the learned profile (not bootstrap) when kWh-per-percent is known', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic).toMatchObject({
@@ -3148,15 +2786,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // plan time — neither was in the debug payload before. A learned profile
     // populates both on the diagnostic.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     });
 
     const payload = buildDeferredObjectiveDebugPayload(diagnostic);
@@ -3174,15 +2805,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // The configured mode (`*Mode`) and whether the producer engaged it
     // (`*Applied`) must both be visible at plan time.
     const [withoutRescue] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     });
     expect(buildDeferredObjectiveDebugPayload(withoutRescue)).toMatchObject({
       rescueExemptMode: 'off',
@@ -3192,17 +2816,10 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     const [withRescue] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings: normalizeDeferredObjectiveSettings(
         buildSettings({ targetPercent: 60, rescue: { exemptFromBudget: 'always' } }),
       ),
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     });
     // The configured mode is surfaced verbatim even when the plan stays
     // budget-capped — that combination is exactly the diagnosis signal.
@@ -3213,10 +2830,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const heaterDevice = buildTemperatureDevice({ currentTemperature: 40 });
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [heaterDevice],
       settings: {
         version: 1,
@@ -3232,7 +2845,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
       powerTracker: {},
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic).toMatchObject({
@@ -3303,10 +2915,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
     };
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [heater],
       settings: {
         version: 1,
@@ -3322,7 +2930,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
       powerTracker,
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     });
 
     // Pre-fix this would have been `trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' }`,
@@ -3392,10 +2999,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
     };
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [heater],
       settings: {
         version: 1,
@@ -3411,7 +3014,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
       powerTracker,
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic!.reasonCode).not.toBe('objective_missing_charge_rate');
@@ -3471,10 +3073,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
     };
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [heater],
       settings: {
         version: 1,
@@ -3490,7 +3088,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
       powerTracker,
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic!.reasonCode).not.toBe('objective_missing_charge_rate');
@@ -3532,10 +3129,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     }))) as MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'>;
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [tank],
       settings: {
         version: 1,
@@ -3563,7 +3156,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         },
       },
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic).toMatchObject({
@@ -3574,18 +3166,12 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('marks a met objective as satisfied without requiring a charger rate', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
       devices: [buildDevice({
         stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS }),
         steppedLoadProfile: undefined,
       })],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
       powerTracker: {},
-      dailyBudgetSnapshot: buildSnapshot(),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic).toMatchObject({
@@ -3601,15 +3187,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // leaves the final hour (21:00 → 22:00) as reserve. The plan lands in
     // the four primary hours, so the reserve stays untouched.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' })),
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic).toMatchObject({
@@ -3625,15 +3204,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // hours can carry 3 kWh, so the final hour (the reserve) must absorb the
     // remaining 1 kWh. That dip is exactly what at_risk should announce.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '21:00' })),
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic).toMatchObject({
@@ -3654,15 +3226,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // would fit the full 4 kWh, so the verdict is at_risk, not a flat cannot_meet
     // false negative. The floor commitment still leaves 1 kWh unplanned.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00' })),
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic).toMatchObject({
@@ -3679,18 +3244,11 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // exists. 0.2 kWh fits in 0.5 h of reserve at 1 kW.
     const deadlineAtMs = NOW_MS + HOUR_MS / 2;
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      hasSolarProduction: false,
-      powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-      nowMs: NOW_MS,
-      timeZone: 'UTC',
-      devices: [buildDevice()],
       settings: normalizeDeferredObjectiveSettings(buildSettings({
         deadlineAtMs,
         targetPercent: 41,
       })),
-      powerTracker: buildPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-      priceOptimizationEnabled: true,
     });
 
     expect(diagnostic).toMatchObject({
@@ -3811,9 +3369,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       // Solo control: full 3 kW headroom available → promotes to `top` (3 kW)
       // → 3 kW × 4 h primary = 12 kWh fits 6 kWh need → on_track.
       const [diagnostic] = buildDeferredObjectiveDiagnostics({
-        hasSolarProduction: false,
-        nowMs: NOW_MS,
-        timeZone: 'UTC',
         devices: [buildPromotableDevice('ev-1')],
         settings: normalizeDeferredObjectiveSettings({
           version: 1,
@@ -3827,7 +3382,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           allowedCumKWh: generousAllowedCumKWh,
           plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
         }),
-        priceOptimizationEnabled: true,
         powerLimits: capacityOnlyPowerLimits(HARDCAP_KW),
       });
       expect(diagnostic).toMatchObject({
@@ -3842,9 +3396,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       const higherDevice = { ...buildPromotableDevice('higher-device'), priority: 1 };
       const belowTop = { ...buildPromotableDevice('ev-1'), priority: 2 };
       const [diagnostic] = buildDeferredObjectiveDiagnostics({
-        hasSolarProduction: false,
-        nowMs: NOW_MS,
-        timeZone: 'UTC',
         devices: [higherDevice, belowTop],
         settings: normalizeDeferredObjectiveSettings({
           version: 1,
@@ -3858,7 +3409,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           allowedCumKWh: generousAllowedCumKWh,
           plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
         }),
-        priceOptimizationEnabled: true,
         powerLimits: capacityOnlyPowerLimits(5),
       });
       expect(diagnostic.limitLowerPriorityApplied).toBe(true);
@@ -3887,9 +3437,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       ) as unknown as MeteredPlanInputDevice & Pick<ObjectiveDeviceInput, 'thermalDirection'>;
       const lowerTaskAdmissionPowers = (higherDevice: ReturnType<typeof buildPlainHigherDevice>) => {
         const diagnostic = buildDeferredObjectiveDiagnostics({
-          hasSolarProduction: false,
-          nowMs: NOW_MS,
-          timeZone: 'UTC',
           devices: [higherDevice, { ...buildPromotableDevice('ev-1'), priority: 2 }],
           settings: normalizeDeferredObjectiveSettings({
             version: 1,
@@ -3901,7 +3448,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
             allowedCumKWh: generousAllowedCumKWh,
             plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
           }),
-          priceOptimizationEnabled: true,
           powerLimits: capacityOnlyPowerLimits(5),
         }).find((entry) => entry.deviceId === 'ev-1');
         return new Set(diagnostic?.horizonPlan?.plannedBuckets
@@ -3926,9 +3472,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       // every hour, not 4 kW in the hours ev-1 booked.
       const deadlineAtMs = resolveDeadlineAtMsFor('22:00');
       const diagnostics = buildDeferredObjectiveDiagnostics({
-        hasSolarProduction: false,
-        nowMs: NOW_MS,
-        timeZone: 'UTC',
         devices: [{ ...buildPromotableDevice('ev-1'), objectiveSessionInactive: true }, buildPromotableDevice('ev-2')],
         settings: normalizeDeferredObjectiveSettings({
           version: 1,
@@ -3943,7 +3486,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           allowedCumKWh: generousAllowedCumKWh,
           plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
         }),
-        priceOptimizationEnabled: true,
         powerLimits: capacityOnlyPowerLimits(5),
         activePlans: buildCommittedHigherTaskPlans(deadlineAtMs),
       });
@@ -3966,9 +3508,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       });
       const lower = { ...buildPromotableDevice('ev-1'), priority: 2 };
       const diagnostics = buildDeferredObjectiveDiagnostics({
-        hasSolarProduction: false,
-        nowMs: NOW_MS,
-        timeZone: 'UTC',
         devices: [higher, lower],
         settings: normalizeDeferredObjectiveSettings({
           version: 1,
@@ -3986,7 +3525,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           allowedCumKWh: generousAllowedCumKWh,
           plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
         }),
-        priceOptimizationEnabled: true,
         powerLimits: capacityOnlyPowerLimits(5),
       });
       const lowerDiagnostic = diagnostics.find((diagnostic) => diagnostic.deviceId === 'ev-1');
@@ -3998,9 +3536,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
     it('normalizes equal base priorities by device id without double-booking an hour', () => {
       const diagnostics = buildDeferredObjectiveDiagnostics({
-        hasSolarProduction: false,
-        nowMs: NOW_MS,
-        timeZone: 'UTC',
         devices: [
           buildPromotableDevice('ev-1'),
           buildPromotableDevice('ev-2'),
@@ -4018,7 +3553,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           allowedCumKWh: generousAllowedCumKWh,
           plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
         }),
-        priceOptimizationEnabled: true,
         powerLimits: capacityOnlyPowerLimits(HARDCAP_KW),
       });
       expect(diagnostics).toHaveLength(2);
@@ -4046,9 +3580,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       // and stays on the min-step floor: 4 kWh placed of 6 kWh need →
       // climbed-band probe softens to `at_risk: feasible_above_floor`.
       const diagnostics = buildDeferredObjectiveDiagnostics({
-        hasSolarProduction: false,
-        nowMs: NOW_MS,
-        timeZone: 'UTC',
         devices: [
           buildPromotableDevice('ev-1'),
           buildPromotableDevice('ev-2'),
@@ -4066,7 +3597,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           allowedCumKWh: generousAllowedCumKWh,
           plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
         }),
-        priceOptimizationEnabled: true,
         powerLimits: capacityOnlyPowerLimits(HARDCAP_KW),
       });
       const byDevice = new Map(diagnostics.map((d) => [d.deviceId, d]));
@@ -4145,9 +3675,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       const deadlineAtMs = resolveDeadlineAtMsFor('22:00');
       const activePlans = buildCommittedHigherTaskPlans(deadlineAtMs);
       const diagnostics = buildDeferredObjectiveDiagnostics({
-        hasSolarProduction: false,
-        nowMs: NOW_MS,
-        timeZone: 'UTC',
         devices: [
           buildPromotableDevice('ev-1'),
           buildPromotableDevice('ev-2'),
@@ -4165,7 +3692,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           allowedCumKWh: generousAllowedCumKWh,
           plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
         }),
-        priceOptimizationEnabled: true,
         powerLimits: capacityOnlyPowerLimits(HARDCAP_KW),
         activePlans,
       });
@@ -4192,9 +3718,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       // step instead of reserving ev-1's 3 kW maximum.
       const deadlineAtMs = resolveDeadlineAtMsFor('22:00');
       const diagnostics = buildDeferredObjectiveDiagnostics({
-        hasSolarProduction: false,
-        nowMs: NOW_MS,
-        timeZone: 'UTC',
         devices: [buildPromotableDevice('ev-1'), buildPromotableDevice('ev-2')],
         settings: normalizeDeferredObjectiveSettings({
           version: 1,
@@ -4209,7 +3732,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           allowedCumKWh: generousAllowedCumKWh,
           plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
         }),
-        priceOptimizationEnabled: true,
         powerLimits: capacityOnlyPowerLimits(5),
         activePlans: buildCommittedHigherTaskPlans(deadlineAtMs),
         isReservationSuppressed: (deviceId) => deviceId === 'ev-1',
@@ -4479,15 +4001,9 @@ describe('emitDeferredObjectiveDiagnostics — announces on change, not on tick'
   };
 
   const unpluggedDiagnostics = (): DeferredObjectiveDiagnostic[] => buildDeferredObjectiveDiagnostics({
-    hasSolarProduction: false,
-    powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-    nowMs: NOW_MS,
-    timeZone: 'UTC',
     devices: [buildDevice({ evChargingState: 'plugged_out' })],
     settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' })),
-    powerTracker: buildPowerTracker(),
     dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-    priceOptimizationEnabled: true,
   });
 
   it('emits one unknown payload across many ticks of the same cause', () => {
@@ -4546,15 +4062,8 @@ describe('emitDeferredObjectiveDiagnostics — announces on change, not on tick'
   });
 
   const plannedDiagnostics = (): DeferredObjectiveDiagnostic[] => buildDeferredObjectiveDiagnostics({
-    hasSolarProduction: false,
-    powerLimits: capacityOnlyPowerLimits(TEST_PLANNING_CEILING_KW),
-    nowMs: NOW_MS,
-    timeZone: 'UTC',
-    devices: [buildDevice()],
     settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' })),
-    powerTracker: buildPowerTracker(),
     dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
-    priceOptimizationEnabled: true,
   });
 
   // The premise this replaced — "a resolved trajectory is new information every

@@ -22,7 +22,7 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
-import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
+import { buildBindingDailyBudgetSnapshot } from '../helpers/bindingDailyBudgetFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
@@ -242,7 +242,6 @@ describe('budget-exempt restore lane during budget-driven shedding', () => {
 // shedding clear threshold — the regime the lane exists for. Fixture cloned
 // from planRestorePerAxisAdmission.test.ts, which deliberately clears the
 // latch before asserting; this spec keeps it latched.
-const HOUR_MS = 60 * 60 * 1000;
 const HEATER_ID = 'dev_exempt_heater';
 const THERMOSTAT_ID = 'dev_thermostat';
 const DAY_START_UTC = Date.UTC(2026, 4, 10, 0, 0, 0);
@@ -251,60 +250,6 @@ const SECOND_BUILD_AT_MS = DAY_START_UTC + 10 * 60 * 1000;
 // shed cooldown; admissions surface one cycle later.
 const THIRD_BUILD_AT_MS = SECOND_BUILD_AT_MS + 3 * 60 * 1000;
 const BACKGROUND_KW = 3.0;
-
-const buildDay = (): DailyBudgetDayPayload => {
-  const hours = 24;
-  const startUtc: string[] = [];
-  const startLocalLabels: string[] = [];
-  const plannedKWh: number[] = [];
-  const plannedWeight: number[] = [];
-  const allowedCumKWh: number[] = [];
-  const actualKWh: number[] = [];
-  for (let i = 0; i < hours; i += 1) {
-    startUtc.push(new Date(DAY_START_UTC + i * HOUR_MS).toISOString());
-    startLocalLabels.push(String(i).padStart(2, '0'));
-    plannedKWh.push(1.1);
-    plannedWeight.push(1);
-    actualKWh.push(0);
-    allowedCumKWh.push(1.1 * (i + 1));
-  }
-  return {
-    dateKey: '2026-05-10',
-    timeZone: 'UTC',
-    nowUtc: new Date(DAY_START_UTC).toISOString(),
-    dayStartUtc: new Date(DAY_START_UTC).toISOString(),
-    currentBucketIndex: 0,
-    budget: { enabled: true, dailyBudgetKWh: 26.4, priceShapingEnabled: false },
-    state: {
-      usedNowKWh: 0,
-      allowedNowKWh: 1.1,
-      remainingKWh: 25.3,
-      deviationKWh: 0,
-      exceeded: false,
-      frozen: false,
-      confidence: 1,
-      priceShapingActive: false,
-    },
-    buckets: {
-      startUtc,
-      startLocalLabels,
-      plannedWeight,
-      plannedKWh,
-      plannedUncontrolledKWh: Array.from({ length: hours }, () => 0),
-      plannedControlledKWh: plannedKWh.slice(),
-      actualKWh,
-      actualControlledKWh: Array.from({ length: hours }, () => 0),
-      actualUncontrolledKWh: Array.from({ length: hours }, () => 0),
-      allowedCumKWh,
-      price: Array.from({ length: hours }, () => 30),
-    },
-  };
-};
-
-const buildDailyBudgetSnapshot = (): DailyBudgetUiPayload => ({
-  todayKey: '2026-05-10',
-  days: { '2026-05-10': buildDay() },
-});
 
 const buildHeaterInput = (params: { on: boolean; exempt: boolean }): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({
   available: true,
@@ -366,7 +311,7 @@ const buildBuilder = (params: {
   capacityGuard: params.capacityGuard,
   getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
   getPowerTracker: () => params.tracker,
-  getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
+  getDailyBudgetSnapshot: () => buildBindingDailyBudgetSnapshot(DAY_START_UTC),
 }, params.state);
 
 describe('exempt restore lane through the full plan build with the latch held', () => {
