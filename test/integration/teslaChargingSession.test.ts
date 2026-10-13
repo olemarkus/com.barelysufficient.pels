@@ -221,7 +221,7 @@ test.each(['device_update', 'device_fetch'] as const)(
       await initWithLiveFeed(transport);
       const initial = devices();
       await seedTransportDevices(transport, initial);
-      const before = transport.getSnapshot()[0]!;
+      const before = transport.getSnapshotByDeviceId('battery')!;
       if (!hasObservedMeasuredPower(before)) throw new Error('Expected Tesla power observation');
       const powerObservedAt = before.measuredPowerObservedAtMs;
       expect(Number.isFinite(powerObservedAt)).toBe(true);
@@ -264,7 +264,7 @@ test('fresh home evidence restores availability without restoring old power or o
     initial[0]!.available = true;
     await seedTransportDevices(transport, initial);
     await emitCapability('location', 'measure_location_latitude', 61);
-    const away = transport.getSnapshot()[0]!;
+    const away = transport.getSnapshotByDeviceId('battery')!;
     if (!hasObservedMeasuredPower(away)) throw new Error('Expected excluded home-power observation');
     const excludedPowerAt = away.measuredPowerObservedAtMs;
     expect(Number.isFinite(excludedPowerAt)).toBe(true);
