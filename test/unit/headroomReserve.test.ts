@@ -96,6 +96,7 @@ describe('resolveHeadroomReserves', () => {
       sheddingPlan: noShedding,
       anyOtherDeviceLimited: false,
       boostActive: false,
+      surplusHoldShed: false,
       surplusAbsorbActive: false,
       surplusCeilingStepId: undefined,
     });

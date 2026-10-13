@@ -131,6 +131,7 @@ export function buildInitialPlanDevices(
       sheddingPlan,
       anyOtherDeviceLimited: isAnyOtherDeviceLimited(effectiveShedSet, dev.id),
       boostActive,
+      surplusHoldShed: isSurplusOnlyHoldShed(dev, state, shedReasons),
       // Set by resolvePlannedTarget above (read after it ran for this device).
       surplusAbsorbActive: state.surplusAbsorbActiveByDevice[dev.id] === true,
       surplusCeilingStepId,

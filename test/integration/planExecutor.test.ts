@@ -3465,7 +3465,7 @@ describe('PlanExecutor stepped loads', () => {
     expect(state.pendingBinaryCommands['dev-1']).toBeUndefined();
   });
 
-  it('records shed actuation when a stepped device sheds by stepping down while remaining on', async () => {
+  it.each([false, true])('records shed actuation for a stepped reduction only under capacity pressure (non-capacity hold: %s)', async (nonCapacityHold) => {
     const state = createPlanEngineState();
     const snapshot = [
       {
@@ -3487,6 +3487,7 @@ describe('PlanExecutor stepped loads', () => {
       reportedStepId: 'max',
       selectedStepId: 'max',
       desiredStepId: 'low',
+      ...(nonCapacityHold ? { nonCapacityHoldShed: true as const } : {}),
     }));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
@@ -3494,7 +3495,12 @@ describe('PlanExecutor stepped loads', () => {
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
-    expect(state.actuation.lastDeviceShedMs['dev-1']).toEqual(expect.any(Number));
+    if (nonCapacityHold) {
+      expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
+      expect(state.restoreBackoff.lastInstabilityMs).toBeNull();
+    } else {
+      expect(state.actuation.lastDeviceShedMs['dev-1']).toEqual(expect.any(Number));
+    }
     expect(state.actuation.lastDeviceRestoreMs['dev-1']).toBeUndefined();
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'stepped_load_command_requested',

@@ -138,6 +138,7 @@ To prevent rapid on/off cycling that could damage equipment or annoy occupants, 
 
 - An active EV charger waits three minutes after its own latest capacity- or budget-driven reduction before PELS admits a current increase
 - A further reduction restarts the window; the hold also applies after a capacity-driven turn-off once the charger is running again
+- Reductions made solely to follow solar surplus do not start this hold
 - The device card shows **Waiting to increase** with a countdown; Boost does not bypass this hold
 - Initial activation, necessary reductions and other devices retain their existing timing. Global cooldowns and admission checks still apply, and an increase is reconsidered on the next meter-driven plan after the hold expires
 - The hold uses in-memory actuation history, so restarting PELS clears it

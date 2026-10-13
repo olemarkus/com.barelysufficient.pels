@@ -617,9 +617,9 @@ type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
    */
   startPolicyHoldActive?: true;
   /**
-   * This cycle's shed is a hold that is NOT capacity pressure, and nothing else:
-   * "Only PELS starts this device" (`isStartPolicyHoldShed`) or a smart task's
-   * deferred hour (`isDeferredHoldShed`), with no fresh capacity reason. A device
+   * This cycle's reduction is NOT capacity pressure: "Only PELS starts this
+   * device", a smart task's deferred hour, a solar hold, or a keep step lowered
+   * solely by its solar-tracking ceiling, with no fresh capacity reason. A device
    * capacity also took down is pressure and does not carry it. Stamped once in
    * `buildBasePlanDevice`, from the same predicates the plan's own keep-invariant
    * exclusion reads (`planDevices.ts`).
@@ -627,9 +627,9 @@ type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
    * Read by the two other readers of the stepped fairness invariant, so all
    * three answer alike: `countShedDevices` (`lib/plan/restore/coordination.ts`,
    * which runs before reason normalization, so it cannot key on a reason code)
-   * and the executor's `hasExecutableShedDevices`. Neither hold may keep an
-   * unrelated stepped load at its lowest step: one honours a configuration, the
-   * other the task's own schedule (owner rulings 2026-09-10 and 2026-09-25).
+   * and the executor's `hasExecutableShedDevices`. Non-capacity holds may not
+   * clamp unrelated stepped loads, and their reductions must not stamp capacity
+   * actuation clocks, including the EV charger recovery hold.
    *
    * Distinct from `startPolicyHoldActive` above, which answers "is the policy
    * holding this device" whatever capacity does — the question for starvation

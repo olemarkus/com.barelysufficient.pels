@@ -21,6 +21,7 @@ import { getHighestKnownPowerKw } from '../observer/observedPower';
 import { getPrimaryTargetCapability } from '../../packages/shared-domain/src/targetCapabilities';
 import {
   isSteppedLoadDevice,
+  isSteppedLoadStepBelow,
   resolveSteppedKeepDesiredStepIdFor,
   resolveSteppedLoadInitialDesiredStepId,
 } from './planSteppedLoad';
@@ -166,6 +167,8 @@ export type BasePlanDeviceInputs = {
   sheddingPlan: SheddingPlan;
   anyOtherDeviceLimited: boolean;
   boostActive: boolean;
+  /** The existing surplus-posture predicate's decision, excluding fresh capacity reasons. */
+  surplusHoldShed: boolean;
   surplusAbsorbActive: boolean;
   /**
    * The rung this cycle's surplus allocation bought a surplus-TRACKING device,
@@ -181,10 +184,11 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
     dev, binaryCommandPending, boostActive, surplusAbsorbActive,
   } = inputs;
   const { currentState } = dev;
+  const decision = resolvePlannedDeviceDecision(inputs);
   const {
     plannedState, effectiveDesiredStepId, shedDesiredStepId, baseReason,
     shedAction, shedTemperature, releaseShedStepId, plannedTarget: resolvedPlannedTarget,
-  } = resolvePlannedDeviceDecision(inputs);
+  } = decision;
   // ONE object, filled in place. This used to be a literal fed by five helper
   // objects and seven conditional spreads: fourteen allocations per device per
   // build to produce one, and each spread re-grew the backing store on the way.
@@ -236,7 +240,7 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
     residualKw: dev.residualKw,
     surplusTracking: dev.surplusTracking,
   };
-  Object.assign(loose, resolveHoldDecisions(dev, inputs.sheddingPlan));
+  Object.assign(loose, resolveHoldDecisions(inputs, decision));
   // The power axis, only when the input device has a reading this cycle.
   Object.assign(loose, meteredCluster(dev));
   // The binary on/off truth, only when the input device is binary this cycle.
@@ -299,23 +303,38 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
  * - `startPolicyHoldActive`: `getInactiveReason` and starvation eligibility ask
  *   whether the policy is holding this device, and only the shared predicate
  *   knows the smart-task lift.
- * - `nonCapacityHoldShed`: this cycle's shed is one of the two holds alone, with
- *   no fresh capacity reason, for the stepped fairness invariant's readers.
+ * - `nonCapacityHoldShed`: this cycle's reduction is a standing hold or solar
+ *   tracking alone, with no fresh capacity reason, for fairness and actuation clocks.
  *   `shedSet` membership is part of the question, not a hedge: a start-policy
  *   device that is already off is `inactive`, not shed.
  */
 function resolveHoldDecisions(
-  dev: PlanInputDevice,
-  sheddingPlan: SheddingPlan,
+  inputs: BasePlanDeviceInputs,
+  decision: PlannedDeviceDecision,
 ): Pick<LooseDevicePlanDevice, 'startPolicyHoldActive' | 'nonCapacityHoldShed'> {
+  const { dev, sheddingPlan, surplusHoldShed } = inputs;
   const { shedSet, shedReasons } = sheddingPlan;
   // Keys only when true: absence is the one spelling of "not held".
-  const holdOnly = shedSet.has(dev.id)
-    && (isStartPolicyHoldShed(dev, shedReasons) || isDeferredHoldShed(dev, shedReasons));
+  const holdOnly = (shedSet.has(dev.id)
+    && (isStartPolicyHoldShed(dev, shedReasons) || isDeferredHoldShed(dev, shedReasons) || surplusHoldShed))
+    || isSurplusCeilingReduction(inputs, decision);
   return {
     ...(isStartPolicyHeldDevice(dev) ? { startPolicyHoldActive: true as const } : {}),
     ...(holdOnly ? { nonCapacityHoldShed: true as const } : {}),
   };
+}
+
+function isSurplusCeilingReduction(inputs: BasePlanDeviceInputs, decision: PlannedDeviceDecision): boolean {
+  const { dev, surplusCeilingStepId, boostActive, anyOtherDeviceLimited, sheddingPlan } = inputs;
+  return dev.surplusTracking
+    && !boostActive
+    && !anyOtherDeviceLimited
+    && decision.plannedState === 'keep'
+    && !sheddingPlan.shedReasons.has(dev.id)
+    && surplusCeilingStepId !== undefined
+    && decision.effectiveDesiredStepId === surplusCeilingStepId
+    && isSteppedLoadDevice(dev)
+    && isSteppedLoadStepBelow(dev, surplusCeilingStepId, dev.selectedStepId);
 }
 
 function meteredCluster(dev: PlanInputDevice): MeteredDiscriminantProbe {

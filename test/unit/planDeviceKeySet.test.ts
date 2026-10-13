@@ -207,6 +207,7 @@ const buildFor = (kind: Kind): Record<string, unknown> => {
     sheddingPlan,
     anyOtherDeviceLimited: kind.otherLimited === true,
     boostActive: kind.boost === true,
+    surplusHoldShed: false,
     surplusAbsorbActive: kind.surplus === true,
     surplusCeilingStepId: kind.ceiling,
   }) as unknown as Record<string, unknown>;
