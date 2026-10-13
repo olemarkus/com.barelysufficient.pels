@@ -129,6 +129,17 @@ describe('parseEvSocReportTarget', () => {
 });
 
 describe('normalizeUserFlowFacts capability writes', () => {
+  it('collects vendor app actions addressed through a device argument in both Flow shapes', () => {
+    const card = { id: 'homey:app:com.tesla.car:charge_current', args: { device: { id: 'tesla' }, current: 6 } };
+    const writes = normalizeUserFlowFacts(
+      { flat: { name: 'Flat current', actions: [card] } },
+      { advanced: { name: 'Advanced current', cards: { command: { ...card, type: 'action' } } } },
+    ).writes;
+    expect(writes.get('tesla')?.get('charge_current')).toEqual(
+      new Map([['flat', 'Flat current'], ['advanced', 'Advanced current']]),
+    );
+  });
+
   it('collects device-capability writes from both flat and advanced flows', () => {
     const writes = normalizeUserFlowFacts(flatFlowsFixture, advancedFlowsFixture).writes;
 

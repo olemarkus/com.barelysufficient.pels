@@ -42,7 +42,7 @@ describe('Homey location Web API adapter', () => {
 });
 
 describe('geolocation manifest permission', () => {
-  it('keeps both the Compose source and generated manifest on the existing manager API permission', () => {
+  it('declares the SDK geolocation permission required by Tesla home authorization in both manifests', () => {
     const repoRoot = path.resolve(__dirname, '../..');
     const compose = JSON.parse(fs.readFileSync(path.join(repoRoot, '.homeycompose/app.json'), 'utf8')) as {
       permissions?: unknown[];
@@ -51,7 +51,7 @@ describe('geolocation manifest permission', () => {
       permissions?: unknown[];
     };
 
-    expect(compose.permissions).not.toContain(GEOLOCATION_PERMISSION);
+    expect(compose.permissions).toContain(GEOLOCATION_PERMISSION);
     expect(generated.permissions).toEqual(compose.permissions);
   });
 });

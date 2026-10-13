@@ -126,6 +126,8 @@ function recordWrite(
 /** App-owned action cards can address a device through an autocomplete argument. */
 function parseAppDeviceWrite(card: Record<string, unknown>): { deviceId: string; capabilityId: string } | null {
   if (typeof card.id !== 'string' || !card.id.startsWith('homey:app:') || !isRecord(card.args)) return null;
+  // PELS reports and bridge actions are facts about control, not vendor writes.
+  if (card.id.startsWith('homey:app:com.barelysufficient.pels:')) return null;
   const deviceId = readFlowDeviceId(card.args.device);
   if (!deviceId) return null;
   const capabilityId = card.id.slice(card.id.lastIndexOf(':') + 1);

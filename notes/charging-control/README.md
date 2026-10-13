@@ -85,7 +85,7 @@ Focused integration, read-contract, recommendation and browser checks cover thes
 
 ### Final-runtime SHS regression, 2026-10-13
 
-The final runtime from `c3ad7a4a5` (manifest 3.13.0; subsequent changes only strengthened test assertions and recorded evidence) was installed on SHS after the main update. Through the real Homey API, Flow engine and meter-driven planner, the Tesla simulator verified:
+The readiness runtime from `c3ad7a4a5` (manifest 3.13.0) was installed on SHS after the main update. Through the real Homey API, Flow engine and meter-driven planner, the Tesla simulator verified:
 
 - A rejected current command left the reported limit at 16 A, kept the shared access status ready and issued no start command.
 - A later planned retry successfully prepared 6 A and resumed after the normal restore cooldown, without a manual access check.
@@ -94,3 +94,5 @@ The final runtime from `c3ad7a4a5` (manifest 3.13.0; subsequent changes only str
 - Explicit vehicle-control authorization could be removed after removing the key.
 
 Evidence is under `/tmp/pels-charging-readiness-20261013/`, including `readiness-results.json`, installation logs and `cleanup-result.json`. The temporary key was revoked, the simulator was deleted, all 12 edited settings were restored, and the previously installed SHS app was restored. Physical hardware and vendor cloud behavior remain outside this simulator evidence.
+
+The subsequent full push suite also caught PELS battery-report actions being included in the new vendor app-action write inventory. The normalizer now preserves the existing exclusion for PELS bridge/report cards; existing inventory tests and a new vendor-action case cover that correction. This final normalizer change was made after the SHS run.
