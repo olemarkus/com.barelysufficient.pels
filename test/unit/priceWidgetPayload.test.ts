@@ -265,7 +265,10 @@ describe('buildPriceWidgetPayload', () => {
   it('writes tick labels with the decimals a small step needs', () => {
     // Currency prices a few hundredths apart: the axis must not repeat "0.0".
     const cents = DAY.map((price) => 0.4 + price / 10000);
-    const payload = expectReady(build({ ...ready(hourly(cents)), priceUnit: 'EUR' }));
+    const read: PriceTimelineRead = {
+      state: 'ready', periods: hourly(cents), lines: LINES, priceUnit: 'EUR', hasExportPrice: false,
+    };
+    const payload = expectReady(build(read));
     const labels = payload.chart.yTicks.map((tick) => tick.label);
     expect(new Set(labels).size).toBe(labels.length);
     for (const tick of payload.chart.yTicks) expect(Number(tick.label)).toBeCloseTo(tick.value, 6);
