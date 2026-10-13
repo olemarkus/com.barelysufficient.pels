@@ -41,6 +41,7 @@ export const SETTINGS_UI_PRICES_PATH = '/ui_prices';
 export const SETTINGS_UI_RECOMMENDATION_CARS_PATH = '/ui_recommendation_cars';
 
 export const SETTINGS_UI_HUB_MARKET_PATH = '/ui_hub_market';
+export const SETTINGS_UI_PRICE_SETUP_SUGGESTION_PATH = '/ui_price_setup_suggestion';
 
 /**
  * Where the hub physically is, as an ISO 3166-1 alpha-2 country code, resolved
@@ -826,6 +827,29 @@ export type PriceSetup = {
 export type PriceSetupRead =
   | { readonly state: 'resolved'; readonly setup: PriceSetup }
   | { readonly state: 'unavailable' };
+
+/**
+ * The Norway price settings PELS found for the hub's location, for the owner to
+ * confirm. Each part is looked up only while the owner has not chosen it: the
+ * grid company whose area the hub is in, with the county it was found in, and
+ * the price area Homey Energy uses for the hub. `none` is a part with nothing
+ * to offer: chosen already, a hub not known to be in Norway, a location no grid
+ * company covers, or a lookup that failed. PELS writes none of it until the
+ * owner confirms.
+ */
+export type PriceSetupSuggestion = {
+  readonly gridCompany:
+    | {
+      readonly kind: 'found';
+      readonly organizationNumber: string;
+      readonly name: string;
+      readonly countyCode: string;
+    }
+    | { readonly kind: 'none' };
+  readonly priceArea:
+    | { readonly kind: 'from_homey_energy'; readonly area: string }
+    | { readonly kind: 'none' };
+};
 
 export type SettingsUiPricesPayload = SettingsUiPriceSourcePayloads & {
   combinedPrices: unknown | null;

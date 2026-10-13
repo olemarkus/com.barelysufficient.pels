@@ -13,6 +13,7 @@ import type { SettingsUiDeviceDiagnosticsPayload } from '../../packages/contract
 import type { PriceOptimizationSetupRead } from '../../packages/contracts/src/priceOptimizationSettings';
 import type {
   PriceSetupRead,
+  PriceSetupSuggestion,
   SettingsUiDeviceLogPayload,
   SettingsUiHardCapConfigurationRead,
 } from '../../packages/contracts/src/settingsUiApi';
@@ -68,6 +69,7 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
   readHardCapConfiguration(): SettingsUiHardCapConfigurationRead;
   readPriceOptimizationSetup(): PriceOptimizationSetupRead;
   readPriceSetup(): PriceSetupRead;
+  suggestNorwayPriceSetup(): Promise<PriceSetupSuggestion>;
   previewDailyBudgetModel(settings: Partial<DailyBudgetModelSettings>): DailyBudgetModelPreviewResponse;
   applyDailyBudgetModel(settings: Partial<DailyBudgetModelSettings>): DailyBudgetUiRead;
   getDeviceDiagnosticsUiPayload(): SettingsUiDeviceDiagnosticsPayload;

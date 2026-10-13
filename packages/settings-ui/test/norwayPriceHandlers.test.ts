@@ -13,7 +13,12 @@ vi.mock('../src/ui/logging.ts', () => ({ logSettingsError: vi.fn() }));
 
 import { createNorwayPriceHandlers } from '../src/ui/norwayPriceHandlers.ts';
 import type { PriceConfigState } from '../src/ui/priceConfigTypes.ts';
-import { SETTINGS_UI_REFRESH_GRID_TARIFF_PATH } from '../../contracts/src/settingsUiApi.ts';
+import {
+  SETTINGS_UI_PRICE_SETUP_SUGGESTION_PATH,
+  SETTINGS_UI_REFRESH_GRID_TARIFF_PATH,
+  type NorwayPriceSetup,
+  type PriceSetupRead,
+} from '../../contracts/src/settingsUiApi.ts';
 
 const setSettingMock = homeyMocks.setSetting as Mock;
 
@@ -72,5 +77,86 @@ describe('Norway price handlers', () => {
     await handlers.onPriceAreaChange('SE3');
 
     expect(setSettingMock).not.toHaveBeenCalled();
+  });
+
+  describe('the suggestion from the hub\'s location', () => {
+    const TENSIO = { organizationNumber: '978631029', name: 'TENSIO TS AS', county: { kind: 'set', code: '50' } } as const;
+
+    const norwaySetup = (norway: Partial<NorwayPriceSetup>): PriceSetupRead => ({
+      state: 'resolved',
+      setup: {
+        source: { scheme: 'norway', basis: { kind: 'chosen' } },
+        norway: {
+          county: { value: '03', chosen: false },
+          gridCompany: { kind: 'none' },
+          tariffGroup: { value: 'Husholdning', chosen: false },
+          pricingModel: { value: 'stromstotte', chosen: false },
+          priceArea: { value: 'NO1', chosen: false },
+          ...norway,
+        },
+      },
+    });
+
+    it('writes the grid company with its county and the price area, in one confirmation', async () => {
+      const { handlers, refreshStatus, getState } = createHandlers({ countyCode: '03', organizationNumber: '' });
+
+      await handlers.onUseOffer({ kind: 'grid_company_and_area', gridCompany: TENSIO, priceArea: 'NO3' });
+
+      expect(setSettingMock.mock.calls).toEqual([
+        ['nettleie_fylke', '50'],
+        ['nettleie_orgnr', '978631029'],
+        ['price_area', 'NO3'],
+      ]);
+      expect(homeyMocks.callApi).toHaveBeenCalledWith('POST', SETTINGS_UI_REFRESH_GRID_TARIFF_PATH, {});
+      expect(getState()).toEqual(expect.objectContaining({
+        countyCode: '50', organizationNumber: '978631029', priceArea: 'NO3',
+      }));
+      expect(refreshStatus).toHaveBeenCalled();
+    });
+
+    it('keeps a county the owner chose', async () => {
+      const { handlers } = createHandlers({ countyCode: '50', organizationNumber: '' });
+
+      await handlers.onUseOffer({ kind: 'grid_company', gridCompany: { ...TENSIO, county: { kind: 'kept' } } });
+
+      expect(setSettingMock.mock.calls).toEqual([['nettleie_orgnr', '978631029']]);
+    });
+
+    it('writes only the price area when that is all it offers', async () => {
+      const { handlers } = createHandlers({ priceArea: 'NO1' });
+
+      await handlers.onUseOffer({ kind: 'price_area', priceArea: 'NO4' });
+
+      expect(setSettingMock.mock.calls).toEqual([['price_area', 'NO4']]);
+      expect(homeyMocks.callApi).not.toHaveBeenCalled();
+    });
+
+    it('asks once, and only while a grid company or price area is missing', async () => {
+      (homeyMocks.callApi as Mock).mockResolvedValue({
+        gridCompany: { kind: 'found', organizationNumber: '978631029', name: 'TENSIO TS AS', countyCode: '50' },
+        priceArea: { kind: 'from_homey_energy', area: 'NO3' },
+      });
+      const { handlers, getState } = createHandlers({ priceSetup: norwaySetup({}) });
+
+      await handlers.suggestFromLocation();
+      await handlers.suggestFromLocation();
+
+      expect(homeyMocks.callApi).toHaveBeenCalledTimes(1);
+      expect(homeyMocks.callApi).toHaveBeenCalledWith('GET', SETTINGS_UI_PRICE_SETUP_SUGGESTION_PATH);
+      expect(getState().priceSetupSuggestion).toMatchObject({ gridCompany: { kind: 'found', countyCode: '50' } });
+    });
+
+    it('sends the location nowhere once the owner chose both', async () => {
+      const { handlers } = createHandlers({
+        priceSetup: norwaySetup({
+          gridCompany: { kind: 'chosen', organizationNumber: '978631029' },
+          priceArea: { value: 'NO3', chosen: true },
+        }),
+      });
+
+      await handlers.suggestFromLocation();
+
+      expect(homeyMocks.callApi).not.toHaveBeenCalled();
+    });
   });
 });

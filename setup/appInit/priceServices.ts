@@ -6,6 +6,7 @@ import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { createPriceCacheStore, importLegacyPriceCaches } from '../../lib/price/priceCacheStore';
 import { createHomeyWebApiGet } from '../homeyWebApi';
 import { createHubMarketRead } from './hubMarketRead';
+import { readHubCoordinates } from '../homeyLocationAdapter';
 import type { AppContext } from '../../lib/app/appContext';
 import { requirePriceCoordinator } from './contextGuards';
 
@@ -20,6 +21,7 @@ export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
     getPowerTracker: () => ctx.powerTracker,
     homeyWebApiGet: createHomeyWebApiGet(),
     readHubMarket: createHubMarketRead(),
+    readHubLocation: readHubCoordinates,
     log: (...args: unknown[]) => ctx.log(...args),
     debugStructured: getDebugEmitter('price', 'price'),
     error: (...args: unknown[]) => ctx.error(...args),

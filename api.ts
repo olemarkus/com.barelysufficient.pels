@@ -15,6 +15,7 @@ import {
 } from './setup/appDebugHelpers';
 import type {
   HomeyEnergyMeterEntry,
+  PriceSetupSuggestion,
   SettingsUiHubMarketRead,
   SettingsUiRecommendationCarsRead,
 } from './packages/contracts/src/settingsUiApi';
@@ -56,6 +57,7 @@ import {
   updateSettingsUiSmartTask,
 } from './setup/settingsUiSmartTaskApi';
 import { refreshSettingsUiFlowConflicts } from './setup/settingsUiFlowConflictApi';
+import { NO_PRICE_SETUP_SUGGESTION } from './lib/price/norwayPriceSetupSuggestion';
 
 type ApiContext = {
   homey: Homey.App['homey'];
@@ -198,6 +200,15 @@ export = {
   ui_hub_market: withApiLogging('ui_hub_market', (): Promise<SettingsUiHubMarketRead> => (
     readHubMarket(createHomeyWebApiGet())
   )),
+  // The Norway price settings for the hub's location. Asked only when the owner
+  // opens Electricity prices with a setting still missing: the lookup sends the
+  // hub's coordinates to NVE and Kartverket. Never throws: no app answers `none`.
+  ui_price_setup_suggestion: withApiLogging('ui_price_setup_suggestion', async (
+    { homey }: ApiContext,
+  ): Promise<PriceSetupSuggestion> => {
+    const host = readPelsHost(homey);
+    return host ? host.suggestNorwayPriceSetup() : NO_PRICE_SETUP_SUGGESTION;
+  }),
   // Backs both whole-home meter pickers: the meters the Homey Energy live report
   // actually exposes (the same seam a selection is read against), so every pick
   // is guaranteed readable — unlike a capability/class filter over the device list.

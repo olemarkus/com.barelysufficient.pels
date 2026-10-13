@@ -23,6 +23,7 @@ const createCoordinator = (readHubMarket: () => Promise<SettingsUiHubMarketRead>
     getPowerTracker: () => ({}),
     homeyWebApiGet: webApi.get,
     readHubMarket,
+    readHubLocation: async () => ({ kind: 'unavailable' as const }),
     log: () => undefined,
     debugStructured: () => undefined,
     error: () => undefined,

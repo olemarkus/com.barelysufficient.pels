@@ -1,5 +1,6 @@
 import type {
   PriceSetupRead,
+  PriceSetupSuggestion,
   PowerhourSourceUiStatus,
   PriceSchemeSetting,
   PvForecastSourceSetting,
@@ -126,6 +127,8 @@ export type PriceConfigState = {
   priceSetup: PriceSetupRead;
   /** Whether prices are set up, for the surfaces where price behaviour is turned on. */
   priceSetupStatus: PriceSetupStatus;
+  /** The Norway settings found for the hub's location, asked for once when the page opens. */
+  priceSetupSuggestion: PriceSetupSuggestion;
 };
 
 /** Everything the page's config state takes from the settings store. */

@@ -4,7 +4,7 @@ import { loadCapacitySettings } from './capacity.ts';
 import { refreshHomeLimitsOnLimitsPanel } from './homeLimits.ts';
 import { refreshHomeScope } from './homeScope.ts';
 import { invalidateApiCacheForAllHomes } from './homey.ts';
-import { refreshPriceConfigView } from './priceConfig.ts';
+import { openElectricityPricesView, refreshPriceConfigView } from './priceConfig.ts';
 import { refreshDailyBudgetPlan } from './dailyBudget.ts';
 import { discardBudgetAdjust, getBudgetAdjustView } from './budgetAdjustController.ts';
 import { resetBudgetAdjustReturnTarget } from './budgetRedesign.ts';
@@ -99,7 +99,8 @@ const runTabActivationSideEffects = (tabId: string) => {
     return;
   }
   if (tabId === 'electricity-prices' || tabId === 'price-aware-devices') {
-    runLoggedTask(refreshPriceConfigView(), 'Failed to refresh prices', 'showTab');
+    const refresh = tabId === 'electricity-prices' ? openElectricityPricesView() : refreshPriceConfigView();
+    runLoggedTask(refresh, 'Failed to refresh prices', 'showTab');
     return;
   }
   if (tabId === 'usage') {

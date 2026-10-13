@@ -127,7 +127,7 @@ If you want PELS to shift heating to cheaper hours, go to **Settings > Electrici
 
 1. Choose your price source — **Norway (spot + grid tariff)** if you are in Norway, or **Homey Energy**, **Power by the Hour** or a **Flow card** for other sources. If you already run the Power by the Hour app, that source needs no setup beyond picking it. Until you choose, the page says which source PELS is using, with a button to keep it.
 2. Make sure the price status shows that data is available.
-3. If using the Norway source, select your county, grid company, tariff group, pricing model (Strømstøtte or Norgespris) and price area. A setting you have not chosen yet says what PELS uses in its place, and without a grid company your prices leave out the grid tariff.
+3. If using the Norway source, select your county, grid company, tariff group, pricing model (Strømstøtte or Norgespris) and price area. A setting you have not chosen yet says what PELS uses in its place, and without a grid company your prices leave out the grid tariff. PELS suggests the grid company, county and price area for your Homey's location; tap **Use these** to save them.
 
 Then go to **Settings > Devices**, open each temperature device that should participate, and enable **Price** or **Setup > Price-based control**. Water heaters and floor heating are the highest-impact picks — they carry the thermal mass that makes shifting pay off.
 

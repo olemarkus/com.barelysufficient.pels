@@ -23,9 +23,15 @@ import type {
   HomeyPriceFormulaUiStatus,
   PowerhourSourceUiStatus,
   PriceSetupRead,
+  PriceSetupSuggestion,
   SettingsUiHubMarketRead,
   SettingsUiPriceSourcePayloads,
 } from '../../packages/contracts/src/settingsUiApi';
+import {
+  NO_PRICE_SETUP_SUGGESTION,
+  NorwayPriceSetupSuggester,
+  type HubLocationRead,
+} from './norwayPriceSetupSuggestion';
 import { readPriceSetup } from './priceSetupRead';
 import type { PriceSourceSwitch } from './priceSchemeResolution';
 import type { BudgetPriceInputs } from './budgetPrice';
@@ -79,6 +85,8 @@ export type PriceCoordinatorDeps = {
    * price source PELS assumes while the owner has not chosen one.
    */
   readHubMarket: () => Promise<SettingsUiHubMarketRead>;
+  /** Where the hub is on the map, for the Norway settings suggested from it. */
+  readHubLocation: () => Promise<HubLocationRead>;
   log: (...args: unknown[]) => void;
   debugStructured: StructuredDebugEmitter;
   error: (...args: unknown[]) => void;
@@ -123,8 +131,16 @@ export class PriceCoordinator {
    */
   readonly combinedPricesReader: CombinedPricesReader;
 
+  private readonly norwayPriceSetupSuggester: NorwayPriceSetupSuggester;
+
   constructor(private deps: PriceCoordinatorDeps) {
     this.combinedPricesReader = createCombinedPricesReader(deps.priceDataStore, () => this.updateCombinedPrices());
+    this.norwayPriceSetupSuggester = new NorwayPriceSetupSuggester({
+      readHubMarket: deps.readHubMarket,
+      readHubLocation: deps.readHubLocation,
+      homeyWebApiGet: deps.homeyWebApiGet,
+      structuredLog: deps.structuredLog,
+    });
     this.priceService = new PriceService(
       deps.homey,
       {
@@ -159,6 +175,17 @@ export class PriceCoordinator {
   /** The price source and Norway settings in force, each marked chosen or assumed. */
   readPriceSetup(): PriceSetupRead {
     return readPriceSetup(this.deps.homey.settings, this.priceService.getResolvedPriceScheme());
+  }
+
+  /**
+   * The Norway price settings for the hub's location that the owner has not
+   * chosen, looked up when the settings UI asks. Without the settings read
+   * nothing is looked up, since every part might already be chosen.
+   */
+  async suggestNorwayPriceSetup(): Promise<PriceSetupSuggestion> {
+    const read = this.readPriceSetup();
+    if (read.state !== 'resolved') return NO_PRICE_SETUP_SUGGESTION;
+    return this.norwayPriceSetupSuggester.suggest(read.setup.norway);
   }
 
   updatePriceOptimizationEnabled(logChange = false): void {

@@ -32,6 +32,7 @@ import {
   type NorwayChoices,
   type PriceSourceAssumption,
 } from '../priceSetupStatus.ts';
+import type { PriceSetupOffer } from '../priceSetupOffer.ts';
 import {
   EXPORT_FIXED_LIMIT,
   EXPORT_SPOT_FACTOR_MAX,
@@ -76,6 +77,8 @@ export type ElectricityPricesHandlers = {
   onCountyChange: (code: string) => void;
   onOrganizationChange: (orgNumber: string) => void;
   onTariffGroupChange: (group: string) => void;
+  /** Save everything the location suggestion offers, as the owner's choice. */
+  onUsePriceSetupOffer: (offer: PriceSetupOffer) => void;
   onRefreshPrices: () => void;
   onRefreshGridTariff: () => void;
   onPvForecastSourceChange: (source: PvForecastSourceSetting) => void;
@@ -95,6 +98,8 @@ export type ElectricityPricesViewProps = {
   sourceAssumption: PriceSourceAssumption;
   /** Which Norway settings the owner chose, so the page never presents a default as theirs. */
   norwayChoices: NorwayChoices;
+  /** The Norway settings found for the hub's location that the owner has not chosen yet. */
+  priceSetupOffer: PriceSetupOffer;
   // Export (feed-in) price section. Prosumer-gated by the orchestrator: shown
   // when the home has a managed solar device OR export pricing is already on
   // (never strand an enabled user behind the gate).
@@ -465,7 +470,56 @@ const NotChosenHint = ({ text }: { text: string }) => (
   <small class="field__hint field__hint--alert">{text}</small>
 );
 
-const NorwaySection = ({ config, handlers, gridCompanyOptions, norwayChoices }: ElectricityPricesViewProps) => {
+const PRICE_AREAS: ReadonlyArray<{ code: string; label: string }> = [
+  { code: 'NO1', label: 'NO1 — Oslo / East Norway' },
+  { code: 'NO2', label: 'NO2 — Kristiansand / South Norway' },
+  { code: 'NO3', label: 'NO3 — Trondheim / Central Norway' },
+  { code: 'NO4', label: 'NO4 — Tromsø / North Norway (no VAT)' },
+  { code: 'NO5', label: 'NO5 — Bergen / West Norway' },
+];
+
+const countyName = (code: string): string => COUNTIES.find((county) => county.code === code)?.name ?? code;
+
+/**
+ * The settings PELS found for the hub's location, for the owner to confirm in
+ * one tap. Nothing is saved until they do.
+ */
+const PriceSetupOfferBlock = ({ offer, onUse }: {
+  offer: PriceSetupOffer;
+  onUse: (offer: PriceSetupOffer) => void;
+}) => {
+  if (offer.kind === 'none') return null;
+  const rows: Array<{ label: string; value: string }> = [];
+  if (offer.kind !== 'price_area') {
+    const { name, county } = offer.gridCompany;
+    rows.push({ label: 'Grid company', value: name });
+    if (county.kind === 'set') rows.push({ label: 'County', value: countyName(county.code) });
+  }
+  // The code alone, as the mock-up has it: the dropdown's longer label crowds
+  // the row on a narrow phone.
+  if (offer.kind !== 'grid_company') rows.push({ label: 'Price area', value: offer.priceArea });
+  return (
+    <>
+      <p class="pels-card-supporting">Suggested from your Homey’s location:</p>
+      <div class="price-config-source-status" id="electricity-prices-location-suggestion">
+        {rows.map((row) => <StatusRow key={row.label} label={row.label} value={row.value} />)}
+      </div>
+      {/* Attribution both map sources' licences ask for (NLOD, CC BY 4.0). */}
+      {offer.kind !== 'price_area' && (
+        <small class="field__hint">Grid company and county from NVE and Kartverket map data.</small>
+      )}
+      <div class="form__actions">
+        <MdOutlinedButton type="button" onClick={() => onUse(offer)}>
+          {rows.length > 1 ? 'Use these' : 'Use this'}
+        </MdOutlinedButton>
+      </div>
+    </>
+  );
+};
+
+const NorwaySection = ({
+  config, handlers, gridCompanyOptions, norwayChoices, priceSetupOffer,
+}: ElectricityPricesViewProps) => {
   // What PELS prices with in place of each setting the owner never chose.
   const choices = norwayChoices.kind === 'resolved' ? norwayChoices.choices : null;
   const assumedCounty = choices && !choices.county.chosen ? choices.county.value : null;
@@ -474,6 +528,10 @@ const NorwaySection = ({ config, handlers, gridCompanyOptions, norwayChoices }: 
   return (
     <>
       <p class="eyebrow eyebrow--inline">Grid tariff</p>
+      {/* A price area on its own is a spot price setting, so it is offered there. */}
+      {priceSetupOffer.kind !== 'price_area' && (
+        <PriceSetupOfferBlock offer={priceSetupOffer} onUse={handlers.onUsePriceSetupOffer} />
+      )}
       <div class="field">
         <span class="field__label pels-text-settings-label" id="electricity-prices-county-label">County</span>
         <MdFilledSelect
@@ -492,7 +550,7 @@ const NorwaySection = ({ config, handlers, gridCompanyOptions, norwayChoices }: 
             county changes no price. */}
         {!config.organizationNumber && assumedCounty !== null && (
           <small class="field__hint">
-            {`Not chosen yet. Showing grid companies in ${COUNTIES.find((c) => c.code === assumedCounty)?.name ?? assumedCounty}.`}
+            {`Not chosen yet. Showing grid companies in ${countyName(assumedCounty)}.`}
           </small>
         )}
       </div>
@@ -549,6 +607,9 @@ const NorwaySection = ({ config, handlers, gridCompanyOptions, norwayChoices }: 
       </div>
 
       <p class="eyebrow eyebrow--inline">Spot price</p>
+      {priceSetupOffer.kind === 'price_area' && (
+        <PriceSetupOfferBlock offer={priceSetupOffer} onUse={handlers.onUsePriceSetupOffer} />
+      )}
       <div class="field">
         <span class="field__label pels-text-settings-label" id="electricity-prices-norway-model-label">Norway pricing model</span>
         <MdFilledSelect
@@ -596,11 +657,9 @@ const NorwaySection = ({ config, handlers, gridCompanyOptions, norwayChoices }: 
           {assumedArea !== null && (
             <MdSelectOption value={NOT_CHOSEN}><div slot="headline">Select price area</div></MdSelectOption>
           )}
-          <MdSelectOption value="NO1"><div slot="headline">NO1 — Oslo / East Norway</div></MdSelectOption>
-          <MdSelectOption value="NO2"><div slot="headline">NO2 — Kristiansand / South Norway</div></MdSelectOption>
-          <MdSelectOption value="NO3"><div slot="headline">NO3 — Trondheim / Central Norway</div></MdSelectOption>
-          <MdSelectOption value="NO4"><div slot="headline">NO4 — Tromsø / North Norway (no VAT)</div></MdSelectOption>
-          <MdSelectOption value="NO5"><div slot="headline">NO5 — Bergen / West Norway</div></MdSelectOption>
+          {PRICE_AREAS.map((area) => (
+            <MdSelectOption key={area.code} value={area.code}><div slot="headline">{area.label}</div></MdSelectOption>
+          ))}
         </MdFilledSelect>
         {assumedArea !== null && <NotChosenHint text={`Not chosen yet. PELS uses ${assumedArea}.`} />}
         <small class="field__hint">

@@ -523,6 +523,10 @@
       "method": "GET",
       "path": "/ui_hub_market"
     },
+    "ui_price_setup_suggestion": {
+      "method": "GET",
+      "path": "/ui_price_setup_suggestion"
+    },
     "homey_energy_meters": {
       "method": "GET",
       "path": "/homey_energy_meters"

@@ -1347,6 +1347,7 @@ describe('Price optimization', () => {
     getPowerTracker: () => ({}),
     homeyWebApiGet: noHomeyWebApi,
     readHubMarket: unknownHubMarket,
+    readHubLocation: async () => ({ kind: 'unavailable' }),
     log: () => undefined,
     debugStructured: () => undefined,
     error: () => undefined,

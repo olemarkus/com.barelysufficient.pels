@@ -1406,6 +1406,16 @@ never saw). On Electricity prices:
   is included (`…, plus your grid tariff once you choose a grid company.`). The
   county alone changes no price: `Not chosen yet. Showing grid companies in
   Oslo.`
+- Suggestion from the hub's location, under the Grid tariff heading (a price
+  area offered on its own goes under Spot price instead):
+  `Suggested from your Homey’s location:` above a status box listing only what
+  the owner has not chosen (`Grid company`, `County`, `Price area`), and one
+  `Use these` (`Use this` for a single row) button that saves them all, with
+  the attribution `Grid company and county from NVE and Kartverket map data.`
+  under the box. It is
+  offered only for a grid company PELS lists, and is asked for only when the
+  owner opens the page with the grid company or price area missing, because the
+  lookup sends the hub's coordinates to NVE and Kartverket.
 - A Smart task with no price for the current hour says `PELS has no electricity
   prices` with a `Check prices` recourse, not `Waiting for tomorrow’s prices`
   (a Flow price source keeps its own Flow copy).

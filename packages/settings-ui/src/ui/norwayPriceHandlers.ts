@@ -15,6 +15,11 @@ import {
 } from '../../../contracts/src/settingsUiApi.ts';
 import type { NorwayPriceModel, PriceConfigState } from './priceConfigTypes.ts';
 import { isPriceArea, saveNorwayPriceModel, savePriceArea } from './priceSettingsPersistence.ts';
+import {
+  loadPriceSetupSuggestion,
+  priceSetupNeedsSuggestion,
+  type PriceSetupOffer,
+} from './priceSetupOffer.ts';
 
 export type NorwayPriceHandlersContext = {
   getState: () => PriceConfigState;
@@ -116,5 +121,58 @@ export const createNorwayPriceHandlers = (ctx: NorwayPriceHandlersContext) => {
     }
   };
 
-  return { onNorwayModelChange, onPriceAreaChange, onCountyChange, onOrganizationChange, onTariffGroupChange };
+  // Asked once per visit to the settings: the lookup sends the hub's
+  // coordinates to NVE and Kartverket, so it runs only when the owner opens the
+  // page and something is still missing, and never again after an answer.
+  let suggestionRequested = false;
+  const suggestFromLocation = async (): Promise<void> => {
+    const { priceSetup } = ctx.getState();
+    if (suggestionRequested || !priceSetupNeedsSuggestion(priceSetup)) return;
+    suggestionRequested = true;
+    ctx.patchState({ priceSetupSuggestion: await loadPriceSetupSuggestion() });
+    ctx.rerender();
+  };
+
+  // One confirmation writes everything offered. The county goes with the grid
+  // company because the company belongs to it, unless the owner chose it.
+  // Every write starts on the tap, so a field the owner changes while they are
+  // in flight is written after them and stays.
+  const onUseOffer = async (offer: PriceSetupOffer): Promise<void> => {
+    if (offer.kind === 'none') return;
+    const writes: Array<Promise<void>> = [];
+    if (offer.kind !== 'price_area') {
+      const { county, organizationNumber } = offer.gridCompany;
+      if (county.kind === 'set') {
+        ctx.patchState({ countyCode: county.code });
+        writes.push(setSetting('nettleie_fylke', county.code));
+      }
+      ctx.patchState({ organizationNumber });
+      writes.push(setSetting('nettleie_orgnr', organizationNumber));
+    }
+    if (offer.kind !== 'grid_company') {
+      ctx.patchState({ priceArea: offer.priceArea });
+      writes.push(savePriceArea(offer.priceArea));
+    }
+    ctx.rerender();
+    try {
+      await Promise.all(writes);
+      if (offer.kind !== 'price_area') await refreshGridTariff();
+      invalidateApiCache(SETTINGS_UI_PRICES_PATH);
+      await ctx.refreshStatus();
+      await showToast('Price settings saved.', 'ok');
+    } catch (error) {
+      await logSettingsError('Failed to save the suggested price settings', error, 'priceConfig');
+      await showToastError(error, 'Failed to save price settings. If this keeps happening, send a diagnostics report.');
+    }
+  };
+
+  return {
+    onNorwayModelChange,
+    onPriceAreaChange,
+    onCountyChange,
+    onOrganizationChange,
+    onTariffGroupChange,
+    suggestFromLocation,
+    onUseOffer,
+  };
 };

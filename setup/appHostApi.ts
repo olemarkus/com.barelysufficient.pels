@@ -23,6 +23,7 @@ import type {
 } from '../packages/contracts/src/types';
 import type {
   PriceSetupRead,
+  PriceSetupSuggestion,
   SettingsUiHardCapConfigurationRead,
   SettingsUiPlanSnapshot,
 } from '../packages/contracts/src/settingsUiApi';
@@ -119,6 +120,13 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   public getPriceTimelineForUi = (): PriceTimelineRead => {
     const coordinator = this.context.priceCoordinator;
     return coordinator ? coordinator.getPriceTimeline() : { state: 'unavailable', reason: 'no_prices' };
+  };
+
+  public suggestNorwayPriceSetup = async (): Promise<PriceSetupSuggestion> => {
+    const coordinator = this.context.priceCoordinator;
+    // Before the price coordinator is wired there is nothing to suggest yet.
+    if (!coordinator) return { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' } };
+    return coordinator.suggestNorwayPriceSetup();
   };
 
   public getCurrentMonthCapacityPeakKw = (): number | null => resolveCurrentMonthQuarterPeakKw(

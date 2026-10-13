@@ -33,6 +33,7 @@ const buildConfig = (overrides: Partial<PriceConfigState> = {}): PriceConfigStat
   pvForecastStatus: { kind: 'unknown' },
   priceSetup: { state: 'unavailable' },
   priceSetupStatus: { state: 'unavailable' },
+  priceSetupSuggestion: { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' } },
   ...overrides,
 });
 
@@ -47,6 +48,7 @@ const buildHandlers = (overrides: Partial<ElectricityPricesHandlers> = {}): Elec
   onCountyChange: vi.fn(),
   onOrganizationChange: vi.fn(),
   onTariffGroupChange: vi.fn(),
+  onUsePriceSetupOffer: vi.fn(),
   onRefreshPrices: vi.fn(),
   onRefreshGridTariff: vi.fn(),
   onExportEnabledChange: vi.fn(),
@@ -69,6 +71,7 @@ const buildProps = (
   ],
   sourceAssumption: { kind: 'none' },
   norwayChoices: { kind: 'unknown' },
+  priceSetupOffer: { kind: 'none' },
   showExportSection: false,
   showSolarForecastSection: false,
   ...overrides,
@@ -765,5 +768,40 @@ describe('ElectricityPricesView, Power by the Hour source', () => {
       expect(mount.querySelector('[data-settings-target="price-aware-devices"]')?.textContent?.trim())
         .toBe('Manage price-aware devices →');
     });
+  });
+});
+
+describe('ElectricityPricesView, suggestion from the hub\'s location', () => {
+  it('lists what PELS found and saves it all with one tap', () => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+    const onUsePriceSetupOffer = vi.fn();
+    const offer = {
+      kind: 'grid_company_and_area' as const,
+      gridCompany: { organizationNumber: '978631029', name: 'TENSIO TS AS', county: { kind: 'set' as const, code: '50' } },
+      priceArea: 'NO3',
+    };
+    renderElectricityPricesView(mount, buildProps({ organizationNumber: '' }, {
+      priceSetupOffer: offer,
+      handlers: buildHandlers({ onUsePriceSetupOffer }),
+    }));
+
+    const box = mount.querySelector('#electricity-prices-location-suggestion');
+    expect(box?.textContent).toContain('TENSIO TS AS');
+    expect(box?.textContent).toContain('Trøndelag');
+    expect(box?.textContent).toContain('NO3');
+    const use = Array.from(mount.querySelectorAll('md-outlined-button'))
+      .find((button) => button.textContent === 'Use these') as HTMLElement | undefined;
+    use?.click();
+    expect(onUsePriceSetupOffer).toHaveBeenCalledWith(offer);
+  });
+
+  it('shows nothing without an offer', () => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+    renderElectricityPricesView(mount, buildProps());
+
+    expect(mount.querySelector('#electricity-prices-location-suggestion')).toBeNull();
+    expect(mount.textContent).not.toContain('Suggested from your Homey');
   });
 });

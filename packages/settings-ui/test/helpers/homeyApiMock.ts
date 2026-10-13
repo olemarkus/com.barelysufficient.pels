@@ -25,6 +25,7 @@ import {
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
   SETTINGS_UI_HUB_MARKET_PATH,
+  SETTINGS_UI_PRICE_SETUP_SUGGESTION_PATH,
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
   SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH,
   SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
@@ -95,6 +96,7 @@ export type MockHomeyUiState = {
   // `/homey_energy_meters` payload (`HomeyEnergyMeterEntry[]`) backing both
   // whole-home meter pickers. Defaults to an empty list.
   homeyEnergyMeters?: unknown;
+  priceSetupSuggestion?: unknown;
   // `/ui_homes` payload (multi-home membership view). Defaults to production's
   // single-home empty shape (`SettingsUiHomesPayload`); tests seed this to
   // exercise multi-home UI states.
@@ -427,6 +429,12 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   // Mirrors `readHubMarket` (lib/home/hubMarket.ts). `unavailable` is the
   // baseline, the market-neutral copy every spec expects.
   [buildRouteKey('GET', SETTINGS_UI_HUB_MARKET_PATH)]: () => async () => ({ state: 'unavailable' }),
+  // Mirrors `NorwayPriceSetupSuggester` (lib/price/norwayPriceSetupSuggestion.ts).
+  // No suggestion is the baseline; a spec seeds one via the
+  // `priceSetupSuggestion` override.
+  [buildRouteKey('GET', SETTINGS_UI_PRICE_SETUP_SUGGESTION_PATH)]: (homey) => async () => (
+    getUiOverride(homey, 'priceSetupSuggestion') ?? { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' } }
+  ),
   [buildRouteKey('GET', HOMEY_ENERGY_METERS_PATH)]: (homey) => async () => (
     getUiOverride(homey, 'homeyEnergyMeters') ?? []
   ),

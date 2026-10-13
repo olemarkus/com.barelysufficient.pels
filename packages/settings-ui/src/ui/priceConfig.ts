@@ -14,6 +14,7 @@ import { resolveManagedState, resolveHomeExhibitsSolar } from './state.ts';
 import { gridCompanies } from './gridCompanies.ts';
 import { readPriceSchemeInForce, savePriceScheme } from './priceSettingsPersistence.ts';
 import { createNorwayPriceHandlers } from './norwayPriceHandlers.ts';
+import { resolvePriceSetupOffer } from './priceSetupOffer.ts';
 import { getPricesReadModel } from './prices.ts';
 import {
   resolveNorwayChoices,
@@ -93,6 +94,7 @@ let configState: PriceConfigState = {
   pvForecastStatus: { kind: 'unknown' },
   priceSetup: { state: 'unavailable' },
   priceSetupStatus: { state: 'unavailable' },
+  priceSetupSuggestion: { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' } },
 };
 
 let electricityPricesSurface: HTMLElement | null = null;
@@ -128,6 +130,7 @@ const renderElectricityPrices = () => {
     gridCompanyOptions: getGridCompanyOptions(configState.countyCode),
     sourceAssumption: resolvePriceSourceAssumption(configState.priceSetup, configState.priceScheme),
     norwayChoices: resolveNorwayChoices(configState.priceSetup),
+    priceSetupOffer: resolvePriceSetupOffer(configState.priceSetupSuggestion, configState.priceSetup),
     // Prosumer gate: any home that exhibits solar — a managed solar device OR
     // material exhibited grid export (a meter-only / string-inverter home) — OR
     // an already-enabled export config, so an enabled user is never stranded
@@ -447,6 +450,7 @@ const electricityPricesHandlers: ElectricityPricesHandlers = {
   onCountyChange: norwayPriceHandlers.onCountyChange,
   onOrganizationChange: norwayPriceHandlers.onOrganizationChange,
   onTariffGroupChange: norwayPriceHandlers.onTariffGroupChange,
+  onUsePriceSetupOffer: norwayPriceHandlers.onUseOffer,
   onRefreshPrices: handleRefreshPrices,
   onRefreshGridTariff: handleRefreshGridTariff,
   onPvForecastSourceChange: handlePvForecastSourceChange,
@@ -526,6 +530,15 @@ export const updatePriceConfigDevices = (devices: SettingsUiDeviceView[]) => {
 export const refreshPriceConfigView = async () => {
   await refreshStatusInfo();
   renderAll();
+};
+
+/**
+ * Opening Electricity prices: refresh it, then offer the Norway settings for
+ * the hub's location if any are still missing.
+ */
+export const openElectricityPricesView = async () => {
+  await refreshPriceConfigView();
+  await norwayPriceHandlers.suggestFromLocation();
 };
 
 export const reloadPriceConfigSettings = async () => {
