@@ -30,6 +30,20 @@ describe('homeyApiMock', () => {
     expect(getUnhandledDeclaredHomeyApiRoutes()).toEqual([]);
   });
 
+  it('defaults charging reads to unconfigured and routes device-specific writes to explicit fixtures', async () => {
+    const homey = createHomeyMock();
+    await expect(callHomeyApi(homey, 'GET', '/ui_charging_access'))
+      .resolves.toEqual({ configured: false, state: 'not_configured' });
+    await expect(callHomeyApi(homey, 'GET', '/ui_charging_current')).resolves.toEqual([]);
+    await expect(callHomeyApi(homey, 'PUT', '/ui_charging_current/charger', { method: 'flow' }))
+      .rejects.toThrow('Unknown charging device');
+    const configured = createHomeyMock({ apiHandlers: {
+      'PUT /ui_charging_current/charger': ({ body }) => body,
+    } });
+    await expect(callHomeyApi(configured, 'PUT', '/ui_charging_current/charger', { method: 'flow' }))
+      .resolves.toEqual({ method: 'flow' });
+  });
+
   it('builds bootstrap settings from the production key list', async () => {
     const deviceControlProfiles = {
       'device-1': { steps: [] },

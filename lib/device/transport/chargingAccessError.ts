@@ -9,4 +9,3 @@ export class ChargingAccessError extends Error {
     this.name = 'ChargingAccessError';
   }
 }
-

@@ -1,4 +1,5 @@
 import type { Mock } from 'vitest';
+import { CHARGING_ACCESS_PATH, CHARGING_ACCESS_CHECK_PATH, CHARGING_CURRENT_PATH } from '../../../contracts/src/chargingControl.ts';
 import { fixtureDeviceReason } from './fixtureDeviceReason.ts';
 import type {
   DailyBudgetModelSettings,
@@ -386,6 +387,16 @@ const buildUiBootstrap = async (homey: MockHomeyClient) => ({
 });
 
 const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFactory> = {
+  [buildRouteKey('GET', CHARGING_ACCESS_PATH)]: () => async () => ({ configured: false, state: 'not_configured' }),
+  [buildRouteKey('POST', CHARGING_ACCESS_CHECK_PATH)]: () => async () => ({ configured: false, state: 'not_configured' }),
+  [buildRouteKey('DELETE', CHARGING_ACCESS_PATH)]: () => async () => ({ configured: false, state: 'not_configured' }),
+  [buildRouteKey('PUT', CHARGING_ACCESS_PATH)]: () => async () => {
+    throw new Error('Configure a charging access handler to test key validation');
+  },
+  [buildRouteKey('GET', CHARGING_CURRENT_PATH)]: () => async () => [],
+  [buildRouteKey('PUT', `${CHARGING_CURRENT_PATH}/:deviceId`)]: () => async () => {
+    throw new Error('Unknown charging device');
+  },
   [buildRouteKey('GET', SETTINGS_UI_BOOTSTRAP_PATH)]: (homey) => async () => buildUiBootstrap(homey),
   [buildRouteKey('GET', SETTINGS_UI_DEVICES_PATH)]: (homey) => async () => ({
     devices: await resolveUiDevices(homey),
@@ -540,9 +551,15 @@ const buildDefaultApiHandlers = (homey: MockHomeyClient): Record<string, MockHom
   )
 );
 
-export const isDeclaredHomeyApiRoute = (method: string, uri: string): boolean => (
-  ALLOWED_HOMEY_API_ROUTES.has(buildRouteKey(method, uri))
-);
+const resolveDeclaredRouteKey = (method: string, uri: string): string | undefined => {
+  const requested = buildRouteKey(method, uri).split('/');
+  return [...ALLOWED_HOMEY_API_ROUTES].find((key) => {
+    const declared = key.split('/');
+    return declared.length === requested.length && declared.every((part, index) => (
+      part.startsWith(':') ? requested[index] !== '' : part === requested[index]
+    ));
+  });
+};
 
 export const getUnhandledDeclaredHomeyApiRoutes = (): string[] => (
   [...ALLOWED_HOMEY_API_ROUTES].filter((routeKey) => !Object.prototype.hasOwnProperty.call(DEFAULT_HOMEY_API_HANDLER_FACTORIES, routeKey))
@@ -568,13 +585,14 @@ export const buildHomeyApiMock = (
     // this mock serves from settings slots (`ui_power?homeId=`); every other
     // scoped read keeps 404ing, which is how the cache specs observe a miss.
     const path = uri.split('?')[0];
-    if (!isDeclaredHomeyApiRoute(method, path)) {
+    const declaredRouteKey = resolveDeclaredRouteKey(method, path);
+    if (!declaredRouteKey) {
       callback(buildHomeyApi404(method, uri));
       return;
     }
 
     const handler = handlers[buildRouteKey(method, uri)]
-      ?? (path === uri || path === SETTINGS_UI_POWER_PATH ? handlers[buildRouteKey(method, path)] : undefined);
+      ?? (path === uri || path === SETTINGS_UI_POWER_PATH ? handlers[declaredRouteKey] : undefined);
 
     if (!handler) {
       callback(new Error(`No Homey API mock configured for ${method} ${uri}`));
