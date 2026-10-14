@@ -622,5 +622,8 @@
   },
   "3.14.0": {
     "en": "New Electricity price widget for your Homey dashboard shows today's and tomorrow's prices, with the cheap and expensive lines, for import, export or both. In Norway, price setup now suggests your grid company, county and price area from your Homey's location, and changing the price area fetches the new area's prices right away. The Electricity prices page shows what the current price is made of, where the cheap and expensive lines fall, and offers Power by the Hour when Homey Energy has no prices. Price levels now follow the import price only.\n\nAn EV charger now waits three minutes after PELS lowers its current before it is allowed to increase again, which smooths out stepping up and down. Reductions made only to follow solar surplus do not start this wait. The Smart tasks widget now has a fixed height and scrolls its content. The daily budget editor now shows the switches and kWh the way PELS actually uses them, the saved grid company no longer appears blank, and several layout fixes improve narrow screens and Firefox."
+  },
+  "3.15.0": {
+    "en": "PELS can now set the charging current directly for Tesla cars through Tesla Car & Energy and for Zaptec chargers, without a current-setting Flow. Add a Homey API key with Flow permission under the device's Charging current setup and choose Use built-in control. One key works for all supported chargers. Tesla control only runs while the car is parked at home on an AC charging session. A Zaptec installation must have only one charger.\n\nIf you keep using a Flow, the new Stepped-load request is still valid card checks right before your current action that PELS still wants that current."
   }
 }
