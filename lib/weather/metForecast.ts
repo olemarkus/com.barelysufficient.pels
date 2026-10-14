@@ -6,6 +6,10 @@ import {
 } from '../../packages/shared-domain/src/utils/dateUtils';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import { isUnknownRecord } from '../utils/types';
+import { normalizeError } from '../utils/errorUtils';
+import { getLogger } from '../logging/logger';
+
+const logger = getLogger('weather/metForecast');
 
 /**
  * Direct MET Norway Locationforecast 2.0 (compact) forecast source for the
@@ -188,7 +192,6 @@ export type MetForecastFetchDeps = {
   ifModifiedSince?: string;
   /** Abort the request after this many ms (default 8000) so a hung socket can't stall the rollup loop. */
   timeoutMs?: number;
-  errorLog?: (...args: unknown[]) => void;
 };
 
 export type MetForecastFetchResult =
@@ -232,12 +235,17 @@ async function interpretMetResponse(
 ): Promise<MetForecastFetchResult> {
   if (response.status === 304) return { outcome: 'not_modified', ...readValidators(response) };
   if (!response.ok) {
-    deps.errorLog?.(`MET forecast: ${response.status} ${response.statusText}`);
+    logger.warn({
+      event: 'weather_met_forecast_fetch',
+      reason: 'http_error',
+      status: response.status,
+      statusText: response.statusText,
+    });
     return { outcome: 'failed' };
   }
   const days = summarizeMetForecastDays(await response.json(), { timeZone: deps.timeZone, nowMs: deps.nowMs });
   if (!days) {
-    deps.errorLog?.('MET forecast: response carried no usable hourly data for today or tomorrow');
+    logger.warn({ event: 'weather_met_forecast_fetch', reason: 'no_usable_data' });
     return { outcome: 'failed' };
   }
   return { outcome: 'ok', days, ...readValidators(response) };
@@ -261,7 +269,7 @@ export async function fetchMetForecast(deps: MetForecastFetchDeps): Promise<MetF
   } catch (error) {
     // An AbortError (timeout) lands here too — treated as a transient failure so
     // the caller keeps the prior cache and never clears it.
-    deps.errorLog?.('MET forecast: fetch failed', error);
+    logger.warn({ event: 'weather_met_forecast_fetch', reason: 'fetch_failed', err: normalizeError(error) });
     return { outcome: 'failed' };
   } finally {
     clearTimeout(timer);

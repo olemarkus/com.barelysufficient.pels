@@ -143,7 +143,6 @@ export function createWeatherCollector(
         nowMs: ctx.getNow().getTime(),
         userAgent: buildMetUserAgent(ctx.homey.manifest),
         ...(ifModifiedSince !== undefined ? { ifModifiedSince } : {}),
-        errorLog: (...args) => logger.warn({ event: 'weather_met_forecast_fetch', detail: args }),
       });
     },
     recomputeDerived: (state) => computeEnergySignatureUpdate(state, {
