@@ -874,31 +874,60 @@ describe('ElectricityPricesView, cheap and expensive lines', () => {
     ...overrides,
   });
 
-  const render = (priceLevelSummary: PriceLevelSummaryRead, onThresholdChange = vi.fn()) => {
+  const render = (priceLevelSummary: PriceLevelSummaryRead, handlers: Parameters<typeof buildHandlers>[0] = {}) => {
     const mount = document.createElement('div');
     document.body.appendChild(mount);
-    renderElectricityPricesView(mount, buildProps({ priceLevelSummary }, { handlers: buildHandlers({ onThresholdChange }) }));
+    renderElectricityPricesView(mount, buildProps({ priceLevelSummary }, { handlers: buildHandlers(handlers) }));
     return mount;
   };
 
-  it('states where the lines are, in the price widget\'s words', () => {
+  const button = (mount: HTMLElement, label: string) => Array.from(mount.querySelectorAll('md-outlined-button'))
+    .find((candidate) => candidate.textContent === label) as HTMLElement | undefined;
+
+  it('states where the lines are, in the settings page\'s own words', () => {
     const mount = render(summary({ lowest: 40, highest: 120, hasCheap: true, hasExpensive: true }));
 
     expect(mount.querySelector('#electricity-prices-level-lines')?.textContent)
-      .toBe('High from 94.20 øre · low up to 56.50 øre');
+      .toBe('Cheap at or below 56.50 øre · expensive from 94.20 øre');
   });
 
-  it('offers a lower threshold when no price counts as cheap or expensive', () => {
-    const onThresholdChange = vi.fn();
-    const mount = render(summary({ suggestion: { kind: 'lower_threshold', percent: 9, cheapUpTo: 68 } }), onThresholdChange);
+  it('still states the lines when no price counts as cheap or expensive, and where the prices stay', () => {
+    const mount = render(summary());
 
-    expect(mount.querySelector('#electricity-prices-level-lines')?.textContent)
-      .toBe('Prices stay close to the average of 75.30 øre, so none count as low or high');
-    expect(mount.textContent).toContain('At 9 %, the cheapest quarter of these prices, up to 68.00 øre, counts as low.');
-    const use = Array.from(mount.querySelectorAll('md-outlined-button'))
-      .find((button) => button.textContent === 'Use 9 %') as HTMLElement | undefined;
-    use?.click();
+    expect(mount.querySelector('#electricity-prices-level-lines')?.textContent).toBe(
+      'Cheap at or below 56.50 øre · expensive from 94.20 øre. '
+        + 'No cheap or expensive prices: they stay between 68.00 and 79.00 øre.',
+    );
+  });
+
+  it('offers a lower threshold when the threshold keeps the cheapest prices normal', () => {
+    const onThresholdChange = vi.fn();
+    const mount = render(summary({ suggestion: { kind: 'lower_threshold', percent: 9, cheapUpTo: 68 } }), { onThresholdChange });
+
+    expect(mount.textContent).toContain('At 9 %, the cheapest quarter of these prices, up to 68.00 øre, counts as cheap.');
+    button(mount, 'Use 9 %')?.click();
     expect(onThresholdChange).toHaveBeenCalledWith(9);
+  });
+
+  it('offers a lower minimum difference when that keeps the cheapest prices normal', () => {
+    // The owner's Norgespris days at 10 % and 10 øre.
+    const onMinDiffChange = vi.fn();
+    const onThresholdChange = vi.fn();
+    const mount = render(summary({
+      lines: { average: 83.17, cheapAtOrBelow: 73.17, expensiveFrom: 93.17 },
+      lowest: 73.84,
+      highest: 87.84,
+      suggestion: { kind: 'lower_min_difference', minDifference: 9, cheapUpTo: 73.84 },
+    }), { onMinDiffChange, onThresholdChange });
+
+    expect(mount.querySelector('#electricity-prices-level-lines')?.textContent).toBe(
+      'Cheap at or below 73.17 øre · expensive from 93.17 øre. '
+        + 'No cheap or expensive prices: they stay between 73.84 and 87.84 øre.',
+    );
+    expect(mount.textContent).toContain('At 9 øre, the cheapest quarter of these prices, up to 73.84 øre, counts as cheap.');
+    button(mount, 'Use 9 øre')?.click();
+    expect(onMinDiffChange).toHaveBeenCalledWith(9);
+    expect(onThresholdChange).not.toHaveBeenCalled();
   });
 
   it('states no lines without the read', () => {

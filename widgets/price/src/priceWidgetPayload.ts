@@ -26,6 +26,7 @@ import {
 import type {
   PriceWidgetChart,
   PriceWidgetLegendItem,
+  PriceWidgetLevelLine,
   PriceWidgetPayload,
   PriceWidgetShade,
   PriceWidgetShow,
@@ -219,6 +220,7 @@ const buildExportPayload = (
       importSteps: [],
       exportSteps,
       shades: [],
+      levelLines: [],
       nowPrice: current.exportPrice,
       axisUnit: resolvePriceWidgetAxisUnit(timeline.priceUnit),
     },
@@ -246,6 +248,10 @@ const buildImportPayload = (
   const windowStartMs = Math.min(...visible.map((period) => period.startMs));
   const windowEndMs = Math.max(...visible.map((period) => period.endMs));
   const importPrices = importSteps.map((step) => step.price);
+  const levelLines: PriceWidgetLevelLine[] = [
+    { level: 'cheap', price: timeline.lines.cheapAtOrBelow },
+    { level: 'expensive', price: timeline.lines.expensiveFrom },
+  ];
   const priceText = formatPriceWidgetPrice(current.importPrice, amountUnit);
   const levelLabel = PRICE_WIDGET_LEVEL_LABEL[current.level];
   return {
@@ -266,12 +272,19 @@ const buildImportPayload = (
       windowStartMs,
       windowEndMs,
       nowMs,
-      ...resolveYAxis([...importPrices, ...exportSteps.map((step) => step.price)]),
+      // The lines are on the axis too, so a day that never reaches one still
+      // shows how far the prices stay from it.
+      ...resolveYAxis([
+        ...importPrices,
+        ...exportSteps.map((step) => step.price),
+        ...levelLines.map((line) => line.price),
+      ]),
       timeTicks: resolveTimeTicks(windowStartMs, windowEndMs, timeZone),
       dayDividers: resolveDayDividers(windowEndMs, nowMs, timeZone),
       importSteps,
       exportSteps,
       shades,
+      levelLines,
       nowPrice: current.importPrice,
       axisUnit: resolvePriceWidgetAxisUnit(timeline.priceUnit),
     },

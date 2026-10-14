@@ -32,20 +32,30 @@ const EXPENSIVE_FROM = 40.9;
 const HOURLY = [33.6, 33.2, 32.6, 32.1, 31.7, 31.9, 33.4, 37.2, 43.8, 39.2, 34.6, 30.8,
   27.2, 20.6, 15.4, 18.8, 23.1, 30.6, 37.6, 42.4, 44.6, 39.4, 36.6, 33.6, 31.2];
 
-// A calm day and a half around an 83.17 øre average where no period reaches a
-// line (`?state=flat`): the longest subline the widget writes, plus the
-// "Tomorrow" divider, since part of tomorrow is published.
-const FLAT_HOURLY = [84.1, 83.6, 82.9, 82.4, 82.0, 82.3, 83.5, 85.2, 87.4, 86.1, 84.3, 82.8,
-  81.2, 79.6, 78.4, 79.1, 80.6, 82.9, 85.6, 88.1, 89.0, 86.4, 84.2, 83.0,
-  82.6, 82.1, 81.7, 81.5, 81.9, 82.8, 84.6, 86.9, 88.2, 87.0, 85.1, 83.4, 82.7];
+// A Norgespris day and a half (`?state=flat`): the fixed electricity price
+// leaves only the grid tariff to move the price, 73.84 øre at night and 87.84
+// by day, around an 83.17 average. At 10 % and a 10 øre minimum difference the
+// lines are 73.17 and 93.17, so no period reaches either: the longest subline
+// the widget writes, plus the "Tomorrow" divider, since part of tomorrow is
+// published.
+const NIGHT = 73.84;
+const DAY = 87.84;
+const FLAT_HOURLY = Array.from({ length: 37 }, (_, hour) => {
+  const local = hour % 24;
+  return local < 6 || local >= 22 ? NIGHT : DAY;
+});
 const FLAT_QUARTERS = (FLAT_HOURLY.length - 1) * 4;
-const FLAT_AVERAGE = 83.17;
+const FLAT_CHEAP_AT_OR_BELOW = 73.17;
+const FLAT_EXPENSIVE_FROM = 93.17;
 
 const quarterPrice = (quarter: number, hourly: readonly number[] = HOURLY): number => {
   const hour = Math.floor(quarter / 4);
   const fraction = (quarter % 4) / 4;
   return Number((hourly[hour] + (hourly[hour + 1] - hourly[hour]) * fraction).toFixed(2));
 };
+
+// A grid tariff steps on the hour rather than drifting between hours.
+const steppedQuarterPrice = (quarter: number, hourly: readonly number[]): number => hourly[Math.floor(quarter / 4)];
 
 const levelOf = (price: number): 'cheap' | 'normal' | 'expensive' => {
   if (price <= CHEAP_AT_OR_BELOW) return 'cheap';
@@ -56,11 +66,12 @@ const levelOf = (price: number): 'cheap' | 'normal' | 'expensive' => {
 const buildSteps = (
   toPrice: (price: number) => number,
   hourly: readonly number[] = HOURLY,
+  priceOf: (quarter: number, hourly: readonly number[]) => number = quarterPrice,
 ): PriceWidgetStep[] => (
   Array.from({ length: (hourly.length - 1) * 4 }, (_, quarter) => ({
     startMs: DAY_START_MS + quarter * QUARTER_MS,
     endMs: DAY_START_MS + (quarter + 1) * QUARTER_MS,
-    price: toPrice(quarterPrice(quarter, hourly)),
+    price: toPrice(priceOf(quarter, hourly)),
   })).filter((step) => step.endMs > WINDOW_START_MS)
 );
 
@@ -78,6 +89,8 @@ const buildShades = (steps: PriceWidgetStep[]): PriceWidgetShade[] => steps.redu
 );
 
 const importSteps = buildSteps((price) => price);
+const lowest = (steps: PriceWidgetStep[]): number => Math.min(...steps.map((step) => step.price));
+const highest = (steps: PriceWidgetStep[]): number => Math.max(...steps.map((step) => step.price));
 const exportSteps = buildSteps((price) => Number(((price - 14.6) / 1.21).toFixed(2)));
 
 const baseChart = {
@@ -107,7 +120,7 @@ const readyPayload = (show: PriceWidgetShow): PriceWidgetPayload => {
       level: null,
       subline: PRICE_WIDGET_EXPORT_SUBLINE,
       caption: null,
-      chart: { ...baseChart, importSteps: [], exportSteps, shades: [], nowPrice: currentExport },
+      chart: { ...baseChart, importSteps: [], exportSteps, shades: [], levelLines: [], nowPrice: currentExport },
       legend: [],
       ariaLabel: `Export price now ${currentExport.toFixed(2)} øre`,
     };
@@ -119,13 +132,25 @@ const readyPayload = (show: PriceWidgetShow): PriceWidgetPayload => {
     title: PRICE_WIDGET_TITLE,
     priceText: `${currentImport.toFixed(2)} øre`,
     level: { label: PRICE_WIDGET_LEVEL_LABEL[level], tone: level === 'normal' ? null : level },
-    subline: `High from ${EXPENSIVE_FROM} øre · low up to ${CHEAP_AT_OR_BELOW} øre`,
+    subline: formatPriceWidgetSubline({
+      cheapAtOrBelow: CHEAP_AT_OR_BELOW,
+      expensiveFrom: EXPENSIVE_FROM,
+      lowest: lowest(importSteps),
+      highest: highest(importSteps),
+      hasCheap: shades.some((shade) => shade.level === 'cheap'),
+      hasExpensive: shades.some((shade) => shade.level === 'expensive'),
+      amountUnit: 'øre',
+    }),
     caption: PRICE_WIDGET_TOMORROW_PENDING,
     chart: {
       ...baseChart,
       importSteps,
       exportSteps: show === 'both' ? exportSteps : [],
       shades,
+      levelLines: [
+        { level: 'cheap', price: CHEAP_AT_OR_BELOW },
+        { level: 'expensive', price: EXPENSIVE_FROM },
+      ],
       nowPrice: currentImport,
     },
     legend: [
@@ -147,9 +172,12 @@ const priceAt = (steps: PriceWidgetStep[]): number => (
 );
 
 const flatPayload = (show: PriceWidgetShow): PriceWidgetPayload => {
-  const flatImport = buildSteps((price) => price, FLAT_HOURLY);
-  const flatExport = buildSteps((price) => Number(((price - 14.6) / 1.21).toFixed(2)), FLAT_HOURLY);
-  const prices = flatImport.map((step) => step.price);
+  const flatImport = buildSteps((price) => price, FLAT_HOURLY, steppedQuarterPrice);
+  const flatExport = buildSteps(
+    (price) => Number(((price - 14.6) / 1.21).toFixed(2)),
+    FLAT_HOURLY,
+    steppedQuarterPrice,
+  );
   const current = priceAt(flatImport);
   return {
     state: 'ready',
@@ -157,11 +185,10 @@ const flatPayload = (show: PriceWidgetShow): PriceWidgetPayload => {
     priceText: `${current.toFixed(2)} øre`,
     level: { label: PRICE_WIDGET_LEVEL_LABEL.normal, tone: null },
     subline: formatPriceWidgetSubline({
-      average: FLAT_AVERAGE,
-      cheapAtOrBelow: 62.4,
-      expensiveFrom: 103.9,
-      lowest: Math.min(...prices),
-      highest: Math.max(...prices),
+      cheapAtOrBelow: FLAT_CHEAP_AT_OR_BELOW,
+      expensiveFrom: FLAT_EXPENSIVE_FROM,
+      lowest: lowest(flatImport),
+      highest: highest(flatImport),
       hasCheap: false,
       hasExpensive: false,
       amountUnit: 'øre',
@@ -175,12 +202,18 @@ const flatPayload = (show: PriceWidgetShow): PriceWidgetPayload => {
         label: String(hour % 24).padStart(2, '0'),
       })),
       dayDividers: [{ atMs: DAY_START_MS + 24 * HOUR_MS, label: PRICE_WIDGET_DAY_TOMORROW }],
+      // What the payload builder writes for this series: zero to above the
+      // expensive line, in steps of 50.
       yMin: 0,
       yMax: 100,
-      yTicks: [0, 20, 40, 60, 80, 100].map((value) => ({ value, label: String(value) })),
+      yTicks: [0, 50, 100].map((value) => ({ value, label: String(value) })),
       importSteps: flatImport,
       exportSteps: show === 'both' ? flatExport : [],
       shades: [],
+      levelLines: [
+        { level: 'cheap', price: FLAT_CHEAP_AT_OR_BELOW },
+        { level: 'expensive', price: FLAT_EXPENSIVE_FROM },
+      ],
       nowPrice: current,
     },
     legend: show === 'both'

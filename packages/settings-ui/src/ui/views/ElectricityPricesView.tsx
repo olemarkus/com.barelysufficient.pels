@@ -44,7 +44,7 @@ import {
   formatPriceWidgetSubline,
   resolvePriceWidgetAmountUnit,
 } from '../../../../shared-domain/src/priceWidgetCopy.ts';
-import type { PriceLevelSummaryRead } from '../../../../contracts/src/settingsUiApi.ts';
+import type { PriceLevelSummaryRead, PriceThresholdSuggestion } from '../../../../contracts/src/settingsUiApi.ts';
 
 type ValueElement = HTMLElement & { value: string };
 type SwitchElement = HTMLElement & { selected: boolean };
@@ -1045,15 +1045,54 @@ const ExportPriceForm = ({ config, handlers }: {
   );
 };
 
+/** A minimum price difference as the owner types it: `9 øre`, `0.05 EUR`. */
+const formatMinDifference = (value: number, amountUnit: string): string => (
+  amountUnit === '' ? String(value) : `${value} ${amountUnit}`
+);
+
+/** What one suggested change says and saves, from the runtime's suggestion. */
+const resolveSuggestedChange = (
+  suggestion: Exclude<PriceThresholdSuggestion, { kind: 'none' }>,
+  amountUnit: string,
+  handlers: Pick<ElectricityPricesHandlers, 'onThresholdChange' | 'onMinDiffChange'>,
+): { value: string; save: () => void } => (suggestion.kind === 'lower_threshold'
+  ? { value: `${suggestion.percent} %`, save: () => handlers.onThresholdChange(suggestion.percent) }
+  : {
+    value: formatMinDifference(suggestion.minDifference, amountUnit),
+    save: () => handlers.onMinDiffChange(suggestion.minDifference),
+  });
+
+/** The suggested change, said in the form's own words, with its button. */
+const renderSuggestedChange = (
+  suggestion: Exclude<PriceThresholdSuggestion, { kind: 'none' }>,
+  amountUnit: string,
+  handlers: Pick<ElectricityPricesHandlers, 'onThresholdChange' | 'onMinDiffChange'>,
+) => {
+  const change = resolveSuggestedChange(suggestion, amountUnit, handlers);
+  return (
+    <>
+      <p class="pels-card-supporting">
+        {`At ${change.value}, the cheapest quarter of these prices, up to `
+          + `${formatPriceWidgetPrice(suggestion.cheapUpTo, amountUnit)}, counts as cheap.`}
+      </p>
+      <div class="form__actions">
+        <MdOutlinedButton type="button" onClick={change.save}>
+          {`Use ${change.value}`}
+        </MdOutlinedButton>
+      </div>
+    </>
+  );
+};
+
 /**
  * Where the owner's band puts the lines over the known prices, in the price
  * widget's own words, so the form shows what its two numbers do. When nothing
- * is cheap or expensive and a lower threshold would mark the cheapest hours,
- * it offers that threshold.
+ * is cheap or expensive and one change would mark the cheapest hours cheap (a
+ * lower threshold, or a lower minimum difference), it offers that change.
  */
-const PriceLevelLines = ({ summary, onUseThreshold }: {
+const PriceLevelLines = ({ summary, handlers }: {
   summary: PriceLevelSummaryRead;
-  onUseThreshold: (percent: number) => void;
+  handlers: Pick<ElectricityPricesHandlers, 'onThresholdChange' | 'onMinDiffChange'>;
 }) => {
   if (summary.state !== 'ready') return null;
   const amountUnit = resolvePriceWidgetAmountUnit(summary.priceUnit);
@@ -1063,19 +1102,7 @@ const PriceLevelLines = ({ summary, onUseThreshold }: {
       <p class="pels-card-supporting" id="electricity-prices-level-lines">
         {formatPriceWidgetSubline({ ...summary.lines, ...summary, amountUnit })}
       </p>
-      {suggestion.kind === 'lower_threshold' && (
-        <>
-          <p class="pels-card-supporting">
-            {`At ${suggestion.percent} %, the cheapest quarter of these prices, up to `
-              + `${formatPriceWidgetPrice(suggestion.cheapUpTo, amountUnit)}, counts as low.`}
-          </p>
-          <div class="form__actions">
-            <MdOutlinedButton type="button" onClick={() => onUseThreshold(suggestion.percent)}>
-              {`Use ${suggestion.percent} %`}
-            </MdOutlinedButton>
-          </div>
-        </>
-      )}
+      {suggestion.kind !== 'none' && renderSuggestedChange(suggestion, amountUnit, handlers)}
     </>
   );
 };
@@ -1087,7 +1114,7 @@ const ThresholdForm = ({ config, handlers }: {
   <form class="form-grid settings-form-card" onSubmit={(e) => e.preventDefault()}>
     <h3 class="section-title">Cheap and expensive prices</h3>
     <p class="muted">Defines what counts as cheap or expensive.</p>
-    <PriceLevelLines summary={config.priceLevelSummary} onUseThreshold={handlers.onThresholdChange} />
+    <PriceLevelLines summary={config.priceLevelSummary} handlers={handlers} />
     <label class="field">
       <span class="field__label pels-text-settings-label" id="electricity-prices-threshold-label">Price threshold</span>
       <MdFilledTextField

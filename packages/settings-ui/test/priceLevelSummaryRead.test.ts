@@ -26,4 +26,14 @@ describe('classifyPriceLevelSummaryRead', () => {
     expect(classifyPriceLevelSummaryRead({ ...READY, suggestion: { kind: 'lower_threshold', percent: 1, cheapUpTo: 68 } }))
       .toEqual({ ...READY, suggestion: { kind: 'none' } });
   });
+
+  it('accepts a lower minimum difference, and drops a malformed one', () => {
+    const minDifference = { kind: 'lower_min_difference', minDifference: 9, cheapUpTo: 73.84 };
+    expect(classifyPriceLevelSummaryRead({ ...READY, suggestion: minDifference }))
+      .toEqual({ ...READY, suggestion: minDifference });
+    expect(classifyPriceLevelSummaryRead({ ...READY, suggestion: { ...minDifference, minDifference: -1 } }))
+      .toEqual({ ...READY, suggestion: { kind: 'none' } });
+    expect(classifyPriceLevelSummaryRead({ ...READY, suggestion: { ...minDifference, cheapUpTo: 'x' } }))
+      .toEqual({ ...READY, suggestion: { kind: 'none' } });
+  });
 });

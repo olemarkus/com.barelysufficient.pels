@@ -88,6 +88,17 @@ const appendShades = (svg: SVGSVGElement, chart: PriceWidgetChart, scale: Scale,
   }
 };
 
+/** The cheap and expensive lines, faint and dashed, across the whole plot. */
+const appendLevelLines = (svg: SVGSVGElement, chart: PriceWidgetChart, scale: Scale, plot: Plot): void => {
+  const doc = svg.ownerDocument;
+  for (const line of chart.levelLines) {
+    const y = scale.y(line.price).toFixed(1);
+    svg.appendChild(createSvg(doc, 'line', {
+      class: `chart__level-line chart__level-line--${line.level}`, x1: plot.left, x2: plot.right, y1: y, y2: y,
+    }));
+  }
+};
+
 const appendYAxis = (svg: SVGSVGElement, chart: PriceWidgetChart, scale: Scale, plot: Plot): void => {
   const doc = svg.ownerDocument;
   for (const tick of chart.yTicks) {
@@ -164,6 +175,7 @@ export const renderChart = (svg: SVGSVGElement, payload: PriceWidgetReadyPayload
   svg.setAttribute('aria-label', payload.ariaLabel);
   appendShades(svg, chart, scale, plot);
   appendYAxis(svg, chart, scale, plot);
+  appendLevelLines(svg, chart, scale, plot);
   appendTimeAxis(svg, chart, scale, plot);
   appendSeries(svg, chart, scale, plot);
 };

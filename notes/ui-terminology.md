@@ -1375,7 +1375,7 @@ the ceiling, and each exists because its page mission needs it:
 | Overview hero | The one *actionable* price fact for the set-and-forget owner | `Cheapest hour ahead: 02:00, 0.18 kr/kWh.` subline (`formatCheapestUpcomingHour`) — nothing else |
 | Budget tab | Price as *planning context* for the Optimiser | Exception-only `Price low` / `Price high` header chip + the shaping tagline (`Using cheaper hours`) + prosumer `Export price now:` subline |
 | Settings → Electricity prices | Price as *configuration + verification* | The `Right now` card (current price level, on the Norway source the price now and its parts, export row) + source settings |
-| Electricity price widget (owner-requested 2026-10-05) | Price as *expectation*: what counts as low or high, and when that changes | Current price + `Price low` / `Price normal` / `Price high` (chip only for low/high), a subline that always states the lines (`High from 40.90 øre · low up to 24.60 øre`, or `High from 0.412 EUR` on a currency source; a line no period reaches adds `highest …` / `lowest …`; neither reached reads `Prices stay close to the average of …, so none count as low or high`), a rolling curve from three hours back (never before today's midnight) to the last known price with low/high shades, a `Tomorrow` divider once tomorrow is published, screen-reader phrase `Price now <price>. Price: low|normal|high`, and `The lines can move when tomorrow's prices arrive.` until tomorrow is published. Lines are the producer's effective ones (percentage and minimum difference), never widget-derived. |
+| Electricity price widget (owner-requested 2026-10-05) | Price as *expectation*: what counts as low or high, and when that changes | Current price + `Price low` / `Price normal` / `Price high` (chip only for low/high), a subline that always states both lines in the settings page's terms (`Cheap at or below 24.60 øre · expensive from 40.90 øre`, or `… expensive from 0.412 EUR` on a currency source; never `High from` / `low up to`, and never drops the lines), then, when a level is never reached in the window, one more sentence for that level only (`No expensive prices: the highest is 87.84 øre.` / `No cheap prices: the lowest is 73.84 øre.`; both unreached: `No cheap or expensive prices: they stay between 73.84 and 87.84 øre.`), a rolling curve from three hours back (never before today's midnight) to the last known price with low/high shades and both lines drawn as faint dashed horizontals inside the y range (import and both views; the export view has no lines), a `Tomorrow` divider once tomorrow is published, screen-reader phrase `Price now <price>. Price: low|normal|high`, and `The lines can move when tomorrow's prices arrive.` until tomorrow is published. Lines are the producer's effective ones (percentage and minimum difference), never widget-derived. |
 
 The other widgets reuse the same exception-only `Price low` / `Price high` pair
 (`priceLevelChips.ts`) — a glance surface, not another role.
@@ -1431,11 +1431,18 @@ never saw). On Electricity prices:
   arrived: `Grid tariff not included yet. If it stays missing, press Refresh
   tariffs below.`
 - Cheap and expensive prices: the price widget's subline, word for word
-  (`High from 94.20 øre · low up to 56.50 øre`, or `Prices stay close to the
-  average of 75.30 øre, so none count as low or high`). When nothing is cheap or
-  expensive and a lower threshold separates the cheapest quarter: `At 9 %, the
-  cheapest quarter of these prices, up to 68.00 øre, counts as low.` with a
-  `Use 9 %` button. Never below 5 %, the field's minimum.
+  (`Cheap at or below 56.50 øre · expensive from 94.20 øre`, plus the
+  unreached-level sentence, e.g. `No cheap or expensive prices: they stay
+  between 73.84 and 87.84 øre.`). When nothing is cheap or expensive, one
+  change that makes the cheapest quarter cheap: a lower threshold when the
+  threshold blocks (`At 9 %, the cheapest quarter of these prices, up to
+  68.00 øre, counts as cheap.` with a `Use 9 %` button), or a lower minimum
+  difference when that blocks (`At 9 øre, the cheapest quarter of these prices,
+  up to 73.84 øre, counts as cheap.` with a `Use 9 øre` button). Never below
+  5 %, the field's minimum; never a change that would also mark a price
+  expensive; nothing when both settings block. Level words here are `cheap` /
+  `expensive`, the form's own; the `Price low` / `Price high` chip pair stays
+  on chips and legends.
 - A Smart task with no price for the current hour says `PELS has no electricity
   prices` with a `Check prices` recourse, not `Waiting for tomorrow’s prices`
   (a Flow price source keeps its own Flow copy).

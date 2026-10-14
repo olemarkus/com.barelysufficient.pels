@@ -97,29 +97,62 @@ describe('buildPriceWidgetPayload', () => {
 
   it('states both lines when both levels occur', () => {
     const payload = expectReady(build(ready(hourly(DAY))));
-    expect(payload.subline).toBe('High from 62.50 øre · low up to 37.50 øre');
+    expect(payload.subline).toBe('Cheap at or below 37.50 øre · expensive from 62.50 øre');
   });
 
-  it('still states the expensive line, and the highest price, when nothing is high', () => {
+  it('still states the expensive line, and the highest price, when nothing is expensive', () => {
     const noHigh = DAY.map((price) => Math.min(price, 55));
     const payload = expectReady(build(ready(hourly(noHigh))));
-    expect(payload.subline).toBe('High from 62.50 øre, highest 55.00 øre · low up to 37.50 øre');
+    expect(payload.subline)
+      .toBe('Cheap at or below 37.50 øre · expensive from 62.50 øre. No expensive prices: the highest is 55.00 øre.');
     expect(payload.chart.shades.every((shade) => shade.level === 'cheap')).toBe(true);
   });
 
-  it('says prices stay near the average when neither level occurs in the window', () => {
-    const flat = DAY.map(() => 50);
+  it('still states the cheap line, and the lowest price, when nothing is cheap', () => {
+    const noLow = DAY.map((price) => Math.max(price, 45));
+    const payload = expectReady(build(ready(hourly(noLow))));
+    expect(payload.subline)
+      .toBe('Cheap at or below 37.50 øre · expensive from 62.50 øre. No cheap prices: the lowest is 45.00 øre.');
+  });
+
+  it('states both lines and where the prices stay when neither level occurs in the window', () => {
+    const flat = DAY.map((price) => Math.min(Math.max(price, 45), 55));
     const payload = expectReady(build(ready(hourly(flat))));
-    expect(payload.subline).toBe('Prices stay close to the average of 50.00 øre, so none count as low or high');
+    expect(payload.subline).toBe('Cheap at or below 37.50 øre · expensive from 62.50 øre. '
+      + 'No cheap or expensive prices: they stay between 45.00 and 55.00 øre.');
     expect(payload.chart.shades).toEqual([]);
     expect(payload.legend).toEqual([]);
+  });
+
+  it('draws both lines inside the price axis on an owner\'s Norgespris day, where neither is reached', () => {
+    // The grid tariff alone moves the price: 73.84 øre from 22 to 06, 87.84 by
+    // day. At 10 % and a 10 øre minimum difference the lines are 73.17 and
+    // 93.17, so the curve sits between them.
+    const prices = Array.from({ length: 24 }, (_, hour) => (hour < 6 || hour >= 22 ? 73.84 : 87.84));
+    const lines = { average: 83.17, cheapAtOrBelow: 73.17, expensiveFrom: 93.17 };
+    const periods = hourly(prices).map((period) => ({ ...period, level: 'normal' as const }));
+    const payload = expectReady(build({ state: 'ready', periods, lines, priceUnit: 'øre/kWh', hasExportPrice: false }));
+
+    expect(payload.chart.levelLines).toEqual([
+      { level: 'cheap', price: 73.17 },
+      { level: 'expensive', price: 93.17 },
+    ]);
+    expect(payload.chart.yMin).toBeLessThanOrEqual(73.17);
+    expect(payload.chart.yMax).toBeGreaterThanOrEqual(93.17);
+    expect(payload.subline).toBe('Cheap at or below 73.17 øre · expensive from 93.17 øre. '
+      + 'No cheap or expensive prices: they stay between 73.84 and 87.84 øre.');
+  });
+
+  it('draws no lines in the export view, which has no levels', () => {
+    const payload = expectReady(build(ready(hourly(DAY, true), true), 'export'));
+    expect(payload.chart.levelLines).toEqual([]);
   });
 
   it('judges what occurs over the visible window, not hours already off the chart', () => {
     // Expensive at 02:00 only: before the window, so the chart shows no high shade.
     const earlyPeak = DAY.map((price, hour) => (hour === 2 ? 70 : Math.min(price, 55)));
     const payload = expectReady(build(ready(hourly(earlyPeak))));
-    expect(payload.subline.startsWith('High from 62.50 øre, highest 55.00 øre')).toBe(true);
+    expect(payload.subline.endsWith('No expensive prices: the highest is 55.00 øre.')).toBe(true);
   });
 
   it('notes that the lines can move until tomorrow has prices', () => {
@@ -208,7 +241,7 @@ describe('buildPriceWidgetPayload', () => {
     };
     const payload = expectReady(build(read));
     expect(payload.priceText).toBe('0.407 EUR');
-    expect(payload.subline).toContain('High from 0.508 EUR');
+    expect(payload.subline.startsWith('Cheap at or below 0.305 EUR · expensive from 0.508 EUR')).toBe(true);
     expect(payload.chart.axisUnit).toBe('EUR/kWh');
   });
 
@@ -266,7 +299,11 @@ describe('buildPriceWidgetPayload', () => {
     // Currency prices a few hundredths apart: the axis must not repeat "0.0".
     const cents = DAY.map((price) => 0.4 + price / 10000);
     const read: PriceTimelineRead = {
-      state: 'ready', periods: hourly(cents), lines: LINES, priceUnit: 'EUR', hasExportPrice: false,
+      state: 'ready',
+      periods: hourly(cents),
+      lines: { average: 0.405, cheapAtOrBelow: 0.4035, expensiveFrom: 0.4065 },
+      priceUnit: 'EUR',
+      hasExportPrice: false,
     };
     const payload = expectReady(build(read));
     const labels = payload.chart.yTicks.map((tick) => tick.label);

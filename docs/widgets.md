@@ -28,10 +28,10 @@ It refreshes about every 10 seconds. If no new reading has arrived recently — 
 
 Answers **"is power cheap or expensive right now, and when will that change?"**
 
-The widget draws the price curve from up to three hours ago (never before midnight) to the last price PELS knows, with the periods PELS counts as cheap or expensive shaded behind it. Above the chart it shows:
+The widget draws the price curve from up to three hours ago (never before midnight) to the last price PELS knows, with the periods PELS counts as cheap or expensive shaded behind it and the two lines drawn across it as faint dashes, so you can see how close the prices come to them. Above the chart it shows:
 
 - The current price and its level: **Price low**, **Price normal** or **Price high**.
-- Where the lines are, for example `High from 40.90 øre · low up to 24.60 øre`. When no period on the chart reaches a line, the widget says how close the prices come, so an unshaded day reads as a choice rather than a gap: PELS only changes the level when the difference is worth giving up some comfort for.
+- Where the lines are, for example `Cheap at or below 24.60 øre · expensive from 40.90 øre`. When no period on the chart reaches a line, the widget adds how far the prices stay from it, for example `No expensive prices: the highest is 87.84 øre.`, so an unshaded day reads as a choice rather than a gap: PELS only changes the level when the difference is worth giving up some comfort for.
 - Until tomorrow's prices are published, a note that the lines can still move. The lines follow the average of today and tomorrow, so they shift when tomorrow's prices arrive.
 
 The levels are the same ones your devices and Flows act on, and they always follow the import price you are billed. Choose **Show** in the widget's settings to draw the import price, the export price, or both. The export price has no levels of its own. You set what counts as cheap or expensive under **Settings > Electricity prices**.

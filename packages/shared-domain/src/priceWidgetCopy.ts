@@ -92,7 +92,6 @@ export const formatPriceWidgetPrice = (value: number, amountUnit: string): strin
 
 /** The facts behind the subline: the lines, and what the series reaches. */
 export type PriceWidgetSublineFacts = {
-  average: number;
   cheapAtOrBelow: number;
   expensiveFrom: number;
   lowest: number;
@@ -103,19 +102,23 @@ export type PriceWidgetSublineFacts = {
 };
 
 /**
- * The subline under the current price. It always says where the lines are,
- * and when a level never occurs it says how far the series stays from that
- * line, so a chart without shading reads as a choice rather than a gap: PELS
- * does not trade comfort for a difference of a few cents.
+ * The subline under the current price. It always says where the cheap and
+ * expensive lines are, and when a level never occurs it adds how far the
+ * prices stay from that line, so a chart without shading reads as a choice
+ * rather than a gap: PELS does not trade comfort for a difference of a few
+ * cents. Worded in the settings page's own terms (cheap, expensive), never the
+ * chip pair's `low` / `high`.
  */
 export const formatPriceWidgetSubline = (facts: PriceWidgetSublineFacts): string => {
   const price = (value: number): string => formatPriceWidgetPrice(value, facts.amountUnit);
+  const lines = `Cheap at or below ${price(facts.cheapAtOrBelow)} · expensive from ${price(facts.expensiveFrom)}`;
+  if (facts.hasCheap && facts.hasExpensive) return lines;
   if (!facts.hasCheap && !facts.hasExpensive) {
-    return `Prices stay close to the average of ${price(facts.average)}, so none count as low or high`;
+    const lowest = formatPriceWidgetPrice(facts.lowest, '');
+    return `${lines}. No cheap or expensive prices: they stay between ${lowest} and ${price(facts.highest)}.`;
   }
-  const highLine = `High from ${price(facts.expensiveFrom)}`;
-  const lowLine = `low up to ${price(facts.cheapAtOrBelow)}`;
-  const high = facts.hasExpensive ? highLine : `${highLine}, highest ${price(facts.highest)}`;
-  const low = facts.hasCheap ? lowLine : `${lowLine}, lowest ${price(facts.lowest)}`;
-  return `${high} · ${low}`;
+  const unreached = facts.hasCheap
+    ? `No expensive prices: the highest is ${price(facts.highest)}.`
+    : `No cheap prices: the lowest is ${price(facts.lowest)}.`;
+  return `${lines}. ${unreached}`;
 };

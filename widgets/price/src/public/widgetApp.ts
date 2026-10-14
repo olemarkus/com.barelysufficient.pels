@@ -12,7 +12,7 @@ import { widgetErrorReporter } from '../../../_shared/widgetClientLog';
 import { resolvePriceWidgetPreviewPayload } from './previewPayloads';
 import { observeBox } from '../../../_shared/widgetChartSize';
 import { renderChart, renderWidget, type RenderTargets } from './render';
-import type { PriceWidgetPayload, PriceWidgetShow } from '../priceWidgetTypes';
+import type { PriceWidgetChart, PriceWidgetPayload, PriceWidgetShow } from '../priceWidgetTypes';
 
 // Prices change per period (15 min at the finest), and the "now" marker moves
 // with the clock, so a minute keeps the widget current without busy polling.
@@ -33,6 +33,10 @@ const resolveShow = (homey: WidgetHomey | null, searchParams: URLSearchParams): 
   return raw === 'export' || raw === 'both' ? raw : 'import';
 };
 
+const CHART_LISTS = [
+  'importSteps', 'exportSteps', 'shades', 'levelLines', 'yTicks', 'timeTicks', 'dayDividers',
+] as const satisfies ReadonlyArray<keyof PriceWidgetChart>;
+
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
 );
@@ -50,12 +54,7 @@ const isPriceWidgetPayload = (value: unknown): value is PriceWidgetPayload => {
   return typeof value.priceText === 'string'
     && typeof value.subline === 'string'
     && Array.isArray(value.legend)
-    && Array.isArray(chart.importSteps)
-    && Array.isArray(chart.exportSteps)
-    && Array.isArray(chart.shades)
-    && Array.isArray(chart.yTicks)
-    && Array.isArray(chart.timeTicks)
-    && Array.isArray(chart.dayDividers)
+    && CHART_LISTS.every((key) => Array.isArray(chart[key]))
     && typeof chart.nowPrice === 'number';
 };
 

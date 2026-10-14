@@ -862,14 +862,19 @@ export type PriceSetupSuggestion = NorwayPriceSetupSuggestion & {
 };
 
 /**
- * A lower threshold that would make the cheapest quarter of the known prices
- * count as cheap, offered only while no price is cheap or expensive at the
- * owner's band: `cheapUpTo` is the highest of those prices. `none` when no
- * period misses the band, when the prices are too flat for a threshold of 5 %
- * or more to separate them, or when the minimum difference keeps them normal.
+ * One setting change that makes the cheapest quarter of the known prices count
+ * as cheap, offered only while no price is cheap or expensive at the owner's
+ * band: `cheapUpTo` is the highest of those prices. `lower_threshold` is a
+ * lower percent, for when the percent is what keeps them normal;
+ * `lower_min_difference` is a lower minimum difference (in the price source's
+ * unit), for when the minimum difference is. `none` when some period already
+ * misses the band, when the change would also mark a price expensive, when the
+ * prices are too flat for a threshold of 5 % or more to separate them, or when
+ * both settings keep them normal, so no single change would.
  */
 export type PriceThresholdSuggestion =
   | { readonly kind: 'lower_threshold'; readonly percent: number; readonly cheapUpTo: number }
+  | { readonly kind: 'lower_min_difference'; readonly minDifference: number; readonly cheapUpTo: number }
   | { readonly kind: 'none' };
 
 /**

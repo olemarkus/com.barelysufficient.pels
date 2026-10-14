@@ -52,14 +52,14 @@
   var formatPriceWidgetPrice = (value, amountUnit) => withUnit(value.toFixed(priceDecimals(value)), amountUnit);
   var formatPriceWidgetSubline = (facts) => {
     const price = (value) => formatPriceWidgetPrice(value, facts.amountUnit);
+    const lines = `Cheap at or below ${price(facts.cheapAtOrBelow)} \xB7 expensive from ${price(facts.expensiveFrom)}`;
+    if (facts.hasCheap && facts.hasExpensive) return lines;
     if (!facts.hasCheap && !facts.hasExpensive) {
-      return `Prices stay close to the average of ${price(facts.average)}, so none count as low or high`;
+      const lowest2 = formatPriceWidgetPrice(facts.lowest, "");
+      return `${lines}. No cheap or expensive prices: they stay between ${lowest2} and ${price(facts.highest)}.`;
     }
-    const highLine = `High from ${price(facts.expensiveFrom)}`;
-    const lowLine = `low up to ${price(facts.cheapAtOrBelow)}`;
-    const high = facts.hasExpensive ? highLine : `${highLine}, highest ${price(facts.highest)}`;
-    const low = facts.hasCheap ? lowLine : `${lowLine}, lowest ${price(facts.lowest)}`;
-    return `${high} \xB7 ${low}`;
+    const unreached = facts.hasCheap ? `No expensive prices: the highest is ${price(facts.highest)}.` : `No cheap prices: the lowest is ${price(facts.lowest)}.`;
+    return `${lines}. ${unreached}`;
   };
 
   // widgets/_shared/widgetRuntime.ts
@@ -243,61 +243,30 @@
     33.6,
     31.2
   ];
-  var FLAT_HOURLY = [
-    84.1,
-    83.6,
-    82.9,
-    82.4,
-    82,
-    82.3,
-    83.5,
-    85.2,
-    87.4,
-    86.1,
-    84.3,
-    82.8,
-    81.2,
-    79.6,
-    78.4,
-    79.1,
-    80.6,
-    82.9,
-    85.6,
-    88.1,
-    89,
-    86.4,
-    84.2,
-    83,
-    82.6,
-    82.1,
-    81.7,
-    81.5,
-    81.9,
-    82.8,
-    84.6,
-    86.9,
-    88.2,
-    87,
-    85.1,
-    83.4,
-    82.7
-  ];
+  var NIGHT = 73.84;
+  var DAY = 87.84;
+  var FLAT_HOURLY = Array.from({ length: 37 }, (_, hour) => {
+    const local = hour % 24;
+    return local < 6 || local >= 22 ? NIGHT : DAY;
+  });
   var FLAT_QUARTERS = (FLAT_HOURLY.length - 1) * 4;
-  var FLAT_AVERAGE = 83.17;
+  var FLAT_CHEAP_AT_OR_BELOW = 73.17;
+  var FLAT_EXPENSIVE_FROM = 93.17;
   var quarterPrice = (quarter, hourly = HOURLY) => {
     const hour = Math.floor(quarter / 4);
     const fraction = quarter % 4 / 4;
     return Number((hourly[hour] + (hourly[hour + 1] - hourly[hour]) * fraction).toFixed(2));
   };
+  var steppedQuarterPrice = (quarter, hourly) => hourly[Math.floor(quarter / 4)];
   var levelOf = (price) => {
     if (price <= CHEAP_AT_OR_BELOW) return "cheap";
     if (price >= EXPENSIVE_FROM) return "expensive";
     return "normal";
   };
-  var buildSteps = (toPrice, hourly = HOURLY) => Array.from({ length: (hourly.length - 1) * 4 }, (_, quarter) => ({
+  var buildSteps = (toPrice, hourly = HOURLY, priceOf = quarterPrice) => Array.from({ length: (hourly.length - 1) * 4 }, (_, quarter) => ({
     startMs: DAY_START_MS + quarter * QUARTER_MS,
     endMs: DAY_START_MS + (quarter + 1) * QUARTER_MS,
-    price: toPrice(quarterPrice(quarter, hourly))
+    price: toPrice(priceOf(quarter, hourly))
   })).filter((step) => step.endMs > WINDOW_START_MS);
   var buildShades = (steps) => steps.reduce(
     (shades, step) => {
@@ -312,6 +281,8 @@
     []
   );
   var importSteps = buildSteps((price) => price);
+  var lowest = (steps) => Math.min(...steps.map((step) => step.price));
+  var highest = (steps) => Math.max(...steps.map((step) => step.price));
   var exportSteps = buildSteps((price) => Number(((price - 14.6) / 1.21).toFixed(2)));
   var baseChart = {
     windowStartMs: WINDOW_START_MS,
@@ -338,7 +309,7 @@
         level: null,
         subline: PRICE_WIDGET_EXPORT_SUBLINE,
         caption: null,
-        chart: { ...baseChart, importSteps: [], exportSteps, shades: [], nowPrice: currentExport },
+        chart: { ...baseChart, importSteps: [], exportSteps, shades: [], levelLines: [], nowPrice: currentExport },
         legend: [],
         ariaLabel: `Export price now ${currentExport.toFixed(2)} \xF8re`
       };
@@ -350,13 +321,25 @@
       title: PRICE_WIDGET_TITLE,
       priceText: `${currentImport.toFixed(2)} \xF8re`,
       level: { label: PRICE_WIDGET_LEVEL_LABEL[level], tone: level === "normal" ? null : level },
-      subline: `High from ${EXPENSIVE_FROM} \xF8re \xB7 low up to ${CHEAP_AT_OR_BELOW} \xF8re`,
+      subline: formatPriceWidgetSubline({
+        cheapAtOrBelow: CHEAP_AT_OR_BELOW,
+        expensiveFrom: EXPENSIVE_FROM,
+        lowest: lowest(importSteps),
+        highest: highest(importSteps),
+        hasCheap: shades.some((shade) => shade.level === "cheap"),
+        hasExpensive: shades.some((shade) => shade.level === "expensive"),
+        amountUnit: "\xF8re"
+      }),
       caption: PRICE_WIDGET_TOMORROW_PENDING,
       chart: {
         ...baseChart,
         importSteps,
         exportSteps: show === "both" ? exportSteps : [],
         shades,
+        levelLines: [
+          { level: "cheap", price: CHEAP_AT_OR_BELOW },
+          { level: "expensive", price: EXPENSIVE_FROM }
+        ],
         nowPrice: currentImport
       },
       legend: [
@@ -372,9 +355,12 @@
   };
   var priceAt = (steps) => steps.find((step) => step.startMs <= NOW_MS && NOW_MS < step.endMs)?.price ?? 0;
   var flatPayload = (show) => {
-    const flatImport = buildSteps((price) => price, FLAT_HOURLY);
-    const flatExport = buildSteps((price) => Number(((price - 14.6) / 1.21).toFixed(2)), FLAT_HOURLY);
-    const prices = flatImport.map((step) => step.price);
+    const flatImport = buildSteps((price) => price, FLAT_HOURLY, steppedQuarterPrice);
+    const flatExport = buildSteps(
+      (price) => Number(((price - 14.6) / 1.21).toFixed(2)),
+      FLAT_HOURLY,
+      steppedQuarterPrice
+    );
     const current = priceAt(flatImport);
     return {
       state: "ready",
@@ -382,11 +368,10 @@
       priceText: `${current.toFixed(2)} \xF8re`,
       level: { label: PRICE_WIDGET_LEVEL_LABEL.normal, tone: null },
       subline: formatPriceWidgetSubline({
-        average: FLAT_AVERAGE,
-        cheapAtOrBelow: 62.4,
-        expensiveFrom: 103.9,
-        lowest: Math.min(...prices),
-        highest: Math.max(...prices),
+        cheapAtOrBelow: FLAT_CHEAP_AT_OR_BELOW,
+        expensiveFrom: FLAT_EXPENSIVE_FROM,
+        lowest: lowest(flatImport),
+        highest: highest(flatImport),
         hasCheap: false,
         hasExpensive: false,
         amountUnit: "\xF8re"
@@ -400,12 +385,18 @@
           label: String(hour % 24).padStart(2, "0")
         })),
         dayDividers: [{ atMs: DAY_START_MS + 24 * HOUR_MS, label: PRICE_WIDGET_DAY_TOMORROW }],
+        // What the payload builder writes for this series: zero to above the
+        // expensive line, in steps of 50.
         yMin: 0,
         yMax: 100,
-        yTicks: [0, 20, 40, 60, 80, 100].map((value) => ({ value, label: String(value) })),
+        yTicks: [0, 50, 100].map((value) => ({ value, label: String(value) })),
         importSteps: flatImport,
         exportSteps: show === "both" ? flatExport : [],
         shades: [],
+        levelLines: [
+          { level: "cheap", price: FLAT_CHEAP_AT_OR_BELOW },
+          { level: "expensive", price: FLAT_EXPENSIVE_FROM }
+        ],
         nowPrice: current
       },
       legend: show === "both" ? [
@@ -500,6 +491,19 @@
       }));
     }
   };
+  var appendLevelLines = (svg, chart, scale, plot) => {
+    const doc = svg.ownerDocument;
+    for (const line of chart.levelLines) {
+      const y = scale.y(line.price).toFixed(1);
+      svg.appendChild(createSvg(doc, "line", {
+        class: `chart__level-line chart__level-line--${line.level}`,
+        x1: plot.left,
+        x2: plot.right,
+        y1: y,
+        y2: y
+      }));
+    }
+  };
   var appendYAxis = (svg, chart, scale, plot) => {
     const doc = svg.ownerDocument;
     for (const tick of chart.yTicks) {
@@ -584,6 +588,7 @@
     svg.setAttribute("aria-label", payload.ariaLabel);
     appendShades(svg, chart, scale, plot);
     appendYAxis(svg, chart, scale, plot);
+    appendLevelLines(svg, chart, scale, plot);
     appendTimeAxis(svg, chart, scale, plot);
     appendSeries(svg, chart, scale, plot);
   };
@@ -664,13 +669,22 @@
     const raw = searchParams.get("show") ?? (settings && typeof settings === "object" ? settings.show : void 0);
     return raw === "export" || raw === "both" ? raw : "import";
   };
+  var CHART_LISTS = [
+    "importSteps",
+    "exportSteps",
+    "shades",
+    "levelLines",
+    "yTicks",
+    "timeTicks",
+    "dayDividers"
+  ];
   var isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
   var isPriceWidgetPayload = (value) => {
     if (!isRecord(value)) return false;
     if (value.state === "empty") return typeof value.title === "string" && typeof value.subtitle === "string";
     if (value.state !== "ready" || !isRecord(value.chart)) return false;
     const { chart } = value;
-    return typeof value.priceText === "string" && typeof value.subline === "string" && Array.isArray(value.legend) && Array.isArray(chart.importSteps) && Array.isArray(chart.exportSteps) && Array.isArray(chart.shades) && Array.isArray(chart.yTicks) && Array.isArray(chart.timeTicks) && Array.isArray(chart.dayDividers) && typeof chart.nowPrice === "number";
+    return typeof value.priceText === "string" && typeof value.subline === "string" && Array.isArray(value.legend) && CHART_LISTS.every((key) => Array.isArray(chart[key])) && typeof chart.nowPrice === "number";
   };
   var resolveTargets = (widgetDocument) => {
     const root = widgetDocument.getElementById("widget-root");

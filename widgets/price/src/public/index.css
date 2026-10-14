@@ -65,6 +65,21 @@
   fill: var(--pw-chart-level-expensive, rgba(240, 105, 108, 0.16));
 }
 
+/* The cheap and expensive lines: faint, dashed, in the shade's own tone, so
+   the curve reads against them without competing with it. */
+.chart__level-line {
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.chart__level-line--cheap {
+  stroke: color-mix(in srgb, var(--pw-success, #58c56a) 70%, transparent);
+}
+
+.chart__level-line--expensive {
+  stroke: color-mix(in srgb, var(--pw-danger, #f0696c) 70%, transparent);
+}
+
 .chart__divider {
   stroke: var(--pw-line, rgba(15, 23, 28, 0.12));
   stroke-width: 1;

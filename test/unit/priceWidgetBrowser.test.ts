@@ -85,7 +85,7 @@ describe('price widget renderer', () => {
     expect(targets.root.dataset.state).toBe('ready');
     expect(targets.priceEl.textContent).toMatch(/øre$/);
     expect(targets.levelEl.hidden).toBe(false);
-    expect(targets.sublineEl.textContent).toContain('High from');
+    expect(targets.sublineEl.textContent).toBe('Cheap at or below 24.60 øre · expensive from 40.90 øre');
     expect(targets.chartSvg.querySelectorAll('.chart__shade--cheap').length).toBeGreaterThan(0);
     expect(targets.chartSvg.querySelectorAll('.chart__shade--expensive').length).toBeGreaterThan(0);
     expect(targets.chartSvg.querySelector('.chart__import')).not.toBeNull();
@@ -97,6 +97,26 @@ describe('price widget renderer', () => {
     expect(targets.legendEl.querySelector('.chart__legend-unit')?.textContent).toBe('øre/kWh');
     expect(targets.captionEl.hidden).toBe(false);
     expect(targets.emptyEl.hidden).toBe(true);
+  });
+
+  it('draws the cheap and expensive lines inside the plot when no price reaches either', () => {
+    const targets = resolveTargets();
+    const payload = readyPreview('import', 'flat');
+    renderWidget(targets, payload);
+    expect(payload.chart.shades).toEqual([]);
+    const lines = [...targets.chartSvg.querySelectorAll('.chart__level-line')];
+    expect(lines.map((line) => line.getAttribute('class'))).toEqual([
+      'chart__level-line chart__level-line--cheap',
+      'chart__level-line chart__level-line--expensive',
+    ]);
+    // Both lines sit inside the plot, the expensive one above the cheap one.
+    const [cheapY, expensiveY] = lines.map((line) => Number(line.getAttribute('y1')));
+    const gridYs = [...targets.chartSvg.querySelectorAll('.chart__grid')].map((line) => Number(line.getAttribute('y1')));
+    expect(expensiveY).toBeLessThan(cheapY);
+    expect(expensiveY).toBeGreaterThanOrEqual(Math.min(...gridYs));
+    expect(cheapY).toBeLessThanOrEqual(Math.max(...gridYs));
+    expect(targets.sublineEl.textContent).toBe('Cheap at or below 73.17 øre · expensive from 93.17 øre. '
+      + 'No cheap or expensive prices: they stay between 73.84 and 87.84 øre.');
   });
 
   it('draws the tomorrow divider with its label', () => {

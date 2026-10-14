@@ -13,14 +13,26 @@ const asRecord = (value: unknown): Record<string, unknown> | null => (
 // The runtime never suggests below the threshold field's minimum.
 const MIN_SUGGESTED_PERCENT = 5;
 
+const NO_SUGGESTION: PriceThresholdSuggestion = { kind: 'none' };
+
 const classifySuggestion = (value: unknown): PriceThresholdSuggestion => {
   const suggestion = asRecord(value);
-  return suggestion?.kind === 'lower_threshold'
+  if (!suggestion || !isFiniteNumber(suggestion.cheapUpTo)) return NO_SUGGESTION;
+  const { cheapUpTo } = suggestion;
+  if (
+    suggestion.kind === 'lower_threshold'
     && isFiniteNumber(suggestion.percent) && Number.isInteger(suggestion.percent)
     && suggestion.percent >= MIN_SUGGESTED_PERCENT
-    && isFiniteNumber(suggestion.cheapUpTo)
-    ? { kind: 'lower_threshold', percent: suggestion.percent, cheapUpTo: suggestion.cheapUpTo }
-    : { kind: 'none' };
+  ) {
+    return { kind: 'lower_threshold', percent: suggestion.percent, cheapUpTo };
+  }
+  if (
+    suggestion.kind === 'lower_min_difference'
+    && isFiniteNumber(suggestion.minDifference) && suggestion.minDifference >= 0
+  ) {
+    return { kind: 'lower_min_difference', minDifference: suggestion.minDifference, cheapUpTo };
+  }
+  return NO_SUGGESTION;
 };
 
 /**

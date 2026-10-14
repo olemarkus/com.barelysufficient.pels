@@ -21,6 +21,16 @@ export type PriceWidgetShade = {
   level: PriceWidgetShadeLevel;
 };
 
+/**
+ * A line a level starts at: a price at or below the cheap line is cheap, one
+ * at or above the expensive line is expensive. The producer's effective lines
+ * (percentage and minimum difference), drawn across the whole plot.
+ */
+export type PriceWidgetLevelLine = {
+  level: PriceWidgetShadeLevel;
+  price: number;
+};
+
 export type PriceWidgetTick = {
   value: number;
   label: string;
@@ -44,6 +54,12 @@ export type PriceWidgetChart = {
   importSteps: PriceWidgetStep[];
   exportSteps: PriceWidgetStep[];
   shades: PriceWidgetShade[];
+  /**
+   * The cheap and expensive lines, always both in the import and both views
+   * and inside the y range, so the curve visibly sits between them even when
+   * it never crosses one. Empty in the export view, which has no levels.
+   */
+  levelLines: PriceWidgetLevelLine[];
   /** The price the "now" dot sits on, in the series the headline shows. */
   nowPrice: number;
   axisUnit: string;
