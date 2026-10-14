@@ -842,11 +842,33 @@ Source of truth: `packages/shared-domain/src/deadlineLabels.ts`. Pull every labe
 | Progress series (legend) | `Temperature` | `Temperature` | `Charge level` | `Energy delivered` |
 | Active-hour tooltip word | `Heating` | `Cooling` | `Charging` | `Running` |
 | Target unit | `°C` | `°C` | `%` | `kWh` |
-| Plan inputs card title | `What PELS has learned` | `What PELS has learned` | `What PELS has learned` | `What PELS uses` |
+| Plan inputs card title | `About this estimate` | `About this estimate` | `About this estimate` | `About this estimate` |
 
 An energy task has no level of its own that PELS learns a rate for (its rate is exact, one kWh per
-kWh), so its inputs card is titled `What PELS uses`, not `What PELS has learned`, and it shows no
-per-unit rate row. Its current value is a running total: `2.0 kWh delivered`, never `2.0 kWh now`.
+kWh), so its `About this estimate` card shows no per-unit rate row. Its current value is a running total: `2.0 kWh delivered`, never `2.0 kWh now`.
+
+The estimate card leads with `Guaranteed power`, followed by `Latest power reading`.
+Show `At least … kW`: the current revision's minimum planning power is a lower
+bound, not the full per-period reservation. Individual periods may reserve more.
+The guarantee applies during scheduled operation, conditional on forecast background usage and expected higher-priority
+usage being correct. House power limits still apply. Do not substitute task-start
+power, configured device steps, or measured draw when the revision supplies no
+planning power. The measured value is a latest reading, not a promise of fresh
+telemetry or future power. A measured zero remains visible.
+
+Show the device's resolved priority and explain the expected higher-priority usage
+subtracted before reserving power. Priority 1 has no higher-priority devices;
+priority 2 explicitly accounts for priority 1. `Review power guarantee` opens the
+existing task editor with permissions expanded, their consequences, and its
+existing preview before saving. `Change target or deadline` also opens the editor.
+The review links to Modes for changing priorities. Energy tasks use `Measurement details`
+instead of `Learning details` because their delivered energy is counted directly. Granting a permission alone
+must not promise an improved forecast. Pause permission holds lower-priority
+resumes; it does not switch running devices off.
+
+Keep energy learning evidence under a collapsed `Learning details` disclosure,
+separate from the guarantee. Sample counts, confidence, and the last accepted
+sample describe the energy estimate, not live power or deadline certainty.
 
 The live deadline-plan hero shows only the kind chip plus a risk/failure chip
 (`At risk` or `Cannot finish`) and confidence as `Estimating` / `Refining` when
@@ -1165,7 +1187,7 @@ The prior "Move deadline later" copy promised an action neither destination offe
 
 ### "Plan" vs "deadline" on smart-task surfaces
 
-Reserve *plan* for the planning layer. Smart-task surfaces use *deadline*, *objective*, or *smart task* for lifecycle and identity language ("set a deadline", "smart task ended"). Surface labels prefer non-plan terminology — e.g., the inputs card is titled `What PELS has learned`, not `Plan inputs`.
+Reserve *plan* for the planning layer. Smart-task surfaces use *deadline*, *objective*, or *smart task* for lifecycle and identity language ("set a deadline", "smart task ended"). Surface labels prefer non-plan terminology — e.g., the inputs card is titled `About this estimate`, not `Plan inputs`.
 
 ### Smart-task extra permissions
 

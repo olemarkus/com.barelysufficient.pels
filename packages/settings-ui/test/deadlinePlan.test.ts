@@ -552,17 +552,18 @@ describe('deadline plan page payload', () => {
         deadline,
         plannedHourOffsets: [0, 1],
         plannedKWhPerHour: 2,
+        planningSpeedKw: 2,
       })),
       deviceId: 'heater',
       devices,
       prices,
       nowMs: now.getTime(),
     }));
-    expect(payload.planInputs.perUnitRateLabel).toBe('1.00 kWh/°C');
-    expect(payload.planInputs.maxPowerLabel).toBe('2.0 kW');
+    expect(payload.planInputs.perUnitRateLabel).toBe('1.00 kWh');
+    expect(payload.planInputs.maxPowerLabel).toBe('At least 2.0 kW');
   });
 
-  it('planInputs maxPowerLabel uses the lowest non-zero stepped-load step', () => {
+  it('does not invent a guarantee from device steps when the plan has no speed', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
     const devices = heaterDevices({
@@ -593,10 +594,10 @@ describe('deadline plan page payload', () => {
       prices,
       nowMs: now.getTime(),
     }));
-    expect(payload.planInputs.maxPowerLabel).toBe('1.5 kW');
+    expect(payload.planInputs.maxPowerLabel).toBeNull();
   });
 
-  it('planInputs maxPowerLabel uses the plan-level learned speed with sub-2 kW precision', () => {
+  it('uses the latest plan guarantee rather than the task-start speed', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 1.3 });
@@ -610,14 +611,68 @@ describe('deadline plan page payload', () => {
         deadline,
         plannedHourOffsets: [0],
         plannedKWhPerHour: 1.19,
-        initialPlanningSpeedKw: 1.19,
+        initialPlanningSpeedKw: 2,
+        planningSpeedKw: 1.19,
       })),
       deviceId: 'heater',
       devices,
       prices,
       nowMs: now.getTime(),
     }));
-    expect(payload.planInputs.maxPowerLabel).toBe('1.19 kW');
+    expect(payload.planInputs.maxPowerLabel).toBe('At least 1.19 kW');
+  });
+
+  it.each([1, 2, 3])('explains priority %s and preserves a measured zero separately from the guarantee', (priority) => {
+    const now = new Date(2026, 0, 1, 13);
+    const deadline = atLocalHour(now, 6);
+    const payload = expectReady(resolveRenderInput({
+      bootstrap: buildBootstrap({
+        capacity_limit_kw: 8,
+        deferred_objectives: heaterObjectiveSettings(deadline, 22),
+      }, buildHeaterActivePlan({
+        now, deadline, plannedHourOffsets: [0], plannedKWhPerHour: 2, planningSpeedKw: 2,
+      })),
+      deviceId: 'heater',
+      devices: heaterDevices({ temperature: heaterTemperature(18, 20), measuredPowerKw: 0, priority }),
+      prices: pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105])),
+      nowMs: now.getTime(),
+    }));
+    expect(payload.planInputs.maxPowerLabel).toBe('At least 2.0 kW');
+    expect(payload.planInputs.measuredPowerLabel).toBe('0 kW');
+    expect(payload.planInputs.priorityLabel).toBe(`Priority ${priority}`);
+    expect(payload.planInputs.priorityNote).toContain(priority === 1
+      ? 'No higher-priority devices' : priority === 2 ? 'priority 1 devices' : 'higher-priority devices');
+    expect(payload.planInputs.maxPowerNote).toContain('if background and higher-priority usage follow the forecasts');
+  });
+
+  it('explains energy measurement without presenting an exact rate as learned', () => {
+    const now = new Date(2026, 0, 1, 13);
+    const deadline = atLocalHour(now, 6);
+    const plan = buildHeaterActivePlan({
+      now, deadline, plannedHourOffsets: [0, 1], plannedKWhPerHour: 2, planningSpeedKw: 2,
+    });
+    const payload = expectReady(resolveRenderInput({
+      bootstrap: buildBootstrap({
+        capacity_limit_kw: 8,
+        deferred_objectives: {
+          version: 1,
+          objectivesByDeviceId: {
+            heater: { enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 4,
+              deadlineAtMs: deadline.getTime() },
+          },
+        },
+      }, { ...plan, objectiveKind: 'energy', targetValue: 4,
+        kwhPerUnitProvenance: { source: 'exact', kWhPerUnit: 1, acceptedSamples: 0,
+          confidence: null, lastAcceptedAtMs: null },
+      }),
+      deviceId: 'heater',
+      devices: heaterDevices({ measuredPowerKw: 0 }),
+      prices: pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105])),
+      nowMs: now.getTime(),
+    }));
+    expect(payload.planInputs.perUnitRateLabel).toBeNull();
+    expect(payload.labels.planInputsDetailsTitle).toBe('Measurement details');
+    expect(payload.planInputs.maxPowerLabel).toBe('At least 2.0 kW');
   });
 
   it('surfaces smart-task extra permissions in the learned inputs card', () => {
@@ -658,7 +713,7 @@ describe('deadline plan page payload', () => {
     expect(payload.planInputs.extraPermissionsValue).toBe(
       'May go over daily budget · May limit lower-priority devices if at risk',
     );
-    expect(payload.planInputs.maxPowerNote).toBe('Lower-priority devices may be limited separately.');
+    expect(payload.planInputs.maxPowerNote).toBeNull();
   });
 
   it('renders the allocated plan even when the device profile is not yet learned', () => {
@@ -1377,7 +1432,7 @@ describe('deadline plan page payload', () => {
       nowMs: now.getTime(),
     }));
 
-    expect(payload.planInputs.perUnitRateLabel).toBe('1.00 kWh/%');
+    expect(payload.planInputs.perUnitRateLabel).toBe('1.00 kWh');
     expect(payload.planInputs.perUnitRateNote).toBe('Estimated — refining as PELS observes charging.');
   });
 
@@ -1595,7 +1650,7 @@ describe('deadline plan page payload', () => {
       nowMs: now.getTime(),
     }));
 
-    expect(payload.planInputs.perUnitRateLabel).toBe('0.15 kWh/%');
+    expect(payload.planInputs.perUnitRateLabel).toBe('0.15 kWh');
     expect(payload.planInputs.perUnitRateNote).toBeNull();
   });
 
@@ -1656,7 +1711,7 @@ describe('deadline plan page payload', () => {
       nowMs: now.getTime(),
     }));
 
-    expect(payload.planInputs.perUnitRateLabel).toBe('0.22 kWh/%');
+    expect(payload.planInputs.perUnitRateLabel).toBe('0.22 kWh');
     expect(payload.planInputs.perUnitRateNote).toBeNull();
   });
 
@@ -1708,7 +1763,7 @@ describe('deadline plan page payload', () => {
       nowMs: now.getTime(),
     }));
 
-    expect(payload.planInputs.perUnitRateLabel).toBe('0.15 kWh/%');
+    expect(payload.planInputs.perUnitRateLabel).toBe('0.15 kWh');
     expect(payload.planInputs.perUnitRateNote).toBe('Estimated — refining as PELS observes charging.');
   });
 
@@ -3484,6 +3539,9 @@ describe('schedule + trajectory chart option builders', () => {
         perUnitRateNote: null,
         maxPowerLabel: null,
         maxPowerNote: null,
+        measuredPowerLabel: null,
+        priorityLabel: null,
+        priorityNote: null,
         extraPermissionsValue: null,
         provenanceRows: [],
       },

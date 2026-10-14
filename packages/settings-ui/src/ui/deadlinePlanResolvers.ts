@@ -3,7 +3,6 @@ import type {
   DeferredObjectiveSettingsEntry,
   DeferredObjectiveUnit,
 } from '../../../contracts/src/deferredObjectiveSettings.ts';
-import { getSteppedLoadLowestActiveStep } from '../../../shared-domain/src/deviceControlProfiles.ts';
 import type {
   ObjectiveProfileConfidence,
 } from '../../../contracts/src/objectiveProfileTypes.ts';
@@ -11,7 +10,6 @@ import type {
   ObservedDeviceState,
   ObservedStateOfCharge,
   ObservedStateOfChargeProbe,
-  SteppedLoadProfile,
   TemperatureObservedProbe,
 } from '../../../contracts/src/types.ts';
 import { hasObservedTemperature } from '../../../shared-domain/src/temperatureObservedState.ts';
@@ -26,32 +24,6 @@ import { resolveChipConfidence, resolveSmartTaskLearning } from '../../../shared
 import { resolveRemainingEnergyKWh } from '../../../shared-domain/src/energyQuantities.ts';
 import { isFiniteNumber } from '../../../shared-domain/src/numberGuards.ts';
 
-
-// The planner commits to running this device at the lowest non-zero step for
-// the full hour (see `resolveAllocation` in `lib/objectives/deferredObjectives/
-// horizonPlanner.ts`). The Plan inputs card surfaces that committed power so
-// the user can sanity-check "Needs X kWh" against the realistic per-hour cap.
-// Probe-widened onto the observed base rather than typed as the whole decorated
-// snapshot: this reads a stepped profile and a planning power, nothing else, and
-// declaring the full descriptor only type-checked for as long as every one of its
-// fields stayed optional.
-type LowestActiveStepInput = ObservedDeviceState & {
-  steppedLoadProfile?: SteppedLoadProfile;
-  planningPowerKw?: number;
-};
-
-export const resolveLowestActiveStepKw = (device: LowestActiveStepInput): number | null => {
-  const profile = device.steppedLoadProfile;
-  if (profile) {
-    const lowestActiveStep = getSteppedLoadLowestActiveStep(profile);
-    if (lowestActiveStep && isFiniteNumber(lowestActiveStep.planningPowerW) && lowestActiveStep.planningPowerW > 0) {
-      return lowestActiveStep.planningPowerW / 1000;
-    }
-  }
-  return isFiniteNumber(device.planningPowerKw) && device.planningPowerKw > 0
-    ? device.planningPowerKw
-    : null;
-};
 
 export type DeadlineProgress = {
   currentValue: number;

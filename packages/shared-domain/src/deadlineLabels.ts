@@ -1178,7 +1178,34 @@ export const formatSmartTaskListConfidenceChipLabel = (
 // wording can't drift between surfaces and the runtime log breadcrumbs that
 // share the same row label.
 export const SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL = 'Extra permissions';
-export const SMART_TASK_LIMIT_LOWER_PRIORITY_DEVICES_NOTE = 'Lower-priority devices may be limited separately.';
+
+// Power is a conditional planning guarantee; the outcome also depends on
+// the device's learned energy estimate.
+export const SMART_TASK_GUARANTEE_COPY = {
+  review: 'Review power guarantee',
+  currentGuarantee: 'Current guarantee',
+  changeGoal: 'Change target or deadline',
+  powerReading: 'Latest power reading',
+  conditions: 'The plan may reserve more in individual periods. This guarantee applies during scheduled operation '
+    + 'if background and higher-priority usage follow the forecasts. House power limits still apply.',
+  extraPower: 'Power beyond the plan’s reservations can help this task finish sooner.',
+  reviewHint: 'A stronger guarantee may reserve more power or operating time for this task, '
+    + 'leaving less for other devices. Changes are previewed before you save.',
+  prioritiesAction: 'Review device priorities',
+  prioritiesHint: 'Raising this device’s priority makes more devices yield to it. Their tasks may take longer.',
+  learningDetails: 'Learning details',
+  learningScope: 'These details describe the energy estimate, not the power guarantee. '
+    + 'The last learning update is separate from the latest power reading.',
+  learnedRate: 'Learned from previous operation.',
+};
+
+export const formatSmartTaskPriorityNote = (priority: number): string => (
+  priority === 1
+    ? 'No higher-priority devices are ahead of this device. '
+      + 'Forecast background usage still reduces the available power.'
+    : `Expected usage from ${priority === 2 ? 'priority 1 devices' : 'higher-priority devices'} is subtracted `
+      + 'from the available power before power is reserved for this device.'
+);
 
 // The canonical user-facing names for the two rescue permissions. Exported so
 // the create-smart-task widget's "Extra permissions" toggles, the settings-UI
@@ -1198,11 +1225,12 @@ export const SMART_TASK_EXTRA_PERMISSION_LABELS: Record<keyof DeferredObjectiveR
 // switch-off in the same breath. Every line stays inside the hard cap
 // (`feedback_hard_cap_is_physical`): these buy a task priority, never more power.
 export const SMART_TASK_EXTRA_PERMISSION_HINTS: Record<keyof DeferredObjectiveRescuePermissions, string> = {
-  exemptFromBudget: 'Lets the task keep going once today’s budget is spent. Still inside your hard cap.',
-  limitLowerPriorityDevices: 'Lets the task turn down devices you ranked lower while it runs. '
-    + 'Still keeps to today’s budget.',
-  pauseLowerPriorityDevices: 'Reserves the power the task needs to start, so it starts sooner. '
-    + 'Nothing is switched off — lower-priority devices just wait longer to resume.',
+  exemptFromBudget: 'May reserve more operating time when the daily budget restricts this task. '
+    + 'Energy use may exceed today’s budget; house power limits still apply.',
+  limitLowerPriorityDevices: 'May strengthen this task’s power guarantee by turning down lower-priority devices. '
+    + 'Their tasks may take longer or miss their deadlines. The daily budget still applies.',
+  pauseLowerPriorityDevices: 'Reserves power for this task to start. Lower-priority devices may wait longer '
+    + 'to resume and miss their deadlines; this does not switch running devices off.',
 };
 
 const SMART_TASK_RESCUE_MODE_SUFFIX: Record<DeferredObjectiveRescueMode, string> = {
@@ -1918,7 +1946,8 @@ export type DeadlineLabels = {
   planInputsCardTitle: string;
   planInputsRateRowLabel: string;
   planInputsMaxPowerRowLabel: string;
-  perUnitRateUnit: 'kWh/°C' | 'kWh/%' | 'kWh/kWh';
+  planInputsDetailsTitle: string;
+  planInputsDetailsNote: string;
   // Subtext shown next to the "Energy per unit" row when the planner is using
   // a bootstrap kWh-per-unit value (no learned profile yet). `null` when the
   // kind has no bootstrap path — only EV SoC ships with one in v1.
@@ -2383,7 +2412,9 @@ const KIND_INVARIANT_LABELS = {
     headline: 'Smart task finished',
     body: 'See Smart tasks for the outcome.',
   },
-  planInputsMaxPowerRowLabel: 'Device power used',
+  planInputsMaxPowerRowLabel: 'Guaranteed power',
+  planInputsDetailsTitle: SMART_TASK_GUARANTEE_COPY.learningDetails,
+  planInputsDetailsNote: SMART_TASK_GUARANTEE_COPY.learningScope,
   revisionReasonTooltipLine: REVISION_REASON_TOOLTIP_LINE,
 } satisfies Partial<DeadlineLabels>;
 
@@ -2467,9 +2498,8 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       'Not enough time for this target. Lower the target or move the deadline.'
     ),
     targetUnit: '°C',
-    planInputsCardTitle: 'What PELS has learned',
-    planInputsRateRowLabel: 'Energy needed per °C',
-    perUnitRateUnit: 'kWh/°C',
+    planInputsCardTitle: 'About this estimate',
+    planInputsRateRowLabel: 'Energy for each 1 °C',
     planInputsRateBootstrapNote: null,
   },
   ev_soc: {
@@ -2530,9 +2560,8 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       'Not enough time or charging power for this target. Lower the target or move the deadline.'
     ),
     targetUnit: '%',
-    planInputsCardTitle: 'What PELS has learned',
-    planInputsRateRowLabel: 'Energy needed per %',
-    perUnitRateUnit: 'kWh/%',
+    planInputsCardTitle: 'About this estimate',
+    planInputsRateRowLabel: 'Energy for each 1%',
     planInputsRateBootstrapNote: 'Estimated — refining as PELS observes charging.',
   },
   // "Deliver N kWh to this device by the deadline." Only a pure on/off device
@@ -2591,11 +2620,12 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       + 'it may already be full.'
     ),
     targetUnit: 'kWh',
-    planInputsCardTitle: 'What PELS uses',
+    planInputsCardTitle: 'About this estimate',
     // The rate is exact (one kWh fed is one kWh of progress); the row exists
     // for the other kinds' learned rate and has nothing to teach here.
     planInputsRateRowLabel: 'Energy needed per kWh',
-    perUnitRateUnit: 'kWh/kWh',
+    planInputsDetailsTitle: 'Measurement details',
+    planInputsDetailsNote: 'Energy delivered is counted from power readings. No learned conversion rate is needed.',
     planInputsRateBootstrapNote: null,
   },
 };

@@ -411,6 +411,9 @@ const buildReadyPayloadWithDeviceRecourse = (deviceId: string): DeadlinePlanPayl
     perUnitRateNote: null,
     maxPowerLabel: null,
     maxPowerNote: null,
+    measuredPowerLabel: null,
+    priorityLabel: null,
+    priorityNote: null,
     extraPermissionsValue: null,
     provenanceRows: [],
   },
@@ -657,5 +660,49 @@ describe('DeadlinePlan revision history panel', () => {
     expect(rows[0]?.querySelector('.plan-revision-diff')).toBeNull();
     // Non-fallback row keeps the producer-resolved short label.
     expect(rows[1]?.querySelector('.plan-revision-reason')?.textContent).toBe('Prices arrived');
+  });
+});
+
+
+describe('Smart-task estimate explanation', () => {
+  it('shows priority when an energy task has no power or learning details yet', () => {
+    const mount = mountIntoBody();
+    const payload = buildReadyPayloadWithDeviceRecourse('dev_heater');
+    payload.labels = deadlineLabels('energy');
+    payload.planInputs.priorityLabel = 'Priority 2';
+    payload.planInputs.priorityNote = 'Expected priority 1 usage is accounted for first.';
+    renderDeadlinePlan(mount, { status: 'ready', payload });
+    const card = mount.querySelector('.plan-inputs');
+    expect(card?.textContent).toContain('Priority 2');
+    expect(card?.textContent).toContain('Expected priority 1 usage is accounted for first.');
+    expect(card?.textContent).not.toContain('Guaranteed power');
+    expect(card?.textContent).not.toContain('Latest power reading');
+  });
+
+  it('keeps learning evidence separate and collapsed across live refreshes', () => {
+    const mount = mountIntoBody();
+    const payload = buildReadyPayloadWithDeviceRecourse('dev_heater');
+    payload.planInputs = {
+      perUnitRateLabel: '0.80 kWh/°C',
+      perUnitRateNote: null,
+      maxPowerLabel: '1.0 kW',
+      maxPowerNote: 'Provided background usage follows the forecast.',
+      measuredPowerLabel: '0 kW',
+      priorityLabel: 'Priority 2',
+      priorityNote: 'Expected priority 1 usage is accounted for first.',
+      extraPermissionsValue: null,
+      provenanceRows: [{ label: 'Readings used', value: '35 samples', tone: null }],
+    };
+    renderDeadlinePlan(mount, { status: 'ready', payload });
+    const card = mount.querySelector('.plan-inputs');
+    expect(card?.textContent).toContain('Guaranteed power');
+    expect(card?.textContent).toContain('Latest power reading');
+    const disclosure = card?.querySelector('details');
+    expect(disclosure?.open).toBe(false);
+    expect(disclosure?.textContent).toContain('35 samples');
+    expect(disclosure?.textContent).toContain('not the power guarantee');
+    disclosure!.open = true;
+    renderDeadlinePlan(mount, { status: 'ready', payload: { ...payload } });
+    expect(mount.querySelector('details.plan-inputs__learning')?.hasAttribute('open')).toBe(true);
   });
 });

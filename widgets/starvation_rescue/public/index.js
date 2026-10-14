@@ -528,6 +528,20 @@
     cannot_meet: SMART_TASK_LIST_STATUS_LABELS.cannot_meet,
     satisfied: null
   };
+  var SMART_TASK_GUARANTEE_COPY = {
+    review: "Review power guarantee",
+    currentGuarantee: "Current guarantee",
+    changeGoal: "Change target or deadline",
+    powerReading: "Latest power reading",
+    conditions: "The plan may reserve more in individual periods. This guarantee applies during scheduled operation if background and higher-priority usage follow the forecasts. House power limits still apply.",
+    extraPower: "Power beyond the plan\u2019s reservations can help this task finish sooner.",
+    reviewHint: "A stronger guarantee may reserve more power or operating time for this task, leaving less for other devices. Changes are previewed before you save.",
+    prioritiesAction: "Review device priorities",
+    prioritiesHint: "Raising this device\u2019s priority makes more devices yield to it. Their tasks may take longer.",
+    learningDetails: "Learning details",
+    learningScope: "These details describe the energy estimate, not the power guarantee. The last learning update is separate from the latest power reading.",
+    learnedRate: "Learned from previous operation."
+  };
   var SMART_TASK_EXTRA_PERMISSION_LABELS = {
     exemptFromBudget: "May go over daily budget",
     limitLowerPriorityDevices: "May limit lower-priority devices",
@@ -702,7 +716,9 @@
       headline: "Smart task finished",
       body: "See Smart tasks for the outcome."
     },
-    planInputsMaxPowerRowLabel: "Device power used",
+    planInputsMaxPowerRowLabel: "Guaranteed power",
+    planInputsDetailsTitle: SMART_TASK_GUARANTEE_COPY.learningDetails,
+    planInputsDetailsNote: SMART_TASK_GUARANTEE_COPY.learningScope,
     revisionReasonTooltipLine: REVISION_REASON_TOOLTIP_LINE
   };
   var DEADLINE_LABELS = {
@@ -782,9 +798,8 @@
       // `cannotMeetDailyBudgetExhausted` branch above.
       cannotMeetShortfall: () => "Not enough time for this target. Lower the target or move the deadline.",
       targetUnit: "\xB0C",
-      planInputsCardTitle: "What PELS has learned",
-      planInputsRateRowLabel: "Energy needed per \xB0C",
-      perUnitRateUnit: "kWh/\xB0C",
+      planInputsCardTitle: "About this estimate",
+      planInputsRateRowLabel: "Energy for each 1 \xB0C",
       planInputsRateBootstrapNote: null
     },
     ev_soc: {
@@ -841,9 +856,8 @@
       // recourse. The meta line continues to carry the energy/duration magnitude.
       cannotMeetShortfall: () => "Not enough time or charging power for this target. Lower the target or move the deadline.",
       targetUnit: "%",
-      planInputsCardTitle: "What PELS has learned",
-      planInputsRateRowLabel: "Energy needed per %",
-      perUnitRateUnit: "kWh/%",
+      planInputsCardTitle: "About this estimate",
+      planInputsRateRowLabel: "Energy for each 1%",
       planInputsRateBootstrapNote: "Estimated \u2014 refining as PELS observes charging."
     },
     // "Deliver N kWh to this device by the deadline." Only a pure on/off device
@@ -898,11 +912,12 @@
       // move a deadline that is not the problem.
       cannotMeetShortfall: () => "Not enough time or power for this amount of energy. Lower the target or move the deadline. If the device switches itself off when it is done, like a water heater that is already hot, it may already be full.",
       targetUnit: "kWh",
-      planInputsCardTitle: "What PELS uses",
+      planInputsCardTitle: "About this estimate",
       // The rate is exact (one kWh fed is one kWh of progress); the row exists
       // for the other kinds' learned rate and has nothing to teach here.
       planInputsRateRowLabel: "Energy needed per kWh",
-      perUnitRateUnit: "kWh/kWh",
+      planInputsDetailsTitle: "Measurement details",
+      planInputsDetailsNote: "Energy delivered is counted from power readings. No learned conversion rate is needed.",
       planInputsRateBootstrapNote: null
     }
   };

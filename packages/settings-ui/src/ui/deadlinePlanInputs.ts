@@ -1,22 +1,22 @@
 import {
   formatSmartTaskExtraPermissionsValue,
   resolveKwhPerUnitProvenanceRows,
-  SMART_TASK_LIMIT_LOWER_PRIORITY_DEVICES_NOTE,
-  type DeadlineLabels,
+  SMART_TASK_GUARANTEE_COPY,
+  formatSmartTaskPriorityNote,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import type { DeadlinePlanSchedule, ObjectivePayloadReady } from './deadlinePlanData.ts';
+import { hasObservedMeasuredPower } from '../../../shared-domain/src/measuredPowerObservedState.ts';
 import { formatAcceptedAt } from './deadlinePlanFormatters.ts';
-import { resolveDisplayRateAndSpeedMode, resolveLowestActiveStepKw } from './deadlinePlanResolvers.ts';
+import { resolveDisplayRateAndSpeedMode } from './deadlinePlanResolvers.ts';
 import type { DeadlinePlanPayload } from './views/DeadlinePlan.tsx';
 
 const formatPerUnitRateLabel = (
   kwhPerUnitMean: number | null | undefined,
-  unitSuffix: DeadlineLabels['perUnitRateUnit'],
 ): string | null => {
   if (typeof kwhPerUnitMean !== 'number' || !Number.isFinite(kwhPerUnitMean) || kwhPerUnitMean <= 0) {
     return null;
   }
-  return `${kwhPerUnitMean.toFixed(2)} ${unitSuffix}`;
+  return `${kwhPerUnitMean.toFixed(2)} kWh`;
 };
 
 const formatMaxPowerLabel = (kw: number | null): string | null => {
@@ -44,14 +44,15 @@ export const buildPlanInputs = (
   // "Estimated — refining as PELS observes charging" note next to the rate
   // row; suppressed when the rate came from the learned profile.
   const { rateMean, usingBootstrap } = resolveDisplayRateAndSpeedMode(activePlan);
-  const planningSpeedKw = resolvePositiveNumber(activePlan.initialPlanningSpeedKw ?? activePlan.latest.planningSpeedKw);
+  const planningSpeedKw = resolvePositiveNumber(activePlan.latest.planningSpeedKw);
   return {
-    perUnitRateLabel: formatPerUnitRateLabel(rateMean, labels.perUnitRateUnit),
+    perUnitRateLabel: objective.kind === 'energy' ? null : formatPerUnitRateLabel(rateMean),
     perUnitRateNote: usingBootstrap ? labels.planInputsRateBootstrapNote : null,
-    maxPowerLabel: formatMaxPowerLabel(planningSpeedKw ?? resolveLowestActiveStepKw(device)),
-    maxPowerNote: objective.rescue?.limitLowerPriorityDevices
-      ? SMART_TASK_LIMIT_LOWER_PRIORITY_DEVICES_NOTE
-      : null,
+    maxPowerLabel: planningSpeedKw === null ? null : `At least ${formatMaxPowerLabel(planningSpeedKw)}`,
+    maxPowerNote: planningSpeedKw === null ? null : SMART_TASK_GUARANTEE_COPY.conditions,
+    measuredPowerLabel: hasObservedMeasuredPower(device) ? formatMaxPowerLabel(device.measuredPowerKw) : null,
+    priorityLabel: device.priority === undefined ? null : `Priority ${device.priority}`,
+    priorityNote: device.priority === undefined ? null : formatSmartTaskPriorityNote(device.priority),
     extraPermissionsValue: formatSmartTaskExtraPermissionsValue(objective.rescue),
     provenanceRows: resolveKwhPerUnitProvenanceRows(
       activePlan.kwhPerUnitProvenance,

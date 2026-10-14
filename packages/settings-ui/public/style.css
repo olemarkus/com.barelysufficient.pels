@@ -6377,6 +6377,24 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   margin-top: var(--spacing-3);
 }
 
+.plan-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.plan-inputs .pels-card-supporting {
+  margin: 0;
+}
+
+.plan-inputs__section {
+  border-top: 1px solid var(--pels-surface-outline);
+  padding-top: var(--spacing-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
 .plan-inputs__list {
   display: flex;
   flex-direction: column;
@@ -6434,6 +6452,20 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   .plan-inputs__row-value {
     text-align: left;
   }
+}
+
+.plan-inputs__learning .plan-inputs__list {
+  margin-top: var(--spacing-3);
+}
+
+.plan-inputs > .plan-inputs__list .plan-inputs__row,
+.plan-inputs__section > .plan-inputs__list .plan-inputs__row {
+  flex-direction: row;
+}
+
+.plan-inputs > .plan-inputs__list .plan-inputs__row-value,
+.plan-inputs__section > .plan-inputs__list .plan-inputs__row-value {
+  flex-shrink: 0;
 }
 
 /* Day view foundation */

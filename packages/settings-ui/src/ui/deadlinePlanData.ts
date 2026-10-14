@@ -5,7 +5,9 @@ import type {
   DeferredObjectiveActivePlanStatusV1,
   ResolvedDeferredObjectiveActivePlanV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
-import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
+import type {
+  DeviceDescriptor, MeasuredPowerObservedProbe, ObservedDeviceState,
+} from '../../../contracts/src/types.ts';
 import type { DeadlineLabels } from '../../../shared-domain/src/deadlineLabels.ts';
 import { resolvePlanningPrice } from '../../../shared-domain/src/price/planningPrice.ts';
 import { normalizeCombinedPrices } from './combinedPrices.ts';
@@ -56,7 +58,7 @@ export const collectHorizonHours = (
 );
 
 export type ResolvedObjectiveContext = {
-  device: ObservedDeviceState;
+  device: ObservedDeviceState & MeasuredPowerObservedProbe & Pick<DeviceDescriptor, 'priority'>;
   objective: DeferredObjectiveSettingsEntry;
   deviceId: string;
   deadlineAtMs: number;

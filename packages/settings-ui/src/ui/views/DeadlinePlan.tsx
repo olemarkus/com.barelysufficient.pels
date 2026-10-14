@@ -12,6 +12,7 @@ import {
   formatSmartTaskGoalRangeHint,
   REVISION_PANEL_TITLE,
   SMART_TASK_AFTER_TASK_COPY,
+  SMART_TASK_GUARANTEE_COPY,
   SMART_TASK_EDIT_COPY,
   SMART_TASK_BANNER_RECORD_NOT_FOUND_BODY,
   SMART_TASK_BANNER_RECORD_NOT_FOUND_TITLE,
@@ -237,6 +238,9 @@ export type DeadlinePlanPayload = {
     perUnitRateNote: string | null;
     maxPowerLabel: string | null;
     maxPowerNote: string | null;
+    measuredPowerLabel: string | null;
+    priorityLabel: string | null;
+    priorityNote: string | null;
     extraPermissionsValue: string | null;
     // EV learning provenance rows (source, learned value, readings used,
     // latest reading timestamp). Pre-resolved at the producer side so the view
@@ -1071,6 +1075,22 @@ const renderProvenanceRowDisplay = (
   return { value: fresh.text, tone: fresh.tone };
 };
 
+const PlanPriority = ({ inputs, review = false }: {
+  inputs: DeadlinePlanPayload['planInputs'];
+  review?: boolean;
+}) => inputs.priorityLabel === null ? null : (
+  <div class="plan-inputs__section">
+    <h3 class="plan-card__title">{inputs.priorityLabel}</h3>
+    <p class="pels-card-supporting">{inputs.priorityNote}</p>
+    {review && <>
+      <MdTextButton data-deadline-recourse-tab="modes">
+        {SMART_TASK_GUARANTEE_COPY.prioritiesAction}
+      </MdTextButton>
+      <p class="pels-card-supporting">{SMART_TASK_GUARANTEE_COPY.prioritiesHint}</p>
+    </>}
+  </div>
+);
+
 // Exported for unit tests so the freshness tick can be exercised in isolation
 // without also mounting `HorizonChart` (whose ECharts init via
 // `useEchartsMount` hits real ECharts subpaths the JSDOM-aliased shim doesn't
@@ -1085,79 +1105,60 @@ export const PlanInputsCard = ({ payload, editorOpen = false }: {
   payload: DeadlinePlanPayload;
   editorOpen?: boolean;
 }) => {
-  const {
-    perUnitRateLabel,
-    perUnitRateNote,
-    maxPowerLabel,
-    maxPowerNote,
-    provenanceRows,
-  } = payload.planInputs;
-  const extraPermissionsValue = editorOpen ? null : payload.planInputs.extraPermissionsValue;
-  // Only arm the 60s tick when at least one row actually needs freshness; on
-  // a bootstrap provenance row (Starting estimate only) or no provenance at
-  // all the timer never spins up.
+  const inputs = payload.planInputs;
+  const { perUnitRateLabel, perUnitRateNote, maxPowerLabel, maxPowerNote, measuredPowerLabel, provenanceRows } = inputs;
+  const extraPermissionsValue = editorOpen ? null : inputs.extraPermissionsValue;
   const hasFreshnessRow = provenanceRows.some((row) => typeof row.freshnessOfMs === 'number');
   const tickNowMs = useFreshnessTick(hasFreshnessRow);
-  if (
-    perUnitRateLabel === null
-    && maxPowerLabel === null
-    && extraPermissionsValue === null
-    && provenanceRows.length === 0
-  ) return null;
+  if (perUnitRateLabel === null && maxPowerLabel === null && measuredPowerLabel === null
+    && inputs.priorityLabel === null && extraPermissionsValue === null && provenanceRows.length === 0) return null;
   return (
-    <section class="pels-surface-card budget-redesign-card" aria-labelledby="deadline-plan-inputs-title">
-      <div class="budget-card-header">
-        <h2 class="plan-card__title" id="deadline-plan-inputs-title">{payload.labels.planInputsCardTitle}</h2>
-      </div>
+    <section class="pels-surface-card budget-redesign-card plan-inputs" aria-labelledby="deadline-plan-inputs-title">
+      <h2 class="plan-card__title" id="deadline-plan-inputs-title">{payload.labels.planInputsCardTitle}</h2>
       <dl class="plan-inputs__list">
-        {perUnitRateLabel !== null && (
-          <div class="plan-inputs__row">
-            <dt class="plan-inputs__row-label">{payload.labels.planInputsRateRowLabel}</dt>
-            <dd class="plan-inputs__row-value">
-              {perUnitRateLabel}
-              {perUnitRateNote !== null && (
-                <div class="plan-inputs__row-note">{perUnitRateNote}</div>
-              )}
-            </dd>
-          </div>
-        )}
-        {maxPowerLabel !== null && (
-          <div class="plan-inputs__row">
-            <dt class="plan-inputs__row-label">{payload.labels.planInputsMaxPowerRowLabel}</dt>
-            <dd class="plan-inputs__row-value">
-              {maxPowerLabel}
-              {maxPowerNote !== null && (
-                <div class="plan-inputs__row-note">{maxPowerNote}</div>
-              )}
-            </dd>
-          </div>
-        )}
-        {extraPermissionsValue !== null && (
-          <div class="plan-inputs__row">
-            <dt class="plan-inputs__row-label">{SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL}</dt>
-            <dd class="plan-inputs__row-value">{extraPermissionsValue}</dd>
-          </div>
-        )}
-        {provenanceRows.map((row) => {
-          const display = renderProvenanceRowDisplay(row, tickNowMs);
-          return (
-            <div key={row.label} class="plan-inputs__row">
-              <dt class="plan-inputs__row-label">{row.label}</dt>
-              <dd
-                class={display.tone === null
-                  ? 'plan-inputs__row-value'
-                  : `plan-inputs__row-value plan-inputs__row-value--${display.tone}`}
-              >
-                {display.value}
-              </dd>
-            </div>
-          );
-        })}
+        {maxPowerLabel !== null && <div class="plan-inputs__row">
+          <dt class="plan-inputs__row-label">{payload.labels.planInputsMaxPowerRowLabel}</dt>
+          <dd class="plan-inputs__row-value">{maxPowerLabel}</dd>
+        </div>}
+        {measuredPowerLabel !== null && <div class="plan-inputs__row">
+          <dt class="plan-inputs__row-label">{SMART_TASK_GUARANTEE_COPY.powerReading}</dt>
+          <dd class="plan-inputs__row-value">{measuredPowerLabel}</dd>
+        </div>}
       </dl>
+      {maxPowerNote !== null && <p class="pels-card-supporting">{maxPowerNote}</p>}
+      {maxPowerLabel !== null && <p class="pels-card-supporting">{SMART_TASK_GUARANTEE_COPY.extraPower}</p>}
+      <PlanPriority inputs={inputs} />
+      {perUnitRateLabel !== null && <div class="plan-inputs__section">
+        <dl class="plan-inputs__list"><div class="plan-inputs__row">
+          <dt class="plan-inputs__row-label">{payload.labels.planInputsRateRowLabel}</dt>
+          <dd class="plan-inputs__row-value">{perUnitRateLabel}</dd>
+        </div></dl>
+        <p class="pels-card-supporting">{perUnitRateNote ?? SMART_TASK_GUARANTEE_COPY.learnedRate}</p>
+      </div>}
+      {provenanceRows.length > 0 && <details class="plan-inputs__learning">
+        <summary class="smart-task-edit__permissions-summary">
+          <span class="plan-card__title">{payload.labels.planInputsDetailsTitle}</span>
+          <ExpandMoreIcon class="disclosure-chevron" />
+        </summary>
+        <p class="pels-card-supporting">{payload.labels.planInputsDetailsNote}</p>
+        <dl class="plan-inputs__list">
+          {provenanceRows.map((row) => {
+            const display = renderProvenanceRowDisplay(row, tickNowMs);
+            return <div key={row.label} class="plan-inputs__row">
+              <dt class="plan-inputs__row-label">{row.label}</dt>
+              <dd class={display.tone === null ? 'plan-inputs__row-value'
+                : `plan-inputs__row-value plan-inputs__row-value--${display.tone}`}>{display.value}</dd>
+            </div>;
+          })}
+        </dl>
+      </details>}
+      {extraPermissionsValue !== null && <div class="plan-inputs__section">
+        <h3 class="plan-card__title">{SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL}</h3>
+        <p class="pels-card-supporting">{extraPermissionsValue}</p>
+      </div>}
     </section>
   );
 };
-
 
 // PendingHero mirrors `DeadlineHero` for the active-plan ready path: the
 // headlineReason subline sits directly below the headline (same render slot
@@ -1302,7 +1303,8 @@ export const SmartTaskPermissionRow = ({ label, hint, selected, disabled, onTogg
 );
 
 // The editor's "Extra permissions" disclosure. Collapsed by default so the
-// common goal/ready-by edit stays a two-field form, but OPEN when the task
+// common goal/ready-by edit stays a two-field form. Guarantee review opens it
+// immediately; it also opens when the task
 // already holds a permission — a grant the user can now revoke here must not be
 // hidden behind a closed disclosure. `open` is derived from the BASELINE (fixed
 // for the editor session), so the full-root repaint on every runtime refresh
@@ -1316,7 +1318,8 @@ export const SmartTaskPermissionRow = ({ label, hint, selected, disabled, onTogg
 // read-only row is suppressed while the editor is open, so this is the only
 // surface for it. Rendering keys off the BASELINE so the row can't vanish the
 // moment it is switched off.
-const SmartTaskPermissionsSection = ({ snapshot, disabled, onToggle }: {
+const SmartTaskPermissionsSection = ({ snapshot, disabled, onToggle, review = false }: {
+  review?: boolean;
   snapshot: SmartTaskEditSnapshot;
   disabled: boolean;
   onToggle: (key: SmartTaskEditPermissionKey, value: boolean) => void;
@@ -1337,7 +1340,7 @@ const SmartTaskPermissionsSection = ({ snapshot, disabled, onToggle }: {
   });
   return (
     <div class="smart-task-edit__permissions-block">
-      <details class="smart-task-edit__permissions" {...(anyGranted ? { open: true } : {})}>
+      <details class="smart-task-edit__permissions" {...(anyGranted || review ? { open: true } : {})}>
         <summary class="smart-task-edit__permissions-summary">
           <span class="plan-card__title">{SMART_TASK_EXTRA_PERMISSIONS_TITLE}</span>
           <ExpandMoreIcon class="disclosure-chevron" />
@@ -1388,7 +1391,12 @@ const SmartTaskAfterTaskCard = ({ afterTask }: { afterTask: SmartTaskAfterTaskPr
   </section>
 );
 
-const SmartTaskEditSection = ({ edit }: { edit: SmartTaskEditProps }) => {
+const SmartTaskEditSection = ({ edit, inputs }: {
+  edit: SmartTaskEditProps;
+  inputs?: DeadlinePlanPayload['planInputs'];
+}) => {
+  const [reviewGuarantee, setReviewGuarantee] = useState(false);
+  const reviewing = inputs !== undefined && reviewGuarantee;
   const s = edit.snapshot;
   const busySaving = s?.busy === 'saving';
   const busyClearing = s?.busy === 'clearing';
@@ -1401,13 +1409,29 @@ const SmartTaskEditSection = ({ edit }: { edit: SmartTaskEditProps }) => {
     <>
       <div class="smart-task-actions">
         {edit.mode === 'edit_and_clear' && <MdFilledTonalButton disabled={formOpen || busyClearing}
-          onClick={edit.onOpen}>{SMART_TASK_EDIT_COPY.editButton}</MdFilledTonalButton>}
+          onClick={() => { setReviewGuarantee(true); edit.onOpen(); }}>{inputs ? SMART_TASK_GUARANTEE_COPY.review : SMART_TASK_EDIT_COPY.editButton}</MdFilledTonalButton>}
+        {inputs && edit.mode === 'edit_and_clear' && <MdTextButton disabled={formOpen || busyClearing}
+          onClick={() => { setReviewGuarantee(false); edit.onOpen(); }}>{SMART_TASK_GUARANTEE_COPY.changeGoal}</MdTextButton>}
         <SmartTaskClearControl snapshot={s} disabled={busySaving || busyClearing}
           onClear={edit.onClear} onDismiss={edit.onDismissClear} />
       </div>
       {!formOpen && s?.errorLine && <p class="smart-task-edit__error">{s.errorLine}</p>}
       {formOpen && <section class="pels-surface-card budget-redesign-card smart-task-edit">
-      <p class="plan-card__title">{SMART_TASK_EDIT_COPY.editButton}</p>
+      <h2 class="plan-card__title">{reviewing ? SMART_TASK_GUARANTEE_COPY.review : SMART_TASK_EDIT_COPY.editButton}</h2>
+      {reviewing && inputs && <>
+        <p class="pels-card-supporting">{SMART_TASK_GUARANTEE_COPY.reviewHint}</p>
+        {inputs.maxPowerLabel !== null && <dl class="plan-inputs__list"><div class="plan-inputs__row">
+          <dt class="plan-inputs__row-label">{SMART_TASK_GUARANTEE_COPY.currentGuarantee}</dt>
+          <dd class="plan-inputs__row-value">{inputs.maxPowerLabel}</dd>
+        </div></dl>}
+        <PlanPriority inputs={inputs} review />
+        <SmartTaskPermissionsSection
+          snapshot={s}
+          review
+          disabled={busySaving || busyClearing}
+          onToggle={edit.onPermissionToggle}
+        />
+      </>}
       <label class="field">
         <span class="field__label pels-text-settings-label">{CREATE_SMART_TASK_WIDGET_COPY.goalLabel}</span>
         <MdFilledTextField
@@ -1439,11 +1463,11 @@ const SmartTaskEditSection = ({ edit }: { edit: SmartTaskEditProps }) => {
           }}
         />
       </label>
-      <SmartTaskPermissionsSection
+      {!reviewing && <SmartTaskPermissionsSection
         snapshot={s}
         disabled={busySaving || busyClearing}
         onToggle={edit.onPermissionToggle}
-      />
+      />}
       {s.preview !== null && (
         <div class="smart-task-edit__preview">
           <p class="smart-task-edit__preview-when">{s.preview.whenLine}</p>
@@ -1587,7 +1611,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
   return (
     <>
       <DeadlineHero payload={loadState.payload} />
-      {loadState.edit !== undefined && <SmartTaskEditSection edit={loadState.edit} />}
+      {loadState.edit !== undefined && <SmartTaskEditSection edit={loadState.edit} inputs={loadState.payload.planInputs} />}
       <ScheduleQuestionCards payload={loadState.payload} />
       <PlanInputsCard payload={loadState.payload} editorOpen={loadState.edit?.snapshot != null} />
       {loadState.afterTask !== undefined && <SmartTaskAfterTaskCard afterTask={loadState.afterTask} />}

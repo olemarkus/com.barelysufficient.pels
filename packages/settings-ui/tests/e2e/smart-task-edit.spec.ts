@@ -47,7 +47,7 @@ const openDeadlinePlan = async (page: Page): Promise<Locator> => {
 
 const openEditor = async (page: Page): Promise<Locator> => {
   const panel = await openDeadlinePlan(page);
-  await panel.locator('.smart-task-actions').getByRole('button', { name: 'Edit task' }).click();
+  await panel.locator('.smart-task-actions').getByRole('button', { name: 'Review power guarantee' }).click();
   const editCard = panel.locator('.smart-task-edit');
   await expect(editCard.locator('.smart-task-edit__time-input')).toBeVisible();
   return panel;
@@ -84,7 +84,20 @@ test.describe('Smart task edit', () => {
     // then the editor closes and the action remains available.
     await editCard.getByRole('button', { name: 'Save changes' }).click();
     await expect(editCard).toHaveCount(0);
-    await expect(panel.locator('.smart-task-actions').getByRole('button', { name: 'Edit task' })).toBeVisible();
+    await expect(panel.locator('.smart-task-actions').getByRole('button', { name: 'Review power guarantee' })).toBeVisible();
+  });
+
+  test('changing the target opens the goal first instead of the guarantee review', async ({ page }) => {
+    const panel = await openDeadlinePlan(page);
+    await panel.getByRole('button', { name: 'Change target or deadline' }).click();
+    const editor = panel.locator('.smart-task-edit');
+    await expect(editor.getByRole('heading', { name: 'Edit task', exact: true })).toBeVisible();
+    await expect(editor.locator('.smart-task-edit__permissions')).not.toHaveAttribute('open');
+    await expect(editor.locator('md-filled-text-field input')).toHaveValue('65');
+    await editor.getByRole('button', { name: 'Discard' }).click();
+    await panel.getByRole('button', { name: 'Review power guarantee', exact: true }).click();
+    await expect(editor.getByRole('heading', { name: 'Review power guarantee', exact: true })).toBeVisible();
+    await expect(editor.locator('.smart-task-edit__permissions')).toHaveAttribute('open');
   });
 
   test('a rejected save keeps the editor open with the reason inline', async ({ page }) => {
@@ -135,7 +148,7 @@ test.describe('Smart task edit', () => {
     const actions = panel.locator('.smart-task-actions');
 
     await expect(panel.locator('.plan-hero__headline')).toHaveText('Smart task unavailable');
-    await expect(actions.getByRole('button', { name: 'Edit task' })).toHaveCount(0);
+    await expect(actions.getByRole('button', { name: 'Review power guarantee' })).toHaveCount(0);
     await expect(panel.locator('.smart-task-edit')).toHaveCount(0);
 
     await actions.getByRole('button', { name: 'Clear task' }).click();
@@ -183,9 +196,8 @@ test.describe('Smart task edit', () => {
     const editCard = panel.locator('.smart-task-edit');
     const permissions = editCard.locator('.smart-task-edit__permissions');
 
-    // Collapsed by default on a task holding no permission; the summary opens it.
-    await expect(permissions).not.toHaveAttribute('open', '');
-    await permissions.locator('summary').click();
+    // Guarantee review opens the consequences directly, even with no grants.
+    await expect(permissions).toHaveAttribute('open', '');
 
     const rows = permissions.locator('.md-switch-row');
     await expect(rows).toHaveCount(3);
@@ -221,7 +233,6 @@ test.describe('Smart task edit', () => {
     // entry that was never written.
     const panel = await openEditor(page);
     const editCard = panel.locator('.smart-task-edit');
-    await editCard.locator('.smart-task-edit__permissions summary').click();
     await editCard.locator('.md-switch-row').nth(0).locator('md-switch').click();
     // Let the debounced re-preview land so the save echoes the previewed
     // deadline the stub demands (the anti-drift echo, pinned by the first test).
@@ -257,11 +268,11 @@ test.describe('Smart task edit', () => {
       };
     });
     const panel = await openDeadlinePlan(page);
-    const readOnlyRow = panel.locator('.plan-inputs__row', { hasText: 'Extra permissions' });
+    const readOnlyRow = panel.locator('.plan-inputs__section', { hasText: 'Extra permissions' });
     await expect(readOnlyRow).toBeVisible();
 
     const editCard = panel.locator('.smart-task-edit');
-    await panel.locator('.smart-task-actions').getByRole('button', { name: 'Edit task' }).click();
+    await panel.locator('.smart-task-actions').getByRole('button', { name: 'Review power guarantee' }).click();
     await expect(editCard.locator('.smart-task-edit__time-input')).toBeVisible();
     await expect(readOnlyRow).toHaveCount(0);
     // The task already holds a grant, so the disclosure opens itself rather than
@@ -287,6 +298,6 @@ test.describe('Smart task edit', () => {
     await editCard.locator('md-filled-text-field input').fill('70');
     await editCard.getByRole('button', { name: 'Discard' }).click();
     await expect(editCard).toHaveCount(0);
-    await expect(panel.locator('.smart-task-actions').getByRole('button', { name: 'Edit task' })).toBeVisible();
+    await expect(panel.locator('.smart-task-actions').getByRole('button', { name: 'Review power guarantee' })).toBeVisible();
   });
 });

@@ -713,6 +713,7 @@
       {
         id: 'dev_connected300',
         name: 'Connected 300',
+        priority: 5,
         deviceClass: 'waterheater',
         deviceType: 'onoff',
         controlModel: 'stepped_load',
@@ -1348,6 +1349,10 @@
       // staircase tops out short of the target and the danger stateline +
       // red deadline render.
       energyNeededKWh: deadlinePlanUnderBooked ? 35 : plannedHourCount * 2,
+      planningSpeedKw: 0.75,
+      rateMean: 0.8,
+      kwhPerUnitSource: 'learned',
+      speedMode: 'auto',
       planStatus: deadlinePlanUnderBooked ? 'cannot_meet' : 'on_track',
     };
     const latestRevision = latestHours === hours ? revision : {
@@ -1372,6 +1377,10 @@
           pending: false,
           liveCompletion: { kind: 'unmet', status: latestRevision.planStatus },
           objectiveSignature: 'stub',
+          kwhPerUnitProvenance: {
+            source: 'learned', kWhPerUnit: 0.8, acceptedSamples: 12,
+            confidence: 'high', displayConfidence: 'high', lastAcceptedAtMs: nowMs - 600000,
+          },
           original: revision,
           latest: latestRevision,
           ...(deadlinePlanSeparateMeter
