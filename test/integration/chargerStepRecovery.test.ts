@@ -203,10 +203,34 @@ describe('EV charger current recovery after limiting', () => {
     expect(deviceNamed(plan(state).planDevices, 'charger').desiredStepId).toBe('medium');
 
     state.actuation.markRestore('charger', Date.now());
-    vi.advanceTimersByTime(59_999);
+    vi.advanceTimersByTime(299_999);
     expect(deviceNamed(plan(state).planDevices, 'charger').desiredStepId).toBe('low');
     vi.advanceTimersByTime(1);
     expect(deviceNamed(plan(state).planDevices, 'charger').desiredStepId).toBe('medium');
+  });
+
+  it('gives a waiting off device its turn before another active charger increase when the shared gate opens', () => {
+    const state = createPlanEngineState();
+    const restoredAtMs = Date.now();
+    state.actuation.markRestore('charger', restoredAtMs);
+    const devices = () => [
+      charger({ priority: 1 }),
+      charger({
+        id: 'heater', isEvCharger: false, priority: 2, currentState: 'off', currentDrawKw: 0,
+        selectedStepId: 'off', desiredStepId: 'off',
+      }),
+    ];
+    vi.setSystemTime(restoredAtMs + 61_000);
+    let result = plan(state, devices());
+    expect(deviceNamed(result.planDevices, 'charger').desiredStepId).toBe('low');
+    expect(deviceNamed(result.planDevices, 'heater').plannedState).toBe('shed');
+
+    vi.setSystemTime(restoredAtMs + 300_000);
+    result = plan(state, devices());
+    expect(result.restoredOneThisCycle).toBe(true);
+    expect(deviceNamed(result.planDevices, 'heater').plannedState).toBe('keep');
+    expect(deviceNamed(result.planDevices, 'heater').desiredStepId).toBe('low');
+    expect(deviceNamed(result.planDevices, 'charger').desiredStepId).toBe('low');
   });
 
   it('does not let Boost bypass the recovery hold', () => {

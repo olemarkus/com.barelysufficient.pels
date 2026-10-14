@@ -92,6 +92,29 @@ const ladderFor = (
 ) => resolveSteppedShedLadder(device, profile, initialTargetFor(device, shedAction), shedAction);
 
 describe('stepped shed ladder pricing', () => {
+  it('offers useful active rungs for a single-phase car on a three-phase charger ladder', () => {
+    const profile = {
+      steps: chargerProfile.steps.map((step) => ({ ...step, planningPowerW: step.planningPowerW * 3 })),
+    };
+    const device = charger({
+      isEvCharger: true,
+      steppedLoadProfile: profile,
+      selectedStepId: '16a',
+      currentDrawKw: 3.68,
+      // Learned power must not affect capacity relief.
+      stepPowerCalibration: { '6a': 0.1, '10a': 0.2 },
+    });
+    const result = ladderFor(device, profile, 'set_step');
+    expect(result.kind).toBe('ladder');
+    if (result.kind !== 'ladder') return;
+    expect(result.rungs).toEqual([
+      { toStepId: '10a', reliefKw: expect.closeTo(1.38, 6) },
+      { toStepId: '6a', reliefKw: expect.closeTo(2.3, 6) },
+    ]);
+    expect(chooseShedRung(result.rungs, 1)?.toStepId).toBe('10a');
+    expect(chooseShedRung(result.rungs, 2)?.toStepId).toBe('6a');
+  });
+
   it('descends to the off step when every active rung prices at zero relief', () => {
     // The 2026-08-05 hard-cap breach: `measure_power` is stale at the `low`-step
     // value while the device runs at `max`. Both `max -> medium` (1.193 - 1.75)

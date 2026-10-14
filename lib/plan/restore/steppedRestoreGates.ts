@@ -39,8 +39,8 @@ function resolveChargerStepRecoveryReason(
 }
 
 // Returns true if a gate fired and planRestoreForSteppedDevice should return early.
-// Encapsulates meter-settling and capacity-block gate checks, applying global gates only
-// to OFF devices and per-device settling to active devices.
+// Every load increase shares the home-wide admission gate. Per-device meter
+// timing additionally qualifies an active device's own previous command.
 export function applySteppedDeviceGates(
   cycle: RestoreCycle,
   dev: SteppedPlanDevice & MeteredKind,
@@ -50,9 +50,7 @@ export function applySteppedDeviceGates(
 ): boolean {
   const { deviceMap, state, timing, phase } = cycle;
   const { availableHeadroom, restoredOneThisCycle } = loop;
-  // Active stepped devices (ON but below their target step) must not be blocked by the global
-  // restore cooldown or meter-settling gate — per-device restore timing still applies. Resolve
-  // "active" via the step axis so a step-only stepper (no binary handle) is recognised too.
+  // Resolve "active" via the step axis, including a step-only device.
   const deviceIsActive = isActiveSteppedRestoreCandidate(dev);
   const gateRestoredOneThisCycle = restoredOneThisCycle && !batchContinuation;
   // Every gate holds the device the same way: an active device keeps its level
@@ -85,15 +83,12 @@ export function applySteppedDeviceGates(
     : state.actuation.lastRestoreMs;
   const meterSettlingReason = resolveMeterSettlingReason(timing, lastRestoreTs, gateRestoredOneThisCycle);
   if (meterSettlingReason !== null) return reject(meterSettlingReason, 'meter_settling');
-  const gateTiming = deviceIsActive
-    ? { ...timing, inRestoreCooldown: false as const, inCooldown: false as const }
-    : timing;
-  const gateReason = resolveCapacityRestoreBlockReason(gateTiming, inCycleRestoreWait(gateRestoredOneThisCycle), true);
+  const gateReason = resolveCapacityRestoreBlockReason(timing, inCycleRestoreWait(gateRestoredOneThisCycle), true);
   if (gateReason) return reject(gateReason, 'restore_gate');
   const waitingForOtherRecovery = !batchContinuation
     && deviceIsActive
     && hasOtherDevicesBlockingSteppedRestore(deviceMap, dev.id, state.shedDecisions);
-  const waitingReason = resolveCapacityRestoreBlockReason(gateTiming, otherRecoveryWait(waitingForOtherRecovery), true);
+  const waitingReason = resolveCapacityRestoreBlockReason(timing, otherRecoveryWait(waitingForOtherRecovery), true);
   if (waitingReason) return reject(waitingReason, 'waiting_for_other_recovery');
   const recoveryReason = resolveChargerStepRecoveryReason(cycle, dev, requestedStepId);
   if (recoveryReason) return reject(recoveryReason, 'recent_step_down');

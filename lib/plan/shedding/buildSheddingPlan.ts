@@ -168,7 +168,9 @@ function planShedding(
   }
   // The reading and the decision it produced latch as one pair (copied:
   // `shedSet` is mutated downstream when holds are merged in).
-  const latch = measurementPowerW === null ? null : latchShedDecision(result, null, measurementPowerW, nowTs);
+  const latch = measurementPowerW === null
+    ? null
+    : latchShedDecision(result, null, measurementPowerW, nowTs, context.devices);
   return {
     shedSet: result.shedSet,
     shedReasons: result.shedReasons,
@@ -337,7 +339,7 @@ function shedBeyondPendingRelief(
       kind: 'shed',
       atMs: nowTs,
       measurementTs,
-      latch: latchShedDecision(beyond, pending, pending.powerW, nowTs),
+      latch: latchShedDecision(beyond, pending, pending.powerW, nowTs, candidateParams.devices),
       escalatedSameSample: false,
     };
   return {

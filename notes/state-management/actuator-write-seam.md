@@ -233,7 +233,7 @@ So EV-ness shrinks to a `control` discriminant on one command kind.
 
 Keeping these explicit prevents the seam from accreting policy:
 
-- **Cooldowns** (shed 60 s; restore 60–300 s exponential backoff) are
+- **Cooldowns** (shed 60 s; restore 300–600 s exponential backoff) are
   **planning constraints** — `lib/plan/planConstants.ts`, enforced in
   `planHeadroomState.ts:376` and `restore/timing.ts:135`. The actuator sees
   only post-admission intents.

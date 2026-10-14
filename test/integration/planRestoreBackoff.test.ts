@@ -181,7 +181,7 @@ describe('restore cooldown backoff', () => {
     vi.useRealTimers();
   });
 
-  it('backs off restore cooldown from 60 to 120, 240, then caps at 300 seconds', () => {
+  it('backs off restore cooldown from five to ten minutes and caps there', () => {
     const state = createPlanEngineState();
     let now = Date.UTC(2024, 0, 1, 0, 0, 0);
 
@@ -205,10 +205,10 @@ describe('restore cooldown backoff', () => {
       return result.timing.restoreCooldownMs;
     };
 
-    expect(step(0)).toBe(120000);
-    expect(step(60000)).toBe(240000);
-    expect(step(60000)).toBe(300000);
-    expect(step(60000)).toBe(300000);
+    expect(step(0)).toBe(600000);
+    expect(step(60000)).toBe(600000);
+    expect(step(60000)).toBe(600000);
+    expect(step(60000)).toBe(600000);
   });
 
   it('resets restore cooldown to base after sustained stability', () => {
@@ -233,7 +233,7 @@ describe('restore cooldown backoff', () => {
     });
 
     state.restoreBackoff.commitCooldown(result.timing);
-    expect(result.timing.restoreCooldownMs).toBe(120000);
+    expect(result.timing.restoreCooldownMs).toBe(600000);
 
     now += 6 * 60 * 1000;
     state.restoreBackoff.lastInstabilityMs = now - 6 * 60 * 1000;
@@ -246,7 +246,7 @@ describe('restore cooldown backoff', () => {
       deps,
     });
 
-    expect(result.timing.restoreCooldownMs).toBe(60000);
+    expect(result.timing.restoreCooldownMs).toBe(300000);
   });
 
   it('uses in-cycle cleaned swap state when selecting swap candidates', () => {
@@ -1049,8 +1049,8 @@ describe('restore cooldown backoff', () => {
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
     expect(binaryDevice?.plannedState).toBe('shed');
-    expect(reasonText(binaryDevice?.reason)).toBe('meter settling (55s remaining)');
-    expect(reasonText(steppedDevice?.reason)).toBe('meter settling (55s remaining)');
+    expect(reasonText(binaryDevice?.reason)).toBe('meter settling (295s remaining)');
+    expect(reasonText(steppedDevice?.reason)).toBe('meter settling (295s remaining)');
     expect(steppedDevice?.desiredStepId).toBe('low');
   });
 
@@ -1083,7 +1083,7 @@ describe('restore cooldown backoff', () => {
 
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
     expect(steppedDevice?.plannedState).toBe('shed');
-    expect(reasonText(steppedDevice?.reason)).toBe('meter settling (55s remaining)');
+    expect(reasonText(steppedDevice?.reason)).toBe('meter settling (295s remaining)');
     expect(steppedDevice?.desiredStepId).toBe('off');
   });
 
@@ -1113,7 +1113,7 @@ describe('restore cooldown backoff', () => {
 
     const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
     expect(binaryDevice?.plannedState).toBe('shed');
-    expect(reasonText(binaryDevice?.reason)).toBe('cooldown (restore, 55s remaining)');
+    expect(reasonText(binaryDevice?.reason)).toBe('cooldown (restore, 295s remaining)');
   });
 
   it('holds every off candidate on the restore cooldown; who is next is ranked on the finished plan', () => {
@@ -1268,12 +1268,12 @@ describe('restore cooldown backoff', () => {
 
     // Binary off device is held by global restore cooldown.
     expect(binaryDevice?.plannedState).toBe('shed');
-    expect(reasonText(binaryDevice?.reason)).toBe('cooldown (restore, 55s remaining)');
+    expect(reasonText(binaryDevice?.reason)).toBe('cooldown (restore, 295s remaining)');
     // The active stepped device keeps its level and carries the same timer: the
     // cooldown lane admits nothing, so it does not walk the admission ladder to
     // find the shed-invariant block that would apply once the timer lifts.
     expect(steppedDevice?.desiredStepId).toBe('low');
-    expect(reasonText(steppedDevice?.reason)).toBe('cooldown (restore, 55s remaining)');
+    expect(reasonText(steppedDevice?.reason)).toBe('cooldown (restore, 295s remaining)');
   });
 
   it('holds an active stepped-swap target during restore cooldown while a swapped-out source is still on', () => {
@@ -1764,12 +1764,12 @@ describe('restore cooldown backoff', () => {
     expect(held.planDevices[0]?.reason.code).toBe(PLAN_REASON_CODES.cooldownRestore);
   });
 
-  it('keeps meter settling bounded to 60 seconds even when restore cooldown backs off longer', () => {
+  it('keeps meter settling bounded to five minutes when restore cooldown backs off longer', () => {
     const now = Date.UTC(2024, 0, 1, 0, 1, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.actuation.lastRestoreMs = now - 60_000;
-    state.restoreBackoff.restoreCooldownMs = 120_000;
+    state.actuation.lastRestoreMs = now - 300_000;
+    state.restoreBackoff.restoreCooldownMs = 600_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -1795,7 +1795,7 @@ describe('restore cooldown backoff', () => {
 
     const binaryDevice = result.planDevices.find((device) => device.id === 'dev-off');
     expect(binaryDevice?.plannedState).toBe('shed');
-    expect(reasonText(binaryDevice?.reason)).toBe('cooldown (restore, 60s remaining)');
+    expect(reasonText(binaryDevice?.reason)).toBe('cooldown (restore, 300s remaining)');
   });
 
   it('does not let restore cooldown rewrite a shed stepped device back to keep', () => {
@@ -1874,16 +1874,16 @@ describe('restore cooldown backoff', () => {
     const waitingDevice = result.planDevices.find((device) => device.id === 'dev-waiting');
 
     expect(restoredDevice?.plannedState).toBe('keep');
-    expect(restoredDevice?.reason).not.toBe('meter settling (60s remaining)');
+    expect(restoredDevice?.reason).not.toBe('meter settling (300s remaining)');
     expect(waitingDevice?.plannedState).toBe('shed');
-    expect(reasonText(waitingDevice?.reason)).toBe('meter settling (60s remaining)');
+    expect(reasonText(waitingDevice?.reason)).toBe('meter settling (300s remaining)');
   });
 
   it('starts a fresh meter-settling window for later peers after a same-cycle restore even if an older cooldown already expired', () => {
     const now = Date.UTC(2024, 0, 1, 0, 1, 0);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.actuation.lastRestoreMs = now - 60_000;
+    state.actuation.lastRestoreMs = now - 300_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -1917,7 +1917,7 @@ describe('restore cooldown backoff', () => {
     expect(restoredDevice?.plannedState).toBe('keep');
     expect(reasonText(restoredDevice?.reason)).toBe('keep');
     expect(waitingDevice?.plannedState).toBe('shed');
-    expect(reasonText(waitingDevice?.reason)).toBe('meter settling (60s remaining)');
+    expect(reasonText(waitingDevice?.reason)).toBe('meter settling (300s remaining)');
   });
 
   it('returns the full settle window for a same-cycle restore before any sample arrives', () => {
@@ -1927,17 +1927,17 @@ describe('restore cooldown backoff', () => {
       nowTs: 0,
     }), 0)).toEqual({
       code: 'meter_settling',
-      remainingSec: 60,
+      remainingSec: 300,
       countdownStartedAtMs: 0,
-      countdownTotalSec: 60,
+      countdownTotalSec: 300,
     });
   });
 
-  it('stops stepped meter settling once the shared 60-second settle window has elapsed', () => {
+  it('stops stepped meter settling once the shared five-minute window has elapsed', () => {
     const now = Date.UTC(2024, 0, 1, 0, 1, 1);
     vi.setSystemTime(now);
     const state = createPlanEngineState();
-    state.actuation.lastDeviceRestoreMs['dev-step'] = now - 61_000;
+    state.actuation.lastDeviceRestoreMs['dev-step'] = now - 301_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -2500,7 +2500,7 @@ describe('restore admission — headroom and penalty gates', () => {
     expect(result.planDevices.find((d) => d.id === 'dev-3')?.plannedState).toBe('keep');
     const fourth = result.planDevices.find((d) => d.id === 'dev-4');
     expect(fourth?.plannedState).toBe('shed');
-    expect(reasonText(fourth?.reason)).toBe('meter settling (60s remaining)');
+    expect(reasonText(fourth?.reason)).toBe('meter settling (300s remaining)');
   });
 
   it('applies the three-device batch cap to devices absent from the previous plan', () => {
@@ -2589,7 +2589,7 @@ describe('restore admission — headroom and penalty gates', () => {
     expect(result.planDevices.find((device) => device.id === 'binary-third')?.plannedState).toBe('keep');
     const fourth = result.planDevices.find((device) => device.id === 'binary-fourth');
     expect(fourth?.plannedState).toBe('shed');
-    expect(reasonText(fourth?.reason)).toBe('meter settling (60s remaining)');
+    expect(reasonText(fourth?.reason)).toBe('meter settling (300s remaining)');
   });
 
   it('admits a previously-shed stepped restore inside an open batch after a binary restore', () => {
@@ -2628,7 +2628,7 @@ describe('restore admission — headroom and penalty gates', () => {
     expect(stepped?.reason?.code).toBe(PLAN_REASON_CODES.restoreNeed);
     const fourth = result.planDevices.find((device) => device.id === 'binary-fourth');
     expect(fourth?.plannedState).toBe('shed');
-    expect(reasonText(fourth?.reason)).toBe('meter settling (60s remaining)');
+    expect(reasonText(fourth?.reason)).toBe('meter settling (300s remaining)');
   });
 
   it('charges stepped continuation need against the shared batch headroom limit', () => {
@@ -2664,11 +2664,11 @@ describe('restore admission — headroom and penalty gates', () => {
     const stepped = result.planDevices.find((device) => device.id === 'stepped-second');
     expect(stepped?.desiredStepId).toBe('off');
     expect(stepped?.plannedState).toBe('shed');
-    expect(reasonText(stepped?.reason)).toBe('meter settling (60s remaining)');
+    expect(reasonText(stepped?.reason)).toBe('meter settling (300s remaining)');
     expect(result.restoredThisCycle).toEqual(new Set(['binary-first', 'binary-third']));
     const fourth = result.planDevices.find((device) => device.id === 'binary-fourth');
     expect(fourth?.plannedState).toBe('shed');
-    expect(reasonText(fourth?.reason)).toBe('meter settling (60s remaining)');
+    expect(reasonText(fourth?.reason)).toBe('meter settling (300s remaining)');
   });
 
   it('charges the full stepped need when a pending restore reserves only its buffer', () => {
@@ -2708,7 +2708,7 @@ describe('restore admission — headroom and penalty gates', () => {
     expect(stepped?.reason?.code).toBe(PLAN_REASON_CODES.meterSettling);
     const third = result.planDevices.find((device) => device.id === 'binary-third');
     expect(third?.plannedState).toBe('shed');
-    expect(reasonText(third?.reason)).toBe('meter settling (60s remaining)');
+    expect(reasonText(third?.reason)).toBe('meter settling (300s remaining)');
     expect(result.restoredThisCycle).toEqual(new Set(['binary-first']));
   });
 
@@ -2734,7 +2734,7 @@ describe('restore admission — headroom and penalty gates', () => {
     expect(result.planDevices.find((d) => d.id === 'dev-2')?.plannedState).toBe('keep');
     const third = result.planDevices.find((d) => d.id === 'dev-3');
     expect(third?.plannedState).toBe('shed');
-    expect(reasonText(third?.reason)).toBe('meter settling (60s remaining)');
+    expect(reasonText(third?.reason)).toBe('meter settling (300s remaining)');
   });
 
   it('allows a swap as the first restore and holds later binary restores', () => {
@@ -3493,13 +3493,13 @@ describe('restore admission — the device need is the whole bar', () => {
     const dev = deviceMap.get('dev-step')!;
     expect(dev.plannedState).toBe('shed');
     expect(dev.desiredStepId).toBe('off');
-    expect(reasonText(dev.reason)).toBe('meter settling (60s remaining)');
+    expect(reasonText(dev.reason)).toBe('meter settling (300s remaining)');
   });
 
   it('active stepped device gets meter settling reason (not backoff cooldown) when another device restored this cycle', () => {
     // Bug: missing restoredOneThisCycle in active-device settling check caused it to skip the
     // meterSettling gate and fall through to resolveCapacityRestoreBlockReason, which returned
-    // the full backoff cooldown duration (e.g. 300s) instead of the 60s meterSettling reason.
+    // the full backoff duration instead of the base meter-settling window.
     const now = Date.UTC(2024, 0, 1, 0, 0, 0);
     const state = createPlanEngineState();
     // No per-device restore history for this device — first time it would step up.
@@ -3524,11 +3524,11 @@ describe('restore admission — the device need is the whole bar', () => {
       timing: {
         activeOvershoot: false, inCooldown: false, inRestoreCooldown: true,
         inStartupStabilization: false,
-        restoreCooldownSeconds: 300, // backed-off cooldown
-        restoreCooldownMs: 300_000,
+        restoreCooldownSeconds: 600, // backed-off cooldown
+        restoreCooldownMs: 600_000,
         measurementTs: now - 1_000,
         nowTs: now,
-        shedCooldownRemainingSec: null, restoreCooldownRemainingSec: 300,
+        shedCooldownRemainingSec: null, restoreCooldownRemainingSec: 600,
         startupStabilizationRemainingSec: null,
       },
       availableHeadroom: 5,
@@ -3536,8 +3536,8 @@ describe('restore admission — the device need is the whole bar', () => {
     });
 
     const dev = deviceMap.get('dev-step')!;
-    // Must be meterSettling (60s) — not the 300s backoff cooldown_restore reason.
-    expect(reasonText(dev.reason)).toBe('meter settling (60s remaining)');
+    // The base meter window is distinct from the backed-off cooldown.
+    expect(reasonText(dev.reason)).toBe('meter settling (300s remaining)');
   });
 
   it('active stepped device gets explicit meter settling reason when per-device settling is active', () => {
@@ -3578,8 +3578,8 @@ describe('restore admission — the device need is the whole bar', () => {
     });
 
     const dev = deviceMap.get('dev-step')!;
-    // Reason must be set (not silent), reflecting the per-device 50s settling window.
-    expect(reasonText(dev.reason)).toBe('meter settling (50s remaining)');
+    // Reason must be set (not silent), reflecting the per-device 290s settling window.
+    expect(reasonText(dev.reason)).toBe('meter settling (290s remaining)');
   });
 
   it('admits stepped restore at exactly the step need', () => {
@@ -3969,7 +3969,7 @@ describe('stepped-load shed invariant', () => {
     expect(rejectedCalls()).toHaveLength(2);
   });
 
-  it('tracking cleared when shed resolves during cooldown, so next shed episode re-emits', () => {
+  it('holds active step increases during the global cooldown and re-emits the next shed hold', () => {
     const state = createPlanEngineState();
     state.shedDecisions.lastPlannedDeviceIds = new Set(['binary-shed', 'dev-step']);
     state.shedDecisions.lastPlannedShedIds = new Set(['binary-shed']);
@@ -3993,8 +3993,7 @@ describe('stepped-load shed invariant', () => {
     });
     expect(steppedVerdicts()).toEqual(['restore_stepped_rejected']);
 
-    // Round 2: shed cleared, cooldown active — active device bypasses global cooldown and
-    // admits the step-up to 'max', clearing the invariant tracking as a side effect.
+    // Round 2: shedding cleared, but the shared cooldown still holds the increase.
     state.shedDecisions.lastPlannedShedIds = new Set();
     const mapClear = new Map([['binary-shed', restoredDevice], ['dev-step', steppedDev]]);
     planSteppedRestoreInCycle({
@@ -4005,9 +4004,10 @@ describe('stepped-load shed invariant', () => {
       availableHeadroom: 5,
       restoredOneThisCycle: false,
     });
-    expect(steppedVerdicts()).toEqual(['restore_stepped_rejected', 'restore_stepped_admitted']);
+    expect(steppedVerdicts()).toEqual(['restore_stepped_rejected', 'restore_stepped_rejected']);
+    expect(mapClear.get('dev-step')?.desiredStepId).toBe('medium');
 
-    // Round 3: new shed episode starts → must re-emit (tracking was cleared in round 2)
+    // Round 3: the invariant hold replaces the cooldown hold and must re-emit.
     state.shedDecisions.lastPlannedShedIds = new Set(['binary-shed']);
     planSteppedRestoreInCycle({
       dev: steppedDevOf(mapShed),
@@ -4017,7 +4017,7 @@ describe('stepped-load shed invariant', () => {
       availableHeadroom: 5,
       restoredOneThisCycle: false,
     });
-    expect(steppedVerdicts()).toEqual(['restore_stepped_rejected', 'restore_stepped_admitted', 'restore_stepped_rejected']);
+    expect(steppedVerdicts()).toEqual(['restore_stepped_rejected', 'restore_stepped_rejected', 'restore_stepped_rejected']);
   });
 
   it('logs stepped restore rejection when an off stepped device is held by meter settling', () => {

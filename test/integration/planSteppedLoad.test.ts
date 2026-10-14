@@ -390,6 +390,30 @@ describe('planSteppedLoad', () => {
     expect(resolveStepChangeKw(steppedInputDevice(), 'max', 'low').direction).toBe('down');
   });
 
+  it('scales only EV descents, keeping climbs at nameplate and relief bounded by measured draw', () => {
+    const device = steppedInputDevice({
+      isEvCharger: true,
+      selectedStepId: '16a',
+      currentDrawKw: 3.68,
+      steppedLoadProfile: { steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: '6a', planningPowerW: 4140 },
+        { id: '10a', planningPowerW: 6900 },
+        { id: '16a', planningPowerW: 11040 },
+      ] },
+    });
+    expect(resolveStepChangeKw(device, undefined, '10a'))
+      .toEqual({ direction: 'down', deltaKw: expect.closeTo(1.38, 6) });
+    expect(resolveStepChangeKw(device, undefined, 'off'))
+      .toEqual({ direction: 'down', deltaKw: expect.closeTo(3.68, 6) });
+    expect(resolveStepChangeKw({ ...device, currentDrawKw: 12 }, undefined, '10a'))
+      .toEqual({ direction: 'down', deltaKw: expect.closeTo(5.1, 6) });
+    expect(resolveStepChangeKw({ ...device, selectedStepId: '10a', currentDrawKw: 2.3 }, undefined, '16a'))
+      .toEqual({ direction: 'up', deltaKw: expect.closeTo(8.74, 6) });
+    expect(resolveStepChangeKw({ ...device, currentOn: false, currentDrawKw: 0 }, undefined, '6a'))
+      .toEqual({ direction: 'up', deltaKw: expect.closeTo(4.14, 6) });
+  });
+
   it('answers no change for a device with no ladder, and for a step that goes nowhere', () => {
     expect(resolveStepChangeKw(
       steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined }),

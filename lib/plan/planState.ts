@@ -139,8 +139,14 @@ export type ShedPlanLatch = {
    * earlier one, so each keeps its own window.
    */
   readonly decisions: ReadonlyMap<string, readonly ShedLatchDecision[]>;
-  /** The rung each stepped device was sent to, which a hold keeps it at rather than re-pricing it. */
-  readonly stepTargets: ReadonlyMap<string, string>;
+  /** The decided rung and draw estimate, retained across step echoes and later meter samples. */
+  readonly stepTargets: ReadonlyMap<string, ShedStepTarget>;
+};
+
+export type ShedStepTarget = {
+  readonly stepId: string;
+  /** Decision-time target draw; an EV may use fewer phases than the preset. */
+  readonly expectedDrawKw: number;
 };
 
 export type ShedLatchDecision = {

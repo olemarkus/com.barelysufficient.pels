@@ -679,8 +679,9 @@ describe('activation backoff', () => {
   });
 
   it('does not record an activation setback when a restore attempt later sees a tracked drop', () => {
-    const state = createPlanEngineState();
     const start = Date.now();
+    // This case is about steady-state usage, after startup reconciliation.
+    const state = createPlanEngineState(start - RESTORE_COOLDOWN_MS - 1);
     const diagnostics = buildDeviceDiagnosticsRecorderStub();
 
     syncHeadroomCardState(state, [{
@@ -738,8 +739,9 @@ describe('activation backoff', () => {
   });
 
   it('preserves diagnostics names for tracked step-downs without treating them as failed activations', () => {
-    const state = createPlanEngineState();
     const start = Date.now();
+    // This case is about steady-state usage, after startup reconciliation.
+    const state = createPlanEngineState(start - RESTORE_COOLDOWN_MS - 1);
     const diagnostics = buildDeviceDiagnosticsRecorderStub();
 
     syncHeadroomCardState(state, [{

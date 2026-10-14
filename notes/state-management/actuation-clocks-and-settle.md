@@ -10,8 +10,8 @@ model and the `planned / commanded / observed / pending` vocabulary.
 
 > Status: PR 1 (executor stops enforcing planner pacing) and PR 2 (executor stops round-tripping
 > through the planner for its own command state) are shipped. The pending-restore reservation is
-> removed (below). The remaining open item is not in this note: it is whether the restore
-> cooldown's base 60 s is long enough, recorded under "Accepted, and open" below.
+> removed (below). Restore admission now uses a home-wide 300–600 s cooldown;
+> its sizing and scope are recorded under "Restore pacing policy" below.
 
 ---
 
@@ -177,16 +177,34 @@ fixed window for a 20 s-to-never distribution. Two timers for one question is wh
 both-ends-wrong behaviour the P1 recorded: under-hold at the tail, over-hold for a car that never
 draws.
 
-**What protects now:** the planner's restore cooldown, alone. That is the correct owner under the
-settlement/cooldown split above — pacing is planner admission — and it is the only mechanism whose
-ceiling can bracket the tail, since its backoff ladder reaches 5 minutes where the reservation's
-window stopped at 3.
+**What protects now:** the planner's restore cooldown, alone. This is pacing policy,
+not evidence that a specific device started drawing.
 
-**Accepted, and open:** the cooldown's base 60 s does not reach the measured p90 of 129.7 s, and it
-extends only via a backoff keyed on instability rather than on restore latency. Removing the
-reservation therefore keeps the protection that was actually load-bearing and loses none that was —
-but whether that protection is *enough* is a separate question, still open: that p90 is the
-measurement any resizing of the cooldown has to answer to.
+### Restore pacing policy
+
+The base is **300 seconds**, with instability doubling it once to **600 seconds**.
+The recorded 62 EV turn-ons (2026-08-11–13) had p50 19.7 s, p90 129.7 s and max
+250 s, with two never drawing. Five minutes covers the recorded tail plus 50 s;
+it is a finite policy bound, not a guarantee for every future start. The ten-minute
+ceiling preserves an instability response above the new base. Stable operation
+returns to the base under the existing five-minute stability rule.
+
+The stamp deliberately remains **home-wide**, including active step increases,
+setpoint restores and battery hand-backs. Making it per-device would permit
+multiple independently timed increases against a household reading that has not
+yet seen their loads. The stepped helper applies the same global gates as the
+outer restore pass rather than overriding them for active devices. Previously
+off devices are considered before active step increases when the gate opens;
+an active device cannot bypass it and continually postpone waiting devices.
+Within one eligible cycle the existing bounded, ledger-priced batch is retained.
+
+Every recorded restore actuation, including a retried write, moves the shared
+stamp. A retry may be the write that finally adds load, so excluding retries
+would remove the protection at exactly that point. Per-device write retry
+suppression remains executor-owned; the planner admits load increases only after
+the shared gate. A device that never draws does not leave an evidence-based
+reservation behind: the cooldown still expires. `restorePacingSdkE2E.test.ts`
+pins the hold past 60 s and 250 s, and eventual admission after five minutes.
 
 ### The rule this leaves behind
 
@@ -197,7 +215,10 @@ whole-home meter. This note previously proposed a `lib/power`-owned reservation 
 main meter's sample clock; that design was wrong on both counts and was never merged.
 
 The shedding planner's pending-relief credit (`lib/plan/shedding/pendingRelief.ts`) follows this
-rule. Whether a shed device has delivered the relief the planner counted on is read from that
+rule. Its latched step target retains the decision-time expected draw: ordinary
+loads use nameplate; an EV may use fewer phases than its preset. Delivery and deeper
+reductions reuse that estimate, so an early step echo cannot change the physical
+scale or bank the pending reduction twice. Whether a shed device has delivered the relief the planner counted on is read from that
 device's own meter. The whole-home reading is asked only whether it has *shown* relief the devices
 delivered. It is bookkeeping about the planner's own decisions, not settle: it applies no settle
 tolerance or timing to a device reading and never tells the executor that a write landed. Its one

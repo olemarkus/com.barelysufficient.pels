@@ -72,7 +72,7 @@ reviews:
         values; consumers must never branch on source/provenance/evidence/
         staleness. Operating realities: Homey SDK reads can transiently fail —
         never delete persisted state on one missing/empty read; respect 60s shed
-        and 60–300s restore cooldowns; account for 23/25-hour DST days in daily
+        and 300–600s restore cooldowns; account for 23/25-hour DST days in daily
         bucket logic. The capacity hard cap is physical, not a tuning knob.
     - path: "lib/plan/**/*.ts"
       instructions: >-

@@ -78,8 +78,8 @@ first, then the battery, then the grid. See
 ## How PELS brings devices back
 
 As power frees up, PELS resumes devices in the **opposite** order — most important
-first. It waits a short cool-down between steps (60 seconds after limiting, 60–300
-seconds before resuming) so devices don't rapidly flip on and off. If the day is
+first. It waits between steps (60 seconds after limiting, 5–10 minutes after a
+resume) so devices don't rapidly flip on and off. If the day is
 running ahead of its daily budget, resumes wait a little longer.
 
 ## What you set vs what PELS does

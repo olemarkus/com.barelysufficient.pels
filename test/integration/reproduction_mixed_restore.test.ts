@@ -155,7 +155,7 @@ describe('Mixed Type Restoration Throttling', () => {
         // 3. Next cycle, late inside the restore cooldown
         // Should NOT restore the other one due to Cooldown. A calm house with an
         // unchanged draw is re-decided once the 30 s max interval has passed, so
-        // one decision falls inside the 60 s cooldown: take it late, at 45 s.
+        // one decision falls inside the five-minute cooldown: take it at 45 s.
         currentTime += 45000; // +45s
         vi.advanceTimersByTime(45000);
         await app['powerSamplePipeline'].recordPowerSample(5000);
@@ -190,8 +190,8 @@ describe('Mixed Type Restoration Throttling', () => {
         }
 
         // 4. After restore cooldown window
-        currentTime += 90000; // +90s (Total 135s from first restore)
-        vi.advanceTimersByTime(90000);
+        currentTime += 260000; // Total 305s from the first restore
+        vi.advanceTimersByTime(260000);
         await app['powerSamplePipeline'].recordPowerSample(5000);
         plan = getLatestPlanSnapshotForTests();
 

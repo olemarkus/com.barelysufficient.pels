@@ -64,7 +64,7 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
     vi.useRealTimers();
   });
 
-  it('reaches the device as the required lower rung even during charger recovery', async () => {
+  it.each([1, 3])('selects and materializes the required lower rung for a single-phase car on a %i-phase preset', async (phases) => {
     // 3.77 kW open against a charger at 28a. `28a -> 24a` frees 0.92 kW and
     // cannot close it; `10a` frees 4.14 kW and does. Before the chosen rung
     // crossed the boundary, materialization answered the off step here — the
@@ -75,7 +75,9 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
       id: 'charger',
       name: 'EV charger',
       isEvCharger: true,
-      steppedLoadProfile: chargerProfile,
+      steppedLoadProfile: {
+        steps: chargerProfile.steps.map((step) => ({ ...step, planningPowerW: step.planningPowerW * phases })),
+      },
       selectedStepId: '28a',
       currentDrawKw: 6.44,
       binaryControl: { on: true },

@@ -198,10 +198,12 @@ describe('EV target-power reachability (SDK-boundary e2e)', () => {
     const settledUiDevice = await readChargerFromUi();
     expect(settledUiDevice.steppedLoadProfile?.steps.at(-1)?.id).toBe('25a');
 
-    // The exploratory command may briefly sequence other restores, but it
-    // cannot starve them: the unrelated heater reaches the SDK by settlement or
-    // the following power cycle even though the charger never reaches 28 A.
+    // Probe settlement does not bypass the shared five-minute restore gate.
+    // The heater still gets its turn once that gate expires, even though the
+    // charger never reaches 28 A.
     await vi.advanceTimersByTimeAsync(10_000);
+    expect(putSpy).not.toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, { value: true });
+    await vi.advanceTimersByTimeAsync(210_000);
     await drainUntilCalledWith(putSpy, WATER_HEATER_ONOFF_PATH, { value: true });
     expect(putSpy).toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, { value: true });
 

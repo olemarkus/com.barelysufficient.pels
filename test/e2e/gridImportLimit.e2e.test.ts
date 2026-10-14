@@ -114,7 +114,7 @@ describe('grid import control through Homey', () => {
     const restored = home.put.mock.calls.filter(([path, body]) => path.endsWith('/onoff') && (body as { value: boolean }).value === true);
     expect(restored).toHaveLength(2);
     const restoreTimes = home.transitions.filter((entry) => entry.value).map((entry) => entry.atMs);
-    expect(restoreTimes[1] - restoreTimes[0]).toBeGreaterThanOrEqual(60_000);
+    expect(restoreTimes[1] - restoreTimes[0]).toBeGreaterThanOrEqual(300_000);
   });
 
   it('continues reducing when a delivered reduction is masked by new unmanaged demand', async () => {
@@ -204,7 +204,8 @@ describe('grid import control through Homey', () => {
     expect(await home.ev.getCapabilityValue('onoff')).toBe(false);
     mockHomeyInstance.settings.set(GRID_IMPORT_ENABLED, false);
     await drainPending();
-    for (let i = 0; i < 20; i += 1) await poll();
+    // Disabling the constraint still respects the shared restore pacing.
+    for (let i = 0; i < 48; i += 1) await poll();
     expect(await home.ev.getCapabilityValue('onoff')).toBe(true);
     const meta = home.app.getLatestPlanSnapshotForUi()?.meta;
     expect(meta?.gridImportLimitKw).toBeNull();

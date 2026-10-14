@@ -93,7 +93,7 @@ function isObservedAtShedFloor(
  * carrying it. That is free once the device sits at its floor — there is nothing
  * left to write — but while the shed is still in flight (a dropped write, or a
  * setpoint raised outside PELS) the actuating fallback must keep asserting, or
- * the device draws unchecked for the whole 60–300 s cooldown. The gate covers
+ * the device draws unchecked for the whole 300–600 s cooldown. The gate covers
  * every ladder outcome, not just that one code, so adding a code to the set
  * cannot silently reopen it.
  */

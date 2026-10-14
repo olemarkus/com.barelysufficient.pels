@@ -9,7 +9,7 @@ export type RestoreCooldownState = {
 /**
  * The restore back-off: how long restores wait after the house was unstable,
  * and when it last was. One per `PlanEngineState`, owned by the restore pass
- * (`lib/plan/restore/timing.ts` resolves the adaptive 60–300 s cooldown from
+ * (`lib/plan/restore/timing.ts` resolves the adaptive 300–600 s cooldown from
  * it and the builder commits the answer back). Three things stamp the
  * instability clock — the executor's capacity turn-off, the silent-meter
  * pass, and a shedding outcome — and the shedding pass's guard update stamps

@@ -89,10 +89,12 @@
  * executor still owns settle.
  */
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
-import type { ShedLatchDecision, ShedPlanLatch, StorageLeverState } from '../planState';
+import type { ShedLatchDecision, ShedPlanLatch, ShedStepTarget, StorageLeverState } from '../planState';
 import type { MeteredPlanInputDevice, PlanInputDevice, SteppedPlanInputDevice } from '../planTypes';
 import { isMeteredPlanDevice } from '../planMeteredDevice';
-import { isSteppedLoadDevice, isSteppedLoadStepBelow, resolveSteppedLoadPlanningKw } from '../planSteppedLoad';
+import {
+  isSteppedLoadDevice, isSteppedLoadStepBelow, resolveSteppedLoadPlanningKw, scaleSteppedDescentTargetKw,
+} from '../planSteppedLoad';
 import { getSteppedLoadStep, sortSteppedLoadSteps } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import type { ShedSelection } from './selection';
 import { chooseShedRung } from './steppedCandidates';
@@ -208,7 +210,7 @@ export function resolvePendingShedRelief(
     if (storageUndeliveredKw === 'gone') return [];
     if (storageUndeliveredKw !== 'not_storage') return splitDeviceRelief(deviceId, taken, storageUndeliveredKw);
     const stepId = latch.stepTargets.get(deviceId);
-    if (!isStillDecidable(device, stepId)) return [];
+    if (!isStillDecidable(device, stepId?.stepId)) return [];
     return splitDeviceRelief(deviceId, taken, resolveUndeliveredReliefKw(device, stepId));
   });
   const realisedKw = (latch.powerW - powerW) / 1000;
@@ -305,19 +307,18 @@ function isStillDecidable(device: PlanInputDevice | undefined, decidedStepId: st
 
 /**
  * The draw above the state the decision put this device in: above the held rung, or all of it.
- * The rung is priced at its nameplate, like every capacity decision (`resolveStepChangeKw`): a learned
- * figure is never above it, so it could only credit relief that never comes. This is the figure a
- * deeper rung is priced net of: a charger landed above nominal mains draws as much over the lower
- * rung's nameplate too, so only the nameplate step between the two is sure to go.
+ * The decision retains its target draw estimate: ordinary rungs use nameplate, EV rungs may
+ * use fewer phases. A step echo cannot replace that estimate with a new measured-to-nameplate
+ * ratio before the power change lands. Deeper reductions are net of this same target.
  */
 function resolveDrawAboveDecidedKw(
   device: PlanInputDevice | undefined,
-  heldStepId: string | undefined,
+  target: ShedStepTarget | undefined,
 ): number {
   if (!isReadable(device)) return 0;
   const drawKw = Math.max(0, device.currentDrawKw);
-  if (heldStepId === undefined || !isSteppedLoadDevice(device)) return drawKw;
-  return Math.max(0, drawKw - resolveSteppedLoadPlanningKw(device, heldStepId));
+  if (target === undefined || !isSteppedLoadDevice(device)) return drawKw;
+  return Math.max(0, drawKw - target.expectedDrawKw);
 }
 
 /**
@@ -326,11 +327,11 @@ function resolveDrawAboveDecidedKw(
  */
 function resolveUndeliveredReliefKw(
   device: PlanInputDevice | undefined,
-  heldStepId: string | undefined,
+  target: ShedStepTarget | undefined,
 ): number {
-  const aboveKw = resolveDrawAboveDecidedKw(device, heldStepId);
-  if (!isReadable(device) || heldStepId === undefined || !isSteppedLoadDevice(device)) return aboveKw;
-  return aboveKw > resolveLandedRungAllowanceKw(device, heldStepId) ? aboveKw : 0;
+  const aboveKw = resolveDrawAboveDecidedKw(device, target);
+  if (!isReadable(device) || target === undefined || !isSteppedLoadDevice(device)) return aboveKw;
+  return aboveKw > resolveLandedRungAllowanceKw(device, target) ? aboveKw : 0;
 }
 
 /**
@@ -347,15 +348,16 @@ function resolveUndeliveredReliefKw(
  * that relief then counts as delivered, which the reading still has to show, and choosing the
  * charger again opens a decision beside it rather than renewing it.
  */
-function resolveLandedRungAllowanceKw(device: SteppedPlanInputDevice, heldStepId: string): number {
+function resolveLandedRungAllowanceKw(device: SteppedPlanInputDevice, target: ShedStepTarget): number {
   if (!device.isEvCharger) return 0;
-  const heldKw = resolveSteppedLoadPlanningKw(device, heldStepId);
-  const ratioKw = heldKw * LANDED_RUNG_OVERDRAW_RATIO;
+  const heldKw = resolveSteppedLoadPlanningKw(device, target.stepId);
+  if (heldKw <= 0) return 0;
+  const ratioKw = target.expectedDrawKw * LANDED_RUNG_OVERDRAW_RATIO;
   const steps = sortSteppedLoadSteps(device.steppedLoadProfile.steps);
-  const above = steps[steps.findIndex((step) => step.id === heldStepId) + 1];
+  const above = steps[steps.findIndex((step) => step.id === target.stepId) + 1];
   if (above === undefined) return ratioKw;
   const gapKw = resolveSteppedLoadPlanningKw(device, above.id) - heldKw;
-  return Math.min(ratioKw, gapKw * LANDED_RUNG_GAP_FRACTION);
+  return Math.min(ratioKw, gapKw * (target.expectedDrawKw / heldKw) * LANDED_RUNG_GAP_FRACTION);
 }
 
 /**
@@ -516,7 +518,9 @@ export function candidatesBeyondPendingRelief(
     if (candidate.kind !== 'stepped' || bankedKw <= 0) return [];
     const heldStepId = resolveHeldStepId(candidate, pending.latch);
     if (heldStepId === undefined) return [];
-    const beyond = withReliefBelowHeldStep(candidate, heldStepId, pending.latch.stepTargets.get(candidate.id));
+    const target = pending.latch.stepTargets.get(candidate.id);
+    if (target === undefined) return [];
+    const beyond = withReliefBelowHeldStep(candidate, heldStepId, target);
     return beyond === null ? [] : [beyond];
   });
 }
@@ -529,7 +533,7 @@ export function candidatesBeyondPendingRelief(
  */
 function resolveHeldStepId(candidate: ShedCandidate, latch: ShedPlanLatch): string | undefined {
   if (candidate.kind !== 'stepped' || !isSteppedLoadDevice(candidate)) return undefined;
-  const decidedStepId = latch.stepTargets.get(candidate.id);
+  const decidedStepId = latch.stepTargets.get(candidate.id)?.stepId;
   if (decidedStepId === undefined) return undefined;
   return isSteppedLoadStepBelow(candidate, candidate.fromStepId, decidedStepId)
     ? candidate.fromStepId
@@ -539,19 +543,19 @@ function resolveHeldStepId(candidate: ShedCandidate, latch: ShedPlanLatch): stri
 /**
  * The candidate's relief beyond its held rung, or null when nothing is left.
  * Rungs at or above the held one are dropped; the rest are priced net of the
- * draw above the decided rung, with no mains-voltage allowance: a charger that
- * has landed over its rung's nameplate draws as much over the lower rung's, so
- * only the nameplate step between them is sure to go. A prepared-binary-off
+ * draw above the decided target, with no mains-voltage allowance. EV rungs
+ * reuse the latched target's physical scale, including when the step echo has
+ * arrived ahead of its power change. A prepared-binary-off
  * candidate (no rungs) keeps its binary off, net the same way. What is left is
  * new relief, so it is banked.
  */
 function withReliefBelowHeldStep(
   candidate: SteppedShedCandidate,
   heldStepId: string,
-  decidedStepId: string | undefined,
+  target: ShedStepTarget,
 ): SteppedShedCandidate | null {
   if (!isSteppedLoadDevice(candidate)) return null;
-  const aboveDecidedKw = resolveDrawAboveDecidedKw(candidate, decidedStepId);
+  const aboveDecidedKw = resolveDrawAboveDecidedKw(candidate, target);
   if (candidate.rungs.length === 0) {
     const offReliefKw = candidate.effectivePower - aboveDecidedKw;
     if (offReliefKw <= 0) return null;
@@ -559,7 +563,16 @@ function withReliefBelowHeldStep(
   }
   const rungs = candidate.rungs
     .filter((rung) => isSteppedLoadStepBelow(candidate, rung.toStepId, heldStepId))
-    .map((rung) => ({ toStepId: rung.toStepId, reliefKw: rung.reliefKw - aboveDecidedKw }))
+    .map((rung) => ({
+      toStepId: rung.toStepId,
+      reliefKw: candidate.isEvCharger
+        ? Math.min(candidate.currentDrawKw, target.expectedDrawKw) - scaleSteppedDescentTargetKw(
+          resolveSteppedLoadPlanningKw(candidate, rung.toStepId),
+          target.expectedDrawKw,
+          resolveSteppedLoadPlanningKw(candidate, target.stepId),
+        )
+        : rung.reliefKw - aboveDecidedKw,
+    }))
     .filter((rung) => rung.reliefKw > 0);
   const deepest = chooseShedRung(rungs, Number.POSITIVE_INFINITY);
   if (deepest === null) return null;
@@ -594,12 +607,12 @@ export function latchShedDecision(
   carried: PendingShedRelief | null,
   powerW: number,
   nowTs: number,
+  devices: readonly PlanInputDevice[],
 ): ShedPlanLatch {
   const rebased = carried?.rebased ?? new Map<string, readonly RebasedDecision[]>();
   const decisions = new Map([...rebased].map(([deviceId, standing]) => [
     deviceId, standing.map(({ decidedAtMs, creditedKw }) => ({ decidedAtMs, creditedKw })),
   ] as const));
-  const stepTargets = new Map<string, string>(carried?.retained.stepTargets ?? []);
   // A battery chosen is latched like a shed device: its stopped charge is what it banked.
   const chosenIds = [...chosen.shedSet, ...chosen.storageSetpoints.keys()];
   for (const deviceId of chosenIds) {
@@ -613,11 +626,40 @@ export function latchShedDecision(
     decisions.set(deviceId, newest !== undefined && stillUndelivered
       ? standing.slice(0, -1).concat([{ decidedAtMs: newest.decidedAtMs, creditedKw: newest.creditedKw + newKw }])
       : offDevice.concat([{ decidedAtMs: nowTs, creditedKw: newKw }]));
-    const stepId = chosen.shedStepTargets.get(deviceId);
-    if (stepId === undefined) stepTargets.delete(deviceId);
-    else stepTargets.set(deviceId, stepId);
   }
-  return { powerW, decisions, stepTargets };
+  return { powerW, decisions, stepTargets: latchSteppedShedTargets(chosen, carried, devices) };
+}
+
+/** Retain the physical estimate separately from later telemetry of the selected rung. */
+function latchSteppedShedTargets(
+  chosen: ShedSelection,
+  carried: PendingShedRelief | null,
+  devices: readonly PlanInputDevice[],
+): ReadonlyMap<string, ShedStepTarget> {
+  const stepTargets = new Map(carried?.retained.stepTargets ?? []);
+  for (const deviceId of chosen.shedSet) {
+    if (!chosen.shedStepTargets.has(deviceId)) stepTargets.delete(deviceId);
+  }
+  const steppedDevices = devices.filter(
+    (device): device is SteppedPlanInputDevice & MeteredPlanInputDevice => (
+      isMeteredPlanDevice(device) && isSteppedLoadDevice(device)
+    ),
+  );
+  for (const device of steppedDevices) {
+    const stepId = chosen.shedStepTargets.get(device.id);
+    if (stepId === undefined) continue;
+    const previous = carried?.held.has(device.id) ? carried.latch.stepTargets.get(device.id) : undefined;
+    const targetNameplateKw = resolveSteppedLoadPlanningKw(device, stepId);
+    const expectedDrawKw = device.isEvCharger
+      ? scaleSteppedDescentTargetKw(
+        targetNameplateKw,
+        previous?.expectedDrawKw ?? device.currentDrawKw,
+        resolveSteppedLoadPlanningKw(device, previous?.stepId ?? device.selectedStepId),
+      )
+      : targetNameplateKw;
+    stepTargets.set(device.id, { stepId, expectedDrawKw });
+  }
+  return stepTargets;
 }
 
 function sumKw(values: readonly number[]): number {

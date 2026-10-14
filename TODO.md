@@ -73,56 +73,10 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Do next
 
-- **Shed and restore control** — 2: restore-cooldown window and global stamp; temperature-control
-  toggle strands a shed setpoint
+- **Shed and restore control** — 1: temperature-control toggle strands a shed setpoint
 - **Device observation and transport** — 1: a timestamp-less reconnect keeps a retired level
 
 ## Shed and restore control
-
-- [ ] **The restore cooldown's base window does not reach the measured restore-latency tail, and
-      the stamp that gates it is global.** One ruling has to settle both halves — how long the gate
-      is and what it is keyed on — because each answer bounds the other.
-
-      *The window.* With the pending-restore reservation removed (2026-08-28),
-      `RESTORE_COOLDOWN_MS = 60 s` (`lib/plan/planConstants.ts`) is the only thing pacing restores
-      across planning cycles after a same-cycle batch. Measured against 62 EV-charger turn-ons in
-      the 2026-08-11→13 production log, the load appears in whole-home draw at p50 19.7 s,
-      **p90 129.7 s,
-      max 250.0 s**, and never at all in 2 cases. So the base window covers the median and not the
-      tail: on a slow start PELS can admit a second device against a reading that does not yet
-      contain the first one's load. The backoff ladder reaches 5 min and would bracket the whole
-      distribution, but it is keyed on instability, not on restore latency, so it does not arm for
-      this.
-      Note what is NOT the fix: reserving headroom until the load is seen. That was the removed
-      mechanism, and it cannot work — the whole-home meter is a sum, so a heater switching off as a
-      charger starts hides the load completely (`notes/state-management/actuation-clocks-and-settle.md`
-      § "The rule this leaves behind"). Any evidence-based release must read the DEVICE, never the
-      main meter.
-
-      *The stamp.* `recordRestoreActuation` (`lib/executor/planExecutor.ts`) sets both the
-      per-device `lastDeviceRestoreMs[id]` and the global `state.actuation.lastRestoreMs`, and
-      `restore/timing.ts` ~47 derives `inRestoreCooldown` from the global one. So any device's
-      restore attempt pushes out the restore gate for every device that is observed OFF (an
-      active-step device reads its own per-device stamp instead —
-      `restore/steppedRestoreGates.ts` ~67). One device retrying on a cadence therefore delays other
-      devices' resumes. The 2.17.5 stepped binary-restore gate
-      (`hasStableSteppedLoadBinaryRestoreActuation`) is rate-limited per device specifically to keep
-      its worst case at the same cadence as an ordinary restore rather than per rebuild cycle, but
-      the underlying global/per-device mismatch is still there. The candidate fixes are to make the
-      restore cooldown per-device throughout, or to scope the global stamp to the device that
-      actuated.
-
-      *Why one ruling.* The global stamp is the only cross-device pacing there is, and the
-      distribution above argues 60 s of it is already too short. Scoping the stamp per-device
-      removes that pacing outright, so this exposure becomes unbounded unless a per-device stamp
-      ships with a carve-out preserving some cross-device gate. Decide the keying and the size
-      together.
-
-      Done when the cooldown that gates a second restore is sized from this distribution and keyed
-      on a ruled-on stamp scope, with the sizing argument written down and an SDK-boundary e2e that
-      fails at the old window. Measurements from 2026-08-13; re-scoped onto the cooldown 2026-08-28.
-      Stamp half: prod log review + adversarial review, 2026-07-25; re-confirmed while shipping
-      2.17.5. [P1]
 
 - [ ] **A shed device waiting out a restore gate can carry no gate reason, so it defaults to
       `capacity` — and a reserve-blocked hold is attributed to the wrong counting cause the same
@@ -307,18 +261,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       and delete `willingWithLift` and `SurplusConfig` for temperature devices. Done when no
       `lib/plan` code reads `surplusWilling` or `surplusDelta` directly. Source:
       `pels-layering-guardian` on the setpoint-resolution move, 2026-09-15. [P2]
-
-- [ ] **A single-phase car on an "EV 3-phase" preset frees no relief on any rung.** Since stepped
-      devices are priced at nameplate for capacity (0f15d3558), `resolveStepChangeKw`
-      (`lib/plan/planSteppedLoad.ts`) prices each rung of a 3-phase ladder at its 3-phase nameplate,
-      while a single-phase car draws about a third of it. Every step-down then frees no relief
-      against the measured draw, so `lib/plan/shedding/steppedCandidates.ts` skips the charger as
-      `zero_step_relief`. Change: scale each rung's nameplate by the measured-to-nameplate ratio at
-      the current rung when pricing step-down relief. Done when a unit test with a 1-phase car on a
-      3-phase ladder gets a rung that frees relief and the charger is no longer skipped as
-      `zero_step_relief`. *Persona:* owner whose single-phase car charges on a charger configured
-      3-phase. *Hypothesis:* since nameplate pricing, PELS over-sheds other devices instead of
-      stepping the charger down. Source: release review of 3.9.3, 2026-10-04. [P2]
 
 ## Restore admission
 

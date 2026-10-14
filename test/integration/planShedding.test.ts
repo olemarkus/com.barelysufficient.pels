@@ -3413,7 +3413,7 @@ describe('buildSheddingPlan', () => {
         { decidedAtMs: Date.now() - 3_000, creditedKw: expect.closeTo(CHARGER_DRAW_KW - 3.22, 6) },
         { decidedAtMs: Date.now(), creditedKw: expect.closeTo(3.07 - 2.3, 6) },
       ]);
-      expect(result.outcome.latch?.stepTargets.get('ev')).toBe('10a');
+      expect(result.outcome.latch?.stepTargets.get('ev')?.stepId).toBe('10a');
     });
 
     it('does not re-date relief a charger has delivered while a rising load walks it down', async () => {
@@ -3540,7 +3540,7 @@ describe('buildSheddingPlan', () => {
       if (result.outcome.kind !== 'shed') throw new Error(`expected a shed outcome, got ${result.outcome.kind}`);
       // Without its rung, the next reading would count the charger's whole draw
       // as still to come.
-      expect(result.outcome.latch?.stepTargets.get('ev')).toBe('6a');
+      expect(result.outcome.latch?.stepTargets.get('ev')?.stepId).toBe('6a');
       expect(result.outcome.latch?.decisions.get('ev')).toEqual([
         { decidedAtMs: expect.any(Number), creditedKw: expect.closeTo(CHARGER_DRAW_KW - 1.38, 6) },
       ]);

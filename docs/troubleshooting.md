@@ -116,8 +116,8 @@ planning failure.
 ## A device won't resume / stays paused
 
 - **It's waiting for available power.** After limiting, PELS resumes devices in
-  priority order as room opens up, with a short cool-down between steps (60–300
-  seconds). A device low in the priority order resumes last.
+  priority order as room opens up, with a 5–10-minute cool-down between resumes.
+  A device low in the priority order resumes last.
 - **The day is ahead of the daily budget.** When you're over the daily pace, PELS
   holds resumes back a little longer. Check the Budget tab; if it's frozen over
   plan, that's expected until usage drops back under plan.

@@ -6,7 +6,10 @@ export const SHED_COOLDOWN_MS = 60000; // Wait 60s after shedding before conside
  */
 export const STARTUP_RESTORE_BLOCK_MS = 60 * 1000;
 
-export const RESTORE_COOLDOWN_MS = 60000; // Base cooldown after restore for power to stabilize
+// Home-wide pacing, including active step increases. Recorded charger turn-ons
+// reached p90 129.7 s and max 250 s; five minutes covers that tail with 50 s
+// margin. This is policy, not proof that a device started drawing.
+export const RESTORE_COOLDOWN_MS = 5 * 60 * 1000;
 // Hold an active EV charger's increases after its own capacity-driven reduction.
 export const CHARGER_STEP_RECOVERY_HOLD_MS = 180_000;
 
@@ -18,7 +21,7 @@ export const CHARGER_STEP_RECOVERY_HOLD_MS = 180_000;
  * factory ever supplied, so it was always 0.2.
  */
 export const SHEDDING_CLEAR_THRESHOLD_KW = 0.4;
-export const RESTORE_COOLDOWN_MAX_MS = 5 * 60 * 1000; // Cap restore backoff at 5 minutes
+export const RESTORE_COOLDOWN_MAX_MS = 10 * 60 * 1000; // One doubling after instability
 export const RESTORE_COOLDOWN_BACKOFF_MULTIPLIER = 2; // Exponential backoff multiplier
 export const RESTORE_STABLE_RESET_MS = 5 * 60 * 1000; // Reset backoff after 5 minutes of stability
 export const RESTORE_CONFIRM_RETRY_MS = 5 * 60 * 1000; // Retry unconfirmed temperature restores after 5 minutes

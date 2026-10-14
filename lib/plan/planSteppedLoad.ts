@@ -515,6 +515,7 @@ type StepChangeDevice =
   & Pick<StepCapableDevice, 'steppedLoadProfile'>
   & MeteredKind
   & StepIdentityFields
+  & Pick<PlanInputDevice, 'isEvCharger'>
   & { currentOn?: boolean };
 
 /**
@@ -551,7 +552,7 @@ const NO_STEP_CHANGE: StepChange = { direction: 'none', deltaKw: 0 };
  *   SMALLER of the two: over-stating what is already accounted for under-states
  *   the commitment, and admits a device into a breach.
  *
- * Both ends are pessimistic about headroom. That is the whole rule.
+ * Climbs reserve nameplate; descents never credit more than measured draw.
  *
  * What this deliberately does NOT do is let the model out-price the meter on a
  * descent. A reading below what the reported step should draw has two readings —
@@ -568,9 +569,10 @@ const NO_STEP_CHANGE: StepChange = { direction: 'none', deltaKw: 0 };
  * learned 0.79 kW from trickle readings while it drew 1.13-1.36 kW, and a resume
  * from off was admitted at 0.79 kW into room the rung did not fit. Nameplate on a
  * climb's after-side commits what the rung may draw. On a descent's after-side it
- * credits only what is sure to go away: a device that really runs below
- * nameplate on the lower rung is under-credited, which the ladder covers by
- * walking deeper, but a breach is never declared closed on watts that stay.
+ * remains unchanged for ordinary loads. EV descents scale the target by the
+ * current measured-to-nameplate ratio (capped at one): the car may use fewer
+ * phases than its charger's preset. Relief remains bounded by measured draw,
+ * and the device's telemetry qualifies delivery of the selected reduction.
  * Learned step power answers how fast a smart task delivers energy
  * (`lib/objectives`), not how much room a rung needs.
  */
@@ -603,11 +605,31 @@ export function resolveStepChangeKw(
   const beforeKw = observedOff
     ? 0
     : resolveStepChangeBeforeKw(device, effectiveFromStepId, direction);
-  const afterKw = resolveSteppedLoadPlanningKw(device, toStepId);
+  const targetNameplateKw = resolveSteppedLoadPlanningKw(device, toStepId);
+  // An EV preset describes the charger's phases, but the connected car may
+  // use fewer. Scale descent only: admission must still cover full nameplate.
+  // Cap the ratio so a stale step report cannot amplify the target estimate.
+  const afterKw = device.isEvCharger && direction === 'down'
+    ? scaleSteppedDescentTargetKw(
+      targetNameplateKw, beforeKw, resolveSteppedLoadPlanningKw(device, effectiveFromStepId),
+    )
+    : targetNameplateKw;
   const deltaKw = direction === 'down'
     ? Math.max(0, beforeKw - afterKw)
     : Math.max(0, afterKw - beforeKw);
   return { direction, deltaKw };
+}
+
+/** Scale an EV descent from its reference rung; later holds retain that decision-time reference. */
+export function scaleSteppedDescentTargetKw(
+  targetNameplateKw: number,
+  referenceDrawKw: number,
+  referenceNameplateKw: number,
+): number {
+  const scale = referenceNameplateKw > 0 && referenceDrawKw > 0
+    ? Math.min(1, referenceDrawKw / referenceNameplateKw)
+    : 1;
+  return targetNameplateKw * scale;
 }
 
 /**
