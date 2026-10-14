@@ -619,5 +619,8 @@
   },
   "3.13.0": {
     "en": "You can now create Smart tasks in PELS settings, and the task page shows who starts the device after the task ends. Price settings now show which values PELS assumed and which you chose, and setup asks for prices when a device uses them. If your Homey is outside Norway and you never chose a price source, PELS now uses Homey Energy prices and turns off a fixed export price. In Norway, setup asks you to choose your price area and pricing model if you have not done so. PELS can now lower a stepped device's power step even while it is holding off on turning devices back on, and a refresh no longer resets a meter area's unsaved Capacity limit."
+  },
+  "3.14.0": {
+    "en": "New Electricity price widget for your Homey dashboard shows today's and tomorrow's prices, with the cheap and expensive lines, for import, export or both. In Norway, price setup now suggests your grid company, county and price area from your Homey's location, and changing the price area fetches the new area's prices right away. The Electricity prices page shows what the current price is made of, where the cheap and expensive lines fall, and offers Power by the Hour when Homey Energy has no prices. Price levels now follow the import price only.\n\nAn EV charger now waits three minutes after PELS lowers its current before it is allowed to increase again, which smooths out stepping up and down. Reductions made only to follow solar surplus do not start this wait. The Smart tasks widget now has a fixed height and scrolls its content. The daily budget editor now shows the switches and kWh the way PELS actually uses them, the saved grid company no longer appears blank, and several layout fixes improve narrow screens and Firefox."
   }
 }
