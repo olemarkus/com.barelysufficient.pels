@@ -48,7 +48,7 @@
     if (magnitude >= 1) return 2;
     return 3;
   };
-  var withUnit = (text, amountUnit) => amountUnit === "" ? text : `${text} ${amountUnit}`;
+  var withUnit = (text, amountUnit) => amountUnit === "" ? text : `${text}\xA0${amountUnit}`;
   var formatPriceWidgetPrice = (value, amountUnit) => withUnit(value.toFixed(priceDecimals(value)), amountUnit);
   var formatPriceWidgetSubline = (facts) => {
     const price = (value) => formatPriceWidgetPrice(value, facts.amountUnit);

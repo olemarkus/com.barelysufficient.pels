@@ -60,7 +60,7 @@ describe('Use the suggested threshold', () => {
     use?.click();
 
     await vi.waitFor(() => expect(surface.querySelector('#electricity-prices-level-lines')?.textContent)
-      .toBe('Cheap at or below 68.50 øre · expensive from 82.10 øre. No expensive prices: the highest is 79.00 øre.'));
+      .toBe('Cheap at or below 68.50\u00a0øre · expensive from 82.10\u00a0øre. No expensive prices: the highest is 79.00\u00a0øre.'));
     expect(homeyMocks.setSetting).toHaveBeenCalledWith('price_threshold_percent', 9);
     const field = surface.querySelector('[aria-labelledby="electricity-prices-threshold-label"]') as
       (HTMLElement & { value?: string }) | null;
@@ -69,7 +69,7 @@ describe('Use the suggested threshold', () => {
   });
 
   it('saves a suggested minimum difference through the same field', async () => {
-    // The owner's Norgespris days at 10 % and 10 øre; at 9 øre the nights are cheap.
+    // The owner's Norgespris days at 10 % and 10 øre; at 9\u00a0øre the nights are cheap.
     const stored: Record<string, unknown> = {
       price_scheme: 'norway', price_threshold_percent: 10, price_min_diff_ore: 10,
     };
@@ -98,14 +98,14 @@ describe('Use the suggested threshold', () => {
     await initElectricityPricesView(surface);
 
     const use = Array.from(surface.querySelectorAll('md-outlined-button'))
-      .find((button) => button.textContent === 'Use 9 øre') as HTMLElement | undefined;
+      .find((button) => button.textContent === 'Use 9\u00a0øre') as HTMLElement | undefined;
     expect(use).toBeDefined();
     use?.click();
 
     await vi.waitFor(() => expect(surface.querySelector('#electricity-prices-level-lines')?.textContent)
-      .toBe('Cheap at or below 74.17 øre · expensive from 92.17 øre. No expensive prices: the highest is 87.84 øre.'));
+      .toBe('Cheap at or below 74.17\u00a0øre · expensive from 92.17\u00a0øre. No expensive prices: the highest is 87.84\u00a0øre.'));
     expect(homeyMocks.setSetting).toHaveBeenCalledWith('price_min_diff_ore', 9);
     expect(homeyMocks.setSetting).not.toHaveBeenCalledWith('price_threshold_percent', expect.anything());
-    expect(surface.textContent).not.toContain('Use 9 øre');
+    expect(surface.textContent).not.toContain('Use 9\u00a0øre');
   });
 });

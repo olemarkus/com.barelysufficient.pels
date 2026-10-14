@@ -888,15 +888,15 @@ describe('ElectricityPricesView, cheap and expensive lines', () => {
     const mount = render(summary({ lowest: 40, highest: 120, hasCheap: true, hasExpensive: true }));
 
     expect(mount.querySelector('#electricity-prices-level-lines')?.textContent)
-      .toBe('Cheap at or below 56.50 øre · expensive from 94.20 øre');
+      .toBe('Cheap at or below 56.50\u00a0øre · expensive from 94.20\u00a0øre');
   });
 
   it('still states the lines when no price counts as cheap or expensive, and where the prices stay', () => {
     const mount = render(summary());
 
     expect(mount.querySelector('#electricity-prices-level-lines')?.textContent).toBe(
-      'Cheap at or below 56.50 øre · expensive from 94.20 øre. '
-        + 'No cheap or expensive prices: they stay between 68.00 and 79.00 øre.',
+      'Cheap at or below 56.50\u00a0øre · expensive from 94.20\u00a0øre. '
+        + 'No cheap or expensive prices: they stay between 68.00 and 79.00\u00a0øre.',
     );
   });
 
@@ -904,13 +904,13 @@ describe('ElectricityPricesView, cheap and expensive lines', () => {
     const onThresholdChange = vi.fn();
     const mount = render(summary({ suggestion: { kind: 'lower_threshold', percent: 9, cheapUpTo: 68 } }), { onThresholdChange });
 
-    expect(mount.textContent).toContain('At 9 %, the cheapest quarter of these prices, up to 68.00 øre, counts as cheap.');
+    expect(mount.textContent).toContain('At 9 %, the cheapest quarter of these prices, up to 68.00\u00a0øre, counts as cheap.');
     button(mount, 'Use 9 %')?.click();
     expect(onThresholdChange).toHaveBeenCalledWith(9);
   });
 
   it('offers a lower minimum difference when that keeps the cheapest prices normal', () => {
-    // The owner's Norgespris days at 10 % and 10 øre.
+    // The owner's Norgespris days at 10 % and 10\u00a0øre.
     const onMinDiffChange = vi.fn();
     const onThresholdChange = vi.fn();
     const mount = render(summary({
@@ -921,11 +921,11 @@ describe('ElectricityPricesView, cheap and expensive lines', () => {
     }), { onMinDiffChange, onThresholdChange });
 
     expect(mount.querySelector('#electricity-prices-level-lines')?.textContent).toBe(
-      'Cheap at or below 73.17 øre · expensive from 93.17 øre. '
-        + 'No cheap or expensive prices: they stay between 73.84 and 87.84 øre.',
+      'Cheap at or below 73.17\u00a0øre · expensive from 93.17\u00a0øre. '
+        + 'No cheap or expensive prices: they stay between 73.84 and 87.84\u00a0øre.',
     );
-    expect(mount.textContent).toContain('At 9 øre, the cheapest quarter of these prices, up to 73.84 øre, counts as cheap.');
-    button(mount, 'Use 9 øre')?.click();
+    expect(mount.textContent).toContain('At 9\u00a0øre, the cheapest quarter of these prices, up to 73.84\u00a0øre, counts as cheap.');
+    button(mount, 'Use 9\u00a0øre')?.click();
     expect(onMinDiffChange).toHaveBeenCalledWith(9);
     expect(onThresholdChange).not.toHaveBeenCalled();
   });

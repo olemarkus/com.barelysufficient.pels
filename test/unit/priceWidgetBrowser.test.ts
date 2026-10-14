@@ -85,7 +85,7 @@ describe('price widget renderer', () => {
     expect(targets.root.dataset.state).toBe('ready');
     expect(targets.priceEl.textContent).toMatch(/øre$/);
     expect(targets.levelEl.hidden).toBe(false);
-    expect(targets.sublineEl.textContent).toBe('Cheap at or below 24.60 øre · expensive from 40.90 øre');
+    expect(targets.sublineEl.textContent).toBe('Cheap at or below 24.60\u00a0øre · expensive from 40.90\u00a0øre');
     expect(targets.chartSvg.querySelectorAll('.chart__shade--cheap').length).toBeGreaterThan(0);
     expect(targets.chartSvg.querySelectorAll('.chart__shade--expensive').length).toBeGreaterThan(0);
     expect(targets.chartSvg.querySelector('.chart__import')).not.toBeNull();
@@ -115,8 +115,8 @@ describe('price widget renderer', () => {
     expect(expensiveY).toBeLessThan(cheapY);
     expect(expensiveY).toBeGreaterThanOrEqual(Math.min(...gridYs));
     expect(cheapY).toBeLessThanOrEqual(Math.max(...gridYs));
-    expect(targets.sublineEl.textContent).toBe('Cheap at or below 73.17 øre · expensive from 93.17 øre. '
-      + 'No cheap or expensive prices: they stay between 73.84 and 87.84 øre.');
+    expect(targets.sublineEl.textContent).toBe('Cheap at or below 73.17\u00a0øre · expensive from 93.17\u00a0øre. '
+      + 'No cheap or expensive prices: they stay between 73.84 and 87.84\u00a0øre.');
   });
 
   it('draws the tomorrow divider with its label', () => {

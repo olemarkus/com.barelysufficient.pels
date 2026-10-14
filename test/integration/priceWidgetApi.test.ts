@@ -33,7 +33,7 @@ describe('price widget API', () => {
     const getPriceTimelineForUi = vi.fn(() => readyRead(Date.now()));
     const payload = await getTimeline({ homey: { app: { getPriceTimelineForUi }, clock }, query: { show: 'export' } });
     expect(getPriceTimelineForUi).toHaveBeenCalledOnce();
-    expect(payload).toMatchObject({ state: 'ready', priceText: '10.00 øre', level: null });
+    expect(payload).toMatchObject({ state: 'ready', priceText: '10.00\u00a0øre', level: null });
   });
 
   it('says a failed read is temporary rather than claiming there are no prices', async () => {
@@ -47,6 +47,6 @@ describe('price widget API', () => {
     const payload = await getTimeline({
       homey: { app: { getPriceTimelineForUi: () => readyRead(Date.now()) }, clock },
     });
-    expect(payload).toMatchObject({ state: 'ready', priceText: '50.00 øre' });
+    expect(payload).toMatchObject({ state: 'ready', priceText: '50.00\u00a0øre' });
   });
 });

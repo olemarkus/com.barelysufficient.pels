@@ -84,7 +84,11 @@ const priceDecimals = (value: number): number => {
   return 3;
 };
 
-const withUnit = (text: string, amountUnit: string): string => (amountUnit === '' ? text : `${text} ${amountUnit}`);
+// A no-break space keeps the unit on the number's line: on a 360 px tile the
+// subline otherwise wraps a lone `øre` onto the next line.
+const withUnit = (text: string, amountUnit: string): string => (
+  amountUnit === '' ? text : `${text}\u00a0${amountUnit}`
+);
 
 export const formatPriceWidgetPrice = (value: number, amountUnit: string): string => (
   withUnit(value.toFixed(priceDecimals(value)), amountUnit)

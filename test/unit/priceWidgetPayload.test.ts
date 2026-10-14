@@ -81,7 +81,7 @@ describe('buildPriceWidgetPayload', () => {
 
   it('heads with the current import price and its level', () => {
     const payload = expectReady(build(ready(hourly(DAY))));
-    expect(payload.priceText).toBe('50.00 øre');
+    expect(payload.priceText).toBe('50.00\u00a0øre');
     expect(payload.level).toEqual({ label: 'Price normal', tone: null });
     expect(payload.chart.nowPrice).toBe(50);
   });
@@ -97,14 +97,14 @@ describe('buildPriceWidgetPayload', () => {
 
   it('states both lines when both levels occur', () => {
     const payload = expectReady(build(ready(hourly(DAY))));
-    expect(payload.subline).toBe('Cheap at or below 37.50 øre · expensive from 62.50 øre');
+    expect(payload.subline).toBe('Cheap at or below 37.50\u00a0øre · expensive from 62.50\u00a0øre');
   });
 
   it('still states the expensive line, and the highest price, when nothing is expensive', () => {
     const noHigh = DAY.map((price) => Math.min(price, 55));
     const payload = expectReady(build(ready(hourly(noHigh))));
     expect(payload.subline)
-      .toBe('Cheap at or below 37.50 øre · expensive from 62.50 øre. No expensive prices: the highest is 55.00 øre.');
+      .toBe('Cheap at or below 37.50\u00a0øre · expensive from 62.50\u00a0øre. No expensive prices: the highest is 55.00\u00a0øre.');
     expect(payload.chart.shades.every((shade) => shade.level === 'cheap')).toBe(true);
   });
 
@@ -112,21 +112,21 @@ describe('buildPriceWidgetPayload', () => {
     const noLow = DAY.map((price) => Math.max(price, 45));
     const payload = expectReady(build(ready(hourly(noLow))));
     expect(payload.subline)
-      .toBe('Cheap at or below 37.50 øre · expensive from 62.50 øre. No cheap prices: the lowest is 45.00 øre.');
+      .toBe('Cheap at or below 37.50\u00a0øre · expensive from 62.50\u00a0øre. No cheap prices: the lowest is 45.00\u00a0øre.');
   });
 
   it('states both lines and where the prices stay when neither level occurs in the window', () => {
     const flat = DAY.map((price) => Math.min(Math.max(price, 45), 55));
     const payload = expectReady(build(ready(hourly(flat))));
-    expect(payload.subline).toBe('Cheap at or below 37.50 øre · expensive from 62.50 øre. '
-      + 'No cheap or expensive prices: they stay between 45.00 and 55.00 øre.');
+    expect(payload.subline).toBe('Cheap at or below 37.50\u00a0øre · expensive from 62.50\u00a0øre. '
+      + 'No cheap or expensive prices: they stay between 45.00 and 55.00\u00a0øre.');
     expect(payload.chart.shades).toEqual([]);
     expect(payload.legend).toEqual([]);
   });
 
   it('draws both lines inside the price axis on an owner\'s Norgespris day, where neither is reached', () => {
-    // The grid tariff alone moves the price: 73.84 øre from 22 to 06, 87.84 by
-    // day. At 10 % and a 10 øre minimum difference the lines are 73.17 and
+    // The grid tariff alone moves the price: 73.84\u00a0øre from 22 to 06, 87.84 by
+    // day. At 10 % and a 10\u00a0øre minimum difference the lines are 73.17 and
     // 93.17, so the curve sits between them.
     const prices = Array.from({ length: 24 }, (_, hour) => (hour < 6 || hour >= 22 ? 73.84 : 87.84));
     const lines = { average: 83.17, cheapAtOrBelow: 73.17, expensiveFrom: 93.17 };
@@ -139,8 +139,8 @@ describe('buildPriceWidgetPayload', () => {
     ]);
     expect(payload.chart.yMin).toBeLessThanOrEqual(73.17);
     expect(payload.chart.yMax).toBeGreaterThanOrEqual(93.17);
-    expect(payload.subline).toBe('Cheap at or below 73.17 øre · expensive from 93.17 øre. '
-      + 'No cheap or expensive prices: they stay between 73.84 and 87.84 øre.');
+    expect(payload.subline).toBe('Cheap at or below 73.17\u00a0øre · expensive from 93.17\u00a0øre. '
+      + 'No cheap or expensive prices: they stay between 73.84 and 87.84\u00a0øre.');
   });
 
   it('draws no lines in the export view, which has no levels', () => {
@@ -152,7 +152,7 @@ describe('buildPriceWidgetPayload', () => {
     // Expensive at 02:00 only: before the window, so the chart shows no high shade.
     const earlyPeak = DAY.map((price, hour) => (hour === 2 ? 70 : Math.min(price, 55)));
     const payload = expectReady(build(ready(hourly(earlyPeak))));
-    expect(payload.subline.endsWith('No expensive prices: the highest is 55.00 øre.')).toBe(true);
+    expect(payload.subline.endsWith('No expensive prices: the highest is 55.00\u00a0øre.')).toBe(true);
   });
 
   it('notes that the lines can move until tomorrow has prices', () => {
@@ -174,7 +174,7 @@ describe('buildPriceWidgetPayload', () => {
     const payload = expectReady(build(ready(hourly(DAY, true), true), 'both'));
     expect(payload.chart.exportSteps).toHaveLength(payload.chart.importSteps.length);
     expect(payload.legend.map((item) => item.key)).toEqual(['import', 'export', 'cheap', 'expensive']);
-    expect(payload.priceText).toBe('50.00 øre');
+    expect(payload.priceText).toBe('50.00\u00a0øre');
   });
 
   it('falls back to the import price alone for both without an export price', () => {
@@ -185,7 +185,7 @@ describe('buildPriceWidgetPayload', () => {
 
   it('shows the export price without levels in the export view', () => {
     const payload = expectReady(build(ready(hourly(DAY, true), true), 'export'));
-    expect(payload.priceText).toBe('25.00 øre');
+    expect(payload.priceText).toBe('25.00\u00a0øre');
     expect(payload.level).toBeNull();
     expect(payload.chart.shades).toEqual([]);
     expect(payload.chart.importSteps).toEqual([]);
@@ -227,7 +227,7 @@ describe('buildPriceWidgetPayload', () => {
   });
 
   it('describes the level for screen readers in the canonical Price: form', () => {
-    expect(expectReady(build(ready(hourly(DAY)))).ariaLabel).toBe('Price now 50.00 øre. Price: normal');
+    expect(expectReady(build(ready(hourly(DAY)))).ariaLabel).toBe('Price now 50.00\u00a0øre. Price: normal');
   });
 
   it('writes currency prices below one with three decimals, so neighbouring periods stay apart', () => {
@@ -240,8 +240,8 @@ describe('buildPriceWidgetPayload', () => {
       hasExportPrice: false,
     };
     const payload = expectReady(build(read));
-    expect(payload.priceText).toBe('0.407 EUR');
-    expect(payload.subline.startsWith('Cheap at or below 0.305 EUR · expensive from 0.508 EUR')).toBe(true);
+    expect(payload.priceText).toBe('0.407\u00a0EUR');
+    expect(payload.subline.startsWith('Cheap at or below 0.305\u00a0EUR · expensive from 0.508\u00a0EUR')).toBe(true);
     expect(payload.chart.axisUnit).toBe('EUR/kWh');
   });
 

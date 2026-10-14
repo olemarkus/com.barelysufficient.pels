@@ -1047,7 +1047,8 @@ const ExportPriceForm = ({ config, handlers }: {
 
 /** A minimum price difference as the owner types it: `9 øre`, `0.05 EUR`. */
 const formatMinDifference = (value: number, amountUnit: string): string => (
-  amountUnit === '' ? String(value) : `${value} ${amountUnit}`
+  // No-break space, as in the shared price formatter, so the unit stays on the number's line.
+  amountUnit === '' ? String(value) : `${value}\u00a0${amountUnit}`
 );
 
 /** What one suggested change says and saves, from the runtime's suggestion. */
