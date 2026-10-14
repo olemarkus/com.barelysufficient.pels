@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AppContext } from '../../lib/app/appContext';
 import { WEATHER_ADVISOR_SETTINGS } from '../../lib/utils/settingsKeys';
 import { createWeatherCollector } from '../../setup/appInit/createWeatherCollector';
-import { HOMEY_LOCATION_API_PATH } from '../../setup/homeyLocationAdapter';
+import { HOMEY_LOCATION_API_PATH } from '../../lib/device/transport/managerHomeyApi';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { mockHomeyInstance, resetMockHomey, setMockGeolocation } from '../mocks/homey';
 

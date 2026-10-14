@@ -389,8 +389,7 @@
   },
   "permissions": [
     "homey:manager:api",
-    "homey:app:com.gruijter.powerhour",
-    "homey:manager:geolocation"
+    "homey:app:com.gruijter.powerhour"
   ],
   "api": {
     "ui_bootstrap": {

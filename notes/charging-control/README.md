@@ -41,7 +41,7 @@ The transport does not retry action POSTs or follow redirects. An unknown comman
 
 The feature build (Homey manifest version 3.12.2) was installed on SHS and exercised through its real app API, Homey Flow engine, device observations and meter-driven planner. Temporary simulator apps used the Tesla and Zaptec vendor IDs, capability definitions and device-owned action cards. They did not call Tesla Fleet or Zaptec cloud services. The writable Zaptec variant exercised the capability route as well. Local validation/install work ran serially; subsequent work used lightweight API calls. The final permission build ran on one CPU core at low priority.
 
-The run found and fixed a missing `homey:manager:geolocation` manifest permission. Without it the SDK returned null coordinates and correctly blocked Tesla control. After adding the permission, the home session was accepted.
+The run found that the SDK geolocation manager returned null coordinates without the `homey:manager:geolocation` permission, which correctly blocked Tesla control. That permission was later dropped: the hub location is now read through the owner Web API (`manager/geolocation/option/location`), which `homey:manager:api` already grants and which the weather and solar forecasts also use (`lib/device/hubHomeLocation.ts`). Until the first read is accepted, Tesla home authorization fails closed; a failed read keeps the last accepted location.
 
 Verified on the installed app:
 

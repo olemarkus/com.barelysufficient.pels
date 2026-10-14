@@ -435,6 +435,7 @@ export class DeviceTransport {
 
     async init(): Promise<void> {
         await this.deviceSdk.initialize();
+        await this.chargingCurrentControl.refreshHomeLocation();
         await this.chargingAccess.check();
     }
 

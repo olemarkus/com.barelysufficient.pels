@@ -1,12 +1,13 @@
 import type { HomeyDeviceLike } from '../utils/types';
 import { toCapabilityTimestampMs } from './managerControl';
 
-export type HomeLocation = { getLatitude(): number; getLongitude(): number };
+export type Coordinates = { latitude: number; longitude: number };
+/** The hub's home coordinates; none until the first location read is accepted, so home authorization fails closed. */
+export type HomeLocation = { coordinates(): Coordinates | undefined };
 export type HomeSessionIdentity = { vehicleId: string; locationId: string; carId: string };
 export type HomeSessionEvidence = { identity: HomeSessionIdentity; coordinateAtMs: number };
-type Coordinates = { latitude: number; longitude: number };
 
-function readCoordinates(latitude: unknown, longitude: unknown): Coordinates | undefined {
+export function readCoordinates(latitude: unknown, longitude: unknown): Coordinates | undefined {
   if (typeof latitude !== 'number' || !Number.isFinite(latitude) || Math.abs(latitude) > 90) return undefined;
   if (typeof longitude !== 'number' || !Number.isFinite(longitude) || Math.abs(longitude) > 180) return undefined;
   return { latitude, longitude };
@@ -38,17 +39,12 @@ function isConnectedAcBattery(battery: HomeyDeviceLike): boolean {
   return dc == null || dc === 0;
 }
 
-function readHome(home: HomeLocation): Coordinates | undefined {
-  try { return readCoordinates(home.getLatitude(), home.getLongitude()); }
-  catch { return undefined; }
-}
-
 function readHomeLocationEvidence(location: HomeyDeviceLike, home: HomeLocation): number | undefined {
   if (location.available === false) return undefined;
   const latitude = location.capabilitiesObj?.measure_location_latitude;
   const longitude = location.capabilitiesObj?.measure_location_longitude;
   const point = readCoordinates(latitude?.value, longitude?.value);
-  const homePoint = readHome(home);
+  const homePoint = home.coordinates();
   if (!point || !homePoint || distanceM(point, homePoint) > 100) return undefined;
   const latitudeAt = toCapabilityTimestampMs(latitude?.lastUpdated);
   const longitudeAt = toCapabilityTimestampMs(longitude?.lastUpdated);

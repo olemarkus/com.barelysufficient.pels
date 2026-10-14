@@ -1,7 +1,5 @@
-import { getRawFromHomeyApi } from '../lib/device/transport/managerHomeyApi';
+import { getRawFromHomeyApi, HOMEY_LOCATION_API_PATH } from '../lib/device/transport/managerHomeyApi';
 import type { HubCoordinatesResult } from '../lib/solar/pvForecastStore';
-
-export const HOMEY_LOCATION_API_PATH = 'manager/geolocation/option/location';
 
 // The contract is the domain's; this adapter only implements it. Re-exported
 // for existing importers so there is one definition, not two that happen to

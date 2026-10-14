@@ -18,7 +18,7 @@ function fixture(device = zaptec()) {
   const get = vi.fn(async (_path: string): Promise<unknown> => ({}));
   setRestClient({ get, put: vi.fn() });
   const control = new ChargingCurrentControl({ settings, api: { getLocalUrl: async () => 'http://homey.local' },
-    cloud: { getHomeyId: async () => 'test' }, geolocation: { getLatitude: () => 60, getLongitude: () => 10 } },
+    cloud: { getHomeyId: async () => 'test' } },
   { structuredLog: getLogger('test') }, () => inventory, () => ({ connected: true, revision: 0 }));
   const access = control.access;
   return { inventory, control, access, get, values };

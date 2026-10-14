@@ -7,6 +7,7 @@ import { HomeyHttpStatusError } from '../../utils/homeyHttpStatusError';
 import { getLogger } from '../../logging/logger';
 
 export const DEVICES_API_PATH = 'manager/devices/device';
+export const HOMEY_LOCATION_API_PATH = 'manager/geolocation/option/location';
 
 /**
  * Set by the SLOWEST request that has ever SUCCEEDED, not by how long a failing

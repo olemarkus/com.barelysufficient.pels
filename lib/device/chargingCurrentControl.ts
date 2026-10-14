@@ -1,6 +1,7 @@
 import { SteppedLoadRequestTimeoutError } from '../ports/steppedLoadWrite';
 import { isHomeyRequestTimeout } from '../utils/errorUtils';
-import { TeslaChargingSession, type HomeLocation } from './teslaChargingSession';
+import { TeslaChargingSession } from './teslaChargingSession';
+import { HubHomeLocation } from './hubHomeLocation';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import { isTeslaChargingDevice } from './chargingCurrentAdapter';
 import type { ChargingCurrentRead, ChargingCurrentSetup } from '../../packages/contracts/src/chargingControl';
@@ -34,18 +35,22 @@ export class ChargingCurrentControl {
   readonly access: ChargingAccess;
   private readonly settings: SettingsPort;
   readonly homeSession: TeslaChargingSession;
+  private readonly homeLocation = new HubHomeLocation();
   private readonly setups = new Map<string, ChargingCurrentSetup>();
 
   constructor(
-    homey: ChargingAccessHomey & { geolocation: HomeLocation },
+    homey: ChargingAccessHomey,
     logger: Pick<Logger, 'structuredLog'>,
     private readonly getDevices: () => readonly HomeyDeviceLike[],
     private readonly readTrust: () => { connected: boolean; revision: number },
   ) {
     this.settings = homey.settings;
     this.access = new ChargingAccess(homey, logger);
-    this.homeSession = new TeslaChargingSession(homey.geolocation);
+    this.homeSession = new TeslaChargingSession(this.homeLocation);
   }
+
+  /** Read before the first snapshot, so a home session can start on the first observation. */
+  refreshHomeLocation(): Promise<void> { return this.homeLocation.refreshIfDue(); }
 
   synchronizeTrust(): boolean {
     const trust = this.readTrust();
@@ -54,6 +59,7 @@ export class ChargingCurrentControl {
   }
 
   observeDevices(devices: readonly HomeyDeviceLike[]): void {
+    void this.homeLocation.refreshIfDue();
     if (this.synchronizeTrust()) this.homeSession.observeDevices(devices);
   }
 

@@ -3,7 +3,7 @@ import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measu
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices, onObservedState } from '../helpers/deviceTransportHarness';
 import { emitCapability, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
-import { mockHomeyInstance } from '../mocks/homey';
+import { mockHomeyInstance, setMockGeolocation } from '../mocks/homey';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import { getLogger } from '../../lib/logging/logger';
 import { TeslaChargingSession } from '../../lib/device/teslaChargingSession';
@@ -26,9 +26,16 @@ function devices(): HomeyDeviceLike[] {
       capabilitiesObj: { car_state: cap('online'), measure_car_drive_speed: cap(0), car_shift_state: cap('P') } },
   ];
 }
-function session() { return new TeslaChargingSession({ getLatitude: () => 60, getLongitude: () => 10 }); }
-beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); });
-afterEach(() => vi.useRealTimers());
+function session() { return new TeslaChargingSession({ coordinates: () => ({ latitude: 60, longitude: 10 }) }); }
+beforeEach(() => {
+  vi.useFakeTimers(); vi.setSystemTime(now);
+  // The hub location is read through the owner Web API; serve it from the mock even after a
+  // spec replaced the REST client.
+  setMockGeolocation(60, 10);
+  setRestClient({ get: (path) => mockHomeyInstance.api.get(path),
+    put: (path, body) => mockHomeyInstance.api.put(path, body) });
+});
+afterEach(() => { vi.useRealTimers(); setMockGeolocation(59.91, 10.75); });
 
 test('normalizes the charging sensor into EV capabilities, watts and state without becoming a home battery', () => {
   const battery = devices()[0]!;
@@ -49,7 +56,7 @@ test('admits a home AC session and retains it while stationary telemetry stays q
 });
 
 test('rejects antipodal coordinates despite floating-point distance rounding', () => {
-  const owner = new TeslaChargingSession({ getLatitude: () => 2.5, getLongitude: () => 0 });
+  const owner = new TeslaChargingSession({ coordinates: () => ({ latitude: 2.5, longitude: 0 }) });
   const initial = devices();
   initial[1]!.capabilitiesObj!.measure_location_latitude = cap(-2.5);
   initial[1]!.capabilitiesObj!.measure_location_longitude = cap(180);

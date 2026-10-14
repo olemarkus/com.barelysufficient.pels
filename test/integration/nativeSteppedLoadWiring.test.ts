@@ -1330,13 +1330,15 @@ describe('native stepped-load wiring', () => {
       );
 
       await initWithLiveFeed(deviceManager);
+      // Init reads the hub location once; only the refresh cycle's GETs are budgeted below.
+      const initGetCalls = get.mock.calls.length;
       await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
       // The refresh cycle owns its GETs (device list + the piggybacked zone
       // tree); the invariant under test is that the COMMAND path below adds
       // none, so anchor on the post-refresh count. The exact-budget pin makes
       // a future third piggybacked per-refresh GET a conscious decision.
       const refreshGetCalls = get.mock.calls.length;
-      expect(refreshGetCalls).toBe(2);
+      expect(refreshGetCalls - initGetCalls).toBe(2);
       get.mockRejectedValue(new Error('command path must not fetch devices'));
 
       await expect(deviceManager.requestSteppedLoadStep({
