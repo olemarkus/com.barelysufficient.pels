@@ -103,6 +103,7 @@ const buildAppWithRecorders = (options: {
     getHistorySnapshot: () => options.history as DeferredObjectivePlanHistoryV6,
     getInProgressTrajectory: () => null,
     isReservationSuppressed: noReservationSuppression,
+    hasObservedTask: () => false,
   });
   app.deferredObjectiveEnergyDelivery = createInertEnergyDelivery();
   return app;

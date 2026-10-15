@@ -39,6 +39,6 @@ export const createCurrentTaskEvaluationReader = (deps: CurrentTaskEvaluationDep
   const evaluation = buildUnallocatedTaskEvaluation(deviceId, objective, progress);
   return {
     ...evaluation,
-    completion: completionFromEvaluation(evaluation, deps.getStallClassification(deviceId), true),
+    completion: completionFromEvaluation(evaluation, deps.getStallClassification, true),
   };
 };

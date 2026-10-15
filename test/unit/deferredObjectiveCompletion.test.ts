@@ -6,7 +6,8 @@ import { buildUnallocatedTaskEvaluation } from '../../lib/objectives/deferredObj
 import { describe, expect, it } from 'vitest';
 import { resolveTaskCompletion } from '../../lib/objectives/deferredObjectives/taskCompletion';
 import { inactiveTaskEvaluation, type TaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
-import { resolveTaskCompletionDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
+import { completionFromEvaluation, reportTaskCompletionDiagnostic } from '../../lib/objectives/deferredObjectives/completionDiagnostic';
+import type { StallEvidence } from '../../packages/contracts/src/idleClassification';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
 import { mergeRecord, startRecord } from '../../lib/objectives/deferredObjectives/planHistoryInProgressState';
 import { partialDouble } from '../helpers/partialDouble';
@@ -33,14 +34,25 @@ const diagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> = {}): Defer
 };
 const nearTarget = { classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 65, temperatureGapC: 4 };
 
+// Exercise the evaluator's completion and its reporting projection as separate stages.
+const resolvedDiagnostic = (
+  diagnostic: DeferredObjectiveDiagnostic,
+  evidence: StallEvidence,
+  hasObservedTask: boolean,
+): DeferredObjectiveDiagnostic => {
+  const completion = completionFromEvaluation(diagnostic.evaluation, () => evidence, hasObservedTask);
+  return reportTaskCompletionDiagnostic({ ...diagnostic, completion,
+    evaluation: { ...diagnostic.evaluation, completion } });
+};
+
 describe('task completion evidence', () => {
-  it('accepts the observer near-target band only for established temperature tasks', () => {
-    expect(resolveTaskCompletionDiagnostic(diagnostic(), nearTarget, true).trajectory)
+  it('accepts the observer near-target band only for previously observed temperature tasks', () => {
+    expect(resolvedDiagnostic(diagnostic(), nearTarget, true).trajectory)
       .toEqual({ kind: 'resolved', status: 'satisfied' });
-    expect(resolveTaskCompletionDiagnostic(diagnostic(), nearTarget, false).trajectory)
+    expect(resolvedDiagnostic(diagnostic(), nearTarget, false).trajectory)
       .toEqual({ kind: 'resolved', status: 'on_track' });
     for (const objectiveKind of ['energy', 'ev_soc'] as const) {
-      expect(resolveTaskCompletionDiagnostic(diagnostic({ objectiveKind }), nearTarget, true).trajectory)
+      expect(resolvedDiagnostic(diagnostic({ objectiveKind }), nearTarget, true).trajectory)
         .toEqual({ kind: 'resolved', status: 'on_track' });
     }
   });
@@ -58,22 +70,22 @@ describe('task completion evidence', () => {
         reachableTargetValue: 70, reasonCode: 'objective_missing_price_horizon',
         trajectory: { kind: 'unavailable', reasonCode: 'objective_missing_price_horizon' },
       });
-      expect(resolveTaskCompletionDiagnostic(reported, nearTarget, true).evaluation.completion)
+      expect(resolvedDiagnostic(reported, nearTarget, true).evaluation.completion)
         .toEqual({ kind: 'accepted_near_target' });
-      expect(resolveTaskCompletionDiagnostic(reported, nearTarget, false).evaluation.completion)
+      expect(resolvedDiagnostic(reported, nearTarget, false).evaluation.completion)
         .toEqual({ kind: 'unmet' });
     }
   });
 
   it('does not treat a device internal cap as completion', () => {
     const capped = { ...nearTarget, classification: 'capped_idle' as const };
-    expect(resolveTaskCompletionDiagnostic(diagnostic(), capped, true).trajectory)
+    expect(resolvedDiagnostic(diagnostic(), capped, true).trajectory)
       .toEqual({ kind: 'resolved', status: 'on_track' });
   });
 
   it('reopens accepted temperature completion on trusted observer exit', () => {
     const initial = startRecord(diagnostic(), 0, undefined)!;
-    const accepted = mergeRecord(initial, resolveTaskCompletionDiagnostic(diagnostic(), nearTarget, true), 60_000, undefined);
+    const accepted = mergeRecord(initial, resolvedDiagnostic(diagnostic(), nearTarget, true), 60_000, undefined);
     expect(accepted.satisfied).toBe(true);
     const reopened = mergeRecord(accepted, diagnostic({ currentValue: 55 }), 120_000, undefined);
     expect(reopened.satisfied).toBe(false);
@@ -83,7 +95,7 @@ describe('task completion evidence', () => {
 
   it('preserves accepted completion while progress is unavailable', () => {
     const initial = startRecord(diagnostic(), 0, undefined)!;
-    const accepted = mergeRecord(initial, resolveTaskCompletionDiagnostic(diagnostic(), nearTarget, true), 60_000, undefined);
+    const accepted = mergeRecord(initial, resolvedDiagnostic(diagnostic(), nearTarget, true), 60_000, undefined);
     const unavailable = diagnostic({ completion: { kind: 'inactive' }, currentValue: null, reasonCode: 'objective_progress_stale', trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' } });
     expect(mergeRecord(accepted, unavailable, 120_000, undefined).satisfied).toBe(true);
   });

@@ -237,6 +237,7 @@ const buildDiagnostic = (
   hasSolarProduction: false,
   resolveDeviceExclusion: noDeviceExclusion,
   getStallClassification: noStallEvidence,
+  hasObservedTask: () => false,
   isReservationSuppressed: noReservationSuppression,
   getDeliveredEnergyKWh: noDeliveredEnergy,
   getPrioritiesForDevices: createFixturePriorityQuery([device]),

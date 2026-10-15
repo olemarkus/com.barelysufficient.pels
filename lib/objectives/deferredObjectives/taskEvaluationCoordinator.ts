@@ -1,7 +1,6 @@
 import type { PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
 import { buildUnallocatedTaskEvaluation } from './taskEvaluationProducer';
-import { hasEstablishedActivePlan } from './completionDiagnostic';
-import { resolveTaskCompletion } from './taskCompletion';
+import { completionFromEvaluation } from './completionDiagnostic';
 import type { TaskEvaluation } from './taskEvaluation';
 import type { TaskReservationReader } from './taskDeliveryState';
 import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
@@ -96,25 +95,6 @@ const holdsHigherPriorityLoad = (
   reservations: readonly DeferredObjectivePriorityReservation[],
 ): boolean => reservations.length > 0 || task.higherPriorityUnbookedPowerKw > 0;
 
-const canAcceptThermalCompletion = (
-  objective: DeferredObjectiveSettingsEntry,
-  activePlans: DeferredObjectiveActivePlansV1,
-  deviceId: string,
-): boolean => objective.kind === 'temperature'
-  && hasEstablishedActivePlan(activePlans, deviceId, objective.deadlineAtMs);
-
-const completionWithEvidence = (
-  evaluation: TaskEvaluation,
-  evidence: ReturnType<DeferredObjectiveStallClassificationReader>,
-): TaskEvaluation['completion'] => {
-  if (evaluation.progress.kind === 'unobserved') return { kind: 'inactive' };
-  return resolveTaskCompletion({
-    currentValue: evaluation.progress.value, requestedTarget: evaluation.requestedTarget,
-    direction: evaluation.progress.direction,
-    thermalEvidence: evidence ? { kind: 'accepted', evidence } : { kind: 'none' },
-  });
-};
-
 // What one evaluation cycle observed, shared by every task evaluated in it.
 export type TaskEvaluationSnapshot = {
   nowMs: number;
@@ -144,9 +124,10 @@ export type TaskEvaluationReaders = {
   // no timed task booking; the device returns to ordinary control, where its
   // maximum known step is reserved for lower-priority tasks. Every allocation
   // path passes the reader so lifecycle, decoration and preview agree on that
-  // transition. It never changes a status here: see
-  // `reportStalledTasksAsSatisfied`.
+  // transition. Reporting projects the resolved completion separately.
   getStallClassification: DeferredObjectiveStallClassificationReader;
+  // History has observed this exact obligation, whether or not prices permitted allocation.
+  hasObservedTask: (deviceId: string, objective: DeferredObjectiveSettingsEntry) => boolean;
   // Durable device-exclusion resolver (this leafward subsystem reads neither
   // home membership nor the managed-device map itself). A non-null answer
   // short-circuits the diagnostic to `unknown` with that exclusion's dedicated
@@ -348,9 +329,9 @@ export const buildDeferredObjectiveTaskResults = (
         : {}),
     };
     const evaluation = coordinated.evaluation;
-    const thermalEvidence = canAcceptThermalCompletion(objective, activePlans, deviceId)
-      ? readers.getStallClassification(deviceId) : undefined;
-    const acceptedCompletion = completionWithEvidence(evaluation, thermalEvidence);
+    const acceptedCompletion = completionFromEvaluation(
+      evaluation, readers.getStallClassification, readers.hasObservedTask(deviceId, objective),
+    );
     const evaluationResult = { ...evaluation, completion: acceptedCompletion };
     const reservationSuppressed = readers.isReservationSuppressed(deviceId, objective.deadlineAtMs);
     const holdsBookings = holdsItsBookings(task, acceptedCompletion, reservationSuppressed);

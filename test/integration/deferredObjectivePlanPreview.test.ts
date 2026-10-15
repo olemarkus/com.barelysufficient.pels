@@ -349,6 +349,7 @@ const runPreview = (params: {
     getPrioritiesForDevices: params.ctx.getPrioritiesForDevices ?? createFixturePriorityQuery(devices),
     resolveDeviceExclusion: noDeviceExclusion,
     getStallClassification: noStallEvidence,
+    hasObservedTask: () => false,
     isReservationSuppressed: noReservationSuppression,
     getDeliveredEnergyKWh: noDeliveredEnergy,
   };
@@ -413,6 +414,7 @@ describe('previewDeferredObjectivePlan', () => {
       },
     });
     const [highDiagnostic] = buildDeferredObjectiveDiagnostics({
+      hasObservedTask: () => false,
       hasSolarProduction: false,
       nowMs: NOW_MS,
       timeZone: 'UTC',
@@ -467,6 +469,7 @@ describe('previewDeferredObjectivePlan', () => {
       },
     });
     const [highDiagnostic] = buildDeferredObjectiveDiagnostics({
+      hasObservedTask: () => false,
       hasSolarProduction: false,
       nowMs: NOW_MS,
       timeZone: 'UTC',
@@ -542,6 +545,7 @@ describe('previewDeferredObjectivePlan', () => {
     });
     const dailyBudgetSnapshot = buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) });
     const [highDiagnostic] = buildDeferredObjectiveDiagnostics({
+      hasObservedTask: () => false,
       hasSolarProduction: false,
       nowMs: NOW_MS,
       timeZone: 'UTC',
@@ -1081,6 +1085,7 @@ describe('previewDeferredObjectivePlan fidelity vs activePlanRecorder', () => {
       // to the recorder, and read what it persists.
       const settings = buildSettings({ deviceId, candidate });
       const diagnostics = buildDeferredObjectiveDiagnostics({
+      hasObservedTask: () => false,
         hasSolarProduction: false,
         nowMs: NOW_MS,
         timeZone: 'UTC',

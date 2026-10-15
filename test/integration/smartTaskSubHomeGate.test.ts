@@ -242,6 +242,7 @@ const buildDiagnosticsParams = (overrides: {
   priceOptimizationEnabled: true,
   activePlans: createEmptyActivePlans(),
   getStallClassification: noStallEvidence,
+  hasObservedTask: () => false,
   isReservationSuppressed: noReservationSuppression,
   getDeliveredEnergyKWh: noDeliveredEnergy,
   resolveDeviceExclusion: (deviceId: string) => (
@@ -818,6 +819,7 @@ describe('decoration controller: resolveDeviceExclusion dep threading', () => {
       resolveDeviceExclusion,
       getDeferredObjectiveActivePlans: createEmptyActivePlans,
       getStallClassification: noStallEvidence,
+      hasObservedTask: () => false,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
     }, () => normalizeDeferredObjectiveSettings({

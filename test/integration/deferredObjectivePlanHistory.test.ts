@@ -1138,7 +1138,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           classifiedAgainstTargetValue: 65, temperatureGapC: 0 }),
       });
       const deadlineAtMs = 6 * HOUR_MS;
-      const initial = makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: scenario.initial });
+      const initial = makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: scenario.initial,
+        completion: { kind: scenario.initial >= 65 ? 'target_reached' : 'accepted_near_target' } });
       recorder.observe([initial], 0, createEmptyActivePlans());
       recorder.observe([initial], 30_000, createEmptyActivePlans());
       // Current observer state is read at the edit, before the next recorder tick.
@@ -2836,7 +2837,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     // `satisfied`, so the existing path classified the run as `missed`.
     // With the idle-classifier bridge in place, the recorder accepts the
     // device's "as warm as it'll hold" plateau as a success.
-    it('promotes a non-satisfied run to met when the classifier reports near_target_idle', () => {
+    it('records accepted near-target completion while the forecast remains unmet', () => {
       const { deps, saved } = buildPersistDeps();
       const stallNearTarget = () => ({ classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 65, temperatureGapC: 0 });
       const recorder = new DeferredObjectivePlanHistoryRecorder({ ...deps, getStallClassification: stallNearTarget });
@@ -2852,7 +2853,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // reports `near_target_idle`. The horizon planner still says
       // `on_track` because (target − current) > 0.
       recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8, completion: { kind: 'accepted_near_target' } })],
         3 * HOUR_MS,
         createEmptyActivePlans(),
       );
@@ -2860,7 +2861,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // the freeze, `finalProgressC` would track this drift; with the
       // freeze it should stay at 61.8.
       recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60.4 })],
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60.4, completion: { kind: 'accepted_near_target' } })],
         5 * HOUR_MS,
         createEmptyActivePlans(),
       );
@@ -2916,11 +2917,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.outcome).toBe('missed');
     });
 
-    // Boundary of the `>=` rule: a device parked at exactly the requested
-    // setpoint is the ordinary "as warm as it'll hold" stall the promotion
-    // exists for, so equality must still promote. Guards the gate against
-    // over-blocking the case it was never meant to touch.
-    it('promotes when the classification setpoint exactly equals the task target', () => {
+    // Completion is an input to history even when no price allocation exists.
+    it('trusts resolved near-target completion without an allocated plan', () => {
       const { deps, saved } = buildPersistDeps();
       const stallAtTaskTarget = () => ({
         classification: 'near_target_idle' as const,
@@ -2931,12 +2929,16 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const deadlineAtMs = 6 * HOUR_MS;
 
       recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60.9 })],
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60.9, horizonPlan: undefined,
+          trajectory: { kind: 'unavailable', reasonCode: 'objective_missing_price_horizon' },
+          reasonCode: 'objective_missing_price_horizon' })],
         0,
         createEmptyActivePlans(),
       );
       recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8, horizonPlan: undefined,
+          trajectory: { kind: 'unavailable', reasonCode: 'objective_missing_price_horizon' },
+          reasonCode: 'objective_missing_price_horizon', completion: { kind: 'accepted_near_target' } })],
         3 * HOUR_MS,
         createEmptyActivePlans(),
       );
@@ -2968,7 +2970,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       );
       // Plateau reached; classifier promotes the run to met(stalled).
       recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8, completion: { kind: 'accepted_near_target' } })],
         3 * HOUR_MS,
         createEmptyActivePlans(),
       );
@@ -2976,7 +2978,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const coast = [61.6, 61.3, 61.1, 60.8];
       coast.forEach((temperature, i) => {
         recorder.observe(
-          [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: temperature })],
+          [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: temperature, completion: { kind: 'accepted_near_target' } })],
           3 * HOUR_MS + (i + 1) * QUARTER_MS,
           createEmptyActivePlans(),
         );
@@ -3228,9 +3230,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     it('keeps a capped device unmet after later below-target readings', () => {
       // Mirrors the `near_target_idle` stickiness — the device having
       // accepted the run against its own cap is terminal even if the
-      // tank drifts down a degree afterwards. Without this, the next
-      // plannable tick would re-open the run because the diag still says
-      // `on_track` while progress is below target.
+      // A capped-device classification never overrides an unmet evaluation.
       const { deps, saved } = buildPersistDeps();
       let classify: DeferredObjectiveStallClassificationReader = () => undefined;
       const recorder = new DeferredObjectivePlanHistoryRecorder({ ...deps, getStallClassification: (id) => classify(id) });
@@ -3275,8 +3275,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const noClassifier = () => undefined;
       classify = stallNearTarget;
 
-      // First tick: brand-new record. The carryover guard skips promotion
-      // here regardless of classifier state.
+      // The first evaluator verdict is unmet.
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
         HOUR_MS,
@@ -3285,7 +3284,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // Second tick: existing record, classifier still reports
       // near_target_idle → promotion fires here.
       recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8, completion: { kind: 'accepted_near_target' } })],
         2 * HOUR_MS,
         createEmptyActivePlans(),
       );
@@ -3306,22 +3305,15 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.finalProgressValue).toBeCloseTo(55, 1);
     });
 
-    it('skips stall promotion on the first tick of a new record — stale classification carryover guard', () => {
-      // Regression for PR #888 review (chatgpt-codex-connector): the
-      // classifier ticks AFTER plan emission, so the result the recorder
-      // reads on the cycle a record is first seen belongs to whatever
-      // objective ran for this device on the previous tick. After a
-      // `finalizeForUserChange` swap, that stale `near_target_idle` must
-      // not auto-complete the brand-new run on tick 1. The next tick —
-      // where the classifier has re-evaluated against the current
-      // objective — handles promotion through the existing-record path.
+    it('records completion at the evaluator acceptance tick', () => {
+      // The evaluator owns carryover eligibility. History records the tick
+      // where its input first accepts completion, independently of allocation.
       const { deps, saved } = buildPersistDeps();
       const stallNearTarget = () => ({ classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 65, temperatureGapC: 0 });
       const recorder = new DeferredObjectivePlanHistoryRecorder({ ...deps, getStallClassification: stallNearTarget });
       const deadlineAtMs = 6 * HOUR_MS;
 
-      // Brand-new record — classifier already says near_target_idle from
-      // the *previous* run's plateau. The recorder must not promote here.
+      // The evaluator has not accepted completion on this first observation.
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
         0,
@@ -3329,7 +3321,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       );
       // Subsequent tick: classification is fresh and authoritative.
       recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 51 })],
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 51, completion: { kind: 'accepted_near_target' } })],
         HOUR_MS,
         createEmptyActivePlans(),
       );
@@ -3354,21 +3346,19 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         { kind: 'unavailable', reasonCode: 'objective_progress_stale' }
       );
 
-      // First tick: brand-new record at 50 °C — first-tick gate skips
-      // promotion. `mergeRecord` runs (status='on_track' plannable).
+      // The first observation has an unmet completion verdict.
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
         0,
         createEmptyActivePlans(),
       );
-      // Second tick: classifier says near_target_idle, but the diag
-      // arrives with status='unknown' (non-plannable). The live reading
-      // is 61.8 °C — that is the value the stalled entry must freeze.
+      // The evaluator accepts the live plateau despite an unavailable
+      // forecast. History must capture its 61.8 C reading.
       recorder.observe(
         [makeDiag({
           deviceId: 'dev',
           deadlineAtMs,
-          currentTemperatureC: 61.8,
+          currentTemperatureC: 61.8, completion: { kind: 'accepted_near_target' },
           trajectory: unknown(),
           // `objective_missing_charge_rate` is a non-plannable reason
           // outside the untrustworthy set — the diag carries a real
@@ -3392,10 +3382,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     });
 
     it('does not promote when only the first tick fires near_target_idle (no subsequent ticks)', () => {
-      // Locks in the producer-side gate: if a brand-new run sees a stale
-      // `near_target_idle` on its only cycle and the deadline immediately
-      // elapses, the entry must finalize as `missed` rather than silently
-      // met by carryover.
+      // Device-keyed evidence cannot override the evaluator's unmet verdict.
       const { deps, saved } = buildPersistDeps();
       const stallNearTarget = () => ({ classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 65, temperatureGapC: 0 });
       const recorder = new DeferredObjectivePlanHistoryRecorder({ ...deps, getStallClassification: stallNearTarget });
@@ -3421,15 +3408,14 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const recorder = new DeferredObjectivePlanHistoryRecorder({ ...deps, getStallClassification: stallNearTarget });
       const deadlineAtMs = 6 * HOUR_MS;
 
-      // Two ticks to clear the first-tick carryover guard; promotion lands
-      // on the second tick.
+      // The evaluator accepts completion on the second observation.
       recorder.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
         HOUR_MS,
         createEmptyActivePlans(),
       );
       recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8, completion: { kind: 'accepted_near_target' } })],
         2 * HOUR_MS,
         createEmptyActivePlans(),
       );

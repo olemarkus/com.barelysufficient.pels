@@ -260,6 +260,7 @@ const runScenario = (startC: number): { cycles: Cycle[]; finalTempC: number } =>
       hasSolarProduction: false,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
+      hasObservedTask: () => false,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
       getPrioritiesForDevices: createFixturePriorityQuery([device]),

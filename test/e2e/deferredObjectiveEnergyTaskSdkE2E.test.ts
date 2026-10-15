@@ -158,6 +158,7 @@ const runScenario = (tankFullAfterKWh: number, meterOnlyHourOfDay: number | null
       hasSolarProduction: false,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
+      hasObservedTask: () => false,
       isReservationSuppressed: () => false,
       getDeliveredEnergyKWh: tracker.getDeliveredKWh,
       getPrioritiesForDevices: createFixturePriorityQuery([device]),

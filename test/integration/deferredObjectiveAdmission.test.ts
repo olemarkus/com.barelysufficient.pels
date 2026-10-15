@@ -219,6 +219,7 @@ const buildBuilder = (
     getDeferredObjectiveActivePlans: createEmptyActivePlans,
     resolveDeviceExclusion: noDeviceExclusion,
     getStallClassification: noStallEvidence,
+    hasObservedTask: () => false,
     isReservationSuppressed: noReservationSuppression,
     getDeliveredEnergyKWh: noDeliveredEnergy,
   }, () => buildSettings());
@@ -362,6 +363,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getDeferredObjectiveActivePlans: createEmptyActivePlans,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
+      hasObservedTask: () => false,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
     }, () => buildSettings());
@@ -610,6 +612,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getDeferredObjectiveActivePlans: createEmptyActivePlans,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
+      hasObservedTask: () => false,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
     }, () => ({

@@ -21,7 +21,7 @@ import {
   createEmptyDeferredObjectiveSettings,
   normalizeDeferredObjectiveSettings,
 } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
-import { reportStalledTasksAsSatisfied } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
+import { reportTaskCompletionDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import type {
@@ -416,6 +416,7 @@ const buildDeferredObjectiveDiagnostics = (
     activePlans: params.activePlans ?? createEmptyActivePlans(),
     resolveDeviceExclusion: params.resolveDeviceExclusion ?? (() => null),
     getStallClassification: params.getStallClassification ?? (() => undefined),
+    hasObservedTask: params.hasObservedTask ?? (() => false),
     isReservationSuppressed: params.isReservationSuppressed ?? noReservationSuppression,
     getDeliveredEnergyKWh: params.getDeliveredEnergyKWh ?? (() => 0),
     getPrioritiesForDevices: params.getPrioritiesForDevices ?? createFixturePriorityQuery(params.devices),
@@ -427,11 +428,8 @@ const buildDeferredObjectiveDiagnostics = (
 // applies over the result.
 const buildReportedDiagnostics = (
   params: Partial<Omit<TaskEvaluationFixture, 'buildPriceHorizon'>>,
-): ReturnType<typeof buildDeferredObjectiveDiagnosticsRaw> => reportStalledTasksAsSatisfied(
-  buildDeferredObjectiveDiagnostics(params),
-  params.getStallClassification ?? (() => undefined),
-  params.activePlans ?? createEmptyActivePlans(),
-);
+): ReturnType<typeof buildDeferredObjectiveDiagnosticsRaw> => buildDeferredObjectiveDiagnostics(params)
+  .map(reportTaskCompletionDiagnostic);
 
 // Wrapper: inject the `priceHorizon` derived from the same snapshot the test
 // supplies, sourced through the production builder so the horizon entries match
@@ -3734,6 +3732,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         }),
         powerLimits: capacityOnlyPowerLimits(5),
         activePlans: buildCommittedHigherTaskPlans(deadlineAtMs),
+        hasObservedTask: () => false,
         isReservationSuppressed: (deviceId) => deviceId === 'ev-1',
       });
       const ev2 = diagnostics.find((diagnostic) => diagnostic.deviceId === 'ev-2');
@@ -3801,9 +3800,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       });
 
       it('keeps an EV task unmet in both lanes despite thermostat evidence', () => {
-        // The allocation reads the stall for the ledger alone: admission reads a
-        // `satisfied` task as inactive, so the decoration lane must keep the raw
-        // verdict. Only the lifecycle lane rewrites it, for the owner-facing status.
+        // Thermal evidence cannot complete an EV task in either lane.
         const deadlineAtMs = resolveDeadlineAtMsFor('22:00');
         const params = { ...buildTwoTaskParams(deadlineAtMs), getStallClassification: parkedAtTarget };
         const higherTask = (diagnostics: DeferredObjectiveDiagnostic[]) => diagnostics
@@ -3848,43 +3845,9 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     priceOptimizationEnabled: true,
   });
 
-  // An established run = the active-plan recorder has committed a `latest`
-  // revision for this (device, deadline). Stall resolution is suppressed until
-  // then so a first-seen task can't read a stale device-keyed classifier verdict.
-  const establishedPlans = (deadlineAtMs: number): DeferredObjectiveActivePlansV1 => ({
-    version: 1,
-    plansByDeviceId: {
-      'ev-1': {
-        liveCompletion: { kind: 'unavailable' as const },
-        deviceId: 'ev-1',
-        deviceName: 'Driveway EV',
-        objectiveKind: 'ev_soc',
-        targetValue: 60,
-        deadlineAtMs,
-        startedAtMs: NOW_MS - HOUR_MS,
-        pending: false,
-        objectiveSignature: JSON.stringify(['ev_soc', null, 60, deadlineAtMs, 'soft']),
-        original: null,
-        latest: {
-          revision: 1,
-          revisedAtMs: NOW_MS - HOUR_MS,
-          computedFromPricesUpTo: NOW_MS + HOUR_MS,
-          reason: 'flow_card',
-          hours: [],
-          energyNeededKWh: 2,
-          planStatus: 'on_track',
-        },
-      },
-    },
+  const withObservedTask = (params: ReturnType<typeof onTrackParams>) => ({
+    ...params, hasObservedTask: () => true,
   });
-
-  // Build once to read the resolved deadline, then attach a matching established
-  // plan so the first-seen guard is satisfied for the resolution-path tests.
-  const withEstablishedPlan = (params: ReturnType<typeof onTrackParams>) => {
-    const deadlineAtMs = buildDeferredObjectiveDiagnostics(params)[0]?.deadlineAtMs;
-    if (deadlineAtMs == null) throw new Error('expected a resolved deadline');
-    return { ...params, activePlans: establishedPlans(deadlineAtMs) };
-  };
 
   // Regression, prod 2026-08-19/20: an EV smart task on a charger with no car
   // plugged in reported `objective_progress_stale` — a READING problem — for two
@@ -3923,7 +3886,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
   });
 
   it('does not apply near-target temperature evidence to an EV task', () => {
-    const params = withEstablishedPlan(onTrackParams());
+    const params = withObservedTask(onTrackParams());
     expect(resolvedTrajectoryStatus(buildDeferredObjectiveDiagnostics(params)[0])).toBe('on_track');
 
     const [diagnostic] = buildReportedDiagnostics({
@@ -3941,7 +3904,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
   });
 
   it('does not apply capped temperature evidence to an EV task', () => {
-    const params = withEstablishedPlan(atRiskParams());
+    const params = withObservedTask(atRiskParams());
     expect(resolvedTrajectoryStatus(buildDeferredObjectiveDiagnostics(params)[0])).toBe('at_risk');
 
     const [diagnostic] = buildReportedDiagnostics({
@@ -3956,16 +3919,14 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
 
   it('never treats an unresponsive (likely-fault) device as satisfied', () => {
     const [diagnostic] = buildReportedDiagnostics({
-      ...withEstablishedPlan(atRiskParams()),
+      ...withObservedTask(atRiskParams()),
       getStallClassification: () => ({ classification: 'unresponsive' as const, classifiedAgainstTargetValue: 60, temperatureGapC: 0 }),
     });
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('at_risk');
   });
 
-  it('ignores a stale classifier verdict on a first-seen task (no established plan yet)', () => {
-    // No activePlans → the run is first-seen, so the device-keyed classifier
-    // result belongs to a prior objective and must NOT promote this brand-new
-    // task to satisfied. Regression guard for the stale-classifier window.
+  it('ignores a stale classifier verdict on a first-seen task', () => {
+    // An unobserved obligation cannot inherit device-keyed thermal evidence.
     const [diagnostic] = buildReportedDiagnostics({
       ...atRiskParams(),
       getStallClassification: () => ({ classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 60, temperatureGapC: 0 }),

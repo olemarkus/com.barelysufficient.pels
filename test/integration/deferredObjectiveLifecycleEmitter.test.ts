@@ -90,6 +90,7 @@ const buildDeps = (overrides: LifecycleFixture = {}): DeferredObjectiveLifecycle
     getPrioritiesForDevices = createFixturePriorityQuery(),
     resolveDeviceExclusion = noDeviceExclusion,
     getStallClassification = noStallEvidence,
+    hasObservedTask = () => false,
     isReservationSuppressed = noReservationSuppression,
     energyDelivery = createInertEnergyDelivery(),
     // The lifecycle clock books the count it reads.
@@ -109,6 +110,7 @@ const buildDeps = (overrides: LifecycleFixture = {}): DeferredObjectiveLifecycle
       getPrioritiesForDevices,
       resolveDeviceExclusion,
       getStallClassification,
+      hasObservedTask,
       isReservationSuppressed,
       getDeliveredEnergyKWh,
     },

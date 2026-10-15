@@ -1,7 +1,6 @@
 import type { TaskEvaluation } from './taskEvaluation';
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { resolveObjectiveTargetValue } from '../../../packages/shared-domain/src/deferredObjectiveValues';
-import { resolveTaskCompletionDiagnostic } from './diagnosticsBridge';
 import {
   EMPTY_DELIVERY_EVIDENCE, activeDeliveryCause, observeTaskDelivery, resolveTaskDeliveryFacts,
 } from './deliveryEvidence';
@@ -261,14 +260,12 @@ export class DeferredObjectivePlanHistoryRecorder {
   }
 
   private observeDiagnostic(
-    rawDiagnostic: DeferredObjectiveDiagnostic,
+    diag: DeferredObjectiveDiagnostic,
     key: InProgressKey,
     nowMs: number,
     activePlans: DeferredObjectiveActivePlansV1,
   ): void {
     const existing = this.inProgress.get(key);
-    const diag = resolveTaskCompletionDiagnostic(rawDiagnostic,
-      this.deps.getStallClassification(rawDiagnostic.deviceId), existing !== undefined);
     const plan = findPlanForRecord(activePlans, {
       deviceId: diag.evaluation.deviceId, deadlineAtMs: diag.evaluation.deadlineAtMs,
     });
@@ -310,9 +307,8 @@ export class DeferredObjectivePlanHistoryRecorder {
       next = mergeSavedRun(next, restored);
       this.restoredMeteredDeliveryByKey.delete(key);
     }
-    // Completion resolution above excludes prior-cycle thermal evidence on a
-    // first-seen run. The observer is keyed by device, so its previous verdict
-    // may belong to the task just replaced. A later observation can accept it.
+    // The evaluator excludes prior-task thermal evidence until this exact
+    // obligation has been observed. History consumes that resolved completion.
     // The hour-start capture runs after the restore so a restart inside an
     // hour the run already recorded keeps that hour's saved booking.
     this.storeWithHourStartBooking(key, next, plan, nowMs);

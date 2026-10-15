@@ -127,9 +127,12 @@ the next cycle returns to normal deadline tracking.
 Observer near-target idle evidence may accept a temperature objective inside the existing
 observer tolerance, only when the classified setpoint covers the requested target. Internal
 `capped_idle` evidence below target never completes a task. Energy and EV tasks never consume
-thermal evidence. `completionDiagnostic.ts` resolves the decision for live status, reservation
-and history; history records its acceptance and reopens on a trusted observer exit or unmet
-regression. The completion events carry the classification, classified setpoint, measured
+thermal evidence. `completionDiagnostic.ts` resolves completion in the task evaluator,
+using history's observation of the exact device, deadline, kind and target as the eligibility
+gate. Price allocation is independent: a task can complete before prices allow a schedule.
+A replacement's first observation cannot inherit the prior task's device-keyed evidence.
+Live status and reservations consume that evaluation; history records its acceptance without
+reclassifying and reopens on a trusted observer exit or unmet regression. The completion events carry the classification, classified setpoint, measured
 progress and requested target so the decision is traceable.
 
 When a task is replaced before its deadline, history records `met` only when

@@ -59,6 +59,7 @@ describe('DeferredObjectiveDecorationController', () => {
       getDeferredObjectiveActivePlans: createEmptyActivePlans,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
+      hasObservedTask: () => false,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
     }, () => settings);
@@ -92,6 +93,7 @@ describe('DeferredObjectiveDecorationController', () => {
       getDeferredObjectiveActivePlans: createEmptyActivePlans,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
+      hasObservedTask: () => false,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
     }, getDeferredObjectiveSettings);
@@ -117,6 +119,7 @@ describe('DeferredObjectiveDecorationController', () => {
       buildPriceHorizon: () => [],
       getCapacitySettings: () => capacityOnlyPowerLimits(10),
       getStallClassification,
+      hasObservedTask: () => false,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
       getDeferredObjectiveActivePlans: createEmptyActivePlans,
@@ -152,6 +155,7 @@ describe('DeferredObjectiveDecorationController', () => {
       getTimeZone: () => 'UTC',
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
+      hasObservedTask: () => false,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
     }, () => undefined);

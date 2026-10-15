@@ -1,94 +1,44 @@
-import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import type { StallEvidence } from '../../../packages/contracts/src/idleClassification';
-import { resolveTaskCompletion, type TaskCompletion } from './taskCompletion';
+import { resolveTaskCompletion } from './taskCompletion';
 import type { TaskEvaluation } from './taskEvaluation';
-import {
-  type DeferredObjectiveDiagnostic, type DeferredObjectiveStallClassificationReader,
+import type {
+  DeferredObjectiveDiagnostic, DeferredObjectiveStallClassificationReader,
 } from './diagnosticTypes';
 
-// True once the active-plan recorder has committed a `latest` revision for this
-// exact (device, deadline) run. Used to suppress stall resolution on a
-// first-seen task: the idle classifier ticks AFTER plan emission and is keyed by
-// device only, so on a brand-new objective's first cycle `getStallClassification`
-// returns the PREVIOUS cycle's verdict — which belongs to whatever ran on that
-// device before. Resolving on that stale value would flash a brand-new deadline
-// as `satisfied` (and could write a first revision / fire a Flow) until the
-// classifier re-ticks. Mirrors the postmortem's "skip stall promotion on
-// first-seen records" guard (planHistory `observeDiagnostic`). Inlined rather
-// than reusing `findPlanForRecord` to avoid a diagnosticsBridge↔planHistory
-// import cycle.
-export const hasEstablishedActivePlan = (
-  activePlans: DeferredObjectiveActivePlansV1,
-  deviceId: string,
-  deadlineAtMs: number | null,
-): boolean => {
-  if (deadlineAtMs === null) return false;
-  const plan = activePlans.plansByDeviceId[deviceId];
-  return plan?.deadlineAtMs === deadlineAtMs && plan?.latest != null;
-};
-
-/** Resolve completion at the diagnostic boundary; the core receives known values only. */
-export const completionFromDiagnostic = (
-  diagnostic: DeferredObjectiveDiagnostic,
-  evidence: StallEvidence | undefined,
-  hasEstablishedPlan: boolean,
-): TaskCompletion | { kind: 'inactive' } => completionFromEvaluation(
-  diagnostic.evaluation, evidence, hasEstablishedPlan,
-);
-
+/**
+ * Resolve completion from owner-observed progress and evidence for this obligation.
+ * Allocation is independent: a task can complete before prices allow a schedule.
+ * The caller's observed-task gate prevents a replacement inheriting the device's
+ * previous classifier verdict.
+ */
 export const completionFromEvaluation = (
   evaluation: TaskEvaluation,
-  evidence: StallEvidence | undefined,
-  hasEstablishedPlan: boolean,
-): TaskCompletion | { kind: 'inactive' } => {
+  getStallClassification: DeferredObjectiveStallClassificationReader,
+  hasObservedTask: boolean,
+): TaskEvaluation['completion'] => {
   const { progress } = evaluation;
-  if (progress.kind === 'unobserved') return { kind: 'inactive' };
-  const thermalEvidence = hasEstablishedPlan
-    && evaluation.targetControl.kind === 'temperature' && evidence !== undefined
-    ? { kind: 'accepted' as const, evidence }
-    : { kind: 'none' as const };
+  if (progress.kind === 'unobserved' || !hasObservedTask
+    || evaluation.targetControl.kind !== 'temperature') return evaluation.completion;
+  const evidence = getStallClassification(evaluation.deviceId);
+  if (evidence === undefined) return evaluation.completion;
   return resolveTaskCompletion({
     currentValue: progress.value,
     requestedTarget: evaluation.requestedTarget,
     direction: progress.direction,
-    thermalEvidence,
+    thermalEvidence: { kind: 'accepted', evidence },
   });
 };
 
-/**
- * Resolve the user-facing `status` (NOT `horizonPlan.status`, which stays the
- * raw trajectory verdict) of every task stalled at its target to `satisfied`,
- * so the status chip, notifications and Flows agree with the postmortem
- * recorder (which already promotes such runs to `satisfied(stalled)`).
- *
- * The lifecycle emitter applies it; the decoration / actuation path must not,
- * because admission reads a `satisfied` task as `inactive` — only
- * `horizonPlan.status` (untouched) drives commitment.
- */
-export const reportStalledTasksAsSatisfied = (
-  diagnostics: readonly DeferredObjectiveDiagnostic[],
-  getStallClassification: DeferredObjectiveStallClassificationReader,
-  activePlans: DeferredObjectiveActivePlansV1,
-): DeferredObjectiveDiagnostic[] => diagnostics.map((diagnostic) => resolveTaskCompletionDiagnostic(
-  diagnostic,
-  getStallClassification(diagnostic.deviceId),
-  hasEstablishedActivePlan(activePlans, diagnostic.deviceId, diagnostic.deadlineAtMs),
-));
-
-/** Resolve observer completion once for live status and recorded outcomes. */
-export const resolveTaskCompletionDiagnostic = (
+/** Project the resolved completion into live reporting; never classify it again. */
+export const reportTaskCompletionDiagnostic = (
   diagnostic: DeferredObjectiveDiagnostic,
-  evidence: StallEvidence | undefined,
-  hasEstablishedPlan: boolean,
 ): DeferredObjectiveDiagnostic => {
-  const completion = completionFromDiagnostic(diagnostic, evidence, hasEstablishedPlan);
-  const resolved = { ...diagnostic, completion, evaluation: { ...diagnostic.evaluation, completion } };
+  const { completion } = diagnostic.evaluation;
   if (completion.kind === 'accepted_near_target') {
-    return { ...resolved, trajectory: { kind: 'resolved', status: 'satisfied' },
+    return { ...diagnostic, trajectory: { kind: 'resolved', status: 'satisfied' },
       reasonCode: 'objective_stalled_near_target' };
   }
   if (completion.kind === 'target_reached') {
-    return { ...resolved, trajectory: { kind: 'resolved', status: 'satisfied' } };
+    return { ...diagnostic, trajectory: { kind: 'resolved', status: 'satisfied' } };
   }
-  return resolved;
+  return diagnostic;
 };

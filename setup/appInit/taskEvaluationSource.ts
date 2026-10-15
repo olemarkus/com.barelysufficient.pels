@@ -47,6 +47,9 @@ export const buildTaskEvaluationSource = (
   // no explicit opt-out → `null` for every device, preserving exact
   // single-home behavior.
   resolveDeviceExclusion: (deviceId) => resolveSmartTaskDeviceExclusion(ctx, deviceId),
+  hasObservedTask: (deviceId, objective) => (
+    requireDeferredObjectivePlanHistoryRecorder(ctx).hasObservedTask(deviceId, objective)
+  ),
   getStallClassification: (deviceId) => requirePlanService(ctx).getStallEvidence(deviceId),
   // The count the lifecycle clock books, read lazily: the tracker is built
   // with the plan runtime.

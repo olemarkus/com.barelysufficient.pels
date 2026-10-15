@@ -207,6 +207,7 @@ const runScenario = (): { hours: HourOutcome[]; finalTempC: number } => {
       hasSolarProduction: false,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
+      hasObservedTask: () => false,
       isReservationSuppressed: () => false,
       getDeliveredEnergyKWh: noDeliveredEnergy,
       getPrioritiesForDevices: createFixturePriorityQuery([device]),

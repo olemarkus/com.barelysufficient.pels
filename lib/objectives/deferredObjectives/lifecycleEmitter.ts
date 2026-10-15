@@ -9,7 +9,7 @@ import {
   buildTaskEvaluationSnapshot,
   emitDeferredObjectiveDiagnostics,
   LIVE_LANE,
-  reportStalledTasksAsSatisfied,
+  reportTaskCompletionDiagnostic,
   type DeferredObjectiveDiagnostic,
   type DeferredObjectiveAnnounce,
   type TaskEvaluationSource,
@@ -150,15 +150,10 @@ export class DeferredObjectiveLifecycleEmitter {
     );
     const { activePlans } = snapshot;
     this.deps.energyDelivery.observe(snapshot.devices, settings, nowMs);
-    // Resolve the user-facing status to `satisfied` for parked/stalled devices
-    // so the status chip, notifications, Flows (active-plan recorder) and the
-    // postmortem all agree. The decoration/actuation path builds its own
-    // diagnostics WITHOUT this, keeping admission on the raw trajectory status.
-    let diagnostics = reportStalledTasksAsSatisfied(
-      buildDeferredObjectiveDiagnostics(snapshot, source, this.priorityAllocationTracker, LIVE_LANE),
-      source.getStallClassification,
-      activePlans,
-    );
+    // Reporting projects the evaluator's completion without re-reading evidence.
+    let diagnostics = buildDeferredObjectiveDiagnostics(
+      snapshot, source, this.priorityAllocationTracker, LIVE_LANE,
+    ).map(reportTaskCompletionDiagnostic);
 
     // Plan-history record, using this tick's (pre-write) snapshot.
     this.deps.observeDeferredObjectivePlanHistory(diagnostics, nowMs, activePlans);

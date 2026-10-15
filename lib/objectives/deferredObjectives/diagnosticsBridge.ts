@@ -19,7 +19,7 @@ import type { TaskEvaluation } from './taskEvaluation';
 
 export type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 export { progressCurrentValue } from './diagnosticFields';
-export { reportStalledTasksAsSatisfied, resolveTaskCompletionDiagnostic }
+export { reportTaskCompletionDiagnostic }
   from './completionDiagnostic';
 export { emitDeferredObjectiveDiagnostics, type DeferredObjectiveAnnounce } from './diagnosticAnnounce';
 

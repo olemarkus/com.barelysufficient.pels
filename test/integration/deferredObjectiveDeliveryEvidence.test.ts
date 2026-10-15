@@ -193,6 +193,7 @@ const createScenario = (settings: DeferredObjectiveSettingsV1) => {
         getCapacitySettings: () => capacityOnlyPowerLimits(2),
         getPrioritiesForDevices: priorities,
         resolveDeviceExclusion: noDeviceExclusion, getStallClassification: noStallEvidence,
+        hasObservedTask: () => false,
         getDeliveredEnergyKWh: energy.getDeliveredKWh, isReservationSuppressed: history.isReservationSuppressed,
       },
       getDeferredObjectiveSettings: () => settings,
@@ -225,6 +226,7 @@ const createScenario = (settings: DeferredObjectiveSettingsV1) => {
     priceOptimizationEnabled: true, powerLimits: capacityOnlyPowerLimits(2),
     activePlans: active.getActivePlansSnapshot(), getPrioritiesForDevices: priorities,
     resolveDeviceExclusion: noDeviceExclusion, getStallClassification: noStallEvidence,
+    hasObservedTask: () => false,
     getDeliveredEnergyKWh: energy.getDeliveredKWh, isReservationSuppressed: history.isReservationSuppressed,
   });
   return {

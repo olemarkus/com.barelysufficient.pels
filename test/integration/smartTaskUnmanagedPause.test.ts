@@ -109,6 +109,7 @@ const buildDiagnosticsParams = (overrides: {
   priceOptimizationEnabled: true,
   activePlans: createEmptyActivePlans(),
   getStallClassification: noStallEvidence,
+  hasObservedTask: () => false,
   isReservationSuppressed: noReservationSuppression,
   getDeliveredEnergyKWh: noDeliveredEnergy,
   resolveDeviceExclusion: overrides.resolveDeviceExclusion ?? noDeviceExclusion,
