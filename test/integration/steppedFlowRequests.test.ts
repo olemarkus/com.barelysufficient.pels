@@ -1,6 +1,6 @@
 import { SteppedFlowRequests } from '../../lib/device/transport/steppedFlowRequests';
 import type { ChargingCurrentControl } from '../../lib/device/chargingCurrentControl';
-import type { TeslaChargingSession } from '../../lib/device/teslaChargingSession';
+import type { DeviceAdapterSessions } from '../../lib/device/deviceAdapterRegistry';
 import type { TransportSnapshotStore } from '../../lib/device/transport/transportSnapshotStore';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import { createSettingsHandler } from '../../lib/utils/settingsHandlers';
@@ -15,7 +15,7 @@ function harness() {
   const current = partialDouble<ChargingCurrentControl>({ generation: 1,
     setup: () => ({ method: 'flow', confirmation: 'single_charger' }),
     assertControlAllowed: () => {},
-    homeSession: partialDouble<TeslaChargingSession>({ sessionId: () => 0 }),
+    sessions: partialDouble<DeviceAdapterSessions>({ controlRevision: () => 0 }),
   });
   const requests = new SteppedFlowRequests(snapshots, current);
   const handler = createSettingsHandler(settingsHandlerDepsDouble({

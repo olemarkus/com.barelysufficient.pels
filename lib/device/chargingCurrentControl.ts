@@ -1,9 +1,8 @@
 import { SteppedLoadRequestTimeoutError } from '../ports/steppedLoadWrite';
 import { isHomeyRequestTimeout } from '../utils/errorUtils';
-import { TeslaChargingSession } from './teslaChargingSession';
+import { DeviceAdapterSessions } from './deviceAdapterRegistry';
 import { HubHomeLocation } from './hubHomeLocation';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
-import { isTeslaChargingDevice } from './chargingCurrentAdapter';
 import type { ChargingCurrentRead, ChargingCurrentSetup } from '../../packages/contracts/src/chargingControl';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import type { HomeyDeviceLike } from '../utils/types';
@@ -11,7 +10,7 @@ import { readFlowCapabilityWrites } from '../flowApi/readUserFlows';
 import {
   hasSharedChargingInstallation, resolveChargingCurrentAdapter, resolveChargingCurrentAction,
 } from './chargingCurrentAdapter';
-import type { ChargingCurrentAdapter } from './chargingCurrentAdapter';
+import type { ChargingCurrentBinding } from './deviceAdapter';
 import { ChargingAccess, type ChargingAccessHomey } from './transport/chargingAccess';
 import type { Logger } from '../utils/types';
 import { getRawFromHomeyApi } from './transport/managerHomeyApi';
@@ -34,7 +33,7 @@ export class ChargingCurrentControl {
   private savedRepresentation = '';
   readonly access: ChargingAccess;
   private readonly settings: SettingsPort;
-  readonly homeSession: TeslaChargingSession;
+  readonly sessions: DeviceAdapterSessions;
   private readonly homeLocation = new HubHomeLocation();
   private readonly setups = new Map<string, ChargingCurrentSetup>();
 
@@ -46,7 +45,7 @@ export class ChargingCurrentControl {
   ) {
     this.settings = homey.settings;
     this.access = new ChargingAccess(homey, logger);
-    this.homeSession = new TeslaChargingSession(this.homeLocation);
+    this.sessions = new DeviceAdapterSessions(this.homeLocation);
   }
 
   /** Read before the first snapshot, so a home session can start on the first observation. */
@@ -54,36 +53,26 @@ export class ChargingCurrentControl {
 
   synchronizeTrust(): boolean {
     const trust = this.readTrust();
-    this.homeSession.setTrustEpoch(`${trust.connected}:${trust.revision}`);
+    this.sessions.setTrustEpoch(`${trust.connected}:${trust.revision}`);
     return trust.connected;
   }
 
   observeDevices(devices: readonly HomeyDeviceLike[]): void {
     void this.homeLocation.refreshIfDue();
-    if (this.synchronizeTrust()) this.homeSession.observeDevices(devices);
+    if (this.synchronizeTrust()) this.sessions.observeDevices(devices);
   }
 
   assertControlAllowed(device: HomeyDeviceLike): void {
-    if (isTeslaChargingDevice(device) && !this.synchronizeTrust()) {
-      throw new Error('Tesla charging requires a connected Homey device feed.');
-    }
-    if (isTeslaChargingDevice(device)
-      && (this.setup(device.id).confirmation !== 'vehicle' || !this.homeSession.isAllowed(device.id))) {
-      throw new Error('Tesla charging requires a confirmed stationary AC charging session at home.');
-    }
+    const connected = this.synchronizeTrust();
+    this.sessions.assertAllowed(device, this.setup(device.id), connected);
   }
 
-  projectHomeControl(source: TransportDeviceSnapshot): TransportDeviceSnapshot {
+  projectControl(source: TransportDeviceSnapshot): TransportDeviceSnapshot {
     const setup = this.setup(source.id);
     const snapshot = setup.method === 'built_in' && source.controlAdapter
       ? { ...source, controlAdapter: { ...source.controlAdapter, currentControl: 'built_in' as const } }
       : source;
-    if (snapshot.binaryWriteCapabilityId !== 'charging_on'
-      || (this.setup(snapshot.id).confirmation === 'vehicle' && this.homeSession.isAllowed(snapshot.id))) {
-      return snapshot;
-    }
-    // This is power attributable to this home, not power at a remote charge point.
-    return { ...snapshot, available: false, measuredPowerKw: 0 };
+    return this.sessions.project(snapshot, setup);
   }
 
   get generation(): number { this.sync(); return this.revision; }
@@ -188,7 +177,7 @@ export class ChargingCurrentControl {
     return 'homey_action';
   }
 
-  private assertInstallation(adapter: ChargingCurrentAdapter): void {
+  private assertInstallation(adapter: ChargingCurrentBinding): void {
     if (adapter.scope.kind === 'installation' && (this.setup(adapter.deviceId).confirmation !== 'single_charger'
       || hasSharedChargingInstallation(adapter, this.getDevices()))) {
       throw new Error('Built-in current control requires a single-charger installation.');

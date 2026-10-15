@@ -240,7 +240,7 @@ function commitRefreshedSnapshot(refresh: SnapshotRefreshService, params: {
     // limited to the device poll, which loses the timing of individual reports.
     refresh.deviceSdk.updateTrackedDevices([
         ...snapshot.map((d) => d.id),
-        ...refresh.reader.chargingCurrentControl.homeSession.observedIds(),
+        ...refresh.reader.chargingCurrentControl.sessions.observedIds(),
         ...refresh.observationProducers.evCarLink.getObservedCarDeviceIds(),
     ]);
     fireSnapshotMutatedForRefresh(refresh, snapshot, previousSnapshot);
@@ -291,7 +291,7 @@ function adoptCommittedDeviceList(
     refresh.reader.syncTrackedDevices(trackingList);
     if (isFullRead) {
         refresh.reader.snapshotStore.replaceLatestRawDevices(effectiveList);
-        refresh.reader.chargingCurrentControl.homeSession.retainDevices(effectiveList);
+        refresh.reader.chargingCurrentControl.sessions.retainDevices(effectiveList);
     }
 }
 
@@ -536,7 +536,7 @@ export class SnapshotRefreshService {
         observeEvCarLinkAndResubscribe(
             this.observationProducers.evCarLink,
             (deviceIds) => this.deviceSdk.updateTrackedDevices([
-                ...deviceIds, ...this.reader.chargingCurrentControl.homeSession.observedIds(),
+                ...deviceIds, ...this.reader.chargingCurrentControl.sessions.observedIds(),
             ]),
             read,
             fetchSource,

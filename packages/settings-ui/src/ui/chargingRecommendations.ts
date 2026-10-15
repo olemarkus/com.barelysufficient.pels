@@ -24,17 +24,17 @@ export function chargingRecommendations(
     } else if (device.scope === 'vehicle' && device.setup.confirmation !== 'vehicle') {
       kind = 'charging-owner';
       title = `Choose how PELS controls ${name}`;
-      body = 'Control either the Tesla vehicle or its physical charger. '
+      body = 'Control either the car or its physical charger. '
         + 'Confirm your choice on the device page before enabling car control.';
     } else if (device.setup.method === 'built_in' && (device.capabilityWritable || access.state === 'ready')) return [];
     else {
       kind = 'charging-setup';
       title = `Set up charging-current control for ${name}`;
       body = device.capabilityWritable
-        ? 'This charger exposes writable current control. '
+        ? 'This device exposes writable current control. '
           + 'Review the installation and choose built-in control on its device page.'
         : 'Use a Homey API key with Flow permission for built-in current control, or keep a current-setting Flow. '
-          + 'One key works for all supported chargers on this Homey.';
+          + 'One key works for all supported cars and chargers on this Homey.';
     }
     return [{ id: `${kind}:${encodeURIComponent(device.deviceId)}`, version: 1, category: 'recommendation',
       title, body, actionLabel: 'Review device', target: { kind: 'device', deviceId: device.deviceId } }];

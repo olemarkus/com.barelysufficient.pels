@@ -1,17 +1,11 @@
-import type { HomeyDeviceLike } from '../utils/types';
-import { toCapabilityTimestampMs } from './managerControl';
+import type { HomeyDeviceLike } from '../../utils/types';
+import { toCapabilityTimestampMs } from '../managerControl';
 
-export type Coordinates = { latitude: number; longitude: number };
+import { readCoordinates, type Coordinates } from '../deviceCoordinates';
 /** The hub's home coordinates; none until the first location read is accepted, so home authorization fails closed. */
 export type HomeLocation = { coordinates(): Coordinates | undefined };
 export type HomeSessionIdentity = { vehicleId: string; locationId: string; carId: string };
 export type HomeSessionEvidence = { identity: HomeSessionIdentity; coordinateAtMs: number };
-
-export function readCoordinates(latitude: unknown, longitude: unknown): Coordinates | undefined {
-  if (typeof latitude !== 'number' || !Number.isFinite(latitude) || Math.abs(latitude) > 90) return undefined;
-  if (typeof longitude !== 'number' || !Number.isFinite(longitude) || Math.abs(longitude) > 180) return undefined;
-  return { latitude, longitude };
-}
 
 function distanceM(point: Coordinates, home: Coordinates): number {
   const radians = Math.PI / 180;

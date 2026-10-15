@@ -1,10 +1,12 @@
-import { confirmedTeslaCurrent } from './teslaChargingWiring';
-import type { HomeyDeviceLike } from '../utils/types';
-import { toCapabilityTimestampMs } from './managerControl';
-import { isTeslaChargingDevice } from './chargingCurrentAdapter';
+import type { ChargingCurrentSetup } from '../../../packages/contracts/src/chargingControl';
+import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
+import type { DeviceAdapterSession, AdapterObservation } from '../deviceAdapter';
+import { hasTeslaChargingSurface, confirmedTeslaCurrent } from './charging';
+import type { HomeyDeviceLike } from '../../utils/types';
+import { toCapabilityTimestampMs } from '../managerControl';
+import { isTeslaChargingDevice } from './identity';
 
-import { readTeslaHomeEvidence, type HomeLocation, type HomeSessionIdentity } from './teslaChargingEvidence';
-export type { HomeLocation } from './teslaChargingEvidence';
+import { readTeslaHomeEvidence, type HomeLocation, type HomeSessionIdentity } from './evidence';
 type HomeSession = { id: number; identity: HomeSessionIdentity };
 const FRESH_LOCATION_MS = 10 * 60_000;
 const NUMERIC_OBSERVATIONS = new Set([
@@ -19,7 +21,7 @@ function isObservationValue(id: string, value: unknown): boolean {
 }
 
 /** Home authorization belongs to one uninterrupted, stationary AC session. */
-export class TeslaChargingSession {
+export class TeslaChargingSession implements DeviceAdapterSession {
   private readonly devices = new Map<string, HomeyDeviceLike>();
   private readonly sessions = new Map<string, HomeSession>();
   private nextSessionId = 1;
@@ -28,6 +30,36 @@ export class TeslaChargingSession {
   private readonly disconnectedAt = new Map<string, number>();
 
   constructor(private readonly home: HomeLocation) {}
+
+  controls(snapshot: AdapterObservation): boolean { return hasTeslaChargingSurface(snapshot); }
+
+  assertAllowed(device: HomeyDeviceLike, setup: ChargingCurrentSetup, connected: boolean): void {
+    if (!isTeslaChargingDevice(device)) return;
+    if (!connected) throw new Error('Tesla charging requires a connected Homey device feed.');
+    if (setup.confirmation !== 'vehicle' || !this.isAllowed(device.id)) {
+      throw new Error('Tesla charging requires a confirmed stationary AC charging session at home.');
+    }
+  }
+
+  controlRevision(deviceId: string): number { return this.sessionId(deviceId); }
+
+  project(snapshot: TransportDeviceSnapshot, setup: ChargingCurrentSetup): TransportDeviceSnapshot {
+    if (setup.confirmation === 'vehicle' && this.isAllowed(snapshot.id)) return snapshot;
+    // A connected vehicle outside the accepted home session contributes no home charging power.
+    return { ...snapshot, available: false, measuredPowerKw: 0 };
+  }
+
+  controlEvents(deviceId: string, capabilityId: string, value: unknown) {
+    const localValue = capabilityId === 'measure_charge_power' && !this.isAllowed(deviceId) ? 0 : value;
+    const events = [{ capabilityId, value: localValue }];
+    if (['measure_charge_current', 'measure_charge_current_max',
+      'measure_charge_power', 'charging_on', 'charging_state']
+      .includes(capabilityId)) {
+      const current = this.confirmedCurrent(deviceId);
+      if (current !== undefined) events.push({ capabilityId: 'available_installation_current', value: current });
+    }
+    return events;
+  }
 
   observeDevices(devices: readonly HomeyDeviceLike[]): void {
     for (const device of devices) this.observeDevice(device);

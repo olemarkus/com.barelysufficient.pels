@@ -6,10 +6,10 @@ import { emitCapability, emitDeviceUpdate } from '../helpers/liveFeedSocketHarne
 import { mockHomeyInstance, setMockGeolocation } from '../mocks/homey';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import { getLogger } from '../../lib/logging/logger';
-import { TeslaChargingSession } from '../../lib/device/teslaChargingSession';
+import { TeslaChargingSession } from '../../lib/device/tesla/session';
 import { applyNativeEvWiringOverlay } from '../../lib/device/nativeEvWiring';
 import { resolveDeviceClassKey } from '../../lib/device/transport/managerHelpers';
-import { confirmedTeslaCurrent } from '../../lib/device/teslaChargingWiring';
+import { confirmedTeslaCurrent } from '../../lib/device/tesla/charging';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 
 const now = Date.parse('2026-10-13T10:00:00Z');
@@ -40,7 +40,7 @@ afterEach(() => { vi.useRealTimers(); setMockGeolocation(59.91, 10.75); });
 test('normalizes the charging sensor into EV capabilities, watts and state without becoming a home battery', () => {
   const battery = devices()[0]!;
   expect(resolveDeviceClassKey(battery)).toBe('evcharger');
-  const result = applyNativeEvWiringOverlay({ device: battery, capabilities: battery.capabilities!, capabilityObj: battery.capabilitiesObj as import('../../lib/device/managerControl').DeviceCapabilityMap });
+  const result = applyNativeEvWiringOverlay(battery, battery.capabilities!, battery.capabilitiesObj as import('../../lib/device/managerControl').DeviceCapabilityMap);
   expect(result.binaryWriteCapabilityId).toBe('charging_on');
   expect(result.capabilityObj.measure_power?.value).toBe(4000);
   expect(result.capabilityObj.evcharger_charging_state?.value).toBe('plugged_in_charging');

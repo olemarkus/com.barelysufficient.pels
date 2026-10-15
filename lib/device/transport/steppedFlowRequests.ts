@@ -3,7 +3,7 @@ import type { ChargingCurrentControl } from '../chargingCurrentControl';
 import { isCanSetControl } from '../deviceActionProjection';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
 
-type FlowRequest = { id: string; sessionId: number; generation: number };
+type FlowRequest = { id: string; controlRevision: number; generation: number };
 
 /** Opaque, per-device authority for a user Flow's immediate current action. */
 export class SteppedFlowRequests {
@@ -21,7 +21,7 @@ export class SteppedFlowRequests {
   issue(deviceId: string): string {
     const id = randomUUID();
     this.requests.set(deviceId, { id, generation: this.current.generation,
-      sessionId: this.current.homeSession.sessionId(deviceId) });
+      controlRevision: this.current.sessions.controlRevision(deviceId) });
     return id;
   }
 
@@ -33,6 +33,6 @@ export class SteppedFlowRequests {
     if (!snapshot || !raw || snapshot.available === false || !isCanSetControl(snapshot)) return false;
     if (this.current.setup(deviceId).method !== 'flow') return false;
     try { this.current.assertControlAllowed(raw); } catch { return false; }
-    return request.sessionId === this.current.homeSession.sessionId(deviceId);
+    return request.controlRevision === this.current.sessions.controlRevision(deviceId);
   }
 }

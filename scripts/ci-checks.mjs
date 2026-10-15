@@ -14,6 +14,7 @@ await runParallel([
   { label: 'lint:html', command: 'npm', args: ['run', 'lint:html'] },
   { label: 'arch', command: 'npm', args: ['run', 'arch:check'] },
   { label: 'arch:grep', command: 'npm', args: ['run', 'arch:grep'] },
+  { label: 'device:adapters', command: 'npm', args: ['run', 'device:adapters'] },
   { label: 'ev:vocab', command: 'npm', args: ['run', 'ev:vocab'] },
   { label: 'control-model:vocab', command: 'npm', args: ['run', 'control-model:vocab'] },
   { label: 'device-kind:vocab', command: 'npm', args: ['run', 'device-kind:vocab'] },

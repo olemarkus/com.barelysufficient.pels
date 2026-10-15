@@ -8,20 +8,20 @@
  * reads the switch from the plug state and the current instead of from the
  * app's switch. See `notes/native-wiring/README.md`.
  */
-import type { CapabilityValue, HomeyDeviceLike } from '../utils/types';
-import type { DeviceCapabilityMap } from './managerControl';
-import { toCapabilityTimestampMs } from './managerControl';
-import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
-import { isSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
-import type { EvChargingState } from '../../packages/contracts/src/types';
-import { isEvChargingState } from '../../packages/shared-domain/src/evPlugState';
+import type { CapabilityValue, HomeyDeviceLike } from '../../utils/types';
+import type { DeviceCapabilityMap } from '../managerControl';
+import { toCapabilityTimestampMs } from '../managerControl';
+import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
+import { isSteppedLoadOffStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
+import type { EvChargingState } from '../../../packages/contracts/src/types';
+import { isEvChargingState } from '../../../packages/shared-domain/src/evPlugState';
 import {
   EASEE_CHARGER_CURRENT_CAPABILITY_ID,
   EASEE_MIN_CHARGING_CURRENT_A,
   isEaseeChargerCurrentCandidate,
-  isNativeSteppedLoadControlEnabled,
-  type CapabilityWrite,
-} from './nativeSteppedLoadWiring';
+} from './current';
+import { isNativeSteppedLoadControlEnabled } from '../deviceAdapter';
+import type { CapabilityWrite } from '../deviceAdapter';
 
 /**
  * How PELS's write to an Easee's charging switch reaches the charger: as a
@@ -75,15 +75,20 @@ const SWITCH: EaseeSwitchWrite = { kind: 'switch' };
  */
 export function resolveEaseeSwitchWrite(
   snapshot: TransportDeviceSnapshot,
-  trackedDevice: HomeyDeviceLike | undefined,
   desired: boolean,
 ): EaseeSwitchWrite {
   if (isEaseeUnderBuiltInControl(snapshot)) {
     if (!desired) return PAUSE;
     return snapshot.evChargingState === 'plugged_in' ? SWITCH : RESUME;
   }
-  const device = trackedDevice;
-  if (!desired || device === undefined || snapshot.evChargingState !== 'plugged_in_paused') return SWITCH;
+  return SWITCH;
+}
+
+export function recoverEaseeSwitchWrite(
+  snapshot: TransportDeviceSnapshot, device: HomeyDeviceLike, desired: boolean,
+): EaseeSwitchWrite {
+  if (isEaseeUnderBuiltInControl(snapshot)) return resolveEaseeSwitchWrite(snapshot, desired);
+  if (!desired || snapshot.evChargingState !== 'plugged_in_paused') return SWITCH;
   const capabilityObj = getCapabilityObj(device);
   if (!isEaseeChargerCurrentCandidate(device, capabilityObj)) return SWITCH;
   const currentA = readCurrentA(capabilityObj[EASEE_CHARGER_CURRENT_CAPABILITY_ID]?.value);

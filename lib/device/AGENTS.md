@@ -24,3 +24,22 @@ A newer realtime observation can outrank an older snapshot. Snapshot refresh mus
 ### Merge and convergence
 
 Realtime observations update the observed view before any convergence decision. Preserve pending command state until confirmation or timeout, and suppress an equivalent pending write unless retry policy permits it. Execution compares a newly decided plan with observer truth through `lib/executor/`; it does not reapply a committed plan directly after a device event. Structured logs should distinguish observed, planned, commanded, and pending values.
+
+## Integration adapters
+
+Tesla vehicle charging, Easee and Zaptec interpretation belongs in `tesla/`,
+`easee/` and `zaptec/`. Each implements the common `DeviceAdapter` interface;
+only `deviceAdapterRegistry.ts` imports their entrypoints. Integrations do not
+import each other. Common transport dispatches adapter operations and publishes
+existing device observations; it does not inspect vendor identities or capability
+names to decide behavior. `npm run device:adapters` checks source imports,
+including type-only imports, and raw vendor discriminators.
+
+Keep companion matching, read validation, session authorization, current
+confirmation and command translation with their integration. Adapter state is
+owned by the transport instance, never a module singleton. Native current
+controls and app-action bindings are discovered collections of actual supported
+operations; rejected reads produce no observations. Do not add optional hooks,
+nullable resolved results, parameter bundles or vendor policy fields to the
+planner, executor or UI model. I/O, credentials and actuator delivery remain with
+the common host. Public contracts and settings retain their existing shapes.

@@ -110,3 +110,19 @@ Copilot and CodeRabbit reviewed head `a9310e224`. Verified findings were fixed:
 The reported stale-map save race was rejected: `list()` calls `setup()`/`sync()` after its awaited Flow inventory read, and concurrent saves mutate the same owner-held map synchronously. No separate settings-import writer for this key exists in the current implementation.
 
 Focused regressions passed (115 runtime, 39 UI), and charging setup browser scenarios passed at 320/480 px in light/dark rendering. These review corrections were validated locally and remain subject to the final CI gate, not reinstalled on SHS; the SHS evidence above remains tied to its recorded commit.
+
+## Integration boundary
+
+`lib/device/tesla/`, `lib/device/easee/` and `lib/device/zaptec/` own their raw
+Homey identities, capability interpretation and command translation. Only
+`lib/device/deviceAdapterRegistry.ts` imports their public entrypoints. Each
+implements the required `DeviceAdapter` operations; transport instances own
+session state through the registry. The common host owns I/O, credentials,
+subscriptions and actuator delivery.
+
+Tesla sibling matching, home-session authorization and current confirmation stay
+inside its adapter. The host receives existing device observations and an opaque
+control revision for invalidating pending requests. Planner, executor and UI
+contracts gain no vendor flags or session requirements. Adapter operations have
+no optional hooks or nullable resolved results. `npm run device:adapters` guards
+this boundary, including type-only imports and raw vendor discriminators.

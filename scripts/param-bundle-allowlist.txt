@@ -39,7 +39,6 @@ lib/device/managerMeasuredPower.ts 1
 lib/device/managerRuntime.ts 2
 lib/device/measuredPowerReader.ts 1
 lib/device/measuredPowerResolver.ts 1
-lib/device/nativeEvWiring.ts 2
 lib/device/nativeSteppedLoadWiring.ts 8
 lib/device/targetPowerContractWarn.ts 2
 lib/device/targetPowerProbeScheduler.ts 1

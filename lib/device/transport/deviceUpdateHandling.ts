@@ -132,10 +132,7 @@ export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, d
         ingest.reader.snapshotStore.trackRawDevice(deviceId, effectiveDevice);
         ingest.reader.syncNativeSteppedLoadCommandAdapters();
     }
-    const observedDevice = buildNativeEvObservationDevice({
-        device: effectiveDevice,
-        previousSnapshot,
-    });
+    const observedDevice = buildNativeEvObservationDevice(effectiveDevice, previousSnapshot);
     // Defer the observed-state emission until AFTER the snapshot commit
     // below. `dispatchObservedStateChanged` enriches the event by projecting
     // `latestSnapshotById`, so emitting inline here would project the

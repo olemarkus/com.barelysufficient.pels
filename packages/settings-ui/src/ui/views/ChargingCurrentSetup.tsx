@@ -63,15 +63,15 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
     {device.flowCheck === 'unavailable' && <p class="field__hint">PELS could not check your Flows. Check again before changing control methods.</p>}
     {device.scope === 'vehicle' && <div>
       <label class="md-switch-row">
-        <span class="md-switch-row__content"><span class="md-switch-row__label">Control this car through Tesla</span></span>
-        <MdSwitch aria-label="Control this car through Tesla" selected={vehicleControl} disabled={busy}
+        <span class="md-switch-row__content"><span class="md-switch-row__label">Control charging through this car</span></span>
+        <MdSwitch aria-label="Control charging through this car" selected={vehicleControl} disabled={busy}
           onChange={(event: Event) => setVehicleControl(readSwitchSelected(event))} />
       </label>
-      <p class="field__hint">Manage either the car or its physical charger in PELS. Turn off Power-limit control for the other device. Tesla control only runs during a confirmed AC charging session at home.</p>
+      <p class="field__hint">Manage either the car or its physical charger in PELS. Turn off Power-limit control for the other device.</p>
       <MdOutlinedButton disabled={busy || vehicleControl === (device.setup.confirmation === 'vehicle')}
         onClick={() => props.onSaveMethod({ ...device.setup, confirmation: vehicleControl ? 'vehicle' : 'none' })}>Save car control</MdOutlinedButton>
     </div>}
-    {device.sharedInstallation && <p class="field__hint">This Zaptec installation has more than one charger. Use a Flow for current control.</p>}
+    {device.sharedInstallation && <p class="field__hint">This installation has more than one charger. Use a Flow for current control.</p>}
     {device.scope === 'installation' && !device.sharedInstallation && <label class="md-switch-row">
       <span class="md-switch-row__content"><span class="md-switch-row__label">This installation has only one charger</span></span>
       <MdSwitch aria-label="This installation has only one charger" selected={singleCharger} disabled={busy}
@@ -79,7 +79,7 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
     </label>}
     {((!device.capabilityWritable && !device.sharedInstallation) || access.configured) && <div>
       <p class="field__hint">{ACCESS_COPY[access.state]}</p>
-      <p class="field__hint">In the Homey Web App, open Settings → API Keys and create a key named PELS with Flow permission. One key works for all supported chargers on this Homey. <a href={GUIDE} target="_blank" rel="noopener noreferrer">Create an API key</a></p>
+      <p class="field__hint">In the Homey Web App, open Settings → API Keys and create a key named PELS with Flow permission. One key works for all supported cars and chargers on this Homey. <a href={GUIDE} target="_blank" rel="noopener noreferrer">Create an API key</a></p>
       <MdFilledTextField label={access.configured ? 'Replacement API key' : 'API key'} type="password"
         autocomplete="off" value={key} disabled={busy}
         onInput={(event: Event) => setKey((event.currentTarget as HTMLInputElement).value)} />

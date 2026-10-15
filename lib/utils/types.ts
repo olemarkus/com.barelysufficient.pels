@@ -88,13 +88,9 @@ export type HomeyDeviceLike = {
         onoff?: CapabilityValue<boolean>;
         available_installation_current?: CapabilityValue<number>;
         'alarm_generic.car_connected'?: CapabilityValue<boolean>;
-        charging_button?: CapabilityValue<boolean>;
-        charge_mode?: CapabilityValue<string>;
         evcharger_charging?: CapabilityValue<boolean>;
         evcharger_charging_state?: CapabilityValue<string>;
         measure_battery?: CapabilityValue<number>;
-        measure_soc_level?: CapabilityValue<number>;
-        measure_soc_usable?: CapabilityValue<number>;
         target_temperature?: CapabilityValue<number>;
         target_power?: CapabilityValue<number>;
     };

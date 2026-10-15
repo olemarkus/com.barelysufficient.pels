@@ -1,5 +1,5 @@
 import { getRawFromHomeyApi, HOMEY_LOCATION_API_PATH } from './transport/managerHomeyApi';
-import { readCoordinates, type Coordinates, type HomeLocation } from './teslaChargingEvidence';
+import { readCoordinates, type Coordinates } from './deviceCoordinates';
 
 const RETRY_MS = 60_000;
 const REFRESH_MS = 6 * 60 * 60_000;
@@ -19,7 +19,7 @@ function parseLocation(raw: unknown): Coordinates | undefined {
  * `homey:manager:api` already grants, so PELS needs no SDK geolocation
  * permission. A failed or empty read keeps the last accepted coordinates.
  */
-export class HubHomeLocation implements HomeLocation {
+export class HubHomeLocation {
   private accepted: Coordinates | undefined;
   private nextReadAtMs = 0;
   private pending: Promise<void> | undefined;

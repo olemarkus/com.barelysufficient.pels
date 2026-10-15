@@ -55,6 +55,7 @@
   "ignore": [
     "test/mocks/echarts-subpath-shim.ts",
     "test/mocks/homey.ts",
+    "scripts/check-device-adapters.d.mts",
     "scripts/lib/change-impact.d.mts",
     "scripts/lib/run-parallel.d.mts",
     "scripts/with-validation-lock.d.mts"

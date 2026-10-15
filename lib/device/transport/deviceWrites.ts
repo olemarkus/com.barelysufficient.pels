@@ -22,7 +22,7 @@ import { logEvCapabilityAccepted, logEvCapabilityRequest } from '../managerContr
 import { hasRestClient, setRawCapabilityValue } from './managerHomeyApi';
 import { recordLocalWriteObservation } from './managerObservation';
 import { isNativeSteppedLoadControlEnabled, type CapabilityWrite } from '../nativeSteppedLoadWiring';
-import { isEaseeUnderBuiltInControl, resolveEaseeSwitchWrite } from '../easeeChargingSwitch';
+import { getDeviceAdapter, getSnapshotAdapter } from '../deviceAdapterRegistry';
 import type { SteppedLoadFlowTriggerCard } from './transportTypes';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
@@ -93,17 +93,9 @@ function resolveSwitchSdkWrite(
     trackedDevice: HomeyDeviceLike | undefined,
     requested: CapabilityWrite,
 ): SdkWrite {
-    const plain: SdkWrite = {
-        write: routeSwitchWrite(snapshot, requested),
-        readBackAsWritten: true,
-    };
-    if (typeof requested.value !== 'boolean') return plain;
-    const easeeWrite = resolveEaseeSwitchWrite(snapshot, trackedDevice, requested.value);
-    const readBackAsWritten = !isEaseeUnderBuiltInControl(snapshot);
-    if (easeeWrite.kind === 'current') {
-        return { write: easeeWrite.write, readBackAsWritten };
-    }
-    return { ...plain, readBackAsWritten };
+    return trackedDevice
+        ? getDeviceAdapter(trackedDevice).recoverSwitchWrite(snapshot, trackedDevice, requested)
+        : getSnapshotAdapter(snapshot).switchWrite(snapshot, requested);
 }
 
 /**
@@ -125,9 +117,6 @@ function requireSetpointSurface(
     return surface;
 }
 
-function routeSwitchWrite(snapshot: TransportDeviceSnapshot, requested: CapabilityWrite): CapabilityWrite {
-    return { capabilityId: snapshot.binaryWriteCapabilityId ?? requested.capabilityId, value: requested.value };
-}
 
 export class DeviceWriteService {
   readonly flowRequests: SteppedFlowRequests;
@@ -142,10 +131,15 @@ export class DeviceWriteService {
     private readonly dispatchObservedStateForDevice: (deviceId: string, capabilityId?: string) => void,
   ) { this.flowRequests = new SteppedFlowRequests(snapshotStore, chargingCurrentControl); }
 
+  private requiresAdapterControl(deviceId: string): boolean {
+    const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
+    return snapshot !== undefined && this.chargingCurrentControl.sessions.controls(snapshot);
+  }
+
   private assertControlAllowed(deviceId: string): HomeyDeviceLike | undefined {
     const raw = this.snapshotStore.getTrackedRawDevice(deviceId);
-    if (!raw && this.snapshotStore.getSnapshotByDeviceId(deviceId)?.binaryWriteCapabilityId === 'charging_on') {
-      throw new Error('Tesla device metadata is unavailable.');
+    if (!raw && this.requiresAdapterControl(deviceId)) {
+      throw new Error('Device control metadata is unavailable.');
     }
     if (raw) this.chargingCurrentControl.assertControlAllowed(raw);
     return raw;
@@ -202,7 +196,7 @@ export class DeviceWriteService {
         write,
     );
 
-    if (readBackAsWritten && snapshotBefore?.binaryWriteCapabilityId !== 'charging_on') {
+    if (readBackAsWritten && (!snapshotBefore || getSnapshotAdapter(snapshotBefore).readBackAfterWrite)) {
         recordLocalWriteObservation({
             state: this.observationState.getObservationState(),
             latestSnapshot: this.snapshotStore.getSnapshot(),

@@ -44,7 +44,7 @@ capabilities instead of round-tripping through user-authored Flow cards.
   `stop_charging`, which ends the session: an RFID-authorised charger then
   needs its card again (community thread 147496, post 159), and every
   restart opens a new session at the 32 A maximum. So
-  `resolveEaseeSwitchWrite` (`lib/device/easeeChargingSwitch.ts`, called
+  `resolveEaseeSwitchWrite` (`lib/device/easee/switch.ts`, called
   from `transport/deviceWrites.ts`) writes `false` as 0 A, which Easee
   answers with `Paused` (`plugged_in_paused`), the session still open.
   `true` writes 6 A, the smallest current it charges at, except on a session
@@ -67,7 +67,7 @@ capabilities instead of round-tripping through user-authored Flow cards.
 
   The switch is read back (`withEaseeObservedCharging` on a read,
   `resolveEaseeRealtimeUpdates` on realtime events, both in
-  `lib/device/easeeChargingSwitch.ts`) from the plug state and the current,
+  `lib/device/easee/switch.ts`) from the plug state and the current,
   never from the app's own `evcharger_charging`: on while the charger is
   `plugged_in_charging`, and while it is `plugged_in_paused` holding 6 A or
   more; off otherwise. The app 2.0.5 derives its switch from the same charger

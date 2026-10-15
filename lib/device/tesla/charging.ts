@@ -1,6 +1,6 @@
-import { toCapabilityTimestampMs, type DeviceCapabilityMap } from './managerControl';
-import type { HomeyDeviceLike } from '../utils/types';
-import { isTeslaChargingDevice } from './chargingCurrentAdapter';
+import { toCapabilityTimestampMs, type DeviceCapabilityMap } from '../managerControl';
+import type { HomeyDeviceLike } from '../../utils/types';
+import { isTeslaChargingDevice } from './identity';
 
 const TESLA_CHARGING_STATES = new Set([
   'Disconnected', 'Calibrating', 'Starting', 'Charging', 'Stopped', 'Complete', 'NoPower', 'Unknown',

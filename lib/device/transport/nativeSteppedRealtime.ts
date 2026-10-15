@@ -1,3 +1,4 @@
+import { getCapabilityAdapter, getSnapshotAdapter } from '../deviceAdapterRegistry';
 /**
  * Native stepped-load realtime handling: translates a `target_power` /
  * stepped-load / `available_installation_current` capability change into a
@@ -12,8 +13,6 @@ import { getLogger } from '../../logging/logger';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import {
   AVAILABLE_INSTALLATION_CURRENT_CAPABILITY_ID,
-  EASEE_CHARGER_CURRENT_CAPABILITY_ID,
-  EASEE_MIN_CHARGING_CURRENT_A,
   isNativeSteppedLoadControlCapabilityId,
   isNativeSteppedLoadControlEnabled,
   resolveNativeSteppedLoadReportedStepId,
@@ -166,10 +165,12 @@ function resolveNativeReportedStepPowerW(
     capabilityId: string,
     value: unknown,
 ): TransportDeviceSnapshot['reportedStepPowerW'] {
-    if (capabilityId !== 'target_power' && capabilityId !== EASEE_CHARGER_CURRENT_CAPABILITY_ID) return undefined;
+    const current = getCapabilityAdapter([capabilityId]).nativeCurrentControls
+      .find((control) => control.capabilityId === capabilityId);
+    if (capabilityId !== 'target_power' && !current) return undefined;
     if (!isEvTargetPowerConfig(snapshot.targetPowerConfig)) return undefined;
     if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
-    if (capabilityId === EASEE_CHARGER_CURRENT_CAPABILITY_ID && value < EASEE_MIN_CHARGING_CURRENT_A) return 0;
+    if (current && value < current.minimumChargingA) return 0;
     return Math.round(value * resolveEvStepObservationWattsPerUnit(capabilityId, snapshot.targetPowerConfig.preset));
 }
 
@@ -189,7 +190,7 @@ export function handleNativeSteppedLoadCapabilityUpdate(
 
     // A malformed current is not an observation. Consume it before it can
     // replace the adapter's last-good step or advance device freshness.
-    if (isInvalidEaseeCurrent(capabilityId, value)) return true;
+    if (isInvalidNativeCurrent(capabilityId, value)) return true;
 
     const normalizedValue = normalizeRealtimeCapabilityEventValue(capabilityId, value);
     // An Easee current echo is also the only source for its reported rung and
@@ -205,7 +206,8 @@ export function handleNativeSteppedLoadCapabilityUpdate(
     if (reportedStepPowerW !== undefined && reportedStepPowerW < 0) return true;
     if (reportedStepPowerW !== undefined) extendLadderWithExactTargetPower(snapshot, reportedStepPowerW);
 
-    if (capabilityId === 'target_power' || capabilityId === EASEE_CHARGER_CURRENT_CAPABILITY_ID) {
+    if (capabilityId === 'target_power' || getCapabilityAdapter([capabilityId]).nativeCurrentControls
+      .some((control) => control.capabilityId === capabilityId)) {
         recordRealtimeObservation(ingest, deviceId, capabilityId, normalizedValue, true);
     }
 
@@ -230,8 +232,9 @@ export function handleNativeSteppedLoadCapabilityUpdate(
     return isNativePowerStepUpdate;
 }
 
-function isInvalidEaseeCurrent(capabilityId: string, value: unknown): boolean {
-    return capabilityId === EASEE_CHARGER_CURRENT_CAPABILITY_ID
+function isInvalidNativeCurrent(capabilityId: string, value: unknown): boolean {
+    return getCapabilityAdapter([capabilityId]).nativeCurrentControls
+      .some((control) => control.capabilityId === capabilityId)
         && (typeof value !== 'number' || !Number.isFinite(value) || value < 0);
 }
 
@@ -241,7 +244,8 @@ function shouldSuppressOwnNativeStepEcho(
     capabilityId: string,
     normalizedValue: unknown,
 ): boolean {
-    return capabilityId !== EASEE_CHARGER_CURRENT_CAPABILITY_ID
+    return !getCapabilityAdapter([capabilityId]).nativeCurrentControls
+      .some((control) => control.capabilityId === capabilityId)
         && hasMatchingRecentLocalWrite(ingest.observationBridge.state, deviceId, capabilityId, normalizedValue);
 }
 
@@ -256,7 +260,7 @@ export function handleTargetPowerSourceCapabilityUpdate(
 ): boolean {
     if (capabilityId !== AVAILABLE_INSTALLATION_CURRENT_CAPABILITY_ID) return false;
     if (isNativeSteppedLoadControlEnabled(snapshot)
-        && snapshot.capabilities?.includes(EASEE_CHARGER_CURRENT_CAPABILITY_ID)) return true;
+        && getSnapshotAdapter(snapshot).nativeCurrentControls.length > 0) return true;
     const phaseCount = resolveTargetPowerPresetPhaseCount(snapshot.targetPowerConfig?.preset);
     if (!phaseCount || typeof value !== 'number' || !Number.isFinite(value)) return false;
     const profile = snapshot.steppedLoadProfile;

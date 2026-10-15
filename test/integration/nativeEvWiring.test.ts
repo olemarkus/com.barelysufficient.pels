@@ -435,16 +435,12 @@ describe('native EV wiring shim', () => {
 
   it('dates each synthesized EV capability by the sources that decided its value', () => {
     const device = buildZaptecDevice();
-    const overlay = applyNativeEvWiringOverlay({
-      device,
-      capabilities: [...device.capabilities!],
-      capabilityObj: {
+    const overlay = applyNativeEvWiringOverlay(device, [...device.capabilities!], {
         measure_power: { value: 7200 },
         charging_button: { value: false, setable: true, lastUpdated: '2026-04-22T09:00:01.000Z' },
         charge_mode: { value: 'Connecting to car', lastUpdated: '2026-04-22T09:00:05.000Z' },
         'alarm_generic.car_connected': { value: true, lastUpdated: '2026-04-22T09:00:07.000Z' },
-      },
-    });
+      });
 
     // The button decided `evcharger_charging`, so a later mode change does not
     // make that button value look newer; the plug state comes from the mode and
@@ -457,13 +453,10 @@ describe('native EV wiring shim', () => {
     // The alarm says a car is attached and nothing more. Collapsing V2G to
     // `plugged_in_paused` would read as commandable when it is not.
     expect(normalizeNativeEvCapabilityUpdate({
-      snapshot: {
+        capabilities: buildZaptecDevice().capabilities,
         controlAdapter: { kind: 'capability_adapter', activationRequired: false, activationEnabled: true },
         evChargingState: 'plugged_in_discharging',
-      },
-      capabilityId: 'alarm_generic.car_connected',
-      value: true,
-    })).toEqual([{ capabilityId: 'evcharger_charging_state', value: 'plugged_in_discharging' }]);
+      }, 'alarm_generic.car_connected', true)).toEqual([{ capabilityId: 'evcharger_charging_state', value: 'plugged_in_discharging' }]);
   });
 
   it('still synthesizes the plug state for a charger that has only the command axis', async () => {
@@ -701,7 +694,6 @@ describe('native EV wiring shim', () => {
   it('maps the real Zaptec charge_mode strings into EV charger states', () => {
     const device = buildZaptecDevice();
     const chargingOverlay = applyNativeEvWiringOverlay({
-      device: {
         ...device,
         capabilitiesObj: {
           ...device.capabilitiesObj,
@@ -709,18 +701,14 @@ describe('native EV wiring shim', () => {
           charge_mode: { value: 'Charging' },
           'alarm_generic.car_connected': { value: true },
         },
-      },
-      capabilities: [...device.capabilities!],
-      capabilityObj: {
+      }, [...device.capabilities!], {
         ...device.capabilitiesObj,
         charging_button: { value: true, setable: true },
         charge_mode: { value: 'Charging' },
         'alarm_generic.car_connected': { value: true },
-      },
-    });
+      });
 
     const finishedOverlay = applyNativeEvWiringOverlay({
-      device: {
         ...device,
         capabilitiesObj: {
           ...device.capabilitiesObj,
@@ -728,32 +716,25 @@ describe('native EV wiring shim', () => {
           charge_mode: { value: 'Charging finished' },
           'alarm_generic.car_connected': { value: true },
         },
-      },
-      capabilities: [...device.capabilities!],
-      capabilityObj: {
+      }, [...device.capabilities!], {
         ...device.capabilitiesObj,
         charging_button: { value: false, setable: true },
         charge_mode: { value: 'Charging finished' },
         'alarm_generic.car_connected': { value: true },
-      },
-    });
+      });
 
     const disconnectedOverlay = applyNativeEvWiringOverlay({
-      device: {
         ...device,
         capabilitiesObj: {
           ...device.capabilitiesObj,
           charge_mode: { value: 'Disconnected' },
           'alarm_generic.car_connected': { value: false },
         },
-      },
-      capabilities: [...device.capabilities!],
-      capabilityObj: {
+      }, [...device.capabilities!], {
         ...device.capabilitiesObj,
         charge_mode: { value: 'Disconnected' },
         'alarm_generic.car_connected': { value: false },
-      },
-    });
+      });
 
     expect(chargingOverlay.capabilityObj.evcharger_charging?.value).toBe(true);
     expect(chargingOverlay.capabilityObj.evcharger_charging_state?.value).toBe('plugged_in_charging');
@@ -781,11 +762,7 @@ describe('native EV wiring shim', () => {
         charge_mode: { value: chargeMode },
         'alarm_generic.car_connected': { value: true },
       };
-      return applyNativeEvWiringOverlay({
-        device: { ...device, capabilitiesObj: capabilityObj },
-        capabilities: [...device.capabilities!],
-        capabilityObj,
-      }).capabilityObj.evcharger_charging_state?.value;
+      return applyNativeEvWiringOverlay({ ...device, capabilitiesObj: capabilityObj }, [...device.capabilities!], capabilityObj).capabilityObj.evcharger_charging_state?.value;
     };
 
     expect(resolveState(operationMode)).toBe(expected);
@@ -799,7 +776,7 @@ describe('native EV wiring shim', () => {
   // full car reads `Paused` and can synthesize a charging readback.
   it('does not let a car_connected event reclassify a finished Zaptec session', () => {
     const normalized = normalizeNativeEvCapabilityUpdate({
-      snapshot: {
+        capabilities: buildZaptecDevice().capabilities,
         controlAdapter: {
           kind: 'capability_adapter',
           activationRequired: true,
@@ -807,10 +784,7 @@ describe('native EV wiring shim', () => {
         },
         binaryControl: { on: true },
         evChargingState: 'plugged_in',
-      },
-      capabilityId: 'alarm_generic.car_connected',
-      value: true,
-    });
+      }, 'alarm_generic.car_connected', true);
 
     expect(normalized).toEqual([{
       capabilityId: 'evcharger_charging_state',
@@ -820,7 +794,7 @@ describe('native EV wiring shim', () => {
 
   it('promotes a disconnected Zaptec to the ambiguous state on car_connected, not to paused', () => {
     const normalized = normalizeNativeEvCapabilityUpdate({
-      snapshot: {
+        capabilities: buildZaptecDevice().capabilities,
         controlAdapter: {
           kind: 'capability_adapter',
           activationRequired: true,
@@ -828,10 +802,7 @@ describe('native EV wiring shim', () => {
         },
         binaryControl: { on: false },
         evChargingState: 'plugged_out',
-      },
-      capabilityId: 'alarm_generic.car_connected',
-      value: true,
-    });
+      }, 'alarm_generic.car_connected', true);
 
     expect(normalized).toEqual([{
       capabilityId: 'evcharger_charging_state',
@@ -848,11 +819,7 @@ describe('native EV wiring shim', () => {
       charge_mode: { value: 'Some_Unmapped_Firmware_Mode' },
       'alarm_generic.car_connected': { value: true },
     };
-    const overlay = applyNativeEvWiringOverlay({
-      device: { ...device, capabilitiesObj: capabilityObj },
-      capabilities: [...device.capabilities!],
-      capabilityObj,
-    });
+    const overlay = applyNativeEvWiringOverlay({ ...device, capabilitiesObj: capabilityObj }, [...device.capabilities!], capabilityObj);
 
     expect(overlay.capabilityObj.evcharger_charging_state?.value).toBe('plugged_in');
   });
@@ -869,11 +836,7 @@ describe('native EV wiring shim', () => {
       charge_mode: { value: 'Connected_Finishing' },
       'alarm_generic.car_connected': { value: true },
     };
-    const overlay = applyNativeEvWiringOverlay({
-      device: { ...device, capabilitiesObj: capabilityObj },
-      capabilities: [...device.capabilities!],
-      capabilityObj,
-    });
+    const overlay = applyNativeEvWiringOverlay({ ...device, capabilitiesObj: capabilityObj }, [...device.capabilities!], capabilityObj);
 
     expect(overlay.capabilityObj.evcharger_charging_state?.value).toBe('plugged_in');
   });
@@ -891,12 +854,8 @@ describe('native EV wiring shim', () => {
     const device = buildZaptecDevice({ capabilitiesObj: capabilityObj });
     const adapter = { kind: 'capability_adapter', activationRequired: true, activationEnabled: true } as const;
 
-    const observed = buildNativeEvObservationCapabilityObj({ device, previousSnapshot: { controlAdapter: adapter } });
-    const overlay = applyNativeEvWiringOverlay({
-      device,
-      capabilities: [...device.capabilities!],
-      capabilityObj,
-    });
+    const observed = buildNativeEvObservationCapabilityObj(device, { controlAdapter: adapter });
+    const overlay = applyNativeEvWiringOverlay(device, [...device.capabilities!], capabilityObj);
 
     expect(observed.evcharger_charging).toEqual({ value: false, lastUpdated: '2026-04-22T09:00:01.000Z' });
     // The same stamp the contract validated on the overlay.
@@ -913,18 +872,15 @@ describe('native EV wiring shim', () => {
       },
     });
 
-    const observedCapabilityObj = buildNativeEvObservationCapabilityObj({
-      device,
-      previousSnapshot: {
+    const observedCapabilityObj = buildNativeEvObservationCapabilityObj(device, {
         controlAdapter: {
           kind: 'capability_adapter',
           activationRequired: true,
           activationEnabled: true,
         },
-      },
-    });
+      });
     const normalizedButtonUpdate = normalizeNativeEvCapabilityUpdate({
-      snapshot: {
+        capabilities: buildZaptecDevice().capabilities,
         controlAdapter: {
           kind: 'capability_adapter',
           activationRequired: true,
@@ -932,12 +888,9 @@ describe('native EV wiring shim', () => {
         },
         binaryControl: { on: false },
         evChargingState: 'plugged_in_paused',
-      },
-      capabilityId: 'charging_button',
-      value: true,
-    });
+      }, 'charging_button', true);
     const normalizedChargeModeUpdate = normalizeNativeEvCapabilityUpdate({
-      snapshot: {
+        capabilities: buildZaptecDevice().capabilities,
         controlAdapter: {
           kind: 'capability_adapter',
           activationRequired: true,
@@ -945,10 +898,7 @@ describe('native EV wiring shim', () => {
         },
         binaryControl: { on: false },
         evChargingState: 'plugged_in_paused',
-      },
-      capabilityId: 'charge_mode',
-      value: 'Charging finished',
-    });
+      }, 'charge_mode', 'Charging finished');
 
     expect(observedCapabilityObj).toEqual(expect.objectContaining({
       evcharger_charging: expect.objectContaining({
@@ -967,7 +917,7 @@ describe('native EV wiring shim', () => {
 
   it('does not upgrade a paused Zaptec session to charging on car_connected=true alone', () => {
     const normalizedConnectedUpdate = normalizeNativeEvCapabilityUpdate({
-      snapshot: {
+        capabilities: buildZaptecDevice().capabilities,
         controlAdapter: {
           kind: 'capability_adapter',
           activationRequired: true,
@@ -975,10 +925,7 @@ describe('native EV wiring shim', () => {
         },
         binaryControl: { on: true },
         evChargingState: 'plugged_in_paused',
-      },
-      capabilityId: 'alarm_generic.car_connected',
-      value: true,
-    });
+      }, 'alarm_generic.car_connected', true);
 
     expect(normalizedConnectedUpdate).toEqual([{
       capabilityId: 'evcharger_charging_state',
@@ -988,7 +935,7 @@ describe('native EV wiring shim', () => {
 
   it('keeps a charging Zaptec session as charging on car_connected=true', () => {
     const normalizedConnectedUpdate = normalizeNativeEvCapabilityUpdate({
-      snapshot: {
+        capabilities: buildZaptecDevice().capabilities,
         controlAdapter: {
           kind: 'capability_adapter',
           activationRequired: true,
@@ -996,10 +943,7 @@ describe('native EV wiring shim', () => {
         },
         binaryControl: { on: true },
         evChargingState: 'plugged_in_charging',
-      },
-      capabilityId: 'alarm_generic.car_connected',
-      value: true,
-    });
+      }, 'alarm_generic.car_connected', true);
 
     expect(normalizedConnectedUpdate).toEqual([{
       capabilityId: 'evcharger_charging_state',

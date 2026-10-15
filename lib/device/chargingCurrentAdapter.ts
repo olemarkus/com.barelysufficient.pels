@@ -1,45 +1,16 @@
+import { getDeviceAdapter } from './deviceAdapterRegistry';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { ChargingCurrentAction } from './transport/chargingAccess';
 
-/** A resolved command binding, separate from the charger's binary switch. */
-export type ChargingCurrentAdapter = {
-  deviceId: string;
-  currentCapabilityId: string;
-  currentWritable: boolean;
-  actionId: string;
-  appUri: string;
-  scope: { kind: 'vehicle' } | { kind: 'installation'; installationId: string };
-};
+import type { ChargingCurrentBinding } from './deviceAdapter';
 
-export function isTeslaChargingDevice(device: HomeyDeviceLike): boolean {
-  return device.driverId === 'homey:app:com.tesla.car:battery'
-    && ['charging_on', 'charging_state', 'measure_charge_power', 'measure_soc_level']
-      .every((capability) => device.capabilities?.includes(capability));
-}
-
-export function resolveChargingCurrentAdapter(device: HomeyDeviceLike): ChargingCurrentAdapter | undefined {
-  if (isTeslaChargingDevice(device)) {
-    return {
-      deviceId: device.id, currentCapabilityId: 'measure_charge_current_max',
-      currentWritable: device.capabilitiesObj?.measure_charge_current_max?.setable === true,
-      actionId: 'charge_current', appUri: 'homey:app:com.tesla.car', scope: { kind: 'vehicle' },
-    };
-  }
-  const match = /^homey:app:com\.zaptec:(go|go2|home|pro)$/u.exec(device.driverId ?? '');
-  const installationId = device.data?.installationId;
-  if (!match || !installationId || !device.capabilities?.includes('available_installation_current')) return undefined;
-  return {
-    deviceId: device.id, currentCapabilityId: 'available_installation_current',
-    currentWritable: device.capabilitiesObj?.available_installation_current?.setable === true,
-    appUri: 'homey:app:com.zaptec',
-    actionId: match[1] === 'go' ? 'installation_current_control' : `${match[1]}_installation_current_control`,
-    scope: { kind: 'installation', installationId },
-  };
+export function resolveChargingCurrentAdapter(device: HomeyDeviceLike): ChargingCurrentBinding | undefined {
+  return getDeviceAdapter(device).currentBindings(device)[0];
 }
 
 /** Exact device-owned driver card, resolved from installed Homey metadata. */
 export function resolveChargingCurrentAction(
-  adapter: ChargingCurrentAdapter,
+  adapter: ChargingCurrentBinding,
   inventory: unknown,
   currentA: number,
 ): ChargingCurrentAction {
@@ -51,9 +22,7 @@ export function resolveChargingCurrentAction(
     && 'id' in entry && entry.id === cardId);
   if (card) return {
     ownerUri, cardId,
-    args: adapter.scope.kind === 'vehicle'
-      ? { current: currentA }
-      : { current1: currentA, current2: currentA, current3: currentA },
+    args: adapter.currentArguments(currentA),
   };
   const appCardId = `${adapter.appUri}:${adapter.actionId}`;
   const appCard = cards.find((entry) => typeof entry === 'object' && entry !== null
@@ -61,20 +30,17 @@ export function resolveChargingCurrentAction(
   if (!appCard) throw new Error('The charging-current action is unavailable in Homey.');
   return {
     ownerUri: adapter.appUri, cardId: appCardId,
-    args: adapter.scope.kind === 'vehicle'
-      ? { device: { id: adapter.deviceId }, current: currentA }
-      : { device: { id: adapter.deviceId }, current1: currentA, current2: currentA, current3: currentA },
+    args: { device: { id: adapter.deviceId }, ...adapter.currentArguments(currentA) },
   };
 }
 
 export function hasSharedChargingInstallation(
-  adapter: ChargingCurrentAdapter,
+  adapter: ChargingCurrentBinding,
   devices: readonly HomeyDeviceLike[],
 ): boolean {
   const { scope } = adapter;
   return scope.kind === 'installation' && devices.some((device) => device.id !== adapter.deviceId
-    && device.driverId?.startsWith('homey:app:com.zaptec:')
-    && device.data?.installationId === scope.installationId);
+    && adapter.sharesInstallation(device));
 }
 
 function actionCards(inventory: unknown): unknown[] {

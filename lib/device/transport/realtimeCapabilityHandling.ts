@@ -272,11 +272,7 @@ export function handleRealtimeCapabilityUpdate(
     }
     if (handleObservedOnlyCapabilityUpdate(ingest, snapshot, capabilityId, value)) return;
 
-    const normalizedEvents = normalizeNativeEvCapabilityUpdate({
-        snapshot,
-        capabilityId,
-        value,
-    });
+    const normalizedEvents = normalizeNativeEvCapabilityUpdate(snapshot, capabilityId, value);
     for (const normalizedEvent of normalizedEvents) {
         if (handleNativeSteppedLoadCapabilityUpdate(
             ingest, snapshot, normalizedEvent.capabilityId, normalizedEvent.value,

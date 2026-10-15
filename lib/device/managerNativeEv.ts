@@ -22,11 +22,9 @@ import type { DeviceTransportParseProviders } from './transport/managerParseDevi
 import type { ParsedDeviceIdentity } from './transport/managerParseIdentity';
 import {
   AVAILABLE_INSTALLATION_CURRENT_CAPABILITY_ID,
-  EASEE_CHARGER_CURRENT_CAPABILITY_ID,
   buildNativeSteppedLoadControlAdapter,
   buildSyntheticTargetPowerCapabilityMap,
   hasTargetPowerCapability,
-  isEaseeChargerCurrentCandidate,
   isNativeSteppedLoadWiringCandidate,
   isTargetPowerSteppedLoadWiringCandidate,
   resolveNativeSteppedLoadObservationCapabilityId,
@@ -37,7 +35,7 @@ import {
   resolveTargetPowerSteppedControl,
   stripNativeSteppedLoadControlCapabilities,
 } from './nativeSteppedLoadWiring';
-import { isEaseeUnderBuiltInControl, withEaseeObservedCharging } from './easeeChargingSwitch';
+import { getDeviceAdapter } from './deviceAdapterRegistry';
 import { warnIfTargetPowerCapabilityViolatesContract } from './targetPowerContractWarn';
 import { resolveDeviceCompatibilityTargetPowerConfig } from './compatibility';
 import { withoutTargetPowerReachability } from './targetPowerReachability';
@@ -80,11 +78,7 @@ export function resolveFlowCapabilityOverlay(
   allReportedCapabilities: FlowReportedCapabilitiesForDevice;
 } {
   const { effectiveDevice: device, deviceClassKey, deviceId } = identity;
-  const nativeEvOverlay = applyNativeEvWiringOverlay({
-    device,
-    capabilities: rawCapabilities,
-    capabilityObj: rawCapabilityObj,
-  });
+  const nativeEvOverlay = applyNativeEvWiringOverlay(device, rawCapabilities, rawCapabilityObj);
   // A battery or panel is never a stepped load: a home battery's `target_power`
   // is signed (negative discharges), so a 0..max ladder would misread it, and
   // `batteryControlWiring.ts` classifies it instead. Gated once here, where the
@@ -134,9 +128,8 @@ export function resolveFlowCapabilityOverlay(
   const finalCapabilities = steppedLoad
     ? stripNativeSteppedLoadControlCapabilities({ device, capabilities, capabilityObj })
     : capabilities;
-  const easeeBuiltInControl = isEaseeUnderBuiltInControl({ controlAdapter, capabilities: finalCapabilities });
-  const finalCapabilityObj = easeeBuiltInControl
-    ? withEaseeObservedCharging(capabilityObj)
+  const finalCapabilityObj = controlAdapter
+    ? getDeviceAdapter(device).finalizeObservation(controlAdapter, finalCapabilities, capabilityObj)
     : capabilityObj;
   return {
     capabilities: finalCapabilities,
@@ -246,7 +239,7 @@ function isNativeEvControlAdapterActive(params: {
 }): boolean {
   return params.controlAdapter?.kind === 'capability_adapter'
     && params.controlAdapter.activationEnabled === true
-    && (params.binaryWriteCapabilityId === 'charging_button' || params.binaryWriteCapabilityId === 'charging_on');
+    && params.binaryWriteCapabilityId !== undefined;
 }
 
 function resolveActiveNativeSteppedProfile(params: {
@@ -272,10 +265,10 @@ function resolveInstallationCurrentCapabilityId(
   capabilityObj: DeviceCapabilityMap,
   providers: DeviceTransportParseProviders,
 ): string {
-  return isEaseeChargerCurrentCandidate(device, capabilityObj)
-    && providers.getNativeEvWiringEnabled?.(deviceId) === true
-    ? EASEE_CHARGER_CURRENT_CAPABILITY_ID
-    : AVAILABLE_INSTALLATION_CURRENT_CAPABILITY_ID;
+  const current = getDeviceAdapter(device).nativeCurrentControls
+    .find((control) => control.accepts(device, capabilityObj));
+  return current && providers.getNativeEvWiringEnabled?.(deviceId) === true
+    ? current.capabilityId : AVAILABLE_INSTALLATION_CURRENT_CAPABILITY_ID;
 }
 
 function applySyntheticTargetPowerOverlay(
@@ -400,7 +393,7 @@ function resolveNativeSteppedLoadOverlay(
   // watt rung to an installation current; a continuous watt ladder must keep
   // using the owner's Flow rather than claiming a native command it cannot
   // express.
-  if (isEaseeChargerCurrentCandidate(device, capabilityObj)
+  if (getDeviceAdapter(device).nativeCurrentControls.some((control) => control.accepts(device, capabilityObj))
     && !isEvTargetPowerPresetConfig(targetPowerConfig)) return {};
 
   const nativeSteppedEnabled = targetPowerSteppedCandidate || providers.getNativeEvWiringEnabled?.(deviceId) === true;
