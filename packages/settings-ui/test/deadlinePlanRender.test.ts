@@ -1,7 +1,8 @@
 import { render } from 'preact';
+import { act } from 'preact/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  renderDeadlinePlan,
+  renderDeadlinePlan as renderDeadlinePlanView,
   type DeadlinePlanPayload,
   type DeadlinePlanPendingPayload,
 } from '../src/ui/views/DeadlinePlan.tsx';
@@ -68,6 +69,10 @@ const buildHistoryEntry = (
 
 const mounts: HTMLElement[] = [];
 
+const renderDeadlinePlan = (...args: Parameters<typeof renderDeadlinePlanView>): void => {
+  act(() => renderDeadlinePlanView(...args));
+};
+
 const mountIntoBody = (): HTMLElement => {
   const mount = document.createElement('div');
   document.body.appendChild(mount);
@@ -76,11 +81,11 @@ const mountIntoBody = (): HTMLElement => {
 };
 
 afterEach(() => {
-  // Unmount before clearing the DOM. Preact runs `useEffect` from a timer after
-  // paint, so a chart rendered by the file's last test would otherwise mount
-  // (and read `document`) after Vitest has torn the jsdom environment down.
-  // An unmounted component's pending effects are skipped.
-  for (const mount of mounts.splice(0)) render(null, mount);
+  // Flush chart effects during rendering and cleanup before jsdom teardown,
+  // so Preact's after-paint queue cannot outlive the document.
+  act(() => {
+    for (const mount of mounts.splice(0)) render(null, mount);
+  });
   document.body.replaceChildren();
 });
 
