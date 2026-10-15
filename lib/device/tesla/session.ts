@@ -7,7 +7,7 @@ import { toCapabilityTimestampMs } from '../managerControl';
 import { isTeslaChargingDevice } from './identity';
 
 import { readTeslaHomeEvidence, type HomeLocation, type HomeSessionIdentity } from './evidence';
-type HomeSession = { id: number; identity: HomeSessionIdentity };
+type HomeSession = { identity: HomeSessionIdentity };
 const FRESH_LOCATION_MS = 10 * 60_000;
 const NUMERIC_OBSERVATIONS = new Set([
   'measure_location_latitude', 'measure_location_longitude', 'measure_car_drive_speed',
@@ -25,7 +25,6 @@ function isObservationValue(id: string, value: unknown): boolean {
 export class TeslaChargingSession implements DeviceAdapterSession {
   private readonly devices = new Map<string, HomeyDeviceLike>();
   private readonly sessions = new Map<string, HomeSession>();
-  private nextSessionId = 1;
   private trustEpoch = '';
   private freshAfterMs = Date.now() - FRESH_LOCATION_MS;
   private readonly disconnectedAt = new Map<string, number>();
@@ -41,8 +40,6 @@ export class TeslaChargingSession implements DeviceAdapterSession {
       throw new Error('Tesla charging requires a confirmed stationary AC charging session at home.');
     }
   }
-
-  controlRevision(deviceId: string): number { return this.sessionId(deviceId); }
 
   project(snapshot: TransportDeviceSnapshot, setup: ChargingCurrentSetup): TransportDeviceSnapshot {
     if (setup.confirmation === 'vehicle' && this.isAllowed(snapshot.id)) return snapshot;
@@ -106,10 +103,6 @@ export class TeslaChargingSession implements DeviceAdapterSession {
 
   observedIds(): string[] { return [...this.devices.keys()]; }
 
-  sessionId(deviceId: string): number {
-    return this.isAllowed(deviceId) ? this.sessions.get(deviceId)!.id : 0;
-  }
-
   observes(deviceId: string): boolean { return this.devices.has(deviceId); }
 
   /** A reconnect requires location evidence obtained after that trust gap. */
@@ -140,7 +133,7 @@ export class TeslaChargingSession implements DeviceAdapterSession {
       this.sessions.delete(deviceId);
       return false;
     }
-    this.sessions.set(deviceId, { id: this.nextSessionId++, identity });
+    this.sessions.set(deviceId, { identity });
     return true;
   }
 }

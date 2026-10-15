@@ -153,8 +153,6 @@ export type SettingsHandlerDeps = {
   onHomeRuntimePowerSourceChanged: () => void;
   /** Synchronously publish the latest validated temperature-command policy before queueing. */
   onTemperatureControlPolicyObserved: () => void;
-  /** Revoke pending Flow actions before a control-setting event is queued. */
-  onDeviceControlConfigurationObserved: () => void;
   /**
    * Writes to home-suffixed keys (`<base>:<homeId>`, non-main home, see
    * `parseHomeScopedSettingsKey`) route here instead of the exact-key
@@ -272,9 +270,6 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
     // Load-bearing synchronous edge: an async function executes through its
     // first await immediately, so rapid un-awaited POWER_SOURCE events cannot
     // collapse back to the original value before the registry observes them.
-    if (SNAPSHOT_REPARSE_SETTINGS.some(([setting]) => setting === key) || key === CAPACITY_DRY_RUN) {
-      deps.onDeviceControlConfigurationObserved();
-    }
     if (key === POWER_SOURCE) deps.onHomeRuntimePowerSourceObserved();
     if ([TEMPERATURE_CONTROL_DISABLED_DEVICES, TEMPERATURE_CONTROL_MODES].includes(key)) {
       deps.onTemperatureControlPolicyObserved();

@@ -157,13 +157,6 @@ export class DeviceTransport {
         this.realtimeIngest.handleCapabilityUpdate(deviceId, capabilityId, value);
     };
 
-    invalidateSteppedRequests(): void { this.writeService.flowRequests.invalidateAll(); }
-
-    isSteppedRequestValid(deviceId: string, requestId: string): boolean {
-        this.chargingCurrentControl.synchronizeTrust();
-        return this.writeService.flowRequests.isValid(deviceId, requestId);
-    }
-
     /** Heartbeat for the EV car-link probe's elapsed-time decisions. */
     tickEvCarLink(nowMs: number): void { this.observationProducers.evCarLink.tick(nowMs); }
 
@@ -486,7 +479,6 @@ export class DeviceTransport {
         desired: boolean,
         triggerFlow: (deviceId: string, capabilityId: string, desired: boolean) => Promise<void>,
     ): Promise<void> {
-        if (!desired) this.writeService.flowRequests.invalidate(deviceId);
         // `latestSnapshotById` is authoritative for a by-id read: every writer
         // updates it in the same call that touches `latestSnapshot` (refresh
         // rebuilds it from the array, an unparseable device.update splices and

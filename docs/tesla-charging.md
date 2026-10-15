@@ -23,10 +23,9 @@ Select the Flow method and use:
 | Flow part | Card |
 | --- | --- |
 | **When** | PELS: **Stepped device target changed** for the charging device |
-| **And** | PELS: **Stepped-load request is still valid**, using the **Request ID** tag |
 | **Then** | Tesla Car & Energy: set charging current using the **EV charger current (A)** tag |
 
-Put the check immediately before the current action and add no delay between them. PELS handles start and stop separately. Do not add a second current controller alongside the selected method.
+PELS handles start and stop separately. Do not add a second current controller alongside the selected method.
 
 ## Charging at home
 

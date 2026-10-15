@@ -70,7 +70,6 @@ export type ClearDeferredObjectiveForDevice = (params: {
 }) => ObjectiveWriteOutcome;
 
 export type FlowCardDeps = {
-  isSteppedRequestValid: (deviceId: string, requestId: string) => boolean;
   homey: FlowHomeyLike;
   areFlowBackedCardsAvailable: () => boolean;
   structuredLog?: {

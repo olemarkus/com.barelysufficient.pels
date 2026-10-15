@@ -49,10 +49,8 @@ test('normalizes the charging sensor into EV capabilities, watts and state witho
 test('admits a home AC session and retains it while stationary telemetry stays quiet', () => {
   const owner = session(); owner.observeDevices(devices());
   expect(owner.isAllowed('battery')).toBe(true);
-  const first = owner.sessionId('battery');
   vi.advanceTimersByTime(2 * 60 * 60_000);
   expect(owner.isAllowed('battery')).toBe(true);
-  expect(owner.sessionId('battery')).toBe(first);
 });
 
 test('rejects antipodal coordinates despite floating-point distance rounding', () => {
@@ -176,7 +174,7 @@ test('realtime prepared-current feedback changes the step without inventing powe
   } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
 });
 
-test('transport discovers Tesla, permits home start/stop without a key, and revokes power and Flow requests when away', async () => {
+test('transport discovers Tesla, permits home start/stop without a key, and blocks new commands and revokes power when away', async () => {
   vi.useRealTimers();
   mockHomeyInstance.settings.set('charging_current_control', { battery: {
     method: 'flow', confirmation: 'vehicle',
@@ -200,12 +198,16 @@ test('transport discovers Tesla, permits home start/stop without a key, and revo
     await transport.requestSteppedLoadStep({ deviceId: 'battery',
       profile: { steps: [{ id: 'off', planningPowerW: 0 }, { id: '6a', planningPowerW: 4140 }] },
       desiredStepId: '6a', planningPowerW: 4140, planningCurrentA: 6 });
-    const requestId = trigger.mock.calls[0]![0].request_id;
-    expect(transport.isSteppedRequestValid('battery', requestId)).toBe(true);
+    expect(trigger).toHaveBeenCalledWith({
+      step_id: '6a', planning_power_w: 4140, planning_current_a: 6, previous_step_id: '',
+    }, { deviceId: 'battery' });
     await emitCapability('location', 'measure_location_latitude', 61);
-    expect(transport.isSteppedRequestValid('battery', requestId)).toBe(false);
     expect(transport.getSnapshot()[0]).toMatchObject({ available: false, measuredPowerKw: 0 });
     await expect(transport.setCapability('battery', 'evcharger_charging', true)).rejects.toThrow('at home');
+    await expect(transport.requestSteppedLoadStep({ deviceId: 'battery',
+      profile: { steps: [{ id: 'off', planningPowerW: 0 }, { id: '6a', planningPowerW: 4140 }] },
+      desiredStepId: '6a', planningPowerW: 4140, planningCurrentA: 6 })).rejects.toThrow('at home');
+    expect(trigger).toHaveBeenCalledTimes(1);
     expect(put).toHaveBeenCalledTimes(1);
   } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
 });
@@ -290,12 +292,9 @@ test('transient empty and targeted reads preserve accepted Tesla companion membe
     await initWithLiveFeed(transport);
     const initial = devices();
     await seedTransportDevices(transport, initial);
-    const revision = transport.chargingCurrentControl.sessions.controlRevision('battery');
     await seedTransportDevices(transport, []);
-    expect(transport.chargingCurrentControl.sessions.controlRevision('battery')).toBe(revision);
     expect(transport.getSnapshotByDeviceId('battery')).toMatchObject({ available: true, measuredPowerKw: 4 });
     await seedTransportDevices(transport, [initial[0]!], { targetedRefresh: true });
-    expect(transport.chargingCurrentControl.sessions.controlRevision('battery')).toBe(revision);
     expect(transport.getSnapshotByDeviceId('battery')).toMatchObject({ available: true, measuredPowerKw: 4 });
   } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
 });

@@ -876,13 +876,6 @@
             "title": {
               "en": "Previous step"
             }
-          },
-          {
-            "name": "request_id",
-            "type": "string",
-            "title": {
-              "en": "Request ID"
-            }
           }
         ],
         "id": "desired_stepped_load_changed"
@@ -1494,34 +1487,6 @@
           }
         ],
         "id": "price_lowest_today"
-      },
-      {
-        "title": {
-          "en": "Stepped-load request is still valid"
-        },
-        "titleFormatted": {
-          "en": "Stepped-load request [[request_id]] for [[device]] is still valid"
-        },
-        "args": [
-          {
-            "name": "device",
-            "type": "autocomplete",
-            "title": {
-              "en": "Device"
-            }
-          },
-          {
-            "name": "request_id",
-            "type": "text",
-            "title": {
-              "en": "Request ID"
-            }
-          }
-        ],
-        "hint": {
-          "en": "Check immediately before setting charging current, using the Request ID tag from Stepped device target changed. Do not add delays between this check and the action."
-        },
-        "id": "stepped_load_request_valid"
       }
     ],
     "actions": [

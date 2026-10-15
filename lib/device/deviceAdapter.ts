@@ -67,7 +67,7 @@ export type DeviceAdapter = {
   createSession(home: HubHomeLocation): DeviceAdapterSession;
 };
 
-/** Session details remain behind an opaque control revision and resolved eligibility. */
+/** Session details remain behind resolved eligibility. */
 export type DeviceAdapterSession = {
   observeDevice(device: HomeyDeviceLike): void;
   observeCapability(deviceId: string, capabilityId: string, value: unknown): void;
@@ -76,7 +76,6 @@ export type DeviceAdapterSession = {
   observedIds(): string[];
   observes(deviceId: string): boolean;
   controls(snapshot: AdapterObservation): boolean;
-  controlRevision(deviceId: string): number;
   project(snapshot: TransportDeviceSnapshot, setup: ChargingCurrentSetup): TransportDeviceSnapshot;
   assertAllowed(device: HomeyDeviceLike, setup: ChargingCurrentSetup, connected: boolean): void;
   controlEvents(deviceId: string, capabilityId: string, value: unknown): CapabilityUpdate[];

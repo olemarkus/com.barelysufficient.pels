@@ -40,9 +40,6 @@ export class DeviceAdapterSessions {
   controls(snapshot: AdapterObservation): boolean {
     return this.sessions.some((session) => session.controls(snapshot));
   }
-  controlRevision(id: string): number {
-    return this.sessions.find((session) => session.observes(id))?.controlRevision(id) ?? 0;
-  }
   assertAllowed(device: HomeyDeviceLike, setup: ChargingCurrentSetup, connected: boolean): void {
     for (const session of this.sessions) session.assertAllowed(device, setup, connected);
   }

@@ -29,8 +29,6 @@ function readSetup(value: unknown): ChargingCurrentSetup | undefined {
 
 /** Owns current-route selection. Binary control remains independent of this choice. */
 export class ChargingCurrentControl {
-  private revision = 0;
-  private savedRepresentation = '';
   readonly access: ChargingAccess;
   private readonly settings: SettingsPort;
   readonly sessions: DeviceAdapterSessions;
@@ -74,8 +72,6 @@ export class ChargingCurrentControl {
       : source;
     return this.sessions.project(snapshot, setup);
   }
-
-  get generation(): number { this.sync(); return this.revision; }
 
   setup(deviceId: string): ChargingCurrentSetup {
     this.sync();
@@ -123,9 +119,7 @@ export class ChargingCurrentControl {
     next.set(deviceId, setup);
     const saved = Object.fromEntries(next);
     this.settings.set(SETTINGS_KEY, saved);
-    this.revision++;
     this.setups.set(deviceId, setup);
-    this.savedRepresentation = JSON.stringify(saved);
   }
 
   private assertBuiltInActivationAllowed(device: ChargingCurrentRead, setup: ChargingCurrentSetup): void {
@@ -188,17 +182,12 @@ export class ChargingCurrentControl {
     try {
       const raw = this.settings.get(SETTINGS_KEY);
       if (raw == null && !this.settings.getKeys().includes(SETTINGS_KEY)) {
-        if (this.setups.size > 0) this.revision++;
-        this.savedRepresentation = '';
         this.setups.clear();
         return;
       }
       if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return;
       const entries = Object.entries(raw).map(([id, value]) => [id, readSetup(value)] as const);
       if (entries.some(([, value]) => !value)) return;
-      const representation = JSON.stringify(raw);
-      if (representation !== this.savedRepresentation) this.revision++;
-      this.savedRepresentation = representation;
       this.setups.clear();
       for (const [id, value] of entries) if (value) this.setups.set(id, value);
     } catch { /* A transient read preserves accepted configuration. */ }

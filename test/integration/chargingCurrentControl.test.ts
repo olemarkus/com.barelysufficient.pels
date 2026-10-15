@@ -96,14 +96,6 @@ test('a battery-level reporting Flow does not block current control', async () =
   await expect(control.save('charger', selected)).resolves.toBeUndefined();
 });
 
-test('changing away and back invalidates previously issued Flow requests', async () => {
-  const { control } = fixture(zaptec(true));
-  const before = control.generation;
-  await control.save('charger', selected);
-  await control.save('charger', { ...selected, method: 'flow' });
-  expect(control.generation).toBeGreaterThan(before);
-});
-
 test.each(['missing key', 'conflicting Flow', 'unreadable Flows'])('Tesla control can be revoked with %s', async (failure) => {
   const tesla: HomeyDeviceLike = { id: 'tesla', name: 'Tesla', class: 'sensor',
     driverId: 'homey:app:com.tesla.car:battery',
@@ -117,10 +109,8 @@ test.each(['missing key', 'conflicting Flow', 'unreadable Flows'])('Tesla contro
   else get.mockImplementation(async (path) => path === 'manager/flow/flow/' ? {
     bridge: { actions: [{ id: 'homey:device:tesla:charge_current' }] },
   } : {});
-  const generation = control.generation;
   await control.save('tesla', { method: 'built_in', confirmation: 'none' });
   expect(control.setup('tesla')).toEqual({ method: 'built_in', confirmation: 'none' });
-  expect(control.generation).toBeGreaterThan(generation);
   expect(() => control.assertControlAllowed(tesla)).toThrow('confirmed stationary AC charging session');
   await expect(control.save('tesla', { method: 'built_in', confirmation: 'vehicle' })).rejects.toThrow();
 });

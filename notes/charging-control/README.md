@@ -20,15 +20,15 @@ For Tesla, explicitly choose the vehicle as the control point and disable Power-
 
 The adapter pairs the battery, location and car devices through their raw vehicle identity. It requires a unique pair of siblings, an online parked vehicle, an AC cable and a connected charging state. Home authorization starts with coordinate samples from the preceding ten minutes within 100 m of Homey's configured location. The generic location-update capability is not evidence of a new coordinate sample.
 
-An accepted stationary charging session does not expire merely because its values stay quiet. Away coordinates, motion, disconnection, unavailability, changed identity or a Homey live-feed trust gap revoke authorization. A new session needs fresh coordinate evidence; restart revalidates it. All Tesla writes and Flow request checks use this owner. Charging outside that authorization is excluded from home power attribution. This remains dependent on the Tesla app publishing truthful vehicle and connection state; cloud control cannot provide fast overload protection.
+An accepted stationary charging session does not expire merely because its values stay quiet. Away coordinates, motion, disconnection, unavailability, changed identity or a Homey live-feed trust gap revoke authorization. A new session needs fresh coordinate evidence; restart revalidates it. All Tesla writes use this owner. Charging outside that authorization is excluded from home power attribution. This remains dependent on the Tesla app publishing truthful vehicle and connection state; cloud control cannot provide fast overload protection.
 
 Requested current is a ceiling, not actual draw. While charging, matching ceiling evidence also needs current and power observations at least as recent as the ceiling, and actual current at or below it. Lower draw is valid. While explicitly stopped (`charging_on=false`, `charging_state=Stopped`) with dated zero-current and zero-power observations, the reported ceiling confirms current preparation even if those unchanged zero measurements retain older timestamps. The Tesla app publishes that ceiling after its vehicle command completes successfully. This is evidence of the configured limit, never evidence of running power; binary state and measured power remain separate. An API response alone publishes no observation. The generic adapter activation policy prepares and observes current before issuing start; it does not assume an unknown initial step was applied.
 
 ## User Flow alternative
 
-Use **Stepped device target changed**, select the PELS device, then check **Stepped-load request is still valid** with the **Request ID** tag immediately before the vendor current action. Pass **EV charger current (A)** to that action. Do not insert a delay between the check and action. Start/stop stays with the capability adapter.
+Use **Stepped device target changed**, select the PELS device, connect it to the vendor current action. Pass **EV charger current (A)** to that action. Start/stop stays with the capability adapter.
 
-Request IDs are per device and are invalidated by a newer request, stop, changed control configuration, or an ineligible vehicle session. The condition is a just-before-action guard, not an atomic transaction with another app's action. Built-in current control rejects stepped reports from an old user Flow.
+Built-in current control rejects stepped reports from an old user Flow.
 
 ## Verified boundary and remaining hardware validation
 
@@ -36,6 +36,8 @@ On 2026-10-13, SHS running Homey 13.5.0 rejected app-session action execution wi
 
 The transport does not retry action POSTs or follow redirects. An unknown command outcome retains its device lock until the outstanding response completes or the bounded late-response timeout expires. Command acceptance does not publish observed state. Physical vehicle/charger behavior, Fleet latency and installation-specific limits still need validation before advertising production hardware support.
 
+
+The Request ID guard mentioned in the historical validation below has since been removed. Current Flow setup uses only the trigger and current-setting action.
 
 ### SHS regression run, 2026-10-13
 
@@ -121,8 +123,8 @@ session state through the registry. The common host owns I/O, credentials,
 subscriptions and actuator delivery.
 
 Tesla sibling matching, home-session authorization and current confirmation stay
-inside its adapter. The host receives existing device observations and an opaque
-control revision for invalidating pending requests. Planner, executor and UI
+inside its adapter. The host receives existing device observations and resolved
+control eligibility. Planner, executor and UI
 contracts gain no vendor flags or session requirements. Adapter operations have
 no optional hooks or nullable resolved results. `npm run device:adapters` guards
 this boundary, including type-only imports and raw vendor discriminators.
@@ -133,5 +135,4 @@ without replacing accepted observations. Valid Tesla `Unknown`, `NoPower` and
 they do not become an unknown plug state or a fabricated disconnect. Full inventory
 reads resolve companion membership before publishing device eligibility, retaining
 ignored entries and respecting transient-empty protection. Partial reads cannot
-remove companions. A stop request revokes outstanding current-request authority
-before choosing capability or Flow delivery.
+remove companions.

@@ -98,7 +98,7 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
     </div>
     <details>
       <summary>Set up a Flow instead</summary>
-      <p class="field__hint">Use PELS “Stepped device target changed” for this device. Check “Stepped-load request is still valid” with the Request ID tag immediately before the charger’s charging-current action, using the EV charger current (A) tag. Do not add a delay between the check and the action. PELS controls start and stop separately.</p>
+      <p class="field__hint">Use PELS “Stepped device target changed” for this device. Connect it to the charger’s charging-current action using the EV charger current (A) tag. PELS controls start and stop separately.</p>
     </details>
   </section>;
 }

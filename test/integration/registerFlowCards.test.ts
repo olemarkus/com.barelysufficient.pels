@@ -98,7 +98,6 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     trigger: vi.fn(),
   } as unknown as FlowCard);
   const deps: FlowCardDeps = {
-    isSteppedRequestValid: vi.fn(() => false),
     homey: {
       flow: {
         getActionCard: (cardId: string) => createCard(cardId, 'action'),

@@ -49,7 +49,6 @@ export const settingsHandlerDepsDouble = (overrides: Partial<SettingsHandlerDeps
   onHomeRuntimePowerSourceObserved: vi.fn(),
   onHomeRuntimePowerSourceChanged: vi.fn(),
   onTemperatureControlPolicyObserved: vi.fn(),
-  onDeviceControlConfigurationObserved: vi.fn(),
   onHomeScopedSettingChanged: vi.fn(),
   recomputeHomeMembership: vi.fn(),
   reconcileHomeRuntimes: vi.fn(),

@@ -52,8 +52,6 @@ test.each(['not-a-vendor-state', '', null, 12])(
     const initial = devices();
     await seedTransportDevices(transport, initial);
     const before = structuredClone(transport.getSnapshotByDeviceId('battery'));
-    const revision = transport.chargingCurrentControl.sessions.controlRevision('battery');
-    expect(revision).toBeGreaterThan(0);
     const observed = vi.fn();
     onObservedState(transport, observed);
 
@@ -63,7 +61,6 @@ test.each(['not-a-vendor-state', '', null, 12])(
     await emitCapability('battery', 'charging_state', value);
 
     expect(transport.getSnapshotByDeviceId('battery')).toEqual(before);
-    expect(transport.chargingCurrentControl.sessions.controlRevision('battery')).toBe(revision);
     expect(observed).not.toHaveBeenCalled();
   },
 );
@@ -85,6 +82,5 @@ test.each(['Unknown', 'NoPower', 'Calibrating'])(
     expect(transport.getSnapshotByDeviceId('battery')).toMatchObject({
       available: false, measuredPowerKw: 0, evChargingState: 'plugged_in_charging',
     });
-    expect(transport.chargingCurrentControl.sessions.controlRevision('battery')).toBe(0);
   },
 );

@@ -5,7 +5,6 @@ import type { HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
 import {
   requireBatteryControl,
   requireDailyBudgetService,
-  requireDeviceManager,
   requireExternalOffHold,
   requirePlanService,
   requirePriceCoordinator,
@@ -39,7 +38,6 @@ export const registerSettingsHandler = (
       ctx.resetMainPowerTrackerFreshness();
       homeRuntimeHooks.onHomeRuntimePowerSourceObserved();
     },
-    onDeviceControlConfigurationObserved: () => requireDeviceManager(ctx).invalidateSteppedRequests(),
     onTemperatureControlPolicyObserved: () => ctx.deviceControlSettings.reloadTemperatureControlPolicy(),
     onHomeyEnergyMeterObserved: () => {
       // Reset before the old poll is invalidated; either way no old sample can

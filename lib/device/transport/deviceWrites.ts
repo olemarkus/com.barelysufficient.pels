@@ -1,4 +1,3 @@
-import { SteppedFlowRequests } from './steppedFlowRequests';
 import type { ChargingCurrentControl } from '../chargingCurrentControl';
 import { resolveChargingCurrentAdapter } from '../chargingCurrentAdapter';
 /**
@@ -119,8 +118,6 @@ function requireSetpointSurface(
 
 
 export class DeviceWriteService {
-  readonly flowRequests: SteppedFlowRequests;
-
   constructor(
     private readonly snapshotStore: TransportSnapshotStore,
     private readonly observationState: TransportObservationState,
@@ -129,7 +126,7 @@ export class DeviceWriteService {
     private readonly observationProducers: ObservationProducers,
     private readonly getFlowTriggerCard: (cardId: string) => SteppedLoadFlowTriggerCard | undefined,
     private readonly dispatchObservedStateForDevice: (deviceId: string, capabilityId?: string) => void,
-  ) { this.flowRequests = new SteppedFlowRequests(snapshotStore, chargingCurrentControl); }
+  ) {}
 
   private requiresAdapterControl(deviceId: string): boolean {
     const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
@@ -156,7 +153,6 @@ export class DeviceWriteService {
   async setCapability(deviceId: string, capabilityId: string, value: unknown): Promise<unknown> {
     if (!hasRestClient()) throw new Error('REST client not ready');
     this.assertControlAllowed(deviceId);
-    if (value === false) this.flowRequests.invalidate(deviceId);
     const normalizedValue = normalizeCapabilityValue(this.snapshotStore, deviceId, capabilityId, value);
     const snapshotBefore = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     const requested: CapabilityWrite = { capabilityId, value: normalizedValue };
@@ -293,7 +289,6 @@ export class DeviceWriteService {
       desiredStepId,
       planningCurrentA,
     } = params;
-    this.flowRequests.invalidate(deviceId);
     if (isSteppedLoadOffStep(profile, desiredStepId)) {
       this.observationProducers.evCarLink.noteStopCommand(deviceId, Date.now());
     }
@@ -329,13 +324,11 @@ export class DeviceWriteService {
     snapshot: TransportDeviceSnapshot | undefined,
   ): Promise<SteppedLoadStepRequestResult> {
     const { deviceId, desiredStepId, planningPowerW, planningCurrentA, previousStepId } = params;
-    const requestId = this.flowRequests.issue(deviceId);
     const triggerCard = this.getFlowTriggerCard('desired_stepped_load_changed');
     if (!triggerCard?.trigger) return { requested: false };
 
     try {
       const outcome = await awaitFlowTriggerAcceptance(() => triggerCard.trigger({
-        request_id: requestId,
         step_id: desiredStepId,
         planning_power_w: planningPowerW,
         planning_current_a: planningCurrentA,

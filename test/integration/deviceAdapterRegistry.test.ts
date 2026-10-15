@@ -30,7 +30,7 @@ function snapshot(device: HomeyDeviceLike): TransportDeviceSnapshot {
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-15T10:00:00Z')); });
 afterEach(() => { vi.useRealTimers(); });
 
-test('the generic registry isolates two vehicle sessions, their control revisions and trust recovery', () => {
+test('the generic registry isolates two vehicle sessions and trust recovery', () => {
   const home = partialDouble<HubHomeLocation>({ coordinates: () => ({ latitude: 60, longitude: 10 }) });
   const sessions = new DeviceAdapterSessions(home);
   sessions.setTrustEpoch('connected:1');
@@ -41,14 +41,9 @@ test('the generic registry isolates two vehicle sessions, their control revision
   const secondSnapshot = snapshot(second[0]!);
   expect(sessions.project(firstSnapshot, setup).available).toBe(true);
   expect(sessions.project(secondSnapshot, setup).available).toBe(true);
-  const firstRevision = sessions.controlRevision('first');
-  const secondRevision = sessions.controlRevision('second');
-  expect(firstRevision).toBeGreaterThan(0);
   sessions.observeCapability('first-location', 'measure_location_latitude', 61);
   expect(sessions.project(firstSnapshot, setup)).toMatchObject({ available: false, measuredPowerKw: 0 });
-  expect(sessions.controlRevision('first')).not.toBe(firstRevision);
   expect(sessions.project(secondSnapshot, setup).available).toBe(true);
-  expect(sessions.controlRevision('second')).toBe(secondRevision);
   sessions.setTrustEpoch('disconnected:2');
   expect(sessions.project(secondSnapshot, setup)).toMatchObject({ available: false, measuredPowerKw: 0 });
   expect(sessions.controlEvents(secondSnapshot, 'measure_charge_power', 4)).toEqual([

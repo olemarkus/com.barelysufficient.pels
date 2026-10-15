@@ -48,13 +48,6 @@
       "title": {
         "en": "Previous step"
       }
-    },
-    {
-      "name": "request_id",
-      "type": "string",
-      "title": {
-        "en": "Request ID"
-      }
     }
   ]
 }

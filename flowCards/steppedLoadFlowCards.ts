@@ -32,16 +32,6 @@ export function registerSteppedLoadCards(deps: FlowCardDeps): void {
     getSteppedLoadDeviceOptions(deps, query)
   ));
 
-  const requestValid = deps.homey.flow.getConditionCard('stepped_load_request_valid');
-  requestValid.registerRunListener((args: unknown) => {
-    const deviceId = readFlowDeviceArg(args);
-    const requestId = readFlowStringArg(args, 'request_id');
-    return Boolean(deviceId && requestId && deps.isSteppedRequestValid(deviceId, requestId));
-  });
-  requestValid.registerArgumentAutocompleteListener('device', async (query: string) => (
-    getSteppedLoadDeviceOptions(deps, query)
-  ));
-
   registerReportActualStepCard(deps);
   registerReportActualPowerCard(deps);
 }

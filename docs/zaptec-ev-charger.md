@@ -27,10 +27,9 @@ Use this Flow shape:
 | Flow part | Card |
 | --- | --- |
 | **When** | PELS: **Stepped device target changed** for your Zaptec charger |
-| **And** | PELS: **Stepped-load request is still valid**, with the trigger’s **Request ID** tag |
 | **Then** | Zaptec: **Set available current to** |
 
-Choose **Use a Flow** in Charging current. Place the validity check immediately before the current action, without a delay between them. PELS controls start and stop separately.
+Choose **Use a Flow** in Charging current. PELS controls start and stop separately.
 
 In the Zaptec action card, use the PELS Flow tag **EV charger current (A)** for the available-current value.
 
