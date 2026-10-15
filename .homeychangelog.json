@@ -631,5 +631,8 @@
   },
   "3.15.2": {
     "en": "Charging-current Flows use the simpler setup again: connect Stepped device target changed directly to your charging-current action. The Stepped-load request is still valid condition and Request ID tag have been removed. If you added that condition to a Flow in 3.15, remove it. Built-in Tesla and Zaptec charging control remains available."
+  },
+  "3.16.0": {
+    "en": "EV chargers can now use the Add energy task Flow card to request an amount of energy, such as 20 kWh by 07:00, with or without a linked car or battery reading. The charger needs a live power reading. Progress counts electricity supplied through the charger, including charging losses, rather than a final battery percentage. Existing energy tasks can be viewed and edited in PELS settings; creating a charger task in settings or the widget still uses a battery target. Task history now keeps energy tasks labelled in kWh."
   }
 }
