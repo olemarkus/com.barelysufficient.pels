@@ -5,7 +5,7 @@ import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../packages/
 import { toResolvedPlanHistoryEntry } from '../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import { assembleActivePlansUiView } from '../lib/objectives/deferredObjectives/activePlansUiView';
 import { requireDeferredObjectiveEnergyDelivery } from './appInit/deferredRecorders';
-import { resolveSmartTaskDeviceKind } from '../packages/shared-domain/src/smartTaskDeviceKind';
+import { resolveDefaultSmartTaskKind } from '../packages/shared-domain/src/smartTaskDeviceKind';
 
 /**
  * The `AppContext` members this projection reads. Narrowed on purpose: the
@@ -62,7 +62,7 @@ export class AppSmartTaskPayloads {
       for (const [deviceId, list] of byDevice) {
         const device = devices.find((candidate) => candidate.id === deviceId);
         if (!device) continue;
-        const objectiveKind = resolveSmartTaskDeviceKind({
+        const objectiveKind = resolveDefaultSmartTaskKind({
           ...device,
           temperatureControlDisabled: undefined,
           temperatureAdjustmentsDisabled: undefined,

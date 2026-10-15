@@ -513,17 +513,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `appSmartTaskApi.ts` only forwards to an objectives-owned create.
       Source: layering review of the smart task creation PR, 2026-10-13. [P2]
 
-- [ ] **Support a kWh target on the EV deadline flow card.**
-      *Persona:* EV commuter whose charger doesn't report SoC.
-      *Hypothesis:* the `ev_soc` variant accepts only `targetPercent`; a kWh target is the one EV path
-      that needs no SoC observation/freshness at all, so accepting `targetEnergyKwh` broadens supported
-      chargers and removes a fragile dependency.
-      *Why:* widens device support for the EV persona. Design: `notes/ev-ready-by/README.md`. Files:
-      `packages/contracts/src/deferredObjectiveSettings.ts` and its parser in
-      `packages/shared-domain/src/settings/deferredObjectiveSettings.ts`,
-      `flowCards/deadlineObjectiveCards.ts`, `lib/objectives/deferredObjectives/taskEvaluationCoordinator.ts`,
-      `.homeycompose/flow/actions/set_ev_charge_deadline.json`. [P3]
-
 - [ ] **Smart-task edit lane: don't reattach a stale draft to a NEW task on the same device.**
       *Persona:* Owner whose task ended (or was cleared via Flow) while the editor sat open, then created a new task on the same device.
       *Hypothesis:* `buildSmartTaskEditProps` reattaches the module-scope editor snapshot by deviceId alone; a later task on the same device inherits the old draft's stale baselines. Guard the reattach on the context still matching the live entry (e.g. `snapshot.context.baselineDeadlineAtMs === entry.deadlineAtMs`) so a replaced task renders the editor closed. Source: Codex review on PR #1843 (2026-07-06). Files: `packages/settings-ui/src/ui/deadlinePlanMount.ts`, `packages/settings-ui/src/ui/smartTaskEdit.ts`. [P3]

@@ -143,8 +143,7 @@ export const resolveReachableTargetValue = (
 /**
  * Energy delivered since the task started, against the energy asked for. An
  * amount of energy only ever grows. The session check is the one every kind
- * asks; a pure on/off device (the only kind that carries an energy task) never
- * lacks a session.
+ * asks; a charger needs a chargeable session, but no battery reading.
  */
 const resolveEnergyObjectiveProgress = (
   objective: DeferredObjectiveEnergySettingsEntry,

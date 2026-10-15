@@ -6,7 +6,7 @@
     "en": "Deliver [[target_kwh]] kWh to [[device]] by [[ready_by]]"
   },
   "hint": {
-    "en": "PELS runs the device in the cheapest hours before the ready-by time, within the hard cap and, unless you allow more, the daily budget, until it has taken this much energy, counted from its power readings. For on/off devices with no temperature or battery reading, like a water heater on a relay; the device needs a live power reading. A water heater that switches itself off once hot stops taking energy, so the task can end short of its target. The task auto-disables once the deadline passes; run this card from a recurring Flow (for example every evening at 22:00) to set it up for the next night."
+    "en": "PELS runs the device in the cheapest hours before the ready-by time, within the hard cap and, unless you allow more, the daily budget, until it has taken this much energy, counted from its power readings. For on/off devices like a water heater on a relay, or EV chargers, including chargers with current control. The device needs a live power reading. For EV chargers, you can choose an energy target with or without a linked car or battery reading; the energy includes charging losses. A water heater that is already hot or a car that stops accepting charge can leave the task short of its energy target. The task auto-disables once the deadline passes; run this card from a recurring Flow (for example every evening at 22:00) to set it up for the next night."
   },
   "args": [
     {
@@ -16,7 +16,7 @@
         "en": "Device"
       },
       "placeholder": {
-        "en": "Select on/off device"
+        "en": "Select device"
       }
     },
     {

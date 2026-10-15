@@ -1,3 +1,4 @@
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
 import { inactiveTaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
 import { resolveObjectiveTargetValue } from '../../packages/shared-domain/src/deferredObjectiveValues';
@@ -545,23 +546,40 @@ describe('deadline objective flow cards', () => {
       });
     });
 
-    it('offers only pure on/off devices with a live power reading', async () => {
+    it.each([false, true])('creates an energy task on a charger with battery data=%s', async (hasBattery) => {
+      const device = { ...charger, ...(hasBattery
+        ? { stateOfCharge: stateOfChargeFixture({ percent: 80, carId: 'kia' }) } : {}) };
+      const { deps, mock } = buildDeps({ snapshot: [device] });
+      registerDeadlineObjectiveCards(deps);
+      await mock.actions.get('set_ev_charge_deadline')!.run!({
+        device: 'ev-1', target_percent: 90, ready_by: '06:00',
+      });
+      await mock.actions.get('set_energy_deadline')!.run!({
+        device: 'ev-1', target_kwh: 20, ready_by: '06:00',
+      });
+      expect(readObjective(mock.settings, 'ev-1')).toEqual({
+        enabled: true, kind: 'energy', enforcement: 'soft',
+        targetEnergyKWh: 20, deadlineAtMs: HH_MM_TO_UTC_MS(6, 0),
+      });
+    });
+
+    it('offers on/off devices and EV chargers with a live power reading', async () => {
       const { deps, mock } = buildDeps({ snapshot: [relay, meterOnlyRelay, thermostat, charger] });
       registerDeadlineObjectiveCards(deps);
       const options = await mock.actions.get('set_energy_deadline')!.autocomplete!('');
-      expect(options.map((option) => option.id)).toEqual(['relay-1']);
+      expect(options.map((option) => option.id).sort()).toEqual(['ev-1', 'relay-1']);
     });
 
     it.each([
       ['a thermostat', thermostat],
-      ['an EV charger', charger],
+      ['a charger reporting only a cumulative meter', { ...charger, measuredPowerIsDirectMeasurement: false }],
       ['a relay reporting only a cumulative meter', meterOnlyRelay],
     ])('refuses %s', async (_label, device) => {
       const { deps, mock } = buildDeps({ snapshot: [device] });
       registerDeadlineObjectiveCards(deps);
       await expect(mock.actions.get('set_energy_deadline')!.run!({
         device: device.id, target_kwh: 6, ready_by: '06:00',
-      })).rejects.toThrow(/not an on\/off device with a live power reading/);
+      })).rejects.toThrow(/not an on\/off device or EV charger with a live power reading/);
       expect(readObjective(mock.settings, device.id)).toBeUndefined();
     });
 

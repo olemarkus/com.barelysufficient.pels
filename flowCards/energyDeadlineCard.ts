@@ -17,7 +17,7 @@ export function registerSetEnergyDeadlineCard(deps: FlowCardDeps): void {
     'set_energy_deadline',
     'Device must be provided.',
     supportsEnergyObjective,
-    (label) => `'${label}' is not an on/off device with a live power reading, `
+    (label) => `'${label}' is not an on/off device or EV charger with a live power reading, `
       + 'so PELS cannot count the energy it takes.',
     (args: { target_kwh?: unknown } | null) => {
       const targetEnergyKWh = validateNumberInRange(

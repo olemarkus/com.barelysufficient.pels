@@ -318,11 +318,8 @@ follow-ups that this note originally flagged have **shipped** (see below): the
 Smart tasks device card now explains charger plan state, and the deadline-plan
 hero surfaces planning speed and estimated duration. The broader product
 follow-ups are direct creation on the Smart tasks page and the generic immediate
-intent. The remaining EV-specific extensions — kWh target mode and expanded
-observability — are described further down.
-
-Those EV-specific extensions are stand-alone work that broadens coverage and
-adds user agency.
+intent. Energy targets are available through Add energy task; expanded
+observability remains an EV-specific extension described further down.
 
 ## Topic map
 
@@ -374,30 +371,21 @@ calibration view built from `lib/device/devicePowerCalibration.ts` via
 
 #### kWh target mode
 
-The kWh target is the only EV deadline path that does not depend on SoC
-observation at all — no native capability, no session validity, no
-freshness window. Stand-alone feature.
+EV chargers support the existing `energy` task through **Add energy task**, with
+or without a linked car or usable SoC. The shared eligibility gate requires live
+measured power; binary and stepped chargers are supported. The stored task stays
+`kind: 'energy'`, with its existing `targetEnergyKWh` and delivered-energy tracker.
+No additional EV-specific target variant or Flow card is needed.
 
-`DeferredObjectiveEvSocSettingsEntry`
-(`packages/contracts/src/deferredObjectiveSettings.ts`) accepts only
-`targetPercent` for the `ev_soc` variant today, and the flow-card JSON
-exposes only `target_percent`. Discriminate the contract variant to
-accept either `targetPercent` or `targetEnergyKwh`. Add a `target_kwh`
-arg path to `set_ev_charge_deadline` (either via additional optional args
-or a sibling action — pick whichever keeps validation clean). The
-diagnostics bridge computes `energyNeededKwh` directly from
-`targetEnergyKwh` when present, bypassing the
-`kWhPerUnit × (target% − current%)` math. Validates with both target
-shapes round-tripping through the active-plan recorder.
+Progress counts charger energy, including charging losses, rather than battery
+percentage. Charger session checks still apply: unplugged or discharging chargers
+cannot run the task. A linked car, SoC, battery capacity and learned kWh/% profile
+are not prerequisites. A car that stops accepting charge can leave the energy
+target unmet.
 
-Files: `packages/contracts/src/deferredObjectiveSettings.ts` (the type),
-`packages/shared-domain/src/settings/deferredObjectiveSettings.ts` (its parser),
-`flowCards/deadlineObjectiveCards.ts`,
-`lib/objectives/deferredObjectives/taskEvaluationCoordinator.ts`,
-`.homeycompose/flow/actions/set_ev_charge_deadline.json`, contract and
-bridge tests.
-
-Still open: the EV deadline kWh target is not shipped.
+UI creation still defaults to battery targets for chargers. Flow-created energy
+tasks use the existing energy display and edit paths. Each charger keeps at most
+one task; existing replacement and same-deadline energy accounting rules apply.
 
 #### Observability: expanded trigger tokens
 
@@ -484,9 +472,9 @@ deferred-objective admission/status logic for urgency.
 ## Sequencing
 
 This note describes design topics, not a schedule. The shipped EV admission
-slice is in v1. Trust-surface follow-ups (device-card state, planning speed /
-duration), feature extensions (kWh target, observability tokens), and the
-open-shape automation/override slices are all still unsequenced.
+slice is in v1. Device-card state, planning speed / duration, and Flow-created
+kWh targets have shipped. Observability tokens and the open-shape
+automation/override slices are still unsequenced.
 
 ## Acceptance Criteria
 

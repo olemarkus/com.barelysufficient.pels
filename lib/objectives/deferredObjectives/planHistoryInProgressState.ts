@@ -678,11 +678,11 @@ export const finalizeRecord = (
   };
 };
 
-// The row as stored: the device name and kind are the device's, joined back on
-// at the API boundary (`toResolvedPlanHistoryEntry`).
+// Keep the run's kind: a device may carry different task kinds over time.
+// Only its display name is joined from current inventory at the API boundary.
 export const toStoredPlanHistoryRecord = (
   entry: ResolvedDeferredObjectivePlanHistoryEntry,
 ): DeferredObjectivePlanHistoryRecord => {
-  const { deviceName: _deviceName, objectiveKind: _objectiveKind, ...stored } = entry;
+  const { deviceName: _deviceName, ...stored } = entry;
   return stored;
 };

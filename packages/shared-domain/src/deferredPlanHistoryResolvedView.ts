@@ -25,7 +25,6 @@ const isCompactHistoryRecord = (
   'targetValue' in entry
     && 'startProgressValue' in entry
     && 'finalProgressValue' in entry
-    && !('objectiveKind' in entry)
 );
 
 export const toPlanHistoryRecord = (
@@ -41,7 +40,6 @@ export const toPlanHistoryRecord = (
   }
   const {
     deviceName: _deviceName,
-    objectiveKind: _objectiveKind,
     targetTemperatureC: _targetTemperatureC,
     targetPercent: _targetPercent,
     startProgressC: _startProgressC,
@@ -78,7 +76,7 @@ export const toResolvedPlanHistoryEntry = (
   return {
     ...record,
     deviceName: device.name,
-    objectiveKind: device.objectiveKind,
+    objectiveKind: record.objectiveKind ?? device.objectiveKind,
     progressDirection: record.progressDirection ?? 'increasing',
   };
 };

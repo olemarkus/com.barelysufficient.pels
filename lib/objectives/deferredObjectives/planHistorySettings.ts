@@ -354,6 +354,7 @@ const hasValidRecordValues = (v: Record<string, unknown>): boolean => (
   typeof v.id === 'string'
     && v.id.length > 0
     && typeof v.deviceId === 'string'
+    && (v.objectiveKind === undefined || isObjectiveKind(v.objectiveKind) || v.objectiveKind === 'energy')
     && isFiniteOrNull(v.targetValue)
     && isFiniteOrNull(v.startProgressValue)
     && isFiniteOrNull(v.finalProgressValue)

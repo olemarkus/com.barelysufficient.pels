@@ -19,15 +19,9 @@ import { MAX_TARGET_ENERGY_KWH, MIN_TARGET_ENERGY_KWH } from './settings/deferre
 // payload builder (browser) and the runtime create-validation path (Node) so
 // the eligibility rule stays in one place.
 //
-// The structural input mirrors the relevant slice of `TargetDeviceSnapshot`
-// without importing the full contract: callers pass the device snapshot
-// directly (extra fields are ignored). The eligibility rule matches the
-// deadline Flow cards' `isEvCharger` / `supportsTemperatureObjective` /
-// `supportsEnergyObjective` predicates: an EV charger takes an EV-SoC goal; a
-// device with the complete observer-admitted temperature facet takes a
-// temperature goal; a pure on/off device takes an energy goal. Every device carries at most
-// one kind, so "which kind is this task" and "which kind can this device take"
-// have one answer.
+// The structural input mirrors the relevant slice of `TargetDeviceSnapshot`.
+// Default selection keeps existing creation surfaces stable; eligibility is
+// independent because a charger supports both battery and energy targets.
 
 export type SmartTaskDeviceLike = {
   temperatureControlDisabled?: true;
@@ -54,9 +48,8 @@ export type SmartTaskDeviceLike = {
   & SteppedLoadDescriptorProbe;
 
 // A pure on/off load: a relay switching a water heater, a plug, a pump. It can
-// be on or off and nothing else, so running it is all a smart task can do with
-// it, and the only goal it can carry is an amount of energy. A charger is never
-// one: it takes an EV goal.
+// be on or off and nothing else, so its default goal is an amount of energy.
+// Chargers have their own eligibility branch, including stepped chargers.
 const isPureBinaryDevice = (device: SmartTaskDeviceLike): boolean => (
   device.binaryControllable
   && !device.isEvCharger
@@ -68,11 +61,11 @@ const supportsTemperatureGoal = (device: SmartTaskDeviceLike): boolean => (
   device.temperature !== undefined
 );
 
-// Resolve the goal kind for a device. EV chargers win over the temperature
+// Resolve the default goal kind for a device. EV chargers win over the temperature
 // branch so an EV charger that also happens to expose a settable target still
-// reads as an EV-SoC task. Returns null when the device can carry neither goal
-// (i.e. the device is ineligible for a smart task).
-export const resolveSmartTaskDeviceKind = (
+// defaults to an EV-SoC task. This is a picker default, not an exhaustive
+// capability check: chargers can also take energy tasks.
+export const resolveDefaultSmartTaskKind = (
   device: SmartTaskDeviceLike,
 ): DeferredObjectiveSettingsKind | null => {
   if (device.isEvCharger) return 'ev_soc';
@@ -84,17 +77,17 @@ export const resolveSmartTaskDeviceKind = (
 
 /**
  * Whether a new task of `kind` may be created on `device` right now: the
- * device's kind, and for an energy task a live power reading to count progress
- * from. The one gate every creation path (Flow card, widget, settings API) asks.
+ * supported goal and, for energy, live power to count progress. Chargers support
+ * energy targets with or without a linked car or battery level. Every creation
+ * path (Flow card, widget, settings API) asks this same gate.
  */
 export const supportsSmartTaskKind = (
   device: SmartTaskDeviceLike & MeasuredPowerObservedProbe,
   kind: DeferredObjectiveSettingsKind,
 ): boolean => (
-  resolveSmartTaskDeviceKind(device) === kind
-  // An energy task's progress is the energy the device takes, counted from its
-  // power readings, so it needs a live reading of its draw.
-  && (kind !== 'energy' || hasLiveMeasuredPower(device))
+  kind === 'energy'
+    ? (device.isEvCharger || resolveDefaultSmartTaskKind(device) === 'energy') && hasLiveMeasuredPower(device)
+    : resolveDefaultSmartTaskKind(device) === kind
 );
 
 // Inclusive goal bounds + step for a kind. Temperature pulls min/max/step from

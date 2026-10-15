@@ -32,7 +32,7 @@ Smart tasks can also be created from Homey Flow action cards, for a task that sh
 | --- | --- |
 | **Add charging task** | EV chargers with a battery target and ready-by time |
 | **Add heating task** | Temperature devices with a target temperature and ready-by time |
-| **Add energy task** | On/off devices with a live power reading, with an amount of energy (kWh) and ready-by time |
+| **Add energy task** | On/off devices and EV chargers with a live power reading, with an amount of energy (kWh) and ready-by time |
 | **Clear smart task** | Removes the active task for the selected device |
 
 The ready-by value is written as local time, for example `07:00`. PELS stores the next matching future time when the Flow runs. It does not automatically repeat the same task every day unless your Flow runs again.
@@ -174,11 +174,13 @@ For many homes, this is the useful combination:
 
 ## Energy tasks
 
-An energy task asks PELS to deliver an amount of energy to a device before the ready-by time, for example `6 kWh` by `06:00`. It is for plain on/off devices that have neither a temperature reading nor a battery level, like a water heater switched by a relay: there is no temperature to heat *to*, but there is an amount of energy that heats the tank.
+An energy task asks PELS to deliver an amount of energy to a device before the ready-by time, for example `6 kWh` by `06:00`. It works with plain on/off devices such as a water heater switched by a relay, and with EV chargers. For an EV charger, you can choose an energy target whether or not you have a linked car or battery reading. The target counts electricity supplied through the charger, including charging losses; it does not promise a final battery percentage.
 
 Progress is the energy the device takes after the task starts, counted from its power readings. PELS then plans exactly like any other Smart task: it spreads the remaining energy over the cheapest hours before the ready-by time, within the hard cap and, unless you allow more, the daily budget, and switches the device off once the energy has been delivered.
 
-Which devices can take one: on/off devices only, so not EV chargers, thermostats or other devices with a target temperature, and not stepped loads. The device also needs a live power reading, its own power measurement or Homey Energy's live figure for it. A device that only reports a cumulative energy meter is not offered, because its power figure lags behind switching it on and off.
+Which devices can take one: plain on/off devices and EV chargers, including chargers with current control. Other stepped loads, thermostats and other devices with a target temperature are not eligible. The device also needs a live power reading, its own power measurement or Homey Energy's live figure for it. A device that only reports a cumulative energy meter is not offered, because its power figure lags behind switching it on and off.
+
+**For an EV charger**, use the **Add energy task** Flow card, select the charger, and set an amount such as `20 kWh` by `07:00`. The settings UI and New smart task widget still create battery-target tasks for chargers. Existing energy tasks can be viewed and edited in the settings UI. If the car stops accepting charge before the requested energy is delivered, the energy task can end as missed even if the car is full.
 
 A task starts when it is created, so the window runs from the moment the Flow fires until the ready-by time. To heat a water heater every night between 22:00 and 06:00, run **Add energy task** from a Flow that fires at 22:00 with ready-by `06:00`. Running the card again for the same ready-by time keeps the energy already delivered; a new night starts from zero.
 

@@ -824,14 +824,14 @@ reads the mode target being re-applied as a bug.
 
 Source of truth: `packages/shared-domain/src/deadlineLabels.ts`. Pull every label from `deadlineLabels(kind, progressDirection)` rather than hardcoding strings. Temperature tasks use `increasing` for heating and `decreasing` for cooling; an unresolved direction uses neutral temperature wording, and legacy records without a direction retain the original heating wording. EV state of charge always increases.
 
-| Concept | Heating temperature task | Cooling temperature task | EV-SoC device | Energy task (on/off device) |
+| Concept | Heating temperature task | Cooling temperature task | EV-SoC device | Energy task (on/off device or EV charger) |
 |---|---|---|---|---|
 | Kind chip | `Temperature` | `Temperature` | `EV` | `Energy` |
 | Hero section label (eyebrow — pending hero only) | `Heating smart task` | `Cooling smart task` | `EV smart task` | `Energy smart task` |
 | Live state chip — active (pending hero only) | `Heating` | `Cooling` | `Charging` | `Running` |
 | Live state chip — building plan (pending hero / list) | `Building plan…` | `Building plan…` | `Building plan…` | `Building plan…` |
 | Live state chip — plan ready, first hour later (list only) | `On track` | `On track` | `On track` | `On track` |
-| Live state chip — session ended (pending hero / list) | (n/a) | (n/a) | `Paused — unplugged` | (n/a) |
+| Live state chip — session ended (pending hero / list) | (n/a) | (n/a) | `Paused — unplugged` | `Paused — unplugged` for EV chargers |
 | Live state chip — device no longer managed (pending hero / list) | `Paused — not managed` | `Paused — not managed` | `Paused — not managed` | `Paused — not managed` |
 | Live state chip — on track, no active hour | `On track` | `On track` | `On track` | `On track` |
 | At-risk chip | `At risk` | `At risk` | `At risk` | `At risk` |

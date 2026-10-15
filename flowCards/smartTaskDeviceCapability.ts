@@ -11,8 +11,8 @@ export const supportsTemperatureObjective = (device: DecoratedDeviceSnapshot): b
 
 export const isEvCharger = (device: DecoratedDeviceSnapshot): boolean => device.isEvCharger;
 
-// A pure on/off device with a live power reading (a relay switching a water
-// heater): the shared gate every creation path asks.
+// An on/off device or EV charger with live measured power: the shared
+// eligibility gate, independent of whether the charger reports battery level.
 export const supportsEnergyObjective = (device: DecoratedDeviceSnapshot): boolean => (
   supportsSmartTaskKind(device, 'energy')
 );

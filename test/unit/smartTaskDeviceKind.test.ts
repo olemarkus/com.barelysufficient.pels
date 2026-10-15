@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   resolveSmartTaskCurrentValue,
   resolveSmartTaskDefaultGoal,
-  resolveSmartTaskDeviceKind,
+  resolveDefaultSmartTaskKind,
   resolveSmartTaskGoalBounds,
   supportsSmartTaskKind,
 } from '../../packages/shared-domain/src/smartTaskDeviceKind';
@@ -17,9 +17,9 @@ const smartTaskDevice = <T extends Partial<SmartTaskDeviceLike>>(
   fields: T & Pick<SmartTaskDeviceLike, 'targets'>,
 ): T & SmartTaskDeviceLike => ({ isEvCharger: false, binaryControllable: false, ...fields });
 
-describe('resolveSmartTaskDeviceKind', () => {
+describe('resolveDefaultSmartTaskKind', () => {
   it('classifies an EV charger as ev_soc even when it also has a target', () => {
-    expect(resolveSmartTaskDeviceKind(smartTaskDevice({
+    expect(resolveDefaultSmartTaskKind(smartTaskDevice({
       targets: [],
       isEvCharger: true,
       temperature: { currentTemperature: 1, target: { value: 1 } },
@@ -27,20 +27,20 @@ describe('resolveSmartTaskDeviceKind', () => {
   });
 
   it('classifies only a device with a complete temperature observation as temperature', () => {
-    expect(resolveSmartTaskDeviceKind(smartTaskDevice({
+    expect(resolveDefaultSmartTaskKind(smartTaskDevice({
       targets: [],
       temperature: { currentTemperature: 18, target: { value: 20, min: 5, max: 30 } },
     }))).toBe('temperature');
     // No observation, no temperature task: the facet is the only evidence read.
-    expect(resolveSmartTaskDeviceKind(smartTaskDevice({ targets: [] }))).toBeNull();
+    expect(resolveDefaultSmartTaskKind(smartTaskDevice({ targets: [] }))).toBeNull();
   });
 
   it('returns null for an ineligible on/off device', () => {
-    expect(resolveSmartTaskDeviceKind(smartTaskDevice({ targets: [] }))).toBeNull();
+    expect(resolveDefaultSmartTaskKind(smartTaskDevice({ targets: [] }))).toBeNull();
   });
 
   it('rejects temperature tasks when PELS temperature control is disabled', () => {
-    expect(resolveSmartTaskDeviceKind(smartTaskDevice({
+    expect(resolveDefaultSmartTaskKind(smartTaskDevice({
       targets: [],
       temperature: { currentTemperature: 18, target: { value: 20 } },
       temperatureControlDisabled: true,
@@ -48,13 +48,13 @@ describe('resolveSmartTaskDeviceKind', () => {
   });
 
   it('rejects temperature tasks while following manual targets', () => {
-    expect(resolveSmartTaskDeviceKind(smartTaskDevice({ targets: [],
+    expect(resolveDefaultSmartTaskKind(smartTaskDevice({ targets: [],
       temperature: { currentTemperature: 18, target: { value: 20 } }, temperatureAdjustmentsDisabled: true })))
       .toBeNull();
   });
 
   it('keeps EV tasks eligible when an EV also carries the temperature marker', () => {
-    expect(resolveSmartTaskDeviceKind(smartTaskDevice({
+    expect(resolveDefaultSmartTaskKind(smartTaskDevice({
       targets: [],
       isEvCharger: true,
       temperatureControlDisabled: true,
@@ -68,7 +68,7 @@ describe('energy tasks: pure on/off devices', () => {
   const livePower = { measuredPowerKw: 0, measuredPowerIsDirectMeasurement: true };
 
   it('gives a pure on/off device the energy kind, and only that one', () => {
-    expect(resolveSmartTaskDeviceKind(relay)).toBe('energy');
+    expect(resolveDefaultSmartTaskKind(relay)).toBe('energy');
   });
 
   it.each([
@@ -81,7 +81,7 @@ describe('energy tasks: pure on/off devices', () => {
     ['a stepped load', { ...relay, steppedLoadProfile: { steps: [{ id: 'off', planningPowerW: 0 }, { id: 'on', planningPowerW: 2000 }] } }, null],
     ['a device with no on/off axis', { ...relay, binaryControllable: false }, null],
   ])('does not give %s the energy kind', (_label, device, kind) => {
-    expect(resolveSmartTaskDeviceKind(device)).toBe(kind);
+    expect(resolveDefaultSmartTaskKind(device)).toBe(kind);
   });
 
   it('lets an energy task be created only on a device with a live power reading', () => {
@@ -91,6 +91,27 @@ describe('energy tasks: pure on/off devices', () => {
       .toBe(false);
     expect(supportsSmartTaskKind(relay, 'energy')).toBe(false);
     expect(supportsSmartTaskKind({ ...relay, ...livePower }, 'temperature')).toBe(false);
+  });
+
+  it.each([false, true])('allows EV energy targets with stepped control=%s, independently of SoC', (stepped) => {
+    const charger = smartTaskDevice({
+      isEvCharger: true,
+      binaryControllable: !stepped,
+      targets: [],
+      ...(stepped ? { steppedLoadProfile: { steps: [
+        { id: 'off', planningPowerW: 0 }, { id: 'low', planningPowerW: 1400 },
+        { id: 'high', planningPowerW: 7000 },
+      ] } } : {}),
+    });
+    for (const stateOfCharge of [undefined, stateOfChargeFixture({ percent: 80, carId: 'kia' })]) {
+      const device = { ...charger, ...livePower, stateOfCharge };
+      expect(supportsSmartTaskKind(device, 'energy')).toBe(true);
+      expect(supportsSmartTaskKind(device, 'ev_soc')).toBe(true);
+      expect(resolveDefaultSmartTaskKind(device)).toBe('ev_soc');
+    }
+    expect(supportsSmartTaskKind(charger, 'energy')).toBe(false);
+    expect(supportsSmartTaskKind({ ...charger, ...livePower, measuredPowerIsDirectMeasurement: false }, 'energy'))
+      .toBe(false);
   });
 
   it('asks nothing of metering for the other kinds', () => {

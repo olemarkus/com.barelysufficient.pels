@@ -1,3 +1,5 @@
+import type { DeferredObjectivePlanHistoryEntry } from '../../packages/contracts/src/deferredObjectivePlanHistory';
+import { toPlanHistoryRecord } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import {
   DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
   normalizeDeferredObjectivePlanHistory,
@@ -10,7 +12,7 @@ const HOUR_MS = 60 * 60 * 1000;
 // is rather than for a version: v1/v2 are no longer readable (no released
 // build ever wrote them), so this is simply the common base the v3/v4/v5
 // fixtures below extend.
-const baseEntry = {
+const baseEntry: Omit<DeferredObjectivePlanHistoryEntry, 'id' | 'originalPlan' | 'finalPlan'> = {
   deviceId: 'dev',
   deviceName: 'Water Heater',
   objectiveKind: 'temperature',
@@ -214,6 +216,15 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     expect(result.entries[0]!.costDisplay).toBeUndefined();
   });
 
+  it('round-trips recorded energy identity and rejects invalid recorded kinds', () => {
+    const record = { ...toPlanHistoryRecord(v3Entry), objectiveKind: 'energy',
+      targetValue: 20, startProgressValue: 0, finalProgressValue: 20 };
+    expect(normalizeDeferredObjectivePlanHistory({ version: 6, entries: [record] }).entries).toEqual([record]);
+    expect(normalizeDeferredObjectivePlanHistory({
+      version: 6, entries: [{ ...record, objectiveKind: 'bogus' }],
+    }).entries).toEqual([]);
+  });
+
   it('normalizes legacy unknown outcomes and identity fields into the compact record', () => {
     const result = normalizeDeferredObjectivePlanHistory({
       version: 4,
@@ -225,7 +236,7 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
       outcome: 'abandoned',
     });
     expect(result.entries[0]).not.toHaveProperty('deviceName');
-    expect(result.entries[0]).not.toHaveProperty('objectiveKind');
+    expect(result.entries[0]).toHaveProperty('objectiveKind', 'temperature');
   });
 
   it('does not mistake a legacy row with a targetValue extension for a compact record', () => {
@@ -238,7 +249,7 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
       startProgressValue: 50,
       finalProgressValue: 65,
     });
-    expect(result.entries[0]).not.toHaveProperty('objectiveKind');
+    expect(result.entries[0]).toHaveProperty('objectiveKind', 'temperature');
   });
 
   it('drops an entry whose costDisplay is malformed (non-string unit / zero divisor)', () => {

@@ -397,8 +397,8 @@ export type ResolvedDeferredObjectivePlanHistoryProgressSample = {
   value: number | null;
 };
 
-/** Compact persisted row. Device name and objective kind are enriched from the
- * current device snapshot at the API boundary. */
+/** Compact persisted row. Device name is enriched from the current snapshot.
+ * Older compact records omitted the task kind and require legacy inference. */
 export type DeferredObjectivePlanHistoryRecord = Omit<
   DeferredObjectivePlanHistoryEntry,
   'deviceName' | 'objectiveKind'
@@ -407,6 +407,9 @@ export type DeferredObjectivePlanHistoryRecord = Omit<
   | 'finalProgressC' | 'finalProgressPercent'
   | 'progressSamples' | 'outcome'
 > & {
+  // Recorded task identity: a charger can run either an energy or battery task.
+  // Absent only on compact records written before kind was retained.
+  objectiveKind?: DeferredObjectiveSettingsKind;
   deliveryExplanation: TaskDeliveryExplanation;
   targetValue: number | null;
   startProgressValue: number | null;

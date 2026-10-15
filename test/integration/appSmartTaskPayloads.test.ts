@@ -266,6 +266,16 @@ describe('AppSmartTaskPayloads energy tasks', () => {
     expect(payload?.plansByDeviceId['dev-1']).not.toHaveProperty('deliveredKWh');
   });
 
+  it('keeps energy and battery history distinct on the same charger', () => {
+    const payload = buildPayloads({ history: { version: 6, entries: [
+      buildHistoryEntry({ id: 'energy', deviceId: 'ev-1', objectiveKind: 'energy', targetValue: 20 }),
+      buildHistoryEntry({ id: 'battery', deviceId: 'ev-1', objectiveKind: 'ev_soc', targetValue: 80 }),
+    ] } }, [{ id: 'ev-1', name: 'Charger', deviceClass: 'evcharger', deviceType: 'onoff',
+      binaryControllable: true, targets: [] }]).getDeferredObjectivePlanHistoryUiPayload();
+    expect(payload.entriesByDeviceId['ev-1']?.map((entry) => [entry.objectiveKind, entry.targetValue]))
+      .toEqual([['energy', 20], ['ev_soc', 80]]);
+  });
+
   it('reads an energy run in history as an energy run, off the on/off device it ran on', () => {
     const payload = buildPayloads({
       history: {

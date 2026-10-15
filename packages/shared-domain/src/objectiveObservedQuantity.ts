@@ -37,7 +37,7 @@ export type ObjectiveQuantityDevice =
  * No observation time travels with it: freshness is settled at the observer.
  *
  * SoC takes precedence over temperature for a device reporting both, matching
- * `resolveSmartTaskDeviceKind` ("EV chargers win over the temperature branch").
+ * `resolveDefaultSmartTaskKind` ("EV chargers win over the temperature branch").
  * The two classifiers must not disagree: with the profile's kind guard gone there
  * is nothing downstream to catch it, and a kWh/°C rate consumed as kWh/% would
  * mis-size the whole deadline plan.

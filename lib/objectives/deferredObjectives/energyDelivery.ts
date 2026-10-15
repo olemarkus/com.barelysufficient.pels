@@ -3,8 +3,8 @@
  * started — the progress an `energy` task is measured by.
  *
  * An energy task ("feed the water heater 16 kWh by 06:00") has no level of the
- * device's own to read: the device it exists for is a relay-switched water
- * heater with neither a temperature nor a battery level. Its progress is the
+ * device's own to read: a relay-switched water heater or an EV charger can
+ * run toward an energy target without temperature or battery data. Its progress is the
  * energy PELS has seen it draw, so something has to count that energy, and has
  * to keep counting it across ticks and restarts. That is this tracker.
  *

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { DeferredObjectivePlanHistoryEntry } from '../../packages/contracts/src/deferredObjectivePlanHistory';
-import { toResolvedPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
+import { toPlanHistoryRecord, toResolvedPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DEADLINE_MS = Date.UTC(2026, 4, 16, 7, 0, 0);
@@ -42,6 +42,20 @@ const resolve = (entry: DeferredObjectivePlanHistoryEntry) => toResolvedPlanHist
 });
 
 describe('toResolvedPlanHistoryEntry', () => {
+  it('uses the recorded task kind when a charger runs an energy task', () => {
+    const record = { ...toPlanHistoryRecord(buildRaw()), objectiveKind: 'energy' as const,
+      targetValue: 20, startProgressValue: 0, finalProgressValue: 20 };
+    const resolved = toResolvedPlanHistoryEntry(record, { name: 'Charger', objectiveKind: 'ev_soc' });
+    expect(resolved).toMatchObject({ objectiveKind: 'energy', targetValue: 20, finalProgressValue: 20 });
+    expect(toPlanHistoryRecord(record)).toEqual(record);
+  });
+
+  it('keeps legacy compact history readable using the device default', () => {
+    const { objectiveKind: _kind, ...legacy } = toPlanHistoryRecord(buildRaw());
+    expect(toResolvedPlanHistoryEntry(legacy, { name: 'Charger', objectiveKind: 'ev_soc' }).objectiveKind)
+      .toBe('ev_soc');
+  });
+
   it('resolves a temperature entry (°C columns) to unit-agnostic values', () => {
     const resolved = resolve(buildRaw());
     expect(resolved.targetValue).toBe(65);
