@@ -1223,7 +1223,10 @@ on" is false for a task that already holds a grant. On a surface where the user
 GRANTS a permission rather than reads one back, each toggle also carries its
 `SMART_TASK_EXTRA_PERMISSION_HINTS` line: `May pause lower-priority devices` on
 its own is read as "PELS switches my devices off", so its hint names the reserve
-and denies the switch-off in the same breath.
+and denies the switch-off in the same breath. The limit and pause hints also
+name their cost as held-back devices, task or not: a lower-priority device need
+not belong to any smart task, so a hint that names only missed deadlines
+understates it (owner, 2026-10-14).
 
 The two "Extra permissions" blocks on the detail page must never be on screen at
 once: the read-only row is suppressed while the editor is open

@@ -121,8 +121,8 @@ Four places set these permissions:
 | Permission | What it allows |
 | --- | --- |
 | **go over today's budget** | The device may keep running during its planned hours even when the daily budget would normally pace it down. The daily budget is a soft, price-shaped target, so this lets the task run past it. |
-| **limit lower-priority devices** | The task may limit lower-priority devices that are **currently drawing power** — turning them down or off — so it gets the power it needs. Devices at the same or higher priority are never touched. |
-| **pause lower-priority devices** | PELS reserves the power the task needs to start, so it can start sooner. A device that needs a clear block of power to begin — an EV charger, a water heater — cannot start on scraps, so lower-priority devices wait their turn to resume until it has started. Nothing is switched off to make room, and devices at the same or higher priority are never affected. |
+| **limit lower-priority devices** | The task may limit lower-priority devices that are **currently drawing power**, turning them down or off, so it gets the power it needs. Devices at the same or higher priority are never touched. The cost is that devices you ranked lower can be held back longer, whether or not they have a smart task. |
+| **pause lower-priority devices** | PELS reserves the power the task needs to start, so it can start sooner. A device that needs a clear block of power to begin, such as an EV charger or a water heater, cannot start on scraps, so lower-priority devices are not turned back on until it has started. Nothing is switched off to make room, and devices at the same or higher priority are never affected. The cost is that devices you ranked lower can be held back longer, whether or not they have a smart task of their own, so use it for a task that matters more than they do. |
 
 The Flow card also asks when the permission applies:
 

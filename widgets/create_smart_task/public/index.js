@@ -303,8 +303,10 @@
   };
   var SMART_TASK_EXTRA_PERMISSION_HINTS = {
     exemptFromBudget: "May reserve more operating time when the daily budget restricts this task. Energy use may exceed today\u2019s budget; house power limits still apply.",
-    limitLowerPriorityDevices: "May strengthen this task\u2019s power guarantee by turning down lower-priority devices. Their tasks may take longer or miss their deadlines. The daily budget still applies.",
-    pauseLowerPriorityDevices: "Reserves power for this task to start. Lower-priority devices may wait longer to resume and miss their deadlines; this does not switch running devices off."
+    // The cost is held-back devices, task or not: a lower-priority device need not belong to any
+    // smart task, so naming only missed deadlines would understate it (owner, 2026-10-14).
+    limitLowerPriorityDevices: "May strengthen this task\u2019s power guarantee by turning down lower-priority devices. They may be held back longer, and any smart tasks they have may miss their deadlines. The daily budget still applies.",
+    pauseLowerPriorityDevices: "Reserves power for this task to start. Lower-priority devices may be held back longer, and any smart tasks they have may miss their deadlines. This does not switch running devices off."
   };
   var SMART_TASK_LIST_ROW_LABELS = {
     target: "Target",

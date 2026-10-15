@@ -1227,10 +1227,13 @@ export const SMART_TASK_EXTRA_PERMISSION_LABELS: Record<keyof DeferredObjectiveR
 export const SMART_TASK_EXTRA_PERMISSION_HINTS: Record<keyof DeferredObjectiveRescuePermissions, string> = {
   exemptFromBudget: 'May reserve more operating time when the daily budget restricts this task. '
     + 'Energy use may exceed today’s budget; house power limits still apply.',
+  // The cost is held-back devices, task or not: a lower-priority device need not belong to any
+  // smart task, so naming only missed deadlines would understate it (owner, 2026-10-14).
   limitLowerPriorityDevices: 'May strengthen this task’s power guarantee by turning down lower-priority devices. '
-    + 'Their tasks may take longer or miss their deadlines. The daily budget still applies.',
-  pauseLowerPriorityDevices: 'Reserves power for this task to start. Lower-priority devices may wait longer '
-    + 'to resume and miss their deadlines; this does not switch running devices off.',
+    + 'They may be held back longer, and any smart tasks they have may miss their deadlines. '
+    + 'The daily budget still applies.',
+  pauseLowerPriorityDevices: 'Reserves power for this task to start. Lower-priority devices may be held back longer, '
+    + 'and any smart tasks they have may miss their deadlines. This does not switch running devices off.',
 };
 
 const SMART_TASK_RESCUE_MODE_SUFFIX: Record<DeferredObjectiveRescueMode, string> = {
