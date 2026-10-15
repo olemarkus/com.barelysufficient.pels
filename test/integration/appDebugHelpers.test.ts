@@ -140,6 +140,22 @@ describe('appDebugHelpers', () => {
     ]);
   });
 
+  it('excludes an adapter-resolved EV even when Homey classifies it as a sensor', async () => {
+    setRestClient({
+      get: vi.fn().mockResolvedValue({ items: [{ type: 'cumulative', id: 'tesla', values: { W: 400 } }] }),
+      put: vi.fn(),
+    });
+    const app = {
+      deviceManager: buildDeviceManager({
+        devices: [{
+          id: 'tesla', name: 'Tesla', class: 'sensor', driverId: 'homey:app:com.tesla.car:battery',
+          capabilities: ['charging_on', 'charging_state', 'measure_charge_power', 'measure_soc_level'],
+        }],
+      }),
+    };
+    await expect(getHomeyEnergyMetersFromApp(app as never)).resolves.toEqual([]);
+  });
+
   it('keeps a cumulative meter the device list cannot place', async () => {
     // An unplaceable device is not one PELS can command, and a cumulative item
     // is the home total by definition, so it stays offerable under its own id.
@@ -198,14 +214,23 @@ describe('appDebugHelpers', () => {
   });
 
   it('rejects when the device list comes back empty, since no device item can be classed', async () => {
-    // The device read resolves a failure to [] — answering "no meters" then
-    // would hide every sub-meter a meter area uses.
+    // An empty inventory cannot establish which device items are meters.
     setRestClient({
       get: vi.fn().mockResolvedValue({ items: [{ type: 'device', id: 'sub', values: { W: 800 } }] }),
       put: vi.fn(),
     });
     const app = { deviceManager: { getDevicesForDebug: vi.fn().mockResolvedValue([]) }, error: vi.fn() };
     await expect(getHomeyEnergyMetersFromApp(app as never)).rejects.toThrow('Homey device list unavailable');
+  });
+
+  it('propagates a failed device inventory read instead of returning an empty picker', async () => {
+    setRestClient({
+      get: vi.fn().mockResolvedValue({ items: [{ type: 'device', id: 'sub', values: { W: 800 } }] }),
+      put: vi.fn(),
+    });
+    const failure = new Error('Homey device inventory could not be read');
+    const app = { deviceManager: { getDevicesForDebug: vi.fn().mockRejectedValue(failure) } };
+    await expect(getHomeyEnergyMetersFromApp(app as never)).rejects.toBe(failure);
   });
 
   it('logs the device dump as one line per section when APIs are available', async () => {

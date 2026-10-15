@@ -1551,6 +1551,55 @@ describe('native stepped-load wiring', () => {
     }]);
   });
 
+  it('revokes a current Flow request before dispatching a Flow-backed stop', async () => {
+    let requestId = '';
+    const deviceManager = createTestDeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      {
+        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
+        getDeviceControlProfile: () => steppedProfile,
+        getFlowReportedCapabilities: () => ({
+          onoff: { value: true, reportedAt: Date.now(), source: 'flow' },
+        }),
+      },
+      undefined,
+      { getFlowTriggerCard: () => ({ trigger: (tokens) => {
+        if (!tokens || !('request_id' in tokens) || typeof tokens.request_id !== 'string') {
+          throw new Error('Expected a stepped request ID');
+        }
+        requestId = tokens.request_id;
+        return true;
+      } }) },
+    );
+    const raw = buildFlowSteppedLoad();
+    const [snapshot] = await seedTransportDevices(deviceManager, [{
+      ...raw,
+      capabilities: ['measure_power'],
+      capabilitiesObj: {
+        measure_power: { id: 'measure_power', value: 1840, lastUpdated: new Date().toISOString() },
+      },
+    }]);
+    expect(snapshot).toMatchObject({ canSetControl: true, flowBackedCapabilityIds: ['onoff'] });
+    const requestStep = () => deviceManager.requestSteppedLoadStep({
+      deviceId: raw.id, profile: steppedProfile, desiredStepId: 'low',
+      planningPowerW: 1250, planningCurrentA: 0,
+    });
+    await requestStep();
+    const stoppedRequestId = requestId;
+    expect(deviceManager.isSteppedRequestValid(raw.id, stoppedRequestId)).toBe(true);
+    const triggerStop = vi.fn(async () => {
+      expect(deviceManager.isSteppedRequestValid(raw.id, stoppedRequestId)).toBe(false);
+    });
+    await deviceManager.requestBinaryControl(raw.id, false, triggerStop);
+    expect(triggerStop).toHaveBeenCalledWith(raw.id, 'onoff', false);
+
+    await requestStep();
+    await deviceManager.requestBinaryControl(raw.id, true, vi.fn(async () => {}));
+    expect(deviceManager.isSteppedRequestValid(raw.id, requestId)).toBe(true);
+    expect(deviceManager.isSteppedRequestValid(raw.id, stoppedRequestId)).toBe(false);
+  });
+
   it('does not use native stepped-load transport when native activation is disabled', async () => {
     const get = vi.fn(async (path: string) => {
       if (path === 'manager/devices/device') return { 'hoiax-1': buildHoiaxDevice() };

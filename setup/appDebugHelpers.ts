@@ -2,8 +2,7 @@
 import { nextDeviceDumpId } from '../lib/diagnostics/deviceDumpId';
 import type { AppContext } from '../lib/app/appContext';
 import type { DeviceTransportPort } from '../lib/device/deviceTransport';
-import { fetchLiveMeterItems } from '../lib/device/transport/managerFetch';
-import { isPickableMeterItem, resolveDeviceClassKey } from '../lib/device/transport/managerHelpers';
+import { readHomeyEnergyMeters } from '../lib/device/homeyEnergyMeters';
 import type { HomeyEnergyMeterEntry } from '../packages/contracts/src/settingsUiApi';
 import { DEVICES_API_PATH, getRawDevices } from '../lib/device/transport/managerHomeyApi';
 import type { HomeyDeviceLike } from '../lib/utils/types';
@@ -71,35 +70,13 @@ export async function getHomeyDevicesForDebugFromApp(
   });
 }
 
-/**
- * The whole-home meter picker options: the live energy report joined to the
- * device list for names and classes, then narrowed by the device layer's own
- * rule (`isPickableMeterItem`). The rule is not decided here — which items are
- * meters is device-domain knowledge, and `setup/` wires rather than classifies
- * (`setup/AGENTS.md` § "No domain logic").
- *
- * An id the device list cannot name falls back to itself. Backs the
- * `homey_energy_meters` endpoint for both the main and meter-area pickers.
- */
+/** Bind the meter inventory owner to the initialized transport. */
 export async function getHomeyEnergyMetersFromApp(
-  app: Pick<AppContext, 'deviceManager' | 'error'>,
+  app: Pick<AppContext, 'deviceManager'>,
 ): Promise<HomeyEnergyMeterEntry[]> {
-  const items = await fetchLiveMeterItems();
-  // Without the device list no `device`-type item can be classed, so an empty
-  // list would pass for "no meters"; the device read resolves a failure to [].
-  const devices = (await getHomeyDevicesForDebugFromApp(app))
-    .filter((device): device is HomeyDeviceLike & { id: string } => typeof device.id === 'string');
-  if (devices.length === 0) throw new Error('Homey device list unavailable');
-  const nameById = new Map(devices.map((device) => [device.id, device.name] as const));
-  const classById = new Map(devices.map((device) => (
-    [device.id, resolveDeviceClassKey(device) ?? device.class] as const
-  )));
-  return items
-    .filter((item) => isPickableMeterItem({
-      isCumulativeItem: item.type === 'cumulative',
-      deviceClass: classById.get(item.id),
-    }))
-    .map((item) => ({ id: item.id, name: nameById.get(item.id) ?? item.id }));
+  const { deviceManager } = app;
+  if (!deviceManager) throw new Error('DeviceTransport must be initialized before use.');
+  return readHomeyEnergyMeters(() => deviceManager.getDevicesForDebug());
 }
 
 /**

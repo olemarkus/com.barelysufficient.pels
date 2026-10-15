@@ -126,3 +126,12 @@ control revision for invalidating pending requests. Planner, executor and UI
 contracts gain no vendor flags or session requirements. Adapter operations have
 no optional hooks or nullable resolved results. `npm run device:adapters` guards
 this boundary, including type-only imports and raw vendor discriminators.
+
+Resolve SDK uncertainty at ingestion. Malformed capability values are ignored
+without replacing accepted observations. Valid Tesla `Unknown`, `NoPower` and
+`Calibrating` reports block control while retaining the last real plug observation;
+they do not become an unknown plug state or a fabricated disconnect. Full inventory
+reads resolve companion membership before publishing device eligibility, retaining
+ignored entries and respecting transient-empty protection. Partial reads cannot
+remove companions. A stop request revokes outstanding current-request authority
+before choosing capability or Flow delivery.

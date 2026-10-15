@@ -486,6 +486,7 @@ export class DeviceTransport {
         desired: boolean,
         triggerFlow: (deviceId: string, capabilityId: string, desired: boolean) => Promise<void>,
     ): Promise<void> {
+        if (!desired) this.writeService.flowRequests.invalidate(deviceId);
         // `latestSnapshotById` is authoritative for a by-id read: every writer
         // updates it in the same call that touches `latestSnapshot` (refresh
         // rebuilds it from the array, an unparseable device.update splices and

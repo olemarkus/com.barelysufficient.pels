@@ -1,7 +1,7 @@
 import type Homey from 'homey';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
-import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices, onObservedState } from '../helpers/deviceTransportHarness';
+import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices, onObservedState, onObservedStateRefresh } from '../helpers/deviceTransportHarness';
 import { emitCapability, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 import { mockHomeyInstance, setMockGeolocation } from '../mocks/homey';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
@@ -254,6 +254,50 @@ test('removing a companion revokes authorization until a complete home session i
   owner.retainDevices([initial[0]!, initial[2]!]);
   expect(owner.isAllowed('battery')).toBe(false);
   expect(owner.observedIds()).not.toContain('location');
+});
+
+test.each([
+  ['location', false], ['car', false], ['location', true],
+] as const)('full refresh removes %s before publishing Tesla eligibility (ignored battery: %s)', async (removed, ignoredBattery) => {
+  vi.useRealTimers();
+  mockHomeyInstance.settings.set('charging_current_control', { battery: { method: 'flow', confirmation: 'vehicle' } });
+  const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App,
+    { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test') });
+  try {
+    await initWithLiveFeed(transport);
+    const initial = devices();
+    await seedTransportDevices(transport, initial);
+    expect(transport.getSnapshotByDeviceId('battery')).toMatchObject({ available: true, measuredPowerKw: 4 });
+    const published: boolean[] = [];
+    onObservedStateRefresh(transport, () => {
+      published.push(transport.getSnapshotByDeviceId('battery')?.available === true);
+    });
+    const remaining = initial.filter((device) => device.id !== removed);
+    if (ignoredBattery) delete remaining[0]!.capabilitiesObj!.measure_soc_level;
+    await seedTransportDevices(transport, remaining);
+    expect(published).toEqual([false]);
+    expect(transport.getSnapshotByDeviceId('battery')).toMatchObject({ available: false, measuredPowerKw: 0 });
+    await expect(transport.setCapability('battery', 'evcharger_charging', true)).rejects.toThrow('at home');
+  } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
+});
+
+test('transient empty and targeted reads preserve accepted Tesla companion membership', async () => {
+  vi.useRealTimers();
+  mockHomeyInstance.settings.set('charging_current_control', { battery: { method: 'flow', confirmation: 'vehicle' } });
+  const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App,
+    { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test') });
+  try {
+    await initWithLiveFeed(transport);
+    const initial = devices();
+    await seedTransportDevices(transport, initial);
+    const revision = transport.chargingCurrentControl.sessions.controlRevision('battery');
+    await seedTransportDevices(transport, []);
+    expect(transport.chargingCurrentControl.sessions.controlRevision('battery')).toBe(revision);
+    expect(transport.getSnapshotByDeviceId('battery')).toMatchObject({ available: true, measuredPowerKw: 4 });
+    await seedTransportDevices(transport, [initial[0]!], { targetedRefresh: true });
+    expect(transport.chargingCurrentControl.sessions.controlRevision('battery')).toBe(revision);
+    expect(transport.getSnapshotByDeviceId('battery')).toMatchObject({ available: true, measuredPowerKw: 4 });
+  } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
 });
 
 

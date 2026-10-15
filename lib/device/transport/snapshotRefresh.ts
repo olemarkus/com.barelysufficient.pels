@@ -100,7 +100,6 @@ const EMPTY_SNAPSHOT_ABANDON_GRACE_READS = SNAPSHOT_ABANDON_GRACE_READS;
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function shouldDeferEmptySnapshotCommit(
     refresh: SnapshotRefreshService,
-    snapshot: readonly TargetDeviceSnapshot[],
     previousSnapshot: readonly TargetDeviceSnapshot[],
     rawWasEmpty: boolean,
     nowMs: number,
@@ -110,7 +109,7 @@ function shouldDeferEmptySnapshotCommit(
     // managed/eligible anymore), that is an intentional empty snapshot and must
     // commit immediately — deferring it would keep controlling a now-stale device
     // until the grace window or read threshold elapses.
-    if (snapshot.length > 0 || previousSnapshot.length === 0 || !rawWasEmpty) {
+    if (previousSnapshot.length === 0 || !rawWasEmpty) {
         refresh.refreshState.setEmptySnapshotGrace(null);
         return false;
     }
@@ -202,21 +201,15 @@ function appendRecoveredTemperatureDevices(
 /* eslint-enable functional/immutable-data */
 
 /**
- * Commits a refreshed snapshot unless the abandon-grace guard defers it.
- * Returns `true` when committed, `false` when a transient empty read was held
- * back so the caller can skip the post-commit recording/logging.
+ * Publishes a refreshed snapshot after inventory acceptance and session resolution.
  */
-function commitRefreshedSnapshot(refresh: SnapshotRefreshService, params: {
-    snapshot: TargetDeviceSnapshot[];
-    previousSnapshot: readonly TargetDeviceSnapshot[];
-    rawWasEmpty: boolean;
-    // The devices this read listed but ignored (`DeviceListRead.ignoredIds`):
-    // present, though one PELS never parsed has no snapshot entry.
-    ignoredReadIds: ReadonlySet<string>;
-    nowMs: number;
-}): boolean {
-    const { snapshot, previousSnapshot, rawWasEmpty, ignoredReadIds, nowMs } = params;
-    if (shouldDeferEmptySnapshotCommit(refresh, snapshot, previousSnapshot, rawWasEmpty, nowMs)) return false;
+function commitRefreshedSnapshot(
+    refresh: SnapshotRefreshService,
+    snapshot: TargetDeviceSnapshot[],
+    previousSnapshot: readonly TargetDeviceSnapshot[],
+    rawWasEmpty: boolean,
+    ignoredReadIds: ReadonlySet<string>,
+): void {
     refresh.snapshotCommit.commit(snapshot);
     // Warm iff this read returned at least one RAW device, re-judged on every
     // full commit. With no previous snapshot the guard above commits an empty
@@ -228,7 +221,7 @@ function commitRefreshedSnapshot(refresh: SnapshotRefreshService, params: {
     // still count — the SDK spoke.
     refresh.refreshState.markWarm(!rawWasEmpty);
     // After the commit so latestSnapshotById is current. The grace-deferred
-    // path returns above (before the commit), so the abandon-grace invariant
+    // path returns before this function, so the abandon-grace invariant
     // — no refresh event on a deferred empty read — holds by construction.
     refresh.observationBridge.dispatchStateRefresh(snapshot, ignoredReadIds);
     refresh.temperatureRecovery.completeAfterRefresh();
@@ -244,7 +237,6 @@ function commitRefreshedSnapshot(refresh: SnapshotRefreshService, params: {
         ...refresh.observationProducers.evCarLink.getObservedCarDeviceIds(),
     ]);
     fireSnapshotMutatedForRefresh(refresh, snapshot, previousSnapshot);
-    return true;
 }
 
 function shouldEmitSnapshotRefreshLog(
@@ -260,6 +252,26 @@ function shouldEmitSnapshotRefreshLog(
         metrics.unavailableDevices,
     ].join(':');
     return !refresh.refreshState.hasEmittedMetrics(nextKey);
+}
+
+function logCommittedSnapshot(
+    refresh: SnapshotRefreshService,
+    snapshot: TransportDeviceSnapshot[],
+    previousSnapshot: TransportDeviceSnapshot[],
+    startedAtMs: number,
+    targetedRefresh: boolean,
+): void {
+    const metrics = summarizeSnapshotRefreshMetrics(snapshot);
+    if (shouldEmitSnapshotRefreshLog(refresh, snapshot.length, metrics)) {
+        moduleLogger.info({
+            event: 'device_snapshot_refresh_completed',
+            durationMs: Date.now() - startedAtMs,
+            devicesTotal: snapshot.length,
+            targetedRefresh,
+            ...metrics,
+        });
+    }
+    logEvSnapshotChanges({ previousSnapshot, nextSnapshot: snapshot });
 }
 
 // Adopt the side effects of a committed snapshot: rebuild the tracking map /
@@ -291,7 +303,6 @@ function adoptCommittedDeviceList(
     refresh.reader.syncTrackedDevices(trackingList);
     if (isFullRead) {
         refresh.reader.snapshotStore.replaceLatestRawDevices(effectiveList);
-        refresh.reader.chargingCurrentControl.sessions.retainDevices(effectiveList);
     }
 }
 
@@ -464,6 +475,11 @@ export class SnapshotRefreshService {
             options.includeLivePower !== false,
             options.mainMeterSelection,
         );
+        // Accept the inventory before changing any session membership. A transient
+        // empty full read must leave both accepted observations and sessions intact.
+        if (shouldDeferEmptySnapshotCommit(this, previousSnapshot, list.length === 0, start)) {
+            return homePowerSample;
+        }
         // The read contract, before anything reads a payload: a device whose read
         // does not conform is ignored — its previous snapshot entry and raw entry
         // stand, none of its values reach a producer, the parse or tracking, and
@@ -473,6 +489,16 @@ export class SnapshotRefreshService {
             this.reader.logger,
             list.map((device) => this.reader.applyDeviceDriverOverride(device)),
         );
+        const acceptedRawDevices = withIgnoredReadRawDevices(
+            this.reader.snapshotStore.getTrackedRawDevicesById(),
+            this.reader.snapshotStore.getLatestRawDevices(),
+            read,
+        );
+        // Only a full inventory can remove companions. Keep ignored entries' last
+        // accepted reads, and resolve membership before parsing publishes eligibility.
+        if (fetchSource === 'raw_manager_devices') {
+            this.reader.chargingCurrentControl.sessions.retainDevices(acceptedRawDevices);
+        }
         const effectiveList = observeBatteryStateFromList(
             this.observationProducers.battery,
             this.observationProducers.solar,
@@ -497,31 +523,25 @@ export class SnapshotRefreshService {
         // (every id failed) reports `raw_manager_devices`, so it is treated as
         // authoritative here even though `isTargetedRefresh` was requested.
         const isTargetedOverlay = isTargetedRefresh && fetchSource === 'targeted_by_id';
+        // Resolve retained entries too: an ignored battery read preserves its
+        // observations, but cannot preserve control after an accepted companion removal.
         const snapshot = resolveCommittedRefreshSnapshot(
             this,
             presentSnapshot,
             previousSnapshot,
             isTargetedOverlay ? failedIds : null,
             start,
-        );
-        // Skip both the snapshot commit AND the raw-device cache update when the
-        // abandon-grace guard defers a transient empty read, so getUiPickerDevices()
-        // doesn't briefly report zero devices during the blip we're masking.
-        const committed = commitRefreshedSnapshot(this, {
+        ).map((device) => this.reader.chargingCurrentControl.projectControl(device));
+        commitRefreshedSnapshot(
+            this,
             snapshot,
             previousSnapshot,
-            rawWasEmpty: list.length === 0,
-            ignoredReadIds: read.ignoredIds,
-            nowMs: start,
-        });
-        if (!committed) return homePowerSample;
+            list.length === 0,
+            read.ignoredIds,
+        );
         adoptCommittedDeviceList(
             this,
-            withIgnoredReadRawDevices(
-                this.reader.snapshotStore.getTrackedRawDevicesById(),
-                this.reader.snapshotStore.getLatestRawDevices(),
-                read,
-            ),
+            acceptedRawDevices,
             fetchSource,
             snapshot,
         );
@@ -555,20 +575,7 @@ export class SnapshotRefreshService {
             ...(homePowerSample ? { homePowerW: homePowerSample.powerW } : {}),
             livePowerDeviceCount: Object.keys(livePowerByDeviceId).length,
         });
-        const metrics = summarizeSnapshotRefreshMetrics(snapshot);
-        if (shouldEmitSnapshotRefreshLog(this, snapshot.length, metrics)) {
-            moduleLogger.info({
-                event: 'device_snapshot_refresh_completed',
-                durationMs: Date.now() - start,
-                devicesTotal: snapshot.length,
-                targetedRefresh: isTargetedRefresh,
-                ...metrics,
-            });
-        }
-        logEvSnapshotChanges({
-            previousSnapshot,
-            nextSnapshot: snapshot,
-        });
+        logCommittedSnapshot(this, snapshot, previousSnapshot, start, isTargetedRefresh);
         // DETACHED on purpose (fire-and-forget): the zone tree rides the
         // refresh cycle but must never gate it — even a tail-position await
         // would hold the refresh PROMISE (post-write/post-actuation

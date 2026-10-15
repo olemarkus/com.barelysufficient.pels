@@ -1,7 +1,7 @@
 import type { ChargingCurrentSetup } from '../../../packages/contracts/src/chargingControl';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { DeviceAdapterSession, AdapterObservation } from '../deviceAdapter';
-import { hasTeslaChargingSurface, confirmedTeslaCurrent } from './charging';
+import { hasTeslaChargingSurface, confirmedTeslaCurrent, isTeslaChargingState } from './charging';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { toCapabilityTimestampMs } from '../managerControl';
 import { isTeslaChargingDevice } from './identity';
@@ -13,8 +13,9 @@ const NUMERIC_OBSERVATIONS = new Set([
   'measure_location_latitude', 'measure_location_longitude', 'measure_car_drive_speed',
   'measure_charge_current_max', 'measure_charge_current', 'measure_charge_power', 'measure_charge_power_dc',
 ]);
-const TEXT_OBSERVATIONS = new Set(['charging_state', 'charging_port_cable', 'car_shift_state', 'car_state']);
+const TEXT_OBSERVATIONS = new Set(['charging_port_cable', 'car_shift_state', 'car_state']);
 function isObservationValue(id: string, value: unknown): boolean {
+  if (id === 'charging_state') return isTeslaChargingState(value);
   if (NUMERIC_OBSERVATIONS.has(id)) return typeof value === 'number' && Number.isFinite(value);
   if (TEXT_OBSERVATIONS.has(id)) return typeof value === 'string';
   return id === 'charging_on' && typeof value === 'boolean';
@@ -50,6 +51,9 @@ export class TeslaChargingSession implements DeviceAdapterSession {
   }
 
   controlEvents(deviceId: string, capabilityId: string, value: unknown) {
+    // The same vendor enum governs full reads, session evidence and emitted
+    // feedback. A rejected state must not republish an old current observation.
+    if (capabilityId === 'charging_state' && !isTeslaChargingState(value)) return [];
     const localValue = capabilityId === 'measure_charge_power' && !this.isAllowed(deviceId) ? 0 : value;
     const events = [{ capabilityId, value: localValue }];
     if (['measure_charge_current', 'measure_charge_current_max',

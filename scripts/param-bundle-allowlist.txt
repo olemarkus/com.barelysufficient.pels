@@ -54,7 +54,6 @@ lib/device/transport/managerRealtimeHandlers.ts 3
 lib/device/transport/observationDebugSources.ts 2
 lib/device/transport/observationMerge.ts 7
 lib/device/transport/observationRecord.ts 4
-lib/device/transport/snapshotRefresh.ts 1
 lib/device/transport/targetedSnapshotMerge.ts 2
 lib/diagnostics/deviceDiagnosticsModel.ts 1
 lib/diagnostics/perfLogging.ts 1
