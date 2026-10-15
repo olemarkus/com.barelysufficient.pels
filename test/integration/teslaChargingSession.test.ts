@@ -373,3 +373,22 @@ test('a Tesla first observed in Unknown state is not discovered as a manageable 
   await seedTransportDevices(transport, initial);
   expect(transport.getSnapshot().find((device) => device.id === 'battery')).toBeUndefined();
 });
+
+
+test.each([2.5, undefined])('transport forwards projected power %s without inventing a zero sample', async (powerKw) => {
+  vi.useRealTimers();
+  mockHomeyInstance.settings.set('charging_current_control', { battery: { method: 'flow', confirmation: 'vehicle' } });
+  const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App,
+    { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test') });
+  try {
+    await initWithLiveFeed(transport);
+    await seedTransportDevices(transport, devices());
+    // Exercise the common host's projection contract, independently of a vendor's current power policy.
+    const project = vi.spyOn(transport.chargingCurrentControl, 'projectControl')
+      .mockImplementation((snapshot) => ({ ...snapshot, measuredPowerKw: powerKw }));
+    try {
+      await emitCapability('location', 'measure_location_latitude', 60);
+      expect(transport.getSnapshot()[0]).toMatchObject({ measuredPowerKw: powerKw ?? 4 });
+    } finally { project.mockRestore(); }
+  } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
+});

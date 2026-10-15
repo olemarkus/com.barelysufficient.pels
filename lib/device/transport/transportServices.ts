@@ -47,8 +47,9 @@ export class RealtimeIngestService {
       const available = resolved.available;
       const availabilityChanged = previousAvailability !== available;
       snapshot.available = available;
-      if (resolved.measuredPowerKw !== snapshot.measuredPowerKw) {
-        handleRealtimeCapabilityUpdateWithProbe(this, snapshot.id, 'measure_power', 0);
+      const powerKw = resolved.measuredPowerKw;
+      if (powerKw !== undefined && powerKw !== snapshot.measuredPowerKw) {
+        handleRealtimeCapabilityUpdateWithProbe(this, snapshot.id, 'measure_power', powerKw * 1000);
       }
       this.deviceConfiguration.set(snapshot);
       if (availabilityChanged) this.observationBridge.dispatchStateForDevice(snapshot.id);
