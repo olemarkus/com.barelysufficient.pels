@@ -625,5 +625,8 @@
   },
   "3.15.0": {
     "en": "PELS can now set the charging current directly for Tesla cars through Tesla Car & Energy and for Zaptec chargers, without a current-setting Flow. Add a Homey API key with Flow permission under the device's Charging current setup and choose Use built-in control. One key works for all supported chargers. Tesla control only runs while the car is parked at home on an AC charging session. A Zaptec installation must have only one charger.\n\nIf you keep using a Flow, the new Stepped-load request is still valid card checks right before your current action that PELS still wants that current."
+  },
+  "3.15.1": {
+    "en": "PELS now waits longer between power increases so slow-starting devices have time to respond. EV current reductions better account for cars using fewer phases than configured. Thermal Smart tasks can now recognise completion even when prices are unavailable. Smart tasks explain their power guarantees and the effect of holding back lower-priority devices more clearly. Charging control handles changing Tesla states and cancelled current requests more reliably."
   }
 }
