@@ -45,7 +45,7 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
   const canEnable = scopeAllowed && (device.capabilityWritable || access.state === 'ready');
   const builtIn = device.setup.method === 'built_in';
   const needsKey = !device.capabilityWritable && access.state !== 'ready';
-  const enableWithKey = !builtIn && needsKey;
+  const enableWithKey = !builtIn && needsKey && !access.configured;
   const KeyContainer = access.state === 'ready' ? 'details' : 'div';
   return <section class="charging-current-setup">
     <h3 class="pels-text-settings-label">Charging current</h3>

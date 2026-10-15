@@ -55,7 +55,10 @@ export function setChargingCurrentDevice(deviceId: string): void {
     } catch (failure) {
       // A combined save may have saved the key before enabling control failed.
       // Refresh so the next action reflects the configuration actually saved.
-      try { await load(); } catch { /* Keep the last loaded state if refresh also fails. */ }
+      try {
+        await load();
+        document.dispatchEvent(new Event('charging-control-changed'));
+      } catch { /* Keep the last loaded state if refresh also fails. */ }
       error = formatSettingsError(failure, 'Charging setup could not be saved. Try again.');
       return false;
     }

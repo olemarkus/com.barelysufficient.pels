@@ -88,11 +88,14 @@ test('saving the key through the primary setup action also enables built-in cont
 
 test('a failed activation shows the saved key and offers activation again without resaving it', async () => {
   savedSetup(true);
+  const changed = vi.fn();
+  document.addEventListener('charging-control-changed', changed, { once: true });
   await enterKeyAndEnable();
   await vi.waitFor(() => expect(document.querySelector('[role="alert"]')?.textContent).toContain('Could not enable control'));
   expect(document.body.textContent).toContain('Your key is ready.');
   expect(document.body.textContent).toContain('Built-in current control is not enabled.');
   expect(button('Use built-in control')).toBeTruthy();
+  expect(changed).toHaveBeenCalledOnce();
 });
 
 test.each(['conflict', 'unavailable'] as const)('does not enable built-in control while Flow checks are %s', async (flowCheck) => {
@@ -103,4 +106,19 @@ test.each(['conflict', 'unavailable'] as const)('does not enable built-in contro
   await act(async () => { field.value = 'test-key'; field.dispatchEvent(new Event('input')); });
   expect(button('Save key and enable').hasAttribute('disabled')).toBe(true);
   expect(callApi.mock.calls.some(([method]) => method === 'PUT')).toBe(false);
+});
+
+
+test('allows replacing an existing key without enabling control when a Flow conflicts', async () => {
+  callApi.mockImplementation(async (_method: string, path: string) => path === '/ui_charging_current'
+    ? [{ ...charger, flowCheck: 'conflict' }]
+    : { configured: true, state: 'permission_denied' });
+  await act(async () => setChargingCurrentDevice('charger'));
+  const field = document.querySelector<HTMLElement & { value: string }>('md-filled-text-field')!;
+  await act(async () => { field.value = 'replacement-key'; field.dispatchEvent(new Event('input')); });
+  expect(button('Replace key').hasAttribute('disabled')).toBe(false);
+  await act(async () => button('Replace key').click());
+  await vi.waitFor(() => expect(field.value).toBe(''));
+  expect(callApi).toHaveBeenCalledWith('PUT', '/ui_charging_access', { key: 'replacement-key' });
+  expect(callApi.mock.calls.filter(([method]) => method === 'PUT')).toHaveLength(1);
 });
