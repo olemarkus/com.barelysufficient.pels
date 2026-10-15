@@ -11,9 +11,9 @@ Zaptec exposes the selected charger current to Homey, so PELS can read the curre
 
 ## Built-in current control
 
-Open the charger's **Setup → Charging current** section. For an installation with one charger, confirm **This installation has only one charger**. PELS uses a writable current capability when the installed Zaptec app exposes one. Otherwise, create a Homey API key with **Flow** permission using [Homey's API-key guide](https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro), save it here, then choose **Use built-in control**. One key works for all supported chargers on this Homey.
+Open the charger's **Setup → Charging current** section. For an installation with one charger, confirm **This installation has only one charger**. PELS uses a writable current capability when the installed Zaptec app exposes one. Otherwise, create a Homey API key with **Flow** permission using [Homey's API-key guide](https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro), enter it here, and choose **Save key and enable**. If a key is already verified or the charger has a writable current capability, choose **Use built-in control**. One key works for all supported chargers on this Homey.
 
-Saving a key does not switch an existing Flow. Remove its current-setting action, choose **Check again**, and explicitly select built-in control. Keep unrelated battery-level Flows. If you prefer a Flow, use the alternative below.
+Before switching from an existing Flow, remove its current-setting action and choose **Check again**. Enable built-in control and check that the page says **Built-in current control is selected**. Keep unrelated battery-level Flows. If you prefer a Flow, use the alternative below.
 
 Zaptec's action changes the current for the whole installation. PELS refuses built-in current control when it knows of another charger on that installation. Only confirm a single-charger installation when that is true; otherwise keep your existing coordinated installation Flow.
 

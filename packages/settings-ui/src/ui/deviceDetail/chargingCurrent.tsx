@@ -25,6 +25,10 @@ export function setChargingCurrentDevice(deviceId: string): void {
     render(<ChargingCurrentSetupView key={deviceId} device={device} access={access} busy={busy} error={error}
       onCheck={() => perform(() => callApi('POST', CHARGING_ACCESS_CHECK_PATH))}
       onSaveKey={(key) => perform(() => callApi('PUT', CHARGING_ACCESS_PATH, { key }))}
+      onEnableWithKey={(key, setup) => perform(async () => {
+        await callApi('PUT', CHARGING_ACCESS_PATH, { key });
+        await callApi('PUT', `${CHARGING_CURRENT_PATH}/${encodeURIComponent(deviceId)}`, setup);
+      })}
       onRemove={() => perform(() => callApi('DELETE', CHARGING_ACCESS_PATH))}
       onSaveMethod={(setup: ChargingCurrentSetup) => perform(() => callApi('PUT', `${CHARGING_CURRENT_PATH}/${encodeURIComponent(deviceId)}`, setup))}
     />, container);
@@ -49,6 +53,9 @@ export function setChargingCurrentDevice(deviceId: string): void {
       await operation(); await load(); document.dispatchEvent(new Event('charging-control-changed'));
       return true;
     } catch (failure) {
+      // A combined save may have saved the key before enabling control failed.
+      // Refresh so the next action reflects the configuration actually saved.
+      try { await load(); } catch { /* Keep the last loaded state if refresh also fails. */ }
       error = formatSettingsError(failure, 'Charging setup could not be saved. Try again.');
       return false;
     }

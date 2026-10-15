@@ -11,10 +11,10 @@ PELS can manage charging through the **Battery & charging** device in **Tesla Ca
 
 1. Pair the car, **Battery & charging**, and location devices through Tesla Car & Energy. They must identify the same vehicle.
 2. Open the charging device in **PELS → Settings → Devices**. Follow [Configure an EV Charger](/ev-charger) to choose the correct phases and current limit for your car and installation. Current commands use whole amps from 6 to 32 A; pausing uses the charging switch.
-3. In **Setup → Charging current**, enable **Control charging through this car** and save the choice. Manage either the car or its physical charger: turn off **Power-limit control** for the other device.
-4. Create a Homey API key with **Flow** permission using [Homey's API-key guide](https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro). Save the key, then select **Use built-in control**. PELS cannot create this key for you. One key works for all supported cars and chargers on this Homey.
+3. In **Setup → Charging current**, turn on **Control charging through this car**. Manage either the car or its physical charger: turn off **Power-limit control** for the other device.
+4. Create a Homey API key with **Flow** permission using [Homey's API-key guide](https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro). Enter the key and select **Save key and enable**. If a key is already verified, select **Use built-in control**. PELS cannot create this key for you. One key works for all supported cars and chargers on this Homey.
 
-Saving a key does not change the selected method. If you already have a current-setting Flow, remove that action, select **Check again**, and explicitly choose built-in control. Keep unrelated Flows. You can replace or remove the saved key from this section.
+If you already have a current-setting Flow, remove that action and select **Check again** before enabling built-in control. Keep unrelated Flows. Setup is complete when the page says **Built-in current control is selected**. You can replace or remove the saved key under **Manage API key**.
 
 ## Use a Flow instead
 
