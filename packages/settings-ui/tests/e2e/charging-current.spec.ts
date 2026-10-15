@@ -7,7 +7,7 @@ for (const width of [320, 480]) {
       test.use({ viewport: { width, height: 900 }, isMobile: mobile, hasTouch: mobile });
       test.skip(({ browserName }) => mobile && browserName === 'firefox', 'Mobile host emulation uses Chromium');
 
-      test('sets up a shared key without switching an existing Flow and shows removal guidance', async ({ page }, testInfo) => {
+      test('explains a blocked activation and enables built-in control after resolving it', async ({ page }, testInfo) => {
         await page.addInitScript(() => {
           const setup = { method: 'flow', confirmation: 'single_charger' };
           let configured = false;
@@ -47,20 +47,17 @@ for (const width of [320, 480]) {
         await expect(section).toContainText('Flow control is selected');
         await section.screenshot({ path: testInfo.outputPath('charging-current-before-key.png') });
         await setMdValue(page, '#device-detail-charging-current md-filled-text-field', 'test-private-key');
-        await section.getByRole('button', { name: 'Save key', exact: true }).click();
+        await expect(section.getByRole('button', { name: 'Save key and enable', exact: true })).toBeDisabled();
+        await expect(section).toContainText('Remove the current-setting action');
+        await expect(section).toContainText('Current bridge');
+        await section.getByRole('button', { name: 'Check again', exact: true }).click();
+        await section.getByRole('button', { name: 'Save key and enable', exact: true }).click();
         await expect(section).toContainText('Charging access could not be saved. Try again.');
         await expect(section.locator('md-filled-text-field')).toHaveJSProperty('value', 'test-private-key');
         await section.screenshot({ path: testInfo.outputPath('charging-current-save-failed.png') });
-        await section.getByRole('button', { name: 'Save key', exact: true }).click();
-        await expect(section).toContainText('Flow permission verified');
-        await expect(section).toContainText('Remove the current-setting action');
-        await expect(section.getByRole('button', { name: 'Use built-in control', exact: true })).toBeDisabled();
+        await section.getByRole('button', { name: 'Save key and enable', exact: true }).click();
+        await expect(section).toContainText('Built-in current control is selected.');
         await expect(section.locator('md-filled-text-field')).toHaveJSProperty('value', '');
-        await section.screenshot({ path: testInfo.outputPath('charging-current-conflict.png') });
-        await section.getByRole('button', { name: 'Check again', exact: true }).click();
-        await expect(section.getByRole('button', { name: 'Use built-in control', exact: true })).toBeEnabled();
-        await section.getByRole('button', { name: 'Use built-in control', exact: true }).click();
-        await expect(section.getByRole('button', { name: 'Use a Flow', exact: true })).toBeVisible();
         await section.screenshot({ path: testInfo.outputPath('charging-current-active.png') });
         const layout = await section.evaluate((element) => {
           const right = element.getBoundingClientRect().right;

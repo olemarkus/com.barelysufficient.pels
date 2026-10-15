@@ -122,3 +122,18 @@ test('allows replacing an existing key without enabling control when a Flow conf
   expect(callApi).toHaveBeenCalledWith('PUT', '/ui_charging_access', { key: 'replacement-key' });
   expect(callApi.mock.calls.filter(([method]) => method === 'PUT')).toHaveLength(1);
 });
+
+
+test.each(['conflict', 'unavailable'] as const)('explains blocked activation beside the action even with a verified key: %s', async (flowCheck) => {
+  callApi.mockImplementation(async (_method: string, path: string) => path === '/ui_charging_current'
+    ? [{ ...charger, scope: 'vehicle', setup: { method: 'flow', confirmation: 'vehicle' }, flowCheck, flowNames: ['Current bridge'] }]
+    : { configured: true, state: 'ready' });
+  await act(async () => setChargingCurrentDevice('charger'));
+  const action = button('Use built-in control');
+  expect(action.hasAttribute('disabled')).toBe(true);
+  const guidance = action.parentElement?.previousElementSibling;
+  expect(guidance?.textContent).toContain(flowCheck === 'conflict' ? 'Current bridge' : 'could not check');
+  expect(guidance?.textContent).toContain('Check again');
+  expect(document.body.textContent).not.toContain('Your key is ready. Select');
+  expect(document.body.textContent).toContain('This switch allows control through the car.');
+});

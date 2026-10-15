@@ -47,6 +47,21 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
   const needsKey = !device.capabilityWritable && access.state !== 'ready';
   const enableWithKey = !builtIn && needsKey && !access.configured;
   const KeyContainer = access.state === 'ready' ? 'details' : 'div';
+  const activationGuidance = <div role="status">
+    {device.flowCheck === 'conflict' && <p class="field__hint">
+      Remove the current-setting action from your Flow before using built-in control. Then select “Check again”.
+      {device.flowNames.filter(Boolean).length > 0 && ` Flows: ${device.flowNames.filter(Boolean).join(', ')}.`}
+    </p>}
+    {device.flowCheck === 'unavailable' && <p class="field__hint">
+      PELS could not check for current-setting Flows. Select “Check again” to retry before enabling built-in control.
+    </p>}
+    {!confirmation && !device.sharedInstallation && <p class="field__hint">{device.scope === 'vehicle'
+      ? 'Turn on “Control charging through this car” to allow PELS to control this car.'
+      : 'Confirm that this installation has only one charger.'}</p>}
+    {!builtIn && canEnable && <p class="field__hint">{access.state === 'ready' ? 'Your key is ready. ' : ''}
+      Select “Use built-in control” to finish setup for this device.
+    </p>}
+  </div>;
   return <section class="charging-current-setup">
     <h3 class="pels-text-settings-label">Charging current</h3>
     {props.error && <p class="field__hint" role="alert">{props.error}</p>}
@@ -60,17 +75,13 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
         ? 'Your current-setting Flow remains in use until you switch.'
         : 'Enable it below, or set up a Flow to send current changes to the car or charger.'}</p>}
     </div>
-    {device.flowCheck === 'conflict' && <p class="field__hint" role="status">
-      Remove the current-setting action from your Flow before using built-in control. Then select “Check again”.
-      {device.flowNames.filter(Boolean).length > 0 && ` Flows: ${device.flowNames.filter(Boolean).join(', ')}.`}
-    </p>}
-    {device.flowCheck === 'unavailable' && <p class="field__hint">PELS could not check your Flows. Check again before changing control methods.</p>}
     {device.scope === 'vehicle' && <div>
       <label class="md-switch-row">
         <span class="md-switch-row__content"><span class="md-switch-row__label">Control charging through this car</span></span>
         <MdSwitch aria-label="Control charging through this car" selected={vehicleControl} disabled={busy}
           onChange={(event: Event) => setVehicleControl(readSwitchSelected(event))} />
       </label>
+      {!builtIn && <p class="field__hint">This switch allows control through the car. To adjust current without a Flow, finish setup with “Use built-in control” or “Save key and enable”.</p>}
       <p class="field__hint">Manage either the car or its physical charger in PELS. Turn off Power-limit control for the other device.</p>
       {vehicleControl !== (device.setup.confirmation === 'vehicle') && (builtIn || !vehicleControl)
         && <MdOutlinedButton disabled={busy}
@@ -89,6 +100,7 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
       <MdFilledTextField label={access.configured ? 'Replacement API key' : 'API key'} type="password"
         autocomplete="off" value={key} disabled={busy}
         onInput={(event: Event) => setKey((event.currentTarget as HTMLInputElement).value)} />
+      {enableWithKey && activationGuidance}
       <div class="form__actions">
         <MdFilledButton disabled={busy || !key.trim() || (enableWithKey && !scopeAllowed)} onClick={async () => {
           const saved = enableWithKey
@@ -99,14 +111,9 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
         {access.configured && <MdOutlinedButton disabled={busy} onClick={props.onRemove}>Remove key</MdOutlinedButton>}
       </div>
     </KeyContainer>}
-    {!builtIn && !device.sharedInstallation && access.state === 'ready' && <p class="field__hint" role="status">
-      Your key is ready. Select “Use built-in control” to finish setup for this device.
-    </p>}
-    {device.setup.method === 'flow' && device.scope === 'vehicle' && !vehicleControl && <p class="field__hint">
-      Turn on “Control charging through this car” to choose built-in control.
-    </p>}
+    {!enableWithKey && activationGuidance}
     <div class="form__actions">
-      {!builtIn && !needsKey && <MdFilledButton disabled={busy || !canEnable} onClick={() => props.onSaveMethod({ method: 'built_in', confirmation: chosenConfirmation })}>Use built-in control</MdFilledButton>}
+      {!builtIn && !device.sharedInstallation && !needsKey && <MdFilledButton disabled={busy || !canEnable} onClick={() => props.onSaveMethod({ method: 'built_in', confirmation: chosenConfirmation })}>Use built-in control</MdFilledButton>}
       <MdOutlinedButton disabled={busy} onClick={props.onCheck}>Check again</MdOutlinedButton>
     </div>
     <details>
