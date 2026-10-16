@@ -25,13 +25,11 @@ import { createExternalOffHoldPolicy } from '../../setup/externalOffHoldAdapter'
 // - fulfilled `undefined` for an existing pin and a store-wide empty key list
 //   are suspect reads that preserve a known pin; only a healthy key list that
 //   omits the pin proves a genuine unpin;
-// - the device-scoped reader feeding the overshoot default seed: a THROWN pin
-//   read must SKIP the seed, never persist a default derived from the global
-//   mode (that write outlives the transient failure).
+// - the device-scoped reader feeding a setpoint-only device's default limit: a
+//   THROWN pin read answers unavailable, never the global mode's target.
 // Pin faults (`unconfigured_mode`, `malformed_pin`) are NOT logged by any
 // production path — `resolveOperatingModeForDevice` folds them into
-// `unavailable` and skips the seed silently, so these tests assert the
-// containment, not an event.
+// `unavailable` silently, so these tests assert the containment, not an event.
 // Only outward seams are mocked: the shared mock Homey settings store backs
 // the real homes store and settings handler; bundles run their real plan
 // engine/service.
@@ -45,7 +43,6 @@ import {
   type HomeConfig,
 } from '../../lib/home/homeConfig';
 import { createHomeRuntimeRegistry, type HomeRuntimeRegistry } from '../../setup/homeRuntime/homeRuntimeRegistry';
-import { resolveOperatingModeForDevice } from '../../setup/homeRuntime/homeOperatingMode';
 import { readGoverningModeDeviceTargetC } from '../../lib/home/modeDeviceTargetsRead';
 import { HomeMembershipService } from '../../lib/home/homeMembershipService';
 import {
@@ -364,7 +361,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
 
     expect(mockHomeyInstance.settings.get('mode_catalog_initialized:h_a')).toBe(true);
-    expect(resolveOperatingModeForDevice(getHomeModeCatalogForTest(rig.ctx), 'dev-1')).toMatchObject({
+    expect(getHomeModeCatalogForTest(rig.ctx).resolveOperatingModeForDevice('dev-1')).toMatchObject({
       state: 'resolved',
       mode: 'Home',
       homeId: 'h_a',
@@ -863,7 +860,7 @@ describe('per-home operating mode (device-scoped mode target)', () => {
   const readTargetC = (): number | null | 'unavailable' => {
     const read = readGoverningModeDeviceTargetC(
       homeyLike.settings,
-      resolveOperatingModeForDevice(getHomeModeCatalogForTest(ctx), 'vt-1'),
+      getHomeModeCatalogForTest(ctx).resolveOperatingModeForDevice('vt-1'),
       'vt-1',
     );
     return read.state === 'resolved' ? read.targetC : 'unavailable';
@@ -897,7 +894,7 @@ describe('per-home operating mode (device-scoped mode target)', () => {
         return passthroughGet(key);
       });
 
-    expect(resolveOperatingModeForDevice(getHomeModeCatalogForTest(ctx), 'main-device'))
+    expect(getHomeModeCatalogForTest(ctx).resolveOperatingModeForDevice('main-device'))
       .toEqual({ state: 'unavailable' });
     readSpy.mockRestore();
   });

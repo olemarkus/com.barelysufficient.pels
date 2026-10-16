@@ -21,7 +21,7 @@ describe('ownership readiness before plan work', () => {
     const prepareModeCatalogsForOwnership = vi.fn(() => true);
     const options = buildOptions(prepareModeCatalogsForOwnership);
 
-    options.onOwnershipReadyBeforePlanWork?.(membership, false);
+    options.onOwnershipReadyBeforePlanWork?.(false);
 
     expect(prepareModeCatalogsForOwnership).toHaveBeenCalledWith(false);
   });
@@ -30,7 +30,7 @@ describe('ownership readiness before plan work', () => {
     const prepareModeCatalogsForOwnership = vi.fn(() => true);
     const options = buildOptions(prepareModeCatalogsForOwnership);
 
-    options.onOwnershipReadyBeforePlanWork?.(membership, true);
+    options.onOwnershipReadyBeforePlanWork?.(true);
 
     expect(prepareModeCatalogsForOwnership).toHaveBeenCalledWith(true);
   });
@@ -38,7 +38,7 @@ describe('ownership readiness before plan work', () => {
   it('routes unavailable area catalogs into ownership recovery', () => {
     const options = buildOptions(() => false);
 
-    expect(() => options.onOwnershipReadyBeforePlanWork?.(membership, false))
+    expect(() => options.onOwnershipReadyBeforePlanWork?.(false))
       .toThrow('Mode catalogs unavailable for ownership preparation');
   });
 });

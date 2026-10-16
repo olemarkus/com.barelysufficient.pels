@@ -154,7 +154,6 @@ packages/shared-domain/src/simulationPosture.ts 1
 packages/shared-domain/src/smartTaskDeadlineFormat.ts 1
 packages/shared-domain/src/smartTaskDeviceKind.ts 1
 packages/shared-domain/src/solar/solarMoney.ts 1
-packages/shared-domain/src/utils/airtreatmentShedTemperature.ts 1
 packages/shared-domain/src/utils/dateUtils.ts 1
 packages/shared-domain/src/weatherInsightCopy.ts 7
 setup/appDebugHelpers.ts 2

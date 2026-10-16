@@ -16,7 +16,7 @@ export const buildAppHomeMembershipOptions = (
   beginMainPreparedReconcile: (sampleRevision: number) => () => void,
   flushMainShortfallSideEffect: () => Promise<boolean>,
 ): WireHomeMembershipOptions => ({
-  onOwnershipReadyBeforePlanWork: (_membership, allowPendingOwnershipGeneration) => {
+  onOwnershipReadyBeforePlanWork: (allowPendingOwnershipGeneration) => {
     const registry = getRegistry();
     if (
       registry

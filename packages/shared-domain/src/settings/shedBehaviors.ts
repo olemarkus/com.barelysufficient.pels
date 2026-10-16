@@ -105,12 +105,3 @@ export const resolveShedBehavior = (
   const entry = behaviors[deviceId];
   return Object.hasOwn(behaviors, deviceId) && entry !== undefined ? entry : TURN_OFF;
 };
-
-/**
- * Both setpoints the owner configured as limits for this device, or none. For
- * the write fence under "Save as current mode target", which admits either
- * limit because it does not know which way the device is running.
- */
-export const shedLimitTemperatures = (behavior: ConfiguredShedBehavior): readonly number[] => (
-  behavior.action === 'set_temperature' ? [behavior.temperature, behavior.coolingTemperature] : []
-);

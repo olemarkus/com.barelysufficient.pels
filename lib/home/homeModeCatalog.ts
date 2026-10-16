@@ -56,11 +56,7 @@ export type HomeModeCatalog = {
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
   resolveModeName: (name: string) => string;
   getAllModes: () => Set<string>;
-  resolveOperatingModeForDevice: (
-    deviceId: string,
-    membershipOverride?: HomeMembershipPort,
-    allowPendingOwnershipGeneration?: boolean,
-  ) => DeviceOperatingModeOutcome;
+  resolveOperatingModeForDevice: (deviceId: string) => DeviceOperatingModeOutcome;
   /**
    * The modes a device's target temperature can be set in, from the catalog
    * its mode targets live in, which may be a meter area's. `null` when that
@@ -398,12 +394,8 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
     return getAllModes(snapshot.operatingMode, snapshot.priorities, snapshot.targets);
   };
 
-  resolveOperatingModeForDevice = (
-    deviceId: string,
-    membershipOverride?: HomeMembershipPort,
-    allowPendingOwnershipGeneration = false,
-  ): DeviceOperatingModeOutcome => this.deviceModeResolver.resolve(
-    deviceId, membershipOverride, allowPendingOwnershipGeneration,
+  resolveOperatingModeForDevice = (deviceId: string): DeviceOperatingModeOutcome => (
+    this.deviceModeResolver.resolve(deviceId)
   );
 
   listDeviceTargetModes = (deviceId: string): string[] | null => {

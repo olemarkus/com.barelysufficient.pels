@@ -13,14 +13,14 @@ export function normalizeShedTemperature(value: number): number {
   return Math.round(clamped / SHED_STEP_C) * SHED_STEP_C;
 }
 
-export function computeDefaultAirtreatmentShedTemperature(params: {
-  modeTarget: number | null;
-  currentTarget: number | null;
-  minFloorC?: number;
-}): number {
-  const { modeTarget, currentTarget, minFloorC = AIRTREATMENT_SHED_FLOOR_C } = params;
-  const baseTarget = modeTarget ?? currentTarget ?? SHED_FALLBACK_TARGET_C;
-  const candidate = Math.max(minFloorC, baseTarget - SHED_DEFAULT_DELTA_C);
+/**
+ * The heating limit for a device whose setpoint is its only way to shed, when
+ * the owner saved none: its mode target (a fixed base without one) less the
+ * default setback, never below `minFloorC`. Never from the live setpoint, which
+ * is the limit itself while the device is limited.
+ */
+export function computeDefaultSetpointShedTemperature(modeTargetC: number | null, minFloorC: number): number {
+  const candidate = Math.max(minFloorC, (modeTargetC ?? SHED_FALLBACK_TARGET_C) - SHED_DEFAULT_DELTA_C);
   return normalizeShedTemperature(candidate);
 }
 

@@ -1,5 +1,5 @@
 import {
-  computeDefaultAirtreatmentShedTemperature,
+  computeDefaultSetpointShedTemperature,
   normalizeShedTemperature,
 } from '../../packages/shared-domain/src/utils/airtreatmentShedTemperature';
 
@@ -13,26 +13,19 @@ describe('airtreatment shed temperature utils', () => {
     });
   });
 
-  describe('computeDefaultAirtreatmentShedTemperature', () => {
-    it('uses fallback target when no mode/current target is available', () => {
-      expect(computeDefaultAirtreatmentShedTemperature({ modeTarget: null, currentTarget: null })).toBe(17);
+  describe('computeDefaultSetpointShedTemperature', () => {
+    it('uses the fixed base when the mode holds no target', () => {
+      expect(computeDefaultSetpointShedTemperature(null, 10)).toBe(17);
     });
 
-    it('prefers mode target over current target', () => {
-      expect(computeDefaultAirtreatmentShedTemperature({ modeTarget: 22, currentTarget: 19 })).toBe(19);
+    it('sets back from the mode target', () => {
+      expect(computeDefaultSetpointShedTemperature(22, 10)).toBe(19);
     });
 
-    it('uses current target when mode target is missing', () => {
-      expect(computeDefaultAirtreatmentShedTemperature({ modeTarget: null, currentTarget: 21 })).toBe(18);
-    });
-
-    it('enforces floor and max clamp', () => {
-      expect(computeDefaultAirtreatmentShedTemperature({ modeTarget: 15, currentTarget: null })).toBe(16);
-      expect(computeDefaultAirtreatmentShedTemperature({ modeTarget: 100, currentTarget: null })).toBe(40);
-    });
-
-    it('supports a lower custom floor for non-onoff temperature devices', () => {
-      expect(computeDefaultAirtreatmentShedTemperature({ modeTarget: 12, currentTarget: null, minFloorC: 10 })).toBe(10);
+    it('enforces the floor and the max clamp', () => {
+      expect(computeDefaultSetpointShedTemperature(15, 16)).toBe(16);
+      expect(computeDefaultSetpointShedTemperature(12, 10)).toBe(10);
+      expect(computeDefaultSetpointShedTemperature(100, 10)).toBe(40);
     });
   });
 });

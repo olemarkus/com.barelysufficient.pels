@@ -112,14 +112,10 @@ export type HomeMembershipServiceDeps = {
   onMainAuthorityReopened?: () => void;
   /**
    * Fired synchronously after the first trustworthy ownership map commits but
-   * before any membership-driven plan rebuild starts. Consumers that deferred
-   * persisted classification while ownership was provisional can retry here,
-   * so the rebuild observes the repaired settings.
+   * before any membership-driven plan rebuild starts, so the meter areas' mode
+   * catalogs are prepared before the rebuild reads them.
    */
-  onOwnershipReadyBeforePlanWork?: (
-    membership: HomeMembershipService,
-    allowPendingOwnershipGeneration: boolean,
-  ) => void;
+  onOwnershipReadyBeforePlanWork?: (allowPendingOwnershipGeneration: boolean) => void;
   /**
    * Fired ONCE, on the false→true `hasSeenZoneTreeCommit` edge (a committed zone
    * tree first lands). The per-home capacity bundles (R7b) gate EXECUTION on
@@ -285,10 +281,10 @@ export class HomeMembershipService implements HomeMembershipPort {
       && this.isOwnershipReady()
       && !this.hasPendingOwnershipGeneration();
     // This producer has just committed the first trustworthy device→home map.
-    // Retry deferred persistent classification BEFORE plan invalidation reads
-    // those settings; the later execution-readiness callback remains last.
+    // Prepare the meter areas' mode catalogs BEFORE plan invalidation reads
+    // them; the later execution-readiness callback remains last.
     if (ownershipBecameReady) {
-      this.retryDeferredSeedBeforeInitialPlanWork();
+      this.prepareBeforeInitialPlanWork();
     }
     this.logIfChanged();
     this.notifyIfPlanRelevantMembershipChanged();
@@ -306,15 +302,15 @@ export class HomeMembershipService implements HomeMembershipPort {
     }
   }
 
-  private retryDeferredSeedBeforeInitialPlanWork(): void {
+  private prepareBeforeInitialPlanWork(): void {
     try {
-      this.deps.onOwnershipReadyBeforePlanWork?.(this, false);
+      this.deps.onOwnershipReadyBeforePlanWork?.(false);
     } catch (error: unknown) {
-      // Classification settings are an external boundary. Their failure must
-      // not consume the one-shot readiness edges; publish readiness and let
-      // the owned recovery retry the seed before its next plan build.
+      // Mode-catalog settings are an external boundary. Their failure must not
+      // consume the one-shot readiness edges; publish readiness and let the
+      // owned recovery prepare again before its next plan build.
       this.deps.getLogger()?.error({
-        event: 'home_ownership_seed_retry_failed',
+        event: 'home_ownership_mode_catalog_prepare_failed',
         err: normalizeError(error),
       });
       this.deps.onMainAuthorityUnresolved?.();

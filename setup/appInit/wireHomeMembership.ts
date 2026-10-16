@@ -36,10 +36,7 @@ export type OwnershipGenerationRuntime = {
 };
 
 export type WireHomeMembershipOptions = {
-  onOwnershipReadyBeforePlanWork?: (
-    membership: HomeMembershipService,
-    allowPendingOwnershipGeneration: boolean,
-  ) => void;
+  onOwnershipReadyBeforePlanWork?: (allowPendingOwnershipGeneration: boolean) => void;
   onZoneTreeCommitReady?: () => void;
   onRuntimeActiveChanged?: (runtimeActive: boolean) => void;
   onSubHomeMembershipChanged?: () => boolean;
@@ -91,7 +88,7 @@ const prepareRecoveryAuthority = async (params: {
   const generationPending = membership.hasPendingOwnershipGeneration();
   if (!generationPending) {
     if (!membership.isMainHomeActuationFenced()) {
-      prepareBeforePlanWork?.(membership, false);
+      prepareBeforePlanWork?.(false);
       return { ownershipGeneration, generationPending };
     }
     if (retryFencedAuthority(
@@ -109,7 +106,7 @@ const prepareRecoveryAuthority = async (params: {
   // The current observed map and settings have been classified ready, while
   // final actuation remains fenced by the pending generation. Prepare the mode
   // catalogs now so both Main and bundle preparation below build on them.
-  prepareBeforePlanWork?.(membership, true);
+  prepareBeforePlanWork?.(true);
   if (ownershipGenerationRuntime && !(await ownershipGenerationRuntime.prepare())) {
     schedule();
     return null;

@@ -39,7 +39,7 @@ import {
   OVERSHOOT_BEHAVIORS,
 } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import {
-  computeDefaultAirtreatmentShedTemperature,
+  computeDefaultSetpointShedTemperature,
   normalizeShedTemperature,
   resolveSetpointShedFloorC,
 } from '../../../../shared-domain/src/utils/airtreatmentShedTemperature.ts';
@@ -186,11 +186,10 @@ const resolveShedTemperatureValue = (params: {
  */
 const getSetpointOnlyShedDefaultTemp = (device: SettingsUiDeviceDetailItem): number => {
   const activeModeTarget = state.modeTargets[state.activeMode]?.[device.id];
-  return computeDefaultAirtreatmentShedTemperature({
-    modeTarget: typeof activeModeTarget === 'number' ? activeModeTarget : null,
-    currentTarget: null,
-    minFloorC: resolveSetpointShedFloorC(device.deviceClass || ''),
-  });
+  return computeDefaultSetpointShedTemperature(
+    typeof activeModeTarget === 'number' ? activeModeTarget : null,
+    resolveSetpointShedFloorC(device.deviceClass || ''),
+  );
 };
 
 const getShedDefaultTemp = (

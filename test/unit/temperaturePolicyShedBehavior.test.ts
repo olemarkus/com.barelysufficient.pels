@@ -1,11 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   resolveTemperaturePolicyShedBehavior,
   resolveTemperaturePolicyShedLimitsC,
 } from '../../lib/device/temperatureControlPosture';
 import { decoratedSnapshotFixture } from '../utils/deviceSnapshotFixture';
 
-type PostureDevice = NonNullable<ReturnType<Parameters<typeof resolveTemperaturePolicyShedBehavior>[1]>>;
+type PostureDevice = NonNullable<ReturnType<Parameters<typeof resolveTemperaturePolicyShedBehavior>[2]>>;
 
 const noDevice = () => undefined;
 const noModeTarget = () => null;
@@ -38,33 +38,42 @@ const setpointOnly = (setpointC = 22, setpointShedFloorC = 10) => (): PostureDev
 // The same device on a read where Homey reported its `onoff`.
 const thermostatWithOnOff = (): PostureDevice => ({ ...setpointOnly()(), binaryControl: { on: true } });
 
+// The stored configuration is the device's own, as the caller passes it.
+type Args = Parameters<typeof resolveTemperaturePolicyShedBehavior>;
+const shed = (configured: Args[0], readDevice: Args[2], allowsLimiting: Args[3], direction: Args[4], readModeTargetC: Args[5]) => (
+  resolveTemperaturePolicyShedBehavior(configured, readDevice(), readDevice, allowsLimiting, direction, readModeTargetC)
+);
+const shedLimits = (configured: Args[0], readDevice: Args[2], readModeTargetC: Args[5]) => (
+  resolveTemperaturePolicyShedLimitsC(configured, readDevice(), readDevice, readModeTargetC)
+);
+
 const bothLimits = { action: 'set_temperature' as const, temperature: 16, coolingTemperature: 27 };
 
 describe('resolveTemperaturePolicyShedBehavior', () => {
   it('picks the limit for the direction the device is moving demand in', () => {
-    expect(resolveTemperaturePolicyShedBehavior(bothLimits, noDevice, true, 'heating', noModeTarget))
+    expect(shed(bothLimits, noDevice, true, 'heating', noModeTarget))
       .toEqual({ action: 'set_temperature', temperature: 16 });
-    expect(resolveTemperaturePolicyShedBehavior(bothLimits, noDevice, true, 'cooling', noModeTarget))
+    expect(shed(bothLimits, noDevice, true, 'cooling', noModeTarget))
       .toEqual({ action: 'set_temperature', temperature: 27 });
   });
 
   it('denies the setpoint arm when the policy forbids limiting, in either direction', () => {
     // Denial falls to the device's other axis: off if it has one, its lowest
     // step if it is stepped, off when it has neither to fall to.
-    expect(resolveTemperaturePolicyShedBehavior(bothLimits, withOnOff, false, 'heating', noModeTarget))
+    expect(shed(bothLimits, withOnOff, false, 'heating', noModeTarget))
       .toEqual({ action: 'turn_off' });
-    expect(resolveTemperaturePolicyShedBehavior(bothLimits, steppedOnly, false, 'cooling', noModeTarget))
+    expect(shed(bothLimits, steppedOnly, false, 'cooling', noModeTarget))
       .toEqual({ action: 'set_step' });
-    expect(resolveTemperaturePolicyShedBehavior(bothLimits, noDevice, false, 'cooling', noModeTarget))
+    expect(shed(bothLimits, noDevice, false, 'cooling', noModeTarget))
       .toEqual({ action: 'turn_off' });
   });
 
   it('passes the non-setpoint arms straight through', () => {
-    expect(resolveTemperaturePolicyShedBehavior({ action: 'turn_off' }, noDevice, false, 'cooling', noModeTarget))
+    expect(shed({ action: 'turn_off' }, noDevice, false, 'cooling', noModeTarget))
       .toEqual({ action: 'turn_off' });
-    expect(resolveTemperaturePolicyShedBehavior({ action: 'set_step' }, noDevice, false, 'cooling', noModeTarget))
+    expect(shed({ action: 'set_step' }, noDevice, false, 'cooling', noModeTarget))
       .toEqual({ action: 'set_step' });
-    expect(resolveTemperaturePolicyShedBehavior({ action: 'turn_off' }, thermostatWithOnOff, true, 'heating', noModeTarget))
+    expect(shed({ action: 'turn_off' }, thermostatWithOnOff, true, 'heating', noModeTarget))
       .toEqual({ action: 'turn_off' });
   });
 
@@ -72,7 +81,7 @@ describe('resolveTemperaturePolicyShedBehavior', () => {
     it('limits a saved turn-off or step-down through the setpoint, from the mode target', () => {
       // Mode target 21 less the 3 °C default setback.
       for (const configured of [{ action: 'turn_off' as const }, { action: 'set_step' as const }]) {
-        expect(resolveTemperaturePolicyShedBehavior(configured, setpointOnly(), true, 'heating', () => 21))
+        expect(shed(configured, setpointOnly(), true, 'heating', () => 21))
           .toEqual({ action: 'set_temperature', temperature: 18 });
       }
     });
@@ -81,41 +90,58 @@ describe('resolveTemperaturePolicyShedBehavior', () => {
       // While limited, the live setpoint is the limit PELS wrote; a setback from
       // it would fall every build. The 20 °C fallback base less 3 °C, at any setpoint.
       for (const setpointC of [22, 17, 14]) {
-        expect(resolveTemperaturePolicyShedBehavior(
+        expect(shed(
           { action: 'turn_off' }, setpointOnly(setpointC), true, 'heating', noModeTarget,
         )).toEqual({ action: 'set_temperature', temperature: 17 });
       }
     });
 
     it('gives the write fence the same limits the planner sheds to, either direction', () => {
-      expect(resolveTemperaturePolicyShedLimitsC({ action: 'turn_off' }, setpointOnly(), () => 21)).toEqual([18, 28]);
-      expect(resolveTemperaturePolicyShedLimitsC(
+      expect(shedLimits({ action: 'turn_off' }, setpointOnly(), () => 21)).toEqual([18, 28]);
+      expect(shedLimits(
         { action: 'set_temperature', temperature: 5, coolingTemperature: 26 }, setpointOnly(), noModeTarget,
       )).toEqual([10, 26]);
-      expect(resolveTemperaturePolicyShedLimitsC({ action: 'turn_off' }, thermostatWithOnOff, () => 21)).toEqual([]);
+      expect(shedLimits({ action: 'turn_off' }, thermostatWithOnOff, () => 21)).toEqual([]);
     });
 
     it('never goes below the device floor, saved or derived', () => {
-      expect(resolveTemperaturePolicyShedBehavior(
+      expect(shed(
         { action: 'set_temperature', temperature: 5, coolingTemperature: 28 }, setpointOnly(), true, 'heating', noModeTarget,
       )).toEqual({ action: 'set_temperature', temperature: 10 });
-      expect(resolveTemperaturePolicyShedBehavior({ action: 'turn_off' }, setpointOnly(22, 16), true, 'heating', () => 17))
+      expect(shed({ action: 'turn_off' }, setpointOnly(22, 16), true, 'heating', () => 17))
         .toEqual({ action: 'set_temperature', temperature: 16 });
     });
 
     it('uses the cooling limit while cooling', () => {
-      expect(resolveTemperaturePolicyShedBehavior(bothLimits, setpointOnly(), true, 'cooling', noModeTarget))
+      expect(shed(bothLimits, setpointOnly(), true, 'cooling', noModeTarget))
         .toEqual({ action: 'set_temperature', temperature: 27 });
-      expect(resolveTemperaturePolicyShedBehavior({ action: 'turn_off' }, setpointOnly(), true, 'cooling', noModeTarget))
+      expect(shed({ action: 'turn_off' }, setpointOnly(), true, 'cooling', noModeTarget))
         .toEqual({ action: 'set_temperature', temperature: 28 });
     });
 
     it('reads the saved choice again once the device reports on/off', () => {
       const saved = { action: 'turn_off' as const };
-      expect(resolveTemperaturePolicyShedBehavior(saved, setpointOnly(), true, 'heating', () => 21).action)
+      expect(shed(saved, setpointOnly(), true, 'heating', () => 21).action)
         .toBe('set_temperature');
-      expect(resolveTemperaturePolicyShedBehavior(saved, thermostatWithOnOff, true, 'heating', () => 21))
+      expect(shed(saved, thermostatWithOnOff, true, 'heating', () => 21))
         .toEqual({ action: 'turn_off' });
     });
+  });
+
+  it('reads the device only when the answer needs it', () => {
+    const readDevice = vi.fn(withOnOff);
+    expect(resolveTemperaturePolicyShedBehavior(
+      { action: 'turn_off' }, { controlModel: 'binary_power' }, readDevice, true, 'heating', noModeTarget,
+    )).toEqual({ action: 'turn_off' });
+    expect(resolveTemperaturePolicyShedBehavior(
+      { action: 'turn_off' }, undefined, readDevice, false, 'heating', noModeTarget,
+    )).toEqual({ action: 'turn_off' });
+    expect(readDevice).not.toHaveBeenCalled();
+
+    const readSetpointOnly = vi.fn(setpointOnly());
+    expect(resolveTemperaturePolicyShedLimitsC(
+      { action: 'turn_off' }, { controlModel: 'temperature_target' }, readSetpointOnly, () => 21,
+    )).toEqual([18, 28]);
+    expect(readSetpointOnly).toHaveBeenCalledTimes(1);
   });
 });

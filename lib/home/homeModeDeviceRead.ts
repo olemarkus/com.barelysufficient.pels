@@ -52,15 +52,8 @@ export const resolveHomeIdForModeCatalogSeed = (
     : null;
 };
 
-const ownershipIsUnavailable = (
-  membership: HomeMembershipPort | undefined,
-  allowPendingOwnershipGeneration: boolean,
-): boolean => Boolean(
-  membership
-  && (
-    !membership.isOwnershipReady()
-    || (!allowPendingOwnershipGeneration && membership.hasPendingOwnershipGeneration())
-  ),
+const ownershipIsUnavailable = (membership: HomeMembershipPort | undefined): boolean => Boolean(
+  membership && (!membership.isOwnershipReady() || membership.hasPendingOwnershipGeneration()),
 );
 
 const resolveLegacyHomeMode = (
@@ -101,12 +94,8 @@ export class HomeModeDeviceResolver {
     ) => PersistedHomeModeCatalogRead,
   ) {}
 
-  resolve = (
-    deviceId: string,
-    membershipOverride?: HomeMembershipPort,
-    allowPendingOwnershipGeneration = false,
-  ): DeviceOperatingModeOutcome => {
-    const governing = this.resolveGoverning(deviceId, membershipOverride, allowPendingOwnershipGeneration);
+  resolve = (deviceId: string): DeviceOperatingModeOutcome => {
+    const governing = this.resolveGoverning(deviceId);
     if (governing.state === 'unavailable') return governing;
     const { mode, homeId, catalogHomeId } = governing;
     return { state: 'resolved', mode, homeId, catalogHomeId };
@@ -132,8 +121,6 @@ export class HomeModeDeviceResolver {
    */
   private resolveGoverning = (
     deviceId: string,
-    membershipOverride?: HomeMembershipPort,
-    allowPendingOwnershipGeneration = false,
   ):
     | {
       state: 'resolved';
@@ -144,11 +131,8 @@ export class HomeModeDeviceResolver {
     }
     | { state: 'unavailable' } => {
     const membership = this.getMembership();
-    const effectiveMembership = membershipOverride ?? membership;
-    if (ownershipIsUnavailable(effectiveMembership, allowPendingOwnershipGeneration)) {
-      return { state: 'unavailable' };
-    }
-    const homeId = effectiveMembership?.getHomeIdForDevice(deviceId) ?? MAIN_HOME_ID;
+    if (ownershipIsUnavailable(membership)) return { state: 'unavailable' };
+    const homeId = membership?.getHomeIdForDevice(deviceId) ?? MAIN_HOME_ID;
     if (homeId === MAIN_HOME_ID) {
       const mainMode = this.mainCatalog.getOperatingMode();
       const read = readMainOperatingMode(this.settings, this.mainCatalog.resolveModeName, mainMode);

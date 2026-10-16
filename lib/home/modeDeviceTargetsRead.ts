@@ -13,17 +13,12 @@ import {
  * `resolved` with an EMPTY catalog is the one state a caller may build a default
  * on top of: the store demonstrably never held the key. A thrown read, an
  * unusable key list, a payload the parser does not recognize, or a
- * present-but-null key all answer `unavailable`, because every caller's next act
- * is a whole-blob `set` or a persisted default, and one transient SDK miss must
- * not become a wipe (`notes/persisted-settings-state.md`).
+ * present-but-null key all answer `unavailable`: one transient SDK miss must
+ * not become a wipe by a whole-blob `set`, nor move a default derived from it
+ * (`notes/persisted-settings-state.md`).
  *
- * ONE classification for this key, in the module that owns the concept. It was
- * two: the mode-target fill pass and the overshoot-floor seed each read the same
- * bytes with their own absence policy, in `setup/`, where `setup/AGENTS.md`
- * forbids classifying at all. The seed's copy disagreed — it read an absent
- * catalog as unknown and skipped the seed outright, so a temperature-only device
- * on a home with no mode targets got no limiting floor and could never be
- * limited.
+ * ONE classification for this key, in the module that owns the concept, and
+ * never in `setup/`, where `setup/AGENTS.md` forbids classifying at all.
  *
  * The SDK answers an unwritten setting with `null` on Homey Pro and the
  * Self-Hosted Server, and object doubles in specs answer `undefined`; the key

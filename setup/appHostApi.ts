@@ -301,6 +301,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   );
   public getShedBehavior = (deviceId: string) => resolveTemperaturePolicyShedBehavior(
     this.context.deviceControlSettings.getConfiguredShedBehavior(deviceId),
+    this.context.deviceConfiguration.get(deviceId),
     // Lazy and single-device: this runs several times per device per plan build,
     // and `getPlanInputSnapshot` rebuilds the whole list on every access.
     () => this.getRuntimeDevice(deviceId),
@@ -314,6 +315,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
 
   public getShedLimitTemperaturesC = (deviceId: string): readonly number[] => resolveTemperaturePolicyShedLimitsC(
     this.context.deviceControlSettings.getConfiguredShedBehavior(deviceId),
+    this.context.deviceConfiguration.get(deviceId),
     () => this.getRuntimeDevice(deviceId),
     () => this.readGoverningModeTargetC(deviceId),
   );

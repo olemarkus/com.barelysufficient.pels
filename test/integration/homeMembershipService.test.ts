@@ -3392,7 +3392,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     expect(onZoneTreeCommitReady).toHaveBeenCalledOnce();
     expect(onRecoveryNeeded).toHaveBeenCalledOnce();
     expect(error).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'home_ownership_seed_retry_failed',
+      event: 'home_ownership_mode_catalog_prepare_failed',
     }));
   });
 
@@ -3405,14 +3405,11 @@ describe('HomeMembershipService — positive ownership readiness', () => {
 
     const order: string[] = [];
     let failPendingSeedOnce = true;
-    const retryDeferredOvershootSeed = vi.fn((
-      _membership: HomeMembershipService,
-      allowPending: boolean,
-    ) => {
+    const prepareBeforePlanWork = vi.fn((allowPending: boolean) => {
       order.push(`seed:${allowPending}`);
       if (allowPending && failPendingSeedOnce) {
         failPendingSeedOnce = false;
-        throw new Error('overshoot settings unavailable');
+        throw new Error('mode catalogs unavailable');
       }
     });
     const prepare = vi.fn().mockImplementation(async () => {
@@ -3448,7 +3445,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       () => ctx.deviceManager as unknown as DeviceReadStore,
     );
     const wiring = wireHomeMembership(ctx, subscribeToObservedStateRefresh(new ObservedStateEmitter()), {
-      onOwnershipReadyBeforePlanWork: retryDeferredOvershootSeed,
+      onOwnershipReadyBeforePlanWork: prepareBeforePlanWork,
       ownershipGenerationRuntime: {
         getMainStableSampleRevision: () => ({ state: 'stable', revision: 1 }),
         beginMainPreparedReconcile: () => () => undefined,
@@ -3460,7 +3457,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     });
 
     try {
-      expect(retryDeferredOvershootSeed).toHaveBeenCalledWith(wiring.service, false);
+      expect(prepareBeforePlanWork).toHaveBeenCalledWith(false);
       vi.clearAllMocks();
       order.length = 0;
 

@@ -3,7 +3,6 @@ import {
   isShedBehaviorsSetting,
   readShedBehaviors,
   resolveShedBehavior,
-  shedLimitTemperatures,
 } from '../../packages/shared-domain/src/settings/shedBehaviors';
 
 describe('overshoot_behaviors read policy', () => {
@@ -50,17 +49,5 @@ describe('overshoot_behaviors read policy', () => {
     const behaviors = readShedBehaviors({ plug: { action: 'set_step' } });
     expect(resolveShedBehavior(behaviors, 'unknown')).toEqual({ action: 'turn_off' });
     expect(resolveShedBehavior(behaviors, 'toString')).toEqual({ action: 'turn_off' });
-  });
-
-  it('lists both limits for the write fence, or none for a shed that is not a setpoint', () => {
-    const behaviors = readShedBehaviors({
-      heater: { action: 'set_temperature', temperature: 16 },
-      ac: { action: 'set_temperature', temperature: 16, coolingTemperature: 27 },
-      plug: { action: 'turn_off' },
-    });
-    expect(shedLimitTemperatures(resolveShedBehavior(behaviors, 'heater'))).toEqual([16, 28]);
-    expect(shedLimitTemperatures(resolveShedBehavior(behaviors, 'ac'))).toEqual([16, 27]);
-    expect(shedLimitTemperatures(resolveShedBehavior(behaviors, 'plug'))).toEqual([]);
-    expect(shedLimitTemperatures(resolveShedBehavior(behaviors, 'unknown'))).toEqual([]);
   });
 });
