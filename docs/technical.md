@@ -245,7 +245,6 @@ Official EV chargers are supported only when they expose both `evcharger_chargin
 
 PELS combines the estimate with measured power on every cycle, so the actual control loop is anchored in reality:
 - Raises running stepped loads directly to the highest level that fits the conservative batch allowance above; otherwise it considers the next level using ordinary admission. Grid import control keeps increases to one level at a time. The five-minute resume cooldown still follows each increase
-- EV increases stay within the device’s known range plus any next level currently eligible for a discovery probe; unfamiliar levels are still learned gradually
 - Waits for the next measurement before considering another resume
 - Adds a hysteresis buffer so a restart never relies on a single estimate alone
 
