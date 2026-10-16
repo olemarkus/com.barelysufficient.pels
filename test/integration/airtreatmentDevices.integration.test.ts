@@ -106,7 +106,10 @@ describe('Airtreatment device integration', () => {
     expect(entry?.powerCapable).toBe(true);
   });
 
-  it('enforces set_temperature with sane default when capacity control is enabled', async () => {
+  // A device without on/off is limited through its setpoint at plan time
+  // (`resolveTemperaturePolicyShedBehavior`); the owner's saved choice is
+  // never rewritten for it.
+  it('leaves the saved limiting choice of a device without on/off untouched', async () => {
     setMockDrivers({});
     mockHomeyInstance.settings.set('managed_devices', { 'airtreatment-1': true });
     mockHomeyInstance.settings.set('controllable_devices', { 'airtreatment-1': true });
@@ -124,7 +127,7 @@ describe('Airtreatment device integration', () => {
     await app.refreshTargetDevicesSnapshot();
 
     const overshootBehaviors = mockHomeyInstance.settings.get('overshoot_behaviors') as Record<string, { action: string; temperature?: number }>;
-    expect(overshootBehaviors['airtreatment-1']).toEqual({ action: 'set_temperature', temperature: 16, coolingTemperature: 28 });
+    expect(overshootBehaviors['airtreatment-1']).toEqual({ action: 'turn_off' });
   });
 
   // Capacity shedding (lower target_temperature for thermostat-class devices; turn_off

@@ -6,6 +6,7 @@
  */
 import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
+import { resolveSetpointShedFloorC } from '../../packages/shared-domain/src/utils/airtreatmentShedTemperature';
 
 export type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 
@@ -42,6 +43,7 @@ const resolveConfiguration = (snapshot: TransportDeviceSnapshot): DeviceConfigur
     isBatteryOrSolar: snapshot.isBatteryOrSolar,
     isEvCharger: snapshot.isEvCharger,
     starvationSupported: isStarvationSupportedDeviceClass(snapshot.deviceClass),
+    setpointShedFloorC: resolveSetpointShedFloorC(snapshot.deviceClass),
     capabilities: snapshot.capabilities,
     canSetControl: snapshot.canSetControl,
     powerCapable: snapshot.powerCapable,

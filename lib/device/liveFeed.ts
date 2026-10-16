@@ -30,8 +30,8 @@
  * An update that does not conform to the device-read contract is ignored whole
  * (`transport/deviceReadContract.ts`, owner ruling 2026-09-23). A model
  * capability reported as `null` is the one exception (owner ruling
- * 2026-10-16): it keeps the newest reading PELS accepted, or is withheld from
- * the read without one; nothing else is filled in from the previous entry.
+ * 2026-10-16): it is withheld from the read, and nothing is filled in from the
+ * previous entry.
  */
 import type Homey from 'homey';
 import { io, type Manager as SocketIOManager, type Socket as SocketIOSocket } from 'socket.io-client';

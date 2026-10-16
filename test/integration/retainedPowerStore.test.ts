@@ -6,6 +6,8 @@ import {
   type RetainedPowerState,
 } from '../../lib/device/retainedPowerStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase, type UserdataDatabase } from '../../lib/store/userdataDatabase';
+import { RetainedPowerPersistence } from '../../lib/device/retainedPowerPersistence';
+import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const T0 = Date.parse('2026-09-23T10:00:00.000Z');
@@ -126,5 +128,42 @@ describe('retained power store', () => {
 
     expect([...restored.readings.keys()]).toEqual(['plug-1']);
     expect(db.prepare('SELECT COUNT(*) AS n FROM device_power_reading').get()).toEqual({ n: 1 });
+  });
+});
+
+describe('retained power persistence', () => {
+  let db: UserdataDatabase;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    db = openUserdataDatabase(IN_MEMORY_DATABASE);
+  });
+
+  afterEach(() => {
+    db.close();
+    vi.useRealTimers();
+  });
+
+  const meterOnly = (measured: boolean) => ({
+    id: 'thermostat-1',
+    ...(measured
+      ? {
+        measuredPowerKw: 3,
+        measuredPowerReading: { kind: 'interval_average' as const, powerKw: 3, startMs: T0 - 60_000, endMs: T0 },
+      }
+      : {}),
+  }) as unknown as TransportDeviceSnapshot;
+
+  // A meter-only device whose `meter_power` Homey reports as `null` reads with
+  // no power this cycle: the capability is withheld, and nothing stored goes
+  // with it.
+  it('keeps a device\'s saved reading through a cycle it reads with no power', () => {
+    const persistence = new RetainedPowerPersistence(createRetainedPowerStore(db));
+    persistence.persist([meterOnly(true)], T0);
+    persistence.persist([meterOnly(false)], T0 + 120_000);
+
+    expect(createRetainedPowerStore(db).load(T0 + 180_000).readings.get('thermostat-1'))
+      .toEqual({ measuredPowerKw: 3, observedAtMs: T0 });
   });
 });

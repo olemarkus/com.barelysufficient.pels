@@ -152,7 +152,7 @@ export function reconcileRealtimeDeviceUpdate(params: {
   // No temperature is carried over from the previous entry: a read that reaches
   // here conformed to the device-read contract (`deviceReadContract.ts`), so a
   // declared temperature pair came with both values. A `null` member was
-  // already resolved there to the newest reading PELS accepted, or withheld.
+  // already withheld there.
   if (snapshotIndex >= 0) {
     latestSnapshot[snapshotIndex] = parsed;
   } else {

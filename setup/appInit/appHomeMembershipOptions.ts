@@ -15,12 +15,8 @@ export const buildAppHomeMembershipOptions = (
   getMainStableSampleRevision: () => StableSampleRevision,
   beginMainPreparedReconcile: (sampleRevision: number) => () => void,
   flushMainShortfallSideEffect: () => Promise<boolean>,
-  retryDeferredOvershootSeed: (
-    membership: HomeMembershipService,
-    allowPendingOwnershipGeneration: boolean,
-  ) => void,
 ): WireHomeMembershipOptions => ({
-  onOwnershipReadyBeforePlanWork: (membership, allowPendingOwnershipGeneration) => {
+  onOwnershipReadyBeforePlanWork: (_membership, allowPendingOwnershipGeneration) => {
     const registry = getRegistry();
     if (
       registry
@@ -31,7 +27,6 @@ export const buildAppHomeMembershipOptions = (
       // edge while leaving the pending ownership generation fenced forever.
       throw new Error('Mode catalogs unavailable for ownership preparation');
     }
-    retryDeferredOvershootSeed(membership, allowPendingOwnershipGeneration);
   },
   onZoneTreeCommitReady: () => getRegistry()?.onMembershipReady(),
   onRuntimeActiveChanged: () => getRegistry()?.reconcile(),

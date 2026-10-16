@@ -73,8 +73,10 @@ export type RetainedPowerStore = {
    * Persist what the devices in `presentIds` retain, touching only the rows that
    * differ from what the store holds (or that are due a re-save). A present
    * device with no reading or no anchor in `state` has its row deleted — it is
-   * here and has none. A device NOT present is left alone: one cycle without it
-   * is not its removal, and age pruning on load is the only way its row goes.
+   * here, reporting power, and has none. A device NOT present is left alone: one
+   * cycle without it is not its removal, and age pruning on load is the only
+   * way its row goes. The caller names as present only a device with a power
+   * reading this cycle.
    */
   save(state: RetainedPowerState, presentIds: ReadonlySet<string>, nowMs: number): void;
 };

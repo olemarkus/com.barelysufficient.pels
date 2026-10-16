@@ -23,8 +23,8 @@ import {
 } from './planDeviceUpdates';
 import { attemptSwapRestore } from './swap';
 import type { RestoreCycle, RestoreLane, RestoreLoopState, SteppedRestoreNeed } from './types';
+import type { SteppedRestoreTarget } from './steppedRestoreTarget';
 import { recordBatchAdmission, recordShedPostureRestoreBatchAdmission } from './batch';
-import { getSteppedLoadNextRestoreStep } from '../planSteppedLoad';
 
 /** The reason a stepped restore climb carries, admitted directly or through a swap. */
 function buildSteppedRestoreNeedReason(
@@ -45,11 +45,11 @@ export function admitSteppedRestore(
   lane: RestoreLane,
   dev: SteppedPlanDevice,
   loop: RestoreLoopState,
-  nextStep: SteppedLoadStep,
-  need: SteppedRestoreNeed,
+  target: SteppedRestoreTarget,
   batchContinuation: boolean,
 ): RestoreLoopState {
   const { deviceMap, state, phase, headroomReserves, batchState } = cycle;
+  const { step: nextStep, need } = target;
   const { deltaKw, neededKw: needed } = need;
   const { availableHeadroom, restoredOneThisCycle } = loop;
   const restoreDebugKey = `stepped:${dev.id}`;
@@ -124,8 +124,7 @@ export function admitSteppedRestore(
     marginKw: admittedLog.marginKw,
     decision: 'admitted',
   });
-  if (batchState.enabled && !isOffSteppedRestoreCandidate(dev)
-    && nextStep.id !== getSteppedLoadNextRestoreStep(dev)?.id) {
+  if (batchState.enabled && target.kind === 'jump') {
     recordBatchAdmission(batchState, needed);
   } else {
     recordShedPostureRestoreBatchAdmission(batchState, state.shedDecisions, dev.id, needed);

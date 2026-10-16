@@ -1,7 +1,10 @@
 import type { NewSmartTaskWriteResult } from '../packages/contracts/src/smartTaskEdit';
 import { getDebugEmitter } from '../lib/logging/logger';
 import type { BudgetDailyHistory, BudgetDecisionHistory } from '../packages/contracts/src/budgetDiagnostics';
-import { resolveTemperaturePolicyShedBehavior } from '../lib/device/temperatureControlPosture';
+import {
+  resolveTemperaturePolicyShedBehavior,
+  resolveTemperaturePolicyShedLimitsC,
+} from '../lib/device/temperatureControlPosture';
 import type Homey from 'homey';
 import type { AppContext } from '../lib/app/appContext';
 import {
@@ -88,6 +91,8 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     mode: string,
   ) => { previous: string; resolved: string };
   protected abstract readonly reloadHomeModeCatalog: () => void;
+  /** The target the device's governing mode holds for it, or `null` (`readGoverningModeDeviceTargetC`). */
+  protected abstract readonly readGoverningModeTargetC: (deviceId: string) => number | null;
   protected abstract readonly resolveHomeModeName: (mode: string) => string;
   protected abstract readonly getHomeModeNames: () => Set<string>;
   protected abstract readonly listDeviceTargetModes: FlowCardDeps['listDeviceTargetModes'];
@@ -304,6 +309,13 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     // for the direction the device is moving demand in — the same resolution
     // `toPlanDevice` asks for the price shift.
     this.context.observer.getThermalDirection(deviceId),
+    () => this.readGoverningModeTargetC(deviceId),
+  );
+
+  public getShedLimitTemperaturesC = (deviceId: string): readonly number[] => resolveTemperaturePolicyShedLimitsC(
+    this.context.deviceControlSettings.getConfiguredShedBehavior(deviceId),
+    () => this.getRuntimeDevice(deviceId),
+    () => this.readGoverningModeTargetC(deviceId),
   );
 
   public computeDynamicSoftLimit = (): number | null => requirePlanService(this.context).computePhysicalPowerLimit();

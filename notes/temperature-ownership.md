@@ -156,7 +156,7 @@ the problem, not the safety net.
   backwards for a reversible unit running in cooling. The transport reports the
   device's raw `thermostat_mode` from every conforming read (a read that does not
   conform is ignored whole, `lib/device/transport/deviceReadContract.ts`; a `null`
-  mode keeps the newest one PELS accepted, or is withheld without one). A live capability event for the mode updates it too
+  mode is withheld until the device reports one). A live capability event for the mode updates it too
   (`lib/device/transport/thermostatModeRealtime.ts`) and is published as a control
   change, but it is not freshness evidence; the observer owns the vocabulary that turns it
   into a `ThermalDirection` (`resolveThermalDirection`,

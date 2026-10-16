@@ -1,5 +1,6 @@
 import {
   AIRTREATMENT_SHED_FLOOR_C,
+  NON_ONOFF_TEMPERATURE_SHED_FLOOR_C,
   SHED_DEFAULT_DELTA_C,
   SHED_FALLBACK_TARGET_C,
   SHED_MAX_C,
@@ -21,4 +22,15 @@ export function computeDefaultAirtreatmentShedTemperature(params: {
   const baseTarget = modeTarget ?? currentTarget ?? SHED_FALLBACK_TARGET_C;
   const candidate = Math.max(minFloorC, baseTarget - SHED_DEFAULT_DELTA_C);
   return normalizeShedTemperature(candidate);
+}
+
+/**
+ * The lowest heating limit for a device whose setpoint is its only way to shed
+ * (no on/off, no steps), by its Homey class: air treatment sets supply air, so
+ * it stops higher. Case-insensitive.
+ */
+export function resolveSetpointShedFloorC(deviceClass: string): number {
+  return deviceClass.trim().toLowerCase() === 'airtreatment'
+    ? AIRTREATMENT_SHED_FLOOR_C
+    : NON_ONOFF_TEMPERATURE_SHED_FLOOR_C;
 }

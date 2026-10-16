@@ -16,7 +16,6 @@ import {
   type AppContext,
   type StartupBootstrapConfig,
 } from '../lib/app/appContext';
-import type { ResolveOperatingModeForDevice } from './appDeviceSupport';
 import type { ModePriorityOrder } from '../packages/shared-domain/src/settings/modePriorities';
 import { buildTaskEvaluationSource } from './appInit/taskEvaluationSource';
 import {
@@ -110,7 +109,7 @@ export type AppServiceWiringDeps = {
   getHomeOperatingMode: () => string;
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
   getModeDeviceTargets: () => Record<string, Record<string, number>>;
-  resolveOperatingModeForDevice: ResolveOperatingModeForDevice;
+  resolveOperatingModeForDevice: Parameters<typeof createObservedTemperatureModeUpdates>[1];
   createHomeRuntimeRegistry: (
     membership: Pick<HomeMembershipService, 'isSubHomeExecutionReady' | 'isRuntimeActive'>,
   ) => HomeRuntimeRegistry;
@@ -130,10 +129,6 @@ export type AppServiceWiringDeps = {
   observedStateEmitter: ObservedStateEmitter;
   observedHomePower: ObservedHomePower;
   observedDeviceStateProjection: ObservedDeviceStateProjection;
-  retryDeferredOvershootSeed: (
-    membership: HomeMembershipService,
-    allowPendingOwnershipGeneration: boolean,
-  ) => void;
   /** First: every repository is open before any step can reach for one. */
   openUserdataStores: () => void;
   /** Last: every tracker has flushed by now, and nothing reads the file after this. */
@@ -335,7 +330,6 @@ export class AppServiceWiring {
           return this.deps.mainPowerSamplePipeline.preparedReconcileFence.begin(sampleRevision);
         },
         async () => handles.mainShortfallSideEffectGate?.flushAfterPreparedApply() ?? true,
-        this.deps.retryDeferredOvershootSeed,
       ),
     );
     this.deps.ctx.homeMembership = wiring.service;

@@ -6,10 +6,6 @@ const membership = {} as HomeMembershipService;
 
 const buildOptions = (
   prepareModeCatalogsForOwnership: (allowPendingOwnershipGeneration?: boolean) => boolean,
-  retryDeferredOvershootSeed: (
-    membership: HomeMembershipService,
-    allowPendingOwnershipGeneration: boolean,
-  ) => void,
 ) => buildAppHomeMembershipOptions(
   () => ({
     prepareModeCatalogsForOwnership,
@@ -18,28 +14,21 @@ const buildOptions = (
   () => ({ state: 'stable', revision: 1 }),
   () => () => undefined,
   async () => true,
-  retryDeferredOvershootSeed,
 );
 
-describe('owner-aware support seed ordering', () => {
-  it('initializes area mode catalogs before deriving overshoot defaults', () => {
-    const order: string[] = [];
-    const options = buildOptions(
-      () => {
-        order.push('catalog');
-        return true;
-      },
-      vi.fn(() => { order.push('seed'); }),
-    );
+describe('ownership readiness before plan work', () => {
+  it('initializes area mode catalogs', () => {
+    const prepareModeCatalogsForOwnership = vi.fn(() => true);
+    const options = buildOptions(prepareModeCatalogsForOwnership);
 
     options.onOwnershipReadyBeforePlanWork?.(membership, false);
 
-    expect(order).toEqual(['catalog', 'seed']);
+    expect(prepareModeCatalogsForOwnership).toHaveBeenCalledWith(false);
   });
 
   it('allows catalog initialization from a classified pending generation during recovery', () => {
     const prepareModeCatalogsForOwnership = vi.fn(() => true);
-    const options = buildOptions(prepareModeCatalogsForOwnership, vi.fn());
+    const options = buildOptions(prepareModeCatalogsForOwnership);
 
     options.onOwnershipReadyBeforePlanWork?.(membership, true);
 
@@ -47,12 +36,9 @@ describe('owner-aware support seed ordering', () => {
   });
 
   it('routes unavailable area catalogs into ownership recovery', () => {
-    const retryDeferredOvershootSeed = vi.fn();
-    const options = buildOptions(() => false, retryDeferredOvershootSeed);
+    const options = buildOptions(() => false);
 
     expect(() => options.onOwnershipReadyBeforePlanWork?.(membership, false))
       .toThrow('Mode catalogs unavailable for ownership preparation');
-
-    expect(retryDeferredOvershootSeed).not.toHaveBeenCalled();
   });
 });

@@ -10,6 +10,12 @@ import type {
   ThermalDirection,
 } from '../../packages/contracts/src/types';
 import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/settings/shedBehaviors';
+import { COOLING_SHED_DEFAULT_C } from '../../packages/shared-domain/src/utils/airtreatmentConstants';
+import {
+  computeDefaultAirtreatmentShedTemperature,
+  normalizeShedTemperature,
+} from '../../packages/shared-domain/src/utils/airtreatmentShedTemperature';
+import { getPrimaryTargetCapability } from '../../packages/shared-domain/src/targetCapabilities';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
@@ -156,29 +162,101 @@ export function hasTemperaturePolicyPowerControl(device: ControlPostureDevice): 
  *   owner makes while the device is limited is drift the executor reconciles,
  *   not a new target (`ObservedTemperatureModeUpdates`).
  *
- * The device arrives as a THUNK because most calls answer without it, and
- * resolving it is not free: the caller's device view re-projects and
- * re-decorates on access, and this runs several times per device per plan
- * build (shed floors, candidates, restore, the silent-meter pass). Passed
- * eagerly it rebuilt the whole device list every time, for an argument usually
- * unread.
+ * - **Axis.** A temperature device with neither on/off nor steps can only be
+ *   limited through its setpoint, whatever the owner saved: "turn off" or
+ *   "step down" has nothing to command there. Its limit is the saved one, or
+ *   the governing mode target less the default setback when none is saved
+ *   (a fixed fallback base without one), never below the device's floor.
+ *   Resolved per call from what the device offers now, so a capability
+ *   missing from one read changes no saved setting.
+ *
+ * The device arrives as a THUNK because resolving it is not free: the caller's
+ * device view re-projects and re-decorates on access, and this runs several
+ * times per device per plan build (shed floors, candidates, restore, the
+ * silent-meter pass). Passed eagerly it rebuilt the whole device list every
+ * time. The mode target is a thunk for the same reason, read only for a
+ * setpoint-only device with no saved limit.
  */
 export function resolveTemperaturePolicyShedBehavior(
   configured: ConfiguredShedBehavior,
-  readDevice: () => ControlPostureDevice | undefined,
+  readDevice: () => SetpointShedPostureDevice | undefined,
   allowsLimiting: boolean,
   direction: ThermalDirection,
+  readModeTargetC: () => number | null,
 ): ResidualKwShedBehavior {
+  const device = readDevice();
+  if (!allowsLimiting) {
+    if (configured.action !== 'set_temperature') return configured;
+    if (device && device.binaryControl === undefined && isSteppedLoadSnapshot(device)) return { action: 'set_step' };
+    return { action: 'turn_off' };
+  }
+  if (device && isSetpointOnlyShedDevice(device)) {
+    return resolveSetpointOnlyShed(configured, device, direction, readModeTargetC);
+  }
   if (configured.action !== 'set_temperature') return configured;
-  if (allowsLimiting) {
+  return {
+    action: 'set_temperature',
+    temperature: direction === 'cooling' ? configured.coolingTemperature : configured.temperature,
+  };
+}
+
+/** The posture slice plus the control model and class-keyed setpoint floor the device owner resolves. */
+type SetpointShedPostureDevice = ControlPostureDevice
+  & Pick<DeviceConfigurationRead, 'controlModel' | 'setpointShedFloorC'>;
+
+/**
+ * A temperature device the setpoint is the only way to limit: a temperature
+ * target model (never a step ladder), no on/off this read, a target to write.
+ */
+const isSetpointOnlyShedDevice = (device: SetpointShedPostureDevice): boolean => (
+  device.controlModel === 'temperature_target'
+  && device.binaryControl === undefined
+  && getPrimaryTargetCapability(device.targets) !== null
+);
+
+function resolveSetpointOnlyShed(
+  configured: ConfiguredShedBehavior,
+  device: SetpointShedPostureDevice,
+  direction: ThermalDirection,
+  readModeTargetC: () => number | null,
+): ResidualKwShedBehavior {
+  const minFloorC = device.setpointShedFloorC;
+  if (configured.action === 'set_temperature') {
     return {
       action: 'set_temperature',
-      temperature: direction === 'cooling' ? configured.coolingTemperature : configured.temperature,
+      temperature: direction === 'cooling'
+        ? configured.coolingTemperature
+        : Math.max(minFloorC, normalizeShedTemperature(configured.temperature)),
     };
   }
-  const device = readDevice();
-  if (device && device.binaryControl === undefined && isSteppedLoadSnapshot(device)) return { action: 'set_step' };
-  return { action: 'turn_off' };
+  if (direction === 'cooling') return { action: 'set_temperature', temperature: COOLING_SHED_DEFAULT_C };
+  // Never from the device's live setpoint: while it is limited that setpoint
+  // is the limit PELS wrote, and a setback from it would fall every build.
+  return {
+    action: 'set_temperature',
+    temperature: computeDefaultAirtreatmentShedTemperature({
+      modeTarget: readModeTargetC(),
+      currentTarget: null,
+      minFloorC,
+    }),
+  };
+}
+
+/**
+ * Every setpoint a limit may write to this device, in either direction: what
+ * {@link resolveTemperaturePolicyShedBehavior} resolves while limiting is
+ * allowed. The write fence admits exactly these, so it and the planner can
+ * never disagree on what a limit is.
+ */
+export function resolveTemperaturePolicyShedLimitsC(
+  configured: ConfiguredShedBehavior,
+  readDevice: () => SetpointShedPostureDevice | undefined,
+  readModeTargetC: () => number | null,
+): readonly number[] {
+  return (['heating', 'cooling'] as const).flatMap((direction) => {
+    const resolved = resolveTemperaturePolicyShedBehavior(configured, readDevice, true, direction, readModeTargetC);
+    return resolved.action === 'set_temperature' ? [resolved.temperature] : [];
+  });
 }
 
 export type ResidualKwForPlanDeviceShedBehavior =

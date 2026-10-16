@@ -8,7 +8,6 @@
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
 import { resolveDeviceRead } from './deviceReadContract';
-import { lastAcceptedCapabilityEntries } from './ignoredDeviceReads';
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
@@ -109,17 +108,11 @@ export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, d
     // payload: an update that does not conform is ignored whole. No producer,
     // tracking entry, parse or settle evidence sees it, and the device's entry
     // stands as it was — a no-op, never a partial merge. A `null` model
-    // capability keeps its last accepted entry, or is withheld without one,
-    // rather than ignoring the read.
+    // capability is withheld from the read rather than ignoring the read.
     const contractEmitter = moduleLogger;
     const effectiveDevice = resolveDeviceRead(
         ingest.reader.snapshotStore,
         ingest.reader.applyDeviceDriverOverride(device),
-        lastAcceptedCapabilityEntries(
-            () => ingest.reader.snapshotStore.getLastAcceptedRawDevice(deviceId),
-            ingest.observationBridge.state.getObservationState(),
-            deviceId,
-        ),
         'device_update',
         contractEmitter,
     );

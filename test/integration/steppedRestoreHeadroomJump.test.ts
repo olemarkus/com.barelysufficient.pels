@@ -134,6 +134,15 @@ describe('running stepped loads spend a conservative allowance on a direct jump'
     expect(cycle.deviceMap.get(dev.id)).toMatchObject({ desiredStepId: '1', reason: { code: PLAN_REASON_CODES.cooldownRestore } });
   });
 
+  it('shows a recently reduced EV charger its recovery hold while the solar ceiling also holds it', () => {
+    const dev = runningDevice({ isEvCharger: true, surplusTracking: true, selectedStepId: '3', desiredStepId: '3' });
+    const cycle = cycleFor(dev, 12);
+    cycle.state.surplusTrackingByDevice[dev.id] = { kind: 'rung', stepId: '3', funded: true };
+    cycle.state.actuation.lastDeviceShedMs[dev.id] = Date.now() - 120_000;
+    restore(cycle, dev, 12);
+    expect(cycle.deviceMap.get(dev.id)).toMatchObject({ desiredStepId: '3', reason: { code: PLAN_REASON_CODES.cooldownRestore } });
+  });
+
   it.each([
     { label: 'ordinary', headroom: 12, grid: false, budget: null, target: '6' },
     { label: 'grid import enabled', headroom: 12, grid: true, budget: null, target: '2' },

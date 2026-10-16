@@ -209,7 +209,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getStructuredLogger: () => undefined,
     getNow: () => new Date('2026-04-16T00:00:00.000Z'),
     logPeriodicStatus: vi.fn(),
-    seedTemperatureShedFloorDefaults: vi.fn(),
     getFlowReportedDeviceIds: vi.fn(() => []),
     emitFlowBackedRefreshRequests: vi.fn(async () => undefined),
     recordPowerSample: vi.fn(async () => undefined),
@@ -253,6 +252,8 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getSnapshotByDeviceId: (deviceId) => (
       latestTargetSnapshot as unknown as TransportDeviceSnapshot[]
     ).find((device) => device.id === deviceId),
+    // The fixture is Homey's whole list as far as these reads know.
+    getHomeyDeviceIds: () => new Set(latestTargetSnapshot.map((device) => device.id)),
   };
   const deviceReads = createDeviceReads(() => deviceReadStore);
   const deviceConfigurationStore = new DeviceConfigurationStore();
@@ -302,7 +303,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     isSurplusPoolReachable: () => surplusPoolReachability.isReachable(),
     observedTemperatureModeUpdates: new ObservedTemperatureModeUpdates(
       homey.settings, () => ({ state: 'unavailable' }), () => false, vi.fn(), () => [], (_id, value) => value,
-      () => false,
+      () => false, () => [],
     ),
     startupBootstrap: undefined,
     getHomeyPriceFormulaUiStatus: () => ({ kind: 'none' as const }),
@@ -382,6 +383,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     isCapacityControlEnabled: vi.fn(() => false),
     isTemperatureControlDisabled: vi.fn(() => false),
     getShedBehavior: vi.fn((): ReturnType<AppContext['getShedBehavior']> => ({ action: 'turn_off' })),
+    getShedLimitTemperaturesC: vi.fn((): readonly number[] => []),
     computeDynamicSoftLimit: vi.fn(() => 0),
     getDynamicSoftLimitOverride: vi.fn(() => null),
     evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),

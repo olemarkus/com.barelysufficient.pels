@@ -62,8 +62,12 @@ export class RetainedPowerPersistence {
     if (nowMs - this.lastSaveMs < RETAINED_POWER_SAVE_INTERVAL_MS) return;
     this.lastSaveMs = nowMs;
     const readings = new Map<string, RetainedPowerReading>();
+    // Only a device with a power reading this cycle says what it retains. One
+    // without (its meter withheld for a `null`, say) is left alone like an
+    // absent one: a capability missing from a read deletes nothing stored.
     const presentIds = new Set<string>();
     for (const device of snapshot) {
+      if (!hasObservedMeasuredPower(device)) continue;
       presentIds.add(device.id);
       const retained = toRetainedPowerReading(device);
       if (retained !== null) readings.set(device.id, retained);

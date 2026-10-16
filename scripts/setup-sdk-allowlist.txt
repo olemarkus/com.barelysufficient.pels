@@ -11,7 +11,6 @@
 # Seeded at 23 files.
 
 setup/appBootMigrations.ts
-setup/appDeviceSupport.ts
 setup/appHostApi.ts
 setup/appInit/wireDeviceTransport.ts
 setup/appManagedDeviceMigration.ts
@@ -31,5 +30,4 @@ setup/settingsUiStarvationRescueApi.ts
 setup/soleMeterAdoption.ts
 setup/steppedProfileRepair.ts
 setup/targetPowerReachabilitySettings.ts
-setup/temperatureShedFloorDefaults.ts
 setup/weatherMeterScopeSignature.ts

@@ -74,7 +74,7 @@ const isStableSampleRevision = (
 const prepareRecoveryAuthority = async (params: {
   membership: HomeMembershipService;
   ownershipGenerationRuntime?: OwnershipGenerationRuntime;
-  retryDeferredOvershootSeed?: WireHomeMembershipOptions['onOwnershipReadyBeforePlanWork'];
+  prepareBeforePlanWork?: WireHomeMembershipOptions['onOwnershipReadyBeforePlanWork'];
   retryRevisionBeforeFence: number;
   getRetryRevision: () => number;
   schedule: () => void;
@@ -82,7 +82,7 @@ const prepareRecoveryAuthority = async (params: {
   const {
     membership,
     ownershipGenerationRuntime,
-    retryDeferredOvershootSeed,
+    prepareBeforePlanWork,
     retryRevisionBeforeFence,
     getRetryRevision,
     schedule,
@@ -91,7 +91,7 @@ const prepareRecoveryAuthority = async (params: {
   const generationPending = membership.hasPendingOwnershipGeneration();
   if (!generationPending) {
     if (!membership.isMainHomeActuationFenced()) {
-      retryDeferredOvershootSeed?.(membership, false);
+      prepareBeforePlanWork?.(membership, false);
       return { ownershipGeneration, generationPending };
     }
     if (retryFencedAuthority(
@@ -107,9 +107,9 @@ const prepareRecoveryAuthority = async (params: {
   if (preparation === 'retry') schedule();
   if (preparation !== 'ready') return null;
   // The current observed map and settings have been classified ready, while
-  // final actuation remains fenced by the pending generation. Seed now so both
-  // Main and bundle preparation below build with the usable temperature action.
-  retryDeferredOvershootSeed?.(membership, true);
+  // final actuation remains fenced by the pending generation. Prepare the mode
+  // catalogs now so both Main and bundle preparation below build on them.
+  prepareBeforePlanWork?.(membership, true);
   if (ownershipGenerationRuntime && !(await ownershipGenerationRuntime.prepare())) {
     schedule();
     return null;
@@ -363,7 +363,7 @@ const createMainOwnershipRecovery = (
   ctx: AppContext,
   getMembership: () => HomeMembershipService | undefined,
   ownershipGenerationRuntime?: OwnershipGenerationRuntime,
-  retryDeferredOvershootSeed?: WireHomeMembershipOptions['onOwnershipReadyBeforePlanWork'],
+  prepareBeforePlanWork?: WireHomeMembershipOptions['onOwnershipReadyBeforePlanWork'],
 ): MainOwnershipRecovery => {
   let stopped = false;
   let inFlight = false;
@@ -410,7 +410,7 @@ const createMainOwnershipRecovery = (
       const prepared = await prepareRecoveryAuthority({
         membership,
         ownershipGenerationRuntime,
-        retryDeferredOvershootSeed,
+        prepareBeforePlanWork,
         retryRevisionBeforeFence: retryRequestRevision,
         getRetryRevision: () => retryRequestRevision,
         schedule,

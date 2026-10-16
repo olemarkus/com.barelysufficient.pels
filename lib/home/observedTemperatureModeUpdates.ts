@@ -3,10 +3,6 @@ import {
   TEMPERATURE_CONTROL_MODES, MODE_DEVICE_TARGETS, homeScopedSettingsKey,
 } from '../utils/settingsKeys';
 import {
-  resolveShedBehavior, shedLimitTemperatures, type ConfiguredShedBehavior,
-} from '../../packages/shared-domain/src/settings/shedBehaviors';
-import { readShedBehaviorsSetting } from './shedBehaviorsRead';
-import {
   readTemperatureControlModes, type TemperatureControlModes,
 } from '../../packages/shared-domain/src/settings/temperatureControl';
 import { isWritableModeDeviceTargets } from '../../packages/shared-domain/src/settings/modeDeviceTargets';
@@ -34,8 +30,7 @@ export class ObservedTemperatureModeUpdates {
 
   private controlModes: ControlModesRead = { state: 'unavailable' };
 
-  private lastShedBehaviors: Record<string, ConfiguredShedBehavior> = {};
-
+  // eslint-disable-next-line max-params -- Direct owner collaborators, not an argument bag.
   constructor(
     private readonly settings: SettingsPort,
     private readonly resolveDeviceMode: (deviceId: string) => DeviceModeForTemperatureUpdate,
@@ -45,6 +40,8 @@ export class ObservedTemperatureModeUpdates {
     private readonly normalizeTarget: (deviceId: string, value: number) => number,
     /** Whether the latest plan has this device limited. Limiting outranks adoption. */
     private readonly isLimited: (deviceId: string) => boolean,
+    /** Every setpoint a limit may write to this device, as the shed-behaviour producer resolves it. */
+    private readonly readLimitTemperatures: (deviceId: string) => readonly number[],
   ) {}
 
   /** Policy reads retain the last good value across transient SDK gaps. */
@@ -70,15 +67,16 @@ export class ObservedTemperatureModeUpdates {
    * A queued adjustment cannot outlive a switch to manual target ownership.
    *
    * Under "Save as current mode target" two writes are legitimate: the saved
-   * mode target itself, and the owner's configured limit — either direction's,
-   * because the fence does not know which way the device is moving demand and
-   * both numbers are the owner's. A queued price or solar offset is neither.
+   * mode target itself, and a limit — either direction's, because the fence
+   * does not know which way the device is moving demand. The limits are the
+   * shed-behaviour producer's, so a limit the planner derives is one the fence
+   * admits. A queued price or solar offset is neither.
    */
   allowsTarget(deviceId: string, value: number): boolean {
     const read = this.readControlModes();
     if (read.state !== 'resolved' || read.modes[deviceId] === 'external') return false;
     if (read.modes[deviceId] !== 'update_mode') return true;
-    if (this.configuredLimitTemperatures(deviceId).some((limit) => this.normalizeTarget(deviceId, limit) === value)) {
+    if (this.readLimitTemperatures(deviceId).some((limit) => this.normalizeTarget(deviceId, limit) === value)) {
       return true;
     }
     try {
@@ -91,19 +89,6 @@ export class ObservedTemperatureModeUpdates {
     } catch {
       return false;
     }
-  }
-
-  /**
-   * The owner's configured limit setpoints for this device, either direction —
-   * read off the same settings port the policy is, so the fence needs no second
-   * injection. The key's owner (`shedBehaviors.ts`) reads the bytes.
-   */
-  private configuredLimitTemperatures(deviceId: string): readonly number[] {
-    // An unavailable read keeps the last good map: a transient miss must not
-    // refuse a limit write.
-    const read = readShedBehaviorsSetting(this.settings);
-    if (read.state === 'resolved') this.lastShedBehaviors = read.behaviors;
-    return shedLimitTemperatures(resolveShedBehavior(this.lastShedBehaviors, deviceId));
   }
 
   private readControlModes(): ControlModesRead {

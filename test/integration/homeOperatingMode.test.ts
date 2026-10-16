@@ -46,7 +46,7 @@ import {
 } from '../../lib/home/homeConfig';
 import { createHomeRuntimeRegistry, type HomeRuntimeRegistry } from '../../setup/homeRuntime/homeRuntimeRegistry';
 import { resolveOperatingModeForDevice } from '../../setup/homeRuntime/homeOperatingMode';
-import { seedTemperatureShedFloorDefaults } from '../../setup/appDeviceSupport';
+import { readGoverningModeDeviceTargetC } from '../../lib/home/modeDeviceTargetsRead';
 import { HomeMembershipService } from '../../lib/home/homeMembershipService';
 import {
   createDeviceHomeAssignmentsStore,
@@ -55,7 +55,6 @@ import {
 import { registerSettingsHandler } from '../../setup/appInit/registerSettingsHandler';
 import { PlanService } from '../../lib/plan/planService';
 import { getLogger } from '../../lib/logging/logger';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import {
   CAPACITY_PRIORITIES,
   CONTROLLABLE_DEVICES,
@@ -63,7 +62,6 @@ import {
   MODE_ALIASES,
   MODE_DEVICE_TARGETS,
   OPERATING_MODE_SETTING,
-  OVERSHOOT_BEHAVIORS,
   POWER_SOURCE,
 } from '../../lib/utils/settingsKeys';
 import {
@@ -828,33 +826,19 @@ describe('per-home operating mode (settings → bundle seam)', () => {
   });
 });
 
-// The device-scoped reader (`resolveOperatingModeForDevice`) feeds the only
-// consumer that PERSISTS a mode-derived value: the overshoot default seed in
-// `setup/appDeviceSupport.ts`. Unlike `HomeModeCatalog`, which a registered
-// bundle reads and which can hold its last-known mode, this reader is
-// stateless: a failed pin read has no last-known mode to hold — and a default
-// seeded under the global fallback outlives the transient failure, because
-// every later refresh keeps the entry that is already there.
+// The device-scoped reader (`resolveOperatingModeForDevice`) feeds the target a
+// setpoint-only device's shed default is derived from each plan build
+// (`readGoverningModeDeviceTargetC`). It is stateless: a failed pin read has no
+// last-known mode to hold, so it answers no target rather than the global
+// mode's, and the next build asks again. Nothing is persisted from it.
 // Only outward seams are mocked: the shared mock settings store backs the real
-// membership service and the real seed pass.
-describe('per-home operating mode (device-scoped overshoot seed)', () => {
+// membership service.
+describe('per-home operating mode (device-scoped mode target)', () => {
   const ZONES = {
     z1: { id: 'z1', name: 'Home', parent: null },
     z2: { id: 'z2', name: 'Annex', parent: 'z1' },
   };
-  // Temperature device with no `onoff`: the class the seed pass enforces a
-  // `set_temperature` default for. In zone z2, so it belongs to HOME_A.
-  const SUB_HOME_HEATER = {
-    id: 'vt-1',
-    name: 'Annex panel heater',
-    deviceType: 'temperature',
-    deviceClass: 'airtreatment',
-    powerCapable: true,
-    capabilities: ['target_temperature', 'measure_power'],
-    targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
-  } as unknown as TargetDeviceSnapshot;
-  // Three distinguishable defaults (target − 3 °C, floored at 16 °C):
-  //   pinned 'Cooler' → 17, global 'Home' → 21, device setpoint only → 19.
+  // Distinguishable targets: pinned 'Cooler' → 20, global 'Home' → 24.
   const MODE_TARGETS = { Home: { 'vt-1': 24 }, Cooler: { 'vt-1': 20 } };
 
   let ctx: AppContext;
@@ -862,7 +846,6 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
 
   const buildMembership = (
     getZoneTree: () => typeof ZONES | null,
-    onOwnershipReadyBeforePlanWork?: (service: HomeMembershipService) => void,
   ): HomeMembershipService => (
     new HomeMembershipService({
       sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
@@ -874,24 +857,14 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
       getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
       getConfiguredPowerSource: () => ({ state: 'resolved', value: 'homey_energy' }),
       legacyMultiHomeEnabled: true,
-      onOwnershipReadyBeforePlanWork,
     })
   );
 
-  const readOvershootEntry = (): unknown => (
-    (mockHomeyInstance.settings.get(OVERSHOOT_BEHAVIORS) as Record<string, unknown> | null)?.['vt-1']
+  const readTargetC = (): number | null => readGoverningModeDeviceTargetC(
+    homeyLike.settings,
+    resolveOperatingModeForDevice(getHomeModeCatalogForTest(ctx), 'vt-1'),
+    'vt-1',
   );
-
-  const runSeedPass = (): void => {
-    seedTemperatureShedFloorDefaults({
-      snapshot: [SUB_HOME_HEATER],
-      settings: homeyLike.settings,
-      resolveOperatingModeForDevice: (deviceId) => resolveOperatingModeForDevice(
-        getHomeModeCatalogForTest(ctx), deviceId,
-      ),
-      debugStructured: vi.fn(),
-    });
-  };
 
   beforeEach(() => {
     resetMockHomey();
@@ -958,8 +931,8 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
       .toEqual({ ...MODE_TARGETS, Home: { ...MODE_TARGETS.Home, 'main-device': 20 } });
   });
 
-  it('skips the overshoot seed while the pinned mode read throws, then seeds under the PIN once it recovers', () => {
-    // Precondition: the device really is a sub-home member, so the seed would
+  it('answers no target while the pinned mode read throws, then the PIN\'s once it recovers', () => {
+    // Precondition: the device really is a sub-home member, so the read would
     // otherwise resolve through the pin.
     expect(membership.getHomeIdForDevice('vt-1')).toBe('h_a');
 
@@ -972,55 +945,37 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
         return passthroughGet(key);
       });
 
-    runSeedPass();
+    // Never the global mode's 24 °C.
+    expect(readTargetC()).toBeNull();
 
-    // Nothing persisted: not the global-mode default (21 °C), not a
-    // setpoint-only default (19 °C). A missing entry is recoverable; a
-    // wrong-mode one is not, because the next pass keeps whatever exists.
-    expect(readOvershootEntry()).toBeUndefined();
-
-    // Recovery: the very next pass seeds from the home's OWN pinned mode.
     readSpy.mockRestore();
-    runSeedPass();
-    expect(readOvershootEntry()).toEqual({ action: 'set_temperature', temperature: 17, coolingTemperature: 28 });
+    expect(readTargetC()).toBe(20);
   });
 
-  it('skips the overshoot seed while the pinned mode targets are unavailable, then retries', () => {
-    // The effective mode already resolved from the producer-owned snapshot,
-    // but the second settings read that supplies its target transiently has no
-    // value. Treating that as "no device target" would persist the 19 °C
-    // setpoint fallback and keep it even after the configured 20 °C Cooler
-    // target becomes readable again.
+  it('answers no target while the pinned mode targets are unavailable, then retries', () => {
     const passthroughGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
     const readSpy = vi.spyOn(mockHomeyInstance.settings, 'get')
       .mockImplementation((key: string) => (
         key === 'mode_device_targets' ? undefined : passthroughGet(key)
       ));
 
-    runSeedPass();
-    expect(readOvershootEntry()).toBeUndefined();
+    expect(readTargetC()).toBeNull();
 
     readSpy.mockRestore();
-    runSeedPass();
-    expect(readOvershootEntry()).toEqual({ action: 'set_temperature', temperature: 17, coolingTemperature: 28 });
+    expect(readTargetC()).toBe(20);
   });
 
-  it('uses the current setpoint when a valid targets blob has no active-mode map', () => {
+  it('answers no target when a valid targets blob has no active-mode map', () => {
     mockHomeyInstance.settings.set('mode_device_targets', {
       Home: MODE_TARGETS.Home,
     });
 
-    runSeedPass();
-
-    expect(readOvershootEntry()).toEqual({ action: 'set_temperature', temperature: 19, coolingTemperature: 28 });
+    expect(readTargetC()).toBeNull();
   });
 
-  it('skips the overshoot seed until zone-based device ownership is committed', () => {
+  it('answers no target until zone-based device ownership is committed', () => {
     let zoneTree: typeof ZONES | null = null;
-    membership = buildMembership(
-      () => zoneTree,
-      () => runSeedPass(),
-    );
+    membership = buildMembership(() => zoneTree);
     ctx = createAppContextMock({ homey: homeyLike, homeMembership: membership });
     configureHomeModeCatalog(ctx, { targets: MODE_TARGETS });
     membership.recompute();
@@ -1029,37 +984,29 @@ describe('per-home operating mode (device-scoped overshoot seed)', () => {
     // answer is deliberately provisional and cannot select the global mode.
     expect(membership.isOwnershipReady()).toBe(false);
     expect(membership.getHomeIdForDevice('vt-1')).toBe('main');
-    runSeedPass();
-    expect(readOvershootEntry()).toBeUndefined();
+    expect(readTargetC()).toBeNull();
 
     zoneTree = ZONES;
     membership.recompute();
     expect(membership.isOwnershipReady()).toBe(true);
     expect(membership.getHomeIdForDevice('vt-1')).toBe('h_a');
-    // The producer retries the previously deferred seed synchronously before
-    // it notifies plan consumers about the committed ownership map.
-    expect(readOvershootEntry()).toEqual({ action: 'set_temperature', temperature: 17, coolingTemperature: 28 });
+    expect(readTargetC()).toBe(20);
   });
 
-  it('skips the overshoot seed between rename target and alias commits', () => {
+  it('answers no target between rename target and alias commits', () => {
     const renamedTargets = { Home: { 'vt-1': 24 }, Chill: { 'vt-1': 20 } };
     mockHomeyInstance.settings.set('mode_device_targets', renamedTargets);
     configureHomeModeCatalog(ctx, { targets: renamedTargets });
 
     // The targets write removed `Cooler`, but the alias write has not landed.
-    // The bundle may follow a logged global fallback; a persisted default may
-    // not, because it would survive after the rename completes.
-    runSeedPass();
-    expect(readOvershootEntry()).toBeUndefined();
+    expect(readTargetC()).toBeNull();
 
     mockHomeyInstance.settings.set('mode_aliases', { cooler: 'Chill' });
     configureHomeModeCatalog(ctx, { targets: renamedTargets, aliases: { cooler: 'Chill' } });
-    runSeedPass();
-    expect(readOvershootEntry()).toEqual({ action: 'set_temperature', temperature: 17, coolingTemperature: 28 });
+    expect(readTargetC()).toBe(20);
   });
 
-  it('seeds from the home\'s pinned mode when the read succeeds (never the global mode)', () => {
-    runSeedPass();
-    expect(readOvershootEntry()).toEqual({ action: 'set_temperature', temperature: 17, coolingTemperature: 28 });
+  it('reads the home\'s pinned mode when the read succeeds (never the global mode)', () => {
+    expect(readTargetC()).toBe(20);
   });
 });

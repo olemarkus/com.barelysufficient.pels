@@ -532,6 +532,10 @@ describe('DeviceTransport', () => {
             // unread, so a consumer tracking membership never counts it as removed.
             expect(refreshes.at(-1)?.entries.map((entry) => entry.observed.id)).toEqual(['dev1']);
             expect(refreshes.at(-1)?.ignoredReadIds).toEqual(['neverConformingUnmanaged']);
+            // Every device Homey listed is still Homey's, read or not: nothing
+            // learned about one is pruned because PELS could not read it.
+            expect([...dm.getHomeyDeviceIds()].sort())
+                .toEqual(['dev1', 'dev2', 'neverConformingManaged', 'neverConformingUnmanaged']);
             expect(loggerMock.structuredLog.error).not.toHaveBeenCalledWith(expect.objectContaining({
                 event: 'device_snapshot_control_state_dropped',
             }));
@@ -666,7 +670,7 @@ describe('DeviceTransport', () => {
             dm.destroy();
         });
 
-        it('does not duplicate a previously-valid managed device into the picker on transient malformed onoff', async () => {
+        it('drops a managed device whose only control is null, without offering it in the picker', async () => {
             const dm = createTestDeviceTransport(homeyMock, loggerMock, {
                 getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
                 getManaged: (deviceId) => deviceId === 'dev1',
@@ -678,10 +682,19 @@ describe('DeviceTransport', () => {
             expect(dm.getSnapshot().map((d) => d.id)).toEqual(['dev1']);
             expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual([]);
 
+            // A `null` onoff is withheld, which leaves this heater nothing PELS
+            // controls: it is out of the snapshot until onoff reports again,
+            // and never offered in the picker meanwhile. It is still in Homey's
+            // device list, so nothing learned about it is pruned.
             mockApiGet.mockResolvedValue({ dev1: buildDevice('dev1', null) });
             await dm.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
-            expect(dm.getSnapshot().map((d) => d.id)).toEqual(['dev1']);
+            expect(dm.getSnapshot().map((d) => d.id)).toEqual([]);
             expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual([]);
+            expect([...dm.getHomeyDeviceIds()]).toEqual(['dev1']);
+
+            mockApiGet.mockResolvedValue({ dev1: buildDevice('dev1', true) });
+            await dm.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            expect(dm.getSnapshot().map((d) => d.id)).toEqual(['dev1']);
             dm.destroy();
         });
     });
@@ -742,6 +755,32 @@ describe('DeviceTransport', () => {
                 emitDeviceUpdate(fullRead('heat'));
 
                 expect(observedMode()).toBe('heat');
+            });
+
+            // A capability withheld for a `null` is not stuck: the next read
+            // that carries a value restores it, and the next `null` drops it.
+            it('drops a capability while it is null and restores it with the next value', async () => {
+                await deviceManager.init();
+                const unreported = heatPump({
+                    onoff: { value: null, id: 'onoff', lastUpdated: stampedNow() },
+                    measure_temperature: { value: 25, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
+                    target_temperature: { value: 22, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
+                    thermostat_mode: { value: null, id: 'thermostat_mode', lastUpdated: stampedNow() },
+                });
+                mockApiGet.mockResolvedValue({ dev1: unreported });
+                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                expect(deviceManager.getSnapshot()[0]?.capabilities).not.toContain('onoff');
+                expect(observedMode()).toBeUndefined();
+
+                emitDeviceUpdate(fullRead('cooling'));
+                expect(deviceManager.getSnapshot()[0]?.capabilities).toContain('onoff');
+                expect(observedMode()).toBe('cooling');
+
+                mockApiGet.mockResolvedValue({ dev1: unreported });
+                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                // A null again drops them again: nothing stands in for a null.
+                expect(deviceManager.getSnapshot()[0]?.capabilities).not.toContain('onoff');
+                expect(observedMode()).toBeUndefined();
             });
 
             it('takes a live mode event, publishes the change, and counts it as no freshness', async () => {

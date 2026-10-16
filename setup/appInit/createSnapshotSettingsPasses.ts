@@ -1,37 +1,18 @@
 /**
- * The two settings-maintenance passes the snapshot refresh runs, wired.
+ * The mode-target fill pass the snapshot refresh runs, wired.
  *
- * They live here rather than inline in `app.ts` because one of them needs a
+ * It lives here rather than inline in `app.ts` because it needs a
  * control-resolution step — the mode-target pass takes the planner's device
  * type, so the snapshot goes through `toPlanDevice` first —
  * and that is not something the composition root should be doing beside a
  * settings handle.
  */
-import { getDebugEmitter } from '../../lib/logging/logger';
 import type { AppContext } from '../../lib/app/appContext';
-import type { HomeModeCatalog } from '../../lib/home/homeModeCatalog';
 import { ModeDeviceTargetFill } from '../../lib/home/modeDeviceTargetFill';
-import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
-import {
-  seedTemperatureShedFloorDefaults,
-  listModeTargetFillDevices,
-  type ResolveOperatingModeForDevice,
-} from '../appDeviceSupport';
-import { resolveHomeIdForModeCatalogSeed, resolveOperatingModeForDevice } from '../homeRuntime/homeOperatingMode';
+import { listModeTargetFillDevices } from '../appDeviceSupport';
+import { resolveHomeIdForModeCatalogSeed } from '../homeRuntime/homeOperatingMode';
 import { createDefaultToPlanDeviceOptions } from '../../lib/planInput/projectPlanInputDevice';
 import { toPlanDevice } from './toPlanDevice';
-
-export const createTemperatureShedFloorDefaults = (ctx: AppContext, homeModeCatalog: HomeModeCatalog) => (
-  snapshot: DecoratedDeviceSnapshot[],
-  operatingModeResolver?: ResolveOperatingModeForDevice,
-): void => seedTemperatureShedFloorDefaults({
-  snapshot,
-  settings: ctx.homey.settings,
-  // Overshoot defaults follow the OWNING home's effective mode.
-  resolveOperatingModeForDevice: operatingModeResolver
-    ?? ((deviceId) => resolveOperatingModeForDevice(homeModeCatalog, deviceId)),
-  debugStructured: getDebugEmitter('devices', 'devices'),
-});
 
 /**
  * The app's one mode-target fill pass. Construct it once: what it already filled

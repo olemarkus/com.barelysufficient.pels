@@ -24,7 +24,8 @@ import {
   canContinueShedPostureRestoreBatch,
   recordShedPostureRestoreBatchAdmission,
 } from './batch';
-import { resolveSteppedRestoreNeed, resolveSteppedRestoreTarget } from './steppedRestoreTarget';
+import { resolveSteppedRestoreTarget } from './steppedRestoreTarget';
+import { getSteppedLoadNextRestoreStep } from '../planSteppedLoad';
 import {
   admitSteppedRestore,
   blockSteppedRestoreForShedInvariant,
@@ -128,33 +129,36 @@ export function planRestoreForSteppedDevice(
     delete state.steppedRestoreRejectedByDevice[dev.id];
   }
 
-  const nextStep = resolveSteppedRestoreTarget(cycle, dev, loop);
-  const restoreNeed = resolveSteppedRestoreNeed(dev, nextStep);
+  const target = resolveSteppedRestoreTarget(cycle, dev, loop);
   const batchContinuation = canContinueShedPostureRestoreBatch(
     batchState,
     state.shedDecisions,
     dev.id,
     loop.restoredOneThisCycle,
-    restoreNeed.neededKw,
+    target?.need.neededKw ?? 0,
   );
-  if (applySteppedDeviceGates(cycle, dev, loop, batchContinuation, nextStep?.id ?? null)) return loop;
+  // The gates see the step the ladder WANTED when the surplus ceiling holds it
+  // back, so a held device still shows the gate's reason (a charger's recovery
+  // hold among them) rather than none.
+  const requestedStepId = target?.step.id ?? getSteppedLoadNextRestoreStep(dev)?.id ?? null;
+  if (applySteppedDeviceGates(cycle, dev, loop, batchContinuation, requestedStepId)) return loop;
 
   if (blockRestoreForRecentActivationSetback(cycle, dev, true)) return loop;
 
-  if (!nextStep || restoreNeed.deltaKw <= 0) {
+  if (!target || target.need.deltaKw <= 0) {
     clearRestoreDebugEvent(state, `stepped:${dev.id}`);
     return loop;
   }
 
-  const attemptHold = applySteppedRestoreAttemptHold(cycle, dev, loop, nextStep);
+  const attemptHold = applySteppedRestoreAttemptHold(cycle, dev, loop, target.step);
   if (attemptHold.kind !== 'not_handled') {
-    return commitSteppedRestoreAttempt(batchState, state, dev, restoreNeed, attemptHold);
+    return commitSteppedRestoreAttempt(batchState, state, dev, target.need, attemptHold);
   }
 
-  if (blockSteppedRestoreForShedInvariant(cycle, dev, nextStep)) return loop;
+  if (blockSteppedRestoreForShedInvariant(cycle, dev, target.step)) return loop;
   delete state.steppedRestoreRejectedByDevice[dev.id];
 
-  return admitSteppedRestore(cycle, lane, dev, loop, nextStep, restoreNeed, batchContinuation);
+  return admitSteppedRestore(cycle, lane, dev, loop, target, batchContinuation);
 }
 /* eslint-enable functional/immutable-data */
 

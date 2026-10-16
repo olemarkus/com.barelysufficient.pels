@@ -10,20 +10,32 @@ import { canAdmitWithinBatch } from './batch';
 import { computeRestoreBufferKw } from './accounting';
 import type { RestoreCycle, RestoreLoopState, SteppedRestoreNeed } from './types';
 
+/**
+ * The one command a stepped restore issues: the rung, the complete buffered
+ * increase it commits, and how it was chosen. A `jump` past the adjacent rung
+ * spends the shared batch allowance whether or not the device was limited; an
+ * `adjacent` step does so only for a limited device, as ordinary admission.
+ */
+export type SteppedRestoreTarget = {
+  step: SteppedLoadStep;
+  need: SteppedRestoreNeed;
+  kind: 'adjacent' | 'jump';
+};
+
 /** Choose one command, charging the full jump against the shared batch allowance. */
 export function resolveSteppedRestoreTarget(
   cycle: RestoreCycle,
   dev: SteppedPlanDevice & MeteredKind,
   loop: RestoreLoopState,
-): SteppedLoadStep | null {
+): SteppedRestoreTarget | null {
   const isOff = isOffSteppedRestoreCandidate(dev);
-  const pendingStep = isOff ? null : resolveOutstandingRestoreTarget(cycle, dev);
-  if (pendingStep) return pendingStep;
   const adjacent = getSteppedLoadNextRestoreStep(dev);
+  const pendingStep = isOff ? null : resolveOutstandingRestoreTarget(cycle, dev);
+  if (pendingStep) return buildTarget(dev, pendingStep, adjacent);
   const fallback = admitStepUnderSurplusCeiling(dev, cycle.state, adjacent);
+  if (!fallback) return null;
   const batch = cycle.batchState;
-  if (!fallback || isOff || !batch.enabled
-    || batch.admittedCount >= batch.maxDevices) return fallback;
+  if (isOff || !batch.enabled || batch.admittedCount >= batch.maxDevices) return buildTarget(dev, fallback, adjacent);
 
   const steps = sortSteppedLoadSteps(dev.steppedLoadProfile.steps);
   const adjacentIndex = steps.findIndex((step) => step.id === fallback.id);
@@ -34,9 +46,21 @@ export function resolveSteppedRestoreTarget(
     if (need.deltaKw <= 0 || !canAdmitWithinBatch(batch, need.neededKw)) continue;
     if (isReserveAdmitted(resolveReserveAdmission(
       dev, loop.availableHeadroom, need.neededKw, cycle.headroomReserves,
-    ))) return target;
+    ))) return { step: target, need, kind: 'jump' };
   }
-  return fallback;
+  return buildTarget(dev, fallback, adjacent);
+}
+
+function buildTarget(
+  dev: SteppedPlanDevice & MeteredKind,
+  step: SteppedLoadStep,
+  adjacent: SteppedLoadStep | null,
+): SteppedRestoreTarget {
+  return {
+    step,
+    need: resolveSteppedRestoreNeed(dev, step),
+    kind: step.id === adjacent?.id || isOffSteppedRestoreCandidate(dev) ? 'adjacent' : 'jump',
+  };
 }
 
 // Admission can now choose a different rung as headroom changes. Qualify the
@@ -72,11 +96,10 @@ function admitStepUnderSurplusCeiling(
 }
 
 /** Price the complete increase once, including its restore buffer. */
-export function resolveSteppedRestoreNeed(
+function resolveSteppedRestoreNeed(
   dev: SteppedPlanDevice & MeteredKind,
-  nextStep: SteppedLoadStep | null,
+  nextStep: SteppedLoadStep,
 ): SteppedRestoreNeed {
-  if (!nextStep) return { deltaKw: 0, neededKw: 0 };
   const change = resolveStepChangeKw(dev, dev.selectedStepId, nextStep.id);
   if (change.direction !== 'up' || change.deltaKw <= 0) return { deltaKw: 0, neededKw: 0 };
   const { deltaKw } = change;

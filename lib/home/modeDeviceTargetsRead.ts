@@ -1,4 +1,5 @@
 import type { SettingsPort } from '../ports/homeyRuntime';
+import type { DeviceOperatingModeOutcome } from './homeModeDeviceRead';
 import { MODE_DEVICE_TARGETS, homeScopedSettingsKey } from '../utils/settingsKeys';
 import {
   sanitizeModeDeviceTargets,
@@ -77,4 +78,21 @@ export function readModeDeviceTarget(
   const read = readModeDeviceTargets(settings, homeScopedSettingsKey(MODE_DEVICE_TARGETS, catalogHomeId));
   if (read.state === 'unavailable') return { state: 'unavailable' };
   return { state: 'resolved', targetC: read.catalog[mode]?.[deviceId] ?? null };
+}
+
+/**
+ * The target the device's governing mode holds for it now, for a default the
+ * planner derives each build. `null` when that mode holds none for it, or when
+ * the mode or its catalog cannot be read this time: nothing is persisted from
+ * the answer, so the default falls back to the device's own setpoint and the
+ * next build asks again.
+ */
+export function readGoverningModeDeviceTargetC(
+  settings: SettingsPort,
+  operatingMode: DeviceOperatingModeOutcome,
+  deviceId: string,
+): number | null {
+  if (operatingMode.state === 'unavailable' || operatingMode.mode === null) return null;
+  const read = readModeDeviceTarget(settings, operatingMode.catalogHomeId, operatingMode.mode, deviceId);
+  return read.state === 'resolved' ? read.targetC : null;
 }

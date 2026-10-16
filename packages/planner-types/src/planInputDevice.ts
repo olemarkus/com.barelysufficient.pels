@@ -838,5 +838,5 @@ export type PlanDeviceCarriedKey =
 export type PlanDeviceStrippedKey =
   'batteryClaim' | 'batteryLevel' | 'batteryPower'
   | 'binaryControl' | 'binaryControlObservation' | 'evChargingState' | 'measuredPowerKw'
-  | 'measuredPowerIsDirectMeasurement' | 'steppedLoadProfile' | 'targetPowerConfig' | 'temperature'
-  | 'temperatureAdjustmentsDisabled' | 'temperatureControlDisabled' | 'thermostatMode';
+  | 'measuredPowerIsDirectMeasurement' | 'setpointShedFloorC' | 'steppedLoadProfile' | 'targetPowerConfig'
+  | 'temperature' | 'temperatureAdjustmentsDisabled' | 'temperatureControlDisabled' | 'thermostatMode';

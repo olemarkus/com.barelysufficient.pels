@@ -79,11 +79,15 @@ const runSnapshotPrePass = (
     },
     debugStructured: getDebugEmitter('reconcile', 'devices'),
   });
-  // Pruning uses all configured devices, even when this observer join or the
-  // per-home projection omitted one temporarily.
-  const presentDeviceIds = new Set(ctx.deviceConfiguration.ids());
-  pruneMissingLearnedPowerPeaks(ctx, presentDeviceIds);
-  options.pruneCommandability(presentDeviceIds);
+  // Pruning uses Homey's own device list, so a device PELS cannot read or
+  // control for a while (a capability reported as `null`, a read the contract
+  // ignored) keeps what was learned about it. Nothing is pruned before the
+  // first full list.
+  const homeyDeviceIds = ctx.deviceReads.homeyDeviceIds();
+  if (homeyDeviceIds.size > 0) {
+    pruneMissingLearnedPowerPeaks(ctx, homeyDeviceIds);
+    options.pruneCommandability(homeyDeviceIds);
+  }
   return snapshot;
 };
 

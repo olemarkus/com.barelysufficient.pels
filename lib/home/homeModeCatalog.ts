@@ -28,6 +28,7 @@ import {
 import { sanitizeModeDeviceTargets } from '../../packages/shared-domain/src/settings/modeDeviceTargets';
 import { readModeAliases } from '../../packages/shared-domain/src/settings/modeAliases';
 import { readHomeModeSetting } from './homeModeSettingsRead';
+import { readGoverningModeDeviceTargetC } from './modeDeviceTargetsRead';
 import { HomeModeDeviceResolver, type DeviceOperatingModeOutcome } from './homeModeDeviceRead';
 import {
   editDeviceModeTarget,
@@ -66,6 +67,8 @@ export type HomeModeCatalog = {
    * catalog cannot be read.
    */
   listDeviceTargetModes: (deviceId: string) => string[] | null;
+  /** The target the device's governing mode holds for it now. See `readGoverningModeDeviceTargetC`. */
+  readGoverningModeDeviceTargetC: (deviceId: string) => number | null;
   /** Saves a device's target in one of those modes. See `editDeviceModeTarget`. */
   setDeviceModeTarget: (deviceId: string, selection: ModeTargetSelection, targetC: number) => DeviceModeTargetEdit;
   setOperatingMode: (mode: string) => { previous: string; resolved: string };
@@ -400,6 +403,10 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
     const catalog = this.deviceModeResolver.resolveCatalog(deviceId);
     return catalog.state === 'resolved' ? listTargetModes(catalog) : null;
   };
+
+  readGoverningModeDeviceTargetC = (deviceId: string): number | null => readGoverningModeDeviceTargetC(
+    this.settings, this.resolveOperatingModeForDevice(deviceId), deviceId,
+  );
 
   setDeviceModeTarget = (
     deviceId: string,

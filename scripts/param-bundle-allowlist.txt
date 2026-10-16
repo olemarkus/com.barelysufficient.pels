@@ -158,7 +158,6 @@ packages/shared-domain/src/utils/airtreatmentShedTemperature.ts 1
 packages/shared-domain/src/utils/dateUtils.ts 1
 packages/shared-domain/src/weatherInsightCopy.ts 7
 setup/appDebugHelpers.ts 2
-setup/appDeviceSupport.ts 1
 setup/appInit/wireHomeMembership.ts 5
 setup/appLifecycleHelpers.ts 1
 setup/appPriceLowestTrigger.ts 1
@@ -173,7 +172,6 @@ setup/homeRuntime/homeTrackerConfigSafety.ts 4
 setup/lifecycleFallbackRequest.ts 1
 setup/steppedProfileRepair.ts 1
 setup/targetPowerReachabilitySettings.ts 1
-setup/temperatureShedFloorDefaults.ts 4
 widgets/_shared/widgetClientLog.ts 1
 widgets/_shared/widgetRuntime.ts 3
 widgets/create_smart_task/src/public/widgetApp.ts 1

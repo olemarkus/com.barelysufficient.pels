@@ -106,9 +106,8 @@ export function mergeFresherCapabilityObservations(params: {
  * strips the read's temperature facet.
  *
  * A malformed read after the rejection is ignored outright by the read contract
- * (`deviceReadContract.ts`), and a `null` member keeps its last accepted entry,
- * dated before the rejection. Otherwise a read carrying a pair older than the
- * rejection is a race: a delayed or reordered frame. Without this, such a frame
+ * (`deviceReadContract.ts`), and a `null` member is withheld. Otherwise a read
+ * carrying a pair older than the rejection is a race: a delayed or reordered frame. Without this, such a frame
  * would re-admit a device the rejection evicted, on the very pair it
  * superseded, and the next refresh would evict it again.
  *
@@ -310,6 +309,11 @@ function preserveBinaryControlObservation(params: {
     const previousObservation = previous.binaryControlObservation;
     const nextObservation = snapshot.binaryControlObservation;
     if (!previousObservation) return;
+    // A full read carries the device's whole capability list, as a
+    // `device.update` does (`getPreservedBinaryControlObservation`): a read
+    // without the binary capability, a withheld `null` one included, carries
+    // nothing binary over.
+    if (previousObservation.capabilityId !== snapshot.binaryCapabilityId) return;
     if (!nextObservation || nextObservation.observedAtMs < previousObservation.observedAtMs) {
         snapshot.binaryControlObservation = {
             ...previousObservation,

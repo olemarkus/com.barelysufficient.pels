@@ -233,8 +233,9 @@ constructs the Main catalog and wires it directly to the mode-aware runtime
 consumers; it is not part of the general `AppContext` surface. Setup constructs
 each sub-home catalog with that home's settings, membership, and managed-device
 seams.
-Device-detail target edits, overshoot defaults, and automatic missing-target
-seeding resolve through the device's assigned catalog. The Settings page shows
+Device-detail target edits, the mode target a setpoint-only device's shed
+default is derived from, and automatic missing-target seeding resolve through
+the device's assigned catalog. The Settings page shows
 one current-mode selector per home; the Modes page follows the global
 **Showing** picker and lists only devices assigned to that home. Mode Flow
 cards and the `pels_insights` mode tile remain Main-home-only.

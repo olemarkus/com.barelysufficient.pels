@@ -1,28 +1,13 @@
-import type Homey from 'homey';
-import type { DeviceSurfaces } from '../packages/contracts/src/deviceSurfaces';
-import { isBooleanMap } from '../lib/utils/appTypeGuards';
-import { CONTROLLABLE_DEVICES, MANAGED_DEVICES } from '../lib/utils/settingsKeys';
 import {
   getPrimaryTargetCapability,
   normalizeTargetCapabilityValue,
 } from '../packages/shared-domain/src/targetCapabilities';
 import { isTemperaturePlanDevice } from '../lib/plan/planTemperatureDevice';
 import type { UnrankedPlanInputDevice } from './appInit/toPlanDevice';
-import {
-  enforceTemperatureWithoutOnOffOvershootBehaviors,
-  type ResolveOperatingModeForDevice,
-} from './temperatureShedFloorDefaults';
 import type { ModeTargetDevice } from '../packages/shared-domain/src/modeCatalogResolution';
 
-export type { ResolveOperatingModeForDevice };
-
-type StructuredEventEmitter = (event: Record<string, unknown>) => void;
 
 type BooleanMap = Record<string, boolean>;
-
-function parseBooleanMap(value: unknown): BooleanMap {
-  return isBooleanMap(value) ? value : {};
-}
 
 // Filter is active iff at least one device is explicitly opted-in (`true`).
 // Explicit `false` keys must NOT activate the filter on their own — otherwise a
@@ -57,34 +42,6 @@ export function isRuntimePlannedDevice(device: { managed: boolean }): boolean {
 /** Plan-device form of {@link isRuntimePlannedDevice}; same rule, resolved shape. */
 export function isRuntimePlannedPlanDevice(device: { control: { managed: boolean } }): boolean {
   return device.control.managed;
-}
-
-export function seedTemperatureShedFloorDefaults(params: {
-  snapshot: DeviceSurfaces[];
-  settings: Homey.App['homey']['settings'];
-  debugStructured: StructuredEventEmitter;
-  /**
-   * Per-device active-mode resolution for the overshoot default seed (a
-   * sub-home member's default must follow ITS home's mode, and an `unavailable`
-   * outcome skips the seed instead of writing one under the global mode).
-   */
-  resolveOperatingModeForDevice: ResolveOperatingModeForDevice;
-}): void {
-  const { snapshot, settings, debugStructured, resolveOperatingModeForDevice } = params;
-  const managed = parseBooleanMap(settings.get(MANAGED_DEVICES) as unknown);
-  const controllable = parseBooleanMap(settings.get(CONTROLLABLE_DEVICES) as unknown);
-
-  const shedBehaviorUpdated = enforceTemperatureWithoutOnOffOvershootBehaviors({
-    settings,
-    snapshot,
-    managed,
-    controllable,
-    resolveOperatingModeForDevice,
-  });
-
-  if (shedBehaviorUpdated > 0) {
-    debugStructured({ event: 'temperature_shedding_enforced', deviceCount: shedBehaviorUpdated });
-  }
 }
 
 /**

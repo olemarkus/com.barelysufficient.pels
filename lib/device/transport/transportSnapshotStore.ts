@@ -13,6 +13,7 @@ export class TransportSnapshotStore {
   private snapshotByDeviceId = new Map<string, TransportDeviceSnapshot>();
   private readonly trackedRawDeviceById = new Map<string, HomeyDeviceLike>();
   private latestRawDevices: HomeyDeviceLike[] = [];
+  private homeyDeviceIds: ReadonlySet<string> = new Set();
   /** The tracked devices' native step channels, built from the raw devices above. */
   readonly nativeSteppedAdapters = new NativeSteppedLoadCommandAdapters();
 
@@ -75,16 +76,10 @@ export class TransportSnapshotStore {
   }
 
   /**
-   * A device's last accepted raw read: the realtime tracking map's (it holds the
-   * newest accepted read of a tracked device, a `device.update` included), else
-   * the last full raw list's (every device, managed or not).
+   * Every device's last accepted raw read: the realtime tracking map's (it
+   * holds the newest accepted read of a tracked device, a `device.update`
+   * included), else the last full raw list's (every device, managed or not).
    */
-  getLastAcceptedRawDevice(deviceId: string): HomeyDeviceLike | undefined {
-    return this.trackedRawDeviceById.get(deviceId)
-      ?? this.latestRawDevices.find((device) => getDeviceId(device) === deviceId);
-  }
-
-  /** Every device's last accepted raw read, by the same order. */
   getLastAcceptedRawDevicesById(): ReadonlyMap<string, HomeyDeviceLike> {
     return new Map([
       ...this.latestRawDevices.map((device) => [getDeviceId(device), device] as const),
@@ -92,12 +87,25 @@ export class TransportSnapshotStore {
     ]);
   }
 
+  /**
+   * Every device in Homey's last full device list, readable or not: the
+   * inventory a device is truly gone from. Empty before the first full list.
+   */
+  getHomeyDeviceIds(): ReadonlySet<string> {
+    return this.homeyDeviceIds;
+  }
+
   getLatestRawDevices(): HomeyDeviceLike[] {
     return this.latestRawDevices;
   }
 
-  replaceLatestRawDevices(devices: HomeyDeviceLike[]): void {
+  /**
+   * A full read's accepted raw devices, and Homey's list as fetched for it
+   * (every device it named, including one whose read was ignored).
+   */
+  replaceLatestRawDevices(devices: HomeyDeviceLike[], fetchedList: readonly HomeyDeviceLike[]): void {
     this.latestRawDevices = devices;
+    this.homeyDeviceIds = new Set(fetchedList.map(getDeviceId));
   }
 
 }

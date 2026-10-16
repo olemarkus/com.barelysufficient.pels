@@ -19,6 +19,9 @@ export type DeviceOperatingModeOutcome =
   | { state: 'resolved'; mode: string | null; homeId: HomeId; catalogHomeId: HomeId }
   | { state: 'unavailable' };
 
+/** Per-device active-mode resolution, with its read-outcome discriminant. */
+export type ResolveOperatingModeForDevice = (deviceId: string) => DeviceOperatingModeOutcome;
+
 /**
  * The catalog a device's mode targets live in, with the mode that governs the
  * device now. `catalogHomeId` names the stored catalog, which for a meter area

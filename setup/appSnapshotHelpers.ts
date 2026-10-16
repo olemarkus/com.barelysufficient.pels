@@ -14,7 +14,6 @@ import { normalizeError } from '../lib/utils/errorUtils';
 import { runWithoutContext } from '../lib/logging/alsContext';
 import { createSingleFlightLoop } from '../lib/utils/singleFlightLoop';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
-import type { ResolveOperatingModeForDevice } from './appDeviceSupport';
 import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
 import {
   TargetPowerProbeScheduler,
@@ -119,10 +118,6 @@ export class AppSnapshotHelpers {
     getStructuredLogger: (component: string) => PinoLogger | undefined;
     getNow: () => Date;
     logPeriodicStatus: (options?: { includeDeviceHealth?: boolean }) => void;
-    seedTemperatureShedFloorDefaults: (
-      snapshot: DeviceSurfaces[],
-      resolveOperatingModeForDevice?: ResolveOperatingModeForDevice,
-    ) => void;
     persistFilledModeTargets: () => void;
     getFlowReportedDeviceIds: () => string[];
     emitFlowBackedRefreshRequests: (deviceIds: string[]) => Promise<void>;
@@ -349,7 +344,6 @@ export class AppSnapshotHelpers {
     this.scheduleTargetPowerProbe();
 
     const snapshot = this.deps.getPlanInputSnapshot();
-    this.deps.seedTemperatureShedFloorDefaults(this.deps.getDeviceSurfaces());
     this.deps.persistFilledModeTargets();
     const enforcedSnapshot = snapshot.map((device) => {
       // Enforced FIRST, then stamped: `withHeadroomCurrentOn` resolves its
@@ -377,20 +371,6 @@ export class AppSnapshotHelpers {
     });
     this.deps.emitSettingsUiDevicesUpdated();
     await this.recordImplicitHomeyEnergySample(options, homePowerSample, meterSelectionAtStart);
-  }
-
-  /**
-   * Retry only the support/default classification that may have been deferred
-   * when the snapshot arrived before ownership. The existing snapshot is
-   * enough; ownership readiness cannot make the Homey device payload fresher.
-   */
-  public retryDeferredOvershootSeed(
-    resolveOperatingModeForDevice: ResolveOperatingModeForDevice,
-  ): void {
-    this.deps.seedTemperatureShedFloorDefaults(
-      this.deps.getDeviceSurfaces(),
-      resolveOperatingModeForDevice,
-    );
   }
 
   /**

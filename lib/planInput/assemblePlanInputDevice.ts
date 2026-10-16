@@ -22,6 +22,9 @@ const withoutNonPlanInputFields = (device: ToPlanDeviceInput) => {
     evChargingState: _evChargingState,
     temperature: _temperature,
     thermostatMode: _thermostatMode,
+    // Read by the shed-behaviour producer from the runtime device; the planner
+    // receives the resolved shed behaviour, never the floor it came from.
+    setpointShedFloorC: _setpointShedFloorC,
     // A home battery's signed power and claim value reach the plan only as the
     // resolved storage cluster below; its level reaches only the overview card.
     batteryPower: _batteryPower,

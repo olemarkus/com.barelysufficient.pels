@@ -19,6 +19,7 @@ const snapshot = (id: string, overrides: Record<string, unknown> = {}): Transpor
 const storeOf = (devices: TransportDeviceSnapshot[]): DeviceReadStore => ({
   getSnapshot: () => devices,
   getSnapshotByDeviceId: (id) => devices.find((device) => device.id === id),
+  getHomeyDeviceIds: () => new Set(devices.map((device) => device.id)),
 });
 
 const readsOver = (devices: TransportDeviceSnapshot[]) => createDeviceReads(() => storeOf(devices));

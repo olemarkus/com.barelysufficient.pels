@@ -395,6 +395,30 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
     expect(pruneCommandability).toHaveBeenCalledWith(new Set(['device-main', 'device-sub']));
   });
 
+  // A device PELS cannot read or control right now (its only control reported
+  // as `null`, say) leaves the snapshot but not Homey: what was learned about
+  // it stays. Only a device missing from Homey's own list is pruned.
+  it('prunes per-device data only for a device gone from Homey\'s device list', () => {
+    const ctx = makeCtx(makeMembershipService(membershipInputs));
+    const homeyDeviceIds = new Set(['device-main', 'device-sub', 'device-unreadable']);
+    Object.assign(ctx, { deviceReads: { ...ctx.deviceReads, homeyDeviceIds: () => homeyDeviceIds } });
+    const peak = { kw: 2, observedAtMs: Date.now() };
+    Object.assign(ctx.lastKnownPowerKw, { 'device-unreadable': peak, 'device-gone': peak });
+    const pruneCommandability = vi.fn();
+
+    buildHomePlanDevices(ctx, MAIN_HOME_ID, {
+      surplusPostureEnabled: false,
+      storage: { kind: 'none' },
+      projectCommandability: ({ base }) => ({ commandableNow: base, reason: 'none' }),
+      clearRecentBinaryOffCommand: () => {},
+      pruneCommandability,
+      getPrioritiesForDevices: createFixturePriorityQuery([]),
+    });
+
+    expect(Object.keys(ctx.lastKnownPowerKw)).toEqual(['device-unreadable']);
+    expect(pruneCommandability).toHaveBeenCalledWith(homeyDeviceIds);
+  });
+
   it('keeps an unconfigured device behind an explicitly saved rank 100', () => {
     const ctx = createAppContextMock({
       latestTargetSnapshot: [mainDevice, subDevice],

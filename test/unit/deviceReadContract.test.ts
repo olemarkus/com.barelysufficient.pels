@@ -1,10 +1,9 @@
 import {
   findDeviceReadContractViolation,
   resolveDeviceRead,
-  resolveNullModelCapabilities,
-  type LastAcceptedCapabilityEntry,
+  withholdNullModelCapabilities,
 } from '../../lib/device/transport/deviceReadContract';
-import type { CapabilityValue, HomeyDeviceLike } from '../../lib/utils/types';
+import type { HomeyDeviceLike } from '../../lib/utils/types';
 
 const STAMP = '2026-09-23T10:00:00.000Z';
 
@@ -294,58 +293,43 @@ describe('Tesla vendor state without an EV equivalent', () => {
 
 
 describe('a null model capability (owner ruling 2026-10-16)', () => {
-  const PREVIOUS_STAMP = '2026-09-23T09:00:00.000Z';
-  const nothingAccepted: LastAcceptedCapabilityEntry = () => undefined;
-  const acceptedFrom = (previous: HomeyDeviceLike): LastAcceptedCapabilityEntry => (capabilityId) => (
-    previous.capabilitiesObj?.[capabilityId]
-  );
   const emitter = () => ({ warn: vi.fn(), info: vi.fn() });
 
-  it('withholds a never-reported capability, leaving the rest of the read', () => {
+  it('withholds a null capability, leaving the rest of the read', () => {
     const read = heater({ capabilitiesObj: { ...HEATER_VALUES, meter_power: entry(null) } });
-    const resolved = resolveNullModelCapabilities(read, nothingAccepted);
+    const resolved = withholdNullModelCapabilities(read);
     expect(resolved.withheldCapabilityIds).toEqual(['meter_power']);
-    expect(resolved.retainedCapabilityIds).toEqual([]);
     expect(resolved.device.capabilities).toEqual(['onoff', 'measure_power', 'button.reset']);
     expect(resolved.device.capabilitiesObj).not.toHaveProperty('meter_power');
     expect(resolved.device.capabilitiesObj?.measure_power).toEqual(entry(1200));
     expect(findDeviceReadContractViolation(resolved.device)).toBeNull();
   });
 
-  it('keeps the last accepted entry, dated when it was observed', () => {
-    const previous = heater({ capabilitiesObj: { ...HEATER_VALUES, onoff: { value: false, lastUpdated: PREVIOUS_STAMP } } });
+  it('withholds a null capability even after it reported a value: nothing stands in for it', () => {
     const read = heater({ capabilitiesObj: { ...HEATER_VALUES, onoff: entry(null) } });
-    const resolved = resolveNullModelCapabilities(read, acceptedFrom(previous));
-    expect(resolved.withheldCapabilityIds).toEqual([]);
-    expect(resolved.retainedCapabilityIds).toEqual(['onoff']);
-    expect(resolved.device.capabilities).toEqual(read.capabilities);
-    expect(resolved.device.capabilitiesObj?.onoff).toEqual({ value: false, lastUpdated: PREVIOUS_STAMP });
+    const said = emitter();
+    const resolved = resolveDeviceRead({}, read, 'device_update', said);
+    expect(resolved?.capabilities).toEqual(['measure_power', 'meter_power', 'button.reset']);
+    expect(resolved?.capabilitiesObj).not.toHaveProperty('onoff');
+    expect(said.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'device_capabilities_withheld', reason: 'null_value', capabilityIds: ['onoff'],
+    }));
   });
 
-  it('withholds rather than keep an accepted entry that is not a well-formed reading', () => {
-    const read = heater({ capabilitiesObj: { ...HEATER_VALUES, measure_power: entry(null) } });
-    const rejected = resolveNullModelCapabilities(read, () => entry(Number.NaN) as CapabilityValue<unknown>);
-    expect(rejected.withheldCapabilityIds).toEqual(['measure_power']);
-    const unstamped = resolveNullModelCapabilities(read, () => ({ value: 900 }));
-    expect(unstamped.withheldCapabilityIds).toEqual(['measure_power']);
+  it('says the capability is back once a read reports it again', () => {
+    const owner = {};
+    const said = emitter();
+    resolveDeviceRead(owner, heater({ capabilitiesObj: { ...HEATER_VALUES, onoff: entry(null) } }), 'device_update', said);
+    expect(resolveDeviceRead(owner, heater(), 'device_update', said)?.capabilitiesObj?.onoff).toEqual(entry(true));
+    expect(said.info).toHaveBeenLastCalledWith(expect.objectContaining({ event: 'device_read_conforming_again' }));
   });
 
   it('leaves a value of the wrong type to the contract', () => {
     const read = heater({ capabilitiesObj: { ...HEATER_VALUES, measure_power: entry('1200') } });
-    const resolved = resolveNullModelCapabilities(read, nothingAccepted);
+    const resolved = withholdNullModelCapabilities(read);
     expect(resolved.device).toBe(read);
     expect(findDeviceReadContractViolation(resolved.device))
       .toEqual({ reason: 'unexpected_value', capabilityId: 'measure_power' });
-  });
-
-  it('says nothing when a null only keeps its last accepted entry', () => {
-    const previous = heater();
-    const read = heater({ capabilitiesObj: { ...HEATER_VALUES, onoff: entry(null) } });
-    const said = emitter();
-    expect(resolveDeviceRead({}, read, acceptedFrom(previous), 'device_update', said)?.capabilitiesObj?.onoff)
-      .toEqual(entry(true));
-    expect(said.info).not.toHaveBeenCalled();
-    expect(said.warn).not.toHaveBeenCalled();
   });
 
   it('leaves a vendor device an adapter converts all-or-nothing', () => {
@@ -355,7 +339,7 @@ describe('a null model capability (owner ruling 2026-10-16)', () => {
       'alarm_generic.car_connected': entry(true),
       measure_power: entry(null),
     });
-    expect(resolveNullModelCapabilities(zaptecRead, nothingAccepted).device).toBe(zaptecRead);
+    expect(withholdNullModelCapabilities(zaptecRead).device).toBe(zaptecRead);
   });
 
   it('leaves vendor evidence an adapter reads all-or-nothing', () => {
@@ -365,8 +349,8 @@ describe('a null model capability (owner ruling 2026-10-16)', () => {
       capabilitiesObj: { charging_on: entry(false), charging_state: entry(null),
         measure_charge_power: entry(0), measure_soc_level: entry(55) },
     });
-    expect(resolveNullModelCapabilities(tesla, nothingAccepted).device).toBe(tesla);
-    expect(resolveDeviceRead({}, tesla, nothingAccepted, 'device_fetch', emitter())).toBeNull();
+    expect(withholdNullModelCapabilities(tesla).device).toBe(tesla);
+    expect(resolveDeviceRead({}, tesla, 'device_fetch', emitter())).toBeNull();
   });
 
   const thermostat = (values: Record<string, RawCapabilityEntry>): HomeyDeviceLike => asRead({
@@ -375,15 +359,15 @@ describe('a null model capability (owner ruling 2026-10-16)', () => {
     capabilitiesObj: values,
   });
 
-  it('reads a thermostat without its temperature facet when a member is never reported', () => {
+  it('reads a thermostat without its temperature facet while a member is null', () => {
     const read = thermostat({
       onoff: entry(true), thermostat_mode: entry('heat'), target_temperature: entry(21), measure_temperature: entry(null),
     });
     const said = emitter();
-    const resolved = resolveDeviceRead({}, read, nothingAccepted, 'device_fetch', said);
+    const resolved = resolveDeviceRead({}, read, 'device_fetch', said);
     expect(resolved?.capabilities).toEqual(['onoff', 'thermostat_mode', 'target_temperature']);
     expect(said.info).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'device_capabilities_withheld', reason: 'never_reported', capabilityIds: ['measure_temperature'],
+      event: 'device_capabilities_withheld', reason: 'null_value', capabilityIds: ['measure_temperature'],
     }));
   });
 
@@ -392,7 +376,7 @@ describe('a null model capability (owner ruling 2026-10-16)', () => {
       onoff: entry(true), thermostat_mode: entry('heat'), target_temperature: entry('21'), measure_temperature: entry(null),
     });
     const said = emitter();
-    expect(resolveDeviceRead({}, read, nothingAccepted, 'device_fetch', said)).toBeNull();
+    expect(resolveDeviceRead({}, read, 'device_fetch', said)).toBeNull();
     expect(said.warn).toHaveBeenCalledWith(expect.objectContaining({
       event: 'device_read_ignored', reason: 'unexpected_value', capabilityId: 'target_temperature',
     }));

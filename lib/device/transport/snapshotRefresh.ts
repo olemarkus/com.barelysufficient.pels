@@ -286,9 +286,13 @@ function logCommittedSnapshot(
 // (`targeted_by_id`) may retain a network-missed device absent from
 // `effectiveList`, so its tracking is overlaid from the prior raw entries and
 // the raw cache is left intact (the partial read isn't the full picker list).
+//
+// `fetchedList` is Homey's list as fetched, before the read contract: on a full
+// read its ids are the inventory a device is truly gone from, readable or not.
 function adoptCommittedDeviceList(
     refresh: SnapshotRefreshService,
     effectiveList: HomeyDeviceLike[],
+    fetchedList: readonly HomeyDeviceLike[],
     fetchSource: DeviceFetchSource,
     committedSnapshot: readonly TargetDeviceSnapshot[],
 ): void {
@@ -302,7 +306,7 @@ function adoptCommittedDeviceList(
         });
     refresh.reader.syncTrackedDevices(trackingList);
     if (isFullRead) {
-        refresh.reader.snapshotStore.replaceLatestRawDevices(effectiveList);
+        refresh.reader.snapshotStore.replaceLatestRawDevices(effectiveList, fetchedList);
     }
 }
 
@@ -486,7 +490,6 @@ export class SnapshotRefreshService {
         // the producers see it as present but unread.
         const read = partitionConformingDeviceReads(
             this.reader.snapshotStore,
-            this.observationBridge.state.getObservationState(),
             this.reader.logger,
             list.map((device) => this.reader.applyDeviceDriverOverride(device)),
         );
@@ -539,6 +542,7 @@ export class SnapshotRefreshService {
         adoptCommittedDeviceList(
             this,
             acceptedRawDevices,
+            list,
             fetchSource,
             snapshot,
         );

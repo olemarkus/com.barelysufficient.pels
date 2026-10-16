@@ -1,6 +1,6 @@
 import type { AppContext } from '../../lib/app/appContext';
 import { ObservedTemperatureModeUpdates } from '../../lib/home/observedTemperatureModeUpdates';
-import type { ResolveOperatingModeForDevice } from '../appDeviceSupport';
+import type { ResolveOperatingModeForDevice } from '../../lib/home/homeModeDeviceRead';
 import type { HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
 
 export function createObservedTemperatureModeUpdates(
@@ -17,5 +17,6 @@ export function createObservedTemperatureModeUpdates(
     getAreaCatalogs,
     (deviceId, value) => ctx.deviceManager!.resolveTemperatureTarget(deviceId, value),
     isDeviceLimited,
+    (deviceId) => ctx.getShedLimitTemperaturesC(deviceId),
   );
 }

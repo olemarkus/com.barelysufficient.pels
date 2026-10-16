@@ -47,10 +47,7 @@ import { BatteryManagedSettings } from './lib/battery/batteryControlSettings';
 import type {
   HomeyPriceFormulaUiStatus, PowerhourSourceUiStatus, PvForecastSourceUiStatus, SettingsUiPriceSourcePayloads,
 } from './packages/contracts/src/settingsUiApi';
-import {
-  createModeDeviceTargetFill,
-  createTemperatureShedFloorDefaults,
-} from './setup/appInit/createSnapshotSettingsPasses';
+import { createModeDeviceTargetFill } from './setup/appInit/createSnapshotSettingsPasses';
 import { normalizeError } from './lib/utils/errorUtils';
 import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosticsService';
 import { createGenerationPollSource } from './setup/appInit/createGenerationPollSource';
@@ -151,6 +148,9 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   protected readonly getHomeOperatingMode = () => this.homeModeCatalog.getOperatingMode();
   protected readonly setHomeOperatingMode = (mode: string) => this.homeModeCatalog.setOperatingMode(mode);
   protected readonly reloadHomeModeCatalog = () => this.homeModeCatalog.reload();
+  protected readonly readGoverningModeTargetC = (deviceId: string) => (
+    this.homeModeCatalog.readGoverningModeDeviceTargetC(deviceId)
+  );
   protected readonly resolveHomeModeName = (mode: string) => this.homeModeCatalog.resolveModeName(mode);
   protected readonly getHomeModeNames = () => this.homeModeCatalog.getAllModes();
   protected readonly listDeviceTargetModes = (deviceId: string) => this.homeModeCatalog.listDeviceTargetModes(deviceId);
@@ -435,9 +435,6 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     getStructuredLogger: (component) => this.getStructuredLogger(component),
     getNow: () => this.getNow(),
     logPeriodicStatus: (options) => this.logPeriodicStatus(options),
-    seedTemperatureShedFloorDefaults: (snapshot, operatingModeResolver) => (
-      createTemperatureShedFloorDefaults(this.ctx, this.homeModeCatalog)(snapshot, operatingModeResolver)
-    ),
     persistFilledModeTargets: () => this.modeDeviceTargetFill.persist(),
     getFlowReportedDeviceIds: () => this.flowBacked.getFlowReportedDeviceIds(),
     emitFlowBackedRefreshRequests: async (deviceIds) => this.flowBacked.emitFlowBackedRefreshRequests(deviceIds),
@@ -540,9 +537,6 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     observedStateEmitter: this.observedStateEmitter,
     observedHomePower: this.observedHomePower,
     observedDeviceStateProjection: this.observer,
-    retryDeferredOvershootSeed: (membership, allowPending) => this.snapshotHelpers.retryDeferredOvershootSeed(
-      (deviceId) => this.homeModeCatalog.resolveOperatingModeForDevice(deviceId, membership, allowPending),
-    ),
     openUserdataStores: () => this.openUserdata(),
     reloadMainModeCatalog: () => this.homeModeCatalog.reload(),
     closeUserdataDatabase: () => this.closeUserdataDatabase(),

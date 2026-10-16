@@ -370,6 +370,7 @@ export class DeviceTransport {
         return this.snapshotStore.getSnapshotByDeviceId(id);
     }
     getUiPickerDevices(): TransportDeviceSnapshot[] { return this.reader.getUiPickerDevices(); }
+    getHomeyDeviceIds(): ReadonlySet<string> { return this.snapshotStore.getHomeyDeviceIds(); }
     /** Reported charger wiring, over the same raw list the picker parses, so unmanaged chargers count. */
     getChargerPhasePresets() { return resolveChargerPhasePresets(this.snapshotStore.getLatestRawDevices()); }
     /** Reported charger wiring after the first trusted full device read. */

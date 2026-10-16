@@ -164,6 +164,8 @@ export type AppContext = {
   isCapacityControlEnabled: (deviceId: string) => boolean;
   isTemperatureControlDisabled: (deviceId: string) => boolean;
   getShedBehavior: (deviceId: string) => ShedBehavior;
+  /** Every setpoint a limit may write to this device, either direction (`resolveTemperaturePolicyShedLimitsC`). */
+  getShedLimitTemperaturesC: (deviceId: string) => readonly number[];
   /**
    * One member with two meanings, decided by who assigned it:
    * - As wired (`setup/appHostApi.ts`), the planner's live physical limit

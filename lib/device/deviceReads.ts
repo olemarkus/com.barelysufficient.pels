@@ -15,6 +15,7 @@ import { hasSolarProductionCandidate } from './solarPresence';
 export type DeviceReadStore = {
     getSnapshot(): TransportDeviceSnapshot[];
     getSnapshotByDeviceId(id: string): TransportDeviceSnapshot | undefined;
+    getHomeyDeviceIds(): ReadonlySet<string>;
 };
 
 /** One device's home membership join key — `zoneId` is absent for an unzoned device. */
@@ -40,6 +41,13 @@ export type DeviceReads = {
     zoneMemberships(): DeviceZoneMembership[];
     /** Every tracked device id, for a caller building a per-device map. */
     deviceIds(): string[];
+    /**
+     * Every device in Homey's last full device list, tracked or not: a device
+     * PELS cannot read or control right now is still here. Per-device data is
+     * dropped only for a device missing from this set. Empty before the first
+     * full list.
+     */
+    homeyDeviceIds(): ReadonlySet<string>;
 };
 
 export function createDeviceReads(getStore: () => DeviceReadStore): DeviceReads {
@@ -55,5 +63,6 @@ export function createDeviceReads(getStore: () => DeviceReadStore): DeviceReads 
             zoneId: device.zoneId ?? null,
         })),
         deviceIds: () => getStore().getSnapshot().map((device) => device.id),
+        homeyDeviceIds: () => getStore().getHomeyDeviceIds(),
     };
 }

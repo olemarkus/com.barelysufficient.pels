@@ -6,9 +6,8 @@
  * after the rejection retires it.
  *
  * Every read Homey serves after the malformed report carries the malformed
- * value until the device reports again. For a `null` one the read contract
- * falls back to the newest reading PELS accepted, which is the rejection
- * itself, so the member is withheld and the facet stays stripped. A read
+ * value until the device reports again. A `null` one the read contract
+ * withholds, so the facet stays stripped. A read
  * carrying the pair from BEFORE the rejection is otherwise a race, and the
  * cases below model its two forms: a
  * `device.update` frame delivered late or out of order, and a refresh whose
@@ -324,10 +323,10 @@ describe('a null temperature member across a device.update', () => {
         vi.useRealTimers();
     });
 
-    // A realtime capability event updates no raw read, so the reading a `null`
-    // falls back to must be the newest one PELS accepted, not the last full
-    // read's (owner ruling 2026-10-16).
-    it('keeps the newer realtime reading, not the last full read, in place of a null', async () => {
+    // A `null` is not a reading, and nothing stands in for it: not the last
+    // full read, not a newer realtime event. The member is withheld, so the
+    // device reads without its temperature facet until it reports a value.
+    it('drops the temperature facet while a member is null, and takes it back with a value', async () => {
         const transport = createTestDeviceTransport(
             mockHomeyInstance as unknown as Homey.App,
             buildTransportLogger() as unknown as Logger,
@@ -351,6 +350,10 @@ describe('a null temperature member across a device.update', () => {
                 },
             },
         });
-        expect(observedTemperature(transport)).toEqual({ measured: 22, target: 20 });
+        expect(observedTemperature(transport)).toBeNull();
+
+        vi.setSystemTime(new Date('2026-04-01T12:03:00.000Z'));
+        emitDeviceUpdate(binaryThermostat(pairAt(23, 20, '2026-04-01T12:03:00.000Z')));
+        expect(observedTemperature(transport)).toEqual({ measured: 23, target: 20 });
     });
 });

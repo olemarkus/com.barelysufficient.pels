@@ -36,15 +36,12 @@ import {
   type ConfiguredShedBehavior,
 } from '../../../../shared-domain/src/settings/shedBehaviors.ts';
 import {
-  AIRTREATMENT_SHED_FLOOR_C,
-  NON_ONOFF_TEMPERATURE_SHED_FLOOR_C,
-} from '../../../../shared-domain/src/utils/airtreatmentConstants.ts';
-import {
   OVERSHOOT_BEHAVIORS,
 } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   computeDefaultAirtreatmentShedTemperature,
   normalizeShedTemperature,
+  resolveSetpointShedFloorC,
 } from '../../../../shared-domain/src/utils/airtreatmentShedTemperature.ts';
 import {
   createSerializedAsyncRunner,
@@ -96,10 +93,9 @@ const isTemperatureDeviceWithoutOnOff = (device: SettingsUiDeviceDetailItem | nu
   )
 );
 
-const resolveTemperatureShedFloor = (device: SettingsUiDeviceDetailItem | null): number => {
-  const classKey = (device?.deviceClass || '').trim().toLowerCase();
-  return classKey === 'airtreatment' ? AIRTREATMENT_SHED_FLOOR_C : NON_ONOFF_TEMPERATURE_SHED_FLOOR_C;
-};
+const resolveTemperatureShedFloor = (device: SettingsUiDeviceDetailItem | null): number => (
+  resolveSetpointShedFloorC(device?.deviceClass || '')
+);
 
 const updateShedActionOptions = (params: {
   canConfigure: boolean;

@@ -32,15 +32,15 @@
  * read. Device apps do set a model capability to `null` (Stiebel Eltron Heat
  * Pumps clears one whenever a Modbus register reads as unavailable, and adds
  * `measure_power` that stays `null` without its community registers), and
- * ignoring the whole read for it hid an otherwise readable heat pump. Such a
- * capability keeps the previous accepted read's entry, as any transient missing
- * sample does, and without one it is withheld (`resolveNullModelCapabilities`):
- * the device reads as if it did not declare it. A `null` `meter_power` beside
- * a reported `measure_power` leaves the device metered, and a never-reported
- * temperature leaves it without its temperature facet. A vendor device an
+ * ignoring the whole read for it hid an otherwise readable heat pump. A `null`
+ * is not a value, and PELS invents none for it: the capability is withheld
+ * from that read (`withholdNullModelCapabilities`), so the device reads as if
+ * it did not declare it, until a read reports a value again. A `null`
+ * `meter_power` beside a reported `measure_power` leaves the device metered,
+ * and a `null` temperature leaves it without its temperature facet. A vendor device an
  * adapter converts or reads more of stays all-or-nothing.
  */
-import { isUnknownRecord, type CapabilityValue, type HomeyDeviceLike } from '../../utils/types';
+import { isUnknownRecord, type HomeyDeviceLike } from '../../utils/types';
 import { isEvCarDeviceClass } from '../evCarDeviceClass';
 import { getDeviceAdapter } from '../deviceAdapterRegistry';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
@@ -173,67 +173,52 @@ const isModelValue = (capabilityId: string, value: unknown, type: ModelValueType
 );
 
 /**
- * The model capabilities `device` declares with a `null` value, with the type
- * the model reads each as. Only a device read as Homey reports it: a vendor
- * device an adapter converts or reads more of (Tesla, Easee, Zaptec) chooses
- * its control path from what it declares, so it stays all-or-nothing.
+ * The model capabilities `device` declares with a `null` value. Only a device
+ * read as Homey reports it: a vendor device an adapter converts or reads more
+ * of (Tesla, Easee, Zaptec) chooses its control path from what it declares, so
+ * it stays all-or-nothing.
  */
-function findNullModelCapabilityTypes(device: HomeyDeviceLike): ReadonlyMap<string, ModelValueType> {
+function findNullModelCapabilityIds(device: HomeyDeviceLike): ReadonlySet<string> {
     const { capabilities, capabilitiesObj } = device;
-    if (!Array.isArray(capabilities) || !isUnknownRecord(capabilitiesObj)) return new Map();
-    if (getDeviceAdapter(device) !== standardDeviceAdapter) return new Map();
+    if (!Array.isArray(capabilities) || !isUnknownRecord(capabilitiesObj)) return new Set();
+    if (getDeviceAdapter(device) !== standardDeviceAdapter) return new Set();
     const modelTypes = resolveModelCapabilityTypes(device, capabilities);
-    return new Map(capabilities.flatMap((capabilityId) => {
-        const type = modelTypes[capabilityId];
-        if (type === undefined) return [];
+    return new Set(capabilities.filter((capabilityId) => {
+        if (modelTypes[capabilityId] === undefined) return false;
         const entry: unknown = capabilitiesObj[capabilityId];
-        return isUnknownRecord(entry) && entry.value === null ? [[capabilityId, type] as const] : [];
+        return isUnknownRecord(entry) && entry.value === null;
     }));
 }
 
-/** The newest accepted entry PELS holds for one of the device's capabilities. */
-export type LastAcceptedCapabilityEntry = (capabilityId: string) => CapabilityValue<unknown> | undefined;
-
 export type NullModelCapabilityResolution = {
     device: HomeyDeviceLike;
-    /** Declared `null` with no earlier value: read as not declared. */
+    /** Declared `null`: read as not declared. */
     withheldCapabilityIds: readonly string[];
-    /** Declared `null` after an accepted value: that entry stands. */
-    retainedCapabilityIds: readonly string[];
 };
 
 /**
- * `device` with each model capability it declares as `null` resolved on its
- * own. The last accepted entry for it stands when there is a well-formed one,
- * dated when it was observed, as for any transient missing sample. With none
- * it is withheld: dropped from both the capability list and the values, so
- * everything downstream reads the device as not declaring it.
+ * `device` with each model capability it declares as `null` withheld: dropped
+ * from both the capability list and the values, so everything downstream reads
+ * the device as not declaring it. Nothing stands in for it; the capability is
+ * back with the first read that reports a value.
  */
-export function resolveNullModelCapabilities(
+export function withholdNullModelCapabilities(device: HomeyDeviceLike): NullModelCapabilityResolution {
+    return withholdCapabilities(device, findNullModelCapabilityIds(device));
+}
+
+function withholdCapabilities(
     device: HomeyDeviceLike,
-    lastAccepted: LastAcceptedCapabilityEntry,
+    withheld: ReadonlySet<string>,
 ): NullModelCapabilityResolution {
-    const nullTypes = findNullModelCapabilityTypes(device);
-    if (nullTypes.size === 0) return { device, withheldCapabilityIds: [], retainedCapabilityIds: [] };
-    const retainedEntries = Object.fromEntries([...nullTypes].flatMap(([capabilityId, type]) => {
-        const entry = lastAccepted(capabilityId);
-        const wellFormed = entry !== undefined
-            && isModelValue(capabilityId, entry.value, type)
-            && toCapabilityTimestampMs(entry.lastUpdated) !== undefined;
-        return wellFormed ? [[capabilityId, entry]] : [];
-    }));
-    const withheld = new Set([...nullTypes.keys()]
-        .filter((capabilityId) => !Object.hasOwn(retainedEntries, capabilityId)));
-    const capabilitiesObj = Object.fromEntries(Object.entries({ ...device.capabilitiesObj, ...retainedEntries })
-        .filter(([capabilityId]) => !withheld.has(capabilityId)));
+    if (withheld.size === 0) return { device, withheldCapabilityIds: [] };
     return {
         device: {
             ...device,
             capabilities: (device.capabilities ?? []).filter((capabilityId) => !withheld.has(capabilityId)),
-            capabilitiesObj,
+            capabilitiesObj: Object.fromEntries(Object.entries(device.capabilitiesObj ?? {})
+                .filter(([capabilityId]) => !withheld.has(capabilityId))),
         },
         withheldCapabilityIds: [...withheld],
-        retainedCapabilityIds: Object.keys(retainedEntries),
     };
 }
 
@@ -244,7 +229,7 @@ export function findDeviceReadContractViolation(device: HomeyDeviceLike): Device
 
 /**
  * The contract check, with a `null` value tolerated on the capabilities
- * `resolveNullModelCapabilities` resolves. It runs on the read as declared, so
+ * `withholdNullModelCapabilities` withholds. It runs on the read as declared, so
  * withholding one member of the temperature pair never takes the other out of
  * the model it is checked against.
  */
@@ -319,47 +304,48 @@ const violationSignatures = (owner: object): Map<string, string> => {
 
 /**
  * Check `device` against the contract and say so when it fails or a `null`
- * capability is resolved. `lastAccepted` gives the newest accepted entry PELS
- * holds for one of the device's capabilities. `null` means the read is ignored: the caller must not parse it, merge
- * it, or let any of it reach state. Otherwise the caller reads the returned
- * device, never the payload it passed in.
+ * capability is withheld. `null` means the read is ignored: the caller must not
+ * parse it, merge it, or let any of it reach state. Otherwise the caller reads
+ * the returned device, never the payload it passed in.
  */
 export function resolveDeviceRead(
     owner: object,
     device: HomeyDeviceLike,
-    lastAccepted: LastAcceptedCapabilityEntry,
     source: DeviceReadSource,
     emitter: DeviceReadContractEmitter,
 ): HomeyDeviceLike | null {
     const deviceId = typeof device.id === 'string' ? device.id : '';
     const signatures = violationSignatures(owner);
-    const violation = findViolation(device, new Set(findNullModelCapabilityTypes(device).keys()));
-    const { device: read, withheldCapabilityIds } = violation === null
-        ? resolveNullModelCapabilities(device, lastAccepted)
-        : { device, withheldCapabilityIds: [] };
-    // A capability that keeps its last accepted entry is a transient missing
-    // sample, not a gap: only an ignored read or a withheld capability is said.
-    if (violation === null && withheldCapabilityIds.length === 0) {
+    const nullCapabilityIds = findNullModelCapabilityIds(device);
+    const violation = findViolation(device, nullCapabilityIds);
+    if (violation !== null) {
+        if (claimSignature(signatures, deviceId, { violation })) {
+            emitter.warn({ event: 'device_read_ignored', deviceId, deviceName: device.name, source, ...violation });
+        }
+        return null;
+    }
+    const { device: read, withheldCapabilityIds } = withholdCapabilities(device, nullCapabilityIds);
+    if (withheldCapabilityIds.length === 0) {
         if (signatures.delete(deviceId)) {
             emitter.info({ event: 'device_read_conforming_again', deviceId, deviceName: device.name, source });
         }
-        return read;
+    } else if (claimSignature(signatures, deviceId, { withheldCapabilityIds })) {
+        emitter.info({
+            event: 'device_capabilities_withheld',
+            deviceId,
+            deviceName: device.name,
+            source,
+            reason: 'null_value',
+            capabilityIds: withheldCapabilityIds,
+        });
     }
-    const signature = JSON.stringify({ violation, withheldCapabilityIds });
-    if (signatures.get(deviceId) !== signature) {
-        signatures.set(deviceId, signature);
-        if (violation !== null) {
-            emitter.warn({ event: 'device_read_ignored', deviceId, deviceName: device.name, source, ...violation });
-        } else {
-            emitter.info({
-                event: 'device_capabilities_withheld',
-                deviceId,
-                deviceName: device.name,
-                source,
-                reason: 'never_reported',
-                capabilityIds: withheldCapabilityIds,
-            });
-        }
-    }
-    return violation === null ? read : null;
+    return read;
+}
+
+/** Record what is said about a device; true when it differs from what was said last. */
+function claimSignature(signatures: Map<string, string>, deviceId: string, said: object): boolean {
+    const signature = JSON.stringify(said);
+    if (signatures.get(deviceId) === signature) return false;
+    signatures.set(deviceId, signature);
+    return true;
 }

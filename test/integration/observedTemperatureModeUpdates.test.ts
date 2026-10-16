@@ -22,7 +22,7 @@ describe('observation-origin mode edits', () => {
     const isLimited = vi.fn(() => false);
     const service = new ObservedTemperatureModeUpdates(
       settings, resolveMode, () => true, reloadMain, () => [{ reloadModeCatalog: reloadArea }], (_id, value) => value,
-      isLimited,
+      isLimited, () => [],
     );
     return { settings, key, service, reloadMain, reloadArea, resolveMode, isLimited };
   };
@@ -30,44 +30,28 @@ describe('observation-origin mode edits', () => {
   it('authorizes the normalized saved target rather than an old adjusted target', () => {
     const { settings, resolveMode } = start();
     const service = new ObservedTemperatureModeUpdates(
-      settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => Math.round(value), () => false,
+      settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => Math.round(value), () => false, () => [],
     );
     expect(service.allowsTarget('heater', 24)).toBe(true);
     expect(service.allowsTarget('heater', 23.5)).toBe(false);
     expect(service.allowsTarget('heater', 16)).toBe(false);
   });
 
-  it('authorizes the owner\'s configured limit under Save as current mode target, in either direction', () => {
+  it('authorizes the producer\'s limits under Save as current mode target, in either direction', () => {
     // Limiting still applies under that policy; only the price and solar offsets
     // are switched off. The fence cannot tell which way the device is moving
-    // demand, so both of the owner's limits are legitimate writes.
+    // demand, so both limits are legitimate writes. They come from the
+    // shed-behaviour producer, so a limit it derives (a device with no on/off
+    // limited through its setpoint) is admitted just as a saved one is.
     const { settings, resolveMode } = start();
-    settings.set('overshoot_behaviors', {
-      heater: { action: 'set_temperature', temperature: 16.4, coolingTemperature: 26.2 },
-    });
+    const readLimits = vi.fn(() => [16.4, 26.2]);
     const service = new ObservedTemperatureModeUpdates(
-      settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => Math.round(value), () => false,
+      settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => Math.round(value), () => false, readLimits,
     );
     expect(service.allowsTarget('heater', 16)).toBe(true);
     expect(service.allowsTarget('heater', 26)).toBe(true);
     expect(service.allowsTarget('heater', 20)).toBe(false);
-  });
-
-  it('keeps the configured limits across a transient null read of the map', () => {
-    // The SDK answers `null` for a key that exists, now and then. The limits it
-    // held are the last good value, so the fence keeps admitting them; an emptied
-    // map here would refuse the executor's own limit write.
-    const { settings, resolveMode } = start();
-    settings.set('overshoot_behaviors', {
-      heater: { action: 'set_temperature', temperature: 16, coolingTemperature: 27 },
-    });
-    const service = new ObservedTemperatureModeUpdates(
-      settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => value, () => false,
-    );
-    expect(service.allowsTarget('heater', 16)).toBe(true);
-    vi.spyOn(settings, 'get').mockImplementationOnce(() => null);
-    expect(service.allowsTarget('heater', 16)).toBe(true);
-    expect(service.allowsTarget('heater', 27)).toBe(true);
+    expect(readLimits).toHaveBeenCalledWith('heater');
   });
 
   it('allows limiting under Save as current mode target and denies it only under Keep the new temperature', () => {

@@ -13,6 +13,12 @@ type DeviceConfigurationFields = {
   isEvCharger: DeviceDescriptorRead['isEvCharger'];
   /** A thermostat-family class whose "held below target" PELS reports as starvation. */
   starvationSupported: boolean;
+  /**
+   * The lowest heating limit PELS sheds this device's setpoint to when the
+   * setpoint is its only way to shed (no on/off, no steps). Class-keyed:
+   * higher for air treatment, whose setpoint is the supply air.
+   */
+  setpointShedFloorC: number;
   capabilities?: DeviceDescriptorRead['capabilities'];
   canSetControl?: DeviceDescriptorRead['canSetControl'];
   powerCapable?: DeviceDescriptorRead['powerCapable'];

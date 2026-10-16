@@ -94,9 +94,8 @@ export function resolveDeviceCapabilityProfile(
  * Reported, not interpreted: the vocabulary that turns this into a direction is
  * the observer's (`resolveThermalDirection`). A read that reaches the parse
  * conformed to the device-read contract (`deviceReadContract.ts`), so a declared
- * mode came with a string value: a `null` one was resolved there to the newest
- * mode PELS accepted, or withheld; nothing is carried over here. A blank string
- * is no mode at all.
+ * mode came with a string value: a `null` one was withheld there, and nothing
+ * is carried over here. A blank string is no mode at all.
  */
 function readReportedThermostatMode(overlay: DeviceCapabilityProfile['overlay']): string | undefined {
     if (!overlay.capabilities.includes(THERMOSTAT_MODE_CAPABILITY_ID)) return undefined;
