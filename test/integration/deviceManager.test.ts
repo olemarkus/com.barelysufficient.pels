@@ -271,6 +271,46 @@ describe('DeviceTransport', () => {
             expect(parsed.thermostatMode).toBe(reported);
         });
 
+        // Owner ruling 2026-10-16: a `null` model capability is withheld, not
+        // the whole read. Shape of the Stiebel Eltron Heat Pumps app: no
+        // `onoff`, and a `measure_power` it adds but leaves `null` without
+        // its community registers.
+        it('keeps a heat pump whose measure_power was never reported, on its temperature pair', async () => {
+            const [parsed] = await seedTransportDevices(deviceManager, [homeyDevice(
+                { id: 'heatpump-1', name: 'Stiebel Heat Pump', class: 'heatpump' },
+                {
+                    thermostat_mode: 'heat',
+                    target_temperature: celsius(21),
+                    measure_temperature: celsius(20.5),
+                    meter_power: 1234.5,
+                    measure_power: null,
+                },
+                stampedNow(),
+            )]);
+
+            expect(parsed).toMatchObject({ id: 'heatpump-1', thermostatMode: 'heat' });
+            expect(hasObservedTemperature(parsed)).toBe(true);
+            expect(loggerMock.structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_read_null_capabilities',
+                deviceId: 'heatpump-1',
+                withheldCapabilityIds: ['measure_power'],
+                retainedCapabilityIds: [],
+            }));
+            expect(loggerMock.structuredLog.warn).not.toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_read_ignored',
+            }));
+        });
+
+        it('reads a device with a null meter_power as metered by its measure_power', async () => {
+            const [parsed] = await seedTransportDevices(deviceManager, [homeyDevice(
+                { id: 'heater-1', name: 'Heater', class: 'heater' },
+                { onoff: true, measure_power: 730, meter_power: null },
+                stampedNow(),
+            )]);
+
+            expect((parsed as TransportDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBe(0.73);
+        });
+
         it.each([
             { label: 'omitted', availability: {} },
             { label: 'non-boolean', availability: { available: 'unexpected' as never } },
@@ -458,7 +498,7 @@ describe('DeviceTransport', () => {
             onoff: { value: capValue },
         }, stampedNow());
 
-        it('returns only unmanaged-eligible devices, leaving out any device whose read never conformed, managed or not', async () => {
+        it('returns only unmanaged-eligible devices, leaving out any device whose read never conformed or lost its only control', async () => {
             const dm = createTestDeviceTransport(homeyMock, loggerMock, {
                 getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
                 getManaged: (deviceId) => deviceId === 'dev1' || deviceId === 'neverConformingManaged',
@@ -484,22 +524,24 @@ describe('DeviceTransport', () => {
 
             // A read that breaks the device-read contract is ignored whole. With
             // no earlier conforming read to stand in for it, the device appears
-            // nowhere: not in the snapshot, not in the picker.
+            // nowhere: not in the snapshot, not in the picker. A never-reported
+            // (`null`) `onoff` is withheld instead, which leaves that heater
+            // nothing PELS controls, so it appears nowhere either.
             expect(dm.getSnapshot().map((d) => d.id)).toEqual(['dev1']);
             expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual(['dev2']);
-            // The refresh still names it as listed: present, but unread, so a
-            // consumer tracking membership never counts it as removed.
+            // The refresh still names the ignored one as listed: present, but
+            // unread, so a consumer tracking membership never counts it as removed.
             expect(refreshes.at(-1)?.entries.map((entry) => entry.observed.id)).toEqual(['dev1']);
-            expect(refreshes.at(-1)?.ignoredReadIds).toEqual(['neverConformingManaged', 'neverConformingUnmanaged']);
+            expect(refreshes.at(-1)?.ignoredReadIds).toEqual(['neverConformingUnmanaged']);
             expect(loggerMock.structuredLog.error).not.toHaveBeenCalledWith(expect.objectContaining({
                 event: 'device_snapshot_control_state_dropped',
             }));
-            expect(loggerMock.structuredLog.warn).toHaveBeenCalledWith(expect.objectContaining({
-                event: 'device_read_ignored',
+            expect(loggerMock.structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_read_null_capabilities',
                 deviceId: 'neverConformingManaged',
                 source: 'device_fetch',
-                reason: 'unexpected_value',
-                capabilityId: 'onoff',
+                withheldCapabilityIds: ['onoff'],
+                retainedCapabilityIds: [],
             }));
             expect(loggerMock.structuredLog.warn).toHaveBeenCalledWith(expect.objectContaining({
                 event: 'device_read_ignored',

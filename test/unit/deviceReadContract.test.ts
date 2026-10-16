@@ -1,4 +1,7 @@
-import { findDeviceReadContractViolation } from '../../lib/device/transport/deviceReadContract';
+import {
+  findDeviceReadContractViolation,
+  resolveNullModelCapabilities,
+} from '../../lib/device/transport/deviceReadContract';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 
 const STAMP = '2026-09-23T10:00:00.000Z';
@@ -284,5 +287,72 @@ describe('Tesla vendor state without an EV equivalent', () => {
     const device = tesla('Unknown');
     delete device.capabilitiesObj!.measure_soc_level;
     expect(findDeviceReadContractViolation(device)).toEqual({ reason: 'missing_capability_entry', capabilityId: 'measure_soc_level' });
+  });
+});
+
+
+describe('a null model capability (owner ruling 2026-10-16)', () => {
+  const PREVIOUS_STAMP = '2026-09-23T09:00:00.000Z';
+
+  it('withholds a never-reported capability, leaving the rest of the read', () => {
+    const read = heater({ capabilitiesObj: { ...HEATER_VALUES, meter_power: entry(null) } });
+    const resolved = resolveNullModelCapabilities(read, undefined);
+    expect(resolved.withheldCapabilityIds).toEqual(['meter_power']);
+    expect(resolved.retainedCapabilityIds).toEqual([]);
+    expect(resolved.device.capabilities).toEqual(['onoff', 'measure_power', 'button.reset']);
+    expect(resolved.device.capabilitiesObj).not.toHaveProperty('meter_power');
+    expect(resolved.device.capabilitiesObj?.measure_power).toEqual(entry(1200));
+    expect(findDeviceReadContractViolation(resolved.device)).toBeNull();
+  });
+
+  it('keeps the previous accepted entry, dated when it was observed', () => {
+    const previous = heater({ capabilitiesObj: { ...HEATER_VALUES, onoff: { value: false, lastUpdated: PREVIOUS_STAMP } } });
+    const read = heater({ capabilitiesObj: { ...HEATER_VALUES, onoff: entry(null) } });
+    const resolved = resolveNullModelCapabilities(read, previous);
+    expect(resolved.withheldCapabilityIds).toEqual([]);
+    expect(resolved.retainedCapabilityIds).toEqual(['onoff']);
+    expect(resolved.device.capabilities).toEqual(read.capabilities);
+    expect(resolved.device.capabilitiesObj?.onoff).toEqual({ value: false, lastUpdated: PREVIOUS_STAMP });
+  });
+
+  it('withholds when the previous read did not declare it either', () => {
+    const previous = heater({
+      capabilities: ['onoff', 'measure_power', 'button.reset'],
+      capabilitiesObj: { onoff: entry(true), measure_power: entry(900), 'button.reset': entry(null) },
+    });
+    const read = heater({ capabilitiesObj: { ...HEATER_VALUES, meter_power: entry(null) } });
+    expect(resolveNullModelCapabilities(read, previous).withheldCapabilityIds).toEqual(['meter_power']);
+  });
+
+  it('leaves a value of the wrong type to the contract', () => {
+    const read = heater({ capabilitiesObj: { ...HEATER_VALUES, measure_power: entry('1200') } });
+    const resolved = resolveNullModelCapabilities(read, undefined);
+    expect(resolved.device).toBe(read);
+    expect(findDeviceReadContractViolation(resolved.device))
+      .toEqual({ reason: 'unexpected_value', capabilityId: 'measure_power' });
+  });
+
+  it('leaves vendor evidence an adapter reads all-or-nothing', () => {
+    const tesla = asRead({
+      id: 'tesla', name: 'Tesla battery', class: 'sensor', driverId: 'homey:app:com.tesla.car:battery',
+      capabilities: ['charging_on', 'charging_state', 'measure_charge_power', 'measure_soc_level'],
+      capabilitiesObj: { charging_on: entry(false), charging_state: entry(null),
+        measure_charge_power: entry(0), measure_soc_level: entry(55) },
+    });
+    expect(resolveNullModelCapabilities(tesla, undefined).device).toBe(tesla);
+  });
+
+  it('reads a heat pump without its temperature facet when a member is never reported', () => {
+    const heatPump = asRead({
+      id: 'hp-1', name: 'Heat pump', class: 'heatpump',
+      capabilities: ['thermostat_mode', 'target_temperature', 'measure_temperature', 'measure_power'],
+      capabilitiesObj: {
+        thermostat_mode: entry('heat'), target_temperature: entry(21),
+        measure_temperature: entry(null), measure_power: entry(500),
+      },
+    });
+    const resolved = resolveNullModelCapabilities(heatPump, undefined);
+    expect(resolved.withheldCapabilityIds).toEqual(['measure_temperature']);
+    expect(findDeviceReadContractViolation(resolved.device)).toBeNull();
   });
 });

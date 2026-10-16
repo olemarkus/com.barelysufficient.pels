@@ -6,9 +6,10 @@
  * after the rejection retires it.
  *
  * Every read Homey serves after the malformed report carries the malformed
- * value until the device reports again, and the read contract ignores such a
- * read outright. A conforming read carrying the pair from BEFORE the rejection
- * is therefore a race, and the cases below model its two forms: a
+ * value until the device reports again. The read contract keeps the last
+ * accepted entry for a `null` one, dated before the rejection, so the
+ * rejection still strips it. A read carrying the pair from BEFORE the
+ * rejection is otherwise a race, and the cases below model its two forms: a
  * `device.update` frame delivered late or out of order, and a refresh whose
  * fetch was issued before the rejection and is merged after it.
  *
@@ -87,7 +88,7 @@ const binaryThermostat = (pair: TemperaturePair) => ({
     },
 });
 
-/** Homey's read of the device after the malformed report, which the read contract ignores. */
+/** Homey's read of the device after the malformed report, whose `null` the read contract does not take. */
 const malformedRead = (pair: TemperaturePair, rejectedCapabilityId: string) => {
     const device = temperatureOnlyDevice(pair);
     return {
@@ -151,7 +152,8 @@ describe('a retained temperature rejection across a device.update', () => {
     /**
      * The device is seeded on the pre-rejection pair and rejected by a malformed
      * realtime reading. The next refresh serves Homey's read of the malformed
-     * value, which the read contract ignores, so it commits without the device:
+     * value; the read contract keeps the pre-rejection entry in its place, the
+     * rejection strips it again, and the refresh commits without the device:
      * the live feed has dropped its subscription by the time a `device.update`
      * arrives.
      */
@@ -168,8 +170,12 @@ describe('a retained temperature rejection across a device.update', () => {
 
         vi.setSystemTime(new Date('2026-04-01T12:02:00.000Z'));
         await seedTransportDevices(transport, [malformedRead(PRE_REJECTION_PAIR, rejectedCapabilityId)]);
-        expect(transportLogger.structuredLog.warn).toHaveBeenCalledWith(expect.objectContaining({
-            event: 'device_read_ignored', deviceId: DEVICE_ID, source: 'device_fetch',
+        expect(transportLogger.structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+            event: 'device_read_null_capabilities',
+            deviceId: DEVICE_ID,
+            source: 'device_fetch',
+            withheldCapabilityIds: [],
+            retainedCapabilityIds: [rejectedCapabilityId],
         }));
         expect(snapshotEntry(transport)).toBeUndefined();
         expect(await isSubscribed()).toBe(false);

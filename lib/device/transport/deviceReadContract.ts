@@ -24,11 +24,21 @@
  * battery, temperature only from a device with both a measurement and a
  * target, and nothing at all from a class PELS does not admit. A driver may
  * declare capabilities that do not fit PELS's model of its device and never
- * report them (seen on a production hub); those are not PELS's business. A
- * capability PELS does read either has a value or the device is not yet
- * admissible — Homey does not revert a set value to `null`. Capabilities
- * outside the model — buttons, camera commands — are never read, so their
- * routine `null` values are none of this contract's business.
+ * report them (seen on a production hub); those are not PELS's business.
+ * Capabilities outside the model — buttons, camera commands — are never read,
+ * so their routine `null` values are none of this contract's business.
+ *
+ * Owner ruling (2026-10-16): a `null` value rejects that capability, not the
+ * read. Device apps do set a model capability to `null` (Stiebel Eltron Heat
+ * Pumps clears one whenever a Modbus register reads as unavailable, and adds
+ * `measure_power` that stays `null` without its community registers), and
+ * ignoring the whole read for it hid an otherwise readable heat pump. Such a
+ * capability keeps the previous accepted read's entry, as any transient missing
+ * sample does, and without one it is withheld (`resolveNullModelCapabilities`):
+ * the device reads as if it did not declare it. A `null` `meter_power` beside
+ * a reported `measure_power` leaves the device metered, and a never-reported
+ * temperature leaves it without its temperature facet. Vendor evidence an adapter reads
+ * (`readRules`) and a value the conversion produces stay all-or-nothing.
  */
 import { isUnknownRecord, type HomeyDeviceLike } from '../../utils/types';
 import { isEvCarDeviceClass } from '../evCarDeviceClass';
@@ -161,6 +171,64 @@ const isModelValue = (capabilityId: string, value: unknown, type: ModelValueType
     PLUG_STATE_CAPABILITY_IDS.has(capabilityId) ? isEvChargingState(value) : hasModelType(value, type)
 );
 
+/**
+ * The standard model capabilities `device` declares with a `null` value. The
+ * model is scoped on the declared list, as the check scopes it; an adapter's
+ * vendor rule is not one of them.
+ */
+function findNullModelCapabilityIds(device: HomeyDeviceLike): string[] {
+    const { capabilities, capabilitiesObj } = device;
+    if (!Array.isArray(capabilities) || !isUnknownRecord(capabilitiesObj)) return [];
+    const modelTypes = resolveModelCapabilityTypes(device, capabilities);
+    const integrationTypes = getDeviceAdapter(device).readRules(device);
+    return capabilities.filter((capabilityId) => {
+        if (modelTypes[capabilityId] === undefined || Object.hasOwn(integrationTypes, capabilityId)) return false;
+        const entry: unknown = capabilitiesObj[capabilityId];
+        return isUnknownRecord(entry) && entry.value === null;
+    });
+}
+
+export type NullModelCapabilityResolution = {
+    device: HomeyDeviceLike;
+    /** Declared `null` with no earlier value: read as not declared. */
+    withheldCapabilityIds: readonly string[];
+    /** Declared `null` after an accepted value: that entry stands. */
+    retainedCapabilityIds: readonly string[];
+};
+
+/**
+ * `device` with each model capability it declares as `null` resolved on its
+ * own. The previous accepted read's entry for it stands when there is one,
+ * dated when it was observed, as for any transient missing sample. With none
+ * it is withheld: dropped from both the capability list and the values, so
+ * everything downstream reads the device as not declaring it.
+ */
+export function resolveNullModelCapabilities(
+    device: HomeyDeviceLike,
+    previous: HomeyDeviceLike | undefined,
+): NullModelCapabilityResolution {
+    const nullCapabilityIds = findNullModelCapabilityIds(device);
+    if (nullCapabilityIds.length === 0) return { device, withheldCapabilityIds: [], retainedCapabilityIds: [] };
+    const previousEntries = previous?.capabilitiesObj ?? {};
+    const retainedEntries = Object.fromEntries(nullCapabilityIds.flatMap((capabilityId) => {
+        const entry = previousEntries[capabilityId];
+        const declared = previous?.capabilities?.includes(capabilityId) === true;
+        return declared && entry !== undefined && entry.value !== null ? [[capabilityId, entry]] : [];
+    }));
+    const withheld = new Set(nullCapabilityIds.filter((capabilityId) => !Object.hasOwn(retainedEntries, capabilityId)));
+    const capabilitiesObj = Object.fromEntries(Object.entries({ ...device.capabilitiesObj, ...retainedEntries })
+        .filter(([capabilityId]) => !withheld.has(capabilityId)));
+    return {
+        device: {
+            ...device,
+            capabilities: (device.capabilities ?? []).filter((capabilityId) => !withheld.has(capabilityId)),
+            capabilitiesObj,
+        },
+        withheldCapabilityIds: [...withheld],
+        retainedCapabilityIds: Object.keys(retainedEntries),
+    };
+}
+
 /** The first way `device` breaks the contract, or `null` for a conforming read. */
 export function findDeviceReadContractViolation(device: HomeyDeviceLike): DeviceReadContractViolation | null {
     const { capabilities, capabilitiesObj } = device;
@@ -199,12 +267,13 @@ export type DeviceReadContractEmitter = {
     info: (payload: Record<string, unknown>) => void;
 };
 
-// The last violation said per device, per transport, so a device that stays
-// non-conforming is named once rather than on every refresh and update. Cleared
-// when it conforms again, which is said too: an ignored read is a gap in what
-// PELS knows, and the log is where an owner's support session finds its start
-// and end. Keyed by the transport's owner so two transports (and two tests)
-// never share what was said.
+// The last violation or withheld set said per device, per transport, so a
+// device that stays non-conforming is named once rather than on every refresh
+// and update. Cleared when it conforms again, which is said too: an ignored
+// read or a withheld capability is a gap in what PELS knows, and the log is
+// where an owner's support session finds its start and end. Keyed by the
+// transport's owner so two transports (and two tests) never share what was
+// said.
 const lastViolationSignatureByOwner = new WeakMap<object, Map<string, string>>();
 
 const violationSignatures = (owner: object): Map<string, string> => {
@@ -216,29 +285,47 @@ const violationSignatures = (owner: object): Map<string, string> => {
 };
 
 /**
- * Check `device` against the contract and say so when it fails. True means the
- * read is ignored: the caller must not parse it, merge it, or let any of it
- * reach state.
+ * Check `device` against the contract and say so when it fails or a `null`
+ * capability is resolved. `previous` is the device's last accepted read, if
+ * any. `null` means the read is ignored: the caller must not parse it, merge
+ * it, or let any of it reach state. Otherwise the caller reads the returned
+ * device, never the payload it passed in.
  */
-export function isIgnoredDeviceRead(
+export function resolveDeviceRead(
     owner: object,
     device: HomeyDeviceLike,
+    previous: HomeyDeviceLike | undefined,
     source: DeviceReadSource,
     emitter: DeviceReadContractEmitter,
-): boolean {
+): HomeyDeviceLike | null {
     const deviceId = typeof device.id === 'string' ? device.id : '';
     const signatures = violationSignatures(owner);
-    const violation = findDeviceReadContractViolation(device);
-    if (violation === null) {
+    const { device: read, withheldCapabilityIds, retainedCapabilityIds } = resolveNullModelCapabilities(
+        device,
+        previous,
+    );
+    const violation = findDeviceReadContractViolation(read);
+    if (violation === null && withheldCapabilityIds.length === 0 && retainedCapabilityIds.length === 0) {
         if (signatures.delete(deviceId)) {
             emitter.info({ event: 'device_read_conforming_again', deviceId, deviceName: device.name, source });
         }
-        return false;
+        return read;
     }
-    const signature = JSON.stringify(violation);
+    const signature = JSON.stringify({ violation, withheldCapabilityIds, retainedCapabilityIds });
     if (signatures.get(deviceId) !== signature) {
         signatures.set(deviceId, signature);
-        emitter.warn({ event: 'device_read_ignored', deviceId, deviceName: device.name, source, ...violation });
+        if (violation !== null) {
+            emitter.warn({ event: 'device_read_ignored', deviceId, deviceName: device.name, source, ...violation });
+        } else {
+            emitter.info({
+                event: 'device_read_null_capabilities',
+                deviceId,
+                deviceName: device.name,
+                source,
+                withheldCapabilityIds,
+                retainedCapabilityIds,
+            });
+        }
     }
-    return true;
+    return violation === null ? read : null;
 }

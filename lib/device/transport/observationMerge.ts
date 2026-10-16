@@ -106,7 +106,8 @@ export function mergeFresherCapabilityObservations(params: {
  * strips the read's temperature facet.
  *
  * A malformed read after the rejection is ignored outright by the read contract
- * (`deviceReadContract.ts`), so a conforming read carrying a pair older than the
+ * (`deviceReadContract.ts`), and a `null` member keeps its last accepted entry,
+ * dated before the rejection. Otherwise a read carrying a pair older than the
  * rejection is a race: a delayed or reordered frame. Without this, such a frame
  * would re-admit a device the rejection evicted, on the very pair it
  * superseded, and the next refresh would evict it again.

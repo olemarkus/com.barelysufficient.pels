@@ -7,7 +7,8 @@
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
-import { isIgnoredDeviceRead } from './deviceReadContract';
+import { resolveDeviceRead } from './deviceReadContract';
+import { lastAcceptedRawDevice } from './ignoredDeviceReads';
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
@@ -104,13 +105,21 @@ function notifyDeviceZoneChangeContained(
 
 export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, device: HomeyDeviceLike): void {
     const deviceId = getDeviceId(device);
-    const effectiveDevice = ingest.reader.applyDeviceDriverOverride(device);
     // The read contract (`deviceReadContract.ts`), before anything reads the
     // payload: an update that does not conform is ignored whole. No producer,
     // tracking entry, parse or settle evidence sees it, and the device's entry
-    // stands as it was — a no-op, never a partial merge.
+    // stands as it was — a no-op, never a partial merge. A `null` model
+    // capability keeps its last accepted entry, or is withheld without one,
+    // rather than ignoring the read.
     const contractEmitter = moduleLogger;
-    if (isIgnoredDeviceRead(ingest.reader.snapshotStore, effectiveDevice, 'device_update', contractEmitter)) return;
+    const effectiveDevice = resolveDeviceRead(
+        ingest.reader.snapshotStore,
+        ingest.reader.applyDeviceDriverOverride(device),
+        lastAcceptedRawDevice(ingest.reader.snapshotStore, deviceId),
+        'device_update',
+        contractEmitter,
+    );
+    if (effectiveDevice === null) return;
     ingest.observeChargingDevice(effectiveDevice);
     if (deviceId && !ingest.reader.shouldTrackRealtimeDeviceRead(deviceId, device)) {
         ingest.binaryEvidence.clearBinarySettleEvidence(deviceId);

@@ -8,26 +8,48 @@ import type { HomeyDeviceLike } from '../../utils/types';
 import type { DeviceListRead } from '../deviceListRead';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { Logger } from '../../utils/types';
-import { isIgnoredDeviceRead } from './deviceReadContract';
+import { resolveDeviceRead } from './deviceReadContract';
 import { getDeviceId } from './managerHelpers';
+import type { TransportSnapshotStore } from './transportSnapshotStore';
+
+/**
+ * Each device's last accepted raw read: the realtime tracking map first (it
+ * holds the newest accepted read of a tracked device, a `device.update`
+ * included), then the last full raw list (every device, managed or not).
+ */
+export function lastAcceptedRawDevicesById(store: TransportSnapshotStore): ReadonlyMap<string, HomeyDeviceLike> {
+    return new Map([
+        ...store.getLatestRawDevices().map((device) => [getDeviceId(device), device] as const),
+        ...store.getTrackedRawDevicesById(),
+    ]);
+}
+
+/** One device's last accepted raw read, by the same order. */
+export function lastAcceptedRawDevice(store: TransportSnapshotStore, deviceId: string): HomeyDeviceLike | undefined {
+    return store.getTrackedRawDevice(deviceId)
+        ?? store.getLatestRawDevices().find((device) => getDeviceId(device) === deviceId);
+}
 
 /**
  * Split a fetched list by the read contract (`deviceReadContract.ts`). The
  * ignored devices are named once per violation in the log and contribute
- * nothing from this read.
+ * nothing from this read; the others are kept as the contract resolved them,
+ * with any `null` model capability withheld.
  */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function partitionConformingDeviceReads(
-    owner: object,
+    store: TransportSnapshotStore,
     logger: Logger,
     list: readonly HomeyDeviceLike[],
 ): DeviceListRead {
     const devices: HomeyDeviceLike[] = [];
     const ignoredIds = new Set<string>();
     const emitter = logger.structuredLog;
+    const previousById = lastAcceptedRawDevicesById(store);
     for (const device of list) {
-        if (isIgnoredDeviceRead(owner, device, 'device_fetch', emitter)) ignoredIds.add(getDeviceId(device));
-        else devices.push(device);
+        const read = resolveDeviceRead(store, device, previousById.get(getDeviceId(device)), 'device_fetch', emitter);
+        if (read === null) ignoredIds.add(getDeviceId(device));
+        else devices.push(read);
     }
     return { devices, ignoredIds };
 }
