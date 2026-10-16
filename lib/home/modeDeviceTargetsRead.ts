@@ -82,17 +82,17 @@ export function readModeDeviceTarget(
 
 /**
  * The target the device's governing mode holds for it now, for a default the
- * planner derives each build. `null` when that mode holds none for it, or when
- * the mode or its catalog cannot be read this time: nothing is persisted from
- * the answer, so the default falls back to the device's own setpoint and the
- * next build asks again.
+ * planner derives each build. `resolved` with `null` when that mode holds none
+ * for it; `unavailable` when the mode or its catalog cannot be read this time.
+ * The catalog owner keeps the last resolved answer across an unavailable read
+ * (`HomeModeCatalogOwner.readGoverningModeDeviceTargetC`).
  */
 export function readGoverningModeDeviceTargetC(
   settings: SettingsPort,
   operatingMode: DeviceOperatingModeOutcome,
   deviceId: string,
-): number | null {
-  if (operatingMode.state === 'unavailable' || operatingMode.mode === null) return null;
-  const read = readModeDeviceTarget(settings, operatingMode.catalogHomeId, operatingMode.mode, deviceId);
-  return read.state === 'resolved' ? read.targetC : null;
+): { state: 'resolved'; targetC: number | null } | { state: 'unavailable' } {
+  if (operatingMode.state === 'unavailable') return { state: 'unavailable' };
+  if (operatingMode.mode === null) return { state: 'resolved', targetC: null };
+  return readModeDeviceTarget(settings, operatingMode.catalogHomeId, operatingMode.mode, deviceId);
 }

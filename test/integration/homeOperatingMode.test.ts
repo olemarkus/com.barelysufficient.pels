@@ -828,9 +828,9 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
 // The device-scoped reader (`resolveOperatingModeForDevice`) feeds the target a
 // setpoint-only device's shed default is derived from each plan build
-// (`readGoverningModeDeviceTargetC`). It is stateless: a failed pin read has no
-// last-known mode to hold, so it answers no target rather than the global
-// mode's, and the next build asks again. Nothing is persisted from it.
+// (`readGoverningModeDeviceTargetC`). It is stateless: a failed pin read answers
+// unavailable, never the global mode's target, and the catalog owner answers
+// that with the last resolved target. Nothing is persisted from it.
 // Only outward seams are mocked: the shared mock settings store backs the real
 // membership service.
 describe('per-home operating mode (device-scoped mode target)', () => {
@@ -860,11 +860,14 @@ describe('per-home operating mode (device-scoped mode target)', () => {
     })
   );
 
-  const readTargetC = (): number | null => readGoverningModeDeviceTargetC(
-    homeyLike.settings,
-    resolveOperatingModeForDevice(getHomeModeCatalogForTest(ctx), 'vt-1'),
-    'vt-1',
-  );
+  const readTargetC = (): number | null | 'unavailable' => {
+    const read = readGoverningModeDeviceTargetC(
+      homeyLike.settings,
+      resolveOperatingModeForDevice(getHomeModeCatalogForTest(ctx), 'vt-1'),
+      'vt-1',
+    );
+    return read.state === 'resolved' ? read.targetC : 'unavailable';
+  };
 
   beforeEach(() => {
     resetMockHomey();
@@ -931,7 +934,7 @@ describe('per-home operating mode (device-scoped mode target)', () => {
       .toEqual({ ...MODE_TARGETS, Home: { ...MODE_TARGETS.Home, 'main-device': 20 } });
   });
 
-  it('answers no target while the pinned mode read throws, then the PIN\'s once it recovers', () => {
+  it('answers unavailable while the pinned mode read throws, then the PIN\'s once it recovers', () => {
     // Precondition: the device really is a sub-home member, so the read would
     // otherwise resolve through the pin.
     expect(membership.getHomeIdForDevice('vt-1')).toBe('h_a');
@@ -946,20 +949,38 @@ describe('per-home operating mode (device-scoped mode target)', () => {
       });
 
     // Never the global mode's 24 °C.
-    expect(readTargetC()).toBeNull();
+    expect(readTargetC()).toBe('unavailable');
 
     readSpy.mockRestore();
     expect(readTargetC()).toBe(20);
   });
 
-  it('answers no target while the pinned mode targets are unavailable, then retries', () => {
+  it('keeps the last resolved target at the catalog owner while a read is unavailable', () => {
+    const catalog = getHomeModeCatalogForTest(ctx);
+    expect(catalog.readGoverningModeDeviceTargetC('vt-1')).toBe(20);
+
+    const passthroughGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+    const readSpy = vi.spyOn(mockHomeyInstance.settings, 'get')
+      .mockImplementation((key: string) => (
+        key === 'mode_device_targets' ? undefined : passthroughGet(key)
+      ));
+    // Not the fixed fallback base a "no target" answer would derive a limit from.
+    expect(catalog.readGoverningModeDeviceTargetC('vt-1')).toBe(20);
+    readSpy.mockRestore();
+
+    // A resolved absence replaces it.
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: MODE_TARGETS.Home });
+    expect(catalog.readGoverningModeDeviceTargetC('vt-1')).toBeNull();
+  });
+
+  it('answers unavailable while the pinned mode targets are unavailable, then retries', () => {
     const passthroughGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
     const readSpy = vi.spyOn(mockHomeyInstance.settings, 'get')
       .mockImplementation((key: string) => (
         key === 'mode_device_targets' ? undefined : passthroughGet(key)
       ));
 
-    expect(readTargetC()).toBeNull();
+    expect(readTargetC()).toBe('unavailable');
 
     readSpy.mockRestore();
     expect(readTargetC()).toBe(20);
@@ -973,7 +994,7 @@ describe('per-home operating mode (device-scoped mode target)', () => {
     expect(readTargetC()).toBeNull();
   });
 
-  it('answers no target until zone-based device ownership is committed', () => {
+  it('answers unavailable until zone-based device ownership is committed', () => {
     let zoneTree: typeof ZONES | null = null;
     membership = buildMembership(() => zoneTree);
     ctx = createAppContextMock({ homey: homeyLike, homeMembership: membership });
@@ -984,7 +1005,7 @@ describe('per-home operating mode (device-scoped mode target)', () => {
     // answer is deliberately provisional and cannot select the global mode.
     expect(membership.isOwnershipReady()).toBe(false);
     expect(membership.getHomeIdForDevice('vt-1')).toBe('main');
-    expect(readTargetC()).toBeNull();
+    expect(readTargetC()).toBe('unavailable');
 
     zoneTree = ZONES;
     membership.recompute();
@@ -993,13 +1014,13 @@ describe('per-home operating mode (device-scoped mode target)', () => {
     expect(readTargetC()).toBe(20);
   });
 
-  it('answers no target between rename target and alias commits', () => {
+  it('answers unavailable between rename target and alias commits', () => {
     const renamedTargets = { Home: { 'vt-1': 24 }, Chill: { 'vt-1': 20 } };
     mockHomeyInstance.settings.set('mode_device_targets', renamedTargets);
     configureHomeModeCatalog(ctx, { targets: renamedTargets });
 
     // The targets write removed `Cooler`, but the alias write has not landed.
-    expect(readTargetC()).toBeNull();
+    expect(readTargetC()).toBe('unavailable');
 
     mockHomeyInstance.settings.set('mode_aliases', { cooler: 'Chill' });
     configureHomeModeCatalog(ctx, { targets: renamedTargets, aliases: { cooler: 'Chill' } });

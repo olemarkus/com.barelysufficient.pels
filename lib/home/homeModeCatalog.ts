@@ -67,7 +67,11 @@ export type HomeModeCatalog = {
    * catalog cannot be read.
    */
   listDeviceTargetModes: (deviceId: string) => string[] | null;
-  /** The target the device's governing mode holds for it now. See `readGoverningModeDeviceTargetC`. */
+  /**
+   * The target the device's governing mode holds for it, `null` when it holds
+   * none. An unavailable read answers the last resolved one; `null` only before
+   * any read resolved. See `readGoverningModeDeviceTargetC`.
+   */
   readGoverningModeDeviceTargetC: (deviceId: string) => number | null;
   /** Saves a device's target in one of those modes. See `editDeviceModeTarget`. */
   setDeviceModeTarget: (deviceId: string, selection: ModeTargetSelection, targetC: number) => DeviceModeTargetEdit;
@@ -337,6 +341,9 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
   private initialized = false;
   private unavailable = false;
   private readonly deviceModeResolver: HomeModeDeviceResolver;
+  // The last resolved governing-mode target per device, which an unavailable
+  // read answers with: one failed read must not move a limit derived from it.
+  private readonly lastGoverningTargetCByDevice = new Map<string, number | null>();
 
   constructor(
     private readonly homeId: HomeId,
@@ -404,9 +411,12 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
     return catalog.state === 'resolved' ? listTargetModes(catalog) : null;
   };
 
-  readGoverningModeDeviceTargetC = (deviceId: string): number | null => readGoverningModeDeviceTargetC(
-    this.settings, this.resolveOperatingModeForDevice(deviceId), deviceId,
-  );
+  readGoverningModeDeviceTargetC = (deviceId: string): number | null => {
+    const read = readGoverningModeDeviceTargetC(this.settings, this.resolveOperatingModeForDevice(deviceId), deviceId);
+    if (read.state === 'unavailable') return this.lastGoverningTargetCByDevice.get(deviceId) ?? null;
+    this.lastGoverningTargetCByDevice.set(deviceId, read.targetC);
+    return read.targetC;
+  };
 
   setDeviceModeTarget = (
     deviceId: string,
