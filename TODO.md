@@ -268,16 +268,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       restores cannot be admitted from the same sample. Source: runtime-reality review of the
       admission-slack removal, 2026-09-15. [P2]
 
-- [ ] **The stepped restore lane gets the per-device buffer but neither the recent-shed inflation
-      nor the activation penalty.** `steppedRestoreAdmission.ts` computes `deltaKw +
-      computeRestoreBufferKw(deltaKw)` directly; `applyRecentShedInflation` and
-      `applyActivationPenalty` are reachable only through `getRestoreNeed`, which that lane never
-      calls. So the highest-draw device class faces the same bar 61 seconds after a shed as an hour
-      later. This was survivable while a flat 0.5 kW sat on every admission; it is the lane's only
-      margin now. Fix: route the stepped need through `applyRecentShedInflation` (already pure, and
-      takes `lastDeviceShedMs`). Done when a stepped device shed inside the recent-shed window
-      faces a higher bar than one shed an hour ago. Source: runtime-reality review, 2026-09-15. [P2]
-
 - [ ] **`restore_admitted` / `restore_rejected` cannot distinguish a wrong admission from a stale
       one.** The payloads carry `availableKw`, `neededKw` and `marginKw` — the third is arithmetic
       on the first two — but no sample age and no decomposition of the need, so an operator cannot

@@ -8,17 +8,17 @@
  * producer itself), while this test recomputes it from the finished PLAN device
  * through `resolveResidualKwRestore` + `getHighestKnownPowerKw`.
  *
- * Walks representative devices through `estimateRestorePower` and
- * `computeBaseRestoreNeed` in two passes:
+ * Walks representative devices through `estimateRestorePower` in two passes:
  *   1. As built — the residual the shared builder stamped from the fixture's
  *      own fields, at the producer seam.
  *   2. Recomputed — the same fixtures with the restore half re-resolved from the
  *      plan device, mirroring the wiring in
  *      `lib/planInput/residualKwForPlanDevice.ts`.
  *
- * The invariant we pin: per-device estimate AND the summed
- * `computeBaseRestoreNeed` totals must match to the watt across both passes. If
- * the fixture's snapshot adaptation drifts from the wiring, this test fires.
+ * The invariant we pin: the per-device estimate must match to the watt across
+ * both passes (the restore need is a pure function of it,
+ * `computeRestoreRequirementKw`). If the fixture's snapshot adaptation drifts
+ * from the wiring, this test fires.
  *
  * Edge-case coverage (2026-05-27):
  *  - (a) stepped, `binaryCapabilityId: undefined`, already at lowest active step
@@ -33,7 +33,6 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  computeBaseRestoreNeed,
   estimateRestorePower,
   resolveRestorePowerSource,
 } from '../../lib/plan/restore/accounting';
@@ -246,26 +245,6 @@ describe('restore accounting parity — as built vs recomputed from the plan dev
       const recomputed = resolveRestorePowerSource(withProducerResolvedRestore(dev));
       expect(recomputed).toBe(asBuilt);
     }
-  });
-
-  it('computeBaseRestoreNeed returns matching power / buffer / needed across paths', () => {
-    for (const dev of fixtures) {
-      const asBuilt = computeBaseRestoreNeed(dev);
-      const recomputed = computeBaseRestoreNeed(withProducerResolvedRestore(dev));
-      expect(recomputed.power).toBeCloseTo(asBuilt.power, 9);
-      expect(recomputed.buffer).toBeCloseTo(asBuilt.buffer, 9);
-      expect(recomputed.needed).toBeCloseTo(asBuilt.needed, 9);
-    }
-  });
-
-  it('summed restore need across the cascade matches as built and recomputed', () => {
-    let asBuiltTotal = 0;
-    let recomputedTotal = 0;
-    for (const dev of fixtures) {
-      asBuiltTotal += computeBaseRestoreNeed(dev).needed;
-      recomputedTotal += computeBaseRestoreNeed(withProducerResolvedRestore(dev)).needed;
-    }
-    expect(recomputedTotal).toBeCloseTo(asBuiltTotal, 9);
   });
 
   // Adversarial guard: each new edge-case fixture must actually exercise

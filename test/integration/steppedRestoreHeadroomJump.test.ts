@@ -126,6 +126,19 @@ describe('running stepped loads spend a conservative allowance on a direct jump'
     expect(cycle.deviceMap.get(dev.id)).toMatchObject({ desiredStepId: '1', reason: { code: PLAN_REASON_CODES.shedInvariant } });
   });
 
+  // A one-rung climb needs 1 kW + 0.2 kW buffer = 1.2 kW. Within five minutes of
+  // a shed the gate inflates it to 1.38 kW, the same bar a binary restore faces.
+  it.each([
+    { label: 'a minute ago', shedAgoMs: 60_000, target: '1' },
+    { label: 'an hour ago', shedAgoMs: 3_600_000, target: '2' },
+  ])('raises the bar for a step-up when the device was limited $label', ({ shedAgoMs, target }) => {
+    const dev = runningDevice();
+    const cycle = cycleFor(dev, 1.3);
+    cycle.state.actuation.lastDeviceShedMs[dev.id] = Date.now() - shedAgoMs;
+    restore(cycle, dev, 1.3);
+    expect(cycle.deviceMap.get(dev.id)?.desiredStepId).toBe(target);
+  });
+
   it('holds a recently reduced EV charger even with room for a large jump', () => {
     const dev = runningDevice({ isEvCharger: true });
     const cycle = cycleFor(dev, 12);

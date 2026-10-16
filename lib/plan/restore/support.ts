@@ -5,10 +5,7 @@ import {
   applyActivationPenalty,
   syncActivationPenaltyState,
 } from '../admission';
-import {
-  applyRecentShedInflation,
-  computeBaseRestoreNeed,
-} from './accounting';
+import { computeRestoreRequirementKw, estimateRestorePower } from './accounting';
 
 
 /**
@@ -29,10 +26,8 @@ export function getRestoreNeed(
   nowTs: number,
   diagnostics: DeviceDiagnosticsRecorder | undefined,
 ): RestoreNeed {
-  const { power: devPower, needed: baseNeeded } = computeBaseRestoreNeed(dev);
-  const recentShedNeeded = applyRecentShedInflation(
-    baseNeeded, state.actuation.lastDeviceShedMs[dev.id], nowTs,
-  );
+  const devPower = estimateRestorePower(dev);
+  const recentShedNeeded = computeRestoreRequirementKw(devPower, state.actuation.lastDeviceShedMs[dev.id], nowTs);
   const penaltyInfo = syncActivationPenaltyState(state, dev.id, nowTs, dev);
   if (penaltyInfo.transition) {
     diagnostics?.recordActivationTransition(penaltyInfo.transition, { name: dev.name });

@@ -164,7 +164,7 @@ describe('resolveCeilingShortfall', () => {
   });
 
   // The restore gate does not gate on the base need for a device it shed in the
-  // last 5 minutes — `getRestoreNeed` inflates it (`applyRecentShedInflation`:
+  // last 5 minutes — `getRestoreNeed` inflates it (`computeRestoreRequirementKw`:
   // ×1.15 or +0.15 kW, whichever is larger). Measuring the card against the
   // deflated figure let the resolver return `no_gap` — "this device would be
   // admitted right now" — on the very cycle the gate rejected it on the larger

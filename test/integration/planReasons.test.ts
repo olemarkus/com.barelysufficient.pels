@@ -2,7 +2,7 @@ import { SwapLedger } from '../../lib/plan/swap';
 import { fixtureLimitedSetpoints, fixtureSetpointLimit, fixtureTemperatureSetpointsEntry } from '../helpers/temperatureSetpointsFixture';
 import { finalizePlanDevices, normalizeShedReasons } from '../../lib/plan/planReasons';
 import { resolveCeilingShortfall, type CeilingShortfallInputs } from '../../lib/plan/planReasonShortfall';
-import { computeBaseRestoreNeed } from '../../lib/plan/restore/accounting';
+import { computeRestoreRequirementKw, estimateRestorePower } from '../../lib/plan/restore/accounting';
 import { getRestoreNeed } from '../../lib/plan/restore/support';
 import { buildExecutableTargetIntent } from '../../lib/executor/executableTargetProjection';
 import { buildRestoreHeadroomLedger } from '../../lib/plan/restore/headroomLedger';
@@ -645,7 +645,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       });
 
       // The inflation is real, so the gate is asking for more than the base need.
-      expect(gateNeededKw).toBeGreaterThan(computeBaseRestoreNeed(dev).needed);
+      expect(gateNeededKw).toBeGreaterThan(computeRestoreRequirementKw(estimateRestorePower(dev), undefined, SHORTFALL_NOW_MS));
       expect(resolveCeilingShortfall({
         dev,
         inputs: shortfallInputs(gateNeededKw),

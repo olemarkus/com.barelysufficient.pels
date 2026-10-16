@@ -56,27 +56,31 @@ function resolveRestorePower(
   return dev.residualKw.restore;
 }
 
-export function computeBaseRestoreNeed(
-  dev: DevicePlanDevice,
-): { power: number; buffer: number; needed: number } {
-  const power = estimateRestorePower(dev);
-  const buffer = computeRestoreBufferKw(power);
-  return { power, buffer, needed: power + buffer };
+/**
+ * The kW admission must find before PELS raises a device's draw by
+ * `increaseKw`: the increase, its restore buffer, and the recent-shed inflation
+ * (a device shed within `RECENT_SHED_RESTORE_BACKOFF_MS` must clear a
+ * deliberately higher bar, so the same marginal power does not flap it straight
+ * off again). A binary device's increase is its whole restore power, a stepped
+ * device's the step it climbs.
+ *
+ * The one rule, and shared on purpose. The binary gate (`getRestoreNeed`,
+ * `restore/support.ts`), the stepped lane (`steppedRestoreTarget.ts`) and the
+ * card's gap (`resolveCeilingShortfall`, `planReasonShortfall.ts`) all price a
+ * restore here — measuring them against different needs is how the card came to
+ * claim a device would be admitted while the gate had just rejected it on a
+ * larger number, and how a stepped device faced the same bar a minute after a
+ * shed as an hour later.
+ */
+export function computeRestoreRequirementKw(
+  increaseKw: number,
+  lastDeviceShedMs: number | undefined,
+  nowMs: number,
+): number {
+  return applyRecentShedInflation(increaseKw + computeRestoreBufferKw(increaseKw), lastDeviceShedMs, nowMs);
 }
 
-/**
- * The recent-shed inflation the restore gate applies on top of the base need: a
- * device shed within `RECENT_SHED_RESTORE_BACKOFF_MS` must clear a deliberately
- * higher bar before PELS puts it back, so the same marginal power does not flap
- * it straight off again.
- *
- * Pure, and shared on purpose. `getRestoreNeed` (`restore/support.ts`) gates the
- * restore lane on this figure, and `resolveCeilingShortfall`
- * (`planReasonShortfall.ts`) states the card's gap against it — measuring the
- * two against different needs is how the card came to claim a device would be
- * admitted while the gate had just rejected it on a larger number.
- */
-export function applyRecentShedInflation(
+function applyRecentShedInflation(
   baseNeededKw: number,
   lastDeviceShedMs: number | undefined,
   nowMs: number,

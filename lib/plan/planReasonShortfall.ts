@@ -19,11 +19,10 @@
  * time, so the number may exceed instantaneous house draw and still be true).
  *
  * The need MUST be the one the restore gate rejects on (`getRestoreNeed`,
- * `restore/support.ts`), not the bare `computeBaseRestoreNeed`: a device measured
- * against a smaller need than the gate used can affirmatively resolve `no_gap` —
- * the card claiming the device would be admitted right now, on the very cycle the
- * gate turned it down. The recent-shed inflation is therefore shared as a pure
- * helper (`applyRecentShedInflation`) and applied here too.
+ * `restore/support.ts`): a device measured against a smaller need than the gate
+ * used can affirmatively resolve `no_gap` — the card claiming the device would be
+ * admitted right now, on the very cycle the gate turned it down. Both therefore
+ * price it with `computeRestoreRequirementKw`, recent-shed inflation included.
  *
  * Known deviations from the richest producer figures, all accepted for
  * freshness (the computation runs every cycle; producer numbers are snapshots
@@ -48,7 +47,7 @@
 import type { DevicePlanDevice, MeteredDevicePlanDevice } from './planTypes';
 import type { RestoreHeadroomLedger } from './restore/headroomLedger';
 import { isReserveAdmitted, resolveReserveAdmission, type HeadroomReserve } from './admission';
-import { applyRecentShedInflation, computeBaseRestoreNeed } from './restore/accounting';
+import { computeRestoreRequirementKw, estimateRestorePower } from './restore/accounting';
 import { buildSwapCandidates, type SwapLedger } from './swap';
 import { ceilToDisplayKw } from '../../packages/shared-domain/src/planReasonSemantics';
 
@@ -72,7 +71,7 @@ export type CeilingShortfallInputs = {
   swapLedger: SwapLedger;
   restoredThisCycle: ReadonlySet<string>;
   // Shed timestamps + this cycle's clock, so the need matches the restore gate's
-  // recent-shed inflation (`applyRecentShedInflation`). Not optional: a missing
+  // recent-shed inflation (`computeRestoreRequirementKw`). Not optional: a missing
   // clock would silently deflate the need for exactly the devices most likely to
   // be held — the ones PELS shed minutes ago.
   lastDeviceShedMsById: Readonly<Record<string, number>>;
@@ -124,8 +123,8 @@ export function resolveCeilingShortfall(params: {
   inputs: CeilingShortfallInputs;
 }): CeilingShortfallResolution {
   const { dev, inputs } = params;
-  const neededKw = applyRecentShedInflation(
-    computeBaseRestoreNeed(dev).needed, inputs.lastDeviceShedMsById[dev.id], inputs.nowMs,
+  const neededKw = computeRestoreRequirementKw(
+    estimateRestorePower(dev), inputs.lastDeviceShedMsById[dev.id], inputs.nowMs,
   );
   const reserved = resolveReserveAdmission(dev, inputs.ledger.availableFor(dev), neededKw, inputs.headroomReserves);
   if (reserved.kind === 'blocked_by_reserve') {

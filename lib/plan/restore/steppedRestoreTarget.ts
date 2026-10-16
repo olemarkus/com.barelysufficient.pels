@@ -7,7 +7,7 @@ import { resolveSteppedRestoreAttemptState } from '../planSteppedRestorePending'
 import { isReserveAdmitted, resolveReserveAdmission } from '../admission';
 import { isOffSteppedRestoreCandidate } from './devices';
 import { canAdmitWithinBatch } from './batch';
-import { computeRestoreBufferKw } from './accounting';
+import { computeRestoreRequirementKw } from './accounting';
 import type { RestoreCycle, RestoreLoopState, SteppedRestoreNeed } from './types';
 
 /**
@@ -31,34 +31,37 @@ export function resolveSteppedRestoreTarget(
   const isOff = isOffSteppedRestoreCandidate(dev);
   const adjacent = getSteppedLoadNextRestoreStep(dev);
   const pendingStep = isOff ? null : resolveOutstandingRestoreTarget(cycle, dev);
-  if (pendingStep) return buildTarget(dev, pendingStep, adjacent);
+  if (pendingStep) return buildTarget(cycle, dev, pendingStep, adjacent);
   const fallback = admitStepUnderSurplusCeiling(dev, cycle.state, adjacent);
   if (!fallback) return null;
   const batch = cycle.batchState;
-  if (isOff || !batch.enabled || batch.admittedCount >= batch.maxDevices) return buildTarget(dev, fallback, adjacent);
+  if (isOff || !batch.enabled || batch.admittedCount >= batch.maxDevices) {
+    return buildTarget(cycle, dev, fallback, adjacent);
+  }
 
   const steps = sortSteppedLoadSteps(dev.steppedLoadProfile.steps);
   const adjacentIndex = steps.findIndex((step) => step.id === fallback.id);
   for (const step of steps.slice(adjacentIndex + 1).reverse()) {
     const target = admitStepUnderSurplusCeiling(dev, cycle.state, step);
     if (!target) continue;
-    const need = resolveSteppedRestoreNeed(dev, target);
+    const need = resolveSteppedRestoreNeed(cycle, dev, target);
     if (need.deltaKw <= 0 || !canAdmitWithinBatch(batch, need.neededKw)) continue;
     if (isReserveAdmitted(resolveReserveAdmission(
       dev, loop.availableHeadroom, need.neededKw, cycle.headroomReserves,
     ))) return { step: target, need, kind: 'jump' };
   }
-  return buildTarget(dev, fallback, adjacent);
+  return buildTarget(cycle, dev, fallback, adjacent);
 }
 
 function buildTarget(
+  cycle: RestoreCycle,
   dev: SteppedPlanDevice & MeteredKind,
   step: SteppedLoadStep,
   adjacent: SteppedLoadStep | null,
 ): SteppedRestoreTarget {
   return {
     step,
-    need: resolveSteppedRestoreNeed(dev, step),
+    need: resolveSteppedRestoreNeed(cycle, dev, step),
     kind: step.id === adjacent?.id || isOffSteppedRestoreCandidate(dev) ? 'adjacent' : 'jump',
   };
 }
@@ -95,13 +98,17 @@ function admitStepUnderSurplusCeiling(
   return nextStep.planningPowerW <= ceilingStep.planningPowerW ? nextStep : null;
 }
 
-/** Price the complete increase once, including its restore buffer. */
+/** Price the complete increase once, on the same rule as every restore. */
 function resolveSteppedRestoreNeed(
+  cycle: RestoreCycle,
   dev: SteppedPlanDevice & MeteredKind,
   nextStep: SteppedLoadStep,
 ): SteppedRestoreNeed {
   const change = resolveStepChangeKw(dev, dev.selectedStepId, nextStep.id);
   if (change.direction !== 'up' || change.deltaKw <= 0) return { deltaKw: 0, neededKw: 0 };
   const { deltaKw } = change;
-  return { deltaKw, neededKw: deltaKw + computeRestoreBufferKw(deltaKw) };
+  return {
+    deltaKw,
+    neededKw: computeRestoreRequirementKw(deltaKw, cycle.state.actuation.lastDeviceShedMs[dev.id], cycle.timing.nowTs),
+  };
 }
