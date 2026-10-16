@@ -12,7 +12,7 @@ import { isSurplusLiftEngaged } from './planSurplusAbsorb';
 import { resolvePriceOptimizationConfig } from '../price/priceOptimizer';
 import { isSurplusHeldDevice } from './shedding/surplusHold';
 import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
-import { applyOffStateReason, type ShortfallOffState } from './planOffStateReason';
+import { applyOffStateReason } from './planOffStateReason';
 import { isStartPolicyHoldShed } from './shedding/startPolicyHold';
 import { isDeferredHoldShed } from './shedding/deferredHold';
 import type { SheddingPlan } from './shedding/types';
@@ -45,10 +45,9 @@ export function buildInitialPlanDevices(
    * re-derived — see `resolveSteppedLoadDirectShedStepId`.
    */
   sheddingPlan: SheddingPlan,
-  shortfall: ShortfallOffState,
   deps: PlanDevicesDeps,
 ): DevicePlanDevice[] {
-  const { shedSet, shedReasons } = sheddingPlan;
+  const { shedSet, shedReasons, guardInShortfall } = sheddingPlan;
   // Drop entries that must NOT count as capacity-shed posture, so the keep-invariant
   // stepped clamp (docs/technical.md:222) is symmetric with the executor's
   // hasExecutableShedDevices: the phantom set_step shed entries it also ignores, PLUS
@@ -139,7 +138,7 @@ export function buildInitialPlanDevices(
     baseMs += Date.now() - t1;
     state.boostActiveByDevice[dev.id] = base.boostActive;
     const t2 = Date.now();
-    const withOffStateReason = applyOffStateReason(base, shortfall);
+    const withOffStateReason = applyOffStateReason(base, guardInShortfall);
     offStateMs += Date.now() - t2;
     return withOffStateReason;
   });

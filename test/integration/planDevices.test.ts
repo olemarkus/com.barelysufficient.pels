@@ -724,7 +724,7 @@ describe('buildInitialPlanDevices', () => {
 
     const [planDevice] = buildInitialPlanDevicesForSpec({
       context,
-      shortfall: { inShortfall: true, headroomKw: -1 }, // Shortfall!
+      sheddingPlan: sheddingPlanFixture({ guardInShortfall: true }),
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),
@@ -736,10 +736,8 @@ describe('buildInitialPlanDevices', () => {
     expect(planDevice.currentState).toBe('off');
     expect(planDevice.plannedState).toBe('shed'); // Should be shed because of shortfall
     expect(planDevice.desiredStepId).toBe('off'); // Should be driven to off-step!
-    expect(reasonText(planDevice.reason)).toContain('shortfall');
-    // Restore need in reason should be based on low step (1.25kW + 0.23kW buffer = 1.48kW), not max (3kW),
-    // and shortfall must not retain the non-off set_step target.
-    expect(reasonText(planDevice.reason)).toContain('need 1.48kW');
+    // The gap is attached at reason normalization, not here.
+    expect(planDevice.reason).toEqual({ code: 'shortfall' });
   });
 
   it('keeps off-state restore analysis out of the public reason field', () => {
@@ -782,8 +780,8 @@ describe('buildInitialPlanDevices', () => {
       sheddingPlan: sheddingPlanFixture({
         shedSet: new Set(['dev-1']),
         shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
+        guardInShortfall: true,
       }),
-      shortfall: { inShortfall: true, headroomKw: -1 },
       deps: {
         getInferredSurplusKw: () => 0,
         getShedBehavior: () => ({ action: 'set_step' }),

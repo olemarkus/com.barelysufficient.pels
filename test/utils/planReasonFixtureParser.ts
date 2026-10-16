@@ -29,7 +29,6 @@ const KEEP_REASON = /^keep(?: \((.+)\))?$/;
 const RESTORE_NEED_REASON = /^restore ([^(]+?) -> ([^(]+?) \(need (-?\d+(?:\.\d+)?)kW\)$/;
 const SWAP_PENDING_REASON = /^swap pending(?: \((.+)\))?$/;
 const SWAPPED_OUT_REASON = /^swapped out for (.+)$/;
-const SHORTFALL_REASON = /^shortfall \(need (-?\d+(?:\.\d+)?)kW, headroom (-?\d+(?:\.\d+)?)kW\)$/;
 const COOLDOWN_SHEDDING_REASON = /^cooldown \(shedding, (\d+)s remaining\)$/;
 const COOLDOWN_RESTORE_REASON = /^cooldown \(restore, (\d+)s remaining\)$/;
 const METER_SETTLING_REASON = /^meter settling \((\d+)s remaining\)$/;
@@ -65,20 +64,9 @@ function parseRestoreNeedReason(trimmed: string): DeviceReason | null {
   };
 }
 
-function parseShortfallReason(trimmed: string): DeviceReason | null {
-  const match = SHORTFALL_REASON.exec(trimmed);
-  if (!match) return null;
-  return {
-    code: PLAN_REASON_CODES.shortfall,
-    needKw: Number(match[1]),
-    headroomKw: Number(match[2]),
-  };
-}
-
 const REGEX_REASON_PARSERS: ReasonParser[] = [
   parseKeepReason,
   parseRestoreNeedReason,
-  parseShortfallReason,
   (trimmed) => {
     const match = SWAP_PENDING_REASON.exec(trimmed);
     return match ? { code: PLAN_REASON_CODES.swapPending, targetName: match[1] ?? null } : null;
@@ -135,6 +123,7 @@ const EXACT_REASON_PARSERS: Record<string, DeviceReason> = {
   'shed due to capacity-period budget': { code: PLAN_REASON_CODES.hourlyBudget },
   'shed due to daily budget': { code: PLAN_REASON_CODES.dailyBudget },
   'shed due to capacity': { code: PLAN_REASON_CODES.capacity },
+  shortfall: { code: PLAN_REASON_CODES.shortfall },
   'waiting for cheaper hours': { code: PLAN_REASON_CODES.deferredObjectiveAvoid },
   'waiting for solar surplus': { code: PLAN_REASON_CODES.awaitingSolarSurplus },
   'staying off until turned on again': { code: PLAN_REASON_CODES.externalOffHold },

@@ -178,7 +178,10 @@ export type DeviceReason =
   // `externalOffHold`, which never had a slot.
   | { code: typeof PLAN_REASON_CODES.hourlyBudget }
   | ({ code: typeof PLAN_REASON_CODES.dailyBudget } & AdmissionShortfall & ReserveHolder)
-  | { code: typeof PLAN_REASON_CODES.shortfall; needKw: number; headroomKw: number }
+  // The capacity guard is in shortfall: PELS is out of levers. Its gap is this
+  // device's own admission gap, attached at reason normalization like every
+  // ceiling hold's (`finalizeCeilingReason`).
+  | ({ code: typeof PLAN_REASON_CODES.shortfall } & AdmissionShortfall & ReserveHolder)
   | ({ code: typeof PLAN_REASON_CODES.cooldownShedding; remainingSec: number } & CountdownReasonTiming)
   | ({ code: typeof PLAN_REASON_CODES.cooldownRestore; remainingSec: number } & CountdownReasonTiming)
   | ({ code: typeof PLAN_REASON_CODES.meterSettling; remainingSec: number } & CountdownReasonTiming)

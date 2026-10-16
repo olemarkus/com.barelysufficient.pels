@@ -58,7 +58,6 @@ import {
 } from './battery/storageRelief';
 import { applyStorageHandBacks, applyStorageLimits, withoutStorageWithheld } from './battery/storageLimit';
 import { buildSheddingDeps, SilentMeterPlanBuilder } from './planBuilderSilentMeter';
-import { resolveShortfallOffState } from './planOffStateReason';
 import {
   resolvePostureExcludeIds,
   runStandingPostureHolds,
@@ -336,11 +335,7 @@ export class PlanBuilder {
     const heldContext = withHeldOffOnRelease(context, postureHolds.heldOffOnReleaseIds);
 
     const restoreResult = this.stages.applyRestorePlan(
-      this.stages.buildPlanDevices(
-        heldContext,
-        sheddingPlan,
-        resolveShortfallOffState(sheddingPlan.guardInShortfall, power.headroomKw),
-      ),
+      this.stages.buildPlanDevices(heldContext, sheddingPlan),
       heldContext, admissionPower, sheddingPlan, limitedStorage.levers,
     );
     const storageRelief = this.handBackStorage(limitedStorage, restoreResult, power, surplusOffers);

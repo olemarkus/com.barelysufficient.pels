@@ -1,25 +1,14 @@
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
-import { buildRestoreShortfallReason } from './restore/accounting';
+import { SHORTFALL_REASON } from './planReasonStrings';
 import { getSteppedLoadShedTargetStep, isSteppedLoadDevice } from './planSteppedLoad';
 import { getInactiveReason } from './restore/devices';
 import type { DevicePlanDevice } from './planTypes';
 
 /**
- * Whether the capacity guard is in shortfall this cycle, and — only then —
- * the measured headroom the shortfall reason is written against. The two
- * travel together because the number is meaningful only in the shortfall
- * case: the silent-meter pass has no measurement and passes `inShortfall:
- * false`, and no reader can reach a headroom it was not given.
+ * `guardInShortfall`: the capacity guard is in shortfall this cycle. The
+ * silent-meter pass has no measurement and passes `false`.
  */
-export type ShortfallOffState =
-  | { inShortfall: true; headroomKw: number }
-  | { inShortfall: false };
-
-export function resolveShortfallOffState(guardInShortfall: boolean, headroomKw: number | null): ShortfallOffState {
-  return guardInShortfall && headroomKw !== null ? { inShortfall: true, headroomKw } : { inShortfall: false };
-}
-
-export function applyOffStateReason(planDevice: DevicePlanDevice, shortfall: ShortfallOffState): DevicePlanDevice {
+export function applyOffStateReason(planDevice: DevicePlanDevice, guardInShortfall: boolean): DevicePlanDevice {
   if (!planDevice.control.commandAuthority) return planDevice;
   if (planDevice.currentState !== 'off') return planDevice;
   const inactiveReason = getInactiveReason(planDevice);
@@ -30,7 +19,7 @@ export function applyOffStateReason(planDevice: DevicePlanDevice, shortfall: Sho
       reason: inactiveReason,
     };
   }
-  const shouldForceOffStep = shortfall.inShortfall && isSteppedLoadDevice(planDevice);
+  const shouldForceOffStep = guardInShortfall && isSteppedLoadDevice(planDevice);
   const desiredStepId = shouldForceOffStep
     ? getSteppedLoadShedTargetStep(
       planDevice, 'turn_off', planDevice.desiredStepId,
@@ -42,12 +31,12 @@ export function applyOffStateReason(planDevice: DevicePlanDevice, shortfall: Sho
       desiredStepId,
     };
   }
-  if (shortfall.inShortfall) {
+  if (guardInShortfall) {
     return {
       ...planDevice,
       plannedState: 'shed',
       desiredStepId,
-      reason: buildRestoreShortfallReason(planDevice, shortfall.headroomKw),
+      reason: SHORTFALL_REASON,
     };
   }
   return {

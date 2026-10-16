@@ -105,7 +105,7 @@ export function applyRestorePlan(
   };
 
   if (guardInShortfall) {
-    markRestoreCandidatesStayShedForShortfall(deviceMap, power.headroomKw);
+    markRestoreCandidatesStayShedForShortfall(deviceMap);
   } else if (restoresPlannable) {
     ({ restoredOneThisCycle } = applyFullRestorePass(cycle, ledger, restoredOneThisCycle));
   } else if (exemptRestoresPlannable) {

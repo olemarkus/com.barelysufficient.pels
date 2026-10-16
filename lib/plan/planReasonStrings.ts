@@ -98,9 +98,12 @@ export function buildRestorePendingReason(
   );
 }
 
-export function buildShortfallReason(neededKw: number, headroomKw: number): DeviceReason {
-  return { code: PLAN_REASON_CODES.shortfall, needKw: neededKw, headroomKw };
-}
+/**
+ * The hold every device carries while the capacity guard is in shortfall. It
+ * carries no figure: reason normalization attaches the device's own admission
+ * gap (`finalizeCeilingReason`), the one the restore gate rejects on.
+ */
+export const SHORTFALL_REASON: DeviceReason = { code: PLAN_REASON_CODES.shortfall };
 
 export function renderPlanReasonDecision(reason: PlanReasonDecision): DeviceReason {
   switch (reason.code) {

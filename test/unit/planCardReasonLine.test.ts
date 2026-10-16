@@ -76,7 +76,7 @@ describe('resolveHeldCardReasonLine', () => {
     it('states what a device held while PELS is out of levers needs, not the house-level recourse', () => {
       // "Manual action needed" is the hero's and the alarm's line; the card says
       // what this device needs, and simulation can reword it.
-      const line = resolveHeldCardReasonLine({ code: PLAN_REASON_CODES.shortfall, needKw: 1.5, headroomKw: 0 });
+      const line = resolveHeldCardReasonLine({ code: PLAN_REASON_CODES.shortfall, shortfallKw: 1.5 });
       expect(line).toBe('Waiting to resume — 1.5 kW more needed');
       expect(toSimulationReasonLine(line, true)).toBe('Would be waiting to resume — 1.5 kW more needed (simulation)');
     });

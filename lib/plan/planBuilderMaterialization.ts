@@ -25,7 +25,6 @@ import type { MeasuredPower, PlanContext } from './planContext';
 import type { SheddingPlan } from './shedding';
 import type { PlanBuilderDeps } from './planBuilderDeps';
 import { buildInitialPlanDevices } from './planDevices';
-import type { ShortfallOffState } from './planOffStateReason';
 import { applyRestorePlan, type RestorePlanResult } from './restore';
 import {
   applyShedTemperatureHold,
@@ -60,10 +59,9 @@ export class PlanMaterializationStages {
   buildPlanDevices(
     context: PlanContext,
     sheddingPlan: SheddingPlan,
-    shortfall: ShortfallOffState,
   ): DevicePlanDevice[] {
     return trackPlanStage('plan_devices_ms', () => buildInitialPlanDevices(
-      context, this.state, sheddingPlan, shortfall, this.deps,
+      context, this.state, sheddingPlan, this.deps,
     ));
   }
 
@@ -126,7 +124,6 @@ export class PlanMaterializationStages {
     return trackPlanStage('plan_reasons_ms', () => rank(normalizeShedReasons(planDevices, {
       shedReasons: sheddingPlan.shedReasons,
       guardInShortfall: sheddingPlan.guardInShortfall,
-      headroomRaw: power.headroomKw,
       timing: restoreResult.timing,
       ...holds,
       softLimitSource: context.softLimitSource,

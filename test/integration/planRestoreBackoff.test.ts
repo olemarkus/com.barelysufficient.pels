@@ -3198,7 +3198,7 @@ describe('restore admission — headroom and penalty gates', () => {
 
     const device = result.planDevices.find((entry) => entry.id === 'dev-off');
     expect(device?.plannedState).toBe('shed');
-    expect(reasonText(device?.reason)).toBe('shortfall (need 1.20kW, headroom -0.50kW)');
+    expect(reasonText(device?.reason)).toBe('shortfall');
   });
 
   it('holds current-on stepped restore candidates at their selected step during shortfall', () => {

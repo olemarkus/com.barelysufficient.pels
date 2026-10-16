@@ -6,10 +6,10 @@ import {
   type DeviceReason,
   type PlanReasonCode,
 } from '../../packages/shared-domain/src/planReasonSemantics';
-import { buildRestoreShortfallReason } from './restore/accounting';
 import { buildShedCooldownReason, type RestoreTiming } from './restore/timing';
 import {
   classifyPlanReason,
+  SHORTFALL_REASON,
   type ClassifiedPlanReason,
 } from './planReasonStrings';
 import {
@@ -70,7 +70,6 @@ function buildBaseReason(ctx: ReasonContext, dev: DevicePlanDevice): DeviceReaso
 export type ReasonContext = {
   readonly shedReasons: Map<string, DeviceReason>;
   readonly guardInShortfall: boolean;
-  readonly headroomRaw: number | null;
   /**
    * This cycle's effective restore timing, whole (`RestorePlanResult.timing`):
    * the shed cooldown and the overshoot it yields to are read off it.
@@ -104,15 +103,13 @@ export type ReasonContext = {
 
 function maybeApplyShortfallReason(
   ctx: ReasonContext,
-  dev: DevicePlanDevice,
   currentReason: ClassifiedPlanReason,
 ): DeviceReason | null {
-  const { guardInShortfall, headroomRaw } = ctx;
-  if (!guardInShortfall || headroomRaw === null) return null;
+  if (!ctx.guardInShortfall) return null;
   if (isSwapReason(currentReason) || isBudgetReason(currentReason)) return null;
   if (currentReason.code === PLAN_REASON_CODES.neutralStartupHold) return null;
   if (isShortfallReason(currentReason)) return null;
-  return buildRestoreShortfallReason(dev, headroomRaw);
+  return SHORTFALL_REASON;
 }
 
 function maybeApplyCooldownReason(
@@ -153,7 +150,8 @@ export function normalizeShedReasons(
   ));
 }
 
-// Reason codes the hourly-exhausted fold rewrites to `hourlyBudget`. Swap
+// Reason codes the hourly-exhausted fold rewrites to `hourlyBudget`, `shortfall`
+// among them: its gap is suspended for the hour like every other. Swap
 // reasons are deliberately absent — they keep their own framing (which device
 // took the power) in the activity log; on the card they render bare during the
 // exhausted hour because the shortfall attach is suspended too (below). A
@@ -163,6 +161,7 @@ const HOURLY_FOLD_REASON_CODES: ReadonlySet<DeviceReason['code']> = new Set([
   PLAN_REASON_CODES.gridImport,
   PLAN_REASON_CODES.capacity,
   PLAN_REASON_CODES.dailyBudget,
+  PLAN_REASON_CODES.shortfall,
   PLAN_REASON_CODES.insufficientHeadroom,
 ]);
 
@@ -173,6 +172,7 @@ const SHORTFALL_ATTACH_REASON_CODES: ReadonlySet<DeviceReason['code']> = new Set
   PLAN_REASON_CODES.gridImport,
   PLAN_REASON_CODES.capacity,
   PLAN_REASON_CODES.dailyBudget,
+  PLAN_REASON_CODES.shortfall,
   PLAN_REASON_CODES.swapPending,
   PLAN_REASON_CODES.swappedOut,
 ]);
@@ -319,6 +319,7 @@ function attachReserveHolder(reason: DeviceReason, reserveHolderName: string): D
     case PLAN_REASON_CODES.gridImport:
     case PLAN_REASON_CODES.capacity:
     case PLAN_REASON_CODES.dailyBudget:
+    case PLAN_REASON_CODES.shortfall:
       return { ...reason, reserveHolderName };
     case PLAN_REASON_CODES.swapPending:
     case PLAN_REASON_CODES.swappedOut:
@@ -335,6 +336,7 @@ function attachShortfall(reason: DeviceReason, shortfallKw: number): DeviceReaso
     case PLAN_REASON_CODES.gridImport:
     case PLAN_REASON_CODES.capacity:
     case PLAN_REASON_CODES.dailyBudget:
+    case PLAN_REASON_CODES.shortfall:
       return { ...reason, shortfallKw };
     case PLAN_REASON_CODES.swapPending:
     case PLAN_REASON_CODES.swappedOut:
@@ -352,7 +354,7 @@ function normalizeDeviceReason(ctx: ReasonContext, dev: DevicePlanDevice): Devic
   const currentReason = classifyPlanReason(dev.reason);
   const baseReason = buildBaseReason(ctx, dev);
 
-  const shortfallReason = maybeApplyShortfallReason(ctx, dev, currentReason);
+  const shortfallReason = maybeApplyShortfallReason(ctx, currentReason);
   if (shortfallReason) return { ...dev, reason: shortfallReason };
 
   // Surplus-hold framing takes precedence over the plan-wide shed cooldown for a

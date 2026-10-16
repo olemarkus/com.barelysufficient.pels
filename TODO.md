@@ -71,11 +71,6 @@ The redesigned Settings UI is expected to be many users' first exposure to the n
 P1 UI items should prioritize a pleasant surprise: compact, calm, coherent, and clear enough that
 users trust the redesign immediately, while still keeping non-P0 polish out of the v1 release gate.
 
-## Do next
-
-- **Shed and restore control** — 1: temperature-control toggle strands a shed setpoint
-- **Device observation and transport** — 1: a timestamp-less reconnect keeps a retired level
-
 ## Shed and restore control
 
 - [ ] **A shed device waiting out a restore gate can carry no gate reason, so it defaults to
@@ -162,23 +157,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       whose profile lacks an off step. Narrow: every profile PELS generates (native Høiax wiring,
       EV target-power) carries an explicit `off` step, so this needs a hand-configured profile.
       Source: Codex review of PR #1996, 2026-08-06. [P2]
-
-- [ ] **Three user-visible need figures still use the deflated restore need.**
-      *Persona:* owner (`notes/personas.md`) reading how much more power a device needs.
-      *Hypothesis:* `maybeApplyShortfallReason` (`lib/plan/planReasons.ts`), the shortfall
-      marking (`lib/plan/restore/marking.ts`) and the off-state need
-      (`lib/plan/planOffStateReason.ts`) build their numbers through
-      `buildRestoreShortfallReason` (`lib/plan/restore/accounting.ts`) from bare
-      `computeBaseRestoreNeed`, so they carry the same understatement the
-      ceiling-shortfall path had before 2026-08-08 — the recent-shed inflation
-      (`applyRecentShedInflation`, 1.15× or +0.15 kW within five minutes of a shed) is missing.
-      A device shed minutes ago is told it needs less than the restore gate will actually
-      demand.
-      *Why it's needed:* the owner acts on that number — freeing exactly the stated amount and
-      finding the device still will not resume is the failure mode the ceiling path was fixed
-      to avoid. Fix direction: have `buildRestoreShortfallReason` call the shared helper, as
-      `resolveCeilingShortfall` now does.
-      Source: planner timer-hold + shortfall-need fix, 2026-08-08. [P2]
 
 - [ ] **Bound the startup reservation on time spent HOLDING, not wall-clock since first sighting.**
       `resolveCycleHeadroomReserves` runs at the top of `applyRestorePlan` (`lib/plan/restore/index.ts`),
@@ -883,25 +861,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `deviceObservedAtMs` parameter. Done when `resolveObjectiveObservedQuantity` takes the device
       and nothing else, and both branches read a stamp that belongs to the reading rather than to
       the device.
-
-- [ ] **A timestamp-less reconnect anchors nothing, so a replugged charger keeps a retired level.**
-      `resolveReconnectAtMs` (`lib/device/transport/stateOfCharge.ts`) deliberately requires REAL
-      evidence: a connected observation carrying no `lastUpdated` cannot anchor the new session, so
-      the pending invalidation stands and the reading stays retired — and `measure_battery` is
-      change-only, so an idle charger cannot republish to clear it. Substituting the refresh time was
-      implemented and then reverted on PR #1897, because a full refresh can carry a cached connected
-      state older than a newer realtime plug-out (`snapshotRefresh.ts` parses the pull before merging
-      retained fresher observations) and a fabricated future `sessionStartedAtMs` cannot be undone by
-      reapplying that plug-out — trading a retired reading for a session anchored to the wrong car. A
-      correct fix needs the refresh path to distinguish cached from fresh connected evidence, not a
-      timestamp substitution at this seam. Now that the session is the ONLY thing that retires a
-      level (the 40-minute age gate is gone), this is the single remaining way a connected charger
-      can be left without one. **It is not the only way a task reads as having no progress, and it
-      was NOT the cause of the 2026-08-19/20 prod stalls** — the car was never plugged in, and the
-      precondition that should have said so was dead code (fixed 2026-08-22). Check for
-      `objective_invalid_session` in the logs before reaching for this entry. Raised by Codex on PR #1897, 2026-07-27; narrowed 2026-08-08 when the
-      age gate was deleted. Persona: EV owner who replugs and sees the smart task refuse to plan;
-      hypothesis: a task that never plans is indistinguishable from one that was never scheduled. [P1]
 
 - [ ] **The zone tree is refetched on every snapshot refresh — 538 Homey round-trips per 12 h for
       an answer that changed zero times — and the obvious fix (a refresh interval) is unsafe as

@@ -60,8 +60,9 @@ const CEILING_HOLD_REASON_CODES: ReadonlySet<string> = new Set([
 //   shedInvariant           stepped fairness rule; restoring OTHER devices lifts it
 //   shortfall               PELS is out of levers. Not a ceiling either: the house-level
 //                           recourse ("Manual action needed") belongs to the hero and
-//                           the shortfall alarm, so the card states this device's gap
-//                           in its own branch below
+//                           the shortfall alarm. It still carries this device's gap
+//                           (attached by `finalizeCeilingReason`), which the card
+//                           states in its own branch below
 //   reservedForStart        the power IS there, promised to a named device about to
 //                           start; a gap through the reservation would be dominated
 //                           by that device's block, so the card names the holder

@@ -31,7 +31,6 @@ import type { PlanEngineState, StorageLeverState } from '../../lib/plan/planStat
 import type { RestoreCycle, RestoreDeps, RestorePlanResult } from '../../lib/plan/restore/types';
 import { applyRestorePlan } from '../../lib/plan/restore';
 import { buildInitialPlanDevices, type PlanDevicesDeps } from '../../lib/plan/planDevices';
-import type { ShortfallOffState } from '../../lib/plan/planOffStateReason';
 import type { MeasuredPower, PlanContext } from '../../lib/plan/planContext';
 import { createPlanEngineState } from './planEngineStateFixture';
 import type { PowerTrackerState } from '../../lib/power/tracker';
@@ -1544,20 +1543,17 @@ export const resolveSurplusEligibilityForSpec = (spec: {
 
 /**
  * `buildInitialPlanDevices` as a spec drives it, by name: the inputs a spec
- * leaves out default to a fresh engine state, the empty shedding decision, and
- * no shortfall.
+ * leaves out default to a fresh engine state and the empty shedding decision.
  */
 export const buildInitialPlanDevicesForSpec = (spec: {
   context: PlanContext;
   state?: PlanEngineState;
   sheddingPlan?: SheddingPlan;
-  shortfall?: ShortfallOffState;
   deps: PlanDevicesDeps;
 }): DevicePlanDevice[] => buildInitialPlanDevices(
   spec.context,
   spec.state ?? createPlanEngineState(),
   spec.sheddingPlan ?? sheddingPlanFixture(),
-  spec.shortfall ?? { inShortfall: false },
   spec.deps,
 );
 

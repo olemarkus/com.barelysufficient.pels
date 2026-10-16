@@ -588,13 +588,13 @@ describe('resolveSteppedStatusLine', () => {
       expect(result).toBe('Waiting to resume — 0.5 kW more needed');
     });
 
-    it('uses shortfall reason headroomKw to compute gap', () => {
+    it('states the gap a shortfall reason carries', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
           currentState: 'off',
           steppedLoad: steppedLoad({ targetStepId: 'low' }),
-          reason: { code: 'shortfall', needKw: 1.25, headroomKw: 0.95 },
+          reason: { code: 'shortfall', shortfallKw: 0.3 },
         },
         profile,
         NOW_MS,

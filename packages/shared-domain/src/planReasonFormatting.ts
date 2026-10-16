@@ -35,7 +35,7 @@ type TimedReason = Extract<
   | { code: typeof PLAN_REASON_CODES.restorePending }
 >;
 
-// Reasons whose whole text is fixed by the code. `dailyBudget`/`capacity` still
+// Reasons whose whole text is fixed by the code. `dailyBudget`/`capacity`/`shortfall` still
 // carry the per-cycle `shortfallKw`/`reserveHolderName` annotations, but neither
 // appears in this text — the card ladder reads them directly
 // (`planCardReasonLine.ts`).
@@ -51,6 +51,7 @@ type StaticReason = Extract<
   | { code: typeof PLAN_REASON_CODES.dailyBudget }
   | { code: typeof PLAN_REASON_CODES.gridImport }
   | { code: typeof PLAN_REASON_CODES.capacity }
+  | { code: typeof PLAN_REASON_CODES.shortfall }
   | { code: typeof PLAN_REASON_CODES.meterSilent }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
@@ -78,6 +79,7 @@ const STATIC_REASON_CODES = new Set<string>([
   PLAN_REASON_CODES.dailyBudget,
   PLAN_REASON_CODES.gridImport,
   PLAN_REASON_CODES.capacity,
+  PLAN_REASON_CODES.shortfall,
   PLAN_REASON_CODES.meterSilent,
   PLAN_REASON_CODES.deferredObjectiveAvoid,
   PLAN_REASON_CODES.awaitingSolarSurplus,
@@ -88,41 +90,26 @@ function isStaticReason(reason: DeviceReason): reason is StaticReason {
   return STATIC_REASON_CODES.has(reason.code);
 }
 
+const STATIC_REASON_TEXT: Record<StaticReason['code'], string> = {
+  [PLAN_REASON_CODES.restoreThrottled]: 'restore throttled',
+  [PLAN_REASON_CODES.waitingForOtherDevices]: 'waiting for other devices to recover',
+  [PLAN_REASON_CODES.externalOffHold]: 'staying off until turned on again',
+  [PLAN_REASON_CODES.neutralStartupHold]: 'left off',
+  [PLAN_REASON_CODES.startupStabilization]: 'startup stabilization',
+  [PLAN_REASON_CODES.capacityControlOff]: 'capacity control off',
+  [PLAN_REASON_CODES.hourlyBudget]: 'shed due to capacity-period budget',
+  [PLAN_REASON_CODES.dailyBudget]: 'shed due to daily budget',
+  [PLAN_REASON_CODES.gridImport]: 'shed due to grid import limit',
+  [PLAN_REASON_CODES.capacity]: 'shed due to capacity',
+  [PLAN_REASON_CODES.shortfall]: 'shortfall',
+  [PLAN_REASON_CODES.meterSilent]: 'shed while the meter is silent',
+  [PLAN_REASON_CODES.deferredObjectiveAvoid]: 'waiting for cheaper hours',
+  [PLAN_REASON_CODES.awaitingSolarSurplus]: 'waiting for solar surplus',
+  [PLAN_REASON_CODES.awaitingPelsStart]: 'waiting for a smart task to start it',
+};
+
 function formatStaticReason(reason: StaticReason): string {
-  switch (reason.code) {
-    case PLAN_REASON_CODES.restoreThrottled:
-      return 'restore throttled';
-    case PLAN_REASON_CODES.waitingForOtherDevices:
-      return 'waiting for other devices to recover';
-    case PLAN_REASON_CODES.externalOffHold:
-      return 'staying off until turned on again';
-    case PLAN_REASON_CODES.neutralStartupHold:
-      return 'left off';
-    case PLAN_REASON_CODES.startupStabilization:
-      return 'startup stabilization';
-    case PLAN_REASON_CODES.capacityControlOff:
-      return 'capacity control off';
-    case PLAN_REASON_CODES.hourlyBudget:
-      return 'shed due to capacity-period budget';
-    case PLAN_REASON_CODES.dailyBudget:
-      return 'shed due to daily budget';
-    case PLAN_REASON_CODES.gridImport:
-      return 'shed due to grid import limit';
-    case PLAN_REASON_CODES.capacity:
-      return 'shed due to capacity';
-    case PLAN_REASON_CODES.meterSilent:
-      return 'shed while the meter is silent';
-    case PLAN_REASON_CODES.deferredObjectiveAvoid:
-      return 'waiting for cheaper hours';
-    case PLAN_REASON_CODES.awaitingSolarSurplus:
-      return 'waiting for solar surplus';
-    case PLAN_REASON_CODES.awaitingPelsStart:
-      return 'waiting for a smart task to start it';
-    default: {
-      const exhaustive: never = reason;
-      return exhaustive;
-    }
-  }
+  return STATIC_REASON_TEXT[reason.code];
 }
 
 function isDetailReason(reason: DeviceReason): reason is DetailReason {
@@ -173,11 +160,6 @@ function formatTimedReason(reason: TimedReason): string {
 
 function formatRestoreNeed(reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.restoreNeed }>): string {
   return `restore ${reason.fromTarget} -> ${reason.toTarget} (need ${formatSignedKw(reason.needKw, 2)}kW)`;
-}
-
-function formatShortfall(reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.shortfall }>): string {
-  return `shortfall (need ${formatSignedKw(reason.needKw, 2)}kW, `
-    + `headroom ${formatSignedKw(reason.headroomKw, 2)}kW)`;
 }
 
 function formatNeedSummary(
@@ -285,8 +267,6 @@ export function formatDeviceReason(reason: DeviceReason): string {
   switch (reason.code) {
     case PLAN_REASON_CODES.restoreNeed:
       return formatRestoreNeed(reason);
-    case PLAN_REASON_CODES.shortfall:
-      return formatShortfall(reason);
     case PLAN_REASON_CODES.insufficientHeadroom:
       return formatInsufficientHeadroom(reason);
     case PLAN_REASON_CODES.shedInvariant:
@@ -304,26 +284,13 @@ export function formatDeviceReason(reason: DeviceReason): string {
 // `formatDeviceReason` above is the diagnostic/log format. The helpers below
 // produce user-facing text per `notes/ui-terminology.md`. They never expose
 // internal planner terms (`shed`, `restore`, `headroom`, `shortfall`,
-// `backoff`, `invariant`, `soft limit`). `restoreNeed` and `shortfall` reasons
-// translate the `(need X kW, headroom Y kW)` template to `needs X kW, Y kW
-// available`; `insufficientHeadroom` renders the admission-accurate
-// `needs N kW more` instead (see `resolveRestoreShortfallKw`) — for a blocked
-// restore, the need/available pair reads as if freeing the difference would
+// `backoff`, `invariant`, `soft limit`). `insufficientHeadroom` renders the
+// admission-accurate `N kW more needed` (see `resolveRestoreShortfallKw`), never
+// a need/available pair: that pair reads as if freeing the difference would
 // resume the device, which understates the real gate by the reserve stack.
 
 function normalizeDetailSentence(detail: string): string {
   return detail.length > 0 ? `${detail.charAt(0).toUpperCase()}${detail.slice(1)}` : detail;
-}
-
-// Finiteness-guarded, not null-guarded: its one caller now holds two required
-// `number`s, so absence is gone — but a `NaN`/`Infinity` arriving from a snapshot
-// is still worth declining rather than rendering as "needs NaN kW".
-function formatNeedAvailableSuffix(needKw: number, availableKw: number): string | null {
-  if (!Number.isFinite(needKw) || !Number.isFinite(availableKw)) return null;
-  // Clamp negative headroom to 0 kW so users do not see confusing minus signs;
-  // negative values mean the system is already over the limit.
-  const safeAvailable = Math.max(0, availableKw);
-  return `needs ${needKw.toFixed(1)} kW, ${safeAvailable.toFixed(1)} kW available`;
 }
 
 const readFiniteNumber = (value: unknown): number | null => (
@@ -340,8 +307,8 @@ const readFiniteNumber = (value: unknown): number | null => (
 // constants sat between "fits" and "admitted" and a gap of `need − available`
 // understated the real bar by ~0.5 kW — prod 2026-08-01, cards read "0.5 kW more
 // needed" for a device that needed ~1.05 kW more. Those constants are gone, so
-// the two quantities have converged and the correction with them. `shortfall`
-// reasons keep `need − headroom`: a shed-side deficit, unchanged. Accepts `unknown`
+// the two quantities have converged and the correction with them. A `shortfall`
+// hold carries its gap as `shortfallKw`, like every ceiling hold. Accepts `unknown`
 // because temperature-card callers hold the reason untyped after the snapshot
 // boundary — so the finiteness guards below stay even though the type now
 // promises both margins (a snapshot from another build is untrusted input).
@@ -372,26 +339,10 @@ export function resolveRestoreShortfallKw(reason: unknown): number | null {
     if (marginKw === null) return null;
     return ceilToDisplayKw(-marginKw);
   }
-  if (r['code'] === PLAN_REASON_CODES.shortfall) {
-    // Both are required `number` on the reason type; a snapshot missing either is
-    // malformed, so derive nothing rather than treating an absent figure as 0 —
-    // that fabricated a full-need gap out of half a reason.
-    const needKw = readFiniteNumber(r['needKw']);
-    const headroomKw = readFiniteNumber(r['headroomKw']);
-    if (needKw === null || headroomKw === null) return null;
-    return ceilToDisplayKw(needKw - headroomKw);
-  }
   return null;
 }
 
-export function formatShortfallReason(opts: {
-  needKw: number;
-  headroomKw: number;
-}): string {
-  const base = 'Manual action needed. Hard cap may be exceeded.';
-  const suffix = formatNeedAvailableSuffix(opts.needKw, opts.headroomKw);
-  return suffix ? `Manual action needed. ${suffix.charAt(0).toUpperCase()}${suffix.slice(1)}.` : base;
-}
+const SHORTFALL_STATUS = 'Manual action needed. Hard cap may be exceeded.';
 
 // Reads the loosely-typed `detail` slot off a `DeviceReason`-shaped value
 // without an `as` cast. The snapshot boundary serialises some reason variants
@@ -498,52 +449,37 @@ export const TIMED_REASON_LABELS = {
 
 export const RESTORE_THROTTLED_REASON_LABEL = 'Delaying restart to avoid rapid cycling';
 
+const STATIC_REASON_USER_TEXT: Record<StaticReason['code'], string> = {
+  [PLAN_REASON_CODES.restoreThrottled]: RESTORE_THROTTLED_REASON_LABEL,
+  [PLAN_REASON_CODES.waitingForOtherDevices]: 'Waiting to resume — other devices are ahead',
+  [PLAN_REASON_CODES.externalOffHold]: PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
+  [PLAN_REASON_CODES.neutralStartupHold]: 'Left off after startup',
+  [PLAN_REASON_CODES.startupStabilization]: 'Waiting after startup',
+  [PLAN_REASON_CODES.capacityControlOff]: 'Power-limit control off',
+  // Same strings as the card ladder (`resolveHeldCardReasonLine`) so the
+  // activity log and the card cannot drift.
+  [PLAN_REASON_CODES.hourlyBudget]: PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS,
+  [PLAN_REASON_CODES.dailyBudget]: PLAN_STATE_DAILY_BUDGET_STATUS,
+  [PLAN_REASON_CODES.gridImport]: PLAN_STATE_GRID_IMPORT_STATUS,
+  [PLAN_REASON_CODES.capacity]: PLAN_STATE_CAPACITY_STATUS,
+  [PLAN_REASON_CODES.shortfall]: SHORTFALL_STATUS,
+  // Same string as the card: the card ladder reaches it through this
+  // formatter, so the card, device detail and the activity log agree.
+  [PLAN_REASON_CODES.meterSilent]: PLAN_STATE_METER_SILENT_STATUS,
+  [PLAN_REASON_CODES.deferredObjectiveAvoid]: PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
+  [PLAN_REASON_CODES.awaitingSolarSurplus]: PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,
+  // Deliberately no card copy, and the empty string is how `keep` already says
+  // that. The device is off because its owner set it to run only when PELS
+  // starts it, so the card says `Off` and stops there: it is not being held
+  // back from anything, and a line naming the setting would restate a
+  // configuration instead of telling the owner something about the device.
+  // When a smart task IS governing it, the task's own reason is more specific
+  // and wins on its own. (Owner ruling, 2026-09-10.)
+  [PLAN_REASON_CODES.awaitingPelsStart]: '',
+};
+
 function formatStaticReasonUserFacing(reason: StaticReason): string {
-  switch (reason.code) {
-    case PLAN_REASON_CODES.restoreThrottled:
-      return RESTORE_THROTTLED_REASON_LABEL;
-    case PLAN_REASON_CODES.waitingForOtherDevices:
-      return 'Waiting to resume — other devices are ahead';
-    case PLAN_REASON_CODES.externalOffHold:
-      return PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS;
-    case PLAN_REASON_CODES.neutralStartupHold:
-      return 'Left off after startup';
-    case PLAN_REASON_CODES.startupStabilization:
-      return 'Waiting after startup';
-    case PLAN_REASON_CODES.capacityControlOff:
-      return 'Power-limit control off';
-    // Same strings as the card ladder (`resolveHeldCardReasonLine`) so the
-    // activity log and the card cannot drift.
-    case PLAN_REASON_CODES.hourlyBudget:
-      return PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS;
-    case PLAN_REASON_CODES.dailyBudget:
-      return PLAN_STATE_DAILY_BUDGET_STATUS;
-    case PLAN_REASON_CODES.gridImport:
-      return PLAN_STATE_GRID_IMPORT_STATUS;
-    case PLAN_REASON_CODES.capacity:
-      return PLAN_STATE_CAPACITY_STATUS;
-    // Same string as the card: the card ladder reaches it through this
-    // formatter, so the card, device detail and the activity log agree.
-    case PLAN_REASON_CODES.meterSilent:
-      return PLAN_STATE_METER_SILENT_STATUS;
-    case PLAN_REASON_CODES.deferredObjectiveAvoid:
-      return PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS;
-    case PLAN_REASON_CODES.awaitingSolarSurplus:
-      return PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS;
-    // Deliberately no card copy, and the empty string is how `keep` already says
-    // that. The device is off because its owner set it to run only when PELS
-    // starts it, so the card says `Off` and stops there: it is not being held
-    // back from anything, and a line naming the setting would restate a
-    // configuration instead of telling the owner something about the device.
-    // When a smart task IS governing it, the task's own reason is more specific
-    // and wins on its own. (Owner ruling, 2026-09-10.)
-    case PLAN_REASON_CODES.awaitingPelsStart:
-      return '';
-    default: {
-      const exhaustive: never = reason;
-      return exhaustive;
-    }
-  }
+  return STATIC_REASON_USER_TEXT[reason.code];
 }
 
 function formatDetailReasonUserFacing(reason: DetailReason): string {
@@ -608,8 +544,6 @@ export function formatDeviceReasonUserFacing(reason: DeviceReason): string {
   switch (reason.code) {
     case PLAN_REASON_CODES.restoreNeed:
       return formatRestoreNeedUserFacing(reason);
-    case PLAN_REASON_CODES.shortfall:
-      return formatShortfallReason({ needKw: reason.needKw, headroomKw: reason.headroomKw });
     case PLAN_REASON_CODES.insufficientHeadroom:
       return formatInsufficientHeadroomUserFacing(reason);
     case PLAN_REASON_CODES.shedInvariant:

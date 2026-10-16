@@ -93,7 +93,7 @@ describe('external-off hold — plan reason', () => {
   });
 
   it('marks the device inactive during materialization', () => {
-    const result = applyOffStateReason(heldDevice(), { inShortfall: false });
+    const result = applyOffStateReason(heldDevice(), false);
     expect(result.plannedState).toBe('inactive');
     expect(result.reason).toEqual({ code: PLAN_REASON_CODES.externalOffHold });
   });

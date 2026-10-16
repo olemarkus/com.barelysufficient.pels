@@ -316,7 +316,6 @@ const normalizeHeld = (params: {
 }) => normalizeShedReasons([params.dev], reasonContext({
       shedReasons: params.shedReasons ?? new Map(),
       guardInShortfall: params.guardInShortfall ?? false,
-      headroomRaw: 1,
       inCooldown: params.inCooldown ?? false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,

@@ -73,7 +73,7 @@ The raw plan still uses older internal identifiers. These are implementation ter
 | `reason: "shed while the meter is silent"` | Limited because the whole-home meter stopped reporting; the card shows **Waiting for a new power reading**. |
 | `reason: "shed due to daily budget"` | Limited by today's budget pacing; the card shows the power the device still needs, or offers **Let it run now**. |
 | `reason: "restore (...)"` | Waiting to resume, with the required and available power shown internally. |
-| `reason: "shortfall (...)"` | Manual action needed — hard cap may be exceeded. |
+| `reason: "shortfall"` | Manual action needed — hard cap may be exceeded; the card shows the power the device still needs. |
 | `reason: "waiting for solar surplus"` | Held off until the home exports enough solar. |
 
 These raw strings may still appear in diagnostics, logs, tests, or older Homey capability values. Normal docs and UI should use the user-facing wording above.

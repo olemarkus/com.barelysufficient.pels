@@ -570,13 +570,13 @@ describe('PlanService', () => {
         .fn()
         .mockResolvedValueOnce(buildPlan(
           20,
-          { code: 'shortfall', needKw: 1.21, headroomKw: -1.23 },
+          { code: 'shortfall', shortfallKw: 2.5 },
           { totalKw: 3.2, softLimitKw: 2, headroomKw: -1.23 },
           { currentState: 'off', binaryControl: { on: false }, plannedState: 'shed' },
         ))
         .mockResolvedValueOnce(buildPlan(
           20,
-          { code: 'shortfall', needKw: 1.24, headroomKw: -1.24 },
+          { code: 'shortfall', shortfallKw: 2.5 },
           { totalKw: 3.2, softLimitKw: 2, headroomKw: -1.24 },
           { currentState: 'off', binaryControl: { on: false }, plannedState: 'shed' },
         )),

@@ -37,7 +37,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map([['dev-1', fixtureDeviceReason('shed due to capacity-period budget')!]]),
       guardInShortfall: false,
-      headroomRaw: 0,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
@@ -53,7 +52,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
-      headroomRaw: 0,
       inCooldown: true,
       activeOvershoot: false,
       shedCooldownRemainingSec: 25,
@@ -70,13 +68,12 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: true,
-      headroomRaw: 0.15,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
     }));
 
-    expect(reasonText(device?.reason)).toBe('shortfall (need 1.20kW, headroom 0.15kW)');
+    expect(reasonText(device?.reason)).toBe('shortfall');
   });
 
   it('does not replace budget reasons with shortfall text', () => {
@@ -87,7 +84,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: true,
-      headroomRaw: 0.15,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
@@ -104,7 +100,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map([['dev-1', fixtureDeviceReason('shed due to capacity')!]]),
       guardInShortfall: false,
-      headroomRaw: 1.5,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
@@ -121,7 +116,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
-      headroomRaw: 0,
       inCooldown: true,
       activeOvershoot: false,
       shedCooldownRemainingSec: 25,
@@ -143,7 +137,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
-      headroomRaw: 0,
       inCooldown: true,
       activeOvershoot: false,
       shedCooldownRemainingSec: 25,
@@ -161,7 +154,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: true,
-      headroomRaw: 0.15,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
@@ -178,7 +170,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
-      headroomRaw: 0,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
@@ -203,7 +194,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
-      headroomRaw: 0,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
@@ -227,7 +217,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
-      headroomRaw: 0,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
@@ -250,7 +239,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
-      headroomRaw: 0,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
@@ -272,7 +260,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map([['dev-fresh', { code: 'capacity' }]]),
       guardInShortfall: false,
-      headroomRaw: 0,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
@@ -298,7 +285,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
-      headroomRaw: 0.7,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
@@ -321,7 +307,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
-      headroomRaw: 0.7,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
@@ -345,7 +330,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
-      headroomRaw: 1.7,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
@@ -364,7 +348,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
-      headroomRaw: 0.7,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
@@ -383,7 +366,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
-      headroomRaw: 0,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
@@ -401,7 +383,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
-      headroomRaw: 0,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
@@ -420,7 +401,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
-      headroomRaw: 0,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
@@ -446,7 +426,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
-      headroomRaw: 0,
       inCooldown: true,
       activeOvershoot: false,
       shedCooldownRemainingSec: 25,
@@ -465,7 +444,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
-      headroomRaw: 0,
       inCooldown: true,
       activeOvershoot: false,
       shedCooldownRemainingSec: 25,
@@ -486,7 +464,6 @@ describe('normalizeShedReasons', () => {
       })], reasonContext({
       shedReasons: new Map([['pool-pump', fixtureDeviceReason('shed due to capacity')!]]),
       guardInShortfall: false,
-      headroomRaw: 0,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
@@ -529,10 +506,10 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     softLimitSource?: 'capacity' | 'daily' | null;
     physicalLimitBreached?: boolean;
     lastDeviceShedMsById?: Readonly<Record<string, number>>;
+    guardInShortfall?: boolean;
   }) => normalizeShedReasons(params.devices, reasonContext({
       shedReasons: new Map(),
-      guardInShortfall: false,
-      headroomRaw: params.capacityAvailableKw,
+      guardInShortfall: params.guardInShortfall ?? false,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
@@ -558,6 +535,29 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     // gap = 0.25 − (0.5 − 1.2 − 0.25) = 1.2 kW
     const [device] = normalize({ devices: [heldDevice()], capacityAvailableKw: 0.5 });
     expect(device?.reason).toEqual({ code: 'capacity', shortfallKw: 0.7 });
+  });
+
+  // The shortfall hold states the gap the restore gate rejects on, recent-shed
+  // inflation included: base need 1.2 kW, shed a minute ago → 1.38 kW, against
+  // −0.5 kW available → 1.88 kW, shown as 1.9 (the base need would say 1.7).
+  it('attaches the inflated admission gap to a shortfall hold', () => {
+    const [device] = normalize({
+      devices: [heldDevice({ reason: { code: 'keep', detail: null } })],
+      capacityAvailableKw: -0.5,
+      guardInShortfall: true,
+      lastDeviceShedMsById: { 'held-dev': SHORTFALL_NOW_MS - 60_000 },
+    });
+    expect(device?.reason).toEqual({ code: 'shortfall', shortfallKw: 1.9 });
+  });
+
+  it('folds a shortfall hold to the hour while its budget is spent', () => {
+    const [device] = normalize({
+      devices: [heldDevice({ reason: { code: 'keep', detail: null } })],
+      capacityAvailableKw: -0.5,
+      guardInShortfall: true,
+      hourlyBudgetExhausted: true,
+    });
+    expect(device?.reason).toEqual({ code: 'hourly_budget' });
   });
 
   it('attaches THIS device\'s own gap to a swap victim', () => {
@@ -593,7 +593,6 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     const [device] = normalizeShedReasons([heldDevice({ reason: { code: 'daily_budget', shortfallKw: 0.8 } })], reasonContext({
       shedReasons: new Map(),
       guardInShortfall: false,
-      headroomRaw: 0.5,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
@@ -1172,7 +1171,6 @@ describe('applyShedTemperatureHold', () => {
     const [device] = normalizeShedReasons(held.planDevices, reasonContext({
       shedReasons: new Map(),
       guardInShortfall: true,
-      headroomRaw: -0.5,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
@@ -1180,7 +1178,7 @@ describe('applyShedTemperatureHold', () => {
 
     expect(device?.plannedState).toBe('shed');
     expect(plannedTargetOf(device)).toBe(16);
-    expect(reasonText(device?.reason)).toBe('shortfall (need 1.20kW, headroom -0.50kW)');
+    expect(reasonText(device?.reason)).toBe('shortfall');
   });
 
   // `inShedWindow` is the OR of four causes (`restore/timing.ts`), three of them

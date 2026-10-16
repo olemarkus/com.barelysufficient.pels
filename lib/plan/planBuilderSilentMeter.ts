@@ -133,7 +133,7 @@ export class SilentMeterPlanBuilder {
       if (!sheddingPlan.shedReasons.has(id)) sheddingPlan.shedReasons.set(id, this.directiveReason());
     }
 
-    let planDevices = this.stages.buildPlanDevices(context, sheddingPlan, { inShortfall: false })
+    let planDevices = this.stages.buildPlanDevices(context, sheddingPlan)
       .map((dev) => holdShortOfDemandSideLimit(dev, context.temperatureSetpoints));
     // Smart-task release intents still ride the plan (a release is a negative
     // command, safe without a measurement); a `binary_restore` is the one

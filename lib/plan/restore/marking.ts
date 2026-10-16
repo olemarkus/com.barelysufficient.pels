@@ -1,7 +1,7 @@
 import type { DevicePlanDevice } from '../planTypes';
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { SwapLedger } from '../swap';
-import { buildRestoreShortfallReason } from './accounting';
+import { SHORTFALL_REASON } from '../planReasonStrings';
 import {
   getOffDevices,
   getSteppedRestoreCandidates,
@@ -52,14 +52,12 @@ export function markOffDevicesStayOff(
 
 export function markRestoreCandidatesStayShedForShortfall(
   deviceMap: Map<string, DevicePlanDevice>,
-  headroomKw: number | null,
 ): void {
-  if (headroomKw === null) return;
   const steppedCandidates = getSteppedRestoreCandidates([...deviceMap.values()]);
-  holdOffDevices(deviceMap, (dev) => buildRestoreShortfallReason(dev, headroomKw));
+  holdOffDevices(deviceMap, () => SHORTFALL_REASON);
 
   for (const dev of steppedCandidates) {
-    const reason = buildRestoreShortfallReason(dev, headroomKw);
+    const reason = SHORTFALL_REASON;
     if (isOffSteppedRestoreCandidate(dev) || dev.selectedStepId === undefined) {
       setDevice(deviceMap, dev.id, buildSteppedRestoreHoldUpdate(dev, reason));
       continue;

@@ -4,7 +4,7 @@ import {
   RECENT_SHED_RESTORE_BACKOFF_MS,
   RECENT_SHED_RESTORE_MULTIPLIER,
 } from '../planConstants';
-import { buildRestoreHeadroomReason, buildShortfallReason } from '../planReasonStrings';
+import { buildRestoreHeadroomReason } from '../planReasonStrings';
 import type { RestorePowerSource } from '../../../packages/contracts/src/types';
 
 // Re-exported for plan-layer consumers (planReasons, restore/index, tests)
@@ -62,14 +62,6 @@ export function computeBaseRestoreNeed(
   const power = estimateRestorePower(dev);
   const buffer = computeRestoreBufferKw(power);
   return { power, buffer, needed: power + buffer };
-}
-
-/**
- * The shortfall a device held off by the capacity guard's shortfall carries:
- * its base restore need against the measured headroom.
- */
-export function buildRestoreShortfallReason(dev: DevicePlanDevice, headroomKw: number): DevicePlanDevice['reason'] {
-  return buildShortfallReason(computeBaseRestoreNeed(dev).needed, headroomKw);
 }
 
 /**

@@ -24,7 +24,6 @@ export const reasonContext = (
   return {
     shedReasons: new Map<string, DeviceReason>(),
     guardInShortfall: false,
-    headroomRaw: 0,
     timing: restoreTimingFixture({
       inCooldown: inCooldown ?? false,
       activeOvershoot: activeOvershoot ?? false,

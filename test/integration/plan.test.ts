@@ -724,7 +724,7 @@ describe('Device plan snapshot', () => {
     const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(devPlan?.plannedState).toBe('shed');
     expect(devPlan?.shedAction).toBe('set_temperature');
-    expect(reasonText(devPlan?.reason)).toContain('shortfall (need');
+    expect(devPlan?.reason.code).toBe('shortfall');
   });
 
   it('keeps a min-temperature shed device marked as shed during cooldown even if its target was overwritten', async () => {
