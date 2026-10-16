@@ -43,6 +43,7 @@ Execution uses the actuator seam and has no apply-without-decide reconciliation 
 - `homey app validate` is the only Homey CLI command authorized by default. Run, install, and publish commands require an explicit user request.
 - For UI work, use Material Web when a matching component fits; otherwise use a shared PELS primitive and existing design tokens. Read `notes/ui-terminology.md` when changing user-facing wording.
 - For settings keys, use `notes/settings-key-ownership.md`; for planner capacity and safe pace, use `docs/technical.md` and `notes/safe-pace-two-constraints.md`; for test placement, use `notes/testing-taxonomy.md`.
+- Do not write hedges that scare users off, such as "still needs validation before advertising support" or "everything PELS cannot do yet", in docs, notes, store copy, or UI. State what PELS does; record a concrete known defect in `TODO.md` instead.
 - `TODO.md` is a mutable backlog, not a stable reference. Do not cite its entries from code or other docs; add only actionable items with a location, closing change, and completion criterion.
 
 ### Device card reason lines

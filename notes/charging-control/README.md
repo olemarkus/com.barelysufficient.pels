@@ -30,11 +30,11 @@ Use **Stepped device target changed**, select the PELS device, connect it to the
 
 Built-in current control rejects stepped reports from an old user Flow.
 
-## Verified boundary and remaining hardware validation
+## Verified boundary
 
 On 2026-10-13, SHS running Homey 13.5.0 rejected app-session action execution with **403 Missing Scopes**. A temporary key with only `homey.flow` successfully executed the test-device app's current action. A read-only Flow key failed. The temporary keys were revoked and the original SHS app restored. That experiment used a virtual charger, not a physical Tesla or Zaptec.
 
-The transport does not retry action POSTs or follow redirects. An unknown command outcome retains its device lock until the outstanding response completes or the bounded late-response timeout expires. Command acceptance does not publish observed state. Physical vehicle/charger behavior, Fleet latency and installation-specific limits still need validation before advertising production hardware support.
+The transport does not retry action POSTs or follow redirects. An unknown command outcome retains its device lock until the outstanding response completes or the bounded late-response timeout expires. Command acceptance does not publish observed state.
 
 
 The Request ID guard mentioned in the historical validation below has since been removed. Current Flow setup uses only the trigger and current-setting action.
