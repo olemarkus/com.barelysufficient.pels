@@ -155,3 +155,20 @@ export type DeferredObjectivePlanPreviewEstimate = {
     pauseLowerPriorityDevices: boolean;
   };
 };
+
+// One quick-target choice for a new smart task: the target, the deadline PELS
+// would plan toward (the earliest finish the power limits allow, plus slack so
+// PELS can still skip an expensive hour), and the estimate for that deadline.
+export type SmartTaskQuickTarget = {
+  target: number;
+  deadlineAtMs: number;
+  estimate: DeferredObjectivePlanPreviewEstimate;
+};
+
+// The quick targets a device offers now. `ready` may list none: an energy task,
+// a device at its maximum, or targets that cannot finish within a day leave the
+// creation surface with Customize only. `unavailable` carries why no target can
+// be timed at all (a charger with no car connected reads `invalid_session`).
+export type SmartTaskQuickTargetsRead =
+  | { state: 'ready'; targets: SmartTaskQuickTarget[] }
+  | { state: 'unavailable'; reason: DeferredObjectivePlanPreviewUnavailableReason };

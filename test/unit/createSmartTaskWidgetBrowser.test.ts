@@ -50,6 +50,21 @@ const DEVICE_B = {
   currentValue: 55,
 };
 
+const EV_DEVICE = {
+  deviceId: 'ev', deviceName: 'Garage charger', kind: 'ev_soc', unitSymbol: '%',
+  goalMin: 1, goalMax: 100, goalStep: 1, defaultGoal: 80, currentValue: 58, offersQuickTargets: true,
+};
+
+const quickTarget = (target: number, readyByLocalTime: string, deadlineAtMs: number) => ({
+  target, deadlineAtMs, readyByLocalTime, deadlineLabel: `Today ${readyByLocalTime}`,
+  likelyFinishLocalTime: '00:50',
+  estimate: {
+    budgetRole: 'none' as const, status: 'on_track' as const, scheduledHours: [],
+    projectedFinishAtMs: deadlineAtMs - 1, energyEstimateKWh: 16, energyExpectedKWh: null,
+    costEstimate: 21, costUnit: 'kr',
+  },
+});
+
 const OK_PREVIEW = {
   ok: true as const,
   deadlineAtMs: Date.now() + 60 * 60 * 1000,
@@ -107,7 +122,6 @@ describe('create smart task widget browser', () => {
       await connect(calls);
       enter('[data-goal-value]', '67.5');
       enter('[data-ready-by-input]', '06:45');
-      expect(document.querySelectorAll('[data-ready-by][aria-pressed="true"]')).toHaveLength(0);
       expect(document.querySelector('[data-ready-by-echo]')?.textContent).toContain('06:45');
       click('[data-preview-btn]');
       await flushPromises();
@@ -125,18 +139,6 @@ describe('create smart task widget browser', () => {
       expect(calls[2]).toMatchObject({ path: '/create', body: {
         target: 67.5, readyByLocalTime: '06:45', deadlineAtMs: OK_PREVIEW.deadlineAtMs,
       } });
-    });
-
-    test('a preset replaces a custom time and is submitted without changing the goal', async () => {
-      const calls: { path: string; body: unknown }[] = [];
-      await connect(calls);
-      enter('[data-ready-by-input]', '06:45');
-      click('[data-ready-by-id="midday"]');
-      expect((document.querySelector('[data-ready-by-input]') as HTMLInputElement).value).toBe('12:00');
-      expect(document.querySelector('[data-ready-by-id="midday"]')?.getAttribute('aria-pressed')).toBe('true');
-      click('[data-preview-btn]');
-      await flushPromises();
-      expect(calls[0]).toMatchObject({ body: { target: 65, readyByLocalTime: '12:00' } });
     });
 
     test.each(['', '90', '65.25'])('invalid goal %s cannot send a preview or silently use the last goal', async (goal) => {
@@ -767,6 +769,23 @@ describe('create smart task widget browser', () => {
       expect(setHeight).toHaveBeenCalledTimes(1);
     });
 
+    test('starts sizing only after Homey.ready(), which ignores an earlier setHeight', async () => {
+      installFakeResizeObserver();
+      stubRootHeight(300);
+      const order: string[] = [];
+      const homey: WidgetHomey = {
+        api: async () => ({ state: 'ready', devices: [DEVICE_A] }),
+        ready: () => { order.push('ready'); },
+        setHeight: () => { order.push('setHeight'); },
+      };
+      installWidget(window as WidgetWindow, document);
+      ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(homey);
+      expect(triggers).toHaveLength(0);
+      await flushPromises();
+      triggers[0]();
+      expect(order).toEqual(['ready', 'setHeight']);
+    });
+
     test('the no-Homey boot never observes or sizes', async () => {
       installFakeResizeObserver();
       installWidget(window as WidgetWindow, document);
@@ -774,6 +793,116 @@ describe('create smart task widget browser', () => {
       await flushPromises();
       expect(triggers).toHaveLength(0);
     });
+  });
+});
+
+describe('create smart task widget quick targets', () => {
+  const QUICK = { state: 'ready', targets: [
+    quickTarget(70, '23:30', Date.now() + 5 * 3_600_000),
+    quickTarget(80, '01:30', Date.now() + 7 * 3_600_000),
+  ] };
+
+  const connect = async (
+    quickResponse: unknown,
+    calls: { path: string; body: unknown }[],
+  ): Promise<void> => {
+    document.body.innerHTML = WIDGET_MARKUP;
+    const homey: WidgetHomey = {
+      api: async (method, path, body) => {
+        if (method === 'GET') return { state: 'ready', devices: [EV_DEVICE] };
+        calls.push({ path, body });
+        if (path === '/quick_targets') return quickResponse;
+        return path === '/preview' ? OK_PREVIEW : { ok: true };
+      },
+    };
+    installWidget(window as WidgetWindow, document);
+    (window as WidgetWindow).onHomeyReady?.(homey as never);
+    await flushPromises();
+    click('[data-device-button]');
+    await flushPromises();
+  };
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+    delete (window as WidgetWindow).onHomeyReady;
+  });
+
+  test('shows each target with its deadline and creates the tapped one with that deadline', async () => {
+    const calls: { path: string; body: unknown }[] = [];
+    await connect(QUICK, calls);
+    expect(calls[0]).toEqual({ path: '/quick_targets', body: { deviceId: 'ev' } });
+    expect(document.getElementById('widget-root')?.dataset.view).toBe('quick');
+    const boxes = [...document.querySelectorAll('[data-quick-target]')].map((box) => [
+      box.querySelector('[data-quick-target-value]')?.textContent,
+      box.querySelector('[data-quick-target-by]')?.textContent,
+    ]);
+    expect(boxes).toEqual([['70%', 'by 23:30'], ['80%', 'by 01:30']]);
+    expect(document.querySelector('[data-quick-finish]')?.textContent)
+      .toBe('Ready by Today 23:30 · likely done around 00:50');
+    click('[data-quick-index="1"]');
+    expect(document.querySelector('[data-quick-index="1"]')?.getAttribute('aria-pressed')).toBe('true');
+    click('[data-quick-start]');
+    await flushPromises();
+    expect(calls[1]).toEqual({ path: '/create', body: {
+      deviceId: 'ev', kind: 'ev_soc', target: 80, readyByLocalTime: '01:30', deadlineAtMs: QUICK.targets[1]!.deadlineAtMs,
+    } });
+    expect(document.getElementById('widget-root')?.dataset.view).toBe('created');
+  });
+
+  test('Customize opens the goal form on the selected goal, and Back returns to the timed targets', async () => {
+    const calls: { path: string; body: unknown }[] = [];
+    await connect(QUICK, calls);
+    click('[data-quick-index="1"]');
+    click('[data-quick-customize]');
+    expect((document.querySelector('[data-goal-value]') as HTMLInputElement).value).toBe('80');
+    // Not the box's 01:30: a bare time resolves to its next occurrence, which
+    // may be a day earlier than the box's deadline.
+    expect((document.querySelector('[data-ready-by-input]') as HTMLInputElement).value).toBe('07:00');
+    click('[data-compose-back]');
+    expect(document.getElementById('widget-root')?.dataset.view).toBe('quick');
+    expect(document.querySelector('[data-quick-index="1"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(calls.filter((call) => call.path === '/quick_targets')).toHaveLength(1);
+  });
+
+  test('a refused request says why on the quick step and keeps Customize', async () => {
+    const calls: { path: string; body: unknown }[] = [];
+    await connect({ state: 'rejected', reason: 'device_in_sub_home' }, calls);
+    expect(document.getElementById('widget-root')?.dataset.view).toBe('quick');
+    expect(document.querySelector('[data-quick-error]')?.hasAttribute('hidden')).toBe(false);
+    expect((document.querySelector('[data-quick-start]') as HTMLButtonElement).disabled).toBe(true);
+    expect((document.querySelector('[data-quick-customize]') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  test('with no target to time (no car connected) it opens the goal form, whose Back is the device list', async () => {
+    const calls: { path: string; body: unknown }[] = [];
+    await connect({ state: 'unavailable', reason: 'invalid_session' }, calls);
+    expect(document.getElementById('widget-root')?.dataset.view).toBe('compose');
+    expect((document.querySelector('[data-ready-by-input]') as HTMLInputElement).value).toBe('07:00');
+    click('[data-compose-back]');
+    expect(document.getElementById('widget-root')?.dataset.view).toBe('picker');
+  });
+
+  test('a charger without a car can still be created from the goal form', async () => {
+    const calls: { path: string; body: unknown }[] = [];
+    document.body.innerHTML = WIDGET_MARKUP;
+    const noCarPreview = { ...OK_PREVIEW, estimate: {
+      ...OK_PREVIEW.estimate, status: 'unavailable' as const, unavailableReason: 'invalid_session' as const,
+      scheduledHours: [], costEstimate: null,
+    } };
+    const homey: WidgetHomey = {
+      api: async (method, path, body) => {
+        if (method === 'GET') return { state: 'ready', devices: [{ ...EV_DEVICE, offersQuickTargets: false }] };
+        calls.push({ path, body });
+        return path === '/preview' ? noCarPreview : { ok: true };
+      },
+    };
+    installWidget(window as WidgetWindow, document);
+    (window as WidgetWindow).onHomeyReady?.(homey as never);
+    await flushPromises();
+    click('[data-device-button]');
+    click('[data-preview-btn]');
+    await flushPromises();
+    expect((document.querySelector('[data-create-btn]') as HTMLButtonElement).disabled).toBe(false);
   });
 });
 

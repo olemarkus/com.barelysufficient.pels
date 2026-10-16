@@ -10,6 +10,7 @@ import type {
 import type {
   DeferredObjectivePlanPreviewCandidate,
   DeferredObjectivePlanPreviewEstimate,
+  SmartTaskQuickTargetsRead,
 } from './deferredObjectivePlanPreview.js';
 import type { StarvationNotListedDevice, StarvationRescueDevice } from './starvationRescue.js';
 import type { DailyBudgetUiRead } from './dailyBudgetTypes.js';
@@ -58,6 +59,7 @@ export type CreateSmartTaskHostApi = {
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
   ): DeferredObjectivePlanPreviewEstimate;
+  previewSmartTaskQuickTargets(deviceId: string): SmartTaskQuickTargetsRead;
   createDeferredObjective(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,

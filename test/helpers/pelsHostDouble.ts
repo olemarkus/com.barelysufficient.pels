@@ -65,6 +65,7 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     getCreateSmartTaskCandidateDevices: () => ({ state: 'unavailable' }),
     resolveSmartTaskHomeScope: () => 'unavailable',
     previewDeferredObjectivePlan: notWired('previewDeferredObjectivePlan'),
+    previewSmartTaskQuickTargets: notWired('previewSmartTaskQuickTargets'),
     getStarvedRescueDevices: () => [],
     getLimitedNotListedDevices: () => [],
     previewStarvationRescuePlan: notWired('previewStarvationRescuePlan'),

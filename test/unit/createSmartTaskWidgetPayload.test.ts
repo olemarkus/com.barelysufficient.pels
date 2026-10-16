@@ -71,8 +71,11 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
       goalStep: 0.5,
       currentValue: 48,
     });
-    // Default goal is goal-oriented (the 60 °C common case, above current 48).
-    expect(device.defaultGoal).toBe(60);
+    // The default goal is the first quick target: the device's own 50 °C
+    // setpoint, above the current 48 °C. Not the 60 °C water-heater constant,
+    // which clamped into a room thermostat's range seeded 40 °C.
+    expect(device.defaultGoal).toBe(50);
+    expect(device.offersQuickTargets).toBe(true);
   });
 
   it('maps an EV charger to a % goal with a 1..100 battery range', () => {

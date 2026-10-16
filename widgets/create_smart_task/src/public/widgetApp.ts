@@ -1,5 +1,4 @@
 import {
-  CREATE_SMART_TASK_READY_BY_PRESETS,
   CREATE_SMART_TASK_WIDGET_COPY,
   resolveCreateSmartTaskRejectCopy,
 } from '../../../../packages/shared-domain/src/deadlineLabels';
@@ -11,15 +10,23 @@ import {
   type WidgetWindowBase,
 } from '../../../_shared/widgetRuntime';
 import { widgetErrorReporter, type WidgetErrorReporter } from '../../../_shared/widgetClientLog';
-import { closestDataValue } from '../../../_shared/widgetDom';
 import { resolveCreateSmartTaskPreviewPayload } from './previewPayloads';
-import { canCreateFromPreview, renderWidget, type RenderTargets, type ViewState } from './render';
+import { renderWidget, type RenderTargets, type ViewState } from './render';
+import {
+  backView,
+  buildCandidateRequest,
+  deviceSelectedView,
+  editedInputView,
+  quickTargetsLoadedView,
+  submittableRequest,
+} from './viewTransitions';
+import { clickedView, resolveClickAction } from './clickActions';
 import type {
   CreateSmartTaskCandidateRequest,
   CreateSmartTaskCreateResponse,
-  CreateSmartTaskDevice,
   CreateSmartTaskDevicesPayload,
   CreateSmartTaskPreviewResponse,
+  CreateSmartTaskQuickTargetsResponse,
 } from '../createSmartTaskWidgetTypes';
 
 const C = CREATE_SMART_TASK_WIDGET_COPY;
@@ -55,6 +62,9 @@ export type WidgetController = SharedWidgetController<WidgetHomey>;
 // widget only self-corrects on the next interaction. The observer fires once
 // layout settles and on every later size change. `getHomey` is read lazily so
 // the reporter created before bootstrap still sees the assigned Homey client.
+// It starts observing only after `Homey.ready()`: Homey ignores `setHeight`
+// before then, and the reporter never repeats a height it already sent, so an
+// early report left the widget clipped at its manifest height.
 const createHeightReporter = (
   root: HTMLElement,
   widgetWindow: WidgetWindow,
@@ -140,7 +150,7 @@ const PREVIEW_RESPONSE: CreateSmartTaskPreviewResponse = {
 const resolveTargets = (d: Document): RenderTargets | null => {
   const root = d.getElementById('widget-root');
   const deviceTemplate = d.getElementById('device-template');
-  const readyByTemplate = d.getElementById('ready-by-template');
+  const quickTargetTemplate = d.getElementById('quick-target-template');
   const map = {
     pickerView: '[data-picker-view]',
     pickerPrompt: '[data-picker-prompt]',
@@ -148,13 +158,19 @@ const resolveTargets = (d: Document): RenderTargets | null => {
     pickerList: '[data-device-list]',
     pickerEmpty: '[data-picker-empty]',
     pickerEmptyHint: '[data-picker-empty-hint]',
+    quickView: '[data-quick-view]',
+    quickTitle: '[data-quick-title]',
+    quickStatusEl: '[data-quick-status]',
+    quickList: '[data-quick-list]',
+    quickSummaryEl: '[data-quick-summary]',
+    quickFinishEl: '[data-quick-finish]',
+    quickErrorEl: '[data-quick-error]',
     composeView: '[data-compose-view]',
     composeTitle: '[data-compose-title]',
     goalLabel: '[data-goal-label]',
     goalUnitEl: '[data-goal-unit]',
     goalContextEl: '[data-goal-context]',
     readyByLabel: '[data-ready-by-label]',
-    readyByList: '[data-ready-by-list]',
     readyByEchoEl: '[data-ready-by-echo]',
     composeErrorEl: '[data-compose-error]',
     extraPermsTitle: '[data-extra-perms-title]',
@@ -186,6 +202,9 @@ const resolveTargets = (d: Document): RenderTargets | null => {
   } as const;
   const buttons = {
     pickerRetryBtn: '[data-picker-retry]',
+    quickBackBtn: '[data-quick-back]',
+    quickCustomizeBtn: '[data-quick-customize]',
+    quickStartBtn: '[data-quick-start]',
     composeBackBtn: '[data-compose-back]',
     goalDecBtn: '[data-goal-dec]',
     goalIncBtn: '[data-goal-inc]',
@@ -214,7 +233,7 @@ const resolveTargets = (d: Document): RenderTargets | null => {
   if (
     !(root instanceof HTMLElement)
     || !(deviceTemplate instanceof HTMLTemplateElement)
-    || !(readyByTemplate instanceof HTMLTemplateElement)
+    || !(quickTargetTemplate instanceof HTMLTemplateElement)
     || Object.values(generic).some((el) => !(el instanceof HTMLElement))
     || Object.values(btns).some((el) => !(el instanceof HTMLButtonElement))
     || Object.values(checks).some((el) => !(el instanceof HTMLInputElement))
@@ -224,108 +243,35 @@ const resolveTargets = (d: Document): RenderTargets | null => {
   return {
     root,
     deviceTemplate,
-    readyByTemplate,
+    quickTargetTemplate,
     ...(generic as Record<string, HTMLElement>),
     ...(btns as Record<string, HTMLButtonElement>),
     ...(checks as Record<string, HTMLInputElement>),
   } as RenderTargets;
 };
 
-const initialComposeView = (device: CreateSmartTaskDevice): Extract<ViewState, { kind: 'compose' }> => ({
-  kind: 'compose',
-  device,
-  goal: device.defaultGoal,
-  readyByLocalTime: CREATE_SMART_TASK_READY_BY_PRESETS[0].localTime,
-  // Extra permissions always start off — a fresh device choice never inherits a
-  // prior task's opt-ins.
-  exemptFromBudget: false,
-  limitLowerPriorityDevices: false,
-});
 
-// Pure view transitions (no closure state) so the controller's click handlers
-// stay one-liners. Each returns the next view, or the current view unchanged
-// when the action doesn't apply to the current state.
-const steppedGoalView = (view: ViewState, direction: 1 | -1): ViewState => {
-  if (view.kind !== 'compose') return view;
-  const { device, goal } = view;
-  if (goal === null) return view;
-  const next = Math.round((goal + direction * device.goalStep) * 100) / 100;
-  return { ...view, goal: Math.min(device.goalMax, Math.max(device.goalMin, next)) };
+// The brief "created" flash before the widget returns to the device list.
+const createFlashTimer = (
+  widgetWindow: WidgetWindow,
+  onElapsed: () => void,
+): { start: () => void; cancel: () => void } => {
+  let timer: number | null = null;
+  const cancel = (): void => {
+    if (timer !== null) widgetWindow.clearTimeout(timer);
+    timer = null;
+  };
+  return {
+    start: (): void => {
+      cancel();
+      timer = widgetWindow.setTimeout(() => {
+        timer = null;
+        onElapsed();
+      }, CREATED_FLASH_MS);
+    },
+    cancel,
+  };
 };
-
-// Pure transitions (mirror steppedGoalView). The two permissions are independent.
-const readyByPresetView = (view: ViewState, readyById: string): ViewState => {
-  if (view.kind !== 'compose') return view;
-  const preset = CREATE_SMART_TASK_READY_BY_PRESETS.find((entry) => entry.id === readyById);
-  return preset ? { ...view, readyByLocalTime: preset.localTime } : view;
-};
-
-const budgetToggledView = (view: ViewState, checked: boolean): ViewState => {
-  if (view.kind !== 'compose') return view;
-  return { ...view, exemptFromBudget: checked };
-};
-
-const limitToggledView = (view: ViewState, checked: boolean): ViewState => {
-  if (view.kind !== 'compose') return view;
-  return { ...view, limitLowerPriorityDevices: checked };
-};
-
-// "Back" steps preview→compose (keeping the candidate) or compose→picker.
-const backView = (view: ViewState): ViewState => {
-  if (view.kind === 'preview') {
-    return {
-      kind: 'compose',
-      device: view.device,
-      goal: view.goal,
-      readyByLocalTime: view.readyByLocalTime,
-      // Keep the opt-in extra permissions when stepping back to edit the goal.
-      exemptFromBudget: view.exemptFromBudget,
-      limitLowerPriorityDevices: view.limitLowerPriorityDevices,
-    };
-  }
-  return { kind: 'picker' };
-};
-
-// Build the request from the in-progress compose/preview view (both carry the
-// device, goal, ready-by, and opt-in permissions). `deadlineAtMs` is the
-// previewed deadline echoed back on create so the persisted task matches the
-// previewed window exactly (server-validated); omitted for the preview call.
-// Only opted-in permissions are sent (omitted when off); the server re-gates
-// limit-lower-priority against the device, so this is intent, not authority.
-const buildCandidateRequest = (
-  source: Extract<ViewState, { kind: 'compose' | 'preview' }>,
-  deadlineAtMs?: number,
-): CreateSmartTaskCandidateRequest | null => source.goal === null ? null : ({
-  deviceId: source.device.deviceId,
-  kind: source.device.kind,
-  target: source.goal,
-  readyByLocalTime: source.readyByLocalTime,
-  ...(deadlineAtMs === undefined ? {} : { deadlineAtMs }),
-  ...(source.exemptFromBudget ? { exemptFromBudget: true } : {}),
-  ...(source.limitLowerPriorityDevices ? { limitLowerPriorityDevices: true } : {}),
-});
-
-// The deadline to echo back on create: the one the preview RESOLVED and showed
-// the user, so the created task matches the previewed window exactly (the
-// server re-validates it). Undefined for a failed preview — create is disabled
-// in that case, so this only feeds an ok preview's create.
-const previewedDeadline = (response: CreateSmartTaskPreviewResponse): number | undefined => (
-  response.ok ? response.deadlineAtMs : undefined
-);
-
-// Discriminated action a click maps to. Pure resolution (no closure state) so
-// the controller's dispatcher stays small and the mapping is unit-testable.
-type ClickAction =
-  | { kind: 'select-device'; deviceId: string }
-  | { kind: 'select-ready-by'; readyById: string }
-  | { kind: 'goal-dec' }
-  | { kind: 'goal-inc' }
-  | { kind: 'toggle-budget' }
-  | { kind: 'toggle-limit' }
-  | { kind: 'preview' }
-  | { kind: 'create' }
-  | { kind: 'back' }
-  | { kind: 'retry-load' };
 
 // ─── API calls (module-level so the controller closure stays small) ──────────
 // Each helper swallows transport failures into the contract's `{ ok: false }`
@@ -383,6 +329,36 @@ const fetchPreview = async (
   }
 };
 
+// Demo quick targets for `?preview=1`, timed to the fictional evening above.
+const PREVIEW_QUICK_TARGETS: CreateSmartTaskQuickTargetsResponse = {
+  state: 'ready',
+  targets: [[65, '20:00', '19:30'], [70, '21:00', '20:20'], [75, '21:30', '21:10'], [80, '22:30', '22:00']]
+    .map(([target, by, likely], index) => ({
+      target: target as number,
+      deadlineAtMs: PREVIEW_NEXT_HOUR_MS + (index + 1) * HOUR_MS,
+      readyByLocalTime: by as string,
+      deadlineLabel: `Today ${by as string}`,
+      likelyFinishLocalTime: likely as string,
+      estimate: { ...PREVIEW_RESPONSE.estimate, energyEstimateKWh: 3.4 + index, costEstimate: 5.2 + index },
+    })),
+};
+
+const fetchQuickTargets = async (
+  homeyRef: WidgetHomey | null,
+  usePreviewData: boolean,
+  deviceId: string,
+  reporter: WidgetErrorReporter,
+): Promise<CreateSmartTaskQuickTargetsResponse> => {
+  if (usePreviewData) return PREVIEW_QUICK_TARGETS;
+  if (!homeyRef) return { state: 'rejected', reason: 'unavailable' };
+  try {
+    return await homeyRef.api('POST', '/quick_targets', { deviceId }) as CreateSmartTaskQuickTargetsResponse;
+  } catch (error) {
+    reporter.report('error', 'Failed to load smart task quick targets', error);
+    return { state: 'rejected', reason: 'unavailable' };
+  }
+};
+
 const submitCreate = async (
   homeyRef: WidgetHomey | null,
   usePreviewData: boolean,
@@ -402,54 +378,20 @@ const submitCreate = async (
   }
 };
 
-export const resolveClickAction = (eventTarget: EventTarget | null): ClickAction | null => {
-  if (!(eventTarget instanceof Element)) return null;
-  const deviceId = closestDataValue(eventTarget, '[data-device-button]', 'deviceId');
-  if (deviceId) return { kind: 'select-device', deviceId };
-  // Retry the device fetch in place after a load error (see the `error` payload
-  // state) — re-runs loadAndRender so a stuck load recovers without a reopen.
-  if (eventTarget.closest('[data-picker-retry]')) return { kind: 'retry-load' };
-  const readyById = closestDataValue(eventTarget, '[data-ready-by]', 'readyById');
-  if (readyById) return { kind: 'select-ready-by', readyById };
-  if (eventTarget.closest('[data-goal-dec]')) return { kind: 'goal-dec' };
-  if (eventTarget.closest('[data-goal-inc]')) return { kind: 'goal-inc' };
-  // Checkbox `click` fires AFTER the native toggle, so the handler reads the new
-  // `.checked` rather than flipping it — idempotent if a label-forwarded click
-  // also lands.
-  if (eventTarget.closest('[data-perm-budget-input]')) return { kind: 'toggle-budget' };
-  if (eventTarget.closest('[data-perm-limit-input]')) return { kind: 'toggle-limit' };
-  if (eventTarget.closest('[data-preview-btn]')) return { kind: 'preview' };
-  if (eventTarget.closest('[data-create-btn]')) return { kind: 'create' };
-  if (eventTarget.closest('[data-compose-back]') || eventTarget.closest('[data-preview-back]')
-    || eventTarget.closest('[data-preview-edit]')) {
-    return { kind: 'back' };
-  }
-  return null;
-};
-
-const editedInputView = (view: ViewState, target: EventTarget | null, targets: RenderTargets): ViewState => {
-  if (view.kind !== 'compose') return view;
-  if (target === targets.goalValueEl) {
-    const value = targets.goalValueEl.valueAsNumber;
-    return { ...view, goal: Number.isFinite(value) ? value : null };
-  }
-  if (target === targets.readyByInput) return { ...view, readyByLocalTime: targets.readyByInput.value };
-  return view;
-};
-
 export const createWidgetController = (params: {
   targets: RenderTargets;
   widgetDocument: Document;
   widgetWindow: WidgetWindow;
+  // Called once, right after `Homey.ready()`.
+  onReady: () => void;
 }): WidgetController => {
-  const { targets, widgetDocument, widgetWindow } = params;
+  const { targets, widgetDocument, widgetWindow, onReady } = params;
   let homeyRef: WidgetHomey | null = null;
   let initialRenderDone = false;
   let loadSequence = 0;
   let devicesPayload: CreateSmartTaskDevicesPayload | null = null;
   let view: ViewState = { kind: 'picker' };
   let usePreviewData = false;
-  let createdResetTimer: number | null = null;
   let destroyed = false;
   // Latest-request-wins token (bumped on `setView`): a stale preview/create that
   // resolves after the user moved on is dropped, not applied. See runPreview.
@@ -485,41 +427,54 @@ export const createWidgetController = (params: {
     render();
   };
 
-  const runCreate = async (): Promise<void> => {
-    if (view.kind !== 'preview' || view.submitting || !canCreateFromPreview(view.response)) return;
-    const request = buildCandidateRequest(view, previewedDeadline(view.response));
-    if (request === null) return;
+  // Create from the preview, or straight from a quick target. Success shows the
+  // `created` flash (the success label appears only after `ok: true`);
+  // otherwise the same step shows a retryable error: `deadline_passed` gets a
+  // bespoke "preview again" line, everything else (write_conflict /
+  // unavailable / …) the generic submit-failure copy (resolved in shared-domain).
+  const submit = async (): Promise<void> => {
+    const request = submittableRequest(view);
+    if (request === null || (view.kind !== 'quick' && view.kind !== 'preview')) return;
+    const kind = view.kind;
     view = { ...view, submitting: true, error: null };
     const token = ++requestSeq;
     render();
     const result = await submitCreate(homeyRef, usePreviewData, request, reporter);
-    // Same latest-request-wins guard: a create that resolves after the user
-    // backed out / switched candidates must not flip the now-different view.
-    if (token !== requestSeq || view.kind !== 'preview') return;
-    // Success → the `created` flash (success label only here, after `ok:true`).
-    // Otherwise back to the preview with a retryable error: `deadline_passed`
-    // gets a bespoke "preview again" line, everything else (write_conflict /
-    // unavailable / …) the generic submit-failure copy (resolved in shared-domain).
+    // Latest-request-wins: a create that resolves after the user backed out or
+    // switched candidates must not flip the now-different view.
+    if (token !== requestSeq || view.kind !== kind) return;
     view = result.ok
       ? { kind: 'created' }
       : { ...view, submitting: false, error: resolveCreateSmartTaskRejectCopy(result.reason) };
     render();
-    if (result.ok) scheduleCreatedReset();
+    if (result.ok) createdFlash.start();
   };
 
-  const scheduleCreatedReset = (): void => {
-    if (createdResetTimer !== null) widgetWindow.clearTimeout(createdResetTimer);
-    createdResetTimer = widgetWindow.setTimeout(() => {
-      if (destroyed) return; // torn down during the success flash — don't resurrect a render
-      view = { kind: 'picker' };
-      void loadAndRender();
-    }, CREATED_FLASH_MS);
+  // Time the quick targets for the device on the quick step.
+  const loadQuickTargets = async (): Promise<void> => {
+    if (view.kind !== 'quick' || view.quick.kind !== 'loading') return;
+    const token = ++requestSeq;
+    const response = await fetchQuickTargets(homeyRef, usePreviewData, view.device.deviceId, reporter);
+    if (destroyed || token !== requestSeq || view.kind !== 'quick') return;
+    view = quickTargetsLoadedView(view, response);
+    render();
   };
+
+  const enterView = (next: ViewState): void => {
+    setView(next);
+    if (view.kind === 'quick' && view.quick.kind === 'loading') void loadQuickTargets();
+  };
+
+  const createdFlash = createFlashTimer(widgetWindow, () => {
+    if (destroyed) return; // torn down during the success flash — don't resurrect a render
+    view = { kind: 'picker' };
+    void loadAndRender();
+  });
 
   const selectDevice = (deviceId: string): void => {
     if (!devicesPayload || devicesPayload.state !== 'ready') return;
     const device = devicesPayload.devices.find((entry) => entry.deviceId === deviceId);
-    if (device) setView(initialComposeView(device));
+    if (device) enterView(deviceSelectedView(device));
   };
 
   const handleClick = (event: Event): void => {
@@ -527,19 +482,12 @@ export const createWidgetController = (params: {
     if (action === null) return;
     switch (action.kind) {
       case 'select-device': selectDevice(action.deviceId); return;
-      case 'select-ready-by': setView(readyByPresetView(view, action.readyById)); return;
-      case 'goal-dec': setView(steppedGoalView(view, -1)); return;
-      case 'goal-inc': setView(steppedGoalView(view, 1)); return;
-      case 'toggle-budget': setView(budgetToggledView(view, targets.permBudgetInput.checked)); return;
-      case 'toggle-limit': setView(limitToggledView(view, targets.permLimitInput.checked)); return;
+      case 'quick-start': void submit(); return;
       case 'preview': void runPreview(); return;
-      case 'create': void runCreate(); return;
-      case 'back': setView(backView(view)); return;
+      case 'create': void submit(); return;
+      case 'back': enterView(backView(view)); return;
       case 'retry-load': void loadAndRender(); return;
-      default: {
-        const unhandled: never = action; // exhaustiveness guard: a new ClickAction is a type error here
-        void unhandled;
-      }
+      default: setView(clickedView(action, view, targets) ?? view);
     }
   };
 
@@ -560,6 +508,7 @@ export const createWidgetController = (params: {
     if (!initialRenderDone && homeyRef?.ready) {
       homeyRef.ready();
       initialRenderDone = true;
+      onReady();
     }
   };
 
@@ -571,10 +520,7 @@ export const createWidgetController = (params: {
 
   const destroy = (): void => {
     destroyed = true;
-    if (createdResetTimer !== null) {
-      widgetWindow.clearTimeout(createdResetTimer);
-      createdResetTimer = null;
-    }
+    createdFlash.cancel();
     targets.root.removeEventListener('click', handleClick);
     targets.root.removeEventListener('input', handleInput);
   };
@@ -591,8 +537,8 @@ export const installWidget = (
   // Size the iframe to content (Homey.setHeight) only once a real Homey client
   // is wired — the no-Homey preview/harness path renders at natural page size.
   // The reporter is created lazily inside `createController` (once the targets
-  // resolve), and its `observe`/`disconnect` are driven by the shared install's
-  // `onHomeyClient`/`wrapController` hooks.
+  // resolve). It starts observing once the controller has called `Homey.ready()`
+  // and stops in the shared install's `wrapController` destroy hook.
   let activeHomey: WidgetHomey | null = null;
   let heightReporter: ReturnType<typeof createHeightReporter> | null = null;
 
@@ -602,11 +548,12 @@ export const installWidget = (
     resolveTargets,
     createController: ({ targets, widgetDocument: doc, widgetWindow: win }) => {
       heightReporter = createHeightReporter(targets.root, win, () => activeHomey);
-      return createWidgetController({ targets, widgetDocument: doc, widgetWindow: win });
+      return createWidgetController({
+        targets, widgetDocument: doc, widgetWindow: win, onReady: () => heightReporter?.observe(),
+      });
     },
     onHomeyClient: (homey) => {
       activeHomey = homey;
-      heightReporter?.observe();
     },
     wrapController: (controller) => ({
       ...controller,

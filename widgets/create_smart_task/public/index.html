@@ -19,7 +19,26 @@
         <button type="button" class="retry-btn" data-picker-retry hidden>Try again</button>
       </section>
 
-      <!-- Step 2: set goal + ready by -->
+      <!-- Step 2: quick targets, each timed to its earliest finish plus slack -->
+      <section class="quick-view" data-quick-view hidden aria-live="polite">
+        <header class="step-header">
+          <button type="button" class="back-btn" data-quick-back aria-label="Back to devices">
+            <span class="back-btn__chevron" aria-hidden="true">&#8592;</span>
+            <span class="back-btn__name" data-quick-title></span>
+          </button>
+        </header>
+        <p class="step-caption" data-quick-status hidden></p>
+        <div class="quick-grid" data-quick-list></div>
+        <p class="preview-line" data-quick-summary hidden></p>
+        <p class="preview-line preview-line--when" data-quick-finish hidden></p>
+        <p class="compose-error" data-quick-error hidden></p>
+        <div class="preview-actions">
+          <button type="button" class="secondary-btn" data-quick-customize>Customize</button>
+          <button type="button" class="primary-btn" data-quick-start>Start</button>
+        </div>
+      </section>
+
+      <!-- Step 3: set goal + ready by -->
       <section class="compose-view" data-compose-view hidden aria-live="polite">
         <header class="step-header">
           <button type="button" class="back-btn" data-compose-back aria-label="Back to devices">
@@ -43,7 +62,6 @@
           <label class="field__label" data-ready-by-label for="task-ready-by">Ready by</label>
           <input id="task-ready-by" class="time-input" type="time" required data-ready-by-input>
         </div>
-        <div class="chip-row" data-ready-by-list></div>
         <p class="ready-by-echo" data-ready-by-echo hidden></p>
         <p class="compose-error" data-compose-error hidden></p>
         <!-- Optional, collapsed, OFF by default. Native <details> = an accessible
@@ -72,7 +90,7 @@
         <button type="button" class="primary-btn" data-preview-btn>Preview</button>
       </section>
 
-      <!-- Step 3: preview + confirm -->
+      <!-- Step 4: preview + confirm -->
       <section class="preview-view" data-preview-view hidden aria-live="polite">
         <header class="step-header">
           <button type="button" class="back-btn" data-preview-back aria-label="Back to goal">
@@ -120,8 +138,11 @@
         </button>
       </li>
     </template>
-    <template id="ready-by-template">
-      <button type="button" class="chip-btn" data-ready-by aria-pressed="false" aria-label="Ready by time"></button>
+    <template id="quick-target-template">
+      <button type="button" class="quick-btn" data-quick-target aria-pressed="false" aria-label="Quick target">
+        <span class="quick-btn__target" data-quick-target-value></span>
+        <span data-quick-target-by></span>
+      </button>
     </template>
     <script src="./index.js"></script>
   </body>

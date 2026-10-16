@@ -718,6 +718,10 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   creating: 'Creating…',
   // Shown briefly after a successful create before the widget resets.
   created: 'Smart task created',
+  // Quick targets: one-tap goals, each timed to the earliest finish plus slack.
+  quickLoading: 'Finding the earliest times…',
+  quickCustomizeButton: 'Customize',
+  quickStartButton: 'Start',
   // Generic submit failure (rejected candidate / transient SDK miss).
   createError: 'Could not create the smart task. Check the goal and try again.',
   // A transient settings-write refusal (`write_conflict`): the goal was valid,
@@ -975,24 +979,21 @@ export const resolveSmartTaskEditRejectCopy = (reason: string | undefined): stri
   return SMART_TASK_EDIT_COPY.updateError;
 };
 
-// Ready-by presets for the light, preset-driven deadline input. Each preset is
-// a fixed local 24-hour "HH:mm" the server resolves to the next future
-// occurrence (rolling to tomorrow if already past today). Morning-commute and
-// evening times cover the common EV-charge / heat-by-bedtime cases without a
-// heavy datetime picker. The user picks one of these anchor points directly —
-// the widget also accepts a specific local time.
-export type CreateSmartTaskReadyByPreset = {
-  id: string;
-  label: string;
-  localTime: string;
-};
+// The ready-by time the goal form opens with: the next 07:00, the usual
+// morning the EV and the water heater are wanted by. The quick targets already
+// cover "as soon as reasonable"; the form is for a time of the user's own.
+export const CREATE_SMART_TASK_DEFAULT_READY_BY = '07:00';
 
-export const CREATE_SMART_TASK_READY_BY_PRESETS: readonly CreateSmartTaskReadyByPreset[] = [
-  { id: 'morning', label: '07:00', localTime: '07:00' },
-  { id: 'midday', label: '12:00', localTime: '12:00' },
-  { id: 'evening', label: '18:00', localTime: '18:00' },
-  { id: 'night', label: '22:00', localTime: '22:00' },
-];
+// A quick-target box's deadline ("by 01:30"), and the selected box's full
+// deadline with its projected finish ("Ready by Tomorrow 01:30 · likely done
+// around 00:50"), which also says which day the box's bare time is on. The
+// times and the deadline label are server-formatted in the Homey timezone.
+export const formatQuickTargetDeadline = (localTime: string): string => `by ${localTime}`;
+export const formatQuickTargetTiming = (deadlineLabel: string, likelyFinishLocalTime: string | null): string => (
+  likelyFinishLocalTime === null
+    ? `Ready by ${deadlineLabel}`
+    : `Ready by ${deadlineLabel} · likely done around ${likelyFinishLocalTime}`
+);
 
 // Shared chip-tone slug union. Matches the `.plan-chip--*` CSS variants in
 // `packages/settings-ui/public/style.css` (`info`, `muted`, `ok`, `warn`,
