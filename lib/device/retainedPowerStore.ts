@@ -76,7 +76,8 @@ export type RetainedPowerStore = {
    * here, reporting power, and has none. A device NOT present is left alone: one
    * cycle without it is not its removal, and age pruning on load is the only
    * way its row goes. The caller names as present only a device with a power
-   * reading this cycle.
+   * reading this cycle. An anchor in `state` is saved for any device, present or
+   * not: a meter's first reading anchors it before there is any power to report.
    */
   save(state: RetainedPowerState, presentIds: ReadonlySet<string>, nowMs: number): void;
 };
@@ -206,16 +207,17 @@ export const createRetainedPowerStore = (db: UserdataDatabase): RetainedPowerSto
             s.upsertReading.run(deviceId, JSON.stringify(reading), nowMs);
             readingWrites.push([deviceId, reading]);
           }
-          const anchor = state.meterAnchors.get(deviceId);
-          if (anchor === undefined) {
-            if (heldAnchors.has(deviceId)) {
-              s.removeAnchor.run(deviceId);
-              anchorWrites.push([deviceId, null]);
-            }
-          } else if (isDue(heldAnchors.get(deviceId), anchor, sameAnchor, nowMs)) {
-            s.upsertAnchor.run(deviceId, anchor.kwh, anchor.observedAtMs, nowMs);
-            anchorWrites.push([deviceId, anchor]);
+          if (!state.meterAnchors.has(deviceId) && heldAnchors.has(deviceId)) {
+            s.removeAnchor.run(deviceId);
+            anchorWrites.push([deviceId, null]);
           }
+        }
+        // Every anchor, present device or not: a meter's first reading anchors
+        // it before there is any power to report.
+        for (const [deviceId, anchor] of state.meterAnchors) {
+          if (!isDue(heldAnchors.get(deviceId), anchor, sameAnchor, nowMs)) continue;
+          s.upsertAnchor.run(deviceId, anchor.kwh, anchor.observedAtMs, nowMs);
+          anchorWrites.push([deviceId, anchor]);
         }
       });
       /* eslint-enable functional/immutable-data */

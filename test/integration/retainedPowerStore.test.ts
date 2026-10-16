@@ -166,4 +166,23 @@ describe('retained power persistence', () => {
     expect(createRetainedPowerStore(db).load(T0 + 180_000).readings.get('thermostat-1'))
       .toEqual({ measuredPowerKw: 3, observedAtMs: T0 });
   });
+
+  // A meter's first reading only anchors it; the draw needs a second one. A
+  // restart in between must not cost the first.
+  it('keeps a first meter anchor across a restart, so the next reading resolves a draw', () => {
+    const before = new RetainedPowerPersistence(createRetainedPowerStore(db));
+    const first = before.resolver.resolve({
+      deviceId: 'thermostat-1', deviceLabel: 'Thermostat',
+      observation: { meterEnergy: { kwh: 10, observedAtMs: T0 } },
+    });
+    expect(first.measuredPowerKw).toBeUndefined();
+    before.persist([meterOnly(false)], T0);
+
+    const after = new RetainedPowerPersistence(createRetainedPowerStore(db));
+    const second = after.resolver.resolve({
+      deviceId: 'thermostat-1', deviceLabel: 'Thermostat',
+      observation: { meterEnergy: { kwh: 10.05, observedAtMs: T0 + 60_000 } },
+    });
+    expect(second.measuredPowerKw).toBeCloseTo(3);
+  });
 });

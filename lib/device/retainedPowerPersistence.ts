@@ -2,6 +2,7 @@ import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measu
 import { getLogger } from '../logging/logger';
 import { normalizeError } from '../utils/errorUtils';
 import { DeviceMeasuredPowerResolver } from './measuredPowerResolver';
+import type { MeterEnergyReading } from './measuredPowerReader';
 import type { RetainedPowerReading, RetainedPowerState, RetainedPowerStore } from './retainedPowerStore';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 
@@ -62,18 +63,24 @@ export class RetainedPowerPersistence {
     if (nowMs - this.lastSaveMs < RETAINED_POWER_SAVE_INTERVAL_MS) return;
     this.lastSaveMs = nowMs;
     const readings = new Map<string, RetainedPowerReading>();
+    const heldAnchors = this.resolver.getMeterAnchors();
+    const meterAnchors = new Map<string, MeterEnergyReading>();
     // Only a device with a power reading this cycle says what it retains. One
     // without (its meter withheld for a `null`, say) is left alone like an
-    // absent one: a capability missing from a read deletes nothing stored.
+    // absent one: a capability missing from a read deletes nothing stored. Its
+    // anchor is still saved: a meter's first reading anchors it before there is
+    // any power to report.
     const presentIds = new Set<string>();
     for (const device of snapshot) {
+      const anchor = heldAnchors.get(device.id);
+      if (anchor !== undefined) meterAnchors.set(device.id, anchor);
       if (!hasObservedMeasuredPower(device)) continue;
       presentIds.add(device.id);
       const retained = toRetainedPowerReading(device);
       if (retained !== null) readings.set(device.id, retained);
     }
     try {
-      this.store.save({ readings, meterAnchors: this.resolver.getMeterAnchors() }, presentIds, nowMs);
+      this.store.save({ readings, meterAnchors }, presentIds, nowMs);
     } catch (error) {
       moduleLogger.error({ event: 'retained_power_save_failed', error: normalizeError(error).message });
     }
