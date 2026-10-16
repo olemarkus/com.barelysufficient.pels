@@ -93,10 +93,6 @@ const isTemperatureDeviceWithoutOnOff = (device: SettingsUiDeviceDetailItem | nu
   )
 );
 
-const resolveTemperatureShedFloor = (device: SettingsUiDeviceDetailItem | null): number => (
-  resolveSetpointShedFloorC(device?.deviceClass || '')
-);
-
 const updateShedActionOptions = (params: {
   canConfigure: boolean;
   forceTemperatureOnly: boolean;
@@ -197,10 +193,13 @@ const getShedDefaultTemp = (
     : null;
 
   if (isTemperatureDeviceWithoutOnOff(device)) {
+    // The limit the planner applies when nothing is saved
+    // (`resolveTemperaturePolicyShedBehavior`): never from the live setpoint,
+    // which is the limit itself while the device is limited.
     return computeDefaultAirtreatmentShedTemperature({
       modeTarget: normalizedModeTarget,
-      currentTarget,
-      minFloorC: resolveTemperatureShedFloor(device),
+      currentTarget: null,
+      minFloorC: resolveSetpointShedFloorC(device?.deviceClass || ''),
     });
   }
 
@@ -220,7 +219,7 @@ const resolveHeatingShedTemperature = (
     ? readShedLimitField(deviceDetailShedTemp, HEATING_SHED_LIMIT_RANGE, savedC)
     : savedC;
   const temperature = isTemperatureDeviceWithoutOnOff(device)
-    ? Math.max(resolveTemperatureShedFloor(device), normalizeShedTemperature(fieldC))
+    ? Math.max(resolveSetpointShedFloorC(device.deviceClass || ''), normalizeShedTemperature(fieldC))
     : fieldC;
   // Show the field the value that is saved, whatever its text said.
   if (deviceDetailShedTemp) deviceDetailShedTemp.value = temperature.toString();

@@ -177,3 +177,25 @@ describe('limited temperature when cooling', () => {
     });
   });
 });
+
+describe('limited temperature for a device with no on/off', () => {
+  it('starts at the limit the planner applies, never one below the live setpoint', async () => {
+    const { state, shedTemp, show } = await loadHarness();
+    state.modeTargets = {};
+    const device = buildDevice({
+      targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
+      binaryControl: undefined,
+      capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
+    });
+
+    // No mode target: the fixed base less the default setback, as
+    // `resolveTemperaturePolicyShedBehavior` derives it, not 22 - 3.
+    show(device);
+    expect(shedTemp.value).toBe('17');
+
+    // With one, the governing mode target less the setback.
+    state.modeTargets = { [state.activeMode]: { 'device-1': 24 } };
+    show(device);
+    expect(shedTemp.value).toBe('21');
+  });
+});
