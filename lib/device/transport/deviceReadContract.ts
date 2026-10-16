@@ -183,11 +183,22 @@ function findNullModelCapabilityIds(device: HomeyDeviceLike): ReadonlySet<string
     if (!Array.isArray(capabilities) || !isUnknownRecord(capabilitiesObj)) return new Set();
     if (getDeviceAdapter(device) !== standardDeviceAdapter) return new Set();
     const modelTypes = resolveModelCapabilityTypes(device, capabilities);
-    return new Set(capabilities.filter((capabilityId) => {
+    const withheld = new Set(capabilities.filter((capabilityId) => {
         if (modelTypes[capabilityId] === undefined) return false;
         const entry: unknown = capabilitiesObj[capabilityId];
         return isUnknownRecord(entry) && entry.value === null;
     }));
+    // A charger's on/off handle is `evcharger_charging` (`getControlCapabilityId`).
+    // Withholding it alone would leave a declared `onoff` to be picked as the
+    // handle for this read, and on some chargers `onoff` disables the charger
+    // rather than pausing the session. So the charger has no on/off handle until
+    // `evcharger_charging` reports a value again.
+    if (
+        withheld.has('evcharger_charging')
+        && capabilities.includes('onoff')
+        && resolveDeviceClassKey(device) === 'evcharger'
+    ) withheld.add('onoff');
+    return withheld;
 }
 
 export type NullModelCapabilityResolution = {

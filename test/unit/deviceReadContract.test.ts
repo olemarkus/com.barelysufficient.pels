@@ -353,6 +353,23 @@ describe('a null model capability (owner ruling 2026-10-16)', () => {
     expect(resolveDeviceRead({}, tesla, 'device_fetch', emitter())).toBeNull();
   });
 
+  it('gives a charger no on/off handle while evcharger_charging is null, never falling back to onoff', () => {
+    const charger = (charging: unknown): HomeyDeviceLike => asRead({
+      id: 'charger-1', name: 'Charger', class: 'evcharger',
+      capabilities: ['onoff', 'evcharger_charging', 'evcharger_charging_state', 'measure_power'],
+      capabilitiesObj: {
+        onoff: entry(true), evcharger_charging: entry(charging),
+        evcharger_charging_state: entry('plugged_in_charging'), measure_power: entry(7200),
+      },
+    });
+    expect(withholdNullModelCapabilities(charger(null)).withheldCapabilityIds)
+      .toEqual(['evcharger_charging', 'onoff']);
+    expect(withholdNullModelCapabilities(charger(true)).withheldCapabilityIds).toEqual([]);
+    // Not a charger: a null onoff partner is not implied anywhere else.
+    expect(withholdNullModelCapabilities(heater({ capabilitiesObj: { ...HEATER_VALUES, meter_power: entry(null) } }))
+      .withheldCapabilityIds).toEqual(['meter_power']);
+  });
+
   const thermostat = (values: Record<string, RawCapabilityEntry>): HomeyDeviceLike => asRead({
     id: 'thermostat-1', name: 'Thermostat', class: 'thermostat',
     capabilities: ['onoff', 'thermostat_mode', 'target_temperature', 'measure_temperature'],
