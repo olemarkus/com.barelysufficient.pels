@@ -16,8 +16,9 @@ export const zaptecAdapter: DeviceAdapter = {
     const match = /^homey:app:com\.zaptec:(go|go2|home|pro)$/u.exec(device.driverId ?? '');
     const installationId = device.data?.installationId;
     if (!match || !installationId || !device.capabilities?.includes('available_installation_current')) return [];
-    return [{ deviceId: device.id, currentCapabilityId: 'available_installation_current',
-      currentWritable: device.capabilitiesObj?.available_installation_current?.setable === true,
+    return [{ deviceId: device.id,
+      current: { kind: 'capability', capabilityId: 'available_installation_current',
+        writable: device.capabilitiesObj?.available_installation_current?.setable === true },
       appUri: 'homey:app:com.zaptec',
       actionId: match[1] === 'go' ? 'installation_current_control' : `${match[1]}_installation_current_control`,
       scope: { kind: 'installation', installationId },

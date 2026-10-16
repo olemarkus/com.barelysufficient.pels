@@ -74,3 +74,18 @@ test('an unrelated device retains standard behavior and exposes no integration c
   expect(adapter.currentBindings(device)).toEqual([]);
   expect(adapter.nativeCurrentControls).toEqual([]);
 });
+
+test('a Futurehome charger reports its applied current limit and only a one-phase installation', () => {
+  const charger = (settings: Record<string, unknown>): HomeyDeviceLike => ({ id: 'futurehome', name: 'Futurehome',
+    class: 'evcharger', driverId: 'homey:app:no.futurehome:ev_charger', settings,
+    capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'] });
+  const read = (device: HomeyDeviceLike) => getDeviceAdapter(device)
+    .overlay(device, device.capabilities ?? [], {}).capabilityObj.available_installation_current;
+  expect(read(charger({ currentLimit: 16 }))).toEqual({ value: 16, setable: false });
+  for (const currentLimit of [5, 33, 10.5, '16', null]) expect(read(charger({ currentLimit }))).toBeUndefined();
+  expect(getDeviceAdapter(charger({ phases: 'one' })).phaseReport(charger({ phases: 'one' })))
+    .toEqual({ kind: 'reported', preset: 'ev_charger_1_phase' });
+  // Three phases may be an IT grid, which the three-phase preset does not model.
+  expect(getDeviceAdapter(charger({ phases: 'three' })).phaseReport(charger({ phases: 'three' })))
+    .toEqual({ kind: 'not_reported' });
+});

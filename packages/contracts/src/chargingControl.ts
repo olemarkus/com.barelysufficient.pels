@@ -18,7 +18,7 @@ export type ChargingCurrentRead = {
   name: string;
   setup: ChargingCurrentSetup;
   capabilityWritable: boolean;
-  scope: 'installation' | 'vehicle';
+  scope: 'installation' | 'vehicle' | 'charger';
   sharedInstallation: boolean;
   flowCheck: 'clear' | 'conflict' | 'unavailable';
   flowNames: string[];

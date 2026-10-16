@@ -86,7 +86,9 @@ export class ChargingCurrentControl {
       if (!adapter) return [];
       const names = new Map<string, string>();
       if (flows.status === 'ok') {
-        for (const capability of [adapter.currentCapabilityId, adapter.actionId]) {
+        const writes = adapter.current.kind === 'capability'
+          ? [adapter.current.capabilityId, adapter.actionId] : [adapter.actionId];
+        for (const capability of writes) {
           for (const [id, name] of flows.facts.writes.get(device.id)?.get(capability) ?? []) names.set(id, name);
         }
       }
@@ -94,7 +96,8 @@ export class ChargingCurrentControl {
       if (flows.status === 'ok') flowCheck = names.size ? 'conflict' : 'clear';
       return [{
         deviceId: device.id, name: device.name, setup: this.setup(device.id),
-        scope: adapter.scope.kind, capabilityWritable: adapter.currentWritable,
+        scope: adapter.scope.kind,
+        capabilityWritable: adapter.current.kind === 'capability' && adapter.current.writable,
         sharedInstallation: hasSharedChargingInstallation(adapter, devices),
         flowCheck,
         flowNames: [...names.values()],
@@ -108,7 +111,8 @@ export class ChargingCurrentControl {
     const device = (await this.list()).find((entry) => entry.deviceId === deviceId);
     if (!device) throw new Error('This device has no supported charging-current control.');
     if ((device.scope === 'vehicle' && setup.confirmation === 'single_charger')
-      || (device.scope === 'installation' && setup.confirmation === 'vehicle')) {
+      || (device.scope === 'installation' && setup.confirmation === 'vehicle')
+      || (device.scope === 'charger' && setup.confirmation !== 'none')) {
       throw new Error('Confirm the control scope shown for this device.');
     }
     const revokingVehicleControl = device.scope === 'vehicle' && setup.confirmation === 'none';
@@ -149,8 +153,8 @@ export class ChargingCurrentControl {
     if (!Number.isInteger(currentA) || currentA < 6 || currentA > 32) {
       throw new Error('Charging current must be 6–32 A.');
     }
-    if (adapter.currentWritable) {
-      await setCapability(adapter.currentCapabilityId, currentA);
+    if (adapter.current.kind === 'capability' && adapter.current.writable) {
+      await setCapability(adapter.current.capabilityId, currentA);
       return 'native_capability';
     }
     const inventory = await getRawFromHomeyApi('manager/flow/flowcardaction');
