@@ -35,7 +35,7 @@ const CURRENT_C = 48; // both cold enough to want to run hard
 const KWH_PER_DEGREE = 1.5;
 const STEP_LOW_W = 1500;
 // Narrow hard cap: both tanks at their low step already draw 3.0 kW, leaving only
-// ~0.5 kW of hard-cap headroom — one small escalation's worth, shared by two.
+// ~0.5 kW of nominal headroom. The live energy-based hourly limit can be higher.
 const CAPACITY_LIMIT = 3.5;
 // A lower-priority restore demand far above any headroom, so it stays shed every
 // cycle and the shed invariant is in force for the two tanks.
@@ -223,14 +223,15 @@ describe('two boost+exempt smart tasks, narrow headroom, daily budget ON (SDK-bo
     );
 
     // The priority winner may boost past the shed invariant. The lower smart
-    // task has no current-hour reservation: its ordinary temperature demand
-    // can still reach the restore lane, but it cannot use the smart-task bypass.
-    expect(admittedFor(TANK_A)).toMatchObject({ toStepId: '2000w', blockedByShedInvariant: false });
+    // task waits at the meter-settling gate after the winner spends the shared
+    // jump allowance. It cannot use the smart-task bypass to increase as well.
+    expect(admittedFor(TANK_A)).toMatchObject({ toStepId: '3000w', blockedByShedInvariant: false });
     expect(admittedFor(TANK_B)).toBeUndefined();
     expect(shedInvariantRejectFor(TANK_A)).toBeUndefined();
-    expect(shedInvariantRejectFor(TANK_B)).toMatchObject({
+    expect(stepped.find((event) => event.deviceId === TANK_B)).toMatchObject({
+      event: 'restore_stepped_rejected',
       requestedStepId: '2000w',
-      blockedByShedInvariant: true,
+      rejectionReason: 'meter_settling',
     });
 
     // Both tasks book the current hour. The lower task cannot finish, so it books it

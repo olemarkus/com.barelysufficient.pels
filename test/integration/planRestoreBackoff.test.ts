@@ -795,9 +795,9 @@ describe('restore cooldown backoff', () => {
 
     const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
 
-    expect(steppedDevice?.desiredStepId).toBe('medium');
-    expect(reasonText(steppedDevice?.reason)).toBe('restore low -> medium (need 0.95kW)');
-    expect(result.availableHeadroom).toBeCloseTo(4.05);
+    expect(steppedDevice?.desiredStepId).toBe('max');
+    expect(reasonText(steppedDevice?.reason)).toBe('restore low -> max (need 2.03kW)');
+    expect(result.availableHeadroom).toBeCloseTo(2.975);
     expect(result.restoredOneThisCycle).toBe(true);
   });
 
@@ -936,7 +936,7 @@ describe('restore cooldown backoff', () => {
       deps: restoreDeps(123),
     });
 
-    expect(secondRestore.planDevices.find((device) => device.id === 'dev-step')?.desiredStepId).toBe('medium');
+    expect(secondRestore.planDevices.find((device) => device.id === 'dev-step')?.desiredStepId).toBe('max');
   });
 
   it('applies shedding cooldown reason to stepped restore candidates as well as off devices', () => {

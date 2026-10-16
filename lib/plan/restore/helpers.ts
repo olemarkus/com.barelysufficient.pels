@@ -1,5 +1,5 @@
 import type { DevicePlanDevice, MeteredKind, SteppedPlanDevice } from '../planTypes';
-import { resolveSurplusCeilingStepId, type PlanEngineState } from '../planState';
+import type { PlanEngineState } from '../planState';
 import {
   getSteppedRestoreCandidates,
   isOffSteppedRestoreCandidate,
@@ -7,11 +7,6 @@ import {
   resolveInactiveRestoreUpdate,
 } from './devices';
 import { resolveCapacityRestoreBlockReason } from './timing';
-import {
-  getSteppedLoadNextRestoreStep,
-  resolveStepChangeKw,
-} from '../planSteppedLoad';
-import { getSteppedLoadStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import {
   getActivationPenaltyLevel,
   resolveActivationRestoreBlock,
@@ -29,7 +24,7 @@ import {
   canContinueShedPostureRestoreBatch,
   recordShedPostureRestoreBatchAdmission,
 } from './batch';
-import { computeRestoreBufferKw } from './accounting';
+import { resolveSteppedRestoreNeed, resolveSteppedRestoreTarget } from './steppedRestoreTarget';
 import {
   admitSteppedRestore,
   blockSteppedRestoreForShedInvariant,
@@ -119,58 +114,6 @@ export function blockRestoreForRecentActivationSetback(
   return true;
 }
 
-/**
- * Answers the restore step if it may be taken, or null. Null for a
- * surplus-TRACKING device whose next rung sits above the one this cycle's solar
- * allocation bought it; the step unchanged for every other device.
- *
- * The ceiling has to be enforced here as well as on the keep path, because
- * restore is a separate lane that decides from grid HEADROOM rather than from
- * the surplus pool — without this it would silently undo the ceiling every
- * cycle. A boosted device passes: a boost is a live demand that outranks "use
- * only your own sun", the same call `resolveSteppedKeepDesiredStepId` makes.
- */
-function admitStepUnderSurplusCeiling<T extends { id: string; planningPowerW: number }>(
-  dev: SteppedPlanDevice,
-  state: PlanEngineState,
-  nextStep: T | null,
-): T | null {
-  if (!nextStep) return null;
-  if (!dev.surplusTracking) return nextStep;
-  if (dev.boostActive) return nextStep;
-  const ceilingStepId = resolveSurplusCeilingStepId(state, dev.id);
-  if (ceilingStepId === undefined) return nextStep;
-  const ceilingStep = getSteppedLoadStep(dev.steppedLoadProfile, ceilingStepId);
-  if (!ceilingStep) return nextStep;
-  return nextStep.planningPowerW <= ceilingStep.planningPowerW ? nextStep : null;
-}
-
-/**
- * The draw a restore climb commits, in kW.
- *
- * The price itself comes from `resolveStepChangeKw`, which serves both lanes;
- * this only says what a non-climb means HERE. A descent belongs to shedding,
- * and a step that goes nowhere adds no draw — both are nothing for the restore
- * lane to admit.
- */
-function resolveSteppedRestoreCommitmentKw(
-  dev: SteppedPlanDevice & MeteredKind,
-  toStepId: string,
-): number {
-  const change = resolveStepChangeKw(dev, dev.selectedStepId, toStepId);
-  return change.direction === 'up' ? change.deltaKw : 0;
-}
-
-function resolveSteppedRestoreNeed(
-  dev: SteppedPlanDevice & MeteredKind,
-  nextStep: { id: string } | null,
-): SteppedRestoreNeed {
-  if (!nextStep) return { deltaKw: 0, neededKw: 0 };
-  const deltaKw = resolveSteppedRestoreCommitmentKw(dev, nextStep.id);
-  if (deltaKw <= 0) return { deltaKw, neededKw: 0 };
-  return { deltaKw, neededKw: deltaKw + computeRestoreBufferKw(deltaKw) };
-}
-
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function planRestoreForSteppedDevice(
   cycle: RestoreCycle,
@@ -185,11 +128,7 @@ export function planRestoreForSteppedDevice(
     delete state.steppedRestoreRejectedByDevice[dev.id];
   }
 
-  const requestedStep = getSteppedLoadNextRestoreStep(dev);
-  // The gates below see the step the ladder WANTED — that is what their logging
-  // and admission are about — while `nextStep` is the step the surplus ceiling
-  // actually admits, and drives everything after it.
-  const nextStep = admitStepUnderSurplusCeiling(dev, state, requestedStep);
+  const nextStep = resolveSteppedRestoreTarget(cycle, dev, loop);
   const restoreNeed = resolveSteppedRestoreNeed(dev, nextStep);
   const batchContinuation = canContinueShedPostureRestoreBatch(
     batchState,
@@ -198,7 +137,7 @@ export function planRestoreForSteppedDevice(
     loop.restoredOneThisCycle,
     restoreNeed.neededKw,
   );
-  if (applySteppedDeviceGates(cycle, dev, loop, batchContinuation, requestedStep?.id ?? null)) return loop;
+  if (applySteppedDeviceGates(cycle, dev, loop, batchContinuation, nextStep?.id ?? null)) return loop;
 
   if (blockRestoreForRecentActivationSetback(cycle, dev, true)) return loop;
 

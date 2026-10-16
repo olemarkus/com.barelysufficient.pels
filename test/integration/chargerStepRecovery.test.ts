@@ -105,7 +105,7 @@ describe('EV charger current recovery after limiting', () => {
     vi.setSystemTime(reducedAtMs + 180_000);
     result = plan(state);
     expect(deviceNamed(result.planDevices, 'charger')).toMatchObject({
-      desiredStepId: 'medium',
+      desiredStepId: 'max',
       reason: { code: PLAN_REASON_CODES.restoreNeed },
     });
   });
@@ -126,7 +126,7 @@ describe('EV charger current recovery after limiting', () => {
     });
 
     vi.setSystemTime(nextReductionAtMs + 180_000);
-    expect(deviceNamed(plan(state).planDevices, 'charger').desiredStepId).toBe('medium');
+    expect(deviceNamed(plan(state).planDevices, 'charger').desiredStepId).toBe('max');
   });
 
   it('lets a longer global restore cooldown finish before admitting an increase', () => {
@@ -141,7 +141,7 @@ describe('EV charger current recovery after limiting', () => {
       reason: { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: 120 },
     });
     vi.setSystemTime(reducedAtMs + 300_000);
-    expect(deviceNamed(plan(state).planDevices, 'charger').desiredStepId).toBe('medium');
+    expect(deviceNamed(plan(state).planDevices, 'charger').desiredStepId).toBe('max');
   });
 
   it('honors the global shed gate before showing the charger recovery hold', () => {
@@ -182,7 +182,7 @@ describe('EV charger current recovery after limiting', () => {
     const result = plan(state, [charger(), charger({ id, isEvCharger })]);
     expect(deviceNamed(result.planDevices, 'charger').desiredStepId).toBe('low');
     expect(deviceNamed(result.planDevices, id)).toMatchObject({
-      desiredStepId: 'medium', reason: { code: PLAN_REASON_CODES.restoreNeed },
+      desiredStepId: 'max', reason: { code: PLAN_REASON_CODES.restoreNeed },
     });
   });
 
@@ -200,13 +200,13 @@ describe('EV charger current recovery after limiting', () => {
 
   it('keeps ordinary step-up timing when the charger has no reduction history', () => {
     const state = createPlanEngineState();
-    expect(deviceNamed(plan(state).planDevices, 'charger').desiredStepId).toBe('medium');
+    expect(deviceNamed(plan(state).planDevices, 'charger').desiredStepId).toBe('max');
 
     state.actuation.markRestore('charger', Date.now());
     vi.advanceTimersByTime(299_999);
     expect(deviceNamed(plan(state).planDevices, 'charger').desiredStepId).toBe('low');
     vi.advanceTimersByTime(1);
-    expect(deviceNamed(plan(state).planDevices, 'charger').desiredStepId).toBe('medium');
+    expect(deviceNamed(plan(state).planDevices, 'charger').desiredStepId).toBe('max');
   });
 
   it('gives a waiting off device its turn before another active charger increase when the shared gate opens', () => {

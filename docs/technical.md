@@ -130,7 +130,7 @@ To prevent rapid on/off cycling that could damage equipment or annoy occupants, 
 
 - After resuming a device, wait at least 5 minutes before admitting another increase; this also applies to running devices increasing their power level
 - If a resume is followed by overshoot or new limiting, this cooldown increases to 10 minutes
-- When grid import control is off, previously limited devices, binary or stepped, may resume in a bounded batch (up to three) when fresh measurements show ample available power; a running stepped device's step-ups remain one at a time
+- When grid import control is off, previously limited devices, binary or stepped, may resume in a bounded batch (up to three) when fresh measurements show ample available power; running stepped devices may also jump several levels when the complete increase, including its buffer, uses at most half the available power, including any earlier admissions in that batch
 - Every held device waits out the cooldown; the one that resumes first (turned-off devices before stepped increases before thermostat raises, by priority within each) shows the countdown and the rest show that other devices are ahead
 - Allows slow-starting devices time to draw power before another increase is admitted
 
@@ -244,7 +244,8 @@ For devices configured with the built-in **stepped load** control model, resume 
 Official EV chargers are supported only when they expose both `evcharger_charging` and `evcharger_charging_state`. PELS uses `evcharger_charging` for pause/resume control and never falls back to generic `onoff` for EV actuation. An Easee charger under built-in device control is the exception: PELS pauses it by setting the current to 0 A and resumes it at 6 A, so the charging session stays open (see [Easee EV Charger](/easee-ev-charger)).
 
 PELS combines the estimate with measured power on every cycle, so the actual control loop is anchored in reality:
-- Steps running stepped loads up one at a time; previously limited devices may use the bounded batch above when the available-power margin is large
+- Raises running stepped loads directly to the highest level that fits the conservative batch allowance above; otherwise it considers the next level using ordinary admission. Grid import control keeps increases to one level at a time. The five-minute resume cooldown still follows each increase
+- EV increases stay within the device’s known range plus any next level currently eligible for a discovery probe; unfamiliar levels are still learned gradually
 - Waits for the next measurement before considering another resume
 - Adds a hysteresis buffer so a restart never relies on a single estimate alone
 

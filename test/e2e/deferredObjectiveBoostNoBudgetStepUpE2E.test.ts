@@ -60,7 +60,7 @@ const STEP_LOW_W = 1500;
 // invariant always applies.
 const LOWER_LOAD_W = 8000;
 const CAPACITY_LIMIT = 3.0;
-const ESCALATED_STEP = '2000w'; // one step above the low step the recent draw requests
+const ESCALATED_STEP = '3000w'; // highest rung funded by the conservative headroom allowance
 
 // A 24-hour price curve with a single, distinctly cheap hour. `cheapHour` is the
 // only hour the planner prefers; every other hour is dear.
@@ -297,7 +297,7 @@ describe('smart-task boost — no daily budget, hourly hard cap (SDK-boundary e2
 
   it('WITH a boost smart task in a PLANNED (cheap) hour: boost admits the step-up past the shed invariant', async () => {
     // Current hour is the planned (cheap) hour: the task books it, engages boost,
-    // and the restore lane ADMITS the escalation (1500 -> 2000 W) DESPITE the
+    // and the restore lane ADMITS the escalation (1500 -> 3000 W) DESPITE the
     // lower-priority device still being shed — the shed invariant did NOT block it.
     const { steppedEvents } = await runCycleAtHour({ cheapHour: 0, currentHour: 0, withSmartTask: 'boost' });
 

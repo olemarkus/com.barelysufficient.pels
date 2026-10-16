@@ -133,7 +133,7 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
     // The device is running, just lower — so it never becomes an off device
     // waiting to be switched back on. It reaches restore through the ACTIVE
     // stepped lane (`isActiveSteppedRestoreCandidate`, which reads the step axis
-    // rather than the binary one) and climbs a rung at a time.
+    // rather than the binary one) and uses the conservative headroom allowance.
     const state = createPlanEngineState();
 
     const result = applyRestorePlanForSpec({
@@ -172,7 +172,8 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
     });
 
     const charger = result.planDevices.find((device) => device.id === 'charger');
-    expect(charger?.desiredStepId).toBe('16a');
+    // Half of 5.7 kW funds 10a -> 20a plus buffer, but not 24a.
+    expect(charger?.desiredStepId).toBe('20a');
     expect(charger?.reason?.code).toBe(PLAN_REASON_CODES.restoreNeed);
   });
 });
