@@ -64,9 +64,9 @@ A follow-up SHS reproduction started paused at 16 A, requested 6 A once, and con
 
 Cleanup verified restoration of all 12 edited configuration keys, revocation of both temporary keys, deletion of simulator apps/devices and temporary Flows, and removal of the temporary read-only diagnostic wrapper. At the end of that run, PELS 3.12.2 with the permission fix was left installed on SHS. The app reported running, not crashed, with zero crashes. The primary checkout stayed clean.
 
-Local evidence is under `/tmp/pels-charging-shs-20261013/`: `access-results.json`, `flow-results.json`, `location-results.json`, `shared-result.json`, `zaptec-failure-result.json`, `delay-result.json`, `native-result.json`, `key-lifecycle-result.json`, `smart-task-result.json`, `echo-only-result.json`, `unchanged-telemetry-result.json`, `late-resume-result.json`, `samples.jsonl` and `cleanup-result.json`. Temporary key material was deleted after revocation. Physical hardware, real vendor cloud timing, multi-hour scheduling and competing cloud controllers remain unverified.
+Local evidence is under `/tmp/pels-charging-shs-20261013/`: `access-results.json`, `flow-results.json`, `location-results.json`, `shared-result.json`, `zaptec-failure-result.json`, `delay-result.json`, `native-result.json`, `key-lifecycle-result.json`, `smart-task-result.json`, `echo-only-result.json`, `unchanged-telemetry-result.json`, `late-resume-result.json`, `samples.jsonl` and `cleanup-result.json`. Temporary key material was deleted after revocation.
 
-Follow-up paused-current evidence is under `/tmp/pels-paused-tesla-fix-20261013/`: `assertions.json`, `samples.jsonl`, `resume-result.json`, `failure-result.json` and `cleanup-result.json`. Its temporary key was revoked and deleted, the Tesla simulator was removed, and all edited settings were restored. At the end of that follow-up, the corrected feature build was left on SHS. These checks exercise Homey's real API and planner with a simulator; physical Tesla hardware remains unverified.
+Follow-up paused-current evidence is under `/tmp/pels-paused-tesla-fix-20261013/`: `assertions.json`, `samples.jsonl`, `resume-result.json`, `failure-result.json` and `cleanup-result.json`. Its temporary key was revoked and deleted, the Tesla simulator was removed, and all edited settings were restored. At the end of that follow-up, the corrected feature build was left on SHS. These checks exercise Homey's real API and planner with a simulator.
 
 
 ### Readiness review after updating to main, 2026-10-13
@@ -82,7 +82,7 @@ Review corrections:
 - Settings events invalidate outstanding Flow request IDs synchronously, including an off/on configuration cycle before the next condition check.
 - Setup instructions and button layout were checked at 320 and 480 px in light and dark Homey rendering.
 
-Focused integration, read-contract, recommendation and browser checks cover these corrections. The earlier SHS runs documented above preceded this main update and readiness pass; the final runtime was tested separately below. Physical Tesla/Zaptec cloud behavior remains unverified.
+Focused integration, read-contract, recommendation and browser checks cover these corrections. The earlier SHS runs documented above preceded this main update and readiness pass; the final runtime was tested separately below.
 
 
 ### Final-runtime SHS regression, 2026-10-13
@@ -95,7 +95,7 @@ The readiness runtime from `c3ad7a4a5` (manifest 3.13.0) was installed on SHS af
 - Full device refreshes in `Unknown`, `NoPower` and `Calibrating` each made the vehicle unavailable with zero attributed home power.
 - Explicit vehicle-control authorization could be removed after removing the key.
 
-Evidence is under `/tmp/pels-charging-readiness-20261013/`, including `readiness-results.json`, installation logs and `cleanup-result.json`. The temporary key was revoked, the simulator was deleted, all 12 edited settings were restored, and the previously installed SHS app was restored. Physical hardware and vendor cloud behavior remain outside this simulator evidence.
+Evidence is under `/tmp/pels-charging-readiness-20261013/`, including `readiness-results.json`, installation logs and `cleanup-result.json`. The temporary key was revoked, the simulator was deleted, all 12 edited settings were restored, and the previously installed SHS app was restored.
 
 The subsequent full push suite also caught PELS battery-report actions being included in the new vendor app-action write inventory. The normalizer now preserves the existing exclusion for PELS bridge/report cards; existing inventory tests and a new vendor-action case cover that correction. This final normalizer change was made after the SHS run.
 
