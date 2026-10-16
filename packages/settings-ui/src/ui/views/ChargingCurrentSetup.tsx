@@ -38,8 +38,13 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
   const [key, setKey] = useState('');
   const [singleCharger, setSingleCharger] = useState(device.setup.confirmation === 'single_charger');
   const [vehicleControl, setVehicleControl] = useState(device.setup.confirmation === 'vehicle');
-  const confirmation = device.scope === 'vehicle' ? vehicleControl : singleCharger;
-  const confirmedScope = device.scope === 'vehicle' ? 'vehicle' : 'single_charger';
+  // A charger-scoped command reaches only this charger, so it needs no confirmation.
+  const scopeConfirmation: Record<ChargingCurrentRead['scope'], { confirmed: boolean; value: ChargingCurrentSetup['confirmation'] }> = {
+    vehicle: { confirmed: vehicleControl, value: 'vehicle' },
+    installation: { confirmed: singleCharger, value: 'single_charger' },
+    charger: { confirmed: true, value: 'none' },
+  };
+  const { confirmed: confirmation, value: confirmedScope } = scopeConfirmation[device.scope];
   const chosenConfirmation = confirmation ? confirmedScope : 'none';
   const scopeAllowed = device.flowCheck === 'clear' && !device.sharedInstallation && confirmation;
   const canEnable = scopeAllowed && (device.capabilityWritable || access.state === 'ready');

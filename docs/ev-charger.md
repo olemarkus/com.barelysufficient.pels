@@ -15,6 +15,7 @@ Vendor-specific guides:
 
 - [Easee EV Charger](/easee-ev-charger): PELS controls the current directly, so skip Step 3.
 - [Zaptec EV Charger](/zaptec-ev-charger): built-in control or a Flow.
+- [Futurehome EV Charger](/futurehome-ev-charger): built-in control or a Flow.
 - [Tesla vehicle charging](/tesla-charging): control the car through Tesla Car & Energy.
 
 ## Before You Begin
@@ -52,7 +53,7 @@ Lower priority numbers are more important. Devices with higher numbers are limit
 
 ## Step 3: Create the Charger Current Flow
 
-Skip this step when using built-in current control. Easee needs no key or Flow; supported Zaptec and Tesla devices can use a Homey API key when a writable current capability is unavailable. Follow the vendor-specific guide above before selecting a method.
+Skip this step when using built-in current control. Easee needs no key or Flow; supported Zaptec and Tesla devices can use a Homey API key when a writable current capability is unavailable, and Futurehome always uses one. Follow the vendor-specific guide above before selecting a method.
 
 Create the Flows that connect PELS to the charger app. The first Flow sends PELS' desired current to the charger. The second Flow reports the selected current back to PELS when your charger app can expose it.
 
@@ -166,4 +167,5 @@ For problems beyond the charger — budget, capacity, or a missed task — see t
 - [Deadline Charging With State of Charge](/how-to-deadline-charging-soc)
 - [Easee EV Charger](/easee-ev-charger)
 - [Zaptec EV Charger](/zaptec-ev-charger): built-in control or a Flow.
+- [Futurehome EV Charger](/futurehome-ev-charger): built-in control or a Flow.
 - [Tesla vehicle charging](/tesla-charging): control the car through Tesla Car & Energy.

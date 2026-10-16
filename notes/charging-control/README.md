@@ -12,6 +12,8 @@ The key API does not change any device's current-control method. The settings UI
 
 Choose the EV phase preset and installation limit using the existing Control model settings. The supported current commands are whole amps from 6 to 32 A. Zero/off uses the charging switch, not a sub-minimum charging-current command.
 
+Futurehome Charge (`no.futurehome`, `ev_charger` driver) has no current capability. Its device-owned `currentLimit` action is the only write, so built-in control always uses the key. Each command reaches only that charger (`charger` scope), so it needs no confirmation. The vendor writes the charger before saving the same value to the device's `currentLimit` setting, and Homey publishes a settings change as a whole-device update (verified on SHS 2026-10-16), so the adapter reads that setting back as the applied current. Only an integer 6-32 A counts as a reading. The `phases` setting reports only a one-phase installation: it names no grid, and IT three-phase is not modelled. PELS writes only the current limit; the auto-start setting stays the owner's. Caveats: the vendor refreshes the setting from the charger only at startup, so a change made outside Homey (Futurehome hub, its own app) is invisible until the Futurehome Homey app restarts, and PELS keeps the old reading meanwhile. `FuturehomeChargerSession` dates a new value when an accepted read first shows it; a full refresh observes sessions only while the live feed is trusted, so with the feed down a new limit stays undated and its command waits until the feed returns. A Web API settings PUT was verified to push `device.update`; the vendor's own `setSettings` call inside its action is assumed to do the same. Physical hardware is unverified.
+
 Zaptec installation-current commands affect the whole installation. Built-in control requires explicit single-charger confirmation and refuses a known second charger with the same installation ID. Shared installations retain their existing binary and Flow control.
 
 For Tesla, explicitly choose the vehicle as the control point and disable Power-limit control for the physical charger. A Homey app action uses the exact installed card ID and owning app/device; the UI cannot supply arbitrary action IDs or arguments.
@@ -115,7 +117,7 @@ Focused regressions passed (115 runtime, 39 UI), and charging setup browser scen
 
 ## Integration boundary
 
-`lib/device/tesla/`, `lib/device/easee/` and `lib/device/zaptec/` own their raw
+`lib/device/tesla/`, `lib/device/easee/`, `lib/device/zaptec/` and `lib/device/futurehome/` own their raw
 Homey identities, capability interpretation and command translation. Only
 `lib/device/deviceAdapterRegistry.ts` imports their public entrypoints. Each
 implements the required `DeviceAdapter` operations; transport instances own

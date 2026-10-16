@@ -5,14 +5,23 @@ import type { HomeyDeviceLike } from '../utils/types';
 import type { DeviceCapabilityMap } from './managerControl';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { ChargerPhaseReport } from './chargerPhasePreset';
+/**
+ * Where an integration exposes its current ceiling: a capability, written
+ * directly when the installed app declares it writable, or only the app's
+ * action card.
+ */
+export type ChargingCurrentSurface =
+  | { kind: 'capability'; capabilityId: string; writable: boolean }
+  | { kind: 'action_only' };
+
 /** A resolved command binding, separate from the charger's binary switch. */
 export type ChargingCurrentBinding = {
   deviceId: string;
-  currentCapabilityId: string;
-  currentWritable: boolean;
+  current: ChargingCurrentSurface;
   actionId: string;
   appUri: string;
-  scope: { kind: 'vehicle' } | { kind: 'installation'; installationId: string };
+  /** What one current command reaches: a car, a whole installation, or this charger alone. */
+  scope: { kind: 'vehicle' } | { kind: 'installation'; installationId: string } | { kind: 'charger' };
   sharesInstallation(device: HomeyDeviceLike): boolean;
   currentArguments(currentA: number): Readonly<Record<string, unknown>>;
 };
@@ -22,6 +31,8 @@ export type CapabilityUpdate = CapabilityWrite;
 export type AdapterSnapshot = Pick<TransportDeviceSnapshot,
   'controlAdapter' | 'capabilities' | 'binaryControl' | 'evChargingState' | 'reportedStepId' | 'steppedLoadProfile'>;
 export type AdapterObservation = Pick<TransportDeviceSnapshot, 'controlAdapter' | 'capabilities'>;
+/** A parsed device a session may claim, by its surface or by the identity it has observed. */
+export type AdapterControlTarget = AdapterObservation & Pick<TransportDeviceSnapshot, 'id'>;
 export type DeviceReadRule = 'boolean' | 'number' | 'string' | ((value: unknown) => boolean);
 export type DeviceReadRules = Readonly<Record<string, DeviceReadRule>>;
 export type DeviceEvOverlay = { capabilities: string[]; capabilityObj: DeviceCapabilityMap } & (
@@ -75,7 +86,7 @@ export type DeviceAdapterSession = {
   setTrustEpoch(epoch: string): void;
   observedIds(): string[];
   observes(deviceId: string): boolean;
-  controls(snapshot: AdapterObservation): boolean;
+  controls(snapshot: AdapterControlTarget): boolean;
   project(snapshot: TransportDeviceSnapshot, setup: ChargingCurrentSetup): TransportDeviceSnapshot;
   assertAllowed(device: HomeyDeviceLike, setup: ChargingCurrentSetup, connected: boolean): void;
   controlEvents(deviceId: string, capabilityId: string, value: unknown): CapabilityUpdate[];

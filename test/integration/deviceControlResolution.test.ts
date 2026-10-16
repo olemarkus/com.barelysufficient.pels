@@ -430,6 +430,67 @@ describe('device owner control resolution', () => {
     expect(snapshot.reportedStepPowerW).toBe(0);
   });
 
+  it('reads a Futurehome charger step from its current-limit setting, including a settings-only update', async () => {
+    const transport = createTestDeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      logger,
+      {
+        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
+        getDeviceTargetPowerConfig: () => ({ preset: 'ev_charger_1_phase', max: 7360 }),
+      },
+    );
+    const device = (currentLimit: unknown): HomeyDeviceLike => ({
+      id: 'futurehome', name: 'Futurehome', class: 'evcharger', driverId: 'homey:app:no.futurehome:ev_charger',
+      capabilities: ['measure_power', 'evcharger_charging', 'evcharger_charging_state'],
+      capabilitiesObj: {
+        measure_power: { value: 3680, lastUpdated: '2026-09-30T08:00:00.000Z' },
+        evcharger_charging: { value: true, setable: true, lastUpdated: '2026-09-30T08:00:00.000Z' },
+        evcharger_charging_state: { value: 'plugged_in_charging', lastUpdated: '2026-09-30T08:00:00.000Z' },
+      },
+      settings: { phases: 'one', currentLimit, autoCharge: true },
+      available: true, ready: true,
+    });
+    await initWithLiveFeed(transport);
+    const nowMs = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
+    try {
+      const [snapshot] = await seedTransportDevices(transport, [device(16)]);
+      expect(snapshot).toMatchObject({ reportedStepId: '16a', reportedStepObservedAtMs: nowMs });
+      const observer = new ObservedDeviceStateProjection();
+      onObservedState(transport, (event) => observer.applyDelta(event));
+      const { store } = steppedStoresForTest();
+      store.markDesiredStepIssued({ deviceId: 'futurehome', desiredStepId: '10a', issuedAtMs: nowMs + 500 });
+
+      // A power-only update repeats the old limit: no new date, no confirmation.
+      clock.mockReturnValue(nowMs + 1000);
+      emitDeviceUpdate({ ...device(16), capabilitiesObj: { ...device(16).capabilitiesObj,
+        measure_power: { value: 3600, lastUpdated: '2026-09-30T08:00:01.000Z' } } });
+      expect(transport.getSnapshotByDeviceId('futurehome')?.reportedStepObservedAtMs).toBe(nowMs);
+
+      // The vendor saves the new limit: a settings-only update reaches the observer, dated.
+      clock.mockReturnValue(nowMs + 2000);
+      emitDeviceUpdate(device(10));
+      expect(observer.getObservedState('futurehome')).toMatchObject({
+        reportedStepId: '10a', reportedStepObservedAtMs: nowMs + 2000,
+      });
+      const runtime = readRuntimeDevice(
+        transport.deviceConfigurationStore.get('futurehome'), observer.getObservedState('futurehome'),
+      );
+      const devices = buildSteppedSettleSnapshot([decorateSnapshotWithDeviceControl(runtime!, store, false, false)]);
+      syncSteppedCommands({ store, devices, nowMs: nowMs + 2000 });
+      expect(store.getDesired('futurehome')).toMatchObject({ stepId: '10a', status: 'success' });
+
+      // A value the charger cannot hold is no reading: the last accepted one stands.
+      clock.mockReturnValue(nowMs + 3000);
+      emitDeviceUpdate(device(40));
+      expect(transport.getSnapshotByDeviceId('futurehome')).toMatchObject({
+        reportedStepId: '10a', reportedStepObservedAtMs: nowMs + 2000,
+      });
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it('admits exact EV feedback through the owner and publishes the extended confirmed ladder before notifications', async () => {
     const notifiedProfiles: SteppedLoadProfile[] = [];
     const transport = createTestDeviceTransport(

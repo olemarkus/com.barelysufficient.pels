@@ -27,8 +27,8 @@ Realtime observations update the observed view before any convergence decision. 
 
 ## Integration adapters
 
-Tesla vehicle charging, Easee and Zaptec interpretation belongs in `tesla/`,
-`easee/` and `zaptec/`. Each implements the common `DeviceAdapter` interface;
+Tesla vehicle charging, Easee, Zaptec and Futurehome interpretation belongs in
+`tesla/`, `easee/`, `zaptec/` and `futurehome/`. Each implements the common `DeviceAdapter` interface;
 only `deviceAdapterRegistry.ts` imports their entrypoints. Integrations do not
 import each other. Common transport dispatches adapter operations and publishes
 existing device observations; it does not inspect vendor identities or capability
@@ -42,4 +42,4 @@ controls and app-action bindings are discovered collections of actual supported
 operations; rejected reads produce no observations. Do not add optional hooks,
 nullable resolved results, parameter bundles or vendor policy fields to the
 planner, executor or UI model. I/O, credentials and actuator delivery remain with
-the common host. Public contracts and settings retain their existing shapes.
+the common host. Public contracts and settings change only additively, such as a new control scope.

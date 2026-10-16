@@ -1,6 +1,6 @@
 import type { ChargingCurrentSetup } from '../../../packages/contracts/src/chargingControl';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-import type { DeviceAdapterSession, AdapterObservation } from '../deviceAdapter';
+import type { DeviceAdapterSession, AdapterControlTarget } from '../deviceAdapter';
 import { hasTeslaChargingSurface, confirmedTeslaCurrent, isTeslaChargingState } from './charging';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { toCapabilityTimestampMs } from '../managerControl';
@@ -31,7 +31,7 @@ export class TeslaChargingSession implements DeviceAdapterSession {
 
   constructor(private readonly home: HomeLocation) {}
 
-  controls(snapshot: AdapterObservation): boolean { return hasTeslaChargingSurface(snapshot); }
+  controls(snapshot: AdapterControlTarget): boolean { return hasTeslaChargingSurface(snapshot); }
 
   assertAllowed(device: HomeyDeviceLike, setup: ChargingCurrentSetup, connected: boolean): void {
     if (!isTeslaChargingDevice(device)) return;
