@@ -637,5 +637,8 @@
   },
   "3.16.1": {
     "en": "Charging-current setup is clearer: Save key and enable now saves your Homey API key and enables built-in control for the selected car or charger in one step. If activation fails after the key is saved, setup shows the saved state so you can retry. Blocked activation explains what to resolve beside the action, and you can still replace a key while a Flow conflict prevents activation."
+  },
+  "3.16.2": {
+    "en": "Devices that sometimes report an empty reading, such as some heat pumps, no longer disappear from PELS. An empty value is ignored until the device reports one again, and saved settings and learned power are kept. Thermostats without an on/off switch are limited through their temperature. Stepped devices such as chargers can now step up several levels at once when there is plenty of spare power."
   }
 }
