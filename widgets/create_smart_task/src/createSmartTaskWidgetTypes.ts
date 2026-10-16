@@ -1,5 +1,6 @@
 import type {
   DeferredObjectivePlanPreviewEstimate,
+  DeferredObjectivePlanPreviewUnavailableReason,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
 import type {
   SmartTaskCandidateDevice,
@@ -64,3 +65,24 @@ export type CreateSmartTaskCreateResponse = {
 };
 
 export type CreateSmartTaskRejectReason = SmartTaskWriteRejectReason;
+
+// One quick-target box: the target, the deadline PELS plans toward (earliest
+// finish plus slack), and that deadline's estimate. The local times are
+// formatted server-side in the Homey timezone, like the preview's labels;
+// `readyByLocalTime` and `deadlineAtMs` go back verbatim on create.
+export type CreateSmartTaskQuickTarget = {
+  target: number;
+  deadlineAtMs: number;
+  readyByLocalTime: string;
+  deadlineLabel: string;
+  // "HH:mm" of the estimate's projected finish; null when it projects none.
+  likelyFinishLocalTime: string | null;
+  estimate: DeferredObjectivePlanPreviewEstimate;
+};
+
+export type CreateSmartTaskQuickTargetsResponse =
+  | { state: 'ready'; targets: CreateSmartTaskQuickTarget[] }
+  // No target can be timed now (a charger with no car reads `invalid_session`):
+  // the widget opens Customize directly.
+  | { state: 'unavailable'; reason: DeferredObjectivePlanPreviewUnavailableReason }
+  | { state: 'rejected'; reason: CreateSmartTaskRejectReason };

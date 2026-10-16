@@ -30,6 +30,10 @@ export type SmartTaskCandidateDevice = {
   goalStep: number;
   defaultGoal: number;
   currentValue: number | null;
+  // Whether a creation surface can offer one-tap quick targets for this device
+  // (`resolveSmartTaskQuickTargets`). A device without them opens straight into
+  // the goal and ready-by form.
+  offersQuickTargets: boolean;
   // Whether the "May limit lower-priority devices" toggle can affect this
   // device — true for stepped loads, whose higher step can displace strictly
   // lower-priority demand. Gated on effect so the compose screen never offers

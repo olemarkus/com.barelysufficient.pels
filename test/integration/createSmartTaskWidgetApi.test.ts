@@ -14,6 +14,7 @@ import type {
 import {
   createCreateSmartTask,
   getCreateSmartTaskDevices,
+  getCreateSmartTaskQuickTargets,
   previewCreateSmartTask,
 } from '../../widgets/create_smart_task/src/api';
 
@@ -50,6 +51,7 @@ type AppMock = {
   getCreateSmartTaskCandidateDevices: ReturnType<typeof vi.fn>;
   resolveSmartTaskHomeScope: ReturnType<typeof vi.fn>;
   previewDeferredObjectivePlan: ReturnType<typeof vi.fn>;
+  previewSmartTaskQuickTargets: ReturnType<typeof vi.fn>;
   createDeferredObjective: ReturnType<typeof vi.fn>;
 };
 
@@ -438,5 +440,42 @@ describe('createCreateSmartTask', () => {
     });
     expect(result).toEqual({ ok: true });
     expect(received!.deadlineAtMs).toBe(expectedDeadline('07:00'));
+  });
+});
+
+describe('getCreateSmartTaskQuickTargets', () => {
+  it('formats each target in the Homey timezone for the widget to send back on create', async () => {
+    // 07:30 and 06:40 Oslo.
+    const deadlineAtMs = Date.UTC(2026, 0, 1, 6, 30);
+    const previewSmartTaskQuickTargets = vi.fn(() => ({
+      state: 'ready',
+      targets: [{ target: 80, deadlineAtMs, estimate: buildEstimate({ projectedFinishAtMs: Date.UTC(2026, 0, 1, 5, 40) }) }],
+    }));
+    const response = await getCreateSmartTaskQuickTargets({
+      ...buildContext({ previewSmartTaskQuickTargets }), body: { deviceId: 'ev-1' },
+    });
+    expect(previewSmartTaskQuickTargets).toHaveBeenCalledWith('ev-1');
+    expect(response).toMatchObject({
+      state: 'ready',
+      targets: [{ target: 80, deadlineAtMs, readyByLocalTime: '07:30', likelyFinishLocalTime: '06:40' }],
+    });
+  });
+
+  it('passes through why no target can be timed', async () => {
+    const previewSmartTaskQuickTargets = vi.fn(() => ({ state: 'unavailable', reason: 'invalid_session' }));
+    expect(await getCreateSmartTaskQuickTargets({
+      ...buildContext({ previewSmartTaskQuickTargets }), body: { deviceId: 'ev-1' },
+    })).toEqual({ state: 'unavailable', reason: 'invalid_session' });
+  });
+
+  it('rejects a body without a device, and a sub-home device', async () => {
+    const previewSmartTaskQuickTargets = vi.fn();
+    expect(await getCreateSmartTaskQuickTargets({ ...buildContext({ previewSmartTaskQuickTargets }), body: {} }))
+      .toEqual({ state: 'rejected', reason: 'invalid_request' });
+    expect(await getCreateSmartTaskQuickTargets({
+      ...buildContext({ previewSmartTaskQuickTargets, resolveSmartTaskHomeScope: vi.fn(() => 'sub_home') }),
+      body: { deviceId: 'ev-1' },
+    })).toEqual({ state: 'rejected', reason: 'device_in_sub_home' });
+    expect(previewSmartTaskQuickTargets).not.toHaveBeenCalled();
   });
 });

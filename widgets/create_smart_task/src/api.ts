@@ -1,11 +1,15 @@
 import { handleWidgetClientLog, type WidgetClientLogContext } from '../../_shared/widgetClientLogApi';
 import {
   buildValidSmartTaskCandidate,
+  formatDeadlineLocalTime,
   mapSmartTaskAppReason,
   parseSmartTaskCandidateRequest,
   resolveSmartTaskRequestDeadline,
   resolveSmartTaskWriteDeadline,
 } from '../../../lib/objectives/deferredObjectives';
+import type {
+  DeferredObjectivePlanPreviewEstimate,
+} from '../../../packages/contracts/src/deferredObjectivePlanPreview';
 import type { CreateSmartTaskHostApi } from '../../../packages/contracts/src/widgetHostApi';
 import {
   formatScheduledHoursWindow,
@@ -13,6 +17,7 @@ import {
 } from '../../../packages/shared-domain/src/smartTaskDeadlineFormat';
 import { buildCreateSmartTaskDevicesPayload } from './createSmartTaskWidgetPayload';
 import type {
+  CreateSmartTaskQuickTargetsResponse,
   CreateSmartTaskCreateResponse,
   CreateSmartTaskDevicesPayload,
   CreateSmartTaskPreviewResponse,
@@ -102,6 +107,50 @@ export const previewCreateSmartTask = async (
     scheduledWindowLabel: formatScheduledHoursWindow(estimate.scheduledHours, timeZone),
     estimate,
   };
+};
+
+// The quick-target boxes for one device. The body is `{ deviceId }`; the app
+// picks the targets and times each one, so the widget only renders them.
+export const getCreateSmartTaskQuickTargets = async (
+  { homey, body }: WidgetApiContext & WidgetApiBody,
+): Promise<CreateSmartTaskQuickTargetsResponse> => {
+  const deviceId = readDeviceId(body);
+  if (deviceId === null) return { state: 'rejected', reason: 'invalid_request' };
+  if (typeof homey.app?.previewSmartTaskQuickTargets !== 'function') {
+    return { state: 'rejected', reason: 'unavailable' };
+  }
+  if (typeof homey.app.resolveSmartTaskHomeScope !== 'function') return { state: 'rejected', reason: 'unavailable' };
+  const scopeReject = rejectForHomeScope(homey.app.resolveSmartTaskHomeScope(deviceId));
+  if (scopeReject !== null) return { state: 'rejected', reason: scopeReject };
+  const read = homey.app.previewSmartTaskQuickTargets(deviceId);
+  if (read.state === 'unavailable') return read;
+  const timeZone = readTimeZone(homey);
+  const nowMs = Date.now();
+  return {
+    state: 'ready',
+    targets: read.targets.map(({ target, deadlineAtMs, estimate }) => ({
+      target,
+      deadlineAtMs,
+      readyByLocalTime: formatDeadlineLocalTime(deadlineAtMs, timeZone),
+      deadlineLabel: formatSmartTaskDeadlineLong(deadlineAtMs, nowMs, timeZone),
+      likelyFinishLocalTime: estimate.projectedFinishAtMs === null
+        ? null
+        : formatDeadlineLocalTime(estimate.projectedFinishAtMs, timeZone),
+      // The boxes show energy, cost and finish only; the price curve is the
+      // preview step's chart and stays out of this four-target payload.
+      estimate: withoutPriceSeries(estimate),
+    })),
+  };
+};
+
+const withoutPriceSeries = (
+  { priceSeries: _priceSeries, ...estimate }: DeferredObjectivePlanPreviewEstimate,
+): DeferredObjectivePlanPreviewEstimate => estimate;
+
+const readDeviceId = (body: unknown): string | null => {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const { deviceId } = body as { deviceId?: unknown };
+  return typeof deviceId === 'string' && deviceId.trim().length > 0 ? deviceId.trim() : null;
 };
 
 export const createCreateSmartTask = async (

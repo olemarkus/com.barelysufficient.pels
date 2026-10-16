@@ -104,6 +104,10 @@
     creating: "Creating\u2026",
     // Shown briefly after a successful create before the widget resets.
     created: "Smart task created",
+    // Quick targets: one-tap goals, each timed to the earliest finish plus slack.
+    quickLoading: "Finding the earliest times\u2026",
+    quickCustomizeButton: "Customize",
+    quickStartButton: "Start",
     // Generic submit failure (rejected candidate / transient SDK miss).
     createError: "Could not create the smart task. Check the goal and try again.",
     // A transient settings-write refusal (`write_conflict`): the goal was valid,
@@ -240,12 +244,9 @@
     ifYouSavePrefix: "If you save:",
     ifYouSaveRunsWord: "runs"
   };
-  var CREATE_SMART_TASK_READY_BY_PRESETS = [
-    { id: "morning", label: "07:00", localTime: "07:00" },
-    { id: "midday", label: "12:00", localTime: "12:00" },
-    { id: "evening", label: "18:00", localTime: "18:00" },
-    { id: "night", label: "22:00", localTime: "22:00" }
-  ];
+  var CREATE_SMART_TASK_DEFAULT_READY_BY = "07:00";
+  var formatQuickTargetDeadline = (localTime) => `by ${localTime}`;
+  var formatQuickTargetTiming = (deadlineLabel, likelyFinishLocalTime) => likelyFinishLocalTime === null ? `Ready by ${deadlineLabel}` : `Ready by ${deadlineLabel} \xB7 likely done around ${likelyFinishLocalTime}`;
   var resolveBuildingPlanChipTone = () => "info";
   var resolvePausedUnpluggedChipTone = () => "warn";
   var resolvePausedUnmanagedChipTone = () => "warn";
@@ -814,26 +815,6 @@
   };
   var widgetErrorReporter = (widget, getHomey) => createWidgetErrorReporter({ widget, getHomey, now: () => Date.now() });
 
-  // widgets/_shared/widgetDom.ts
-  var clearChildren = (node) => {
-    while (node.firstChild) node.removeChild(node.firstChild);
-  };
-  var setLine = (el, text) => {
-    const visible = Boolean(text && text.trim());
-    el.textContent = visible ? text : "";
-    el.hidden = !visible;
-  };
-  var hide = (el) => {
-    el.hidden = true;
-  };
-  var setVisible = (el, visible) => {
-    el.hidden = !visible;
-  };
-  var closestDataValue = (target, selector, key) => {
-    const el = target.closest(selector);
-    return el instanceof HTMLElement ? el.dataset[key] ?? null : null;
-  };
-
   // widgets/create_smart_task/src/public/previewPayloads.ts
   var PREVIEW_CREATE_SMART_TASK_PAYLOADS = {
     // Gallery thumbnail: one temperature device and one EV charger so the gallery
@@ -851,7 +832,8 @@
           goalStep: 0.5,
           defaultGoal: 65,
           currentValue: 48,
-          supportsLimitLowerPriority: false
+          supportsLimitLowerPriority: false,
+          offersQuickTargets: true
         },
         {
           deviceId: "preview-ev",
@@ -863,7 +845,8 @@
           goalStep: 1,
           defaultGoal: 80,
           currentValue: 42,
-          supportsLimitLowerPriority: true
+          supportsLimitLowerPriority: true,
+          offersQuickTargets: true
         }
       ]
     },
@@ -883,7 +866,8 @@
           goalStep: 0.5,
           defaultGoal: 21,
           currentValue: 19.5,
-          supportsLimitLowerPriority: false
+          supportsLimitLowerPriority: false,
+          offersQuickTargets: true
         },
         {
           deviceId: "preview-bedroom",
@@ -895,7 +879,8 @@
           goalStep: 0.5,
           defaultGoal: 18,
           currentValue: 17.2,
-          supportsLimitLowerPriority: false
+          supportsLimitLowerPriority: false,
+          offersQuickTargets: true
         },
         {
           deviceId: "preview-bathroom-floor",
@@ -907,7 +892,8 @@
           goalStep: 0.5,
           defaultGoal: 24,
           currentValue: 22.1,
-          supportsLimitLowerPriority: false
+          supportsLimitLowerPriority: false,
+          offersQuickTargets: true
         },
         {
           deviceId: "preview-office",
@@ -919,7 +905,8 @@
           goalStep: 0.5,
           defaultGoal: 20,
           currentValue: 20.4,
-          supportsLimitLowerPriority: false
+          supportsLimitLowerPriority: false,
+          offersQuickTargets: true
         },
         {
           deviceId: "preview-hot-water",
@@ -931,7 +918,8 @@
           goalStep: 0.5,
           defaultGoal: 65,
           currentValue: 48,
-          supportsLimitLowerPriority: false
+          supportsLimitLowerPriority: false,
+          offersQuickTargets: true
         },
         {
           deviceId: "preview-cabin-water",
@@ -943,7 +931,8 @@
           goalStep: 0.5,
           defaultGoal: 60,
           currentValue: 55,
-          supportsLimitLowerPriority: false
+          supportsLimitLowerPriority: false,
+          offersQuickTargets: true
         },
         {
           deviceId: "preview-ev",
@@ -955,7 +944,8 @@
           goalStep: 1,
           defaultGoal: 80,
           currentValue: 42,
-          supportsLimitLowerPriority: true
+          supportsLimitLowerPriority: true,
+          offersQuickTargets: true
         },
         {
           deviceId: "preview-ev-guest",
@@ -967,7 +957,8 @@
           goalStep: 1,
           defaultGoal: 80,
           currentValue: 30,
-          supportsLimitLowerPriority: true
+          supportsLimitLowerPriority: true,
+          offersQuickTargets: true
         }
       ]
     }
@@ -1064,6 +1055,26 @@
   var GROUP_RANK = Object.fromEntries(
     SMART_TASK_DEVICE_GROUP_ORDER.map((group, index) => [group, index])
   );
+
+  // widgets/_shared/widgetDom.ts
+  var clearChildren = (node) => {
+    while (node.firstChild) node.removeChild(node.firstChild);
+  };
+  var setLine = (el, text) => {
+    const visible = Boolean(text && text.trim());
+    el.textContent = visible ? text : "";
+    el.hidden = !visible;
+  };
+  var hide = (el) => {
+    el.hidden = true;
+  };
+  var setVisible = (el, visible) => {
+    el.hidden = !visible;
+  };
+  var closestDataValue = (target, selector, key) => {
+    const el = target.closest(selector);
+    return el instanceof HTMLElement ? el.dataset[key] ?? null : null;
+  };
 
   // widgets/_shared/widgetSvg.ts
   var SVG_NS = "http://www.w3.org/2000/svg";
@@ -1262,34 +1273,6 @@
       pickerList.appendChild(renderDeviceRow(deviceTemplate, device));
     }
   };
-  var markChipSelected = (button, selected) => {
-    button.dataset.selected = selected ? "true" : "false";
-    button.setAttribute("aria-pressed", selected ? "true" : "false");
-  };
-  var renderReadyByChips = (targets, selectedTime) => {
-    const { readyByList, readyByTemplate } = targets;
-    const existing = readyByList.querySelectorAll("[data-ready-by]");
-    if (existing.length === CREATE_SMART_TASK_READY_BY_PRESETS.length) {
-      for (const button of existing) {
-        if (button instanceof HTMLElement) {
-          markChipSelected(button, button.dataset.readyByTime === selectedTime);
-        }
-      }
-      return;
-    }
-    clearChildren(readyByList);
-    for (const preset of CREATE_SMART_TASK_READY_BY_PRESETS) {
-      const fragment = readyByTemplate.content.cloneNode(true);
-      const button = fragment.querySelector("[data-ready-by]");
-      if (!(button instanceof HTMLElement)) continue;
-      button.dataset.readyById = preset.id;
-      button.dataset.readyByTime = preset.localTime;
-      button.textContent = preset.label;
-      button.setAttribute("aria-label", `${C.readyByLabel} ${preset.label}`);
-      markChipSelected(button, preset.localTime === selectedTime);
-      readyByList.appendChild(button);
-    }
-  };
   var resolveReadyByEcho = (readyByLocalTime) => {
     const match = readyByLocalTime.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
     if (!match) return null;
@@ -1346,7 +1329,6 @@
     ));
     goalDecBtn.disabled = goal === null || goal <= device.goalMin;
     goalIncBtn.disabled = goal === null || goal >= device.goalMax;
-    renderReadyByChips(targets, readyByLocalTime);
     setLine(readyByEchoEl, resolveReadyByEcho(readyByLocalTime));
     const validGoal = goalValueEl.validity.valid;
     const validTime = /^([01]\d|2[0-3]):([0-5]\d)$/.test(readyByLocalTime);
@@ -1355,8 +1337,75 @@
     const timeError = !validTime ? C.invalidReadyBy : null;
     setLine(composeErrorEl, goalError ?? timeError);
   };
+  var renderQuickTargetButton = (template, target, index, unitSymbol) => {
+    const fragment = template.content.cloneNode(true);
+    const button = fragment.querySelector("[data-quick-target]");
+    const valueEl = fragment.querySelector("[data-quick-target-value]");
+    const byEl = fragment.querySelector("[data-quick-target-by]");
+    if (!(button instanceof HTMLElement) || !valueEl || !byEl) return null;
+    button.dataset.quickIndex = String(index);
+    valueEl.textContent = formatSmartTaskGoalValue(target.target, unitSymbol);
+    byEl.textContent = formatQuickTargetDeadline(target.readyByLocalTime);
+    button.setAttribute("aria-label", `${valueEl.textContent} ${byEl.textContent}`);
+    return button;
+  };
+  var renderQuickList = (targets, quick, unitSymbol) => {
+    const { quickList, quickTargetTemplate } = targets;
+    if (quickList.childElementCount !== quick.targets.length) {
+      clearChildren(quickList);
+      quick.targets.forEach((target, index) => {
+        const button = renderQuickTargetButton(quickTargetTemplate, target, index, unitSymbol);
+        if (button) quickList.appendChild(button);
+      });
+    }
+    for (const button of quickList.querySelectorAll("[data-quick-target]")) {
+      const selected = button.dataset.quickIndex === String(quick.selected);
+      button.dataset.selected = selected ? "true" : "false";
+      button.setAttribute("aria-pressed", selected ? "true" : "false");
+    }
+  };
+  var renderQuick = (targets, view) => {
+    const { quick, device, submitting, error } = view;
+    const {
+      quickTitle,
+      quickCustomizeBtn,
+      quickBackBtn,
+      quickStartBtn,
+      quickStatusEl,
+      quickList,
+      quickSummaryEl,
+      quickFinishEl,
+      quickErrorEl
+    } = targets;
+    quickTitle.textContent = device.deviceName;
+    quickCustomizeBtn.textContent = C.quickCustomizeButton;
+    quickBackBtn.disabled = submitting;
+    setLine(quickStatusEl, quick.kind === "loading" ? C.quickLoading : null);
+    if (quick.kind === "loading") {
+      clearChildren(quickList);
+      hide(quickSummaryEl);
+      hide(quickFinishEl);
+      hide(quickErrorEl);
+      quickStartBtn.textContent = C.quickStartButton;
+      quickStartBtn.disabled = true;
+      quickCustomizeBtn.disabled = true;
+      return;
+    }
+    renderQuickList(targets, quick, device.unitSymbol);
+    const selected = quick.targets[quick.selected];
+    const estimateParts = selected ? [
+      formatPreviewEnergyLine(selected.estimate, C.energyLabel),
+      formatPreviewCostLine(selected.estimate)
+    ].filter((part) => part !== null) : [];
+    setLine(quickSummaryEl, estimateParts.length > 0 ? estimateParts.join(" \xB7 ") : null);
+    setLine(quickFinishEl, selected ? formatQuickTargetTiming(selected.deadlineLabel, selected.likelyFinishLocalTime) : null);
+    setLine(quickErrorEl, error);
+    quickStartBtn.textContent = submitting ? C.creating : C.quickStartButton;
+    quickStartBtn.disabled = submitting || selected === void 0;
+    quickCustomizeBtn.disabled = submitting;
+  };
   var hasScheduledHours = (response) => response.estimate.scheduledHours.length > 0;
-  var canCreateFromPreview = (response) => response.ok && response.estimate.status !== "unavailable" && response.estimate.status !== "invalid";
+  var canCreateFromPreview = (response) => response.ok && response.estimate.status !== "invalid" && (response.estimate.status !== "unavailable" || response.estimate.unavailableReason === "invalid_session");
   var renderOkPreview = (targets, response) => {
     const { previewChartPriceEl, previewChartScheduledEl } = targets;
     const scheduled = hasScheduledHours(response);
@@ -1426,14 +1475,19 @@
     createBtn.disabled = submitting || !canCreateFromPreview(response);
   };
   var renderWidget = (targets, payload, view) => {
-    const { root, pickerView, composeView, previewView, createdView, createdMsgEl } = targets;
+    const { root, pickerView, quickView, composeView, previewView, createdView, createdMsgEl } = targets;
     root.dataset.view = view.kind;
     setVisible(pickerView, view.kind === "picker");
+    setVisible(quickView, view.kind === "quick");
     setVisible(composeView, view.kind === "compose");
     setVisible(previewView, view.kind === "preview");
     setVisible(createdView, view.kind === "created");
     if (view.kind === "picker") {
       renderPicker(targets, payload);
+      return;
+    }
+    if (view.kind === "quick") {
+      renderQuick(targets, view);
       return;
     }
     if (view.kind === "compose") {
@@ -1445,6 +1499,155 @@
       return;
     }
     createdMsgEl.textContent = C.created;
+  };
+
+  // widgets/create_smart_task/src/public/viewTransitions.ts
+  var initialComposeView = (device, origin, start) => ({
+    kind: "compose",
+    device,
+    origin,
+    // Customize opens on the selected quick target's goal. Not its time: the form
+    // resolves a bare HH:mm to the next occurrence, which may be a day earlier
+    // than the box's deadline, so it opens at the default ready-by instead.
+    goal: start?.target ?? device.defaultGoal,
+    readyByLocalTime: CREATE_SMART_TASK_DEFAULT_READY_BY,
+    // Extra permissions always start off — a fresh device choice never inherits a
+    // prior task's opt-ins.
+    exemptFromBudget: false,
+    limitLowerPriorityDevices: false
+  });
+  var steppedGoalView = (view, direction) => {
+    if (view.kind !== "compose") return view;
+    const { device, goal } = view;
+    if (goal === null) return view;
+    const next = Math.round((goal + direction * device.goalStep) * 100) / 100;
+    return { ...view, goal: Math.min(device.goalMax, Math.max(device.goalMin, next)) };
+  };
+  var budgetToggledView = (view, checked) => {
+    if (view.kind !== "compose") return view;
+    return { ...view, exemptFromBudget: checked };
+  };
+  var limitToggledView = (view, checked) => {
+    if (view.kind !== "compose") return view;
+    return { ...view, limitLowerPriorityDevices: checked };
+  };
+  var quickSelectedView = (view, index) => {
+    if (view.kind !== "quick" || view.quick.kind !== "ready" || view.submitting) return view;
+    if (index < 0 || index >= view.quick.targets.length) return view;
+    return { ...view, quick: { ...view.quick, selected: index }, error: null };
+  };
+  var customizeView = (view) => {
+    if (view.kind !== "quick" || view.quick.kind !== "ready" || view.submitting) return view;
+    return initialComposeView(view.device, { kind: "quick", quick: view.quick }, view.quick.targets[view.quick.selected]);
+  };
+  var backView = (view) => {
+    if (view.kind === "compose" && view.origin.kind === "quick") {
+      return { kind: "quick", device: view.device, quick: view.origin.quick, submitting: false, error: null };
+    }
+    if (view.kind === "preview") {
+      return {
+        kind: "compose",
+        device: view.device,
+        origin: view.origin,
+        goal: view.goal,
+        readyByLocalTime: view.readyByLocalTime,
+        // Keep the opt-in extra permissions when stepping back to edit the goal.
+        exemptFromBudget: view.exemptFromBudget,
+        limitLowerPriorityDevices: view.limitLowerPriorityDevices
+      };
+    }
+    return { kind: "picker" };
+  };
+  var buildCandidateRequest = (source, deadlineAtMs) => source.goal === null ? null : {
+    deviceId: source.device.deviceId,
+    kind: source.device.kind,
+    target: source.goal,
+    readyByLocalTime: source.readyByLocalTime,
+    ...deadlineAtMs === void 0 ? {} : { deadlineAtMs },
+    ...source.exemptFromBudget ? { exemptFromBudget: true } : {},
+    ...source.limitLowerPriorityDevices ? { limitLowerPriorityDevices: true } : {}
+  };
+  var buildQuickTargetRequest = (device, target) => ({
+    deviceId: device.deviceId,
+    kind: device.kind,
+    target: target.target,
+    readyByLocalTime: target.readyByLocalTime,
+    deadlineAtMs: target.deadlineAtMs
+  });
+  var editedInputView = (view, target, targets) => {
+    if (view.kind !== "compose") return view;
+    if (target === targets.goalValueEl) {
+      const value = targets.goalValueEl.valueAsNumber;
+      return { ...view, goal: Number.isFinite(value) ? value : null };
+    }
+    if (target === targets.readyByInput) return { ...view, readyByLocalTime: targets.readyByInput.value };
+    return view;
+  };
+  var quickLoadingView = (device) => ({ kind: "quick", device, quick: { kind: "loading" }, submitting: false, error: null });
+  var deviceSelectedView = (device) => device.offersQuickTargets ? quickLoadingView(device) : initialComposeView(device, { kind: "picker" });
+  var quickTargetsLoadedView = (view, response) => {
+    if (response.state === "rejected") {
+      return {
+        ...view,
+        quick: { kind: "ready", targets: [], selected: 0 },
+        error: resolveCreateSmartTaskRejectCopy(response.reason)
+      };
+    }
+    return response.state === "ready" && response.targets.length > 0 ? { ...view, quick: { kind: "ready", targets: response.targets, selected: 0 } } : initialComposeView(view.device, { kind: "picker" });
+  };
+  var submittableRequest = (view) => {
+    if (view.kind === "preview") {
+      if (view.submitting || !canCreateFromPreview(view.response) || !view.response.ok) return null;
+      return buildCandidateRequest(view, view.response.deadlineAtMs);
+    }
+    if (view.kind !== "quick" || view.quick.kind !== "ready" || view.submitting) return null;
+    const target = view.quick.targets[view.quick.selected];
+    return target ? buildQuickTargetRequest(view.device, target) : null;
+  };
+
+  // widgets/create_smart_task/src/public/clickActions.ts
+  var clickedView = (action, view, targets) => {
+    switch (action.kind) {
+      case "select-quick":
+        return quickSelectedView(view, action.index);
+      case "quick-customize":
+        return customizeView(view);
+      case "goal-dec":
+        return steppedGoalView(view, -1);
+      case "goal-inc":
+        return steppedGoalView(view, 1);
+      case "toggle-budget":
+        return budgetToggledView(view, targets.permBudgetInput.checked);
+      case "toggle-limit":
+        return limitToggledView(view, targets.permLimitInput.checked);
+      default:
+        return null;
+    }
+  };
+  var resolveQuickClickAction = (eventTarget) => {
+    const quickIndex = closestDataValue(eventTarget, "[data-quick-target]", "quickIndex");
+    if (quickIndex) return { kind: "select-quick", index: Number(quickIndex) };
+    if (eventTarget.closest("[data-quick-start]")) return { kind: "quick-start" };
+    if (eventTarget.closest("[data-quick-customize]")) return { kind: "quick-customize" };
+    return null;
+  };
+  var resolveClickAction = (eventTarget) => {
+    if (!(eventTarget instanceof Element)) return null;
+    const deviceId = closestDataValue(eventTarget, "[data-device-button]", "deviceId");
+    if (deviceId) return { kind: "select-device", deviceId };
+    if (eventTarget.closest("[data-picker-retry]")) return { kind: "retry-load" };
+    const quickAction = resolveQuickClickAction(eventTarget);
+    if (quickAction) return quickAction;
+    if (eventTarget.closest("[data-goal-dec]")) return { kind: "goal-dec" };
+    if (eventTarget.closest("[data-goal-inc]")) return { kind: "goal-inc" };
+    if (eventTarget.closest("[data-perm-budget-input]")) return { kind: "toggle-budget" };
+    if (eventTarget.closest("[data-perm-limit-input]")) return { kind: "toggle-limit" };
+    if (eventTarget.closest("[data-preview-btn]")) return { kind: "preview" };
+    if (eventTarget.closest("[data-create-btn]")) return { kind: "create" };
+    if (eventTarget.closest("[data-quick-back]") || eventTarget.closest("[data-compose-back]") || eventTarget.closest("[data-preview-back]") || eventTarget.closest("[data-preview-edit]")) {
+      return { kind: "back" };
+    }
+    return null;
   };
 
   // widgets/create_smart_task/src/public/widgetApp.ts
@@ -1510,7 +1713,7 @@
   var resolveTargets = (d) => {
     const root = d.getElementById("widget-root");
     const deviceTemplate = d.getElementById("device-template");
-    const readyByTemplate = d.getElementById("ready-by-template");
+    const quickTargetTemplate = d.getElementById("quick-target-template");
     const map = {
       pickerView: "[data-picker-view]",
       pickerPrompt: "[data-picker-prompt]",
@@ -1518,13 +1721,19 @@
       pickerList: "[data-device-list]",
       pickerEmpty: "[data-picker-empty]",
       pickerEmptyHint: "[data-picker-empty-hint]",
+      quickView: "[data-quick-view]",
+      quickTitle: "[data-quick-title]",
+      quickStatusEl: "[data-quick-status]",
+      quickList: "[data-quick-list]",
+      quickSummaryEl: "[data-quick-summary]",
+      quickFinishEl: "[data-quick-finish]",
+      quickErrorEl: "[data-quick-error]",
       composeView: "[data-compose-view]",
       composeTitle: "[data-compose-title]",
       goalLabel: "[data-goal-label]",
       goalUnitEl: "[data-goal-unit]",
       goalContextEl: "[data-goal-context]",
       readyByLabel: "[data-ready-by-label]",
-      readyByList: "[data-ready-by-list]",
       readyByEchoEl: "[data-ready-by-echo]",
       composeErrorEl: "[data-compose-error]",
       extraPermsTitle: "[data-extra-perms-title]",
@@ -1556,6 +1765,9 @@
     };
     const buttons = {
       pickerRetryBtn: "[data-picker-retry]",
+      quickBackBtn: "[data-quick-back]",
+      quickCustomizeBtn: "[data-quick-customize]",
+      quickStartBtn: "[data-quick-start]",
       composeBackBtn: "[data-compose-back]",
       goalDecBtn: "[data-goal-dec]",
       goalIncBtn: "[data-goal-inc]",
@@ -1579,72 +1791,35 @@
     const checks = Object.fromEntries(
       Object.entries(inputs).map(([k, sel]) => [k, d.querySelector(sel)])
     );
-    if (!(root instanceof HTMLElement) || !(deviceTemplate instanceof HTMLTemplateElement) || !(readyByTemplate instanceof HTMLTemplateElement) || Object.values(generic).some((el) => !(el instanceof HTMLElement)) || Object.values(btns).some((el) => !(el instanceof HTMLButtonElement)) || Object.values(checks).some((el) => !(el instanceof HTMLInputElement))) {
+    if (!(root instanceof HTMLElement) || !(deviceTemplate instanceof HTMLTemplateElement) || !(quickTargetTemplate instanceof HTMLTemplateElement) || Object.values(generic).some((el) => !(el instanceof HTMLElement)) || Object.values(btns).some((el) => !(el instanceof HTMLButtonElement)) || Object.values(checks).some((el) => !(el instanceof HTMLInputElement))) {
       return null;
     }
     return {
       root,
       deviceTemplate,
-      readyByTemplate,
+      quickTargetTemplate,
       ...generic,
       ...btns,
       ...checks
     };
   };
-  var initialComposeView = (device) => ({
-    kind: "compose",
-    device,
-    goal: device.defaultGoal,
-    readyByLocalTime: CREATE_SMART_TASK_READY_BY_PRESETS[0].localTime,
-    // Extra permissions always start off — a fresh device choice never inherits a
-    // prior task's opt-ins.
-    exemptFromBudget: false,
-    limitLowerPriorityDevices: false
-  });
-  var steppedGoalView = (view, direction) => {
-    if (view.kind !== "compose") return view;
-    const { device, goal } = view;
-    if (goal === null) return view;
-    const next = Math.round((goal + direction * device.goalStep) * 100) / 100;
-    return { ...view, goal: Math.min(device.goalMax, Math.max(device.goalMin, next)) };
+  var createFlashTimer = (widgetWindow, onElapsed) => {
+    let timer = null;
+    const cancel = () => {
+      if (timer !== null) widgetWindow.clearTimeout(timer);
+      timer = null;
+    };
+    return {
+      start: () => {
+        cancel();
+        timer = widgetWindow.setTimeout(() => {
+          timer = null;
+          onElapsed();
+        }, CREATED_FLASH_MS);
+      },
+      cancel
+    };
   };
-  var readyByPresetView = (view, readyById) => {
-    if (view.kind !== "compose") return view;
-    const preset = CREATE_SMART_TASK_READY_BY_PRESETS.find((entry) => entry.id === readyById);
-    return preset ? { ...view, readyByLocalTime: preset.localTime } : view;
-  };
-  var budgetToggledView = (view, checked) => {
-    if (view.kind !== "compose") return view;
-    return { ...view, exemptFromBudget: checked };
-  };
-  var limitToggledView = (view, checked) => {
-    if (view.kind !== "compose") return view;
-    return { ...view, limitLowerPriorityDevices: checked };
-  };
-  var backView = (view) => {
-    if (view.kind === "preview") {
-      return {
-        kind: "compose",
-        device: view.device,
-        goal: view.goal,
-        readyByLocalTime: view.readyByLocalTime,
-        // Keep the opt-in extra permissions when stepping back to edit the goal.
-        exemptFromBudget: view.exemptFromBudget,
-        limitLowerPriorityDevices: view.limitLowerPriorityDevices
-      };
-    }
-    return { kind: "picker" };
-  };
-  var buildCandidateRequest = (source, deadlineAtMs) => source.goal === null ? null : {
-    deviceId: source.device.deviceId,
-    kind: source.device.kind,
-    target: source.goal,
-    readyByLocalTime: source.readyByLocalTime,
-    ...deadlineAtMs === void 0 ? {} : { deadlineAtMs },
-    ...source.exemptFromBudget ? { exemptFromBudget: true } : {},
-    ...source.limitLowerPriorityDevices ? { limitLowerPriorityDevices: true } : {}
-  };
-  var previewedDeadline = (response) => response.ok ? response.deadlineAtMs : void 0;
   var fetchDevices = async (homeyRef, usePreviewData, previewState, reporter) => {
     if (usePreviewData) return resolveCreateSmartTaskPreviewPayload(previewState);
     if (!homeyRef) return { state: "empty", subtitle: C2.notReady, hint: null };
@@ -1667,6 +1842,27 @@
       return { ok: false, reason: "unavailable" };
     }
   };
+  var PREVIEW_QUICK_TARGETS = {
+    state: "ready",
+    targets: [[65, "20:00", "19:30"], [70, "21:00", "20:20"], [75, "21:30", "21:10"], [80, "22:30", "22:00"]].map(([target, by, likely], index) => ({
+      target,
+      deadlineAtMs: PREVIEW_NEXT_HOUR_MS + (index + 1) * HOUR_MS2,
+      readyByLocalTime: by,
+      deadlineLabel: `Today ${by}`,
+      likelyFinishLocalTime: likely,
+      estimate: { ...PREVIEW_RESPONSE.estimate, energyEstimateKWh: 3.4 + index, costEstimate: 5.2 + index }
+    }))
+  };
+  var fetchQuickTargets = async (homeyRef, usePreviewData, deviceId, reporter) => {
+    if (usePreviewData) return PREVIEW_QUICK_TARGETS;
+    if (!homeyRef) return { state: "rejected", reason: "unavailable" };
+    try {
+      return await homeyRef.api("POST", "/quick_targets", { deviceId });
+    } catch (error) {
+      reporter.report("error", "Failed to load smart task quick targets", error);
+      return { state: "rejected", reason: "unavailable" };
+    }
+  };
   var submitCreate = async (homeyRef, usePreviewData, request, reporter) => {
     if (usePreviewData) return { ok: true };
     if (!homeyRef) return { ok: false, reason: "unavailable" };
@@ -1677,42 +1873,14 @@
       return { ok: false, reason: "unavailable" };
     }
   };
-  var resolveClickAction = (eventTarget) => {
-    if (!(eventTarget instanceof Element)) return null;
-    const deviceId = closestDataValue(eventTarget, "[data-device-button]", "deviceId");
-    if (deviceId) return { kind: "select-device", deviceId };
-    if (eventTarget.closest("[data-picker-retry]")) return { kind: "retry-load" };
-    const readyById = closestDataValue(eventTarget, "[data-ready-by]", "readyById");
-    if (readyById) return { kind: "select-ready-by", readyById };
-    if (eventTarget.closest("[data-goal-dec]")) return { kind: "goal-dec" };
-    if (eventTarget.closest("[data-goal-inc]")) return { kind: "goal-inc" };
-    if (eventTarget.closest("[data-perm-budget-input]")) return { kind: "toggle-budget" };
-    if (eventTarget.closest("[data-perm-limit-input]")) return { kind: "toggle-limit" };
-    if (eventTarget.closest("[data-preview-btn]")) return { kind: "preview" };
-    if (eventTarget.closest("[data-create-btn]")) return { kind: "create" };
-    if (eventTarget.closest("[data-compose-back]") || eventTarget.closest("[data-preview-back]") || eventTarget.closest("[data-preview-edit]")) {
-      return { kind: "back" };
-    }
-    return null;
-  };
-  var editedInputView = (view, target, targets) => {
-    if (view.kind !== "compose") return view;
-    if (target === targets.goalValueEl) {
-      const value = targets.goalValueEl.valueAsNumber;
-      return { ...view, goal: Number.isFinite(value) ? value : null };
-    }
-    if (target === targets.readyByInput) return { ...view, readyByLocalTime: targets.readyByInput.value };
-    return view;
-  };
   var createWidgetController = (params) => {
-    const { targets, widgetDocument, widgetWindow } = params;
+    const { targets, widgetDocument, widgetWindow, onReady } = params;
     let homeyRef = null;
     let initialRenderDone = false;
     let loadSequence = 0;
     let devicesPayload = null;
     let view = { kind: "picker" };
     let usePreviewData = false;
-    let createdResetTimer = null;
     let destroyed = false;
     let requestSeq = 0;
     const reporter = widgetErrorReporter("create_smart_task", () => homeyRef);
@@ -1736,31 +1904,40 @@
       view = { ...view, kind: "preview", goal: request.target, response, submitting: false, error: null };
       render();
     };
-    const runCreate = async () => {
-      if (view.kind !== "preview" || view.submitting || !canCreateFromPreview(view.response)) return;
-      const request = buildCandidateRequest(view, previewedDeadline(view.response));
-      if (request === null) return;
+    const submit = async () => {
+      const request = submittableRequest(view);
+      if (request === null || view.kind !== "quick" && view.kind !== "preview") return;
+      const kind = view.kind;
       view = { ...view, submitting: true, error: null };
       const token = ++requestSeq;
       render();
       const result = await submitCreate(homeyRef, usePreviewData, request, reporter);
-      if (token !== requestSeq || view.kind !== "preview") return;
+      if (token !== requestSeq || view.kind !== kind) return;
       view = result.ok ? { kind: "created" } : { ...view, submitting: false, error: resolveCreateSmartTaskRejectCopy(result.reason) };
       render();
-      if (result.ok) scheduleCreatedReset();
+      if (result.ok) createdFlash.start();
     };
-    const scheduleCreatedReset = () => {
-      if (createdResetTimer !== null) widgetWindow.clearTimeout(createdResetTimer);
-      createdResetTimer = widgetWindow.setTimeout(() => {
-        if (destroyed) return;
-        view = { kind: "picker" };
-        void loadAndRender();
-      }, CREATED_FLASH_MS);
+    const loadQuickTargets = async () => {
+      if (view.kind !== "quick" || view.quick.kind !== "loading") return;
+      const token = ++requestSeq;
+      const response = await fetchQuickTargets(homeyRef, usePreviewData, view.device.deviceId, reporter);
+      if (destroyed || token !== requestSeq || view.kind !== "quick") return;
+      view = quickTargetsLoadedView(view, response);
+      render();
     };
+    const enterView = (next) => {
+      setView(next);
+      if (view.kind === "quick" && view.quick.kind === "loading") void loadQuickTargets();
+    };
+    const createdFlash = createFlashTimer(widgetWindow, () => {
+      if (destroyed) return;
+      view = { kind: "picker" };
+      void loadAndRender();
+    });
     const selectDevice = (deviceId) => {
       if (!devicesPayload || devicesPayload.state !== "ready") return;
       const device = devicesPayload.devices.find((entry) => entry.deviceId === deviceId);
-      if (device) setView(initialComposeView(device));
+      if (device) enterView(deviceSelectedView(device));
     };
     const handleClick = (event) => {
       const action = resolveClickAction(event.target);
@@ -1769,37 +1946,23 @@
         case "select-device":
           selectDevice(action.deviceId);
           return;
-        case "select-ready-by":
-          setView(readyByPresetView(view, action.readyById));
-          return;
-        case "goal-dec":
-          setView(steppedGoalView(view, -1));
-          return;
-        case "goal-inc":
-          setView(steppedGoalView(view, 1));
-          return;
-        case "toggle-budget":
-          setView(budgetToggledView(view, targets.permBudgetInput.checked));
-          return;
-        case "toggle-limit":
-          setView(limitToggledView(view, targets.permLimitInput.checked));
+        case "quick-start":
+          void submit();
           return;
         case "preview":
           void runPreview();
           return;
         case "create":
-          void runCreate();
+          void submit();
           return;
         case "back":
-          setView(backView(view));
+          enterView(backView(view));
           return;
         case "retry-load":
           void loadAndRender();
           return;
-        default: {
-          const unhandled = action;
-          void unhandled;
-        }
+        default:
+          setView(clickedView(action, view, targets) ?? view);
       }
     };
     const handleInput = (event) => setView(editedInputView(view, event.target, targets));
@@ -1815,6 +1978,7 @@
       if (!initialRenderDone && homeyRef?.ready) {
         homeyRef.ready();
         initialRenderDone = true;
+        onReady();
       }
     };
     const bootstrap = (homey) => {
@@ -1824,10 +1988,7 @@
     };
     const destroy = () => {
       destroyed = true;
-      if (createdResetTimer !== null) {
-        widgetWindow.clearTimeout(createdResetTimer);
-        createdResetTimer = null;
-      }
+      createdFlash.cancel();
       targets.root.removeEventListener("click", handleClick);
       targets.root.removeEventListener("input", handleInput);
     };
@@ -1844,11 +2005,15 @@
       resolveTargets,
       createController: ({ targets, widgetDocument: doc, widgetWindow: win }) => {
         heightReporter = createHeightReporter(targets.root, win, () => activeHomey);
-        return createWidgetController({ targets, widgetDocument: doc, widgetWindow: win });
+        return createWidgetController({
+          targets,
+          widgetDocument: doc,
+          widgetWindow: win,
+          onReady: () => heightReporter?.observe()
+        });
       },
       onHomeyClient: (homey) => {
         activeHomey = homey;
-        heightReporter?.observe();
       },
       wrapController: (controller) => ({
         ...controller,

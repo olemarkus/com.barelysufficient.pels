@@ -9,6 +9,7 @@ import {
   buildDeferredObjectiveDiagnostics as buildDeferredObjectiveDiagnosticsRaw,
   DeferredObjectiveActivePlanRecorder,
   buildTaskEvaluationSnapshot,
+  estimateSmartTaskQuickTargets,
   previewDeferredObjectivePlan,
   type TaskEvaluationSource,
   resolveDeferredObjectiveDeadline,
@@ -1218,5 +1219,44 @@ describe('buildDeferredObjectivePolicyWindowPrices', () => {
       Date.UTC(2025, 11, 31, 6, 0),
     );
     expect(series).toEqual([]);
+  });
+});
+
+describe('estimateSmartTaskQuickTargets against the preview pipeline', () => {
+  it('times each EV target on the real planner: on_track at its deadline, later for higher targets', () => {
+    const ctx: PreviewContext = {
+      device: buildEvDevice(),
+      powerTracker: buildEvPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
+    };
+    const read = estimateSmartTaskQuickTargets('ev_soc', [50, 70, 80, 100], (candidate) => (
+      runPreview({ deviceId: 'ev-1', candidate, ctx })
+    ), NOW_MS);
+    expect(read.state).toBe('ready');
+    if (read.state !== 'ready') return;
+    expect(read.targets.length).toBeGreaterThan(0);
+    for (const target of read.targets) expect(target.estimate.status).toBe('on_track');
+    const deadlines = read.targets.map((target) => target.deadlineAtMs);
+    expect(deadlines).toEqual([...deadlines].sort((a, b) => a - b));
+    // The slack leaves room: the plan finishes before the deadline it was given.
+    for (const target of read.targets) {
+      expect(target.estimate.projectedFinishAtMs).not.toBeNull();
+      expect(target.estimate.projectedFinishAtMs!).toBeLessThanOrEqual(target.deadlineAtMs);
+    }
+  });
+
+  it('reports a charger without a car as unavailable', () => {
+    const ctx: PreviewContext = {
+      device: buildEvDevice({ evChargingState: 'plugged_out' }),
+      powerTracker: buildEvPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
+    };
+    expect(estimateSmartTaskQuickTargets('ev_soc', [70], (candidate) => (
+      runPreview({ deviceId: 'ev-1', candidate, ctx })
+    ), NOW_MS)).toEqual({ state: 'unavailable', reason: 'invalid_session' });
   });
 });
