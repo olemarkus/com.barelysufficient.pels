@@ -486,14 +486,11 @@ export class SnapshotRefreshService {
         // the producers see it as present but unread.
         const read = partitionConformingDeviceReads(
             this.reader.snapshotStore,
+            this.observationBridge.state.getObservationState(),
             this.reader.logger,
             list.map((device) => this.reader.applyDeviceDriverOverride(device)),
         );
-        const acceptedRawDevices = withIgnoredReadRawDevices(
-            this.reader.snapshotStore.getTrackedRawDevicesById(),
-            this.reader.snapshotStore.getLatestRawDevices(),
-            read,
-        );
+        const acceptedRawDevices = withIgnoredReadRawDevices(this.reader.snapshotStore, read);
         // Only a full inventory can remove companions. Keep ignored entries' last
         // accepted reads, and resolve membership before parsing publishes eligibility.
         if (fetchSource === 'raw_manager_devices') {

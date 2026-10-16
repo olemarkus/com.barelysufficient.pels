@@ -8,7 +8,7 @@
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
 import { resolveDeviceRead } from './deviceReadContract';
-import { lastAcceptedRawDevice } from './ignoredDeviceReads';
+import { lastAcceptedCapabilityEntries } from './ignoredDeviceReads';
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
@@ -115,7 +115,11 @@ export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, d
     const effectiveDevice = resolveDeviceRead(
         ingest.reader.snapshotStore,
         ingest.reader.applyDeviceDriverOverride(device),
-        lastAcceptedRawDevice(ingest.reader.snapshotStore, deviceId),
+        lastAcceptedCapabilityEntries(
+            () => ingest.reader.snapshotStore.getLastAcceptedRawDevice(deviceId),
+            ingest.observationBridge.state.getObservationState(),
+            deviceId,
+        ),
         'device_update',
         contractEmitter,
     );

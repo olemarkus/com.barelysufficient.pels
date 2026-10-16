@@ -42,7 +42,8 @@ export function shouldDropEarly(
   // ui_picker: drop only when there's nothing to pick from. Defer the
   // managed/unmanaged split to the late gate (after control-state parse),
   // which is where `currentOn` is known. (A malformed `onoff` never gets this
-  // far: the device-read contract ignores that read before any parse.)
+  // far: the device-read contract ignores that read before any parse, and
+  // resolves a `null` one to its last accepted value or withholds it.)
   return !decision.filterActive;
 }
 

@@ -291,10 +291,9 @@ describe('DeviceTransport', () => {
             expect(parsed).toMatchObject({ id: 'heatpump-1', thermostatMode: 'heat' });
             expect(hasObservedTemperature(parsed)).toBe(true);
             expect(loggerMock.structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
-                event: 'device_read_null_capabilities',
+                event: 'device_capabilities_withheld',
                 deviceId: 'heatpump-1',
-                withheldCapabilityIds: ['measure_power'],
-                retainedCapabilityIds: [],
+                capabilityIds: ['measure_power'],
             }));
             expect(loggerMock.structuredLog.warn).not.toHaveBeenCalledWith(expect.objectContaining({
                 event: 'device_read_ignored',
@@ -537,11 +536,10 @@ describe('DeviceTransport', () => {
                 event: 'device_snapshot_control_state_dropped',
             }));
             expect(loggerMock.structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
-                event: 'device_read_null_capabilities',
+                event: 'device_capabilities_withheld',
                 deviceId: 'neverConformingManaged',
                 source: 'device_fetch',
-                withheldCapabilityIds: ['onoff'],
-                retainedCapabilityIds: [],
+                capabilityIds: ['onoff'],
             }));
             expect(loggerMock.structuredLog.warn).toHaveBeenCalledWith(expect.objectContaining({
                 event: 'device_read_ignored',

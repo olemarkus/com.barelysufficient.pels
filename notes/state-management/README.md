@@ -388,7 +388,9 @@ Use it for:
 A `device.update` carries the whole device. One that does not conform to the
 device-read contract (`lib/device/transport/deviceReadContract.ts`) is ignored
 whole; PELS never merges a partial payload with retained values (owner ruling
-2026-09-23). Per-capability events (`homey:device:{id}`) carry one capability by
+2026-09-23). The one exception is a `null` model capability on a device no
+adapter converts (owner ruling 2026-10-16): it keeps the newest reading PELS
+accepted for it, or is withheld from the read without one. Per-capability events (`homey:device:{id}`) carry one capability by
 design and are their own, narrower read.
 
 Do not assume:

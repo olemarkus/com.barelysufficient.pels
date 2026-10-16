@@ -6,10 +6,11 @@
  * after the rejection retires it.
  *
  * Every read Homey serves after the malformed report carries the malformed
- * value until the device reports again. The read contract keeps the last
- * accepted entry for a `null` one, dated before the rejection, so the
- * rejection still strips it. A read carrying the pair from BEFORE the
- * rejection is otherwise a race, and the cases below model its two forms: a
+ * value until the device reports again. For a `null` one the read contract
+ * falls back to the newest reading PELS accepted, which is the rejection
+ * itself, so the member is withheld and the facet stays stripped. A read
+ * carrying the pair from BEFORE the rejection is otherwise a race, and the
+ * cases below model its two forms: a
  * `device.update` frame delivered late or out of order, and a refresh whose
  * fetch was issued before the rejection and is merged after it.
  *
@@ -152,8 +153,8 @@ describe('a retained temperature rejection across a device.update', () => {
     /**
      * The device is seeded on the pre-rejection pair and rejected by a malformed
      * realtime reading. The next refresh serves Homey's read of the malformed
-     * value; the read contract keeps the pre-rejection entry in its place, the
-     * rejection strips it again, and the refresh commits without the device:
+     * value; the read contract withholds the rejected member, and the refresh
+     * commits without the device:
      * the live feed has dropped its subscription by the time a `device.update`
      * arrives.
      */
@@ -171,11 +172,10 @@ describe('a retained temperature rejection across a device.update', () => {
         vi.setSystemTime(new Date('2026-04-01T12:02:00.000Z'));
         await seedTransportDevices(transport, [malformedRead(PRE_REJECTION_PAIR, rejectedCapabilityId)]);
         expect(transportLogger.structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
-            event: 'device_read_null_capabilities',
+            event: 'device_capabilities_withheld',
             deviceId: DEVICE_ID,
             source: 'device_fetch',
-            withheldCapabilityIds: [],
-            retainedCapabilityIds: [rejectedCapabilityId],
+            capabilityIds: [rejectedCapabilityId],
         }));
         expect(snapshotEntry(transport)).toBeUndefined();
         expect(await isSubscribed()).toBe(false);
@@ -312,5 +312,45 @@ describe('a retained temperature rejection across a device.update', () => {
         vi.setSystemTime(new Date('2026-04-01T12:06:00.000Z'));
         await seedTransportDevices(transport, [binaryThermostat(pairAt(23, 24, '2026-04-01T12:04:00.000Z'))]);
         expect(observedTemperature(transport)).toEqual({ measured: 23, target: 24 });
+    });
+});
+
+describe('a null temperature member across a device.update', () => {
+    beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    // A realtime capability event updates no raw read, so the reading a `null`
+    // falls back to must be the newest one PELS accepted, not the last full
+    // read's (owner ruling 2026-10-16).
+    it('keeps the newer realtime reading, not the last full read, in place of a null', async () => {
+        const transport = createTestDeviceTransport(
+            mockHomeyInstance as unknown as Homey.App,
+            buildTransportLogger() as unknown as Logger,
+        );
+        await initWithLiveFeed(transport);
+        vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
+        await seedTransportDevices(transport, [binaryThermostat(PRE_REJECTION_PAIR)]);
+
+        vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
+        await emitCapability(DEVICE_ID, 'measure_temperature', 22);
+        expect(observedTemperature(transport)).toEqual({ measured: 22, target: 20 });
+
+        vi.setSystemTime(new Date('2026-04-01T12:02:00.000Z'));
+        const read = binaryThermostat(PRE_REJECTION_PAIR);
+        emitDeviceUpdate({
+            ...read,
+            capabilitiesObj: {
+                ...read.capabilitiesObj,
+                measure_temperature: {
+                    id: 'measure_temperature', value: null, lastUpdated: '2026-04-01T12:01:30.000Z',
+                },
+            },
+        });
+        expect(observedTemperature(transport)).toEqual({ measured: 22, target: 20 });
     });
 });

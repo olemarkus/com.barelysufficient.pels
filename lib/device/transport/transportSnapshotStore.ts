@@ -74,6 +74,24 @@ export class TransportSnapshotStore {
     this.trackedRawDeviceById.delete(deviceId);
   }
 
+  /**
+   * A device's last accepted raw read: the realtime tracking map's (it holds the
+   * newest accepted read of a tracked device, a `device.update` included), else
+   * the last full raw list's (every device, managed or not).
+   */
+  getLastAcceptedRawDevice(deviceId: string): HomeyDeviceLike | undefined {
+    return this.trackedRawDeviceById.get(deviceId)
+      ?? this.latestRawDevices.find((device) => getDeviceId(device) === deviceId);
+  }
+
+  /** Every device's last accepted raw read, by the same order. */
+  getLastAcceptedRawDevicesById(): ReadonlyMap<string, HomeyDeviceLike> {
+    return new Map([
+      ...this.latestRawDevices.map((device) => [getDeviceId(device), device] as const),
+      ...this.trackedRawDeviceById,
+    ]);
+  }
+
   getLatestRawDevices(): HomeyDeviceLike[] {
     return this.latestRawDevices;
   }

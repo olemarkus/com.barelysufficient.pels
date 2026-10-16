@@ -8,47 +8,59 @@ import type { HomeyDeviceLike } from '../../utils/types';
 import type { DeviceListRead } from '../deviceListRead';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { Logger } from '../../utils/types';
-import { resolveDeviceRead } from './deviceReadContract';
+import { resolveDeviceRead, type LastAcceptedCapabilityEntry } from './deviceReadContract';
+import { toCapabilityTimestampMs } from '../managerControl';
+import { buildCapabilityObservationKey, type DeviceTransportObservationState } from './observationState';
 import { getDeviceId } from './managerHelpers';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
 
 /**
- * Each device's last accepted raw read: the realtime tracking map first (it
- * holds the newest accepted read of a tracked device, a `device.update`
- * included), then the last full raw list (every device, managed or not).
+ * The newest accepted entry for one of the device's capabilities: its last
+ * accepted raw read's entry (looked up only when a `null` asks for it), or a later observation the device itself
+ * reported (a realtime capability event updates no raw read). A local write
+ * the device has not reported is not a reading of it. The contract checks the
+ * entry before it stands in for a `null`, so a retained rejection never does.
  */
-export function lastAcceptedRawDevicesById(store: TransportSnapshotStore): ReadonlyMap<string, HomeyDeviceLike> {
-    return new Map([
-        ...store.getLatestRawDevices().map((device) => [getDeviceId(device), device] as const),
-        ...store.getTrackedRawDevicesById(),
-    ]);
-}
-
-/** One device's last accepted raw read, by the same order. */
-export function lastAcceptedRawDevice(store: TransportSnapshotStore, deviceId: string): HomeyDeviceLike | undefined {
-    return store.getTrackedRawDevice(deviceId)
-        ?? store.getLatestRawDevices().find((device) => getDeviceId(device) === deviceId);
+export function lastAcceptedCapabilityEntries(
+    readPrevious: () => HomeyDeviceLike | undefined,
+    observations: DeviceTransportObservationState,
+    deviceId: string,
+): LastAcceptedCapabilityEntry {
+    return (capabilityId) => {
+        const previous = readPrevious();
+        const raw = previous?.capabilities?.includes(capabilityId) === true
+            ? previous.capabilitiesObj?.[capabilityId]
+            : undefined;
+        const observed = observations.capabilityObservations.get(buildCapabilityObservationKey(deviceId, capabilityId));
+        if (observed === undefined || observed.source === 'local_write') return raw;
+        const rawObservedAt = toCapabilityTimestampMs(raw?.lastUpdated);
+        if (rawObservedAt !== undefined && rawObservedAt >= observed.observedAt) return raw;
+        return { ...raw, value: observed.value, lastUpdated: new Date(observed.observedAt).toISOString() };
+    };
 }
 
 /**
  * Split a fetched list by the read contract (`deviceReadContract.ts`). The
  * ignored devices are named once per violation in the log and contribute
  * nothing from this read; the others are kept as the contract resolved them,
- * with any `null` model capability withheld.
+ * with each `null` model capability resolved.
  */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function partitionConformingDeviceReads(
     store: TransportSnapshotStore,
+    observations: DeviceTransportObservationState,
     logger: Logger,
     list: readonly HomeyDeviceLike[],
 ): DeviceListRead {
     const devices: HomeyDeviceLike[] = [];
     const ignoredIds = new Set<string>();
     const emitter = logger.structuredLog;
-    const previousById = lastAcceptedRawDevicesById(store);
+    const previousById = store.getLastAcceptedRawDevicesById();
     for (const device of list) {
-        const read = resolveDeviceRead(store, device, previousById.get(getDeviceId(device)), 'device_fetch', emitter);
-        if (read === null) ignoredIds.add(getDeviceId(device));
+        const deviceId = getDeviceId(device);
+        const lastAccepted = lastAcceptedCapabilityEntries(() => previousById.get(deviceId), observations, deviceId);
+        const read = resolveDeviceRead(store, device, lastAccepted, 'device_fetch', emitter);
+        if (read === null) ignoredIds.add(deviceId);
         else devices.push(read);
     }
     return { devices, ignoredIds };
@@ -70,18 +82,14 @@ export function withIgnoredReadEntries(
 // The same for the raw device the tracking map and the UI picker hold: the last
 // conforming read of an ignored device, never the payload that was ignored.
 export function withIgnoredReadRawDevices(
-    trackedById: ReadonlyMap<string, HomeyDeviceLike>,
-    latestRawDevices: readonly HomeyDeviceLike[],
+    store: TransportSnapshotStore,
     read: DeviceListRead,
 ): HomeyDeviceLike[] {
     const { devices: conformingList, ignoredIds } = read;
     if (ignoredIds.size === 0) return conformingList;
-    // The realtime tracking map first (it holds the newest conforming read of a
-    // tracked device, a `device.update` included), then the last full raw list
-    // (every device, managed or not, for the UI picker).
-    const priorRawById = new Map(latestRawDevices.map((device) => [getDeviceId(device), device]));
+    const priorRawById = store.getLastAcceptedRawDevicesById();
     const retained = [...ignoredIds].flatMap((deviceId) => {
-        const prior = trackedById.get(deviceId) ?? priorRawById.get(deviceId);
+        const prior = priorRawById.get(deviceId);
         return prior === undefined ? [] : [prior];
     });
     return [...conformingList, ...retained];

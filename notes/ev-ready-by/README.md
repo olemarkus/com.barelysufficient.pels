@@ -283,7 +283,10 @@ owner ruling 2026-09-23), after the Zaptec conversion for a converted charger an
 a native one: a read whose plug state is missing or not a member of the enum is IGNORED whole. The
 charger keeps the entry its last conforming read gave it — never a partial merge of the new
 payload with that entry, and never a removal on a read that did not conform. A charger PELS has
-never read conformingly is not in the snapshot until it does.
+never read conformingly is not in the snapshot until it does. A native charger no adapter
+converts that reports its plug state as `null` is the exception (owner ruling 2026-10-16): that
+state keeps the newest one PELS accepted, or without one is withheld, which leaves the charger
+out of EV planning until it reports a state.
 
 Blocking such a charger instead was the design before the contract, and it was a one-way door:
 shed selection does not consult commandability (`lib/plan/shedding/candidateBuilders.ts` gates on
