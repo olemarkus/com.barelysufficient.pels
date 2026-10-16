@@ -178,6 +178,21 @@ const resolveShedTemperatureValue = (params: {
   return '';
 };
 
+/**
+ * The limit the planner applies to a device with no on/off when nothing is saved
+ * (`resolveTemperaturePolicyShedBehavior`): from the active mode's target only,
+ * never the mode being edited, and never from the live setpoint, which is the
+ * limit itself while the device is limited.
+ */
+const getSetpointOnlyShedDefaultTemp = (device: SettingsUiDeviceDetailItem): number => {
+  const activeModeTarget = state.modeTargets[state.activeMode]?.[device.id];
+  return computeDefaultAirtreatmentShedTemperature({
+    modeTarget: typeof activeModeTarget === 'number' ? activeModeTarget : null,
+    currentTarget: null,
+    minFloorC: resolveSetpointShedFloorC(device.deviceClass || ''),
+  });
+};
+
 const getShedDefaultTemp = (
   deviceId: string | null,
   getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null,
@@ -185,23 +200,14 @@ const getShedDefaultTemp = (
   if (!deviceId) return 10;
 
   const device = getDeviceById(deviceId);
+  if (device && isTemperatureDeviceWithoutOnOff(device)) return getSetpointOnlyShedDefaultTemp(device);
+
   const modeTarget = state.modeTargets[state.activeMode]?.[deviceId]
     ?? state.modeTargets[state.editingMode]?.[deviceId];
   const normalizedModeTarget = typeof modeTarget === 'number' ? modeTarget : null;
   const currentTarget = typeof device?.targets?.[0]?.value === 'number'
     ? device.targets[0].value
     : null;
-
-  if (isTemperatureDeviceWithoutOnOff(device)) {
-    // The limit the planner applies when nothing is saved
-    // (`resolveTemperaturePolicyShedBehavior`): never from the live setpoint,
-    // which is the limit itself while the device is limited.
-    return computeDefaultAirtreatmentShedTemperature({
-      modeTarget: normalizedModeTarget,
-      currentTarget: null,
-      minFloorC: resolveSetpointShedFloorC(device?.deviceClass || ''),
-    });
-  }
 
   if (normalizedModeTarget !== null) return normalizedModeTarget;
   if (currentTarget !== null) return currentTarget;

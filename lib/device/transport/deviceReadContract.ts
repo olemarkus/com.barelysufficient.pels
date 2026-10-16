@@ -183,23 +183,37 @@ function findNullModelCapabilityIds(device: HomeyDeviceLike): ReadonlySet<string
     if (!Array.isArray(capabilities) || !isUnknownRecord(capabilitiesObj)) return new Set();
     if (getDeviceAdapter(device) !== standardDeviceAdapter) return new Set();
     const modelTypes = resolveModelCapabilityTypes(device, capabilities);
-    const withheld = new Set(capabilities.filter((capabilityId) => {
+    return new Set(capabilities.filter((capabilityId) => {
         if (modelTypes[capabilityId] === undefined) return false;
         const entry: unknown = capabilitiesObj[capabilityId];
         return isUnknownRecord(entry) && entry.value === null;
     }));
-    // A charger's on/off handle is `evcharger_charging` (`getControlCapabilityId`).
-    // Withholding it alone would leave a declared `onoff` to be picked as the
-    // handle for this read, and on some chargers `onoff` disables the charger
-    // rather than pausing the session. So the charger has no on/off handle until
-    // `evcharger_charging` reports a value again.
-    if (
-        withheld.has('evcharger_charging')
-        && capabilities.includes('onoff')
-        && resolveDeviceClassKey(device) === 'evcharger'
-    ) withheld.add('onoff');
-    return withheld;
 }
+
+/**
+ * The capabilities withheld beside the `null` ones. A charger's on/off handle is
+ * `evcharger_charging` (`getControlCapabilityId`). Withholding it alone would
+ * leave a declared `onoff` to be picked as the handle for this read, and on some
+ * chargers `onoff` disables the charger rather than pausing the session. So the
+ * charger has no on/off handle until `evcharger_charging` reports a value again.
+ */
+function findCapabilityIdsWithheldWithNull(
+    device: HomeyDeviceLike,
+    nullCapabilityIds: ReadonlySet<string>,
+): ReadonlySet<string> {
+    return nullCapabilityIds.has('evcharger_charging')
+        && device.capabilities?.includes('onoff') === true
+        && resolveDeviceClassKey(device) === 'evcharger'
+        ? new Set(['onoff'])
+        : new Set();
+}
+
+const withNullCompanions = (
+    device: HomeyDeviceLike,
+    nullCapabilityIds: ReadonlySet<string>,
+): ReadonlySet<string> => new Set([
+    ...nullCapabilityIds, ...findCapabilityIdsWithheldWithNull(device, nullCapabilityIds),
+]);
 
 export type NullModelCapabilityResolution = {
     device: HomeyDeviceLike;
@@ -214,7 +228,7 @@ export type NullModelCapabilityResolution = {
  * back with the first read that reports a value.
  */
 export function withholdNullModelCapabilities(device: HomeyDeviceLike): NullModelCapabilityResolution {
-    return withholdCapabilities(device, findNullModelCapabilityIds(device));
+    return withholdCapabilities(device, withNullCompanions(device, findNullModelCapabilityIds(device)));
 }
 
 function withholdCapabilities(
@@ -335,7 +349,10 @@ export function resolveDeviceRead(
         }
         return null;
     }
-    const { device: read, withheldCapabilityIds } = withholdCapabilities(device, nullCapabilityIds);
+    const companionIds = [...findCapabilityIdsWithheldWithNull(device, nullCapabilityIds)];
+    const { device: read, withheldCapabilityIds } = withholdCapabilities(
+        device, withNullCompanions(device, nullCapabilityIds),
+    );
     if (withheldCapabilityIds.length === 0) {
         if (signatures.delete(deviceId)) {
             emitter.info({ event: 'device_read_conforming_again', deviceId, deviceName: device.name, source });
@@ -347,7 +364,9 @@ export function resolveDeviceRead(
             deviceName: device.name,
             source,
             reason: 'null_value',
-            capabilityIds: withheldCapabilityIds,
+            capabilityIds: [...nullCapabilityIds],
+            // Withheld with a null charging capability, though it holds a value.
+            ...(companionIds.length > 0 ? { withheldWithNullCapabilityIds: companionIds } : {}),
         });
     }
     return read;

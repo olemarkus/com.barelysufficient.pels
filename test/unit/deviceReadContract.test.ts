@@ -365,6 +365,14 @@ describe('a null model capability (owner ruling 2026-10-16)', () => {
     expect(withholdNullModelCapabilities(charger(null)).withheldCapabilityIds)
       .toEqual(['evcharger_charging', 'onoff']);
     expect(withholdNullModelCapabilities(charger(true)).withheldCapabilityIds).toEqual([]);
+    // The log names only what Homey reported as null.
+    const said = emitter();
+    expect(resolveDeviceRead({}, charger(null), 'device_update', said)?.capabilities)
+      .toEqual(['evcharger_charging_state', 'measure_power']);
+    expect(said.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'device_capabilities_withheld', capabilityIds: ['evcharger_charging'],
+      withheldWithNullCapabilityIds: ['onoff'],
+    }));
     // Not a charger: a null onoff partner is not implied anywhere else.
     expect(withholdNullModelCapabilities(heater({ capabilitiesObj: { ...HEATER_VALUES, meter_power: entry(null) } }))
       .withheldCapabilityIds).toEqual(['meter_power']);

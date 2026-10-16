@@ -193,6 +193,12 @@ describe('limited temperature for a device with no on/off', () => {
     show(device);
     expect(shedTemp.value).toBe('17');
 
+    // A target only in the mode being edited is not the one the planner reads.
+    state.editingMode = 'Away';
+    state.modeTargets = { Away: { 'device-1': 24 } };
+    show(device);
+    expect(shedTemp.value).toBe('17');
+
     // With one, the governing mode target less the setback.
     state.modeTargets = { [state.activeMode]: { 'device-1': 24 } };
     show(device);
