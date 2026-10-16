@@ -51,4 +51,13 @@ describe('device reads', () => {
   it('returns the tracked device ids', () => {
     expect(readsOver([snapshot('a'), snapshot('b')]).deviceIds()).toEqual(['a', 'b']);
   });
+
+  it('prunes against Homey\'s device list, and not before Homey has listed any', () => {
+    const prune = vi.fn();
+    readsOver([]).pruneToHomeyDevices(prune);
+    expect(prune).not.toHaveBeenCalled();
+
+    readsOver([snapshot('a')]).pruneToHomeyDevices(prune);
+    expect(prune).toHaveBeenCalledWith(new Set(['a']));
+  });
 });

@@ -42,12 +42,12 @@ export type DeviceReads = {
     /** Every tracked device id, for a caller building a per-device map. */
     deviceIds(): string[];
     /**
-     * Every device in Homey's last full device list, tracked or not: a device
-     * PELS cannot read or control right now is still here. Per-device data is
-     * dropped only for a device missing from this set. Empty before the first
-     * full list.
+     * Run `prune` with every device in Homey's last full device list, tracked or
+     * not: a device PELS cannot read or control right now is still listed, and
+     * per-device data is dropped only for a device missing from it. Nothing is
+     * gone before Homey has listed any device, so `prune` does not run then.
      */
-    homeyDeviceIds(): ReadonlySet<string>;
+    pruneToHomeyDevices(prune: (homeyDeviceIds: ReadonlySet<string>) => void): void;
 };
 
 export function createDeviceReads(getStore: () => DeviceReadStore): DeviceReads {
@@ -63,6 +63,9 @@ export function createDeviceReads(getStore: () => DeviceReadStore): DeviceReads 
             zoneId: device.zoneId ?? null,
         })),
         deviceIds: () => getStore().getSnapshot().map((device) => device.id),
-        homeyDeviceIds: () => getStore().getHomeyDeviceIds(),
+        pruneToHomeyDevices: (prune) => {
+            const homeyDeviceIds = getStore().getHomeyDeviceIds();
+            if (homeyDeviceIds.size > 0) prune(homeyDeviceIds);
+        },
     };
 }

@@ -401,7 +401,7 @@ describe('main plan input (buildMainHomeScope.getPlanDevices)', () => {
   it('prunes per-device data only for a device gone from Homey\'s device list', () => {
     const ctx = makeCtx(makeMembershipService(membershipInputs));
     const homeyDeviceIds = new Set(['device-main', 'device-sub', 'device-unreadable']);
-    Object.assign(ctx, { deviceReads: { ...ctx.deviceReads, homeyDeviceIds: () => homeyDeviceIds } });
+    Object.assign(ctx, { deviceReads: { ...ctx.deviceReads, pruneToHomeyDevices: (prune: (ids: ReadonlySet<string>) => void) => prune(homeyDeviceIds) } });
     const peak = { kw: 2, observedAtMs: Date.now() };
     Object.assign(ctx.lastKnownPowerKw, { 'device-unreadable': peak, 'device-gone': peak });
     const pruneCommandability = vi.fn();
