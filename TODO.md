@@ -1192,13 +1192,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       the condition stays evidenced with a fresh-by-flow-standards sample. Source: 2026-08-02
       release review, pels-runtime-reality + budget/alerts adversarial pass. [P2]
 
-- [ ] **The immediate hard-cap alert burns its once-per-incident shot on a rejected delivery.**
-      `setup/capacityShortfallAlertDispatch.ts:240-242,270-280` latches `deliveredIncidentId`
-      before `fire()` resolves, so an SDK-rejected trigger is never retried for that incident even
-      though candidates keep republishing; the sustained lane already re-serves on rejection.
-      Pre-existing parity with the retired hold, not a regression. Don't latch when `fire()`
-      resolves `rejected`. Source: 2026-08-02 release review, pels-runtime-reality. [P2]
-
 - [ ] **Four shed-device reason codes have no starvation classification at all.**
       *Persona:* owner (`notes/personas.md`) reading device detail on a held-back device.
       *Hypothesis:* `neutralStartupHold`, `startupStabilization`, `capacityControlOff` and

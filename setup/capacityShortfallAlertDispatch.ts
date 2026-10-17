@@ -203,10 +203,16 @@ const createImmediateLane = (env: AlertLaneEnv): CapacityShortfallAlertDispatch 
   let deferred: { candidate: CapacityShortfallAlertCandidate; deferredAtMs: number } | null = null;
   let deliveredIncidentId: string | null = null;
 
-  const fire = async (incidentId: string): Promise<AlertDelivery> => triggerAlertCard(env, {
-    lane: 'immediate',
-    incidentId,
-  });
+  // The incident is claimed while its trigger is in flight, so a republished
+  // candidate cannot fire it twice, and released again if the SDK rejected the
+  // trigger: like the sustained lane, a rejection is transient and the next
+  // candidate for the same incident retries it.
+  const fire = async (incidentId: string): Promise<AlertDelivery> => {
+    deliveredIncidentId = incidentId;
+    const delivery = await triggerAlertCard(env, { lane: 'immediate', incidentId });
+    if (delivery === 'rejected' && deliveredIncidentId === incidentId) deliveredIncidentId = null;
+    return delivery;
+  };
 
   const dropDeferred = (reasonCode: AlertDropReason): void => {
     const entry = deferred;
@@ -238,7 +244,6 @@ const createImmediateLane = (env: AlertLaneEnv): CapacityShortfallAlertDispatch 
       return;
     }
     deferred = null;
-    deliveredIncidentId = entry.candidate.incidentId;
     await fire(entry.candidate.incidentId);
   };
 
@@ -267,7 +272,6 @@ const createImmediateLane = (env: AlertLaneEnv): CapacityShortfallAlertDispatch 
         scheduleRetry();
         return;
       }
-      deliveredIncidentId = candidate.incidentId;
       // `fire` swallows a rejected Flow itself; this catches a home-name or
       // card lookup that throws on a runtime being torn down underneath us,
       // which would otherwise surface as an unhandled rejection.

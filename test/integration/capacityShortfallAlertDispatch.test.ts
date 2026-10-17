@@ -586,4 +586,28 @@ describe('capacity shortfall alert dispatch', () => {
       reasonCode: 'trigger_rejected',
     });
   });
+
+  it('retries a rejected immediate alert on the next candidate, and stops once it lands', async () => {
+    const immediateTrigger = vi.fn<TriggerFn>()
+      .mockRejectedValueOnce(new Error('Flow unavailable'))
+      .mockResolvedValue(undefined);
+    const { dispatch } = buildRig({ immediateTrigger });
+
+    dispatch.onCandidate(candidate);
+    // A republish while the first trigger is still in flight does not fire it twice.
+    dispatch.onCandidate(candidate);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(immediateTrigger).toHaveBeenCalledTimes(1);
+
+    dispatch.onCandidate(candidate);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(immediateTrigger).toHaveBeenCalledTimes(2);
+    expect(logCapture.findEvent('hard_cap_shortfall_alert_triggered')).toMatchObject({
+      incidentId: candidate.incidentId,
+    });
+
+    dispatch.onCandidate(candidate);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(immediateTrigger).toHaveBeenCalledTimes(2);
+  });
 });
