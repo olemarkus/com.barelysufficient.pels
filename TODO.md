@@ -350,17 +350,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Absorbed from the merged reason-clause item: an in-window, affordable hour that simply was not
       needed still has no stated why, which the same producer-resolved clause would answer. [P2]
 
-- [ ] **Rename the smart-task extra-permission clause away from "pause".**
-      `SMART_TASK_EXTRA_PERMISSION_LABELS.pauseLowerPriorityDevices`
-      (`packages/shared-domain/src/deadlineLabels.ts`) still reads `May pause lower-priority devices`
-      while the permission now reserves power and pauses nothing. The Flow dropdown label was already
-      changed to `reserve power so this task can start sooner`; this clause was deferred because it is
-      baked into the committed `widgets/starvation_rescue` and `widgets/create_smart_task` bundles and
-      is a shared-domain string, so renaming shifts log breadcrumbs too. Rename to
-      `May reserve power to start sooner`, rebuild + commit both widget bundles, and note the log
-      change in the PR body. *Persona:* Orchestrator reading the task page. Source:
-      pels-copy-and-terminology on preemptive-power-reservation, 2026-08-01. *P2*
-
 - [ ] **A Flow granting a permission mid-edit is silently reverted on Save.**
       *Persona:* Orchestrator following the documented pattern in `docs/smart-tasks.md` — pair
       "Smart task time is running low" with "status is At risk" so a Flow grants the permission late —

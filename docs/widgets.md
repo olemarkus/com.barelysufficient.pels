@@ -80,7 +80,7 @@ The widget refreshes about every 60 seconds.
 
 Answers **"get this device ready by a time — without building a Flow."**
 
-An interactive widget that creates a Smart task in a few taps: pick an eligible device (thermostat, water heater, or EV charger), type the goal and a specific **Ready by** time or use the preset shortcuts, then preview and confirm. The resolved day is shown so you can check whether the time is today or tomorrow. The preview shows the hours PELS would pick, the estimated cost, and a price curve with the chosen hours highlighted. An optional **Extra permissions** section lets a task go over the daily budget or limit lower-priority devices — both still stay within the hard cap. (A third permission — **pause lower-priority devices**, which reserves power so a task can start sooner — is available from Flow.)
+An interactive widget that creates a Smart task in a few taps: pick an eligible device (thermostat, water heater, or EV charger), type the goal and a specific **Ready by** time or use the preset shortcuts, then preview and confirm. The resolved day is shown so you can check whether the time is today or tomorrow. The preview shows the hours PELS would pick, the estimated cost, and a price curve with the chosen hours highlighted. An optional **Extra permissions** section lets a task go over the daily budget or limit lower-priority devices — both still stay within the hard cap. (A third permission, **reserve power so this task can start sooner**, is available from Flow.)
 
 ![New smart task widget, step 1: choosing an eligible device](/screenshots/widgets/new-smart-task-1-pick-device.png)
 *Step 1 — pick an eligible device.*
