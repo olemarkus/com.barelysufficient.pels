@@ -2652,6 +2652,32 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
   });
 
+  it('reports no rescue permission for a met task', () => {
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      devices: [buildDevice({
+        stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS }),
+      })],
+      settings: normalizeDeferredObjectiveSettings(buildSettings({
+        targetPercent: 60,
+        rescue: {
+          exemptFromBudget: 'always',
+          limitLowerPriorityDevices: 'always',
+          pauseLowerPriorityDevices: 'always',
+        },
+      })),
+      powerTracker: {},
+    });
+
+    expect(diagnostic?.evaluation.completion.kind).toBe('target_reached');
+    expect(diagnostic?.evaluation.permissions)
+      .toEqual({ budgetExempt: false, limitLowerPriority: false, pauseLowerPriority: false });
+    expect(diagnostic).toMatchObject({
+      budgetExemptApplied: false,
+      limitLowerPriorityApplied: false,
+      pauseLowerPriorityApplied: false,
+    });
+  });
+
   it('marks a met EV objective as satisfied on a bare-connected charger (plugged_in)', () => {
     // Regression: a connected charger whose fresh SoC already meets the target
     // needs no resume — it must reach the satisfied path rather than any paused

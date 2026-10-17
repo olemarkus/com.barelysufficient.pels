@@ -1,3 +1,4 @@
+import { reportAppliedPermissions } from './completionDiagnostic';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 import type { TaskEvaluation } from './taskEvaluation';
 
@@ -14,7 +15,6 @@ export const reportHigherPriorityContention = (
     trajectory: { kind: 'resolved', status: plan.status },
     reasonCode: plan.statusDetail,
     horizonPlan: plan,
-    budgetExemptApplied: evaluation.permissions.budgetExempt
-      && evaluation.planning.kind === 'allocated' && evaluation.planning.plan.currentHourClaim === 'claimed',
+    ...reportAppliedPermissions(evaluation),
   };
 };

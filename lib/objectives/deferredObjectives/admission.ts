@@ -1,7 +1,6 @@
 import type { PlanInputDevice } from '../../../packages/planner-types/src/planInputDevice';
 import type { DeferredReleaseIntent } from '../../../packages/planner-types/src/deferredDecoration';
 import type { TaskEvaluation } from './taskEvaluation';
-import { isTaskSatisfied } from './taskCompletion';
 
 export type { DeferredReleaseIntent };
 
@@ -97,20 +96,19 @@ const resolveDecision = (
     const releaseIntent = resolveReleaseIntent(releasesViaBinary, device);
     return { kind: 'idle', budgetExempt: false, ...floor, ...(releaseIntent ? { releaseIntent } : {}) };
   }
-  // A satisfied task keeps the hours it booked, as top-ups that promise nothing:
-  // its rescue permissions back an unmet obligation, so none of them applies. Only
-  // a near-target acceptance reaches here: a task at its target by reading has no
-  // bookings, so every hour it has left is released.
-  const satisfied = isTaskSatisfied(evaluation.completion);
+  // A satisfied task keeps the hours it booked, as top-ups that promise nothing.
+  // It holds no rescue permission (the coordinator strips them on acceptance,
+  // `withAcceptedCompletion`), so nothing below escalates for it.
+  //
   // Taking capacity from other loads (boost past the shed invariant, holding startup
   // power back from lower-priority admission) backs a promise, so it applies only
   // where the hour books energy. A hour booked at 0 kWh runs on capacity that turns
   // out to be free; escalating there would let a task take an hour a
   // higher-priority task reserved, because the boost bypasses are priority-blind.
-  const promisesEnergy = !satisfied && (horizonPlan.currentBucket?.plannedUsefulEnergyKWh ?? 0) > 0;
+  const promisesEnergy = (horizonPlan.currentBucket?.plannedUsefulEnergyKWh ?? 0) > 0;
   return {
     kind: 'planned',
-    budgetExempt: !satisfied && evaluation.permissions.budgetExempt,
+    budgetExempt: evaluation.permissions.budgetExempt,
     engageBoost: evaluation.permissions.limitLowerPriority && promisesEnergy,
     reservesStartupPower: evaluation.permissions.pauseLowerPriority && promisesEnergy,
     ...floor,

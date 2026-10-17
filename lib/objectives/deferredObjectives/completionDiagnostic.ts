@@ -1,5 +1,5 @@
-import { resolveTaskCompletion } from './taskCompletion';
-import type { TaskEvaluation } from './taskEvaluation';
+import { isTaskSatisfied, resolveTaskCompletion } from './taskCompletion';
+import { NO_TASK_PERMISSIONS, type TaskEvaluation } from './taskEvaluation';
 import type {
   DeferredObjectiveDiagnostic, DeferredObjectiveStallClassificationReader,
 } from './diagnosticTypes';
@@ -27,6 +27,30 @@ export const completionFromEvaluation = (
     thermalEvidence: { kind: 'accepted', evidence },
   });
 };
+
+/**
+ * Settle the evaluation on its accepted completion. A satisfied task's rescue
+ * permissions back an obligation it has met, so it holds none of them.
+ */
+export const withAcceptedCompletion = (
+  evaluation: TaskEvaluation,
+  completion: TaskEvaluation['completion'],
+): TaskEvaluation => ({
+  ...evaluation,
+  completion,
+  permissions: isTaskSatisfied(completion) ? NO_TASK_PERMISSIONS : evaluation.permissions,
+});
+
+/** Project the evaluation's rescue permissions into the diagnostic's applied flags. */
+export const reportAppliedPermissions = (
+  evaluation: TaskEvaluation,
+): Pick<DeferredObjectiveDiagnostic,
+  'budgetExemptApplied' | 'limitLowerPriorityApplied' | 'pauseLowerPriorityApplied'> => ({
+  budgetExemptApplied: evaluation.permissions.budgetExempt
+    && evaluation.planning.kind === 'allocated' && evaluation.planning.plan.currentHourClaim === 'claimed',
+  limitLowerPriorityApplied: evaluation.permissions.limitLowerPriority,
+  pauseLowerPriorityApplied: evaluation.permissions.pauseLowerPriority,
+});
 
 /** Project the resolved completion into live reporting; never classify it again. */
 export const reportTaskCompletionDiagnostic = (

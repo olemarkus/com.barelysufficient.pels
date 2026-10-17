@@ -1,6 +1,8 @@
 import type { PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
 import { buildUnallocatedTaskEvaluation } from './taskEvaluationProducer';
-import { completionFromEvaluation } from './completionDiagnostic';
+import {
+  completionFromEvaluation, reportAppliedPermissions, withAcceptedCompletion,
+} from './completionDiagnostic';
 import type { TaskEvaluation } from './taskEvaluation';
 import type { TaskReservationReader } from './taskDeliveryState';
 import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
@@ -333,7 +335,7 @@ export const buildDeferredObjectiveTaskResults = (
     const acceptedCompletion = completionFromEvaluation(
       evaluation, readers.getStallClassification, readers.hasObservedTask(deviceId, objective),
     );
-    const evaluationResult = { ...evaluation, completion: acceptedCompletion };
+    const evaluationResult = withAcceptedCompletion(evaluation, acceptedCompletion);
     const reservationSuppressed = readers.isReservationSuppressed(deviceId, objective.deadlineAtMs);
     const holdsBookings = holdsItsBookings(task, acceptedCompletion, reservationSuppressed);
     const governs = holdsBookings && governsItsDevice(task, evaluationResult, nowMs);
@@ -354,7 +356,12 @@ export const buildDeferredObjectiveTaskResults = (
     if (reservationSuppressed || governs) knownLoadHigherDeviceIds.add(deviceId);
     return {
       evaluation: evaluationResult,
-      diagnostic: { ...coordinated, evaluation: evaluationResult, completion: acceptedCompletion },
+      diagnostic: {
+        ...coordinated,
+        ...reportAppliedPermissions(evaluationResult),
+        evaluation: evaluationResult,
+        completion: acceptedCompletion,
+      },
     };
   });
   results.push(...buildExcludedObjectiveDiagnostics(

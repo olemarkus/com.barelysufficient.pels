@@ -1,3 +1,4 @@
+import { reportAppliedPermissions } from './completionDiagnostic';
 import { buildAllocatedTaskEvaluation } from './taskEvaluationProducer';
 import type {
   DeferredObjectiveActivePlanFloorShortfallCause,
@@ -156,10 +157,7 @@ export const buildFrozenDiagnostic = (
     horizonBucketCount: frozenRead.hours.length,
     expectedStepId: horizonPlan.expectedStepId,
     ...(liveStepsUnavailable ? { liveStepsUnavailable: true as const } : {}),
-    budgetExemptApplied: evaluation.permissions.budgetExempt
-      && evaluation.planning.kind === 'allocated' && evaluation.planning.plan.currentHourClaim === 'claimed',
-    limitLowerPriorityApplied: evaluation.permissions.limitLowerPriority,
-    pauseLowerPriorityApplied: evaluation.permissions.pauseLowerPriority,
+    ...reportAppliedPermissions(evaluation),
     horizonPlan,
   };
 };

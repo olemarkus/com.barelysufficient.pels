@@ -285,15 +285,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `notes/ui-terminology.md`. Done when a satisfied task's held device shows that line and an
       unmet task's released hour still shows "Waiting for cheaper hours". [P2]
 
-- [ ] **Smart-task diagnostics report rescue permissions a satisfied task does not get.**
-      `freshDiagnostic.ts` and `frozenDiagnostic.ts` stamp `budgetExemptApplied` /
-      `limitLowerPriorityApplied` / `pauseLowerPriorityApplied` from `evaluation.permissions`, and
-      the allocator plans an `accepted_near_target` task with the budget cap lifted, while admission
-      (`admission.ts` `resolveDecision`) grants a satisfied task none of them. Strip the permissions
-      once where the coordinator overlays the accepted completion
-      (`taskEvaluationCoordinator.ts`), and let admission read `evaluation.permissions` unchanged.
-      Done when a satisfied task's diagnostic log shows no applied permission and admission has no
-      satisfied-specific permission branch. [P2]
 
 - [ ] **A genuine learned-rate gap mid-commitment still strips a committed task to `unknown`.**
       Same shape as the fixed step-ladder gap one short-circuit earlier: in

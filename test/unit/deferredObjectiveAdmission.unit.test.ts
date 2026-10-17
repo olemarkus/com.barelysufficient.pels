@@ -1,4 +1,5 @@
 import type { TaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
+import { withAcceptedCompletion } from '../../lib/objectives/deferredObjectives/completionDiagnostic';
 import { resolvedTrajectoryStatus } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
 import {
   applyDeferredAdmissionToInput,
@@ -371,14 +372,15 @@ describe('applyDeferredObjectiveAdmission', () => {
   it('lets a satisfied task top up in an hour it booked, without its rescue permissions', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'dev1',
-      completion: { kind: 'accepted_near_target' },
       trajectory: { kind: 'resolved', status: 'satisfied' },
       budgetExemptApplied: true,
       limitLowerPriorityApplied: true,
       pauseLowerPriorityApplied: true,
       horizonPlan: buildHorizonPlan(),
     });
-    const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation));
+    const accepted = withAcceptedCompletion(diagnostic.evaluation, { kind: 'accepted_near_target' });
+    expect(accepted.permissions).toEqual({ budgetExempt: false, limitLowerPriority: false, pauseLowerPriority: false });
+    const decisions = applyDeferredObjectiveAdmission([accepted]);
     expect(decisions.get('dev1')).toEqual({
       kind: 'planned', budgetExempt: false, engageBoost: false, reservesStartupPower: false, deadlineFloorTargetC: 65,
     });
@@ -447,18 +449,6 @@ describe('applyDeferredObjectiveAdmission', () => {
     expect(applyDeferredObjectiveAdmission(([planned]).map((diagnostic) => diagnostic.evaluation)).get('dev1'))
       .toEqual({ kind: 'planned', budgetExempt: true, engageBoost: false, reservesStartupPower: false, deadlineFloorTargetC: 65 });
 
-    // Not applied once the task is no longer being pursued.
-    const satisfied = buildDiagnostic({
-      deviceId: 'dev2',
-      completion: { kind: 'target_reached' },
-      trajectory: { kind: 'resolved', status: 'satisfied' },
-      budgetExemptApplied: true,
-      horizonPlan: buildHorizonPlan({
-        status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0, currentHourClaim: 'released',
-      }),
-    });
-    expect(applyDeferredObjectiveAdmission(([satisfied]).map((diagnostic) => diagnostic.evaluation)).get('dev2'))
-      .toEqual({ kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65 });
   });
 
   it('does not turn an idle rescue plan into a standing budget exemption', () => {

@@ -14,12 +14,17 @@ export type TaskEvaluation = {
   targetControl: { kind: 'none' } | { kind: 'temperature'; value: number };
 };
 
+/** A task holds no rescue permission: unset, or its obligation is met. */
+export const NO_TASK_PERMISSIONS: TaskEvaluation['permissions'] = {
+  budgetExempt: false, limitLowerPriority: false, pauseLowerPriority: false,
+};
+
 export const inactiveTaskEvaluation = (
   deviceId: string, deadlineAtMs: number, requestedTarget: number,
 ): TaskEvaluation => ({
   deviceId, deadlineAtMs, requestedTarget,
   progress: { kind: 'unobserved' }, completion: { kind: 'inactive' }, planning: { kind: 'inactive' },
-  permissions: { budgetExempt: false, limitLowerPriority: false, pauseLowerPriority: false },
+  permissions: NO_TASK_PERMISSIONS,
   targetControl: { kind: 'none' },
 });
 

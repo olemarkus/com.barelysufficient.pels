@@ -1,3 +1,4 @@
+import { reportAppliedPermissions } from './completionDiagnostic';
 import { buildAllocatedTaskEvaluation, buildUnallocatedTaskEvaluation } from './taskEvaluationProducer';
 import type { PowerTrackerState } from '../../power/tracker';
 import type { DeferredObjectiveEnergyResolution } from './profileEnergyResolution';
@@ -100,10 +101,7 @@ export const buildFreshDiagnostic = (
     ...buildKnownEnergyFields({ objective, profileEnergy }),
     horizonBucketCount: policyHorizon.horizonBucketCount,
     expectedStepId: planWithPriceWatermark.expectedStepId,
-    budgetExemptApplied: evaluation.permissions.budgetExempt
-      && evaluation.planning.kind === 'allocated' && evaluation.planning.plan.currentHourClaim === 'claimed',
-    limitLowerPriorityApplied: evaluation.permissions.limitLowerPriority,
-    pauseLowerPriorityApplied: evaluation.permissions.pauseLowerPriority,
+    ...reportAppliedPermissions(evaluation),
     horizonPlan: planWithPriceWatermark,
   };
 };
