@@ -1057,20 +1057,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       hypothesis: three segmented impls / two device rows / per-file chip vocab is where per-page
       drift keeps re-entering. [P2]
 
-- [ ] **Generation-guard the rescue-gate state commit in `loadStarvationRescuableDevices`.** `overviewRescueGate`
-      now guards the *repaint* after a gate refresh, but the controller's
-      `state.starvationRescuableDeviceIds = new Set(ids)` (`packages/settings-ui/src/ui/starvationRescue.ts`) still
-      commits whichever overlapping `/ui_starvation_rescue_devices` response lands last. Two `plan_updated` events
-      while Overview is visible can let an older response overwrite the set after a newer one, so a later live/power
-      tick repaints the latest plan against a stale global set — briefly hiding a valid "Let it run now" chip or
-      showing one that should have gone. Fix: a monotonic generation token captured before the await, committed only
-      if still latest (mirror the repaint guard). Persona: Optimiser watching a budget-held device on Overview;
-      hypothesis: a chip that flickers on/off across plan updates reads as a bug. P2 edge (needs overlapping gate
-      loads; self-corrects on the next refresh). Same family: the chip's on-arm preview response
-      (`BudgetExemptChip` in `PlanDeviceCards.tsx`) can also land late and overwrite cleared/re-armed state, so a
-      stale `deadlineAtMs`/label could be shown or reused on a later confirm — guard it the same way. Source: codex +
-      coderabbit on #1736, 2026-06-17. [P2]
-
 - [ ] **Car card opens with an instruction there is nothing to act on.**
       *Persona:* EV-charger owner with no car app installed.
       *Hypothesis:* "Tick the cars that charge here…" renders directly above "No cars found" —
