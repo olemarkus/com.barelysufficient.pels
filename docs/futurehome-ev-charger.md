@@ -15,7 +15,7 @@ That setting only follows changes made through Homey. If the current is changed 
 
 Select the EV control mode that matches how the charger is wired. When the charger's **Installed phases** setting is **One**, PELS suggests 1-phase charging. For a three-phase installation, choose the mode yourself: on a 230 V IT grid, a three-phase charger draws less power per amp than the 3-phase mode assumes.
 
-Set the highest current PELS may use in the EV control mode. PELS changes the charger's **Current limit** setting as it adjusts charging, so that setting no longer holds your own maximum.
+Set the highest current PELS may use in the EV control mode, no higher than the limit set when the charger was installed. The charger will not go above that installation limit, but Homey still shows the higher value, so PELS would plan for current the charger never delivers. PELS changes the charger's **Current limit** setting as it adjusts charging, so that setting no longer holds your own maximum.
 
 ## Built-in current control
 
