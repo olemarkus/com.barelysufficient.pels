@@ -325,6 +325,13 @@ function applyHoldToDevice(
     return { device: dev, availableHeadroom, restoredOneThisCycle };
   }
 
+  // A standing hold (start policy, a smart task's released hour) already shed this
+  // device to OFF, not to its limit (`resolveEffectiveShedBehavior`). Stamping the
+  // limit here would trade that OFF for a setback the thermostat still heats to.
+  if (dev.plannedState === 'shed' && dev.nonCapacityHoldShed === true && dev.shedAction === 'turn_off') {
+    return { device: dev, availableHeadroom, restoredOneThisCycle };
+  }
+
   // The restore pass already admitted this device and debited its power. Its
   // setpoint is part of that same restoration: admitting it again would either
   // charge it twice or replace its own turn-on admission with a throttle hold.

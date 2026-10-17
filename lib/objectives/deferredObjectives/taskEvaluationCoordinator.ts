@@ -243,15 +243,16 @@ const reservesItsBookings = (
 ): boolean => governs || (holdsBookings && (device === undefined
   || resolveHighestObjectiveAdmissionPowerKw(device) === null));
 
-// A task governs its device while allocated, unfinished and before its deadline.
+// A task governs its device while allocated and before its deadline, also once
+// at its target: it then books nothing and holds the device off in every hour
+// (owner ruling 2026-10-17), so its device reaches lower tasks as no load.
 // Otherwise lower tasks reserve the device's maximum known step as ordinary load.
 const governsItsDevice = (
   task: OrderedDeferredObjective,
   evaluation: TaskEvaluation,
   nowMs: number,
 ): boolean => task.objective.deadlineAtMs > nowMs
-  && evaluation.planning.kind === 'allocated'
-  && evaluation.completion.kind !== 'target_reached';
+  && evaluation.planning.kind === 'allocated';
 
 export const buildDeferredObjectiveTaskResults = (
   snapshot: TaskEvaluationSnapshot,
@@ -435,9 +436,15 @@ const buildDeferredObjectiveDiagnostic = (
   };
   const progress = resolveObjectiveProgress(objective, task.device, readers.getDeliveredEnergyKWh);
   if (isObjectiveProgressSatisfied(progress)) {
-    return withRawActuationSatisfaction(buildDiagnosticWithPolicyHorizon(
+    const satisfied = buildDiagnosticWithPolicyHorizon(
       snapshot, task, progress, EMPTY_POLICY_HORIZON, horizonInputs, null, true,
-    ));
+    );
+    // A satisfied task governs its device until the deadline, but the task is
+    // price-dependent: with price optimization off it governs nothing, exactly as
+    // an unmet task goes inactive below. It still reports its satisfaction.
+    return snapshot.priceOptimizationEnabled
+      ? satisfied
+      : { ...satisfied, evaluation: { ...satisfied.evaluation, planning: { kind: 'inactive' } } };
   }
 
   // Per-cycle (mid-hour) frozen read: between hour settles the committed set,
@@ -489,18 +496,10 @@ const buildDeferredObjectiveDiagnostic = (
   // allocate (no executable steps), a committed task is served frozen even on a
   // replan-due cycle — the replan is deferred, not the commitment dropped. Null
   // exactly when there is no commitment to serve.
-  return withRawActuationSatisfaction(buildDiagnosticWithPolicyHorizon(
+  return buildDiagnosticWithPolicyHorizon(
     snapshot, task, progress, policyHorizon, horizonInputs, frozenFallback, replan,
-  ));
+  );
 };
-
-// Raw requested-target completion alone controls task release.
-const withRawActuationSatisfaction = (
-  diagnostic: DeferredObjectiveDiagnostic,
-): DeferredObjectiveDiagnostic => ({
-  ...diagnostic,
-  actuationSatisfied: diagnostic.evaluation.completion.kind === 'target_reached',
-});
 
 // Which frozen read (if any) this cycle serves. Normal path: the caller's replan
 // decision serves the commitment unless it re-plans. Step-gap degradation: a

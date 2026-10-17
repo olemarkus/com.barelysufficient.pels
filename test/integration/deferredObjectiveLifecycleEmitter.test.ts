@@ -388,14 +388,12 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
     const published: DeferredObjectiveStatusSnapshot[] = [];
     statusBus.onTransition((snapshot) => published.push(snapshot));
     const onDeadlineReached = vi.fn();
-    const onSatisfied = vi.fn();
 
     const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
       getDeferredObjectiveSettings: () => buildEvSettings(NOW_MS + 3 * HOUR_MS),
       getDevices: () => [buildEvDevice()],
       getPriceOptimizationEnabled: () => true,
       deferredObjectiveStatusBus: statusBus,
-      onSatisfied,
       onDeadlineReached,
     }));
 
@@ -404,14 +402,15 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
     // Deadline not yet reached: the disable hook must stay silent even though a
     // status transition still publishes.
     expect(onDeadlineReached).not.toHaveBeenCalled();
-    expect(onSatisfied).not.toHaveBeenCalled();
     expect(published).toHaveLength(1);
     expect(published[0].deadlineMissed).toBe(false);
   });
 
-  it('releases fallback ownership when satisfaction ends or the task disappears', () => {
-    const onSatisfied = vi.fn();
+  // A satisfied task keeps governing its device through admission until the
+  // deadline (owner ruling 2026-10-17), so only the deadline drives a fallback.
+  it('owns no fallback before the deadline, satisfied or not, and releases it when the task disappears', () => {
     const onFallbackInactive = vi.fn();
+    const onDeadlineReached = vi.fn();
     let devices: ObjectiveDeviceInput[] = [buildEvDevice({
       stateOfCharge: stateOfChargeFixture({ percent: 80, observedAtMs: NOW_MS }),
       evChargingState: 'plugged_in_charging',
@@ -420,46 +419,23 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
     const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
       getDeferredObjectiveSettings: () => settings,
       getDevices: () => devices,
-      onSatisfied,
       onFallbackInactive,
+      onDeadlineReached,
     }));
 
     emitter.tick(NOW_MS);
-    expect(onSatisfied).toHaveBeenCalledWith('ev-1');
-    expect(onFallbackInactive).not.toHaveBeenCalled();
+    expect(onFallbackInactive).toHaveBeenCalledWith('ev-1');
 
     devices = [buildEvDevice({
       stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS + 30_000 }),
     })];
     emitter.tick(NOW_MS + 30_000);
-    expect(onFallbackInactive).toHaveBeenCalledWith('ev-1');
+    expect(onFallbackInactive).toHaveBeenCalledTimes(2);
 
     settings = { version: 1, objectivesByDeviceId: {} };
     devices = [];
     emitter.tick(NOW_MS + 60_000);
-    expect(onFallbackInactive).toHaveBeenCalledTimes(2);
-  });
-
-  it('fires satisfied fallback on every pre-deadline tick without firing deadline ending', () => {
-    const onSatisfied = vi.fn();
-    const onDeadlineReached = vi.fn();
-    const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
-      getDeferredObjectiveSettings: () => buildEvSettings(NOW_MS + 3 * HOUR_MS),
-      getDevices: () => [buildEvDevice({
-        stateOfCharge: stateOfChargeFixture({ percent: 80, observedAtMs: NOW_MS }),
-        evChargingState: 'plugged_in_charging',
-      })],
-      getPriceOptimizationEnabled: () => true,
-      onSatisfied,
-      onDeadlineReached,
-    }));
-
-    emitter.tick(NOW_MS);
-    emitter.tick(NOW_MS + 30_000);
-
-    expect(onSatisfied).toHaveBeenCalledTimes(2);
-    expect(onSatisfied).toHaveBeenNthCalledWith(1, 'ev-1');
-    expect(onSatisfied).toHaveBeenNthCalledWith(2, 'ev-1');
+    expect(onFallbackInactive).toHaveBeenCalledTimes(3);
     expect(onDeadlineReached).not.toHaveBeenCalled();
   });
 

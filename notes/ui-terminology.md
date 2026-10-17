@@ -737,8 +737,9 @@ device on, and the sentence exists to say so. Every sentence opens with `PELS`.
 | Power-limit control off | `PELS does not start it. If it is started elsewhere, PELS leaves it running.` |
 
 The `When the task is done` card says more for the last row, because a task's end
-applies the device's Power limiting action and keeps it until the ready-by time:
-`Until the ready-by time, PELS does what Power limiting is set to for {device},
+at the ready-by time applies the device's Power limiting action. Until then the
+task decides, also once its goal is reached (owner ruling 2026-10-17):
+`At the ready-by time, PELS does what Power limiting is set to for {device},
 such as turning it off. After that, PELS does not start it, and leaves it running
 if it is started elsewhere.` While a task is in progress the device page prefixes
 its sentence with `When no smart task is running, `, because the task decides then.

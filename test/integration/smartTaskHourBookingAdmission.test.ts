@@ -117,7 +117,6 @@ const diagnosticFor = (
   deviceId: DEVICE_ID,
   deviceName: 'Connected 300',
   objectiveId: `${DEVICE_ID}:temperature`,
-  actuationSatisfied: plan.status === 'satisfied',
   objectiveKind: 'temperature',
   progressDirection: 'increasing',
   enforcement: 'soft',
@@ -272,12 +271,13 @@ describe('booking a smart-task hour by price, not by forecast room', () => {
 
     it('releases the device in every hour it does not need, including the dearer ones', () => {
       const dearer = outcomes.filter((o) => !CHEAPEST_HOURS.includes(o.hourIndex as 2 | 6));
-      // `inactive` once the target is met and the objective stops driving the device
-      // at all; `idle` while it is still running but does not want this hour.
+      // `idle` also once the target is met: a satisfied task keeps governing the
+      // device until its deadline, and an hour it skipped runs nothing (owner
+      // ruling 2026-10-17).
       expect(
         dearer.map((o) => o.kind),
         `every hour outside the cheapest pair must be given up.\n${table(outcomes)}`,
-      ).toEqual(dearer.map((o) => (o.hourIndex > Math.max(...CHEAPEST_HOURS) ? 'inactive' : 'idle')));
+      ).toEqual(dearer.map(() => 'idle'));
       expect(dearer.every((o) => o.deliveredKWh === 0)).toBe(true);
     });
 

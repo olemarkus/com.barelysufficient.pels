@@ -111,13 +111,13 @@ const NOW_SENTENCES: Record<DeviceStartRule, (subject: string) => string> = {
 };
 
 // After a task, one rule says more: with Power-limit control off, the task's
-// end applies the device's Power limiting action and keeps applying it until
-// the ready-by time, even once the goal is reached
-// (`handleDeferredSatisfied`, `setup/appInit/deferredObjectiveLifecycle.ts`).
+// end at the ready-by time applies the device's Power limiting action
+// (`handleDeferredDeadlineReached`, `setup/appInit/deferredObjectiveLifecycle.ts`).
+// Until then the task decides, also once its goal is reached.
 const AFTER_TASK_SENTENCES: Record<DeviceStartRule, (subject: string) => string> = {
   ...NOW_SENTENCES,
   not_started_by_pels: (subject) => (
-    `Until the ready-by time, PELS does what Power limiting is set to for ${subject}, such as turning it off. `
+    `At the ready-by time, PELS does what Power limiting is set to for ${subject}, such as turning it off. `
     + 'After that, PELS does not start it, and leaves it running if it is started elsewhere.'
   ),
 };

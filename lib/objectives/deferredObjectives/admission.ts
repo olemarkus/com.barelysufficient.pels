@@ -1,6 +1,7 @@
 import type { PlanInputDevice } from '../../../packages/planner-types/src/planInputDevice';
 import type { DeferredReleaseIntent } from '../../../packages/planner-types/src/deferredDecoration';
 import type { TaskEvaluation } from './taskEvaluation';
+import { isTaskSatisfied } from './taskCompletion';
 
 export type { DeferredReleaseIntent };
 
@@ -17,7 +18,12 @@ export type DeferredAdmissionDecision =
       deadlineFloorTargetC?: number;
       releaseIntent?: 'binary_restore';
     }
-  | { kind: 'idle'; budgetExempt: boolean; releaseIntent?: 'binary_release' | 'shed_release' };
+  | {
+      kind: 'idle';
+      budgetExempt: boolean;
+      deadlineFloorTargetC?: number;
+      releaseIntent?: 'binary_release' | 'shed_release';
+    };
 
 export const buildDeferredDemandDeviceIds = (
   decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
@@ -38,15 +44,31 @@ const usesBinaryReleaseControl = (device: PlanInputDevice | undefined): boolean 
   device?.controlModel === 'binary_power'
 );
 
+// During an active task the task's setpoint is the device's floor in every hour,
+// also once the task is satisfied: a mode change or the task finishing must not
+// write a lower mode target over it (owner ruling 2026-10-17). A released hour
+// still holds the device off through its shed posture, which carries its own limit.
+const resolveTaskTargetFloor = (evaluation: TaskEvaluation): { deadlineFloorTargetC?: number } => (
+  evaluation.targetControl.kind === 'temperature'
+    ? { deadlineFloorTargetC: evaluation.targetControl.value } : {}
+);
+
+const resolveReleaseIntent = (
+  releasesViaBinary: boolean,
+  device: PlanInputDevice | undefined,
+): 'binary_release' | 'shed_release' | undefined => {
+  if (releasesViaBinary) return 'binary_release';
+  return device?.control.commandAuthority === false ? 'shed_release' : undefined;
+};
+
 const resolveDecision = (
   evaluation: TaskEvaluation,
   device: PlanInputDevice | undefined,
 ): DeferredAdmissionDecision => {
-  if (evaluation.completion.kind === 'target_reached'
-    || evaluation.completion.kind === 'accepted_near_target'
-    || evaluation.planning.kind === 'inactive') return { kind: 'inactive', budgetExempt: false };
+  if (evaluation.planning.kind === 'inactive') return { kind: 'inactive', budgetExempt: false };
   const horizonPlan = evaluation.planning.plan;
   const releasesViaBinary = usesBinaryReleaseControl(device);
+  const floor = resolveTaskTargetFloor(evaluation);
   // The producer resolved the claim this hour carries (`resolveCurrentHourClaim`);
   // admission maps it 1:1 and adds only the release ROUTING, which is a
   // device-modality question the producer cannot answer.
@@ -60,6 +82,9 @@ const resolveDecision = (
     // admission path; the clock-driven recorder is insulated, so no revision is
     // written (the device's idling re-books the cheaper hours at the next :58 settle).
     //
+    // A satisfied task holds its device the same way: an hour it did not book runs
+    // nothing until the deadline (owner ruling 2026-10-17).
+    //
     // Binary-controlled devices (cap-on or cap-off): always release the binary control.
     // A device with authority of its own is ALSO held off through the planner
     // (`holdsDeviceOff`), so the plan's shed and this release agree: the smart task's
@@ -69,27 +94,26 @@ const resolveDecision = (
     // non-binary gets no release intent — emitting shed_release there would race the
     // planner's own decisions — and is held off through the planner instead
     // (`holdsDeviceOff`, `deferredHoldActive`).
-    if (releasesViaBinary) {
-      return { kind: 'idle', budgetExempt: false, releaseIntent: 'binary_release' };
-    }
-    if (device?.control.commandAuthority === false) {
-      return { kind: 'idle', budgetExempt: false, releaseIntent: 'shed_release' };
-    }
-    return { kind: 'idle', budgetExempt: false };
+    const releaseIntent = resolveReleaseIntent(releasesViaBinary, device);
+    return { kind: 'idle', budgetExempt: false, ...floor, ...(releaseIntent ? { releaseIntent } : {}) };
   }
+  // A satisfied task keeps the hours it booked, as top-ups that promise nothing:
+  // its rescue permissions back an unmet obligation, so none of them applies. Only
+  // a near-target acceptance reaches here: a task at its target by reading has no
+  // bookings, so every hour it has left is released.
+  const satisfied = isTaskSatisfied(evaluation.completion);
   // Taking capacity from other loads (boost past the shed invariant, holding startup
   // power back from lower-priority admission) backs a promise, so it applies only
   // where the hour books energy. A hour booked at 0 kWh runs on capacity that turns
   // out to be free; escalating there would let a task take an hour a
   // higher-priority task reserved, because the boost bypasses are priority-blind.
-  const promisesEnergy = (horizonPlan.currentBucket?.plannedUsefulEnergyKWh ?? 0) > 0;
+  const promisesEnergy = !satisfied && (horizonPlan.currentBucket?.plannedUsefulEnergyKWh ?? 0) > 0;
   return {
     kind: 'planned',
-    budgetExempt: evaluation.permissions.budgetExempt,
+    budgetExempt: !satisfied && evaluation.permissions.budgetExempt,
     engageBoost: evaluation.permissions.limitLowerPriority && promisesEnergy,
     reservesStartupPower: evaluation.permissions.pauseLowerPriority && promisesEnergy,
-    ...(evaluation.targetControl.kind === 'temperature'
-      ? { deadlineFloorTargetC: evaluation.targetControl.value } : {}),
+    ...floor,
     ...(releasesViaBinary ? { releaseIntent: 'binary_restore' as const } : {}),
   };
 };
@@ -267,8 +291,8 @@ const claimsAnything = (claims: DeferredHourClaims): boolean => (
 
 // Translate an active deferred objective into a temporary capacity-control-on signal for the
 // shedding/restore pipeline. The shedding and restore modules stay agnostic of objectives:
-// they only see a managed device and (for idle hours) a seeded shed-set entry. The deadline
-// thermostat floor travels on the same planned decision as the task's other claims.
+// they only see a managed device and (for idle hours) a seeded shed-set entry. The task's
+// thermostat floor travels on every planned and idle decision, beside the task's other claims.
 export const applyDeferredAdmissionToInput = (
   devices: PlanInputDevice[],
   decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
@@ -287,7 +311,7 @@ export const applyDeferredAdmissionToInput = (
     const liftsHold = liftsExternalOffHold(decision, heldOrFree);
     if (liftsHold) externalOffHoldLiftedDeviceIds.add(heldOrFree.id);
     const device = liftsHold ? withoutExternalOffHold(heldOrFree) : heldOrFree;
-    const deadlineFloorTargetC = decision.kind === 'planned' ? decision.deadlineFloorTargetC : undefined;
+    const deadlineFloorTargetC = decision.kind === 'inactive' ? undefined : decision.deadlineFloorTargetC;
     const hasDeadlineFloor = typeof deadlineFloorTargetC === 'number';
     const override = contributesCommandAuthority(decision, device);
     if (override) lentAuthorityDeviceIds.add(device.id);

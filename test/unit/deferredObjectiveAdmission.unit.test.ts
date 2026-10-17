@@ -151,7 +151,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       }),
     });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation));
-    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false });
+    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65 });
   });
 
   it('adds an EV pause intent for an EV objective in an idle bucket', () => {
@@ -239,9 +239,7 @@ describe('applyDeferredObjectiveAdmission', () => {
         ([buildDiagnostic({ deviceId: 'dev', objectiveKind: 'temperature', horizonPlan: buildHorizonPlan({ kind: 'temperature', ...horizon }) })]).map((diagnostic) => diagnostic.evaluation),
         [waterHeater],
       ).get('dev');
-      expect(heaterDecision).toEqual(evDecision?.kind === 'planned'
-        ? { ...evDecision, deadlineFloorTargetC: 65 }
-        : evDecision);
+      expect(heaterDecision).toEqual({ ...evDecision, deadlineFloorTargetC: 65 });
     }
   });
 
@@ -251,7 +249,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       horizonPlan: buildHorizonPlan({ currentBucket: null, currentHourClaim: 'released' }),
     });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation));
-    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false });
+    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65 });
   });
 
   // An hour the plan wants on price, or a hour of a task that cannot finish, is booked
@@ -319,79 +317,71 @@ describe('applyDeferredObjectiveAdmission', () => {
     expect(applied.devices[0]?.reservesStartupPower).toBeUndefined();
   });
 
-  it('returns inactive when the goal is already satisfied so the device falls back to its normal behavior', () => {
+  // A satisfied task keeps governing its device until the deadline (owner ruling
+  // 2026-10-17): an hour it did not book holds the device in its release posture,
+  // at the task's setpoint rather than the mode's.
+  const satisfiedUnbooked = {
+    completion: { kind: 'target_reached' } as const,
+    trajectory: { kind: 'resolved', status: 'satisfied' } as const,
+    horizonPlan: buildHorizonPlan({
+      status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0, currentHourClaim: 'released',
+    }),
+  };
+
+  it('holds a satisfied temperature task\'s device in an hour it did not book, at the task\'s setpoint', () => {
+    const diagnostic = buildDiagnostic({ deviceId: 'dev1', ...satisfiedUnbooked });
+    const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation));
+    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65 });
+  });
+
+  it('holds a satisfied task the same way on a device it near-target accepted', () => {
     const diagnostic = buildDiagnostic({
-      deviceId: 'dev1',
-      completion: { kind: 'target_reached' },
-      trajectory: { kind: 'resolved', status: 'satisfied' },
-      horizonPlan: buildHorizonPlan({
-        status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0, currentHourClaim: 'released',
-      }),
+      deviceId: 'dev1', ...satisfiedUnbooked, completion: { kind: 'accepted_near_target' },
     });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation));
-    expect(decisions.get('dev1')).toEqual({ kind: 'inactive', budgetExempt: false });
+    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65 });
   });
 
-  it('leaves terminal EV fallback actuation to the lifecycle clock when the device is cap-off', () => {
-    const diagnostic = buildDiagnostic({
-      deviceId: 'ev1',
-      objectiveKind: 'ev_soc',
-      completion: { kind: 'target_reached' },
-      trajectory: { kind: 'resolved', status: 'satisfied' },
-      horizonPlan: buildHorizonPlan({
-        status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0, currentHourClaim: 'released',
-      }),
-    });
+  it('pauses a satisfied EV in an hour it did not book', () => {
+    const diagnostic = buildDiagnostic({ deviceId: 'ev1', objectiveKind: 'ev_soc', ...satisfiedUnbooked });
     const device = buildEvDevice({ id: 'ev1', controllable: false, controlModel: 'binary_power' });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]);
-    expect(decisions.get('ev1')).toEqual({ kind: 'inactive', budgetExempt: false });
+    expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'binary_release' });
   });
 
-  it('keeps inactive without a pause intent for a satisfied EV when the device is cap-on', () => {
-    const diagnostic = buildDiagnostic({
-      deviceId: 'ev1',
-      objectiveKind: 'ev_soc',
-      completion: { kind: 'target_reached' },
-      trajectory: { kind: 'resolved', status: 'satisfied' },
-      horizonPlan: buildHorizonPlan({
-        status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0, currentHourClaim: 'released',
-      }),
-    });
-    const device = buildEvDevice({ id: 'ev1', controllable: true });
-    const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]);
-    expect(decisions.get('ev1')).toEqual({ kind: 'inactive', budgetExempt: false });
-  });
-
-  it('leaves terminal non-EV fallback actuation to the lifecycle clock when the device is cap-off', () => {
-    const diagnostic = buildDiagnostic({
-      deviceId: 'heater1',
-      objectiveKind: 'temperature',
-      completion: { kind: 'target_reached' },
-      trajectory: { kind: 'resolved', status: 'satisfied' },
-      horizonPlan: buildHorizonPlan({
-        status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0, currentHourClaim: 'released',
-      }),
-    });
+  it('releases a satisfied cap-off heater through its configured posture', () => {
+    const diagnostic = buildDiagnostic({ deviceId: 'heater1', ...satisfiedUnbooked });
     const device = buildEvDevice({ id: 'heater1', controllable: false });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]);
-    expect(decisions.get('heater1')).toEqual({ kind: 'inactive', budgetExempt: false });
+    expect(decisions.get('heater1')).toEqual({
+      kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65, releaseIntent: 'shed_release',
+    });
   });
 
-  it('keeps inactive without a release intent for a satisfied non-EV objective on a cap-on device', () => {
-    const diagnostic = buildDiagnostic({
-      deviceId: 'heater2',
-      objectiveKind: 'temperature',
-      completion: { kind: 'target_reached' },
-      trajectory: { kind: 'resolved', status: 'satisfied' },
-      horizonPlan: buildHorizonPlan({
-        status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0, currentHourClaim: 'released',
-      }),
-    });
-    // Cap-on devices stay on the planner's normal lane; emitting a release intent there would
-    // race the planner's own decisions.
+  it('holds a satisfied cap-on heater off through the planner, with no release intent', () => {
+    const diagnostic = buildDiagnostic({ deviceId: 'heater2', ...satisfiedUnbooked });
     const device = buildEvDevice({ id: 'heater2', controllable: true });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]);
-    expect(decisions.get('heater2')).toEqual({ kind: 'inactive', budgetExempt: false });
+    expect(decisions.get('heater2')).toEqual({ kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65 });
+    const applied = applyDeferredAdmissionToInput([device], decisions);
+    expect(applied.forceShedSet.has('heater2')).toBe(true);
+    expect(applied.devices[0]).toMatchObject({ deferredHoldActive: true, deadlineFloorTargetC: 65 });
+  });
+
+  it('lets a satisfied task top up in an hour it booked, without its rescue permissions', () => {
+    const diagnostic = buildDiagnostic({
+      deviceId: 'dev1',
+      completion: { kind: 'accepted_near_target' },
+      trajectory: { kind: 'resolved', status: 'satisfied' },
+      budgetExemptApplied: true,
+      limitLowerPriorityApplied: true,
+      pauseLowerPriorityApplied: true,
+      horizonPlan: buildHorizonPlan(),
+    });
+    const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation));
+    expect(decisions.get('dev1')).toEqual({
+      kind: 'planned', budgetExempt: false, engageBoost: false, reservesStartupPower: false, deadlineFloorTargetC: 65,
+    });
   });
 
   it('returns inactive for an invalid verdict and for no verdict at all', () => {
@@ -468,7 +458,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       }),
     });
     expect(applyDeferredObjectiveAdmission(([satisfied]).map((diagnostic) => diagnostic.evaluation)).get('dev2'))
-      .toEqual({ kind: 'inactive', budgetExempt: false });
+      .toEqual({ kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65 });
   });
 
   it('does not turn an idle rescue plan into a standing budget exemption', () => {
@@ -487,7 +477,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       }),
     });
     const decisions = applyDeferredObjectiveAdmission(([idle]).map((diagnostic) => diagnostic.evaluation));
-    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false });
+    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65 });
 
     const device = buildEvDevice({ id: 'dev1', controllable: true });
     const { devices } = applyDeferredAdmissionToInput([device], decisions);
@@ -517,7 +507,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       }),
     });
     expect(applyDeferredObjectiveAdmission(([satisfied]).map((diagnostic) => diagnostic.evaluation)).get('dev2'))
-      .toEqual({ kind: 'inactive', budgetExempt: false });
+      .toEqual({ kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65 });
   });
 
   it('sets forceBoostActive on the device input for a planned limit-lower-priority task', () => {
@@ -545,7 +535,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       }),
     });
     expect(applyDeferredObjectiveAdmission(([satisfied]).map((diagnostic) => diagnostic.evaluation)).get('dev2'))
-      .toEqual({ kind: 'inactive', budgetExempt: false });
+      .toEqual({ kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65 });
   });
 
   it('sets reservesStartupPower on the device input WITHOUT forceBoostActive (pause is boost-free)', () => {
@@ -575,7 +565,9 @@ describe('applyDeferredObjectiveAdmission', () => {
     });
     const device = buildEvDevice({ id: 'heater1', controllable: false });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]);
-    expect(decisions.get('heater1')).toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'shed_release' });
+    expect(decisions.get('heater1')).toEqual({
+      kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65, releaseIntent: 'shed_release',
+    });
   });
 
   it('idles a price-deferred current hour with no release intent for a cap-on device', () => {
@@ -585,7 +577,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     });
     const device = buildEvDevice({ id: 'heater1', controllable: true });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]);
-    expect(decisions.get('heater1')).toEqual({ kind: 'idle', budgetExempt: false });
+    expect(decisions.get('heater1')).toEqual({ kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65 });
   });
 
   it('pauses a price-deferred EV charger', () => {
@@ -626,7 +618,7 @@ describe('planned admission temperature floor', () => {
     expect(applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation)).get(diagnostic.deviceId)).not.toHaveProperty('deadlineFloorTargetC');
   });
 
-  it('skips a temperature diagnostic whose current bucket has no planned energy', () => {
+  it('keeps the task setpoint in an hour the task did not book', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'heater1',
       horizonPlan: buildHorizonPlan({
@@ -634,19 +626,20 @@ describe('planned admission temperature floor', () => {
         currentHourClaim: 'released',
       }),
     });
-    expect(applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation)).get(diagnostic.deviceId)).not.toHaveProperty('deadlineFloorTargetC');
+    expect(applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation)).get(diagnostic.deviceId)).toHaveProperty('deadlineFloorTargetC', 65);
   });
 
-  it('skips a price-deferred temperature diagnostic (no deadline floor while released)', () => {
-    // The device is released this cycle (admission idles it), so stamping the
-    // deadline floor would lift the setpoint and run it in the very `avoid` hour
-    // we deferred out of — defeating the price-deferral release.
+  it('keeps the task setpoint in a price-deferred hour', () => {
+    // The released hour holds the device through its shed posture: off for a device
+    // with an off handle, the setpoint limit for a setpoint-only one. Neither reads
+    // the kept setpoint, so the task's floor cannot run the device in this hour;
+    // it only keeps the mode target from being written over the task's.
     const diagnostic = buildDiagnostic({
       deviceId: 'heater1',
       targetTemperatureC: 65,
       horizonPlan: buildHorizonPlan({ currentHourFacts: { aheadOfHourMilestone: true, cheaperHourAhead: true, coldStartFeasible: false }, currentHourClaim: 'released' }),
     });
-    expect(applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation)).get(diagnostic.deviceId)).not.toHaveProperty('deadlineFloorTargetC');
+    expect(applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation)).get(diagnostic.deviceId)).toHaveProperty('deadlineFloorTargetC', 65);
   });
 });
 

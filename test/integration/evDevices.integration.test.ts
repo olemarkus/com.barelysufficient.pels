@@ -457,9 +457,10 @@ describe('EV charger integration', { retry: 2 }, () => {
     }));
   });
 
-  // Meeting the target removes the deferred-objective allowance. The lifecycle clock owns the
-  // terminal pause; a power-driven rebuild must neither emit a second intent nor race that owner.
-  it('does not duplicate the lifecycle-clock terminal pause in the plan path', async () => {
+  // Meeting the target removes the deferred-objective allowance, but the task keeps governing the
+  // charger until its deadline (owner ruling 2026-10-17): an hour it did not book is a released
+  // hour, so the plan pauses the charger. No lifecycle-clock fallback races it.
+  it('pauses a satisfied charger through the plan path', async () => {
     currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
     const charger = new EaseeMockCharger();
     // SoC already at 80, target 42 → diagnostic resolves to `satisfied` immediately.
@@ -475,14 +476,14 @@ describe('EV charger integration', { retry: 2 }, () => {
     const plan = await rebuildPlan(app, { totalPowerKw: 7.2, softLimitKw: 10.0 });
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expectDeferredReleaseIntent(evPlan, undefined);
-    expect(charger.getCommandSequence()).toEqual([]);
+    expectDeferredReleaseIntent(evPlan, 'binary_release');
+    expect(charger.getCommandSequence()).toEqual(['evcharger_charging:false']);
 
     const snapshot = await refreshSnapshot(app);
     const entry = getSnapshotEntry(snapshot, charger.idValue);
     expect(entry).toEqual(expect.objectContaining({
-      binaryControl: { on: true },
-      evChargingState: 'plugged_in_charging',
+      binaryControl: { on: false },
+      evChargingState: 'plugged_in_paused',
     }));
   });
 
@@ -502,9 +503,9 @@ describe('EV charger integration', { retry: 2 }, () => {
     expect(charger.getCommandSequence()).toEqual([]);
   });
 
-  // Counter-case: Power-limit control ON + satisfied likewise emits no plan-path release intent.
-  // Normal managed charging behavior takes over once admission drops out.
-  it('does not emit a deferred binary_release when satisfied while Power-limit control is on', async () => {
+  // Power-limit control ON + satisfied: the task still governs until its deadline, so its unbooked
+  // hour pauses the charger the same way. Normal managed charging takes over after the deadline.
+  it('pauses a satisfied charger while Power-limit control is on', async () => {
     currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
     const charger = new EaseeMockCharger();
     await charger.seedState('plugged_in_charging', { socPercent: 80 });
@@ -517,7 +518,8 @@ describe('EV charger integration', { retry: 2 }, () => {
     const plan = await rebuildPlan(app, { totalPowerKw: 7.2, softLimitKw: 10.0 });
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expectDeferredReleaseIntent(evPlan, undefined);
+    expectDeferredReleaseIntent(evPlan, 'binary_release');
+    expect(evPlan?.plannedState).toBe('shed');
   });
 
   it('skips a planned EV deadline resume while stale-fail-closed and through the post-fail-closed restore cooldown', async () => {

@@ -148,7 +148,7 @@ function resolveDeviceSetpoints(
   const desiredC = intent.priceShiftActive && config.enabled
     ? applyPriceShift(intendedC, config, intent.priceLevel, direction)
     : intendedC;
-  // A smart task in its planned hours holds the device at least at its deadline floor.
+  // An active smart task holds the device's setpoint at least at the task's target.
   const floorC = device.deadlineFloorTargetC;
   const withFloor = (setpointC: number): number => (
     typeof floorC === 'number' ? moreDemandingSetpoint(direction, setpointC, floorC) : setpointC

@@ -1,7 +1,11 @@
 /**
  * SDK-boundary e2e for early smart-task satisfaction. Homey-observed SoC and
- * charging state drive the real diagnostic bridge, lifecycle clock, wiring,
- * and actuator. No PELS internal is mocked.
+ * charging state drive the real diagnostic bridge, planner, executor, and
+ * actuator. No PELS internal is mocked.
+ *
+ * A satisfied task keeps governing its device until the deadline (owner ruling
+ * 2026-10-17): an hour it did not book releases the device through the plan,
+ * so the pause rides the meter-driven rebuild, not a lifecycle-clock fallback.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../../api';
@@ -52,6 +56,18 @@ const buildCharger = async (
   return charger;
 };
 
+// A whole-home meter reading is what rebuilds the plan, and the plan is what
+// releases a satisfied task's device. Homey Energy's live report is that reading.
+const feedWholeHomeMeter = (): void => {
+  const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
+  vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => {
+    if (path === 'manager/energy/live') {
+      return { items: [{ type: 'cumulative', id: 'meter-main', values: { W: 7_500 } }] };
+    }
+    return originalGet(path);
+  });
+};
+
 const configureRuntime = (): void => {
   mockHomeyInstance.settings.set('power_source', 'homey_energy');
   mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
@@ -72,7 +88,7 @@ const configureRuntime = (): void => {
   });
 };
 
-describe('satisfied smart-task fallback (SDK-boundary e2e)', () => {
+describe('satisfied smart-task release (SDK-boundary e2e)', () => {
   beforeEach(() => {
     vi.useFakeTimers({
       toFake: [
@@ -101,6 +117,7 @@ describe('satisfied smart-task fallback (SDK-boundary e2e)', () => {
     const charger = await buildCharger();
     setMockDrivers({ ev: new MockDriver('ev', [charger]) });
     configureRuntime();
+    feedWholeHomeMeter();
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     const app = createApp();
@@ -152,6 +169,7 @@ describe('satisfied smart-task fallback (SDK-boundary e2e)', () => {
     const charger = await buildCharger();
     setMockDrivers({ ev: new MockDriver('ev', [charger]) });
     configureRuntime();
+    feedWholeHomeMeter();
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     const app = createApp();

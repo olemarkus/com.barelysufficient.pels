@@ -15,8 +15,6 @@ const baseDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   progressDirection: 'increasing',
   enforcement: 'soft',
   reasonCode: overrides.reasonCode ?? 'objective_invalid_deadline',
-  actuationSatisfied: overrides.trajectory.kind === 'resolved'
-    && overrides.trajectory.status === 'satisfied',
   targetPercent: null,
   currentPercent: null,
   targetTemperatureC: 55,
@@ -47,7 +45,6 @@ const baseDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & {
 const emitLifecycle = (params: {
   diagnostics: DeferredObjectiveDiagnostic[];
   nowMs: number;
-  onSatisfied?: (deviceId: string) => void;
   onDeadlineReached?: (
     deviceId: string,
     deadlineAtMs: number,
@@ -134,57 +131,24 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
     expect(onDeadlineReached).toHaveBeenCalledWith('ev-1', 1_000, 2_000);
   });
 
-  it('fires onSatisfied on every satisfied pre-deadline tick without ending the task', () => {
-    const onSatisfied = vi.fn();
+  // Only the deadline ends a task: a satisfied one keeps governing its device
+  // through admission until then (owner ruling 2026-10-17).
+  it('owns no fallback for a satisfied task before its deadline, and ends it at the deadline', () => {
+    const onFallbackInactive = vi.fn();
     const onDeadlineReached = vi.fn();
     const diag = baseDiagnostic({
-      deviceId: 'ev-1',
+      deviceId: 'heater-1',
       trajectory: { kind: 'resolved', status: 'satisfied' },
-      objectiveKind: 'ev_soc',
       deadlineAtMs: 1_000,
     });
 
-    emitLifecycle({ diagnostics: [diag], nowMs: 100, onSatisfied, onDeadlineReached });
-    emitLifecycle({ diagnostics: [diag], nowMs: 200, onSatisfied, onDeadlineReached });
-
-    expect(onSatisfied).toHaveBeenCalledTimes(2);
-    expect(onSatisfied).toHaveBeenNthCalledWith(1, 'ev-1');
-    expect(onSatisfied).toHaveBeenNthCalledWith(2, 'ev-1');
+    emitLifecycle({ diagnostics: [diag], nowMs: 999, onFallbackInactive, onDeadlineReached });
+    expect(onFallbackInactive).toHaveBeenCalledWith('heater-1');
     expect(onDeadlineReached).not.toHaveBeenCalled();
-  });
 
-  it('switches a satisfied task from fallback retries to deadline ending at the deadline', () => {
-    const onSatisfied = vi.fn();
-    const onDeadlineReached = vi.fn();
-    const diag = baseDiagnostic({
-      deviceId: 'heater-1',
-      trajectory: { kind: 'resolved', status: 'satisfied' },
-      deadlineAtMs: 1_000,
-    });
-
-    emitLifecycle({ diagnostics: [diag], nowMs: 999, onSatisfied, onDeadlineReached });
-    emitLifecycle({ diagnostics: [diag], nowMs: 1_000, onSatisfied, onDeadlineReached });
-
-    expect(onSatisfied).toHaveBeenCalledTimes(1);
+    emitLifecycle({ diagnostics: [diag], nowMs: 1_000, onFallbackInactive, onDeadlineReached });
     expect(onDeadlineReached).toHaveBeenCalledWith('heater-1', 1_000, 1_000);
-  });
-
-  it('does not actuate a presentation-only stalled satisfaction before the deadline', () => {
-    const bus = createDeferredObjectiveStatusBus();
-    const onSatisfied = vi.fn();
-    const diag = baseDiagnostic({
-      deviceId: 'heater-1',
-      trajectory: { kind: 'resolved', status: 'satisfied' },
-      reasonCode: 'objective_stalled_near_target',
-      actuationSatisfied: false,
-      deadlineAtMs: 1_000,
-    });
-
-    emitLifecycle({ diagnostics: [diag], nowMs: 999, onSatisfied });
-    emitDeferredObjectiveStatusTransitions([diag], bus, 999);
-
-    expect(onSatisfied).not.toHaveBeenCalled();
-    expect(bus.getCurrent('heater-1')?.status).toBe('satisfied');
+    expect(onFallbackInactive).toHaveBeenCalledTimes(1);
   });
 
   it('sets the sticky deadlineMissed flag once the deadline has passed without satisfaction', () => {

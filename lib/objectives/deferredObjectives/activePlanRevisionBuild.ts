@@ -45,6 +45,7 @@ import {
 import { roundKWh } from './activePlanMath';
 import { buildObjectiveSignature } from './activePlanSignature';
 import type { DeferredObjectiveSettingsKind } from '../../../packages/contracts/src/deferredObjectiveSettings';
+import { isTaskSatisfied } from './taskCompletion';
 
 // Settled Flow status follows operational completion. A forecast below allocation
 // precision may need no booking while the requested obligation remains unmet.
@@ -52,8 +53,7 @@ export const reportedPlanStatus = (
   diag: DeferredObjectiveDiagnostic,
   horizonPlan: DeferredObjectiveHorizonPlan,
 ): DeferredObjectiveActivePlanRevisionV1['planStatus'] => {
-  if (diag.evaluation.completion.kind === 'target_reached'
-    || diag.evaluation.completion.kind === 'accepted_near_target') return 'satisfied';
+  if (isTaskSatisfied(diag.evaluation.completion)) return 'satisfied';
   return horizonPlan.status === 'satisfied' ? 'on_track' : horizonPlan.status;
 };
 

@@ -73,12 +73,6 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
   deferredObjectiveStatusBus: DeferredObjectiveStatusBus;
   deferredObjectiveHoursRemainingBus: DeferredObjectiveHoursRemainingBus;
   deferredObjectiveHoursRemainingTracker: DeferredObjectiveHoursRemainingTracker;
-  /**
-   * Fired on every pre-deadline tick whose task is satisfied. App wiring returns
-   * cap-off devices to their fallback posture but deliberately keeps the task
-   * enabled; deadline ending remains the responsibility of `onDeadlineReached`.
-   */
-  onSatisfied?: (deviceId: string) => void;
   /** Releases executor-owned fallback suppression when this task no longer owns it. */
   onFallbackInactive?: (deviceId: string) => void;
   /**

@@ -21,7 +21,6 @@ import { MockSettings } from '../mocks/homey';
 import { updateSettingsUiSmartTask } from '../../setup/settingsUiSmartTaskApi';
 import {
   handleDeferredDeadlineReached,
-  handleDeferredSatisfied,
 } from '../../setup/appInit/deferredObjectiveLifecycle';
 import {
   buildStarvedRescueDevices,
@@ -645,7 +644,7 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
   it('abandons lifecycle ownership when capacity control becomes authoritative', () => {
     const h = buildLifecycleCtx('main', false, new Set(), true);
 
-    handleDeferredSatisfied(h.ctx, 'd1');
+    handleDeferredDeadlineReached(h.ctx, 'd1', DEADLINE, DEADLINE + 60_000);
 
     expect(h.convergeLifecycleFallback).not.toHaveBeenCalled();
     expect(h.abandonLifecycleFallback).toHaveBeenCalledWith('d1');
@@ -661,35 +660,6 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
     expect(h.abandonLifecycleFallback).toHaveBeenCalledWith('d1');
     expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(false);
     expect(h.forgetDevice).toHaveBeenCalledWith('d1');
-  });
-
-  it('pauses a satisfied cap-off device before its deadline without disarming the task', async () => {
-    const h = buildLifecycleCtx('main');
-
-    handleDeferredSatisfied(h.ctx, 'd1');
-    await settleActuation();
-
-    expect(h.convergeLifecycleFallback).toHaveBeenCalledTimes(1);
-    expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(true);
-    expect(h.forgetDevice).not.toHaveBeenCalled();
-  });
-
-  it('retries an unsettled satisfied fallback and becomes idempotent once observation settles', async () => {
-    const h = buildLifecycleCtx('main');
-
-    handleDeferredSatisfied(h.ctx, 'd1');
-    await settleActuation();
-    handleDeferredSatisfied(h.ctx, 'd1');
-    await settleActuation();
-    expect(h.convergeLifecycleFallback).toHaveBeenCalledTimes(2);
-
-    h.setDeviceOn(false);
-    handleDeferredSatisfied(h.ctx, 'd1');
-    await settleActuation();
-
-    expect(h.convergeLifecycleFallback).toHaveBeenCalledTimes(3);
-    expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(true);
-    expect(h.forgetDevice).not.toHaveBeenCalled();
   });
 
   it('a sub-home device gets NO device command and the task ends via the immediate disarm', async () => {

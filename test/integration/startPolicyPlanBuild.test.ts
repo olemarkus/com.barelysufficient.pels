@@ -18,6 +18,7 @@ import type {
 } from '../../lib/plan/planTypes';
 import { inputDevice, steppedProfile } from '../utils/planConvergenceFixtures';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
+import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 
 /**
  * The "Only PELS starts this device" policy, driven through a WHOLE plan build.
@@ -498,6 +499,45 @@ describe('start policy through a whole plan build', () => {
     const plan = await buildBuilder({
       getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
     }).buildDevicePlanSnapshot([thermostat('pels_only')]);
+
+    const device = plan.devices.find((entry) => entry.id === 'heater');
+    expect(device?.plannedState).toBe('shed');
+    expect(device?.shedAction).toBe('turn_off');
+    expect(resolvePlannedShedTargetKind(device!)).toBe('binary_off');
+  });
+  it('keeps a task-held thermostat OFF through a shed window, not at its limiting temperature', async () => {
+    // The setpoint hold lane runs while any shed window is open (startup, a restore
+    // or shed cooldown, an overshoot). It must not trade a smart task's OFF hold
+    // for the configured setback, which still lets the thermostat heat to it.
+    const setback = { action: 'set_temperature' as const, temperature: 16 };
+    const state = createPlanEngineState();
+    state.restoreBackoff.beginStartupBlock(Date.now());
+    const builder = new PlanBuilder({
+      ...planBuilderWiring(),
+      capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
+      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 50, marginKw: 0.2, periodMinutes: 60 }),
+      getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: 500 }),
+      getDynamicSoftLimitOverride: () => 50,
+      decorateDeferredObjectives: decorateWithDecision('heater', { ...idleDecision, deadlineFloorTargetC: 65 }),
+      getShedBehavior: () => setback,
+      resolveTemperatureSetpoints: fixtureTemperatureSetpoints({ getShedBehavior: () => setback }),
+    }, state);
+    const loose: Partial<PlanInputDevice>
+    & BinaryControlDiscriminantProbe
+    & MeteredDiscriminantProbe
+    & TemperatureDiscriminantProbe & {
+      deviceType?: 'temperature' | 'onoff';
+      binaryCapabilityId?: string;
+      controllable?: boolean; managed?: boolean;
+    } = {
+      id: 'heater', name: 'Heater', deviceType: 'temperature',
+      binaryCapabilityId: 'onoff', binaryControl: { on: true }, currentState: 'on',
+      currentDrawKw: 2, expectedPowerKw: 2, currentTemperature: 21, currentTarget: 22,
+      targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
+      controllable: true, managed: true,
+    };
+    const powerLimited = inputDevice(loose);
+    const plan = await builder.buildDevicePlanSnapshot([powerLimited]);
 
     const device = plan.devices.find((entry) => entry.id === 'heater');
     expect(device?.plannedState).toBe('shed');

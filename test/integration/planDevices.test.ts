@@ -1286,6 +1286,51 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       expect(planDevice.plannedState).toBe('shed');
       expect(plannedTargetOf(planDevice)).toBe(40);
     });
+
+    // Prod 2026-10-16, Connected 300: the task (65 °C) skipped an hour, the mode
+    // said 40 °C, and the hold wrote 40 °C over the task's setpoint. During an
+    // active task the task's setpoint is the device's (owner ruling 2026-10-17).
+    it('holds a device off in an hour its task skipped, at the task setpoint', () => {
+      const device = tempInputDevice({
+        binaryControl: { on: true }, deadlineFloorTargetC: 65, deferredHoldActive: true,
+      });
+      const [planDevice] = buildInitialPlanDevicesForSpec({
+        context: buildContext([device], tankTargets(40)),
+        sheddingPlan: sheddingPlanFixture({ shedSet: new Set(['tank']) }),
+        deps: defaultDeps,
+      });
+
+      expect(planDevice.plannedState).toBe('shed');
+      expect(planDevice.shedAction).toBe('turn_off');
+      expect(plannedTargetOf(planDevice)).toBe(65);
+    });
+
+    it('holds a setpoint-only device at its limit in an hour its task skipped, never the task setpoint', () => {
+      const device = inputDevice({
+        id: 'tank',
+        name: 'Water tank',
+        deviceType: 'temperature',
+        currentTemperature: 45,
+        currentTarget: 50,
+        targets: [{ id: 'target_temperature', value: 50, unit: '°C', min: 30, max: 70 }],
+        // No on/off axis: the builder reads an explicitly absent capability as none.
+        binaryCapabilityId: undefined,
+        deadlineFloorTargetC: 65,
+        deferredHoldActive: true,
+      });
+      const [planDevice] = buildInitialPlanDevicesForSpec({
+        context: buildContext([device], tankTargets(40)),
+        sheddingPlan: sheddingPlanFixture({ shedSet: new Set(['tank']) }),
+        deps: {
+          ...defaultDeps,
+          getShedBehavior: () => ({ action: 'set_temperature', temperature: 35 }),
+        },
+      });
+
+      expect(planDevice.plannedState).toBe('shed');
+      expect(planDevice.shedAction).toBe('set_temperature');
+      expect(plannedTargetOf(planDevice)).toBe(35);
+    });
   });
 
   describe('mode target', () => {

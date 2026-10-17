@@ -59,7 +59,7 @@ Dirs that don't belong to any loop stage:
   It's upstream measurement feeding observer/plan/device; the loop diagram's
   "reads" arrow elides it.
 - **`lib/objectives/`** — smart tasks / deferred objectives. A plan-input peer
-  whose clock emits lifecycle facts into setup. A satisfied/deadline fallback is
+  whose clock emits lifecycle facts into setup. A deadline fallback is
   now projected by setup into a producer-resolved request and handed to the
   executor-owned `LifecycleFallbackPort`; the executor converges it through the
   ordinary binary/target/stepped lanes and their injected actuator. Objectives

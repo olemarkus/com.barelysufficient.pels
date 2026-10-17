@@ -242,6 +242,9 @@ type Cycle = {
   kind: string;
   releaseIntent: string | undefined;
   kWh: number;
+  // The task has met its target this cycle. It still governs the device until the
+  // deadline (owner ruling 2026-10-17), so these cycles are decided, not `inactive`.
+  satisfied: boolean;
 };
 
 // One task's whole life at 5-minute cycles. `startC` is the ONLY thing that varies
@@ -303,6 +306,8 @@ const runScenario = (startC: number): { cycles: Cycle[]; finalTempC: number } =>
       kind: decision?.kind ?? 'none',
       releaseIntent: decision?.releaseIntent,
       kWh,
+      satisfied: diag?.evaluation.completion.kind === 'target_reached'
+        || diag?.evaluation.completion.kind === 'accepted_near_target',
     });
   }
   return { cycles, finalTempC: tempC };
@@ -314,7 +319,7 @@ const summarise = (cycles: readonly Cycle[]): string => cycles
 
 describe('a smart-task hour the forecast left no room in (SDK-boundary e2e)', () => {
   const unbookedOf = (cycles: readonly Cycle[]): Cycle[] => (
-    cycles.filter((c) => c.currentBookedKWh <= 0 && c.kind !== 'inactive')
+    cycles.filter((c) => c.currentBookedKWh <= 0 && c.kind !== 'inactive' && !c.satisfied)
   );
 
   describe('while the booked hours cannot cover the need', () => {
@@ -349,9 +354,17 @@ describe('a smart-task hour the forecast left no room in (SDK-boundary e2e)', ()
       // ahead. Only a physical shortfall (`time_capacity`) blocks price deferral
       // (`CAUSES_THAT_BLOCK_PRICE_DEFERRAL`). Every release here is that deferral:
       // nothing is stood down for being empty, which the assertion above pins.
-      const released = cycles.filter((c) => c.kind === 'idle');
+      const released = cycles.filter((c) => c.kind === 'idle' && !c.satisfied);
       expect(released.some((c) => c.currentBookedKWh > 0), summarise(cycles)).toBe(true);
       expect(released.every((c) => c.priceDeferrable), summarise(cycles)).toBe(true);
+    });
+
+    it('holds the device off once satisfied, in every hour it did not book', () => {
+      // A satisfied task does not hand its device back to normal running before the
+      // deadline: an hour it skipped runs nothing (owner ruling 2026-10-17).
+      const satisfiedUnbooked = cycles.filter((c) => c.satisfied && c.claim === 'released');
+      expect(satisfiedUnbooked.length, summarise(cycles)).toBeGreaterThan(0);
+      expect(satisfiedUnbooked.every((c) => c.kind === 'idle' && c.kWh === 0), summarise(cycles)).toBe(true);
     });
   });
 

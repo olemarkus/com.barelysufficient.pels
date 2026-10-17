@@ -114,7 +114,6 @@ const processDiagnosticTransition = (
 };
 
 export type DeferredObjectiveLifecycleHooks = {
-  onSatisfied?: (deviceId: string) => void;
   onDeadlineReached?: (
     deviceId: string,
     deadlineAtMs: number,
@@ -130,15 +129,13 @@ export const emitDeferredObjectiveLifecycleTransitions = (
   nowMs: number,
   hooks: DeferredObjectiveLifecycleHooks,
 ): Set<string> => {
-  const { onSatisfied, onDeadlineReached, onFallbackInactive } = hooks;
+  const { onDeadlineReached, onFallbackInactive } = hooks;
   const seen = new Set<string>();
   for (const diagnostic of diagnostics) {
     seen.add(diagnostic.deviceId);
     const deadlineAtMs = diagnostic.deadlineAtMs;
     if (deadlineAtMs !== null && nowMs >= deadlineAtMs) {
       onDeadlineReached?.(diagnostic.deviceId, deadlineAtMs, nowMs);
-    } else if (diagnostic.actuationSatisfied) {
-      onSatisfied?.(diagnostic.deviceId);
     } else {
       onFallbackInactive?.(diagnostic.deviceId);
     }

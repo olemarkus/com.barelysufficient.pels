@@ -34,6 +34,7 @@ import {
 } from './planHistoryV4Helpers';
 import { resolveRemainingEnergyKWh } from '../../../packages/shared-domain/src/energyQuantities';
 import { randomUUID } from 'node:crypto';
+import { isTaskSatisfied } from './taskCompletion';
 
 type ObservedInterval = DeferredObjectivePlanHistoryObservedInterval;
 
@@ -221,8 +222,7 @@ export const rawHorizonStatus = (
 ): ReturnType<typeof resolvedTrajectoryStatus> => {
   const { evaluation } = diag;
   if (evaluation.planning.kind === 'allocated') return evaluation.planning.plan.status;
-  if (evaluation.completion.kind === 'target_reached'
-    || evaluation.completion.kind === 'accepted_near_target') return 'satisfied';
+  if (isTaskSatisfied(evaluation.completion)) return 'satisfied';
   return undefined;
 };
 

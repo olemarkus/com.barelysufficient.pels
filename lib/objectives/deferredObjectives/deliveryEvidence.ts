@@ -6,6 +6,7 @@ import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 import {
   DELIVERY_EPSILON_KWH, isTaskDeviceStopped, NON_DELIVERY_HOLD_MS, observeTaskNonDelivery,
 } from './taskDeliveryState';
+import { isTaskSatisfied } from './taskCompletion';
 
 export type TaskDeliveryReader = (deviceId: string, deadlineAtMs: number) => TaskDeliveryEvidence;
 export const EMPTY_DELIVERY_EVIDENCE = {
@@ -28,8 +29,7 @@ export type TaskDeliveryFacts = {
 const resolveObligation = (diagnostic: DeferredObjectiveDiagnostic, nowMs: number): TaskDeliveryFacts['obligation'] => {
   const evaluation = diagnostic.evaluation;
   if (nowMs >= evaluation.deadlineAtMs) return 'expired';
-  if (evaluation.completion.kind === 'target_reached'
-    || evaluation.completion.kind === 'accepted_near_target') return 'satisfied';
+  if (isTaskSatisfied(evaluation.completion)) return 'satisfied';
   if (evaluation.planning.kind === 'inactive') return 'unavailable';
   const claim = evaluation.planning.plan.currentHourClaim;
   return claim === 'released' ? 'deferred' : claim;

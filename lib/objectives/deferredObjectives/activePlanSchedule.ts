@@ -532,10 +532,10 @@ export const mergeHoursPreservingCommitment = (
   // cycle: once the target is reached `energyNeededKWh` is 0, the horizon
   // allocator emits no positive buckets, and `buildHoursFromHorizonPlan`
   // returns `[]`, so the merge preserves the full committed schedule. This is
-  // intentional and benign — the executor acts on the LIVE plan + device state
-  // (a satisfied device is at target, so nothing charges), never on these
-  // persisted committed hours, and the lifecycle controller ends the task
-  // shortly after satisfaction. The preserved hours are the run's historical
+  // intentional and benign — admission acts on the LIVE plan: a task at its
+  // target gets an empty plan, so every hour it has left is released and the
+  // device is held until the deadline ends the task, never run on these
+  // persisted committed hours. The preserved hours are the run's historical
   // plan, not a standing commitment to keep charging. (Verified, no concrete
   // effect found — do not re-flag as "stale committed hours".)
   if (live.length === 0) return [...committed];

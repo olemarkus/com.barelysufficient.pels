@@ -99,8 +99,9 @@ export class DeferredObjectiveDecorationController {
 // `admittedDeviceIds` — the surplus dump-load hold
 // (`planBuilderSurplus` → `shedding/surplusHold`) exempts a governed device.
 //
-// `inactive` (task disabled, satisfied, or otherwise not plannable) is excluded so
-// a finished smart task cannot keep a device out of the hold forever.
+// `inactive` (a task with no plan this cycle) is excluded so a smart task that
+// cannot plan does not keep a device out of the hold. A satisfied task still
+// governs until its deadline, which ends it.
 //
 // A `planned` hour booked at 0 kWh is governed too: the task booked it on price (or
 // needs every hour because it cannot finish), so during an active task it decides

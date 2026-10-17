@@ -57,6 +57,7 @@ import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/sr
 import type { DeferredObjectivePlanHistoryV6 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import { buildObjectiveSignature } from '../../lib/objectives/deferredObjectives/activePlanSignature';
 import { buildPriorityReservations } from '../../lib/objectives/deferredObjectives/priorityAllocation';
+import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import { buildHoursFromHorizonPlan } from '../../lib/objectives/deferredObjectives/activePlanSchedule';
 import { capacityOnlyPowerLimits, powerLimits } from '../helpers/powerLimitSettings';
 // Deliberately non-binding: a rate no plan in these cases can reach, so the
@@ -2561,6 +2562,23 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
   });
 
+  it('leaves a satisfied task governing nothing while the price feature is disabled', () => {
+    // A satisfied task holds its device until the deadline only while it can
+    // plan; with price optimization off it is inactive, like an unmet task.
+    const params = {
+      devices: [buildDevice({ stateOfCharge: stateOfChargeFixture({ percent: 60, observedAtMs: NOW_MS }) })],
+    };
+    const [enabled] = buildDeferredObjectiveDiagnostics(params);
+    const [disabled] = buildDeferredObjectiveDiagnostics({ ...params, priceOptimizationEnabled: false });
+
+    expect(enabled?.evaluation.completion.kind).toBe('target_reached');
+    expect(applyDeferredObjectiveAdmission([enabled!.evaluation]).get(enabled!.deviceId)?.kind).toBe('idle');
+    expect(disabled?.evaluation.completion.kind).toBe('target_reached');
+    expect(disabled && resolvedTrajectoryStatus(disabled)).toBe('satisfied');
+    expect(applyDeferredObjectiveAdmission([disabled!.evaluation]).get(disabled!.deviceId))
+      .toEqual({ kind: 'inactive', budgetExempt: false });
+  });
+
   it('does not surface stale EV progress when the price feature is disabled', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       devices: [buildDevice({
@@ -3493,7 +3511,10 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         .map((bucket) => bucket.plannedAdmissionPowerKw))).toEqual(new Set([2]));
     });
 
-    it('uses the maximum step after a higher task reaches its target', () => {
+    // A task at its target still governs its device until the deadline and holds it
+    // off in every hour it did not book, and it books none (owner ruling 2026-10-17).
+    // Its device reaches the task below as those bookings: nothing.
+    it('reserves nothing for a higher task that has reached its target', () => {
       const higher = buildTemperatureDevice({
         priority: 1,
         currentTemperature: 45,
@@ -3527,9 +3548,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       });
       const lowerDiagnostic = diagnostics.find((diagnostic) => diagnostic.deviceId === 'ev-1');
       expect(lowerDiagnostic && resolvedTrajectoryStatus(lowerDiagnostic)).toBe('on_track');
-      expect(lowerDiagnostic?.horizonPlan?.plannedBuckets
+      expect(new Set(lowerDiagnostic?.horizonPlan?.plannedBuckets
         .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0)
-        .every((bucket) => bucket.plannedAdmissionPowerKw === 2)).toBe(true);
+        .map((bucket) => bucket.plannedAdmissionPowerKw))).toEqual(new Set([3]));
     });
 
     it('normalizes equal base priorities by device id without double-booking an hour', () => {
@@ -3897,7 +3918,6 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     });
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('on_track');
     expect(diagnostic?.reasonCode).not.toBe('objective_stalled_near_target');
-    expect(diagnostic?.actuationSatisfied).toBe(false);
     // The raw trajectory verdict stays on the horizonPlan so the postmortem
     // recorder and the structured horizon log keep the honest reading.
     expect(diagnostic?.horizonPlan?.status).toBe('on_track');
@@ -3913,7 +3933,6 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     });
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('at_risk');
     expect(diagnostic?.reasonCode).not.toBe('objective_stalled_device_capped');
-    expect(diagnostic?.actuationSatisfied).toBe(false);
     expect(diagnostic?.horizonPlan?.status).toBe('at_risk');
   });
 

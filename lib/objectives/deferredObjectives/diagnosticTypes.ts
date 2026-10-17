@@ -103,8 +103,6 @@ type BaseDeferredObjectiveDiagnostic = {
     | { kind: 'resolved'; status: DeferredObjectiveHorizonPlan['status'] }
     | { kind: 'unavailable'; reasonCode: DeferredObjectiveDiagnosticReasonCode };
   reasonCode: DeferredObjectiveDiagnosticReasonCode | DeferredObjectiveHorizonPlan['statusDetail'];
-  /** Raw progress satisfaction before any stall-to-satisfied presentation overlay. */
-  actuationSatisfied: boolean;
   targetPercent: number | null;
   currentPercent: number | null;
   // Unit-AGNOSTIC current/target reading, in the task's own unit, identical to

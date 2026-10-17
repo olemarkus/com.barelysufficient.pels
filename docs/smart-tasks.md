@@ -82,7 +82,9 @@ For EV charging, a common setup is to keep the charger managed by PELS but turn 
 
 ### When the task is done
 
-Once the task is done, the device's own settings decide again: the task page's **When the task is done** card says what they do.
+A task is done at its ready-by time. Until then the task decides what the device does, also once it has reached its goal: it holds the device back in the hours it does not plan to use, and a mode change never takes a temperature task's target below the task's. If the device drops back below the target, the task plans to top it up in its cheapest remaining hours.
+
+After the ready-by time, the device's own settings decide again: the task page's **When the task is done** card says what they do.
 
 | Device settings | What the card says |
 | --- | --- |
@@ -90,9 +92,7 @@ Once the task is done, the device's own settings decide again: the task page's *
 | **Power-limit control** on, with **Leave off until turned on again** | PELS turns the device on whenever power allows, unless it was turned off elsewhere. |
 | **Power-limit control** on, with a solar-surplus setting such as **Run on solar surplus** | PELS runs the device on your solar surplus. |
 | **Power-limit control** off, with **Only PELS starts this device** | PELS keeps the device off until a smart task needs it. If it is started elsewhere, PELS turns it off again. |
-| **Power-limit control** off | Until the ready-by time, PELS does what **Power limiting** is set to, such as turning the device off. After that, PELS does not start it, and leaves it running if it is started elsewhere. |
-
-With **Power-limit control** on, the device's settings take over as soon as the task reaches its goal. With it off, the task keeps the device in its **Power limiting** state until the ready-by time, even once the goal is reached.
+| **Power-limit control** off | At the ready-by time, PELS does what **Power limiting** is set to, such as turning the device off. After that, PELS does not start it, and leaves it running if it is started elsewhere. |
 
 The device page states the same rule under **Power-limit control**, beginning with *When no smart task is running* while a task is in progress. **Change** on the card opens the device page at **Power-limit control**. **Only PELS starts this device** appears there, while **Power-limit control** is off, once the device has had a smart task.
 

@@ -131,7 +131,6 @@ export const buildDiagnosticBase = (
     ...(objective.rescue ? { rescue: objective.rescue } : {}),
     trajectory: { kind: 'unavailable', reasonCode: 'objective_progress_stale' },
     reasonCode: 'objective_progress_stale',
-    actuationSatisfied: false,
     completion: { kind: 'inactive' },
     targetPercent: objective.kind === 'ev_soc' ? objective.targetPercent : null,
     currentPercent: null,

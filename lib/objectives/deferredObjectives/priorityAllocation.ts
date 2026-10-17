@@ -26,6 +26,7 @@ import type { DeferredObjectiveStep } from './types';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
 import type { PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
 import { resolvePlanningCeilingKw } from '../../power/capacityModel';
+import { isTaskSatisfied } from './taskCompletion';
 
 const HOUR_MS = 60 * 60 * 1000;
 const EPSILON_KWH = 0.001;
@@ -369,8 +370,7 @@ export const buildPriorityReservations = (
   powerLimits: PowerLimitSettings,
   nowMs: number,
 ): DeferredObjectivePriorityReservation[] => {
-  if (evaluation.completion.kind === 'target_reached'
-    || evaluation.completion.kind === 'accepted_near_target') return [];
+  if (isTaskSatisfied(evaluation.completion)) return [];
   const steps = device ? resolveObjectiveSteps(device) : [];
   const maxStepPowerKw = device ? resolveHighestObjectiveAdmissionPowerKw(device) : null;
   const narrow = (reservations: DeferredObjectivePriorityReservation[]): DeferredObjectivePriorityReservation[] => (

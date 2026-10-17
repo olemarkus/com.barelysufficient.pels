@@ -68,7 +68,7 @@ The smart-task (deferred-objective) lifecycle comes off the planner on **both en
 
 - **Smart-task controller** = the stateful owner of task evaluation and lifecycle progression:
   trigger-initiated (a Flow trigger starts a task), clock-driven (advances state on time), and the
-  producer of device decorations plus satisfied/deadline lifecycle facts. Called a *controller*,
+  producer of device decorations plus deadline lifecycle facts. Called a *controller*,
   not a *producer*, because it owns and drives task state; it does not own Homey writes.
 - **Lifecycle coordinator (setup)** = the authority boundary: resolves home scope, device
   commandability, configured fallback, and deadline disarm, then calls the executor port.
@@ -78,8 +78,8 @@ The smart-task (deferred-objective) lifecycle comes off the planner on **both en
   that path genuinely sheds.
 - **Disable / limit** = the *effect*: drive a device to its configured **fallback posture**
   (fully off = disable; stepped-down / lower setpoint = limit).
-- **Lifecycle fallback** = a *different cause* invoking the **same** disable/limit effect (early
-  satisfaction or deadline ending returns the device to fallback). It is **not** a shed.
+- **Lifecycle fallback** = a *different cause* invoking the **same** disable/limit effect (deadline
+  ending returns the device to fallback). It is **not** a shed.
 - Today's `shedBehavior` / `OVERSHOOT_BEHAVIORS` config *is* the device's fallback posture.
   Renaming that config vocabulary touches settings keys + UI + logs — a **follow-up**, not in
   scope here.
@@ -117,7 +117,7 @@ The smart-task (deferred-objective) lifecycle comes off the planner on **both en
    planner imports nothing smart-task; it just plans on the inputs it is handed.
 
 3. **Clock-driven fallback convergence** — on each lifecycle tick, setup authority-gates a
-   satisfied/deadline task on a **`controllable === false`** device, resolves the configured
+   task past its deadline on a **`controllable === false`** device, resolves the configured
    binary/target/stepped fallback into a smart-task-neutral executable request, then sends that
    request to the executor-owned lifecycle fallback port. The executor reuses its pending, retry,
    diagnostics, and actuator paths. Self-healing
@@ -236,12 +236,13 @@ discriminator), plus the marker-ownership decomposition (`shedDecidedMs`, later 
    `power_source = flow` mode (plan cycles hours apart) the clock disabled the task before the next
    plan cycle could emit the release, leaving a cap-off device on a **missed/unsatisfied** deadline
    running. PR-E fixes it on the lifecycle clock:
-   - Two app-wired lifecycle hooks own the complete terminal sequence. `onSatisfied` returns a
-     cap-off device to fallback promptly on every pre-deadline tick without disarming the task;
+   - One app-wired lifecycle hook owns the terminal sequence:
      `onDeadlineReached(deviceId, deadlineAtMs, nowMs)` fires at **deadline-passed,
-     regardless of status** and owns gated disarm. Presentation-only stalled-to-satisfied status
-     promotion does not actuate: the producer stamps `actuationSatisfied` before applying that
-     display overlay, and lifecycle actuation consumes the typed raw fact.
+     regardless of status** and owns gated disarm. Pre-deadline satisfaction has no hook: the
+     task keeps governing its device through admission until the deadline (owner ruling
+     2026-10-17), so a satisfied task's unbooked hour is released by the plan like any other.
+     The `onSatisfied` hook that used to fall a cap-off device back on every satisfied tick was
+     removed with that ruling.
    - App wiring owns scope fencing, device lookup, commandability, gated disarm, and resolution of
      the objective-specific fallback into a neutral executable request. `LifecycleFallbackDispatcher`
      converges that request through the existing release contexts without knowing objective kinds.

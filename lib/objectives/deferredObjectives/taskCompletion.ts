@@ -7,6 +7,11 @@ export type TaskCompletion =
   | { kind: 'target_reached' }
   | { kind: 'accepted_near_target' };
 
+/** The task has met its obligation: by reading, or by the observer's accepted near-target hold. */
+export const isTaskSatisfied = (completion: TaskCompletion | { kind: 'inactive' }): boolean => (
+  completion.kind === 'target_reached' || completion.kind === 'accepted_near_target'
+);
+
 /** Known progress and eligible observer evidence, resolved by the input owner. */
 export type TaskCompletionInput = {
   currentValue: number;

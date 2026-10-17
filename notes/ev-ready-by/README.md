@@ -101,9 +101,11 @@ end-to-end, including charger pause/resume actuation:
   `lib/executor/planExecutor.ts` runs stability checks
   (`hasStableBinaryReleaseActuation`). Integration tests under
   `test/integration/evDevices.integration.test.ts` cover the resume and pause transitions
-  (e.g. `deferredReleaseIntent: 'binary_restore'` for a paused plugged-in charger). Satisfied and
-  deadline fallback is separate: the lifecycle clock calls app wiring, which gates scope/disarm and
-  delegates convergence to the lifecycle-fallback executor. It never emits a plan-path release intent.
+  (e.g. `deferredReleaseIntent: 'binary_restore'` for a paused plugged-in charger). A satisfied
+  task pauses the charger the same way: until the deadline every hour it did not book is a released
+  hour (owner ruling 2026-10-17). Deadline fallback is separate: the lifecycle clock calls app
+  wiring, which gates scope/disarm and delegates convergence to the lifecycle-fallback executor. It
+  never emits a plan-path release intent.
 
 ### Plug-state is not a commandability oracle
 

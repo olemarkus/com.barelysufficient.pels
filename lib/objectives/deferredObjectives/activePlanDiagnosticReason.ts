@@ -6,6 +6,7 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import { isCarLimitBinding } from './diagnosticTypes';
+import { isTaskSatisfied } from './taskCompletion';
 
 // Narrow diagnostic reason codes that the UI needs to render specific copy
 // (e.g. "car unplugged") beyond what `pendingReason` alone can express.
@@ -74,7 +75,7 @@ export const withDiagnosticReasonCode = (
 
 export const resolveLiveCompletion = (diagnostic: DeferredObjectiveDiagnostic): DeferredObjectiveLiveCompletion => {
   const { completion, planning } = diagnostic.evaluation;
-  if (completion.kind === 'target_reached' || completion.kind === 'accepted_near_target') {
+  if (isTaskSatisfied(completion)) {
     return { kind: 'satisfied' };
   }
   if (completion.kind === 'inactive' || planning.kind === 'inactive' || planning.plan.status === 'invalid') {

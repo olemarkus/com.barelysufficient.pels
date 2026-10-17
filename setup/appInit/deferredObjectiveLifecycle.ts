@@ -55,24 +55,6 @@ const planScopeGateAction = (
   return 'proceed';
 };
 
-type TerminalFallbackTiming =
-  | { kind: 'satisfied' }
-  | { kind: 'deadline_reached'; deadlineAtMs: number; nowMs: number };
-
-const resolveTerminalFallbackEnding = (
-  ctx: AppContext,
-  deviceId: string,
-  timing: TerminalFallbackTiming,
-): { graceElapsed: boolean; disarm: () => void } => {
-  if (timing.kind === 'satisfied') {
-    return { graceElapsed: false, disarm: (): void => undefined };
-  }
-  return {
-    graceElapsed: timing.nowMs - timing.deadlineAtMs >= TERMINAL_RELEASE_DISARM_GRACE_MS,
-    disarm: () => disableDeferredObjectiveInSettings(ctx, deviceId),
-  };
-};
-
 const abandonLifecycleFallback = (ctx: AppContext, deviceId: string): void => {
   ctx.lifecycleFallback?.abandon(deviceId);
 };
@@ -109,12 +91,21 @@ const convergeLifecycleFallback = (
   return lifecycleFallback.converge(resolution.request).settled ? 'settled' : 'pending';
 };
 
-const handleDeferredTerminalFallback = (
+// Clock-driven END of a task: return the cap-off device it was driving to its
+// configured fallback posture through the executor-owned actuator lane, AND disarm the task —
+// but disarm only once the release is settled or the grace window has elapsed.
+//
+// Only the deadline ends a task. A satisfied task keeps governing its device
+// through admission until then (owner ruling 2026-10-17): an hour it did not book
+// releases the device through the plan, so satisfaction needs no fallback of its own.
+export const handleDeferredDeadlineReached = (
   ctx: AppContext,
   deviceId: string,
-  timing: TerminalFallbackTiming,
+  deadlineAtMs: number,
+  nowMs: number,
 ): void => {
-  const { graceElapsed, disarm } = resolveTerminalFallbackEnding(ctx, deviceId, timing);
+  const graceElapsed = nowMs - deadlineAtMs >= TERMINAL_RELEASE_DISARM_GRACE_MS;
+  const disarm = (): void => disableDeferredObjectiveInSettings(ctx, deviceId);
   const scopeGate = planScopeGateAction(resolveSmartTaskHomeScope(ctx, deviceId), graceElapsed);
   if (scopeGate === 'disarm') {
     abandonLifecycleFallback(ctx, deviceId);
@@ -137,8 +128,7 @@ const handleDeferredTerminalFallback = (
     disarm();
     return;
   }
-  // Cap-on → the planner owns the device on its normal lane. Only the deadline
-  // ends the task; early satisfaction must never disable it.
+  // Cap-on → the planner owns the device on its normal lane once the task ends.
   if (ctx.isCapacityControlEnabled(deviceId)) {
     abandonLifecycleFallback(ctx, deviceId);
     disarm();
@@ -155,34 +145,11 @@ const handleDeferredTerminalFallback = (
     if (graceElapsed) disarm();
     return;
   }
-  if (outcome === 'settled' && timing.kind === 'satisfied') return;
   if (outcome === 'settled' || graceElapsed) {
     abandonLifecycleFallback(ctx, deviceId);
     disarm();
   }
 };
-
-// Satisfaction can happen well before the deadline. Return a cap-off device to
-// its configured fallback posture on every lifecycle tick until observation
-// settles, but keep the task enabled so the deadline remains its sole ending.
-export const handleDeferredSatisfied = (
-  ctx: AppContext,
-  deviceId: string,
-): void => handleDeferredTerminalFallback(ctx, deviceId, { kind: 'satisfied' });
-
-// Clock-driven END of a task: return the cap-off device it was driving to its
-// configured fallback posture through the executor-owned actuator lane, AND disarm the task —
-// but disarm only once the release is settled or the grace window has elapsed.
-export const handleDeferredDeadlineReached = (
-  ctx: AppContext,
-  deviceId: string,
-  deadlineAtMs: number,
-  nowMs: number,
-): void => handleDeferredTerminalFallback(ctx, deviceId, {
-  kind: 'deadline_reached',
-  deadlineAtMs,
-  nowMs,
-});
 
 /**
  * Constructs the clock-driven smart-task lifecycle emitter. This is the home
@@ -231,9 +198,6 @@ export function createDeferredObjectiveLifecycleEmitter(
     deferredObjectiveStatusBus: ctx.deferredObjectiveStatusBus,
     deferredObjectiveHoursRemainingBus: ctx.deferredObjectiveHoursRemainingBus,
     deferredObjectiveHoursRemainingTracker: ctx.deferredObjectiveHoursRemainingTracker,
-    onSatisfied: (deviceId) => (
-      handleDeferredSatisfied(ctx, deviceId)
-    ),
     onFallbackInactive: (deviceId) => abandonLifecycleFallback(ctx, deviceId),
     onDeadlineReached: (deviceId, deadlineAtMs, nowMs) => (
       handleDeferredDeadlineReached(ctx, deviceId, deadlineAtMs, nowMs)

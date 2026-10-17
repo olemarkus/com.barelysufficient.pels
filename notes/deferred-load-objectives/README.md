@@ -5,7 +5,7 @@ future implementation work. The soft temperature slice is current shipped behavi
 deadline hours, make cap-off temperature devices visible during planned hours, keep them idle
 outside planned hours, and raise the planned setpoint to the deadline target while still respecting
 normal budget, capacity, priority, cooldown, and admission gates. EV planned resume and idle-bucket
-pause are also shipped (`admission.ts` emits their plan intents); satisfied/deadline fallback is
+pause are also shipped (`admission.ts` emits their plan intents); deadline fallback is
 requested by the lifecycle clock and converged in `lib/executor/lifecycleFallbackDispatcher.ts` — see
 `notes/ev-ready-by/README.md` for the user-facing slice. Multi-objective contention is shipped: objectives are allocated in device-priority
 order, and each lower task receives only the physical power and useful-energy capacity left by the
@@ -356,11 +356,12 @@ the committed hours filled to the stacked ceiling cannot absorb the demand (e.g.
 draw drops the tank ~38 °C and the remaining horizon at the floor step cannot cover the new
 kWh requirement). Filling the uncommitted current hour keeps the device on instead of
 stranding it at 0 kWh once a task outlives its committed window; a *committed* current hour
-is left to phase-1 (its settled budget is the contract for the hour). For a cap-off device,
-the lifecycle fallback takes precedence over that commitment while the task is satisfied and
-after its deadline: the lifecycle clock converges the configured fallback independently of the
-power-driven plan. Pre-deadline satisfaction does not end the task; if fresh progress later falls
-below target, lifecycle authority is abandoned and planning can consume the commitment again.
+is left to phase-1 (its settled budget is the contract for the hour). After the deadline the
+lifecycle fallback takes precedence for a cap-off device: the lifecycle clock converges the
+configured fallback independently of the power-driven plan. Pre-deadline satisfaction does not end
+the task, and it does not hand the device back either (owner ruling 2026-10-17): admission keeps
+deciding from the current hour's claim, so a booked hour may top the device up (without escalation
+permissions) and a released one holds it in its release posture, at the task's setpoint.
 
 ### Booking is decided by price, not by forecast room
 
@@ -394,8 +395,8 @@ rather than re-derives:
 
 | Claim | When | What the device gets |
 |---|---|---|
-| `claimed` | the task books the hour, with or without energy, and no release applies | driven: deadline floor, start-policy lift, budget exemption; in an hour with energy also the escalation permissions (limit and pause lower-priority devices) |
-| `released` | the hour is not booked and the task can finish without it, OR a price release applies | held off: with standing authority (power limiting on, or "Only PELS starts this device"), turned OFF by the planner; with authority lent by the task, the configured release posture |
+| `claimed` | the task books the hour, with or without energy, and no release applies | driven: the task's setpoint floor, start-policy lift, budget exemption; in an hour with energy also the escalation permissions (limit and pause lower-priority devices). A satisfied task's booked hour is a top-up and gets none of the permissions |
+| `released` | the hour is not booked and the task can finish without it, OR a price release applies | held off: with standing authority (power limiting on, or "Only PELS starts this device"), turned OFF by the planner; with authority lent by the task, the configured release posture. The task's setpoint floor still rides the decision, so a lower mode target is not written over it; the shed posture carries its own limit |
 
 Escalation backs a promise, so a 0 kWh booking carries none: boost past the shed invariant and the
 startup reservation are priority-blind, and would let a task take an hour a higher-priority task
@@ -929,22 +930,24 @@ stepped/current profile exists. Do not add phase/current control without a separ
 
 EV deadline control must distinguish deadline charging from normal managed charging. A deadline
 objective may start, resume, or step up charging only while that action is needed to meet the
-target. When the target is met, PELS removes the deadline charging request. What happens next
-depends on the per-device Power-limit control setting:
+target. When the target is met, PELS removes the deadline charging request, but the task keeps
+governing the charger until its deadline (owner ruling 2026-10-17): every hour it did not book
+holds the charger paused, with Power-limit control on or off, and an hour it booked may top up.
+What happens after the deadline depends on the per-device Power-limit control setting:
 
-- Power-limit control on: normal managed charging may continue after deadline pressure ends. This
-  matters when the deadline target is below 100% and the charger would otherwise keep charging;
-  PELS may continue to manage it through normal capacity, priority, budget, and price policy.
+- Power-limit control on: normal managed charging resumes once the task ends. This matters when
+  the deadline target is below 100% and the charger would otherwise keep charging; PELS manages it
+  through normal capacity, priority, budget, and price policy.
 - Power-limit control off: PELS leaves the charger alone for normal capacity, budget, and price
   work. If the deadline objective was the reason PELS allowed charging, meeting the target removes
-  that allowance and PELS should pause charging. It should not restart charging unless a new or
-  changed deadline target, boost, or manual/user action asks for it. Implementation:
-  the lifecycle emitter reports pre-deadline satisfaction to
-  `handleDeferredSatisfied` (`setup/appInit/deferredObjectiveLifecycle.ts`). Setup gates authority
-  and disarm, resolves a neutral executable fallback, then the executor dispatcher pauses the
-  charger and retries after the pending window until Homey observation confirms fallback. Shared
-  command collisions are skipped, never replayed from a captured plan; a later plan or lifecycle
-  tick must decide again from fresh observation.
+  that allowance and PELS pauses charging. It does not restart charging unless a new or changed
+  deadline target, boost, or manual/user action asks for it. Implementation: a satisfied
+  task keeps its admission decision until the deadline, and an hour it did not book is a released
+  hour, so admission emits `binary_release` and the executor pauses the charger and retries after
+  the pending window until Homey observation confirms it
+  (`test/e2e/deferredObjectiveSatisfiedReleaseSdkE2E.test.ts`). At the deadline the lifecycle
+  clock's `handleDeferredDeadlineReached` (`setup/appInit/deferredObjectiveLifecycle.ts`) converges
+  the fallback and disarms the task.
 
 ### The car's own charge limit
 
@@ -1518,7 +1521,7 @@ cover their cases (or because the slice they belong to is deferred):
 write-time `deadlineAtMs` resolution, price-feature-gated soft-temperature admission/target
 overrides, the horizon scheduler (budget-friendly buckets with deadline margin), stepped
 `expectedStepId` selection, EV admission (disconnect invalidation, fresh-progress gating,
-`satisfied`→pause on cap-off via the lifecycle clock), deadline auto-disable on pass
+`satisfied`→pause in every unbooked hour through admission), deadline auto-disable on pass
 (`statusTransitions.ts` + `handleDeferredDeadlineReached`), and the Smart-tasks + per-device plan/history UI with public flow-card
 creation/clearing. The freshness doctrine — credit a long-silent temperature (thermostats fall silent
 at setpoint; nothing ages a device observation out) but require strictly-fresh EV SoC — lives in

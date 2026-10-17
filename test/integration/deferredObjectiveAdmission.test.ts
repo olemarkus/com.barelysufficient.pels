@@ -329,16 +329,16 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     // gives 1 °C of useful heating per hour at low (1.5 kWh ÷ 1.5 kWh/°C), so meeting the
     // +3 °C target needs three full cheap hours; the planner picks buckets 0, 2, 4 (cheap)
     // and keeps the device shed in 1 and 3 (expensive) between them. After hour 4 the target
-    // is met and the deferred objective becomes satisfied at hour 5, so the device returns
-    // to its normal capacity-off behavior (kept idle but no longer actively shed by the
-    // deferred plan).
+    // is met and the deferred objective is satisfied at hour 5. The task still governs the
+    // device until its deadline, and it booked nothing at hour 5, so the device stays held
+    // off there (owner ruling 2026-10-17: a satisfied task does not heat in an hour it skipped).
     expect(observed).toEqual([
       { hour: 0, plannedState: 'keep', ran: true },
       { hour: 1, plannedState: 'shed', ran: false },
       { hour: 2, plannedState: 'keep', ran: true },
       { hour: 3, plannedState: 'shed', ran: false },
       { hour: 4, plannedState: 'keep', ran: true },
-      { hour: 5, plannedState: 'keep', ran: true },
+      { hour: 5, plannedState: 'shed', ran: false },
     ]);
     expect(temperatureC).toBeGreaterThanOrEqual(TARGET_C);
   });
@@ -455,7 +455,8 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       { hour: 2, mode: 'Home', plannedState: 'keep', priority: 1 },
       { hour: 3, mode: 'Away', plannedState: 'shed', priority: 1 },
       { hour: 4, mode: 'Away', plannedState: 'keep', priority: 1 },
-      { hour: 5, mode: 'Away', plannedState: 'keep', priority: 1 },
+      // Satisfied after hour 4 and unbooked: held off until the deadline.
+      { hour: 5, mode: 'Away', plannedState: 'shed', priority: 1 },
     ]);
     expect(temperatureC).toBeGreaterThanOrEqual(TARGET_C);
   });

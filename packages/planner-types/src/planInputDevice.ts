@@ -543,14 +543,15 @@ export type PlanInputDeviceBase = {
    */
   reservesStartupPower?: boolean;
   /**
-   * Producer-resolved deadline floor for the thermostat setpoint, °C — the
-   * deadline-target plus learned over-command. Stamped by
-   * `applyDeferredAdmissionToInput` for temperature objectives in a booked
-   * (`planned`) hour, also one booked at 0 kWh, where the floor is what lets the
-   * thermostat heat if capacity turns out to be free. `resolvePlannedTarget` lifts the commanded
-   * setpoint to `max(modeTarget + priceOptDelta, deadlineFloorTargetC)` so the
-   * device's local thermostat can actually reach the deadline target; outside
-   * planned hours the field is absent and the override drops out.
+   * Producer-resolved floor for the thermostat setpoint, °C: the task's target.
+   * Stamped by `applyDeferredAdmissionToInput` for a temperature task on every
+   * decision until its deadline, also once satisfied (owner ruling 2026-10-17).
+   * In a booked hour, also one booked at 0 kWh, it is what lets the thermostat
+   * heat if capacity turns out to be free; in a released hour the shed posture
+   * carries its own limit, and the floor only keeps the mode target from being
+   * written over the task's. `resolvePlannedTarget` lifts the commanded setpoint
+   * to `max(modeTarget + priceOptDelta, deadlineFloorTargetC)`; without an active
+   * task the field is absent and the override drops out.
    */
   deadlineFloorTargetC?: number;
   /**
