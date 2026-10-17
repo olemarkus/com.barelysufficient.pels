@@ -1,5 +1,5 @@
 import { isFiniteNumber } from '../packages/shared-domain/src/numberGuards';
-import type { CapacityShortfallSustainedCrossing } from '../setup/capacityShortfallAlertDispatch';
+import type { CapacityShortfallSustainedCrossing } from '../lib/power/capacityShortfallAlertDispatch';
 import { readFlowNumberArg } from './flowArgParsers';
 import type { FlowCardDeps } from './registerFlowCards';
 
@@ -24,10 +24,11 @@ const asCrossing = (state: unknown): CapacityShortfallSustainedCrossing | null =
  * seconds".
  *
  * The runtime cannot know which durations users configured, so
- * `setup/capacityShortfallAlertDispatch.ts` emits a crossing on every step of
+ * `lib/power/capacityShortfallAlertDispatch.ts` emits a crossing on every step of
  * its 10 s grid and this listener decides which saved Flows match. Same shape
  * as `smart_task_hours_remaining`'s listener, though the trigger call itself
- * lives in `setup/` because the dispatcher is per-home: the two sides share
+ * lives in the dispatcher because it is per-home (one per home, built by
+ * `setup/homeRuntime/createHomeCapacityGuard.ts`): the two sides share
  * `CapacityShortfallSustainedCrossing` so the payload still has one owner.
  *
  * The arg-less `capacity_shortfall` card is deliberately absent here — with no

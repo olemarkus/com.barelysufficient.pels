@@ -17,7 +17,7 @@ import path from 'node:path';
 import {
   CAPACITY_SHORTFALL_SUSTAINED_MAX_SECONDS,
   CAPACITY_SHORTFALL_SUSTAINED_STEP_SECONDS,
-} from '../../setup/capacityShortfallAlertDispatch';
+} from '../../lib/power/capacityShortfallAlertDispatch';
 import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames';
 
 type FlowToken = {

@@ -296,7 +296,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       // in `createHomeCapacityGuard`, which arms them through this same
       // `timerKey` namer — a rename there must land here too, because a
       // discarded lane deliberately declines to clear its own key (see
-      // `capacityShortfallAlertDispatch.ts`), so an unmatched suffix leaves
+      // `lib/power/capacityShortfallAlertDispatch.ts`), so an unmatched suffix leaves
       // the sustained ticker armed for a torn-down area.
       ctx.timers.clear(timerKey('shortfallAlertImmediate'));
       ctx.timers.clear(timerKey('shortfallAlertSustained'));

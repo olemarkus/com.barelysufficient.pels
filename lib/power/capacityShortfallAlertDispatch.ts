@@ -1,12 +1,12 @@
-import type { CapacityShortfallAlertCandidate } from '../lib/power/capacityGuard';
-import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../packages/shared-domain/src/powerFreshness';
-import { getLogger } from '../lib/logging/logger';
-import { runWithoutContext } from '../lib/logging/alsContext';
-import type { FlowPort } from '../lib/ports/homeyRuntime';
-import type { HomeId } from '../lib/utils/settingsKeys';
-import type { TimerRegistry } from '../lib/utils/timerRegistry';
+import type { CapacityShortfallAlertCandidate } from './capacityGuard';
+import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../packages/shared-domain/src/powerFreshness';
+import { getLogger } from '../logging/logger';
+import { runWithoutContext } from '../logging/alsContext';
+import type { FlowPort } from '../ports/homeyRuntime';
+import type { HomeId } from '../utils/settingsKeys';
+import type { TimerRegistry } from '../utils/timerRegistry';
 
-const logger = getLogger('setup/capacity-shortfall-alert-dispatch');
+const logger = getLogger('power/capacity-shortfall-alert-dispatch');
 
 const CAPACITY_SHORTFALL_ALERT_RETRY_MS = 1_000;
 
@@ -487,7 +487,8 @@ export const createCapacityShortfallAlertDispatch = (params: {
 }): CapacityShortfallAlertDispatch => {
   if (params.immediateTimerKey === params.sustainedTimerKey) {
     // Sharing a key would make every immediate-lane retry cancel the sustained
-    // ticker, silently. Assert rather than default (`setup/AGENTS.md`).
+    // ticker, silently. Assert rather than default: a wiring mistake must fail
+    // at construction, not run with one lane silenced.
     throw new Error('capacity shortfall alert lanes need distinct timer keys');
   }
   const base = { ...params, nowMs: params.nowMs ?? Date.now };

@@ -25,7 +25,7 @@ import { isCapacityShortfallAlertActive } from '../../lib/plan/planBudget';
 import type { PlanService } from '../../lib/plan/planService';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { normalizeError } from '../../lib/utils/errorUtils';
-import { createCapacityShortfallAlertDispatch } from '../capacityShortfallAlertDispatch';
+import { createCapacityShortfallAlertDispatch } from '../../lib/power/capacityShortfallAlertDispatch';
 import {
   createCapacityShortfallSideEffectGate,
   type CapacityShortfallSideEffectGate,

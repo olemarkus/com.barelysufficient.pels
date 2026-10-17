@@ -65,6 +65,7 @@ lib/observer/steppedReportedStep.ts 2
 lib/planInput/calibrationViews.ts 1
 lib/planInput/residualKwForPlanDevice.ts 1
 lib/ports/homeyRuntime.ts 1
+lib/power/capacityShortfallAlertDispatch.ts 2
 lib/power/sampleIngest.ts 5
 lib/power/sources/generationPoll.ts 1
 lib/power/sources/homeyEnergyPoll.ts 1
@@ -160,7 +161,6 @@ setup/appInit/wireHomeMembership.ts 5
 setup/appLifecycleHelpers.ts 1
 setup/appPriceLowestTrigger.ts 1
 setup/appSnapshotHelpers.ts 1
-setup/capacityShortfallAlertDispatch.ts 2
 setup/capacityShortfallSideEffectGate.ts 1
 setup/externalOffHoldDetection.ts 3
 setup/flowConflictProbe.ts 1

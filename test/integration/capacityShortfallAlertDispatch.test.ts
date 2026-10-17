@@ -3,7 +3,7 @@ import {
   CAPACITY_SHORTFALL_SUSTAINED_MAX_SECONDS,
   CAPACITY_SHORTFALL_SUSTAINED_STEP_SECONDS,
   createCapacityShortfallAlertDispatch,
-} from '../../setup/capacityShortfallAlertDispatch';
+} from '../../lib/power/capacityShortfallAlertDispatch';
 import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../packages/shared-domain/src/powerFreshness';
 import { createHomeCapacityGuard } from '../../setup/homeRuntime/createHomeCapacityGuard';
 import { requirePlanService } from '../../setup/appInit/contextGuards';
