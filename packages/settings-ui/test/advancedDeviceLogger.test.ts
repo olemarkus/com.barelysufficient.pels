@@ -37,6 +37,8 @@ vi.mock('../src/ui/homey.ts', () => ({
   callApi: vi.fn(),
   getSetting: vi.fn().mockResolvedValue({}),
   setSetting: vi.fn(),
+  // The purge loads the smart-task map before cancelling; no cache, no tasks.
+  hasSettingCache: vi.fn().mockReturnValue(false),
 }));
 
 vi.mock('../src/ui/devices.ts', () => ({
