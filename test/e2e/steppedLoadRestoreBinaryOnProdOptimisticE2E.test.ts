@@ -76,6 +76,7 @@ import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/co
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { noStorageTransport } from '../helpers/storageTransportStub';
+import { testParseSources } from '../helpers/deviceTransportHarness';
 
 const KEEP_REASON = fixtureDeviceReason('keep')!;
 const DEVICE_ID = 'hoiax-1';
@@ -90,17 +91,15 @@ const createLogger = (): Logger => ({
 // ── REAL parseDevice deps (only the Homey device is a mock) ──────────────────
 const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
   logger,
-  providers: {
-    getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-    getManaged: () => true,
-    // Load-bearing: enables the native stepped-load overlay for Høiax devices.
-    getNativeEvWiringEnabled: () => true,
-  },
+  ...testParseSources({
+    nativeWiring: { resolveNativeWiringEnabled: () => true },
+  }),
   powerState: {
     expectedPowerKwOverrides: {},
     lastKnownPowerKw: {},
     lastEstimateDecisionLogByDevice: new Map(),
     lastPeakPowerLogByDevice: new Map(),
+    onLearnedPeakChanged: () => undefined,
   },
   measuredPowerResolver: new DeviceMeasuredPowerResolver(),
   getCapabilityObj: (device) => (device.capabilitiesObj ?? {}) as never,

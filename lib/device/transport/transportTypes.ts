@@ -1,3 +1,9 @@
+import type {
+    DeviceParseSettings,
+    FlowBackedRead,
+    NativeWiringRead,
+} from './managerParseDevice';
+import type { BatteryManagedRead } from '../../ports/batteryControlOwner';
 import type { RetainedPowerStore } from '../retainedPowerStore';
 import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 /**
@@ -40,15 +46,20 @@ export const REALTIME_CAPABILITY_EVENT_WINDOW_MS = 2 * 1000;
  * the window of the steadiest devices would expire in settings while memory said
  * it was fresh.
  */
-type LearnedPeakChangedListener = { onLearnedPeakChanged?: () => void };
+type LearnedPeakChangedListener = { onLearnedPeakChanged: () => void };
 
-export type DeviceTransportPowerState = PowerEstimateState & LearnedPeakChangedListener;
+/**
+ * What the app hands the transport: the two power maps it shares with
+ * persistence. The estimator's log-dedupe state is the transport's own, created
+ * there, and a moved learned peak is persisted through `flowBacked`.
+ */
+export type DeviceTransportPowerState = Pick<PowerEstimateState, 'expectedPowerKwOverrides' | 'lastKnownPowerKw'>;
 
 /**
  * The transport's own power bag: every estimator field resolved, plus the
  * learned-peak notification the parse path forwards to `updateLastKnownPower`.
  */
-export type ResolvedTransportPowerState = Required<PowerEstimateState> & LearnedPeakChangedListener;
+export type ResolvedTransportPowerState = PowerEstimateState & LearnedPeakChangedListener;
 
 export type SnapshotRefreshMetrics = {
     availableDevices: number;
@@ -98,6 +109,41 @@ export type DeviceTransportOptions = {
      * database; specs build it on an in-memory one through the harness.
      */
     retainedPowerStore: RetainedPowerStore;
+    /** The owner's per-device configuration (`DeviceControlSettings`). */
+    settings: DeviceParseSettings;
+    /** Native wiring and Flow conflicts (`AppNativeWiring`). */
+    nativeWiring: NativeWiringRead;
+    /** The Flow-reported capability values and learned peaks (`FlowBackedDeviceState`). */
+    flowBacked: FlowBackedRead;
+    /** A home battery's Managed choice (`lib/battery`). */
+    batteryManaged: BatteryManagedRead;
+    /** Which meters the live report reads, and where sub-home readings go. */
+    meters: DeviceTransportMeters;
+};
+
+/**
+ * Which meters the live power report reads, and where the readings go.
+ *
+ * Main and the sub-homes are still told apart here: Main's reading returns up
+ * the poll call, a sub-home's is pushed to `onAdditionalMeterReadings`.
+ */
+export type DeviceTransportMeters = {
+    /**
+     * Producer-resolved Main selection. `unavailable` is a real answer a wired
+     * producer gives, never a default anything falls back to.
+     */
+    getHomeyEnergyMeterSelection: () => MainMeterSelection;
+    /**
+     * The sub-homes' meter device ids, read from the SAME `manager/energy/live`
+     * payload. Read fresh per poll so a homes-config change needs no transport
+     * restart. Empty = no extra extraction.
+     */
+    getAdditionalMeterDeviceIds: () => readonly string[];
+    /**
+     * Where each poll's finite per-meter readings go (the home-runtime registry
+     * routes them to per-home pipelines).
+     */
+    onAdditionalMeterReadings: (readings: Record<string, number>, nowMs: number) => void;
 };
 
 export const createEstimateDecisionLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();

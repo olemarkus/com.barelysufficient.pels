@@ -37,6 +37,25 @@ const loaded = (port: ConstructorParameters<typeof DeviceControlSettings>[0]): D
 
 const temperatureDevice = { deviceType: 'temperature' as const };
 
+describe('DeviceControlSettings managed filter', () => {
+  it('reports inactive for an empty managed map', () => {
+    expect(loaded(settingsDouble({ [MANAGED_DEVICES]: {} }).port).isManagedFilterActive()).toBe(false);
+  });
+
+  it('reports inactive for an all-false managed map', () => {
+    // Explicit opt-outs alone must not switch the runtime to the explicit-only
+    // managed set; devices with no key remain implicitly managed.
+    const settings = loaded(settingsDouble({ [MANAGED_DEVICES]: { 'vt-1': false, 'socket-1': false } }).port);
+    expect(settings.isManagedFilterActive()).toBe(false);
+  });
+
+  it('reports active when at least one device is explicitly enabled', () => {
+    expect(loaded(settingsDouble({ [MANAGED_DEVICES]: { ev1: true } }).port).isManagedFilterActive()).toBe(true);
+    expect(loaded(settingsDouble({ [MANAGED_DEVICES]: { ev1: true, 'vt-1': false } }).port).isManagedFilterActive())
+      .toBe(true);
+  });
+});
+
 describe('DeviceControlSettings temperature-command policy', () => {
   it('loads the temperature-control disabled device map', () => {
     const { port } = settingsDouble({ [TEMPERATURE_CONTROL_DISABLED_DEVICES]: { thermostat: true, heater: false } });

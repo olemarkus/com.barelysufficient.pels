@@ -149,9 +149,12 @@ test('realtime prepared-current feedback changes the step without inventing powe
   mockHomeyInstance.settings.set('charging_current_control', { battery: { method: 'flow', confirmation: 'vehicle' } });
   const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App,
     { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test') },
-    { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
-      getDeviceTargetPowerConfig: () => ({ enabled: true, preset: 'ev_charger_3_phase',
-        min: 0, max: 11040, step: 1380, excludeMin: 1, excludeMax: 4140 }) });
+    {
+      settings: {
+        getDeviceTargetPowerConfig: () => ({ enabled: true, preset: 'ev_charger_3_phase',
+          min: 0, max: 11040, step: 1380, excludeMin: 1, excludeMax: 4140 }),
+      },
+    });
   try {
     await initWithLiveFeed(transport);
     const initial = devices();
@@ -182,8 +185,9 @@ test('transport discovers Tesla, permits home start/stop without a key, and bloc
   const trigger = vi.fn().mockResolvedValue(true);
   const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App,
     { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test') },
-    { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
-      getDeviceTargetPowerConfig: () => ({ enabled: true, preset: 'ev_charger_3_phase' }) }, undefined,
+    {
+      settings: { getDeviceTargetPowerConfig: () => ({ enabled: true, preset: 'ev_charger_3_phase' }) },
+    }, undefined,
     { getFlowTriggerCard: () => ({ trigger }) });
   try {
     await initWithLiveFeed(transport);
@@ -219,8 +223,9 @@ test('live built-in current selection rejects old Flow feedback before its snaps
   } });
   const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App,
     { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test') },
-    { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
-      getDeviceTargetPowerConfig: () => ({ enabled: true, preset: 'ev_charger_3_phase' }) });
+    {
+      settings: { getDeviceTargetPowerConfig: () => ({ enabled: true, preset: 'ev_charger_3_phase' }) },
+    });
   try {
     await initWithLiveFeed(transport);
     await seedTransportDevices(transport, devices());

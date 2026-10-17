@@ -23,9 +23,7 @@ const setup = async (
   device: MockDevice,
 ): Promise<{ transport: DeviceTransport; writes: () => Array<[string, unknown]> }> => {
   setMockDrivers({ batteries: new MockDriver('batteries', [device]) });
-  const transport = createTestDeviceTransport(homeyMock, loggerMock, {
-    getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-  });
+  const transport = createTestDeviceTransport(homeyMock, loggerMock);
   await seedTransportDevices(transport, [device.toHomeyApiDevice() as HomeyDeviceLike]);
   const put = vi.spyOn(mockHomeyInstance.api, 'put');
   const writes = (): Array<[string, unknown]> => put.mock.calls.map(([path, body]) => [

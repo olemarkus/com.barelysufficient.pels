@@ -48,9 +48,10 @@ const setup = async (device: MockDevice) => {
   const settings = mockHomeyInstance.settings;
   const managed = new BatteryManagedSettings(settings);
   const transport: DeviceTransport = createTestDeviceTransport(homeyMock, loggerMock, {
-    getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-    getManaged: (deviceId: string) => managed.isManaged(deviceId),
-    isManagedFilterActive: () => true,
+    settings: {
+      isManaged: (deviceId: string) => managed.isManaged(deviceId),
+    },
+    batteryManaged: { isManaged: (deviceId: string) => managed.isManaged(deviceId) },
   });
   const refresh = async (): Promise<void> => {
     await seedTransportDevices(transport, [device.toHomeyApiDevice() as HomeyDeviceLike]);

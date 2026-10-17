@@ -142,6 +142,17 @@ export class DeviceControlSettings {
   get deviceTargetPowerConfigs(): DeviceTargetPowerConfigsWithReachability { return this.maps.targetPowerConfigs; }
   get temperatureControlPolicyState(): TemperatureControlPolicyState { return this.maps.temperatureControl.state; }
 
+  /** The owner's Managed choice for an ordinary device; batteries and solar answer in `resolveDeviceManagedState`. */
+  isManaged(deviceId: string): boolean { return this.maps.managed[deviceId] === true; }
+  /** The owner's Power-limit control choice (`resolveCapacityControlEnabled` decides). */
+  isControllable(deviceId: string): boolean { return this.maps.controllable[deviceId] === true; }
+  /**
+   * Whether the owner has managed any device; until then every device is read.
+   * Explicit `false` entries alone must NOT activate it, or a fresh install
+   * would flip from "all devices visible" to "only the explicit-true devices"
+   * merely because settings hold opt-outs.
+   */
+  isManagedFilterActive(): boolean { return Object.values(this.maps.managed).some((value) => value === true); }
   isBudgetExempt(deviceId: string): boolean { return this.maps.budgetExempt[deviceId] === true; }
   getTemperatureBoostConfig(deviceId: string): TemperatureBoostConfig | undefined {
     return this.maps.temperatureBoost[deviceId];

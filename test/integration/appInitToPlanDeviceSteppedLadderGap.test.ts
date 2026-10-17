@@ -65,8 +65,7 @@ const buildSnapshot = (
 const resolveSavedFlowPlanDevice = async (profile: SteppedLoadProfile, observedAtMs: number) => {
   const logger: Logger = { log: () => {}, error: () => {}, structuredLog: getLogger('devices') };
   const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger, {
-    getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
-    getDeviceControlProfile: () => profile,
+    settings: { getDeviceControlProfile: () => profile },
   });
   const lastUpdated = new Date(observedAtMs).toISOString();
   const device: HomeyDeviceLike = {

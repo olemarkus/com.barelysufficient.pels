@@ -33,7 +33,15 @@ import { ObservedHomePower } from '../../lib/observer/observedHomePower';
 import { DEVICES_API_PATH, setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import type { SnapshotRefreshOptions } from '../../lib/device/transport/transportTypes';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
-import type { DeviceTransportParseProviders } from '../../lib/device/transport/managerParseDevice';
+import type {
+  DeviceParseSettings,
+  DeviceParseSources,
+  FlowBackedRead,
+  NativeWiringRead,
+} from '../../lib/device/transport/managerParseDevice';
+import type { DeviceTransportMeters } from '../../lib/device/transport/transportTypes';
+import { DeviceManagement } from '../../lib/device/deviceRoleReads';
+import type { BatteryManagedRead } from '../../lib/ports/batteryControlOwner';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import { mockHomeyInstance } from '../mocks/homey';
 import { connectLiveFeed, settleLiveFeed } from './liveFeedSocketHarness';
@@ -49,25 +57,80 @@ type TransportArgs = ConstructorParameters<typeof DeviceTransport>;
 const emitterByTransport = new WeakMap<DeviceTransport, ObservedStateEmitter>();
 
 /**
- * The parse providers a spec hands the harness. Production wires every device's
- * managed state (`buildDeviceParseProviders` → `resolveManagedState`), so the
- * transport requires `getManaged`; a spec that is not about managed state may
- * leave it for {@link resolveTestParseProviders}.
+ * What a spec states about the owners the transport reads: any subset of each.
+ * Production hands the transport the owners themselves (`wireDeviceTransport`);
+ * the `test*` builders below complete the rest the way such a spec has always
+ * read.
  */
-type TestParseProviders = Omit<DeviceTransportParseProviders, 'getManaged'>
-  & Partial<Pick<DeviceTransportParseProviders, 'getManaged'>>;
+export type TestTransportInputs = {
+  settings?: Partial<DeviceParseSettings>;
+  nativeWiring?: Partial<NativeWiringRead>;
+  flowBacked?: Partial<FlowBackedRead>;
+  batteryManaged?: Partial<BatteryManagedRead>;
+  meters?: Partial<DeviceTransportMeters>;
+};
+
+/** Every device managed and controllable, the filter on, and no per-device configuration. */
+export const testParseSettings = (settings: Partial<DeviceParseSettings> = {}): DeviceParseSettings => ({
+  isManaged: () => true,
+  isControllable: () => true,
+  isManagedFilterActive: () => true,
+  isBudgetExempt: () => false,
+  getDeviceDriverIdOverride: () => undefined,
+  getDeviceControlProfile: () => undefined,
+  getDeviceTargetPowerConfig: () => undefined,
+  getEvCarAssociationCarIds: () => [],
+  ...settings,
+});
+
+/** No Main meter selected, and no sub-home meters. */
+export const testTransportMeters = (meters: Partial<DeviceTransportMeters> = {}): DeviceTransportMeters => ({
+  getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
+  getAdditionalMeterDeviceIds: () => [],
+  onAdditionalMeterReadings: () => undefined,
+  ...meters,
+});
+
+/** Native wiring off, no Flow conflict or reports, peaks persisted nowhere, every battery managed. */
+const testTransportOwners = (inputs: TestTransportInputs) => ({
+  settings: testParseSettings(inputs.settings),
+  nativeWiring: {
+    resolveNativeWiringEnabled: () => false,
+    getFlowConflict: () => undefined,
+    ...inputs.nativeWiring,
+  },
+  flowBacked: {
+    getFlowReportedCapabilitiesForDevice: () => ({}),
+    persistLearnedPeaks: () => undefined,
+    ...inputs.flowBacked,
+  },
+  batteryManaged: { isManaged: () => true, ...inputs.batteryManaged },
+});
 
 /**
- * Complete a spec's providers the way such a spec has always read: every device
- * managed, so the transport tracks and parses all of them and each snapshot
- * reads as planned. A spec that passes no providers also selects no Main meter.
- * A provider the spec states wins.
+ * The owners a hand-built parse reads (`DeviceParseSources`), completed as
+ * above, with no device detected as a battery or solar device.
  */
-const resolveTestParseProviders = (providers: TestParseProviders | undefined): DeviceTransportParseProviders => (
-  providers === undefined
-    ? { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }), getManaged: () => true }
-    : { ...providers, getManaged: providers.getManaged ?? (() => true) }
-);
+export const testParseSources = (inputs: TestTransportInputs = {}): DeviceParseSources => {
+  const { settings, nativeWiring, flowBacked, batteryManaged } = testTransportOwners(inputs);
+  return {
+    settings,
+    nativeWiring,
+    flowBacked,
+    management: new DeviceManagement(
+      { isBatteryDevice: () => false, isSolarDevice: () => false },
+      batteryManaged,
+      settings,
+    ),
+  };
+};
+
+/** A spec's power state completed: empty maps. */
+const testPowerState = (powerState: Partial<TransportArgs[2]> = {}): TransportArgs[2] => ({
+  expectedPowerKwOverrides: {},
+  lastKnownPowerKw: {},
+  ...powerState,
+});
 
 /**
  * A fully-populated dispatcher of spies, for the specs that assert on the
@@ -101,9 +164,9 @@ export const createTestObservedStateDispatcher = (
 export function createTestDeviceTransport(
   homey: TransportArgs[0],
   logger: TransportArgs[1],
-  providers?: TestParseProviders,
-  powerState?: TransportArgs[3],
-  options?: Partial<TransportArgs[4]>,
+  inputs: TestTransportInputs = {},
+  powerState?: Partial<TransportArgs[2]>,
+  options?: Partial<TransportArgs[3]>,
 ): DeviceTransport {
   // One read of the caller's dispatcher decides both branches. Spreading
   // `options` over a default instead would let an explicit
@@ -115,18 +178,21 @@ export function createTestDeviceTransport(
   // A fresh in-memory store per transport unless the spec passes one: a spec
   // that restarts a transport on the same store is how a restart is modelled.
   const store = retainedPowerStore ?? createRetainedPowerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
-  const parseProviders = resolveTestParseProviders(providers);
+  const owners = { ...testTransportOwners(inputs), meters: testTransportMeters(inputs.meters) };
+  const resolvedPowerState = testPowerState(powerState);
   if (injected) {
-    return new DeviceTransport(homey, logger, parseProviders, powerState, {
+    return new DeviceTransport(homey, logger, resolvedPowerState, {
       ...rest,
+      ...owners,
       onSnapshotMutated,
       observedStateDispatcher: injected,
       retainedPowerStore: store,
     });
   }
   const emitter = new ObservedStateEmitter();
-  const transport = new DeviceTransport(homey, logger, parseProviders, powerState, {
+  const transport = new DeviceTransport(homey, logger, resolvedPowerState, {
     ...rest,
+    ...owners,
     onSnapshotMutated,
     observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),
     retainedPowerStore: store,

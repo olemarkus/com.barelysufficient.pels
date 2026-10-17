@@ -11,6 +11,7 @@
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
+import type { DeviceTransportMeters } from './transportTypes';
 import { observeBatteryStateFromList, observeEvCarLinkAndResubscribe } from './refreshProducers';
 import {
     partitionConformingDeviceReads,
@@ -426,7 +427,7 @@ async function resolveLivePowerForRefresh(
     if (!includeLivePower) return { byDeviceId: {}, homePowerSample: null };
     const report = await fetchLivePowerReport(
         refresh.reader.logger,
-        refresh.reader.providers,
+        refresh.meters,
         mainMeterSelection,
     );
     return {
@@ -450,6 +451,7 @@ export class SnapshotRefreshService {
     readonly reader: DeviceSnapshotReader,
     readonly deviceSdk: DeviceHomeySdk,
     readonly notifications: TransportNotifications,
+    readonly meters: DeviceTransportMeters,
   ) {}
 
   fetchDevicesByKnownIds(): Promise<DeviceFetchResult> {

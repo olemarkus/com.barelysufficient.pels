@@ -265,9 +265,7 @@ describe('post-refresh recompute through the transport seam', () => {
   // assembles it (both notification seams subscribed).
   const buildTransportChain = (logger?: PinoLogger) => {
     const emitter = new ObservedStateEmitter();
-    const transport = createTestDeviceTransport(homeyApp, loggerMock, {
-      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-    }, undefined, {
+    const transport = createTestDeviceTransport(homeyApp, loggerMock, {}, undefined, {
       observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),
     });
     const wiring = wireHomeMembershipService({
@@ -335,9 +333,7 @@ describe('post-refresh recompute through the transport seam', () => {
       subHomes: [SUB_HOME_A],
     });
     const emitter = new ObservedStateEmitter();
-    const transport = createTestDeviceTransport(homeyApp, loggerMock, {
-      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-    }, undefined, {
+    const transport = createTestDeviceTransport(homeyApp, loggerMock, {}, undefined, {
       observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),
     });
     // Stub ctx exposing ONLY the members `wireHomeMembership` may touch. The
@@ -379,9 +375,7 @@ describe('post-refresh recompute through the transport seam', () => {
     });
     const { warn, error, logger } = makeLoggerSpy();
     const emitter = new ObservedStateEmitter();
-    const transport = createTestDeviceTransport(homeyApp, loggerMock, {
-      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-    }, undefined, {
+    const transport = createTestDeviceTransport(homeyApp, loggerMock, {}, undefined, {
       observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),
     });
     // Wiring-order regression stub: membership seams present, planService

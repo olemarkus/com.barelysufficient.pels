@@ -10,7 +10,7 @@ import {
   isDevicePowerCapable,
   parseDevice,
   parseDeviceList,
-  type DeviceTransportParseProviders,
+  type DeviceParseSources,
   type ParseDevicePurpose,
 } from './managerParseDevice';
 import { resolveLatestLocalWriteMs } from './managerObservation';
@@ -23,15 +23,33 @@ import { isHomeBatteryDevice } from '../managerEnergy';
 import { isRuntimeTrackedDevice, resolveManagedFilterDecision, shouldDropEarly } from './managerManagedFilter';
 import { isHomeBatterySnapshot, toBatteryControlRead } from './homeBatteryObservation';
 import type { BatteryControlRead } from '../../ports/batteryControlOwner';
+import { DeviceManagement, type DeviceRoleMembership } from '../deviceRoleReads';
+import type { DeviceTransportOptions } from './transportTypes';
 
 const emitDeviceDebug = getDebugEmitter('devices', 'devices');
+
+/**
+ * The owners every parse reads, from the ones the transport was handed and its
+ * own detected roles.
+ */
+export function createDeviceParseSources(
+  owners: Pick<DeviceTransportOptions, 'settings' | 'nativeWiring' | 'flowBacked' | 'batteryManaged'>,
+  roles: DeviceRoleMembership,
+): DeviceParseSources {
+  return {
+    settings: owners.settings,
+    nativeWiring: owners.nativeWiring,
+    flowBacked: owners.flowBacked,
+    management: new DeviceManagement(roles, owners.batteryManaged, owners.settings),
+  };
+}
 
 /** Parses Homey device reads and maintains the raw-device tracking indexes. */
 export class DeviceSnapshotReader {
   constructor(
     readonly snapshotStore: TransportSnapshotStore,
     private readonly observationBridge: ObservationBridge,
-    readonly providers: DeviceTransportParseProviders,
+    readonly sources: DeviceParseSources,
     readonly powerState: ResolvedTransportPowerState,
     readonly retainedPower: RetainedPowerPersistence,
     readonly logger: Logger,
@@ -86,7 +104,7 @@ export class DeviceSnapshotReader {
   private retainBlockedDevice(
     device: HomeyDeviceLike, purpose: ParseDevicePurpose,
   ): TransportDeviceSnapshot | undefined {
-    const decision = resolveManagedFilterDecision({ providers: this.providers, deviceId: device.id });
+    const decision = resolveManagedFilterDecision(this.sources.management, device.id);
     if (shouldDropEarly(purpose, decision, false) || (purpose === 'ui_picker' && decision.isManaged)) return undefined;
     const previous = this.snapshotStore.getSnapshotByDeviceId(device.id);
     if (!previous) return undefined;
@@ -103,9 +121,7 @@ export class DeviceSnapshotReader {
   }
 
   applyDeviceDriverOverride(device: HomeyDeviceLike): HomeyDeviceLike {
-    return this.providers.getDeviceDriverIdOverride
-      ? applyDeviceDriverOverride(device, this.providers.getDeviceDriverIdOverride)
-      : device;
+    return applyDeviceDriverOverride(device, this.sources.settings);
   }
 
   /**
@@ -145,7 +161,7 @@ export class DeviceSnapshotReader {
 
   private isTracked(deviceId: string, isHomeBattery: boolean): boolean {
     return isRuntimeTrackedDevice(
-      resolveManagedFilterDecision({ providers: this.providers, deviceId }),
+      resolveManagedFilterDecision(this.sources.management, deviceId),
       isHomeBattery,
     );
   }
@@ -160,7 +176,7 @@ export class DeviceSnapshotReader {
   private parseDependencies() {
     return {
       logger: this.logger,
-      providers: this.providers,
+      ...this.sources,
       debugStructured: emitDeviceDebug,
       powerState: this.powerState,
       measuredPowerResolver: this.retainedPower.resolver,

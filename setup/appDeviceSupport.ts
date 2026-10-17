@@ -7,16 +7,6 @@ import type { UnrankedPlanInputDevice } from './appInit/toPlanDevice';
 import type { ModeTargetDevice } from '../packages/shared-domain/src/modeCatalogResolution';
 
 
-type BooleanMap = Record<string, boolean>;
-
-// Filter is active iff at least one device is explicitly opted-in (`true`).
-// Explicit `false` keys must NOT activate the filter on their own — otherwise a
-// fresh-install user would flip from "all devices visible" to "only the
-// explicit-true devices visible" merely because settings contain opt-outs.
-export function isManagedFilterActive(managedDevices: BooleanMap): boolean {
-  return Object.values(managedDevices).some((value) => value === true);
-}
-
 // The SINGLE definition of "is this device in the runtime-planned set" — the
 // set the plan cycle actually evaluates. The plan service projects the snapshot,
 // keeps the devices the plan can act on, then applies this predicate (see

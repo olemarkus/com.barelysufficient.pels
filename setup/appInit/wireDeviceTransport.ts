@@ -1,8 +1,8 @@
 /**
  * Construction and event wiring of the app's single `DeviceTransport`, sliced
  * out of `setup/appServiceWiring.ts` to keep that entry point under the line
- * budget: the boundary-resolved whole-home meter authority, the four transport
- * dep bags, the observer-emitter subscriptions that feed the projection, and
+ * budget: the boundary-resolved whole-home meter authority, the transport's
+ * owners and meters, the observer-emitter subscriptions that feed the projection, and
  * the transport's start. `AppServiceWiring.initDeviceManager` sequences the
  * three steps. Plan-dependent subscriptions are wired later by
  * `planObservedStateSubscription.ts`.
@@ -18,7 +18,7 @@ import type { ObservedDeviceStateProjection } from '../../lib/observer/observedD
 import { createCalibrationSnapshotMutationHook } from '../../lib/device/devicePowerCalibrationStore';
 import { getDebugEmitter, type Logger as PinoLogger } from '../../lib/logging/logger';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
-import { buildDeviceParseProviders } from './buildDeviceParseProviders';
+import { buildHomeRuntimeMeterProviders } from './wireHomeRuntimeRegistry';
 import { createExternalOffHoldPolicy } from '../externalOffHoldAdapter';
 import { createEvCarLinkAccessForApp } from './evCarLinkAccess';
 import type { AppContext } from '../../lib/app/appContext';
@@ -104,21 +104,9 @@ export function buildDeviceTransport(
     log: ctx.log.bind(ctx),
     error: ctx.error.bind(ctx),
     structuredLog,
-  }, buildDeviceParseProviders(
-    ctx,
-    nativeWiring,
-    getHomeRuntimeRegistry,
-    () => resolveHomeyEnergyMeterSelection(ctx.homey),
-  ), {
+  }, {
     expectedPowerKwOverrides: ctx.expectedPowerKwOverrides,
     lastKnownPowerKw: ctx.lastKnownPowerKw,
-    // Driven off the learned-peak mutation, NOT the snapshot-mutation seam
-    // below. That seam fires on a changed calibration input, and a reading equal
-    // to the standing peak changes none of them while still re-anchoring the
-    // window — so the peak of the steadiest devices, the ones the estimate most
-    // depends on, would have expired in settings while memory said it was fresh.
-    // The persist is itself rate-limited and change-gated.
-    onLearnedPeakChanged: () => ctx.flowBacked.persistLearnedPeaks(),
   }, {
     getFlowTriggerCard: (cardId) => ctx.homey.flow?.getTriggerCard?.(cardId),
     onSnapshotMutated: (snapshot, nowMs) => {
@@ -128,6 +116,21 @@ export function buildDeviceTransport(
     observedStateDispatcher,
     evCarLinkSnapshotAccess: createEvCarLinkAccessForApp(ctx),
     retainedPowerStore: createRetainedPowerStore(ctx.getUserdataDatabase()),
+    settings: ctx.deviceControlSettings,
+    nativeWiring,
+    // Also where a moved learned peak is persisted: driven off the learned-peak
+    // mutation, NOT the snapshot-mutation seam above. That seam fires on a changed
+    // calibration input, and a reading equal to the standing peak changes none of
+    // them while still re-anchoring the window, so the peak of the steadiest
+    // devices would have expired in settings while memory said it was fresh. The
+    // persist is itself rate-limited and change-gated.
+    flowBacked: ctx.flowBacked,
+    batteryManaged: ctx.batteryManaged,
+    meters: {
+      getHomeyEnergyMeterSelection: () => resolveHomeyEnergyMeterSelection(ctx.homey),
+      // Lazy: the registry is built after the transport.
+      ...buildHomeRuntimeMeterProviders(getHomeRuntimeRegistry),
+    },
   });
 }
 

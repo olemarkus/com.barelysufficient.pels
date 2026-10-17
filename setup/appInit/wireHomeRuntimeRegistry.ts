@@ -5,7 +5,7 @@
  * over that field, so each seam is inert before `initHomeRuntimeRegistry` runs
  * and again after `runUninit` clears it:
  *
- * - the transport's per-meter provider pair (`buildHomeRuntimeMeterProviders`)
+ * - the transport's per-meter pair (`buildHomeRuntimeMeterProviders`)
  *   — one `manager/energy/live` poll serves every home;
  * - the settings-handler hooks (`buildHomeRuntimeSettingsHooks`) — suffixed
  *   dirty marks, `homes_config` reconcile, and global source-epoch replacement;
@@ -13,7 +13,7 @@
  *   already-committed per-home read.
  */
 import type { AppContext } from '../../lib/app/appContext';
-import type { DeviceTransportParseProviders } from '../../lib/device/transport/managerParseDevice';
+import type { DeviceTransportMeters } from '../../lib/device/transport/transportTypes';
 import type { HomeRuntimeReadPort } from '../../lib/home/homeRuntimeRead';
 import type { HomeModeCatalog } from '../../lib/home/homeModeCatalog';
 import type { HomeMembershipService } from '../../lib/home/homeMembershipService';
@@ -39,10 +39,10 @@ export const createHomeRuntimeRegistryForApp = (
   return registry;
 };
 
-/** The transport's sub-home meter provider pair (request ids + readings fan-out). */
+/** The transport's sub-home meter pair (request ids + readings fan-out). */
 export const buildHomeRuntimeMeterProviders = (
   getRegistry: () => HomeRuntimeRegistry | undefined,
-): Pick<DeviceTransportParseProviders, 'getAdditionalMeterDeviceIds' | 'onAdditionalMeterReadings'> => ({
+): Pick<DeviceTransportMeters, 'getAdditionalMeterDeviceIds' | 'onAdditionalMeterReadings'> => ({
   getAdditionalMeterDeviceIds: () => getRegistry()?.getMeterDeviceIds() ?? [],
   // Poll-discard parity is enforced inside `routeMeterReadings` (it already reads
   // the power source), so this dispatch stays a thin lazy forward.

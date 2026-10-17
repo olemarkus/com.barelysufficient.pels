@@ -14,7 +14,7 @@ import {
  * - the **probe** decides which car matched this charger's plug edge
  *   (`evCarLinkProducer`), knowing nothing about user configuration;
  * - the **user** decides which cars this charger may associate at all, which
- *   reaches the device layer as a plain id list on the parse providers.
+ *   reaches the device layer as a plain id list from `DeviceControlSettings`.
  *
  * Eligibility narrows the candidates; it does not stand in for the evidence. A
  * ticked car still has to match a plug edge, because a car plugged in at work

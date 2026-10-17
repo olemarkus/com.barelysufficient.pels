@@ -106,9 +106,10 @@ const createEaseeTransport = (
   mockHomeyInstance as unknown as Homey.App,
   createLogger(),
   {
-    getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-    getDeviceTargetPowerConfig: (deviceId) => (deviceId === EASEE_ID ? targetPowerConfig : undefined),
-    getNativeEvWiringEnabled: () => nativeWiringEnabled,
+    settings: {
+      getDeviceTargetPowerConfig: (deviceId) => (deviceId === EASEE_ID ? targetPowerConfig : undefined),
+    },
+    nativeWiring: { resolveNativeWiringEnabled: () => nativeWiringEnabled },
   },
 );
 
@@ -214,9 +215,8 @@ describe('Easee native charger current', () => {
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
         {
-          getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-          getDeviceTargetPowerConfig: () => continuousPowerConfig,
-          getNativeEvWiringEnabled: () => true,
+          settings: { getDeviceTargetPowerConfig: () => continuousPowerConfig },
+          nativeWiring: { resolveNativeWiringEnabled: () => true },
         },
         undefined,
         { getFlowTriggerCard: (cardId) => mockHomeyInstance.flow.getTriggerCard(cardId) },
@@ -284,9 +284,8 @@ describe('Easee native charger current', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-        getDeviceTargetPowerConfig: () => config,
-        getNativeEvWiringEnabled: () => true,
+        settings: { getDeviceTargetPowerConfig: () => config },
+        nativeWiring: { resolveNativeWiringEnabled: () => true },
       },
       undefined,
       { onSnapshotMutated },

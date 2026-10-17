@@ -960,7 +960,7 @@ describe('executor drift through PlanExecutor.driftObservationDeps', () => {
     const parsed = await seedTransportDevices(createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       loggerMock,
-      { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
+      {},
     ), [unpluggedCharger, offSocket]);
     const configuration = new DeviceConfigurationStore();
     configuration.replace(parsed);

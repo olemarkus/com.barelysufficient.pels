@@ -604,7 +604,7 @@ describe('external-off hold — real configuration and Observer reads', () => {
     const parsed = await seedTransportDevices(createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       loggerMock,
-      { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
+      {},
     ), [rawUnpluggedCharger(), rawSocket()]);
     // `getObservedRecord` and `deviceConfiguration` are backed by this snapshot
     // through the production projections.

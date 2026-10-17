@@ -68,8 +68,8 @@ import type { RefreshTargetDevicesSnapshotOptions } from './appSnapshotHelpers';
 import type { AppRuntimeHandles } from './appRuntimeHandles';
 import { resolveCurrentMonthQuarterPeakKw } from '../lib/power/capacityPeak';
 import {
-  isBatteryOrSolarDeviceId,
   readHomeBatteryDevices,
+  resolveCapacityControlEnabled,
   resolveDeviceManagedState,
 } from '../lib/device/deviceRoleReads';
 import type { HomeBatteryDevicesRead } from '../lib/ports/homeBatteryDevices';
@@ -291,13 +291,13 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   public resolveManagedState = (deviceId: string): boolean => resolveDeviceManagedState(
     this.context.deviceManager,
     this.context.batteryManaged,
-    this.context.deviceControlSettings.managedDevices,
+    this.context.deviceControlSettings,
     deviceId,
   );
-  public isCapacityControlEnabled = (deviceId: string): boolean => (
-    !isBatteryOrSolarDeviceId(this.context.deviceManager, deviceId)
-    && this.context.deviceControlSettings.managedDevices[deviceId] === true
-    && this.context.deviceControlSettings.controllableDevices[deviceId] === true
+  public isCapacityControlEnabled = (deviceId: string): boolean => resolveCapacityControlEnabled(
+    this.context.deviceManager,
+    this.context.deviceControlSettings,
+    deviceId,
   );
   public getShedBehavior = (deviceId: string) => resolveTemperaturePolicyShedBehavior(
     this.context.deviceControlSettings.getConfiguredShedBehavior(deviceId),

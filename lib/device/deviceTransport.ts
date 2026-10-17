@@ -51,10 +51,11 @@ import {
   TemperatureRecoveryService,
   type DeviceDebugObservedSources,
 } from './transport/managerObservation';
-import type { DeviceTransportParseProviders } from './transport/managerParseDevice';
+import type { DeviceParseSources } from './transport/managerParseDevice';
 import {
   createEstimateDecisionLogState,
   createPeakPowerLogState,
+  type DeviceTransportMeters,
   type DeviceTransportOptions,
   type DeviceTransportPowerState,
   type ResolvedTransportPowerState,
@@ -78,7 +79,7 @@ import {
   SnapshotRefreshState,
   pollHomePowerWithMeterFanOut as runPollHomePowerWithMeterFanOut,
 } from './transport/snapshotRefresh';
-import { DeviceSnapshotReader } from './transport/deviceSnapshotReader';
+import { DeviceSnapshotReader, createDeviceParseSources } from './transport/deviceSnapshotReader';
 import { RealtimeIngestService } from './transport/transportServices';
 import { TransportNotifications } from './transport/transportNotifications';
 import {
@@ -126,7 +127,8 @@ export class DeviceTransport {
     private readonly retainedPower: RetainedPowerPersistence;
     private readonly observationBridge: ObservationBridge;
     private readonly binaryEvidence: BinarySettleEvidenceService;
-    private readonly providers: DeviceTransportParseProviders;
+    private readonly sources: DeviceParseSources;
+    private readonly meters: DeviceTransportMeters;
     private readonly getFlowTriggerCard: DeviceTransportOptions['getFlowTriggerCard'];
     // Read-only home-battery awareness producer. Holds the detected battery-id set
     // (the authoritative role-membership set the app's managed/controllable
@@ -167,13 +169,14 @@ export class DeviceTransport {
     constructor(
         homey: Homey.App,
         logger: Logger,
-        providers: DeviceTransportParseProviders,
-        powerState: DeviceTransportPowerState | undefined,
+        powerState: DeviceTransportPowerState,
         options: DeviceTransportOptions,
     ) {
         this.logger = logger;
         this.getFlowTriggerCard = options.getFlowTriggerCard;
-        this.providers = providers;
+        // Roles are this transport's own producers, asked only once a parse runs.
+        this.sources = createDeviceParseSources(options, this);
+        this.meters = options.meters;
         this.notifications = new TransportNotifications(options.onSnapshotMutated);
         this.deviceSdk = new DeviceHomeySdk(
             homey,
@@ -195,7 +198,7 @@ export class DeviceTransport {
             // The probe reports; this decides whether anything is written.
             (reading) => {
                 if (!applyAssociatedCarStateOfCharge(
-                    this.providers.getEvCarAssociationCarIds?.(reading.chargerId) ?? [],
+                    this.sources.settings.getEvCarAssociationCarIds(reading.chargerId),
                     this.observationProducers.evCarLink.getAssociatedCarForCharger(reading.chargerId),
                     this.snapshotStore,
                     reading,
@@ -222,12 +225,10 @@ export class DeviceTransport {
             (deviceId, capabilityId) => this.dispatchObservedStateForDevice(deviceId, capabilityId),
         );
         this.powerState = {
-            expectedPowerKwOverrides: powerState?.expectedPowerKwOverrides ?? {},
-            lastKnownPowerKw: powerState?.lastKnownPowerKw ?? {},
-            lastEstimateDecisionLogByDevice:
-                powerState?.lastEstimateDecisionLogByDevice ?? createEstimateDecisionLogState(),
-            lastPeakPowerLogByDevice: powerState?.lastPeakPowerLogByDevice ?? createPeakPowerLogState(),
-            onLearnedPeakChanged: powerState?.onLearnedPeakChanged,
+            ...powerState,
+            lastEstimateDecisionLogByDevice: createEstimateDecisionLogState(),
+            lastPeakPowerLogByDevice: createPeakPowerLogState(),
+            onLearnedPeakChanged: () => options.flowBacked.persistLearnedPeaks(),
         };
         // The measured-power resolver, built with what it retains restored from the
         // store before the first read (`retainedPowerPersistence.ts`).
@@ -248,14 +249,14 @@ export class DeviceTransport {
             this.observationBridge.state,
             this.snapshotStore,
             (refreshOptions) => this.refreshService.refresh(refreshOptions),
-            this.providers,
+            this.meters,
             (deviceId) => this.observationBridge.nextCursor(deviceId),
             (event) => this.observationBridge.dispatchControlStateChanged(event),
         );
         this.reader = new DeviceSnapshotReader(
             this.snapshotStore,
             this.observationBridge,
-            this.providers,
+            this.sources,
             this.powerState,
             this.retainedPower,
             this.logger,
@@ -270,6 +271,7 @@ export class DeviceTransport {
             this.reader,
             this.deviceSdk,
             this.notifications,
+            this.meters,
         );
         this.realtimeIngest = new RealtimeIngestService(
             this.binaryEvidence,
@@ -312,7 +314,7 @@ export class DeviceTransport {
     }
 
     getAssociatedCar(id: string): AssociatedCarSnapshot | undefined {
-        const eligibleCarIds = this.providers.getEvCarAssociationCarIds?.(id) ?? [];
+        const eligibleCarIds = this.sources.settings.getEvCarAssociationCarIds(id);
         const associatedCar = this.observationProducers.evCarLink.getAssociatedCarForCharger(id);
         return resolveAssociatedCar(eligibleCarIds, associatedCar);
     }
@@ -396,9 +398,9 @@ export class DeviceTransport {
     ): Promise<HomePowerSampleWithIdentity | null> {
         return runPollHomePowerWithMeterFanOut(
             this.logger,
-            this.providers,
+            this.meters,
             (watts, observedAtMs) => this.observationBridge.setGenerationW(watts, observedAtMs),
-            this.providers.getHomeyEnergyMeterSelection(),
+            this.meters.getHomeyEnergyMeterSelection(),
             authorizeFanOut,
         );
     }

@@ -40,9 +40,9 @@ export function observeEvCarLinkAndResubscribe(
 }
 
 // Detect home batteries and solar devices from the RAW fetched devices BEFORE
-// parse, then pass the list through unchanged. Ordering matters: parse routes
-// `getManaged`/`getControllable` (→ the app's role-aware resolve functions,
-// `lib/device/deviceRoleReads.ts`) which consult these same id sets, so they must be
+// parse, then pass the list through unchanged. Ordering matters: parse asks
+// `DeviceManagement` (`lib/device/deviceRoleReads.ts`) whether a device is managed
+// and under Power-limit control, which consults these same id sets, so they must be
 // current first. A role-detected solar device resolves managed; a battery resolves
 // its Managed toggle, and both resolve non-controllable and ride the runtime
 // snapshot whatever their Managed state; it also emits the read-only

@@ -72,6 +72,7 @@ import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSn
 import type { PowerTrackerState } from '../../lib/power/trackerTypes';
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { noStorageTransport } from '../helpers/storageTransportStub';
+import { testParseSources } from '../helpers/deviceTransportHarness';
 
 const SHED_REASON = fixtureDeviceReason('shed due to daily budget')!;
 const DEVICE_ID = 'elbillader-1';
@@ -89,18 +90,18 @@ const createLogger = (): Logger => ({
 // ── REAL parseDevice deps (only the Homey device is a mock) ──────────────────
 const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
   logger,
-  providers: {
-    getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-    getManaged: () => true,
-    getNativeEvWiringEnabled: () => true,
-    // The prod charger runs the 1-phase EV preset (steps 6 A → 16 A, 230 V).
-    getDeviceTargetPowerConfig: () => ({ enabled: true, preset: 'ev_charger_1_phase' as const }),
-  },
+  ...testParseSources({
+    settings: {
+      getDeviceTargetPowerConfig: () => ({ enabled: true, preset: 'ev_charger_1_phase' as const }),
+    },
+    nativeWiring: { resolveNativeWiringEnabled: () => true },
+  }),
   powerState: {
     expectedPowerKwOverrides: {},
     lastKnownPowerKw: {},
     lastEstimateDecisionLogByDevice: new Map(),
     lastPeakPowerLogByDevice: new Map(),
+    onLearnedPeakChanged: () => undefined,
   },
   measuredPowerResolver: new DeviceMeasuredPowerResolver(),
   getCapabilityObj: (device) => (device.capabilitiesObj ?? {}) as never,

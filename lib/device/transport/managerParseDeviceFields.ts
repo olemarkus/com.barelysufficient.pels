@@ -52,7 +52,7 @@ import {
 } from './managerManagedFilter';
 import type {
     DeviceTransportParseDeps,
-    DeviceTransportParseProviders,
+    DeviceParseSources,
     ParseDevicePurpose,
     RetainedMeasurement,
 } from './managerParseDevice';
@@ -79,10 +79,10 @@ export function resolveDeviceCapabilityProfile(
     deps: DeviceTransportParseDeps,
 ): DeviceCapabilityProfile | null {
     const { effectiveDevice } = identity;
-    const { providers, logger, getCapabilityObj, debugStructured } = deps;
+    const { logger, getCapabilityObj, debugStructured } = deps;
     const rawCapabilities = getCapabilities(effectiveDevice);
     const rawCapabilityObj = getCapabilityObj(effectiveDevice);
-    const overlay = resolveFlowCapabilityOverlay(identity, rawCapabilities, rawCapabilityObj, providers, logger);
+    const overlay = resolveFlowCapabilityOverlay(identity, rawCapabilities, rawCapabilityObj, deps, logger);
     const capsStatus = resolveCandidateCapabilities(identity, overlay, debugStructured);
     if (!capsStatus) return null;
     return { overlay, capsStatus };
@@ -211,7 +211,7 @@ export function assembleDeviceSnapshot(params: {
     const { identity, deps, overlay, capsStatus, now, livePowerWByDeviceId,
         previousSnapshot, purpose, managedDecision } = params;
     const { effectiveDevice, deviceId, deviceClassKey, deviceLabel } = identity;
-    const { providers, debugStructured, resolveLatestLocalWriteMs } = deps;
+    const { debugStructured, resolveLatestLocalWriteMs } = deps;
     // Resolved once here and handed to both consumers: the power estimate needs it
     // for the EV rung of its default, and the snapshot control needs it for
     // everything else. It is a pure function of (deviceClassKey, capabilities), so
@@ -255,7 +255,7 @@ export function assembleDeviceSnapshot(params: {
     );
     const stateOfCharge = resolveStateOfChargeSnapshot(
         deviceClassKey, overlay.capabilityObj, overlay.reportedCapabilities, previousSnapshot?.stateOfCharge,
-        providers.getEvCarAssociationCarIds?.(deviceId) ?? [],
+        deps.settings.getEvCarAssociationCarIds(deviceId),
     );
     const binaryControlObservation = resolveBinaryControlObservation(overlay, control.binaryCapabilityId);
     const lastLocalWriteMs = resolveLatestLocalWriteMs(deviceId);
@@ -265,7 +265,7 @@ export function assembleDeviceSnapshot(params: {
         targets: temperature ? [temperature.target] : [],
         deviceClass: deviceClassKey,
         deviceType: resolveTargetDeviceType(temperature),
-        ...resolveParsedDeviceSettings(effectiveDevice, deviceId, providers),
+        ...resolveParsedDeviceSettings(effectiveDevice, deviceId, deps),
         controlModel: overlay.controlModel,
         binaryControllable: control.binaryControl !== undefined,
         isEvCharger: deviceClassKey === 'evcharger',
@@ -316,13 +316,13 @@ export function assembleDeviceSnapshot(params: {
 function resolveParsedDeviceSettings(
     device: HomeyDeviceLike,
     deviceId: string,
-    providers: DeviceTransportParseProviders,
+    sources: DeviceParseSources,
 ): ParsedDeviceSettings {
     const base = {
-        controllable: providers.getControllable?.(deviceId),
-        managed: providers.getManaged(deviceId),
-        budgetExempt: providers.getBudgetExempt?.(deviceId),
-        flowConflict: providers.getFlowConflict?.(deviceId),
+        controllable: sources.management.isCapacityControlEnabled(deviceId),
+        managed: sources.management.isManaged(deviceId),
+        budgetExempt: sources.settings.isBudgetExempt(deviceId),
+        flowConflict: sources.nativeWiring.getFlowConflict(deviceId),
     };
     // A role-detected battery or solar device is stamped NOT CONTROLLABLE structurally,
     // from the device object in hand, on EVERY parse path (full refresh AND realtime
@@ -334,7 +334,7 @@ function resolveParsedDeviceSettings(
     //
     // Managed differs by role. A solar device is always read and never offered to
     // the owner, so it is stamped managed. A home battery is an ordinary managed
-    // device: `getManaged` answers from the owner's battery-control setting
+    // device: `DeviceManagement.isManaged` answers from the owner's battery-control setting
     // (`lib/battery/batteryControlSettings.ts`), and the managed filter keeps it in
     // the runtime snapshot either way (`managerManagedFilter.ts`).
     if (isSolarPanelDevice(device)) return { ...base, managed: true, controllable: false };

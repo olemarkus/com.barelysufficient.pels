@@ -1249,19 +1249,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       onto `cheapDelta` / `expensiveDelta`, and one parser classifies a stored entry for both
       sides. [P2]
 
-- [ ] **The device transport's parse providers are optional though production sets all 12.**
-      12 members of `DeviceTransportParseProviders` (`lib/device/transport/managerParseDevice.ts`)
-      are optional, and each parse site tolerates a missing one
-      (`providers.getControllable?.(deviceId)`, `isManagedFilterActive?.() ?? true`, ...), yet
-      `setup/appInit/buildDeviceParseProviders.ts` supplies all of them; the `DeviceTransport`
-      constructor likewise accepts `powerState` as `| undefined`, with `?? {}` defaults for the
-      injected maps that only tests reach. **What changes:** make those 12 providers and the
-      injected maps required and delete their defaults. The two log states
-      (`createEstimateDecisionLogState()`, `createPeakPowerLogState()`) are the transport's own
-      state, created there in production too: they stay created by the transport rather than
-      moving to the caller. **Done when:** no parse-provider call site defaults a missing
-      provider. [P2]
-
 - [ ] **The component loggers are optional because the getter that makes them can return
       `undefined`.** `getStructuredLogger` (`setup/appRuntimeApi.ts`) returns
       `this.structuredLogger?.child(...)`, so every dep it feeds declares `structuredLog?:` and its

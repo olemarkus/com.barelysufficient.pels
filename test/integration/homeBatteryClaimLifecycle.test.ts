@@ -38,9 +38,10 @@ const setup = async () => {
   const managed = new BatteryManagedSettings(settings);
   // The app's managed filter: active, and asking the battery's Managed toggle.
   const transport: DeviceTransport = createTestDeviceTransport(homeyMock, loggerMock, {
-    getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-    getManaged: (deviceId: string) => managed.isManaged(deviceId),
-    isManagedFilterActive: () => true,
+    settings: {
+      isManaged: (deviceId: string) => managed.isManaged(deviceId),
+    },
+    batteryManaged: { isManaged: (deviceId: string) => managed.isManaged(deviceId) },
   });
   await initWithLiveFeed(transport);
   await seedTransportDevices(transport, [device.toHomeyApiDevice() as HomeyDeviceLike]);

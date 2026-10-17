@@ -38,10 +38,7 @@ const loggerMock: Logger = {
 // The structural parse stamp must override them for a battery, proving the stamp is
 // settings-independent (the realtime/boot timing window).
 const adversarialProviders = {
-  getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-  getControllable: () => true,
-  getManaged: () => true,
-  isManagedFilterActive: () => true,
+  settings: { isManaged: () => true, isControllable: () => true },
 };
 
 // Homey dates every capability value it reports.
@@ -72,7 +69,7 @@ describe('structural battery-role resolution at parse', () => {
   it('stamps a battery the owner turned Managed off as unmanaged, still non-controllable', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, {
       ...adversarialProviders,
-      getManaged: (deviceId: string) => deviceId !== 'battery-off',
+      batteryManaged: { isManaged: (deviceId: string) => deviceId !== 'battery-off' },
     });
     const [parsed] = await seedTransportDevices(transport, [{
       id: 'battery-off',
@@ -185,7 +182,10 @@ describe('home battery control surface at parse', () => {
   it('does not take an owner target-power config onto a battery', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, {
       ...adversarialProviders,
-      getDeviceTargetPowerConfig: () => ({ enabled: true, min: 0, max: 2500, step: 500 }),
+      settings: {
+        ...adversarialProviders.settings,
+        getDeviceTargetPowerConfig: () => ({ enabled: true, min: 0, max: 2500, step: 500 }),
+      },
     });
     const [parsed] = await seedTransportDevices(transport, [signedTargetPowerBattery()]);
 

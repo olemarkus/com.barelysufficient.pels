@@ -331,8 +331,8 @@ describe('device manager support helpers', () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger() as unknown as Logger,
-      { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
-      { lastKnownPowerKw, onLearnedPeakChanged },
+      { flowBacked: { persistLearnedPeaks: onLearnedPeakChanged } },
+      { lastKnownPowerKw },
     );
 
     const lastUpdated = new Date().toISOString();

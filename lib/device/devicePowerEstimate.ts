@@ -25,10 +25,10 @@ const DEFAULT_EXPECTED_POWER_KW = 1;
 const EV_DEFAULT_EXPECTED_POWER_KW = 1.38;
 
 export type PowerEstimateState = {
-  expectedPowerKwOverrides?: Record<string, { kw: number; ts: number }>;
-  lastKnownPowerKw?: LearnedPeaksByDeviceId;
-  lastEstimateDecisionLogByDevice?: Map<string, { signature: string; emittedAt: number }>;
-  lastPeakPowerLogByDevice?: Map<string, { signature: string; emittedAt: number }>;
+  expectedPowerKwOverrides: Record<string, { kw: number; ts: number }>;
+  lastKnownPowerKw: LearnedPeaksByDeviceId;
+  lastEstimateDecisionLogByDevice: Map<string, { signature: string; emittedAt: number }>;
+  lastPeakPowerLogByDevice: Map<string, { signature: string; emittedAt: number }>;
 };
 
 /**
@@ -56,7 +56,7 @@ export function estimatePower(params: {
   binaryCapabilityId?: BinaryControlCapabilityId;
   measuredPowerKw?: number;
   now: number;
-  state: Required<PowerEstimateState>;
+  state: PowerEstimateState;
 }): PowerEstimateResult {
   const {
     device,
@@ -219,7 +219,7 @@ function emitEstimateDecisionLog(params: {
   result: PowerEstimateResult;
   measuredPowerKw?: number;
   loadKw?: number;
-  state: Required<PowerEstimateState>;
+  state: PowerEstimateState;
   now: number;
 }): void {
   const { deviceId, deviceLabel, state, now } = params;
@@ -262,7 +262,7 @@ function buildEstimateDecisionLogFields(params: {
   result: PowerEstimateResult;
   measuredPowerKw?: number;
   loadKw?: number;
-  state: Required<PowerEstimateState>;
+  state: PowerEstimateState;
 }): {
   source: ExpectedPowerSource;
   estimatedKw: number;
@@ -287,7 +287,7 @@ function roundMaybeKw(value: number | undefined): number | null {
 function resolvePeakMeasuredKw(
   source: ExpectedPowerSource,
   deviceId: string,
-  state: Required<PowerEstimateState>,
+  state: PowerEstimateState,
 ): number | null {
   if (source !== 'measured-peak') return null;
   return roundMaybeKw(state.lastKnownPowerKw[deviceId]?.kw);

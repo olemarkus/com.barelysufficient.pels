@@ -1,4 +1,5 @@
 import type { HomeyDeviceLike } from '../../utils/types';
+import type { DeviceParseSettings } from './managerParseDevice';
 import { applyDeviceCompatibilityMetadata } from '../compatibility';
 import {
   getDeviceId,
@@ -48,10 +49,10 @@ export function resolveParseDeviceIdentity(params: {
  */
 export function applyDeviceDriverOverride(
   device: HomeyDeviceLike,
-  resolveDriverIdOverride: ((deviceId: string) => string | undefined) | undefined,
+  settings: Pick<DeviceParseSettings, 'getDeviceDriverIdOverride'>,
 ): HomeyDeviceLike {
   const compatibleDevice = applyDeviceCompatibilityMetadata(device);
-  const driverId = normalizeDriverIdOverride(resolveDriverIdOverride?.(getDeviceId(device)));
+  const driverId = normalizeDriverIdOverride(settings.getDeviceDriverIdOverride(getDeviceId(device)));
   if (!driverId || driverId === compatibleDevice.driverId) return compatibleDevice;
   return {
     ...compatibleDevice,

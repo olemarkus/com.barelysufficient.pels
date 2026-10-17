@@ -96,11 +96,7 @@ const parse = (devices: HomeyDeviceLike[]): Promise<TransportDeviceSnapshot[]> =
   createTestDeviceTransport(
     mockHomeyInstance as unknown as Homey.App,
     loggerMock,
-    {
-      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-      getManaged: () => true,
-      getControllable: () => true,
-    },
+    {},
   ),
   devices,
 );

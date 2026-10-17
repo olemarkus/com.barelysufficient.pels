@@ -4,7 +4,7 @@ import { updateHomePowerFromReport, type HomePowerSampleWithIdentity } from './r
 import { fetchLivePowerReport } from './livePowerReport';
 import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 import type { Logger } from '../../utils/types';
-import type { DeviceTransportParseProviders } from './managerParseDevice';
+import type { DeviceTransportMeters } from './transportTypes';
 
 const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
@@ -14,21 +14,20 @@ const emitDeviceDebug = getDebugEmitter('devices', 'devices');
  */
 export async function pollHomePowerWithMeterFanOut(
   logger: Logger,
-  providers: DeviceTransportParseProviders,
+  meters: DeviceTransportMeters,
   setGenerationW: (watts: number | null, observedAtMs: number) => void,
   selection: MainMeterSelection,
   authorizeFanOut?: () => boolean,
 ): Promise<HomePowerSampleWithIdentity | null> {
-  const report = await fetchLivePowerReport(logger, providers, selection);
+  const report = await fetchLivePowerReport(logger, meters, selection);
   const authorized = authorizeFanOut === undefined || authorizeFanOut();
-  const onAdditionalMeterReadings = providers.onAdditionalMeterReadings;
   if (
     report.state === 'measured'
-    && onAdditionalMeterReadings && authorized
+    && authorized
     && Object.keys(report.additionalMeterPowerW).length > 0
   ) {
     try {
-      onAdditionalMeterReadings(report.additionalMeterPowerW, Date.now());
+      meters.onAdditionalMeterReadings(report.additionalMeterPowerW, Date.now());
     } catch (error) {
       emitDeviceDebug({
         event: 'additional_meter_readings_dispatch_failed',

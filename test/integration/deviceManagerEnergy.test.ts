@@ -2,6 +2,7 @@ import type Homey from 'homey';
 import {
   createTestDeviceTransport,
   createTestObservedStateDispatcher,
+  testTransportMeters,
 } from '../helpers/deviceTransportHarness';
 import {
   extractLiveMeterItems,
@@ -13,7 +14,6 @@ import {
   fetchLivePowerReport as fetchTransportLivePowerReport,
 } from '../../lib/device/transport/livePowerReport';
 import { pollHomePowerWithMeterFanOut } from '../../lib/device/transport/homePowerPoll';
-import type { DeviceTransportParseProviders } from '../../lib/device/transport/managerParseDevice';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import { SNAPSHOT_ABANDON_GRACE_READS } from '../../lib/device/transport/targetedSnapshotMerge';
 import type { Logger } from '../../lib/utils/types';
@@ -353,12 +353,11 @@ describe('transport Main-meter authority', () => {
         { type: 'device', id: 'sub-meter', values: { W: 1_200 } },
       ],
     });
-    const providers: DeviceTransportParseProviders = {
-      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
-      getAdditionalMeterDeviceIds: () => ['sub-meter'],
-      getManaged: () => true,
-    };
-    const report = await fetchTransportLivePowerReport(logger, providers, { state: 'unavailable' });
+    const meters = testTransportMeters({
+        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
+        getAdditionalMeterDeviceIds: () => ['sub-meter'],
+      });
+    const report = await fetchTransportLivePowerReport(logger, meters, { state: 'unavailable' });
 
     expect(report).toMatchObject({
       state: 'measured',
@@ -373,16 +372,13 @@ describe('transport Main-meter authority', () => {
       items: [{ type: 'cumulative', id: 'meter-main', values: { W: 3_000 } }],
     });
     const dispatcher = createTestObservedStateDispatcher();
-    const providers: DeviceTransportParseProviders = {
-      getHomeyEnergyMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'meter-main' }),
-      getManaged: () => true,
-    };
+    const meters = testTransportMeters({ getHomeyEnergyMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'meter-main' }) });
 
     await expect(pollHomePowerWithMeterFanOut(
       logger,
-      providers,
+      meters,
       dispatcher.setGenerationW,
-      providers.getHomeyEnergyMeterSelection(),
+      meters.getHomeyEnergyMeterSelection(),
       () => true,
     )).resolves.toEqual({
       powerW: 3_000,
@@ -399,18 +395,17 @@ describe('transport Main-meter authority', () => {
     });
     const onAdditionalMeterReadings = vi.fn();
     const dispatcher = createTestObservedStateDispatcher();
-    const providers: DeviceTransportParseProviders = {
-      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
-      getAdditionalMeterDeviceIds: () => ['meter-area'],
-      onAdditionalMeterReadings,
-      getManaged: () => true,
-    };
+    const meters = testTransportMeters({
+        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
+        getAdditionalMeterDeviceIds: () => ['meter-area'],
+        onAdditionalMeterReadings: onAdditionalMeterReadings,
+      });
 
     await expect(pollHomePowerWithMeterFanOut(
       logger,
-      providers,
+      meters,
       dispatcher.setGenerationW,
-      providers.getHomeyEnergyMeterSelection(),
+      meters.getHomeyEnergyMeterSelection(),
       () => true,
     )).resolves.toBeNull();
     expect(onAdditionalMeterReadings).toHaveBeenCalledWith({ 'meter-area': 1_200 }, expect.any(Number));
@@ -441,7 +436,11 @@ describe('resolved home meter identity on the sample', () => {
     const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'm-area' }) },
+      {
+        meters: {
+          getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'm-area' }),
+        },
+      },
     );
 
     const sample = await transport.refreshSnapshot({
@@ -463,7 +462,11 @@ describe('resolved home meter identity on the sample', () => {
     const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }) },
+      {
+        meters: {
+          getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }),
+        },
+      },
     );
 
     const sample = await transport.refreshSnapshot({
@@ -480,7 +483,11 @@ describe('resolved home meter identity on the sample', () => {
     const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }) },
+      {
+        meters: {
+          getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }),
+        },
+      },
     );
 
     await expect(transport.pollHomePowerW()).resolves.toEqual({
@@ -498,7 +505,7 @@ describe('resolved home meter identity on the sample', () => {
     const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
+      {},
     );
 
     await expect(transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } })).resolves.toBeNull();
@@ -509,7 +516,11 @@ describe('resolved home meter identity on the sample', () => {
     const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }) },
+      {
+        meters: {
+          getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }),
+        },
+      },
     );
 
     const sample = await transport.refreshSnapshot({
@@ -532,7 +543,7 @@ describe('resolved home meter identity on the sample', () => {
     const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
+      {},
     );
 
     await expect(transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } })).resolves.toBeNull();
@@ -543,7 +554,11 @@ describe('resolved home meter identity on the sample', () => {
     const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      { getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }) },
+      {
+        meters: {
+          getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }),
+        },
+      },
     );
 
     const sample = await transport.refreshSnapshot({
@@ -621,7 +636,7 @@ describe('hasWarmSnapshot — proof that the SDK listed devices', () => {
     const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
+      {},
     );
     expect(transport.hasWarmSnapshot()).toBe(false);
 
@@ -648,7 +663,7 @@ describe('hasWarmSnapshot — proof that the SDK listed devices', () => {
     const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
+      {},
     );
     await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
     expect(transport.hasWarmSnapshot()).toBe(true);

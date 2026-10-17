@@ -59,7 +59,7 @@ describe('native EV wiring shim', () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
-      { getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }) },
+      {},
     );
 
     const [parsed] = await seedTransportDevices(deviceManager, [buildZaptecDevice()]);
@@ -82,10 +82,7 @@ describe('native EV wiring shim', () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
-      {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-        getNativeEvWiringEnabled: () => false,
-      },
+      {},
     );
 
     const [parsed] = await seedTransportDevices(deviceManager, [buildZaptecDevice()]);
@@ -107,8 +104,7 @@ describe('native EV wiring shim', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-        getNativeEvWiringEnabled: () => true,
+        nativeWiring: { resolveNativeWiringEnabled: () => true },
       },
     );
 
@@ -133,13 +129,14 @@ describe('native EV wiring shim', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-        getNativeEvWiringEnabled: () => true,
-        getDeviceTargetPowerConfig: (deviceId) => (
-          deviceId === 'zaptec-go-1'
-            ? { enabled: true, preset: 'ev_charger_3_phase' }
-            : undefined
-        ),
+        settings: {
+          getDeviceTargetPowerConfig: (deviceId) => (
+            deviceId === 'zaptec-go-1'
+              ? { enabled: true, preset: 'ev_charger_3_phase' }
+              : undefined
+          ),
+        },
+        nativeWiring: { resolveNativeWiringEnabled: () => true },
       },
     );
 
@@ -182,13 +179,14 @@ describe('native EV wiring shim', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-        getNativeEvWiringEnabled: () => true,
-        getDeviceTargetPowerConfig: (deviceId) => (
-          deviceId === 'zaptec-go-1'
-            ? { enabled: true, preset: 'ev_charger_3_phase' }
-            : undefined
-        ),
+        settings: {
+          getDeviceTargetPowerConfig: (deviceId) => (
+            deviceId === 'zaptec-go-1'
+              ? { enabled: true, preset: 'ev_charger_3_phase' }
+              : undefined
+          ),
+        },
+        nativeWiring: { resolveNativeWiringEnabled: () => true },
       },
     );
 
@@ -215,13 +213,14 @@ describe('native EV wiring shim', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-        getNativeEvWiringEnabled: () => true,
-        getDeviceTargetPowerConfig: (deviceId) => (
-          deviceId === 'zaptec-go-1'
-            ? { enabled: true, preset: 'ev_charger_3_phase', max: 11_040 }
-            : undefined
-        ),
+        settings: {
+          getDeviceTargetPowerConfig: (deviceId) => (
+            deviceId === 'zaptec-go-1'
+              ? { enabled: true, preset: 'ev_charger_3_phase', max: 11_040 }
+              : undefined
+          ),
+        },
+        nativeWiring: { resolveNativeWiringEnabled: () => true },
       },
     );
 
@@ -252,13 +251,14 @@ describe('native EV wiring shim', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-        getNativeEvWiringEnabled: () => true,
-        getDeviceTargetPowerConfig: (deviceId) => (
-          deviceId === 'zaptec-go-1'
-            ? { enabled: true, preset: 'ev_charger_3_phase', max: 11_040 }
-            : undefined
-        ),
+        settings: {
+          getDeviceTargetPowerConfig: (deviceId) => (
+            deviceId === 'zaptec-go-1'
+              ? { enabled: true, preset: 'ev_charger_3_phase', max: 11_040 }
+              : undefined
+          ),
+        },
+        nativeWiring: { resolveNativeWiringEnabled: () => true },
       },
     );
 
@@ -279,8 +279,7 @@ describe('native EV wiring shim', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-        getNativeEvWiringEnabled: () => true,
+        nativeWiring: { resolveNativeWiringEnabled: () => true },
       },
     );
 
@@ -308,11 +307,12 @@ describe('native EV wiring shim', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-        getNativeEvWiringEnabled: () => true,
-        getDeviceDriverIdOverride: (id) => (
-          id === 'zaptec-go2-mock' ? 'homey:app:com.zaptec:go2' : undefined
-        ),
+        settings: {
+          getDeviceDriverIdOverride: (id) => (
+            id === 'zaptec-go2-mock' ? 'homey:app:com.zaptec:go2' : undefined
+          ),
+        },
+        nativeWiring: { resolveNativeWiringEnabled: () => true },
       },
     );
 
@@ -353,11 +353,12 @@ describe('native EV wiring shim', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-        getNativeEvWiringEnabled: () => true,
-        getDeviceDriverIdOverride: (id) => (
-          id === 'zaptec-go2-compat-mock' ? 'homey:app:com.zaptec:go2' : undefined
-        ),
+        settings: {
+          getDeviceDriverIdOverride: (id) => (
+            id === 'zaptec-go2-compat-mock' ? 'homey:app:com.zaptec:go2' : undefined
+          ),
+        },
+        nativeWiring: { resolveNativeWiringEnabled: () => true },
       },
     );
 
@@ -382,8 +383,7 @@ describe('native EV wiring shim', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-        getNativeEvWiringEnabled: () => true,
+        nativeWiring: { resolveNativeWiringEnabled: () => true },
       },
     );
 
@@ -413,8 +413,7 @@ describe('native EV wiring shim', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-        getNativeEvWiringEnabled: () => true,
+        nativeWiring: { resolveNativeWiringEnabled: () => true },
       },
     );
 
@@ -468,8 +467,7 @@ describe('native EV wiring shim', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-        getNativeEvWiringEnabled: () => true,
+        nativeWiring: { resolveNativeWiringEnabled: () => true },
       },
     );
 
@@ -498,8 +496,7 @@ describe('native EV wiring shim', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-        getNativeEvWiringEnabled: () => true,
+        nativeWiring: { resolveNativeWiringEnabled: () => true },
       },
     );
 
@@ -542,13 +539,14 @@ describe('native EV wiring shim', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-        getNativeEvWiringEnabled: () => true,
-        getFlowReportedCapabilities: () => ({
-          evcharger_charging: { value: false, reportedAt: 100, source: 'flow' },
-          'alarm_generic.car_connected': { value: false, reportedAt: 100, source: 'flow' },
-          pels_evcharger_resumable: { value: true, reportedAt: 100, source: 'flow' },
-        }),
+        nativeWiring: { resolveNativeWiringEnabled: () => true },
+        flowBacked: {
+          getFlowReportedCapabilitiesForDevice: () => ({
+            evcharger_charging: { value: false, reportedAt: 100, source: 'flow' },
+            'alarm_generic.car_connected': { value: false, reportedAt: 100, source: 'flow' },
+            pels_evcharger_resumable: { value: true, reportedAt: 100, source: 'flow' },
+          }),
+        },
       },
     );
 
@@ -583,13 +581,14 @@ describe('native EV wiring shim', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-        getNativeEvWiringEnabled: () => true,
-        getFlowReportedCapabilities: () => ({
-          evcharger_charging: { value: true, reportedAt: 100, source: 'flow' },
-          'alarm_generic.car_connected': { value: true, reportedAt: 100, source: 'flow' },
-          pels_evcharger_resumable: { value: true, reportedAt: 100, source: 'flow' },
-        }),
+        nativeWiring: { resolveNativeWiringEnabled: () => true },
+        flowBacked: {
+          getFlowReportedCapabilitiesForDevice: () => ({
+            evcharger_charging: { value: true, reportedAt: 100, source: 'flow' },
+            'alarm_generic.car_connected': { value: true, reportedAt: 100, source: 'flow' },
+            pels_evcharger_resumable: { value: true, reportedAt: 100, source: 'flow' },
+          }),
+        },
       },
     );
 
@@ -609,14 +608,14 @@ describe('native EV wiring shim', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-        getManaged: () => true,
-        getNativeEvWiringEnabled: () => true,
-        getFlowReportedCapabilities: () => ({
-          evcharger_charging: { value: true, reportedAt: 100, source: 'flow' },
-          'alarm_generic.car_connected': { value: false, reportedAt: 100, source: 'flow' },
-          pels_evcharger_resumable: { value: true, reportedAt: 100, source: 'flow' },
-        }),
+        nativeWiring: { resolveNativeWiringEnabled: () => true },
+        flowBacked: {
+          getFlowReportedCapabilitiesForDevice: () => ({
+            evcharger_charging: { value: true, reportedAt: 100, source: 'flow' },
+            'alarm_generic.car_connected': { value: false, reportedAt: 100, source: 'flow' },
+            pels_evcharger_resumable: { value: true, reportedAt: 100, source: 'flow' },
+          }),
+        },
       },
     );
 
@@ -638,13 +637,14 @@ describe('native EV wiring shim', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-        getManaged: () => false,
-        getFlowReportedCapabilities: () => ({
-          evcharger_charging: { value: true, reportedAt: 100, source: 'flow' },
-          'alarm_generic.car_connected': { value: true, reportedAt: 100, source: 'flow' },
-          pels_evcharger_resumable: { value: true, reportedAt: 100, source: 'flow' },
-        }),
+        settings: { isManaged: () => false },
+        flowBacked: {
+          getFlowReportedCapabilitiesForDevice: () => ({
+            evcharger_charging: { value: true, reportedAt: 100, source: 'flow' },
+            'alarm_generic.car_connected': { value: true, reportedAt: 100, source: 'flow' },
+            pels_evcharger_resumable: { value: true, reportedAt: 100, source: 'flow' },
+          }),
+        },
       },
     );
 
@@ -672,8 +672,7 @@ describe('native EV wiring shim', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-        getNativeEvWiringEnabled: () => true,
+        nativeWiring: { resolveNativeWiringEnabled: () => true },
       },
     );
     const [parsed] = await seedTransportDevices(deviceManager, [buildZaptecDevice()]);

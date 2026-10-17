@@ -332,7 +332,7 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
 4. **PR4 (shipped):** native stepped wiring defaults ON for supported Hoiax
    (`max_power_*`) and Easee (`target_charger_current`) devices unless a Flow
    conflict is found.
-   - **Runtime default, not a settings write.** `getNativeEvWiringEnabled`
+   - **Runtime default, not a settings write.** `resolveNativeWiringEnabled`
      resolves: an explicit user entry in `NATIVE_EV_WIRING_DEVICES` (true or
      false) always wins; an untouched device falls back to an in-memory,
      conflict-gated auto-decision (`app.autoNativeWiringDecisions`). Nothing is

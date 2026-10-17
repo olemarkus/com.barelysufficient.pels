@@ -1,19 +1,16 @@
-import type { DeviceTransportParseProviders, ParseDevicePurpose } from './managerParseDevice';
+import type { ParseDevicePurpose } from './managerParseDevice';
 import { isBatteryOrSolarClassKey } from './managerHelpers';
+import type { DeviceManagement } from '../deviceRoleReads';
 
 export type ManagedFilterDecision = {
   filterActive: boolean;
   isManaged: boolean;
 };
 
-export function resolveManagedFilterDecision(params: {
-  providers: DeviceTransportParseProviders;
-  deviceId: string;
-}): ManagedFilterDecision {
-  const { providers, deviceId } = params;
+export function resolveManagedFilterDecision(management: DeviceManagement, deviceId: string): ManagedFilterDecision {
   return {
-    filterActive: providers.isManagedFilterActive?.() ?? true,
-    isManaged: providers.getManaged(deviceId),
+    filterActive: management.isManagedFilterActive(),
+    isManaged: management.isManaged(deviceId),
   };
 }
 

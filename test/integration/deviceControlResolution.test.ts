@@ -59,9 +59,8 @@ const transportForHeater = (nativeEnabled: boolean) => createTestDeviceTransport
   mockHomeyInstance as unknown as Homey.App,
   logger,
   {
-    getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
-    getDeviceControlProfile: () => savedProfile,
-    getNativeEvWiringEnabled: () => nativeEnabled,
+    settings: { getDeviceControlProfile: () => savedProfile },
+    nativeWiring: { resolveNativeWiringEnabled: () => nativeEnabled },
   },
 );
 
@@ -72,9 +71,8 @@ const configurableHeaterTransport = (initial: { savedProfile?: SteppedLoadProfil
     mockHomeyInstance as unknown as Homey.App,
     logger,
     {
-      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
-      getDeviceControlProfile: () => owner.savedProfile,
-      getNativeEvWiringEnabled: () => owner.nativeEnabled,
+      settings: { getDeviceControlProfile: () => owner.savedProfile },
+      nativeWiring: { resolveNativeWiringEnabled: () => owner.nativeEnabled },
     },
   );
   return { transport, owner };
@@ -117,8 +115,7 @@ describe('device owner control resolution', () => {
         config: baseConfig, maxReachedPowerW: 6440,
       }) };
       const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger, {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
-        getDeviceTargetPowerConfig: () => config,
+        settings: { getDeviceTargetPowerConfig: () => config },
       });
       const device: HomeyDeviceLike = {
         id: 'charger', name: 'Native charger', class: 'evcharger',
@@ -305,8 +302,7 @@ describe('device owner control resolution', () => {
       config: baseConfig, maxReachedPowerW: 5_520,
     }) };
     const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger, {
-      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
-      getDeviceTargetPowerConfig: () => config,
+      settings: { getDeviceTargetPowerConfig: () => config },
     });
     const charger: HomeyDeviceLike = {
       id: 'charger', name: 'Flow charger', class: 'evcharger',
@@ -336,8 +332,7 @@ describe('device owner control resolution', () => {
       config: baseConfig, maxReachedPowerW: 5_520,
     }) };
     const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger, {
-      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
-      getDeviceTargetPowerConfig: () => config,
+      settings: { getDeviceTargetPowerConfig: () => config },
     });
     const charger: HomeyDeviceLike = {
       id: 'charger', name: 'Flow charger', class: 'evcharger',
@@ -404,9 +399,8 @@ describe('device owner control resolution', () => {
       mockHomeyInstance as unknown as Homey.App,
       logger,
       {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
-        getDeviceTargetPowerConfig: () => ({ preset: 'ev_charger_1_phase', max: 7360 }),
-        getNativeEvWiringEnabled: () => true,
+        settings: { getDeviceTargetPowerConfig: () => ({ preset: 'ev_charger_1_phase', max: 7360 }) },
+        nativeWiring: { resolveNativeWiringEnabled: () => true },
       },
     );
     const device: HomeyDeviceLike = {
@@ -442,8 +436,7 @@ describe('device owner control resolution', () => {
       mockHomeyInstance as unknown as Homey.App,
       logger,
       {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
-        getDeviceTargetPowerConfig: () => ({ preset: 'ev_charger_1_phase', max: 7360 }),
+        settings: { getDeviceTargetPowerConfig: () => ({ preset: 'ev_charger_1_phase', max: 7360 }) },
       },
       undefined,
       { onSnapshotMutated: (snapshot) => {

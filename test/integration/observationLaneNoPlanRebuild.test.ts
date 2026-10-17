@@ -150,10 +150,7 @@ describe('a discharging home battery on the observation lane', () => {
       error: noop,
       structuredLog: { info: noop, error: noop, debug: noop, warn: noop } as unknown as Logger['structuredLog'],
     };
-    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger, {
-      getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-      getManaged: () => true,
-    });
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger);
     const lastUpdated = new Date().toISOString();
     const battery: HomeyDeviceLike = {
       id: 'battery-1',

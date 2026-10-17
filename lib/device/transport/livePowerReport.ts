@@ -1,6 +1,6 @@
 import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 import type { Logger } from '../../utils/types';
-import type { DeviceTransportParseProviders } from './managerParseDevice';
+import type { DeviceTransportMeters } from './transportTypes';
 import { fetchLivePowerReport as fetchLivePowerReportFromSdk, type LivePowerReport } from './managerFetch';
 
 /**
@@ -14,12 +14,12 @@ import { fetchLivePowerReport as fetchLivePowerReportFromSdk, type LivePowerRepo
  */
 export async function fetchLivePowerReport(
   logger: Logger,
-  providers: DeviceTransportParseProviders,
+  meters: DeviceTransportMeters,
   selection: MainMeterSelection,
 ): Promise<LivePowerReport> {
   return fetchLivePowerReportFromSdk({
     logger,
     meterSelection: selection,
-    additionalMeterDeviceIds: providers.getAdditionalMeterDeviceIds?.() ?? [],
+    additionalMeterDeviceIds: meters.getAdditionalMeterDeviceIds(),
   });
 }

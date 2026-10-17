@@ -1,27 +1,7 @@
-import {
-  isManagedFilterActive,
-  listModeTargetFillDevices,
-} from '../../setup/appDeviceSupport';
+import { listModeTargetFillDevices } from '../../setup/appDeviceSupport';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type { TemperatureDiscriminantProbe } from '../../lib/plan/planTypes';
 import { buildPlanInputDevice, fixtureControlPosture } from '../utils/planTestUtils';
-
-describe('isManagedFilterActive', () => {
-  it('reports inactive for an empty managed map', () => {
-    expect(isManagedFilterActive({})).toBe(false);
-  });
-
-  it('reports inactive for an all-false managed map', () => {
-    // Explicit opt-outs alone must not switch the runtime to the explicit-only
-    // managed set; devices with no key remain implicitly managed.
-    expect(isManagedFilterActive({ 'vt-1': false, 'socket-1': false })).toBe(false);
-  });
-
-  it('reports active when at least one device is explicitly enabled', () => {
-    expect(isManagedFilterActive({ 'ev1': true })).toBe(true);
-    expect(isManagedFilterActive({ 'ev1': true, 'vt-1': false })).toBe(true);
-  });
-});
 
 describe('listModeTargetFillDevices', () => {
   // PLAN devices, because that is what the projection takes: the control

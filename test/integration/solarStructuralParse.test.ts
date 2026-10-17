@@ -33,12 +33,7 @@ const loggerMock: Logger = {
 
 // Providers that — if consulted — would WRONGLY mark the solar device controllable:true.
 // The structural parse stamp must override them, proving the stamp is settings-independent.
-const adversarialProviders = {
-  getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
-  getControllable: () => true,
-  getManaged: () => true,
-  isManagedFilterActive: () => true,
-};
+const adversarialProviders = {};
 
 // Homey dates every capability value it reports.
 const lastUpdated = new Date().toISOString();

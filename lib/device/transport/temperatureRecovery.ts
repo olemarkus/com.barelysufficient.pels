@@ -4,7 +4,7 @@ import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { SnapshotRefreshOptions } from './transportTypes';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
 import type { ObservationCursor, TransportObservationState } from './transportObservationState';
-import type { DeviceTransportParseProviders } from './managerParseDevice';
+import type { DeviceTransportMeters } from './transportTypes';
 import { TARGET_TEMPERATURE_CAPABILITY_ID } from './temperatureObservation';
 import type { ObservedControlStateChangedEvent } from '../../ports/observedStateEvents';
 
@@ -17,7 +17,7 @@ export class TemperatureRecoveryService {
     private readonly state: TransportObservationState,
     private readonly snapshotStore: TransportSnapshotStore,
     private readonly refreshSnapshot: TemperatureRefresh,
-    private readonly providers: DeviceTransportParseProviders,
+    private readonly meters: DeviceTransportMeters,
     private readonly nextCursor: (deviceId: string) => ObservationCursor,
     private readonly dispatchControlStateChanged: (event: ObservedControlStateChangedEvent) => void,
   ) {}
@@ -26,7 +26,7 @@ export class TemperatureRecoveryService {
     if (!this.state.requestTemperatureRecovery(deviceId)) return;
     void this.refreshSnapshot({
       targetedRefresh: true,
-      mainMeterSelection: this.providers.getHomeyEnergyMeterSelection(),
+      mainMeterSelection: this.meters.getHomeyEnergyMeterSelection(),
     })
       .catch((error: unknown) => {
         moduleLogger.error({

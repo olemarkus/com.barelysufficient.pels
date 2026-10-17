@@ -18,7 +18,7 @@ import {
 } from './nativeEvWiring';
 import { toCapabilityTimestampMs, type DeviceCapabilityMap } from './managerControl';
 import { resolveDeviceCapabilities } from './transport/managerParse';
-import type { DeviceTransportParseProviders } from './transport/managerParseDevice';
+import type { DeviceParseSources } from './transport/managerParseDevice';
 import type { ParsedDeviceIdentity } from './transport/managerParseIdentity';
 import {
   AVAILABLE_INSTALLATION_CURRENT_CAPABILITY_ID,
@@ -55,7 +55,7 @@ export function resolveFlowCapabilityOverlay(
   identity: Pick<ParsedDeviceIdentity, 'effectiveDevice' | 'deviceClassKey' | 'deviceId'>,
   rawCapabilities: string[],
   rawCapabilityObj: DeviceCapabilityMap,
-  providers: DeviceTransportParseProviders,
+  sources: DeviceParseSources,
   logger: Logger,
 ): {
   capabilities: string[];
@@ -87,7 +87,7 @@ export function resolveFlowCapabilityOverlay(
   // write and realtime path keys on), and its `target_power` is not stripped.
   const steppedLoad = !isBatteryOrSolarClassKey(deviceClassKey);
   const { targetPowerOverlay, nativeSteppedOverlay }: SteppedLoadOverlays = steppedLoad
-    ? applySteppedLoadOverlays(device, deviceId, nativeEvOverlay, providers, logger)
+    ? applySteppedLoadOverlays(device, deviceId, nativeEvOverlay, sources, logger)
     : { targetPowerOverlay: nativeEvOverlay, nativeSteppedOverlay: {} };
   const targetCapabilityIds = targetPowerOverlay.capabilities
     .filter((capabilityId) => capabilityId === 'target_temperature');
@@ -96,7 +96,7 @@ export function resolveFlowCapabilityOverlay(
     targetCapabilityIds,
   });
   const requiredFlowCapabilityIds = getFlowEffectiveRequiredCapabilitiesForType(flowAugmentedDeviceType);
-  const allReportedCapabilities = providers.getFlowReportedCapabilities?.(deviceId) ?? {};
+  const allReportedCapabilities = sources.flowBacked.getFlowReportedCapabilitiesForDevice(deviceId);
   const reportedCapabilities = shouldIgnoreFlowReports({
     rawCapabilities,
     controlAdapter: nativeEvOverlay.controlAdapter,
@@ -118,7 +118,7 @@ export function resolveFlowCapabilityOverlay(
     nativeSteppedControlAdapter: nativeSteppedOverlay.controlAdapter,
   });
   const activeNativeSteppedProfile = resolveActiveNativeSteppedProfile(nativeSteppedOverlay);
-  const savedFlowProfile = providers.getDeviceControlProfile?.(deviceId);
+  const savedFlowProfile = sources.settings.getDeviceControlProfile(deviceId);
   const steppedLoadProfile = activeNativeSteppedProfile
     ?? targetPowerOverlay.steppedLoadProfile
     ?? (hasUsableSteppedLoadLadder(savedFlowProfile) ? savedFlowProfile : undefined);
@@ -196,7 +196,7 @@ function applySteppedLoadOverlays(
   device: HomeyDeviceLike,
   deviceId: string,
   nativeEvOverlay: ReturnType<typeof applyNativeEvWiringOverlay>,
-  providers: DeviceTransportParseProviders,
+  sources: DeviceParseSources,
   logger: Logger,
 ): SteppedLoadOverlays {
   warnIfTargetPowerCapabilityViolatesContract({
@@ -210,9 +210,9 @@ function applySteppedLoadOverlays(
     deviceId,
     nativeEvOverlay,
     isNativeEvControlAdapterActive(nativeEvOverlay),
-    providers,
+    sources,
   );
-  const nativeSteppedOverlay = resolveNativeSteppedLoadOverlay(device, deviceId, targetPowerOverlay, providers);
+  const nativeSteppedOverlay = resolveNativeSteppedLoadOverlay(device, deviceId, targetPowerOverlay, sources);
   return { targetPowerOverlay, nativeSteppedOverlay };
 }
 
@@ -263,11 +263,11 @@ function resolveInstallationCurrentCapabilityId(
   device: HomeyDeviceLike,
   deviceId: string,
   capabilityObj: DeviceCapabilityMap,
-  providers: DeviceTransportParseProviders,
+  sources: DeviceParseSources,
 ): string {
   const current = getDeviceAdapter(device).nativeCurrentControls
     .find((control) => control.accepts(device, capabilityObj));
-  return current && providers.getNativeEvWiringEnabled?.(deviceId) === true
+  return current && sources.nativeWiring.resolveNativeWiringEnabled(deviceId)
     ? current.capabilityId : AVAILABLE_INSTALLATION_CURRENT_CAPABILITY_ID;
 }
 
@@ -276,7 +276,7 @@ function applySyntheticTargetPowerOverlay(
   deviceId: string,
   nativeEvOverlay: Pick<ReturnType<typeof applyNativeEvWiringOverlay>, 'capabilities' | 'capabilityObj'>,
   evPresetOnly: boolean,
-  providers: DeviceTransportParseProviders,
+  sources: DeviceParseSources,
 ): {
   capabilities: string[];
   capabilityObj: DeviceCapabilityMap;
@@ -286,7 +286,7 @@ function applySyntheticTargetPowerOverlay(
   reportedStepObservedAtMs?: number;
   targetPowerConfig?: TargetPowerSteppedLoadConfig;
 } {
-  const config = providers.getDeviceTargetPowerConfig?.(deviceId)
+  const config = sources.settings.getDeviceTargetPowerConfig(deviceId)
     ?? resolveDeviceCompatibilityTargetPowerConfig(device);
   if (!config || (evPresetOnly && !isEvTargetPowerPresetConfig(config))) {
     return {
@@ -301,7 +301,7 @@ function applySyntheticTargetPowerOverlay(
     device,
     deviceId,
     nativeEvOverlay.capabilityObj,
-    providers,
+    sources,
   )];
   const observedTargetPower = installationCurrent
     && resolveInstallationCurrentTargetPowerObservation(config, installationCurrent);
@@ -372,7 +372,7 @@ function resolveNativeSteppedLoadOverlay(
   device: HomeyDeviceLike,
   deviceId: string,
   targetPowerOverlay: ReturnType<typeof applySyntheticTargetPowerOverlay>,
-  providers: DeviceTransportParseProviders,
+  sources: DeviceParseSources,
 ): {
   controlAdapter?: DeviceControlAdapterSnapshot;
   reportedStepId?: string;
@@ -396,7 +396,7 @@ function resolveNativeSteppedLoadOverlay(
   if (getDeviceAdapter(device).nativeCurrentControls.some((control) => control.accepts(device, capabilityObj))
     && !isEvTargetPowerPresetConfig(targetPowerConfig)) return {};
 
-  const nativeSteppedEnabled = targetPowerSteppedCandidate || providers.getNativeEvWiringEnabled?.(deviceId) === true;
+  const nativeSteppedEnabled = targetPowerSteppedCandidate || sources.nativeWiring.resolveNativeWiringEnabled(deviceId);
   let reportedStepId: string | undefined;
   if (nativeSteppedEnabled) {
     reportedStepId = resolveNativeSteppedLoadReportedStepId({

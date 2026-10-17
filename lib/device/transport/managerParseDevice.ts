@@ -1,15 +1,14 @@
 import type { RetainedPowerReading } from '../retainedPowerStore';
+import type { DeviceControlSettings } from '../deviceControlSettings';
+import type { FlowBackedDeviceState } from '../flowBackedDeviceState';
+import type { DeviceManagement } from '../deviceRoleReads';
 import type {
-  DeviceControlProfile,
   TargetDeviceSnapshot,
-  TargetPowerSteppedLoadConfig,
 } from '../../../packages/contracts/src/types';
-import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 import type { MeasuredPowerSource, MeteredPowerReading, TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import { getDeviceId } from './managerHelpers';
 import type { ResolvedTransportPowerState } from './transportTypes';
-import { type FlowReportedCapabilitiesForDevice } from './flowReportedCapabilities';
 import { type DeviceCapabilityMap } from '../managerControl';
 import {
     hasPotentialHomeyEnergyEstimate,
@@ -43,55 +42,49 @@ export type RetainedMeasurement = {
     source?: MeasuredPowerSource;
 };
 
-export type DeviceTransportParseProviders = {
-    /**
-     * Producer-resolved Main selection. REQUIRED: the transport's live-power
-     * paths may not invent an authority, and `unavailable` is a real answer a
-     * wired producer gives — never a default anything falls back to. Refresh
-     * and recovery paths read it from these parse providers.
-     */
-    getHomeyEnergyMeterSelection: () => MainMeterSelection;
-    /**
-     * Additional per-meter reading requests for the SAME `manager/energy/live`
-     * payload (multi-home R7b: each sub-home's own meter device). Read fresh
-     * per poll so a homes-config change needs no transport restart. Empty /
-     * absent = no extra extraction — the single-home path is untouched.
-     */
-    getAdditionalMeterDeviceIds?: () => readonly string[];
-    /**
-     * Push seam for the readings the request above resolved (multi-home R7b):
-     * `pollHomePowerWithMeterFanOut` hands each poll's finite per-meter map to
-     * this consumer (the home-runtime registry routes them to per-home
-     * pipelines). A provider closure rather than a transport setter so the
-     * wiring stays lazy — reads through it no-op until (and after) the
-     * registry exists.
-     */
-    onAdditionalMeterReadings?: (readings: Record<string, number>, nowMs: number) => void;
-    getControllable?: (deviceId: string) => boolean;
-    getManaged: (deviceId: string) => boolean;
-    isManagedFilterActive?: () => boolean;
-    getBudgetExempt?: (deviceId: string) => boolean;
-    getDeviceDriverIdOverride?: (deviceId: string) => string | undefined;
-    getNativeEvWiringEnabled?: (deviceId: string) => boolean;
-    getFlowConflict?: (deviceId: string) => TargetDeviceSnapshot['flowConflict'];
-    getDeviceControlProfile?: (deviceId: string) => DeviceControlProfile | undefined;
-    getDeviceTargetPowerConfig?: (deviceId: string) => TargetPowerSteppedLoadConfig | undefined;
-    getFlowReportedCapabilities?: (deviceId: string) => FlowReportedCapabilitiesForDevice;
-    /**
-     * The cars the user ticked for this charger — an eligibility set, not an
-     * association. Empty or absent means the feature is off for the charger.
-     *
-     * A plain predicate rather than a settings read: `lib/device` may not reach
-     * settings or `AppContext` (`no-domain-to-app-layer`), so the app layer
-     * resolves the value and hands it in, as it does for `getBudgetExempt`.
-     */
-    getEvCarAssociationCarIds?: (chargerId: string) => readonly string[];
+/**
+ * The owner's per-device configuration a parse reads. `DeviceControlSettings`
+ * is the one producer; specs stub the members they are about.
+ */
+export type DeviceParseSettings = Pick<
+    DeviceControlSettings,
+    | 'isManaged'
+    | 'isControllable'
+    | 'isManagedFilterActive'
+    | 'isBudgetExempt'
+    | 'getDeviceDriverIdOverride'
+    | 'getDeviceControlProfile'
+    | 'getDeviceTargetPowerConfig'
+    | 'getEvCarAssociationCarIds'
+>;
+
+/**
+ * Whether native wiring is on for a device, and any Flow conflict found for it.
+ * Answered today by `AppNativeWiring` in `setup/`, which still owns the decision.
+ */
+export type NativeWiringRead = {
+    /** The user's explicit choice, else the conflict-gated automatic decision. */
+    resolveNativeWiringEnabled(deviceId: string): boolean;
+    getFlowConflict(deviceId: string): TargetDeviceSnapshot['flowConflict'];
 };
+
+/**
+ * The Flow-backed device state the transport reads and writes: the capability
+ * values Flow cards reported, and the learned peaks it persists when a reading
+ * moves one (`FlowBackedDeviceState`).
+ */
+export type FlowBackedRead = Pick<
+    FlowBackedDeviceState,
+    'getFlowReportedCapabilitiesForDevice' | 'persistLearnedPeaks'
+>;
 
 export type DeviceTransportParseDeps = {
     logger: Logger;
     debugStructured?: StructuredDebugEmitter;
-    providers: DeviceTransportParseProviders;
+    settings: DeviceParseSettings;
+    nativeWiring: NativeWiringRead;
+    flowBacked: FlowBackedRead;
+    management: DeviceManagement;
     powerState: ResolvedTransportPowerState;
     measuredPowerResolver: DeviceMeasuredPowerResolver;
     getCapabilityObj: (device: HomeyDeviceLike) => DeviceCapabilityMap;
@@ -105,6 +98,16 @@ export type DeviceTransportParseDeps = {
     getRestoredPowerReading: (deviceId: string) => RetainedPowerReading | undefined;
     resolveLatestLocalWriteMs: (deviceId: string) => number | undefined;
 };
+
+/**
+ * The owners a parse asks about a device: its configuration, native wiring,
+ * Flow reports, and whether it is managed and under Power-limit control. The transport holds
+ * them for the reader that builds each parse's dependencies.
+ */
+export type DeviceParseSources = Pick<
+    DeviceTransportParseDeps,
+    'settings' | 'nativeWiring' | 'flowBacked' | 'management'
+>;
 
 export type ParseDevicePurpose = 'runtime' | 'ui_picker';
 
@@ -138,9 +141,7 @@ export function parseDevice(
 ): TransportDeviceSnapshot | null {
     const identity = resolveParseDeviceIdentity({ device });
     if (!identity) return null;
-    const managedDecision = resolveManagedFilterDecision({
-        providers: deps.providers, deviceId: identity.deviceId,
-    });
+    const managedDecision = resolveManagedFilterDecision(deps.management, identity.deviceId);
     if (shouldDropEarly(purpose, managedDecision, isHomeBatteryDevice(device))) return null;
     const profile = resolveDeviceCapabilityProfile(identity, deps);
     if (!profile) return null;
