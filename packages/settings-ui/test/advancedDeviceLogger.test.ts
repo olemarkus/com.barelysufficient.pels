@@ -36,6 +36,8 @@ const flushPromises = async () => new Promise<void>((resolve) => {
 vi.mock('../src/ui/homey.ts', () => ({
   callApi: vi.fn(),
   getSetting: vi.fn().mockResolvedValue({}),
+  // The purge edits each stored map read fresh; `seedState` serves the seeded maps.
+  getSettingFresh: vi.fn().mockResolvedValue(undefined),
   setSetting: vi.fn(),
   // The purge loads the smart-task map before cancelling; no cache, no tasks.
   hasSettingCache: vi.fn().mockReturnValue(false),
@@ -271,6 +273,15 @@ describe('advanced device cleanup', () => {
     };
     state.capacityPriorities = { Home: { 'dev-1': 1, 'dev-2': 2 } };
     state.modeTargets = { Home: { 'dev-1': 21, 'dev-2': 19 } };
+    const stored: Record<string, unknown> = structuredClone({
+      controllable_devices: state.controllableMap,
+      managed_devices: state.managedMap,
+      device_control_profiles: state.deviceControlProfiles,
+      overshoot_behaviors: state.shedBehaviors,
+      price_optimization_settings: state.priceOptimizationSettings,
+    });
+    const homey = await import('../src/ui/homey.ts') as unknown as { getSettingFresh: ReturnType<typeof vi.fn> };
+    homey.getSettingFresh.mockImplementation(async (key: string) => stored[key]);
     return state;
   };
 
@@ -294,7 +305,10 @@ describe('advanced device cleanup', () => {
     clearButton.click();
     await flushPromises();
 
-    expect(homey.setSetting).toHaveBeenCalledWith('controllable_devices', { 'dev-2': true });
+    // The purge re-reads the stored maps before it writes.
+    await vi.waitFor(() => {
+      expect(homey.setSetting).toHaveBeenCalledWith('controllable_devices', { 'dev-2': true });
+    });
     expect(homey.setSetting).toHaveBeenCalledWith('managed_devices', { 'dev-2': true });
     expect(homey.setSetting).toHaveBeenCalledWith('device_control_profiles', {
       'dev-2': {
@@ -331,7 +345,10 @@ describe('advanced device cleanup', () => {
     clearButton.click();
     await flushPromises();
 
-    expect(homey.setSetting).toHaveBeenCalledWith('controllable_devices', { 'dev-2': true });
+    // The purge re-reads the stored maps before it writes.
+    await vi.waitFor(() => {
+      expect(homey.setSetting).toHaveBeenCalledWith('controllable_devices', { 'dev-2': true });
+    });
     await vi.waitFor(() => {
       expect(toast.showToast).toHaveBeenCalledWith('Cleared PELS data for device dev-1.', 'ok');
     });
@@ -353,7 +370,10 @@ describe('advanced device cleanup', () => {
     clearUnknownButton.click();
     await flushPromises();
 
-    expect(homey.setSetting).toHaveBeenCalledWith('controllable_devices', { 'dev-1': true });
+    // The purge re-reads the stored maps before it writes.
+    await vi.waitFor(() => {
+      expect(homey.setSetting).toHaveBeenCalledWith('controllable_devices', { 'dev-1': true });
+    });
     expect(homey.setSetting).toHaveBeenCalledWith('managed_devices', { 'dev-1': true });
     expect(homey.setSetting).toHaveBeenCalledWith('device_control_profiles', {
       'dev-1': {

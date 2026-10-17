@@ -1,5 +1,7 @@
 import { readModePriorityCatalog } from '../../../shared-domain/src/settings/modePriorities.ts';
-import { readTemperatureControlModes } from '../../../shared-domain/src/settings/temperatureControl.ts';
+import {
+  readTemperatureControlModes, temperatureControlDisabledDevices,
+} from '../../../shared-domain/src/settings/temperatureControl.ts';
 import { callApi, getSetting, getSettingFresh, setSetting } from './homey.ts';
 import { state } from './state.ts';
 import { hasLoadedDeferredObjectiveSettings, loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
@@ -57,21 +59,9 @@ export type PurgeableDeviceOption = {
 };
 
 const runSerializedPurge = createSerializedAsyncRunner();
-let reconciliationRequiredForHomeIds: readonly string[] | null = null;
 
-const readRecordSetting = <T>(value: unknown): Record<string, T> => {
-  if (value === null || value === undefined) return {};
-  if (typeof value === 'object' && !Array.isArray(value)) {
-    return { ...(value as Record<string, T>) };
-  }
-  throw new Error('Persisted device settings map is malformed');
-};
-
-const readReconciledRecordSetting = <T>(
-  value: unknown,
-  fallback: Record<string, T>,
-): Record<string, T> => (
-  value === null || value === undefined ? { ...fallback } : readRecordSetting<T>(value)
+const readRecordSetting = <T>(value: unknown): Record<string, T> | null => (
+  typeof value === 'object' && value !== null && !Array.isArray(value) ? { ...(value as Record<string, T>) } : null
 );
 
 const getPurgeHomeIds = (): string[] => {
@@ -175,41 +165,142 @@ const purgeEvCarAssociations = (
   }),
 );
 
-const buildPurgedState = (deviceIds: Set<string>) => ({
-  controllableMap: removeDeviceIdsFromRecord(state.controllableMap, deviceIds),
-  managedMap: removeDeviceIdsFromRecord(state.managedMap, deviceIds),
-  deviceControlProfiles: removeDeviceIdsFromRecord(state.deviceControlProfiles, deviceIds),
-  deviceTargetPowerConfigs: removeDeviceIdsFromRecord(state.deviceTargetPowerConfigs, deviceIds),
-  deviceExpectedPowerOverrides: removeDeviceIdsFromRecord(state.deviceExpectedPowerOverrides, deviceIds),
-  shedBehaviors: removeDeviceIdsFromRecord(state.shedBehaviors, deviceIds),
-  temperatureBoostSettings: removeDeviceIdsFromRecord(state.temperatureBoostSettings, deviceIds),
-  evBoostSettings: removeDeviceIdsFromRecord(state.evBoostSettings, deviceIds),
-  evCarAssociations: purgeEvCarAssociations(state.evCarAssociations, deviceIds),
-  priceOptimizationSettings: removeDeviceIdsFromRecord(state.priceOptimizationSettings, deviceIds),
-  temperatureControlModes: removeDeviceIdsFromRecord(state.temperatureControlModes, deviceIds),
-  temperatureControlDisabledMap: removeDeviceIdsFromRecord(state.temperatureControlDisabledMap, deviceIds),
-  respectExternalOffMap: removeDeviceIdsFromRecord(state.respectExternalOffMap, deviceIds),
-  capacityPriorities: removeDeviceIdsFromModeMap(state.capacityPriorities, deviceIds),
-  modeTargets: removeDeviceIdsFromModeMap(state.modeTargets, deviceIds),
-});
-
-const applyPurgedState = (next: ReturnType<typeof buildPurgedState>): void => {
-  state.controllableMap = next.controllableMap;
-  state.managedMap = next.managedMap;
-  state.deviceControlProfiles = next.deviceControlProfiles;
-  state.deviceTargetPowerConfigs = next.deviceTargetPowerConfigs;
-  state.deviceExpectedPowerOverrides = next.deviceExpectedPowerOverrides;
-  state.shedBehaviors = next.shedBehaviors;
-  state.temperatureBoostSettings = next.temperatureBoostSettings;
-  state.evBoostSettings = next.evBoostSettings;
-  state.evCarAssociations = next.evCarAssociations;
-  state.priceOptimizationSettings = next.priceOptimizationSettings;
-  state.temperatureControlModes = next.temperatureControlModes;
-  state.temperatureControlDisabledMap = next.temperatureControlDisabledMap;
-  state.respectExternalOffMap = next.respectExternalOffMap;
-  state.capacityPriorities = next.capacityPriorities;
-  state.modeTargets = next.modeTargets;
+/**
+ * One per-device settings map the purge edits. The purge works on the STORED
+ * map, read fresh through its key owner's reader, never on the page's copy: a
+ * copy whose boot read failed or has not landed yet is an empty default, and
+ * writing it would erase every other device's entry. A stored value the purge
+ * cannot use (it reads back absent, or its owner rejects it and keeps its own
+ * last-good copy) is left alone. That is only a clean purge when the page copy
+ * has none of the purged ids either: a device the page knows is there and the
+ * read could not find fails the purge rather than reading as cleared.
+ */
+type PurgedMap = {
+  purge: (deviceIds: Set<string>) => Promise<void>;
+  /** Re-reads the page copy from the store, after a purge that failed part-way. */
+  refresh: () => Promise<void>;
 };
+
+const purgedMap = <T>(
+  key: string,
+  read: (value: unknown) => T | null,
+  pageCopy: () => T,
+  apply: (map: T) => void,
+  remove: (map: T, deviceIds: Set<string>) => T,
+): PurgedMap => {
+  const readStored = async (): Promise<T | null> => {
+    const value = await getSettingFresh(key);
+    return value === null || value === undefined ? null : read(value);
+  };
+  return {
+    purge: async (deviceIds) => {
+      const stored = await readStored();
+      if (stored === null) {
+        const copy = pageCopy();
+        if (JSON.stringify(remove(copy, deviceIds)) === JSON.stringify(copy)) return;
+        throw new Error(`Could not read ${key} to clear the device from it. Try again.`);
+      }
+      const next = remove(stored, deviceIds);
+      await setSetting(key, next);
+      apply(next);
+    },
+    refresh: async () => {
+      const stored = await readStored();
+      if (stored !== null) apply(stored);
+    },
+  };
+};
+
+const purgedRecord = <T>(
+  key: string,
+  pageCopy: () => Record<string, T>,
+  apply: (map: Record<string, T>) => void,
+): PurgedMap => purgedMap(key, readRecordSetting<T>, pageCopy, apply, removeDeviceIdsFromRecord);
+
+const PURGED_MAPS: readonly PurgedMap[] = [
+  purgedRecord(
+    CONTROLLABLE_DEVICES,
+    () => state.controllableMap,
+    (map) => { state.controllableMap = map; },
+  ),
+  purgedRecord(MANAGED_DEVICES, () => state.managedMap, (map) => { state.managedMap = map; }),
+  purgedRecord(
+    DEVICE_CONTROL_PROFILES,
+    () => state.deviceControlProfiles,
+    (map) => { state.deviceControlProfiles = map; },
+  ),
+  purgedRecord(
+    DEVICE_TARGET_POWER_CONFIGS,
+    () => state.deviceTargetPowerConfigs,
+    (map) => { state.deviceTargetPowerConfigs = map; },
+  ),
+  purgedRecord(
+    DEVICE_EXPECTED_POWER_OVERRIDES,
+    () => state.deviceExpectedPowerOverrides,
+    (map) => { state.deviceExpectedPowerOverrides = map; },
+  ),
+  purgedMap(
+    OVERSHOOT_BEHAVIORS,
+    (value) => (isShedBehaviorsSetting(value) ? readShedBehaviors(value) : null),
+    () => state.shedBehaviors,
+    (map) => { state.shedBehaviors = map; },
+    removeDeviceIdsFromRecord,
+  ),
+  purgedRecord(
+    TEMPERATURE_BOOST_SETTINGS,
+    () => state.temperatureBoostSettings,
+    (map) => { state.temperatureBoostSettings = map; },
+  ),
+  purgedRecord(EV_BOOST_SETTINGS, () => state.evBoostSettings, (map) => { state.evBoostSettings = map; }),
+  purgedMap(
+    EV_CAR_ASSOCIATIONS,
+    normalizeEvCarAssociations,
+    () => state.evCarAssociations,
+    (map) => { state.evCarAssociations = map; },
+    purgeEvCarAssociations,
+  ),
+  purgedMap(
+    PRICE_OPTIMIZATION_SETTINGS,
+    (value) => {
+      const read = classifyPriceOptimizationConfigMap(value);
+      return read.state === 'resolved' ? read.settings : null;
+    },
+    () => state.priceOptimizationSettings,
+    (map) => { state.priceOptimizationSettings = map; },
+    removeDeviceIdsFromRecord,
+  ),
+  purgedMap(
+    TEMPERATURE_CONTROL_MODES,
+    readTemperatureControlModes,
+    () => state.temperatureControlModes,
+    (map) => { state.temperatureControlModes = map; },
+    removeDeviceIdsFromRecord,
+  ),
+  // The stored key is the legacy opt-out; the page's map is derived from it and
+  // the control modes, as the boot read derives it (`applyTemperatureControlSettings`).
+  purgedMap(
+    TEMPERATURE_CONTROL_DISABLED_DEVICES,
+    readStrictBooleanSettingMap,
+    // An explicit mode overrides the legacy entry, so only the rest is the legacy key's.
+    () => Object.fromEntries(Object.entries(state.temperatureControlDisabledMap)
+      .filter(([deviceId]) => !Object.hasOwn(state.temperatureControlModes, deviceId))),
+    (legacy) => {
+      state.temperatureControlDisabledMap = temperatureControlDisabledDevices(state.temperatureControlModes, legacy);
+    },
+    removeDeviceIdsFromRecord,
+  ),
+  // The runtime releases a persisted hold for every device that leaves this map,
+  // so dropping the opt-in also drops the hold it armed. Strict, like the
+  // runtime's reader: on a malformed value the runtime keeps its own last-good
+  // map, so the purge must not write one that drops other devices' opt-ins.
+  purgedMap(
+    RESPECT_EXTERNAL_OFF_DEVICES,
+    readStrictBooleanSettingMap,
+    () => state.respectExternalOffMap,
+    (map) => { state.respectExternalOffMap = map; },
+    removeDeviceIdsFromRecord,
+  ),
+];
 
 /**
  * Clears each purged device's smart task through the runtime's cancel op, so the
@@ -278,97 +369,21 @@ const purgeModeCatalogDeviceIds = async (
 };
 
 const reconcilePurgeState = async (homeIds: readonly string[]): Promise<void> => {
-  const simpleBindings: Array<{
-    key: string;
-    fallback: Record<string, unknown>;
-    apply: (value: unknown) => void;
-  }> = [
-    {
-      key: CONTROLLABLE_DEVICES, fallback: state.controllableMap,
-      apply: (value) => { state.controllableMap = readRecordSetting(value); },
-    },
-    {
-      key: MANAGED_DEVICES, fallback: state.managedMap,
-      apply: (value) => { state.managedMap = readRecordSetting(value); },
-    },
-    {
-      key: DEVICE_CONTROL_PROFILES, fallback: state.deviceControlProfiles,
-      apply: (value) => { state.deviceControlProfiles = readRecordSetting(value); },
-    },
-    {
-      key: DEVICE_TARGET_POWER_CONFIGS,
-      fallback: state.deviceTargetPowerConfigs,
-      apply: (value) => { state.deviceTargetPowerConfigs = readRecordSetting(value); },
-    },
-    {
-      key: DEVICE_EXPECTED_POWER_OVERRIDES,
-      fallback: state.deviceExpectedPowerOverrides,
-      apply: (value) => { state.deviceExpectedPowerOverrides = readRecordSetting(value); },
-    },
-    {
-      key: OVERSHOOT_BEHAVIORS, fallback: state.shedBehaviors,
-      apply: (value) => { if (isShedBehaviorsSetting(value)) state.shedBehaviors = readShedBehaviors(value); },
-    },
-    {
-      key: TEMPERATURE_BOOST_SETTINGS,
-      fallback: state.temperatureBoostSettings,
-      apply: (value) => { state.temperatureBoostSettings = readRecordSetting(value); },
-    },
-    {
-      key: EV_BOOST_SETTINGS, fallback: state.evBoostSettings,
-      apply: (value) => { state.evBoostSettings = readRecordSetting(value); },
-    },
-    {
-      key: EV_CAR_ASSOCIATIONS, fallback: state.evCarAssociations,
-      apply: (value) => { state.evCarAssociations = normalizeEvCarAssociations(value); },
-    },
-    {
-      key: PRICE_OPTIMIZATION_SETTINGS,
-      fallback: state.priceOptimizationSettings,
-      apply: (value) => {
-        const read = classifyPriceOptimizationConfigMap(value);
-        if (read.state === 'resolved') state.priceOptimizationSettings = read.settings;
-      },
-    },
-    {
-      key: TEMPERATURE_CONTROL_MODES,
-      fallback: state.temperatureControlModes,
-      apply: (value) => {
-        state.temperatureControlModes = readTemperatureControlModes(value) ?? state.temperatureControlModes;
-      },
-    },
-    {
-      key: TEMPERATURE_CONTROL_DISABLED_DEVICES,
-      fallback: state.temperatureControlDisabledMap,
-      apply: (value) => { state.temperatureControlDisabledMap = readRecordSetting(value); },
-    },
-    {
-      key: RESPECT_EXTERNAL_OFF_DEVICES,
-      fallback: state.respectExternalOffMap,
-      apply: (value) => {
-        state.respectExternalOffMap = readStrictBooleanSettingMap(value) ?? state.respectExternalOffMap;
-      },
-    },
-  ];
-  const [simpleReads, modeReads] = await Promise.all([
-    Promise.all(simpleBindings.map(async (binding) => ({
-      binding,
-      value: readReconciledRecordSetting(await getSettingFresh(binding.key), binding.fallback),
-    }))),
+  const [, modeReads] = await Promise.all([
+    Promise.all(PURGED_MAPS.map((map) => map.refresh())),
     Promise.all(homeIds.map(async (homeId) => ({
       homeId,
       priorities: readModePriorityCatalog(await getSettingFresh(homeScopedSettingsKey(CAPACITY_PRIORITIES, homeId))),
-      targets: readReconciledRecordSetting(
+      targets: readModeDeviceTargetsSetting(
         await getSettingFresh(homeScopedSettingsKey(MODE_DEVICE_TARGETS, homeId)),
-        homeId === state.loadedModeHomeId ? state.modeTargets : {},
+        false,
       ),
     }))),
   ]);
-  simpleReads.forEach(({ binding, value }) => binding.apply(value));
   const loadedModes = modeReads.find(({ homeId }) => homeId === state.loadedModeHomeId);
   if (loadedModes) {
     if (loadedModes.priorities !== null) state.modePriorityCatalog = loadedModes.priorities;
-    state.modeTargets = loadedModes.targets;
+    if (loadedModes.targets !== null) state.modeTargets = loadedModes.targets;
   }
 };
 
@@ -377,43 +392,24 @@ export const clearDeviceSettings = async (deviceId: string) => {
 };
 
 const performClearMultipleDeviceSettings = async (deviceIds: string[]) => {
-  if (reconciliationRequiredForHomeIds !== null) {
-    const pendingHomeIds = reconciliationRequiredForHomeIds;
-    await reconcilePurgeState(pendingHomeIds);
-    reconciliationRequiredForHomeIds = null;
-  }
   const ids = new Set(deviceIds);
   const homeIds = getPurgeHomeIds();
-  const next = buildPurgedState(ids);
 
   const writeResults = await Promise.allSettled([
-    setSetting(CONTROLLABLE_DEVICES, next.controllableMap),
-    setSetting(MANAGED_DEVICES, next.managedMap),
-    setSetting(DEVICE_CONTROL_PROFILES, next.deviceControlProfiles),
-    setSetting(DEVICE_TARGET_POWER_CONFIGS, next.deviceTargetPowerConfigs),
-    setSetting(DEVICE_EXPECTED_POWER_OVERRIDES, next.deviceExpectedPowerOverrides),
-    setSetting(OVERSHOOT_BEHAVIORS, next.shedBehaviors),
-    setSetting(TEMPERATURE_BOOST_SETTINGS, next.temperatureBoostSettings),
-    setSetting(EV_BOOST_SETTINGS, next.evBoostSettings),
-    setSetting(EV_CAR_ASSOCIATIONS, next.evCarAssociations),
-    setSetting(PRICE_OPTIMIZATION_SETTINGS, next.priceOptimizationSettings),
-    setSetting(TEMPERATURE_CONTROL_MODES, next.temperatureControlModes),
-    setSetting(TEMPERATURE_CONTROL_DISABLED_DEVICES, next.temperatureControlDisabledMap),
-    // The runtime releases a persisted hold for every device that leaves this
-    // map, so dropping the opt-in also drops the hold it armed.
-    setSetting(RESPECT_EXTERNAL_OFF_DEVICES, next.respectExternalOffMap),
+    ...PURGED_MAPS.map((map) => map.purge(ids)),
     purgeModeCatalogDeviceIds(ids, homeIds),
     cancelSmartTasks(ids),
   ]);
   const failure = writeResults.find((result) => result.status === 'rejected');
   if (failure?.status === 'rejected') {
-    reconciliationRequiredForHomeIds = homeIds;
     await reconcilePurgeState(homeIds);
-    reconciliationRequiredForHomeIds = null;
     throw failure.reason;
   }
 
-  applyPurgedState(next);
+  // Derived from the control modes too, which may have settled after the legacy key.
+  state.temperatureControlDisabledMap = removeDeviceIdsFromRecord(state.temperatureControlDisabledMap, ids);
+  state.capacityPriorities = removeDeviceIdsFromModeMap(state.capacityPriorities, ids);
+  state.modeTargets = removeDeviceIdsFromModeMap(state.modeTargets, ids);
 };
 
 export const clearMultipleDeviceSettings = (deviceIds: string[]) => (

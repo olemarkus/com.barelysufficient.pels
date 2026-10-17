@@ -102,7 +102,9 @@ describe('advanced device data purge', () => {
     state.loadedModeHomeId = 'main';
     const { clearMultipleDeviceSettings } = await import('../src/ui/advancedDeviceDataPurge.ts');
 
-    await expect(clearMultipleDeviceSettings([DEVICE_ID])).rejects.toThrow('write failed');
+    // The transient null on a map the page knows holds the device fails the purge
+    // rather than reading as cleared.
+    await expect(clearMultipleDeviceSettings([DEVICE_ID])).rejects.toThrow('Could not read managed_devices');
 
     expect(state.controllableMap).toEqual({ [KEEP_ID]: true });
     expect(state.managedMap).toEqual(perDeviceMap(true));
@@ -152,28 +154,17 @@ describe('advanced device data purge', () => {
     });
   });
 
-  it('blocks later purge writes until a failed reconciliation succeeds', async () => {
+  it('fails on a stored map it cannot read, and a retry finishes the purge', async () => {
     const homey = createHomeyMock({ settings: {
+      managed_devices: perDeviceMap(true),
       [TEMPERATURE_CONTROL_DISABLED_DEVICES]: perDeviceMap(true),
-      [CAPACITY_PRIORITIES]: { Home: { [DEVICE_ID]: 1 } },
-      [MODE_DEVICE_TARGETS]: { Home: { [DEVICE_ID]: 20 } },
     } });
-    const originalSet = homey.set.getMockImplementation();
-    let failTemperatureControlWrite = true;
-    homey.set.mockImplementation((key, value, callback) => {
-      if (key === TEMPERATURE_CONTROL_DISABLED_DEVICES && failTemperatureControlWrite) {
-        failTemperatureControlWrite = false;
-        callback?.(new Error('write failed'));
-        return;
-      }
-      originalSet?.(key, value, callback);
-    });
     const originalGet = homey.get.getMockImplementation();
-    let reconciliationReadFailures = 2;
+    let managedReadFailures = 1;
     homey.get.mockImplementation((key, callback) => {
-      if (key === 'managed_devices' && reconciliationReadFailures > 0) {
-        reconciliationReadFailures -= 1;
-        callback(new Error('reconcile failed'));
+      if (key === 'managed_devices' && managedReadFailures > 0) {
+        managedReadFailures -= 1;
+        callback(new Error('read failed'));
         return;
       }
       originalGet?.(key, callback);
@@ -181,19 +172,14 @@ describe('advanced device data purge', () => {
     const { setHomeyClient } = await import('../src/ui/homey.ts');
     const { state } = await import('../src/ui/state.ts');
     setHomeyClient(homey);
-    state.temperatureControlDisabledMap = perDeviceMap(true);
-    state.capacityPriorities = { Home: { [DEVICE_ID]: 1 } };
-    state.modeTargets = { Home: { [DEVICE_ID]: 20 } };
-    state.loadedModeHomeId = 'main';
     const { clearMultipleDeviceSettings } = await import('../src/ui/advancedDeviceDataPurge.ts');
 
-    await expect(clearMultipleDeviceSettings([DEVICE_ID])).rejects.toThrow('reconcile failed');
-    const writesAfterPartialFailure = homey.set.mock.calls.length;
-
-    await expect(clearMultipleDeviceSettings([DEVICE_ID])).rejects.toThrow('reconcile failed');
-    expect(homey.set).toHaveBeenCalledTimes(writesAfterPartialFailure);
+    await expect(clearMultipleDeviceSettings([DEVICE_ID])).rejects.toThrow('read failed');
+    expect(homey.__settingsStore.managed_devices).toEqual(perDeviceMap(true));
+    expect(state.managedMap).toEqual(perDeviceMap(true));
 
     await clearMultipleDeviceSettings([DEVICE_ID]);
+    expect(homey.__settingsStore.managed_devices).toEqual({ [KEEP_ID]: true });
     expect(state.temperatureControlDisabledMap).toEqual({ [KEEP_ID]: true });
   });
 
@@ -253,5 +239,117 @@ describe('advanced device data purge', () => {
     await expect(clearMultipleDeviceSettings([KEEP_ID])).resolves.toBeUndefined();
     // KEEP_ID has no task, so it asked nothing; DEVICE_ID's refused cancel fails the purge.
     await expect(clearMultipleDeviceSettings([DEVICE_ID])).rejects.toThrow('write_conflict');
+  });
+  it('purges from the store when the page copies never loaded', async () => {
+    // A failed or pending boot read leaves the page's copies at empty defaults;
+    // writing those would erase every other device's settings.
+    const homey = createHomeyMock({
+      settings: {
+        managed_devices: perDeviceMap(true),
+        [DEVICE_CONTROL_PROFILES]: perDeviceMap(CONTROL_PROFILE),
+        [RESPECT_EXTERNAL_OFF_DEVICES]: perDeviceMap(true),
+      },
+      apiHandlers: { [`GET ${SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH}`]: () => ({ version: 1, objectivesByDeviceId: {} }) },
+    });
+    const { setHomeyClient } = await import('../src/ui/homey.ts');
+    const { state } = await import('../src/ui/state.ts');
+    setHomeyClient(homey);
+    const { clearMultipleDeviceSettings } = await import('../src/ui/advancedDeviceDataPurge.ts');
+
+    await clearMultipleDeviceSettings([DEVICE_ID]);
+
+    expect(homey.__settingsStore.managed_devices).toEqual({ [KEEP_ID]: true });
+    expect(homey.__settingsStore[DEVICE_CONTROL_PROFILES]).toEqual({ [KEEP_ID]: CONTROL_PROFILE });
+    expect(homey.__settingsStore[RESPECT_EXTERNAL_OFF_DEVICES]).toEqual({ [KEEP_ID]: true });
+    expect(state.deviceControlProfiles).toEqual({ [KEEP_ID]: CONTROL_PROFILE });
+  });
+
+  it('edits the stored leave-off map, not the page copy, and never overwrites a malformed one', async () => {
+    // The runtime releases the hold of every device that leaves this map, so
+    // writing the page's stale or default copy would release other devices' holds.
+    const homey = createHomeyMock({
+      settings: { [RESPECT_EXTERNAL_OFF_DEVICES]: perDeviceMap(true) },
+      apiHandlers: { [`GET ${SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH}`]: () => ({ version: 1, objectivesByDeviceId: {} }) },
+    });
+    const { setHomeyClient } = await import('../src/ui/homey.ts');
+    const { state } = await import('../src/ui/state.ts');
+    setHomeyClient(homey);
+    state.respectExternalOffMap = {};
+    const { clearMultipleDeviceSettings } = await import('../src/ui/advancedDeviceDataPurge.ts');
+
+    await clearMultipleDeviceSettings([DEVICE_ID]);
+    expect(homey.__settingsStore[RESPECT_EXTERNAL_OFF_DEVICES]).toEqual({ [KEEP_ID]: true });
+    expect(state.respectExternalOffMap).toEqual({ [KEEP_ID]: true });
+
+    const malformed = { [KEEP_ID]: 'yes' };
+    homey.__settingsStore[RESPECT_EXTERNAL_OFF_DEVICES] = malformed;
+    // The runtime keeps its last-good map, which still holds the opt-in, so the
+    // purge says it could not clear it rather than claiming it is gone.
+    await expect(clearMultipleDeviceSettings([KEEP_ID])).rejects.toThrow('Could not read respect_external_off_devices');
+    expect(homey.__settingsStore[RESPECT_EXTERNAL_OFF_DEVICES]).toBe(malformed);
+    expect(state.respectExternalOffMap).toEqual({ [KEEP_ID]: true });
+  });
+
+  it('reconciles past a malformed leave-off map after a failed write', async () => {
+    const malformed = ['not', 'a', 'map'];
+    const homey = createHomeyMock({
+      settings: { [RESPECT_EXTERNAL_OFF_DEVICES]: malformed, managed_devices: perDeviceMap(true) },
+      apiHandlers: { [`GET ${SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH}`]: () => ({ version: 1, objectivesByDeviceId: {} }) },
+    });
+    const originalSet = homey.set.getMockImplementation();
+    let failManagedWrite = true;
+    homey.set.mockImplementation((key, value, callback) => {
+      if (key === 'managed_devices' && failManagedWrite) {
+        failManagedWrite = false;
+        callback?.(new Error('write failed'));
+        return;
+      }
+      originalSet?.(key, value, callback);
+    });
+    const { setHomeyClient } = await import('../src/ui/homey.ts');
+    const { state } = await import('../src/ui/state.ts');
+    setHomeyClient(homey);
+    state.managedMap = perDeviceMap(true);
+    state.respectExternalOffMap = { [KEEP_ID]: true };
+    const { clearMultipleDeviceSettings } = await import('../src/ui/advancedDeviceDataPurge.ts');
+
+    await expect(clearMultipleDeviceSettings([DEVICE_ID])).rejects.toThrow('write failed');
+    expect(state.respectExternalOffMap).toEqual({ [KEEP_ID]: true });
+
+    await clearMultipleDeviceSettings([DEVICE_ID]);
+    expect(homey.__settingsStore.managed_devices).toEqual({ [KEEP_ID]: true });
+    expect(homey.__settingsStore[RESPECT_EXTERNAL_OFF_DEVICES]).toBe(malformed);
+  });
+
+  it('leaves a map its owner rejects alone and still purges the rest', async () => {
+    const homey = createHomeyMock({ settings: {
+      managed_devices: perDeviceMap(true),
+      temperature_control_modes: [],
+    } });
+    const { setHomeyClient } = await import('../src/ui/homey.ts');
+    setHomeyClient(homey);
+    const { clearMultipleDeviceSettings } = await import('../src/ui/advancedDeviceDataPurge.ts');
+
+    await clearMultipleDeviceSettings([DEVICE_ID]);
+    expect(homey.__settingsStore.managed_devices).toEqual({ [KEEP_ID]: true });
+    expect(homey.__settingsStore.temperature_control_modes).toEqual([]);
+  });
+
+  it('keeps a retained device\'s temperature authority derived from its control mode', async () => {
+    const homey = createHomeyMock({ settings: {
+      temperature_control_modes: { [DEVICE_ID]: 'mode', [KEEP_ID]: 'external' },
+      [TEMPERATURE_CONTROL_DISABLED_DEVICES]: {},
+    } });
+    const { setHomeyClient } = await import('../src/ui/homey.ts');
+    const { state } = await import('../src/ui/state.ts');
+    setHomeyClient(homey);
+    state.temperatureControlModes = { [DEVICE_ID]: 'mode', [KEEP_ID]: 'external' };
+    state.temperatureControlDisabledMap = { [DEVICE_ID]: false, [KEEP_ID]: true };
+    const { clearMultipleDeviceSettings } = await import('../src/ui/advancedDeviceDataPurge.ts');
+
+    await clearMultipleDeviceSettings([DEVICE_ID]);
+    expect(homey.__settingsStore.temperature_control_modes).toEqual({ [KEEP_ID]: 'external' });
+    expect(homey.__settingsStore[TEMPERATURE_CONTROL_DISABLED_DEVICES]).toEqual({});
+    expect(state.temperatureControlDisabledMap).toEqual({ [KEEP_ID]: true });
   });
 });
