@@ -137,6 +137,7 @@ describe('hero meter marker labels', () => {
 
 describe('buildDecisionSentence', () => {
   const baseline = (overrides: Partial<DecisionSentenceInput> = {}): DecisionSentenceInput => ({
+    managedDeviceCount: 1,
     limitedCount: 0,
     resumingCount: 0,
     dryRun: false,
@@ -259,6 +260,18 @@ describe('buildDecisionSentence', () => {
       text: 'Quiet hour. Nothing to do.',
       positive: true,
     });
+  });
+
+  it('states that nothing is managed instead of a quiet hour when the plan carries no devices', () => {
+    expect(buildDecisionSentence(baseline({ managedDeviceCount: 0 }))).toEqual({
+      text: 'PELS is not managing any devices.',
+      positive: false,
+    });
+  });
+
+  it('keeps a measured trajectory verdict ahead of the nothing-managed line', () => {
+    expect(buildDecisionSentence(baseline({ managedDeviceCount: 0, projectedOverBudget: true })).text)
+      .toBe('On pace to overshoot this hour’s energy budget.');
   });
 
 

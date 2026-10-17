@@ -233,6 +233,10 @@ export const computeEnergyBarScaleKWh = (
 // constraint that motivates it.
 
 export type DecisionSentenceInput = {
+  // Devices the plan carries, which are exactly the devices PELS manages (the
+  // planner admits only managed devices). With none, the on-track rung must not
+  // claim a calm hour PELS never assessed: it states that nothing is managed.
+  managedDeviceCount: number;
   limitedCount: number;
   resumingCount: number;
   dryRun: boolean;
@@ -515,7 +519,14 @@ export const buildDecisionSentence = (
     return { text: `${formatBatterySupply(batteries)} to hold your limit.`, positive: true };
   }
 
-  // 8. On track.
+  // 8. Nothing managed. "Quiet hour" would be a verdict on devices PELS does not
+  // have; a brand-new owner reads it as an assessed-calm home. Not positive:
+  // this is an unconfigured state, not reassurance.
+  if (input.managedDeviceCount === 0) {
+    return { text: 'PELS is not managing any devices.', positive: false };
+  }
+
+  // 9. On track.
   return { text: 'Quiet hour. Nothing to do.', positive: true };
 };
 

@@ -119,6 +119,7 @@ const buildDecisionSentence = ({
 }): { text: string; positive: boolean } => {
   const limited = devices.filter(isLimitedDevice);
   return buildSharedDecisionSentence({
+    managedDeviceCount: devices.length,
     limitedCount: limited.length,
     resumingCount: devices.filter(isResumingDevice).length,
     dryRun,

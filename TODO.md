@@ -1012,15 +1012,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       native primitive (the design-system-unification direction) so both scopes read as one control. Source:
       pels-m3-critic review of the U3 per-home Limits surface, 2026-07-20. [P2]
 
-- [ ] **Hero idle line contradicts the zero-managed empty state.** "Quiet hour. Nothing to do."
-      renders 100 px above "No managed devices." — PELS claims an assessed-calm home while
-      managing nothing. Suppress or reword the idle line when the plan carries zero devices.
-      Also verify the Overview smart-task row is genuinely unreachable alongside an empty
-      device list (`PlanOverview.tsx` renders both without cross-gating; a task on a
-      just-unmanaged device may compose a live contradiction). Persona: brand-new owner on
-      first open; hypothesis: a reassuring verdict over an unconfigured state teaches the user
-      to distrust the hero. Source: pels-m3-critic on the onboarding-links PR (2026-07-19). [P2]
-
 - [ ] **Power source select shows "Flow card" while unset and never explains the Flow.** On the
       Limits & safety page the unset select is indistinguishable from a made choice, and no copy on
       the journey says a Flow with the report-power action card must exist. Worse: the preselected
