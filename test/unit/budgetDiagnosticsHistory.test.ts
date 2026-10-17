@@ -1,4 +1,5 @@
 import { readBudgetHistoryRange } from '../../lib/weather/budgetDiagnosticsHistory';
+import { ApiRequestError } from '../../lib/utils/apiRequestError';
 import {
   getBudgetDailyHistoryFromHomey, getBudgetDecisionHistoryFromHomey,
 } from '../../lib/weather/budgetDiagnosticsApi';
@@ -19,7 +20,7 @@ describe('budget diagnostics transport boundary', () => {
     { from: '2026-01-01T00:00:00Z', to: '2026-01-02' },
     { from: '2026-01-01', to: '2026-01-02', homeId: 'other' },
   ])('rejects invalid or misleading queries: %j', (query) => {
-    expect(() => readBudgetHistoryRange(query)).toThrow();
+    expect(() => readBudgetHistoryRange(query)).toThrow(ApiRequestError);
   });
 
   it('passes the query through the host seam and refuses an unwired startup', () => {

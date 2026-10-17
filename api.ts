@@ -4,6 +4,7 @@ import type { DailyBudgetModelPreviewResponse, DailyBudgetUiRead } from './lib/d
 import { readPelsHost } from './lib/app/pelsHost';
 import type { HomeyDeviceLike } from './lib/utils/types';
 import { normalizeError } from './lib/utils/errorUtils';
+import { ApiRequestError } from './lib/utils/apiRequestError';
 import { hasPowerCapability } from './lib/device/transport/managerParse';
 import { readCarAssociationCandidatesFromHomey } from './lib/device/settingsUiDeviceReads';
 import { readHubMarket } from './lib/home/hubMarket';
@@ -83,10 +84,13 @@ const withApiLogging = <Ctx extends ApiContext, R>(
     return await handler(ctx);
   } catch (error) {
     const logger = readPelsHost(ctx.homey)?.getApiStructuredLogger();
-    if (logger) {
-      logger.error({ event: 'api_handler_failed', handler: name, err: normalizeError(error) });
-    } else {
+    if (!logger) {
       console.error(`api ${name} failed`, error);
+    } else if (error instanceof ApiRequestError) {
+      // The caller's input was malformed: reject it without reporting a PELS failure.
+      logger.warn({ event: 'api_request_rejected', handler: name, reason: error.message });
+    } else {
+      logger.error({ event: 'api_handler_failed', handler: name, err: normalizeError(error) });
     }
     throw error;
   }

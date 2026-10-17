@@ -1158,19 +1158,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       which state each code actually arrives in before classifying it, because a code that only
       ever rides `keep` needs a different classification argument from one that rides `shed`. [P3]
 
-- [ ] **A malformed budget-diagnostics date range logs as a server failure.**
-      `readBudgetHistoryRange` (`lib/weather/budgetDiagnosticsHistory.ts`) throws a plain `Error`
-      for a client mistake (a non-`YYYY-MM-DD` `from`/`to`, an unordered or over-366-day range, a
-      `homeId`), and `withApiLogging` (`api.ts`) logs every throw as `[err] api_handler_failed` with
-      a stack, the same as a real handler crash. No API handler has a client-error path today; the
-      settings-UI writes return typed `invalid_request` members instead. Change: throw a request-error
-      type from the range reader and have `withApiLogging` log it at warn as `api_request_rejected`
-      without a stack, still rejecting the call. Done when an `api.ts` spec with a bad range sees a
-      warn-level `api_request_rejected` and no `api_handler_failed`. *Persona:* Optimiser exporting
-      budget history for replay. *Hypothesis:* a typo in a diagnostics query reads in `/tmp/pels` as
-      an app crash and sends triage after a defect that does not exist. *Why:* keeps error-level
-      logs meaning "PELS broke". Source: release review of v3.9.2..main, 2026-10-04. [P3]
-
 ## Architecture and tooling debt
 
 - [ ] **The plan-shortfall side-effect gate keeps its deferred transition and retry in `setup/`.**

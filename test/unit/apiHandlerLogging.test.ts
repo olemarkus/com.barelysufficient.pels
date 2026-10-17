@@ -31,8 +31,9 @@ import api from '../../api';
 import * as stubs from '../../setup/settingsUiApi';
 import { SettingsUiDeviceReads } from '../../lib/device/settingsUiDeviceReads';
 import type { SettingsUiRecommendationCarsRead } from '../../packages/contracts/src/settingsUiApi';
+import { readBudgetHistoryRange } from '../../lib/weather/budgetDiagnosticsHistory';
 
-type LoggerMock = { error: ReturnType<typeof vi.fn> };
+type LoggerMock = { error: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn> };
 type AppMock = {
   getApiStructuredLogger: ReturnType<typeof vi.fn>;
   settingsUiDeviceReads: SettingsUiDeviceReads;
@@ -45,7 +46,7 @@ const buildHomey = (): {
   logger: LoggerMock;
   readRecommendationCars: ReturnType<typeof vi.fn>;
 } => {
-  const logger: LoggerMock = { error: vi.fn() };
+  const logger: LoggerMock = { error: vi.fn(), warn: vi.fn() };
   const readRecommendationCars = vi.fn<() => SettingsUiRecommendationCarsRead>(
     () => ({ state: 'unavailable' }),
   );
@@ -139,6 +140,42 @@ describe('api handler error logging', () => {
     } finally {
       consoleSpy.mockRestore();
     }
+  });
+
+  it('logs a malformed budget history range as a rejected request, not a handler failure', async () => {
+    const { homey, logger } = buildHomey();
+    const app = Object.assign(homey.app, {
+      getBudgetDailyHistory: (query: unknown) => readBudgetHistoryRange(query),
+      getBudgetDecisionHistory: vi.fn(),
+    });
+    type BudgetHandler = (ctx: { homey: { app: typeof app }; query: unknown }) => Promise<unknown>;
+    const fn = (api as unknown as Record<string, BudgetHandler>).diagnostics_budget_days;
+
+    await expect(fn({ homey: { app }, query: { from: '2026-10-17', to: '2026-10-01' } }))
+      .rejects.toThrow('Request an ordered range of at most 366 local dates');
+    expect(logger.warn).toHaveBeenCalledExactlyOnceWith({
+      event: 'api_request_rejected',
+      handler: 'diagnostics_budget_days',
+      reason: 'Request an ordered range of at most 366 local dates',
+    });
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it('still logs a budget history read that breaks inside PELS as a handler failure', async () => {
+    const { homey, logger } = buildHomey();
+    const cause = new Error('Budget history is unreadable');
+    const app = Object.assign(homey.app, {
+      getBudgetDailyHistory: () => { throw cause; },
+      getBudgetDecisionHistory: vi.fn(),
+    });
+    type BudgetHandler = (ctx: { homey: { app: typeof app }; query: unknown }) => Promise<unknown>;
+    const fn = (api as unknown as Record<string, BudgetHandler>).diagnostics_budget_days;
+
+    await expect(fn({ homey: { app }, query: { from: '2026-10-01', to: '2026-10-17' } })).rejects.toBe(cause);
+    expect(logger.error).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ event: 'api_handler_failed', handler: 'diagnostics_budget_days', err: cause }),
+    );
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
   for (const { handler, stub } of cases) {

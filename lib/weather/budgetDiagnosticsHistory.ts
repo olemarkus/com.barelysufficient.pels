@@ -3,6 +3,7 @@ import type {
 } from '../../packages/contracts/src/budgetDiagnostics';
 import type { WeatherCollectorDeps } from './weatherCollectorDeps';
 import { isUnknownRecord } from '../utils/types';
+import { ApiRequestError } from '../utils/apiRequestError';
 import { normalizeWeatherHistoryState } from './weatherHistory';
 import type { WeatherHistoryStore } from './weatherHistoryStore';
 
@@ -10,25 +11,25 @@ const DAY_MS = 86400000;
 
 function readDate(value: unknown): string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    throw new Error('from and to must be local dates in YYYY-MM-DD format');
+    throw new ApiRequestError('from and to must be local dates in YYYY-MM-DD format');
   }
   const parsed = Date.parse(`${value}T00:00:00Z`);
   if (!Number.isFinite(parsed) || new Date(parsed).toISOString().slice(0, 10) !== value) {
-    throw new Error('from and to must be valid calendar dates');
+    throw new ApiRequestError('from and to must be valid calendar dates');
   }
   return value;
 }
 
 /** This API serves the weather owner's whole-home scope; it cannot reinterpret it as a sub-home. */
 export function readBudgetHistoryRange(query: unknown): BudgetHistoryRange {
-  if (!isUnknownRecord(query)) throw new Error('from and to are required');
+  if (!isUnknownRecord(query)) throw new ApiRequestError('from and to are required');
   if (query.homeId !== undefined) {
-    throw new Error('Budget history uses the whole-home meter scope; homeId is unsupported');
+    throw new ApiRequestError('Budget history uses the whole-home meter scope; homeId is unsupported');
   }
   const from = readDate(query.from);
   const to = readDate(query.to);
   const days = (Date.parse(to) - Date.parse(from)) / DAY_MS + 1;
-  if (days < 1 || days > 366) throw new Error('Request an ordered range of at most 366 local dates');
+  if (days < 1 || days > 366) throw new ApiRequestError('Request an ordered range of at most 366 local dates');
   return { from, to };
 }
 
