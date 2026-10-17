@@ -382,10 +382,28 @@ describe('Redesign plan UI', () => {
           usedKWh: 0.8,
           hourBudgetKWh: 5,
           minutesRemaining: 38}),
-        devices: [],
+        devices: [
+          { id: 'dev-1', name: 'Heater', priority: 1, currentState: 'on', plannedState: 'keep' },
+        ],
       });
       expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
         .toBe('Quiet hour. Nothing to do.');
+    });
+
+    it('claims no quiet hour when the plan manages no devices', async () => {
+      await renderPlanSnapshot({
+        meta: buildPlanMeta({
+          totalKw: 1.2,
+          softLimitKw: 6,
+          hardCapLimitKw: 8,
+          usedKWh: 0.8,
+          hourBudgetKWh: 5,
+          minutesRemaining: 38}),
+        devices: [],
+      });
+      const decision = document.querySelector('.plan-hero__decision') as HTMLElement | null;
+      expect(decision?.textContent?.trim()).toBe('PELS is not managing any devices.');
+      expect(decision?.hasAttribute('data-positive')).toBe(false);
     });
 
     it('writes the hard-cap decision sentence when the hour is on pace past the cap', async () => {

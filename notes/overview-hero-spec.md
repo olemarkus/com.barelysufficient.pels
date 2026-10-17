@@ -405,7 +405,13 @@ Priority order (first matching condition wins):
    energy trips the `warning` projection tone (the `critical` tone — past the
    cap — is rule 1), so the conclusion stays consistent with the
    `Above budget` status chip surfaced by `resolveHeroStatus`.
-6. On track: `Quiet hour. Nothing to do.`
+6. Nothing managed: `PELS is not managing any devices.` The plan carries only
+   managed devices, so an empty plan means PELS manages nothing; `Quiet hour`
+   there would be a calm verdict on devices PELS does not have, rendered above
+   the `No managed devices` empty state. Not positive: it is an unconfigured
+   state, not reassurance. Every rung above it still wins, because those state
+   measured facts about the house.
+7. On track: `Quiet hour. Nothing to do.`
 
 Simulation mode wording must be hypothetical throughout. The subject is the
 device count, not PELS:
