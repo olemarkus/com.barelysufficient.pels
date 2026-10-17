@@ -640,5 +640,8 @@
   },
   "3.16.2": {
     "en": "Devices that sometimes report an empty reading, such as some heat pumps, no longer disappear from PELS. An empty value is ignored until the device reports one again, and saved settings and learned power are kept. Thermostats without an on/off switch are limited through their temperature. Stepped devices such as chargers can now step up several levels at once when there is plenty of spare power."
+  },
+  "3.16.3": {
+    "en": "Smart tasks now stay in charge until their ready-by time. Reaching the target no longer hands the device back to its mode early: a temperature task keeps its own target even when a mode sets a lower one, the device is held back in hours the task did not plan to use, and if it drops below the target the task tops it up in its cheapest remaining hours.\n\nA waiting device's card now shows how much more power it needs to resume, and a device limited moments ago waits a little longer before stepping up again. Devices without a temperature reading are turned off instead of given a lower temperature, and the Limited temperature setting shows the value PELS actually applies. Charge on solar surplus stays available after switching a charger to amp presets or Continuous, a charger that briefly reports no charging state is no longer switched off through its main switch, and a hard-cap alert that fails to send is retried."
   }
 }
