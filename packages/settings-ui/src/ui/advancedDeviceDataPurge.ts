@@ -2,6 +2,7 @@ import { readModePriorityCatalog } from '../../../shared-domain/src/settings/mod
 import { readTemperatureControlModes } from '../../../shared-domain/src/settings/temperatureControl.ts';
 import { callApi, getSetting, getSettingFresh, setSetting } from './homey.ts';
 import { state } from './state.ts';
+import { hasLoadedDeferredObjectiveSettings, loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
 import { createSerializedAsyncRunner } from './deviceDetail/settingsWrite.ts';
 import {
   DEVICE_CONTROL_PROFILES,
@@ -213,11 +214,14 @@ const applyPurgedState = (next: ReturnType<typeof buildPurgedState>): void => {
 /**
  * Clears each purged device's smart task through the runtime's cancel op, so the
  * task's history is finalized and its live status forgotten exactly as on the
- * Smart tasks page. Only devices the loaded task map lists are asked: a device
- * with no task has nothing to cancel. `task_not_found` means the task already
+ * Smart tasks page. Only devices the task map lists are asked (loaded first if
+ * the boot read failed): a device with no task has nothing to cancel. `task_not_found` means the task already
  * ended, which is the outcome the purge wants.
  */
 const cancelSmartTasks = async (deviceIds: Set<string>): Promise<void> => {
+  // An empty map also reads as "not loaded" (a failed boot read); never take it
+  // for "no tasks" before deciding there is nothing to cancel.
+  if (!hasLoadedDeferredObjectiveSettings()) await loadDeferredObjectiveSettings();
   const withTask = [...deviceIds].filter((deviceId) => (
     state.deferredObjectiveSettings.objectivesByDeviceId[deviceId] !== undefined
   ));
