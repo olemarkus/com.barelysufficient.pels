@@ -389,7 +389,12 @@ Priority order (first matching condition wins):
    required), so this variant always names it. Two more-specific variants win over the
    safe-pace clause when they describe the whole limited set: all limited
    devices smart-task waiting → `Waiting for cheaper hours before running
-   2 devices.` (blended comma-join when only some are); all limited devices
+   2 devices.` (blended comma-join when only some are). A device held by a
+   smart task that reached its target is never counted as waiting for cheaper
+   hours: alone it reads `Holding 1 device until its smart task’s ready-by
+   time.`, and beside cheaper-hours holds the counts are joined (`Smart tasks
+   are holding 2 devices, 1 waiting for cheaper hours, 1 held until a smart
+   task’s ready-by time.`). All limited devices
    budget-paced (reason code `dailyBudget`) → `Holding back 2 devices to stay
    within today's budget.` — the budget variant names the constraint instead
    of a kW number, because under budget pacing the kW tick is not the thing

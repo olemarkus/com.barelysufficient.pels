@@ -10,12 +10,16 @@
 // "Limited …" reason (hard cap, daily/hourly budget, swap, budget starvation) is
 // a PELS-limiting claim, so it flips to "Would be limited …". Two non-"Limited"
 // acted phrases (making room for a higher-priority device, deferring to cheaper
-// hours) have explicit overrides. Everything else passes through unchanged —
+// hours, a done smart task's hold until its ready-by time) have explicit
+// overrides. Everything else passes through unchanged —
 // idle/resuming states, waiting-to-resume, the physical "Waiting for available
 // power" (true in simulation or not), surplus boosts, and normal operation are
 // correctly factual and MUST stay factual.
 
-import { PLAN_STATE_HELD_FALLBACK_STATUS } from '../../packages/shared-domain/src/planStateLabels';
+import {
+  PLAN_STATE_DEFERRED_OBJECTIVE_SATISFIED_STATUS,
+  PLAN_STATE_HELD_FALLBACK_STATUS,
+} from '../../packages/shared-domain/src/planStateLabels';
 
 // Swap-pending copy has a bare and a named-target variant ("Making room for
 // higher-priority device" / "… (Bedroom)"); the prefix rewrite carries any
@@ -27,6 +31,19 @@ const MAKING_ROOM_PREFIX = 'Making room for higher-priority device';
 // reason line is the ONLY per-card carrier of the hypothetical framing — the
 // tag keeps a card scrolled away from the banner honest on its own.
 const SIMULATION_TAG = ' (simulation)';
+
+// Whole lines with their own hypothetical rendering.
+const EXACT_SIMULATION_LINES = new Map<string, string>([
+  ['Waiting for cheaper hours', 'Would wait for cheaper hours'],
+  // The task is done either way; only the hold is hypothetical.
+  [PLAN_STATE_DEFERRED_OBJECTIVE_SATISFIED_STATUS, 'Smart task done, would be held until its ready-by time'],
+  // The held fallback (`PLAN_STATE_HELD_FALLBACK_STATUS`). It is not a "Limited …"
+  // line, but it IS a PELS-acted hold — the device is only waiting because PELS is
+  // holding it — so in simulation it must read hypothetically and carry the tag,
+  // or a card scrolled away from the banner reads as a factual hold PELS is not
+  // performing.
+  [PLAN_STATE_HELD_FALLBACK_STATUS, 'Would be held back'],
+]);
 
 export const toSimulationReasonLine = (label: string, dryRun: boolean): string => {
   if (!dryRun || label.length === 0) return label;
@@ -41,20 +58,15 @@ export const toSimulationReasonLine = (label: string, dryRun: boolean): string =
   if (label.startsWith(MAKING_ROOM_PREFIX)) {
     return `Would make room for a higher-priority device${label.slice(MAKING_ROOM_PREFIX.length)}${SIMULATION_TAG}`;
   }
-  if (label === 'Waiting for cheaper hours') return `Would wait for cheaper hours${SIMULATION_TAG}`;
-  // The held fallback (`PLAN_STATE_HELD_FALLBACK_STATUS`). It is not a "Limited …"
-  // line, but it IS a PELS-acted hold — the device is only waiting because PELS is
-  // holding it — so in simulation it must read hypothetically and carry the tag,
-  // or a card scrolled away from the banner reads as a factual hold PELS is not
-  // performing.
-  if (label === PLAN_STATE_HELD_FALLBACK_STATUS) return `Would be held back${SIMULATION_TAG}`;
+  const exact = EXACT_SIMULATION_LINES.get(label);
+  if (exact !== undefined) return `${exact}${SIMULATION_TAG}`;
   // The 2026-08-02 held-card ladder (`planCardReasonLine.ts`). Both forms describe
   // a hold PELS is performing — the device only waits, or sits at a capped step,
   // because PELS put it there — so both must read hypothetically in simulation.
   // Without these they fall through unchanged and a simulated card states a hold
   // as fact, which is the one thing this module exists to prevent.
   //
-  // MUST stay below the exact-match rule above: `PLAN_STATE_HELD_FALLBACK_STATUS`
+  // MUST stay below the exact-match lookup above: `PLAN_STATE_HELD_FALLBACK_STATUS`
   // is itself "Waiting to resume", and it has its own shorter rendering.
   if (label.startsWith('Waiting to resume ')
     || label.startsWith('Waiting to increase ')

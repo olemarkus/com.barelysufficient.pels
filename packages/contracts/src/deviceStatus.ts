@@ -28,5 +28,5 @@ export type DeviceStatus = {
   wouldLimit: boolean;
   canEaseOff: boolean;
   controlOffDrawing: boolean;
-  holdCause: 'smart_task' | 'daily_budget' | null;
+  holdCause: 'smart_task' | 'smart_task_done' | 'daily_budget' | null;
 };

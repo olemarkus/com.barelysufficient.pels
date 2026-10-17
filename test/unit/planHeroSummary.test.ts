@@ -405,6 +405,28 @@ describe('buildDecisionSentence', () => {
     })).text).toBe('Holding back 3 devices, 1 waiting for cheaper hours.');
   });
 
+  it('never says a done smart task is waiting for cheaper hours', () => {
+    expect(buildDecisionSentence(baseline({
+      limitedCount: 1,
+      smartTaskDoneCount: 1,
+    }))).toEqual({
+      text: 'Holding 1 device until its smart task’s ready-by time.',
+      positive: true,
+    });
+    expect(buildDecisionSentence(baseline({
+      limitedCount: 2,
+      deferredObjectiveAvoidCount: 1,
+      smartTaskDoneCount: 1,
+    }))).toEqual({
+      text: 'Smart tasks are holding 2 devices, 1 waiting for cheaper hours, 1 held until a smart task’s ready-by time.',
+      positive: true,
+    });
+    expect(buildDecisionSentence(baseline({
+      limitedCount: 3,
+      smartTaskDoneCount: 1,
+    })).text).toBe('Holding back 3 devices, 1 held until a smart task’s ready-by time.');
+  });
+
   it('names today’s budget when every held device is on daily-budget pacing', () => {
     expect(buildDecisionSentence(baseline({
       limitedCount: 2,

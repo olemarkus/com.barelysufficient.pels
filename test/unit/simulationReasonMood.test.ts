@@ -55,6 +55,11 @@ describe('toSimulationReasonLine — held/limited reasons read hypothetically in
       .toBe('Would wait for cheaper hours (simulation)');
   });
 
+  it('flips the done smart task’s hold, keeping the task done as fact', () => {
+    expect(toSimulationReasonLine('Smart task done, held until its ready-by time', true))
+      .toBe('Smart task done, would be held until its ready-by time (simulation)');
+  });
+
   it('leaves non-acted reasons factual in simulation (physical / resuming / normal)', () => {
     // Physical capacity constraint — true in simulation or not.
     expect(toSimulationReasonLine('Waiting for available power', true))

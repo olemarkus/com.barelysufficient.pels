@@ -129,6 +129,7 @@ const buildDecisionSentence = ({
     safePaceKw: meta.softLimitKw,
     capacityPeriodMinutes: meta.capacityPeriodMinutes,
     deferredObjectiveAvoidCount: limited.filter((d) => d.status.holdCause === 'smart_task').length,
+    smartTaskDoneCount: limited.filter((d) => d.status.holdCause === 'smart_task_done').length,
     dailyBudgetLimitedCount: limited.filter((d) => d.status.holdCause === 'daily_budget').length,
     // Counted over ALL devices, not just `limited`: the breaching device has
     // Power-limit control off (`controllable === false` → not held), and a

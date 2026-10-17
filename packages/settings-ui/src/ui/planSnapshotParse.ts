@@ -47,6 +47,7 @@ const isStatusRail = (value: unknown): boolean => {
     && rail.activeIndex >= 0 && rail.activeIndex < rail.labels.length);
 };
 
+const HOLD_CAUSES = new Set<unknown>(['smart_task', 'smart_task_done', 'daily_budget']);
 const isStatus = (value: unknown): boolean => {
   if (!value || typeof value !== 'object') return false;
   const status = value as Record<string, unknown>;
@@ -55,7 +56,7 @@ const isStatus = (value: unknown): boolean => {
     && typeof status.label === 'string' && isNullableText(status.powerText) && isNullableText(status.factText)
     && ['live', 'expected', 'reported'].includes(status.powerVariant as string)
     && ['limited', 'wouldLimit', 'canEaseOff', 'controlOffDrawing'].every((key) => typeof status[key] === 'boolean')
-    && (status.holdCause === null || status.holdCause === 'smart_task' || status.holdCause === 'daily_budget')
+    && (status.holdCause === null || HOLD_CAUSES.has(status.holdCause))
     && isStatusReason(status.reason) && isStatusRail(status.rail);
 };
 
