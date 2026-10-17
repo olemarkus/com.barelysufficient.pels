@@ -1287,15 +1287,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       reading, assert the off write. **Done when:** the spec fails if the hold stops producing
       an executable off intent. [P2]
 
-- [ ] **`lib/utils/settingsUiLogIngest.ts` imports its deps type back from the file it left.**
-      It takes `SettingsHandlerDeps` from `settingsHandlers.ts`, which imports
-      `handleSettingsUiLog` from it — a type-only cycle `no-circular` cannot see, because
-      `tsPreCompilationDeps` is unset. The function uses exactly `deps.homey.settings`.
-      **What changes:** take `SettingsPort`/`HomeyRuntime` instead of the 25-field wiring deps
-      type, and consider `lib/logging/` as the owner rather than `lib/utils/` (which root
-      `AGENTS.md` scopes to pure helpers; this one reads the SDK and writes to the logger).
-      **Done when:** the two files no longer import each other. [P2]
-
 - [ ] **P2 — the owned sub-states of `PlanEngineState` keep their fields public, so their
       invariants hold by convention.** `ActuationRecord`, `RestoreBackoff` and `OvershootIncident`
       (`lib/plan/*.ts`) each expose public mutable fields beside the mutators that are the only

@@ -61,7 +61,6 @@ import {
   type DebouncedSyncScheduler,
 } from './settingsHandlerDebounce';
 import { createSettingsWriteDedupe } from './settingsWriteDedupe';
-import { handleSettingsUiLog } from './settingsUiLogIngest';
 import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 
 const settingsLogger = getLogger('settings');
@@ -602,7 +601,6 @@ function buildMiscSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMa
     debug_logging_enabled: async () => deps.updateDebugLoggingEnabled(true),
     [DEBUG_LOGGING_TOPICS]: async () => deps.updateDebugLoggingEnabled(true),
     [WEATHER_ADVISOR_SETTINGS]: async () => deps.reloadWeatherAdvisor(),
-    settings_ui_log: async () => handleSettingsUiLog(deps),
   };
 }
 

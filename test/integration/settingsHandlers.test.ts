@@ -333,59 +333,6 @@ describe('createSettingsHandler', () => {
     }));
   });
 
-  it('routes settings UI log entries by level', async () => {
-    const deps = buildDeps();
-    deps.homey.settings.get = vi.fn()
-      .mockReturnValueOnce({ level: 'error', message: 'Bad', detail: 'Detail', context: 'Form' })
-      .mockReturnValueOnce({ level: 'warn', message: 'Heads up' })
-      .mockReturnValueOnce({ level: 'info', message: 'Ok', detail: 'Done' });
-    const handler = createSettingsHandler(deps);
-
-    await handler('settings_ui_log');
-    await handler('settings_ui_log');
-    await handler('settings_ui_log');
-
-    expect(settingsLoggerError).toHaveBeenCalledTimes(1);
-    expect(settingsLoggerError).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'settings_ui_log',
-      level: 'error',
-      message: 'Bad',
-      detail: 'Detail',
-      context: 'Form',
-    }));
-    expect(settingsLoggerWarn).toHaveBeenCalledTimes(1);
-    expect(settingsLoggerWarn).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'settings_ui_log',
-      level: 'warn',
-      message: 'Heads up',
-    }));
-    expect(settingsLoggerInfo).toHaveBeenCalledTimes(1);
-    expect(settingsLoggerInfo).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'settings_ui_log',
-      level: 'info',
-      message: 'Ok',
-      detail: 'Done',
-    }));
-    expect(deps.homey.settings.set).toHaveBeenCalledTimes(3);
-    expect(deps.homey.settings.set).toHaveBeenCalledWith('settings_ui_log', null);
-  });
-
-  it('ignores invalid settings UI log payloads', async () => {
-    const deps = buildDeps();
-    deps.homey.settings.get = vi.fn()
-      .mockReturnValueOnce(null)
-      .mockReturnValueOnce({ level: 'warn' });
-    const handler = createSettingsHandler(deps);
-
-    await handler('settings_ui_log');
-    await handler('settings_ui_log');
-
-    expect(settingsLoggerInfo).not.toHaveBeenCalled();
-    expect(settingsLoggerWarn).not.toHaveBeenCalled();
-    expect(settingsLoggerError).not.toHaveBeenCalled();
-    expect(deps.homey.settings.set).not.toHaveBeenCalled();
-  });
-
   it('logs handler failures and continues', async () => {
     const deps = buildDeps({
       rebuildPlanFromCache: vi.fn().mockRejectedValue(new Error('fail')),
