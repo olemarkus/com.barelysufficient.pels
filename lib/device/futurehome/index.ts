@@ -8,15 +8,19 @@ import { FuturehomeChargerSession } from './session';
 
 // Futurehome 1.11.0 (`drivers/ev_charger`): a Zigbee charger with standard EV
 // capabilities and no current capability. Its `currentLimit` action writes the
-// charger and only then saves the same value to the device's `currentLimit`
-// setting, which is also read from the charger at startup. For changes made
-// through Homey, that setting is therefore the applied ceiling; a change made
-// outside Homey shows only after the vendor app restarts. A changed setting reaches PELS as a device
-// update carrying the whole device; the session dates it.
+// charger, waits for its reply and then saves the same value to the device's
+// `currentLimit` setting, which is also read from the charger at startup. The
+// reply's status is not checked, so the setting is the limit Homey last sent
+// and got an answer to, not proof the charger applied it: a rejected or
+// installer-clamped value is saved as sent, and a change made outside Homey
+// shows only after the vendor app restarts. It is the best evidence the vendor
+// offers, accepted as Tesla's echoed limit is; closing those gaps belongs in
+// the vendor app. A changed setting reaches PELS as a device update carrying
+// the whole device; the session dates it.
 const PHASES_SETTING = 'phases';
 const INSTALLATION_CURRENT = 'available_installation_current';
 
-function withAppliedCurrent(device: HomeyDeviceLike, capabilityObj: DeviceCapabilityMap): DeviceCapabilityMap {
+function withSentCurrent(device: HomeyDeviceLike, capabilityObj: DeviceCapabilityMap): DeviceCapabilityMap {
   const currentA = readCurrentLimit(device);
   return currentA === undefined
     ? capabilityObj
@@ -36,7 +40,7 @@ export const futurehomeAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
   matches: isFuturehomeCharger,
   overlay: (device, capabilities, capabilityObj) => ({
-    kind: 'standard', capabilities, capabilityObj: withAppliedCurrent(device, capabilityObj),
+    kind: 'standard', capabilities, capabilityObj: withSentCurrent(device, capabilityObj),
   }),
   phaseReport: resolvePhaseReport,
   currentBindings: (device) => isFuturehomeCharger(device) ? [{
