@@ -88,7 +88,6 @@ export const buildDom = () => {
         <div id="plan-hour-strip"></div>
         <div id="plan-cards"></div>
       </div>
-      <p id="plan-empty" hidden></p>
     </section>
     <section class="panel" data-panel="devices">
       <form id="targets-form">

@@ -120,7 +120,7 @@ test.describe('Onboarding links', () => {
     await expect(page.locator('#stale-data-banner')).toBeHidden();
     await expect(card.locator('[data-setup-step="power"]')).toContainText('Pick a whole-home meter under Limits & safety');
     // The Devices step covers the zero-managed state; the two never stack.
-    await expect(page.locator('#plan-empty').filter({ visible: true })).toHaveCount(0);
+    await expect(page.locator('#plan-empty')).toHaveCount(0);
 
     // The Settings hub carries the same progress, and the Setup page the same path.
     await page.getByRole('tab', { name: 'Settings' }).click();
@@ -400,7 +400,7 @@ test.describe('Onboarding links', () => {
 
     await expect(page.locator('#plan-cards .plan-card--undecided')).toHaveCount(deviceNames.length);
     await expect(page.locator('#plan-cards .plan-card__title')).toHaveText(deviceNames);
-    await expect(page.locator('#plan-empty').filter({ visible: true })).toHaveCount(0);
+    await expect(page.locator('#plan-empty')).toHaveCount(0);
   });
 
   test('overview empty device roster links to the Devices settings page', async ({ page }) => {

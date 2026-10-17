@@ -1058,11 +1058,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       in shared-domain from that cluster lacks a Node importer. Source: Codex review on the
       no-capacity-tariff copy PR (2026-09-20). [P2]
 
-- [ ] **Duplicate `#plan-empty` ids (static first-paint + Preact render).** Both nodes coexist
-      in the document; the onboarding e2e works around it with a visibility filter. Rename the
-      static placeholder's id or drop it once the redesign surface owns first paint. Source:
-      pels-ux-fit (2026-07-19). [P2]
-
 - [ ] **Settings-UI structural consolidation train (deferred by the 2026-07 coherence review).**
       A designed, not-yet-executed train that unwinds the two-rendering-paradigms mess within the
       approved map `notes/settings-ui-semantic-map.md`. Order: shared Preact primitives in
