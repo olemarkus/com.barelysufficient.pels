@@ -29,12 +29,21 @@ import { refreshPlanSurface } from './planSurfaceRefresh.ts';
 // resolved server-side. Stored on `state` so the card view can gate the chip on
 // membership; a fetch failure leaves the prior set untouched (no chip flicker on
 // a transient read miss).
+//
+// Loads overlap (two `plan_updated` pushes while Overview is visible, or a push
+// racing an Overview open), and their responses can land out of order. The same
+// monotonic-token idiom as `overviewRescueGate`'s repaint guard lets only the
+// latest load commit, so an older response can never overwrite a newer set.
+let rescuableLoadGeneration = 0;
+
 export const loadStarvationRescuableDevices = async (): Promise<void> => {
+  const token = ++rescuableLoadGeneration;
   try {
     const payload = await callApi<SettingsUiStarvationRescueDevicesPayload>(
       'GET',
       SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH,
     );
+    if (token !== rescuableLoadGeneration) return;
     const ids = Array.isArray(payload?.rescuableDeviceIds) ? payload.rescuableDeviceIds : [];
     state.starvationRescuableDeviceIds = new Set(ids);
   } catch (error) {
@@ -106,7 +115,10 @@ export const createStarvationRescue = async (
       return { ok: false };
     }
     // The device is now task-having → no longer rescuable. Drop it locally and
-    // re-fetch so the chip's gate matches the server immediately.
+    // re-fetch so the chip's gate matches the server immediately. The local drop
+    // is newer than any gate load still in flight, so bump the token: a response
+    // fetched before the create landed must not re-add the device.
+    rescuableLoadGeneration += 1;
     state.starvationRescuableDeviceIds.delete(deviceId);
     invalidateApiCache(SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH);
     refreshPlanSurface();
