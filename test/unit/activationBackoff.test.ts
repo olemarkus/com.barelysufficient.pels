@@ -213,7 +213,7 @@ describe('activation backoff', () => {
     const state = createPlanEngineState();
     const now = Date.now();
 
-    expect(recordActivationAttemptStart(state, 'dev-1', 'pels_restore', now)).toMatchObject({ kind: 'attempt_started' });
+    expect(recordActivationAttemptStart(state, 'dev-1', now)).toMatchObject({ kind: 'attempt_started' });
 
     const first = recordActivationSetback(state, 'dev-1', now + 60 * 1000);
     const second = recordActivationSetback(state, 'dev-1', now + 61 * 1000);
@@ -228,11 +228,11 @@ describe('activation backoff', () => {
     const state = createPlanEngineState();
     const start = Date.now();
 
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
+    recordActivationAttemptStart(state, 'dev-1', start);
     recordActivationSetback(state, 'dev-1', start + 60 * 1000);
 
     const secondAttemptStart = start + 2 * 60 * 1000;
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', secondAttemptStart);
+    recordActivationAttemptStart(state, 'dev-1', secondAttemptStart);
 
     const stuckInfo = syncActivationPenaltyState(state, 'dev-1', secondAttemptStart + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS, { available: true, currentDrawKw: 2 });
     expect(stuckInfo.penaltyLevel).toBe(1);
@@ -245,7 +245,7 @@ describe('activation backoff', () => {
     const state = createPlanEngineState();
     const start = Date.now();
 
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
+    recordActivationAttemptStart(state, 'dev-1', start);
 
     const firstSync = syncActivationPenaltyState(state, 'dev-1', start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS - 1, { available: true, currentDrawKw: 1.2 });
     expect(firstSync.attemptOpen).toBe(true);
@@ -255,7 +255,7 @@ describe('activation backoff', () => {
     expect(secondSync.attemptOpen).toBe(false);
     expect(secondSync.transition).toBeNull();
 
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 2 * 60_000);
+    recordActivationAttemptStart(state, 'dev-1', start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 2 * 60_000);
 
     const reopenedAt = start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 2 * 60_000;
     // `currentOn: false` is the off-evidence the explicit-inactive check reads
@@ -283,7 +283,7 @@ describe('activation backoff', () => {
     const state = createPlanEngineState();
     const start = Date.now();
 
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
+    recordActivationAttemptStart(state, 'dev-1', start);
 
     const firstSync = recordCleanWholeHomeSample(state, 'dev-1', start + 10_000);
     expect(firstSync).toBe(true);
@@ -313,7 +313,7 @@ describe('activation backoff', () => {
 
     state.activationPenaltyByDevice['dev-1'] = { level: 2, lastSetbackMs: start - 60_000 };
 
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
+    recordActivationAttemptStart(state, 'dev-1', start);
 
     recordCleanWholeHomeSample(state, 'dev-1', start + 10_000);
 
@@ -340,7 +340,7 @@ describe('activation backoff', () => {
 
     state.activationPenaltyByDevice['ev-1'] = { level: 1, lastSetbackMs: start - 60_000 };
 
-    recordActivationAttemptStart(state, 'ev-1', 'pels_restore', start);
+    recordActivationAttemptStart(state, 'ev-1', start);
 
     // Device draws zero before and after the step-up; whole-home meter is
     // clean (household stayed safe).
@@ -360,7 +360,7 @@ describe('activation backoff', () => {
 
     state.activationPenaltyByDevice['dev-1'] = { level: 3, lastSetbackMs: start - 60_000 };
 
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
+    recordActivationAttemptStart(state, 'dev-1', start);
 
     recordCleanWholeHomeSample(state, 'dev-1', start + 10_000);
 
@@ -369,7 +369,6 @@ describe('activation backoff', () => {
     expect(closingSync.transition).toEqual(expect.objectContaining({
       kind: 'attempt_closed_by_admission',
       deviceId: 'dev-1',
-      source: 'pels_restore',
       previousPenaltyLevel: 3,
       penaltyLevel: 0,
     }));
@@ -387,7 +386,7 @@ describe('activation backoff', () => {
 
     state.activationPenaltyByDevice['dev-1'] = { level: 2, lastSetbackMs: start - 60_000 };
 
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
+    recordActivationAttemptStart(state, 'dev-1', start);
 
     // No clean sample during the window — meter stale.
 
@@ -415,7 +414,7 @@ describe('activation backoff', () => {
 
     state.activationPenaltyByDevice['dev-1'] = { level: 2, lastSetbackMs: start - 60_000 };
 
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
+    recordActivationAttemptStart(state, 'dev-1', start);
 
     const closingSync = syncActivationPenaltyState(state, 'dev-1', start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000, { available: true, currentDrawKw: 0.25 });
 
@@ -431,7 +430,7 @@ describe('activation backoff', () => {
 
     state.activationPenaltyByDevice['dev-1'] = { level: 1, lastSetbackMs: start - 60_000 };
 
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
+    recordActivationAttemptStart(state, 'dev-1', start);
 
     recordCleanWholeHomeSample(state, 'dev-1', start + 10_000);
 
@@ -454,7 +453,6 @@ describe('activation backoff', () => {
     state.activationPenaltyByDevice['dev-1'] = { level: 2, lastSetbackMs: now - 60_000 };
     state.activationAttemptByDevice['dev-1'] = {
       startedMs: now,
-      source: 'tracked_step_up',
       cleanWholeHomeSampleSeen: false,
     };
     state.headroomCardByDevice['dev-1'] = { lastUsageKw: 1.8 };
@@ -504,7 +502,7 @@ describe('activation backoff', () => {
     state.shedDecisions.lastPlannedShedIds = new Set(['dev-1']);
     const now = Date.now();
 
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', now - 30_000);
+    recordActivationAttemptStart(state, 'dev-1', now - 30_000);
     recordActivationSetback(state, 'dev-1', now - 5_000);
 
     const result = applyRestorePlanForSpec({
@@ -540,7 +538,7 @@ describe('activation backoff', () => {
     const now = Date.now();
     state.activationPenaltyByDevice['dev-1'] = { level: 1, lastSetbackMs: now - ACTIVATION_SETBACK_RESTORE_BLOCK_MS };
 
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', now - ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS - 30_000);
+    recordActivationAttemptStart(state, 'dev-1', now - ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS - 30_000);
 
     syncActivationPenaltyState(state, 'dev-1', now - 10_000, { available: true, currentDrawKw: 0 });
 
@@ -560,22 +558,22 @@ describe('activation backoff', () => {
     expect(ACTIVATION_SETBACK_RESTORE_BLOCK_MS).toBe(5 * 60 * 1000);
     expect(ACTIVATION_BACKOFF_CLEAR_WINDOW_MS).toBe(5 * 60 * 1000);
 
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
+    recordActivationAttemptStart(state, 'dev-1', start);
     recordActivationSetback(state, 'dev-1', start + 60_000);
     expect(resolveActivationRestoreBlock(state, 'dev-1', start + 60_000)?.remainingMs).toBe(ACTIVATION_SETBACK_RESTORE_BLOCK_MS);
 
     const secondStart = start + ACTIVATION_SETBACK_RESTORE_BLOCK_MS + 61_000;
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', secondStart);
+    recordActivationAttemptStart(state, 'dev-1', secondStart);
     recordActivationSetback(state, 'dev-1', secondStart + 60_000);
     expect(resolveActivationRestoreBlock(state, 'dev-1', secondStart + 60_000)?.remainingMs).toBe(ACTIVATION_SETBACK_RESTORE_BLOCK_MS);
 
     const thirdStart = secondStart + ACTIVATION_SETBACK_RESTORE_BLOCK_MS + 61_000;
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', thirdStart);
+    recordActivationAttemptStart(state, 'dev-1', thirdStart);
     recordActivationSetback(state, 'dev-1', thirdStart + 60_000);
     expect(resolveActivationRestoreBlock(state, 'dev-1', thirdStart + 60_000)?.remainingMs).toBe(ACTIVATION_BACKOFF_CLEAR_WINDOW_MS);
 
     const fourthStart = thirdStart + ACTIVATION_BACKOFF_CLEAR_WINDOW_MS + 61_000;
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', fourthStart);
+    recordActivationAttemptStart(state, 'dev-1', fourthStart);
     const fourthSetback = recordActivationSetback(state, 'dev-1', fourthStart + 60_000);
 
     expect(fourthSetback.penaltyLevel).toBe(4);
@@ -586,7 +584,7 @@ describe('activation backoff', () => {
     const state = createPlanEngineState();
     const start = Date.now();
 
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
+    recordActivationAttemptStart(state, 'dev-1', start);
     recordActivationSetback(state, 'dev-1', start + 60_000);
 
     expect(resolveActivationRestoreBlock(state, 'dev-1', start + 60_000 + ACTIVATION_SETBACK_RESTORE_BLOCK_MS - 1)?.remainingMs).toBe(1);
@@ -598,7 +596,7 @@ describe('activation backoff', () => {
     state.shedDecisions.lastPlannedShedIds = new Set(['dev-1']);
     const now = Date.now();
 
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', now - ACTIVATION_SETBACK_RESTORE_BLOCK_MS - 60_000);
+    recordActivationAttemptStart(state, 'dev-1', now - ACTIVATION_SETBACK_RESTORE_BLOCK_MS - 60_000);
     recordActivationSetback(state, 'dev-1', now - ACTIVATION_SETBACK_RESTORE_BLOCK_MS - 1_000);
 
     const result = applyRestorePlanForSpec({
@@ -692,7 +690,7 @@ describe('activation backoff', () => {
         currentDrawKw: 3.2,
       }], start, undefined);
 
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start + 60_000);
+    recordActivationAttemptStart(state, 'dev-1', start + 60_000);
 
     syncHeadroomUsageObservation(state, 'dev-1', 1.0, start + 120_000, diagnostics);
 
@@ -707,7 +705,6 @@ describe('activation backoff', () => {
     expect(diagnostics.recordActivationTransition).not.toHaveBeenCalled();
     expect(state.activationAttemptByDevice['dev-1']).toEqual({
       startedMs: start + 60_000,
-      source: 'pels_restore',
       cleanWholeHomeSampleSeen: false,
     });
     expect(resolveActivationRestoreBlock(state, 'dev-1', start + 120_000)).toBeNull();
@@ -722,7 +719,6 @@ describe('activation backoff', () => {
       {
         kind: 'attempt_closed_inactive',
         deviceId: 'dev-1',
-        source: 'tracked_step_up',
         penaltyLevel: 1,
         elapsedMs: 5_000,
         nowTs: Date.now(),
@@ -844,7 +840,7 @@ describe('activation backoff', () => {
         lastFreshDataMs: start + 5_000,
       })], start, undefined);
 
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start + 6_000);
+    recordActivationAttemptStart(state, 'dev-1', start + 6_000);
 
     syncHeadroomCardSnapshot(state, [buildTrackedDevice({
         id: 'dev-1',
@@ -857,7 +853,6 @@ describe('activation backoff', () => {
 
     expect(state.activationAttemptByDevice['dev-1']).toEqual({
       startedMs: start + 6_000,
-      source: 'pels_restore',
       cleanWholeHomeSampleSeen: false,
     });
     expect(diagnostics.recordControlEvent).not.toHaveBeenCalled();
@@ -875,7 +870,7 @@ describe('activation backoff', () => {
     const state = createPlanEngineState();
     const start = Date.now();
     state.activationPenaltyByDevice['dev-1'] = { level: 1, lastSetbackMs: start - 60_000 };
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start);
+    recordActivationAttemptStart(state, 'dev-1', start);
     recordCleanWholeHomeSample(state, 'dev-1', start + 10_000);
 
     const atExpiry = syncActivationPenaltyState(state, 'dev-1', start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS, { currentOn: false, available: true, currentDrawKw: 0 });
@@ -905,7 +900,7 @@ describe('activation backoff', () => {
         lastFreshDataMs: start + 5_000,
       })], start, undefined);
 
-    recordActivationAttemptStart(state, 'dev-1', 'pels_restore', start + 6_000);
+    recordActivationAttemptStart(state, 'dev-1', start + 6_000);
 
     // Typed against the real input contract rather than cast: if
     // `HeadroomCardDeviceLike` gains or renames a field, this regression must
@@ -1159,7 +1154,6 @@ describe('activation backoff', () => {
     state.activationPenaltyByDevice['dev-1'] = { level: 2, lastSetbackMs: start - 60_000 };
     state.activationAttemptByDevice['dev-1'] = {
       startedMs: start - 30_000,
-      source: 'pels_restore',
       cleanWholeHomeSampleSeen: false,
     };
 
@@ -1169,7 +1163,6 @@ describe('activation backoff', () => {
       kind: 'attempt_closed_by_shed',
       deviceId: 'dev-1',
       penaltyLevel: 2,
-      source: 'pels_restore',
     });
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
     expect(state.activationPenaltyByDevice['dev-1']).toEqual({ level: 2, lastSetbackMs: start - 60_000 });
@@ -1194,7 +1187,7 @@ describe('overshoot-after-restore attribution', () => {
     const nowTs = Date.UTC(2024, 0, 1, 12, 0, 0);
 
     state.actuation.lastDeviceRestoreMs['dev-a'] = nowTs - 14_000;
-    recordActivationAttemptStart(state, 'dev-a', 'pels_restore', nowTs - 14_000);
+    recordActivationAttemptStart(state, 'dev-a', nowTs - 14_000);
 
     attributeOvershoot(state, nowTs);
 
@@ -1209,7 +1202,7 @@ describe('overshoot-after-restore attribution', () => {
 
     // Restore happened 3 minutes ago — outside the 2-minute window
     state.actuation.lastDeviceRestoreMs['dev-b'] = nowTs - 3 * 60 * 1000;
-    recordActivationAttemptStart(state, 'dev-b', 'pels_restore', nowTs - 3 * 60 * 1000);
+    recordActivationAttemptStart(state, 'dev-b', nowTs - 3 * 60 * 1000);
 
     attributeOvershoot(state, nowTs);
 
@@ -1235,11 +1228,11 @@ describe('overshoot-after-restore attribution', () => {
 
     // dev-earlier was restored 90s ago — within window, but not the marginal restore
     state.actuation.lastDeviceRestoreMs['dev-earlier'] = nowTs - 90_000;
-    recordActivationAttemptStart(state, 'dev-earlier', 'pels_restore', nowTs - 90_000);
+    recordActivationAttemptStart(state, 'dev-earlier', nowTs - 90_000);
 
     // dev-latest was restored 14s ago — the one that tipped headroom negative
     state.actuation.lastDeviceRestoreMs['dev-latest'] = nowTs - 14_000;
-    recordActivationAttemptStart(state, 'dev-latest', 'pels_restore', nowTs - 14_000);
+    recordActivationAttemptStart(state, 'dev-latest', nowTs - 14_000);
 
     attributeOvershoot(state, nowTs);
 
@@ -1254,10 +1247,10 @@ describe('overshoot-after-restore attribution', () => {
     const nowTs = Date.UTC(2024, 0, 1, 12, 0, 0);
 
     state.actuation.lastDeviceRestoreMs['dev-earlier'] = nowTs - 90_000;
-    recordActivationAttemptStart(state, 'dev-earlier', 'pels_restore', nowTs - 90_000);
+    recordActivationAttemptStart(state, 'dev-earlier', nowTs - 90_000);
 
     state.actuation.lastDeviceRestoreMs['dev-latest'] = nowTs - 14_000;
-    recordActivationAttemptStart(state, 'dev-latest', 'pels_restore', nowTs - 14_000);
+    recordActivationAttemptStart(state, 'dev-latest', nowTs - 14_000);
     closeActivationAttemptForShed(state, 'dev-latest', nowTs - 5_000);
 
     attributeOvershoot(state, nowTs);

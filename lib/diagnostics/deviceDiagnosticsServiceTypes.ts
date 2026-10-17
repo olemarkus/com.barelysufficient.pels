@@ -1,4 +1,3 @@
-import type { ActivationAttemptSource } from '../plan/admission';
 import type {
   DeviceDiagnosticsStarvationCountingCause,
   DeviceDiagnosticsStarvationPauseReason,
@@ -45,14 +44,12 @@ export type DeviceDiagnosticsBackoffTransition =
   | {
     kind: 'attempt_started';
     deviceId: string;
-    source: ActivationAttemptSource;
     penaltyLevel: number;
     nowTs: number;
   }
   | {
     kind: 'setback_failed';
     deviceId: string;
-    source: ActivationAttemptSource | null;
     previousPenaltyLevel: number;
     penaltyLevel: number;
     elapsedMs: number;
@@ -61,7 +58,6 @@ export type DeviceDiagnosticsBackoffTransition =
   | {
     kind: 'attempt_closed_inactive';
     deviceId: string;
-    source: ActivationAttemptSource | null;
     penaltyLevel: number;
     elapsedMs: number;
     nowTs: number;
@@ -69,7 +65,6 @@ export type DeviceDiagnosticsBackoffTransition =
   | {
     kind: 'attempt_closed_by_shed';
     deviceId: string;
-    source: ActivationAttemptSource | null;
     penaltyLevel: number;
     elapsedMs: number;
     nowTs: number;
@@ -77,7 +72,6 @@ export type DeviceDiagnosticsBackoffTransition =
   | {
     kind: 'attempt_closed_by_admission';
     deviceId: string;
-    source: ActivationAttemptSource | null;
     previousPenaltyLevel: number;
     penaltyLevel: 0;
     elapsedMs: number;

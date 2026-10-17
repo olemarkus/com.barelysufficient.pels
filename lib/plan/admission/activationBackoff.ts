@@ -1,7 +1,6 @@
 import type { SteppedLoadProfile } from '../../../packages/contracts/src/types';
 import type {
   ActivationAttempt,
-  ActivationAttemptSource,
   ActivationPenalty,
   PlanEngineState,
 } from '../planState';
@@ -14,7 +13,6 @@ import {
 } from '../planSteppedDeviceStep';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 
-export type { ActivationAttemptSource } from '../planState';
 
 export const ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS = OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS;
 /**
@@ -182,7 +180,6 @@ const closeAttemptWithTransition = (
   return {
     kind,
     deviceId,
-    source: attempt.source,
     penaltyLevel: getPenaltyLevel(state, deviceId),
     elapsedMs: elapsedMs(attempt.startedMs, nowTs),
     nowTs,
@@ -254,7 +251,6 @@ export function syncActivationPenaltyState(
       transition: {
         kind: 'attempt_closed_by_admission',
         deviceId,
-        source: attempt.source,
         previousPenaltyLevel: penaltyLevel,
         penaltyLevel: 0,
         elapsedMs: elapsedMs(attempt.startedMs, nowTs),
@@ -270,8 +266,8 @@ export function syncActivationPenaltyState(
  * A clean whole-home sample — the house measured under its pace, the hour not
  * spent — stamped at `sampleAtMs`. It counts for a restore attempt it falls
  * inside of: the evidence `syncActivationPenaltyState`'s window-expiry branch
- * reads to decide the cautious admission proved itself. Tracked step-ups earn
- * no release this way. Answers whether the attempt changed.
+ * reads to decide the cautious admission proved itself. Answers whether the
+ * attempt changed.
  */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function recordCleanWholeHomeSample(
@@ -282,7 +278,6 @@ export function recordCleanWholeHomeSample(
   const attempt = getAttempt(state, deviceId);
   if (
     !attempt
-    || attempt.source !== 'pels_restore'
     || attempt.cleanWholeHomeSampleSeen
     || sampleAtMs <= attempt.startedMs
     || hasAttributionWindowExpired(attempt.startedMs, sampleAtMs)
@@ -296,15 +291,13 @@ export function recordCleanWholeHomeSample(
 export function recordActivationAttemptStart(
   state: PlanEngineState,
   deviceId: string,
-  source: ActivationAttemptSource,
   nowTs: number,
 ): DeviceDiagnosticsBackoffTransition | null {
   if (getAttempt(state, deviceId)) return null;
-  openAttempt(state, deviceId, { startedMs: nowTs, source, cleanWholeHomeSampleSeen: false });
+  openAttempt(state, deviceId, { startedMs: nowTs, cleanWholeHomeSampleSeen: false });
   return {
     kind: 'attempt_started',
     deviceId,
-    source,
     penaltyLevel: getPenaltyLevel(state, deviceId),
     nowTs,
   };
@@ -337,7 +330,6 @@ export function recordActivationSetback(
     transition: {
       kind: 'setback_failed',
       deviceId,
-      source: attempt.source,
       previousPenaltyLevel: penaltyLevel,
       penaltyLevel: nextPenaltyLevel,
       elapsedMs: elapsedMs(attempt.startedMs, nowTs),

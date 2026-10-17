@@ -1011,7 +1011,6 @@ describe('PlanExecutor restore logging', () => {
     expect(state.actuation.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
     expect(state.activationAttemptByDevice['dev-1']).toMatchObject({
       startedMs: expect.any(Number),
-      source: 'pels_restore',
     });
     // The executor does NOT settle the reservation. It used to, via
     // `clearPendingSwapTarget` — which killed the reservation on a binary ON
@@ -1124,7 +1123,6 @@ describe('PlanExecutor restore logging', () => {
     state.activationPenaltyByDevice['dev-1'] = { level: 2, lastSetbackMs: now - 60_000 };
     state.activationAttemptByDevice['dev-1'] = {
       startedMs: now - 5_000,
-      source: 'pels_restore',
       cleanWholeHomeSampleSeen: false,
     };
     const deviceDiagnostics = {
@@ -1189,7 +1187,6 @@ describe('PlanExecutor restore logging', () => {
         kind: 'attempt_closed_by_shed',
         deviceId: 'dev-1',
         penaltyLevel: 2,
-        source: 'pels_restore',
       }),
       { name: 'Heater' },
     );
@@ -3542,7 +3539,6 @@ describe('PlanExecutor stepped loads', () => {
       expect.objectContaining({ 'dev-1': expect.any(Number) }),
     );
     expect(state.activationAttemptByDevice['dev-1']).toEqual(expect.objectContaining({
-      source: 'pels_restore',
       startedMs: expect.any(Number),
     }));
   });

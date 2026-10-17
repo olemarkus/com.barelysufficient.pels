@@ -164,7 +164,7 @@ describe('shed grace by power-limit mode', () => {
     it('grants a restore transient the unpriced grace, the period still tracked', async () => {
       const { build, state } = buildHarness(scenario);
       // The charger was resumed 10 s ago and may still be ramping.
-      recordActivationAttemptStart(state, 'charger', 'pels_restore', START_MS - 10_000);
+      recordActivationAttemptStart(state, 'charger', START_MS - 10_000);
       const devices = [load('charger', 1), load('heater', 2)];
 
       // 2.5 kW against the spent daily pace: a real deficit, well above the deadband.
@@ -240,7 +240,7 @@ describe('shed grace by power-limit mode', () => {
       capacityPaceKw: null,
       hourUsedKWh: 9.95,
     });
-    recordActivationAttemptStart(state, 'charger', 'pels_restore', START_MS - 10_000);
+    recordActivationAttemptStart(state, 'charger', START_MS - 10_000);
     const devices = [load('charger', 1), load('heater', 2)];
 
     const first = await build(2500, devices, 0);
@@ -260,7 +260,7 @@ describe('shed grace by power-limit mode', () => {
       capacityPaceKw: 3.5,
       hourUsedKWh: 0,
     });
-    recordActivationAttemptStart(state, 'charger', 'pels_restore', START_MS - 10_000);
+    recordActivationAttemptStart(state, 'charger', START_MS - 10_000);
 
     // A capacity deficit (0.2 kW) while the charger may still be ramping: in grace.
     const first = await build(3700, [load('charger', 1), load('heater', 2)], 0);

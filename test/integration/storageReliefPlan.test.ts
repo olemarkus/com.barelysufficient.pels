@@ -380,7 +380,7 @@ describe('storage relief in the plan build', () => {
     const { build, state } = buildHarness({ paceKw: 3 });
     // A restore PELS made a moment ago may still be ramping: devices get the grace.
     state.activationAttemptByDevice.heater = {
-      startedMs: START_MS - 10_000, source: 'pels_restore', cleanWholeHomeSampleSeen: false,
+      startedMs: START_MS - 10_000, cleanWholeHomeSampleSeen: false,
     };
     const plan = await build(4200, [heater(), battery()]);
 
@@ -395,7 +395,7 @@ describe('storage relief in the plan build', () => {
     const { build, state } = buildHarness({ paceKw: 3 });
     if (grace) {
       state.activationAttemptByDevice.tank = {
-        startedMs: START_MS - 10_000, source: 'pels_restore', cleanWholeHomeSampleSeen: false,
+        startedMs: START_MS - 10_000, cleanWholeHomeSampleSeen: false,
       };
     }
     // Max to Medium (1.25 kW) would cover the 1.2 kW deficit, but the tank ranks above the battery.
@@ -410,7 +410,7 @@ describe('storage relief in the plan build', () => {
     const shed = async (withBattery: boolean) => {
       const harness = buildHarness({ paceKw: 3 });
       harness.state.activationAttemptByDevice.heater = {
-        startedMs: START_MS - 10_000, source: 'pels_restore', cleanWholeHomeSampleSeen: false,
+        startedMs: START_MS - 10_000, cleanWholeHomeSampleSeen: false,
       };
       // Flat: drivable, but its ladder releases nothing.
       const plan = await harness.build(4200, [heater(), ...(withBattery ? [battery({ deliveryCeilingW: 0 })] : [])]);
@@ -462,7 +462,7 @@ describe('storage relief in the plan build', () => {
   it('limits nothing during the shed grace when a device ranks below the battery', async () => {
     const { build, state } = buildHarness({ paceKw: 3 });
     state.activationAttemptByDevice.heater = {
-      startedMs: START_MS - 10_000, source: 'pels_restore', cleanWholeHomeSampleSeen: false,
+      startedMs: START_MS - 10_000, cleanWholeHomeSampleSeen: false,
     };
     const plan = await build(4200, [heater(true, 2, 'heater', 5), battery({}, { priority: 1 })]);
 

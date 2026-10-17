@@ -2275,7 +2275,7 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
     vi.setSystemTime(T0);
 
     // T=0: restore actuation — attempt started
-    recordActivationAttemptStart(state, deviceId, 'pels_restore', T0);
+    recordActivationAttemptStart(state, deviceId, T0);
     state.actuation.lastDeviceRestoreMs[deviceId] = T0;
 
     // T=14s: overshoot attribution — shed before stick window
@@ -2321,11 +2321,11 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
     const T0 = Date.UTC(2024, 0, 1, 10, 0, 0);
 
     // Pre-stick setback → L1, lastSetbackMs set at T0+5s
-    recordActivationAttemptStart(state, deviceId, 'pels_restore', T0);
+    recordActivationAttemptStart(state, deviceId, T0);
     recordActivationSetback(state, deviceId, T0 + 5_000);
 
     // New attempt started; the attribution window expires before any explicit failure occurs.
-    recordActivationAttemptStart(state, deviceId, 'pels_restore', T0 + 65_000);
+    recordActivationAttemptStart(state, deviceId, T0 + 65_000);
     const TPostStick = T0 + 65_000 + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 60_000;
     const setback = recordActivationSetback(state, deviceId, TPostStick);
 
@@ -2348,7 +2348,7 @@ describe('restore → overshoot attribution → penalty → re-restore block', (
     vi.setSystemTime(T0);
 
     // Simulate: restore attempted, overshoot attributed (pre-stick)
-    recordActivationAttemptStart(state, deviceId, 'pels_restore', T0);
+    recordActivationAttemptStart(state, deviceId, T0);
     state.actuation.lastDeviceRestoreMs[deviceId] = T0;
     recordActivationSetback(state, deviceId, T0 + 14_000); // L0 → L1
 

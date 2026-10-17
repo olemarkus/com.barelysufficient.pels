@@ -14,8 +14,6 @@ import type {
   PendingTargetObservationSource,
 } from './planTypes';
 
-export type ActivationAttemptSource = 'pels_restore' | 'tracked_step_up';
-
 export type PendingTargetCommandState = {
   desired: number;
   startedMs: number;
@@ -36,7 +34,6 @@ export type PendingTargetCommandState = {
  */
 export type ActivationAttempt = {
   startedMs: number;
-  source: ActivationAttemptSource;
   /**
    * Whether a clean whole-home sample arrived after the attempt started. The
    * evidence at window expiry that the household total was actually known and

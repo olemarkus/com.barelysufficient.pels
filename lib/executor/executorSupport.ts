@@ -88,7 +88,7 @@ export const recordActivationAttemptStarted = (
   name: string,
   nowTs: number,
 ): void => {
-  const transition = recordActivationAttemptStart(state, deviceId, 'pels_restore', nowTs);
+  const transition = recordActivationAttemptStart(state, deviceId, nowTs);
   if (transition) diagnostics?.recordActivationTransition(transition, { name });
 };
 

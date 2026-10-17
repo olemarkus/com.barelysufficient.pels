@@ -1339,17 +1339,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       equals the builder's stamp in `test/integration/planRestoreBackoff.test.ts`. Source: runtime
       review of the activation-backoff records refactor, 2026-09-08.
 
-- [ ] **P2 — `ActivationAttemptSource` has one producer, and code still forks on the other value.**
-      `'tracked_step_up'` (`lib/plan/planState.ts`) is never written: the executor's
-      `recordActivationAttemptStarted` (`lib/executor/executorSupport.ts`) opens every attempt as
-      `'pels_restore'`, so the `source !== 'pels_restore'` guard in `recordCleanWholeHomeSample`
-      (`lib/plan/admission/activationBackoff.ts`) is unreachable and the diagnostics transition
-      union carries a variant no event ever has. Change: collapse the union to the one value
-      (through `lib/diagnostics/deviceDiagnosticsServiceTypes.ts` and the two unit fixtures that
-      spell the dead one) and drop the guard. Done when the identifier `tracked_step_up` no longer
-      appears in `lib/` or `test/`. Source: adversarial review of the activation-backoff records
-      refactor, 2026-09-08.
-
 - [ ] **P2 — three `setup/` files compose peers the guard's seed banked as permanent budget.**
       `npm run setup:boundaries` seeds its ratchet from the tree it merges against, so the counts it
       now enforces (55 cross-peer, 33 SDK) include files no one has named: `setup/settingsUiHomesApi.ts`

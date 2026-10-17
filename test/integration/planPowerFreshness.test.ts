@@ -236,7 +236,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
   it('grants no shed grace on the fail-closed pass, even with a restore in flight', async () => {
     const tracker = { lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS, lastPowerW: 2_000 };
     const state = createPlanEngineState();
-    recordActivationAttemptStart(state, 'dev1', 'pels_restore', Date.now());
+    recordActivationAttemptStart(state, 'dev1', Date.now());
 
     const builder = buildBuilder({ tracker, state });
     const plan = await builder.buildDevicePlanSnapshot([buildDevice()]);

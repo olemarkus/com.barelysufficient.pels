@@ -168,14 +168,12 @@ describe('DeviceDiagnosticsService', () => {
     service.recordActivationTransition({
       kind: 'attempt_started',
       deviceId: 'heater-1',
-      source: 'pels_restore',
       penaltyLevel: 1,
       nowTs: restoreTs,
     }, { name: 'Hall Heater' });
     service.recordActivationTransition({
       kind: 'setback_failed',
       deviceId: 'heater-1',
-      source: 'pels_restore',
       previousPenaltyLevel: 1,
       penaltyLevel: 2,
       elapsedMs: 5 * 60 * 1000,
@@ -260,14 +258,12 @@ describe('DeviceDiagnosticsService', () => {
     service.recordActivationTransition({
       kind: 'attempt_started',
       deviceId: 'heater-1',
-      source: 'pels_restore',
       penaltyLevel: 2,
       nowTs: start,
     }, { name: 'Hall Heater' });
     service.recordActivationTransition({
       kind: 'attempt_closed_by_shed',
       deviceId: 'heater-1',
-      source: 'pels_restore',
       penaltyLevel: 2,
       elapsedMs: 30_000,
       nowTs: start + 30_000,
@@ -1495,14 +1491,12 @@ describe('DeviceDiagnosticsService', () => {
     service.recordActivationTransition({
       kind: 'attempt_started',
       deviceId: 'heater-1',
-      source: 'pels_restore',
       penaltyLevel: 1,
       nowTs,
     }, {});
     service.recordActivationTransition({
       kind: 'setback_failed',
       deviceId: 'heater-1',
-      source: 'pels_restore',
       previousPenaltyLevel: 1,
       penaltyLevel: 2,
       elapsedMs: 60_000,

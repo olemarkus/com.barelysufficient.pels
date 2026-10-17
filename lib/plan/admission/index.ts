@@ -18,7 +18,6 @@ export {
   resolveActivationRestoreBlock,
   syncActivationPenaltyState,
 } from './activationBackoff';
-export type { ActivationAttemptSource } from './activationBackoff';
 
 export {
   clearSurplusEligibility,

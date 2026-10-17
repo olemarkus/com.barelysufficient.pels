@@ -139,7 +139,6 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
           kind: 'attempt_started',
           deviceId: transition.deviceId,
           deviceName: live.name,
-          source: transition.source,
           penaltyLevel: live.currentPenaltyLevel,
         });
         break;
@@ -153,7 +152,6 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
           kind: 'setback_failed',
           deviceId: transition.deviceId,
           deviceName: live.name,
-          source: transition.source ?? 'unknown',
           previousPenaltyLevel: transition.previousPenaltyLevel,
           penaltyLevel: transition.penaltyLevel,
           elapsedMs: transition.elapsedMs,
@@ -166,7 +164,6 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
           kind: 'attempt_closed_inactive',
           deviceId: transition.deviceId,
           deviceName: live.name,
-          source: transition.source ?? 'unknown',
           penaltyLevel: transition.penaltyLevel,
           elapsedMs: transition.elapsedMs,
         });
@@ -178,7 +175,6 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
           kind: 'attempt_closed_by_shed',
           deviceId: transition.deviceId,
           deviceName: live.name,
-          source: transition.source ?? 'unknown',
           penaltyLevel: transition.penaltyLevel,
           elapsedMs: transition.elapsedMs,
         });
@@ -191,7 +187,6 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
           kind: 'attempt_closed_by_admission',
           deviceId: transition.deviceId,
           deviceName: live.name,
-          source: transition.source ?? 'unknown',
           previousPenaltyLevel: transition.previousPenaltyLevel,
           penaltyLevel: 0,
           elapsedMs: transition.elapsedMs,

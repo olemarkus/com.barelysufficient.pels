@@ -67,7 +67,7 @@ describe('shed grace', () => {
    */
   async function buildGracedPlan(): Promise<DevicePlan> {
     const state = createPlanEngineState();
-    recordActivationAttemptStart(state, 'charger', 'pels_restore', Date.now() - 30_000);
+    recordActivationAttemptStart(state, 'charger', Date.now() - 30_000);
     state.actuation.lastRestoreMs = Date.now() - 30_000;
 
     return buildBuilder(state).buildDevicePlanSnapshot([
