@@ -417,24 +417,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       differing modes merge to the stronger value. Without them the read-only/suppressed-toggle
       design can be reintroduced. The reserve-power toggle the settings UI offers is also missing. *P2*
 
-- [ ] **"Clear device settings" leaves the device's smart task behind, now visible as a paused card.**
-      *Persona:* owner who removes a device from Homey and then purges its PELS settings. *Hypothesis:*
-      `advancedDeviceDataPurge.ts` deletes the device's `managed_devices` entry but not its
-      `deferred_objective.<id>` key, so the task survives with no owner and no device. Before the
-      un-managed pause this read as `objective_missing_device`; now it reads "Paused — not managed"
-      with a recourse pointing at a switch for a device that may no longer exist — the resolver cannot
-      tell a purged device from an un-managed one, because PELS has no cheap presence oracle for a
-      device its managed filter already dropped from the runtime snapshot. Fix at the source: have the
-      purge clear the objective through the same device-scoped clear op the settings-UI cancel uses
-      (`cancelDeferredObjectiveForContext`). Done when purging a device with a smart task leaves no
-      `deferred_objective.<id>` key and no card on the Smart tasks list. Source: correctness lens
-      on the un-managed pause PR, 2026-08-23.
-      **Enumerate AND purge `respect_external_off_devices`.** Adding it to the enumeration only makes
-      the device discoverable; `buildPurgedState` and the clear path must remove the setting too, or
-      clearing a newly visible device leaves the flag and its persisted hold behind and re-adding the
-      device reactivates the behaviour. Update `clearDeviceSettings` and
-      `clearMultipleDeviceSettings` with the enumeration. [P3]
-
 - [ ] **A rescue on the lowest-priority device can grant nothing and still report success.**
       *Persona:* Optimiser (`notes/personas.md`) who taps `Let it run now` on a held-back device.
       *Hypothesis:* now that the rescue is offered on both axes, a device that is capacity-held AND
