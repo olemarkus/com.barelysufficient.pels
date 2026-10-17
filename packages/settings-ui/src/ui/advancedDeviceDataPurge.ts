@@ -1,6 +1,6 @@
 import { readModePriorityCatalog } from '../../../shared-domain/src/settings/modePriorities.ts';
 import { readTemperatureControlModes } from '../../../shared-domain/src/settings/temperatureControl.ts';
-import { getSetting, getSettingFresh, setSetting } from './homey.ts';
+import { callApi, getSetting, getSettingFresh, setSetting } from './homey.ts';
 import { state } from './state.ts';
 import { createSerializedAsyncRunner } from './deviceDetail/settingsWrite.ts';
 import {
@@ -20,13 +20,20 @@ import {
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
   PRICE_OPTIMIZATION_SETTINGS,
+  RESPECT_EXTERNAL_OFF_DEVICES,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
+import { SETTINGS_UI_SMART_TASK_CANCEL_PATH } from '../../../contracts/src/settingsUiApi.ts';
+import type {
+  SettingsUiSmartTaskCancelRequest,
+  SettingsUiSmartTaskCancelResponse,
+} from '../../../contracts/src/smartTaskEdit.ts';
 import { getHomeScope } from './homeScope.ts';
 import { normalizeEvCarAssociations } from '../../../shared-domain/src/settings/evCarAssociations.ts';
 import type { EvCarAssociations } from '../../../contracts/src/types.ts';
 import { assertWritableModeDeviceTargets, readModeDeviceTargetsSetting } from './modeCatalogMaps.ts';
 import { isShedBehaviorsSetting, readShedBehaviors } from '../../../shared-domain/src/settings/shedBehaviors.ts';
 import { classifyPriceOptimizationConfigMap } from './priceOptimizationConfig.ts';
+import { readStrictBooleanSettingMap } from './modeSettingsRead.ts';
 
 /**
  * "Clear device data" on the Advanced page: which device ids the settings store
@@ -37,6 +44,10 @@ import { classifyPriceOptimizationConfigMap } from './priceOptimizationConfig.ts
  * controller. The maps are enumerated explicitly rather than derived: a new
  * per-device setting must be added here deliberately, or clearing a device
  * would silently leave its config behind.
+ *
+ * A device's smart task is not a settings map the UI may write: the runtime owns
+ * `deferred_objective.<id>` and its forget side effects. The purge clears it
+ * through the same cancel endpoint the Smart tasks page uses.
  */
 
 export type PurgeableDeviceOption = {
@@ -88,6 +99,9 @@ const collectDeviceIdsFromSettings = (): Set<string> => {
     ...Object.keys(state.priceOptimizationSettings),
     ...Object.keys(state.temperatureControlDisabledMap),
     ...Object.keys(state.temperatureControlModes),
+    ...Object.keys(state.respectExternalOffMap),
+    // A task whose device has no other setting left is still the device's data.
+    ...Object.keys(state.deferredObjectiveSettings.objectivesByDeviceId),
   ];
 
   const modeMapIds = (modeMap: Record<string, Record<string, number>>) => (
@@ -173,6 +187,7 @@ const buildPurgedState = (deviceIds: Set<string>) => ({
   priceOptimizationSettings: removeDeviceIdsFromRecord(state.priceOptimizationSettings, deviceIds),
   temperatureControlModes: removeDeviceIdsFromRecord(state.temperatureControlModes, deviceIds),
   temperatureControlDisabledMap: removeDeviceIdsFromRecord(state.temperatureControlDisabledMap, deviceIds),
+  respectExternalOffMap: removeDeviceIdsFromRecord(state.respectExternalOffMap, deviceIds),
   capacityPriorities: removeDeviceIdsFromModeMap(state.capacityPriorities, deviceIds),
   modeTargets: removeDeviceIdsFromModeMap(state.modeTargets, deviceIds),
 });
@@ -190,8 +205,35 @@ const applyPurgedState = (next: ReturnType<typeof buildPurgedState>): void => {
   state.priceOptimizationSettings = next.priceOptimizationSettings;
   state.temperatureControlModes = next.temperatureControlModes;
   state.temperatureControlDisabledMap = next.temperatureControlDisabledMap;
+  state.respectExternalOffMap = next.respectExternalOffMap;
   state.capacityPriorities = next.capacityPriorities;
   state.modeTargets = next.modeTargets;
+};
+
+/**
+ * Clears each purged device's smart task through the runtime's cancel op, so the
+ * task's history is finalized and its live status forgotten exactly as on the
+ * Smart tasks page. Only devices the loaded task map lists are asked: a device
+ * with no task has nothing to cancel. `task_not_found` means the task already
+ * ended, which is the outcome the purge wants.
+ */
+const cancelSmartTasks = async (deviceIds: Set<string>): Promise<void> => {
+  const withTask = [...deviceIds].filter((deviceId) => (
+    state.deferredObjectiveSettings.objectivesByDeviceId[deviceId] !== undefined
+  ));
+  const results = await Promise.allSettled(withTask.map(async (deviceId) => {
+    const body: SettingsUiSmartTaskCancelRequest = { deviceId };
+    const response = await callApi<SettingsUiSmartTaskCancelResponse>(
+      'POST',
+      SETTINGS_UI_SMART_TASK_CANCEL_PATH,
+      body,
+    );
+    if (!response.ok && response.reason !== 'task_not_found') {
+      throw new Error(`Could not clear the smart task for ${deviceId} (${response.reason})`);
+    }
+  }));
+  const failure = results.find((result) => result.status === 'rejected');
+  if (failure?.status === 'rejected') throw failure.reason;
 };
 
 const purgeModeCatalogDeviceIds = async (
@@ -296,6 +338,13 @@ const reconcilePurgeState = async (homeIds: readonly string[]): Promise<void> =>
       fallback: state.temperatureControlDisabledMap,
       apply: (value) => { state.temperatureControlDisabledMap = readRecordSetting(value); },
     },
+    {
+      key: RESPECT_EXTERNAL_OFF_DEVICES,
+      fallback: state.respectExternalOffMap,
+      apply: (value) => {
+        state.respectExternalOffMap = readStrictBooleanSettingMap(value) ?? state.respectExternalOffMap;
+      },
+    },
   ];
   const [simpleReads, modeReads] = await Promise.all([
     Promise.all(simpleBindings.map(async (binding) => ({
@@ -346,7 +395,11 @@ const performClearMultipleDeviceSettings = async (deviceIds: string[]) => {
     setSetting(PRICE_OPTIMIZATION_SETTINGS, next.priceOptimizationSettings),
     setSetting(TEMPERATURE_CONTROL_MODES, next.temperatureControlModes),
     setSetting(TEMPERATURE_CONTROL_DISABLED_DEVICES, next.temperatureControlDisabledMap),
+    // The runtime releases a persisted hold for every device that leaves this
+    // map, so dropping the opt-in also drops the hold it armed.
+    setSetting(RESPECT_EXTERNAL_OFF_DEVICES, next.respectExternalOffMap),
     purgeModeCatalogDeviceIds(ids, homeIds),
+    cancelSmartTasks(ids),
   ]);
   const failure = writeResults.find((result) => result.status === 'rejected');
   if (failure?.status === 'rejected') {
