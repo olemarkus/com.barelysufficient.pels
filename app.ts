@@ -51,7 +51,8 @@ import { createModeDeviceTargetFill } from './setup/appInit/createSnapshotSettin
 import { normalizeError } from './lib/utils/errorUtils';
 import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosticsService';
 import { createGenerationPollSource } from './setup/appInit/createGenerationPollSource';
-import { createHomeyEnergyPollSource } from './setup/appInit/createHomeyEnergyPollSource';
+import { createHomeyEnergyPollSource, resolveMainMeterRead } from './setup/appInit/createHomeyEnergyPollSource';
+import type { SubHomeMeters } from './lib/home/homeMeters';
 import { AppSnapshotHelpers, createTargetPowerReachabilityAppWiring } from './setup/appSnapshotHelpers';
 import { createFlowBackedDeviceState } from './setup/flowBackedCardAccess';
 import { AppSmartTaskApi } from './setup/appSmartTaskApi';
@@ -441,6 +442,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     emitSettingsUiDevicesUpdated: () => this.emitSettingsUiDevicesUpdated(),
     recordPowerSample: (sample) => this.powerSamplePipeline.recordPowerSample(sample.powerW, undefined, sample),
     resolveMainMeterSelection: () => this.settingsRepository.loadMainMeterSelection(),
+    readMainMeter: resolveMainMeterRead,
     ...this.targetPowerReachabilityWiring.snapshotDeps,
   });
   public readonly homeyEnergyHelpers = createHomeyEnergyPollSource(this, this.powerSamplePipeline);
@@ -511,6 +513,10 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   // The settings UI's per-home read: a closure over the registry handle, so the
   // registry itself never reaches the context.
   public readonly homeRuntimeRead = buildHomeRuntimeReadPort(() => this.runtime.homeRuntimeRegistry);
+  /** The sub-homes' meters for the whole-home poll (`HomeMeters`), once the registry exists. */
+  getSubHomeMeters(): SubHomeMeters | undefined {
+    return this.runtime.homeRuntimeRegistry;
+  }
 
   // Boot/teardown orchestration + per-service construction.
   protected readonly serviceWiring = new AppServiceWiring({

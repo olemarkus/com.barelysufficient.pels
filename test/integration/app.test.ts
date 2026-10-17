@@ -3052,9 +3052,8 @@ describe('periodic snapshot refresh scheduling', () => {
       .mockResolvedValue({ state: 'admitted', revision: 1 });
     const refreshSpy = vi.spyOn(app.deviceManager, 'refreshSnapshot')
       .mockResolvedValue({
-        powerW: 2600,
+        meterPowerW: { 'meter-main': 2600 },
         generationW: 900,
-        meterDeviceId: 'meter-main',
       });
 
     try {

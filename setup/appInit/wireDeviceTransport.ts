@@ -1,9 +1,8 @@
 /**
  * Construction and event wiring of the app's single `DeviceTransport`, sliced
  * out of `setup/appServiceWiring.ts` to keep that entry point under the line
- * budget: the boundary-resolved whole-home meter authority, the transport's
- * owners and meters, the observer-emitter subscriptions that feed the projection, and
- * the transport's start. `AppServiceWiring.initDeviceManager` sequences the
+ * budget: the transport's owners, the observer-emitter subscriptions that feed
+ * the projection, and the transport's start. `AppServiceWiring.initDeviceManager` sequences the
  * three steps. Plan-dependent subscriptions are wired later by
  * `planObservedStateSubscription.ts`.
  *
@@ -17,26 +16,14 @@ import type { ObservedStateEmitterDispatcher } from '../../lib/ports/observedSta
 import type { ObservedDeviceStateProjection } from '../../lib/observer/observedDeviceStateProjection';
 import { createCalibrationSnapshotMutationHook } from '../../lib/device/devicePowerCalibrationStore';
 import { getDebugEmitter, type Logger as PinoLogger } from '../../lib/logging/logger';
-import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
-import { buildHomeRuntimeMeterProviders } from './wireHomeRuntimeRegistry';
 import { createExternalOffHoldPolicy } from '../externalOffHoldAdapter';
 import { createEvCarLinkAccessForApp } from './evCarLinkAccess';
 import type { AppContext } from '../../lib/app/appContext';
-import type { HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
 import type { AppNativeWiring } from '../appNativeWiring';
 
 // The probe's decisions are time-based; mirrors the pre-extraction constant in
 // `appServiceWiring.ts` (30 s — well inside the shortest 90 s probe deadline).
 const EV_CAR_LINK_TICK_INTERVAL_MS = 30 * 1000;
-import { readMainMeterSelection } from '../mainMeterSettings';
-
-// Boundary-resolved whole-home meter authority for the homey_energy source.
-// `resolved/null` = Automatic; `unavailable` suppresses Main sampling instead
-// of silently promoting an SDK miss to Automatic. Read fresh per call so the
-// 10s poll picks up a changed selection without a transport restart.
-const resolveHomeyEnergyMeterSelection = (homey: Homey.App['homey']): MainMeterSelection => {
-  return readMainMeterSelection(homey.settings);
-};
 
 /**
  * Feeds the observer-owned projection. Registered with the transport (inside
@@ -75,15 +62,12 @@ export function subscribeObservedStateProjection(
  * projection. The projection's sequence guard is keyed on the transport's
  * per-device `observationSeq`, which a new transport would reset, so the two
  * share one lifecycle: there is no in-process transport restart.
- *
- * `getHomeRuntimeRegistry` is lazy: the registry is built after the transport.
  */
 export function buildDeviceTransport(
   ctx: AppContext,
   homeyApp: Homey.App,
   structuredLogger: PinoLogger,
   nativeWiring: AppNativeWiring,
-  getHomeRuntimeRegistry: () => HomeRuntimeRegistry | undefined,
   observedStateDispatcher: ObservedStateEmitterDispatcher,
 ): DeviceTransport {
   const structuredLog = structuredLogger.child({ component: 'devices' });
@@ -126,11 +110,6 @@ export function buildDeviceTransport(
     // persist is itself rate-limited and change-gated.
     flowBacked: ctx.flowBacked,
     batteryManaged: ctx.batteryManaged,
-    meters: {
-      getHomeyEnergyMeterSelection: () => resolveHomeyEnergyMeterSelection(ctx.homey),
-      // Lazy: the registry is built after the transport.
-      ...buildHomeRuntimeMeterProviders(getHomeRuntimeRegistry),
-    },
   });
 }
 

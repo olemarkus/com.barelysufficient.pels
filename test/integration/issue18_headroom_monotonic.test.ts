@@ -82,7 +82,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         apiGetSpy.mockResolvedValue(heaterRead(deviceId, 1670)); // 1.67 kW
 
         // Refresh to populate measured power
-        await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+        await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
         let snapshot = deviceManager.getSnapshot();
         expect(snapshot[0].expectedPowerKw).toBe(1.67);
         expect(snapshot[0].expectedPowerKw).toBe(1.67);
@@ -93,7 +93,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
 
         apiGetSpy.mockResolvedValue(heaterRead(deviceId, 1670)); // Still 1.67 kW
 
-        await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+        await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
         snapshot = deviceManager.getSnapshot();
 
         expect(snapshot[0].expectedPowerKw).toBe(3.0);
@@ -115,7 +115,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         // Measured power jumps to 3.5 kW
         apiGetSpy.mockResolvedValue(heaterRead(deviceId, 3500)); // 3.5 kW
 
-        await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+        await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
         const snapshot = deviceManager.getSnapshot();
 
         expect(snapshot[0].expectedPowerKw).toBe(3.0);
@@ -131,20 +131,20 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         // Initial measured power is 3.0 kW.
         apiGetSpy.mockResolvedValue(heaterRead(deviceId, 3000));
 
-        await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+        await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
         let snapshot = deviceManager.getSnapshot();
         expect(snapshot[0].expectedPowerKw).toBe(3.0);
 
         // User sets expected power to 2.0 kW while measured is still 3.0 kW.
         expectedPowerKwOverrides[deviceId] = { kw: 2.0, ts: Date.now() };
-        await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+        await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
         snapshot = deviceManager.getSnapshot();
         expect(snapshot[0].expectedPowerKw).toBe(2.0);
 
         // Measured power settles to 2.0 kW.
         apiGetSpy.mockResolvedValue(heaterRead(deviceId, 2000));
 
-        await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+        await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
         snapshot = deviceManager.getSnapshot();
         expect(snapshot[0].expectedPowerKw).toBe(2.0);
     });

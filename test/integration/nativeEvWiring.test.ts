@@ -191,7 +191,7 @@ describe('native EV wiring shim', () => {
     );
 
     await initWithLiveFeed(deviceManager);
-    await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
+    await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
     expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
       reportedStepId: '16a',
     }));
@@ -225,7 +225,7 @@ describe('native EV wiring shim', () => {
     );
 
     await initWithLiveFeed(deviceManager);
-    await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
+    await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
     await emitCapability('zaptec-go-1', 'available_installation_current', 10);
     expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ reportedStepId: '10a' }));
 
@@ -263,7 +263,7 @@ describe('native EV wiring shim', () => {
     );
 
     await initWithLiveFeed(deviceManager);
-    await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
+    await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
     await emitCapability('zaptec-go-1', 'available_installation_current', 10);
 
     // A negative watt reading would otherwise reach probe settlement as evidence.

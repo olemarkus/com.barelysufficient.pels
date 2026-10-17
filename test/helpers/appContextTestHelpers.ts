@@ -64,6 +64,7 @@ import type { HomeModeCatalog, HomeModeCatalogSnapshot } from '../../lib/home/ho
 import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
 import { buildTaskEvaluationSource } from '../../setup/appInit/taskEvaluationSource';
 import type { TaskEvaluationSource } from '../../lib/objectives/deferredObjectives';
+import { resolveMainMeterRead } from '../../lib/home/homeMeters';
 
 const homeModeCatalogByContext = new WeakMap<AppContext, HomeModeCatalog>();
 
@@ -214,12 +215,13 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     recordPowerSample: vi.fn(async () => undefined),
     // Automatic — the fixture has no explicit whole-home meter selection.
     resolveMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: null }),
+    readMainMeter: resolveMainMeterRead,
   } as unknown as ConstructorParameters<typeof AppSnapshotHelpers>[0]);
   const homeyEnergyHelpers = homeyEnergyHelpersOverride ?? new HomeyEnergyPollSource({
     getPowerSource: () => normalizePowerSource(homey.settings.get('power_source')),
     timers,
-    pollHomePower: async () => null,
-    recordPowerSample: vi.fn(async () => undefined),
+    requestHomeMeters: () => ({ meterDeviceIds: [], record: async () => undefined }),
+    readMeters: async () => null,
     debugStructured: vi.fn(),
     error: vi.fn(),
   });

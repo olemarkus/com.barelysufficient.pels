@@ -304,7 +304,7 @@ describe('post-refresh recompute through the transport seam', () => {
 
     // At the refresh-dispatch instant the detached tree fetch has not landed:
     // no tree seen yet, so the device fail-safes to main, visibly.
-    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+    await transport.refreshSnapshot({ meterDeviceIds: [] });
     expect(service.getHomeIdForDevice('dev1')).toBe('main');
     expect(service.getDiagnostics().membershipByDeviceId.dev1.source).toBe('fallback');
 
@@ -321,7 +321,7 @@ describe('post-refresh recompute through the transport seam', () => {
     // refresh recomputes membership back to the main-home complement (the
     // refresh dispatch joins against the already-cached tree synchronously).
     device.setZone('z3');
-    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+    await transport.refreshSnapshot({ meterDeviceIds: [] });
     expect(service.getHomeIdForDevice('dev1')).toBe('main');
     expect(service.getDiagnostics().membershipByDeviceId.dev1.source).toBe('zone');
   });
@@ -362,7 +362,7 @@ describe('post-refresh recompute through the transport seam', () => {
     );
     const wiring = wireHomeMembership(ctxStub, subscribeToObservedStateRefresh(emitter));
 
-    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+    await transport.refreshSnapshot({ meterDeviceIds: [] });
     await settleDetachedZoneFetch();
     expect(wiring.service.getMembershipMap()).toEqual({ dev1: 'h_a' });
   });
@@ -404,7 +404,7 @@ describe('post-refresh recompute through the transport seam', () => {
     // change, so the invalidation fires with no plan service wired: the skip
     // must be logged, never silent, and nothing may throw (a contained throw
     // would surface as home_membership_recompute_failed on the error spy).
-    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+    await transport.refreshSnapshot({ meterDeviceIds: [] });
     await settleDetachedZoneFetch();
     expect(wiring.service.getHomeIdForDevice('dev1')).toBe('h_a');
     expect(warn).toHaveBeenCalledWith(expect.objectContaining({
@@ -423,7 +423,7 @@ describe('post-refresh recompute through the transport seam', () => {
     const { transport, service } = buildTransportChain();
     await initWithLiveFeed(transport);
 
-    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+    await transport.refreshSnapshot({ meterDeviceIds: [] });
     await settleDetachedZoneFetch();
     expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
 
@@ -453,7 +453,7 @@ describe('post-refresh recompute through the transport seam', () => {
     });
     const { transport, service, teardown } = buildTransportChain();
     await initWithLiveFeed(transport);
-    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+    await transport.refreshSnapshot({ meterDeviceIds: [] });
     await settleDetachedZoneFetch();
     expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
 
@@ -463,7 +463,7 @@ describe('post-refresh recompute through the transport seam', () => {
     // tree commit) completes — a live subscription would recompute dev1 to
     // main. The map staying put proves NEITHER trigger reached the service.
     device.setZone('z3');
-    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+    await transport.refreshSnapshot({ meterDeviceIds: [] });
     await settleDetachedZoneFetch();
     expect(service.getMembershipMap()).toEqual({ dev1: 'h_a' });
 
@@ -482,7 +482,7 @@ describe('post-refresh recompute through the transport seam', () => {
     });
     const { error, logger } = makeLoggerSpy();
     const { transport, service } = buildTransportChain(logger);
-    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+    await transport.refreshSnapshot({ meterDeviceIds: [] });
     await settleDetachedZoneFetch();
     expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
 
@@ -492,7 +492,7 @@ describe('post-refresh recompute through the transport seam', () => {
     device.setZone('z3');
     // The refresh emit chain must complete (an uncontained throw would reject
     // refreshSnapshot and break the live-feed/mutation listeners riding it)...
-    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+    await transport.refreshSnapshot({ meterDeviceIds: [] });
     // ...and the detached tree-commit chain must settle without an unhandled
     // rejection (its recompute throws too).
     await settleDetachedZoneFetch();

@@ -1,9 +1,14 @@
-import type { DeviceTransportPort } from '../../lib/device/deviceTransport';
 import type { PowerSource } from '../../lib/power/powerSource';
 import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
 import type { PowerSamplePipeline } from '../powerSamplePipeline';
 import { getDebugEmitter } from '../../lib/logging/logger';
 import type { TimerRegistry } from '../../lib/utils/timerRegistry';
+import { HomeMeters, type SubHomeMeters } from '../../lib/home/homeMeters';
+
+// The snapshot refresh reads Main by the same rule as this poll.
+export { resolveMainMeterRead } from '../../lib/home/homeMeters';
+import type { MainMeterSelectionSettings } from '../../lib/home/mainMeterSelection';
+import type { LiveMeterReadings } from '../../lib/ports/homeMeterReadings';
 
 /**
  * The slice of the app this factory reads. Structural rather than `PelsApp` so
@@ -11,8 +16,11 @@ import type { TimerRegistry } from '../../lib/utils/timerRegistry';
  */
 export type HomeyEnergyPollSourceHost = {
   readonly timers: TimerRegistry;
+  readonly homey: { readonly settings: MainMeterSelectionSettings };
   getPowerSource(): PowerSource;
-  readonly deviceManager?: Pick<DeviceTransportPort, 'pollHomePowerW'>;
+  readonly deviceManager?: { readMeters(meterDeviceIds: readonly string[]): Promise<LiveMeterReadings | null> };
+  /** The sub-homes, once the registry exists. */
+  getSubHomeMeters(): SubHomeMeters | undefined;
   error(...args: unknown[]): void;
 };
 
@@ -30,13 +38,20 @@ export type HomeyEnergyPollSourceHost = {
 export const createHomeyEnergyPollSource = (
   host: HomeyEnergyPollSourceHost,
   pipeline: Pick<PowerSamplePipeline, 'recordPowerSample'>,
-): HomeyEnergyPollSource => new HomeyEnergyPollSource({
-  getPowerSource: () => host.getPowerSource(),
-  timers: host.timers,
-  pollHomePower: async (authorizeFanOut) => (await host.deviceManager?.pollHomePowerW(authorizeFanOut)) ?? null,
-  recordPowerSample: async (sample) => {
-    await pipeline.recordPowerSample(sample.powerW, undefined, sample);
-  },
-  debugStructured: getDebugEmitter('devices', 'devices'),
-  error: (...args) => host.error(...args),
-});
+): HomeyEnergyPollSource => {
+  const homeMeters = new HomeMeters(
+    host.homey.settings,
+    async (sample) => {
+      await pipeline.recordPowerSample(sample.powerW, undefined, sample);
+    },
+    () => host.getSubHomeMeters(),
+  );
+  return new HomeyEnergyPollSource({
+    getPowerSource: () => host.getPowerSource(),
+    timers: host.timers,
+    requestHomeMeters: () => homeMeters.request(),
+    readMeters: async (meterDeviceIds) => (await host.deviceManager?.readMeters(meterDeviceIds)) ?? null,
+    debugStructured: getDebugEmitter('devices', 'devices'),
+    error: (...args) => host.error(...args),
+  });
+};

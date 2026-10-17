@@ -11,7 +11,6 @@
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
-import type { DeviceTransportMeters } from './transportTypes';
 import { observeBatteryStateFromList, observeEvCarLinkAndResubscribe } from './refreshProducers';
 import {
     partitionConformingDeviceReads,
@@ -25,8 +24,9 @@ import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
 export { SnapshotRefreshState } from './snapshotRefreshState';
-import { updateHomePowerFromReport, type HomePowerSampleWithIdentity } from './resolvedHomeMeterDispatch';
-export type { HomePowerSampleWithIdentity } from './resolvedHomeMeterDispatch';
+import { resolveLiveMeterReadings } from './liveMeterReadings';
+import type { Logger } from '../../utils/types';
+import type { LiveMeterReadings } from '../../ports/homeMeterReadings';
 import {
   SNAPSHOT_ABANDON_GRACE_MS,
   SNAPSHOT_ABANDON_GRACE_READS,
@@ -45,10 +45,7 @@ export type { DeviceFetchResult } from './managerFetch';
 import {
   type DeviceFetchSource,
 } from './managerFetch';
-import type { DeviceFetchResult } from './managerFetch';
-import { fetchLivePowerReport } from './livePowerReport';
-import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
-export { pollHomePowerWithMeterFanOut } from './homePowerPoll';
+import { fetchLivePowerReport, type DeviceFetchResult } from './managerFetch';
 import { fetchZoneTree } from './managerZones';
 import { getDebugEmitter, getLogger } from '../../logging/logger';
 import { normalizeError } from '../../utils/errorUtils';
@@ -412,27 +409,32 @@ async function refreshZoneTreeCache(refresh: SnapshotRefreshService): Promise<vo
 }
 
 // Live-power half of the refresh inputs: the per-device lanes feed parse
-// attribution; the sample (null when live power is skipped or the read
-// produced no whole-home reading) is the caller's home-power return value.
+// attribution; the meter readings (null when live power is skipped or the read
+// failed) are the caller's return value.
 type RefreshLivePower = {
     byDeviceId: LiveDevicePowerWatts;
-    homePowerSample: HomePowerSampleWithIdentity | null;
+    meterReadings: LiveMeterReadings | null;
 };
+
+/** One poll's read of the requested meters (`DeviceTransport.readMeters`). */
+export async function readLiveMeters(
+    logger: Logger,
+    setGenerationW: (watts: number | null, observedAtMs: number) => void,
+    meterDeviceIds: readonly string[],
+): Promise<LiveMeterReadings | null> {
+    return resolveLiveMeterReadings(setGenerationW, await fetchLivePowerReport({ logger, meterDeviceIds }));
+}
 
 async function resolveLivePowerForRefresh(
     refresh: SnapshotRefreshService,
     includeLivePower: boolean,
-    mainMeterSelection: MainMeterSelection,
+    meterDeviceIds: readonly string[],
 ): Promise<RefreshLivePower> {
-    if (!includeLivePower) return { byDeviceId: {}, homePowerSample: null };
-    const report = await fetchLivePowerReport(
-        refresh.reader.logger,
-        refresh.meters,
-        mainMeterSelection,
-    );
+    if (!includeLivePower) return { byDeviceId: {}, meterReadings: null };
+    const report = await fetchLivePowerReport({ logger: refresh.reader.logger, meterDeviceIds });
     return {
         byDeviceId: report.state === 'measured' ? report.byDeviceId : {},
-        homePowerSample: updateHomePowerFromReport(
+        meterReadings: resolveLiveMeterReadings(
             (watts, observedAtMs) => refresh.observationBridge.setGenerationW(watts, observedAtMs),
             report,
         ),
@@ -451,7 +453,6 @@ export class SnapshotRefreshService {
     readonly reader: DeviceSnapshotReader,
     readonly deviceSdk: DeviceHomeySdk,
     readonly notifications: TransportNotifications,
-    readonly meters: DeviceTransportMeters,
   ) {}
 
   fetchDevicesByKnownIds(): Promise<DeviceFetchResult> {
@@ -463,11 +464,11 @@ export class SnapshotRefreshService {
     return this.deviceSdk.fetchDevicesByIds([...ids]);
   }
 
-  refresh(options: SnapshotRefreshOptions): Promise<HomePowerSampleWithIdentity | null> {
+  refresh(options: SnapshotRefreshOptions): Promise<LiveMeterReadings | null> {
     return this.runRefresh(options);
   }
 
-  private async runRefresh(options: SnapshotRefreshOptions): Promise<HomePowerSampleWithIdentity | null> {
+  private async runRefresh(options: SnapshotRefreshOptions): Promise<LiveMeterReadings | null> {
     const stopSpan = startRuntimeSpan('device_snapshot_refresh');
     const start = Date.now();
     try {
@@ -476,15 +477,15 @@ export class SnapshotRefreshService {
         const fetchResult = await fetchDevicesForSnapshotRefresh(this, isTargetedRefresh);
         if (!fetchResult) return null;
         const { devices: list, fetchSource, failedIds } = fetchResult;
-        const { byDeviceId: livePowerByDeviceId, homePowerSample } = await resolveLivePowerForRefresh(
+        const { byDeviceId: livePowerByDeviceId, meterReadings } = await resolveLivePowerForRefresh(
             this,
             options.includeLivePower !== false,
-            options.mainMeterSelection,
+            options.meterDeviceIds,
         );
         // Accept the inventory before changing any session membership. A transient
         // empty full read must leave both accepted observations and sessions intact.
         if (shouldDeferEmptySnapshotCommit(this, previousSnapshot, list.length === 0, start)) {
-            return homePowerSample;
+            return meterReadings;
         }
         // The read contract, before anything reads a payload: a device whose read
         // does not conform is ignored — its previous snapshot entry and raw entry
@@ -575,7 +576,7 @@ export class SnapshotRefreshService {
             devicesTotal: snapshot.length,
             targetedRefresh: isTargetedRefresh,
             fetchSource,
-            ...(homePowerSample ? { homePowerW: homePowerSample.powerW } : {}),
+            ...(meterReadings ? { meterPowerW: meterReadings.meterPowerW } : {}),
             livePowerDeviceCount: Object.keys(livePowerByDeviceId).length,
         });
         logCommittedSnapshot(this, snapshot, previousSnapshot, start, isTargetedRefresh);
@@ -593,7 +594,7 @@ export class SnapshotRefreshService {
         // device fetch + committed snapshot; the grace-deferred empty-read
         // path above skips it for the cycle (a degraded blip already).
         void refreshZoneTreeCache(this);
-        return homePowerSample;
+        return meterReadings;
     } finally {
         stopSpan();
         addPerfDuration('device_refresh_ms', Date.now() - start);

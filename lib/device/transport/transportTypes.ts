@@ -5,7 +5,6 @@ import type {
 } from './managerParseDevice';
 import type { BatteryManagedRead } from '../../ports/batteryControlOwner';
 import type { RetainedPowerStore } from '../retainedPowerStore';
-import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 /**
  * Public type contracts + pure helpers for the `DeviceTransport` leaf and its
  * homey-free collaborator modules. Extracted from `deviceTransport.ts` so the
@@ -71,7 +70,8 @@ export type SnapshotRefreshMetrics = {
 export type SnapshotRefreshOptions = {
     includeLivePower?: boolean;
     targetedRefresh?: boolean;
-    mainMeterSelection: MainMeterSelection;
+    /** The meters to read from the live report; the refresh returns their readings. */
+    meterDeviceIds: readonly string[];
 };
 
 export type SteppedLoadFlowTriggerCard = {
@@ -117,33 +117,6 @@ export type DeviceTransportOptions = {
     flowBacked: FlowBackedRead;
     /** A home battery's Managed choice (`lib/battery`). */
     batteryManaged: BatteryManagedRead;
-    /** Which meters the live report reads, and where sub-home readings go. */
-    meters: DeviceTransportMeters;
-};
-
-/**
- * Which meters the live power report reads, and where the readings go.
- *
- * Main and the sub-homes are still told apart here: Main's reading returns up
- * the poll call, a sub-home's is pushed to `onAdditionalMeterReadings`.
- */
-export type DeviceTransportMeters = {
-    /**
-     * Producer-resolved Main selection. `unavailable` is a real answer a wired
-     * producer gives, never a default anything falls back to.
-     */
-    getHomeyEnergyMeterSelection: () => MainMeterSelection;
-    /**
-     * The sub-homes' meter device ids, read from the SAME `manager/energy/live`
-     * payload. Read fresh per poll so a homes-config change needs no transport
-     * restart. Empty = no extra extraction.
-     */
-    getAdditionalMeterDeviceIds: () => readonly string[];
-    /**
-     * Where each poll's finite per-meter readings go (the home-runtime registry
-     * routes them to per-home pipelines).
-     */
-    onAdditionalMeterReadings: (readings: Record<string, number>, nowMs: number) => void;
 };
 
 export const createEstimateDecisionLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();

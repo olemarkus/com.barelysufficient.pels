@@ -80,7 +80,7 @@ const snapshotDeviceId = (device: { id: string }): string => device.id;
 async function populateSnapshotForGrace(transport: DeviceTransport): Promise<void> {
     await transport.init();
     mockApiGet.mockResolvedValue(GRACE_POPULATED_PAYLOAD);
-    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+    await transport.refreshSnapshot({ meterDeviceIds: [] });
     expect(transport.getSnapshot()).toHaveLength(1);
 }
 
@@ -446,7 +446,7 @@ describe('DeviceTransport', () => {
                 dev1: buildDevice('dev1', true),
                 dev2: buildDevice('dev2', true),
             });
-            await dm.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await dm.refreshSnapshot({ meterDeviceIds: [] });
             const ids = dm.getSnapshot().map((d) => d.id);
             expect(ids).toEqual(['dev1']);
             dm.destroy();
@@ -461,7 +461,7 @@ describe('DeviceTransport', () => {
                 dev1: buildDevice('dev1', true),
                 dev2: buildDevice('dev2', true),
             });
-            await dm.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await dm.refreshSnapshot({ meterDeviceIds: [] });
             const ids = dm.getSnapshot().map((d) => d.id);
             expect(ids.sort()).toEqual(['dev1', 'dev2']);
             dm.destroy();
@@ -477,7 +477,7 @@ describe('DeviceTransport', () => {
                 badDev: buildDevice('badDev', null),
             });
             loggerMock.structuredLog.error.mockClear();
-            await dm.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await dm.refreshSnapshot({ meterDeviceIds: [] });
             const dropEvents = loggerMock.structuredLog.error.mock.calls
                 .filter((call: unknown[]) => (call[0] as { event?: string })?.event === 'device_snapshot_control_state_dropped');
             expect(dropEvents).toEqual([]);
@@ -513,7 +513,7 @@ describe('DeviceTransport', () => {
             loggerMock.structuredLog.error.mockClear();
             const refreshes: ObservedStateRefreshEvent[] = [];
             onObservedStateRefresh(dm, (event) => refreshes.push(event));
-            await dm.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await dm.refreshSnapshot({ meterDeviceIds: [] });
 
             // A read that breaks the device-read contract is ignored whole. With
             // no earlier conforming read to stand in for it, the device appears
@@ -558,7 +558,7 @@ describe('DeviceTransport', () => {
                 dev1: buildDevice('dev1', true),
                 dev2: buildDevice('dev2', true),
             });
-            await dm.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await dm.refreshSnapshot({ meterDeviceIds: [] });
             expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual(['dev2']);
 
             // A genuine targeted refresh re-reads only the managed id (dev1) via the
@@ -569,7 +569,7 @@ describe('DeviceTransport', () => {
                 if (path === byIdPath) return buildDevice('dev1', false);
                 throw new Error(`unexpected full fetch: ${path}`);
             });
-            await dm.refreshSnapshot({ targetedRefresh: true, mainMeterSelection: { state: 'unavailable' } });
+            await dm.refreshSnapshot({ targetedRefresh: true, meterDeviceIds: [] });
 
             expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual(['dev2']);
             dm.destroy();
@@ -592,7 +592,7 @@ describe('DeviceTransport', () => {
                 }
                 throw new Error(`404 ${path}`); // by-id reads fail
             });
-            await dm.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await dm.refreshSnapshot({ meterDeviceIds: [] });
             expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual(['dev2']);
 
             // The full read now GROWS to include dev3 (also unmanaged-eligible). A
@@ -608,7 +608,7 @@ describe('DeviceTransport', () => {
                 }
                 throw new Error(`404 ${path}`);
             });
-            await dm.refreshSnapshot({ targetedRefresh: true, mainMeterSelection: { state: 'unavailable' } });
+            await dm.refreshSnapshot({ targetedRefresh: true, meterDeviceIds: [] });
 
             expect(dm.getUiPickerDevices().map((d) => d.id).sort()).toEqual(['dev2', 'dev3']);
             dm.destroy();
@@ -623,13 +623,13 @@ describe('DeviceTransport', () => {
                 dev1: buildDevice('dev1', true),
                 dev2: buildDevice('dev2', true),
             });
-            await dm.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await dm.refreshSnapshot({ meterDeviceIds: [] });
             expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual(['dev2']);
 
             // A transient empty read is deferred by abandon-grace: the raw-device
             // cache backing the picker must survive the blip, not collapse to [].
             mockApiGet.mockResolvedValue({});
-            await dm.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await dm.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual(['dev2']);
             dm.destroy();
@@ -651,7 +651,7 @@ describe('DeviceTransport', () => {
                 dev1: buildDevice('dev1', true),
                 dev2: buildDevice('dev2', true),
             });
-            await dm.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await dm.refreshSnapshot({ meterDeviceIds: [] });
             // Filter inactive → both devices remain in the runtime snapshot
             // (with `managed === false`). The settings UI shows them in the
             // managed list with the toggle off so the user can re-enable.
@@ -666,7 +666,7 @@ describe('DeviceTransport', () => {
             });
             await dm.init();
             mockApiGet.mockResolvedValue({ dev1: buildDevice('dev1', true) });
-            await dm.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await dm.refreshSnapshot({ meterDeviceIds: [] });
             expect(dm.getSnapshot().map((d) => d.id)).toEqual(['dev1']);
             expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual([]);
 
@@ -675,13 +675,13 @@ describe('DeviceTransport', () => {
             // and never offered in the picker meanwhile. It is still in Homey's
             // device list, so nothing learned about it is pruned.
             mockApiGet.mockResolvedValue({ dev1: buildDevice('dev1', null) });
-            await dm.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await dm.refreshSnapshot({ meterDeviceIds: [] });
             expect(dm.getSnapshot().map((d) => d.id)).toEqual([]);
             expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual([]);
             expect([...dm.getHomeyDeviceIds()]).toEqual(['dev1']);
 
             mockApiGet.mockResolvedValue({ dev1: buildDevice('dev1', true) });
-            await dm.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await dm.refreshSnapshot({ meterDeviceIds: [] });
             expect(dm.getSnapshot().map((d) => d.id)).toEqual(['dev1']);
             dm.destroy();
         });
@@ -721,7 +721,7 @@ describe('DeviceTransport', () => {
             const seedCooling = async (): Promise<void> => {
                 await deviceManager.init();
                 mockApiGet.mockResolvedValue({ dev1: fullRead('cooling') });
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 expect(observedMode()).toBe('cooling');
             };
 
@@ -756,7 +756,7 @@ describe('DeviceTransport', () => {
                     thermostat_mode: { value: null, id: 'thermostat_mode', lastUpdated: stampedNow() },
                 });
                 mockApiGet.mockResolvedValue({ dev1: unreported });
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 expect(deviceManager.getSnapshot()[0]?.capabilities).not.toContain('onoff');
                 expect(observedMode()).toBeUndefined();
 
@@ -765,7 +765,7 @@ describe('DeviceTransport', () => {
                 expect(observedMode()).toBe('cooling');
 
                 mockApiGet.mockResolvedValue({ dev1: unreported });
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 // A null again drops them again: nothing stands in for a null.
                 expect(deviceManager.getSnapshot()[0]?.capabilities).not.toContain('onoff');
                 expect(observedMode()).toBeUndefined();
@@ -837,7 +837,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow()),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             const snapshot = deviceManager.getSnapshot();
             expect(snapshot).toHaveLength(2);
@@ -857,7 +857,7 @@ describe('DeviceTransport', () => {
             await populateSnapshotForGrace(deviceManager);
 
             mockApiGet.mockResolvedValue({});
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             const ids = deviceManager.getSnapshot().map(snapshotDeviceId);
             expect(ids).toEqual(['dev1']);
@@ -873,8 +873,8 @@ describe('DeviceTransport', () => {
             await populateSnapshotForGrace(deviceManager);
 
             mockApiGet.mockResolvedValue({});
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             const ids = deviceManager.getSnapshot().map(snapshotDeviceId);
             expect(ids).toEqual(['dev1']);
@@ -885,10 +885,10 @@ describe('DeviceTransport', () => {
 
             mockApiGet.mockResolvedValue({});
             // Threshold is 3 consecutive empty reads.
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             expect(deviceManager.getSnapshot()).toHaveLength(1);
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(deviceManager.getSnapshot()).toHaveLength(0);
             expect(logCapture.findEvent('device_snapshot_empty_grace_exceeded')).toMatchObject({
@@ -903,17 +903,17 @@ describe('DeviceTransport', () => {
             await populateSnapshotForGrace(deviceManager);
 
             mockApiGet.mockResolvedValue({});
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             // Recovery: a populated read clears the run so the next empty read
             // is treated as the first miss again, not the third.
             mockApiGet.mockResolvedValue(GRACE_POPULATED_PAYLOAD);
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             expect(deviceManager.getSnapshot()).toHaveLength(1);
 
             mockApiGet.mockResolvedValue({});
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             expect(deviceManager.getSnapshot()).toHaveLength(1);
             expect(logCapture.findEvents('device_snapshot_empty_deferred').at(-1)).toMatchObject({
                 event: 'device_snapshot_empty_deferred',
@@ -925,7 +925,7 @@ describe('DeviceTransport', () => {
             await deviceManager.init();
             mockApiGet.mockResolvedValue({});
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(deviceManager.getSnapshot()).toHaveLength(0);
             expect(loggerMock.structuredLog.warn).not.toHaveBeenCalledWith(expect.objectContaining({
@@ -943,7 +943,7 @@ describe('DeviceTransport', () => {
             mockApiGet.mockResolvedValue({
                 ignored: { id: 'ignored', name: 'Ignored', class: 'other', capabilities: [], capabilitiesObj: {} },
             });
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(deviceManager.getSnapshot()).toHaveLength(0);
             expect(loggerMock.structuredLog.warn).not.toHaveBeenCalledWith(expect.objectContaining({
@@ -957,13 +957,13 @@ describe('DeviceTransport', () => {
                 await populateSnapshotForGrace(deviceManager);
 
                 mockApiGet.mockResolvedValue({});
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 // First empty read is deferred (under both the read and time limits).
                 expect(deviceManager.getSnapshot()).toHaveLength(1);
 
                 // Cross the time-based grace window without hitting the read threshold.
                 vi.advanceTimersByTime(5 * 60 * 1000);
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 expect(deviceManager.getSnapshot()).toHaveLength(0);
                 expect(logCapture.findEvent('device_snapshot_empty_grace_exceeded')).toMatchObject({
@@ -980,7 +980,7 @@ describe('DeviceTransport', () => {
             const refreshFailure = new Error('refresh failed');
             vi.spyOn(deviceManager['deviceSdk'], 'fetchDevices').mockRejectedValueOnce(refreshFailure);
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(logCapture.findEvent('device_snapshot_refresh_failed')).toMatchObject({
                 event: 'device_snapshot_refresh_failed',
@@ -991,17 +991,13 @@ describe('DeviceTransport', () => {
             expect(loggerMock.error).not.toHaveBeenCalled();
         });
 
-        it('returns the cumulative home power from the live report as the refresh sample', async () => {
+        it('returns the requested meter and the report generation as the refresh readings', async () => {
             // The net scalar leaves transport only on the returned sample (the
             // observer-holder push was removed as write-only); generation from
             // the same report is still pushed to observer via the injected
             // `observedStateDispatcher.setGenerationW`.
             const setGenerationW = vi.fn();
-            const dispatchingManager = createTestDeviceTransport(homeyMock, loggerMock, {
-              meters: {
-                getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: 'meter-main' }),
-              },
-            }, undefined, {
+            const dispatchingManager = createTestDeviceTransport(homeyMock, loggerMock, {}, undefined, {
                 observedStateDispatcher: createTestObservedStateDispatcher({ setGenerationW }),
             });
             await dispatchingManager.init();
@@ -1017,7 +1013,7 @@ describe('DeviceTransport', () => {
             });
 
             const sample = await dispatchingManager.refreshSnapshot({
-                mainMeterSelection: { state: 'resolved', meterDeviceId: 'meter-main' },
+                meterDeviceIds: ['meter-main'],
             });
 
             // Gross generation from the same payload is pushed alongside net power,
@@ -1025,13 +1021,12 @@ describe('DeviceTransport', () => {
             // source's separate generation reader, whose clock differs).
             expect(setGenerationW).toHaveBeenCalledWith(1200, expect.any(Number));
             expect(sample).toEqual({
-                powerW: 4500,
+                meterPowerW: { 'meter-main': 4500 },
                 generationW: 1200,
-                meterDeviceId: 'meter-main',
             });
         });
 
-        it('yields no home-power sample when no cumulative item exists', async () => {
+        it('reads nothing for a requested meter the report does not carry', async () => {
             const setGenerationW = vi.fn();
             const dispatchingManager = createTestDeviceTransport(homeyMock, loggerMock, {}, undefined, {
                 observedStateDispatcher: createTestObservedStateDispatcher({ setGenerationW }),
@@ -1044,11 +1039,11 @@ describe('DeviceTransport', () => {
                 items: [{ type: 'device', id: 'dev1', values: { W: 500 } }],
             });
 
-            const sample = await dispatchingManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            const readings = await dispatchingManager.refreshSnapshot({ meterDeviceIds: ['meter-main'] });
 
-            // A report without a cumulative item resolves no whole-home reading,
-            // so the refresh yields no sample for the ingest to record.
-            expect(sample).toBeNull();
+            // The report carries no reading for the requested meter, so there is
+            // none to build Main's sample from.
+            expect(readings).toEqual({ meterPowerW: {} });
             // No generation signal in the payload -> null pushed (no-op gross-up).
             // Still stamped: "the report carried no generation" is an observation.
             expect(setGenerationW).toHaveBeenCalledWith(null, expect.any(Number));
@@ -1064,7 +1059,7 @@ describe('DeviceTransport', () => {
                 dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, { measure_power: 500, onoff: true }),
             });
 
-            const sample = await dispatchingManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
+            const sample = await dispatchingManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
 
             expect(sample).toBeNull();
             expect(setGenerationW).not.toHaveBeenCalled();
@@ -1080,7 +1075,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow()),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             const snapshot = deviceManager.getSnapshot();
             expect(snapshot).toHaveLength(1);
@@ -1105,7 +1100,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow()),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             const snapshot = deviceManager.getSnapshot();
             expect(snapshot).toHaveLength(1);
@@ -1134,7 +1129,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow()),
             });
 
-            await expect(deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } })).resolves.toBeNull();
+            await expect(deviceManager.refreshSnapshot({ meterDeviceIds: [] })).resolves.toEqual({ meterPowerW: {} });
 
             const snapshot = deviceManager.getSnapshot();
             expect(snapshot).toHaveLength(1);
@@ -1156,7 +1151,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow()),
             });
 
-            await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             const snapshot = evDeviceManager.getSnapshot();
             expect(snapshot).toHaveLength(1);
@@ -1181,7 +1176,7 @@ describe('DeviceTransport', () => {
                 }, '2026-04-01T12:00:00.000Z'),
             });
 
-            await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 binaryControl: { on: false },
@@ -1230,7 +1225,7 @@ describe('DeviceTransport', () => {
                 },
             });
 
-            await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(evDeviceManager.getSnapshot()).toEqual([]);
 
@@ -1248,7 +1243,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow()),
             });
 
-            await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(evDeviceManager.getSnapshot()).toEqual([]);
 
@@ -1265,7 +1260,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow()),
             });
 
-            await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(evDeviceManager.getSnapshot()).toHaveLength(0);
             // Both official capabilities are required; the plug-state one is checked
@@ -1288,7 +1283,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow()),
             });
 
-            await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(evDeviceManager.getSnapshot()).toHaveLength(0);
             expect(logCapture.findEvent('device_skipped_missing_capability')).toMatchObject({
@@ -1308,7 +1303,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow()),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             const snapshot = deviceManager.getSnapshot();
             expect(snapshot).toHaveLength(1);
@@ -1325,7 +1320,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow()),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             const snapshot = deviceManager.getSnapshot();
             expect(snapshot).toHaveLength(1);
@@ -1349,7 +1344,7 @@ describe('DeviceTransport', () => {
                 ),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             const snapshot = deviceManager.getSnapshot();
             expect(snapshot).toHaveLength(1);
@@ -1378,7 +1373,7 @@ describe('DeviceTransport', () => {
                 ),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             const snapshot = deviceManager.getSnapshot();
             expect(snapshot).toHaveLength(1);
@@ -1406,7 +1401,7 @@ describe('DeviceTransport', () => {
                 ),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             const snapshot = deviceManager.getSnapshot();
             expect(snapshot).toHaveLength(1);
@@ -1426,7 +1421,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow()),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(deviceManager.getSnapshot()).toEqual([]);
         });
@@ -1451,7 +1446,7 @@ describe('DeviceTransport', () => {
                     ],
                 });
 
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 const snapshot = deviceManager.getSnapshot();
                 expect(snapshot).toHaveLength(1);
@@ -1484,7 +1479,7 @@ describe('DeviceTransport', () => {
                 ),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             const snapshot = deviceManager.getSnapshot();
             expect(snapshot).toHaveLength(1);
@@ -1509,7 +1504,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow()),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const snapshot = deviceManager.getSnapshot();
 
             // No `priority` here any more: a rank is a property of a SET, so it is
@@ -1532,7 +1527,7 @@ describe('DeviceTransport', () => {
                 }, '2026-01-01T00:00:30.000Z'),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             vi.setSystemTime(new Date('2026-01-01T01:00:00.000Z'));
             mockApiGet.mockResolvedValue({
@@ -1543,7 +1538,7 @@ describe('DeviceTransport', () => {
                 }, '2026-01-01T01:00:30.000Z'),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const snapshot = deviceManager.getSnapshot();
 
             const measured = snapshot[0] as TransportDeviceSnapshot;
@@ -1570,7 +1565,7 @@ describe('DeviceTransport', () => {
             }, new Date(startMs + minute * 60_000).toISOString());
             await deviceManager.init();
             mockApiGet.mockResolvedValue({ dev1: meterDevice(0) });
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const reading = () => (deviceManager.getSnapshot()[0] as TransportDeviceSnapshot).measuredPowerReading;
             for (const minute of [1, 2]) {
                 vi.setSystemTime(startMs + minute * 60_000);
@@ -1585,17 +1580,17 @@ describe('DeviceTransport', () => {
                         },
                     },
                 } });
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             }
             // The first cumulative reading back only re-anchors: an interval
             // reaching into the direct-power period would overlap it.
             vi.setSystemTime(startMs + 3 * 60_000);
             mockApiGet.mockResolvedValue({ dev1: meterDevice(3) });
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             expect(reading()?.kind).not.toBe('interval_average');
             vi.setSystemTime(startMs + 4 * 60_000);
             mockApiGet.mockResolvedValue({ dev1: meterDevice(4) });
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             expect(reading()).toEqual({
                 kind: 'interval_average', powerKw: expect.closeTo(1, 6),
                 startMs: startMs + 3 * 60_000, endMs: startMs + 4 * 60_000,
@@ -1616,7 +1611,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow()),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             vi.setSystemTime(new Date('2026-01-01T01:00:00.000Z'));
             mockApiGet.mockResolvedValue({
@@ -1627,7 +1622,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow()),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const snapshot = deviceManager.getSnapshot();
 
             expect((snapshot[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBeUndefined();
@@ -1657,7 +1652,7 @@ describe('DeviceTransport', () => {
 
             await deviceManager.init();
             mockApiGet.mockResolvedValue({ dev1: buildAc(100, '2026-01-01T00:00:30.000Z', 20) });
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             vi.setSystemTime(new Date('2026-01-01T01:00:40.000Z'));
             emitDeviceUpdate(buildAc(101, '2026-01-01T01:00:30.000Z', 20));
@@ -1668,7 +1663,7 @@ describe('DeviceTransport', () => {
             expect(readMeasuredPowerKw()).toBeCloseTo(1, 3);
 
             mockApiGet.mockResolvedValue({ dev1: buildAc(101, '2026-01-01T01:00:30.000Z', 21) });
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             expect(readMeasuredPowerKw()).toBeCloseTo(1, 3);
             expect(deviceManager.getSnapshotByDeviceId('dev1')?.measuredPowerReading).toEqual({
                 kind: 'interval_average', powerKw: 1,
@@ -1713,7 +1708,7 @@ describe('DeviceTransport', () => {
                 ),
             });
 
-            await refreshDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await refreshDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(getDeviceDriverIdOverride).toHaveBeenCalledTimes(2);
             expect(getDeviceDriverIdOverride).toHaveBeenCalledWith('dev-a');
@@ -1740,7 +1735,7 @@ describe('DeviceTransport', () => {
                 },
             });
             // We need refreshSnapshot to populate internal state first
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             await deviceManager.requestTemperatureTarget('dev1', 22);
 
@@ -1758,7 +1753,7 @@ describe('DeviceTransport', () => {
         });
 
         it('reports live feed as healthy after init', async () => {
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             expect(deviceManager.getLiveFeedHealth()?.subscriptionState).toBe('subscribed');
         });
 
@@ -1783,7 +1778,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow()),
             });
 
-            await managedDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await managedDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const realtimeListener = vi.fn();
             onObservedControlState(managedDeviceManager, realtimeListener);
 
@@ -1810,7 +1805,7 @@ describe('DeviceTransport', () => {
             );
             await managedDeviceManager.init();
 
-            await managedDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await managedDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const realtimeListener = vi.fn();
             onObservedControlState(managedDeviceManager, realtimeListener);
 
@@ -1822,7 +1817,7 @@ describe('DeviceTransport', () => {
             expect(realtimeListener).not.toHaveBeenCalled();
 
             managedState.dev1 = true;
-            await managedDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await managedDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             // Now device.update should be handled
             emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
@@ -1847,7 +1842,7 @@ describe('DeviceTransport', () => {
                 },
             );
             await managedDeviceManager.init();
-            await managedDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await managedDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(findSnapshotDevice(managedDeviceManager.getSnapshot(), 'dev1'))
                 .toEqual(expect.objectContaining({ id: 'dev1' }));
@@ -1881,7 +1876,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow()),
             };
             mockApiGet.mockResolvedValue(validDevice);
-            await managedDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await managedDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
             expect(hasObservedTemperature(
                 managedDeviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
             )).toBe(true);
@@ -1896,7 +1891,7 @@ describe('DeviceTransport', () => {
             });
 
             managedState.dev1 = true;
-            await managedDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await managedDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
             expect(hasObservedTemperature(
                 managedDeviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
             )).toBe(true);
@@ -1905,7 +1900,7 @@ describe('DeviceTransport', () => {
 
         it('updates local state on power change via device.update', async () => {
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             // Verify initial state
             expect((deviceManager.getSnapshot()[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBe(1);
@@ -1945,7 +1940,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow(BASELINE_OFFSET_MS)),
             });
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             let observedSources = deviceManager.getDebugObservedSources('dev1');
             expect(observedSources?.snapshotRefresh).toEqual(expect.objectContaining({
@@ -2070,7 +2065,7 @@ describe('DeviceTransport', () => {
                 }, '2026-06-03T06:00:00.000Z'),
             });
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(true);
 
             // 2. Realtime onoff=false → the freshest trusted observation says OFF.
@@ -2087,7 +2082,7 @@ describe('DeviceTransport', () => {
                     '2026-06-03T06:05:00.000Z',
                 ),
             });
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             // The observed truth remains the trusted realtime OFF.
             const dev1 = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
@@ -2107,7 +2102,7 @@ describe('DeviceTransport', () => {
                 }, '2026-06-03T06:00:00.000Z'),
             });
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             await emitCapability('dev1', 'onoff', false);
 
             mockApiGet.mockResolvedValue({
@@ -2116,7 +2111,7 @@ describe('DeviceTransport', () => {
                     onoff: { value: true, lastUpdated: '2026-06-03T06:01:00.000Z' },
                 }, '2026-06-03T06:05:00.000Z'),
             });
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(logCapture.findEvent('binary_observation_consolidated')).toMatchObject({
                 event: 'binary_observation_consolidated',
@@ -2141,7 +2136,7 @@ describe('DeviceTransport', () => {
                 }, '2026-06-03T06:00:00.000Z'),
             });
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             await emitCapability('dev1', 'onoff', false);
             const agreedBefore = getPerfSnapshot().counts.binary_observation_agreed_total ?? 0;
 
@@ -2151,7 +2146,7 @@ describe('DeviceTransport', () => {
                     onoff: { value: false, lastUpdated: '2026-06-03T06:01:00.000Z' },
                 }, '2026-06-03T06:05:00.000Z'),
             });
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(logCapture.findEvent('binary_observation_consolidated')).toBeUndefined();
             const agreedAfter = getPerfSnapshot().counts.binary_observation_agreed_total ?? 0;
@@ -2174,7 +2169,7 @@ describe('DeviceTransport', () => {
                 }, '2026-06-03T06:00:00.000Z'),
             });
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             await emitCapability('dev1', 'onoff', false);
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(false);
 
@@ -2184,7 +2179,7 @@ describe('DeviceTransport', () => {
                     onoff: true,
                 }),
             });
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(loggerMock.structuredLog.warn).toHaveBeenCalledWith(expect.objectContaining({
                 event: 'device_read_ignored',
@@ -2406,7 +2401,7 @@ describe('DeviceTransport', () => {
                     }, '2026-04-01T11:59:00.000Z'),
                 });
                 await deviceManager.init();
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 const snapshotBefore = structuredClone(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1'));
                 const evidenceBefore = deviceManager.getBinarySettleEvidenceByDeviceId('dev1');
                 expect(snapshotBefore?.binaryControl?.on).toBe(false);
@@ -2468,7 +2463,7 @@ describe('DeviceTransport', () => {
                 seam: 'snapshot refresh',
                 deliver: async (device: HomeyDeviceLike) => {
                     mockApiGet.mockResolvedValue({ dev1: device });
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 },
             },
         ])('ignores a $seam whose contradicting onoff carries no stamp: state and evidence stand', async ({ deliver }) => {
@@ -2539,7 +2534,7 @@ describe('DeviceTransport', () => {
                 }, stampedBefore(newerEvidence, -BASELINE_OFFSET_MS / 2)),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             const snapshotDevice = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(newerEvidence);
@@ -2557,9 +2552,9 @@ describe('DeviceTransport', () => {
             // A single empty read is held under abandon-grace; drive past the
             // consecutive-read threshold so the genuinely-gone device commits.
             mockApiGet.mockResolvedValue({});
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
         });
@@ -2596,7 +2591,7 @@ describe('DeviceTransport', () => {
                 }, '2026-04-01T12:00:00.000Z'),
             });
 
-            await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(findSnapshotDevice(evDeviceManager.getSnapshot(), 'ev1')).toEqual(expect.objectContaining({
                 binaryControlObservation: {
@@ -2638,7 +2633,7 @@ describe('DeviceTransport', () => {
                 }, staleAt),
             });
 
-            await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(findSnapshotDevice(evDeviceManager.getSnapshot(), 'ev1')).toEqual(expect.objectContaining({
                 binaryControlObservation: newerEvidence,
@@ -2663,7 +2658,7 @@ describe('DeviceTransport', () => {
                 }, '2026-04-01T12:00:00.000Z'),
             });
 
-            await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             const expectedRawEvidence = {
                 valid: true,
@@ -2782,15 +2777,15 @@ describe('DeviceTransport', () => {
 
         it('prunes stale debug sources and ignores no-op realtime updates for removed devices', async () => {
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             expect(deviceManager.getDebugObservedSources('dev1')?.snapshotRefresh).toBeDefined();
 
             // A single empty read is held under abandon-grace; drive past the
             // consecutive-read threshold so the genuinely-gone device commits.
             mockApiGet.mockResolvedValue({});
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(deviceManager.getDebugObservedSources('dev1')).toBeNull();
 
@@ -2812,7 +2807,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow(BASELINE_OFFSET_MS)),
             });
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const realtimeListener = vi.fn();
             onObservedControlState(deviceManager, realtimeListener);
 
@@ -2859,7 +2854,7 @@ describe('DeviceTransport', () => {
             });
 
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const realtimeListener = vi.fn();
             onObservedControlState(deviceManager, realtimeListener);
 
@@ -2890,7 +2885,7 @@ describe('DeviceTransport', () => {
             }));
 
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const realtimeListener = vi.fn();
             onObservedControlState(deviceManager, realtimeListener);
 
@@ -2919,7 +2914,7 @@ describe('DeviceTransport', () => {
             });
 
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const liveStateListener = vi.fn();
             const realtimeListener = vi.fn();
             onObservedState(deviceManager, liveStateListener);
@@ -2955,7 +2950,7 @@ describe('DeviceTransport', () => {
             });
 
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             await deviceManager.setCapability('dev1', 'onoff', false);
 
             const currentOnAtReconcile: unknown[] = [];
@@ -2985,7 +2980,7 @@ describe('DeviceTransport', () => {
             });
 
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             await deviceManager.setCapability('dev1', 'onoff', false);
 
             const realtimeListener = vi.fn();
@@ -3012,7 +3007,7 @@ describe('DeviceTransport', () => {
                 });
 
                 await deviceManager.init();
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 const realtimeListener = vi.fn();
                 onObservedControlState(deviceManager, realtimeListener);
 
@@ -3059,7 +3054,7 @@ describe('DeviceTransport', () => {
             });
 
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const realtimeListener = vi.fn();
             onObservedControlState(deviceManager, realtimeListener);
 
@@ -3096,7 +3091,7 @@ describe('DeviceTransport', () => {
             });
 
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const realtimeListener = vi.fn();
             onObservedControlState(deviceManager, realtimeListener);
 
@@ -3124,7 +3119,7 @@ describe('DeviceTransport', () => {
                     }, stampedNow()),
                 });
 
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 const realtimeListener = vi.fn();
                 onObservedControlState(deviceManager, realtimeListener);
 
@@ -3136,7 +3131,7 @@ describe('DeviceTransport', () => {
                         onoff: true,
                     }, stampedNow()),
                 });
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 expect(deviceManager.getSnapshot().map(snapshotDeviceId)).toEqual(['dev2']);
 
                 await vi.advanceTimersByTimeAsync(90_000);
@@ -3158,7 +3153,7 @@ describe('DeviceTransport', () => {
                 });
 
                 await deviceManager.init();
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 const realtimeListener = vi.fn();
                 onObservedControlState(deviceManager, realtimeListener);
 
@@ -3191,7 +3186,7 @@ describe('DeviceTransport', () => {
             it('pending off write + capability event off => settles immediately', async () => {
                 mockApiGet.mockResolvedValue({ dev1: heaterOnDevice(BASELINE_OFFSET_MS) });
                 await deviceManager.init();
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 const realtimeListener = vi.fn();
                 onObservedControlState(deviceManager, realtimeListener);
 
@@ -3205,7 +3200,7 @@ describe('DeviceTransport', () => {
             it('pending off write + capability event on => drift immediately', async () => {
                 mockApiGet.mockResolvedValue({ dev1: heaterOnDevice(BASELINE_OFFSET_MS) });
                 await deviceManager.init();
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 const realtimeListener = vi.fn();
                 onObservedControlState(deviceManager, realtimeListener);
 
@@ -3219,7 +3214,7 @@ describe('DeviceTransport', () => {
             it('pending off write + device.update with off => settles immediately', async () => {
                 mockApiGet.mockResolvedValue({ dev1: heaterOnDevice(BASELINE_OFFSET_MS) });
                 await deviceManager.init();
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 const realtimeListener = vi.fn();
                 onObservedControlState(deviceManager, realtimeListener);
 
@@ -3233,7 +3228,7 @@ describe('DeviceTransport', () => {
             it('pending off write + device.update with on => drift immediately', async () => {
                 mockApiGet.mockResolvedValue({ dev1: heaterOnDevice(BASELINE_OFFSET_MS) });
                 await deviceManager.init();
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 const realtimeListener = vi.fn();
                 onObservedControlState(deviceManager, realtimeListener);
 
@@ -3247,7 +3242,7 @@ describe('DeviceTransport', () => {
             it('pending on write + capability event on => settles immediately', async () => {
                 mockApiGet.mockResolvedValue({ dev1: heaterOffDevice(BASELINE_OFFSET_MS) });
                 await deviceManager.init();
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 const realtimeListener = vi.fn();
                 onObservedControlState(deviceManager, realtimeListener);
 
@@ -3261,7 +3256,7 @@ describe('DeviceTransport', () => {
             it('pending on write + capability event off => drift immediately', async () => {
                 mockApiGet.mockResolvedValue({ dev1: heaterOffDevice(BASELINE_OFFSET_MS) });
                 await deviceManager.init();
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 const realtimeListener = vi.fn();
                 onObservedControlState(deviceManager, realtimeListener);
 
@@ -3284,7 +3279,7 @@ describe('DeviceTransport', () => {
                             measure_power: 0,
                         }, '2026-04-01T12:00:00.000Z'),
                     });
-                    await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     const realtimeListener = vi.fn();
                     onObservedControlState(evDeviceManager, realtimeListener);
 
@@ -3319,7 +3314,7 @@ describe('DeviceTransport', () => {
                         measure_power: 0,
                     }, '2026-04-01T12:00:00.000Z'),
                 });
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 const realtimeListener = vi.fn();
                 onObservedControlState(evDeviceManager, realtimeListener);
 
@@ -3358,7 +3353,7 @@ describe('DeviceTransport', () => {
                     }, stampedNow(offsetMs)),
                 });
                 mockApiGet.mockResolvedValue({ ev1: evDevice(true, 'plugged_in', BASELINE_OFFSET_MS) });
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 // Full refresh treats session state as effective binary evidence;
                 // seed the distinct raw control axis before exercising a bundled
                 // update where both raw and state fields change.
@@ -3407,7 +3402,7 @@ describe('DeviceTransport', () => {
                             measure_power: 0,
                         }, '2026-04-01T12:00:00.000Z'),
                     });
-                    await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     const liveStateListener = vi.fn();
                     const realtimeListener = vi.fn();
                     onObservedState(evDeviceManager, liveStateListener);
@@ -3439,7 +3434,7 @@ describe('DeviceTransport', () => {
                 vi.useFakeTimers();
                 try {
                     mockApiGet.mockResolvedValue({ dev1: heaterOnDevice(BASELINE_OFFSET_MS) });
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     const realtimeListener = vi.fn();
                     onObservedControlState(deviceManager, realtimeListener);
 
@@ -3465,7 +3460,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow()),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 binaryControl: { on: false },
@@ -3498,7 +3493,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow()),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(deviceManager.getSnapshot()[0]?.targets[0]).toEqual(expect.objectContaining({
                 id: 'target_temperature',
@@ -3533,7 +3528,7 @@ describe('DeviceTransport', () => {
                 }),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             const snap = deviceManager.getSnapshot()[0] as TransportDeviceSnapshot | undefined;
             expect(snap?.targets).toHaveLength(1);
@@ -3549,7 +3544,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow()),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             await deviceManager.setCapability('dev1', 'onoff', true);
 
@@ -3566,7 +3561,7 @@ describe('DeviceTransport', () => {
                 }, '2026-06-03T06:00:00.000Z'),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             await deviceManager.setCapability('dev1', 'onoff', false);
 
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
@@ -3584,7 +3579,7 @@ describe('DeviceTransport', () => {
                 ),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             const snapshotDevice = deviceManager.getSnapshot()[0];
             expect(snapshotDevice).toEqual(expect.objectContaining({
@@ -3608,7 +3603,7 @@ describe('DeviceTransport', () => {
             });
 
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const realtimeListener = vi.fn();
             onObservedControlState(deviceManager, realtimeListener);
 
@@ -3646,7 +3641,7 @@ describe('DeviceTransport', () => {
             });
 
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             // device.update changes target to 26.5
             emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
@@ -3669,7 +3664,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow()),
             });
 
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 targets: [expect.objectContaining({ id: 'target_temperature', value: 26.5 })],
@@ -3690,7 +3685,7 @@ describe('DeviceTransport', () => {
                 });
 
                 await deviceManager.init();
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
                     measure_power: 1000,
@@ -3711,7 +3706,7 @@ describe('DeviceTransport', () => {
                     }, '2026-03-20T05:59:30.000Z'),
                 });
 
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     targets: [expect.objectContaining({ id: 'target_temperature', value: 16 })],
@@ -3734,7 +3729,7 @@ describe('DeviceTransport', () => {
                     }, '2026-03-20T05:59:00.000Z'),
                 });
 
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     lastFreshDataMs: new Date('2026-03-20T05:59:00.000Z').getTime(),
                     lastLocalWriteMs: undefined,
@@ -3757,7 +3752,7 @@ describe('DeviceTransport', () => {
                     }, '2026-03-20T05:59:30.000Z'),
                 });
 
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     lastFreshDataMs: new Date('2026-03-20T05:59:30.000Z').getTime(),
@@ -3782,7 +3777,7 @@ describe('DeviceTransport', () => {
                     }, '2026-03-20T05:59:00.000Z'),
                 });
 
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     targets: [expect.objectContaining({ id: 'target_temperature', value: 23 })],
                 }));
@@ -3803,7 +3798,7 @@ describe('DeviceTransport', () => {
                     }, stampedNow()),
                 });
 
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     targets: [expect.objectContaining({ id: 'target_temperature', value: 16 })],
@@ -3825,7 +3820,7 @@ describe('DeviceTransport', () => {
                     }, '2026-03-20T05:59:00.000Z'),
                 });
 
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     lastFreshDataMs: new Date('2026-03-20T05:59:00.000Z').getTime(),
@@ -3848,7 +3843,7 @@ describe('DeviceTransport', () => {
                     }, '2026-03-20T05:59:00.000Z'),
                 });
 
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
                 emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
@@ -3868,7 +3863,7 @@ describe('DeviceTransport', () => {
                     }, '2026-03-20T05:59:30.000Z'),
                 });
 
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     measuredPowerKw: 2.865,
@@ -3894,7 +3889,7 @@ describe('DeviceTransport', () => {
             });
 
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const realtimeListener = vi.fn();
             onObservedControlState(deviceManager, realtimeListener);
 
@@ -3944,7 +3939,7 @@ describe('DeviceTransport', () => {
                 }, '2026-03-20T05:59:00.000Z'),
             });
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const realtimeListener = vi.fn();
             onObservedControlState(deviceManager, realtimeListener);
 
@@ -3973,7 +3968,7 @@ describe('DeviceTransport', () => {
                     }, '2026-03-20T05:59:00.000Z'),
                 });
 
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 const freshnessSeenAtEmit: Array<number | undefined> = [];
                 onObservedControlState(deviceManager, () => {
@@ -4009,7 +4004,7 @@ describe('DeviceTransport', () => {
                     }, '2026-03-20T05:59:00.000Z'),
                 });
 
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
                 emitDeviceUpdate(homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
@@ -4041,7 +4036,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow(BASELINE_OFFSET_MS)),
             });
 
-            await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const realtimeListener = vi.fn();
             onObservedControlState(evDeviceManager, realtimeListener);
 
@@ -4080,7 +4075,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow(BASELINE_OFFSET_MS)),
             });
 
-            await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const realtimeListener = vi.fn();
             onObservedControlState(evDeviceManager, realtimeListener);
 
@@ -4106,7 +4101,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow(BASELINE_OFFSET_MS)),
             });
 
-            await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const realtimeListener = vi.fn();
             onObservedControlState(evDeviceManager, realtimeListener);
 
@@ -4145,7 +4140,7 @@ describe('DeviceTransport', () => {
                     ),
                 });
 
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 vi.setSystemTime(new Date('2026-03-20T06:05:00.000Z'));
                 await emitCapability('ev1', 'evcharger_charging_state', 'plugged_in_charging');
 
@@ -4177,7 +4172,7 @@ describe('DeviceTransport', () => {
                     }, '2026-03-20T06:00:00.000Z'),
                 });
 
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 vi.setSystemTime(new Date('2026-03-20T06:05:00.000Z'));
                 await emitCapability('ev1', 'measure_battery', 52);
 
@@ -4216,7 +4211,7 @@ describe('DeviceTransport', () => {
                     ),
                 });
 
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 vi.setSystemTime(new Date('2026-03-20T06:05:00.000Z'));
                 const liveStateListener = vi.fn();
                 const reconcileListener = vi.fn();
@@ -4286,7 +4281,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow(BASELINE_OFFSET_MS)),
             });
 
-            await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const realtimeListener = vi.fn();
             onObservedControlState(evDeviceManager, realtimeListener);
 
@@ -4317,7 +4312,7 @@ describe('DeviceTransport', () => {
                     }, '2026-03-20T05:59:00.000Z'),
                 });
 
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
                 emitDeviceUpdate(homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
@@ -4334,7 +4329,7 @@ describe('DeviceTransport', () => {
                     }, '2026-03-20T05:59:30.000Z'),
                 });
 
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     binaryControl: { on: false },
@@ -4374,7 +4369,7 @@ describe('DeviceTransport', () => {
                     ),
                 });
 
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
                 await emitCapability('ev1', 'measure_battery', 61);
                 await emitCapability('ev1', 'measure_soc_level', 72);
@@ -4398,7 +4393,7 @@ describe('DeviceTransport', () => {
                     ),
                 });
 
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     report: { percent: 61, observedAtMs: expect.any(Number) },
@@ -4437,7 +4432,7 @@ describe('DeviceTransport', () => {
                     ),
                 });
 
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
                 emitDeviceUpdate(homeyDevice(
                     {
@@ -4472,7 +4467,7 @@ describe('DeviceTransport', () => {
                         '2026-03-20T06:00:00.000Z',
                     ),
                 });
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     report: { percent: 61, observedAtMs: expect.any(Number) },
@@ -4511,7 +4506,7 @@ describe('DeviceTransport', () => {
                     ),
                 });
 
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
                 emitDeviceUpdate(homeyDevice(
                     {
@@ -4546,7 +4541,7 @@ describe('DeviceTransport', () => {
                         '2026-03-20T06:00:00.000Z',
                     ),
                 });
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     report: { percent: 61, observedAtMs: expect.any(Number) },
@@ -4585,7 +4580,7 @@ describe('DeviceTransport', () => {
                     ),
                 });
 
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     report: { percent: 50, observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime() },
                     level: { kind: 'known', percent: 50, observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime() },
@@ -4614,7 +4609,7 @@ describe('DeviceTransport', () => {
                     level: { kind: 'unavailable', reasonCode: 'not_connected' },
                 }));
 
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     report: { percent: 50, observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime() },
@@ -4653,7 +4648,7 @@ describe('DeviceTransport', () => {
                     ),
                 });
 
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
                 await emitCapability('ev1', 'measure_soc_level', 61);
                 vi.setSystemTime(new Date('2026-03-20T06:00:02.000Z'));
@@ -4677,7 +4672,7 @@ describe('DeviceTransport', () => {
                         '2026-03-20T06:00:03.000Z',
                     ),
                 });
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     report: expect.objectContaining({ percent: 70 }),
                     capabilityId: 'measure_battery',
@@ -4701,7 +4696,7 @@ describe('DeviceTransport', () => {
                         '2026-03-20T06:00:00.000Z',
                     ),
                 });
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     report: expect.objectContaining({ percent: 70 }),
@@ -4739,7 +4734,7 @@ describe('DeviceTransport', () => {
                     ),
                 });
 
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
                 await emitCapability('ev1', 'measure_battery', 61);
 
@@ -4760,7 +4755,7 @@ describe('DeviceTransport', () => {
                         '2026-03-20T06:00:02.000Z',
                     ),
                 });
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 mockApiGet.mockResolvedValue({
                     ev1: homeyDevice(
@@ -4779,7 +4774,7 @@ describe('DeviceTransport', () => {
                         '2026-03-20T06:00:00.000Z',
                     ),
                 });
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     report: expect.objectContaining({ percent: 50 }),
@@ -4822,7 +4817,7 @@ describe('DeviceTransport', () => {
                     }, stampedNow()),
                 });
 
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     evChargingState: 'plugged_out',
                 }));
@@ -4843,7 +4838,7 @@ describe('DeviceTransport', () => {
                     source: 'flow',
                 };
 
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     evChargingState: 'plugged_in_paused',
@@ -4867,7 +4862,7 @@ describe('DeviceTransport', () => {
             });
 
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const realtimeListener = vi.fn();
             onObservedControlState(deviceManager, realtimeListener);
 
@@ -4899,7 +4894,7 @@ describe('DeviceTransport', () => {
                 });
 
                 await deviceManager.init();
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 const realtimeListener = vi.fn();
                 onObservedControlState(deviceManager, realtimeListener);
 
@@ -4947,7 +4942,7 @@ describe('DeviceTransport', () => {
                     ),
                 });
 
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 const realtimeListener = vi.fn();
                 onObservedControlState(evDeviceManager, realtimeListener);
 
@@ -5013,7 +5008,7 @@ describe('DeviceTransport', () => {
                 );
                 mockApiGet.mockResolvedValue({ ev1: zaptecPayload(true) });
 
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 const realtimeListener = vi.fn();
                 onObservedControlState(evDeviceManager, realtimeListener);
 
@@ -5049,7 +5044,7 @@ describe('DeviceTransport', () => {
                     }, '2026-04-01T11:59:00.000Z'),
                 });
 
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                 emitDeviceUpdate(homeyDevice({ id: 'ev1', name: 'Easee', class: 'evcharger' }, {
                     evcharger_charging: setable(false),
@@ -5097,7 +5092,7 @@ describe('DeviceTransport', () => {
                     }, '2026-04-01T11:59:00.000Z'),
                 });
 
-                await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 const realtimeListener = vi.fn();
                 onObservedControlState(evDeviceManager, realtimeListener);
 
@@ -5151,7 +5146,7 @@ describe('DeviceTransport', () => {
                 ),
             });
 
-            await evDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const realtimeListener = vi.fn();
             onObservedControlState(evDeviceManager, realtimeListener);
 
@@ -5201,7 +5196,7 @@ describe('DeviceTransport', () => {
                 },
             );
             await managedDeviceManager.init();
-            await managedDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await managedDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const realtimeListener = vi.fn();
             onObservedControlState(managedDeviceManager, realtimeListener);
 
@@ -5226,7 +5221,7 @@ describe('DeviceTransport', () => {
                 }, stampedNow(BASELINE_OFFSET_MS)),
             });
             await deviceManager.init();
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const realtimeListener = vi.fn();
             onObservedControlState(deviceManager, realtimeListener);
 
@@ -5246,7 +5241,7 @@ describe('DeviceTransport', () => {
             // observer's `ObservedStateEmitter`, which transport is handed and
             // does not own, so tearing down transport must not silence it. The
             // live feed is the one resource destroy still releases.
-            await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             deviceManager.destroy();
 
@@ -5273,7 +5268,7 @@ describe('DeviceTransport', () => {
             it('triggers reconcile when onoff is changed externally via capability event', async () => {
                 mockApiGet.mockResolvedValue(buildOnoffDevice());
                 await deviceManager.init();
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 const realtimeListener = vi.fn();
                 onObservedControlState(deviceManager, realtimeListener);
@@ -5293,7 +5288,7 @@ describe('DeviceTransport', () => {
             it('triggers reconcile when target_temperature is changed externally via capability event', async () => {
                 mockApiGet.mockResolvedValue(buildTempDevice());
                 await deviceManager.init();
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 const realtimeListener = vi.fn();
                 onObservedControlState(deviceManager, realtimeListener);
@@ -5317,7 +5312,7 @@ describe('DeviceTransport', () => {
             it('suppresses capability echo for own recent writes', async () => {
                 mockApiGet.mockResolvedValue(buildTempDevice());
                 await deviceManager.init();
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 // Simulate PELS writing target_temperature (records a local write)
                 mockApiPut.mockResolvedValue({});
@@ -5335,7 +5330,7 @@ describe('DeviceTransport', () => {
             it('ignores normalized target_temperature echoes until device.update confirms the write', async () => {
                 mockApiGet.mockResolvedValue(buildTempDevice());
                 await deviceManager.init();
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 mockApiPut.mockResolvedValue({});
                 await deviceManager.setCapability('dev1', 'target_temperature', 21.5);
@@ -5364,7 +5359,7 @@ describe('DeviceTransport', () => {
                     }, stampedNow()),
                 });
                 await deviceManager.init();
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 const snapshotBefore = structuredClone(deviceManager.getSnapshot());
 
                 const realtimeListener = vi.fn();
@@ -5379,7 +5374,7 @@ describe('DeviceTransport', () => {
             it('ignores capability events when value is unchanged', async () => {
                 mockApiGet.mockResolvedValue(buildOnoffDevice());
                 await deviceManager.init();
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 const realtimeListener = vi.fn();
                 onObservedControlState(deviceManager, realtimeListener);
@@ -5396,7 +5391,7 @@ describe('DeviceTransport', () => {
                     deviceManager = createTestDeviceTransport(homeyMock, loggerMock);
                     mockApiGet.mockResolvedValue(buildTempDevice());
                     await deviceManager.init();
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                     await emitCapability('dev1', 'target_temperature', 18);
                     await emitCapability('dev1', 'target_temperature', 18);
@@ -5414,7 +5409,7 @@ describe('DeviceTransport', () => {
                 deviceManager = createTestDeviceTransport(homeyMock, loggerMock);
                 mockApiGet.mockResolvedValue(buildTempDevice());
                 await deviceManager.init();
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 await emitCapability('dev1', 'measure_temperature', 21);
 
@@ -5445,7 +5440,7 @@ describe('DeviceTransport', () => {
                     await deviceManager.init();
                     vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                     mockApiGet.mockResolvedValue(buildOnoffDevice());
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     const freshnessAtRefresh = deviceManager.getSnapshot()[0].lastFreshDataMs;
 
                     vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
@@ -5477,7 +5472,7 @@ describe('DeviceTransport', () => {
                     await deviceManager.init();
                     vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                     mockApiGet.mockResolvedValue(buildThermostatDevice());
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     const freshnessAtRefresh = deviceManager.getSnapshot()[0].lastFreshDataMs;
 
                     vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
@@ -5516,7 +5511,7 @@ describe('DeviceTransport', () => {
                             onoff: true,
                         }, stampedNow()),
                     });
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                     vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
                     mockApiPut.mockResolvedValue({});
@@ -5563,7 +5558,7 @@ describe('DeviceTransport', () => {
                     await deviceManager.init();
                     vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                     mockApiGet.mockResolvedValue(buildOnoffDevice());
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     const freshnessAtRefresh = deviceManager.getSnapshot()[0].lastFreshDataMs;
 
                     vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
@@ -5595,7 +5590,7 @@ describe('DeviceTransport', () => {
                     await deviceManager.init();
                     vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                     mockApiGet.mockResolvedValue(buildOnoffDevice());
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     await emitCapability('dev1', 'measure_power', 2000);
                     const freshnessBefore = deviceManager.getSnapshot()[0].lastFreshDataMs;
 
@@ -5625,7 +5620,7 @@ describe('DeviceTransport', () => {
                             measure_power: 0,
                         }, '2026-04-01T11:59:00.000Z'),
                     });
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                     const liveStateListener = vi.fn();
                     onObservedState(deviceManager, liveStateListener);
@@ -5650,7 +5645,7 @@ describe('DeviceTransport', () => {
                     await deviceManager.init();
                     vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                     mockApiGet.mockResolvedValue(buildThermostatDevice());
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     const freshnessAtRefresh = deviceManager.getSnapshot()[0].lastFreshDataMs;
 
                     vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
@@ -5684,7 +5679,7 @@ describe('DeviceTransport', () => {
                     await deviceManager.init();
                     vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                     mockApiGet.mockResolvedValue(buildThermostatDevice());
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     await emitCapability('dev1', 'measure_temperature', 21);
                     const freshnessBefore = deviceManager.getSnapshot()[0].lastFreshDataMs;
                     const liveStateListener = vi.fn();
@@ -5724,7 +5719,7 @@ describe('DeviceTransport', () => {
                         })],
                     }));
 
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     const refreshed = deviceManager.getSnapshot()[0] as TransportDeviceSnapshot;
                     expect(hasObservedTemperature(refreshed)).toBe(false);
                     expect(refreshed.lastFreshDataMs).toBe(freshnessBefore);
@@ -5741,7 +5736,7 @@ describe('DeviceTransport', () => {
                 async ({ capabilityId, validValue }) => {
                     await deviceManager.init();
                     mockApiGet.mockResolvedValue(buildThermostatDevice());
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     const reconcileListener = vi.fn();
                     onObservedControlState(deviceManager, reconcileListener);
 
@@ -5771,7 +5766,7 @@ describe('DeviceTransport', () => {
                     vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                     const validDevices = buildThermostatDevice();
                     mockApiGet.mockResolvedValue(validDevices);
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                     vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
                     await emitCapability('dev1', 'measure_temperature', Number.NaN);
@@ -5820,7 +5815,7 @@ describe('DeviceTransport', () => {
                     await vi.waitFor(() => {
                         expect(refreshSpy).toHaveBeenCalledWith({
                             targetedRefresh: true,
-                            mainMeterSelection: expect.anything(),
+                            meterDeviceIds: expect.anything(),
                         });
                     });
                     const firstRefresh = refreshSpy.mock.results[0];
@@ -5829,14 +5824,14 @@ describe('DeviceTransport', () => {
                     expect(hasObservedTemperature(
                         deviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
                     )).toBe(false);
-                    await deviceManager.refreshSnapshot({ targetedRefresh: true, mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ targetedRefresh: true, meterDeviceIds: [] });
                     expect(targetedReadCount).toBe(2);
                     expect(hasObservedTemperature(
                         deviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
                     )).toBe(false);
 
                     vi.setSystemTime(new Date('2026-04-01T12:04:00.000Z'));
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                     expect(hasObservedTemperature(
                         deviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
@@ -5854,7 +5849,7 @@ describe('DeviceTransport', () => {
                     vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                     const validDevices = buildThermostatDevice();
                     mockApiGet.mockResolvedValue(validDevices);
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                     vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
                     await emitCapability('dev1', 'measure_temperature', Number.NaN);
@@ -5877,13 +5872,13 @@ describe('DeviceTransport', () => {
                     };
                     vi.setSystemTime(new Date('2026-04-01T12:03:00.000Z'));
                     mockApiGet.mockResolvedValue(newerDevices);
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     expect(hasObservedTemperature(
                         deviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
                     )).toBe(true);
 
                     mockApiGet.mockResolvedValue(validDevices);
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     expect(hasObservedTemperature(
                         deviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
                     )).toBe(true);
@@ -5903,7 +5898,7 @@ describe('DeviceTransport', () => {
                         capabilitiesObj: temperatureCapabilities,
                     },
                 });
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 expect(hasObservedTemperature(
                     deviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
                 )).toBe(true);
@@ -5919,7 +5914,7 @@ describe('DeviceTransport', () => {
                 // realtime observation. The retained rejection must win even
                 // though removing this temperature-only device also removed its
                 // previous snapshot entry.
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 expect(deviceManager.getSnapshot()).toEqual([]);
             });
 
@@ -5953,7 +5948,7 @@ describe('DeviceTransport', () => {
                     measure_power: 500,
                 }, stampedNow());
                 mockApiGet.mockResolvedValue({ dev1: temperatureOnlyDevice, dev2: binarySurvivor });
-                await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                 await emitCapability('dev1', 'measure_temperature', Number.NaN);
                 expect(deviceManager.getSnapshot().map(snapshotDeviceId)).toEqual(['dev2']);
@@ -5981,7 +5976,7 @@ describe('DeviceTransport', () => {
                     await deviceManager.init();
                     vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                     mockApiGet.mockResolvedValue(buildThermostatDevice());
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     const freshnessAtRefresh = deviceManager.getSnapshot()[0].lastFreshDataMs;
 
                     vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
@@ -6020,7 +6015,7 @@ describe('DeviceTransport', () => {
                             measure_power: 500,
                         }, '2026-04-01T11:59:00.000Z'),
                     });
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                     // Realtime onoff event at T1 — establishes in-memory observation
                     vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
@@ -6036,7 +6031,7 @@ describe('DeviceTransport', () => {
                             measure_power: 500,
                         }, '2026-04-01T11:59:30.000Z'),
                     });
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                     // lastFreshDataMs must NOT advance to the refresh wall-clock time (12:10)
                     expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(freshnessAfterRealtime);
@@ -6060,7 +6055,7 @@ describe('DeviceTransport', () => {
                             measure_power: 500,
                         }, '2026-04-01T11:55:00.000Z'),
                     });
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     const freshnessAfterFirstRefresh = deviceManager.getSnapshot()[0].lastFreshDataMs;
                     expect(freshnessAfterFirstRefresh).toBe(new Date('2026-04-01T11:55:00.000Z').getTime());
 
@@ -6072,7 +6067,7 @@ describe('DeviceTransport', () => {
                             measure_power: 500,
                         }, '2026-04-01T11:55:00.000Z'),
                     });
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                     // Must stay at T0, not advance to wall-clock (12:10)
                     expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(freshnessAfterFirstRefresh);
@@ -6090,7 +6085,7 @@ describe('DeviceTransport', () => {
                     await deviceManager.init();
                     vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                     mockApiGet.mockResolvedValue(buildThermostatDevice());
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                     expect(deviceManager.getSnapshot()[0].targets.find((t) => t.id === 'target_temperature')?.value).toBe(20);
                     const freshnessBefore = deviceManager.getSnapshot()[0].lastFreshDataMs;
@@ -6124,7 +6119,7 @@ describe('DeviceTransport', () => {
                             measure_power: 360,
                         }, '2026-04-01T11:59:30.000Z'),
                     });
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                     // No malformed reading was retained to outrank the pull.
                     expect(deviceManager.getSnapshot()[0].targets.find((t) => t.id === 'target_temperature')?.value).toBe(20);
@@ -6145,7 +6140,7 @@ describe('DeviceTransport', () => {
                             measure_power: 500,
                         }, '2026-04-01T11:55:00.000Z'),
                     });
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     const freshnessAfterFirstRefresh = deviceManager.getSnapshot()[0].lastFreshDataMs;
                     expect(freshnessAfterFirstRefresh).toBe(new Date('2026-04-01T11:55:00.000Z').getTime());
 
@@ -6157,7 +6152,7 @@ describe('DeviceTransport', () => {
                             measure_power: { value: 600, lastUpdated: '2026-04-01T12:05:00.000Z' },
                         }, '2026-04-01T11:55:00.000Z'),
                     });
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                     // Must advance to T1 (the newer tracked capability timestamp)
                     expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(
@@ -6181,7 +6176,7 @@ describe('DeviceTransport', () => {
                             alarm_battery: false,
                         }, '2026-04-01T11:55:00.000Z'),
                     });
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     const freshnessAfterFirstRefresh = deviceManager.getSnapshot()[0].lastFreshDataMs;
                     expect(freshnessAfterFirstRefresh).toBe(new Date('2026-04-01T11:55:00.000Z').getTime());
 
@@ -6194,7 +6189,7 @@ describe('DeviceTransport', () => {
                             alarm_battery: { value: true, lastUpdated: '2026-04-01T12:08:00.000Z' },
                         }, '2026-04-01T11:55:00.000Z'),
                     });
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                     // Must stay at T0 — alarm_battery is untracked so its newer timestamp is ignored
                     expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(freshnessAfterFirstRefresh);
@@ -6217,7 +6212,7 @@ describe('DeviceTransport', () => {
                             measure_power: 1000,
                         }, '2026-04-01T11:59:00.000Z'),
                     });
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     const before = deviceManager.getSnapshot()[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe;
                     expect(before.binaryControl?.on).toBe(true);
                     const freshnessBefore = before.lastFreshDataMs;
@@ -6241,7 +6236,7 @@ describe('DeviceTransport', () => {
                             },
                         },
                     });
-                    await deviceManager.refreshSnapshot({ targetedRefresh: true, mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ targetedRefresh: true, meterDeviceIds: [] });
 
                     const snapshot = deviceManager.getSnapshot()[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe;
                     expect(snapshot.binaryControl?.on).toBe(true);
@@ -6288,14 +6283,14 @@ describe('DeviceTransport', () => {
                     mockApiGet.mockImplementation(buildPathAwareMock(deviceData));
 
                     vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(new Date(initialAt).getTime());
 
                     // measure_power gets a new lastUpdated; onoff stays at the old value.
                     const updatedAt = new Date('2026-04-01T12:05:00.000Z').toISOString();
                     deviceData.dev1.capabilitiesObj.measure_power.lastUpdated = updatedAt;
                     vi.setSystemTime(new Date('2026-04-01T12:06:00.000Z'));
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(new Date(updatedAt).getTime());
                 } finally {
                     vi.useRealTimers();
@@ -6321,7 +6316,7 @@ describe('DeviceTransport', () => {
 
                     // Initial refresh — freshness comes from tracked capability timestamps
                     vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     const freshnessAfterInit = deviceManager.getSnapshot()[0].lastFreshDataMs;
                     expect(freshnessAfterInit).toBe(new Date('2026-04-01T11:55:00.000Z').getTime());
 
@@ -6329,12 +6324,12 @@ describe('DeviceTransport', () => {
                     vi.setSystemTime(new Date('2026-04-01T12:06:00.000Z'));
 
                     // Normal refresh with unchanged timestamps: freshness must NOT advance.
-                    await deviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(freshnessAfterInit);
 
                     // Targeted refresh with unchanged timestamps: also must NOT advance —
                     // the poll itself is not evidence the device communicated.
-                    await deviceManager.refreshSnapshot({ targetedRefresh: true, mainMeterSelection: { state: 'unavailable' } });
+                    await deviceManager.refreshSnapshot({ targetedRefresh: true, meterDeviceIds: [] });
                     expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(freshnessAfterInit);
                 } finally {
                     vi.useRealTimers();
@@ -6463,7 +6458,7 @@ describe('DeviceTransport', () => {
                 },
             );
             await managedDeviceManager.init();
-            await managedDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await managedDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
             const realtimeListener = vi.fn();
             onObservedControlState(managedDeviceManager, realtimeListener);
             const heaterUpdate = (on: boolean) => homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
@@ -6477,7 +6472,7 @@ describe('DeviceTransport', () => {
             realtimeListener.mockClear();
 
             managedState.dev1 = false;
-            await managedDeviceManager.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+            await managedDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             emitDeviceUpdate(heaterUpdate(true));
 

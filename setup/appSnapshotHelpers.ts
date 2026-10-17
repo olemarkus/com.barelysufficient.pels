@@ -3,7 +3,7 @@ import type { PowerSampleAdmission } from '../lib/app/appContext';
 import type { DeviceTransportPort } from '../lib/device/deviceTransport';
 import type { DeviceSurfaces } from '../packages/contracts/src/deviceSurfaces';
 import type { PlanInputSnapshotDevice } from '../lib/planInput/runtimeDeviceRead';
-import type { HomePowerSampleWithIdentity as HomePowerSample } from '../lib/device/transport/resolvedHomeMeterDispatch';
+import type { MainMeterRead, MeterPowerSample as HomePowerSample } from '../lib/ports/homeMeterReadings';
 import { getDebugEmitter, type Logger as PinoLogger } from '../lib/logging/logger';
 import type { PlanEngine } from '../lib/plan/planEngine';
 import { TARGET_CONFIRMATION_STUCK_POLL_MS } from '../lib/plan/planConstants';
@@ -123,6 +123,8 @@ export class AppSnapshotHelpers {
     emitFlowBackedRefreshRequests: (deviceIds: string[]) => Promise<void>;
     emitSettingsUiDevicesUpdated: () => void;
     recordPowerSample: (sample: HomePowerSample) => Promise<PowerSampleAdmission>;
+    /** Main's part of the refresh's meter read for a selection (`resolveMainMeterRead`, `lib/home`). */
+    readMainMeter: (selection: MainMeterSelection) => MainMeterRead;
     // The explicit whole-home meter selection, resolved fresh per call by the
     // settings adapter that owns the SDK provenance. Required, because there is
     // no honest default: `resolved/null` would mean Automatic, silently
@@ -327,14 +329,15 @@ export class AppSnapshotHelpers {
       event: 'target_snapshot_refresh_started',
     });
     const meterSelectionAtStart = this.deps.resolveMainMeterSelection();
-    const homePowerSample = await deviceManager.refreshSnapshot({
+    const mainMeterRead = this.deps.readMainMeter(meterSelectionAtStart);
+    const meterReadings = await deviceManager.refreshSnapshot({
       includeLivePower: options.fast !== true,
       targetedRefresh: options.targeted,
       // Bind the same semantic selection used by the end-of-cycle staleness
       // fence into the actual fetch. The adapter may recover or fail again
       // while this async refresh is in flight; an independent second read
       // would otherwise let a sample for another authority slip through.
-      mainMeterSelection: meterSelectionAtStart,
+      meterDeviceIds: mainMeterRead.meterDeviceIds,
     });
 
     this.deps.reconcileTargetPowerReachability?.(
@@ -370,6 +373,7 @@ export class AppSnapshotHelpers {
       targetedRefresh: options.targeted === true,
     });
     this.deps.emitSettingsUiDevicesUpdated();
+    const homePowerSample = meterReadings ? mainMeterRead.sampleFrom(meterReadings) : null;
     await this.recordImplicitHomeyEnergySample(options, homePowerSample, meterSelectionAtStart);
   }
 
@@ -394,8 +398,8 @@ export class AppSnapshotHelpers {
     if (options.recordHomeyEnergySample === false) return 'not_requested';
     if (this.deps.getPowerSource() !== 'homey_energy') return 'not_homey_energy';
     // An unavailable start selection produces NO recordable sample: the fetch
-    // still fills the per-device lanes but its whole-home reading comes back
-    // `unavailable` (`fetchLivePowerReport`), so the
+    // still fills the per-device lanes but requests no Main meter
+    // (`readMainMeter`), so the
     // `if (sample)` guard below never records regardless of this answer. The
     // arm exists for classification honesty: without it, a selection that
     // recovers mid-flight would classify `stale_meter` and emit a mislabelled

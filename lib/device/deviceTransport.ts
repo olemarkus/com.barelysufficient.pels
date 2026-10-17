@@ -52,10 +52,10 @@ import {
   type DeviceDebugObservedSources,
 } from './transport/managerObservation';
 import type { DeviceParseSources } from './transport/managerParseDevice';
+import type { LiveMeterReadings } from '../ports/homeMeterReadings';
 import {
   createEstimateDecisionLogState,
   createPeakPowerLogState,
-  type DeviceTransportMeters,
   type DeviceTransportOptions,
   type DeviceTransportPowerState,
   type ResolvedTransportPowerState,
@@ -74,10 +74,9 @@ import {
   computePeriodicStatusMetrics,
   fetchLiveGenerationW as runFetchLiveGenerationW,
   type LiveGenerationRead,
-  type HomePowerSampleWithIdentity,
   SnapshotRefreshService,
   SnapshotRefreshState,
-  pollHomePowerWithMeterFanOut as runPollHomePowerWithMeterFanOut,
+  readLiveMeters,
 } from './transport/snapshotRefresh';
 import { DeviceSnapshotReader, createDeviceParseSources } from './transport/deviceSnapshotReader';
 import { RealtimeIngestService } from './transport/transportServices';
@@ -128,7 +127,6 @@ export class DeviceTransport {
     private readonly observationBridge: ObservationBridge;
     private readonly binaryEvidence: BinarySettleEvidenceService;
     private readonly sources: DeviceParseSources;
-    private readonly meters: DeviceTransportMeters;
     private readonly getFlowTriggerCard: DeviceTransportOptions['getFlowTriggerCard'];
     // Read-only home-battery awareness producer. Holds the detected battery-id set
     // (the authoritative role-membership set the app's managed/controllable
@@ -176,7 +174,6 @@ export class DeviceTransport {
         this.getFlowTriggerCard = options.getFlowTriggerCard;
         // Roles are this transport's own producers, asked only once a parse runs.
         this.sources = createDeviceParseSources(options, this);
-        this.meters = options.meters;
         this.notifications = new TransportNotifications(options.onSnapshotMutated);
         this.deviceSdk = new DeviceHomeySdk(
             homey,
@@ -249,7 +246,6 @@ export class DeviceTransport {
             this.observationBridge.state,
             this.snapshotStore,
             (refreshOptions) => this.refreshService.refresh(refreshOptions),
-            this.meters,
             (deviceId) => this.observationBridge.nextCursor(deviceId),
             (event) => this.observationBridge.dispatchControlStateChanged(event),
         );
@@ -271,7 +267,6 @@ export class DeviceTransport {
             this.reader,
             this.deviceSdk,
             this.notifications,
-            this.meters,
         );
         this.realtimeIngest = new RealtimeIngestService(
             this.binaryEvidence,
@@ -387,21 +382,17 @@ export class DeviceTransport {
             this.observationProducers.evCarLink,
         );
     }
-    // Poll-path home power read; also fans the additional (sub-home) meter
-    // readings out to the `onAdditionalMeterReadings` provider (multi-home
-    // R7b) — see `pollHomePowerWithMeterFanOut` in `homePowerPoll.ts`.
-    // `authorizeFanOut` (from the poll source) gates that fan-out on the poll's
-    // generation + source liveness so a stale-generation poll cannot deliver an
-    // out-of-order sub-meter sample.
-    async pollHomePowerW(
-        authorizeFanOut?: () => boolean,
-    ): Promise<HomePowerSampleWithIdentity | null> {
-        return runPollHomePowerWithMeterFanOut(
+    /**
+     * The poll's read of the given meters out of one live energy report, and
+     * the report's generation, which this also publishes. Which home each meter
+     * belongs to is the caller's (`lib/home/homeMeters.ts`); null when the read
+     * failed.
+     */
+    async readMeters(meterDeviceIds: readonly string[]): Promise<LiveMeterReadings | null> {
+        return readLiveMeters(
             this.logger,
-            this.meters,
             (watts, observedAtMs) => this.observationBridge.setGenerationW(watts, observedAtMs),
-            this.meters.getHomeyEnergyMeterSelection(),
-            authorizeFanOut,
+            meterDeviceIds,
         );
     }
     /**
@@ -410,12 +401,12 @@ export class DeviceTransport {
      * generation signal from a failed one, so the caller never publishes an SDK
      * failure as a measurement.
      *
-     * Deliberately NOT `pollHomePowerW`: that path also produces the whole-home
-     * net sample and fires the sub-home meter fan-out. On a flow home Homey's
-     * net is not authoritative — for a split import/export meter it floors at 0
-     * while the home genuinely exports (`test-devices` Run D) — so recording it
-     * would overwrite a correct negative net with a wrong zero, and the fan-out
-     * would start delivering sub-home samples no flow-home consumer expects.
+     * Deliberately NOT `readMeters`: that path also reads the homes' meters. On
+     * a flow home Homey's net is not authoritative — for a split import/export
+     * meter it floors at 0 while the home genuinely exports (`test-devices` Run
+     * D) — so recording it would overwrite a correct negative net with a wrong
+     * zero, and sub-home samples would reach no flow-home consumer that expects
+     * them.
      */
     async readGenerationW(): Promise<LiveGenerationRead> {
         return runFetchLiveGenerationW(this.logger);
@@ -437,7 +428,7 @@ export class DeviceTransport {
 
     async refreshSnapshot(
         options: SnapshotRefreshOptions,
-    ): Promise<HomePowerSampleWithIdentity | null> {
+    ): Promise<LiveMeterReadings | null> {
         return this.refreshService.refresh(options);
     }
 

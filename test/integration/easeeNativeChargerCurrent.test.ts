@@ -255,7 +255,7 @@ describe('Easee native charger current', () => {
     setRestClient({ get, put: vi.fn() });
     try {
       const deviceManager = createEaseeTransport(false);
-      await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
+      await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
 
       expect(deviceManager.getChargerPhasePresets()).toEqual({ [EASEE_ID]: 'ev_charger_1_phase' });
     } finally {
@@ -313,7 +313,7 @@ describe('Easee native charger current', () => {
     setRestClient({ get, put });
     try {
       const deviceManager = createEaseeTransport(true);
-      await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
+      await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
 
       await expect(deviceManager.requestSteppedLoadStep({
         deviceId: EASEE_ID,
@@ -343,7 +343,7 @@ describe('Easee native charger current', () => {
       put: async () => { await emitCapability(EASEE_ID, 'target_charger_current', 6); },
     });
     try {
-      await transport.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
+      await transport.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
       logCapture.restore();
       logCapture = captureLogger('info', []);
       await expect(transport.requestSteppedLoadStep({
@@ -372,7 +372,7 @@ describe('Easee native charger current', () => {
       },
     });
     try {
-      await transport.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
+      await transport.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
       logCapture.restore();
       logCapture = captureLogger('info', []);
       await expect(transport.requestSteppedLoadStep({
@@ -556,7 +556,7 @@ describe('Easee native charger current', () => {
       setRestClient({ get, put });
       try {
         const deviceManager = createEaseeTransport(nativeWiringEnabled);
-        await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
+        await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
         await deviceManager.requestBinaryControl(EASEE_ID, desired, triggerFlow);
       } finally {
         restoreMockRestClient();
@@ -639,7 +639,7 @@ describe('Easee native charger current', () => {
         const deviceManager = createEaseeTransport(true);
         const refresh = () => deviceManager.refreshSnapshot({
           includeLivePower: false,
-          mainMeterSelection: { state: 'unavailable' },
+          meterDeviceIds: [],
         });
         await refresh();
         await deviceManager.requestBinaryControl(EASEE_ID, desired, triggerFlow);
@@ -711,7 +711,7 @@ describe('Easee native charger current', () => {
       await initWithLiveFeed(deviceManager);
       const refresh = () => deviceManager.refreshSnapshot({
         includeLivePower: false,
-        mainMeterSelection: { state: 'unavailable' },
+        meterDeviceIds: [],
       });
       // Easee publishes a mode change: Homey dates it, then PELS hears the event.
       const report = async (capabilityId: string, value: unknown): Promise<void> => {

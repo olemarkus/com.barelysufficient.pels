@@ -5,7 +5,7 @@
  *
  * It exists as a re-export rather than as five direct imports because
  * `lib/home` is a domain peer, and the files that need a meter id — the weather
- * collector, the transport wiring, the settings repository — do not otherwise
+ * collector, the settings repository, the settings UI — do not otherwise
  * touch the home domain. Pointing each at `lib/home` would raise the cross-peer
  * count `npm run setup:boundaries` holds down, for no gain: what those callers
  * want is one device id, not the home domain.

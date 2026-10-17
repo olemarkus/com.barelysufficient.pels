@@ -1,6 +1,7 @@
 import type { PowerSource } from '../powerSource';
 import type { TimerRegistry } from '../../utils/timerRegistry';
 import type { StructuredDebugEmitter } from '../../logging/logger';
+import type { HomeMeterRequest, LiveMeterReadings } from '../../ports/homeMeterReadings';
 
 const HOMEY_ENERGY_POLL_INTERVAL_MS = 10_000;
 const HOMEY_ENERGY_RESTART_RETRY_TIMER = 'homeyEnergyPollRestartRetry';
@@ -8,29 +9,15 @@ const HOMEY_ENERGY_RESTART_RETRY_INITIAL_MS = 1_000;
 const HOMEY_ENERGY_RESTART_RETRY_MAX_MS = 60_000;
 const HOMEY_ENERGY_RESTART_RETRY_MAX_EXPONENT = 6;
 
-export type HomeyEnergyPowerSample = {
-  powerW: number;
-  generationW?: number;
-  /**
-   * Opaque passthrough: identity of the meter `powerW` was read from — always
-   * the explicit selection's configured id (a homey_energy sample cannot exist
-   * without a named meter). Produced by the transport read and consumed by the
-   * sample-ingest seam; this source neither reads nor branches on it — it only
-   * guarantees the field survives the discard checks, so a stale-generation or
-   * wrong-source poll drops the identity claim together with the watts.
-   */
-  meterDeviceId: string;
-};
-
 /**
  * Whole-home power source that polls Homey Energy every 10 s when the
- * `power_source` setting is `homey_energy`. Hands each co-temporal net power
- * and generation sample to the injected callback — knows nothing about what
- * the consumer does with it.
+ * `power_source` setting is `homey_energy`. Each poll reads every home's meter
+ * from one report and hands the readings to the homes' request, which routes
+ * them; this source knows nothing about which home a meter belongs to.
  *
  * Lives under `lib/power/sources/` because it produces the whole-home
  * power signal; the per-device shape of devices is irrelevant here.
- * The actual Homey SDK call (`pollHomePower`) is injected so this file
+ * The actual Homey SDK call (`readMeters`) is injected so this file
  * does not depend on `lib/device/` (per the power mandate codified in
  * `.dependency-cruiser.cjs`).
  */
@@ -47,11 +34,10 @@ export class HomeyEnergyPollSource {
   constructor(private readonly deps: {
     getPowerSource: () => PowerSource;
     timers: TimerRegistry;
-    // `authorizeFanOut` lets the read gate its sub-home meter fan-out on THIS
-    // poll's liveness — the fan-out fires inside the read, before the discard
-    // checks below, so a stale-generation poll must not deliver it.
-    pollHomePower: (authorizeFanOut: () => boolean) => Promise<HomeyEnergyPowerSample | null | undefined>;
-    recordPowerSample: (sample: HomeyEnergyPowerSample) => Promise<void>;
+    /** This poll's meters, and where their readings go (`HomeMeters.request`). */
+    requestHomeMeters: () => HomeMeterRequest;
+    /** One live read of those meters; null when the read failed or nothing can read yet. */
+    readMeters: (meterDeviceIds: readonly string[]) => Promise<LiveMeterReadings | null>;
     debugStructured: StructuredDebugEmitter;
     error: (...args: unknown[]) => void;
   }) {}
@@ -126,22 +112,20 @@ export class HomeyEnergyPollSource {
 
   async pollNow(): Promise<void> {
     const generation = this.pollGeneration;
-    // Authorize the sub-home meter fan-out (dispatched inside the read, before the
-    // discard checks below) only while THIS poll is still current: same generation
-    // AND source unchanged. Without it a stale-generation poll's fan-out could
-    // deliver an out-of-order sub-meter sample that resolves after its replacement.
-    const authorizeFanOut = (): boolean => (
-      generation === this.pollGeneration && this.deps.getPowerSource() === 'homey_energy'
-    );
-    const sample = await this.deps.pollHomePower(authorizeFanOut);
+    // The meters are captured before the read and every home's reading is
+    // routed after the checks below, so a poll that went stale (a new meter
+    // selection or power source restarted the source mid-read) delivers to no
+    // home at all, Main or sub-home.
+    const request = this.deps.requestHomeMeters();
+    const readings = await this.deps.readMeters(request.meterDeviceIds);
     if (generation !== this.pollGeneration) {
       this.deps.debugStructured({ event: 'homey_energy_poll_discarded_stale' });
       return;
     }
     if (this.deps.getPowerSource() !== 'homey_energy') return;
 
-    if (sample) {
-      await this.deps.recordPowerSample(sample);
+    if (readings) {
+      await request.record(readings);
       return;
     }
 

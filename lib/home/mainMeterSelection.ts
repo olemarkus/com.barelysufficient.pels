@@ -66,7 +66,7 @@ const classifyMainMeterSelection = (
  * retryable.
  *
  * This is what a consumer that only needs the meter ID should use — the
- * weather scope fingerprint, the area-collision check, the transport wiring.
+ * weather scope fingerprint, the area-collision check, each poll's meter read.
  * Only a consumer whose answer decides whether to RETRY needs the graced reader
  * below, because only for that consumer does the difference between the two
  * non-resolved states change anything.

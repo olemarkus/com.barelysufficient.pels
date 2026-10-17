@@ -93,10 +93,13 @@ state). Dedupe maps prune via `shouldEmitOnChange` (160 MB RSS ceiling).
    returns.)
 
 3. **Routine meter samples** (`lib/device/transport/managerFetch.ts`).
-   `energy_live_report_received` keeps the meter identity and current watts but samples
-   routine reads once per minute on the `devices` debug topic. Meter selection,
-   resolution, generation availability, and report coverage changes emit immediately;
-   an unavailable read resets the sample gate so recovery emits immediately too.
+   `energy_live_report_received` names every meter it read with its current watts but
+   samples routine reads once per minute on the `devices` debug topic. A change in which
+   meters answered, generation availability, or report coverage emits immediately; an
+   unavailable read resets the sample gate so recovery emits immediately too. The
+   transport does not know which meter is Main's: `main_meter_no_reading`
+   (`lib/home/homeMeters.ts`) says when Main gets no sample, with `reasonCode`
+   `not_selected` or `no_reading`, and the sample ingest records Main's identity.
    `homey_energy_poll` was removed because it repeated the same watts without meter
    identity. Sample ingestion still runs on every poll.
 

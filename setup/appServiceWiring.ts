@@ -302,7 +302,6 @@ export class AppServiceWiring {
       this.deps.homeyApp,
       handles.structuredLogger ?? this.installStructuredLogger(),
       this.deps.nativeWiring,
-      () => handles.homeRuntimeRegistry,
       observedStateEmitter.asDispatcher(this.deps.observedHomePower),
     );
     subscribeObservedStateProjection(observedStateEmitter, this.deps.observedDeviceStateProjection);
@@ -643,8 +642,9 @@ export class AppServiceWiring {
     this.mainHomeScope.disposeBinaryCommandReachability();
     // Tear down the per-home bundles BEFORE the global timer sweep so each
     // bundle can flush a pending suffixed tracker persist while its debounce
-    // timer is still observable. Clearing the field also disconnects the lazy
-    // per-meter fan-out: an in-flight poll resolving after this routes nowhere.
+    // timer is still observable. An in-flight poll resolving after this routes
+    // nowhere: the torn-down bundles are skipped, and the poll's generation is
+    // bumped when the timers are cleared.
     handles.homeRuntimeRegistry?.teardownAll();
     handles.homeRuntimeRegistry = undefined;
     this.clearUninitTimers();

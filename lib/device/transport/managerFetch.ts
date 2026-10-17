@@ -2,7 +2,6 @@ import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import { getDebugEmitter, isDebugTopicEnabled } from '../../logging/logger';
 import { shouldEmitOnChange, type LogDedupeEntry } from '../../logging/logDedupe';
 import { isHomeyDeviceLike } from '../../utils/types';
-import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 
 import {
   asLiveEnergyReport,
@@ -164,62 +163,35 @@ export async function fetchDevicesByIds(params: {
 /* eslint-enable functional/immutable-data */
 
 /**
- * The whole-home reading for the producer-clean Main meter selection. A
- * `resolved` reading names the meter it was read from — the reading and its
- * identity are one fact, stamped where the watts are produced, so the sample
- * built from it never has to re-check the selection it came from.
- * `unavailable` covers both an unavailable selection and a selected meter the
- * report did not carry: honestly absent, never a guess, because the only
- * guessable answer was Automatic, and claiming it is how the wrong meter's
- * watts become the whole home's.
- */
-export type LiveHomeReading =
-  | { readonly state: 'resolved'; readonly watts: number; readonly meterDeviceId: string }
-  | { readonly state: 'unavailable' };
-
-/**
  * One live energy report, resolved at this adapter so nothing nullable crosses
  * it. `unavailable` is a FAILED read (dead REST client, thrown fetch, a payload
  * that is not a report — see `asLiveEnergyReport`) — not a measurement, so a
  * consumer publishes nothing from it and lets held state age out. `measured`
- * is a parsed payload whose halves each say what they found: the whole-home
- * reading is `resolved` or `unavailable`, generation is `measured` or `none`.
- * No flag, no sibling enum, no `null` that means two things.
+ * is a parsed payload whose parts each say what they found. No flag, no sibling
+ * enum, no `null` that means two things.
+ *
+ * The report reads meters, not homes: which home a meter belongs to, and which
+ * one is Main, is the caller's business (`lib/home/homeMeters.ts`).
  */
 export type LivePowerReport =
   | { readonly state: 'unavailable' }
   | {
     readonly state: 'measured';
     readonly byDeviceId: LiveDevicePowerWatts;
-    readonly home: LiveHomeReading;
+    /**
+     * One entry per requested meter that produced a FINITE reading. A requested
+     * id whose reading is absent or non-finite is simply not a key, never a
+     * fabricated zero; the consumer's freshness machinery handles the gap.
+     */
+    readonly meterPowerW: Readonly<Record<string, number>>;
     /** Gross PV generation from the same payload. `+`-only; `unavailable` = a malformed signal, publish nothing. */
     readonly generation: LiveGeneration;
     readonly deviceCount: number;
-    /**
-     * Per-meter readings for the caller-requested additional meter ids
-     * (multi-home R7b: one entry per sub-home meter that produced a FINITE
-     * reading this poll). A requested id whose reading is absent/non-finite is
-     * simply NOT a key — never a fabricated zero; the consumer's freshness
-     * machinery handles the gap.
-     */
-    readonly additionalMeterPowerW: Record<string, number>;
   };
 
-const resolveHomeReading = (
-  report: unknown,
-  selection: MainMeterSelection,
-): LiveHomeReading => {
-  if (selection.state !== 'resolved') return { state: 'unavailable' };
-  const watts = extractLiveMeterPowerWatts(report, selection.meterDeviceId);
-  return watts === null
-    ? { state: 'unavailable' }
-    : { state: 'resolved', watts, meterDeviceId: selection.meterDeviceId };
-};
-
-// Resolve each requested additional meter id against the SAME live payload the
-// whole-home reading came from (one fetch serves all homes). Only finite
-// readings land in the map (see the field doc above).
-const extractAdditionalMeterPowerW = (
+// Resolve each requested meter id against the one live payload (one fetch
+// serves every home). Only finite readings land in the map.
+const extractMeterPowerW = (
   report: unknown,
   meterDeviceIds: readonly string[],
 ): Record<string, number> => Object.fromEntries(
@@ -278,16 +250,10 @@ export async function fetchLiveGenerationW(logger: Logger): Promise<LiveGenerati
 
 export async function fetchLivePowerReport(params: {
   logger: Logger;
-  /** Producer-clean Main meter selection; `unavailable` nulls the whole-home half. */
-  meterSelection: MainMeterSelection;
-  /** Additional per-meter reading requests (sub-home meters); empty = none. */
-  additionalMeterDeviceIds: readonly string[];
+  /** The meters to read; empty reads none and still fills the per-device lanes. */
+  meterDeviceIds: readonly string[];
 }): Promise<LivePowerReport> {
-  const {
-    logger,
-    meterSelection,
-    additionalMeterDeviceIds,
-  } = params;
+  const { logger, meterDeviceIds } = params;
   try {
     const report = await readLiveEnergyReport(logger, 'energy_live_report_unavailable');
     if (report === null) {
@@ -295,38 +261,25 @@ export async function fetchLivePowerReport(params: {
       return { state: 'unavailable' };
     }
     const byDeviceId = extractLivePowerWattsByDeviceId(report);
-    const home = resolveHomeReading(report, meterSelection);
     const generation = resolveLiveGeneration(report);
-    const additionalMeterPowerW = extractAdditionalMeterPowerW(report, additionalMeterDeviceIds);
+    const meterPowerW = extractMeterPowerW(report, meterDeviceIds);
     const deviceCount = Object.keys(byDeviceId).length;
+    // The signature tracks what the report answered, not who asked: the poll,
+    // the snapshot refresh and a temperature recovery request different meters,
+    // and keying on the request would reopen the once-a-minute gate on every
+    // call. Which meter is Main's is said by `main_meter_no_reading` and the
+    // sample ingest, which know; this event names every meter it read.
     if (isDebugTopicEnabled('devices') && shouldLogLiveReport(logger, JSON.stringify([
-      meterSelection, home.state, generation.state, deviceCount,
-      additionalMeterDeviceIds, Object.keys(additionalMeterPowerW),
+      Object.keys(meterPowerW), generation.state, deviceCount,
     ]))) emitDeviceDebug({
       event: 'energy_live_report_received',
       source: 'homey_energy',
-      homeMeterResolution: home.state,
-      ...(home.state === 'resolved' ? { homePowerW: home.watts } : {}),
+      meterPowerW,
+      metersRequested: meterDeviceIds.length,
       ...(generation.state === 'measured' ? { generationW: generation.watts } : {}),
       deviceCount,
-      // Always logged: an unattributed whole-home reading is exactly what made
-      // a wrong-meter sample undiagnosable.
-      ...(meterSelection.state === 'resolved' ? { meterDeviceId: meterSelection.meterDeviceId } : {}),
-      ...(additionalMeterDeviceIds.length > 0
-        ? {
-          additionalMetersRequested: additionalMeterDeviceIds.length,
-          additionalMetersRead: Object.keys(additionalMeterPowerW).length,
-        }
-        : {}),
     });
-    return {
-      state: 'measured',
-      byDeviceId,
-      home,
-      generation,
-      deviceCount,
-      additionalMeterPowerW,
-    };
+    return { state: 'measured', byDeviceId, meterPowerW, generation, deviceCount };
   } catch (error) {
     liveReportLogState.delete(logger);
     logDeviceTransportRuntimeError(logger, { event: 'energy_live_report_fetch_failed' }, error);

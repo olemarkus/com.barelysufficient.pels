@@ -45,7 +45,6 @@ lib/device/targetPowerProbeScheduler.ts 1
 lib/device/targetPowerReachability.ts 2
 lib/device/transport/binarySettleEvidence.ts 1
 lib/device/transport/deviceUpdateHandling.ts 1
-lib/device/transport/managerFetch.ts 1
 lib/device/transport/managerHomeyApi.ts 2
 lib/device/transport/managerManagedFilter.ts 1
 lib/device/transport/managerParse.ts 3

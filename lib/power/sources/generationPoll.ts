@@ -33,12 +33,12 @@ const GENERATION_POLL_RESTART_RETRY_MAX_EXPONENT = 6;
  * ONLY generation.
  *
  * Why it does not reuse the whole-home poll path: that path
- * (`pollHomePowerWithMeterFanOut` → `updateHomePowerFromReport`) also produces
- * the whole-home net sample and fires the sub-home meter fan-out. On a flow home
+ * (`HomeyEnergyPollSource` → `DeviceTransport.readMeters`) also reads every
+ * home's meter, Main's net included, and routes the readings. On a flow home
  * Homey's net is not authoritative — for a split meter it FLOORS AT 0 while the
  * home genuinely exports (Run D, S2: exporting 6000 W, Homey reports 0) — so
- * recording it would overwrite a correct negative net with a wrong zero, and the
- * fan-out would start delivering sub-home samples that this source has no
+ * recording it would overwrite a correct negative net with a wrong zero, and
+ * sub-home samples would start arriving that this source has no
  * business producing. Generation is the only thing taken from the report.
  *
  * Runs ONLY when the main poll does not, so the two can never race for the same

@@ -107,7 +107,7 @@ describe('zone tree fetch riding the snapshot refresh', () => {
   );
 
   const refreshAndSettleZones = async (transport: DeviceTransport): Promise<void> => {
-    await transport.refreshSnapshot({ mainMeterSelection: { state: 'unavailable' } });
+    await transport.refreshSnapshot({ meterDeviceIds: [] });
     await settleDetachedZoneFetches();
   };
 

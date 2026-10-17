@@ -39,7 +39,6 @@ import type {
   FlowBackedRead,
   NativeWiringRead,
 } from '../../lib/device/transport/managerParseDevice';
-import type { DeviceTransportMeters } from '../../lib/device/transport/transportTypes';
 import { DeviceManagement } from '../../lib/device/deviceRoleReads';
 import type { BatteryManagedRead } from '../../lib/ports/batteryControlOwner';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
@@ -67,7 +66,6 @@ export type TestTransportInputs = {
   nativeWiring?: Partial<NativeWiringRead>;
   flowBacked?: Partial<FlowBackedRead>;
   batteryManaged?: Partial<BatteryManagedRead>;
-  meters?: Partial<DeviceTransportMeters>;
 };
 
 /** Every device managed and controllable, the filter on, and no per-device configuration. */
@@ -81,14 +79,6 @@ export const testParseSettings = (settings: Partial<DeviceParseSettings> = {}): 
   getDeviceTargetPowerConfig: () => undefined,
   getEvCarAssociationCarIds: () => [],
   ...settings,
-});
-
-/** No Main meter selected, and no sub-home meters. */
-export const testTransportMeters = (meters: Partial<DeviceTransportMeters> = {}): DeviceTransportMeters => ({
-  getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
-  getAdditionalMeterDeviceIds: () => [],
-  onAdditionalMeterReadings: () => undefined,
-  ...meters,
 });
 
 /** Native wiring off, no Flow conflict or reports, peaks persisted nowhere, every battery managed. */
@@ -178,7 +168,7 @@ export function createTestDeviceTransport(
   // A fresh in-memory store per transport unless the spec passes one: a spec
   // that restarts a transport on the same store is how a restart is modelled.
   const store = retainedPowerStore ?? createRetainedPowerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
-  const owners = { ...testTransportOwners(inputs), meters: testTransportMeters(inputs.meters) };
+  const owners = testTransportOwners(inputs);
   const resolvedPowerState = testPowerState(powerState);
   if (injected) {
     return new DeviceTransport(homey, logger, resolvedPowerState, {
@@ -275,7 +265,7 @@ export async function seedTransportDevices(
   });
   try {
     await transport.refreshSnapshot({
-      mainMeterSelection: { state: 'unavailable' },
+      meterDeviceIds: [],
       includeLivePower: false,
       ...options,
     });

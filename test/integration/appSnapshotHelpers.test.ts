@@ -14,6 +14,7 @@ import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterS
 import type { PowerSampleAdmission } from '../../lib/app/appContext';
 import { withDeviceConfiguration } from '../utils/planTestUtils';
 import { targetSnapshotFixtures, transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
+import { resolveMainMeterRead } from '../../lib/home/homeMeters';
 
 const mockPowerSource = () => normalizePowerSource(mockHomeyInstance.settings.get('power_source'));
 
@@ -58,6 +59,7 @@ describe('appSnapshotHelpers', () => {
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
       resolveMainMeterSelection: mainMeterSelection,
+      readMainMeter: resolveMainMeterRead,
     });
 
     helper.startPeriodicSnapshotRefresh();
@@ -92,6 +94,7 @@ describe('appSnapshotHelpers', () => {
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
       resolveMainMeterSelection: mainMeterSelection,
+      readMainMeter: resolveMainMeterRead,
     });
     const refresh = vi.spyOn(helper, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
     helper.startPeriodicSnapshotRefresh();
@@ -127,6 +130,7 @@ describe('appSnapshotHelpers', () => {
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
       resolveMainMeterSelection: mainMeterSelection,
+      readMainMeter: resolveMainMeterRead,
       getNextTargetPowerProbe: () => ({ deviceId: 'sub-home-charger', dueAtMs: 100 }),
       rebuildOwningHomePlanForDevice,
     });
@@ -163,6 +167,7 @@ describe('appSnapshotHelpers', () => {
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
       resolveMainMeterSelection: mainMeterSelection,
+      readMainMeter: resolveMainMeterRead,
     });
     const refresh = vi.spyOn(helper, 'refreshTargetDevicesSnapshot').mockImplementation(() => (
       new Promise<void>((resolve) => { finishRefresh = resolve; })
@@ -219,6 +224,7 @@ describe('appSnapshotHelpers', () => {
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
       resolveMainMeterSelection: mainMeterSelection,
+      readMainMeter: resolveMainMeterRead,
     });
     const scheduleTargetPowerProbe = vi.spyOn(helper, 'scheduleTargetPowerProbe');
 
@@ -289,6 +295,7 @@ describe('appSnapshotHelpers', () => {
       emitSettingsUiDevicesUpdated,
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
       resolveMainMeterSelection: mainMeterSelection,
+      readMainMeter: resolveMainMeterRead,
     });
 
     await helper['runSnapshotRefreshCycle'](partialDouble<DeviceTransport>({ refreshSnapshot }), { targeted: true });
@@ -351,6 +358,7 @@ describe('appSnapshotHelpers', () => {
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
       resolveMainMeterSelection: mainMeterSelection,
+      readMainMeter: resolveMainMeterRead,
     });
 
     await helper['runSnapshotRefreshCycle'](partialDouble<DeviceTransport>({ refreshSnapshot }), { targeted: true });
@@ -410,6 +418,7 @@ describe('appSnapshotHelpers', () => {
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
       resolveMainMeterSelection: mainMeterSelection,
+      readMainMeter: resolveMainMeterRead,
     });
 
     await helper['runSnapshotRefreshCycle'](partialDouble<DeviceTransport>({ refreshSnapshot }), { targeted: true });
@@ -450,6 +459,7 @@ describe('appSnapshotHelpers', () => {
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
       resolveMainMeterSelection: mainMeterSelection,
+      readMainMeter: resolveMainMeterRead,
     });
     helperRef.current = helper;
     helper['snapshotRefreshStopped'] = false;
@@ -495,6 +505,7 @@ describe('appSnapshotHelpers', () => {
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
       resolveMainMeterSelection: mainMeterSelection,
+      readMainMeter: resolveMainMeterRead,
     });
     helper['snapshotRefreshStopped'] = false;
 
@@ -545,6 +556,7 @@ describe('appSnapshotHelpers', () => {
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
       resolveMainMeterSelection: mainMeterSelection,
+      readMainMeter: resolveMainMeterRead,
     });
     helper['snapshotRefreshStopped'] = false;
 
@@ -614,16 +626,18 @@ describe('appSnapshotHelpers', () => {
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: recordPowerSample as (sample: { powerW: number }) => Promise<PowerSampleAdmission>,
       resolveMainMeterSelection,
+      readMainMeter: resolveMainMeterRead,
     });
 
     const AREA_SAMPLE = { powerW: 4_200, meterDeviceId: 'm-area' };
+    const AREA_READINGS = { meterPowerW: { 'm-area': 4_200 } };
 
     const runRefresh = async (
       options: Parameters<AppSnapshotHelpers['refreshTargetDevicesSnapshot']>[0],
       resolveSelection: () => MainMeterSelection = mainMeterSelection,
       pipelineAdmission: PowerSampleAdmission = { state: 'admitted', revision: 1 },
     ) => {
-      const refreshSnapshot = vi.fn().mockResolvedValue(AREA_SAMPLE);
+      const refreshSnapshot = vi.fn().mockResolvedValue(AREA_READINGS);
       const recordPowerSample = vi.fn().mockResolvedValue(pipelineAdmission);
       const helper = buildHelper(
         refreshSnapshot,
@@ -646,7 +660,7 @@ describe('appSnapshotHelpers', () => {
         () => ({ state: 'unavailable' }),
       );
       expect(refreshSnapshot).toHaveBeenCalledWith(
-        expect.objectContaining({ mainMeterSelection: { state: 'unavailable' } }),
+        expect.objectContaining({ meterDeviceIds: [] }),
       );
       expect(recordPowerSample).not.toHaveBeenCalled();
     });
@@ -699,7 +713,7 @@ describe('appSnapshotHelpers', () => {
       // `getPowerSource()` throws on a suspect settings read. There is only ONE
       // admission evaluation now, so the throw has exactly one behaviour: the
       // refresh fails visibly, and neither the sample nor its identity land.
-      const refreshSnapshot = vi.fn().mockResolvedValue(AREA_SAMPLE);
+      const refreshSnapshot = vi.fn().mockResolvedValue(AREA_READINGS);
       const recordPowerSample = vi.fn().mockResolvedValue({ state: 'admitted', revision: 1 });
       const helper = buildHelper(refreshSnapshot, recordPowerSample);
       helper['deps'].getPowerSource = () => {

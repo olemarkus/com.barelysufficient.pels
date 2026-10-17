@@ -415,8 +415,9 @@ risk profiles.
   `getHomePowerW` dep wired in `app.ts` to read from the observer. *(That
   read-back is since gone: the function takes the sample as a parameter and
   `getHomePowerW` has no production caller.)* The
-  `homey_energy` poll path is unchanged: `pollHomePowerW()` still returns the
-  resolved scalar directly to `HomeyEnergyPollSource`.
+  `homey_energy` poll path was unchanged then: `pollHomePowerW()` returned the
+  resolved scalar directly to `HomeyEnergyPollSource`. *(Since replaced: the
+  transport reads meters, `readMeters`, and `lib/home/homeMeters.ts` routes Main's.)*
 - **Source correction:** the value originates from a Homey SDK energy report read
   in the device layer (`managerFetch` → `managerHomeyApi` → `managerEnergy`), not
   from `lib/power/`. Observer introduces no `lib/power/**` import — the original

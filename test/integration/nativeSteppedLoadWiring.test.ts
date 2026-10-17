@@ -701,7 +701,7 @@ describe('native stepped-load wiring', () => {
         },
       );
 
-      await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
+      await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
 
       await expect(deviceManager.requestSteppedLoadStep({
         deviceId: 'target-power-1',
@@ -1320,7 +1320,7 @@ describe('native stepped-load wiring', () => {
       await initWithLiveFeed(deviceManager);
       // Init reads the hub location once; only the refresh cycle's GETs are budgeted below.
       const initGetCalls = get.mock.calls.length;
-      await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
+      await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
       // The refresh cycle owns its GETs (device list + the piggybacked zone
       // tree); the invariant under test is that the COMMAND path below adds
       // none, so anchor on the post-refresh count. The exact-budget pin makes
@@ -1458,7 +1458,7 @@ describe('native stepped-load wiring', () => {
         },
       );
       await initWithLiveFeed(deviceManager);
-      await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
+      await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
 
       const observed = vi.fn();
       const reconcile = vi.fn();
@@ -1559,7 +1559,7 @@ describe('native stepped-load wiring', () => {
         { getFlowTriggerCard: (cardId) => mockHomeyInstance.flow.getTriggerCard(cardId) },
       );
 
-      await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
+      await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
 
       await expect(deviceManager.requestSteppedLoadStep({
         deviceId: 'hoiax-1',
@@ -1702,7 +1702,7 @@ describe('native stepped-load wiring', () => {
       );
 
       await initWithLiveFeed(deviceManager);
-      await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
+      await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
 
       const liveStateObserved = vi.fn();
       const realtimeReconcile = vi.fn();
@@ -1758,12 +1758,12 @@ describe('native stepped-load wiring', () => {
         },
       );
 
-      await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
+      await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
       expect(deviceManager.getSnapshot().map((d) => d.id)).toEqual(['hoiax-1']);
 
       // Transient empty read: the SDK returns no devices for one refresh.
       devicePayload = {};
-      await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
+      await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
 
       // The abandon-grace guard preserves the snapshot...
       expect(deviceManager.getSnapshot().map((d) => d.id)).toEqual(['hoiax-1']);
@@ -1811,7 +1811,7 @@ describe('native stepped-load wiring', () => {
       );
 
       await initWithLiveFeed(deviceManager);
-      await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
+      await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
         binaryControl: { on: false },
         reportedStepId: 'off',
@@ -1868,7 +1868,7 @@ describe('native stepped-load wiring', () => {
         },
       );
 
-      await deviceManager.refreshSnapshot({ includeLivePower: false, mainMeterSelection: { state: 'unavailable' } });
+      await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
 
       await expect(deviceManager.requestSteppedLoadStep({
         deviceId: 'hoiax-mock',

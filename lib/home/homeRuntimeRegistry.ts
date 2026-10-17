@@ -21,8 +21,8 @@
  * no tracker echo reaches this hook.
  *
  * Sample routing: `routeMeterReadings` receives the per-meter map one
- * `manager/energy/live` poll resolved (transport seam
- * `onAdditionalMeterReadings`) and feeds each home's OWN meter reading to
+ * `manager/energy/live` poll resolved (`HomeMeters`, `homeMeters.ts`) and
+ * feeds each home's OWN meter reading to
  * that home's pipeline. A home with no meter, or whose meter produced no
  * finite reading this poll, gets NO sample — freshness machinery handles the
  * gap; a zero is never fabricated.
@@ -266,8 +266,8 @@ export class HomeRuntimeRegistry<THooks> implements HomeRuntimeReadPort {
   }
 
   /**
-   * Distinct configured meter ids across live bundles — the transport's
-   * `getAdditionalMeterDeviceIds` provider (read fresh per poll).
+   * Distinct configured meter ids across live bundles, read fresh by each
+   * poll's request (`HomeMeters.request`).
    */
   getMeterDeviceIds(): string[] {
     const ids = new Set<string>();
@@ -562,13 +562,12 @@ export class HomeRuntimeRegistry<THooks> implements HomeRuntimeReadPort {
 
   /** Route one poll's per-meter readings to the owning bundles' pipelines. */
   routeMeterReadings(readings: Record<string, number>, nowMs: number): void {
-    // Poll-discard parity (R7b): the transport fans these readings out from INSIDE
-    // the live-report fetch, but only when the poll source AUTHORIZES it — its
-    // generation + source liveness gate (`HomeyEnergyPollSource.pollNow`'s
-    // `authorizeFanOut`). So a stale-generation poll (a whole-home-meter /
-    // power-source restart superseded it) never reaches this routing at all, and an
-    // out-of-order sub-meter sample cannot land. The power-source check is mirrored
-    // here as belt-and-suspenders (and because tests drive `routeMeterReadings`
+    // Poll-discard parity (R7b): the poll source routes a poll's readings only
+    // after its generation + source liveness check (`HomeyEnergyPollSource.pollNow`),
+    // so a stale-generation poll (a whole-home-meter / power-source restart
+    // superseded it) never reaches this routing at all, and an out-of-order
+    // sub-meter sample cannot land. The power-source check is mirrored here as
+    // belt-and-suspenders (and because tests drive `routeMeterReadings`
     // directly): if the source is not `homey_energy`, drop the readings.
     if (!this.sourceEpoch.isMeterSourceAuthorized()) return;
     for (const bundle of this.bundles.values()) {
