@@ -7,7 +7,7 @@ import type { DeviceOverviewSnapshot } from '../../packages/shared-domain/src/de
 import {
   displayStateLabel, displayStateTone, isHoldReasonCode, resolveDisplayStateKind, resolveIntentStateKind,
 } from '../../packages/shared-domain/src/planCardGrammar';
-import { isSatisfiedTargetOnlyDevice, type PlanStateKind } from '../../packages/shared-domain/src/planStateLabels';
+import { isSatisfiedTemperatureDevice, type PlanStateKind } from '../../packages/shared-domain/src/planStateLabels';
 import {
   resolveHeldCardReasonLine, resolveHeldCardReasonVerb, resolveHeldCardStepView,
 } from './planCardReasonLine';
@@ -43,7 +43,7 @@ function resolveBaseKind(device: DeviceStatusInput): PlanStateKind {
     const inFlight = device.execution.binaryProgress === 'pending' || device.execution.steppedTransitionPending;
     return !inFlight && isHoldReasonCode(device.reason.code) ? 'idle' : 'resuming';
   }
-  if (isSatisfiedTargetOnlyDevice(device)) return 'idle';
+  if (isSatisfiedTemperatureDevice(device)) return 'idle';
   if (device.currentState === 'not_applicable' && resolveSteppedEvExceptionLabel(device) !== null) return 'idle';
   return 'active';
 }
@@ -200,7 +200,7 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
     starved: device.starvation?.isStarved === true };
   const intentKind = resolveIntentStateKind(grammar);
   const displayKind = resolveDisplayStateKind({ ...grammar, dryRun, currentState: device.currentState,
-    satisfiedTargetOnly: isSatisfiedTargetOnlyDevice(device) });
+    satisfiedTemperature: isSatisfiedTemperatureDevice(device) });
   // `resolveBaseKind` never yields `unknown`; this narrows the display kind to the wire's vocabulary.
   const kind = displayKind === 'unknown' ? 'unavailable' : displayKind;
   const limited = intentKind === 'held';

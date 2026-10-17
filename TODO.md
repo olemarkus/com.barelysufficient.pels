@@ -308,11 +308,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       learned-inputs card; a permission is a setting, not something learned — move it beside the
       task inputs. Source: 2026-08-02 release review, pels-ux-fit. [P2]
 
-- [ ] **`formatHoursBeforeDeadline` rounds the safety margin in the flattering direction.**
-      `packages/shared-domain/src/deadlineLabels.ts:2510`: "projected ready ≈ 18:00, 2 hours
-      before the deadline" against a 19:40 deadline overstates a 1 h 40 min margin via
-      `Math.round`; this release's shortfall resolver ceils for exactly the opposite reason.
-      Floor the hours or render "1 h 40 min". Source: 2026-08-02 release review, pels-ux-fit. [P2]
 
 - [ ] **Smart-task diagnostics: distinguish an active meter source from a missing device before its deadline.**
       *Persona:* owner who selects a device with an existing smart task as an electricity meter.
@@ -1006,16 +1001,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       price-adjust fact whenever plannedTarget diverges from the active mode target, closes the
       gap. Source: 2026-08-09 post-merge review, pels-ux-fit. [P2]
 
-- [ ] **A satisfied ON-axis thermostat still reads "Running · 0.0 kW".** The satisfied-idle
-      refinement (2026-08-01) covers only target-only devices (`currentState 'not_applicable'`);
-      a binary temperature device that is on, at/above target, and drawing nothing keeps the
-      "Running" word — and after the fix it sits directly beside a corrected Idle card, making
-      the remaining self-contradiction MORE conspicuous (pels-ux-fit top recommendation on
-      PR #1955). Extend `isSatisfiedTargetOnlyDevice`'s satisfied semantics to on-like temperature
-      devices (same lowered-setpoint and pending-command guards), or explicitly rule the 'on' case
-      out in `notes/ui-terminology.md`. *Persona:* Overview reader with a mixed thermostat fleet.
-      *Hypothesis:* same trust damage as the target-only case, narrower trigger (device must
-      report 'on' while satisfied). Source: pels-ux-fit on PR #1955, 2026-08-02. [P2]
 
 - [ ] **Limits & safety: converge the Main-home form onto the native `.pels-input` field language.**
       *Persona:* multi-home owner who switches the shell's home scope bar between the Main home and a meter

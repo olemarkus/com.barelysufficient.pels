@@ -15,7 +15,7 @@ const describeNoDecision = (): never => {
 };
 
 describe('planOverviewEmit — temperature facet at the log seam', () => {
-  const satisfiedTargetOnlyPlan = (): DevicePlan => ({
+  const satisfiedTemperaturePlan = (): DevicePlan => ({
     meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
     devices: [
       buildPlanDevice({
@@ -40,7 +40,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
 
   it('classifies a satisfied target-only device as idle (the facet reaches the classifier)', () => {
     const captured: { deviceId: string; entry: Record<string, unknown> }[] = [];
-    const plan = satisfiedTargetOnlyPlan();
+    const plan = satisfiedTemperaturePlan();
     const deps = {
       ...overviewReadModelWiring(),
       getDeviceExecutionState: () => executionStateFixture(plan.devices[0]), dryRun: false, nowMs: 0,
@@ -66,8 +66,37 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
     expect(captured[0]?.entry.stateKind).toBe('idle');
   });
 
+  it('reads a satisfied thermostat that reports on as Idle on its card, not Running at 0 kW', () => {
+    const onThermostat = buildPlanDevice({
+      id: 'thermostat',
+      name: 'Hall Thermostat',
+      deviceType: 'temperature',
+      // An on/off axis that reports on while the room is above target.
+      binaryControllable: true,
+      currentState: 'on',
+      plannedState: 'keep',
+      currentTemperature: 20.8,
+      currentTarget: 16,
+      plannedTarget: 16,
+      measuredPowerKw: 0,
+      expectedPowerKw: 1,
+    });
+    const onPlan: DevicePlan = { ...satisfiedTemperaturePlan(), devices: [onThermostat] };
+    const snapshot = buildSettingsOverviewReadModel(onPlan, {
+      ...overviewReadModelWiring(),
+      getDeviceExecutionState: () => executionStateFixture(onThermostat), dryRun: false, nowMs: 0,
+      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+      getHomeBatteryCard: () => ({ kind: 'none' } as const),
+      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
+      getObservedTemperature: () => ({ kind: 'observed' as const,
+        value: { currentTarget: 16, currentTemperature: 20.8 } }),
+    })!;
+
+    expect(snapshot.devices?.[0]?.status).toMatchObject({ kind: 'idle', label: 'Idle' });
+  });
+
   it('uses the same fresher observer pair for the live card and activity log', () => {
-    const plan = satisfiedTargetOnlyPlan();
+    const plan = satisfiedTemperaturePlan();
     const staleDevice = plan.devices[0];
     if (!staleDevice) throw new Error('expected thermostat fixture');
     const updatedDevice = {

@@ -203,16 +203,16 @@ const isActiveState = (device: DeviceOverviewSnapshot): boolean => (
   device.currentState === 'not_applicable' || isOnLikeState(device.currentState)
 );
 
-// A target-only device (`not_applicable` — no on/off axis) that has reached its
-// target and is drawing nothing is doing nothing: "Idle", not "Running".
-// `not_applicable → active` is otherwise pure inference, and prod 2026-08-01
-// showed its failure mode — the only card claiming "Running" was a thermostat
-// at 20.8 °C against a 16 °C target at 0.0 kW, the one device with nothing to
-// do. Heating semantics (temperature at/above target = satisfied) — PELS
-// manages heaters, water heaters, and floor thermostats; a device actively
-// drawing power never lands here (the measured gate keeps it "Running").
-// Missing measurement counts as 0: an unmetered thermostat at/above target is
-// not calling for heat.
+// A temperature device that is active (on, or target-only with no on/off axis),
+// has reached its target and is drawing nothing is doing nothing: "Idle", not
+// "Running". `not_applicable → active` is otherwise pure inference, and prod
+// 2026-08-01 showed its failure mode — the only card claiming "Running" was a
+// thermostat at 20.8 °C against a 16 °C target at 0.0 kW, the one device with
+// nothing to do. A device that reports `on` while satisfied tells the same lie
+// ("Running · 0.0 kW") with a narrower trigger, so it reads "Idle" too. Heating
+// semantics (temperature at/above target = satisfied) — PELS manages heaters,
+// water heaters, and floor thermostats; a device actively drawing power never
+// lands here (the measured gate keeps it "Running").
 //
 // Satisfaction is judged against the HIGHEST target PELS knows about: the live
 // `currentTarget` can be the setpoint PELS itself lowered (shed floor still on
@@ -222,8 +222,8 @@ const isActiveState = (device: DeviceOverviewSnapshot): boolean => (
 // the shed floor or while a target command is in flight, and prefer
 // `plannedTarget` when it is higher than the observed setpoint.
 //
-export const isSatisfiedTargetOnlyDevice = (device: DeviceOverviewSnapshot): boolean => {
-  if (device.currentState !== 'not_applicable') return false;
+export const isSatisfiedTemperatureDevice = (device: DeviceOverviewSnapshot): boolean => {
+  if (!isActiveState(device)) return false;
   if (device.pendingTargetCommand) return false;
   // The atomic temperature facet is the unit guard: it exists only for
   // temperature-observed devices, and it is complete when present.
@@ -251,7 +251,7 @@ export const resolvePlanStateKind = (device: DeviceOverviewSnapshot): PlanStateK
   if (device.plannedState === 'shed') return 'held';
   if (device.binaryCommandPending && isOffLike(device.currentState)) return 'resuming';
   if (hasSteppedRestorePending(device)) return 'resuming';
-  if (isSatisfiedTargetOnlyDevice(device)) return 'idle';
+  if (isSatisfiedTemperatureDevice(device)) return 'idle';
   if (isActiveState(device)) return 'active';
   if (!normalizeDeviceState(device.currentState)) return 'unknown';
   return 'idle';

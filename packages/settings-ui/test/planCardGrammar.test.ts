@@ -66,14 +66,14 @@ describe('resolveDisplayStateKind — simulation renders the factual state', () 
   it('collapses a SATISFIED target-only device to idle under simulation, not active', () => {
     // The factual collapse must not resurrect "Running" on a satisfied 0-draw
     // device that real mode reads as Idle — the caller threads the resolved
-    // `isSatisfiedTargetOnlyDevice` verdict in.
+    // `isSatisfiedTemperatureDevice` verdict in.
     expect(resolveDisplayStateKind({
       kind: 'held',
       dryRun: true,
       currentState: 'not_applicable',
       reasonCode: 'capacity',
       starved: false,
-      satisfiedTargetOnly: true,
+      satisfiedTemperature: true,
     })).toBe('idle');
   });
 

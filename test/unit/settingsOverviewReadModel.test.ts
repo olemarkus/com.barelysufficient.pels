@@ -474,7 +474,7 @@ describe('settingsOverviewReadModel', () => {
     expect(wire?.devices?.[0].status.reason?.text).toContain('32s');
   });
   it('does not label a drawing target-only device as idle', () => {
-    // `isSatisfiedTargetOnlyDevice` (shared-domain) decides "idle" partly on
+    // `isSatisfiedTemperatureDevice` (shared-domain) decides "idle" partly on
     // `currentDrawKw <= 0.05`. The shared shape used to name that field
     // `measuredPowerKw` and make it optional, so a carrier that did not adapt
     // compiled clean, read `undefined`, and labelled every at-target thermostat

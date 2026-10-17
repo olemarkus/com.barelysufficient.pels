@@ -151,6 +151,33 @@ describe('planStateLabels', () => {
     });
   });
 
+  // The same lie with a narrower trigger: a thermostat with an on/off axis that
+  // reports `on` while satisfied and drawing nothing read "Running · 0.0 kW".
+  describe('satisfied on temperature devices', () => {
+    const onThermostat = { ...baseDevice, deviceType: 'temperature' as const, currentState: 'on' };
+
+    it('resolves idle when on, at/above target and drawing nothing', () => {
+      expect(resolvePlanStateKind({
+        ...onThermostat,
+        temperature: { currentTemperature: 21.2, currentTarget: 21, plannedTarget: 21 },
+        currentDrawKw: 0,
+      })).toBe('idle');
+    });
+
+    it('stays active while heating or below target', () => {
+      expect(resolvePlanStateKind({
+        ...onThermostat,
+        temperature: { currentTemperature: 21.2, currentTarget: 21, plannedTarget: 21 },
+        currentDrawKw: 1.2,
+      })).toBe('active');
+      expect(resolvePlanStateKind({
+        ...onThermostat,
+        temperature: { currentTemperature: 19, currentTarget: 21, plannedTarget: 21 },
+        currentDrawKw: 0,
+      })).toBe('active');
+    });
+  });
+
   it('keeps explicit restore-pending states resuming', () => {
     expect(resolvePlanStateKind({
       ...baseDevice,

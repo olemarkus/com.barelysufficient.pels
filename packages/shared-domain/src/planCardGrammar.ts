@@ -140,12 +140,13 @@ export const resolveIntentStateKind = (params: IntentStateParams): PlanStateKind
 export type DisplayStateParams = IntentStateParams & {
   dryRun: boolean;
   // The device's observed on/off state (canon: "Running" covers on, charging,
-  // heating, or otherwise active — regardless of instantaneous draw).
+  // heating, or otherwise active — regardless of instantaneous draw, except a
+  // satisfied temperature device, below).
   currentState: string | undefined;
-  // Caller-resolved `isSatisfiedTargetOnlyDevice(dev)` — the simulation factual
-  // collapse must not resurrect "Running" on a satisfied 0-draw target-only
+  // Caller-resolved `isSatisfiedTemperatureDevice(dev)` — the simulation factual
+  // collapse must not resurrect "Running" on a satisfied 0-draw temperature
   // device that real mode reads as Idle.
-  satisfiedTargetOnly?: boolean;
+  satisfiedTemperature?: boolean;
 };
 
 // The state word the card displays (and the `data-state-kind` styling hook).
@@ -157,9 +158,9 @@ export const resolveDisplayStateKind = (params: DisplayStateParams): PlanDisplay
     // hypothetical action lives in the reason line. `not_applicable` (a
     // target-only device with no on/off axis) counts as active, matching
     // `resolvePlanStateKind`'s active-state rule — including its satisfied
-    // carve-out, threaded in as `satisfiedTargetOnly` by the caller.
+    // carve-out, threaded in as `satisfiedTemperature` by the caller.
     const factualActive = currentState === 'not_applicable' || isOnLikeState(currentState);
-    if (factualActive) return params.satisfiedTargetOnly === true ? 'idle' : 'active';
+    if (factualActive) return params.satisfiedTemperature === true ? 'idle' : 'active';
     return currentState?.trim().toLowerCase() === 'off' ? 'off' : 'idle';
   }
   // `Idle` describes a device that remains available/on but has nothing to do.
