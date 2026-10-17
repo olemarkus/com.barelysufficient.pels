@@ -96,7 +96,7 @@ The device-aware available-power condition includes built-in hysteresis after re
 | **Add charging task** | Stores a target battery percentage and ready-by time for an EV charger. |
 | **Add energy task** | Stores an amount of energy (kWh) and ready-by time for an on/off device with a live power reading, such as a water heater switched by a relay. PELS delivers that energy in the cheapest hours before the ready-by time. See [Energy tasks](/smart-tasks#energy-tasks). |
 | **Clear smart task** | Removes any active Smart task for a device. |
-| **Set what a smart task may do** | Grants a task extra leeway while it is scheduled to run: **go over today's budget**, **limit lower-priority devices**, and/or **pause lower-priority devices** (reserves power so the task can start sooner). Use it when a deadline matters enough to push past normal pacing. The hard cap is never raised. See [Smart Tasks](/smart-tasks). |
+| **Set what a smart task may do** | Grants a task extra leeway while it is scheduled to run: **go over today's budget**, **limit lower-priority devices**, and/or **reserve power so this task can start sooner**. Use it when a deadline matters enough to push past normal pacing. The hard cap is never raised. See [Smart Tasks](/smart-tasks). |
 
 ## Common Automation Patterns
 

@@ -1214,15 +1214,16 @@ export const formatSmartTaskPriorityNote = (priority: number): string => (
 export const SMART_TASK_EXTRA_PERMISSION_LABELS: Record<keyof DeferredObjectiveRescuePermissions, string> = {
   exemptFromBudget: 'May go over daily budget',
   limitLowerPriorityDevices: 'May limit lower-priority devices',
-  pauseLowerPriorityDevices: 'May pause lower-priority devices',
+  pauseLowerPriorityDevices: 'May reserve power to start sooner',
 };
 
 // One line per permission, for a surface where the user GRANTS one rather than
 // reads back what is granted. Each says what it buys and what it costs the rest
-// of the house, because "May pause lower-priority devices" on its own is read as
-// "PELS switches my devices off" — the exact misreading `notes/ui-terminology.md`
-// warns about, and the reason the pause line names the reserve and denies the
-// switch-off in the same breath. Every line stays inside the hard cap
+// of the house, because "May reserve power to start sooner" on its own does not
+// say whose power is held back, and a user may still read it as "PELS switches
+// my devices off" — the misreading `notes/ui-terminology.md` warns about, and the
+// reason the reserve line names the held-back devices and denies the switch-off
+// in the same breath. Every line stays inside the hard cap
 // (`feedback_hard_cap_is_physical`): these buy a task priority, never more power.
 export const SMART_TASK_EXTRA_PERMISSION_HINTS: Record<keyof DeferredObjectiveRescuePermissions, string> = {
   exemptFromBudget: 'May reserve more operating time when the daily budget restricts this task. '

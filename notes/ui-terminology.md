@@ -1225,10 +1225,11 @@ the row sits right beside. The editor's own disclosure reuses
 `Only used to hit this ready-by time.` — the widget's "Off unless you turn them
 on" is false for a task that already holds a grant. On a surface where the user
 GRANTS a permission rather than reads one back, each toggle also carries its
-`SMART_TASK_EXTRA_PERMISSION_HINTS` line: `May pause lower-priority devices` on
-its own is read as "PELS switches my devices off", so its hint names the reserve
-and denies the switch-off in the same breath. The limit and pause hints also
-name their cost as held-back devices, task or not: a lower-priority device need
+`SMART_TASK_EXTRA_PERMISSION_HINTS` line: `May reserve power to start sooner` on
+its own does not say whose power is held back, so its hint names the held-back
+devices and denies the switch-off in the same breath. The value clause never says
+"pause": the permission reserves power and pauses nothing. The limit and reserve
+hints also name their cost as held-back devices, task or not: a lower-priority device need
 not belong to any smart task, so a hint that names only missed deadlines
 understates it (owner, 2026-10-14).
 
@@ -1238,7 +1239,7 @@ once: the read-only row is suppressed while the editor is open
 under one label disagree the moment a toggle moves. The open editor shows its
 own granted line instead. Value clauses are
 `May go over daily budget`, `May limit lower-priority devices`, and
-`May pause lower-priority devices`, optionally suffixed with ` if at risk` when
+`May reserve power to start sooner`, optionally suffixed with ` if at risk` when
 the mode is `at_risk`. `at_risk` is Flow-arg-only and no shipped dropdown offers
 it, so no toggle surface needs to express it; the editor's boolean toggles
 preserve an existing `at_risk` grant rather than promoting it. `pause` is the
