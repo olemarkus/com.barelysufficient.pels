@@ -3,12 +3,13 @@ import type { HubHomeLocation } from './hubHomeLocation';
 import { teslaAdapter } from './tesla';
 import { easeeAdapter } from './easee';
 import { zaptecAdapter } from './zaptec';
+import { futurehomeAdapter } from './futurehome';
 import { standardDeviceAdapter } from './standardDeviceAdapter';
-import type { DeviceAdapter, AdapterObservation, DeviceAdapterSession } from './deviceAdapter';
+import type { DeviceAdapter, AdapterObservation, AdapterControlTarget, DeviceAdapterSession } from './deviceAdapter';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../utils/types';
 
-const adapters: readonly DeviceAdapter[] = [teslaAdapter, easeeAdapter, zaptecAdapter];
+const adapters: readonly DeviceAdapter[] = [teslaAdapter, easeeAdapter, zaptecAdapter, futurehomeAdapter];
 
 export function getDeviceAdapter(device: HomeyDeviceLike): DeviceAdapter {
   return adapters.find((adapter) => adapter.matches(device)) ?? standardDeviceAdapter;
@@ -37,7 +38,7 @@ export class DeviceAdapterSessions {
   setTrustEpoch(epoch: string): void { for (const session of this.sessions) session.setTrustEpoch(epoch); }
   observedIds(): string[] { return this.sessions.flatMap((session) => session.observedIds()); }
   observes(id: string): boolean { return this.sessions.some((session) => session.observes(id)); }
-  controls(snapshot: AdapterObservation): boolean {
+  controls(snapshot: AdapterControlTarget): boolean {
     return this.sessions.some((session) => session.controls(snapshot));
   }
   assertAllowed(device: HomeyDeviceLike, setup: ChargingCurrentSetup, connected: boolean): void {

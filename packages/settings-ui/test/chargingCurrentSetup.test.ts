@@ -137,3 +137,18 @@ test.each(['conflict', 'unavailable'] as const)('explains blocked activation bes
   expect(document.body.textContent).not.toContain('Your key is ready. Select');
   expect(document.body.textContent).toContain('This switch allows control through the car.');
 });
+
+test('a charger-scoped device enables built-in control without a scope confirmation', async () => {
+  let device: ChargingCurrentRead = { ...charger, scope: 'charger', setup: { method: 'flow', confirmation: 'none' } };
+  callApi.mockImplementation(async (method: string, path: string, body: unknown) => {
+    if (method === 'PUT' && path === '/ui_charging_current/charger') {
+      device = { ...device, setup: body as ChargingCurrentRead['setup'] };
+    }
+    return path === '/ui_charging_current' ? [device] : { configured: true, state: 'ready' };
+  });
+  await act(async () => setChargingCurrentDevice('charger'));
+  expect(document.body.textContent).not.toContain('only one charger');
+  expect(document.body.textContent).not.toContain('Control charging through this car');
+  await act(async () => button('Use built-in control').click());
+  expect(callApi).toHaveBeenCalledWith('PUT', '/ui_charging_current/charger', { method: 'built_in', confirmation: 'none' });
+});

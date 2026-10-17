@@ -10,6 +10,9 @@ const selected: ChargingCurrentSetup = { method: 'built_in', confirmation: 'sing
 const zaptec = (writable = false): HomeyDeviceLike => ({ id: 'charger', name: 'Zaptec', class: 'evcharger',
   driverId: 'homey:app:com.zaptec:go2', data: { id: 'zaptec-id', installationId: 'installation' },
   capabilities: ['available_installation_current'], capabilitiesObj: { available_installation_current: { value: 16, setable: writable } } });
+const futurehome = (): HomeyDeviceLike => ({ id: 'futurehome', name: 'Futurehome', class: 'evcharger',
+  driverId: 'homey:app:no.futurehome:ev_charger', settings: { currentLimit: 16 },
+  capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'] });
 function fixture(device = zaptec()) {
   const values = new Map<string, unknown>();
   const settings = { get: (key: string) => values.get(key), getKeys: () => [...values.keys()],
@@ -134,4 +137,29 @@ test.each([false, true])('current timeout preserves its actual writable=%s route
     await expect(command).rejects.toMatchObject({ transport: 'homey_action', cause: timeout });
     expect(capabilityWrite).not.toHaveBeenCalled();
   }
+});
+
+test('a Futurehome charger runs its own current-limit action with no capability and no scope confirmation', async () => {
+  const { control, access, get } = fixture(futurehome());
+  const fetchMock = vi.fn().mockResolvedValueOnce(response({ intersectedScopes: ['homey.flow'] }))
+    .mockResolvedValueOnce(response({ error: null }));
+  vi.stubGlobal('fetch', fetchMock);
+  expect((await control.list())[0]).toMatchObject({ scope: 'charger', capabilityWritable: false, flowCheck: 'clear' });
+  await access.save({ key: 'private-key' });
+  await expect(control.save('futurehome', { method: 'built_in', confirmation: 'single_charger' }))
+    .rejects.toThrow('Confirm the control scope');
+  await control.save('futurehome', { method: 'built_in', confirmation: 'none' });
+  get.mockResolvedValue([{ id: 'homey:device:futurehome:currentLimit' }]);
+  const capabilityWrite = vi.fn();
+  await expect(control.writeCurrent(futurehome(), 10, capabilityWrite)).resolves.toBe('homey_action');
+  expect(capabilityWrite).not.toHaveBeenCalled();
+  expect(String(fetchMock.mock.calls[1]![0])).toContain('homey%3Adevice%3Afuturehome%3AcurrentLimit');
+  expect(JSON.parse(fetchMock.mock.calls[1]![1].body)).toEqual({ args: { value: 10 } });
+});
+
+test('a Futurehome current-limit action in a Flow blocks built-in control', async () => {
+  const { control, get } = fixture(futurehome());
+  get.mockImplementation(async (path) => path === 'manager/flow/flow/'
+    ? { limit: { name: 'Charger limit', actions: [{ id: 'homey:device:futurehome:currentLimit' }] } } : {});
+  expect((await control.list())[0]).toMatchObject({ flowCheck: 'conflict', flowNames: ['Charger limit'] });
 });
