@@ -1,5 +1,8 @@
 import type { PlanInputDevice } from '../../../packages/planner-types/src/planInputDevice';
-import type { DeferredReleaseIntent } from '../../../packages/planner-types/src/deferredDecoration';
+import type {
+  DeferredHoldCause, DeferredReleaseIntent,
+} from '../../../packages/planner-types/src/deferredDecoration';
+import { isTaskSatisfied } from './taskCompletion';
 import type { TaskEvaluation } from './taskEvaluation';
 
 export type { DeferredReleaseIntent };
@@ -20,6 +23,7 @@ export type DeferredAdmissionDecision =
   | {
       kind: 'idle';
       budgetExempt: boolean;
+      holdCause: DeferredHoldCause;
       deadlineFloorTargetC?: number;
       releaseIntent?: 'binary_release' | 'shed_release';
     };
@@ -94,7 +98,10 @@ const resolveDecision = (
     // planner's own decisions — and is held off through the planner instead
     // (`holdsDeviceOff`, `deferredHoldActive`).
     const releaseIntent = resolveReleaseIntent(releasesViaBinary, device);
-    return { kind: 'idle', budgetExempt: false, ...floor, ...(releaseIntent ? { releaseIntent } : {}) };
+    const holdCause: DeferredHoldCause = isTaskSatisfied(evaluation.completion) ? 'task_done' : 'cheaper_hours';
+    return {
+      kind: 'idle', budgetExempt: false, holdCause, ...floor, ...(releaseIntent ? { releaseIntent } : {}),
+    };
   }
   // A satisfied task keeps the hours it booked, as top-ups that promise nothing.
   // It holds no rescue permission (the coordinator strips them on acceptance,

@@ -125,6 +125,7 @@ const EXACT_REASON_PARSERS: Record<string, DeviceReason> = {
   'shed due to capacity': { code: PLAN_REASON_CODES.capacity },
   shortfall: { code: PLAN_REASON_CODES.shortfall },
   'waiting for cheaper hours': { code: PLAN_REASON_CODES.deferredObjectiveAvoid },
+  'smart task done, held until its ready-by time': { code: PLAN_REASON_CODES.deferredObjectiveSatisfied },
   'waiting for solar surplus': { code: PLAN_REASON_CODES.awaitingSolarSurplus },
   'staying off until turned on again': { code: PLAN_REASON_CODES.externalOffHold },
 };

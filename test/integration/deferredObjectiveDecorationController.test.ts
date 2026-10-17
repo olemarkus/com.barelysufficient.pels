@@ -69,7 +69,7 @@ describe('DeferredObjectiveDecorationController', () => {
     expect(settings.objectivesByDeviceId.dev.enabled).toBe(true);
     expect(bundle.admittedDevices[0]).toBe(device);
     expect(bundle.forceShedSet.size).toBe(0);
-    expect(bundle.deferredAvoidDeviceIds.size).toBe(0);
+    expect(bundle.deferredHoldCauseByDeviceId.size).toBe(0);
     expect(bundle.deferredReleaseIntentByDeviceId).toEqual({});
     expect(bundle.admittedDeviceIds.size).toBe(0);
     expect(bundle.drivingDeviceIds.size).toBe(0);
@@ -165,7 +165,7 @@ describe('DeferredObjectiveDecorationController', () => {
 
     expect(bundle.admittedDevices).toHaveLength(1);
     expect(bundle.forceShedSet.size).toBe(0);
-    expect(bundle.deferredAvoidDeviceIds.size).toBe(0);
+    expect(bundle.deferredHoldCauseByDeviceId.size).toBe(0);
     expect(bundle.deferredReleaseIntentByDeviceId).toEqual({});
   });
 });

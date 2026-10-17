@@ -347,7 +347,7 @@ export class PlanBuilder {
     );
     const planDevices = attachDeferredReleaseIntents(this.stages.normalizeReasons(
       heldContext, admissionPower, restoreResult, sheddingPlan, {
-        deferredObjectiveAvoidDeviceIds: decoration.deferredAvoidDeviceIds,
+        deferredHoldCauseByDeviceId: decoration.deferredHoldCauseByDeviceId,
         postureHoldReasonById: postureHolds.reasonById,
       }, holdResult,
     ), decoration.deferredReleaseIntentByDeviceId, true);

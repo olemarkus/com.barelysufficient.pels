@@ -15,6 +15,14 @@ import type { PlanInputDevice } from './planInputDevice.js';
 export type DeferredReleaseIntent = 'binary_restore' | 'binary_release' | 'shed_release';
 
 /**
+ * Why a smart task holds its device in an hour it released. `cheaper_hours`: the
+ * task still has energy to deliver and waits for the hours it booked.
+ * `task_done`: the task reached its target and holds the device until its
+ * ready-by time. Defined here for the same reason as `DeferredReleaseIntent`.
+ */
+export type DeferredHoldCause = 'cheaper_hours' | 'task_done';
+
+/**
  * The per-cycle planner context the smart-task controller needs to decorate the
  * device list. `dailyBudgetSnapshot` is passed in (rather than read from a
  * getter) so the controller and the planner's shedding lane see the exact same
@@ -38,9 +46,10 @@ export type DeferredDecorationInput = {
  *   forced boost, deadline thermostat floors stamped on as flat fields).
  * - `forceShedSet`: device ids the shedding lane must seed into its shed-set
  *   (idle-hour holds).
- * - `deferredAvoidDeviceIds`: devices whose task's admission decision this cycle
- *   is `idle` (a released hour), whatever the task's status. The task holds these
- *   devices, so the planner renders the "Waiting for cheaper hours" reason rather
+ * - `deferredHoldCauseByDeviceId`: devices whose task's admission decision this
+ *   cycle is `idle` (a released hour), with why the task holds them. The task
+ *   holds these devices, so the planner renders the task's reason ("Waiting for
+ *   cheaper hours", or the done line once the task reached its target) rather
  *   than blaming a capacity or daily-budget limit.
  * - `deferredReleaseIntentByDeviceId`: planned restores and idle-bucket release
  *   intents for the executor; terminal fallback stays off the plan path.
@@ -66,7 +75,7 @@ export type DeferredDecorationInput = {
 export type DeferredDecorationBundle = {
   admittedDevices: PlanInputDevice[];
   forceShedSet: Set<string>;
-  deferredAvoidDeviceIds: Set<string>;
+  deferredHoldCauseByDeviceId: ReadonlyMap<string, DeferredHoldCause>;
   deferredReleaseIntentByDeviceId: Record<string, DeferredReleaseIntent>;
   admittedDeviceIds: ReadonlySet<string>;
   drivingDeviceIds: ReadonlySet<string>;

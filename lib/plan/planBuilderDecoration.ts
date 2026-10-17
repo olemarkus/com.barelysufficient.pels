@@ -18,7 +18,7 @@ export function buildIdentityDecorationBundle(devices: PlanInputDevice[]): Defer
   return {
     admittedDevices: devices,
     forceShedSet: new Set<string>(),
-    deferredAvoidDeviceIds: new Set<string>(),
+    deferredHoldCauseByDeviceId: new Map(),
     deferredReleaseIntentByDeviceId: {},
     admittedDeviceIds: new Set<string>(),
     drivingDeviceIds: new Set<string>(),

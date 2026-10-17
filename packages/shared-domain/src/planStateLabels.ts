@@ -123,12 +123,18 @@ export const PLAN_STATE_METER_SILENT_STATUS = 'Waiting for a new power reading';
 
 // Status line for devices held because the smart task is between planned hours
 // (the current hour was relatively expensive so the load was booked into cheaper
-// hours, or the task has not started yet, or it has already finished). The
+// hours, or the task has not started yet). The
 // smart-task framing wins over capacity/daily framing
 // when both apply because the user opted into the price-aware plan and that's
 // the intent being honoured. Set by `normalizeShedReasons` in
 // `lib/plan/planReasons.ts` from the deferred-objective admission decisions.
 export const PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS = 'Waiting for cheaper hours';
+
+// Status line for a device whose smart task has reached its target: the task
+// holds it in every hour it did not book until the ready-by time (owner ruling
+// 2026-10-17), so it is not waiting for cheaper hours. Set by
+// `normalizeShedReasons` in `lib/plan/planReasons.ts` from the admission decisions.
+export const PLAN_STATE_DEFERRED_OBJECTIVE_SATISFIED_STATUS = 'Smart task done, held until its ready-by time';
 
 // Status line for a device standing down so a more important device's reserved
 // startup block stays intact. Not "Limited": nothing was switched off to build

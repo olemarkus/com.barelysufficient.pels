@@ -416,7 +416,10 @@ the truly spent hour (`hourlyBudgetExhausted`).
 
 Holds where power is not the blocker keep naming their cause, because freeing
 power would not start them and a kW figure would be a lie: `Waiting for cheaper
-hours` (smart task), `Waiting for solar surplus`, `Turned off elsewhere — turn
+hours` (smart task), `Smart task done, held until its ready-by time` (a smart task
+that reached its target holds its device in the hours it did not book until the
+ready-by time, owner ruling 2026-10-17; never `Waiting for cheaper hours`, which
+would say the task still needs energy), `Waiting for solar surplus`, `Turned off elsewhere — turn
 it on to resume`, `Waiting so {device} can start` (startup reservation),
 `Holding at 6 A — cannot increase while 2 devices are limited` (stepped fairness),
 and the countdown lines (`Waiting to resume — 50s`, or `Waiting to increase — 50s`

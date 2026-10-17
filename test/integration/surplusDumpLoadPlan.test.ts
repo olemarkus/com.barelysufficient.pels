@@ -530,7 +530,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
       decorate: (devices) => ({
         admittedDevices: devices,
         forceShedSet: new Set<string>(),
-        deferredAvoidDeviceIds: new Set<string>(),
+        deferredHoldCauseByDeviceId: new Map(),
         deferredReleaseIntentByDeviceId: {},
         admittedDeviceIds: new Set([PUMP]),
         drivingDeviceIds: new Set([PUMP]),
@@ -554,7 +554,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
       decorate: (devices) => ({
         admittedDevices: devices,
         forceShedSet: new Set<string>(),
-        deferredAvoidDeviceIds: new Set<string>(),
+        deferredHoldCauseByDeviceId: new Map(),
         deferredReleaseIntentByDeviceId: {},
         admittedDeviceIds: new Set([PUMP]),
         drivingDeviceIds: new Set([PUMP]),

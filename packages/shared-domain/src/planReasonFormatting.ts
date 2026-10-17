@@ -7,6 +7,7 @@ import {
   PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
+  PLAN_STATE_DEFERRED_OBJECTIVE_SATISFIED_STATUS,
   PLAN_STATE_CAPACITY_STATUS,
   PLAN_STATE_GRID_IMPORT_STATUS,
   PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS,
@@ -54,6 +55,7 @@ type StaticReason = Extract<
   | { code: typeof PLAN_REASON_CODES.shortfall }
   | { code: typeof PLAN_REASON_CODES.meterSilent }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
+  | { code: typeof PLAN_REASON_CODES.deferredObjectiveSatisfied }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
   | { code: typeof PLAN_REASON_CODES.awaitingPelsStart }
 >;
@@ -82,6 +84,7 @@ const STATIC_REASON_CODES = new Set<string>([
   PLAN_REASON_CODES.shortfall,
   PLAN_REASON_CODES.meterSilent,
   PLAN_REASON_CODES.deferredObjectiveAvoid,
+  PLAN_REASON_CODES.deferredObjectiveSatisfied,
   PLAN_REASON_CODES.awaitingSolarSurplus,
   PLAN_REASON_CODES.awaitingPelsStart,
 ]);
@@ -104,6 +107,7 @@ const STATIC_REASON_TEXT: Record<StaticReason['code'], string> = {
   [PLAN_REASON_CODES.shortfall]: 'shortfall',
   [PLAN_REASON_CODES.meterSilent]: 'shed while the meter is silent',
   [PLAN_REASON_CODES.deferredObjectiveAvoid]: 'waiting for cheaper hours',
+  [PLAN_REASON_CODES.deferredObjectiveSatisfied]: 'smart task done, held until its ready-by time',
   [PLAN_REASON_CODES.awaitingSolarSurplus]: 'waiting for solar surplus',
   [PLAN_REASON_CODES.awaitingPelsStart]: 'waiting for a smart task to start it',
 };
@@ -467,6 +471,7 @@ const STATIC_REASON_USER_TEXT: Record<StaticReason['code'], string> = {
   // formatter, so the card, device detail and the activity log agree.
   [PLAN_REASON_CODES.meterSilent]: PLAN_STATE_METER_SILENT_STATUS,
   [PLAN_REASON_CODES.deferredObjectiveAvoid]: PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
+  [PLAN_REASON_CODES.deferredObjectiveSatisfied]: PLAN_STATE_DEFERRED_OBJECTIVE_SATISFIED_STATUS,
   [PLAN_REASON_CODES.awaitingSolarSurplus]: PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,
   // Deliberately no card copy, and the empty string is how `keep` already says
   // that. The device is off because its owner set it to run only when PELS

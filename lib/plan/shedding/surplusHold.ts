@@ -41,7 +41,7 @@ import {
  * passing-cloud dip does not flap it off.
  *
  * `excludeIds` is the smart-task precedence set (plan-side, judges 2+3):
- * `forceShedSet ∪ deferredAvoidDeviceIds ∪ keys(deferredReleaseIntentByDeviceId)
+ * `forceShedSet ∪ keys(deferredHoldCauseByDeviceId) ∪ keys(deferredReleaseIntentByDeviceId)
  * ∪ admittedDeviceIds`. A device an active smart task governs is never
  * surplus-held, so the two standing postures cannot fight over one device.
  *

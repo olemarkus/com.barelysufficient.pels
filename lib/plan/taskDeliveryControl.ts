@@ -32,6 +32,7 @@ const RESTRICTIONS: Record<DevicePlanDevice['reason']['code'], TaskDeliveryContr
   awaiting_solar_surplus: { kind: 'uncontrolled' },
   awaiting_pels_start: { kind: 'uncontrolled' },
   deferred_objective_avoid: { kind: 'uncontrolled' },
+  deferred_objective_satisfied: { kind: 'uncontrolled' },
   inactive: { kind: 'no_decision' },
   keep: { kind: 'permitted' },
   restore_need: { kind: 'permitted' },

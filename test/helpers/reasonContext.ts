@@ -31,7 +31,7 @@ export const reasonContext = (
       shedCooldownStartedAtMs: shedCooldownStartedAtMs ?? null,
       shedCooldownTotalSec: shedCooldownTotalSec ?? null,
     }),
-    deferredObjectiveAvoidDeviceIds: new Set<string>(),
+    deferredHoldCauseByDeviceId: new Map(),
     postureHoldReasonById: new Map<string, DeviceReason>(),
     softLimitSource: null,
     physicalLimitBreached: false,

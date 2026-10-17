@@ -51,6 +51,7 @@ it once under **Power now** (`Safe pace now 1.9 kW · set by today's budget`).
 | **Waiting for a new power reading** | The whole-home meter stopped reporting for over 10 minutes, so PELS limited every managed device to be safe. This happens in every mode, even with every limit turned off, and lasts until a new reading arrives. |
 | **Delaying restart after recent failed attempt** | A previous resume caused new pressure, so PELS is waiting longer before trying again. |
 | **Waiting for cheaper hours** | A smart task booked this load into cheaper hours. More power would not start it. |
+| **Smart task done, held until its ready-by time** | The smart task reached its target. Until its ready-by time, the device runs only in the hours the task booked. |
 | **Waiting for solar surplus** | A "run on solar surplus" device, waiting for the home to export enough. |
 | **Turned off elsewhere — turn it on to resume** | The device was switched off outside PELS. |
 | **Holding at 6 A — cannot increase while 2 devices are limited** | A stepped device may not climb past its lowest useful level while other devices are still held back. Resuming those devices lifts it, not more power. |

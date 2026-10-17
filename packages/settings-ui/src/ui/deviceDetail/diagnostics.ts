@@ -11,6 +11,7 @@ import {
   PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
+  PLAN_STATE_DEFERRED_OBJECTIVE_SATISFIED_STATUS,
   PLAN_STATE_HOURLY_BUDGET_SPENT,
   PLAN_STATE_RESERVED_FOR_START_STATUS,
 } from '../../../../shared-domain/src/planStateLabels.ts';
@@ -118,6 +119,7 @@ const STARVATION_REASON_LABELS: Record<StarvationReason, string> = {
   invalid_observation: 'Observation invalid',
   sample_gap: 'Fresh observation missing',
   deferred_objective_avoid: PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
+  deferred_objective_satisfied: PLAN_STATE_DEFERRED_OBJECTIVE_SATISFIED_STATUS,
   awaiting_solar_surplus: PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,
   // Same words its siblings use: there is no active service block, which is
   // exactly what "only PELS starts this, and nothing asked" means. No new

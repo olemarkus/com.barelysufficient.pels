@@ -148,7 +148,7 @@ describe('resolveSurplusHold (standing dump-load hold)', () => {
 
   it('skips every excluded id (the smart-task precedence union)', () => {
     const state = createPlanEngineState(0);
-    // The builder unions forceShedSet, deferredAvoidDeviceIds, release-intent
+    // The builder unions forceShedSet, deferredHoldCauseByDeviceId, release-intent
     // keys, and admittedDeviceIds into one exclude set; the hold must honour
     // membership regardless of which source contributed the id.
     for (const source of ['forceShed', 'deferredAvoid', 'releaseIntent', 'admitted']) {

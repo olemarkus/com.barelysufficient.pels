@@ -55,6 +55,8 @@ const CEILING_HOLD_REASON_CODES: ReadonlySet<string> = new Set([
 // because power is not what is holding the device back and a kW figure would be
 // a lie — freeing power would not start it:
 //   deferredObjectiveAvoid  the user's own smart task is waiting for cheaper hours
+//   deferredObjectiveSatisfied  the user's own smart task is done and holds the device
+//                           until its ready-by time
 //   awaitingSolarSurplus    opted-in dump load waiting for export
 //   externalOffHold         turned off outside PELS; the recourse is a switch
 //   shedInvariant           stepped fairness rule; restoring OTHER devices lifts it

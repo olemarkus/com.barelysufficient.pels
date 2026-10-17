@@ -487,7 +487,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       decorateDeferredObjectives: (input) => ({
         admittedDevices: input.devices,
         forceShedSet: new Set<string>(['idle-task']),
-        deferredAvoidDeviceIds: new Set<string>(),
+        deferredHoldCauseByDeviceId: new Map(),
         deferredReleaseIntentByDeviceId: {},
         admittedDeviceIds: new Set<string>(),
         drivingDeviceIds: new Set<string>(),
@@ -520,7 +520,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       decorateDeferredObjectives: (input) => ({
         admittedDevices: input.devices,
         forceShedSet: new Set<string>(),
-        deferredAvoidDeviceIds: new Set<string>(),
+        deferredHoldCauseByDeviceId: new Map(),
         // A negative release rides the plan; the one positive intent needs a
         // measured cycle and this is not one.
         deferredReleaseIntentByDeviceId: { release: 'binary_release', resume: 'binary_restore' },

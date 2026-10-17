@@ -8,7 +8,7 @@ import {
   buildDeferredReleaseIntents,
   type DeferredAdmissionDecision,
 } from '../../lib/objectives/deferredObjectives/admission';
-import { resolveDeferredAvoidDeviceIds } from '../../lib/objectives/deferredObjectives/decorationController';
+import { resolveDeferredHoldCauses } from '../../lib/objectives/deferredObjectives/decorationController';
 import {
   buildExecutableDeviceIntent,
   buildExecutablePlan,
@@ -54,11 +54,11 @@ const decorateWithDecision = (
     admittedDeviceIds: new Set([deviceId]),
     drivingDeviceIds: new Set([deviceId]),
     lentAuthorityDeviceIds: admission.lentAuthorityDeviceIds,
-    deferredAvoidDeviceIds: resolveDeferredAvoidDeviceIds(decisions),
+    deferredHoldCauseByDeviceId: resolveDeferredHoldCauses(decisions),
   };
 };
 
-const idleDecision: DeferredAdmissionDecision = { kind: 'idle', budgetExempt: false };
+const idleDecision: DeferredAdmissionDecision = { kind: 'idle', budgetExempt: false, holdCause: 'cheaper_hours' };
 const plannedDecision: DeferredAdmissionDecision = {
   kind: 'planned',
   budgetExempt: false,

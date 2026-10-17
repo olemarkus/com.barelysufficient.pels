@@ -1,3 +1,4 @@
+import { isSmartTaskHoldReason } from '../planContract/planDecisionSemantics';
 import { getSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import type { DeviceStatus, DeviceStatusCountdown } from '../../packages/contracts/src/deviceStatus';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
@@ -189,7 +190,7 @@ function resolveCardKind(device: DeviceStatusInput): DeviceStatus['cardKind'] {
 }
 
 function resolveHoldCause(device: DeviceStatusInput): DeviceStatus['holdCause'] {
-  if (device.reason.code === PLAN_REASON_CODES.deferredObjectiveAvoid) return 'smart_task';
+  if (isSmartTaskHoldReason(device.reason)) return 'smart_task';
   return device.reason.code === PLAN_REASON_CODES.dailyBudget ? 'daily_budget' : null;
 }
 

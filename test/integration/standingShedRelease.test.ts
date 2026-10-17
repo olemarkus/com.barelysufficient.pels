@@ -301,7 +301,7 @@ describe('the shed PELS undoes when it loses authority over a device', () => {
     // the heater off in an hour it skips. When the task is disarmed its own
     // lifecycle clock decides what happens to the heater, not this lane.
     const h = makeHarness();
-    h.setDecoration(smartTaskGoverns({ kind: 'idle', budgetExempt: false }));
+    h.setDecoration(smartTaskGoverns({ kind: 'idle', budgetExempt: false, holdCause: 'cheaper_hours' }));
     const held = await h.builder.buildDevicePlanSnapshot([heater({ on: true, powerLimitControl: false })]);
     expect(heaterOf(held)?.plannedState).toBe('shed');
     expect(h.state.shedDecisions.standingShedIds.has(HEATER)).toBe(false);

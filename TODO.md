@@ -275,15 +275,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Smart tasks
 
-- [ ] **A satisfied task's device card says "Waiting for cheaper hours".** Since a satisfied task
-      holds its device off in every hour it did not book until the ready-by time,
-      `resolveDeferredAvoidDeviceIds` (`lib/objectives/deferredObjectives/decorationController.ts`)
-      maps that `idle` decision to `deferredObjectiveAvoid`, so the card reads "Waiting for cheaper
-      hours" (`PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS`) for hours after the target is reached.
-      Give the producer a satisfied-hold reason with its own line stating the task is done and the
-      device is held until the ready-by time, with the canonical wording added to
-      `notes/ui-terminology.md`. Done when a satisfied task's held device shows that line and an
-      unmet task's released hour still shows "Waiting for cheaper hours". [P2]
 
 
 - [ ] **A genuine learned-rate gap mid-commitment still strips a committed task to `unknown`.**

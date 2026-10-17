@@ -1,3 +1,4 @@
+import { isSmartTaskHoldReason } from '../planContract/planDecisionSemantics';
 import { PriceLevel } from '../price/priceLevels';
 import { capacityPeriodEnergyKWh } from '../../packages/shared-domain/src/settings/capacityPeriod';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -311,10 +312,10 @@ function summarizePlanForStatus(plan: DevicePlan): PlanStatusSummary {
     // Held off by "Only PELS starts this device" or its smart task's deferred hour,
     // and by nothing else: no limit is driving it, so it must not make the home
     // report hourly or daily limiting. `nonCapacityHoldShed` says so whatever
-    // reason text the device carries; "Waiting for cheaper hours" says so for a
+    // reason text the device carries; a smart-task hold reason says so for a
     // task hold on a device the task lends authority to, which that flag does not
     // cover.
-    if (device.nonCapacityHoldShed === true || device.reason.code === PLAN_REASON_CODES.deferredObjectiveAvoid) {
+    if (device.nonCapacityHoldShed === true || isSmartTaskHoldReason(device.reason)) {
       continue;
     }
 

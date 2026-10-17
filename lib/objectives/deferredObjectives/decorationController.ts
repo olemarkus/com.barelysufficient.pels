@@ -2,6 +2,7 @@ import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/daily
 import type {
   DeferredDecorationBundle,
   DeferredDecorationInput,
+  DeferredHoldCause,
 } from '../../../packages/planner-types/src/deferredDecoration';
 import { addPerfDuration } from '../../utils/perfCounters';
 import { recordOpRssDelta, safeRss } from '../../utils/opRssTracker';
@@ -59,7 +60,7 @@ export class DeferredObjectiveDecorationController {
     return {
       admittedDevices: admission.devices,
       forceShedSet: admission.forceShedSet,
-      deferredAvoidDeviceIds: resolveDeferredAvoidDeviceIds(decisions),
+      deferredHoldCauseByDeviceId: resolveDeferredHoldCauses(decisions),
       deferredReleaseIntentByDeviceId: buildDeferredReleaseIntents(decisions),
       admittedDeviceIds: resolveAdmittedDeviceIds(decisions),
       drivingDeviceIds: buildDeferredDemandDeviceIds(decisions),
@@ -119,20 +120,20 @@ const resolveAdmittedDeviceIds = (
 
 // Devices whose smart task is waiting out this hour: the admission decision is
 // `idle`, which is exactly when the task holds the device (`applyDeferredAdmissionToInput`).
-// Used downstream by `normalizeShedReasons` to render the `deferredObjectiveAvoid`
-// reason ("Waiting for cheaper hours") for a device that ends up held, since the task
-// is what holds it.
+// Used downstream by `normalizeShedReasons` to render the task's reason for a device
+// that ends up held, since the task is what holds it: "Waiting for cheaper hours"
+// while it still has energy to deliver, the done line once it reached its target.
 //
 // It reads the decision, not the task's status: an `at_risk` task (the normal state of
 // a stepped water heater, `feasible_above_floor`) holds its device in a released hour
 // just as an `on_track` one does, so the same words apply. The task's own status is
 // shown on the task.
-export const resolveDeferredAvoidDeviceIds = (
+export const resolveDeferredHoldCauses = (
   decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
-): Set<string> => {
-  const avoidIds = new Set<string>();
+): Map<string, DeferredHoldCause> => {
+  const holdCauses = new Map<string, DeferredHoldCause>();
   for (const [deviceId, decision] of decisions) {
-    if (decision.kind === 'idle') avoidIds.add(deviceId);
+    if (decision.kind === 'idle') holdCauses.set(deviceId, decision.holdCause);
   }
-  return avoidIds;
+  return holdCauses;
 };

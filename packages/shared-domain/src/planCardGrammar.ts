@@ -90,6 +90,7 @@ const HOLD_REASON_CODES: ReadonlySet<string> = new Set([
   PLAN_REASON_CODES.meterSilent,
   PLAN_REASON_CODES.shedInvariant,
   PLAN_REASON_CODES.deferredObjectiveAvoid,
+  PLAN_REASON_CODES.deferredObjectiveSatisfied,
   PLAN_REASON_CODES.awaitingSolarSurplus,
   PLAN_REASON_CODES.reservedForStart,
   // Countdown holds that gate a resume on available power ("will try to

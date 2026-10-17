@@ -31,7 +31,7 @@ describe('external-off hold — a booked smart-task hour ends it', () => {
     engageBoost: true,
     reservesStartupPower: true,
   };
-  const idle: DeferredAdmissionDecision = { kind: 'idle', budgetExempt: false };
+  const idle: DeferredAdmissionDecision = { kind: 'idle', budgetExempt: false, holdCause: 'cheaper_hours' };
 
   const admit = (device: PlanInputDevice, decision: DeferredAdmissionDecision) => (
     applyDeferredAdmissionToInput([device], new Map([[device.id, decision]]))

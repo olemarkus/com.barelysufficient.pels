@@ -6,7 +6,7 @@ import {
   applyDeferredObjectiveAdmission,
   buildDeferredDemandDeviceIds,
 } from '../../lib/objectives/deferredObjectives/admission';
-import { resolveDeferredAvoidDeviceIds } from '../../lib/objectives/deferredObjectives/decorationController';
+import { resolveDeferredHoldCauses } from '../../lib/objectives/deferredObjectives/decorationController';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives';
 import type { DeferredObjectiveHorizonPlan } from '../../lib/objectives/deferredObjectives';
 import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
@@ -152,7 +152,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       }),
     });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation));
-    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65 });
+    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false, holdCause: 'cheaper_hours', deadlineFloorTargetC: 65 });
   });
 
   it('adds an EV pause intent for an EV objective in an idle bucket', () => {
@@ -172,7 +172,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     });
     const device = buildEvDevice({ id: 'ev1', controlModel: 'binary_power' });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]);
-    expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'binary_release' });
+    expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, holdCause: 'cheaper_hours', releaseIntent: 'binary_release' });
   });
 
   it('routes a stepped-load EV charger by control modality, not as binary', () => {
@@ -192,7 +192,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       }),
     });
     expect(applyDeferredObjectiveAdmission(([idle]).map((diagnostic) => diagnostic.evaluation), [device]).get('ev1'))
-      .toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'shed_release' });
+      .toEqual({ kind: 'idle', budgetExempt: false, holdCause: 'cheaper_hours', releaseIntent: 'shed_release' });
 
     const planned = buildDiagnostic({
       deviceId: 'ev1',
@@ -250,7 +250,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       horizonPlan: buildHorizonPlan({ currentBucket: null, currentHourClaim: 'released' }),
     });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation));
-    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65 });
+    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false, holdCause: 'cheaper_hours', deadlineFloorTargetC: 65 });
   });
 
   // An hour the plan wants on price, or a hour of a task that cannot finish, is booked
@@ -332,7 +332,7 @@ describe('applyDeferredObjectiveAdmission', () => {
   it('holds a satisfied temperature task\'s device in an hour it did not book, at the task\'s setpoint', () => {
     const diagnostic = buildDiagnostic({ deviceId: 'dev1', ...satisfiedUnbooked });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation));
-    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65 });
+    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false, holdCause: 'task_done', deadlineFloorTargetC: 65 });
   });
 
   it('holds a satisfied task the same way on a device it near-target accepted', () => {
@@ -340,14 +340,14 @@ describe('applyDeferredObjectiveAdmission', () => {
       deviceId: 'dev1', ...satisfiedUnbooked, completion: { kind: 'accepted_near_target' },
     });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation));
-    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65 });
+    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false, holdCause: 'task_done', deadlineFloorTargetC: 65 });
   });
 
   it('pauses a satisfied EV in an hour it did not book', () => {
     const diagnostic = buildDiagnostic({ deviceId: 'ev1', objectiveKind: 'ev_soc', ...satisfiedUnbooked });
     const device = buildEvDevice({ id: 'ev1', controllable: false, controlModel: 'binary_power' });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]);
-    expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'binary_release' });
+    expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, holdCause: 'task_done', releaseIntent: 'binary_release' });
   });
 
   it('releases a satisfied cap-off heater through its configured posture', () => {
@@ -355,7 +355,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     const device = buildEvDevice({ id: 'heater1', controllable: false });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]);
     expect(decisions.get('heater1')).toEqual({
-      kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65, releaseIntent: 'shed_release',
+      kind: 'idle', budgetExempt: false, holdCause: 'task_done', deadlineFloorTargetC: 65, releaseIntent: 'shed_release',
     });
   });
 
@@ -363,7 +363,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     const diagnostic = buildDiagnostic({ deviceId: 'heater2', ...satisfiedUnbooked });
     const device = buildEvDevice({ id: 'heater2', controllable: true });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]);
-    expect(decisions.get('heater2')).toEqual({ kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65 });
+    expect(decisions.get('heater2')).toEqual({ kind: 'idle', budgetExempt: false, holdCause: 'task_done', deadlineFloorTargetC: 65 });
     const applied = applyDeferredAdmissionToInput([device], decisions);
     expect(applied.forceShedSet.has('heater2')).toBe(true);
     expect(applied.devices[0]).toMatchObject({ deferredHoldActive: true, deadlineFloorTargetC: 65 });
@@ -467,7 +467,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       }),
     });
     const decisions = applyDeferredObjectiveAdmission(([idle]).map((diagnostic) => diagnostic.evaluation));
-    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65 });
+    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false, holdCause: 'cheaper_hours', deadlineFloorTargetC: 65 });
 
     const device = buildEvDevice({ id: 'dev1', controllable: true });
     const { devices } = applyDeferredAdmissionToInput([device], decisions);
@@ -497,7 +497,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       }),
     });
     expect(applyDeferredObjectiveAdmission(([satisfied]).map((diagnostic) => diagnostic.evaluation)).get('dev2'))
-      .toEqual({ kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65 });
+      .toEqual({ kind: 'idle', budgetExempt: false, holdCause: 'task_done', deadlineFloorTargetC: 65 });
   });
 
   it('sets forceBoostActive on the device input for a planned limit-lower-priority task', () => {
@@ -525,7 +525,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       }),
     });
     expect(applyDeferredObjectiveAdmission(([satisfied]).map((diagnostic) => diagnostic.evaluation)).get('dev2'))
-      .toEqual({ kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65 });
+      .toEqual({ kind: 'idle', budgetExempt: false, holdCause: 'task_done', deadlineFloorTargetC: 65 });
   });
 
   it('sets reservesStartupPower on the device input WITHOUT forceBoostActive (pause is boost-free)', () => {
@@ -556,7 +556,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     const device = buildEvDevice({ id: 'heater1', controllable: false });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]);
     expect(decisions.get('heater1')).toEqual({
-      kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65, releaseIntent: 'shed_release',
+      kind: 'idle', budgetExempt: false, holdCause: 'cheaper_hours', deadlineFloorTargetC: 65, releaseIntent: 'shed_release',
     });
   });
 
@@ -567,7 +567,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     });
     const device = buildEvDevice({ id: 'heater1', controllable: true });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]);
-    expect(decisions.get('heater1')).toEqual({ kind: 'idle', budgetExempt: false, deadlineFloorTargetC: 65 });
+    expect(decisions.get('heater1')).toEqual({ kind: 'idle', budgetExempt: false, holdCause: 'cheaper_hours', deadlineFloorTargetC: 65 });
   });
 
   it('pauses a price-deferred EV charger', () => {
@@ -578,7 +578,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     });
     const device = buildEvDevice({ id: 'ev1', controlModel: 'binary_power' });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation), [device]);
-    expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'binary_release' });
+    expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, holdCause: 'cheaper_hours', releaseIntent: 'binary_release' });
   });
 });
 
@@ -633,11 +633,11 @@ describe('planned admission temperature floor', () => {
   });
 });
 
-describe('resolveDeferredAvoidDeviceIds', () => {
-  // Driven through the real admission: the avoid set is the devices the task's
+describe('resolveDeferredHoldCauses', () => {
+  // Driven through the real admission: the hold causes cover the devices the task's
   // decision holds idle this hour, so the framing and the hold cannot disagree.
-  const avoidIdsFor = (diagnostic: DeferredObjectiveDiagnostic) => (
-    resolveDeferredAvoidDeviceIds(applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation)))
+  const holdCausesFor = (diagnostic: DeferredObjectiveDiagnostic) => (
+    resolveDeferredHoldCauses(applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation)))
   );
 
   it('flags a price-deferred device as waiting for cheaper hours, even when at_risk with a booked current bucket', () => {
@@ -655,12 +655,12 @@ describe('resolveDeferredAvoidDeviceIds', () => {
         currentHourClaim: 'released',
       }),
     });
-    expect(avoidIdsFor(diagnostic).has('heater1')).toBe(true);
+    expect(holdCausesFor(diagnostic).get('heater1')).toBe('cheaper_hours');
   });
 
   it('does not flag a normally-planned device that is running this hour', () => {
     const diagnostic = buildDiagnostic({ deviceId: 'heater1', horizonPlan: buildHorizonPlan() });
-    expect(avoidIdsFor(diagnostic).has('heater1')).toBe(false);
+    expect(holdCausesFor(diagnostic).has('heater1')).toBe(false);
   });
 
   it('flags an at_risk task holding its device off in an hour it released', () => {
@@ -679,7 +679,19 @@ describe('resolveDeferredAvoidDeviceIds', () => {
         currentHourClaim: 'released',
       }),
     });
-    expect(avoidIdsFor(diagnostic).has('heater1')).toBe(true);
+    expect(holdCausesFor(diagnostic).get('heater1')).toBe('cheaper_hours');
+  });
+
+  it('says a satisfied task holds its device as done, not waiting for cheaper hours', () => {
+    const diagnostic = buildDiagnostic({
+      deviceId: 'heater1',
+      completion: { kind: 'target_reached' },
+      trajectory: { kind: 'resolved', status: 'satisfied' },
+      horizonPlan: buildHorizonPlan({
+        status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0, currentHourClaim: 'released',
+      }),
+    });
+    expect(holdCausesFor(diagnostic).get('heater1')).toBe('task_done');
   });
 
   it('does not flag an hour the task still needs', () => {
@@ -695,7 +707,7 @@ describe('resolveDeferredAvoidDeviceIds', () => {
         currentHourClaim: 'claimed',
       }),
     });
-    expect(avoidIdsFor(diagnostic).has('heater1')).toBe(false);
+    expect(holdCausesFor(diagnostic).has('heater1')).toBe(false);
   });
 });
 

@@ -7,7 +7,7 @@ import { getRestoreNeed } from '../../lib/plan/restore/support';
 import { buildExecutableTargetIntent } from '../../lib/executor/executableTargetProjection';
 import { buildRestoreHeadroomLedger } from '../../lib/plan/restore/headroomLedger';
 import { buildRestoreHeadroomReason } from '../../lib/plan/planReasonStrings';
-import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
+import { formatDeviceReasonUserFacing, PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { NEUTRAL_STARTUP_HOLD_REASON } from '../../lib/plan/restore/devices';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
@@ -369,10 +369,28 @@ describe('normalizeShedReasons', () => {
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
-      deferredObjectiveAvoidDeviceIds: new Set(['dev-smart-task']),
+      deferredHoldCauseByDeviceId: new Map([['dev-smart-task', 'cheaper_hours']]),
     }));
 
     expect(reasonText(device?.reason)).toBe('waiting for cheaper hours');
+  });
+
+  it('says a satisfied task holds its device until the ready-by time, not for cheaper hours', () => {
+    const [device] = normalizeShedReasons([buildPlanDevice({
+        id: 'dev-task-done',
+        plannedState: 'shed',
+        reason: fixtureDeviceReason('shed due to capacity')!,
+      })], reasonContext({
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+      deferredHoldCauseByDeviceId: new Map([['dev-task-done', 'task_done']]),
+    }));
+
+    expect(device?.reason).toEqual({ code: PLAN_REASON_CODES.deferredObjectiveSatisfied });
+    expect(formatDeviceReasonUserFacing(device!.reason)).toBe('Smart task done, held until its ready-by time');
   });
 
   it('prefers deferredObjectiveAvoid over dailyBudget when both apply', () => {
@@ -387,7 +405,7 @@ describe('normalizeShedReasons', () => {
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
       softLimitSource: 'daily',
-      deferredObjectiveAvoidDeviceIds: new Set(['dev-smart-task-on-daily']),
+      deferredHoldCauseByDeviceId: new Map([['dev-smart-task-on-daily', 'cheaper_hours']]),
     }));
 
     expect(reasonText(device?.reason)).toBe('waiting for cheaper hours');
@@ -404,7 +422,7 @@ describe('normalizeShedReasons', () => {
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
-      deferredObjectiveAvoidDeviceIds: new Set(['dev-swap']),
+      deferredHoldCauseByDeviceId: new Map([['dev-swap', 'cheaper_hours']]),
     }));
 
     expect(reasonText(device?.reason)).toBe('swapped out for Water Heater');

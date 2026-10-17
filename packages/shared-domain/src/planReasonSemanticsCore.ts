@@ -28,6 +28,10 @@ export const PLAN_REASON_CODES = {
   // cycles. Distinct from `meterSettling`, a countdown on a reporting meter.
   meterSilent: 'meter_silent',
   deferredObjectiveAvoid: 'deferred_objective_avoid',
+  // The device's smart task has reached its target and holds the device in the
+  // hours it did not book until the ready-by time. No detail, like
+  // `deferredObjectiveAvoid`.
+  deferredObjectiveSatisfied: 'deferred_objective_satisfied',
   // Standing "Run on solar surplus" hold for a binary dump load: the device's
   // baseline is OFF and PELS lifts the hold only while the surplus allocator
   // marks it eligible. Deliberately carries NO numbers/timestamps — the reason
@@ -225,6 +229,7 @@ export type DeviceReason =
   | ({ code: typeof PLAN_REASON_CODES.capacity } & AdmissionShortfall & ReserveHolder)
   | { code: typeof PLAN_REASON_CODES.meterSilent }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
+  | { code: typeof PLAN_REASON_CODES.deferredObjectiveSatisfied }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
   | { code: typeof PLAN_REASON_CODES.awaitingPelsStart }
   | { code: typeof PLAN_REASON_CODES.externalOffHold }

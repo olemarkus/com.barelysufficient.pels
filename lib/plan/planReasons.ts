@@ -1,3 +1,4 @@
+import type { DeferredHoldCause } from '../../packages/planner-types/src/deferredDecoration';
 import type { DevicePlanDevice } from './planTypes';
 import type { SoftLimitSource } from '../../packages/contracts/src/settingsUiApi';
 import {
@@ -31,10 +32,10 @@ export { applyShedTemperatureHold } from './planReasonsHoldDecisions';
 export { finalizePlanDevices } from './planReasonsValidation';
 
 // The two standing-hold framing inputs `normalizeShedReasons` consumes (the
-// smart-task avoid set + the surplus dump-load hold reasons), bundled so the
+// smart-task hold causes + the surplus dump-load hold reasons), bundled so the
 // builder can thread them as one value.
 export type ShedReasonHoldInputs = {
-  deferredObjectiveAvoidDeviceIds: ReadonlySet<string>;
+  deferredHoldCauseByDeviceId: ReadonlyMap<string, DeferredHoldCause>;
   postureHoldReasonById: ReadonlyMap<string, DeviceReason>;
 };
 
@@ -76,11 +77,11 @@ export type ReasonContext = {
    */
   readonly timing: RestoreTiming;
   /**
-   * Devices whose active smart task is between planned hours. When such a device
-   * ends up held this cycle, that framing wins over capacity/dailyBudget because
-   * it reflects the owner's opt-in to the price-aware plan.
+   * Devices whose active smart task is between planned hours, with why the task
+   * holds them. When such a device ends up held this cycle, that framing wins over
+   * capacity/dailyBudget because it reflects the owner's opt-in to the price-aware plan.
    */
-  readonly deferredObjectiveAvoidDeviceIds: ReadonlySet<string>;
+  readonly deferredHoldCauseByDeviceId: ReadonlyMap<string, DeferredHoldCause>;
   /**
    * Devices held OFF by the standing "Run on solar surplus" dump-load posture,
    * with the producer-built stable `awaitingSolarSurplus` reason. Adopted like
@@ -347,7 +348,7 @@ function attachShortfall(reason: DeviceReason, shortfallKw: number): DeviceReaso
 }
 
 function normalizeDeviceReason(ctx: ReasonContext, dev: DevicePlanDevice): DevicePlanDevice {
-  const { shedReasons, deferredObjectiveAvoidDeviceIds } = ctx;
+  const { shedReasons, deferredHoldCauseByDeviceId } = ctx;
 
   if (dev.plannedState !== 'shed') return dev;
 
@@ -376,15 +377,16 @@ function normalizeDeviceReason(ctx: ReasonContext, dev: DevicePlanDevice): Devic
   if (cooldownReason) return { ...dev, reason: cooldownReason };
 
   // Smart-task framing wins over capacity / dailyBudget framing when both
-  // apply: the user opted into the price-aware plan, so "Waiting for cheaper
-  // hours" reflects the planner's intent more honestly than naming whichever
+  // apply: the user opted into the price-aware plan, so the task's own reason
+  // ("Waiting for cheaper hours", or the done line) reflects the planner's intent more honestly than naming whichever
   // physical constraint happens to be binding right now. Skipped when the
   // device has a richer hold reason (shortfall above, swap/budget below) —
   // those carry user-actionable information the smart-task framing would
   // hide. Active state-machine reasons (cooldown handled above) similarly
   // pass through.
-  if (deferredObjectiveAvoidDeviceIds?.has(dev.id) && shouldAdoptDeferredAvoidFraming(currentReason, baseReason)) {
-    return { ...dev, reason: { code: PLAN_REASON_CODES.deferredObjectiveAvoid } };
+  const holdCause = deferredHoldCauseByDeviceId?.get(dev.id);
+  if (holdCause !== undefined && shouldAdoptDeferredAvoidFraming(currentReason, baseReason)) {
+    return { ...dev, reason: { code: DEFERRED_HOLD_REASON_CODE[holdCause] } };
   }
 
   const dailyReattribution = resolveDailyBindingReattribution(
@@ -520,9 +522,14 @@ function resolvePostureHoldReasonAdoption(
   // this the posture adoption ran first and discarded the task reason outright,
   // because a deferring task does not lift the hold (only a `planned` decision
   // stamps `startPolicyHoldLifted`, and a deferring task is not one).
-  if (ctx.deferredObjectiveAvoidDeviceIds?.has(dev.id)) return null;
+  if (ctx.deferredHoldCauseByDeviceId?.has(dev.id)) return null;
   return reason;
 }
+
+const DEFERRED_HOLD_REASON_CODE = {
+  cheaper_hours: PLAN_REASON_CODES.deferredObjectiveAvoid,
+  task_done: PLAN_REASON_CODES.deferredObjectiveSatisfied,
+} as const satisfies Record<DeferredHoldCause, string>;
 
 // Only override capacity-shaped reasons with the smart-task framing. Swap,
 // shortfall, hourlyBudget, dailyBudget, inactive, and the various

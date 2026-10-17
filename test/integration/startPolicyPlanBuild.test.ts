@@ -69,7 +69,7 @@ const plannedDecision: DeferredAdmissionDecision = {
   releaseIntent: 'binary_restore',
 };
 
-const idleDecision: DeferredAdmissionDecision = { kind: 'idle', budgetExempt: false };
+const idleDecision: DeferredAdmissionDecision = { kind: 'idle', budgetExempt: false, holdCause: 'cheaper_hours' };
 
 /** Not governing the device at all, so the hold stays (owner ruling, 2026-09-10). */
 const inactiveDecision: DeferredAdmissionDecision = { kind: 'inactive', budgetExempt: false };
