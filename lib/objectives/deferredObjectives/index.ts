@@ -73,6 +73,11 @@ export {
   buildUnavailableDeferredObjectivePlanEstimate,
   previewDeferredObjectivePlan,
 } from './planPreview';
+export {
+  estimateSmartTaskQuickTargets,
+  previewSmartTaskQuickTargetsForDevice,
+  type SmartTaskQuickTargetPreview,
+} from './smartTaskQuickTargets';
 export type {
   DeferredObjectivePlanPreviewCandidate,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';

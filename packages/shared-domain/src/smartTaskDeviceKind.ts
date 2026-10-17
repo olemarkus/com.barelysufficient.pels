@@ -166,7 +166,10 @@ const COMMON_CASE_GOAL: Record<DeferredObjectiveSettingsKind, number> = {
 
 // Seed the goal stepper with a goal-oriented default snapped to the step grid:
 // the larger of the common-case target and the current reading (so the default
-// is never below where the device already is), clamped into bounds.
+// is never below where the device already is), clamped into bounds. A
+// temperature device seeds from its first quick target instead
+// (`resolveSmartTaskDeviceDefaultGoal`): the 60 °C common case is a water
+// heater's, and clamped into a room thermostat's range it seeded 40 °C.
 export const resolveSmartTaskDefaultGoal = (params: {
   kind: DeferredObjectiveSettingsKind;
   bounds: SmartTaskGoalBounds;
@@ -178,4 +181,92 @@ export const resolveSmartTaskDefaultGoal = (params: {
   const clamped = Math.min(bounds.max, Math.max(bounds.min, target));
   const snapped = bounds.min + Math.round((clamped - bounds.min) / bounds.step) * bounds.step;
   return Math.min(bounds.max, Math.max(bounds.min, Math.round(snapped * 100) / 100));
+};
+
+// ─── Quick targets ──────────────────────────────────────────────────────────
+//
+// The few goals a creation surface offers as one-tap choices before "Customize".
+// A target the device has already reached is never offered.
+//
+// EV: the usual battery-health stops, topped up from the highest remaining tens
+// when the car is already past some of them (at 58 % that adds 90 %, never a 60 %
+// that is two points away). Without a known battery level there is no
+// plan to time a target against, so there are no quick targets.
+//
+// Temperature: the device class cannot tell a room from a water heater (a water
+// heater reports `heater`, the class panel heaters use too), and the headroom to
+// the maximum is about the same for both. The operating point does separate
+// them: a room runs at 15-26 °C, a storage heater at 40 °C and above. So the
+// step is 5 °C at or above 35 °C and 1 °C below, counted from the device's own
+// setpoint, or from the next step above the current temperature when that
+// setpoint is already reached (a frost-guard setpoint in a warm room).
+const QUICK_TARGET_COUNT = 4;
+const PREFERRED_EV_QUICK_TARGETS = [50, 70, 80, 100];
+const EV_QUICK_TARGET_POOL = [50, 60, 70, 80, 90, 100];
+const STORAGE_HEATER_OPERATING_POINT_C = 35;
+const STORAGE_HEATER_QUICK_STEP_C = 5;
+const ROOM_QUICK_STEP_C = 1;
+
+const resolveEvQuickTargets = (currentPercent: number): number[] => {
+  const above = (target: number): boolean => target > currentPercent;
+  const preferred = PREFERRED_EV_QUICK_TARGETS.filter(above);
+  const fill = EV_QUICK_TARGET_POOL.filter((target) => above(target) && !preferred.includes(target)).reverse();
+  return [...preferred, ...fill.slice(0, Math.max(0, QUICK_TARGET_COUNT - preferred.length))]
+    .sort((a, b) => a - b);
+};
+
+const snapUpToStep = (value: number, bounds: SmartTaskGoalBounds): number => {
+  const steps = Math.ceil((value - bounds.min) / bounds.step - 1e-9);
+  return Math.round((bounds.min + steps * bounds.step) * 100) / 100;
+};
+
+const resolveTemperatureQuickTargets = (
+  temperature: NonNullable<SmartTaskDeviceLike['temperature']>,
+  bounds: SmartTaskGoalBounds,
+): number[] => {
+  const setpoint = temperature.target.value;
+  const current = temperature.currentTemperature;
+  const quickStep = Math.max(setpoint, current) >= STORAGE_HEATER_OPERATING_POINT_C
+    ? STORAGE_HEATER_QUICK_STEP_C
+    : ROOM_QUICK_STEP_C;
+  // Never finer than the device's own setpoint step, or targets snap together.
+  const step = Math.max(quickStep, bounds.step);
+  const first = setpoint > current ? setpoint : (Math.floor(current / step) + 1) * step;
+  const targets: number[] = [];
+  for (let index = 0; index < QUICK_TARGET_COUNT; index += 1) {
+    const target = snapUpToStep(first + index * step, bounds);
+    if (target > bounds.max || target <= current || targets.includes(target)) break;
+    targets.push(target);
+  }
+  return targets;
+};
+
+/**
+ * The quick targets to offer for a new task of `kind` on `device`, ascending.
+ * Empty when there is nothing to offer: an energy task, a charger with no known
+ * battery level, or a device already at its maximum.
+ */
+export const resolveSmartTaskQuickTargets = (
+  device: SmartTaskDeviceLike,
+  kind: DeferredObjectiveSettingsKind,
+): number[] => {
+  if (kind === 'energy') return [];
+  if (kind === 'ev_soc') {
+    const current = resolveSmartTaskCurrentValue(device, kind);
+    return current === null ? [] : resolveEvQuickTargets(current);
+  }
+  if (!device.temperature) return [];
+  return resolveTemperatureQuickTargets(device.temperature, resolveSmartTaskGoalBounds(device, kind));
+};
+
+/** The goal a creation surface seeds its stepper with for `device`. */
+export const resolveSmartTaskDeviceDefaultGoal = (
+  device: SmartTaskDeviceLike,
+  kind: DeferredObjectiveSettingsKind,
+): number => {
+  const bounds = resolveSmartTaskGoalBounds(device, kind);
+  const [firstQuickTarget] = kind === 'temperature' ? resolveSmartTaskQuickTargets(device, kind) : [];
+  return firstQuickTarget ?? resolveSmartTaskDefaultGoal({
+    kind, bounds, currentValue: resolveSmartTaskCurrentValue(device, kind),
+  });
 };

@@ -1,9 +1,10 @@
 import {
   CREATE_SMART_TASK_WIDGET_COPY,
-  CREATE_SMART_TASK_READY_BY_PRESETS,
   SMART_TASK_EDIT_COPY,
   SMART_TASK_EXTRA_PERMISSION_HINTS,
   SMART_TASK_EXTRA_PERMISSION_LABELS,
+  formatQuickTargetDeadline,
+  formatQuickTargetTiming,
   formatSmartTaskGoalValue,
   formatSmartTaskGoalContextLine,
   formatSmartTaskNowValueLine,
@@ -26,18 +27,37 @@ import type {
   CreateSmartTaskDevice,
   CreateSmartTaskDevicesPayload,
   CreateSmartTaskPreviewResponse,
+  CreateSmartTaskQuickTarget,
 } from '../createSmartTaskWidgetTypes';
 
 const C = CREATE_SMART_TASK_WIDGET_COPY;
 
-// The widget walks four states. `compose` and `preview` carry the in-progress
-// candidate so a re-render keeps the user's goal/ready-by selections; `created`
+// The quick-target step: loading while the app times each target, then the
+// boxes with one selected. Start creates the selected target directly.
+export type TimedQuickTargets = { kind: 'ready'; targets: CreateSmartTaskQuickTarget[]; selected: number };
+export type QuickTargetsState = { kind: 'loading' } | TimedQuickTargets;
+
+// Where "Back" from the goal form leads: the quick targets it was opened from,
+// as they were timed, or the device list when the device offers none (or none
+// could be timed).
+export type ComposeOrigin = { kind: 'picker' } | { kind: 'quick'; quick: TimedQuickTargets };
+
+// The widget walks five states. `quick`, `compose` and `preview` carry the
+// in-progress candidate so a re-render keeps the user's selections; `created`
 // is a brief success flash before the controller resets to `picker`.
 export type ViewState =
   | { kind: 'picker' }
   | {
+    kind: 'quick';
+    device: CreateSmartTaskDevice;
+    quick: QuickTargetsState;
+    submitting: boolean;
+    error: string | null;
+  }
+  | {
     kind: 'compose';
     device: CreateSmartTaskDevice;
+    origin: ComposeOrigin;
     // A cleared input stays a draft; preview requires a valid numeric goal.
     goal: number | null;
     readyByLocalTime: string;
@@ -51,6 +71,7 @@ export type ViewState =
   | {
     kind: 'preview';
     device: CreateSmartTaskDevice;
+    origin: ComposeOrigin;
     goal: number;
     readyByLocalTime: string;
     exemptFromBudget: boolean;
@@ -72,6 +93,18 @@ export type RenderTargets = {
   pickerEmptyHint: HTMLElement;
   pickerRetryBtn: HTMLButtonElement;
   deviceTemplate: HTMLTemplateElement;
+  // Quick targets
+  quickView: HTMLElement;
+  quickBackBtn: HTMLButtonElement;
+  quickTitle: HTMLElement;
+  quickStatusEl: HTMLElement;
+  quickList: HTMLElement;
+  quickSummaryEl: HTMLElement;
+  quickFinishEl: HTMLElement;
+  quickErrorEl: HTMLElement;
+  quickCustomizeBtn: HTMLButtonElement;
+  quickStartBtn: HTMLButtonElement;
+  quickTargetTemplate: HTMLTemplateElement;
   // Compose
   composeView: HTMLElement;
   composeBackBtn: HTMLButtonElement;
@@ -83,7 +116,6 @@ export type RenderTargets = {
   goalDecBtn: HTMLButtonElement;
   goalIncBtn: HTMLButtonElement;
   readyByLabel: HTMLElement;
-  readyByList: HTMLElement;
   readyByInput: HTMLInputElement;
   readyByEchoEl: HTMLElement;
   composeErrorEl: HTMLElement;
@@ -98,7 +130,6 @@ export type RenderTargets = {
   permLimitLabel: HTMLElement;
   permLimitHint: HTMLElement;
   previewBtn: HTMLButtonElement;
-  readyByTemplate: HTMLTemplateElement;
   // Preview — task intent leads, followed by feasibility and estimates.
   previewView: HTMLElement;
   previewBackBtn: HTMLButtonElement;
@@ -202,42 +233,6 @@ const renderPicker = (targets: RenderTargets, payload: CreateSmartTaskDevicesPay
 
 // ─── Compose ───────────────────────────────────────────────────────────────
 
-const markChipSelected = (button: HTMLElement, selected: boolean): void => {
-  /* eslint-disable-next-line no-param-reassign -- toggling chip selection is
-     the whole job of this helper (mirrors the setLine DOM-write helpers). */
-  button.dataset.selected = selected ? 'true' : 'false';
-  button.setAttribute('aria-pressed', selected ? 'true' : 'false');
-};
-
-const renderReadyByChips = (targets: RenderTargets, selectedTime: string): void => {
-  const { readyByList, readyByTemplate } = targets;
-  // Re-rendering the compose view on every goal step would otherwise rebuild
-  // these chips and steal keyboard focus from a chip the user just tabbed to.
-  // When the chips already exist (only the selection changed), flip the
-  // selected/aria attributes in place instead of recreating the nodes.
-  const existing = readyByList.querySelectorAll('[data-ready-by]');
-  if (existing.length === CREATE_SMART_TASK_READY_BY_PRESETS.length) {
-    for (const button of existing) {
-      if (button instanceof HTMLElement) {
-        markChipSelected(button, button.dataset.readyByTime === selectedTime);
-      }
-    }
-    return;
-  }
-  clearChildren(readyByList);
-  for (const preset of CREATE_SMART_TASK_READY_BY_PRESETS) {
-    const fragment = readyByTemplate.content.cloneNode(true) as DocumentFragment;
-    const button = fragment.querySelector('[data-ready-by]');
-    if (!(button instanceof HTMLElement)) continue;
-    button.dataset.readyById = preset.id;
-    button.dataset.readyByTime = preset.localTime;
-    button.textContent = preset.label;
-    button.setAttribute('aria-label', `${C.readyByLabel} ${preset.label}`);
-    markChipSelected(button, preset.localTime === selectedTime);
-    readyByList.appendChild(button);
-  }
-};
-
 // Resolved "Ready by Tomorrow 07:00" echo for the compose step so a bare
 // "07:00" chip isn't ambiguous about which day. This is a browser-local hint
 // (the authoritative DST-aware deadline is resolved server-side and shown in
@@ -312,7 +307,6 @@ const renderCompose = (
   ));
   goalDecBtn.disabled = goal === null || goal <= device.goalMin;
   goalIncBtn.disabled = goal === null || goal >= device.goalMax;
-  renderReadyByChips(targets, readyByLocalTime);
   setLine(readyByEchoEl, resolveReadyByEcho(readyByLocalTime));
   const validGoal = goalValueEl.validity.valid;
   const validTime = /^([01]\d|2[0-3]):([0-5]\d)$/.test(readyByLocalTime);
@@ -322,16 +316,94 @@ const renderCompose = (
   setLine(composeErrorEl, goalError ?? timeError);
 };
 
+// ─── Quick targets ───────────────────────────────────────────────────────────
+
+const renderQuickTargetButton = (
+  template: HTMLTemplateElement,
+  target: CreateSmartTaskQuickTarget,
+  index: number,
+  unitSymbol: CreateSmartTaskDevice['unitSymbol'],
+): HTMLElement | null => {
+  const fragment = template.content.cloneNode(true) as DocumentFragment;
+  const button = fragment.querySelector('[data-quick-target]');
+  const valueEl = fragment.querySelector('[data-quick-target-value]');
+  const byEl = fragment.querySelector('[data-quick-target-by]');
+  if (!(button instanceof HTMLElement) || !valueEl || !byEl) return null;
+  button.dataset.quickIndex = String(index);
+  valueEl.textContent = formatSmartTaskGoalValue(target.target, unitSymbol);
+  byEl.textContent = formatQuickTargetDeadline(target.readyByLocalTime);
+  button.setAttribute('aria-label', `${valueEl.textContent} ${byEl.textContent}`);
+  return button;
+};
+
+const renderQuickList = (
+  targets: RenderTargets,
+  quick: TimedQuickTargets,
+  unitSymbol: CreateSmartTaskDevice['unitSymbol'],
+): void => {
+  const { quickList, quickTargetTemplate } = targets;
+  // Keep the buttons across a selection change so keyboard focus stays put.
+  if (quickList.childElementCount !== quick.targets.length) {
+    clearChildren(quickList);
+    quick.targets.forEach((target, index) => {
+      const button = renderQuickTargetButton(quickTargetTemplate, target, index, unitSymbol);
+      if (button) quickList.appendChild(button);
+    });
+  }
+  for (const button of quickList.querySelectorAll<HTMLElement>('[data-quick-target]')) {
+    const selected = button.dataset.quickIndex === String(quick.selected);
+    button.dataset.selected = selected ? 'true' : 'false';
+    button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+  }
+};
+
+const renderQuick = (targets: RenderTargets, view: Extract<ViewState, { kind: 'quick' }>): void => {
+  const { quick, device, submitting, error } = view;
+  const {
+    quickTitle, quickCustomizeBtn, quickBackBtn, quickStartBtn, quickStatusEl, quickList,
+    quickSummaryEl, quickFinishEl, quickErrorEl,
+  } = targets;
+  quickTitle.textContent = device.deviceName;
+  quickCustomizeBtn.textContent = C.quickCustomizeButton;
+  quickBackBtn.disabled = submitting;
+  setLine(quickStatusEl, quick.kind === 'loading' ? C.quickLoading : null);
+  if (quick.kind === 'loading') {
+    clearChildren(quickList);
+    hide(quickSummaryEl);
+    hide(quickFinishEl);
+    hide(quickErrorEl);
+    quickStartBtn.textContent = C.quickStartButton;
+    quickStartBtn.disabled = true;
+    quickCustomizeBtn.disabled = true;
+    return;
+  }
+  renderQuickList(targets, quick, device.unitSymbol);
+  const selected = quick.targets[quick.selected];
+  const estimateParts = selected ? [
+    formatPreviewEnergyLine(selected.estimate, C.energyLabel),
+    formatPreviewCostLine(selected.estimate),
+  ].filter((part): part is string => part !== null) : [];
+  setLine(quickSummaryEl, estimateParts.length > 0 ? estimateParts.join(' · ') : null);
+  setLine(quickFinishEl, selected
+    ? formatQuickTargetTiming(selected.deadlineLabel, selected.likelyFinishLocalTime) : null);
+  setLine(quickErrorEl, error);
+  quickStartBtn.textContent = submitting ? C.creating : C.quickStartButton;
+  quickStartBtn.disabled = submitting || selected === undefined;
+  quickCustomizeBtn.disabled = submitting;
+};
+
 // ─── Preview ─────────────────────────────────────────────────────────────────
 
 type OkPreview = Extract<CreateSmartTaskPreviewResponse, { ok: true }>;
 
 const hasScheduledHours = (response: OkPreview): boolean => response.estimate.scheduledHours.length > 0;
 
+// A charger with no car plugged in has nothing to plan yet, but the task is
+// still worth creating: it waits for the car and plans once it is connected.
 export const canCreateFromPreview = (response: CreateSmartTaskPreviewResponse): boolean => (
   response.ok
-  && response.estimate.status !== 'unavailable'
   && response.estimate.status !== 'invalid'
+  && (response.estimate.status !== 'unavailable' || response.estimate.unavailableReason === 'invalid_session')
 );
 
 // Render a successfully-projected (or zero-hour) preview. Scheduled hours and
@@ -439,15 +511,20 @@ export const renderWidget = (
   payload: CreateSmartTaskDevicesPayload | null,
   view: ViewState,
 ): void => {
-  const { root, pickerView, composeView, previewView, createdView, createdMsgEl } = targets;
+  const { root, pickerView, quickView, composeView, previewView, createdView, createdMsgEl } = targets;
   root.dataset.view = view.kind;
   setVisible(pickerView, view.kind === 'picker');
+  setVisible(quickView, view.kind === 'quick');
   setVisible(composeView, view.kind === 'compose');
   setVisible(previewView, view.kind === 'preview');
   setVisible(createdView, view.kind === 'created');
 
   if (view.kind === 'picker') {
     renderPicker(targets, payload);
+    return;
+  }
+  if (view.kind === 'quick') {
+    renderQuick(targets, view);
     return;
   }
   if (view.kind === 'compose') {

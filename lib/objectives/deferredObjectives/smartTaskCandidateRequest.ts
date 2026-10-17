@@ -185,20 +185,22 @@ const buildCandidateRescue = (
   };
 };
 
-// The request's one `target` number read as the kind's own target field.
-const buildCandidateBase = (
-  request: SmartTaskCandidateRequest,
+// A kind's one `target` number read as the kind's own target field. No
+// permissions: a caller that has them adds `rescue`.
+export const buildSmartTaskCandidateBase = (
+  kind: DeferredObjectiveSettingsKind,
+  target: number,
   deadlineAtMs: number,
 ): DeferredObjectivePlanPreviewCandidate => {
-  switch (request.kind) {
+  switch (kind) {
     case 'ev_soc':
-      return { kind: 'ev_soc', enforcement: 'soft', targetPercent: request.target, deadlineAtMs };
+      return { kind: 'ev_soc', enforcement: 'soft', targetPercent: target, deadlineAtMs };
     case 'temperature':
-      return { kind: 'temperature', enforcement: 'soft', targetTemperatureC: request.target, deadlineAtMs };
+      return { kind: 'temperature', enforcement: 'soft', targetTemperatureC: target, deadlineAtMs };
     case 'energy':
-      return { kind: 'energy', enforcement: 'soft', targetEnergyKWh: request.target, deadlineAtMs };
+      return { kind: 'energy', enforcement: 'soft', targetEnergyKWh: target, deadlineAtMs };
     default: {
-      const exhaustive: never = request.kind;
+      const exhaustive: never = kind;
       return exhaustive;
     }
   }
@@ -219,7 +221,7 @@ export const buildValidSmartTaskCandidate = (
   // without them (the create widget) mints `'always'` as before.
   standingRescue?: DeferredObjectiveRescuePermissions,
 ): DeferredObjectivePlanPreviewCandidate | null => {
-  const base = buildCandidateBase(request, deadlineAtMs);
+  const base = buildSmartTaskCandidateBase(request.kind, request.target, deadlineAtMs);
   const rescue = buildCandidateRescue(request, standingRescue);
   const candidate: DeferredObjectivePlanPreviewCandidate = rescue ? { ...base, rescue } : base;
   return normalizeDeferredObjectiveSettingsEntry({ ...candidate, enabled: true }) ? candidate : null;

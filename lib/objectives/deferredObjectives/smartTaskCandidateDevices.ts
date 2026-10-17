@@ -2,7 +2,8 @@ import type { CreateSmartTaskCandidateDevice } from '../../../packages/contracts
 import type { SmartTaskCandidateDevice } from '../../../packages/contracts/src/smartTaskEdit';
 import {
   resolveSmartTaskCurrentValue,
-  resolveSmartTaskDefaultGoal,
+  resolveSmartTaskDeviceDefaultGoal,
+  resolveSmartTaskQuickTargets,
   resolveDefaultSmartTaskKind,
   resolveSmartTaskGoalBounds,
   supportsSmartTaskKind,
@@ -36,8 +37,9 @@ const buildCandidateDevice = (
     goalMin: bounds.min,
     goalMax: bounds.max,
     goalStep: bounds.step,
-    defaultGoal: resolveSmartTaskDefaultGoal({ kind, bounds, currentValue }),
+    defaultGoal: resolveSmartTaskDeviceDefaultGoal(device, kind),
     currentValue,
+    offersQuickTargets: resolveSmartTaskQuickTargets(device, kind).length > 0,
     // Gate-on-effect: the limit-lower-priority permission is inert on a binary
     // device (no higher step to promote to), so the compose toggle is offered
     // only where the write's own gate keeps the grant (preview ≡ persist).

@@ -12,6 +12,10 @@
       "method": "POST",
       "path": "/preview"
     },
+    "getCreateSmartTaskQuickTargets": {
+      "method": "POST",
+      "path": "/quick_targets"
+    },
     "createCreateSmartTask": {
       "method": "POST",
       "path": "/create"

@@ -109,6 +109,10 @@
     creating: "Creating\u2026",
     // Shown briefly after a successful create before the widget resets.
     created: "Smart task created",
+    // Quick targets: one-tap goals, each timed to the earliest finish plus slack.
+    quickLoading: "Finding the earliest times\u2026",
+    quickCustomizeButton: "Customize",
+    quickStartButton: "Start",
     // Generic submit failure (rejected candidate / transient SDK miss).
     createError: "Could not create the smart task. Check the goal and try again.",
     // A transient settings-write refusal (`write_conflict`): the goal was valid,

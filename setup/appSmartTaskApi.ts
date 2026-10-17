@@ -1,7 +1,10 @@
 import type { AppContext } from '../lib/app/appContext';
 import type { DailyBudgetUiPayload } from '../packages/contracts/src/dailyBudgetTypes';
 import type { PlanInputSnapshotDevice } from '../lib/planInput/runtimeDeviceRead';
-import type { DeferredObjectivePlanPreviewEstimate } from '../packages/contracts/src/deferredObjectivePlanPreview';
+import type {
+  DeferredObjectivePlanPreviewEstimate,
+  SmartTaskQuickTargetsRead,
+} from '../packages/contracts/src/deferredObjectivePlanPreview';
 import type { WidgetObjectiveWriteResult } from '../packages/contracts/src/widgetHostApi';
 import {
   supportsSmartTaskKind,
@@ -14,10 +17,12 @@ import {
   migrateBlobToPerKeyIfNeeded,
   readDeferredObjectiveRoster,
   previewDeferredObjectivePlan,
+  previewSmartTaskQuickTargetsForDevice,
   createObjectiveForDevice,
   upsertObjectiveForDevice,
   type DeferredObjectivePlanPreviewCandidate,
   type DeferredObjectiveSettingsEntry,
+  type SmartTaskQuickTargetPreview,
   type TaskEvaluationSource,
 } from '../lib/objectives/deferredObjectives';
 import {
@@ -156,6 +161,35 @@ export class AppSmartTaskApi {
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
   ): DeferredObjectivePlanPreviewEstimate {
+    const session = this.openPreviewSession(deviceId);
+    if (session.state === 'unavailable') return buildUnavailableDeferredObjectivePlanEstimate('settings_unavailable');
+    // Gate opt-in extra permissions the same way the create lane does, so the
+    // preview reflects exactly what would persist (preview ≡ persist).
+    return session.preview(gateCandidateExtraPermissions(session.device, candidate, {
+      entry: session.storedEntry,
+      absenceTrustworthy: true,
+    }));
+  }
+
+  // The quick targets a creation surface offers for `deviceId`, each timed
+  // against the same preview as `previewDeferredObjectivePlan`. One session
+  // serves every probe, so the household is read once. Quick targets carry no
+  // extra permissions, so there is nothing to gate.
+  public previewSmartTaskQuickTargets(deviceId: string): SmartTaskQuickTargetsRead {
+    const session = this.openPreviewSession(deviceId);
+    if (session.state === 'unavailable') return { state: 'unavailable', reason: 'settings_unavailable' };
+    const device = session.device && asMeteredSnapshot(session.device);
+    if (!device) return { state: 'unavailable', reason: 'missing_device' };
+    return previewSmartTaskQuickTargetsForDevice(device, session.preview, this.ctx.getNow().getTime());
+  }
+
+  // One household read for any number of candidate previews on `deviceId`.
+  private openPreviewSession(deviceId: string): {
+    state: 'ready';
+    device: PlanInputSnapshotDevice | undefined;
+    storedEntry: DeferredObjectiveSettingsEntry | undefined;
+    preview: SmartTaskQuickTargetPreview;
+  } | { state: 'unavailable' } {
     // Preserve every boot-window invariant before classifying a transient
     // settings read. Missing services are wiring errors, not an empty plan.
     const dailyBudgetSnapshot = this.requireDailyBudgetSnapshot();
@@ -163,17 +197,9 @@ export class AppSmartTaskApi {
     const planService = requirePlanService(this.ctx);
     requireDeferredObjectiveActivePlanRecorder(this.ctx);
     const roster = readDeferredObjectiveRoster(this.ctx.homey.settings);
-    if (roster.status === 'unavailable') {
-      return buildUnavailableDeferredObjectivePlanEstimate('settings_unavailable');
-    }
+    if (roster.status === 'unavailable') return { state: 'unavailable' };
     // Preview uses the same configuration + Observer inputs as runtime planning.
     const snapshotDevice = this.ctx.getPlanInputSnapshot().find((device) => device.id === deviceId);
-    // Gate opt-in extra permissions the same way the create lane does, so the
-    // preview reflects exactly what would persist (preview ≡ persist).
-    const gatedCandidate = gateCandidateExtraPermissions(snapshotDevice, candidate, {
-      entry: roster.settings.objectivesByDeviceId[deviceId],
-      absenceTrustworthy: true,
-    });
     const planDevices = planService.getPlanDevices();
     const meteredSnapshotDevice = snapshotDevice && asMeteredSnapshot(snapshotDevice);
     const candidateDevice = meteredSnapshotDevice
@@ -199,7 +225,14 @@ export class AppSmartTaskApi {
     );
     // The price store exposes a per-kWh RATE label; `previewDeferredObjectivePlan`
     // converts it to a money unit for the total `costEstimate`.
-    return previewDeferredObjectivePlan(snapshot, this.taskEvaluationSource, deviceId, gatedCandidate, priceRateLabel);
+    return {
+      state: 'ready',
+      device: snapshotDevice,
+      storedEntry: roster.settings.objectivesByDeviceId[deviceId],
+      preview: (candidate) => previewDeferredObjectivePlan(
+        snapshot, this.taskEvaluationSource, deviceId, candidate, priceRateLabel,
+      ),
+    };
   }
 
   // Shared validation for both objective-write lanes (`createDeferredObjective`
