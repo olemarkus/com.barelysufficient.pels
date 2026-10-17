@@ -5,9 +5,12 @@ import {
   EV_BOOST_SETTINGS,
   MODE_DEVICE_TARGETS,
   OVERSHOOT_BEHAVIORS,
+  RESPECT_EXTERNAL_OFF_DEVICES,
   TEMPERATURE_BOOST_SETTINGS,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
 } from '../../shared-domain/src/settings/settingsKeys.ts';
+import { SETTINGS_UI_SMART_TASK_CANCEL_PATH } from '../../contracts/src/settingsUiApi.ts';
+import type { DeferredObjectiveSettingsEntry } from '../../contracts/src/deferredObjectiveSettings.ts';
 import { createHomeyMock } from './helpers/homeyApiMock.ts';
 
 const DEVICE_ID = 'heater-1';
@@ -22,6 +25,14 @@ const PRICE_CONFIG = {
   priceConfigured: true,
   surplusWilling: false,
   surplusDelta: 2,
+};
+
+const SMART_TASK: DeferredObjectiveSettingsEntry = {
+  enabled: true,
+  kind: 'temperature',
+  enforcement: 'soft',
+  targetTemperatureC: 65,
+  deadlineAtMs: Date.UTC(2030, 0, 1),
 };
 
 const perDeviceMap = <T>(value: T): Record<string, T> => ({
@@ -179,5 +190,64 @@ describe('advanced device data purge', () => {
 
     await clearMultipleDeviceSettings([DEVICE_ID]);
     expect(state.temperatureControlDisabledMap).toEqual({ [KEEP_ID]: true });
+  });
+
+  it('lists and purges a device whose only data is a smart task and a leave-off opt-in', async () => {
+    // The task is runtime-owned: the purge clears it through the Smart tasks
+    // page's cancel op, so its key and its card go with the device.
+    const cancelledDeviceIds: unknown[] = [];
+    const homey = createHomeyMock({
+      settings: { [RESPECT_EXTERNAL_OFF_DEVICES]: perDeviceMap(true) },
+      apiHandlers: {
+        [`POST ${SETTINGS_UI_SMART_TASK_CANCEL_PATH}`]: ({ body }) => {
+          cancelledDeviceIds.push((body as { deviceId: string }).deviceId);
+          return { ok: true };
+        },
+      },
+    });
+    const { setHomeyClient } = await import('../src/ui/homey.ts');
+    const { state } = await import('../src/ui/state.ts');
+    setHomeyClient(homey);
+    state.respectExternalOffMap = { [KEEP_ID]: true };
+    state.deferredObjectiveSettings = {
+      version: 1,
+      objectivesByDeviceId: { [DEVICE_ID]: SMART_TASK },
+    };
+    const {
+      clearMultipleDeviceSettings,
+      resolveUnknownDeviceIdsFromSettings,
+    } = await import('../src/ui/advancedDeviceDataPurge.ts');
+
+    expect(resolveUnknownDeviceIdsFromSettings().sort()).toEqual([DEVICE_ID, KEEP_ID]);
+
+    await clearMultipleDeviceSettings([DEVICE_ID, KEEP_ID]);
+
+    expect(cancelledDeviceIds).toEqual([DEVICE_ID]);
+    expect(homey.__settingsStore[RESPECT_EXTERNAL_OFF_DEVICES]).toEqual({});
+    expect(state.respectExternalOffMap).toEqual({});
+  });
+
+  it('treats an already-ended smart task as cleared and fails on a refused cancel', async () => {
+    const reasons = ['task_not_found', 'write_conflict'];
+    const homey = createHomeyMock({
+      settings: { [RESPECT_EXTERNAL_OFF_DEVICES]: perDeviceMap(true) },
+      apiHandlers: {
+        [`POST ${SETTINGS_UI_SMART_TASK_CANCEL_PATH}`]: () => ({ ok: false, reason: reasons.shift() }),
+      },
+    });
+    const { setHomeyClient } = await import('../src/ui/homey.ts');
+    const { state } = await import('../src/ui/state.ts');
+    setHomeyClient(homey);
+    state.respectExternalOffMap = perDeviceMap(true);
+    state.deferredObjectiveSettings = {
+      version: 1,
+      objectivesByDeviceId: { [DEVICE_ID]: SMART_TASK },
+    };
+    const { clearMultipleDeviceSettings } = await import('../src/ui/advancedDeviceDataPurge.ts');
+
+    await expect(clearMultipleDeviceSettings([DEVICE_ID])).resolves.toBeUndefined();
+    await expect(clearMultipleDeviceSettings([KEEP_ID])).resolves.toBeUndefined();
+    // KEEP_ID has no task, so it asked nothing; DEVICE_ID's refused cancel fails the purge.
+    await expect(clearMultipleDeviceSettings([DEVICE_ID])).rejects.toThrow('write_conflict');
   });
 });
