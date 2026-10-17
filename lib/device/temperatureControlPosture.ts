@@ -17,6 +17,8 @@ import {
 } from '../../packages/shared-domain/src/utils/airtreatmentShedTemperature';
 import { getPrimaryTargetCapability } from '../../packages/shared-domain/src/targetCapabilities';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
+import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
+import { getLogger } from '../logging/logger';
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
@@ -173,11 +175,17 @@ export function hasTemperaturePolicyPowerControl(device: ControlPostureDevice): 
  * The device arrives as a THUNK because resolving it is not free: the caller's
  * device view re-projects and re-decorates on access, and this runs several
  * times per device per plan build (shed floors, candidates, restore, the
- * silent-meter pass). It is read only when the answer needs it: on denial of a
- * saved setpoint limit, or for a device whose stored configuration is a
+ * silent-meter pass). It is read at most once, and only when the answer
+ * needs it: for a saved setpoint limit (denied, or checked for the device's
+ * measured temperature), or for a device whose stored configuration is a
  * temperature target (decoration never turns another model into one). The
  * mode target is a thunk for the same reason, read only for a setpoint-only
  * device with no saved limit.
+ *
+ * - **Eligibility.** A saved setpoint limit needs the device's temperature
+ *   this read: without `measure_temperature` the device is not eligible for
+ *   one, and it is limited the way a denied setpoint limit is (owner ruling
+ *   2026-10-17), with the change logged once each way.
  */
 export function resolveTemperaturePolicyShedBehavior(
   configured: ConfiguredShedBehavior,
@@ -189,20 +197,63 @@ export function resolveTemperaturePolicyShedBehavior(
 ): ResidualKwShedBehavior {
   if (!allowsLimiting) {
     if (configured.action !== 'set_temperature') return configured;
-    const device = readDevice();
-    if (device && device.binaryControl === undefined && isSteppedLoadSnapshot(device)) return { action: 'set_step' };
-    return { action: 'turn_off' };
+    return resolveSetpointLimitDenied(readDevice());
   }
-  const device = configuration?.controlModel === 'temperature_target' ? readDevice() : undefined;
+  const isTemperatureTarget = configuration?.controlModel === 'temperature_target';
+  const device = isTemperatureTarget ? readDevice() : undefined;
   if (device && isSetpointOnlyShedDevice(device)) {
     return resolveSetpointOnlyShed(configured, device, direction, readModeTargetC);
   }
   if (configured.action !== 'set_temperature') return configured;
+  // A saved setpoint limit needs the device's temperature this read: without
+  // `measure_temperature` it is not eligible for one, so it is limited the way
+  // a denied setpoint limit is (owner ruling 2026-10-17).
+  const limitedDevice = isTemperatureTarget ? device : readDevice();
+  if (!limitedDevice || !hasObservedTemperature(limitedDevice)) {
+    const resolved = resolveSetpointLimitDenied(limitedDevice);
+    if (limitedDevice) noteSetpointLimitUnavailable(limitedDevice, resolved);
+    return resolved;
+  }
+  noteSetpointLimitAvailable(limitedDevice);
   return {
     action: 'set_temperature',
     temperature: direction === 'cooling' ? configured.coolingTemperature : configured.temperature,
   };
 }
+
+/** A setpoint limit PELS may not use: the device's other axis, its lowest step if it is stepped, else off. */
+const resolveSetpointLimitDenied = (device: SetpointShedPostureDevice | undefined): ResidualKwShedBehavior => (
+  device && device.binaryControl === undefined && isSteppedLoadSnapshot(device)
+    ? { action: 'set_step' }
+    : { action: 'turn_off' }
+);
+
+const moduleLogger = getLogger('device/temperature-posture');
+
+// The devices whose saved setpoint limit is resolving to another axis right
+// now, so the change is logged once each way rather than on every call (this
+// runs several times per device per plan build).
+const devicesWithoutSetpointLimit = new Set<string>();
+
+const noteSetpointLimitUnavailable = (
+  device: SetpointShedPostureDevice,
+  resolved: ResidualKwShedBehavior,
+): void => {
+  if (devicesWithoutSetpointLimit.has(device.id)) return;
+  devicesWithoutSetpointLimit.add(device.id);
+  moduleLogger.info({
+    event: 'shed_setpoint_limit_unavailable',
+    deviceId: device.id,
+    deviceName: device.name,
+    reasonCode: 'no_measured_temperature',
+    resolvedAction: resolved.action,
+  });
+};
+
+const noteSetpointLimitAvailable = (device: SetpointShedPostureDevice): void => {
+  if (!devicesWithoutSetpointLimit.delete(device.id)) return;
+  moduleLogger.info({ event: 'shed_setpoint_limit_available', deviceId: device.id, deviceName: device.name });
+};
 
 /** The posture slice plus the control model and class-keyed setpoint floor the device owner resolves. */
 type SetpointShedPostureDevice = ControlPostureDevice

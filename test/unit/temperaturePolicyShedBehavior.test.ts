@@ -4,6 +4,7 @@ import {
   resolveTemperaturePolicyShedLimitsC,
 } from '../../lib/device/temperatureControlPosture';
 import { decoratedSnapshotFixture } from '../utils/deviceSnapshotFixture';
+import { captureLogger } from '../utils/loggerCapture';
 
 type PostureDevice = NonNullable<ReturnType<Parameters<typeof resolveTemperaturePolicyShedBehavior>[2]>>;
 
@@ -37,6 +38,12 @@ const setpointOnly = (setpointC = 22, setpointShedFloorC = 10) => (): PostureDev
 });
 // The same device on a read where Homey reported its `onoff`.
 const thermostatWithOnOff = (): PostureDevice => ({ ...setpointOnly()(), binaryControl: { on: true } });
+// The same device with its temperature measured this read: eligible for a setpoint limit.
+const measuredThermostat = (): PostureDevice => {
+  const device = thermostatWithOnOff();
+  const [target] = device.targets;
+  return { ...device, temperature: { currentTemperature: 21, target: target! } } as PostureDevice;
+};
 
 // The stored configuration is the device's own, as the caller passes it.
 type Args = Parameters<typeof resolveTemperaturePolicyShedBehavior>;
@@ -51,10 +58,36 @@ const bothLimits = { action: 'set_temperature' as const, temperature: 16, coolin
 
 describe('resolveTemperaturePolicyShedBehavior', () => {
   it('picks the limit for the direction the device is moving demand in', () => {
-    expect(shed(bothLimits, noDevice, true, 'heating', noModeTarget))
+    expect(shed(bothLimits, measuredThermostat, true, 'heating', noModeTarget))
       .toEqual({ action: 'set_temperature', temperature: 16 });
-    expect(shed(bothLimits, noDevice, true, 'cooling', noModeTarget))
+    expect(shed(bothLimits, measuredThermostat, true, 'cooling', noModeTarget))
       .toEqual({ action: 'set_temperature', temperature: 27 });
+  });
+
+  // Owner ruling 2026-10-17: a device without `measure_temperature` this read is
+  // not eligible for a setpoint limit, so a saved one resolves to its other axis.
+  it('turns off a device saved as "set temperature" while it reports no temperature, and logs the change once', () => {
+    // Start from an eligible read, so what earlier tests left noted does not matter.
+    shed(bothLimits, measuredThermostat, true, 'heating', noModeTarget);
+    const logs = captureLogger('info');
+    try {
+      expect(shed(bothLimits, thermostatWithOnOff, true, 'heating', noModeTarget)).toEqual({ action: 'turn_off' });
+      expect(shed(bothLimits, thermostatWithOnOff, true, 'heating', noModeTarget)).toEqual({ action: 'turn_off' });
+      expect(logs.findEvents('shed_setpoint_limit_unavailable')).toEqual([
+        expect.objectContaining({ deviceId: 'heatpump', reasonCode: 'no_measured_temperature', resolvedAction: 'turn_off' }),
+      ]);
+
+      expect(shed(bothLimits, measuredThermostat, true, 'heating', noModeTarget))
+        .toEqual({ action: 'set_temperature', temperature: 16 });
+      expect(logs.findEvents('shed_setpoint_limit_available')).toHaveLength(1);
+      expect(shedLimits(bothLimits, thermostatWithOnOff, noModeTarget)).toEqual([]);
+    } finally {
+      logs.restore();
+    }
+  });
+
+  it('steps a stepped device saved as "set temperature" down while it reports no temperature', () => {
+    expect(shed(bothLimits, steppedOnly, true, 'heating', noModeTarget)).toEqual({ action: 'set_step' });
   });
 
   it('denies the setpoint arm when the policy forbids limiting, in either direction', () => {

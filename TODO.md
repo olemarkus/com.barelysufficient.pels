@@ -132,17 +132,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       2026-08-07; rewritten 2026-08-08 after the held-back clock ruling falsified the original
       premise (both lanes paused/counted differently; now both count). [P2]
 
-- [ ] **A temperature device shed during a facet-miss cycle is turned off instead of set back.**
-      `buildInitialPlanDevices` (`lib/plan/planDevices.ts`) only consults `deps.getShedBehavior`
-      for stepped or temperature devices, so in the one cycle a device plans as `onoff` its shed
-      behavior falls to the default `{ action: 'turn_off' }`. If the shed decision lands in
-      exactly that cycle, a device configured for setpoint-lowering is switched off instead:
-      capacity-safe (over-shed), comfort-affecting, self-correcting on the next refresh.
-      Pre-existing since the observer-side atomic facet landed (#2103) — the capability list is
-      stripped with the facet, so `supportsTemperatureBoostDevice` already answered false. Fix
-      is to resolve the configured behavior from the device's stored configuration rather than
-      its live modality. Found 2026-08-14. [P2]
-
 - [ ] **A `turn_off` stepped device whose profile has no zero-power step can never be fully turned
       off.** `getSteppedLoadOffStep` returns null for such a profile and
       `getSteppedLoadLowestStep` then answers the lowest ACTIVE step, so both the shed ladder
