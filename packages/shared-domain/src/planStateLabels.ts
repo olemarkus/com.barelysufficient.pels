@@ -224,22 +224,14 @@ const isActiveState = (device: DeviceOverviewSnapshot): boolean => (
 // `plannedTarget` when it asks for more than the observed setpoint (higher
 // while heating, lower while cooling).
 //
-// Only a device the plan simply keeps: a hold or wait reason (a refused step-up,
-// a restore countdown) is the plan's own word for the card, and turning the
-// device "idle" here would let the card grammar promote it to Limited or
-// Resuming on the temperature alone. A stepped device mid-transition is moving
-// on purpose, not idle.
-const isPlainlyKept = (device: DeviceOverviewSnapshot): boolean => (
-  device.reason.code === PLAN_REASON_CODES.keep
-  && (device.steppedLoad === undefined || device.steppedLoad.targetStepId === null
-    || device.steppedLoad.selectedStepId === device.steppedLoad.targetStepId)
-);
-
-export const isSatisfiedTemperatureDevice = (device: DeviceOverviewSnapshot): boolean => {
+// This is the device's own fact, whatever the plan says about it. The
+// simulation card reads it directly: there the plan's hold is hypothetical and
+// the card shows what the device is doing (`resolveDisplayStateKind`).
+export const reportsSatisfiedTemperature = (device: DeviceOverviewSnapshot): boolean => {
   // The atomic temperature facet is the unit guard: it exists only for
   // temperature-observed devices, and it is complete when present.
   if (!device.temperature) return false;
-  if (!isActiveState(device) || !isPlainlyKept(device)) return false;
+  if (!isActiveState(device)) return false;
   if (device.pendingTargetCommand) return false;
   const { currentTemperature, currentTarget, plannedTarget, thermalDirection } = device.temperature;
   if (
@@ -260,6 +252,21 @@ export const isSatisfiedTemperatureDevice = (device: DeviceOverviewSnapshot): bo
   // coercing the absence to `0` would label a device nobody measured as idle.
   return device.currentDrawKw !== undefined && device.currentDrawKw <= 0.05;
 };
+
+// Only a device the plan simply keeps reads Idle in live mode: a hold or wait
+// reason (a refused step-up, a restore countdown) is the plan's own word for the
+// card, and turning the device "idle" here would let the card grammar promote it
+// to Limited or Resuming on the temperature alone. A stepped device
+// mid-transition is moving on purpose, not idle.
+const isPlainlyKept = (device: DeviceOverviewSnapshot): boolean => (
+  device.reason.code === PLAN_REASON_CODES.keep
+  && (device.steppedLoad === undefined || device.steppedLoad.targetStepId === null
+    || device.steppedLoad.selectedStepId === device.steppedLoad.targetStepId)
+);
+
+export const isSatisfiedTemperatureDevice = (device: DeviceOverviewSnapshot): boolean => (
+  reportsSatisfiedTemperature(device) && isPlainlyKept(device)
+);
 
 export const resolvePlanStateKind = (device: DeviceOverviewSnapshot): PlanStateKind => {
   if (device.controllable === false) return 'manual';

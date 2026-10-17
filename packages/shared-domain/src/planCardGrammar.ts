@@ -143,7 +143,7 @@ export type DisplayStateParams = IntentStateParams & {
   // heating, or otherwise active — regardless of instantaneous draw, except a
   // satisfied temperature device, below).
   currentState: string | undefined;
-  // Caller-resolved `isSatisfiedTemperatureDevice(dev)` — the simulation factual
+  // Caller-resolved `reportsSatisfiedTemperature(dev)` — the simulation factual
   // collapse must not resurrect "Running" on a satisfied 0-draw temperature
   // device that real mode reads as Idle.
   satisfiedTemperature?: boolean;

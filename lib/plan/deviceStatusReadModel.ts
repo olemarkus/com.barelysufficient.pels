@@ -7,7 +7,9 @@ import type { DeviceOverviewSnapshot } from '../../packages/shared-domain/src/de
 import {
   displayStateLabel, displayStateTone, isHoldReasonCode, resolveDisplayStateKind, resolveIntentStateKind,
 } from '../../packages/shared-domain/src/planCardGrammar';
-import { isSatisfiedTemperatureDevice, type PlanStateKind } from '../../packages/shared-domain/src/planStateLabels';
+import {
+  isSatisfiedTemperatureDevice, reportsSatisfiedTemperature, type PlanStateKind,
+} from '../../packages/shared-domain/src/planStateLabels';
 import {
   resolveHeldCardReasonLine, resolveHeldCardReasonVerb, resolveHeldCardStepView,
 } from './planCardReasonLine';
@@ -200,7 +202,7 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
     starved: device.starvation?.isStarved === true };
   const intentKind = resolveIntentStateKind(grammar);
   const displayKind = resolveDisplayStateKind({ ...grammar, dryRun, currentState: device.currentState,
-    satisfiedTemperature: isSatisfiedTemperatureDevice(device) });
+    satisfiedTemperature: reportsSatisfiedTemperature(device) });
   // `resolveBaseKind` never yields `unknown`; this narrows the display kind to the wire's vocabulary.
   const kind = displayKind === 'unknown' ? 'unavailable' : displayKind;
   const limited = intentKind === 'held';

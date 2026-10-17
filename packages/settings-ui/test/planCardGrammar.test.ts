@@ -9,6 +9,8 @@ import {
   resolveRawPlanStateKind,
   shouldDisplayExternalOffReason,
 } from '../../shared-domain/src/planCardGrammar.ts';
+import { PLAN_REASON_CODES } from '../../shared-domain/src/planReasonSemanticsCore.ts';
+import { uiDeviceFixture } from './helpers/deviceStatusFixture.ts';
 
 describe('resolveIntentStateKind', () => {
   it('upgrades idle to held on a hold/wait reason', () => {
@@ -63,18 +65,19 @@ describe('resolveDisplayStateKind — simulation renders the factual state', () 
     })).toBe('active');
   });
 
-  it('collapses a SATISFIED target-only device to idle under simulation, not active', () => {
+  it('collapses a SATISFIED target-only device the plan would limit to idle under simulation', () => {
     // The factual collapse must not resurrect "Running" on a satisfied 0-draw
-    // device that real mode reads as Idle — the caller threads the resolved
-    // `isSatisfiedTemperatureDevice` verdict in.
-    expect(resolveDisplayStateKind({
-      kind: 'held',
-      dryRun: true,
+    // device: the read model threads the device's own satisfied fact in, not the
+    // live-mode verdict that also requires the plan to keep it.
+    const device = {
+      plannedState: 'shed' as const,
       currentState: 'not_applicable',
-      reasonCode: 'capacity',
-      starved: false,
-      satisfiedTemperature: true,
-    })).toBe('idle');
+      reason: { code: PLAN_REASON_CODES.capacity, detail: null },
+      temperature: { currentTemperature: 20.8, currentTarget: 16, plannedTarget: 16, thermalDirection: 'heating' as const },
+      currentDrawKw: 0,
+    };
+    expect(uiDeviceFixture(device, true).status.kind).toBe('idle');
+    expect(uiDeviceFixture(device, false).status.kind).toBe('held');
   });
 
   it('never fires the idle→held upgrade under simulation (nothing is held)', () => {
