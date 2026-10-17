@@ -214,6 +214,27 @@ describe('device detail solar-surplus tracking gating', () => {
     expect(trackSwitch()?.disabled).toBe(false);
   });
 
+  // Switching a charger to an EV amp preset clears its local step profile
+  // (`applyLocalDeviceControlProfile(id, null)`) until the next refetch; the
+  // runtime builds the ladder from the preset, so the control stays.
+  it('keeps the row on a charger just switched to an EV amp preset', async () => {
+    const switched = buildCharger({ controlModel: 'binary_power', steppedLoadProfile: undefined });
+    await openPanel({ device: switched, storedTargetPowerConfig: { preset: 'ev_charger_1_phase', enabled: true } });
+    expect(trackRow()?.hidden).toBe(false);
+  });
+
+  it('keeps the row on a device just switched to Continuous', async () => {
+    const switched = buildSteppedHeater({ controlModel: 'binary_power', steppedLoadProfile: undefined });
+    await openPanel({ device: switched, storedTargetPowerConfig: { min: 500, max: 2000, step: 500 } });
+    expect(trackRow()?.hidden).toBe(false);
+  });
+
+  it('hides the row when the preset is turned off and no ladder is left', async () => {
+    const switched = buildCharger({ controlModel: 'binary_power', steppedLoadProfile: undefined });
+    await openPanel({ device: switched, storedTargetPowerConfig: { preset: 'ev_charger_1_phase', enabled: false } });
+    expect(trackRow()?.hidden).toBe(true);
+  });
+
   it('hides the row when no surplus can ever arrive', async () => {
     await openPanel({ device: buildCharger(), surplusPoolReachable: false });
     expect(trackRow()?.hidden).toBe(true);

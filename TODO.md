@@ -586,31 +586,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       held, not resumed, once the OFF is observed. *Persona:* prosumer with a cloud-connected dump
       load and "Leave off until turned on again". [P2]
 
-- [ ] **The "Charge on solar surplus" toggle disappears when a charger is switched to an EV
-      target-power preset, and stays hidden until the next device refetch.** The settings-UI gate
-      reads a snapshot field the mode switch has just deleted, so it hides a control the runtime
-      would still honour — the runtime/UI mirror drift the gate's own docblock exists to prevent.
-
-      **Where:** `isSurplusTrackingDeviceShape`
-      (`packages/settings-ui/src/ui/deviceDetail/solarSurplusTracking.ts`) gates on
-      `hasUsableSteppedLoadLadder(device.steppedLoadProfile)`. Switching to a preset routes through
-      `applyLocalDeviceControlProfile(deviceId, null)`
-      (`packages/settings-ui/src/ui/deviceControlProfiles.ts`), which deletes the local
-      `steppedLoadProfile`; the target-power write that follows does not repopulate it, and the
-      re-render (`refreshSharedDeviceViews` / `refreshOpenDeviceDetail`) reads that same local
-      object. The runtime meanwhile derives the ladder from the target-power capability
-      (`buildTargetPowerLadderSteps`), so it still stamps the posture.
-
-      **What changes:** gate on the effective control model rather than the raw snapshot field.
-      `getEffectiveControlModel` (`deviceControlProfiles.ts`) already answers `stepped_load` for a
-      stored target-power config with `enabled !== false`. Rule on whether the usable-ladder check
-      still has to run against the preset's derived ladder, or whether
-      `getEffectiveControlModel(device) === 'stepped_load'` is the whole gate.
-
-      **Done when:** switching a managed charger to an EV target-power preset leaves **Charge on
-      solar surplus** visible without reopening the page, pinned in
-      `packages/settings-ui/test/deviceDetailSurplusTrackingGate.test.ts`. [P2]
-
 - [ ] **Solar export price — migrate the smart-task *preview* price reader onto the planning price.**
       The export-price model, the derived `budgetPrice`, its planning consumers (daily-budget
       shaping/allocation, smart-task horizons — all `budgetPrice ?? total`; price levels and the lowest-price Flow cards stay on `total`,

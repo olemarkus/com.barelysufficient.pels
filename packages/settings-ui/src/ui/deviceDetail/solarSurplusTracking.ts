@@ -16,7 +16,11 @@ import {
   state,
 } from '../state.ts';
 import { savePriceOptimizationPatch, SURPLUS_ONLY_PRICE_OPTIMIZATION_CONFIG } from './priceOptimizationPatch.ts';
-import { resolveDeviceDetailKind } from '../deviceKind.ts';
+import {
+  resolveDeviceDetailControlMode,
+  resolveDeviceDetailKind,
+  type DeviceDetailControlMode,
+} from '../deviceKind.ts';
 import { resolveDeviceDetailControlState } from './controlState.ts';
 import { hasUsableSteppedLoadLadder } from '../../../../shared-domain/src/deviceControlProfiles.ts';
 import {
@@ -36,8 +40,15 @@ import {
  * a current-control preset qualifies because it is a stepped load; so does a
  * hand-configured stepped water heater. What is excluded is a temperature
  * device (that modality is the setpoint lift) and anything with no ladder to
- * modulate.
+ * modulate. An enabled target-power mode (an EV amp preset, or Continuous)
+ * counts as a ladder before the device is refetched: switching to one clears
+ * the local profile, and the runtime builds the ladder from the stored config,
+ * which only survives normalization when it yields one.
  */
+const TARGET_POWER_LADDER_MODES: ReadonlySet<DeviceDetailControlMode> = new Set<DeviceDetailControlMode>([
+  'ev_charger_1_phase', 'ev_charger_3_phase', 'continuous',
+]);
+
 export const isSurplusTrackingDeviceShape = (
   device: SettingsUiDeviceDetailItem | null,
   controlState: { isManaged: boolean; canManageDevice: boolean },
@@ -45,7 +56,8 @@ export const isSurplusTrackingDeviceShape = (
   if (!device) return false;
   if (!controlState.canManageDevice || !controlState.isManaged) return false;
   if (supportsTemperatureDevice(device)) return false;
-  return hasUsableSteppedLoadLadder(device.steppedLoadProfile);
+  return hasUsableSteppedLoadLadder(device.steppedLoadProfile)
+    || TARGET_POWER_LADDER_MODES.has(resolveDeviceDetailControlMode(device));
 };
 
 const resolveCopyKind = (device: SettingsUiDeviceDetailItem): SurplusTrackingCopyKind => (
