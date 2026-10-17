@@ -299,7 +299,7 @@
   var SMART_TASK_EXTRA_PERMISSION_LABELS = {
     exemptFromBudget: "May go over daily budget",
     limitLowerPriorityDevices: "May limit lower-priority devices",
-    pauseLowerPriorityDevices: "May pause lower-priority devices"
+    pauseLowerPriorityDevices: "May reserve power to start sooner"
   };
   var SMART_TASK_EXTRA_PERMISSION_HINTS = {
     exemptFromBudget: "May reserve more operating time when the daily budget restricts this task. Energy use may exceed today\u2019s budget; house power limits still apply.",

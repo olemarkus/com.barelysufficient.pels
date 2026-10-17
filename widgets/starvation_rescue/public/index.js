@@ -545,7 +545,7 @@
   var SMART_TASK_EXTRA_PERMISSION_LABELS = {
     exemptFromBudget: "May go over daily budget",
     limitLowerPriorityDevices: "May limit lower-priority devices",
-    pauseLowerPriorityDevices: "May pause lower-priority devices"
+    pauseLowerPriorityDevices: "May reserve power to start sooner"
   };
   var resolveGrantedRescuePermissionLabels = (granted) => {
     if (!granted) return [];

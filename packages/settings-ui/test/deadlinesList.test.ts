@@ -217,7 +217,7 @@ describe('resolveDeadlinesListCards', () => {
       T0,
     );
     expect(cards[0].extraPermissionsValue).toBe(
-      'May go over daily budget · May limit lower-priority devices if at risk · May pause lower-priority devices',
+      'May go over daily budget · May limit lower-priority devices if at risk · May reserve power to start sooner',
     );
   });
 
