@@ -1,3 +1,4 @@
+import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
   resolvePlanStateKind,
   PLAN_STATE_TONE,
@@ -64,7 +65,7 @@ describe('planStateLabels', () => {
     it('resolves idle when at/above target and drawing nothing', () => {
       expect(resolvePlanStateKind({
         ...targetOnly,
-        temperature: { currentTemperature: 20.8, currentTarget: 16, plannedTarget: 16 },
+        temperature: { currentTemperature: 20.8, currentTarget: 16, plannedTarget: 16, thermalDirection: 'heating' },
         currentDrawKw: 0,
       })).toBe('idle');
     });
@@ -72,7 +73,7 @@ describe('planStateLabels', () => {
     it('treats an unmetered thermostat (producer-resolved 0 kW) as not drawing', () => {
       expect(resolvePlanStateKind({
         ...targetOnly,
-        temperature: { currentTemperature: 21.5, currentTarget: 21, plannedTarget: 21 },
+        temperature: { currentTemperature: 21.5, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
         currentDrawKw: 0,
       })).toBe('idle');
     });
@@ -80,7 +81,7 @@ describe('planStateLabels', () => {
     it('stays active while below target (calling for heat)', () => {
       expect(resolvePlanStateKind({
         ...targetOnly,
-        temperature: { currentTemperature: 18.4, currentTarget: 21, plannedTarget: 21 },
+        temperature: { currentTemperature: 18.4, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
         currentDrawKw: 0,
       })).toBe('active');
     });
@@ -88,7 +89,7 @@ describe('planStateLabels', () => {
     it('stays active while drawing power even at target (still heating)', () => {
       expect(resolvePlanStateKind({
         ...targetOnly,
-        temperature: { currentTemperature: 21.0, currentTarget: 21, plannedTarget: 21 },
+        temperature: { currentTemperature: 21.0, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
         currentDrawKw: 0.8,
       })).toBe('active');
     });
@@ -104,7 +105,7 @@ describe('planStateLabels', () => {
       expect(resolvePlanStateKind({
         ...targetOnly,
         plannedState: 'shed',
-        temperature: { currentTemperature: 22, currentTarget: 16, plannedTarget: 16 },
+        temperature: { currentTemperature: 22, currentTarget: 16, plannedTarget: 16, thermalDirection: 'heating' },
         currentDrawKw: 0,
       })).toBe('held');
     });
@@ -118,7 +119,7 @@ describe('planStateLabels', () => {
         ...targetOnly,
         shedAction: 'set_temperature',
         shedTemperature: 16,
-        temperature: { currentTemperature: 20.8, currentTarget: 16, plannedTarget: 16 },
+        temperature: { currentTemperature: 20.8, currentTarget: 16, plannedTarget: 16, thermalDirection: 'heating' },
         currentDrawKw: 0,
       })).toBe('active');
     });
@@ -132,19 +133,19 @@ describe('planStateLabels', () => {
       // target: still work to do once the raise lands.
       expect(resolvePlanStateKind({
         ...base,
-        temperature: { currentTemperature: 20.8, currentTarget: 16, plannedTarget: 21 },
+        temperature: { currentTemperature: 20.8, currentTarget: 16, plannedTarget: 21, thermalDirection: 'heating' },
       })).toBe('active');
       // Room above the planned target too: genuinely satisfied.
       expect(resolvePlanStateKind({
         ...base,
-        temperature: { currentTemperature: 21.4, currentTarget: 16, plannedTarget: 21 },
+        temperature: { currentTemperature: 21.4, currentTarget: 16, plannedTarget: 21, thermalDirection: 'heating' },
       })).toBe('idle');
     });
 
     it('does not classify while a target command is in flight', () => {
       expect(resolvePlanStateKind({
         ...targetOnly,
-        temperature: { currentTemperature: 21.5, currentTarget: 21, plannedTarget: 21 },
+        temperature: { currentTemperature: 21.5, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
         currentDrawKw: 0,
         pendingTargetCommand: { targetC: 22 },
       })).toBe('active');
@@ -159,7 +160,7 @@ describe('planStateLabels', () => {
     it('resolves idle when on, at/above target and drawing nothing', () => {
       expect(resolvePlanStateKind({
         ...onThermostat,
-        temperature: { currentTemperature: 21.2, currentTarget: 21, plannedTarget: 21 },
+        temperature: { currentTemperature: 21.2, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
         currentDrawKw: 0,
       })).toBe('idle');
     });
@@ -167,14 +168,44 @@ describe('planStateLabels', () => {
     it('stays active while heating or below target', () => {
       expect(resolvePlanStateKind({
         ...onThermostat,
-        temperature: { currentTemperature: 21.2, currentTarget: 21, plannedTarget: 21 },
+        temperature: { currentTemperature: 21.2, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
         currentDrawKw: 1.2,
       })).toBe('active');
       expect(resolvePlanStateKind({
         ...onThermostat,
-        temperature: { currentTemperature: 19, currentTarget: 21, plannedTarget: 21 },
+        temperature: { currentTemperature: 19, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
         currentDrawKw: 0,
       })).toBe('active');
+    });
+
+    it('judges a cooling device satisfied at or below its target, not above it', () => {
+      expect(resolvePlanStateKind({
+        ...onThermostat,
+        temperature: { currentTemperature: 21.8, currentTarget: 22, plannedTarget: 22, thermalDirection: 'cooling' },
+        currentDrawKw: 0,
+      })).toBe('idle');
+      expect(resolvePlanStateKind({
+        ...onThermostat,
+        temperature: { currentTemperature: 26, currentTarget: 22, plannedTarget: 22, thermalDirection: 'cooling' },
+        currentDrawKw: 0,
+      })).toBe('active');
+    });
+
+    it('leaves a hold or wait reason to the plan, even at target', () => {
+      // A stepped water heater kept at a low step whose step-up is refused: the
+      // plan's reason, not the temperature, decides the word.
+      const reasons: DeviceReason[] = [
+        { code: PLAN_REASON_CODES.restoreThrottled },
+        { code: PLAN_REASON_CODES.startupStabilization },
+      ];
+      for (const reason of reasons) {
+        expect(resolvePlanStateKind({
+          ...onThermostat,
+          reason,
+          temperature: { currentTemperature: 65, currentTarget: 65, plannedTarget: 65, thermalDirection: 'heating' },
+          currentDrawKw: 0,
+        })).toBe('active');
+      }
     });
   });
 

@@ -191,6 +191,7 @@ const planServiceDeps = (): ReturnType<typeof planServiceWiring> & Pick<PlanServ
   | 'getHomeBatteryCard'
   | 'getObservedEvChargingState'
   | 'getObservedTemperature'
+  | 'getThermalDirection'
   | 'planBuildGate'
   | 'getSteppedSettleDevices'
   | 'homeId'
@@ -204,6 +205,7 @@ const planServiceDeps = (): ReturnType<typeof planServiceWiring> & Pick<PlanServ
   getObservedStateOfCharge: () => ({ kind: 'absent' }),
   getHomeBatteryCard: () => ({ kind: 'none' }),
   getObservedEvChargingState: () => ({ kind: 'absent' }),
+  getThermalDirection: () => 'heating' as const,
   getObservedTemperature: () => ({ kind: 'absent' }),
   planBuildGate: openPlanBuildGate(),
   getSteppedSettleDevices: () => [],
@@ -513,6 +515,7 @@ describe('PlanService', () => {
 
     const service = new PlanService({
       ...planServiceDeps(),
+      getThermalDirection: () => 'heating' as const,
       getObservedTemperature: () => ({
         kind: 'observed',
         value: { currentTarget: observedTarget, currentTemperature: 21 },
@@ -1065,6 +1068,7 @@ describe('PlanService', () => {
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
+      getThermalDirection: () => 'heating' as const,
       getObservedTemperature: () => ({
         kind: 'observed',
         value: { currentTarget: 18, currentTemperature: 16 },
@@ -1403,6 +1407,7 @@ describe('PlanService', () => {
     })];
     const service = new PlanService({
       ...planServiceDeps(),
+      getThermalDirection: () => 'heating' as const,
       getObservedTemperature: () => ({
         kind: 'observed',
         value: { currentTarget: 18, currentTemperature: 21 },
@@ -1470,6 +1475,7 @@ describe('PlanService', () => {
     })];
     const service = new PlanService({
       ...planServiceDeps(),
+      getThermalDirection: () => 'heating' as const,
       getObservedTemperature: () => ({
         kind: 'observed',
         value: { currentTarget: 20, currentTemperature: 21 },

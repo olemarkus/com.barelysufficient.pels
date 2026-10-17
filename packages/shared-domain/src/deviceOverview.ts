@@ -2,9 +2,18 @@ import type {
   ObservedStateOfCharge,
   EvChargingState,
   SteppedLoadProfile,
+  ThermalDirection,
 } from '../../contracts/src/types.js';
 import type { DeviceReason } from './planReasonSemantics';
 import type { PlannedTemperatureState } from './plannedTemperatureState';
+
+/**
+ * The overview card's temperature facet: the planner's trio plus which way the
+ * device's setpoint moves demand (the observer's `ThermalDirection`). The card
+ * needs the direction to say whether the device is satisfied; the planner trio
+ * does not carry it (see `PlannedTemperatureState`'s ownership rule).
+ */
+export type OverviewTemperatureState = PlannedTemperatureState & { thermalDirection: ThermalDirection };
 
 /**
  * The stepped-control cluster, present IFF the device is stepped-controlled —
@@ -122,7 +131,7 @@ export type DeviceOverviewSnapshot = {
    * no flat nullable temperature fields left on this shape — absence of the
    * facet is the one genuine "not a temperature device" state.
    */
-  temperature?: PlannedTemperatureState;
+  temperature?: OverviewTemperatureState;
   // Truthy while a target write is in flight — a satisfied verdict against the
   // pre-command setpoint would be premature.
   pendingTargetCommand?: unknown;

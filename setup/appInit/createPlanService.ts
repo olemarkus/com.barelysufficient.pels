@@ -62,6 +62,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     // made from.
     getObservedStateOfCharge: (deviceId) => ctx.observer.getObservedStateOfCharge(deviceId),
     getObservedTemperature: (deviceId) => ctx.observer.getObservedTemperature(deviceId),
+    getThermalDirection: (deviceId) => ctx.observer.getThermalDirection(deviceId),
     getHomeBatteryCard: (deviceId) => readHomeBatteryCard(
       deviceManager.getSnapshotByDeviceId(deviceId),
       ctx.observer.getObservedRecord(deviceId),

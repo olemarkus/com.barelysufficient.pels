@@ -1,5 +1,6 @@
 import type { DeviceOverviewSnapshot } from './deviceOverview';
 import { isGrayStateDevice, isOnLikeState, normalizeDeviceState } from './deviceStatePredicates';
+import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
 
 export type PlanStateKind =
   | 'active'
@@ -209,10 +210,10 @@ const isActiveState = (device: DeviceOverviewSnapshot): boolean => (
 // 2026-08-01 showed its failure mode — the only card claiming "Running" was a
 // thermostat at 20.8 °C against a 16 °C target at 0.0 kW, the one device with
 // nothing to do. A device that reports `on` while satisfied tells the same lie
-// ("Running · 0.0 kW") with a narrower trigger, so it reads "Idle" too. Heating
-// semantics (temperature at/above target = satisfied) — PELS manages heaters,
-// water heaters, and floor thermostats; a device actively drawing power never
-// lands here (the measured gate keeps it "Running").
+// ("Running · 0.0 kW") with a narrower trigger, so it reads "Idle" too.
+// Satisfied follows the device's thermal direction (the observer's): at/above
+// target while heating, at/below it while cooling. A device actively drawing
+// power never lands here (the measured gate keeps it "Running").
 //
 // Satisfaction is judged against the HIGHEST target PELS knows about: the live
 // `currentTarget` can be the setpoint PELS itself lowered (shed floor still on
@@ -220,15 +221,27 @@ const isActiveState = (device: DeviceOverviewSnapshot): boolean => (
 // room "satisfied" against the lowered floor is the mirror-image lie — "nothing
 // to do" while suppressed. So: never classify while the observed target equals
 // the shed floor or while a target command is in flight, and prefer
-// `plannedTarget` when it is higher than the observed setpoint.
+// `plannedTarget` when it asks for more than the observed setpoint (higher
+// while heating, lower while cooling).
 //
+// Only a device the plan simply keeps: a hold or wait reason (a refused step-up,
+// a restore countdown) is the plan's own word for the card, and turning the
+// device "idle" here would let the card grammar promote it to Limited or
+// Resuming on the temperature alone. A stepped device mid-transition is moving
+// on purpose, not idle.
+const isPlainlyKept = (device: DeviceOverviewSnapshot): boolean => (
+  device.reason.code === PLAN_REASON_CODES.keep
+  && (device.steppedLoad === undefined || device.steppedLoad.targetStepId === null
+    || device.steppedLoad.selectedStepId === device.steppedLoad.targetStepId)
+);
+
 export const isSatisfiedTemperatureDevice = (device: DeviceOverviewSnapshot): boolean => {
-  if (!isActiveState(device)) return false;
-  if (device.pendingTargetCommand) return false;
   // The atomic temperature facet is the unit guard: it exists only for
   // temperature-observed devices, and it is complete when present.
   if (!device.temperature) return false;
-  const { currentTemperature, currentTarget, plannedTarget } = device.temperature;
+  if (!isActiveState(device) || !isPlainlyKept(device)) return false;
+  if (device.pendingTargetCommand) return false;
+  const { currentTemperature, currentTarget, plannedTarget, thermalDirection } = device.temperature;
   if (
     device.shedAction === 'set_temperature'
     && typeof device.shedTemperature === 'number'
@@ -236,8 +249,12 @@ export const isSatisfiedTemperatureDevice = (device: DeviceOverviewSnapshot): bo
   ) {
     return false;
   }
-  const effectiveTarget = Math.max(currentTarget, plannedTarget);
-  if (currentTemperature < effectiveTarget - 0.1) return false;
+  // A cooling device is satisfied at/below the LOWEST target it is asked for,
+  // the mirror of heating.
+  const satisfied = thermalDirection === 'cooling'
+    ? currentTemperature <= Math.min(currentTarget, plannedTarget) + 0.1
+    : currentTemperature >= Math.max(currentTarget, plannedTarget) - 0.1;
+  if (!satisfied) return false;
   // "Satisfied" claims the device is drawing nothing, which only a power reading
   // can say. A device without one (absent `currentDrawKw`) makes no such claim;
   // coercing the absence to `0` would label a device nobody measured as idle.

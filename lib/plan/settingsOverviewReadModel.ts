@@ -44,7 +44,7 @@ import type { PlanServiceDeps } from './planServiceDeps';
  */
 export type SettingsOverviewReadModelDeps = Pick<PlanServiceDeps,
   | 'homeId' | 'getObservedEvChargingState' | 'getAssociatedCarChargingState' | 'getObservedStateOfCharge'
-  | 'getObservedTemperature' | 'getHomeBatteryCard' | 'getSteppedLoadProfileById'> & {
+  | 'getObservedTemperature' | 'getThermalDirection' | 'getHomeBatteryCard' | 'getSteppedLoadProfileById'> & {
   getDeviceExecutionState: (deviceId: string) => DeviceExecutionState;
   dryRun: boolean;
   nowMs: number;
@@ -211,6 +211,7 @@ function buildLoadOverviewDevice(
   const temperature = resolveOverviewTemperatureFacet(
     device,
     deps.getObservedTemperature(device.id),
+    deps.getThermalDirection(device.id),
   );
   const temperatureFields = temperature.kind === 'present'
     ? { temperature: temperature.value }

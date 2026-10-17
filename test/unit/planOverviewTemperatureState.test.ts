@@ -2,7 +2,7 @@ import { resolveOverviewTemperatureFacet } from '../../lib/plan/planOverviewTemp
 import { buildPlanDevice } from '../utils/planTestUtils';
 
 describe('resolveOverviewTemperatureFacet', () => {
-  it('combines the observer current pair with the planner target', () => {
+  it('combines the observer current pair and direction with the planner target', () => {
     const device = buildPlanDevice({
       deviceType: 'temperature',
       currentTarget: 16,
@@ -13,9 +13,9 @@ describe('resolveOverviewTemperatureFacet', () => {
     expect(resolveOverviewTemperatureFacet(device, {
       kind: 'observed',
       value: { currentTarget: 17, currentTemperature: 20.5 },
-    })).toEqual({
+    }, 'cooling')).toEqual({
       kind: 'present',
-      value: { currentTarget: 17, currentTemperature: 20.5, plannedTarget: 21 },
+      value: { currentTarget: 17, currentTemperature: 20.5, plannedTarget: 21, thermalDirection: 'cooling' },
     });
   });
 
@@ -25,9 +25,9 @@ describe('resolveOverviewTemperatureFacet', () => {
     expect(resolveOverviewTemperatureFacet(device, {
       kind: 'observed',
       value: { currentTarget: 22, currentTemperature: 20.3 },
-    })).toEqual({
+    }, 'heating')).toEqual({
       kind: 'present',
-      value: { currentTarget: 22, currentTemperature: 20.3, plannedTarget: 22 },
+      value: { currentTarget: 22, currentTemperature: 20.3, plannedTarget: 22, thermalDirection: 'heating' },
     });
   });
 
@@ -39,7 +39,7 @@ describe('resolveOverviewTemperatureFacet', () => {
       plannedTarget: 21,
     });
 
-    expect(resolveOverviewTemperatureFacet(device, { kind: 'absent' })).toEqual({ kind: 'absent' });
+    expect(resolveOverviewTemperatureFacet(device, { kind: 'absent' }, 'heating')).toEqual({ kind: 'absent' });
   });
 
 });

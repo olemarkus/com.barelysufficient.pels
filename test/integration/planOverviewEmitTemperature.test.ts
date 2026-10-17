@@ -47,6 +47,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
+      getThermalDirection: () => 'heating' as const,
       getObservedTemperature: () => ({ kind: 'observed' as const,
         value: { currentTarget: 16, currentTemperature: 20.8 } }),
     };
@@ -88,6 +89,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
+      getThermalDirection: () => 'heating' as const,
       getObservedTemperature: () => ({ kind: 'observed' as const,
         value: { currentTarget: 16, currentTemperature: 20.8 } }),
     })!;
@@ -115,6 +117,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
       getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
       getObservedEvChargingState: () => ({ kind: 'absent' } as const),
+      getThermalDirection: () => 'heating' as const,
       getObservedTemperature: () => ({
         kind: 'observed' as const,
         value: { currentTarget: 21, currentTemperature: 21.1 },

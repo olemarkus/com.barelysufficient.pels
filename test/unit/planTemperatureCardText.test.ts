@@ -31,7 +31,7 @@ describe('resolveTemperatureLine', () => {
   it('shows the planned target when the target is stable', () => {
     expect(resolveTemperatureLine({
       ...baseDevice,
-      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21 },
+      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
       reason: { code: 'keep', detail: null },
     })).toBe('20.2 °C · target 21 °C');
   });
@@ -39,7 +39,7 @@ describe('resolveTemperatureLine', () => {
   it('shows the current target to planned target transition when PELS is changing it', () => {
     expect(resolveTemperatureLine({
       ...baseDevice,
-      temperature: { currentTemperature: 20.2, currentTarget: 18, plannedTarget: 21 },
+      temperature: { currentTemperature: 20.2, currentTarget: 18, plannedTarget: 21, thermalDirection: 'heating' },
       reason: { code: 'keep', detail: null },
     })).toBe('20.2 °C · target 18 °C → 21 °C');
   });
@@ -67,7 +67,7 @@ describe('resolveTemperatureReasonLine', () => {
       ...baseDevice,
       currentState: 'off',
       plannedState: 'shed',
-      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21 },
+      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
       reason: {
         code: 'insufficient_headroom',
         needKw: 1.25,
@@ -85,7 +85,7 @@ describe('resolveTemperatureReasonLine', () => {
       ...baseDevice,
       currentState: 'off',
       plannedState: 'inactive',
-      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21 },
+      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
       reason: { code: 'keep', detail: null },
     })).toBeNull();
   });
@@ -118,7 +118,7 @@ describe('resolveTemperatureReasonLine', () => {
       ...baseDevice,
       currentState: 'off',
       plannedState: 'shed',
-      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21 },
+      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
       reason: { code: 'daily_budget', shortfallKw: 0.8 },
     })).toBe('Waiting to resume — 0.8 kW more needed');
   });
@@ -128,7 +128,7 @@ describe('resolveTemperatureReasonLine', () => {
       ...baseDevice,
       currentState: 'off',
       plannedState: 'shed',
-      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21 },
+      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
       reason: { code: 'daily_budget' },
     })).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
   });
@@ -150,7 +150,7 @@ describe('resolveTemperatureReasonLine', () => {
       ...baseDevice,
       currentState: 'off',
       plannedState: 'shed',
-      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21 },
+      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
       reason,
     }));
 
@@ -171,7 +171,7 @@ describe('resolveTemperatureReasonLine', () => {
       ...baseDevice,
       currentState: 'off',
       plannedState: 'shed',
-      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21 },
+      temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
       reason: { code: 'deferred_objective_avoid' },
     })).toBe(PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS);
   });
@@ -185,7 +185,7 @@ describe('resolveTemperatureReasonLine', () => {
     const unattributed = {
       currentState: 'on',
       plannedState: 'shed' as const,
-      temperature: { currentTemperature: 22.8, currentTarget: 20, plannedTarget: 20 },
+      temperature: { currentTemperature: 22.8, currentTarget: 20, plannedTarget: 20, thermalDirection: 'heating' as const },
       ...baseDevice,
       reason: { code: 'keep' as const, detail: null },
     };
@@ -201,7 +201,7 @@ describe('resolveTemperatureReasonLine', () => {
       ...baseDevice,
       currentState: 'on',
       plannedState: 'shed',
-      temperature: { currentTemperature: 20.3, currentTarget: 22, plannedTarget: 22 },
+      temperature: { currentTemperature: 20.3, currentTarget: 22, plannedTarget: 22, thermalDirection: 'heating' },
       shedAction: 'turn_off',
       reason: { code: 'daily_budget', shortfallKw: 1.2 },
     })).toBe('Waiting to resume — 1.2 kW more needed');
@@ -212,7 +212,7 @@ describe('resolveTemperatureReasonLine', () => {
       ...baseDevice,
       currentState: 'on',
       plannedState: 'shed',
-      temperature: { currentTemperature: 20.3, currentTarget: 22, plannedTarget: 22 },
+      temperature: { currentTemperature: 20.3, currentTarget: 22, plannedTarget: 22, thermalDirection: 'heating' },
       shedAction: 'turn_off',
       reason: { code: 'capacity' },
     })).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);

@@ -41,11 +41,13 @@ const absentStateOfCharge = {
 
 const absentTemperature = {
   ...absentStateOfCharge,
+  getThermalDirection: () => 'heating' as const,
   getObservedTemperature: () => ({ kind: 'absent' } as const),
 };
 
 const observedTemperature = (currentTarget: number, currentTemperature: number) => ({
   ...absentStateOfCharge,
+  getThermalDirection: () => 'heating' as const,
   getObservedTemperature: () => ({
     kind: 'observed' as const,
     value: { currentTarget, currentTemperature },

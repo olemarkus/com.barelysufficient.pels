@@ -2,6 +2,7 @@ import type { SettingsPort, FlowPort, ApiPort } from '../ports/homeyRuntime';
 import type { SteppedSettleDevice } from '../observer/steppedSettleSnapshot';
 import type { Loggers, StructuredDebugEmitter } from '../logging/logger';
 import type { SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/settingsUiApi';
+import type { ThermalDirection } from '../../packages/contracts/src/types';
 import type { DeviceOverviewLogRecorder } from './deviceOverviewLog';
 import type { PendingBinaryLiveDevice } from '../ports/controlCommandConfirmation';
 import type {
@@ -100,6 +101,8 @@ export type PlanServiceDeps = {
   // device is projected to the planner as binary but still shows the external
   // target and measured temperature through this observer-owned seam.
   getObservedTemperature: (deviceId: string) => ObservedTemperatureRead;
+  /** Which way the device's setpoint moves demand (the observer's resolution). */
+  getThermalDirection: (deviceId: string) => ThermalDirection;
   /**
    * A home battery's card facts for the settings-UI overview: its control
    * surface from the transport and its own power and level from the observer.

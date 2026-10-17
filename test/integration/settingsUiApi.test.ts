@@ -44,6 +44,7 @@ describe('settingsUiApi', () => {
     getObservedStateOfCharge: () => ({ kind: 'absent' }),
     getHomeBatteryCard: () => ({ kind: 'none' } as const),
     getObservedEvChargingState: () => ({ kind: 'absent' }),
+    getThermalDirection: () => 'heating' as const,
     getObservedTemperature: () => ({ kind: 'absent' }),
   });
   const defaultPlanSnapshot = overviewFixture(buildPlanDevice({ id: 'dev-1', name: 'Heater' }));

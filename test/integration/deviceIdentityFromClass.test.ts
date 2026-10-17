@@ -233,6 +233,7 @@ describe('class-resolved identity through the plan build', () => {
       getObservedEvChargingState: () => ({ kind: 'absent' }),
       getObservedStateOfCharge: () => ({ kind: 'absent' }),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
+      getThermalDirection: () => 'heating' as const,
       getObservedTemperature: () => ({ kind: 'absent' }),
     });
 

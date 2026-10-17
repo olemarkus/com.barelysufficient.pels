@@ -20,6 +20,7 @@ import { executionStateFixture } from '../utils/deviceStatusFixture';
 const asOverviewLogDevice = (device: DevicePlanDevice): OverviewLogDevice => buildOverviewDeviceCard(device, {
   ...overviewReadModelWiring(),
   getDeviceExecutionState: () => executionStateFixture(device), dryRun: false, nowMs: 0,
+  getThermalDirection: () => 'heating' as const,
   getObservedTemperature: () => ({ kind: 'absent' }),
   getObservedStateOfCharge: () => ({ kind: 'absent' }),
   getHomeBatteryCard: () => ({ kind: 'none' } as const),
