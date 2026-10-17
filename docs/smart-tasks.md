@@ -82,7 +82,7 @@ For EV charging, a common setup is to keep the charger managed by PELS but turn 
 
 ### When the task is done
 
-A task is done at its ready-by time. Until then the task decides what the device does, also once it has reached its goal: it holds the device back in the hours it does not plan to use, and a mode change never takes a temperature task's target below the task's. If the device drops back below the target, the task plans to top it up in its cheapest remaining hours.
+A task is done at its ready-by time. Until then the task decides what the device does, also once it has reached its goal: it holds the device back in the hours it does not plan to use, and a mode change never sets a less demanding target than the task's, while a more demanding mode target still applies. If the device moves away from the target again, the task plans to top it up in its cheapest remaining hours.
 
 After the ready-by time, the device's own settings decide again: the task page's **When the task is done** card says what they do.
 

@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HomeMeters, readMeterSample, resolveMainMeterRead, type SubHomeMeters } from '../../lib/home/homeMeters';
 import { HOMEY_ENERGY_METER_DEVICE_ID } from '../../lib/utils/settingsKeys';
+import { captureLogger } from '../utils/loggerCapture';
 
 // A settings store holding (or not holding) Main's meter selection.
 const settingsWith = (values: Record<string, unknown>) => ({
@@ -95,5 +96,45 @@ describe('resolveMainMeterRead', () => {
       expect(main.meterDeviceIds).toEqual([]);
       expect(main.sampleFrom({ meterPowerW: { 'meter-main': 900 } })).toBeNull();
     }
+  });
+
+  describe('main_meter_no_reading', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('is said when the reason changes and then once a minute, and again at once after a reading', () => {
+      vi.useFakeTimers({ now: new Date('2026-10-17T12:00:00Z') });
+      const capture = captureLogger();
+      try {
+        const main = resolveMainMeterRead({ state: 'resolved', meterDeviceId: 'meter-main' });
+        const silent = { meterPowerW: {} };
+        const noMeter = resolveMainMeterRead({ state: 'unconfigured' });
+        const said = () => capture.findEvents('main_meter_no_reading');
+        // A reading clears what earlier cases left in the module's gate.
+        main.sampleFrom({ meterPowerW: { 'meter-main': 900 } });
+
+        main.sampleFrom(silent);
+        vi.advanceTimersByTime(10_000);
+        main.sampleFrom(silent);
+        expect(said()).toEqual([expect.objectContaining({ reasonCode: 'no_reading', meterDeviceId: 'meter-main' })]);
+
+        vi.advanceTimersByTime(50_000);
+        main.sampleFrom(silent);
+        expect(said()).toHaveLength(2);
+
+        noMeter.sampleFrom(silent);
+        noMeter.sampleFrom(silent);
+        expect(said()).toHaveLength(3);
+        expect(said()[2]).toMatchObject({ reasonCode: 'not_selected', selectionState: 'unconfigured' });
+
+        main.sampleFrom(silent);
+        main.sampleFrom({ meterPowerW: { 'meter-main': 900 } });
+        main.sampleFrom(silent);
+        expect(said()).toHaveLength(5);
+      } finally {
+        capture.restore();
+      }
+    });
   });
 });

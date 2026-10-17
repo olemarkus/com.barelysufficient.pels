@@ -11,12 +11,33 @@ import type {
   MainMeterRead,
   MeterPowerSample,
 } from '../ports/homeMeterReadings';
-import { getDebugEmitter } from '../logging/logger';
+import { getDebugEmitter, isDebugTopicEnabled } from '../logging/logger';
+import { shouldEmitOnChange, type LogDedupeEntry } from '../logging/logDedupe';
 import { normalizeError } from '../utils/errorUtils';
 import { readMainMeterSelection, type MainMeterSelectionSettings } from './mainMeterSelection';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
 
 const emitDebug = getDebugEmitter('devices', 'devices');
+
+// Main's meter is read on every poll and every snapshot refresh, so a lasting
+// silence or a home with no meter selected would repeat this event each time.
+// It is said when the reason changes and then once a minute; a reading clears
+// it, so the next silence is said at once.
+const NO_READING_REPEAT_MS = 60 * 1000;
+const noReadingLogState = new Map<string, LogDedupeEntry>();
+
+function emitNoReading(fields: { reasonCode: 'not_selected'; selectionState: string }
+  | { reasonCode: 'no_reading'; meterDeviceId: string }): void {
+  if (!isDebugTopicEnabled('devices')) return;
+  if (!shouldEmitOnChange({
+    state: noReadingLogState,
+    key: 'main',
+    signature: JSON.stringify(fields),
+    now: Date.now(),
+    repeatAfterMs: NO_READING_REPEAT_MS,
+  })) return;
+  emitDebug({ event: 'main_meter_no_reading', ...fields });
+}
 
 /** The sub-homes' meters and their per-home routing (`HomeRuntimeRegistry`). */
 export type SubHomeMeters = {
@@ -70,7 +91,7 @@ export function resolveMainMeterRead(selection: MainMeterSelection): MainMeterRe
     return {
       meterDeviceIds: [],
       sampleFrom: () => {
-        emitDebug({ event: 'main_meter_no_reading', reasonCode: 'not_selected', selectionState: selection.state });
+        emitNoReading({ reasonCode: 'not_selected', selectionState: selection.state });
         return null;
       },
     };
@@ -80,7 +101,8 @@ export function resolveMainMeterRead(selection: MainMeterSelection): MainMeterRe
     meterDeviceIds: [meterDeviceId],
     sampleFrom: (readings) => {
       const sample = readMeterSample(readings, meterDeviceId);
-      if (sample === null) emitDebug({ event: 'main_meter_no_reading', reasonCode: 'no_reading', meterDeviceId });
+      if (sample === null) emitNoReading({ reasonCode: 'no_reading', meterDeviceId });
+      else noReadingLogState.delete('main');
       return sample;
     },
   };
