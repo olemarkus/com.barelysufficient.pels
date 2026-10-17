@@ -9,7 +9,10 @@ import {
   TEMPERATURE_BOOST_SETTINGS,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
 } from '../../shared-domain/src/settings/settingsKeys.ts';
-import { SETTINGS_UI_SMART_TASK_CANCEL_PATH } from '../../contracts/src/settingsUiApi.ts';
+import {
+  SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH,
+  SETTINGS_UI_SMART_TASK_CANCEL_PATH,
+} from '../../contracts/src/settingsUiApi.ts';
 import type { DeferredObjectiveSettingsEntry } from '../../contracts/src/deferredObjectiveSettings.ts';
 import { createHomeyMock } from './helpers/homeyApiMock.ts';
 
@@ -34,6 +37,8 @@ const SMART_TASK: DeferredObjectiveSettingsEntry = {
   targetTemperatureC: 65,
   deadlineAtMs: Date.UTC(2030, 0, 1),
 };
+
+const TASKS = { version: 1, objectivesByDeviceId: { [DEVICE_ID]: SMART_TASK } };
 
 const perDeviceMap = <T>(value: T): Record<string, T> => ({
   [DEVICE_ID]: value,
@@ -199,6 +204,7 @@ describe('advanced device data purge', () => {
     const homey = createHomeyMock({
       settings: { [RESPECT_EXTERNAL_OFF_DEVICES]: perDeviceMap(true) },
       apiHandlers: {
+        [`GET ${SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH}`]: () => TASKS,
         [`POST ${SETTINGS_UI_SMART_TASK_CANCEL_PATH}`]: ({ body }) => {
           cancelledDeviceIds.push((body as { deviceId: string }).deviceId);
           return { ok: true };
@@ -209,10 +215,9 @@ describe('advanced device data purge', () => {
     const { state } = await import('../src/ui/state.ts');
     setHomeyClient(homey);
     state.respectExternalOffMap = { [KEEP_ID]: true };
-    state.deferredObjectiveSettings = {
-      version: 1,
-      objectivesByDeviceId: { [DEVICE_ID]: SMART_TASK },
-    };
+    // The boot read, as the page does it.
+    const { loadDeferredObjectiveSettings } = await import('../src/ui/deferredObjectiveSettings.ts');
+    await loadDeferredObjectiveSettings();
     const {
       clearMultipleDeviceSettings,
       resolveUnknownDeviceIdsFromSettings,
@@ -232,6 +237,7 @@ describe('advanced device data purge', () => {
     const homey = createHomeyMock({
       settings: { [RESPECT_EXTERNAL_OFF_DEVICES]: perDeviceMap(true) },
       apiHandlers: {
+        [`GET ${SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH}`]: () => TASKS,
         [`POST ${SETTINGS_UI_SMART_TASK_CANCEL_PATH}`]: () => ({ ok: false, reason: reasons.shift() }),
       },
     });
@@ -239,10 +245,8 @@ describe('advanced device data purge', () => {
     const { state } = await import('../src/ui/state.ts');
     setHomeyClient(homey);
     state.respectExternalOffMap = perDeviceMap(true);
-    state.deferredObjectiveSettings = {
-      version: 1,
-      objectivesByDeviceId: { [DEVICE_ID]: SMART_TASK },
-    };
+    // No boot read of the task map: the purge must load it rather than take the
+    // empty default for "no tasks".
     const { clearMultipleDeviceSettings } = await import('../src/ui/advancedDeviceDataPurge.ts');
 
     await expect(clearMultipleDeviceSettings([DEVICE_ID])).resolves.toBeUndefined();
