@@ -1,7 +1,7 @@
 import type { PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
-import { buildUnallocatedTaskEvaluation } from './taskEvaluationProducer';
+import { buildUnallocatedTaskEvaluation, taskPermissionsForObjective } from './taskEvaluationProducer';
 import {
-  completionFromEvaluation, reportAppliedPermissions, withAcceptedCompletion,
+  completionFromEvaluation, reportAppliedPermissions, withAcceptedCompletion, withPlanningPermissions,
 } from './completionDiagnostic';
 import type { TaskEvaluation } from './taskEvaluation';
 import type { TaskReservationReader } from './taskDeliveryState';
@@ -282,6 +282,7 @@ export const buildDeferredObjectiveTaskResults = (
     const task: CoordinatedDeferredObjective = {
       ...orderedTask,
       ...resolveHigherRankedLoad(orderedTask.higherRankedDeviceIds, knownLoadHigherDeviceIds, deviceById),
+      rescuePermissions: taskPermissionsForObjective(orderedTask.objective),
     };
     const { deviceId, objective, device } = task;
     // Lower-priority edits cannot churn an already-committed higher task.
@@ -454,6 +455,16 @@ const buildDeferredObjectiveDiagnostic = (
       : { ...satisfied, evaluation: { ...satisfied.evaluation, planning: { kind: 'inactive' } } };
   }
 
+  // A task the observer accepted near its target is satisfied: it keeps the hours
+  // it booked as top-ups, and plans them with no rescue permission, the same
+  // acceptance the caller settles the evaluation on (`withAcceptedCompletion`).
+  const planningTask = withPlanningPermissions(
+    task,
+    buildUnallocatedTaskEvaluation(deviceId, objective, progress),
+    readers.getStallClassification,
+    readers.hasObservedTask(deviceId, objective),
+  );
+
   // Per-cycle (mid-hour) frozen read: between hour settles the committed set,
   // per-hour kWh and unit milestones are immutable, so the mid-hour path skips the
   // bucket ALLOCATOR and assembles the plan from the persisted commitment + live
@@ -504,7 +515,7 @@ const buildDeferredObjectiveDiagnostic = (
   // replan-due cycle — the replan is deferred, not the commitment dropped. Null
   // exactly when there is no commitment to serve.
   return buildDiagnosticWithPolicyHorizon(
-    snapshot, task, progress, policyHorizon, horizonInputs, frozenFallback, replan,
+    snapshot, planningTask, progress, policyHorizon, horizonInputs, frozenFallback, replan,
   );
 };
 

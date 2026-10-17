@@ -3970,6 +3970,34 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     expect(diagnostic && resolvedTrajectoryStatus(diagnostic)).toBe('at_risk');
   });
 
+  it('plans an accepted near-target task against the budget cap, exempt from budget or not', () => {
+    // 64.5 °C against a 65 °C target, parked there: the observer accepts it as
+    // satisfied. A satisfied task holds no rescue permission, so "exempt from
+    // budget" must not lift the cap on its top-ups.
+    const plannedHours = (rescue: Record<string, string> | undefined) => {
+      const [diagnostic] = buildDeferredObjectiveDiagnostics({
+        devices: [buildTemperatureDevice({ currentTemperature: 64.5 })],
+        settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings(rescue ? { rescue } : {})),
+        powerTracker: buildTemperaturePowerTracker(),
+        dailyBudgetSnapshot: buildSnapshot({
+          prices: Array.from({ length: 24 }, () => 5),
+          plannedControlledKWh: Array.from({ length: 24 }, () => 0),
+        }),
+        hasObservedTask: () => true,
+        getStallClassification: () => ({
+          classification: 'near_target_idle' as const, classifiedAgainstTargetValue: 65, temperatureGapC: 0,
+        }),
+      });
+      expect(diagnostic?.evaluation.completion.kind).toBe('accepted_near_target');
+      return diagnostic?.horizonPlan?.plannedBuckets
+        .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0)
+        .map((bucket) => [bucket.id, bucket.plannedUsefulEnergyKWh]);
+    };
+
+    expect(plannedHours({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' }))
+      .toEqual(plannedHours(undefined));
+  });
+
   it('ignores a stale classifier verdict on a first-seen task', () => {
     // An unobserved obligation cannot inherit device-keyed thermal evidence.
     const [diagnostic] = buildReportedDiagnostics({

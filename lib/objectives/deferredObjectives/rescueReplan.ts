@@ -63,9 +63,10 @@ export const resolveHorizonPlanWithRescue = (
   //     floor until the producer can resolve it. A task with no device above it
   //     is trivially accounted for.
   // Anything weaker stays at the min-step floor.
+  const { rescuePermissions } = task;
   const fullyReserved = task.higherRankedLoadAccountedFor
-    && objective.rescue?.exemptFromBudget === 'always'
-    && objective.rescue?.limitLowerPriorityDevices === 'always';
+    && rescuePermissions.budgetExempt
+    && rescuePermissions.limitLowerPriority;
   const powerLimit = resolveDeferredObjectivePowerLimit(horizonInputs.powerLimits, horizonInputs.hasSolarProduction);
   const planForBuckets = (
     buckets: ResolvedHorizonBuckets,
@@ -90,7 +91,7 @@ export const resolveHorizonPlanWithRescue = (
     aheadOfHourMilestone,
   });
 
-  if (objective.rescue?.exemptFromBudget !== 'always') {
+  if (!rescuePermissions.budgetExempt) {
     return planForBuckets(policyHorizon.buckets);
   }
   const exemptHorizon = buildDeferredObjectivePolicyHorizon({ ...horizonInputs, exemptFromBudget: true });

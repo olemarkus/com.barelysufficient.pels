@@ -139,6 +139,8 @@ export type CoordinatedDeferredObjective = OrderedDeferredObjective & {
   higherPriorityUnbookedPowerKw: number;
   /** Every higher-ranked device is task-governed, confirmed not taking power, or has a known maximum step. */
   higherRankedLoadAccountedFor: boolean;
+  /** The rescue permissions the allocator may plan with; none once the task is accepted as satisfied. */
+  rescuePermissions: TaskEvaluation['permissions'];
 };
 
 // Keep the same locale-independent tie-break as `lib/plan/planSort.ts` without

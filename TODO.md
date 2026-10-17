@@ -277,14 +277,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 
 
-- [ ] **An accepted near-target task still plans its top-ups with the budget cap lifted.**
-      `resolveHorizonPlanWithRescue` (`lib/objectives/deferredObjectives/rescueReplan.ts`) reads
-      `objective.rescue` directly, inside `buildDeferredObjectiveDiagnostic`, before the coordinator
-      settles the accepted completion (`withAcceptedCompletion`), so an `accepted_near_target` task's
-      `horizonPlan` books top-up hours against the exempt horizon and the plan chart shows them.
-      Admission already grants it no exemption. Resolve the accepted completion before allocation
-      and plan a satisfied task against the budget-capped horizon. Done when an accepted task with
-      "exempt from budget" set plans the same hours as one without it. [P2]
 - [ ] **A genuine learned-rate gap mid-commitment still strips a committed task to `unknown`.**
       Same shape as the fixed step-ladder gap one short-circuit earlier: in
       `buildDiagnosticWithPolicyHorizon`, a `profileEnergy.reasonCode` (e.g. a real

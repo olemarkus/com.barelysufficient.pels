@@ -41,6 +41,22 @@ export const withAcceptedCompletion = (
   permissions: isTaskSatisfied(completion) ? NO_TASK_PERMISSIONS : evaluation.permissions,
 });
 
+/**
+ * The rescue permissions a task may plan with. Acceptance is resolved from the
+ * same evidence the coordinator later settles the evaluation on, so a task the
+ * observer accepted near its target plans its top-ups with none.
+ */
+export const withPlanningPermissions = <T extends { rescuePermissions: TaskEvaluation['permissions'] }>(
+  task: T,
+  unallocated: TaskEvaluation,
+  getStallClassification: DeferredObjectiveStallClassificationReader,
+  hasObservedTask: boolean,
+): T => (
+  isTaskSatisfied(completionFromEvaluation(unallocated, getStallClassification, hasObservedTask))
+    ? { ...task, rescuePermissions: NO_TASK_PERMISSIONS }
+    : task
+);
+
 /** Project the evaluation's rescue permissions into the diagnostic's applied flags. */
 export const reportAppliedPermissions = (
   evaluation: TaskEvaluation,
