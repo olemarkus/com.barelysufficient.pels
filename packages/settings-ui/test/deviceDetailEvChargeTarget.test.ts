@@ -115,8 +115,13 @@ describe('charge target status', () => {
     state.evChargeTargetSettings = {};
     module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 70, observedAtMs: 0 }));
     expect(status().hidden).toBe(true);
-    expect((document.getElementById('device-detail-charge-target-percent') as HTMLElement & { disabled: boolean })
-      .disabled).toBe(true);
+    const percent = document.getElementById('device-detail-charge-target-percent') as HTMLElement & {
+      disabled: boolean;
+      value: string;
+    };
+    expect(percent.disabled).toBe(true);
+    // Turning it on offers 100%, which is how the charger charged before.
+    expect(percent.value).toBe('100');
   });
 
   it('words the unknown-level hint by the choice, never naming whose car it is', async () => {

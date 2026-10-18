@@ -28,7 +28,9 @@ import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.
 // already has, what that means for the car on the cable right now.
 
 const runSerializedChargeTargetWrite = createSerializedAsyncRunner();
-const DEFAULT_TARGET_PERCENT = 80;
+// Turning the target on changes nothing until the owner lowers it: a charger
+// charged to 100% before it had a target.
+const DEFAULT_TARGET_PERCENT = 100;
 
 const UNKNOWN_LEVEL_CHARGES_HINT = "A car that doesn't report its level charges to its own limit.";
 const UNKNOWN_LEVEL_HELD_HINT = "A car that doesn't report its level won't charge here. That includes a car "
