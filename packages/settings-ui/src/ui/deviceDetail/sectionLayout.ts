@@ -116,7 +116,8 @@ const placeManagedRow = (kind: DeviceDetailKind): void => {
 //   other two never show there). Runs after placeManagedRow, so the battery's
 //   Managed row is already in place to anchor it.
 // - EV charger: all three join the Power limiting card. The switch and the
-//   start policy lead, ahead of what limiting does; "Leave off" follows it.
+//   start policy lead, ahead of what limiting does; "Leave off" closes the
+//   card, after the limited step that belongs to the limiting choice.
 // - Every other page: Setup, ahead of Price-based control, which never moves.
 const placePowerLimitRows = (kind: DeviceDetailKind): void => {
   const controllable = document.getElementById('device-detail-controllable-row');
@@ -130,7 +131,7 @@ const placePowerLimitRows = (kind: DeviceDetailKind): void => {
     const shedField = document.getElementById('device-detail-shed-field');
     placeBefore(startPolicy, shedField);
     placeBefore(controllable, startPolicy);
-    placeAfter(respectExternalOff, shedField);
+    appendTo(respectExternalOff, sectionContent('shedding'));
     return;
   }
   const priceOptRow = document.getElementById('device-detail-price-opt-row');

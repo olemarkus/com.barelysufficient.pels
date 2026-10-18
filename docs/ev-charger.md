@@ -125,13 +125,13 @@ With no car selected, this Flow supplies battery reports for the charger. EV boo
 
 ## Step 6 (Optional): Charge to a Battery Level
 
-Without a battery level, a charger under power limiting charges until the car stops, at the car's own charge limit. To keep the car at an everyday level instead, open the charger's device page and turn on **Charge to a battery level** in the **Charging** card, then set the level, for example 30%.
+Without a target battery level, a charger under power limiting charges until the car stops, at the car's own charge limit. To keep the car at an everyday level instead, open the charger's device page and turn on **Charge to a battery level** in the **Charging** card, then set the level, for example 30%.
 
-- **PELS stops charging at that level.** At or above it, PELS turns the charger off. Below it, the car charges as power allows.
+- **PELS stops charging at that level.** At or above it, PELS turns the charger off. Below it, the car charges as power allows. At 100%, PELS never turns it off: the car stops itself, and can keep heating or cooling from the wall.
 - **A smart task charges further.** In the hours a smart task booked, the car charges past the level toward the task's target, for example 80% by 07:00. When the task ends, the level applies again.
 - **PELS needs the car's battery level**, from a car selected under **Car**, from the charger itself, or from a Flow (Step 5). The status line under the setting says what the level means for the car on the cable right now.
-- **Charge before the battery level is known** decides what happens to a car whose level PELS does not have: a guest car, a second car not selected under **Car**, a car whose app doesn't share its battery level, or your own car before its app reports in after you plug in. On (the default), such a car charges to its own limit. Off, it does not charge until PELS knows its level, and a smart task cannot start it either.
-- **PELS needs Power-limit control** (or **Only PELS starts this device**) to stop the charger. Without it, PELS only watches the charger and the status line says so.
+- **Charge before the battery level is known** decides what happens to a car whose level PELS does not have: a guest car, a second car not selected under **Car**, a car whose app doesn't share its battery level, or your own car before its app reports in after you plug in. On (the default), such a car charges to its own limit. Off, it does not charge until PELS knows its level. An energy smart task (kWh by a time) still charges it in its booked hours; a battery level task needs the level to plan, so it waits too.
+- **PELS needs Power-limit control** (or **Only PELS starts this device**) and a power reading from the charger to stop it. Without them, PELS only watches the charger and the status line says so.
 
 Charge boost and **Charge to a battery level** do different jobs: boost takes power from other devices while the battery is below its level, and the battery level is where charging stops.
 

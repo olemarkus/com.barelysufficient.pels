@@ -54,6 +54,11 @@ describe('projectChargeTargetHold (producer)', () => {
       .toEqual({ kind: 'target_reached', targetPercent: 30 });
   });
 
+  it('never holds at a 100% target, so a full car that still draws keeps the charger on', () => {
+    const full: EvChargeTargetConfig = { targetPercent: 100, chargeBeforeLevelKnown: true };
+    expect(projectChargeTargetHold(full, charger(known(100)), AUTHORITY)).toEqual({ kind: 'none' });
+  });
+
   it('does not hold a charger below its target', () => {
     expect(projectChargeTargetHold(TARGET, charger(known(25)), AUTHORITY)).toEqual({ kind: 'none' });
   });

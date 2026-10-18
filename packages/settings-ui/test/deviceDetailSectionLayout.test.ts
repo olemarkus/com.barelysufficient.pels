@@ -39,6 +39,7 @@ const buildDom = () => {
   addRows(document.querySelector('#device-detail-shedding-section .collapse-content')!, [
     'device-detail-shed-field',
     'device-detail-overshoot-temp-row',
+    'device-detail-overshoot-step-row',
   ]);
   addRows(document.querySelector('#device-detail-setup-section .collapse-content')!, [
     'device-detail-managed-row',
@@ -119,13 +120,15 @@ describe('applyDeviceDetailSectionLayout', () => {
       'device-detail-stepped-section',
     ]);
     // Power-limit control and its start policy lead what limiting does;
-    // "Leave off until turned on again" follows it.
+    // "Leave off until turned on again" closes the card, after the limited
+    // step that belongs to the limiting choice.
     expect(childIds('device-detail-shedding-section')).toEqual([
       'device-detail-controllable-row',
       'device-detail-start-policy-row',
       'device-detail-shed-field',
-      'device-detail-respect-external-off-row',
       'device-detail-overshoot-temp-row',
+      'device-detail-overshoot-step-row',
+      'device-detail-respect-external-off-row',
     ]);
     // Charge on solar surplus is a charging rule.
     expect(childIds('device-detail-charging-section')).toEqual(['device-detail-surplus-track-row']);
@@ -238,6 +241,7 @@ describe('applyDeviceDetailSectionLayout', () => {
     expect(childIds('device-detail-shedding-section')).toEqual([
       'device-detail-shed-field',
       'device-detail-overshoot-temp-row',
+      'device-detail-overshoot-step-row',
     ]);
     expect(childIds('device-detail-charging-section')).toEqual([]);
   });

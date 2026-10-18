@@ -62,6 +62,26 @@ describe('charge target status', () => {
 
     module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 60, observedAtMs: 0 }));
     expect(status().textContent).toBe('Reached 60%. Charging stops here unless a smart task asks for more.');
+
+  });
+
+  it('says a 100% target leaves charging to the car, and promises no stop at 100%', async () => {
+    const { module, state, status } = await load();
+    state.evChargeTargetSettings = { [CHARGER_ID]: { targetPercent: 100, chargeBeforeLevelKnown: true } };
+    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 100, observedAtMs: 0 }));
+    expect(status().textContent).toBe('The car charges to its own limit. Lower the level to stop earlier.');
+    module.renderEvChargeTargetSettings(buildCharger(null));
+    expect(status().textContent).toBe('The car charges to its own limit. Lower the level to stop earlier.');
+
+    // With the no-level toggle off, a 100% target still holds a car without a
+    // level, so a known level reads as charging and a missing lever names that.
+    state.evChargeTargetSettings = { [CHARGER_ID]: { targetPercent: 100, chargeBeforeLevelKnown: false } };
+    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 100, observedAtMs: 0 }));
+    expect(status().textContent).toBe('The car charges to its own limit. Now 100%.');
+    state.controllableMap = {};
+    module.renderEvChargeTargetSettings(buildCharger(null));
+    expect(status().textContent)
+      .toBe('PELS only watches this charger. Turn on Power-limit control to hold a car until its level is known.');
   });
 
   it('names what an unreported level means, and how to get one when no car is selected', async () => {
@@ -106,7 +126,7 @@ describe('charge target status', () => {
     state.controllableMap = {};
     module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 70, observedAtMs: 0 }));
     expect(status().textContent).toBe(
-      'PELS only watches this charger. Turn on Power-limit control to stop at 60%.',
+      'PELS only watches this charger. Turn on Power-limit control to stop it at 60%.',
     );
   });
 

@@ -35,7 +35,7 @@ const DEFAULT_TARGET_PERCENT = 100;
 const UNKNOWN_LEVEL_CHARGES_HINT = "A car that doesn't report its level charges to its own limit.";
 const UNKNOWN_LEVEL_HELD_HINT = "A car that doesn't report its level won't charge here. That includes a car "
   + "not selected under Car, a car whose app doesn't share its battery level, and a selected car while its "
-  + "app isn't reporting. A smart task can't start them either.";
+  + "app isn't reporting. An energy smart task still charges them in its booked hours.";
 
 export const supportsEvChargeTargetDevice = (device: SettingsUiDeviceDetailItem | null | undefined): boolean => (
   isEvChargerDevice(device)
@@ -71,18 +71,34 @@ const buildUnreportedStatus = (deviceId: string, config: EvChargeTargetConfig): 
     : `${status} To stop at ${config.targetPercent}%, select the car under Car or report the level with a Flow.`;
 };
 
+// A 100% target is the car's own limit and never stops the charger
+// (`lib/planInput/chargeTargetHold.ts`); all it can still do is hold a car with
+// no level, when the owner turned "Charge before the battery level is known" off.
+const FULL_PERCENT = 100;
+
+// What PELS needs a lever for, for this setting.
+const describeStop = (config: EvChargeTargetConfig): string => (
+  config.targetPercent < FULL_PERCENT
+    ? `stop it at ${config.targetPercent}%`
+    : 'hold a car until its level is known'
+);
+
 export const buildChargeTargetStatus = (device: SettingsUiDeviceDetailItem, config: EvChargeTargetConfig): string => {
+  if (config.targetPercent >= FULL_PERCENT && config.chargeBeforeLevelKnown) {
+    return 'The car charges to its own limit. Lower the level to stop earlier.';
+  }
   if (!supportsPowerDevice(device)) {
-    return `PELS has no power reading from this charger, so it cannot stop it at ${config.targetPercent}%.`;
+    return `PELS has no power reading from this charger, so it cannot ${describeStop(config)}.`;
   }
   if (!hasStandingGrant(device.id)) {
-    return `PELS only watches this charger. Turn on Power-limit control to stop at ${config.targetPercent}%.`;
+    return `PELS only watches this charger. Turn on Power-limit control to ${describeStop(config)}.`;
   }
   // The plug decides before the level, as the runtime does: with no car on the
   // cable nothing charges and nothing is held, whatever level was last read.
   if (isEvObserved(device) && !isEvPlugStateConnected(device.evChargingState)) return 'No car connected.';
   const level = device.stateOfCharge?.level;
   if (level?.kind === 'known') {
+    if (config.targetPercent >= FULL_PERCENT) return `The car charges to its own limit. Now ${level.percent}%.`;
     return level.percent >= config.targetPercent
       ? `Reached ${config.targetPercent}%. Charging stops here unless a smart task asks for more.`
       : `Charges to ${config.targetPercent}%. Now ${level.percent}%.`;

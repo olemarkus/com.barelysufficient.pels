@@ -601,14 +601,19 @@ and its companion **Charge before the battery level is known** (default on). The
 companion's copy names what the car does, never whose car it is: PELS cannot
 tell a guest car from a second household car, a car whose app shares no battery
 level, or the owner's own car before its app reports in, so every line says
-`A car that doesn't report its level ...`. The status line under the field
+`A car that doesn't report its level ...`. With the companion off, the hint
+adds that an energy smart task still charges such a car in its booked hours (a
+battery level task cannot plan without the level). The status line under the field
 (`buildChargeTargetStatus`, `deviceDetail/evChargeTarget.ts`) never names a car
 either: `Charges to 60%. Now 42%.`, `Reached 60%. Charging stops here unless a
 smart task asks for more.`, `Battery level not reported, so the car charges to
 its own limit.` (plus how to get a level when no car is selected), `Battery level
 not reported. Charging is held until it is.`, `No car connected.`, and, without a
-lever, `PELS only watches this charger. Turn on Power-limit control to stop at
-60%.`
+lever, `PELS only watches this charger. Turn on Power-limit control to stop it at
+60%.` A 100% target never stops the charger, so it reads `The car charges to its
+own limit. Lower the level to stop earlier.` (with the no-level toggle off: `The
+car charges to its own limit. Now 100%.`, and the lever lines name `hold a car
+until its level is known` instead of a percent).
 
 Suppressed-control treatment (device page): **applicable-but-unavailable
 renders visible-but-disabled with a gate hint naming the real switch**
