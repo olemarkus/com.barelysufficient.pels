@@ -649,5 +649,8 @@
   },
   "3.17.0": {
     "en": "EV chargers can now stop at a battery level. Turn on \"Charge to a battery level\" on the charger's page and set the level: PELS turns the charger off once the car reaches it, and a smart task can still charge past it in the hours it booked. A car that doesn't report its battery level charges as before, unless you turn off \"Charge before the battery level is known\".\n\nThe charger page is reorganised into Charging, Car, Power limiting and Setup, with the charging steps folded away until you open them."
+  },
+  "3.17.1": {
+    "en": "Charge to a battery level at 100% now leaves charging to the car, as before the setting existed: a full car that still draws power, for example to heat the cabin, is no longer switched off. The setting's hint now says that an energy smart task still charges a car that doesn't report its battery level, and \"Leave off until turned on again\" sits at the end of the charger's Power limiting card."
   }
 }
