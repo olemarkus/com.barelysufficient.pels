@@ -74,6 +74,11 @@ const DEFERRED_RESTORE_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
   // two co-occur even less — but a task whose current hour is idle must not have
   // its release lift the very hold that hour's idleness justifies.
   PLAN_REASON_CODES.awaitingPelsStart,
+  // The charge target hold, for the same reason: only a `planned` decision lifts
+  // it, and that lift removes the reason before the plan is built, so a restore
+  // under either code would come from a task that is not driving the charger.
+  PLAN_REASON_CODES.chargeTargetReached,
+  PLAN_REASON_CODES.awaitingBatteryLevel,
   // One smart task's binary_restore must not lift another task's startup reservation: the
   // reserving device is higher priority by construction, so resuming here would take exactly
   // the block the reservation exists to protect.

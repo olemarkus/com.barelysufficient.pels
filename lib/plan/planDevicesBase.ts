@@ -11,6 +11,7 @@ import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { resolveShedIntent } from '../device/deviceActionProjection';
 import { isStartPolicyHeldDevice, isStartPolicyHoldShed } from './shedding/startPolicyHold';
 import { isDeferredHoldShed } from './shedding/deferredHold';
+import { isChargeTargetHeldDevice, isChargeTargetHoldShed, resolveHeldChargeTarget } from './shedding/chargeTargetHold';
 import { materializeShedSnapshotFields } from './planActionMaterialization';
 import { resolveSteppedLoadDirectShedStepId } from './planSteppedShedResolution';
 import {
@@ -303,6 +304,8 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
  * - `startPolicyHoldActive`: `getInactiveReason` and starvation eligibility ask
  *   whether the policy is holding this device, and only the shared predicate
  *   knows the smart-task lift.
+ * - `chargeTargetHeld`: the same question for the charge target, answered with
+ *   the held target so `getInactiveReason` can name it.
  * - `nonCapacityHoldShed`: this cycle's reduction is a standing hold or solar
  *   tracking alone, with no fresh capacity reason, for fairness and actuation clocks.
  *   `shedSet` membership is part of the question, not a hedge: a start-policy
@@ -311,15 +314,18 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
 function resolveHoldDecisions(
   inputs: BasePlanDeviceInputs,
   decision: PlannedDeviceDecision,
-): Pick<LooseDevicePlanDevice, 'startPolicyHoldActive' | 'nonCapacityHoldShed'> {
+): Pick<LooseDevicePlanDevice, 'startPolicyHoldActive' | 'chargeTargetHeld' | 'nonCapacityHoldShed'> {
   const { dev, sheddingPlan, surplusHoldShed } = inputs;
   const { shedSet, shedReasons } = sheddingPlan;
   // Keys only when true: absence is the one spelling of "not held".
   const holdOnly = (shedSet.has(dev.id)
-    && (isStartPolicyHoldShed(dev, shedReasons) || isDeferredHoldShed(dev, shedReasons) || surplusHoldShed))
+    && (isStartPolicyHoldShed(dev, shedReasons) || isChargeTargetHoldShed(dev, shedReasons)
+      || isDeferredHoldShed(dev, shedReasons) || surplusHoldShed))
     || isSurplusCeilingReduction(inputs, decision);
+  const chargeTargetHeld = resolveHeldChargeTarget(dev);
   return {
     ...(isStartPolicyHeldDevice(dev) ? { startPolicyHoldActive: true as const } : {}),
+    ...(chargeTargetHeld ? { chargeTargetHeld } : {}),
     ...(holdOnly ? { nonCapacityHoldShed: true as const } : {}),
   };
 }
@@ -386,7 +392,14 @@ function resolveEffectiveShedBehavior(
   // temperature-only device has neither, so an OFF there issues no command at all
   // and the plain setpoint write keeps it heating to its mode target under a plan
   // that says off. Its configured floor, the setback, is the most "off" it has.
-  const heldOff = isStartPolicyHoldShed(dev, shedReasons) || isDeferredHoldShed(dev, shedReasons);
+  // A charger held at its target is shed to OFF whatever else sheds it: a
+  // stepped charger at its lowest current keeps charging past the target, and a
+  // capacity reason on the same cycle does not make that acceptable. So this
+  // asks whether the hold applies (`isChargeTargetHeldDevice`), not whether it
+  // is this cycle's only reason (`isChargeTargetHoldShed`, which still decides
+  // whether the shed counts as capacity pressure).
+  const heldOff = isStartPolicyHoldShed(dev, shedReasons) || isChargeTargetHeldDevice(dev)
+    || isDeferredHoldShed(dev, shedReasons);
   const canTurnOff = isBinaryPlanDevice(dev) || isSteppedLoadDevice(dev);
   return shouldShed && heldOff && canTurnOff ? TURN_OFF_SHED_BEHAVIOR : configured;
 }

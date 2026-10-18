@@ -36,6 +36,8 @@ const buildInputDevice = (
     // device: the planner reads the rank off the device now, because the whole
     // planned set is ranked before the build starts.
     priority: loose.id === 'heater' ? 1 : 10,
+    // Required: no charge target is the producer's answer for these loads.
+    chargeTargetHold: { kind: 'none' } as const,
     ...loose,
   };
   return withBinaryDiscriminant({

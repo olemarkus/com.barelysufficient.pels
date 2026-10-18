@@ -123,7 +123,19 @@ Choose the same charger in the PELS action card, and map the battery percentage 
 
 With no car selected, this Flow supplies battery reports for the charger. EV boost mode can use the resulting battery level to give the charger extra priority while the car is below the configured boost threshold.
 
-## Step 6: Check the Setup
+## Step 6 (Optional): Charge to a Battery Level
+
+Without a battery level, a charger under power limiting charges until the car stops, at the car's own charge limit. To keep the car at an everyday level instead, open the charger's device page and turn on **Charge to a battery level** in the **Charging** card, then set the level, for example 30%.
+
+- **PELS stops charging at that level.** At or above it, PELS turns the charger off. Below it, the car charges as power allows.
+- **A smart task charges further.** In the hours a smart task booked, the car charges past the level toward the task's target, for example 80% by 07:00. When the task ends, the level applies again.
+- **PELS needs the car's battery level**, from a car selected under **Car**, from the charger itself, or from a Flow (Step 5). The status line under the setting says what the level means for the car on the cable right now.
+- **Charge before the battery level is known** decides what happens to a car whose level PELS does not have: a guest car, a second car not selected under **Car**, a car whose app doesn't share its battery level, or your own car before its app reports in after you plug in. On (the default), such a car charges to its own limit. Off, it does not charge until PELS knows its level, and a smart task cannot start it either.
+- **PELS needs Power-limit control** (or **Only PELS starts this device**) to stop the charger. Without it, PELS only watches the charger and the status line says so.
+
+Charge boost and **Charge to a battery level** do different jobs: boost takes power from other devices while the battery is below its level, and the battery level is where charging stops.
+
+## Step 7: Check the Setup
 
 Start with **Simulation mode** if you are still tuning the rest of PELS. Then verify:
 

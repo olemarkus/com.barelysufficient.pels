@@ -165,6 +165,16 @@ export const formatReservedForStartStatus = (targetName: string): string => (
 // is OFF; PELS turns it on only while the home exports enough solar to cover
 // its draw. Registered in `notes/ui-terminology.md` § "Solar surplus vocabulary".
 export const PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS = 'Waiting for solar surplus';
+// Reason line for a charger held off by its target battery level (reason code
+// `chargeTargetReached`): the car is at or above the owner's target. Names the
+// target, never the car. Registered in `notes/ui-terminology.md`.
+export const formatChargeTargetReachedStatus = (targetPercent: number): string => (
+  `Reached its battery target (${targetPercent}%)`
+);
+// Reason line for a charger held off until its car reports a battery level
+// (reason code `awaitingBatteryLevel`), because its owner chose not to charge
+// before the level is known. Registered in `notes/ui-terminology.md`.
+export const PLAN_STATE_AWAITING_BATTERY_LEVEL_STATUS = 'Waiting for battery level';
 // Device-detail diagnostics wording for a device standing down behind another device's startup
 // reservation. Kept beside its siblings (and out of the settings-UI view) so the screen and the
 // runtime logs cannot drift apart. Registered in `notes/ui-terminology.md`.

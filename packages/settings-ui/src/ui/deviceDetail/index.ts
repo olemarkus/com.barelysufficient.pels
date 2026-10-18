@@ -10,9 +10,6 @@ import {
   deviceDetailSurplusOptRow,
   deviceDetailControlModelRow,
   deviceDetailControlModel,
-  deviceDetailChargingSection,
-  deviceDetailSheddingSection,
-  deviceDetailSurplusTrackRow,
 } from '../dom.ts';
 import { renderDevices } from '../devices.ts';
 import { refreshRecommendationSurfaces } from '../recommendations.ts';
@@ -63,12 +60,13 @@ import {
   resolveSavedSteppedLoadProfile,
   updateSetStepOptionLabel,
 } from './steppedLoadDraft.ts';
+import { loadEvBoostSettings } from './evBoost.ts';
+import { loadEvChargeTargetSettings } from './evChargeTarget.ts';
 import {
-  initEvBoostHandlers,
-  loadEvBoostSettings,
-  renderEvBoostSettings,
-  supportsEvBoostDevice,
-} from './evBoost.ts';
+  initChargingCardHandlers,
+  renderChargingCardSettings,
+  setDeviceDetailChargingCardState,
+} from './chargingCard.ts';
 import {
   initExpectedPowerHandlers,
   loadDeviceExpectedPowerOverrides,
@@ -215,7 +213,7 @@ const resolveManagedHint = (
   }
   if (!controlState.supportsPower && !controlState.supportsTemperature) return DEVICE_POWER_SUPPORT_HINT;
   // An unmanaged charger's page hides its Charging and Power limiting cards
-  // (setDeviceDetailChargingCardState), so this switch names what they hold.
+  // (chargingCard.ts), so this switch names what they hold.
   if (!controlState.isManaged && resolveDeviceDetailKind(device) === 'ev_charger') {
     return 'Turn on to set how this charger charges and how PELS limits it.';
   }
@@ -279,25 +277,6 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   });
 };
 
-// The Charging card shows on a managed EV charger that has a charging rule to
-// offer: Charge boost (a stepped charger) or Charge on solar surplus, whose row
-// setDeviceDetailSurplusTrackingControl has already resolved on this refresh.
-// The Power limiting card shows for every kind but a battery, which carries its
-// own switches. An unmanaged charger has nothing to charge toward or limit, so
-// both cards go and the page reduces to Car and Setup, which auto-expands for it.
-const setDeviceDetailChargingCardState = (
-  device: ReturnType<typeof getDeviceById>,
-  controlState: { isManaged: boolean },
-) => {
-  const kind = resolveDeviceDetailKind(device);
-  const isUnmanagedCharger = kind === 'ev_charger' && !controlState.isManaged;
-  const hasChargingRule = supportsEvBoostDevice(device) || deviceDetailSurplusTrackRow?.hidden === false;
-  if (deviceDetailChargingSection) {
-    deviceDetailChargingSection.hidden = kind !== 'ev_charger' || isUnmanagedCharger || !hasChargingRule;
-  }
-  if (deviceDetailSheddingSection) deviceDetailSheddingSection.hidden = kind === 'battery' || isUnmanagedCharger;
-};
-
 /**
  * The single write boundary for `device_control_profiles`.
  *
@@ -346,7 +325,7 @@ const refreshOpenDeviceDetail = () => {
   renderTargetPowerConfig(device);
   renderExpectedPowerField(device);
   renderTemperatureBoostSettings(device);
-  renderEvBoostSettings(device);
+  renderChargingCardSettings(device);
   renderCarAssociation(device);
   setDeviceDetailDeltaValues(currentDetailDeviceId);
   setDeviceDetailSurplusValues(currentDetailDeviceId);
@@ -392,7 +371,7 @@ export const openDeviceDetail = (deviceId: string) => {
   renderTargetPowerConfig(device);
   renderExpectedPowerField(device);
   renderTemperatureBoostSettings(device);
-  renderEvBoostSettings(device);
+  renderChargingCardSettings(device);
   invalidateCarOptions();
   renderCarAssociation(device);
   renderDeviceDetailModes(device);
@@ -476,6 +455,7 @@ export {
   clearEvCarAssociations,
   loadDeviceExpectedPowerOverrides,
   loadEvBoostSettings,
+  loadEvChargeTargetSettings,
   loadEvCarAssociations,
   loadShedBehaviors,
   loadTemperatureBoostSettings,
@@ -555,7 +535,7 @@ export const initDeviceDetailHandlers = () => {
     getCurrentDetailDeviceId,
     refreshOpenDeviceDetail,
   });
-  initEvBoostHandlers({
+  initChargingCardHandlers({
     getCurrentDetailDeviceId,
     getDeviceById,
     refreshOpenDeviceDetail,

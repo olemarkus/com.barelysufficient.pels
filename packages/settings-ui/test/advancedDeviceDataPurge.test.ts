@@ -3,6 +3,7 @@ import {
   DEVICE_CONTROL_PROFILES,
   DEVICE_TARGET_POWER_CONFIGS,
   EV_BOOST_SETTINGS,
+  EV_CHARGE_TARGET_SETTINGS,
   MODE_DEVICE_TARGETS,
   OVERSHOOT_BEHAVIORS,
   RESPECT_EXTERNAL_OFF_DEVICES,
@@ -59,6 +60,7 @@ describe('advanced device data purge', () => {
       [OVERSHOOT_BEHAVIORS]: perDeviceMap({ action: 'turn_off' }),
       [TEMPERATURE_BOOST_SETTINGS]: perDeviceMap({ enabled: true }),
       [EV_BOOST_SETTINGS]: perDeviceMap({ enabled: true }),
+      [EV_CHARGE_TARGET_SETTINGS]: perDeviceMap({ targetPercent: 60, chargeBeforeLevelKnown: true }),
       price_optimization_settings: perDeviceMap(PRICE_CONFIG),
       [TEMPERATURE_CONTROL_DISABLED_DEVICES]: perDeviceMap(true),
       [CAPACITY_PRIORITIES]: { Home: { [DEVICE_ID]: 1, [KEEP_ID]: 2 } },
@@ -95,6 +97,7 @@ describe('advanced device data purge', () => {
     state.shedBehaviors = perDeviceMap({ action: 'turn_off' }) as typeof state.shedBehaviors;
     state.temperatureBoostSettings = perDeviceMap({ enabled: true }) as typeof state.temperatureBoostSettings;
     state.evBoostSettings = perDeviceMap({ enabled: true }) as typeof state.evBoostSettings;
+    state.evChargeTargetSettings = perDeviceMap({ targetPercent: 60, chargeBeforeLevelKnown: true });
     state.priceOptimizationSettings = perDeviceMap(PRICE_CONFIG);
     state.temperatureControlDisabledMap = perDeviceMap(true);
     state.capacityPriorities = settings[CAPACITY_PRIORITIES];
@@ -113,6 +116,7 @@ describe('advanced device data purge', () => {
     expect(state.shedBehaviors).toEqual({ [KEEP_ID]: { action: 'turn_off' } });
     expect(state.temperatureBoostSettings).toEqual({ [KEEP_ID]: { enabled: true } });
     expect(state.evBoostSettings).toEqual({ [KEEP_ID]: { enabled: true } });
+    expect(state.evChargeTargetSettings).toEqual({ [KEEP_ID]: { targetPercent: 60, chargeBeforeLevelKnown: true } });
     expect(state.priceOptimizationSettings).toEqual({ [KEEP_ID]: PRICE_CONFIG });
     expect(state.temperatureControlDisabledMap).toEqual(perDeviceMap(true));
     // The persisted preference was removed, but a transient managed-map read

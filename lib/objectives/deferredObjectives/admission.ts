@@ -238,6 +238,7 @@ const buildAdmissionDecoration = (
   ...resolveBoostFields(claims.engageBoost),
   ...(claims.reservesStartupPower ? { reservesStartupPower: true } : {}),
   ...(claims.liftsStartPolicyHold ? { startPolicyHoldLifted: true } : {}),
+  ...(claims.liftsChargeTargetHold ? { chargeTargetHoldLifted: true } : {}),
   ...(typeof deadlineFloorTargetC === 'number' ? { deadlineFloorTargetC } : {}),
 });
 
@@ -250,6 +251,7 @@ type DeferredHourClaims = {
   engageBoost: boolean;
   reservesStartupPower: boolean;
   liftsStartPolicyHold: boolean;
+  liftsChargeTargetHold: boolean;
 };
 
 const resolveHourClaims = (
@@ -287,11 +289,20 @@ const resolveHourClaims = (
     // boundary that separates these two readers is why the comparison is
     // duplicated, and shared-domain is not a legal home for it.
     liftsStartPolicyHold: planned && device.startPolicyInForce === 'pels_only',
+    // A charger's target battery level gives way the same way: a smart task wins
+    // during its booked hours, so a task that books this hour may charge past the
+    // target. Again only on `planned`: an `idle` task wants the charger off
+    // anyway, and an `inactive` one (no battery level, no session) is not driving
+    // it, so a hold that waits for a level is never lifted by a task that cannot
+    // see one. The producer's answer, read directly, for the boundary reason
+    // above (`resolveHeldChargeTarget`, `lib/plan/shedding/chargeTargetHold.ts`).
+    liftsChargeTargetHold: planned && device.chargeTargetHold.kind !== 'none',
   };
 };
 
 const claimsAnything = (claims: DeferredHourClaims): boolean => (
   claims.budgetExempt || claims.engageBoost || claims.reservesStartupPower || claims.liftsStartPolicyHold
+  || claims.liftsChargeTargetHold
 );
 
 // Translate an active deferred objective into a temporary capacity-control-on signal for the

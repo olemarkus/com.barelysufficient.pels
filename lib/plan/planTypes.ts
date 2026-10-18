@@ -5,6 +5,7 @@ import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedL
 import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
 import type { PlannedTemperatureState } from '../../packages/shared-domain/src/plannedTemperatureState';
 import type {
+  HeldChargeTarget,
   MeteredPlanInputKind,
   PlanInputDevice,
   PlanInputDeviceBase,
@@ -535,6 +536,8 @@ export type SteppedPlanInputDevice = PlanInputDeviceBase & SteppedLoadKind;
  *   (`getObservedStateOfCharge` in `createPlanService`); the configured
  *   thresholds never cross the plan wire at all.
  * - The start-policy settings: the DECISION travels (`startPolicyHoldActive`).
+ * - The charge target (`chargeTargetHold`) and its smart-task lift: the DECISION
+ *   travels (`chargeTargetHeld`).
  */
 type CarriedInputKey =
   | 'id' | 'name' | 'deviceType' | 'isEvCharger' | 'isBatteryOrSolar' | 'currentState'
@@ -616,6 +619,18 @@ type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
    * reason normalization has stamped one.
    */
   startPolicyHoldActive?: true;
+  /**
+   * The charge target holding this device off THIS CYCLE, if one is: the car is
+   * at its target, or the charger waits for a battery level its owner wants
+   * before charging, and no smart task is driving it. Stamped once in
+   * `buildBasePlanDevice` from `resolveHeldChargeTarget`
+   * (`lib/plan/shedding/chargeTargetHold.ts`), the twin of
+   * `startPolicyHoldActive` above: the DECISION travels, never the setting or
+   * the level. It carries the held target rather than a bare flag because its
+   * one output-side reader, `getInactiveReason`, names the target in the reason
+   * it writes once the charger is off. Absent when nothing holds.
+   */
+  chargeTargetHeld?: HeldChargeTarget;
   /**
    * This cycle's reduction is NOT capacity pressure: "Only PELS starts this
    * device", a smart task's deferred hour, a solar hold, or a keep step lowered

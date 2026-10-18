@@ -27,6 +27,7 @@ import {
   DEBUG_LOGGING_TOPICS,
   DEVICE_HOME_ASSIGNMENTS,
   EV_BOOST_SETTINGS,
+  EV_CHARGE_TARGET_SETTINGS,
   EV_CAR_ASSOCIATIONS,
   EXPORT_FIXED,
   EXPORT_PRICE_ENABLED,
@@ -461,6 +462,10 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
     [EV_BOOST_SETTINGS]: async () => {
       deps.loadCapacitySettings();
       await rebuildPlanFromSettings(deps, EV_BOOST_SETTINGS);
+    },
+    [EV_CHARGE_TARGET_SETTINGS]: async () => {
+      deps.loadCapacitySettings();
+      await rebuildPlanFromSettings(deps, EV_CHARGE_TARGET_SETTINGS);
     },
     [CAPACITY_ENABLED]: async () => handlePowerLimitsChange(deps),
     [GRID_IMPORT_ENABLED]: async () => handlePowerLimitsChange(deps),

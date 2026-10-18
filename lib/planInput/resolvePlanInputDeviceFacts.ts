@@ -35,6 +35,7 @@ import {
 } from './planInputDeviceHelpers';
 import { resolveEvTargetPowerPlannerProfile } from '../device/targetPowerReachability';
 import { resolveStorageCluster } from './storageProjection';
+import { projectChargeTargetHold } from './chargeTargetHold';
 
 /**
  * The owner's standing grants for a device, read from the same settings the
@@ -153,6 +154,7 @@ export const resolvePlanInputDeviceFacts = (
     startPolicy,
     control,
     startPolicyInForce,
+    chargeTargetHold: projectChargeTargetHold(source.getEvChargeTargetConfig(device.id), device, control),
     surplusTracking,
     hasStandingDemand,
     residualKw,

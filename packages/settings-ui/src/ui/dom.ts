@@ -294,6 +294,18 @@ export const deviceDetailTemperatureBoostBelowRow = qs('#device-detail-temperatu
 export const deviceDetailTemperatureBoostBelow = document.querySelector(
   '#device-detail-temperature-boost-below',
 ) as MdFilledTextFieldElement;
+export const deviceDetailChargeTarget = qs('#device-detail-charge-target');
+export const deviceDetailChargeTargetEnabled = document.querySelector(
+  '#device-detail-charge-target-enabled',
+) as MdSwitchElement;
+export const deviceDetailChargeTargetPercent = document.querySelector(
+  '#device-detail-charge-target-percent',
+) as MdFilledTextFieldElement;
+export const deviceDetailChargeTargetStatus = qs('#device-detail-charge-target-status');
+export const deviceDetailChargeTargetUnknown = document.querySelector(
+  '#device-detail-charge-target-unknown',
+) as MdSwitchElement;
+export const deviceDetailChargeTargetUnknownHint = qs('#device-detail-charge-target-unknown-hint');
 export const deviceDetailEvBoost = qs('#device-detail-ev-boost');
 export const deviceDetailEvBoostEnabled = document.querySelector(
   '#device-detail-ev-boost-enabled',

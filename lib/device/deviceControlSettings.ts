@@ -10,6 +10,8 @@ import type {
   DeviceControlProfiles,
   EvBoostConfig,
   EvBoostSettings,
+  EvChargeTargetConfig,
+  EvChargeTargetSettings,
   EvCarAssociations,
   TargetDeviceSnapshot,
   TargetPowerReachabilityState,
@@ -18,6 +20,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import { isBooleanMap, isDeviceControlProfiles, isPlainObjectRecord, isStringMap } from '../utils/appTypeGuards';
 import { normalizeEvBoostSettings } from '../../packages/shared-domain/src/settings/evBoost';
+import { normalizeEvChargeTargetSettings } from '../../packages/shared-domain/src/settings/evChargeTarget';
 import { normalizeTemperatureBoostSettings } from '../../packages/shared-domain/src/settings/temperatureBoost';
 import { normalizeEvCarAssociations } from '../../packages/shared-domain/src/settings/evCarAssociations';
 import { normalizeDeviceControlProfiles } from '../../packages/shared-domain/src/deviceControlProfiles';
@@ -43,6 +46,7 @@ import {
   DEVICE_TARGET_POWER_CONFIGS,
   DEVICE_TARGET_POWER_REACHABILITY,
   EV_BOOST_SETTINGS,
+  EV_CHARGE_TARGET_SETTINGS,
   EV_CAR_ASSOCIATIONS,
   MANAGED_DEVICES,
   NATIVE_EV_WIRING_DEVICES,
@@ -78,6 +82,7 @@ type DeviceControlMaps = {
   readonly temperatureControl: TemperatureControlPolicy;
   readonly temperatureBoost: TemperatureBoostSettings;
   readonly evBoost: EvBoostSettings;
+  readonly evChargeTargets: EvChargeTargetSettings;
   readonly evCarAssociations: EvCarAssociations;
   readonly nativeEvWiring: BooleanMap;
   readonly driverOverrides: Readonly<Record<string, string>>;
@@ -102,7 +107,7 @@ const normalizeOrKeep = <T>(raw: unknown, normalize: (value: unknown) => T, curr
 /**
  * The owner's per-device control configuration, as the running app holds it:
  * which devices PELS manages and may limit, their start policies, temperature
- * command authority, boost settings, car associations, native EV wiring
+ * command authority, boost settings, charger battery targets, car associations, native EV wiring
  * choices, driver overrides, control profiles, target-power candidates and
  * shed behaviours.
  *
@@ -122,6 +127,7 @@ export class DeviceControlSettings {
     temperatureControl: { devices: {}, state: 'unavailable' },
     temperatureBoost: {},
     evBoost: {},
+    evChargeTargets: {},
     evCarAssociations: {},
     nativeEvWiring: {},
     driverOverrides: {},
@@ -158,6 +164,10 @@ export class DeviceControlSettings {
     return this.maps.temperatureBoost[deviceId];
   }
   getEvBoostConfig(deviceId: string): EvBoostConfig | undefined { return this.maps.evBoost[deviceId]; }
+  /** The charger's target battery level; `undefined` is "no target", an answer rather than a gap. */
+  getEvChargeTargetConfig(deviceId: string): EvChargeTargetConfig | undefined {
+    return this.maps.evChargeTargets[deviceId];
+  }
   getEvCarAssociationCarIds(deviceId: string): string[] { return this.maps.evCarAssociations[deviceId]?.carIds ?? []; }
   getDeviceControlProfile(deviceId: string): DeviceControlProfile | undefined {
     return this.maps.controlProfiles[deviceId];
@@ -246,6 +256,9 @@ export class DeviceControlSettings {
         settings.get(TEMPERATURE_BOOST_SETTINGS), normalizeTemperatureBoostSettings, current.temperatureBoost,
       ),
       evBoost: normalizeOrKeep(settings.get(EV_BOOST_SETTINGS), normalizeEvBoostSettings, current.evBoost),
+      evChargeTargets: normalizeOrKeep(
+        settings.get(EV_CHARGE_TARGET_SETTINGS), normalizeEvChargeTargetSettings, current.evChargeTargets,
+      ),
       evCarAssociations: normalizeOrKeep(
         settings.get(EV_CAR_ASSOCIATIONS), normalizeEvCarAssociations, current.evCarAssociations,
       ),

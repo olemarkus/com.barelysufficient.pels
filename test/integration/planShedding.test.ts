@@ -64,6 +64,8 @@ const buildDevice = (
     // that here. A cap-less device overrides with `binaryCapabilityId: undefined`.
     binaryCapabilityId: 'onoff' as const,
     binaryControl: { on: true },
+    // Required: no charge target is the producer's answer for these loads.
+    chargeTargetHold: { kind: 'none' } as const,
     ...overrides,
   };
   // Consumed by the residual resolution below and stripped here, exactly as the

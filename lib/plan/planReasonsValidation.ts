@@ -62,6 +62,10 @@ const SHED_REASON_RULES: readonly ReasonCodeRule[] = [
   // rebuild; the lesson is that a new reason is not landed until a full build
   // has produced it (`test/integration/startPolicyPlanBuild.test.ts`).
   { code: PLAN_REASON_CODES.awaitingPelsStart },
+  // The charge target hold, legal for `shed` for the same reason: the hold is a
+  // standing shed intent while the charger still runs.
+  { code: PLAN_REASON_CODES.chargeTargetReached },
+  { code: PLAN_REASON_CODES.awaitingBatteryLevel },
   { code: PLAN_REASON_CODES.neutralStartupHold },
   { code: PLAN_REASON_CODES.shortfall },
   { code: PLAN_REASON_CODES.cooldownShedding },
@@ -106,6 +110,17 @@ const REASON_REQUIRED_FLAGS = [
     code: PLAN_REASON_CODES.awaitingPelsStart,
     flags: ['startPolicyHoldActive'],
   },
+  // The charge target's two reasons pair with the hold `buildBasePlanDevice`
+  // stamps from `resolveHeldChargeTarget`, so the reason and the posture come
+  // from the same place.
+  {
+    code: PLAN_REASON_CODES.chargeTargetReached,
+    flags: ['chargeTargetHeld'],
+  },
+  {
+    code: PLAN_REASON_CODES.awaitingBatteryLevel,
+    flags: ['chargeTargetHeld'],
+  },
 ] as const satisfies readonly {
   code: PlanReasonCode;
   flags: readonly (keyof DevicePlanDevice)[];
@@ -119,6 +134,10 @@ const INACTIVE_REASON_RULES: readonly ReasonCodeRule[] = [
   // the turn-off), `inactive` once it is off (which is what makes the card read
   // `Off`). See `getInactiveReason`.
   { code: PLAN_REASON_CODES.awaitingPelsStart },
+  // The charge target hold has the same lifecycle: `shed` while the charger
+  // runs, `inactive` once it is off.
+  { code: PLAN_REASON_CODES.chargeTargetReached },
+  { code: PLAN_REASON_CODES.awaitingBatteryLevel },
 ] as const;
 
 function getAllowedReasonRules(plannedState: string): readonly ReasonCodeRule[] {
@@ -145,6 +164,13 @@ const listReasonCodes = (rules: readonly ReasonCodeRule[]): string[] => rules.ma
  * `find`/`some`: this runs for every device on every build, and each closure was
  * an allocation for a lookup over two rules.
  */
+// A boolean posture is set when `true`. A posture that carries its own payload
+// (`chargeTargetHeld`, which names the held target) is set by its presence: it
+// is stamped only when it holds, and absent otherwise.
+const isPostureFlagSet = (value: unknown): boolean => (
+  value === true || (typeof value === 'object' && value !== null)
+);
+
 function resolveUnsatisfiedRequiredFlag(
   dev: DevicePlanDevice,
   reasonCode: string,
@@ -152,7 +178,7 @@ function resolveUnsatisfiedRequiredFlag(
   for (const rule of REASON_REQUIRED_FLAGS) {
     if (rule.code !== reasonCode) continue;
     for (const flag of rule.flags) {
-      if (dev[flag] === true) return null;
+      if (isPostureFlagSet(dev[flag])) return null;
     }
     return rule;
   }

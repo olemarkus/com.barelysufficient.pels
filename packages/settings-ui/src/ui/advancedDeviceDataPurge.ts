@@ -11,6 +11,7 @@ import {
   DEVICE_EXPECTED_POWER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
   EV_BOOST_SETTINGS,
+  EV_CHARGE_TARGET_SETTINGS,
   EV_CAR_ASSOCIATIONS,
   CAPACITY_PRIORITIES,
   MAIN_HOME_ID,
@@ -82,6 +83,7 @@ const collectDeviceIdsFromSettings = (): Set<string> => {
     ...Object.keys(state.shedBehaviors),
     ...Object.keys(state.temperatureBoostSettings),
     ...Object.keys(state.evBoostSettings),
+    ...Object.keys(state.evChargeTargetSettings),
     // Both sides of the association map: a charger that ONLY has ticked cars,
     // and a car that only appears inside some charger's list, are otherwise
     // invisible to cleanup discovery and can never be purged.
@@ -252,6 +254,11 @@ const PURGED_MAPS: readonly PurgedMap[] = [
     (map) => { state.temperatureBoostSettings = map; },
   ),
   purgedRecord(EV_BOOST_SETTINGS, () => state.evBoostSettings, (map) => { state.evBoostSettings = map; }),
+  purgedRecord(
+    EV_CHARGE_TARGET_SETTINGS,
+    () => state.evChargeTargetSettings,
+    (map) => { state.evChargeTargetSettings = map; },
+  ),
   purgedMap(
     EV_CAR_ASSOCIATIONS,
     normalizeEvCarAssociations,

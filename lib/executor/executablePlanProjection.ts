@@ -105,7 +105,8 @@ export function hasExecutableShedDevices(
 // capacity. Discriminated on the `awaitingSolarSurplus` reason code (not the
 // `surplusOnly` flag): a dump load that is genuinely capacity-shed carries a
 // `capacity` reason and MUST still block. See `notes/state-management/`.
-// Both STANDING POSTURES, discriminated on their reason codes rather than on the
+// The STANDING POSTURES (solar surplus, the start policy, the charge target),
+// discriminated on their reason codes rather than on the
 // producer flags behind them: a device that is genuinely capacity-shed carries a
 // `capacity` reason and MUST still block, whatever its posture settings say.
 //
@@ -116,6 +117,8 @@ export function hasExecutableShedDevices(
 const isPostureHoldShed = (planDevice: PlanDevice): boolean => (
   planDevice.reason?.code === PLAN_REASON_CODES.awaitingSolarSurplus
   || planDevice.reason?.code === PLAN_REASON_CODES.awaitingPelsStart
+  || planDevice.reason?.code === PLAN_REASON_CODES.chargeTargetReached
+  || planDevice.reason?.code === PLAN_REASON_CODES.awaitingBatteryLevel
   || planDevice.nonCapacityHoldShed === true
 );
 

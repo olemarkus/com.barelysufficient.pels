@@ -10,6 +10,7 @@ import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powe
 import type {
   AssociatedCarDecoration,
   EvBoostConfig,
+  EvChargeTargetConfig,
   TemperatureBoostConfig,
 } from '../../packages/contracts/src/types';
 import type {
@@ -33,6 +34,8 @@ export type PlanInputProjectionSource = {
   getShedBehavior: (deviceId: string) => ShedBehavior;
   getTemperatureBoostConfig: (deviceId: string) => TemperatureBoostConfig | undefined;
   getEvBoostConfig: (deviceId: string) => EvBoostConfig | undefined;
+  /** The charger's target battery level; `undefined` is "no target". */
+  getEvChargeTargetConfig: (deviceId: string) => EvChargeTargetConfig | undefined;
   getDeviceStartPolicies: () => Record<string, DeviceStartPolicy>;
   isCapacityControlEnabled: (deviceId: string) => boolean;
   /**
@@ -70,7 +73,7 @@ export type UnrankedPlanInputDevice = Omit<PlanInputDevice, 'priority'>;
 export type ResolvedPlanInputFacts = Pick<PlanInputDeviceBase,
   | 'currentState' | 'confirmedNotDrawing' | 'commandableNow' | 'commandabilityReason'
   | 'objectiveKind' | 'objectiveSessionInactive' | 'boostSupported' | 'boostRequested'
-  | 'canSetControlResolved' | 'startPolicy' | 'control' | 'startPolicyInForce'
+  | 'canSetControlResolved' | 'startPolicy' | 'control' | 'startPolicyInForce' | 'chargeTargetHold'
   | 'surplusOnly' | 'surplusTracking' | 'externalOffHoldActive' | 'steppedLadderMissing'
   | 'stepPowerCalibration' | 'hasStandingDemand' | 'residualKw' | 'budgetExempt'>
   & SteppedClusterFields

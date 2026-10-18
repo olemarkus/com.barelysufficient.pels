@@ -123,6 +123,24 @@ export type EvBoostConfig = {
 export type EvBoostSettings = Record<string, EvBoostConfig>;
 
 /**
+ * One charger's target battery level: charge to `targetPercent` and stop.
+ *
+ * A DEVICE setting, not a per-mode one. `targetPercent` is a whole percent in
+ * 1..100. `chargeBeforeLevelKnown` answers what PELS does while the charger has
+ * a car but no battery level for it yet: `true` lets it charge (to the car's own
+ * limit, as with no target), `false` keeps it off until a level arrives.
+ * Normalized by `normalizeEvChargeTargetSettings`
+ * (`packages/shared-domain/src/settings/evChargeTarget.ts`).
+ */
+export type EvChargeTargetConfig = {
+    targetPercent: number;
+    chargeBeforeLevelKnown: boolean;
+};
+
+/** Charge targets by charger id; a charger with no entry has no target. */
+export type EvChargeTargetSettings = Record<string, EvChargeTargetConfig>;
+
+/**
  * One device's manual "Power when running" figure — the top rung of the
  * expected-power ladder (`lib/device/devicePowerEstimate.ts`).
  *

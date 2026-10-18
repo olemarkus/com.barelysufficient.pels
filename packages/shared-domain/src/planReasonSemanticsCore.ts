@@ -44,6 +44,16 @@ export const PLAN_REASON_CODES = {
   // numbers/timestamps so the reason is byte-stable across plan cycles
   // (rebuild-storm class, f1550cea).
   awaitingPelsStart: 'awaiting_pels_start',
+  // Standing charge-target hold: the charger's car has reached the owner's target
+  // battery level, so PELS holds the charger off. Carries the target percent,
+  // which is configuration and moves only when the owner edits it, so the reason
+  // stays byte-stable across plan cycles (rebuild-storm class, f1550cea). Lifted
+  // only by a smart task driving the charger this hour.
+  chargeTargetReached: 'charge_target_reached',
+  // Standing charge-target hold before the level is known: a car is connected,
+  // it has reported no battery level this session, and the owner chose not to
+  // charge until one arrives. No detail, byte-stable.
+  awaitingBatteryLevel: 'awaiting_battery_level',
   // "Leave off until turned on again": an opted-in device was turned off outside
   // PELS, independently of its current plan. PELS is NOT holding the device back
   // — it is respecting an explicit action — so this pairs with the display-only
@@ -232,6 +242,8 @@ export type DeviceReason =
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveSatisfied }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
   | { code: typeof PLAN_REASON_CODES.awaitingPelsStart }
+  | { code: typeof PLAN_REASON_CODES.chargeTargetReached; targetPercent: number }
+  | { code: typeof PLAN_REASON_CODES.awaitingBatteryLevel }
   | { code: typeof PLAN_REASON_CODES.externalOffHold }
   | { code: typeof PLAN_REASON_CODES.neutralStartupHold }
   | { code: typeof PLAN_REASON_CODES.startupStabilization }

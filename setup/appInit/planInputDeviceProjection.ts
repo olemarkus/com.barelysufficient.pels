@@ -17,6 +17,7 @@ export function createPlanInputProjectionSource(ctx: AppContext): PlanInputProje
     getShedBehavior: (deviceId) => ctx.getShedBehavior(deviceId),
     getTemperatureBoostConfig: (deviceId) => ctx.deviceControlSettings.getTemperatureBoostConfig(deviceId),
     getEvBoostConfig: (deviceId) => ctx.deviceControlSettings.getEvBoostConfig(deviceId),
+    getEvChargeTargetConfig: (deviceId) => ctx.deviceControlSettings.getEvChargeTargetConfig(deviceId),
     getDeviceStartPolicies: () => ctx.deviceControlSettings.deviceStartPolicies,
     isCapacityControlEnabled: (deviceId) => ctx.isCapacityControlEnabled(deviceId),
     getControllableDevices: () => ctx.deviceControlSettings.controllableDevices,

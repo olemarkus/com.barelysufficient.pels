@@ -1111,6 +1111,38 @@
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">
+              <!-- Charge to a battery level (evChargeTarget.ts). PELS turns the
+                   charger off at the level; a smart task in its booked hours
+                   charges past it. -->
+              <div class="detail-stepped-boost" id="device-detail-charge-target" hidden>
+                <div class="md-switch-row">
+                  <md-switch id="device-detail-charge-target-enabled"></md-switch>
+                  <span class="md-switch-row__content">
+                    <span class="md-switch-row__label pels-text-settings-label">Charge to a battery level</span>
+                    <small class="field__hint">PELS stops charging here. A smart task can charge further.</small>
+                  </span>
+                </div>
+                <div class="md-field-row">
+                  <md-filled-text-field
+                    id="device-detail-charge-target-percent"
+                    label="Battery level"
+                    type="number"
+                    step="1"
+                    min="1"
+                    max="100"
+                    inputmode="numeric"
+                    suffix-text="%"
+                  ></md-filled-text-field>
+                </div>
+                <p class="muted" id="device-detail-charge-target-status" hidden></p>
+                <div class="md-switch-row">
+                  <md-switch id="device-detail-charge-target-unknown"></md-switch>
+                  <span class="md-switch-row__content">
+                    <span class="md-switch-row__label pels-text-settings-label">Charge before the battery level is known</span>
+                    <small class="field__hint" id="device-detail-charge-target-unknown-hint"></small>
+                  </span>
+                </div>
+              </div>
               <div class="detail-stepped-boost" id="device-detail-ev-boost" hidden>
                 <div class="md-switch-row">
                   <md-switch id="device-detail-ev-boost-enabled"></md-switch>

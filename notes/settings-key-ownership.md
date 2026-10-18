@@ -75,6 +75,7 @@ from outside PELS.
   asking the owner.
 
 Keys with owners so far: `mode_aliases`, `mode_device_targets`, `pv_forecast_source`,
+`ev_charge_target_settings`,
 `homey_price_formula`, `price_scheme` + `powerhour_device_id`.
 `price_optimization_settings` is only partly owned: the price adjustment range, its
 stored sign and the lift for an entry that stores none (`DEFAULT_SURPLUS_LIFT_C`)
@@ -120,6 +121,16 @@ before the switch existed), `false` means off. The runtime reads it for the
 planner input's storage cluster, never through `isCapacityControlEnabled`, which
 vetoes every battery; the settings UI's switch and the capacity-control Flow
 cards write it.
+
+`ev_charge_target_settings` (a charger's target battery level) belongs to
+`packages/shared-domain/src/settings/evChargeTarget.ts`. Its reader sanitizes and
+keeps per entry: an entry without a whole percent in 1..100 is dropped (no target),
+and a `chargeBeforeLevelKnown` that is not a boolean reads as `true`, the charger's
+behaviour before it had a target. Its writer, the charger page, saves only a target
+that parses (`parseEvChargeTargetPercent`); a blank or out-of-range field keeps the
+stored one.
+The runtime holds the last map that read as a map (`DeviceControlSettings`); the
+planner never reads the key, only the hold `projectChargeTargetHold` resolves from it.
 
 `mode_aliases` belongs to `packages/shared-domain/src/settings/modeAliases.ts`.
 Runtime and settings UI both lowercase alias keys and ignore malformed entries;

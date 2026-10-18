@@ -32,6 +32,8 @@ describe('buildPlanInputDevice', () => {
       // Producer-resolved: absence in the settings map is the default policy.
       startPolicy: 'unrestricted',
       startPolicyInForce: 'unrestricted',
+      // Required: the producer resolves "no target" to no hold.
+      chargeTargetHold: { kind: 'none' },
       available: true,
       id: 'dev-1',
       name: 'Device',

@@ -15,6 +15,7 @@ import type {
   DeviceTargetPowerConfigs,
   EvBoostConfig,
   EvBoostSettings,
+  EvChargeTargetSettings,
   EvCarAssociations,
   MeasuredPowerObservedProbe,
   TemperatureBoostConfig,
@@ -117,6 +118,7 @@ export type UiState = {
   shedBehaviors: Record<string, ConfiguredShedBehavior>;
   temperatureBoostSettings: TemperatureBoostSettings;
   evBoostSettings: EvBoostSettings;
+  evChargeTargetSettings: EvChargeTargetSettings;
   evCarAssociations: EvCarAssociations;
   evCarAssociationsLoaded: boolean;
   deferredObjectiveSettings: DeferredObjectiveSettingsV1;
@@ -217,6 +219,7 @@ export const state: UiState = {
   shedBehaviors: {},
   temperatureBoostSettings: {},
   evBoostSettings: {},
+  evChargeTargetSettings: {},
   evCarAssociations: {},
   evCarAssociationsLoaded: false,
   deferredObjectiveSettings: createEmptyDeferredObjectiveSettings(),

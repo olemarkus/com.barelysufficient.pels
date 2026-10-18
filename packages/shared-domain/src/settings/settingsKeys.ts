@@ -54,6 +54,9 @@ export const DEVICE_START_POLICIES = 'device_start_policies';
 export const TEMPERATURE_CONTROL_DISABLED_DEVICES = 'temperature_control_disabled_devices';
 export const TEMPERATURE_BOOST_SETTINGS = 'temperature_boost_settings';
 export const EV_BOOST_SETTINGS = 'ev_boost_settings';
+// Per-charger target battery level: `Record<chargerId, EvChargeTargetConfig>`
+// (absent entry = no target). Owner: `./evChargeTarget.ts`.
+export const EV_CHARGE_TARGET_SETTINGS = 'ev_charge_target_settings';
 // The cars each charger MAY associate: `Record<chargerId, { carIds }>` (absent or
 // empty = off for that charger). An eligibility set, never an association — the
 // association is session-scoped and in-memory.

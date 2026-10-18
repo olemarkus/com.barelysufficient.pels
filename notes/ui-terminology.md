@@ -419,7 +419,10 @@ power would not start them and a kW figure would be a lie: `Waiting for cheaper
 hours` (smart task), `Smart task done, held until its ready-by time` (a smart task
 that reached its target holds its device in the hours it did not book until the
 ready-by time, owner ruling 2026-10-17; never `Waiting for cheaper hours`, which
-would say the task still needs energy), `Waiting for solar surplus`, `Turned off elsewhere — turn
+would say the task still needs energy), `Waiting for solar surplus`, `Reached its battery
+target (80%)` and `Waiting for battery level` (a charger's target battery level,
+`formatChargeTargetReachedStatus` and `PLAN_STATE_AWAITING_BATTERY_LEVEL_STATUS`;
+they name the target, never the car), `Turned off elsewhere — turn
 it on to resume`, `Waiting so {device} can start` (startup reservation),
 `Holding at 6 A — cannot increase while 2 devices are limited` (stepped fairness),
 and the countdown lines (`Waiting to resume — 50s`, or `Waiting to increase — 50s`
@@ -592,6 +595,20 @@ device`, what limiting does, and `Leave off until turned on again`, so the switc
 together. An unmanaged charger's page shows neither card: there is nothing to
 charge toward or limit, and the Managed switch's hint names what turning it on
 adds (`Turn on to set how this charger charges and how PELS limits it.`).
+
+The Charging card leads with **Charge to a battery level** (`Battery level`, %)
+and its companion **Charge before the battery level is known** (default on). The
+companion's copy names what the car does, never whose car it is: PELS cannot
+tell a guest car from a second household car, a car whose app shares no battery
+level, or the owner's own car before its app reports in, so every line says
+`A car that doesn't report its level ...`. The status line under the field
+(`buildChargeTargetStatus`, `deviceDetail/evChargeTarget.ts`) never names a car
+either: `Charges to 60%. Now 42%.`, `Reached 60%. Charging stops here unless a
+smart task asks for more.`, `Battery level not reported, so the car charges to
+its own limit.` (plus how to get a level when no car is selected), `Battery level
+not reported. Charging is held until it is.`, `No car connected.`, and, without a
+lever, `PELS only watches this charger. Turn on Power-limit control to stop at
+60%.`
 
 Suppressed-control treatment (device page): **applicable-but-unavailable
 renders visible-but-disabled with a gate hint naming the real switch**

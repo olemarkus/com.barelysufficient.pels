@@ -22,6 +22,8 @@ const buildDevice = (
     control: fixtureControlPosture({ controllable: true }),
     available: true,
     binaryCapabilityId: 'onoff' as const,
+    // Required: no charge target is the producer's answer for these loads.
+    chargeTargetHold: { kind: 'none' } as const,
     ...overrides,
   };
   return withBinaryDiscriminant({

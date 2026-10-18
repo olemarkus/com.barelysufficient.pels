@@ -25,6 +25,7 @@ import {
   DEVICE_EXPECTED_POWER_OVERRIDES,
   DEVICE_DRIVER_OVERRIDES,
   EV_BOOST_SETTINGS,
+  EV_CHARGE_TARGET_SETTINGS,
   EV_CAR_ASSOCIATIONS,
   NATIVE_EV_WIRING_DEVICES,
   RESPECT_EXTERNAL_OFF_DEVICES,
@@ -76,6 +77,7 @@ import {
   clearEvCarAssociations,
   loadDeviceExpectedPowerOverrides,
   loadEvBoostSettings,
+  loadEvChargeTargetSettings,
   loadEvCarAssociations,
   loadShedBehaviors,
   loadTemperatureBoostSettings,
@@ -504,6 +506,32 @@ export const handlePowerTrackerPersisted = (payload: unknown) => {
   else refreshAreaPowerTracker(homeId, POWER_TRACKER_PERSISTED_EVENT);
 };
 
+// Per-device setting maps the device page keeps a copy of: a write from
+// anywhere reloads that copy.
+const DEVICE_SETTING_RELOADERS: Readonly<Record<string, { load: () => Promise<void>; failure: string }>> = {
+  [OVERSHOOT_BEHAVIORS]: { load: loadShedBehaviors, failure: 'Failed to load shed behaviors' },
+  [TEMPERATURE_BOOST_SETTINGS]: {
+    load: loadTemperatureBoostSettings,
+    failure: 'Failed to load temperature boost settings',
+  },
+  [EV_BOOST_SETTINGS]: { load: loadEvBoostSettings, failure: 'Failed to load EV boost settings' },
+  [EV_CHARGE_TARGET_SETTINGS]: { load: loadEvChargeTargetSettings, failure: 'Failed to load charge target settings' },
+  [DEVICE_EXPECTED_POWER_OVERRIDES]: {
+    load: loadDeviceExpectedPowerOverrides,
+    failure: 'Failed to load expected power overrides',
+  },
+  [DEVICE_CONTROL_PROFILES]: { load: loadDeviceControlProfiles, failure: 'Failed to load device control profiles' },
+  [DEVICE_TARGET_POWER_CONFIGS]: {
+    load: loadDeviceControlProfiles,
+    failure: 'Failed to load device control profiles',
+  },
+};
+
+const reloadDeviceSettingIfKey = (key: string): void => {
+  const reloader = DEVICE_SETTING_RELOADERS[key];
+  if (reloader) runLoggedTask(reloader.load(), reloader.failure, 'settings.set');
+};
+
 export const createSettingsSetHandler = () => (key: string) => {
   invalidateSettingCache(key);
 
@@ -521,26 +549,8 @@ export const createSettingsSetHandler = () => (key: string) => {
   if (PLAN_REFRESH_KEYS.has(key) || DEVICE_CONTROL_KEYS.has(key)) {
     refreshPlanForUi('settings.set');
   }
-  if (key === OVERSHOOT_BEHAVIORS) {
-    runLoggedTask(loadShedBehaviors(), 'Failed to load shed behaviors', 'settings.set');
-  }
-  if (key === TEMPERATURE_BOOST_SETTINGS) {
-    runLoggedTask(loadTemperatureBoostSettings(), 'Failed to load temperature boost settings', 'settings.set');
-  }
   if (key === PRICE_OPTIMIZATION_SETTINGS) refreshPriceOptimizationSettings();
-  if (key === EV_BOOST_SETTINGS) {
-    runLoggedTask(loadEvBoostSettings(), 'Failed to load EV boost settings', 'settings.set');
-  }
-  if (key === DEVICE_EXPECTED_POWER_OVERRIDES) {
-    runLoggedTask(
-      loadDeviceExpectedPowerOverrides(),
-      'Failed to load expected power overrides',
-      'settings.set',
-    );
-  }
-  if (key === DEVICE_CONTROL_PROFILES || key === DEVICE_TARGET_POWER_CONFIGS) {
-    runLoggedTask(loadDeviceControlProfiles(), 'Failed to load device control profiles', 'settings.set');
-  }
+  reloadDeviceSettingIfKey(key);
   refreshDeviceControlSurfaces(key);
   // Both writes affect Devices badges; the shared home-scope refresh above
   // separately updates the ownership map used by the filtered Modes list.

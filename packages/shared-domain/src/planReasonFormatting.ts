@@ -3,6 +3,7 @@ import {
   type DeviceReason,
 } from './planReasonSemanticsCore';
 import {
+  PLAN_STATE_AWAITING_BATTERY_LEVEL_STATUS,
   PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,
   PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
   PLAN_STATE_DAILY_BUDGET_STATUS,
@@ -12,6 +13,7 @@ import {
   PLAN_STATE_GRID_IMPORT_STATUS,
   PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS,
   PLAN_STATE_METER_SILENT_STATUS,
+  formatChargeTargetReachedStatus,
   formatReservedForStartStatus,
 } from './planStateLabels';
 import { formatStepDisplayLabel } from './steppedStepLabel';
@@ -58,6 +60,7 @@ type StaticReason = Extract<
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveSatisfied }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
   | { code: typeof PLAN_REASON_CODES.awaitingPelsStart }
+  | { code: typeof PLAN_REASON_CODES.awaitingBatteryLevel }
 >;
 
 function formatSignedKw(value: number, digits: number): string {
@@ -87,6 +90,7 @@ const STATIC_REASON_CODES = new Set<string>([
   PLAN_REASON_CODES.deferredObjectiveSatisfied,
   PLAN_REASON_CODES.awaitingSolarSurplus,
   PLAN_REASON_CODES.awaitingPelsStart,
+  PLAN_REASON_CODES.awaitingBatteryLevel,
 ]);
 
 function isStaticReason(reason: DeviceReason): reason is StaticReason {
@@ -110,6 +114,7 @@ const STATIC_REASON_TEXT: Record<StaticReason['code'], string> = {
   [PLAN_REASON_CODES.deferredObjectiveSatisfied]: 'smart task done, held until its ready-by time',
   [PLAN_REASON_CODES.awaitingSolarSurplus]: 'waiting for solar surplus',
   [PLAN_REASON_CODES.awaitingPelsStart]: 'waiting for a smart task to start it',
+  [PLAN_REASON_CODES.awaitingBatteryLevel]: 'waiting for battery level',
 };
 
 function formatStaticReason(reason: StaticReason): string {
@@ -276,6 +281,8 @@ export function formatDeviceReason(reason: DeviceReason): string {
     case PLAN_REASON_CODES.shedInvariant:
       return `shed invariant: ${reason.fromStep} -> ${reason.toStep} blocked `
         + `(${reason.shedDeviceCount} device(s) shed, max step: ${reason.maxStep})`;
+    case PLAN_REASON_CODES.chargeTargetReached:
+      return `reached its battery target (${reason.targetPercent}%)`;
     default: {
       const exhaustive: never = reason;
       return exhaustive;
@@ -481,6 +488,8 @@ const STATIC_REASON_USER_TEXT: Record<StaticReason['code'], string> = {
   // When a smart task IS governing it, the task's own reason is more specific
   // and wins on its own. (Owner ruling, 2026-09-10.)
   [PLAN_REASON_CODES.awaitingPelsStart]: '',
+  // States what the charger needs: a battery level. Shared with the card.
+  [PLAN_REASON_CODES.awaitingBatteryLevel]: PLAN_STATE_AWAITING_BATTERY_LEVEL_STATUS,
 };
 
 function formatStaticReasonUserFacing(reason: StaticReason): string {
@@ -553,6 +562,8 @@ export function formatDeviceReasonUserFacing(reason: DeviceReason): string {
       return formatInsufficientHeadroomUserFacing(reason);
     case PLAN_REASON_CODES.shedInvariant:
       return formatShedInvariantUserFacing(reason);
+    case PLAN_REASON_CODES.chargeTargetReached:
+      return formatChargeTargetReachedStatus(reason.targetPercent);
     default: {
       const exhaustive: never = reason;
       return exhaustive;

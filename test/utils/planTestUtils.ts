@@ -1,4 +1,4 @@
-import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
+import type { ChargeTargetHold, DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import { NO_SHEDDING_OUTCOME } from '../../lib/plan/planState';
 import type { SheddingPlan } from '../../lib/plan/shedding/types';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -297,6 +297,8 @@ const withFixtureTemperatureKind = <T extends {
   & { deviceType: 'temperature' } & TemperatureKind;
 };
 
+const NO_CHARGE_TARGET_HOLD: ChargeTargetHold = { kind: 'none' };
+
 /**
  * Resolve a fixture's readable `evChargingState: 'plugged_out'` input into the
  * flat producer-resolved bits — `commandableNow`, `commandabilityReason`,
@@ -335,6 +337,7 @@ export const withMaterializedEvPlugState = <T extends {
   commandabilityReason?: 'charger_unplugged' | 'charger_discharging';
   startPolicy: DeviceStartPolicy;
   startPolicyInForce: DeviceStartPolicy;
+  chargeTargetHold: ChargeTargetHold;
 } => {
   const explicitCommandableNow = (overrides as { commandableNow?: boolean }).commandableNow;
   // The producer-resolved identity the plan device carries, resolved ONCE and
@@ -381,6 +384,8 @@ export const withMaterializedEvPlugState = <T extends {
     startPolicy: (overrides as { startPolicy?: DeviceStartPolicy }).startPolicy
       ?? DEFAULT_DEVICE_START_POLICY,
     startPolicyInForce: fixtureStartPolicyInForce(overrides as Parameters<typeof fixtureStartPolicyInForce>[0]),
+    // Mirrors `projectChargeTargetHold`: a device with no charge target holds nothing.
+    chargeTargetHold: (overrides as { chargeTargetHold?: ChargeTargetHold }).chargeTargetHold ?? NO_CHARGE_TARGET_HOLD,
     ...(isEvCharger ? { objectiveKind: 'ev_soc' as const } : {}),
     // Mirrors `resolvePlanObjective`: the session question, resolved from the
     // plug-state before the producer strips it. Never `commandableNow`.
@@ -734,6 +739,7 @@ export const withFixtureResidualKw = <T extends object>(
   control: DeviceControlPosture;
   startPolicy: DeviceStartPolicy;
   startPolicyInForce: DeviceStartPolicy;
+  chargeTargetHold: ChargeTargetHold;
   currentState: string;
   budgetExempt: boolean;
 } => {
@@ -748,6 +754,8 @@ export const withFixtureResidualKw = <T extends object>(
   const startPolicyInForce = fixtureStartPolicyInForce(
     fields as Parameters<typeof fixtureStartPolicyInForce>[0],
   );
+  const chargeTargetHold = (fields as { chargeTargetHold?: ChargeTargetHold }).chargeTargetHold
+    ?? NO_CHARGE_TARGET_HOLD;
   // Defaulted here for the same reason `priority` is: several local spec helpers
   // build a device literal and pass it straight through this wrapper, so a
   // posture defaulted only in the top-level builders would leave those devices
@@ -767,6 +775,7 @@ export const withFixtureResidualKw = <T extends object>(
       control,
       startPolicy,
       startPolicyInForce,
+      chargeTargetHold,
       currentState,
       budgetExempt,
       residualKw: { shed: declared.shed, restore: declared.restore },
@@ -779,6 +788,7 @@ export const withFixtureResidualKw = <T extends object>(
     control,
     startPolicy,
     startPolicyInForce,
+    chargeTargetHold,
     currentState,
     budgetExempt,
     residualKw: {

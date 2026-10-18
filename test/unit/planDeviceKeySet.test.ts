@@ -144,6 +144,23 @@ const kinds: Kind[] = [
     shed: true, behavior: SET_STEP, conditional: [],
   },
   {
+    label: 'a charger held off at its battery target',
+    dev: buildPlanInputDevice({
+      id: 'ct1', name: 'CT', binaryControl: { on: true }, isEvCharger: true,
+      chargeTargetHold: { kind: 'target_reached', targetPercent: 60 }, expectedPowerKw: 7, currentDrawKw: 7,
+    }),
+    shed: true, behavior: SET_STEP, conditional: ['objectiveKind', 'chargeTargetHeld'],
+  },
+  {
+    label: 'a charger past its battery target, lifted by a smart task',
+    dev: buildPlanInputDevice({
+      id: 'ct2', name: 'CT2', binaryControl: { on: true }, isEvCharger: true,
+      chargeTargetHold: { kind: 'target_reached', targetPercent: 60 }, chargeTargetHoldLifted: true,
+      expectedPowerKw: 7, currentDrawKw: 7,
+    }),
+    shed: true, behavior: SET_STEP, conditional: ['objectiveKind'],
+  },
+  {
     // The learned rungs stay on the INPUT, where smart tasks read them. The plan
     // prices every rung at nameplate, so its output does not carry them.
     label: 'an EV charger with calibrated rungs and an unplugged cable',

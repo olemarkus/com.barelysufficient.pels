@@ -46,6 +46,9 @@ export type ComparablePlanReason =
     swapReserveW: number | null;
     effectiveAvailableW: number | null;
   })
+  // The charge target the owner set: configuration, so it changes only on a real
+  // transition (the owner editing it), and is folded in like a holder's name.
+  | (ComparablePlanReasonBase & { targetPercent: number })
   | (ComparablePlanReasonBase & {
     fromStep: string;
     toStep: string;
@@ -109,6 +112,7 @@ const CODE_ONLY_REASONS = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.deferredObjectiveSatisfied,
   PLAN_REASON_CODES.awaitingSolarSurplus,
   PLAN_REASON_CODES.awaitingPelsStart,
+  PLAN_REASON_CODES.awaitingBatteryLevel,
 ]);
 
 type CodeOnlyReason = Extract<
@@ -132,6 +136,7 @@ type CodeOnlyReason = Extract<
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveSatisfied }
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
   | { code: typeof PLAN_REASON_CODES.awaitingPelsStart }
+  | { code: typeof PLAN_REASON_CODES.awaitingBatteryLevel }
 >;
 
 function isCodeOnlyReason(reason: DeviceReason): reason is CodeOnlyReason {
@@ -197,6 +202,8 @@ export function buildComparableDeviceReason(reason: DeviceReason | undefined): C
     case PLAN_REASON_CODES.swappedOut:
     case PLAN_REASON_CODES.reservedForStart:
       return withReserveHolder({ code: reason.code, targetName: reason.targetName }, reason);
+    case PLAN_REASON_CODES.chargeTargetReached:
+      return { code: reason.code, targetPercent: reason.targetPercent };
     case PLAN_REASON_CODES.restoreNeed:
       return {
         code: reason.code,

@@ -13,6 +13,7 @@ import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { compareDeviceIdAsc, sortByPriorityAsc, sortByPriorityDesc } from '../planSort';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { isTemperaturePlanDevice } from '../planTemperatureDevice';
+import { buildChargeTargetHoldReason } from '../shedding/chargeTargetHold';
 import { temperatureSetpointsFor } from '../planTemperatureSetpoints';
 import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
 import type { ShedDecisions } from '../shedDecisions';
@@ -267,6 +268,12 @@ export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {
   // `Limited` and the empty reason string falls through to "Waiting to resume" —
   // a line that would promise the owner PELS intends to bring the device back
   // once power frees up, when only a smart task ever will.
+  //
+  // A charger's target battery level works the same way, and is checked first:
+  // where both hold a charger its reason says what the device needs, where the
+  // start policy's says nothing (the posture adoption in `planBuilderSurplus.ts`
+  // writes the same precedence for the cycle it is still running).
+  if (dev.chargeTargetHeld) return buildChargeTargetHoldReason(dev.chargeTargetHeld);
   if (dev.startPolicyHoldActive === true) return { code: PLAN_REASON_CODES.awaitingPelsStart };
 
   return null;

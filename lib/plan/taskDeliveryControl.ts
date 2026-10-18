@@ -31,6 +31,9 @@ const RESTRICTIONS: Record<DevicePlanDevice['reason']['code'], TaskDeliveryContr
   external_off_hold: { kind: 'uncontrolled' },
   awaiting_solar_surplus: { kind: 'uncontrolled' },
   awaiting_pels_start: { kind: 'uncontrolled' },
+  // The owner's charge target holds the charger; no smart task is driving it.
+  charge_target_reached: { kind: 'uncontrolled' },
+  awaiting_battery_level: { kind: 'uncontrolled' },
   deferred_objective_avoid: { kind: 'uncontrolled' },
   deferred_objective_satisfied: { kind: 'uncontrolled' },
   inactive: { kind: 'no_decision' },

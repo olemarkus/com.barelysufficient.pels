@@ -109,7 +109,7 @@ Device detail sections. The page composes per device kind — an EV charger, a t
 
 | Section | Shown for | What it contains |
 | --- | --- | --- |
-| **Charging** | Managed EV chargers | When and how much to charge: charge boost and **Charge on solar surplus**. |
+| **Charging** | Managed EV chargers | When and how much to charge: **Charge to a battery level** (with **Charge before the battery level is known**), charge boost, and **Charge on solar surplus**. |
 | **Car** | EV chargers | Which cars charge here, the battery level PELS reads from the car, and where the level comes from. |
 | **Temperature per mode** | Temperature devices | Per-mode target temperatures, with each mode's resume priority (reordered in Modes). |
 | **Price response** | Temperature devices | Cheap-hour boost and expensive-hour reduction. Stays visible with a hint naming the switch that enables it when price control is off. |

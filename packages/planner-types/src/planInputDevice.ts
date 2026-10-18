@@ -740,7 +740,61 @@ export type PlanInputDeviceBase = {
    * rule `isNonSteppedDeviceRecovering`).
    */
   deferredHoldActive?: true;
+  /**
+   * The charger's target battery level, resolved against what PELS knows about
+   * the car right now: does the target ask PELS to hold this device OFF?
+   *
+   * REQUIRED, and `{ kind: 'none' }` is an answer: no target, a level below it,
+   * no car connected, or a level not reported yet on a charger set to charge
+   * meanwhile. Resolved once at `toPlanDevice` (`projectChargeTargetHold`,
+   * `lib/planInput/chargeTargetHold.ts`) from the owner's
+   * `ev_charge_target_settings` entry, the observed state of charge and the
+   * device's STANDING control posture; the planner never reads the setting or
+   * the level. A device PELS only watches (no Managed, or no standing command
+   * authority) resolves to `none`: the hold is a command PELS would have to give.
+   *
+   * Like the start policy, this is the producer's standing answer and not this
+   * cycle's: a smart task driving the device lifts it through
+   * {@link chargeTargetHoldLifted}, and everything that asks "is the hold in force
+   * right now" reads both through `isChargeTargetHeldDevice`
+   * (`lib/plan/shedding/chargeTargetHold.ts`).
+   */
+  chargeTargetHold: ChargeTargetHold;
+  /**
+   * A smart task is ACTIVELY DRIVING this device this cycle, so its charge
+   * target does not hold it: a task that booked this hour may charge past the
+   * target (owner ruling: a smart task wins during its booked hours).
+   *
+   * Stamped by `applyDeferredAdmissionToInput` on a `planned` admission decision,
+   * and only there, beside {@link startPolicyHoldLifted} and for the same reasons:
+   * a per-cycle derivation, never a rewrite of the producer's
+   * {@link chargeTargetHold}, and narrower than `admittedDeviceIds`, because an
+   * `idle` or `inactive` task is not driving the device. A task with no battery
+   * level is `inactive`, so it never lifts a hold that waits for one.
+   */
+  chargeTargetHoldLifted?: true;
 };
+
+/**
+ * What a charger's target battery level asks of PELS this cycle, before any
+ * smart task lift (see `PlanInputDeviceBase.chargeTargetHold`).
+ *
+ * - `none`: nothing to hold.
+ * - `target_reached`: the car's known level is at or above the target, so the
+ *   charger is held OFF, not at its lowest step, which would keep charging.
+ *   `targetPercent` is the owner's setting, carried so the reason can name it;
+ *   it is config-stable, so the reason stays byte-stable across plan cycles.
+ * - `awaiting_level`: a car is connected but has reported no level for this
+ *   session, and the owner chose not to charge before one arrives.
+ */
+export type ChargeTargetHold =
+  | { kind: 'none' }
+  | HeldChargeTarget;
+
+/** A charge target that holds the charger off: {@link ChargeTargetHold} without `none`. */
+export type HeldChargeTarget =
+  | { kind: 'target_reached'; targetPercent: number }
+  | { kind: 'awaiting_level' };
 
 /**
  * What PELS is permitted to do with a device, as one thing.

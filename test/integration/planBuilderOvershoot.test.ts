@@ -38,6 +38,8 @@ const buildDevice = (
     isEvCharger: false,
     isBatteryOrSolar: false,
     starvationSupported: false,
+    // Required: no charge target is the producer's answer for these loads.
+    chargeTargetHold: { kind: 'none' } as const,
     ...overrides,
   };
   return withBinaryDiscriminant({

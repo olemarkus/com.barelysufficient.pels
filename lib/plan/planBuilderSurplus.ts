@@ -26,6 +26,7 @@ import type { DeferredDecorationBundle } from '../../packages/planner-types/src/
 import { withdrawSurplusEligibility, type PriceOptDeviceConfig } from './planSurplusAbsorb';
 import { resolveSurplusHold } from './shedding/surplusHold';
 import { resolveStartPolicyHold } from './shedding/startPolicyHold';
+import { isChargeTargetHeldDevice, resolveChargeTargetHold } from './shedding/chargeTargetHold';
 
 // Re-exported so the builder's deps typing needs no extra planSurplusAbsorb import.
 export type { PriceOptDeviceConfig };
@@ -56,6 +57,9 @@ export function mergeHoldsIntoShedSet(shedSet: Set<string>, holds: ReadonlyArray
  *   load that is still opted into surplus would reserve pool it can never use
  *   and read "Waiting for solar surplus"; excluded, it reads as held, and
  *   turning it on releases the hold and hands it back to surplus control.
+ * - A charger its target battery level holds off: it will not charge when
+ *   surplus arrives, so it must not reserve pool another device could use. Its
+ *   own hold claims it (`resolveChargeTargetHold`).
  */
 export function resolvePostureExcludeIds(
   decoration: Pick<DeferredDecorationBundle, 'admittedDeviceIds'>,
@@ -64,6 +68,7 @@ export function resolvePostureExcludeIds(
   return new Set([
     ...decoration.admittedDeviceIds,
     ...admittedDevices.filter((device) => device.externalOffHoldActive === true).map((device) => device.id),
+    ...admittedDevices.filter(isChargeTargetHeldDevice).map((device) => device.id),
   ]);
 }
 
@@ -97,10 +102,15 @@ export function runStandingPostureHolds(
   // held, which is the difference between "only PELS starts it" and "any governing
   // task starts it". See `resolveStartPolicyHold`.
   const startPolicyHold = resolveStartPolicyHold(admittedDevices);
+  // The third, the charger's target battery level. Lifted the same way, by the
+  // device's own `chargeTargetHoldLifted`. It is not a baseline-off posture for
+  // the release below: a charger below its target is an ordinary managed device,
+  // so it earns no posture stamp (`ShedDecisions.recordPlannedShed`).
+  const chargeTargetHold = resolveChargeTargetHold(admittedDevices);
   const heldOffOnReleaseIds = applyPostSheddingHolds(
     sheddingPlan,
     decoration,
-    new Set([...surplusHold.holdIds, ...startPolicyHold.holdIds]),
+    new Set([...surplusHold.holdIds, ...startPolicyHold.holdIds, ...chargeTargetHold.holdIds]),
     state.shedDecisions,
     getConfig,
     leaveOffOnRelease,
@@ -119,8 +129,14 @@ export function runStandingPostureHolds(
   // surplus" on a device that would never start when surplus arrived, sending the
   // owner to tune an export threshold that could not release it. Locking the two
   // toggles against each other in the settings UI is the open follow-up.
+  //
+  // The charge target is written LAST, for the same reason: where it holds a
+  // charger it is what keeps it off whatever surplus or the start policy do, and
+  // its reason says what the device needs (`getInactiveReason` agrees).
   return {
-    reasonById: new Map([...surplusHold.reasonById, ...startPolicyHold.reasonById]),
+    reasonById: new Map([
+      ...surplusHold.reasonById, ...startPolicyHold.reasonById, ...chargeTargetHold.reasonById,
+    ]),
     heldOffOnReleaseIds,
   };
 }
@@ -202,18 +218,21 @@ export function runSilentMeterSurplusHold(
   // configured rung, and the composed gate then blocks every rebuild until a
   // sample returns, so it kept drawing there for the whole outage.
   const startPolicyHold = resolveStartPolicyHold(admittedDevices);
+  // And the charge target, off rather than at the owner's floor, as measured.
+  const chargeTargetHold = resolveChargeTargetHold(admittedDevices);
   applyPostSheddingHolds(
     sheddingPlan,
     decoration,
-    new Set([...surplusHold.holdIds, ...startPolicyHold.holdIds]),
+    new Set([...surplusHold.holdIds, ...startPolicyHold.holdIds, ...chargeTargetHold.holdIds]),
     state.shedDecisions,
     cycle.getConfig,
     leaveOffOnRelease,
   );
-  // Start policy written second, so it wins the card — the same precedence the
-  // measured pass applies. A hold recorded on release needs no marking here:
+  // Written in rising precedence, the same as the measured pass: the start
+  // policy over surplus, and the charge target last, so it wins the card. A
+  // hold recorded on release needs no marking here:
   // this pass restores nothing, and the next build reads the stored hold.
-  return new Map([...surplusHold.reasonById, ...startPolicyHold.reasonById]);
+  return new Map([...surplusHold.reasonById, ...startPolicyHold.reasonById, ...chargeTargetHold.reasonById]);
 }
 
 function clearShedStepTargets(
