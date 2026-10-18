@@ -3170,7 +3170,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
         getStarvedRescueEntries: () => [{
           deviceId: 'd-moving',
           starvation: { isStarved: true, accumulatedMs: 20 * 60_000 },
-          intendedNormalTargetC: 60,
+          intendedTarget: { kind: 'temperature', targetTemperatureC: 60 },
         }],
       },
       getNow: () => new Date('2026-01-15T12:00:00.000Z'),

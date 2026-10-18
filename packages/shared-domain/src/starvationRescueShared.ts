@@ -4,6 +4,7 @@ import type {
 import type {
   StarvationRescueDevice,
   StarvationRescueRejectReason,
+  StarvationTarget,
 } from '../../contracts/src/starvationRescue';
 import { starvationRowIsRescuable } from './planStarvation';
 
@@ -22,7 +23,8 @@ import { starvationRowIsRescuable } from './planStarvation';
 // the widget's WebView gate and the settings-UI gate can reuse it too.
 
 // Near-term deadline for an active rescue: 3 hours gives a thermal device room
-// to recover toward its normal target without promising an instant fix, while
+// to recover toward its normal target, and a car room to charge toward its
+// target battery level, without promising an instant fix, while
 // staying "now"-shaped (a rescue, not a scheduled overnight task). Shared so the
 // horizon the create lane validates against matches the one the preview resolves.
 export const RESCUE_DEADLINE_HORIZON_MS = 3 * 60 * 60 * 1000;
@@ -55,7 +57,7 @@ export const parseRescueRequest = (body: unknown): StarvationRescueRequest | nul
 };
 
 export type ResolvedRescuableDevice =
-  | { ok: true; targetTemperatureC: number }
+  | { ok: true; target: StarvationTarget }
   | { ok: false; reason: StarvationRescueRejectReason };
 
 // Confirm the requested device is a rescuable (task-free, known-target) starved
@@ -76,23 +78,18 @@ export const resolveRescuableDeviceFromList = (
   // `starvationRowIsRescuable` is the full actionable predicate the surfaces' UI
   // gates also use (task-free AND a known finite target), so a shown affordance
   // and this enforcement agree by construction.
-  if (!device || !starvationRowIsRescuable(
-    device.intendedNormalTargetC,
-    device.hasSmartTask,
-    device.smartTaskHomeScope,
-  )) {
-    if (device && !device.hasSmartTask
-      && (device.intendedNormalTargetC === null || !Number.isFinite(device.intendedNormalTargetC))) {
-      return { ok: false, reason: 'no_target' };
-    }
+  if (!device) return { ok: false, reason: 'not_rescuable' };
+  const target = device.intendedTarget;
+  if (target === null) return { ok: false, reason: device.hasSmartTask ? 'not_rescuable' : 'no_target' };
+  if (!starvationRowIsRescuable(target, device.hasSmartTask, device.smartTaskHomeScope)) {
     return { ok: false, reason: 'not_rescuable' };
   }
-  // `starvationRowIsRescuable` already proved the target is a finite number.
-  return { ok: true, targetTemperatureC: device.intendedNormalTargetC as number };
+  return { ok: true, target };
 };
 
-// Build the rescue candidate: a soft temperature objective aimed at the device's
-// intended normal target, carrying every "Extra permission" the rescue can offer.
+// Build the rescue candidate: a soft objective aimed at the device's intended
+// normal target (a temperature, or a charger's target battery level), carrying
+// every "Extra permission" the rescue can offer.
 // 'always' (not 'at_risk') because the user is explicitly asking for power NOW on
 // an already-starved device — there is no "wait until at risk" to defer to.
 //
@@ -108,12 +105,11 @@ export const resolveRescuableDeviceFromList = (
 // The create engine's `gateCandidateExtraPermissions` drops any grant that would
 // be inert on this device, so these surfaces never need the device profile here.
 export const buildRescueCandidate = (
-  targetTemperatureC: number,
+  target: StarvationTarget,
   deadlineAtMs: number,
 ): DeferredObjectivePlanPreviewCandidate => ({
-  kind: 'temperature',
+  ...target,
   enforcement: 'soft',
-  targetTemperatureC,
   deadlineAtMs,
   rescue: {
     exemptFromBudget: 'always',

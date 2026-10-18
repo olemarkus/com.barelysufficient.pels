@@ -24,7 +24,7 @@ const budgetDevice: StarvationRescueDevice = {
   deviceId: 'heater-1',
   deviceName: 'Hot water',
   accumulatedMs: 42 * 60 * 1000,
-  intendedNormalTargetC: 65,
+  intendedTarget: { kind: 'temperature', targetTemperatureC: 65 },
   smartTaskHomeScope: 'main',
   hasSmartTask: false,
 };
@@ -33,7 +33,7 @@ const capacityDevice: StarvationRescueDevice = {
   deviceId: 'rad-1',
   deviceName: 'Living room',
   accumulatedMs: 11 * 60 * 1000,
-  intendedNormalTargetC: 21,
+  intendedTarget: { kind: 'temperature', targetTemperatureC: 21 },
   smartTaskHomeScope: 'main',
   hasSmartTask: false,
 };
@@ -43,7 +43,7 @@ const taskOwningBudgetDevice: StarvationRescueDevice = {
 };
 
 const noTargetBudgetDevice: StarvationRescueDevice = {
-  ...budgetDevice, deviceId: 'heater-3', deviceName: 'Garage', intendedNormalTargetC: null,
+  ...budgetDevice, deviceId: 'heater-3', deviceName: 'Garage', intendedTarget: null,
 };
 
 const buildEstimate = (
@@ -162,6 +162,28 @@ describe('previewSettingsUiStarvationRescue', () => {
 });
 
 describe('createSettingsUiStarvationRescue', () => {
+  it('previews a held-back charger as a charge-to-target task', () => {
+    const previewStarvationRescuePlan = freshPreviewPlan();
+    const charger: StarvationRescueDevice = {
+      deviceId: 'ev-1',
+      deviceName: 'Driveway EV',
+      accumulatedMs: 40 * 60_000,
+      intendedTarget: { kind: 'ev_soc', targetPercent: 80 },
+      smartTaskHomeScope: 'main',
+      hasSmartTask: false,
+    };
+    const result = previewSettingsUiStarvationRescue({
+      ...buildContext({ getStarvedRescueDevices: vi.fn(() => [charger]), previewStarvationRescuePlan }),
+      body: { deviceId: 'ev-1' },
+    });
+    expect(result.ok).toBe(true);
+    expect(previewStarvationRescuePlan.mock.calls[0][1]).toMatchObject({
+      kind: 'ev_soc',
+      targetPercent: 80,
+      rescue: { exemptFromBudget: 'always' },
+    });
+  });
+
   it('GUARDRAIL: rejects a no-target budget device with no_target', () => {
     const rescueDeviceWithBudgetExemption = vi.fn(() => ({ ok: true }));
     const result = createSettingsUiStarvationRescue({

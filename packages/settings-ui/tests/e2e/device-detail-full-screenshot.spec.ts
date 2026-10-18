@@ -119,7 +119,7 @@ const seedPopulatedStates = async (page: Page) => {
             starvationLastResumedAt: null,
             // Non-thermostat: no temperature evidence, so the
             // Temperature / target row must be absent.
-            intendedNormalTargetC: null,
+            intendedTarget: null,
             currentTemperatureC: null,
             starvationCause: null,
             starvationPauseReason: 'keep',
@@ -187,7 +187,7 @@ const seedPopulatedStates = async (page: Page) => {
             starvationLastResumedAt: null,
             // Thermostat: temperature evidence present, so the
             // Temperature / target row renders.
-            intendedNormalTargetC: 21,
+            intendedTarget: { kind: 'temperature', targetTemperatureC: 21 },
             currentTemperatureC: 20.3,
             starvationCause: null,
             starvationPauseReason: 'keep',

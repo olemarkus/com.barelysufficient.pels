@@ -1,7 +1,7 @@
 import {
   HEADROOM_WIDGET_COPY,
   headroomAvailableLabel,
-  headroomHeldBackLabel,
+  headroomLimitedLabel,
   headroomLimitStateLabel,
   headroomPriceAriaLabel,
   headroomPriceChipLabel,
@@ -97,8 +97,8 @@ const renderReady = (targets: RenderTargets, payload: HeadroomWidgetReadyPayload
   setStateLabel(stateLabelEl, payload.stale ? 'under' : payload.limitState);
 
   const availableLabel = headroomAvailableLabel(formatKw(Math.max(0, payload.headroomKw)));
-  const heldBackLabel = headroomHeldBackLabel(payload.shedCount);
-  // One meta pattern across all states: available power, plus the held-back
+  const limitedLabel = headroomLimitedLabel(payload.shedCount);
+  // One meta pattern across all states: available power, plus the limited
   // count when devices are paused. In `over_cap` the state label above already
   // carries the severity ("Above hard cap", red tone), and the clamped
   // "0 kW available" is factually right — on pace over the cap implies draw
@@ -106,9 +106,9 @@ const renderReady = (targets: RenderTargets, payload: HeadroomWidgetReadyPayload
   //
   // A stale payload replaces the whole meta line: the numbers above are from
   // before (dimmed via `data-stale`), so asserting current available power or
-  // a held-back count would present a previous reading — possibly a previous
+  // a limited count would present a previous reading — possibly a previous
   // RUN's — as live. The line says the data is not current instead.
-  const liveMetaText = payload.shedCount > 0 ? `${availableLabel} · ${heldBackLabel}` : availableLabel;
+  const liveMetaText = payload.shedCount > 0 ? `${availableLabel} · ${limitedLabel}` : availableLabel;
   const metaText = payload.stale ? HEADROOM_WIDGET_COPY.notCurrentNote : liveMetaText;
   metaEl.textContent = metaText;
   metaEl.dataset.tone = tone === 'danger' ? 'danger' : 'ok';

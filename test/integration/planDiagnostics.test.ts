@@ -310,7 +310,7 @@ describe('plan diagnostics observations', () => {
     expect(observation.demand.blockCause).toBe('cooldown_backoff');
   });
 
-  it('excludes EV chargers from unmet-demand and starvation diagnostics', () => {
+  it('excludes EV chargers with no target battery level from unmet-demand and starvation diagnostics', () => {
     const observation = buildObservation({
       inputDevice: {
         id: 'ev-1',
@@ -357,6 +357,167 @@ describe('plan diagnostics observations', () => {
       eligibleForStarvation: false,
       suppressionState: 'none',
     });
+  });
+
+  // A charger with a target battery level is measured against it: the producer
+  // resolves the car's known level into `chargeTargetHold`, and the planner never
+  // reads the level itself.
+  const buildChargerObservation = (
+    chargeTargetHold: PlanInputDevice['chargeTargetHold'],
+    plannedState: DevicePlanDevice['plannedState'],
+    planOverrides: PlanDeviceFixture = {},
+  ) => buildObservation({
+    inputDevice: {
+      id: 'ev-1',
+      name: 'Driveway EV',
+      objectiveKind: 'ev_soc',
+      deviceType: 'onoff',
+      targets: [],
+      isEvCharger: true,
+      binaryCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_in_paused',
+      binaryControl: { on: false },
+      chargeTargetHold,
+      managed: true,
+      controllable: true,
+      available: true,
+    },
+    planDevice: {
+      id: 'ev-1',
+      name: 'Driveway EV',
+      objectiveKind: 'ev_soc',
+      currentState: plannedState === 'shed' ? 'off' : 'on',
+      plannedState,
+      reason: plannedState === 'shed' ? r('shed due to capacity') : r('keep'),
+      isEvCharger: true,
+      binaryCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_in_paused',
+      managed: true,
+      controllable: true,
+      available: true,
+      ...planOverrides,
+    },
+  });
+
+  // A stepped charger PELS keeps charging, on a planned step below its top.
+  const steppedCharger = (desiredStepId: string, reason: DeviceReason): PlanDeviceFixture => ({
+    steppedLoadProfile: {
+      steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: '6a', planningPowerW: 4100 },
+        { id: '16a', planningPowerW: 11000 },
+      ],
+    },
+    selectedStepId: desiredStepId,
+    planningPowerKw: desiredStepId === '16a' ? 11 : 4.1,
+    desiredStepId,
+    reason,
+  });
+
+  it('holds a stepped charger below its target while its planned step is below the top, whatever the reason', () => {
+    // `shedInvariant` blocks the step-up without a counting reason; the hold is
+    // still PELS's, so a latched episode must pause rather than clear.
+    const lowStep = buildChargerObservation(
+      { kind: 'below_target', targetPercent: 80 },
+      'keep',
+      steppedCharger('6a', {
+        code: PLAN_REASON_CODES.shedInvariant, fromStep: '6a', toStep: '16a', shedDeviceCount: 2, maxStep: '6a',
+      }),
+    );
+    expect(facts(lowStep)).toMatchObject({ eligibleForStarvation: true, pelsHoldsBelowTarget: true });
+
+    const topStep = buildChargerObservation(
+      { kind: 'below_target', targetPercent: 80 },
+      'keep',
+      steppedCharger('16a', r('keep')),
+    );
+    expect(facts(topStep)).toMatchObject({ eligibleForStarvation: true, pelsHoldsBelowTarget: false });
+  });
+
+  it('keeps an owner-held charger off the held-back widget even when capacity also sheds it', () => {
+    const observation = buildObservation({
+      inputDevice: {
+        id: 'ev-1',
+        name: 'Driveway EV',
+        objectiveKind: 'ev_soc',
+        deviceType: 'onoff',
+        targets: [],
+        isEvCharger: true,
+        binaryCapabilityId: 'evcharger_charging',
+        evChargingState: 'plugged_in_paused',
+        binaryControl: { on: false },
+        chargeTargetHold: { kind: 'below_target', targetPercent: 80 },
+        // Its smart task deferred this hour: not PELS's hold, and not "no target".
+        deferredHoldActive: true,
+        managed: true,
+        controllable: true,
+        available: true,
+      },
+      planDevice: {
+        id: 'ev-1',
+        name: 'Driveway EV',
+        objectiveKind: 'ev_soc',
+        currentState: 'off',
+        plannedState: 'shed',
+        reason: r('shed due to capacity'),
+        isEvCharger: true,
+        managed: true,
+        controllable: true,
+        available: true,
+      },
+    });
+
+    expect(facts(observation)).toMatchObject({ eligibleForStarvation: false, heldBackScope: 'off_list' });
+  });
+
+  it('counts a charger PELS keeps limited while the car is below its target battery level', () => {
+    const observation = buildChargerObservation({ kind: 'below_target', targetPercent: 80 }, 'shed');
+
+    expect(facts(observation)).toMatchObject({
+      eligibleForStarvation: true,
+      heldBackScope: 'candidate',
+      intendedTarget: { kind: 'ev_soc', targetPercent: 80 },
+      pelsHoldsBelowTarget: true,
+      suppressionState: 'counting',
+      // The car's demand reaches the daily budget through its smart tasks, never
+      // through the heater-only unserved evidence.
+      budgetUnservedDenied: false,
+      includeDemandMetrics: false,
+    });
+  });
+
+  it('does not hold a charger below its target while PELS lets it charge', () => {
+    const observation = buildChargerObservation({ kind: 'below_target', targetPercent: 80 }, 'keep');
+
+    expect(facts(observation)).toMatchObject({
+      eligibleForStarvation: true,
+      pelsHoldsBelowTarget: false,
+      heldBackScope: 'off_list',
+    });
+  });
+
+  it.each([
+    { kind: 'target_reached', targetPercent: 80 },
+    // A 100% target never holds the charger, but the car is at it all the same.
+    { kind: 'at_full_target', targetPercent: 80 },
+  ] as const)('keeps a charger at its target ($kind) eligible but not held below it, so an episode clears', (hold) => {
+    const observation = buildChargerObservation(hold, 'shed');
+
+    expect(facts(observation)).toMatchObject({
+      eligibleForStarvation: true,
+      intendedTarget: { kind: 'ev_soc', targetPercent: 80 },
+      pelsHoldsBelowTarget: false,
+    });
+  });
+
+  it.each([
+    [{ kind: 'level_unknown' } as const, 'battery_level_unknown'],
+    [{ kind: 'no_target' } as const, 'no_battery_target'],
+    [{ kind: 'none' } as const, 'no_target'],
+  ])('says why a limited charger (%o) is not measured', (chargeTargetHold, heldBackScope) => {
+    const observation = buildChargerObservation(chargeTargetHold, 'shed');
+
+    expect(facts(observation)).toMatchObject({ eligibleForStarvation: false, intendedTarget: null, heldBackScope });
   });
 
   it('records cause-independent budget pressure when a Smart task is driving an off EV', () => {
@@ -429,7 +590,7 @@ describe('plan diagnostics observations', () => {
     expect(facts(observation)).toMatchObject({
       eligibleForStarvation: true,
       currentTemperatureC: 18,
-      intendedNormalTargetC: 21,
+      intendedTarget: { kind: 'temperature', targetTemperatureC: 21 },
       // PELS commands the held 18° setpoint (3° under the 21° mode target).
       commandedTargetC: 18,
       targetStepC: 0.5,
@@ -512,7 +673,7 @@ describe('plan diagnostics observations', () => {
       pelsCommandsTurnOffShed: true,
       commandedTargetC: 18,
       currentTemperatureC: 16,
-      intendedNormalTargetC: 18,
+      intendedTarget: { kind: 'temperature', targetTemperatureC: 18 },
     });
 
     // A kept device (PELS not shedding) is never an off shed, even off+cold.
@@ -628,7 +789,7 @@ describe('plan diagnostics observations', () => {
     });
 
     expect(observation.demand.desiredStateSummary).toBe('24.0C');
-    expect(observation.starvation.intendedNormalTargetC).toBe(20);
+    expect(observation.starvation.intendedTarget).toEqual({ kind: 'temperature', targetTemperatureC: 20 });
     expect(observation.starvation.targetStepC).toBe(0.5);
   });
 

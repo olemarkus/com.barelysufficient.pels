@@ -4,20 +4,34 @@
 // for the bounded rescue. Type-only; imports nothing from `lib/`.
 
 import type { DeferredObjectivePlanPreviewEstimate } from './deferredObjectivePlanPreview.js';
+import type {
+  DeferredObjectiveEvSocGoal,
+  DeferredObjectiveTemperatureGoal,
+} from './deferredObjectiveSettings.js';
 import type { SmartTaskHomeScope } from './smartTaskHomeScope.js';
+
+/**
+ * The target PELS holds a starved device below: a thermostat's mode
+ * temperature, or a charger's target battery level. Each member is the target
+ * half of the matching smart-task goal, so `kind` carries the unit and a rescue
+ * aims its task at this target as it stands.
+ */
+export type StarvationTarget =
+  | Pick<DeferredObjectiveTemperatureGoal, 'kind' | 'targetTemperatureC'>
+  | Pick<DeferredObjectiveEvSocGoal, 'kind' | 'targetPercent'>;
 
 // One currently-starved device the rescue widget lists. `accumulatedMs` is the
 // counted starvation duration (the widget renders it as whole minutes, rolling
 // over into hours).
 //
-// `intendedNormalTargetC` is the device's normal comfort/storage target — the
-// value the rescue must drive the device to. Present only for temperature
-// devices that reported it; null otherwise (the rescue is then not offered).
+// `intendedTarget` is the device's normal target — the mode temperature or the
+// charger's target battery level the rescue must drive the device to. Null
+// when the last observation carried none (the rescue is then not offered).
 export type StarvationRescueDevice = {
   deviceId: string;
   deviceName: string;
   accumulatedMs: number;
-  intendedNormalTargetC: number | null;
+  intendedTarget: StarvationTarget | null;
   // Current semantic authority for the rescue action. A transient unavailable
   // Main authority keeps the diagnostic row visible while disabling rescue;
   // durable sub-home and active-source rows are omitted by the producer.
@@ -30,14 +44,49 @@ export type StarvationRescueDevice = {
   hasSmartTask: boolean;
 };
 
+/**
+ * Why starvation cannot measure a device at all, resolved by the planner's
+ * diagnostics producer (`lib/plan/planDiagnostics.ts`).
+ *
+ * - `no_target`: it has no target temperature or battery level.
+ * - `no_battery_target`: a charger with no target battery level set.
+ * - `battery_level_unknown`: a charger whose car has reported no level yet.
+ */
+export type StarvationUnmeasuredReason = 'no_target' | 'no_battery_target' | 'battery_level_unknown';
+
+/**
+ * Why a device PELS limits for power is not on the held-back list, in the
+ * device's own terms: one starvation cannot measure, or one it measures that
+ * is not held back.
+ *
+ * - `at_target`: it is at its target, so PELS is not holding it below it.
+ * - `listed_soon`: held below its target, not yet for 15 minutes;
+ *   `remainingMs` is how long until it is listed if the hold continues.
+ */
+export type StarvationNotListedReason =
+  | { kind: StarvationUnmeasuredReason }
+  | { kind: 'at_target' }
+  | { kind: 'listed_soon'; remainingMs: number };
+
+/** A device PELS limits for power that the held-back list does not show. */
+export type StarvationNotListedDevice = {
+  deviceId: string;
+  deviceName: string;
+  reason: StarvationNotListedReason;
+};
+
+// Both states carry the limited devices the list leaves out, so the widget can
+// say why a device the owner sees limited elsewhere is not here.
 export type StarvationRescueDevicesPayload = {
   state: 'ready';
   devices: StarvationRescueDevice[];
+  notListed: StarvationNotListedDevice[];
 } | {
   state: 'empty';
   // Why the list is empty: nothing is starved (the calm steady state), no data
   // could load, or the widget is still wiring up to the app.
   subtitle: string;
+  notListed: StarvationNotListedDevice[];
 };
 
 // ─── Settings-UI overview device-card rescue (the "Let it run now" chip) ─────

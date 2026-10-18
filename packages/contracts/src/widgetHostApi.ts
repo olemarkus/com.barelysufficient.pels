@@ -11,7 +11,7 @@ import type {
   DeferredObjectivePlanPreviewCandidate,
   DeferredObjectivePlanPreviewEstimate,
 } from './deferredObjectivePlanPreview.js';
-import type { StarvationRescueDevice } from './starvationRescue.js';
+import type { StarvationNotListedDevice, StarvationRescueDevice } from './starvationRescue.js';
 import type { DailyBudgetUiRead } from './dailyBudgetTypes.js';
 import type { ResolvedDeferredObjectiveActivePlansV1 } from './deferredObjectiveActivePlans.js';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from './settingsUiApi.js';
@@ -67,6 +67,7 @@ export type CreateSmartTaskHostApi = {
 /** starvation_rescue widget host surface. */
 export type StarvationRescueHostApi = {
   getStarvedRescueDevices(): StarvationRescueDevice[];
+  getLimitedNotListedDevices(): StarvationNotListedDevice[];
   resolveSmartTaskHomeScope(deviceId: string): SmartTaskHomeScope;
   previewStarvationRescuePlan(
     deviceId: string,

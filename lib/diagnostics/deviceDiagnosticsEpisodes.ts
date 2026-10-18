@@ -6,6 +6,7 @@ import type {
   StarvationEvaluation,
 } from './deviceDiagnosticsServiceTypes';
 import type { DeviceDiagnosticsStarvationPauseReason } from '../../packages/contracts/src/deviceDiagnosticsTypes';
+import type { StarvationTarget } from '../../packages/contracts/src/starvationRescue';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
@@ -15,6 +16,21 @@ const moduleLogger = getLogger('diagnostics/device');
 const DEVICE_DIAGNOSTICS_STARVATION_ENTRY_MS = 15 * 60 * 1000;
 const DEVICE_DIAGNOSTICS_STARVATION_CLEAR_MS = 10 * 60 * 1000;
 
+/**
+ * How long until a device held below its target would enter starvation, as of
+ * the last plan sample `observedTs`, if the hold continues. The full entry delay
+ * when no entry is pending. Measured from the sample, not the wall clock: with
+ * no new samples nothing accrues, so the wait does not shrink either.
+ */
+export const resolveStarvationEntryRemainingMs = (
+  starvation: LiveStarvationState,
+  observedTs: number,
+): number => (
+  starvation.pendingEntryStartedAt === undefined
+    ? DEVICE_DIAGNOSTICS_STARVATION_ENTRY_MS
+    : Math.max(0, starvation.pendingEntryStartedAt + DEVICE_DIAGNOSTICS_STARVATION_ENTRY_MS - observedTs)
+);
+
 export const createEmptyStarvationState = (): LiveStarvationState => ({
   isStarved: false,
   starvedAccumulatedMs: 0,
@@ -22,17 +38,24 @@ export const createEmptyStarvationState = (): LiveStarvationState => ({
   starvationPauseReason: null,
 });
 
-const isValidStarvationObservation = (observation: LiveStarvationObservation): boolean => (
-  observation.eligibleForStarvation
-  && isFiniteNumber(observation.intendedNormalTargetC)
-  // A setpoint comparison needs a finite commanded target; a turn_off shed
-  // instead compares the device's temperature against the intended target, so a
-  // turn_off shed with a known current temperature is equally valid.
-  && (
-    isFiniteNumber(observation.commandedTargetC)
-    || (observation.pelsCommandsTurnOffShed && isFiniteNumber(observation.currentTemperatureC))
-  )
-);
+// A charger's target is valid as it stands: the producer resolves it only from
+// a known battery level. A temperature target needs something to compare: a
+// setpoint comparison needs a finite commanded target, and a turn_off shed
+// instead compares the device's temperature against the intended target, so a
+// turn_off shed with a known current temperature is equally valid.
+const isValidStarvationObservation = (observation: LiveStarvationObservation): boolean => {
+  const target = observation.intendedTarget;
+  if (!observation.eligibleForStarvation || target === null) return false;
+  if (target.kind === 'ev_soc') return true;
+  return isFiniteNumber(observation.commandedTargetC)
+    || (observation.pelsCommandsTurnOffShed && isFiniteNumber(observation.currentTemperatureC));
+};
+
+const sameStarvationTarget = (a: StarvationTarget | null, b: StarvationTarget | null): boolean => {
+  if (a === null || b === null) return a === b;
+  if (a.kind === 'temperature') return b.kind === 'temperature' && a.targetTemperatureC === b.targetTemperatureC;
+  return b.kind === 'ev_soc' && a.targetPercent === b.targetPercent;
+};
 
 const isCountingStarvationObservation = (observation: LiveStarvationObservation): boolean => (
   isValidStarvationObservation(observation)
@@ -45,7 +68,7 @@ export const starvationTargetChanged = (
   next: LiveStarvationObservation,
 ): boolean => (
   previous !== undefined
-  && previous.intendedNormalTargetC !== next.intendedNormalTargetC
+  && !sameStarvationTarget(previous.intendedTarget, next.intendedTarget)
 );
 
 const evaluateStarvationObservation = (

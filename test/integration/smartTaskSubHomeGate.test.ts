@@ -459,7 +459,7 @@ describe('smart-task membership and authority predicates', () => {
         getStarvedRescueEntries: () => [{
           deviceId: 'd1',
           starvation: { isStarved: true, accumulatedMs: 20 * 60_000 },
-          intendedNormalTargetC: 60,
+          intendedTarget: { kind: 'temperature', targetTemperatureC: 60 },
         }],
       } as unknown as AppContext['deviceDiagnosticsService'],
     });
@@ -487,7 +487,7 @@ describe('smart-task membership and authority predicates', () => {
       getStarvedRescueEntries: () => [{
         deviceId: 'meter-1',
         starvation: { isStarved: true, accumulatedMs: 20 * 60_000 },
-        intendedNormalTargetC: 60,
+        intendedTarget: { kind: 'temperature', targetTemperatureC: 60 },
       }],
     } as unknown as AppContext['deviceDiagnosticsService'];
 

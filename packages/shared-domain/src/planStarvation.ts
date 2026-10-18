@@ -1,5 +1,10 @@
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
 import type { SmartTaskHomeScope } from '../../contracts/src/smartTaskHomeScope';
+import type {
+  StarvationNotListedDevice,
+  StarvationNotListedReason,
+  StarvationTarget,
+} from '../../contracts/src/starvationRescue';
 // From the lean write-strings module (NOT deadlineLabels.ts) so the rescue
 // widget bundles don't drag the full smart-task copy module in.
 import { SMART_TASK_SUB_HOME_UNAVAILABLE } from './objectiveWriteStrings';
@@ -24,8 +29,9 @@ export type PlanStarvationBadgeView = {
   tooltip: string;
 };
 
-// One starved state, one badge. A device PELS merely keeps below its target is
-// not starved, so there is no "manual"/"external" badge either. `Held back` is
+// One starved state, one badge. A device held below its target by its own mode
+// or schedule, not by PELS, is not starved, so there is no "manual"/"external"
+// badge either. `Held back` is
 // the same user-facing word the rescue widget's rows use, so the two surfaces
 // name the state identically.
 export const PLAN_STARVATION_BADGE_LABEL = 'Held back';
@@ -64,12 +70,19 @@ export const formatStarvationReason = (
 export type StarvationRescueRowTone = 'warn' | 'danger';
 
 export const STARVATION_RESCUE_WIDGET_COPY = {
-  // List header — names what the widget SHOWS (the devices PELS is holding
-  // back), not an action the user takes. Shown only when at least one device is
-  // held back; the calm empty state stands alone.
+  // Header — names what the widget SHOWS (the devices PELS is holding back), not
+  // an action the user takes. Shown in the list and in the calm empty state, so
+  // the card always says which widget it is; hidden only while connecting or
+  // after a load failure.
   headerTitle: 'Held-back devices',
-  // Empty (calm) state — nothing is held back. This is the steady, good state.
-  emptySubtitle: 'No device is being held back right now.',
+  // Empty (calm) lead — nothing is held back. This is the steady, good state.
+  emptySubtitle: 'Nothing held back right now.',
+  // Under the calm lead when PELS limits nothing else either: which devices the
+  // list covers and when one enters (DEVICE_DIAGNOSTICS_STARVATION_ENTRY_MS).
+  emptyScopeNote: 'Devices PELS keeps below their target temperature or battery level for 15 minutes show up here.',
+  // Heading over the limited devices the list leaves out, so a device the owner
+  // sees limited on the Overview has its reason here instead of an absence.
+  notListedTitle: 'Limited, not listed here',
   // Transient "wiring up to Homey" state, distinct from a hard load failure.
   notReady: 'Connecting to Homey…',
   loadError: 'Could not load devices. Try again later.',
@@ -187,6 +200,37 @@ export const formatStarvationRowChip = (accumulatedMs: number): string => {
     : chip;
 };
 
+// Why a limited device is not on the list, in the device's own terms. The
+// charger line names the real setting that would put it on the list.
+export const formatStarvationNotListedReason = (reason: StarvationNotListedReason): string => {
+  switch (reason.kind) {
+    case 'no_target':
+      return 'No target temperature or battery level';
+    case 'no_battery_target':
+      return 'Turn on Charge to a battery level to list it';
+    case 'battery_level_unknown':
+      return 'Battery level not reported';
+    case 'at_target':
+      return 'At its target';
+    case 'listed_soon':
+      // Rounded up, so the line never says a device is listed sooner than it is.
+      return `Listed in ${formatStarvationDurationLabel(Math.max(1, Math.ceil(reason.remainingMs / 60_000)) * 60_000)}`;
+    default: {
+      const exhaustive: never = reason;
+      return exhaustive;
+    }
+  }
+};
+
+// One line under the held-back rows for the limited devices the list leaves
+// out: the device by name when there is one, a count when there are more.
+export const formatStarvationAlsoLimited = (notListed: readonly StarvationNotListedDevice[]): string | null => {
+  const [first] = notListed;
+  if (first === undefined) return null;
+  if (notListed.length === 1) return `Also limited: ${first.deviceName}`;
+  return `Also limited: ${notListed.length} devices`;
+};
+
 // How many starved rows fit in the widget's fixed 240px height before the list
 // scrolls. Beyond this, a "+N more" footer cues the user that rows (possibly the
 // device they just got notified about) sit below the fold.
@@ -211,26 +255,28 @@ export const resolveStarvationRowTone = (accumulatedMs: number): StarvationRescu
   Number.isFinite(accumulatedMs) && accumulatedMs >= STARVATION_RESCUE_DANGER_THRESHOLD_MS ? 'danger' : 'warn'
 );
 
-// Format a temperature target for inline copy: a whole number where possible
-// ("65 °C"), one decimal otherwise ("21.5 °C"). Uses the same trailing-zero-
-// stripped `°C` unit as the rest of the UI. Null/non-finite targets drop the
-// felt-symptom clause.
-const formatTargetDegrees = (targetC: number | null | undefined): string | null => {
-  if (typeof targetC !== 'number' || !Number.isFinite(targetC)) return null;
-  const rounded = Math.round(targetC * 10) / 10;
+// Format a starvation target for inline copy. A temperature reads as a whole
+// number where possible ("65 °C"), one decimal otherwise ("21.5 °C"), with the
+// same trailing-zero-stripped `°C` unit as the rest of the UI; a battery level
+// reads as a whole percent ("60%").
+export const formatStarvationTarget = (target: StarvationTarget): string => {
+  if (target.kind === 'ev_soc') return `${Math.round(target.targetPercent)}%`;
+  const rounded = Math.round(target.targetTemperatureC * 10) / 10;
   return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)} °C`;
 };
 
 // Plain-language subtext for a rescue-widget row: the felt symptom, naming the
-// target PELS is holding the device below ("Held below 65 °C") when the intended
-// normal target is known. Names no ceiling — see `STARVATION_WAITING_FOR_POWER_COPY`
-// — and falls back to that canonical wording when there is no target to name.
+// target PELS is holding the device below ("Held below 65 °C", "Held below 60%")
+// when the intended normal target is known. Names no ceiling — see
+// `STARVATION_WAITING_FOR_POWER_COPY` — and falls back to that canonical wording
+// when there is no target to name.
 export const resolveStarvationRowSubtext = (
-  intendedNormalTargetC?: number | null,
-): string => {
-  const degrees = formatTargetDegrees(intendedNormalTargetC);
-  return degrees ? `Held below ${degrees}` : STARVATION_WAITING_FOR_POWER_COPY;
-};
+  intendedTarget: StarvationTarget | null,
+): string => (
+  intendedTarget === null
+    ? STARVATION_WAITING_FOR_POWER_COPY
+    : `Held below ${formatStarvationTarget(intendedTarget)}`
+);
 
 // The second line under a rescue-widget row.
 //
@@ -243,11 +289,11 @@ export const resolveStarvationRowSubtext = (
 // already IS that sentence (no known target to name), so the row never prints
 // the same line twice.
 export const resolveStarvationRowNote = (
-  hasSmartTask = false,
-  intendedNormalTargetC?: number | null,
+  hasSmartTask: boolean,
+  intendedTarget: StarvationTarget | null,
 ): string | null => {
   if (hasSmartTask) return STARVATION_RESCUE_WIDGET_COPY.smartTaskNote;
-  return formatTargetDegrees(intendedNormalTargetC) === null
+  return intendedTarget === null
     ? null
     : STARVATION_WAITING_FOR_POWER_COPY;
 };
@@ -333,14 +379,13 @@ export const budgetExemptCardActionAriaLabel = (deviceName: string): string => (
 // rejects `no_target`) so the UI never offers a rescue button that the API then
 // rejects.
 export const starvationRowIsRescuable = (
-  intendedNormalTargetC: number | null,
+  intendedTarget: StarvationTarget | null,
   hasSmartTask = false,
   smartTaskHomeScope: SmartTaskHomeScope = 'main',
 ): boolean => (
   smartTaskHomeScope === 'main'
   && !hasSmartTask // a device with its own task is shown but not rescuable
-  && intendedNormalTargetC !== null
-  && Number.isFinite(intendedNormalTargetC)
+  && intendedTarget !== null
 );
 
 // Whether the scheduled plan actually runs the device in the CURRENT clock hour

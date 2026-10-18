@@ -296,7 +296,8 @@ const resolveHourClaims = (
     // it, so a hold that waits for a level is never lifted by a task that cannot
     // see one. The producer's answer, read directly, for the boundary reason
     // above (`resolveHeldChargeTarget`, `lib/plan/shedding/chargeTargetHold.ts`).
-    liftsChargeTargetHold: planned && device.chargeTargetHold.kind !== 'none',
+    liftsChargeTargetHold: planned
+      && (device.chargeTargetHold.kind === 'target_reached' || device.chargeTargetHold.kind === 'awaiting_level'),
   };
 };
 

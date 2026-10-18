@@ -13,16 +13,16 @@ Add any widget from your Homey dashboard's widget picker, then place it where yo
 
 Answers **"how much room do I have right now?"**
 
-![Available power widget showing current draw against the hour budget, a price-low chip, and two devices held back](/screenshots/widgets/available-power.png)
+![Available power widget showing current draw against the hour budget, a price-low chip, and two devices limited](/screenshots/widgets/available-power.png)
 
 The widget shows:
 
 - **Power now** against **Safe pace now**, with a coloured bar that turns warning as you approach the safe pace and red when the current capacity period is on pace to exceed the hard cap.
 - Available power remaining in the current capacity period (the hour, or the quarter on the 15-minute period).
-- The number of devices PELS is holding back, when any are.
+- The number of devices PELS is limiting, when any are.
 - A price-level chip when prices are cheap or expensive (hidden when prices are normal).
 
-It refreshes about every 10 seconds. If no new reading has arrived recently — for example after a restart, during a meter outage, in a quiet stretch between Flow reports on the Flow power source, or while the reading seems stuck on one value — the widget keeps showing the last known reading (dimmed) rather than blanking, but it stops asserting the present: the coloured bar and state label go neutral and the bottom line reads **No recent power reading** instead of available power and held-back counts, so figures from before the gap are never presented as live. Once the meter has been silent, or stuck on one value, long enough for PELS to limit devices on that account (about ten minutes), the tile stops showing the old figures altogether and reads **No new power readings**. The next new reading returns it to normal on its own.
+It refreshes about every 10 seconds. If no new reading has arrived recently — for example after a restart, during a meter outage, in a quiet stretch between Flow reports on the Flow power source, or while the reading seems stuck on one value — the widget keeps showing the last known reading (dimmed) rather than blanking, but it stops asserting the present: the coloured bar and state label go neutral and the bottom line reads **No recent power reading** instead of available power and the limited count, so figures from before the gap are never presented as live. Once the meter has been silent, or stuck on one value, long enough for PELS to limit devices on that account (about ten minutes), the tile stops showing the old figures altogether and reads **No new power readings**. The next new reading returns it to normal on its own.
 
 ## Electricity price
 
@@ -104,9 +104,11 @@ This is the dashboard equivalent of the **Add charging task** / **Add heating ta
 
 Answers **"why isn't this running — and can I let it now?"**
 
-The widget lists devices PELS is currently holding back (paused or limited), and how long each has waited. Tap **Let it run now** on any of them to create a short Smart task that gives the device leeway on today's budget and lets it take room from lower-priority devices. Your hard cap is never raised: the rescue only clears room underneath it, so a house already pressed against the cap may still make the device wait.
+The widget lists the devices PELS has kept below their target for at least 15 minutes, and how long each has waited: a thermostat, heat pump or water heater below its target temperature, or an EV charger below its target battery level (**Charge to a battery level**, see [EV Charger](/ev-charger)). Tap **Let it run now** on any of them to create a short Smart task that brings the device to its target, gives it leeway on today's budget and lets it take room from lower-priority devices. Your hard cap is never raised: the rescue only clears room underneath it, so a house already pressed against the cap may still make the device wait.
 
-The one row without the button is a device that already has its own Smart task — that task is what will bring it back, and the row says so.
+A device PELS limits that is not on the list is named under **Limited, not listed here**, with why: it has no target temperature or battery level, a charger has **Charge to a battery level** turned off or its car has not reported a battery level, it is already at its target, or it has not been held for 15 minutes yet and is listed once it has. When the list has rows, one line under them says which other devices are limited. The **Available power** widget counts every limited device.
+
+The one row without the button is a device that already has its own Smart task: that task is what will bring it back, and the row says so.
 
 ![Held-back devices widget listing devices PELS is holding back, with a Let it run now button on each row](/screenshots/widgets/held-back-1-list.png)
 *Step 1 — the held-back list. Every held-back device offers **Let it run now**.*
@@ -121,6 +123,6 @@ The one row without the button is a device that already has its own Smart task �
 - **Budget and Price** — to see where today's energy and cost will land, and which hours are cheapest.
 - **Smart tasks** — when you depend on smart-task deadlines; the widget turns red before you'd otherwise notice a miss.
 - **New smart task** — to set a one-off ready-by goal without opening the app or building a Flow.
-- **Held-back devices** — to understand why something is not running right now, and optionally let one device run now.
+- **Held-back devices** — to see which devices PELS has kept below their target, and optionally let one run now.
 
 All widgets read from the same data PELS already maintains for the app itself, so adding them costs nothing in extra polling or device traffic.

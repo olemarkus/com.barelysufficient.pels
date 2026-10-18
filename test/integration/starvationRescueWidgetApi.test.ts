@@ -21,7 +21,7 @@ const budgetDevice: StarvationRescueDevice = {
   deviceId: 'heater-1',
   deviceName: 'Hot water',
   accumulatedMs: 42 * 60 * 1000,
-  intendedNormalTargetC: 65,
+  intendedTarget: { kind: 'temperature', targetTemperatureC: 65 },
   smartTaskHomeScope: 'main',
   hasSmartTask: false,
 };
@@ -30,7 +30,7 @@ const capacityDevice: StarvationRescueDevice = {
   deviceId: 'rad-1',
   deviceName: 'Living room',
   accumulatedMs: 11 * 60 * 1000,
-  intendedNormalTargetC: 21,
+  intendedTarget: { kind: 'temperature', targetTemperatureC: 21 },
   smartTaskHomeScope: 'main',
   hasSmartTask: false,
 };
@@ -93,12 +93,12 @@ afterEach(() => {
 
 describe('buildStarvationRescueDevicesPayload', () => {
   it('returns the calm empty state when nothing is starved', () => {
-    expect(buildStarvationRescueDevicesPayload({ devices: [] }).state).toBe('empty');
-    expect(buildStarvationRescueDevicesPayload({ devices: null }).state).toBe('empty');
+    expect(buildStarvationRescueDevicesPayload({ devices: [], notListed: [] }).state).toBe('empty');
+    expect(buildStarvationRescueDevicesPayload({ devices: null, notListed: null }).state).toBe('empty');
   });
 
   it('passes through the starved device list when present', () => {
-    const payload = buildStarvationRescueDevicesPayload({ devices: [budgetDevice, capacityDevice] });
+    const payload = buildStarvationRescueDevicesPayload({ devices: [budgetDevice, capacityDevice], notListed: [] });
     if (payload.state !== 'ready') throw new Error('expected ready');
     expect(payload.devices).toHaveLength(2);
     expect(payload.devices[0].deviceId).toBe(budgetDevice.deviceId);
@@ -174,7 +174,7 @@ describe('previewStarvationRescue', () => {
   });
 
   it('rejects a budget device with no known target with no_target', async () => {
-    const noTarget: StarvationRescueDevice = { ...budgetDevice, intendedNormalTargetC: null };
+    const noTarget: StarvationRescueDevice = { ...budgetDevice, intendedTarget: null };
     const result = await previewStarvationRescue({
       ...buildContext({ getStarvedRescueDevices: vi.fn(() => [noTarget]), previewStarvationRescuePlan: freshPreviewPlan() }),
       body: { deviceId: 'heater-1' },

@@ -18,6 +18,7 @@ import type {
   StarvationRescueCreateResponse,
   StarvationRescueDevice,
   StarvationRescueDevicesPayload,
+  StarvationRescueListState,
   StarvationRescuePreviewResponse,
 } from '../starvationRescueWidgetTypes';
 
@@ -84,7 +85,13 @@ const resolveTargets = (d: Document): RenderTargets | null => {
     listTitleEl: '[data-list-title]',
     listEl: '[data-device-list]',
     listMoreEl: '[data-list-more]',
+    listAlsoEl: '[data-list-also]',
     listEmptyEl: '[data-list-empty]',
+    listScopeEl: '[data-list-scope]',
+    notListedEl: '[data-not-listed]',
+    notListedTitleEl: '[data-not-listed-title]',
+    notListedListEl: '[data-not-listed-list]',
+    notListedMoreEl: '[data-not-listed-more]',
     confirmView: '[data-confirm-view]',
     confirmTitle: '[data-confirm-title]',
     confirmConsequenceEl: '[data-confirm-consequence]',
@@ -155,19 +162,18 @@ const fetchDevices = async (
   homeyRef: WidgetHomey | null,
   usePreviewData: boolean,
   reporter: WidgetErrorReporter,
-): Promise<StarvationRescueDevicesPayload> => {
+): Promise<StarvationRescueListState> => {
   if (usePreviewData) return PREVIEW_STARVATION_RESCUE_DEVICES;
-  if (!homeyRef) return { state: 'empty', subtitle: C.notReady };
+  if (!homeyRef) return { state: 'unavailable', message: C.notReady };
   try {
     const payload = await homeyRef.api('GET', '/devices') as StarvationRescueDevicesPayload;
     // GET succeeded → the app is reachable; drain any backlog queued while it
-    // was down. (A failed load returns the same `empty` shape as a no-devices
-    // success, so the success path — not the payload — is the reachable signal.)
+    // was down. (The success path, not the payload, is the reachable signal.)
     reporter.flush();
     return payload;
   } catch (error) {
     reporter.report('error', 'Failed to load starvation_rescue widget', error);
-    return { state: 'empty', subtitle: C.loadError };
+    return { state: 'unavailable', message: C.loadError };
   }
 };
 
@@ -224,7 +230,7 @@ export const createWidgetController = (params: {
   let homeyRef: WidgetHomey | null = null;
   let initialRenderDone = false;
   let loadSequence = 0;
-  let devicesPayload: StarvationRescueDevicesPayload | null = null;
+  let listState: StarvationRescueListState | null = null;
   let view: ViewState = { kind: 'list' };
   let listenersBound = false;
   let usePreviewData = false;
@@ -236,7 +242,7 @@ export const createWidgetController = (params: {
   const reporter = widgetErrorReporter('starvation_rescue', () => homeyRef);
 
   const render = (): void => {
-    renderWidget(targets, devicesPayload, view);
+    renderWidget(targets, listState, view);
   };
 
   const setView = (next: ViewState): void => {
@@ -246,8 +252,8 @@ export const createWidgetController = (params: {
   };
 
   const findDevice = (deviceId: string): StarvationRescueDevice | null => {
-    if (!devicesPayload || devicesPayload.state !== 'ready') return null;
-    return devicesPayload.devices.find((entry) => entry.deviceId === deviceId) ?? null;
+    if (!listState || listState.state !== 'ready') return null;
+    return listState.devices.find((entry) => entry.deviceId === deviceId) ?? null;
   };
 
   const openRescue = (deviceId: string): void => {
@@ -326,7 +332,7 @@ export const createWidgetController = (params: {
     const payload = await fetchDevices(homeyRef, usePreviewData, reporter);
     if (destroyed) return;
     if (loadId === loadSequence) {
-      devicesPayload = payload;
+      listState = payload;
       // Only the list view depends on the device list; an in-progress confirm
       // keeps its captured device, so don't reset the user mid-flow.
       if (view.kind === 'list') render();

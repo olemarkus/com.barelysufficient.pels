@@ -4,19 +4,25 @@ import type {
   DeviceDiagnosticsPlanObservation,
   DeviceDiagnosticsStarvationCountingCause,
 } from '../diagnostics/deviceDiagnosticsService';
-import type { LiveStarvationObservation } from '../diagnostics/deviceDiagnosticsServiceTypes';
+import type { HeldBackScope, LiveStarvationObservation } from '../diagnostics/deviceDiagnosticsServiceTypes';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { resolveStarvationSuppressionSemantics } from '../planContract/planDecisionSemantics';
 import type { MeasuredPower, PlanContext } from './planContext';
 import type { RestorePlanResult } from './restore';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
+import { isSteppedLoadDevice } from './planSteppedLoad';
+import { getSteppedLoadHighestStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { temperatureSetpointsFor } from './planTemperatureSetpoints';
 import type {
   TemperatureSetpoints,
   TemperatureSetpointsByDevice,
 } from '../../packages/planner-types/src/temperatureSetpoints';
 import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
+import type {
+  StarvationTarget,
+  StarvationUnmeasuredReason,
+} from '../../packages/contracts/src/starvationRescue';
 
 const noStarvationSuppression = (): StarvationSuppressionNormalization => ({
   suppressionState: 'none',
@@ -135,7 +141,7 @@ const pelsCommandsBelowTarget = (device: DevicePlanDevice, setpoints: Temperatur
  * when the room itself is still short of the intended target; a device that is
  * off because it already reached its target is satisfied, not starved.
  */
-const resolvePelsHoldsBelowTarget = (
+const resolvePelsHoldsTemperatureBelowTarget = (
   device: DevicePlanDevice,
   setpoints: TemperatureSetpoints | null,
   pelsCommandsTurnOffShed: boolean,
@@ -144,21 +150,143 @@ const resolvePelsHoldsBelowTarget = (
   && (pelsCommandsBelowTarget(device, setpoints) || (pelsCommandsTurnOffShed && setpoints.roomShortOfIntended))
 );
 
-const resolveEligibleForStarvation = (
+/** The car is below its charger's target battery level (`PlanInputDevice.chargeTargetHold`). */
+const isChargerShortOfTarget = (inputDevice: PlanInputDevice | undefined): boolean => (
+  inputDevice?.chargeTargetHold.kind === 'below_target'
+);
+
+/**
+ * A charger's target battery level, when the producer measured the car against
+ * one (`PlanInputDevice.chargeTargetHold`): a known level below it or at it. The
+ * planner holds no battery level, so this is the whole of what starvation knows
+ * about the car — short of the target or not.
+ */
+const resolveChargerStarvationTarget = (inputDevice: PlanInputDevice | undefined): StarvationTarget | null => {
+  const hold = inputDevice?.chargeTargetHold;
+  if (hold?.kind !== 'below_target' && hold?.kind !== 'target_reached' && hold?.kind !== 'at_full_target') return null;
+  return { kind: 'ev_soc', targetPercent: hold.targetPercent };
+};
+
+/**
+ * The target the starvation clock measures this device against: the mode
+ * temperature of a temperature device, or a charger's target battery level.
+ */
+const resolveStarvationTarget = (
+  setpoints: TemperatureSetpoints | null,
+  inputDevice: PlanInputDevice | undefined,
+): StarvationTarget | null => (
+  setpoints !== null
+    ? { kind: 'temperature', targetTemperatureC: setpoints.intendedC }
+    : resolveChargerStarvationTarget(inputDevice)
+);
+
+/** This cycle's reason is a counting capacity or budget hold. */
+const isCountingHold = (device: DevicePlanDevice): boolean => (
+  resolveStarvationSuppressionSemantics(device.reason).state === 'counting'
+);
+
+/**
+ * The plan keeps this charger from charging at full rate, asked by OUTCOME, as
+ * the setpoint comparison asks a thermostat: paused, or a stepped charger whose
+ * planned step is below its top step, whatever reason the cycle wrote.
+ */
+const isChargerKeptFromFullRate = (device: DevicePlanDevice): boolean => {
+  if (device.plannedState === 'shed') return true;
+  if (!isSteppedLoadDevice(device) || device.desiredStepId === undefined) return false;
+  return device.desiredStepId !== getSteppedLoadHighestStep(device.steppedLoadProfile)?.id;
+};
+
+/**
+ * "PELS is holding this device below its intended target" for both kinds. A
+ * charger is held below its target battery level when the plan keeps it from
+ * full rate while the car is short of the target; a charger at its target, or
+ * one PELS lets charge at full rate, is not.
+ */
+const resolvePelsHoldsBelowTarget = (
+  device: DevicePlanDevice,
+  inputDevice: PlanInputDevice | undefined,
+  setpoints: TemperatureSetpoints | null,
+  pelsCommandsTurnOffShed: boolean,
+): boolean => {
+  if (setpoints !== null) return resolvePelsHoldsTemperatureBelowTarget(device, setpoints, pelsCommandsTurnOffShed);
+  return isChargerShortOfTarget(inputDevice) && isChargerKeptFromFullRate(device);
+};
+
+/**
+ * The device wants energy it may be denied, for the starvation lanes: standing
+ * demand (`hasStandingDemand`), or a charger whose car is below its target
+ * battery level. A charger carries no standing demand, because its demand comes
+ * with a car; a car short of the owner's target is that demand.
+ */
+const resolveStarvationDemand = (inputDevice: PlanInputDevice | undefined, hasStandingDemand: boolean): boolean => (
+  hasStandingDemand || isChargerShortOfTarget(inputDevice)
+);
+
+/**
+ * Why starvation does or does not measure this device.
+ *
+ * - `eligible`: it has a target, and PELS is the one that would hold it.
+ * - `unmeasured`: it has no target starvation can measure, and `reason` says
+ *   which, in the held-back widget's terms.
+ * - `excluded`: it has a target, but something other than PELS holds it (the
+ *   owner's own hold, its smart task's deferral), or PELS cannot command it.
+ */
+type StarvationEligibility =
+  | { kind: 'eligible' }
+  | { kind: 'unmeasured'; reason: StarvationUnmeasuredReason }
+  | { kind: 'excluded' };
+
+const ELIGIBLE: StarvationEligibility = { kind: 'eligible' };
+const EXCLUDED: StarvationEligibility = { kind: 'excluded' };
+const unmeasured = (reason: StarvationUnmeasuredReason): StarvationEligibility => ({ kind: 'unmeasured', reason });
+
+/**
+ * Whether this device has a target starvation can measure: a supported
+ * temperature device that always wants heat below target, or a charger with a
+ * target battery level and a known level. A charger at its target is measured,
+ * so reaching it clears an episode rather than resetting one.
+ */
+const resolveStarvationTargetEligibility = (
+  inputDevice: PlanInputDevice,
+  hasStandingDemand: boolean,
+): StarvationEligibility => {
+  if (isTemperatureInputDevice(inputDevice)) {
+    return hasStandingDemand && inputDevice.starvationSupported ? ELIGIBLE : unmeasured('no_target');
+  }
+  switch (inputDevice.chargeTargetHold.kind) {
+    case 'below_target':
+    case 'target_reached':
+    case 'at_full_target':
+      return ELIGIBLE;
+    case 'no_target':
+      return unmeasured('no_battery_target');
+    case 'level_unknown':
+    case 'awaiting_level':
+      return unmeasured('battery_level_unknown');
+    case 'none':
+      return unmeasured('no_target');
+    default: {
+      const exhaustive: never = inputDevice.chargeTargetHold;
+      return exhaustive;
+    }
+  }
+};
+
+const resolveStarvationEligibility = (
   device: DevicePlanDevice,
   inputDevice: PlanInputDevice | undefined,
   hasStandingDemand: boolean,
-): boolean => {
-  if (!hasStandingDemand || !inputDevice) return false;
-  if (!isTemperatureInputDevice(inputDevice)) return false;
-  if (!inputDevice.starvationSupported) return false;
+): StarvationEligibility => {
+  if (!inputDevice) return EXCLUDED;
+  const targetEligibility = resolveStarvationTargetEligibility(inputDevice, hasStandingDemand);
+  if (targetEligibility.kind !== 'eligible') return targetEligibility;
   // A device the user turned off outside PELS is not starved — PELS is not
   // withholding power from it, it is respecting an explicit action. Excluding it
   // from ELIGIBILITY (rather than pausing an episode) resets any accrual and
   // keeps it out of the Held-back list entirely, which is what keeps
   // `notes/ui-terminology.md` § "Held back" accurate: there is still no
   // "manual"/"external" starvation cause.
-  if (device.externalOffHoldActive === true) return false;
+  if (device.externalOffHoldActive === true) return EXCLUDED;
   // Same treatment, same reason, for "Only PELS starts this device": PELS is not
   // withholding power, it is honouring a configuration. ELIGIBILITY rather than a
   // paused episode is load-bearing here — a standing baseline-off posture holds
@@ -174,7 +302,7 @@ const resolveEligibleForStarvation = (
   // The episode cannot outlive the hour: `applyObservationSpan` hard-resets the
   // accrual on the first cycle eligibility drops, which is the cycle the hold
   // returns.
-  if (device.startPolicyHoldActive === true) return false;
+  if (device.startPolicyHoldActive === true) return EXCLUDED;
   // And for an hour the device's own smart task defers (`deferredHoldActive`): the
   // task scheduled its energy for a cheaper hour and holds the device off until
   // then (owner ruling, 2026-09-25). PELS is not withholding power, and a "Let it
@@ -183,13 +311,35 @@ const resolveEligibleForStarvation = (
   // The hold being ACTIVE, not the hold-only shed (`nonCapacityHoldShed`), exactly
   // as `startPolicyHoldActive` above: the task keeps the device off this hour even
   // when capacity also wanted it off, so it is not waiting for power either way.
-  if (inputDevice.deferredHoldActive === true) return false;
+  if (inputDevice.deferredHoldActive === true) return EXCLUDED;
   // One read, not two: `DevicePlanDevice.control` is carried through from the
   // plan input unchanged, so asking both shapes was a dead second read.
   return inputDevice.control.managed
     && inputDevice.control.commandAuthority
     && inputDevice.available
-    && device.available;
+    && device.available
+    ? ELIGIBLE
+    : EXCLUDED;
+};
+
+/**
+ * PELS limits this device for power: a device it commands, held by a counting
+ * capacity or budget hold, whether paused or kept below its top step.
+ */
+const isLimitedForPower = (device: DevicePlanDevice): boolean => (
+  device.plannedState !== 'inactive'
+  && device.control.commandAuthority
+  && isCountingHold(device)
+);
+
+/**
+ * The held-back widget's view of a device: off the list unless PELS limits it
+ * for power and nothing else holds it; a candidate when starvation measures it;
+ * otherwise why it is not measured.
+ */
+const resolveHeldBackScope = (device: DevicePlanDevice, eligibility: StarvationEligibility): HeldBackScope => {
+  if (!isLimitedForPower(device) || eligibility.kind === 'excluded') return 'off_list';
+  return eligibility.kind === 'eligible' ? 'candidate' : eligibility.reason;
 };
 
 // A restore held for `insufficient_headroom` is blocked against the binding soft limit.
@@ -237,7 +387,12 @@ const resolveStarvationSuppression = (
   hasStandingDemand: boolean,
   budgetReleasableHeadroomHold: boolean,
 ): StarvationSuppressionNormalization => {
-  if (!hasStandingDemand || !inputDevice || !device.control.commandAuthority || !inputDevice.control.commandAuthority) {
+  if (
+    !resolveStarvationDemand(inputDevice, hasStandingDemand)
+    || !inputDevice
+    || !device.control.commandAuthority
+    || !inputDevice.control.commandAuthority
+  ) {
     return noStarvationSuppression();
   }
   const reason = device.reason;
@@ -345,7 +500,8 @@ const buildDiagnosticsObservation = (
     device,
     isTemperatureInputDevice(inputDevice),
   );
-  const eligibleForStarvation = resolveEligibleForStarvation(device, inputDevice, hasStandingDemand);
+  const eligibility = resolveStarvationEligibility(device, inputDevice, hasStandingDemand);
+  const eligibleForStarvation = eligibility.kind === 'eligible';
   const starvationSuppression = resolveStarvationSuppression(
     device,
     inputDevice,
@@ -356,7 +512,7 @@ const buildDiagnosticsObservation = (
     && setpoints !== null
     && currentTarget !== null
     && setpoints.targetShortOfDesired;
-  const pelsHoldsBelowTarget = resolvePelsHoldsBelowTarget(device, setpoints, pelsCommandsTurnOffShed);
+  const pelsHoldsBelowTarget = resolvePelsHoldsBelowTarget(device, inputDevice, setpoints, pelsCommandsTurnOffShed);
   const unmetDemand = resolveUnmetDemand(
     desiredTarget,
     includeDemandMetrics,
@@ -389,8 +545,9 @@ const buildDiagnosticsObservation = (
     },
     starvation: {
       eligibleForStarvation,
+      heldBackScope: resolveHeldBackScope(device, eligibility),
       currentTemperatureC,
-      intendedNormalTargetC: setpoints === null ? null : setpoints.intendedC,
+      intendedTarget: resolveStarvationTarget(setpoints, inputDevice),
       commandedTargetC,
       targetStepC: setpoints === null ? null : setpoints.targetStepC,
       pelsCommandsTurnOffShed,

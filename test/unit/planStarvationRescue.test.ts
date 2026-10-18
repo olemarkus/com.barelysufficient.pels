@@ -18,6 +18,9 @@ import {
   starvationRowIsRescuable,
 } from '../../packages/shared-domain/src/planStarvation';
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
+import type { StarvationTarget } from '../../packages/contracts/src/starvationRescue';
+
+const TEMPERATURE_65: StarvationTarget = { kind: 'temperature', targetTemperatureC: 65 };
 
 describe('starvation-rescue shared helpers', () => {
   describe('starvationDurationMinutes', () => {
@@ -93,19 +96,22 @@ describe('starvation-rescue shared helpers', () => {
 
   describe('resolveStarvationRowSubtext', () => {
     it('names the held-below target when known (the felt symptom)', () => {
-      expect(resolveStarvationRowSubtext(65)).toBe('Held below 65 °C');
-      expect(resolveStarvationRowSubtext(21.5)).toBe('Held below 21.5 °C');
+      expect(resolveStarvationRowSubtext(TEMPERATURE_65)).toBe('Held below 65 °C');
+      expect(resolveStarvationRowSubtext({ kind: 'temperature', targetTemperatureC: 21.5 }))
+        .toBe('Held below 21.5 °C');
+    });
+
+    it('names a charger\'s target battery level the same way', () => {
+      expect(resolveStarvationRowSubtext({ kind: 'ev_soc', targetPercent: 80 })).toBe('Held below 80%');
     });
 
     it('falls back to the canonical wording when there is no target to name', () => {
-      expect(resolveStarvationRowSubtext()).toBe('Waiting for available power');
       expect(resolveStarvationRowSubtext(null)).toBe('Waiting for available power');
-      expect(resolveStarvationRowSubtext(Number.NaN)).toBe('Waiting for available power');
     });
 
     it('names no ceiling — that is the hero\'s one job', () => {
       // Which limit binds moves on its own; the row states the device's symptom.
-      expect(resolveStarvationRowSubtext(65).toLowerCase()).not.toMatch(/budget|cap|limit/);
+      expect(resolveStarvationRowSubtext(TEMPERATURE_65).toLowerCase()).not.toMatch(/budget|cap|limit/);
     });
   });
 
@@ -125,42 +131,40 @@ describe('starvation-rescue shared helpers', () => {
       // already has a smart task gets the explanatory smart-task note. This is
       // the only note left — the capacity note went with the cause bucket, and
       // it had only ever restated the row subtext.
-      expect(resolveStarvationRowNote(true)).toBe(STARVATION_RESCUE_WIDGET_COPY.smartTaskNote);
-      expect(resolveStarvationRowNote(true, 65)).toBe(STARVATION_RESCUE_WIDGET_COPY.smartTaskNote);
+      expect(resolveStarvationRowNote(true, null)).toBe(STARVATION_RESCUE_WIDGET_COPY.smartTaskNote);
+      expect(resolveStarvationRowNote(true, TEMPERATURE_65)).toBe(STARVATION_RESCUE_WIDGET_COPY.smartTaskNote);
     });
 
     // The widget is a standalone dashboard surface — no hero sits near it to
     // state the house-level fact once, so a row whose subtext is only its felt
     // symptom would never say why the device is held.
     it('carries the canonical why on a row whose subtext names a target', () => {
-      expect(resolveStarvationRowNote(false, 65)).toBe('Waiting for available power');
+      expect(resolveStarvationRowNote(false, TEMPERATURE_65)).toBe('Waiting for available power');
     });
 
     it('suppresses it when the subtext already IS that sentence', () => {
-      expect(resolveStarvationRowNote()).toBeNull();
-      expect(resolveStarvationRowNote(false)).toBeNull();
       expect(resolveStarvationRowNote(false, null)).toBeNull();
       expect(resolveStarvationRowSubtext(null)).toBe('Waiting for available power');
     });
   });
 
   describe('starvationRowIsRescuable (known target, task-free, main home)', () => {
-    it('is rescuable with a finite target', () => {
-      expect(starvationRowIsRescuable(65)).toBe(true);
+    it('is rescuable with a known target, of either kind', () => {
+      expect(starvationRowIsRescuable(TEMPERATURE_65)).toBe(true);
+      expect(starvationRowIsRescuable({ kind: 'ev_soc', targetPercent: 80 })).toBe(true);
       // No target — the API would reject `no_target`, so the row is not rescuable.
       expect(starvationRowIsRescuable(null)).toBe(false);
-      expect(starvationRowIsRescuable(Number.NaN)).toBe(false);
     });
 
     it('is NOT rescuable when the device already has its own smart task', () => {
       // Shown in the list but button-suppressed — its existing task handles it.
-      expect(starvationRowIsRescuable(65, true)).toBe(false);
-      expect(starvationRowIsRescuable(65, false)).toBe(true);
+      expect(starvationRowIsRescuable(TEMPERATURE_65, true)).toBe(false);
+      expect(starvationRowIsRescuable(TEMPERATURE_65, false)).toBe(true);
     });
 
     it('is NOT rescuable outside the main home (smart tasks are main-home only)', () => {
-      expect(starvationRowIsRescuable(65, false, 'unavailable')).toBe(false);
-      expect(starvationRowIsRescuable(65, false, 'main')).toBe(true);
+      expect(starvationRowIsRescuable(TEMPERATURE_65, false, 'unavailable')).toBe(false);
+      expect(starvationRowIsRescuable(TEMPERATURE_65, false, 'main')).toBe(true);
     });
   });
 

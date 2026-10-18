@@ -40,8 +40,9 @@ import {
  *
  * Off because its owner set a target, not because the house is short of power:
  * it does not count toward the keep-invariant stepped clamp, is not
- * "recovering", and its reduction stamps no capacity clocks. (Starvation never
- * reaches a charger: it is for temperature devices.)
+ * "recovering", and its reduction stamps no capacity clocks. A held charger is
+ * at its target, so it is never starved either: starvation counts only a
+ * `below_target` charger that capacity or budget keeps limited.
  *
  * Its two reasons are byte-stable: `chargeTargetReached` carries the owner's
  * target percent (configuration, which moves only when the owner edits it, and
@@ -86,8 +87,8 @@ export function resolveChargeTargetHold(
 // shared-domain needs a real browser consumer.
 export function resolveHeldChargeTarget(device: PlanInputDevice): HeldChargeTarget | null {
   const hold = device.chargeTargetHold;
-  if (hold.kind === 'none' || device.chargeTargetHoldLifted === true) return null;
-  return hold;
+  if (device.chargeTargetHoldLifted === true) return null;
+  return hold.kind === 'target_reached' || hold.kind === 'awaiting_level' ? hold : null;
 }
 
 /** Is this device held off by its charge target RIGHT NOW? See {@link resolveHeldChargeTarget}. */

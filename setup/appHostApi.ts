@@ -40,7 +40,7 @@ import type { PriceTimelineRead } from '../packages/contracts/src/priceTimeline'
 import type { SettingsUiDeviceDiagnosticsPayload } from '../packages/contracts/src/deviceDiagnosticsTypes';
 import type { ResolvedDeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectivePlanPreviewEstimate } from '../packages/contracts/src/deferredObjectivePlanPreview';
-import type { StarvationRescueDevice } from '../packages/contracts/src/starvationRescue';
+import type { StarvationNotListedDevice, StarvationRescueDevice } from '../packages/contracts/src/starvationRescue';
 import type {
   SettingsUiDeferredObjectivePlanHistoryPayload,
   SettingsUiDeviceLogPayload,
@@ -51,6 +51,7 @@ import type {
   DeferredObjectivePlanPreviewCandidate,
 } from '../lib/objectives/deferredObjectives';
 import {
+  buildLimitedNotListedDevices,
   buildStarvedRescueDevices,
   readCreateSmartTaskCandidateDevices,
   resolveSmartTaskHomeScope,
@@ -277,6 +278,10 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
 
   public getStarvedRescueDevices(): StarvationRescueDevice[] {
     return buildStarvedRescueDevices(this.context);
+  }
+
+  public getLimitedNotListedDevices(): StarvationNotListedDevice[] {
+    return buildLimitedNotListedDevices(this.context);
   }
 
   public async refreshTargetDevicesSnapshot(options: RefreshTargetDevicesSnapshotOptions = {}): Promise<void> {

@@ -102,14 +102,14 @@ const createPreview = (scenario) => {
 
 const STARVATION_DEVICES = {
   default: [
-    { deviceId: 'hw', deviceName: 'Hot water', cause: 'budget', accumulatedMs: 42 * 60_000, intendedNormalTargetC: 65 },
-    { deviceId: 'rad', deviceName: 'Living room', cause: 'capacity', accumulatedMs: 11 * 60_000, intendedNormalTargetC: 21 },
+    { deviceId: 'hw', deviceName: 'Hot water', cause: 'budget', accumulatedMs: 42 * 60_000, intendedTarget: { kind: 'temperature', targetTemperatureC: 65 } },
+    { deviceId: 'rad', deviceName: 'Living room', cause: 'capacity', accumulatedMs: 11 * 60_000, intendedTarget: { kind: 'temperature', targetTemperatureC: 21 } },
   ],
   all: [
-    { deviceId: 'hw', deviceName: 'Hot water', cause: 'budget', accumulatedMs: 42 * 60_000, intendedNormalTargetC: 65 },
-    { deviceId: 'rad', deviceName: 'Living room', cause: 'capacity', accumulatedMs: 11 * 60_000, intendedNormalTargetC: 21 },
-    { deviceId: 'floor', deviceName: 'Bathroom floor', cause: 'manual', accumulatedMs: 0, intendedNormalTargetC: 24 },
-    { deviceId: 'ev', deviceName: 'Driveway charger', cause: 'external', accumulatedMs: 24 * 60_000, intendedNormalTargetC: null },
+    { deviceId: 'hw', deviceName: 'Hot water', cause: 'budget', accumulatedMs: 42 * 60_000, intendedTarget: { kind: 'temperature', targetTemperatureC: 65 } },
+    { deviceId: 'rad', deviceName: 'Living room', cause: 'capacity', accumulatedMs: 11 * 60_000, intendedTarget: { kind: 'temperature', targetTemperatureC: 21 } },
+    { deviceId: 'floor', deviceName: 'Bathroom floor', cause: 'manual', accumulatedMs: 0, intendedTarget: { kind: 'temperature', targetTemperatureC: 24 } },
+    { deviceId: 'ev', deviceName: 'Driveway charger', cause: 'external', accumulatedMs: 24 * 60_000, intendedTarget: { kind: 'ev_soc', targetPercent: 80 } },
   ],
   empty: null,
 };
@@ -192,10 +192,18 @@ export const WIDGETS = [
   { id: 'plan_budget', label: 'Budget and Price', height: 560, scenarios: ['today'] },
   // Manifest height "100%": a square tile; 360 px is a phone-width dashboard.
   { id: 'smart_tasks', label: 'Smart tasks', height: 360, scenarios: ['default', 'overflow', 'empty'] },
-  { id: 'starvation_rescue', label: 'Get power now', height: 240, scenarios: ['default', 'all', 'empty'] },
+  { id: 'starvation_rescue', label: 'Held-back devices', height: 240, scenarios: ['default', 'all', 'empty'] },
 ];
 
-const devicesPayload = (devices) => (devices === null ? { state: 'empty', subtitle: 'Nothing held back right now' } : { state: 'ready', devices });
+// Limited devices the held-back list leaves out, shown in both states.
+const STARVATION_NOT_LISTED = [
+  { deviceId: 'ev', deviceName: 'Driveway charger', reason: { kind: 'no_battery_target' } },
+  { deviceId: 'relay', deviceName: 'Boiler relay', reason: { kind: 'no_target' } },
+];
+
+const devicesPayload = (devices) => (devices === null
+  ? { state: 'empty', subtitle: 'Nothing held back right now.', notListed: STARVATION_NOT_LISTED }
+  : { state: 'ready', devices, notListed: STARVATION_NOT_LISTED });
 
 export const settings = () => ({});
 
@@ -207,7 +215,7 @@ export const respond = (id, scenario, method, path) => {
     if (route === 'POST /create') return { ok: true };
   }
   if (id === 'starvation_rescue') {
-    if (route === 'GET /devices') return devicesPayload(STARVATION_DEVICES[scenario] ?? STARVATION_DEVICES.default);
+    if (route === 'GET /devices') return devicesPayload(scenario in STARVATION_DEVICES ? STARVATION_DEVICES[scenario] : STARVATION_DEVICES.default);
     if (route === 'POST /preview') return starvationPreview();
     if (route === 'POST /rescue') return { ok: true };
   }

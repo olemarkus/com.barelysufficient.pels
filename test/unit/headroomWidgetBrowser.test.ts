@@ -128,10 +128,10 @@ describe('headroom widget browser', () => {
     // "0 kW available" is factually right; the state label + danger tone carry
     // the severity. No instantaneous "X kW over hard cap" figure exists — the
     // cap is an hourly-average ceiling, not an instantaneous threshold.
-    expect(targets.metaEl.textContent).toBe('0 kW available · 3 held back');
+    expect(targets.metaEl.textContent).toBe('0 kW available · 3 limited');
     const aria = targets.root.getAttribute('aria-label') ?? '';
     expect(aria).toContain('Above hard cap');
-    expect(aria).toContain('3 held back');
+    expect(aria).toContain('3 limited');
     expect(aria).not.toContain('over hard cap');
   });
 
@@ -142,14 +142,14 @@ describe('headroom widget browser', () => {
     });
 
     expect(targets.metaEl.textContent).toContain('available');
-    expect(targets.metaEl.textContent).toContain('2 held back');
+    expect(targets.metaEl.textContent).toContain('2 limited');
   });
 
   test('a stale payload says the data is not current instead of asserting available power', () => {
     // The payload builder ages `pels_status` by its own `lastPowerUpdate`, so
     // after a restart with a dead meter the tile's numbers are a previous
     // run's. The meta line must SAY so — dimming alone still presented the
-    // old available-power and held-back claims as live.
+    // old available-power and limited claims as live.
     const targets = resolveTargets();
     renderWidget(targets, {
       ...READY, currentKw: 3.2, hourBudgetKw: 7, headroomKw: 3.8, limitState: 'under', shedCount: 2, stale: true,
@@ -158,7 +158,7 @@ describe('headroom widget browser', () => {
     expect(targets.root.dataset.stale).toBe('true');
     expect(targets.metaEl.textContent).toBe('No recent power reading');
     expect(targets.metaEl.textContent).not.toContain('available');
-    expect(targets.metaEl.textContent).not.toContain('held back');
+    expect(targets.metaEl.textContent).not.toContain('limited');
     // Calm tone: the alarm would be about numbers nothing vouches for.
     expect(targets.metaEl.dataset.tone).toBe('ok');
     const aria = targets.root.getAttribute('aria-label') ?? '';

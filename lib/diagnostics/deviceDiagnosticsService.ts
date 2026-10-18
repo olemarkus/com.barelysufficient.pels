@@ -19,12 +19,14 @@ import {
   createEmptyStarvationState,
   starvationTargetChanged,
 } from './deviceDiagnosticsEpisodes';
+import type { StarvationNotListedDevice } from '../../packages/contracts/src/starvationRescue';
 import { logObservationTransition, logTrackedUsageEvent } from './deviceDiagnosticsLogging';
 import {
   buildUiPayload,
   getCurrentStarvedDeviceCount as computeCurrentStarvedDeviceCount,
   getOverviewStarvation as computeOverviewStarvation,
   getStarvedRescueEntries as computeStarvedRescueEntries,
+  getLimitedNotListedEntries as computeLimitedNotListedEntries,
   type StarvedRescueEntry,
 } from './deviceDiagnosticsUiPayload';
 
@@ -224,6 +226,10 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
 
   getStarvedRescueEntries(): StarvedRescueEntry[] {
     return computeStarvedRescueEntries(this.liveByDeviceId, this.latestObservationBatchId);
+  }
+
+  getLimitedNotListedEntries(): StarvationNotListedDevice[] {
+    return computeLimitedNotListedEntries(this.liveByDeviceId, this.latestObservationBatchId);
   }
 
   destroy(): void {

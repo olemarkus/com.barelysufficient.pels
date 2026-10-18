@@ -1,4 +1,4 @@
-# Temperature Device Starvation Detection v1
+# Device Starvation Detection v1
 
 > The agent-facing invariants digest for this subsystem lives next to the code in
 > `lib/diagnostics/AGENTS.md`; this note is the design-of-record behind it.
@@ -15,7 +15,7 @@ integration gaps should still follow this note.
 > one PELS was commanding in full (`keep`) — as "starved", and the overview
 > bucketed those `keep`/paused episodes as a "Manual hold". The shipped criterion
 > is now: **a device is starved only when PELS's COMMANDED effective target is
-> below its intended/mode target** (`commandedTargetC < intendedNormalTargetC`)
+> below its intended/mode target** (`commandedTargetC < intendedTarget.targetTemperatureC`)
 > AND a real counting suppression (capacity/budget/shortfall/…) is active. A
 > device PELS commands in full is never starved, however cold it physically is.
 > Consequences, reflected throughout the sections below:
@@ -179,10 +179,18 @@ A device is eligible only when all are true:
 - device is capacity-controlled
 - device is available
 
+An EV charger is eligible on its own terms: managed, capacity-controlled and
+available as above, with a target battery level set (`ev_charge_target_settings`)
+and a car on the cable whose battery level PELS knows. The producer measures the
+car against the target into `PlanInputDevice.chargeTargetHold`: `below_target`,
+`target_reached` and `at_full_target` (a car at a 100% target, which PELS never
+holds) are eligible; `none` (no car), `no_target`, `level_unknown` and
+`awaiting_level` are not. See "Chargers" below.
+
 Does not apply in this version to:
 
 - generic binary on/off loads
-- EV chargers
+- EV chargers with no target battery level, or whose car has reported no level
 - other non-temperature devices
 - unmanaged devices
 - devices with capacity control off
@@ -195,7 +203,7 @@ vendor-specific diagnostic quirks.
 A device is starved only when both are true:
 
 1. PELS's COMMANDED effective target is below the device's intended/mode target
-   (`commandedTargetC < intendedNormalTargetC`, by at least the target step) —
+   (`commandedTargetC < intendedTarget.targetTemperatureC`, by at least the target step) —
    i.e. PELS is actively limiting the device, not waiting for it to reach a
    target it is already commanding in full.
 2. a real counting suppression (capacity/budget/shortfall/…) is active.
@@ -237,7 +245,8 @@ Each eligible plan sample must normalize into:
 
 - `eligibleForStarvation: boolean`
 - `currentTemperatureC: number | null` (display/telemetry only — NOT the entry signal)
-- `intendedNormalTargetC: number | null`
+- `intendedTarget: StarvationTarget | null` (`{ kind: 'temperature', targetTemperatureC }`
+  or a charger's `{ kind: 'ev_soc', targetPercent }`)
 - `commandedTargetC: number | null` (the effective target PELS is commanding now:
   `plannedTarget ?? currentTarget`)
 - `targetStepC: number | null` (used as the below-target epsilon, not for a deficit threshold)
@@ -312,15 +321,49 @@ anchor table. The single comparison is commanded-vs-intended:
 
 ```text
 epsilon = targetStepC > 0 ? targetStepC / 2 : 0.25
-pelsHoldsBelowTarget = commandedTargetC < intendedNormalTargetC - epsilon
+pelsHoldsBelowTarget = commandedTargetC < intendedTarget.targetTemperatureC - epsilon
 ```
 
 - the half-step epsilon keeps float/quantization noise from reading an equal
   command as "below"
-- `commandedTargetC == intendedNormalTargetC` is never below — a device PELS
+- `commandedTargetC == intendedTarget.targetTemperatureC` is never below — a device PELS
   commands in full is never starved
 - physical `currentTemperatureC` is carried for display/telemetry only; it does
   not gate entry, accumulation, or clear
+
+## Chargers
+
+A charger has a target battery level instead of a mode temperature, and the same
+rule applies: it is starved when PELS holds it below that target. The planner
+holds no battery level, so the producer (`projectChargeTargetHold`,
+`lib/planInput/chargeTargetHold.ts`) resolves the known level against the target
+and the planner sees only the answer.
+
+```text
+intendedTarget       = { kind: 'ev_soc', targetPercent }
+pelsHoldsBelowTarget = chargeTargetHold.kind === 'below_target'
+                       && (plannedState === 'shed' || desiredStepId below the top step)
+```
+
+- Asked by outcome, as a thermostat's setpoint is: a paused charger, or a
+  stepped charger planned below its top step whatever reason the cycle wrote
+  (a `shedInvariant` step-up block included). A charger PELS lets charge at
+  full rate is not held, whatever its level.
+- A charger at its target (`target_reached`, or `at_full_target`) stays eligible, so reaching the
+  target CLEARS an episode through the usual 10-minute window rather than
+  resetting it. Unplugging the car makes the charger ineligible (hard reset).
+- The counting causes and pause reasons are the temperature ones: the
+  suppression is read from the device's reason exactly as for a thermostat.
+- A charger never feeds the daily-budget unserved evidence (`budgetUnservedDenied`
+  needs a temperature target); car demand reaches the budget through finalized
+  smart-task misses, so it is not counted twice.
+- The rescue aims an `ev_soc` smart task at the target battery level
+  (`buildRescueCandidate`), with the same horizon and permissions as a
+  thermostat's.
+
+Known gap: a car that stops at its own charge limit below the PELS target looks
+short of it. While PELS keeps it limited it stays starved; once PELS lets it run
+for the clear window it clears, because a charger PELS lets charge is not held.
 
 ## Observation Validity And Continuity
 
@@ -334,8 +377,9 @@ commanding the full target and simply not the reason it was cold.)
 A sample is valid only when all are true:
 
 - device is still eligible
-- `intendedNormalTargetC` is finite
-- `commandedTargetC` is finite
+- `intendedTarget` is set
+- for a temperature target, `commandedTargetC` is finite (or a turn_off shed
+  has a known current temperature); a charger's target needs nothing more
 
 (`currentTemperatureC` finiteness is no longer a validity requirement — physical
 temperature is display/telemetry only.)
@@ -343,7 +387,7 @@ temperature is display/telemetry only.)
 **The age of the device's telemetry is not a validity term (2026-08-30).** There used
 to be an `observationFresh` requirement here, which stopped counting once a device had
 not reported for 40 minutes. It contradicted the paragraph above — every term that
-actually decides starvation (`commandedTargetC`, `intendedNormalTargetC`) is a value
+actually decides starvation (`commandedTargetC`, `intendedTarget.targetTemperatureC`) is a value
 PELS owns, and the device's own readings are display-only — and it inverted the
 feature: a Homey driver republishes a capability only on value CHANGE, so a device
 held below target is exactly the one that falls silent. Silence means "unchanged",
@@ -377,11 +421,11 @@ across valid contiguous samples:
 - eligible managed temperature device
 - valid observation
 - `suppressionState === 'counting'` with a real counting cause
-- `pelsHoldsBelowTarget` (`commandedTargetC < intendedNormalTargetC`)
+- `pelsHoldsBelowTarget` (`commandedTargetC < intendedTarget.targetTemperatureC`)
 
 The entry timer resets on any of:
 
-- PELS no longer holds the device below target (`commandedTargetC >= intendedNormalTargetC`)
+- PELS no longer holds the device below target (`commandedTargetC >= intendedTarget.targetTemperatureC`)
 - the suppression is not a real counting cause (`keep` / `inactive` / an owner-set hold / any pause)
 - invalid observation
 - sample gap longer than `10 minutes`
@@ -490,7 +534,7 @@ from the suppression state, so that bounded loop is untouched by this change.
 There is no physical-temperature exit threshold. Recovery is purely
 commanded-vs-intended:
 
-- once PELS commands the full mode target again (`commandedTargetC >= intendedNormalTargetC`
+- once PELS commands the full mode target again (`commandedTargetC >= intendedTarget.targetTemperatureC`
   on a valid sample), stop adding counted time and start a `10 minute` clear timer
 - if PELS drops the commanded target back below the intended target before the
   clear timer completes, cancel the clear timer and resume the episode
@@ -521,7 +565,7 @@ Add starvation time only while all are true:
 - device is already starved
 - sample is valid
 - `suppressionState === 'counting'` with a real counting cause
-- `pelsHoldsBelowTarget` (`commandedTargetC < intendedNormalTargetC`)
+- `pelsHoldsBelowTarget` (`commandedTargetC < intendedTarget.targetTemperatureC`)
 
 ### Pause accumulation
 
@@ -535,7 +579,7 @@ non-counting suppression). The original counting cause is retained across the pa
 `starved -> not starved`
 
 Clear only after PELS has commanded the full mode target
-(`commandedTargetC >= intendedNormalTargetC`) for `10 minutes`.
+(`commandedTargetC >= intendedTarget.targetTemperatureC`) for `10 minutes`.
 
 ### Hard reset
 
@@ -660,7 +704,7 @@ Logs should include:
 - starvation applies only to eligible managed temperature devices in the formal PELS device model
 - a device PELS commands in full (`keep`) never becomes starved, however cold it physically is
 - starvation requires PELS to command the device below its intended/mode target
-  (`commandedTargetC < intendedNormalTargetC`) under a real counting cause
+  (`commandedTargetC < intendedTarget.targetTemperatureC`) under a real counting cause
 - price-optimization deltas do not change the intended-target baseline
 - physical temperature does not gate entry, accumulation, or clear (display/telemetry only)
 - starvation enters only after `15 minutes` of continuous below-target counting suppression

@@ -18,7 +18,7 @@ device is shed" gate (no such gate exists).
 ## Why a lifted device is never "starved"
 
 Starvation counts only when PELS's **commanded** effective target sits **below**
-the device's intended/mode target (`commandedTargetC < intendedNormalTargetC`;
+the device's intended/mode target (`commandedTargetC < intendedTarget.targetTemperatureC`;
 see README § Core Rule). The surplus lift is **raise-only** — it applies
 `max(pricedTarget, baseTarget + surplusDelta)` (`applySurplusAbsorbDelta`), so the
 commanded target is at or **above** the mode target while engaged. A device

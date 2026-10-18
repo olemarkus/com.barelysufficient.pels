@@ -1,3 +1,5 @@
+import type { StarvationTarget } from './starvationRescue.js';
+
 export type DeviceDiagnosticsWindowKey = '1d' | '7d' | '21d';
 
 // Why the starvation clock is RUNNING. The planner classifier
@@ -59,7 +61,7 @@ export type DeviceDiagnosticsStarvationSummary = {
   starvedAccumulatedMs: number;
   starvationEpisodeStartedAt: number | null;
   starvationLastResumedAt: number | null;
-  intendedNormalTargetC: number | null;
+  intendedTarget: StarvationTarget | null;
   currentTemperatureC: number | null;
   starvationCause: DeviceDiagnosticsStarvationCountingCause | null;
   starvationPauseReason: DeviceDiagnosticsStarvationPauseReason | null;

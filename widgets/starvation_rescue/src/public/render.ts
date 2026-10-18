@@ -1,5 +1,7 @@
 import {
   STARVATION_RESCUE_WIDGET_COPY,
+  formatStarvationAlsoLimited,
+  formatStarvationNotListedReason,
   formatStarvationOverflowCue,
   formatStarvationRowChip,
   resolveStarvationRowNote,
@@ -24,8 +26,9 @@ import { renderPreviewChart } from '../../../create_smart_task/src/public/previe
 import { clearChildren, hide, setLine, setVisible } from '../../../_shared/widgetDom';
 import { formatPreviewCostLine, formatPreviewEnergyLine } from '../../../_shared/smartTaskPreviewLines';
 import type {
+  StarvationNotListedDevice,
   StarvationRescueDevice,
-  StarvationRescueDevicesPayload,
+  StarvationRescueListState,
   StarvationRescuePreviewResponse,
 } from '../starvationRescueWidgetTypes';
 
@@ -54,7 +57,13 @@ export type RenderTargets = {
   listTitleEl: HTMLElement;
   listEl: HTMLElement;
   listMoreEl: HTMLElement;
+  listAlsoEl: HTMLElement;
   listEmptyEl: HTMLElement;
+  listScopeEl: HTMLElement;
+  notListedEl: HTMLElement;
+  notListedTitleEl: HTMLElement;
+  notListedListEl: HTMLElement;
+  notListedMoreEl: HTMLElement;
   deviceTemplate: HTMLTemplateElement;
   // Confirm
   confirmView: HTMLElement;
@@ -98,7 +107,7 @@ const resolveDeviceRowNote = (
   device: StarvationRescueDevice,
 ): string | null => {
   if (device.smartTaskHomeScope === 'unavailable') return C.temporaryUnavailableNote;
-  return resolveStarvationRowNote(device.hasSmartTask, device.intendedNormalTargetC);
+  return resolveStarvationRowNote(device.hasSmartTask, device.intendedTarget);
 };
 
 // ─── List ────────────────────────────────────────────────────────────────────
@@ -117,7 +126,7 @@ const renderDeviceRow = (
   // Mirrors the API guardrail (`resolveRescuableDevice`), so the button is never
   // shown for a request the API would then reject.
   const offersRescue = starvationRowIsRescuable(
-    device.intendedNormalTargetC,
+    device.intendedTarget,
     device.hasSmartTask,
     device.smartTaskHomeScope,
   );
@@ -131,7 +140,7 @@ const renderDeviceRow = (
   const noteEl = li.querySelector('[data-device-note]');
   const rescueBtn = li.querySelector('[data-rescue-button]');
 
-  const subtext = resolveStarvationRowSubtext(device.intendedNormalTargetC);
+  const subtext = resolveStarvationRowSubtext(device.intendedTarget);
 
   if (nameEl instanceof HTMLElement) nameEl.textContent = device.deviceName;
   if (chipEl instanceof HTMLElement) chipEl.textContent = formatStarvationRowChip(device.accumulatedMs);
@@ -154,31 +163,75 @@ const renderDeviceRow = (
   return li;
 };
 
-const renderList = (targets: RenderTargets, payload: StarvationRescueDevicesPayload | null): void => {
-  const { listTitleEl, listEl, listEmptyEl, listMoreEl, deviceTemplate } = targets;
-  clearChildren(listEl);
-  if (!payload || payload.state === 'empty') {
-    // The header names what the widget shows; with nothing held back the calm
-    // empty subtitle stands alone, so the header is hidden in that state.
-    listTitleEl.hidden = true;
-    listEl.hidden = true;
-    listMoreEl.hidden = true;
-    listEmptyEl.hidden = false;
-    // The calm steady state subtitle, or the transient connecting/load copy the
-    // controller supplied as the empty subtitle.
-    listEmptyEl.textContent = payload?.state === 'empty' ? payload.subtitle : C.loadError;
+const renderNotListedRow = (doc: Document, device: StarvationNotListedDevice): HTMLElement => {
+  const li = doc.createElement('li');
+  li.className = 'not-listed__row';
+  const name = doc.createElement('span');
+  name.className = 'not-listed__name';
+  name.textContent = device.deviceName;
+  const reason = doc.createElement('span');
+  reason.className = 'not-listed__reason';
+  reason.textContent = formatStarvationNotListedReason(device.reason);
+  li.append(name, reason);
+  return li;
+};
+
+// The calm empty state: the header, the lead, and either the limited devices the
+// list leaves out (each with why) or, when PELS limits nothing, which devices
+// the list covers.
+const renderNotListed = (targets: RenderTargets, notListed: readonly StarvationNotListedDevice[]): void => {
+  const { notListedEl, notListedTitleEl, notListedListEl, notListedMoreEl, listScopeEl } = targets;
+  clearChildren(notListedListEl);
+  if (notListed.length === 0) {
+    setLine(listScopeEl, C.emptyScopeNote);
     return;
   }
+  notListedEl.hidden = false;
+  notListedTitleEl.textContent = C.notListedTitle;
+  for (const device of notListed) {
+    notListedListEl.appendChild(renderNotListedRow(notListedListEl.ownerDocument, device));
+  }
+  setLine(notListedMoreEl, formatStarvationOverflowCue(notListed.length));
+};
+
+const hideListParts = (targets: RenderTargets): void => {
+  hide(targets.listEl);
+  hide(targets.listEmptyEl);
+  hide(targets.listMoreEl);
+  hide(targets.listAlsoEl);
+  hide(targets.listScopeEl);
+  hide(targets.notListedEl);
+};
+
+const renderList = (targets: RenderTargets, listState: StarvationRescueListState | null): void => {
+  const { listTitleEl, listEl, listEmptyEl, listMoreEl, listAlsoEl, deviceTemplate } = targets;
+  clearChildren(listEl);
+  hideListParts(targets);
   listTitleEl.textContent = C.headerTitle;
+  if (!listState || listState.state === 'unavailable') {
+    // Connecting or a failed load: the transient message stands alone, centred.
+    listTitleEl.hidden = true;
+    listEmptyEl.dataset.calm = 'false';
+    setLine(listEmptyEl, listState?.message ?? C.loadError);
+    return;
+  }
+  // The header names what the widget shows, so the card always says which
+  // widget it is — in the calm state too.
   listTitleEl.hidden = false;
+  if (listState.state === 'empty') {
+    listEmptyEl.dataset.calm = 'true';
+    setLine(listEmptyEl, listState.subtitle);
+    renderNotListed(targets, listState.notListed);
+    return;
+  }
   listEl.hidden = false;
-  listEmptyEl.hidden = true;
-  for (const device of payload.devices) {
+  for (const device of listState.devices) {
     listEl.appendChild(renderDeviceRow(deviceTemplate, device));
   }
   // "+N more" cue when rows sit below the fixed-height fold, so a just-notified
   // device that scrolled out of view still has a visible count affordance.
-  setLine(listMoreEl, formatStarvationOverflowCue(payload.devices.length));
+  setLine(listMoreEl, formatStarvationOverflowCue(listState.devices.length));
+  setLine(listAlsoEl, formatStarvationAlsoLimited(listState.notListed));
 };
 
 // ─── Confirm ─────────────────────────────────────────────────────────────────
@@ -317,7 +370,7 @@ const renderConfirm = (
 
 export const renderWidget = (
   targets: RenderTargets,
-  payload: StarvationRescueDevicesPayload | null,
+  listState: StarvationRescueListState | null,
   view: ViewState,
 ): void => {
   const { root, listView, confirmView, doneView, doneMsgEl, confirmBackBtn } = targets;
@@ -331,7 +384,7 @@ export const renderWidget = (
   confirmBackBtn.setAttribute('aria-label', C.backButton);
 
   if (view.kind === 'list') {
-    renderList(targets, payload);
+    renderList(targets, listState);
     return;
   }
   if (view.kind === 'confirm') {

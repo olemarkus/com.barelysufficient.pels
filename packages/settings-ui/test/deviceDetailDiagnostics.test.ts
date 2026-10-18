@@ -82,7 +82,7 @@ describe('device detail diagnostics', () => {
             starvedAccumulatedMs: 23 * 60 * 1000,
             starvationEpisodeStartedAt: Date.UTC(2026, 3, 20, 11, 0, 0),
             starvationLastResumedAt: Date.UTC(2026, 3, 20, 11, 15, 0),
-            intendedNormalTargetC: 22,
+            intendedTarget: { kind: 'temperature', targetTemperatureC: 22 },
             currentTemperatureC: 18.2,
             starvationCause: 'capacity',
             starvationPauseReason: null,

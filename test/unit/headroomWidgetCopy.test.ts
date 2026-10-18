@@ -1,17 +1,14 @@
 import {
-  headroomHeldBackLabel,
+  headroomLimitedLabel,
   headroomLimitStateLabel,
   headroomPriceAriaLabel,
   headroomPriceChipLabel,
 } from '../../packages/shared-domain/src/headroomWidgetCopy';
 
-describe('headroomHeldBackLabel', () => {
-  it('uses the singular "held back" word for one device', () => {
-    expect(headroomHeldBackLabel(1)).toBe('1 held back');
-  });
-
-  it('uses "held back" for the plural count', () => {
-    expect(headroomHeldBackLabel(3)).toBe('3 held back');
+describe('headroomLimitedLabel', () => {
+  it('counts limited devices with the Overview state word, not "held back"', () => {
+    expect(headroomLimitedLabel(1)).toBe('1 limited');
+    expect(headroomLimitedLabel(3)).toBe('3 limited');
   });
 });
 

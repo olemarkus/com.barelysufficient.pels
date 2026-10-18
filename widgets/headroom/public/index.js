@@ -38,7 +38,7 @@
      * Meta line while the tile's reading is not current — the payload builder
      * aged the persisted status by its own `lastPowerUpdate`. The numbers above
      * it are from before, so the
-     * available-power / held-back claims are withheld and this line says so.
+     * available-power / limited claims are withheld and this line says so.
      * The AGING is what makes this honest: across the persisted-blob transport
      * the widget cannot ask the runtime's gate, so the blob's own timestamp is
      * the only evidence — after a restart with a dead meter it dates the data
@@ -73,7 +73,7 @@
   };
   var headroomLimitStateLabel = (state) => LIMIT_STATE_LABELS[state];
   var headroomAvailableLabel = (availableKwText) => `${availableKwText} kW available`;
-  var headroomHeldBackLabel = (shedCount) => shedCount === 1 ? "1 held back" : `${shedCount} held back`;
+  var headroomLimitedLabel = (shedCount) => `${shedCount} limited`;
 
   // widgets/_shared/widgetRuntime.ts
   var applyPreviewTheme = (widgetDocument, searchParams) => {
@@ -325,8 +325,8 @@
     root.dataset.tone = tone;
     setStateLabel(stateLabelEl, payload.stale ? "under" : payload.limitState);
     const availableLabel = headroomAvailableLabel(formatKw(Math.max(0, payload.headroomKw)));
-    const heldBackLabel = headroomHeldBackLabel(payload.shedCount);
-    const liveMetaText = payload.shedCount > 0 ? `${availableLabel} \xB7 ${heldBackLabel}` : availableLabel;
+    const limitedLabel = headroomLimitedLabel(payload.shedCount);
+    const liveMetaText = payload.shedCount > 0 ? `${availableLabel} \xB7 ${limitedLabel}` : availableLabel;
     const metaText = payload.stale ? HEADROOM_WIDGET_COPY.notCurrentNote : liveMetaText;
     metaEl.textContent = metaText;
     metaEl.dataset.tone = tone === "danger" ? "danger" : "ok";

@@ -56,21 +56,25 @@ describe('projectChargeTargetHold (producer)', () => {
 
   it('never holds at a 100% target, so a full car that still draws keeps the charger on', () => {
     const full: EvChargeTargetConfig = { targetPercent: 100, chargeBeforeLevelKnown: true };
-    expect(projectChargeTargetHold(full, charger(known(100)), AUTHORITY)).toEqual({ kind: 'none' });
+    expect(projectChargeTargetHold(full, charger(known(100)), AUTHORITY))
+      .toEqual({ kind: 'at_full_target', targetPercent: 100 });
   });
 
-  it('does not hold a charger below its target', () => {
-    expect(projectChargeTargetHold(TARGET, charger(known(25)), AUTHORITY)).toEqual({ kind: 'none' });
+  it('does not hold a charger below its target, and names the target it is short of', () => {
+    expect(projectChargeTargetHold(TARGET, charger(known(25)), AUTHORITY))
+      .toEqual({ kind: 'below_target', targetPercent: 30 });
   });
 
-  it('does not hold a charger with no target', () => {
-    expect(projectChargeTargetHold(undefined, charger(known(90)), AUTHORITY)).toEqual({ kind: 'none' });
+  it('does not hold a charger with no target, and says it has none', () => {
+    expect(projectChargeTargetHold(undefined, charger(known(90)), AUTHORITY)).toEqual({ kind: 'no_target' });
+    // No car connected is still nothing at all, target or not.
+    expect(projectChargeTargetHold(undefined, charger(null, 'plugged_out'), AUTHORITY)).toEqual({ kind: 'none' });
   });
 
-  it('charges before the level is known by default', () => {
+  it('charges before the level is known by default, saying the level is unknown', () => {
     expect(projectChargeTargetHold(TARGET, charger({ kind: 'unavailable', reasonCode: 'not_reported' }), AUTHORITY))
-      .toEqual({ kind: 'none' });
-    expect(projectChargeTargetHold(TARGET, charger(null), AUTHORITY)).toEqual({ kind: 'none' });
+      .toEqual({ kind: 'level_unknown' });
+    expect(projectChargeTargetHold(TARGET, charger(null), AUTHORITY)).toEqual({ kind: 'level_unknown' });
   });
 
   it('waits for the level when the owner chose not to charge before it is known', () => {
@@ -136,6 +140,15 @@ describe('resolveChargeTargetHold (planner)', () => {
     expect([...resolveChargeTargetHold([planInput({ kind: 'none' })]).holdIds]).toEqual([]);
   });
 
+  it.each([
+    { kind: 'below_target', targetPercent: 60 },
+    { kind: 'at_full_target', targetPercent: 100 },
+    { kind: 'no_target' },
+    { kind: 'level_unknown' },
+  ] as const)('holds nothing for a charger the target does not hold ($kind)', (hold) => {
+    expect([...resolveChargeTargetHold([planInput(hold)]).holdIds]).toEqual([]);
+  });
+
   it('holds nothing while a smart task lifts it', () => {
     const result = resolveChargeTargetHold([planInput({ kind: 'target_reached', targetPercent: 60 }, true)]);
     expect([...result.holdIds]).toEqual([]);
@@ -181,6 +194,9 @@ describe('smart task lift (deferred admission)', () => {
 
   it('a planned hour stamps nothing on a charger with no hold', () => {
     expect(admit({ kind: 'none' }, planned).chargeTargetHoldLifted).toBeUndefined();
+    expect(admit({ kind: 'below_target', targetPercent: 30 }, planned).chargeTargetHoldLifted).toBeUndefined();
+    expect(admit({ kind: 'no_target' }, planned).chargeTargetHoldLifted).toBeUndefined();
+    expect(admit({ kind: 'level_unknown' }, planned).chargeTargetHoldLifted).toBeUndefined();
   });
 });
 

@@ -288,6 +288,73 @@ body {
   text-align: center;
 }
 
+/* The calm empty state sits under the header as its lead line; only the
+   transient connecting/load message stands alone, centred. */
+.empty[data-calm="true"] {
+  margin: 0;
+  flex: none;
+  color: var(--pw-text, inherit);
+  text-align: left;
+}
+
+.scope-note,
+.list-also {
+  margin: 0;
+  flex: none;
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  color: var(--pw-text-muted, #6d7680);
+}
+
+.not-listed {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  gap: var(--pw-su-1, 4px);
+}
+
+.not-listed__title {
+  margin: 0;
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  font-weight: var(--pw-weight-medium, 500);
+  color: var(--pw-text-muted, #6d7680);
+}
+
+.not-listed__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.not-listed__row {
+  display: flex;
+  flex-direction: column;
+  padding: var(--pw-su-1, 4px) 0;
+  border-top: 1px solid var(--pw-line-light, rgba(15, 23, 28, 0.08));
+}
+
+.not-listed__name {
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  font-weight: var(--pw-weight-medium, 500);
+  color: var(--pw-text, inherit);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.not-listed__reason {
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  color: var(--pw-text-muted, #6d7680);
+}
+
 /* ----- Step header / back ----- */
 
 .step-header {

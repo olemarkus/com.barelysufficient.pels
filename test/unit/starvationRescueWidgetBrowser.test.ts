@@ -17,7 +17,14 @@ const WIDGET_MARKUP = `
       <h1 class="list-title" data-list-title hidden></h1>
       <ol class="rows" data-device-list></ol>
       <p class="list-more" data-list-more hidden></p>
+      <p class="list-also" data-list-also hidden></p>
       <p class="empty" data-list-empty hidden></p>
+      <p class="scope-note" data-list-scope hidden></p>
+      <section class="not-listed" data-not-listed hidden>
+        <h2 class="not-listed__title" data-not-listed-title>Limited, not listed here</h2>
+        <ul class="not-listed__rows" data-not-listed-list></ul>
+        <p class="list-more" data-not-listed-more hidden></p>
+      </section>
     </section>
     <section class="confirm-view" data-confirm-view hidden>
       <header class="step-header">
@@ -75,11 +82,12 @@ const NBSP = '\u00a0';
 const READY_PAYLOAD: StarvationRescueDevicesPayload = {
   state: 'ready',
   devices: [
-    { deviceId: 'long-1', deviceName: 'Hot water', accumulatedMs: 42 * 60_000, intendedNormalTargetC: 65, smartTaskHomeScope: 'main', hasSmartTask: false },
-    { deviceId: 'short-1', deviceName: 'Living room', accumulatedMs: 11 * 60_000, intendedNormalTargetC: 21, smartTaskHomeScope: 'main', hasSmartTask: false },
+    { deviceId: 'long-1', deviceName: 'Hot water', accumulatedMs: 42 * 60_000, intendedTarget: { kind: 'temperature', targetTemperatureC: 65 }, smartTaskHomeScope: 'main', hasSmartTask: false },
+    { deviceId: 'short-1', deviceName: 'Living room', accumulatedMs: 11 * 60_000, intendedTarget: { kind: 'temperature', targetTemperatureC: 21 }, smartTaskHomeScope: 'main', hasSmartTask: false },
     // Held back, but it already has its own smart task → shown, no rescue button.
-    { deviceId: 'task-1', deviceName: 'Cabin water', accumulatedMs: 30 * 60_000, intendedNormalTargetC: 60, smartTaskHomeScope: 'main', hasSmartTask: true },
+    { deviceId: 'task-1', deviceName: 'Cabin water', accumulatedMs: 30 * 60_000, intendedTarget: { kind: 'temperature', targetTemperatureC: 60 }, smartTaskHomeScope: 'main', hasSmartTask: true },
   ],
+  notListed: [],
 };
 
 // Floor to the current clock hour so a scheduled "current hour" entry matches
@@ -149,21 +157,61 @@ describe('starvation rescue widget browser', () => {
     expect(empty.textContent).toBe(STARVATION_RESCUE_WIDGET_COPY.notReady);
   });
 
-  test('empty payload renders the calm steady-state subtitle', async () => {
+  const bootWithDevices = async (payload: StarvationRescueDevicesPayload) => {
     const controller = installWidget(window as WidgetWindow, document);
-    const homey = buildHomey({
-      api: vi.fn(async () => ({ state: 'empty', subtitle: STARVATION_RESCUE_WIDGET_COPY.emptySubtitle })),
-    });
+    const homey = buildHomey({ api: vi.fn(async () => payload) });
     (window as WidgetWindow).onHomeyReady?.(homey as never);
     controller!.bootstrap(homey);
     await flushPromises();
+  };
+  const el = (selector: string) => document.querySelector(selector) as HTMLElement;
 
-    const empty = document.querySelector('[data-list-empty]') as HTMLElement;
-    expect(empty.hidden).toBe(false);
-    expect(empty.textContent).toBe(STARVATION_RESCUE_WIDGET_COPY.emptySubtitle);
-    // The header names what the widget shows; with nothing held back it is hidden
-    // so the calm empty line stands alone.
-    expect((document.querySelector('[data-list-title]') as HTMLElement).hidden).toBe(true);
+  test('the calm empty state keeps the header and says which devices the list covers', async () => {
+    await bootWithDevices({ state: 'empty', subtitle: STARVATION_RESCUE_WIDGET_COPY.emptySubtitle, notListed: [] });
+
+    // The header stays, so an empty card still says which widget it is.
+    expect(el('[data-list-title]').hidden).toBe(false);
+    expect(el('[data-list-title]').textContent).toBe('Held-back devices');
+    expect(el('[data-list-empty]').textContent).toBe('Nothing held back right now.');
+    expect(el('[data-list-empty]').dataset.calm).toBe('true');
+    expect(el('[data-list-scope]').hidden).toBe(false);
+    expect(el('[data-list-scope]').textContent).toBe(STARVATION_RESCUE_WIDGET_COPY.emptyScopeNote);
+    expect(el('[data-not-listed]').hidden).toBe(true);
+  });
+
+  test('the calm empty state names each limited device the list leaves out, and why', async () => {
+    await bootWithDevices({
+      state: 'empty',
+      subtitle: STARVATION_RESCUE_WIDGET_COPY.emptySubtitle,
+      notListed: [
+        { deviceId: 'ev-1', deviceName: 'Easee Home', reason: { kind: 'no_battery_target' } },
+        { deviceId: 'rad-1', deviceName: 'Living room', reason: { kind: 'listed_soon', remainingMs: 8.5 * 60_000 } },
+      ],
+    });
+
+    expect(el('[data-list-title]').hidden).toBe(false);
+    expect(el('[data-list-scope]').hidden).toBe(true);
+    expect(el('[data-not-listed]').hidden).toBe(false);
+    expect(el('[data-not-listed-title]').textContent).toBe('Limited, not listed here');
+    const rows = [...document.querySelectorAll('[data-not-listed-list] .not-listed__row')]
+      .map((row) => row.textContent);
+    expect(rows).toEqual([
+      'Easee HomeTurn on Charge to a battery level to list it',
+      // Rounded up: 8.5 min left reads as 9, never sooner than it is.
+      `Living roomListed in 9${NBSP}min`,
+    ]);
+  });
+
+  test('the list says when limited devices are left out of it', async () => {
+    await bootWithDevices({
+      ...READY_PAYLOAD,
+      notListed: [{ deviceId: 'ev-1', deviceName: 'Easee Home', reason: { kind: 'battery_level_unknown' } }],
+    });
+
+    expect(el('[data-list-also]').hidden).toBe(false);
+    expect(el('[data-list-also]').textContent).toBe('Also limited: Easee Home');
+    expect(el('[data-list-empty]').hidden).toBe(true);
+    expect(el('[data-not-listed]').hidden).toBe(true);
   });
 
   test('renders a list with tone-by-duration, a rescue on every row, and the canonical why', async () => {
@@ -223,8 +271,9 @@ describe('starvation rescue widget browser', () => {
           return {
             state: 'ready',
             devices: [
-              { deviceId: 'no-target', deviceName: 'Hot water', accumulatedMs: 20 * 60_000, intendedNormalTargetC: null, smartTaskHomeScope: 'main', hasSmartTask: false },
+              { deviceId: 'no-target', deviceName: 'Hot water', accumulatedMs: 20 * 60_000, intendedTarget: null, smartTaskHomeScope: 'main', hasSmartTask: false },
             ],
+            notListed: [],
           } satisfies StarvationRescueDevicesPayload;
         }
         throw new Error(`unexpected ${path}`);
@@ -255,10 +304,11 @@ describe('starvation rescue widget browser', () => {
               deviceId: 'held-unavailable',
               deviceName: 'Hot water',
               accumulatedMs: 20 * 60_000,
-              intendedNormalTargetC: 65,
+              intendedTarget: { kind: 'temperature', targetTemperatureC: 65 },
               smartTaskHomeScope: 'unavailable',
               hasSmartTask: false,
             }],
+            notListed: [],
           } satisfies StarvationRescueDevicesPayload;
         }
         throw new Error(`unexpected ${path}`);

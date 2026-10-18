@@ -62,7 +62,7 @@ export const HEADROOM_WIDGET_COPY = {
    * Meta line while the tile's reading is not current — the payload builder
    * aged the persisted status by its own `lastPowerUpdate`. The numbers above
    * it are from before, so the
-   * available-power / held-back claims are withheld and this line says so.
+   * available-power / limited claims are withheld and this line says so.
    * The AGING is what makes this honest: across the persisted-blob transport
    * the widget cannot ask the runtime's gate, so the blob's own timestamp is
    * the only evidence — after a restart with a dead meter it dates the data
@@ -137,10 +137,12 @@ export const headroomAvailableLabel = (availableKwText: string): string => (
 );
 
 /**
- * "1 held back" / "N held back" — count of devices PELS is currently holding
- * back. Uses "held back" to match the dedicated Held-back-devices widget
- * (notes/ui-terminology.md § "Headroom-widget chips").
+ * "N limited" — count of devices PELS is currently limiting, any kind and any
+ * duration. Uses the Overview's Limited state word, not "held back": the
+ * Held-back devices widget lists only devices kept below a target temperature
+ * or battery level for 15 minutes, so "2 held back" here beside an empty
+ * Held-back devices widget read as a contradiction.
  */
-export const headroomHeldBackLabel = (shedCount: number): string => (
-  shedCount === 1 ? '1 held back' : `${shedCount} held back`
+export const headroomLimitedLabel = (shedCount: number): string => (
+  `${shedCount} limited`
 );

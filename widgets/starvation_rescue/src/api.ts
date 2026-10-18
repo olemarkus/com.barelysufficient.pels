@@ -102,7 +102,10 @@ export const getStarvationRescueDevices = async (
   const devices = typeof homey.app?.getStarvedRescueDevices === 'function'
     ? homey.app.getStarvedRescueDevices()
     : null;
-  return buildStarvationRescueDevicesPayload({ devices });
+  const notListed = typeof homey.app?.getLimitedNotListedDevices === 'function'
+    ? homey.app.getLimitedNotListedDevices()
+    : null;
+  return buildStarvationRescueDevicesPayload({ devices, notListed });
 };
 
 export const previewStarvationRescue = async (
@@ -122,7 +125,7 @@ export const previewStarvationRescue = async (
   // A rescue is always a fresh task (task-having devices are excluded), so the
   // deadline is simply the now+3h rescue horizon — the fresh candidate IS what
   // persists (preview ≡ persist).
-  const candidate = buildRescueCandidate(rescuable.targetTemperatureC, nowMs + RESCUE_DEADLINE_HORIZON_MS);
+  const candidate = buildRescueCandidate(rescuable.target, nowMs + RESCUE_DEADLINE_HORIZON_MS);
   const { estimate, deadlineAtMs } = homey.app.previewStarvationRescuePlan(request.deviceId, candidate);
   return {
     ok: true,
@@ -161,7 +164,7 @@ export const createStarvationRescue = async (
   if (deadlineAtMs <= nowMs || deadlineAtMs > nowMs + RESCUE_DEADLINE_HORIZON_MS) {
     return createReject('deadline_passed');
   }
-  const candidate = buildRescueCandidate(rescuable.targetTemperatureC, deadlineAtMs);
+  const candidate = buildRescueCandidate(rescuable.target, deadlineAtMs);
   const result = homey.app.rescueDeviceWithBudgetExemption(request.deviceId, candidate);
   if (!result.ok) return createReject(mapAppRescueReason(result.reason));
   // Resolve the success flash against the JUST-PERSISTED plan at THIS moment, not

@@ -70,7 +70,7 @@ export const previewSettingsUiStarvationRescue = (
   // A rescue is always a fresh task (task-having devices are excluded), so the
   // deadline is simply the now+3h rescue horizon — the fresh candidate IS what
   // persists (preview ≡ persist).
-  const candidate = buildRescueCandidate(rescuable.targetTemperatureC, nowMs + RESCUE_DEADLINE_HORIZON_MS);
+  const candidate = buildRescueCandidate(rescuable.target, nowMs + RESCUE_DEADLINE_HORIZON_MS);
   const { estimate, deadlineAtMs } = host.previewStarvationRescuePlan(request.deviceId, candidate);
   return {
     ok: true,
@@ -102,7 +102,7 @@ export const createSettingsUiStarvationRescue = (
   if (deadlineAtMs <= nowMs || deadlineAtMs > nowMs + RESCUE_DEADLINE_HORIZON_MS) {
     return createRescueReject('deadline_passed');
   }
-  const candidate = buildRescueCandidate(rescuable.targetTemperatureC, deadlineAtMs);
+  const candidate = buildRescueCandidate(rescuable.target, deadlineAtMs);
   const result = host.rescueDeviceWithBudgetExemption(request.deviceId, candidate);
   if (!result.ok) return createRescueReject(mapAppRescueReason(result.reason));
   // Resolve the success flash against the JUST-PERSISTED plan at THIS moment

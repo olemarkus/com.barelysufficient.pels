@@ -20,7 +20,10 @@ import {
   TIMED_REASON_LABELS,
 } from '../../../../shared-domain/src/planReasonFormatting.ts';
 import { PLAN_REASON_CODES } from '../../../../shared-domain/src/planReasonSemanticsCore.ts';
-import { STARVATION_WAITING_FOR_POWER_COPY } from '../../../../shared-domain/src/planStarvation.ts';
+import {
+  formatStarvationTarget,
+  STARVATION_WAITING_FOR_POWER_COPY,
+} from '../../../../shared-domain/src/planStarvation.ts';
 import { HOME_SCOPE_DIAGNOSTICS_NOT_MEASURED } from '../../../../shared-domain/src/homeScopeCopy.ts';
 import {
   deviceDetailDiagnosticsCards,
@@ -139,9 +142,21 @@ const formatStarvationContext = (starvation: DeviceDiagnosticsStarvationSummary)
   return null;
 };
 
-const formatStarvationTemperatureTarget = (starvation: DeviceDiagnosticsStarvationSummary): string => {
-  if (starvation.currentTemperatureC === null || starvation.intendedNormalTargetC === null) return 'Unavailable';
-  return `${starvation.currentTemperatureC.toFixed(1)} °C / ${starvation.intendedNormalTargetC.toFixed(1)} °C`;
+// A temperature device shows its temperature against its target; a charger
+// shows only its target battery level, because PELS measures the car against
+// it without carrying the level here.
+const resolveStarvationTargetMetric = (
+  starvation: DeviceDiagnosticsStarvationSummary,
+): { label: string; value: string } | null => {
+  const target = starvation.intendedTarget;
+  if (target?.kind === 'ev_soc') {
+    return { label: 'Target battery level', value: formatStarvationTarget(target) };
+  }
+  if (starvation.currentTemperatureC === null && target === null) return null;
+  const value = starvation.currentTemperatureC === null || target === null
+    ? 'Unavailable'
+    : `${starvation.currentTemperatureC.toFixed(1)} °C / ${target.targetTemperatureC.toFixed(1)} °C`;
+  return { label: 'Temperature / target', value };
 };
 
 const formatCurrentStarvationStatus = (params: {
@@ -240,10 +255,9 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
     createDiagnosticsMetric('State', starvationStatus),
     createDiagnosticsMetric('Held-back time', formatStarvationDuration(starvation.starvedAccumulatedMs)),
   );
-  if (starvation.currentTemperatureC !== null || starvation.intendedNormalTargetC !== null) {
-    starvationList.append(
-      createDiagnosticsMetric('Temperature / target', formatStarvationTemperatureTarget(starvation)),
-    );
+  const targetMetric = resolveStarvationTargetMetric(starvation);
+  if (targetMetric) {
+    starvationList.append(createDiagnosticsMetric(targetMetric.label, targetMetric.value));
   }
   starvationList.append(
     createDiagnosticsMetric(

@@ -88,8 +88,9 @@ describe('smart-task sub-home gate (app lanes)', () => {
       },
       starvation: {
         eligibleForStarvation: true,
+        heldBackScope: 'candidate',
         currentTemperatureC: 50,
-        intendedNormalTargetC: 65,
+        intendedTarget: { kind: 'temperature', targetTemperatureC: 65 },
         commandedTargetC: 50,
         targetStepC: 0.5,
         pelsCommandsTurnOffShed: false,

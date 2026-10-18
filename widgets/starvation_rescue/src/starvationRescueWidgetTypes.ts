@@ -1,7 +1,10 @@
 import type {
   DeferredObjectivePlanPreviewEstimate,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
-import type { StarvationRescueRejectReason } from '../../../packages/contracts/src/starvationRescue';
+import type {
+  StarvationRescueDevicesPayload,
+  StarvationRescueRejectReason,
+} from '../../../packages/contracts/src/starvationRescue';
 
 // Re-export the browser-safe payload so the widget's render/controller import
 // from one place. The payload is produced by the runtime backend
@@ -10,10 +13,18 @@ import type { StarvationRescueRejectReason } from '../../../packages/contracts/s
 // surfaces post the same rescue.
 export type {
   SettingsUiStarvationRescueCreateResponse as StarvationRescueCreateResponse,
+  StarvationNotListedDevice,
   StarvationRescueDevice,
   StarvationRescueDevicesPayload,
   StarvationRescueRejectReason,
 } from '../../../packages/contracts/src/starvationRescue';
+// What the list renders: the app's payload, or a transient message the widget
+// shows while it has none to read (still connecting, or the load failed). Kept
+// apart from the payload's calm `empty` state, which is a real answer.
+export type StarvationRescueListState =
+  | StarvationRescueDevicesPayload
+  | { state: 'unavailable'; message: string };
+
 // The rescue request the widget POSTs (`parseRescueRequest` reads it server-side).
 export type { StarvationRescueRequest } from '../../../packages/shared-domain/src/starvationRescueShared';
 

@@ -742,11 +742,14 @@ export type PlanInputDeviceBase = {
   deferredHoldActive?: true;
   /**
    * The charger's target battery level, resolved against what PELS knows about
-   * the car right now: does the target ask PELS to hold this device OFF?
+   * the car right now: does the target ask PELS to hold this device OFF, and is
+   * the car short of it?
    *
-   * REQUIRED, and `{ kind: 'none' }` is an answer: no target, a level below it,
-   * no car connected, or a level not reported yet on a charger set to charge
-   * meanwhile. Resolved once at `toPlanDevice` (`projectChargeTargetHold`,
+   * REQUIRED, and `{ kind: 'none' }` is an answer: not a charger PELS commands,
+   * or no car connected. Three more answers hold nothing and exist for
+   * starvation (`lib/plan/planDiagnostics.ts`): `below_target` is what the
+   * clock measures a held-back charger against, and `no_target` /
+   * `level_unknown` say why a charger PELS limits is not measured at all. Resolved once at `toPlanDevice` (`projectChargeTargetHold`,
    * `lib/planInput/chargeTargetHold.ts`) from the owner's
    * `ev_charge_target_settings` entry, the observed state of charge and the
    * device's STANDING control posture; the planner never reads the setting or
@@ -779,7 +782,16 @@ export type PlanInputDeviceBase = {
  * What a charger's target battery level asks of PELS this cycle, before any
  * smart task lift (see `PlanInputDeviceBase.chargeTargetHold`).
  *
- * - `none`: nothing to hold.
+ * - `none`: not a charger PELS commands, or no car on the cable.
+ * - `no_target`: a charger PELS commands, with a car connected, and no target
+ *   battery level set. Nothing to hold.
+ * - `level_unknown`: a target is set, but the car has reported no level for
+ *   this session and the owner chose to charge meanwhile. Nothing to hold.
+ * - `below_target`: the car's known level is below the target. Nothing to hold:
+ *   the charger charges under ordinary admission.
+ * - `at_full_target`: the car's known level is at a 100% target, which is the
+ *   car's own limit. Nothing to hold: a full car that still draws keeps the
+ *   charger on.
  * - `target_reached`: the car's known level is at or above the target, so the
  *   charger is held OFF, not at its lowest step, which would keep charging.
  *   `targetPercent` is the owner's setting, carried so the reason can name it;
@@ -789,9 +801,13 @@ export type PlanInputDeviceBase = {
  */
 export type ChargeTargetHold =
   | { kind: 'none' }
+  | { kind: 'no_target' }
+  | { kind: 'level_unknown' }
+  | { kind: 'below_target'; targetPercent: number }
+  | { kind: 'at_full_target'; targetPercent: number }
   | HeldChargeTarget;
 
-/** A charge target that holds the charger off: {@link ChargeTargetHold} without `none`. */
+/** A charge target that holds the charger off: the {@link ChargeTargetHold} members that hold. */
 export type HeldChargeTarget =
   | { kind: 'target_reached'; targetPercent: number }
   | { kind: 'awaiting_level' };

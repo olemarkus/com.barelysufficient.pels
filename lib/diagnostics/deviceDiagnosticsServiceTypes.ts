@@ -4,6 +4,7 @@ import type {
   SettingsUiDeviceDiagnosticsPayload,
 } from '../../packages/contracts/src/deviceDiagnosticsTypes';
 import type { DeviceDiagnosticsStateStore } from './deviceDiagnosticsStateStore';
+import type { StarvationTarget, StarvationUnmeasuredReason } from '../../packages/contracts/src/starvationRescue';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 
 export type DeviceDiagnosticsBlockCause = 'not_blocked' | 'headroom' | 'cooldown_backoff';
@@ -112,13 +113,33 @@ export type LiveDemandObservation = {
 };
 
 
+/**
+ * Whether the held-back list can show this device. Resolved in the producer
+ * (`lib/plan/planDiagnostics.ts`) so the held-back widget can say why a device
+ * PELS limits for power is not listed, in the device's own terms.
+ *
+ * - `off_list`: not the widget's business: PELS is not limiting it for power,
+ *   or something other than PELS holds it (the owner's hold, its smart task's
+ *   deferral).
+ * - `candidate`: starvation measures it, so it is listed once held back long
+ *   enough (or not at all while it sits at its target).
+ * - a {@link StarvationUnmeasuredReason}: PELS limits it, and starvation cannot
+ *   measure it, for that reason.
+ */
+export type HeldBackScope = 'off_list' | 'candidate' | StarvationUnmeasuredReason;
+
 export type LiveStarvationObservation = {
   eligibleForStarvation: boolean;
+  heldBackScope: HeldBackScope;
   currentTemperatureC: number | null;
-  intendedNormalTargetC: number | null;
-  // The effective target PELS is currently COMMANDING the device toward (the
-  // applied/held setpoint, quantized to the device's target step). A device is
-  // starved only when PELS holds this BELOW `intendedNormalTargetC` — i.e. PELS
+  // The normal target the device is measured against: its mode temperature, or
+  // a charger's target battery level. Null when the device has none to read
+  // this cycle, which makes the observation invalid.
+  intendedTarget: StarvationTarget | null;
+  // The effective target PELS is currently COMMANDING a temperature device
+  // toward (the applied/held setpoint, quantized to the device's target step).
+  // A thermostat is starved only when PELS holds this BELOW its intended
+  // temperature — i.e. PELS
   // is actively limiting the device, not merely waiting for it to reach a target
   // it is already commanding in full.
   commandedTargetC: number | null;
@@ -135,11 +156,13 @@ export type LiveStarvationObservation = {
   countingCause: DeviceDiagnosticsStarvationCountingCause | null;
   pauseReason: DeviceDiagnosticsStarvationPauseReason | null;
   // True when PELS is holding the device below its intended/mode target — the
-  // entry signal for starvation. Either PELS commands a lowered setpoint
-  // (`commandedTargetC < intendedNormalTargetC` by at least the target step) OR
-  // PELS sheds the device by turning it OFF while its temperature sits below the
-  // intended target. Both are PELS actively limiting the device; a device PELS
-  // commands in full (`keep`) is never below. Resolved ONCE in the producer
+  // entry signal for starvation. For a temperature device, either PELS commands
+  // a lowered setpoint (`commandedTargetC` below the intended temperature by at
+  // least the target step) OR PELS sheds the device by turning it OFF while its
+  // temperature sits below the intended target. For a charger, PELS limits it
+  // (paused, or held below its top step) while the car's known level is below
+  // the target battery level. All of these are PELS actively limiting the
+  // device; a device PELS commands in full (`keep`) is never below. Resolved ONCE in the producer
   // (`lib/plan/planDiagnostics.ts`) so the starvation clock and the
   // demand/censoring counters can never diverge.
   pelsHoldsBelowTarget: boolean;

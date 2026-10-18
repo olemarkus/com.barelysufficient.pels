@@ -44,8 +44,9 @@ const DEFAULT_DEMAND: LiveDemandObservation = {
 
 const DEFAULT_STARVATION: LiveStarvationObservation = {
   eligibleForStarvation: true,
+  heldBackScope: 'candidate',
   currentTemperatureC: 18,
-  intendedNormalTargetC: 22,
+  intendedTarget: { kind: 'temperature', targetTemperatureC: 22 },
   // PELS holds the commanded setpoint 4° under the mode target — it IS limiting
   // the device, the sole entry signal for starvation.
   commandedTargetC: 18,
@@ -195,7 +196,7 @@ describe('DeviceDiagnosticsService', () => {
       starvedAccumulatedMs: 0,
       starvationEpisodeStartedAt: null,
       starvationLastResumedAt: null,
-      intendedNormalTargetC: 22,
+      intendedTarget: { kind: 'temperature', targetTemperatureC: 22 },
       currentTemperatureC: 18,
       starvationCause: null,
       starvationPauseReason: null,
@@ -492,7 +493,7 @@ describe('DeviceDiagnosticsService', () => {
         starvedAccumulatedMs: 60 * 1000,
         starvationEpisodeStartedAt: start + (15 * 60 * 1000),
         starvationLastResumedAt: start + (15 * 60 * 1000),
-        intendedNormalTargetC: 22,
+        intendedTarget: { kind: 'temperature', targetTemperatureC: 22 },
         currentTemperatureC: 18,
         starvationCause: 'capacity',
         starvationPauseReason: null,
@@ -506,8 +507,8 @@ describe('DeviceDiagnosticsService', () => {
     // 15-minute latency, and both are listed identically — the rescue entries
     // stopped carrying a budget/capacity bucket on 2026-08-04, because it was a
     // momentary snapshot that flipped mid-hold and took the rescue button with it.
-    const budget = buildObservation({ deviceId: 'heater-1', countingCause: 'daily_budget', intendedNormalTargetC: 65 });
-    const capacity = buildObservation({ deviceId: 'rad-1', name: 'Radiator', countingCause: 'capacity', intendedNormalTargetC: 21 });
+    const budget = buildObservation({ deviceId: 'heater-1', countingCause: 'daily_budget', intendedTarget: { kind: 'temperature', targetTemperatureC: 65 } });
+    const capacity = buildObservation({ deviceId: 'rad-1', name: 'Radiator', countingCause: 'capacity', intendedTarget: { kind: 'temperature', targetTemperatureC: 21 } });
 
     for (const offset of [0, 9, 16]) {
       service.observePlanSample({ nowTs: start + offset * 60 * 1000, observations: [budget, capacity] });
@@ -518,11 +519,11 @@ describe('DeviceDiagnosticsService', () => {
     const byId = new Map(entries.map((entry) => [entry.deviceId, entry]));
     expect(byId.get('heater-1')).toMatchObject({
       starvation: { isStarved: true },
-      intendedNormalTargetC: 65,
+      intendedTarget: { kind: 'temperature', targetTemperatureC: 65 },
     });
     expect(byId.get('rad-1')).toMatchObject({
       starvation: { isStarved: true },
-      intendedNormalTargetC: 21,
+      intendedTarget: { kind: 'temperature', targetTemperatureC: 21 },
     });
   });
 
@@ -538,7 +539,7 @@ describe('DeviceDiagnosticsService', () => {
   it('excludes clear-window devices from the rescue entries while keeping the latched overview badge', () => {
     const { service } = createDeps();
     const start = Date.now();
-    const budget = buildObservation({ countingCause: 'daily_budget', intendedNormalTargetC: 65 });
+    const budget = buildObservation({ countingCause: 'daily_budget', intendedTarget: { kind: 'temperature', targetTemperatureC: 65 } });
 
     // Starve under the daily budget, then PELS commands the device back to its
     // full target — entering the 10-minute CLEAR-hysteresis window.
@@ -547,7 +548,7 @@ describe('DeviceDiagnosticsService', () => {
     }
     expect(service.getStarvedRescueEntries()).toHaveLength(1);
 
-    // `commandedTargetC === intendedNormalTargetC` (and no turn-off shed) means
+    // `commandedTargetC` at the intended temperature (and no turn-off shed) means
     // PELS no longer holds the device below target → `clearQualified`.
     service.observePlanSample({
       nowTs: start + 17 * 60 * 1000,
@@ -555,7 +556,7 @@ describe('DeviceDiagnosticsService', () => {
         countingCause: null,
         suppressionState: 'none',
         commandedTargetC: 65,
-        intendedNormalTargetC: 65,
+        intendedTarget: { kind: 'temperature', targetTemperatureC: 65 },
         pelsHoldsBelowTarget: false,
         appliedStateSummary: '65.0C',
       })],
@@ -676,7 +677,7 @@ describe('DeviceDiagnosticsService', () => {
     // Owner's bug case (Nordic S4 REL): mode target 18, PELS commands the full
     // 18 (`keep`), device physically at 15.9 — PELS is not limiting it.
     const keepObservation = buildObservation({
-      intendedNormalTargetC: 18,
+      intendedTarget: { kind: 'temperature', targetTemperatureC: 18 },
       commandedTargetC: 18,
       currentTemperatureC: 15.9,
       suppressionState: 'paused',
@@ -698,7 +699,7 @@ describe('DeviceDiagnosticsService', () => {
 
     // Mode target 18, PELS commands 16 due to a capacity shed → 2° under target.
     const shedObservation = buildObservation({
-      intendedNormalTargetC: 18,
+      intendedTarget: { kind: 'temperature', targetTemperatureC: 18 },
       commandedTargetC: 16,
       currentTemperatureC: 17,
       suppressionState: 'counting',
@@ -722,7 +723,7 @@ describe('DeviceDiagnosticsService', () => {
     // turn_off shed: no lowered setpoint (commanded == intended), but PELS has
     // cut power. Temperature 16 sits under the mode target 18 → starved.
     const turnOffShed = buildObservation({
-      intendedNormalTargetC: 18,
+      intendedTarget: { kind: 'temperature', targetTemperatureC: 18 },
       commandedTargetC: 18,
       currentTemperatureC: 16,
       pelsCommandsTurnOffShed: true,
@@ -745,7 +746,7 @@ describe('DeviceDiagnosticsService', () => {
     const start = Date.now();
 
     const turnOffBudgetShed = buildObservation({
-      intendedNormalTargetC: 18,
+      intendedTarget: { kind: 'temperature', targetTemperatureC: 18 },
       commandedTargetC: 18,
       currentTemperatureC: 16,
       pelsCommandsTurnOffShed: true,
@@ -770,7 +771,7 @@ describe('DeviceDiagnosticsService', () => {
     // Device is off and below target, but PELS is NOT shedding it
     // (pelsCommandsTurnOffShed=false, plannedState keep) — the user turned it off.
     const userOff = buildObservation({
-      intendedNormalTargetC: 18,
+      intendedTarget: { kind: 'temperature', targetTemperatureC: 18 },
       commandedTargetC: 18,
       currentTemperatureC: 16,
       pelsCommandsTurnOffShed: false,
@@ -794,7 +795,7 @@ describe('DeviceDiagnosticsService', () => {
     // PELS sheds via turn_off, but the device is already at/above its target —
     // it is genuinely satisfied, not starved.
     const satisfiedOff = buildObservation({
-      intendedNormalTargetC: 18,
+      intendedTarget: { kind: 'temperature', targetTemperatureC: 18 },
       commandedTargetC: 18,
       currentTemperatureC: 18.5,
       pelsCommandsTurnOffShed: true,
@@ -818,7 +819,7 @@ describe('DeviceDiagnosticsService', () => {
     const start = Date.now();
 
     const turnOffShed = buildObservation({
-      intendedNormalTargetC: 18,
+      intendedTarget: { kind: 'temperature', targetTemperatureC: 18 },
       commandedTargetC: 18,
       currentTemperatureC: 16,
       pelsCommandsTurnOffShed: true,
@@ -833,7 +834,7 @@ describe('DeviceDiagnosticsService', () => {
 
     // PELS restores: no longer shedding via turn_off, commanding the full target.
     const restored = buildObservation({
-      intendedNormalTargetC: 18,
+      intendedTarget: { kind: 'temperature', targetTemperatureC: 18 },
       commandedTargetC: 18,
       currentTemperatureC: 16,
       pelsCommandsTurnOffShed: false,
@@ -849,6 +850,109 @@ describe('DeviceDiagnosticsService', () => {
     const starvation = getStarvationState(service);
     expect(starvation?.isStarved).toBe(false);
     expect(starvation?.starvedAccumulatedMs).toBe(0);
+  });
+
+  it('starves a charger PELS keeps limited below its target battery level, and clears it at the target', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+    // A charger carries no temperature: its target is the battery level, and the
+    // producer has already measured the car against it.
+    const charger = {
+      deviceId: 'ev-1',
+      name: 'Driveway EV',
+      currentTemperatureC: null,
+      commandedTargetC: null,
+      targetStepC: null,
+      pelsCommandsTurnOffShed: false,
+    };
+    const held = buildObservation({
+      ...charger,
+      intendedTarget: { kind: 'ev_soc', targetPercent: 80 },
+      pelsHoldsBelowTarget: true,
+    });
+    for (const offset of [0, 9, 16]) {
+      service.observePlanSample({ nowTs: start + offset * 60 * 1000, observations: [held] });
+    }
+    expect(getStarvationState(service, 'ev-1')?.isStarved).toBe(true);
+    expect(service.getStarvedRescueEntries()).toEqual([expect.objectContaining({
+      deviceId: 'ev-1',
+      intendedTarget: { kind: 'ev_soc', targetPercent: 80 },
+    })]);
+
+    const atTarget = buildObservation({
+      ...charger,
+      intendedTarget: { kind: 'ev_soc', targetPercent: 80 },
+      pelsHoldsBelowTarget: false,
+      suppressionState: 'none',
+      countingCause: null,
+    });
+    for (const offset of [20, 29, 31]) {
+      service.observePlanSample({ nowTs: start + offset * 60 * 1000, observations: [atTarget] });
+    }
+    expect(getStarvationState(service, 'ev-1')?.isStarved).toBe(false);
+  });
+
+  it('lists the limited devices the held-back list leaves out, each with why', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+    const observations = [
+      // Held below its target, six minutes into the fifteen.
+      buildObservation({ deviceId: 'rad-1', name: 'Radiator' }),
+      // Limited at its target: nothing to list.
+      buildObservation({ deviceId: 'floor-1', name: 'Floor', pelsHoldsBelowTarget: false }),
+      buildObservation({
+        deviceId: 'ev-1', name: 'Driveway EV', eligibleForStarvation: false, heldBackScope: 'no_battery_target',
+      }),
+      buildObservation({
+        deviceId: 'relay-1', name: 'Relay heater', eligibleForStarvation: false, heldBackScope: 'no_target',
+      }),
+      // Not limited for power at all: not mentioned.
+      buildObservation({ deviceId: 'idle-1', name: 'Idle', heldBackScope: 'off_list', pelsHoldsBelowTarget: false }),
+    ];
+    service.observePlanSample({ nowTs: start, observations });
+    service.observePlanSample({ nowTs: start + 6 * 60_000, observations });
+
+    const byId = new Map(service.getLimitedNotListedEntries().map((entry) => [entry.deviceId, entry.reason]));
+    expect(service.getLimitedNotListedEntries().find((entry) => entry.deviceId === 'ev-1')?.deviceName).toBe('Driveway EV');
+    expect(byId.get('rad-1')).toEqual({ kind: 'listed_soon', remainingMs: 9 * 60_000 });
+    expect(byId.get('floor-1')).toEqual({ kind: 'at_target' });
+    expect(byId.get('ev-1')).toEqual({ kind: 'no_battery_target' });
+    expect(byId.get('relay-1')).toEqual({ kind: 'no_target' });
+    expect(byId.has('idle-1')).toBe(false);
+
+    // Once it is held back it is on the list, so it leaves this one.
+    service.observePlanSample({ nowTs: start + 16 * 60_000, observations });
+    expect(service.getLimitedNotListedEntries().map((entry) => entry.deviceId))
+      .not.toContain('rad-1');
+  });
+
+  it('reads a device leaving the list through the clear window as at its target', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+    for (const offset of [0, 9, 16]) {
+      service.observePlanSample({ nowTs: start + offset * 60_000, observations: [buildObservation()] });
+    }
+    // Still limited, but no longer held below its target: the clear window runs.
+    const released = buildObservation({ pelsHoldsBelowTarget: false });
+    service.observePlanSample({ nowTs: start + 20 * 60_000, observations: [released] });
+    service.observePlanSample({ nowTs: start + 22 * 60_000, observations: [released] });
+
+    expect(service.getStarvedRescueEntries()).toEqual([]);
+    expect(service.getLimitedNotListedEntries()).toEqual([
+      expect.objectContaining({ deviceId: 'heater-1', reason: { kind: 'at_target' } }),
+    ]);
+  });
+
+  it('does not count the listing wait down while no plan samples arrive', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+    service.observePlanSample({ nowTs: start, observations: [buildObservation()] });
+    service.observePlanSample({ nowTs: start + 6 * 60_000, observations: [buildObservation()] });
+    // The meter goes quiet: the widget keeps polling, the wait stays at 9 min.
+    vi.setSystemTime(start + 30 * 60_000);
+    expect(service.getLimitedNotListedEntries()).toEqual([
+      expect.objectContaining({ deviceId: 'heater-1', reason: { kind: 'listed_soon', remainingMs: 9 * 60_000 } }),
+    ]);
   });
 
   it('keeps starvation latched across sample gaps but pauses accumulation', () => {
@@ -932,21 +1036,21 @@ describe('DeviceDiagnosticsService', () => {
     service.observePlanSample({
       nowTs: start + (10 * 60 * 1000),
       observations: [buildObservation({
-        intendedNormalTargetC: 24,
+        intendedTarget: { kind: 'temperature', targetTemperatureC: 24 },
         currentTemperatureC: 20,
       })],
     });
     service.observePlanSample({
       nowTs: start + (19 * 60 * 1000),
       observations: [buildObservation({
-        intendedNormalTargetC: 24,
+        intendedTarget: { kind: 'temperature', targetTemperatureC: 24 },
         currentTemperatureC: 20,
       })],
     });
     service.observePlanSample({
       nowTs: start + (24 * 60 * 1000),
       observations: [buildObservation({
-        intendedNormalTargetC: 24,
+        intendedTarget: { kind: 'temperature', targetTemperatureC: 24 },
         currentTemperatureC: 20,
       })],
     });
@@ -958,7 +1062,7 @@ describe('DeviceDiagnosticsService', () => {
     service.observePlanSample({
       nowTs: start + (26 * 60 * 1000),
       observations: [buildObservation({
-        intendedNormalTargetC: 24,
+        intendedTarget: { kind: 'temperature', targetTemperatureC: 24 },
         currentTemperatureC: 20,
       })],
     });
@@ -1042,7 +1146,7 @@ describe('DeviceDiagnosticsService', () => {
       observations: [buildObservation({
         eligibleForStarvation: false,
         currentTemperatureC: null,
-        intendedNormalTargetC: null,
+        intendedTarget: null,
         targetStepC: null,
         suppressionState: 'none',
         countingCause: null,
@@ -1190,7 +1294,7 @@ describe('DeviceDiagnosticsService', () => {
       observations: [buildObservation({
         eligibleForStarvation: false,
         currentTemperatureC: null,
-        intendedNormalTargetC: null,
+        intendedTarget: null,
         targetStepC: null,
         suppressionState: 'none',
         countingCause: null,
@@ -1282,7 +1386,7 @@ describe('DeviceDiagnosticsService', () => {
         starvedAccumulatedMs: 0,
         starvationEpisodeStartedAt: null,
         starvationLastResumedAt: null,
-        intendedNormalTargetC: null,
+        intendedTarget: null,
         currentTemperatureC: null,
         starvationCause: null,
         starvationPauseReason: null,

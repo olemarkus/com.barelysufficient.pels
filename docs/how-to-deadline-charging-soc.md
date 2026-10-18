@@ -135,7 +135,7 @@ Create an EV charging dashboard and add these PELS widgets:
 | **Smart tasks** | Watch whether the EV task is **On track**, **At risk**, or **Cannot finish**. |
 | **Available power** | See whether the home is close to the hard cap right now. |
 | **Budget and Price** | See today's budget, price shape, and whether the day is tracking to plan. |
-| **Held-back devices** | Optional: see devices currently waiting and release an eligible one when you deliberately want it sooner. |
+| **Held-back devices** | Optional: see devices PELS has kept below their target, including a charger below its battery level, and let one run when you deliberately want it sooner. |
 
 Put **New smart task** near **Smart tasks**. The first creates the task; the second tells you whether it is still healthy.
 

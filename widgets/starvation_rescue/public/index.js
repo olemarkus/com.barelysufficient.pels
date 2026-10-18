@@ -7,12 +7,19 @@
   // packages/shared-domain/src/planStarvation.ts
   var STARVATION_WAITING_FOR_POWER_COPY = "Waiting for available power";
   var STARVATION_RESCUE_WIDGET_COPY = {
-    // List header — names what the widget SHOWS (the devices PELS is holding
-    // back), not an action the user takes. Shown only when at least one device is
-    // held back; the calm empty state stands alone.
+    // Header — names what the widget SHOWS (the devices PELS is holding back), not
+    // an action the user takes. Shown in the list and in the calm empty state, so
+    // the card always says which widget it is; hidden only while connecting or
+    // after a load failure.
     headerTitle: "Held-back devices",
-    // Empty (calm) state — nothing is held back. This is the steady, good state.
-    emptySubtitle: "No device is being held back right now.",
+    // Empty (calm) lead — nothing is held back. This is the steady, good state.
+    emptySubtitle: "Nothing held back right now.",
+    // Under the calm lead when PELS limits nothing else either: which devices the
+    // list covers and when one enters (DEVICE_DIAGNOSTICS_STARVATION_ENTRY_MS).
+    emptyScopeNote: "Devices PELS keeps below their target temperature or battery level for 15 minutes show up here.",
+    // Heading over the limited devices the list leaves out, so a device the owner
+    // sees limited on the Overview has its reason here instead of an absence.
+    notListedTitle: "Limited, not listed here",
     // Transient "wiring up to Homey" state, distinct from a hard load failure.
     notReady: "Connecting to Homey\u2026",
     loadError: "Could not load devices. Try again later.",
@@ -99,6 +106,30 @@
     const chip = STARVATION_RESCUE_WIDGET_COPY.starvedChip;
     return starvationDurationMinutes(accumulatedMs) > 0 ? `${chip} \xB7 ${formatStarvationDurationLabel(accumulatedMs)}` : chip;
   };
+  var formatStarvationNotListedReason = (reason) => {
+    switch (reason.kind) {
+      case "no_target":
+        return "No target temperature or battery level";
+      case "no_battery_target":
+        return "Turn on Charge to a battery level to list it";
+      case "battery_level_unknown":
+        return "Battery level not reported";
+      case "at_target":
+        return "At its target";
+      case "listed_soon":
+        return `Listed in ${formatStarvationDurationLabel(Math.max(1, Math.ceil(reason.remainingMs / 6e4)) * 6e4)}`;
+      default: {
+        const exhaustive = reason;
+        return exhaustive;
+      }
+    }
+  };
+  var formatStarvationAlsoLimited = (notListed) => {
+    const [first] = notListed;
+    if (first === void 0) return null;
+    if (notListed.length === 1) return `Also limited: ${first.deviceName}`;
+    return `Also limited: ${notListed.length} devices`;
+  };
   var STARVATION_RESCUE_VISIBLE_ROWS = 2;
   var formatStarvationOverflowCue = (totalCount) => {
     if (!Number.isFinite(totalCount) || totalCount <= STARVATION_RESCUE_VISIBLE_ROWS) return null;
@@ -106,18 +137,15 @@
   };
   var STARVATION_RESCUE_DANGER_THRESHOLD_MS = 30 * 6e4;
   var resolveStarvationRowTone = (accumulatedMs) => Number.isFinite(accumulatedMs) && accumulatedMs >= STARVATION_RESCUE_DANGER_THRESHOLD_MS ? "danger" : "warn";
-  var formatTargetDegrees = (targetC) => {
-    if (typeof targetC !== "number" || !Number.isFinite(targetC)) return null;
-    const rounded = Math.round(targetC * 10) / 10;
+  var formatStarvationTarget = (target) => {
+    if (target.kind === "ev_soc") return `${Math.round(target.targetPercent)}%`;
+    const rounded = Math.round(target.targetTemperatureC * 10) / 10;
     return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)} \xB0C`;
   };
-  var resolveStarvationRowSubtext = (intendedNormalTargetC) => {
-    const degrees = formatTargetDegrees(intendedNormalTargetC);
-    return degrees ? `Held below ${degrees}` : STARVATION_WAITING_FOR_POWER_COPY;
-  };
-  var resolveStarvationRowNote = (hasSmartTask = false, intendedNormalTargetC) => {
+  var resolveStarvationRowSubtext = (intendedTarget) => intendedTarget === null ? STARVATION_WAITING_FOR_POWER_COPY : `Held below ${formatStarvationTarget(intendedTarget)}`;
+  var resolveStarvationRowNote = (hasSmartTask, intendedTarget) => {
     if (hasSmartTask) return STARVATION_RESCUE_WIDGET_COPY.smartTaskNote;
-    return formatTargetDegrees(intendedNormalTargetC) === null ? null : STARVATION_WAITING_FOR_POWER_COPY;
+    return intendedTarget === null ? null : STARVATION_WAITING_FOR_POWER_COPY;
   };
   var BUDGET_EXEMPT_CARD_ACTION_COPY = {
     // Chip label — the canonical rescue verb, identical to the held-back widget's
@@ -135,7 +163,7 @@
     // verb so the action word is shared across surfaces.
     confirmLabel: STARVATION_RESCUE_WIDGET_COPY.rescueConfirmButton
   };
-  var starvationRowIsRescuable = (intendedNormalTargetC, hasSmartTask = false, smartTaskHomeScope = "main") => smartTaskHomeScope === "main" && !hasSmartTask && intendedNormalTargetC !== null && Number.isFinite(intendedNormalTargetC);
+  var starvationRowIsRescuable = (intendedTarget, hasSmartTask = false, smartTaskHomeScope = "main") => smartTaskHomeScope === "main" && !hasSmartTask && intendedTarget !== null;
   var ONE_HOUR_MS = 60 * 60 * 1e3;
   var resolveStarvationRescueRejectCopy = (reason) => {
     if (reason === "deadline_passed") return STARVATION_RESCUE_WIDGET_COPY.deadlinePassed;
@@ -300,15 +328,15 @@
         deviceId: "preview-hot-water",
         deviceName: "Hot water",
         accumulatedMs: 42 * 60 * 1e3,
-        intendedNormalTargetC: 65,
+        intendedTarget: { kind: "temperature", targetTemperatureC: 65 },
         smartTaskHomeScope: "main",
         hasSmartTask: false
       },
       {
-        deviceId: "preview-radiator",
-        deviceName: "Living room",
+        deviceId: "preview-car-charger",
+        deviceName: "Car charger",
         accumulatedMs: 11 * 60 * 1e3,
-        intendedNormalTargetC: 21,
+        intendedTarget: { kind: "ev_soc", targetPercent: 80 },
         smartTaskHomeScope: "main",
         hasSmartTask: false
       },
@@ -316,11 +344,12 @@
         deviceId: "preview-floor",
         deviceName: "Bathroom floor",
         accumulatedMs: 18 * 60 * 1e3,
-        intendedNormalTargetC: 24,
+        intendedTarget: { kind: "temperature", targetTemperatureC: 24 },
         smartTaskHomeScope: "main",
         hasSmartTask: true
       }
-    ]
+    ],
+    notListed: []
   };
 
   // packages/shared-domain/src/deadlineLabels.ts
@@ -1097,14 +1126,14 @@
   };
   var resolveDeviceRowNote = (device) => {
     if (device.smartTaskHomeScope === "unavailable") return C.temporaryUnavailableNote;
-    return resolveStarvationRowNote(device.hasSmartTask, device.intendedNormalTargetC);
+    return resolveStarvationRowNote(device.hasSmartTask, device.intendedTarget);
   };
   var renderDeviceRow = (template, device) => {
     const fragment = template.content.cloneNode(true);
     const li = fragment.querySelector(".row");
     if (!(li instanceof HTMLElement)) throw new Error("device template missing .row");
     const offersRescue = starvationRowIsRescuable(
-      device.intendedNormalTargetC,
+      device.intendedTarget,
       device.hasSmartTask,
       device.smartTaskHomeScope
     );
@@ -1114,7 +1143,7 @@
     const subtextEl = li.querySelector("[data-device-subtext]");
     const noteEl = li.querySelector("[data-device-note]");
     const rescueBtn = li.querySelector("[data-rescue-button]");
-    const subtext = resolveStarvationRowSubtext(device.intendedNormalTargetC);
+    const subtext = resolveStarvationRowSubtext(device.intendedTarget);
     if (nameEl instanceof HTMLElement) nameEl.textContent = device.deviceName;
     if (chipEl instanceof HTMLElement) chipEl.textContent = formatStarvationRowChip(device.accumulatedMs);
     if (subtextEl instanceof HTMLElement) {
@@ -1128,25 +1157,64 @@
     }
     return li;
   };
-  var renderList = (targets, payload) => {
-    const { listTitleEl, listEl, listEmptyEl, listMoreEl, deviceTemplate } = targets;
-    clearChildren(listEl);
-    if (!payload || payload.state === "empty") {
-      listTitleEl.hidden = true;
-      listEl.hidden = true;
-      listMoreEl.hidden = true;
-      listEmptyEl.hidden = false;
-      listEmptyEl.textContent = payload?.state === "empty" ? payload.subtitle : C.loadError;
+  var renderNotListedRow = (doc, device) => {
+    const li = doc.createElement("li");
+    li.className = "not-listed__row";
+    const name = doc.createElement("span");
+    name.className = "not-listed__name";
+    name.textContent = device.deviceName;
+    const reason = doc.createElement("span");
+    reason.className = "not-listed__reason";
+    reason.textContent = formatStarvationNotListedReason(device.reason);
+    li.append(name, reason);
+    return li;
+  };
+  var renderNotListed = (targets, notListed) => {
+    const { notListedEl, notListedTitleEl, notListedListEl, notListedMoreEl, listScopeEl } = targets;
+    clearChildren(notListedListEl);
+    if (notListed.length === 0) {
+      setLine(listScopeEl, C.emptyScopeNote);
       return;
     }
+    notListedEl.hidden = false;
+    notListedTitleEl.textContent = C.notListedTitle;
+    for (const device of notListed) {
+      notListedListEl.appendChild(renderNotListedRow(notListedListEl.ownerDocument, device));
+    }
+    setLine(notListedMoreEl, formatStarvationOverflowCue(notListed.length));
+  };
+  var hideListParts = (targets) => {
+    hide(targets.listEl);
+    hide(targets.listEmptyEl);
+    hide(targets.listMoreEl);
+    hide(targets.listAlsoEl);
+    hide(targets.listScopeEl);
+    hide(targets.notListedEl);
+  };
+  var renderList = (targets, listState) => {
+    const { listTitleEl, listEl, listEmptyEl, listMoreEl, listAlsoEl, deviceTemplate } = targets;
+    clearChildren(listEl);
+    hideListParts(targets);
     listTitleEl.textContent = C.headerTitle;
+    if (!listState || listState.state === "unavailable") {
+      listTitleEl.hidden = true;
+      listEmptyEl.dataset.calm = "false";
+      setLine(listEmptyEl, listState?.message ?? C.loadError);
+      return;
+    }
     listTitleEl.hidden = false;
+    if (listState.state === "empty") {
+      listEmptyEl.dataset.calm = "true";
+      setLine(listEmptyEl, listState.subtitle);
+      renderNotListed(targets, listState.notListed);
+      return;
+    }
     listEl.hidden = false;
-    listEmptyEl.hidden = true;
-    for (const device of payload.devices) {
+    for (const device of listState.devices) {
       listEl.appendChild(renderDeviceRow(deviceTemplate, device));
     }
-    setLine(listMoreEl, formatStarvationOverflowCue(payload.devices.length));
+    setLine(listMoreEl, formatStarvationOverflowCue(listState.devices.length));
+    setLine(listAlsoEl, formatStarvationAlsoLimited(listState.notListed));
   };
   var isProjectable = (response) => response.estimate.status !== "unavailable" && response.estimate.scheduledHours.length > 0;
   var canConfirmPreview = (response) => response?.ok === true && response.estimate.status !== "unavailable" && response.estimate.status !== "cannot_meet";
@@ -1233,7 +1301,7 @@
     confirmBtn.disabled = submitting || !canConfirmPreview(response);
     confirmBtn.textContent = submitting ? C.rescuePending : C.rescueConfirmButton;
   };
-  var renderWidget = (targets, payload, view) => {
+  var renderWidget = (targets, listState, view) => {
     const { root, listView, confirmView, doneView, doneMsgEl, confirmBackBtn } = targets;
     root.dataset.view = view.kind;
     setVisible(listView, view.kind === "list");
@@ -1241,7 +1309,7 @@
     setVisible(doneView, view.kind === "done");
     confirmBackBtn.setAttribute("aria-label", C.backButton);
     if (view.kind === "list") {
-      renderList(targets, payload);
+      renderList(targets, listState);
       return;
     }
     if (view.kind === "confirm") {
@@ -1306,7 +1374,13 @@
       listTitleEl: "[data-list-title]",
       listEl: "[data-device-list]",
       listMoreEl: "[data-list-more]",
+      listAlsoEl: "[data-list-also]",
       listEmptyEl: "[data-list-empty]",
+      listScopeEl: "[data-list-scope]",
+      notListedEl: "[data-not-listed]",
+      notListedTitleEl: "[data-not-listed-title]",
+      notListedListEl: "[data-not-listed-list]",
+      notListedMoreEl: "[data-not-listed-more]",
       confirmView: "[data-confirm-view]",
       confirmTitle: "[data-confirm-title]",
       confirmConsequenceEl: "[data-confirm-consequence]",
@@ -1354,14 +1428,14 @@
   };
   var fetchDevices = async (homeyRef, usePreviewData, reporter) => {
     if (usePreviewData) return PREVIEW_STARVATION_RESCUE_DEVICES;
-    if (!homeyRef) return { state: "empty", subtitle: C2.notReady };
+    if (!homeyRef) return { state: "unavailable", message: C2.notReady };
     try {
       const payload = await homeyRef.api("GET", "/devices");
       reporter.flush();
       return payload;
     } catch (error) {
       reporter.report("error", "Failed to load starvation_rescue widget", error);
-      return { state: "empty", subtitle: C2.loadError };
+      return { state: "unavailable", message: C2.loadError };
     }
   };
   var fetchPreview = async (homeyRef, usePreviewData, deviceId, reporter) => {
@@ -1390,7 +1464,7 @@
     let homeyRef = null;
     let initialRenderDone = false;
     let loadSequence = 0;
-    let devicesPayload = null;
+    let listState = null;
     let view = { kind: "list" };
     let listenersBound = false;
     let usePreviewData = false;
@@ -1399,7 +1473,7 @@
     let requestSeq = 0;
     const reporter = widgetErrorReporter("starvation_rescue", () => homeyRef);
     const render = () => {
-      renderWidget(targets, devicesPayload, view);
+      renderWidget(targets, listState, view);
     };
     const setView = (next) => {
       view = next;
@@ -1407,8 +1481,8 @@
       render();
     };
     const findDevice = (deviceId) => {
-      if (!devicesPayload || devicesPayload.state !== "ready") return null;
-      return devicesPayload.devices.find((entry) => entry.deviceId === deviceId) ?? null;
+      if (!listState || listState.state !== "ready") return null;
+      return listState.devices.find((entry) => entry.deviceId === deviceId) ?? null;
     };
     const openRescue = (deviceId) => {
       const device = findDevice(deviceId);
@@ -1476,7 +1550,7 @@
       const payload = await fetchDevices(homeyRef, usePreviewData, reporter);
       if (destroyed) return;
       if (loadId === loadSequence) {
-        devicesPayload = payload;
+        listState = payload;
         if (view.kind === "list") render();
       }
       if (!initialRenderDone && homeyRef?.ready) {

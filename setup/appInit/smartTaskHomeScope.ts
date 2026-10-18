@@ -1,5 +1,8 @@
 import type { AppContext } from '../../lib/app/appContext';
-import type { StarvationRescueDevice } from '../../packages/contracts/src/starvationRescue';
+import type {
+  StarvationNotListedDevice,
+  StarvationRescueDevice,
+} from '../../packages/contracts/src/starvationRescue';
 import { hasOpenDeferredObjective } from '../../lib/objectives/deferredObjectives';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
@@ -7,6 +10,7 @@ import type { CreateSmartTaskCandidateDevicesRead } from '../../packages/contrac
 import { isRuntimePlannedDevice } from '../appDeviceSupport';
 import { selectMeteredSnapshots } from '../../lib/ports/meteredSnapshots';
 import type { ObjectiveDeviceExclusion } from '../../lib/objectives/deferredObjectives/deviceExclusion';
+import { requireDeviceDiagnosticsService } from './contextGuards';
 
 /**
  * Multi-home v1 scope predicate shared by EVERY smart-task surface: the app's
@@ -147,6 +151,18 @@ export const mapObjectiveWriteRefusalReason = (
     : 'write_refused'
 );
 
+// The smart-task scope a held-back widget row is shown under, or null for a
+// device the widget leaves out: durably in a sub-home, or an active source
+// device. One filter for both of the widget's lists, so they cover the same
+// devices. A transient Main authority fence keeps the row (scope `unavailable`).
+const resolveHeldBackWidgetScope = (
+  ctx: AppContext,
+  deviceId: string,
+): Exclude<SmartTaskHomeScope, 'sub_home' | 'source_device'> | null => {
+  const scope = resolveSmartTaskHomeScope(ctx, deviceId);
+  return scope === 'sub_home' || scope === 'source_device' ? null : scope;
+};
+
 // Currently-starved devices for the starvation-rescue widget (the app's
 // `getStarvedRescueDevices` delegate). Sourced from the diagnostics service's
 // live starvation state (`getStarvedRescueEntries`, which mirrors the overview
@@ -154,26 +170,22 @@ export const mapObjectiveWriteRefusalReason = (
 // DeviceConfiguration for the device name — a starved device is by definition
 // managed + capacity-controlled, so its configuration is present. Entries are
 // dropped when the device is no longer configured (e.g. removed mid-cycle —
-// never shown with a stale name) and when it is durably in
-// a sub-home or is an active source device. A transient Main authority fence
-// keeps the diagnostic row visible but marks its rescue unavailable.
+// never shown with a stale name) and by `resolveHeldBackWidgetScope`. A
+// transient Main authority fence keeps the diagnostic row visible but marks its
+// rescue unavailable.
 export const buildStarvedRescueDevices = (ctx: AppContext): StarvationRescueDevice[] => {
   const entries = ctx.deviceDiagnosticsService?.getStarvedRescueEntries?.() ?? [];
   const configurationById = new Map(ctx.deviceConfiguration.getAll().map((device) => [device.id, device]));
   const nowMs = ctx.getNow().getTime();
   return entries.flatMap((entry): StarvationRescueDevice[] => {
     const device = configurationById.get(entry.deviceId);
-    const smartTaskHomeScope = resolveSmartTaskHomeScope(ctx, entry.deviceId);
-    if (
-      !device
-      || smartTaskHomeScope === 'sub_home'
-      || smartTaskHomeScope === 'source_device'
-    ) return [];
+    const smartTaskHomeScope = resolveHeldBackWidgetScope(ctx, entry.deviceId);
+    if (!device || smartTaskHomeScope === null) return [];
     return [{
       deviceId: entry.deviceId,
       deviceName: device.name,
       accumulatedMs: entry.starvation.accumulatedMs,
-      intendedNormalTargetC: entry.intendedNormalTargetC,
+      intendedTarget: entry.intendedTarget,
       smartTaskHomeScope,
       // A device with an open smart task stays VISIBLE in the held-back list
       // but is not rescuable (the widget suppresses its button): the rescue is
@@ -185,3 +197,12 @@ export const buildStarvedRescueDevices = (ctx: AppContext): StarvationRescueDevi
     }];
   });
 };
+
+// Devices PELS limits for power that the held-back list leaves out, with why
+// (the app's `getLimitedNotListedDevices` delegate), for the same widget. The
+// diagnostics service resolves each entry, name included; this keeps only the
+// devices the widget covers.
+export const buildLimitedNotListedDevices = (ctx: AppContext): StarvationNotListedDevice[] => (
+  requireDeviceDiagnosticsService(ctx).getLimitedNotListedEntries()
+    .filter((entry) => resolveHeldBackWidgetScope(ctx, entry.deviceId) !== null)
+);

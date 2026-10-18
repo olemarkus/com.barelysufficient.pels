@@ -15,7 +15,7 @@ const heldBack: StarvationRescueDevice = {
   deviceId: 'heater-1',
   deviceName: 'Hot water',
   accumulatedMs: 60_000,
-  intendedNormalTargetC: 65,
+  intendedTarget: { kind: 'temperature', targetTemperatureC: 65 },
   smartTaskHomeScope: 'main',
   hasSmartTask: false,
 };
@@ -48,7 +48,7 @@ describe('resolveRescuableDeviceFromList', () => {
   });
 
   it('resolves a task-free, known-target device', () => {
-    expect(resolveRescuableDeviceFromList([heldBack], 'heater-1')).toEqual({ ok: true, targetTemperatureC: 65 });
+    expect(resolveRescuableDeviceFromList([heldBack], 'heater-1')).toEqual({ ok: true, target: { kind: 'temperature', targetTemperatureC: 65 } });
   });
 
   it('preserves transient Main authority as unavailable while the row remains visible', () => {
@@ -69,7 +69,7 @@ describe('resolveRescuableDeviceFromList', () => {
   // in `test/unit/deviceDiagnosticsService.test.ts`.
   it('rescues a held-back row on the strength of its target alone', () => {
     const longHeld = { ...heldBack, accumulatedMs: 3 * 60 * 60_000 };
-    expect(resolveRescuableDeviceFromList([longHeld], 'heater-1')).toEqual({ ok: true, targetTemperatureC: 65 });
+    expect(resolveRescuableDeviceFromList([longHeld], 'heater-1')).toEqual({ ok: true, target: { kind: 'temperature', targetTemperatureC: 65 } });
     expect(Object.keys(heldBack)).not.toContain('cause');
   });
 
@@ -79,7 +79,7 @@ describe('resolveRescuableDeviceFromList', () => {
   });
 
   it('rejects a budget row with no known target as no_target', () => {
-    const noTarget = { ...heldBack, intendedNormalTargetC: null };
+    const noTarget = { ...heldBack, intendedTarget: null };
     expect(resolveRescuableDeviceFromList([noTarget], 'heater-1')).toEqual({ ok: false, reason: 'no_target' });
   });
 
@@ -89,8 +89,18 @@ describe('resolveRescuableDeviceFromList', () => {
 });
 
 describe('buildRescueCandidate', () => {
+  it('builds a soft charge-to-target objective for a charger', () => {
+    const candidate = buildRescueCandidate({ kind: 'ev_soc', targetPercent: 80 }, 123_456);
+    expect(candidate).toMatchObject({ kind: 'ev_soc', enforcement: 'soft', targetPercent: 80, deadlineAtMs: 123_456 });
+    expect(candidate.rescue).toEqual({
+      exemptFromBudget: 'always',
+      limitLowerPriorityDevices: 'always',
+      pauseLowerPriorityDevices: 'always',
+    });
+  });
+
   it('builds a soft temperature objective carrying all three rescue permissions', () => {
-    const candidate = buildRescueCandidate(65, 123_456);
+    const candidate = buildRescueCandidate({ kind: 'temperature', targetTemperatureC: 65 }, 123_456);
     expect(candidate.kind).toBe('temperature');
     expect(candidate.enforcement).toBe('soft');
     expect(candidate).toMatchObject({ targetTemperatureC: 65, deadlineAtMs: 123_456 });
