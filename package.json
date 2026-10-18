@@ -13,6 +13,7 @@
     "build": "tsc && npm run minify:homey-build && npm run build:settings && npm run build:widgets && npm run sanitize:homey-build",
     "build:settings": "npm --workspace @pels/settings-ui run build && node scripts/sync-settings-ui.mjs",
     "build:widgets": "node scripts/build-widgets.mjs",
+    "release": "node scripts/release.mjs",
     "build:nettleie-fallback": "node scripts/build-nettleie-fallback.mjs",
     "minify:homey-build": "node scripts/minify-homey-build.mjs",
     "build:widgets:previews": "node widgets/headroom/scripts/build-previews.mjs",
