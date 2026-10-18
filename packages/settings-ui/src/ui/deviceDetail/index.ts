@@ -11,10 +11,8 @@ import {
   deviceDetailControlModelRow,
   deviceDetailControlModel,
   deviceDetailChargingSection,
-  deviceDetailChargingControlRow,
-  deviceDetailChargingControlValue,
-  deviceDetailChargingControlChange,
-  deviceDetailSetupDisclosure,
+  deviceDetailSheddingSection,
+  deviceDetailSurplusTrackRow,
 } from '../dom.ts';
 import { renderDevices } from '../devices.ts';
 import { refreshRecommendationSurfaces } from '../recommendations.ts';
@@ -69,6 +67,7 @@ import {
   initEvBoostHandlers,
   loadEvBoostSettings,
   renderEvBoostSettings,
+  supportsEvBoostDevice,
 } from './evBoost.ts';
 import {
   initExpectedPowerHandlers,
@@ -98,7 +97,6 @@ import {
   renderTargetPowerConfig,
 } from './targetPowerConfig.ts';
 import {
-  getControlModeDisplayLabel,
   isControlModeAllowedForDevice,
   normalizeDeviceDetailControlMode,
   resolveTargetPowerConfigForControlMode,
@@ -194,24 +192,34 @@ const syncSwitchRowDisabledStyling = () => {
   });
 };
 
-const renderManagedControl = (controlState: ReturnType<typeof resolveDeviceDetailControlState>): void => {
+const renderManagedControl = (
+  device: ReturnType<typeof getDeviceById>,
+  controlState: ReturnType<typeof resolveDeviceDetailControlState>,
+): void => {
   if (deviceDetailManaged) {
     deviceDetailManaged.selected = controlState.isManaged;
     deviceDetailManaged.disabled = !controlState.canManageDevice;
   }
   const managedHint = document.getElementById('device-detail-managed-hint');
   if (managedHint) {
-    managedHint.textContent = resolveManagedHint(controlState);
+    managedHint.textContent = resolveManagedHint(device, controlState);
   }
 };
 
-const resolveManagedHint = (controlState: ReturnType<typeof resolveDeviceDetailControlState>): string => {
+const resolveManagedHint = (
+  device: ReturnType<typeof getDeviceById>,
+  controlState: ReturnType<typeof resolveDeviceDetailControlState>,
+): string => {
   if (controlState.isHomeBattery) {
     return controlState.isDrivableBattery ? BATTERY_MANAGED_HINT : BATTERY_WATCH_MANAGED_HINT;
   }
-  return controlState.supportsPower || controlState.supportsTemperature
-    ? 'Include this device in modes and optimization plans.'
-    : DEVICE_POWER_SUPPORT_HINT;
+  if (!controlState.supportsPower && !controlState.supportsTemperature) return DEVICE_POWER_SUPPORT_HINT;
+  // An unmanaged charger's page hides its Charging and Power limiting cards
+  // (setDeviceDetailChargingCardState), so this switch names what they hold.
+  if (!controlState.isManaged && resolveDeviceDetailKind(device) === 'ev_charger') {
+    return 'Turn on to set how this charger charges and how PELS limits it.';
+  }
+  return 'Include this device in modes and optimization plans.';
 };
 
 const setDeviceDetailControlStates = (deviceId: string) => {
@@ -219,7 +227,7 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   const controlState = resolveDeviceDetailControlState(device, deviceId);
 
   setDeviceDetailNativeWiringState(device);
-  renderManagedControl(controlState);
+  renderManagedControl(device, controlState);
   renderDeviceDetailBattery(device);
 
   setPowerLimitSwitch(deviceDetailControllable, controlState, deviceId);
@@ -271,22 +279,23 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   });
 };
 
-// The Charging card exists for every EV charger — with or without stepped
-// support — because it carries the control-mode readout and the limiting
-// statement, not just the boost.
+// The Charging card shows on a managed EV charger that has a charging rule to
+// offer: Charge boost (a stepped charger) or Charge on solar surplus, whose row
+// setDeviceDetailSurplusTrackingControl has already resolved on this refresh.
+// The Power limiting card shows for every kind but a battery, which carries its
+// own switches. An unmanaged charger has nothing to charge toward or limit, so
+// both cards go and the page reduces to Car and Setup, which auto-expands for it.
 const setDeviceDetailChargingCardState = (
   device: ReturnType<typeof getDeviceById>,
-  controlState: { canManageDevice: boolean },
+  controlState: { isManaged: boolean },
 ) => {
-  const isEvKind = resolveDeviceDetailKind(device) === 'ev_charger';
-  if (deviceDetailChargingSection) deviceDetailChargingSection.hidden = !isEvKind;
-  if (deviceDetailChargingControlRow) {
-    deviceDetailChargingControlRow.hidden = !isEvKind || !controlState.canManageDevice;
+  const kind = resolveDeviceDetailKind(device);
+  const isUnmanagedCharger = kind === 'ev_charger' && !controlState.isManaged;
+  const hasChargingRule = supportsEvBoostDevice(device) || deviceDetailSurplusTrackRow?.hidden === false;
+  if (deviceDetailChargingSection) {
+    deviceDetailChargingSection.hidden = kind !== 'ev_charger' || isUnmanagedCharger || !hasChargingRule;
   }
-  if (deviceDetailChargingControlValue && device && isEvKind) {
-    deviceDetailChargingControlValue.textContent
-      = getControlModeDisplayLabel(resolveDeviceDetailControlMode(device));
-  }
+  if (deviceDetailSheddingSection) deviceDetailSheddingSection.hidden = kind === 'battery' || isUnmanagedCharger;
 };
 
 /**
@@ -506,15 +515,6 @@ export const initDeviceDetailHandlers = () => {
     closeDeviceDetail();
   });
   initDeviceDetailControlModelHandler();
-  // Charging-card "Change": the readout keeps top visibility while the edit
-  // keeps Setup-grade friction — expand Setup and hand focus to the select.
-  deviceDetailChargingControlChange?.addEventListener('click', () => {
-    if (deviceDetailSetupDisclosure && !deviceDetailSetupDisclosure.open) {
-      deviceDetailSetupDisclosure.open = true;
-    }
-    deviceDetailControlModel?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    deviceDetailControlModel?.focus();
-  });
   initDeviceDetailPriceOptHandlers({
     getCurrentDetailDeviceId,
     getDeviceById,

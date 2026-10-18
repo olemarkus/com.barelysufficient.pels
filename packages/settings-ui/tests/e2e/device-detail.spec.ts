@@ -303,19 +303,36 @@ test.describe('Device detail panel', () => {
   });
 
   test('Sections compose per device kind: EV leads with Charging, thermostat with modes', async ({ page }) => {
-    // EV charger: Charging card first, carrying the limiting statement; the
-    // standalone Power limiting card is gone; activity log precedes diagnostics.
-    await openDeviceDetail(page, 'dev_evcharger');
     const visibleSections = () => page.locator('.slide-panel__content > section.detail-section:visible')
       .evaluateAll((sections) => sections.map((el) => el.id));
+    // Managed EV charger: Charging, Car, then Power limiting holding the
+    // Power-limit control switch; Setup and the collapsed step card follow.
+    await openDeviceDetail(page, 'dev_zaptec');
     await expect.poll(visibleSections).toEqual([
       'device-detail-charging-section',
+      'device-detail-car-section',
+      'device-detail-shedding-section',
+      'device-detail-setup-section',
+      'device-detail-stepped-section',
+      'device-detail-activity-log-section',
+      'device-detail-diagnostics-section',
+    ]);
+    await expect(page.locator('#device-detail-shedding-section #device-detail-controllable-row')).toBeVisible();
+    await expect(page.locator('#device-detail-charging-section #device-detail-surplus-track-row')).toBeAttached();
+    await expect(page.locator('#device-detail-stepped-section details')).not.toHaveAttribute('open', '');
+    await page.locator('#device-detail-close').click();
+
+    // Unmanaged EV charger: nothing to charge toward or limit, so the page is
+    // Car and Setup, and the Managed switch says what turning it on adds.
+    await clickDeviceDetailButton(page, 'dev_evcharger');
+    await expect.poll(visibleSections).toEqual([
       'device-detail-car-section',
       'device-detail-setup-section',
       'device-detail-activity-log-section',
       'device-detail-diagnostics-section',
     ]);
-    await expect(page.locator('#device-detail-charging-section #device-detail-shed-statement')).toBeVisible();
+    await expect(page.locator('#device-detail-managed-hint'))
+      .toHaveText('Turn on to set how this charger charges and how PELS limits it.');
     // Unmanaged devices are absent from the plan payload, so the page must
     // render no hero — no fabricated status. Guards the fixture-truth rule
     // (an unmanaged charger once shipped in every capture as "held back").
@@ -360,6 +377,14 @@ test.describe('Device detail panel', () => {
   });
 
   test('Limiting card renders a statement, not a radiogroup, when there is nothing to choose', async ({ page }) => {
+    await page.addInitScript(() => {
+      const stubWindow = window as { __PELS_HOMEY_STUB__?: { settings?: Record<string, unknown> } };
+      const existing = stubWindow.__PELS_HOMEY_STUB__ ?? {};
+      stubWindow.__PELS_HOMEY_STUB__ = {
+        ...existing,
+        settings: { ...(existing.settings ?? {}), managed_devices: { dev_evcharger: true } },
+      };
+    });
     await openDeviceDetail(page, 'dev_evcharger');
 
     const statement = page.locator('#device-detail-shed-statement');
@@ -428,6 +453,9 @@ test.describe('Device detail panel', () => {
 
     const section = page.locator('#device-detail-stepped-section');
     await expect(section).toBeVisible();
+    // An EV charger's step card opens collapsed, its header summarizing the ladder.
+    await expect(page.locator('#device-detail-stepped-hint')).toHaveText(/^\d+ steps, up to \d+\.\d kW$/);
+    await section.locator('summary').click();
 
     // dev_zaptec is a stepped_load device — the step rows from the saved profile must be visible.
     const steps = page.locator('#device-detail-stepped-steps > *');

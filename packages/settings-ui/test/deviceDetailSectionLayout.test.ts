@@ -1,6 +1,6 @@
 // Per-kind section layout: the device page composes by reparenting singleton
-// section nodes. These tests assert the visible order per kind, the EV
-// shed-field relocation, idempotence, and the bare-page Setup auto-expand.
+// section nodes. These tests assert the visible order per kind, the EV row
+// relocations, idempotence, and the bare-page Setup auto-expand.
 
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
@@ -31,11 +31,41 @@ const buildDom = () => {
       <details id="device-detail-setup-disclosure"><summary></summary></details>
     </div>
   `;
-  const shedContent = document.querySelector('#device-detail-shedding-section .collapse-content')!;
-  const field = document.createElement('div');
-  field.id = 'device-detail-shed-field';
-  shedContent.appendChild(field);
+  const addRows = (parent: Element, ids: string[]) => ids.forEach((id) => {
+    const row = document.createElement('div');
+    row.id = id;
+    parent.appendChild(row);
+  });
+  addRows(document.querySelector('#device-detail-shedding-section .collapse-content')!, [
+    'device-detail-shed-field',
+    'device-detail-overshoot-temp-row',
+  ]);
+  addRows(document.querySelector('#device-detail-setup-section .collapse-content')!, [
+    'device-detail-managed-row',
+    'device-detail-temperature-control-disabled-row',
+    'device-detail-controllable-row',
+    'device-detail-start-policy-row',
+    'device-detail-respect-external-off-row',
+    'device-detail-price-opt-row',
+    'device-detail-surplus-track-row',
+    'device-detail-budget-exempt-row',
+  ]);
 };
+
+const childIds = (sectionId: string): string[] => Array.from(
+  document.querySelector(`#${sectionId} .collapse-content`)!.children,
+).map((el) => el.id);
+
+const SETUP_ROW_ORDER = [
+  'device-detail-managed-row',
+  'device-detail-temperature-control-disabled-row',
+  'device-detail-controllable-row',
+  'device-detail-start-policy-row',
+  'device-detail-respect-external-off-row',
+  'device-detail-price-opt-row',
+  'device-detail-surplus-track-row',
+  'device-detail-budget-exempt-row',
+];
 
 const buildDevice = (
   overrides: Partial<SettingsUiDeviceSnapshot> = {},
@@ -72,7 +102,7 @@ afterEach(() => {
 });
 
 describe('applyDeviceDetailSectionLayout', () => {
-  it('leads the EV page with Charging and Car and hides the shedding card', async () => {
+  it('leads the EV page with Charging, Car and Power limiting, and gathers the limiting rows', async () => {
     const { module, state } = await loadLayout();
     const device = buildDevice({ deviceClass: 'evcharger', deviceType: 'onoff' });
     state.deviceTargetPowerConfigs = {
@@ -81,18 +111,45 @@ describe('applyDeviceDetailSectionLayout', () => {
 
     module.applyDeviceDetailSectionLayout(device);
 
-    expect(sectionOrder().slice(0, 2)).toEqual([
+    expect(sectionOrder().slice(0, 5)).toEqual([
       'device-detail-charging-section',
       'device-detail-car-section',
+      'device-detail-shedding-section',
+      'device-detail-setup-section',
+      'device-detail-stepped-section',
     ]);
-    // The limiting field moves into the Charging card and its own card hides.
-    const field = document.getElementById('device-detail-shed-field');
-    expect(field?.closest('#device-detail-charging-section')).not.toBeNull();
-    expect((document.getElementById('device-detail-shedding-section') as HTMLElement).hidden).toBe(true);
+    // Power-limit control and its start policy lead what limiting does;
+    // "Leave off until turned on again" follows it.
+    expect(childIds('device-detail-shedding-section')).toEqual([
+      'device-detail-controllable-row',
+      'device-detail-start-policy-row',
+      'device-detail-shed-field',
+      'device-detail-respect-external-off-row',
+      'device-detail-overshoot-temp-row',
+    ]);
+    // Charge on solar surplus is a charging rule.
+    expect(childIds('device-detail-charging-section')).toEqual(['device-detail-surplus-track-row']);
     // Activity log reads before advanced diagnostics.
     const order = sectionOrder();
     expect(order.indexOf('device-detail-activity-log-section'))
       .toBeLessThan(order.indexOf('device-detail-diagnostics-section'));
+  });
+
+  it('leaves a rendered EV page untouched on a refresh', async () => {
+    const { module, state } = await loadLayout();
+    const device = buildDevice({ deviceClass: 'evcharger', deviceType: 'onoff' });
+    state.deviceTargetPowerConfigs = {
+      [device.id]: { enabled: true, preset: 'ev_charger_3_phase', min: 0, max: 22080, step: 1380 },
+    };
+    module.applyDeviceDetailSectionLayout(device);
+    const before = childIds('device-detail-shedding-section');
+
+    const observer = new MutationObserver(() => undefined);
+    observer.observe(document.body, { childList: true, subtree: true });
+    module.applyDeviceDetailSectionLayout(device);
+    expect(observer.takeRecords()).toEqual([]);
+    observer.disconnect();
+    expect(childIds('device-detail-shedding-section')).toEqual(before);
   });
 
   it('keeps the temperature page led by per-mode targets with limiting last of the open cards', async () => {
@@ -161,14 +218,13 @@ describe('applyDeviceDetailSectionLayout', () => {
     expect(sectionOrder()[0]).toBe('device-detail-charging-section');
   });
 
-  it('returns the shed field and unhides the limiting card on the way back from EV', async () => {
+  it('returns the limiting and solar rows to Setup on the way back from EV', async () => {
     const { module, state } = await loadLayout();
     const ev = buildDevice({ deviceClass: 'evcharger', deviceType: 'onoff' });
     state.deviceTargetPowerConfigs = {
       [ev.id]: { enabled: true, preset: 'ev_charger_1_phase', min: 0, max: 7360, step: 460 },
     };
     module.applyDeviceDetailSectionLayout(ev);
-    expect((document.getElementById('device-detail-shedding-section') as HTMLElement).hidden).toBe(true);
 
     const thermostat = buildDevice({
       id: 'device-2',
@@ -178,12 +234,15 @@ describe('applyDeviceDetailSectionLayout', () => {
     });
     module.applyDeviceDetailSectionLayout(thermostat);
 
-    const field = document.getElementById('device-detail-shed-field');
-    expect(field?.closest('#device-detail-shedding-section')).not.toBeNull();
-    expect((document.getElementById('device-detail-shedding-section') as HTMLElement).hidden).toBe(false);
+    expect(childIds('device-detail-setup-section')).toEqual(SETUP_ROW_ORDER);
+    expect(childIds('device-detail-shedding-section')).toEqual([
+      'device-detail-shed-field',
+      'device-detail-overshoot-temp-row',
+    ]);
+    expect(childIds('device-detail-charging-section')).toEqual([]);
   });
 
-  it('tracks shed-field placement on a kind change even while focus defers the reorder', async () => {
+  it('moves the rows with the kind even while focus defers the section reorder', async () => {
     const { module, state } = await loadLayout();
     const thermostat = buildDevice({
       deviceClass: 'thermostat',
@@ -194,7 +253,7 @@ describe('applyDeviceDetailSectionLayout', () => {
 
     // Focus inside the panel (the Setup select during a control-model change).
     const input = document.createElement('button');
-    document.querySelector('#device-detail-setup-section .collapse-content')?.appendChild(input);
+    document.querySelector('#device-detail-modes-section .collapse-content')?.appendChild(input);
     input.focus();
 
     const ev = buildDevice({ id: 'device-2', deviceClass: 'evcharger', deviceType: 'onoff' });
@@ -203,12 +262,10 @@ describe('applyDeviceDetailSectionLayout', () => {
     };
     module.applyDeviceDetailSectionLayout(ev);
 
-    // Reorder deferred (modes still first) but the limiting surface followed
-    // the kind: field inside the Charging card, its old card hidden.
+    // Reorder deferred (modes still first) but the rows followed the kind.
     expect(sectionOrder()[0]).toBe('device-detail-modes-section');
-    const field = document.getElementById('device-detail-shed-field');
-    expect(field?.closest('#device-detail-charging-section')).not.toBeNull();
-    expect((document.getElementById('device-detail-shedding-section') as HTMLElement).hidden).toBe(true);
+    expect(document.getElementById('device-detail-controllable-row')
+      ?.closest('#device-detail-shedding-section')).not.toBeNull();
 
     // The deferred reorder lands on the next apply once focus has left.
     input.blur();

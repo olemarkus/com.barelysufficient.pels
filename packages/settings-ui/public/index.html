@@ -991,7 +991,7 @@
           <details class="settings-collapse detail-collapse" open>
             <summary>
               <h3 class="section-title">Stepped load profile</h3>
-              <span class="section-hint">Steps and planning power</span>
+              <span class="section-hint" id="device-detail-stepped-hint">Steps and planning power</span>
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">
@@ -1100,35 +1100,23 @@
           </details>
         </section>
 
-        <!-- EV charging behavior. Layer E gives this card the control-mode readout
-             and the limiting statement; for now it homes the charge boost that
-             previously sat inside the stepped-profile shell. -->
+        <!-- EV charging behavior: when and how much to charge. Charge boost lives
+             here; the section layout moves the solar-surplus row in for an EV
+             charger (sectionLayout.ts). -->
         <section class="detail-section" id="device-detail-charging-section" hidden>
           <details class="settings-collapse detail-collapse" open>
             <summary>
               <h3 class="section-title">Charging</h3>
-              <span class="section-hint">How PELS controls charging</span>
+              <span class="section-hint">When and how much to charge</span>
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">
-              <!-- The most important EV fact, stated as a readout: changing the
-                   charging model reshapes the whole page, so editing keeps
-                   Setup-grade friction behind the Change button. -->
-              <div class="field device-detail-readout" id="device-detail-charging-control-row" hidden>
-                <div class="device-detail-readout__head">
-                  <span class="field__label pels-text-settings-label">Charging control</span>
-                  <span class="device-detail-readout__trailing">
-                    <span class="device-detail-readout__value" id="device-detail-charging-control-value"></span>
-                    <md-text-button id="device-detail-charging-control-change">Change</md-text-button>
-                  </span>
-                </div>
-              </div>
               <div class="detail-stepped-boost" id="device-detail-ev-boost" hidden>
                 <div class="md-switch-row">
                   <md-switch id="device-detail-ev-boost-enabled"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Charge boost</span>
-                    <small class="field__hint">Step this charger up while the car's battery is below the Boost below level, drawing from devices PELS is already allowed to lower.</small>
+                    <small class="field__hint">Take power from devices PELS may lower while the battery is below this level.</small>
                   </span>
                 </div>
                 <div class="md-field-row">
@@ -1156,13 +1144,12 @@
           <details class="settings-collapse detail-collapse" open>
             <summary>
               <h3 class="section-title">Car</h3>
-              <span class="section-hint">Which car charges here</span>
+              <span class="section-hint">Where the battery level comes from</span>
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">
               <p class="muted">
-                Select the cars that charge here. Once PELS matches one to this charger, it reads the
-                battery level from the car, so Charge boost and Smart tasks know how full it is without a Flow.
+                Select the cars that charge here. When PELS matches one to this charger, it reads that car's battery level.
               </p>
               <p class="detail-car-status" id="device-detail-car-status" hidden></p>
               <div class="detail-car-list" id="device-detail-car-list"></div>
@@ -1372,11 +1359,11 @@
                     <span class="md-switch-row__label pels-text-settings-label" id="device-detail-surplus-track-label">Match solar surplus</span>
                     <small class="field__hint" id="device-detail-surplus-track-hint"></small>
                     <small class="field__hint" id="device-detail-surplus-track-disabled-hint" hidden>Unavailable while this device has an active smart task — the task's schedule decides when it runs.</small>
-                    <small class="field__hint" id="device-detail-surplus-track-power-limit-hint" hidden>Turn on Power-limit control above first — PELS needs it to set this device's level.</small>
+                    <small class="field__hint" id="device-detail-surplus-track-power-limit-hint" hidden>Turn on Power-limit control first. PELS needs it to set this device's level.</small>
                   </span>
                 </div>
 
-                <div class="md-switch-row">
+                <div class="md-switch-row" id="device-detail-budget-exempt-row">
                   <md-switch id="device-detail-budget-exempt"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Budget exempt</span>

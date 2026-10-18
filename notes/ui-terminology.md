@@ -583,12 +583,15 @@ really is the whole of it. The preset row must keep both halves — that PELS
 lowers the level, and that it pauses only when lowering is not enough — or the
 sentence trades one half-truth for the other.
 
-The EV page's **Charging card** opens with a control-mode **readout**
-(`Charging control · EV 3-phase`) and a `Change` button that expands Setup and
-focuses the select — top visibility, Setup-grade friction, because changing the
-charging model reshapes the page. The readout label comes from the same option
-list as the Setup select (`getControlModeDisplayLabel`), so the two cannot
-disagree.
+The EV page's **Charging card** holds the charging rules, when and how much to
+charge (Charge boost, `Charge on solar surplus`). The control model is set in
+Setup only; the readout that once repeated it at the top of the Charging card was
+removed (2026-10-18) because one choice shown in two places read as two settings.
+The **Power limiting** card gathers `Power-limit control`, `Only PELS starts this
+device`, what limiting does, and `Leave off until turned on again`, so the switch and what it governs read
+together. An unmanaged charger's page shows neither card: there is nothing to
+charge toward or limit, and the Managed switch's hint names what turning it on
+adds (`Turn on to set how this charger charges and how PELS limits it.`).
 
 Suppressed-control treatment (device page): **applicable-but-unavailable
 renders visible-but-disabled with a gate hint naming the real switch**

@@ -110,27 +110,28 @@ const shouldShowStartPolicyRow = (
   || isPelsOnly(deviceId)
 );
 
-const revealSetupRow = (row: HTMLElement | null): void => {
-  if (deviceDetailSetupDisclosure && !deviceDetailSetupDisclosure.open) {
-    deviceDetailSetupDisclosure.open = true;
-  }
+// The row lives in Setup, or in the limiting card on an EV charger's page
+// (sectionLayout.ts), so the card that holds it is the one to expand.
+const revealDetailRow = (row: HTMLElement | null): void => {
+  const disclosure = row?.closest('details') ?? deviceDetailSetupDisclosure;
+  if (disclosure && !disclosure.open) disclosure.open = true;
   if (!row || row.hidden) return;
   row.scrollIntoView({ block: 'center', behavior: 'smooth' });
 };
 
 /**
- * Land on this row: Setup expanded and the row centred. The "Keep {device}
+ * Land on this row: its card expanded and the row centred. The "Keep {device}
  * within Smart tasks" suggestion names this setting, so opening the device with
  * Setup collapsed would leave the owner hunting for it.
  */
-const revealStartPolicyRow = (): void => revealSetupRow(rowEl);
+const revealStartPolicyRow = (): void => revealDetailRow(rowEl);
 
 /**
  * Land on Power-limit control, with the rows that refine it ("Leave off until
  * turned on again", "Only PELS starts this device") and the start rule just
  * below. A Smart task's "Change" link lands here.
  */
-const revealPowerLimitRow = (): void => revealSetupRow(q<HTMLElement>('#device-detail-controllable-row'));
+const revealPowerLimitRow = (): void => revealDetailRow(q<HTMLElement>('#device-detail-controllable-row'));
 
 /** Land on the Setup row a deep link names; `top` leaves the page where it opened. */
 export const revealDeviceDetailFocus = (focus: DeviceDetailFocus): void => {

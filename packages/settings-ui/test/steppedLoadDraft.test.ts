@@ -198,3 +198,80 @@ describe('steppedLoadDraft per-device draft preservation', () => {
     expect(idInput?.getAttribute('label')).toBeNull();
   });
 });
+
+describe('steppedLoadDraft step card disclosure', () => {
+  const setupDisclosureDom = (): HTMLDetailsElement => {
+    document.body.replaceChildren();
+    const section = createElement('section', 'device-detail-stepped-section');
+    const details = document.createElement('details');
+    details.open = true;
+    details.appendChild(createElement('span', 'device-detail-stepped-hint'));
+    details.appendChild(createElement('div', 'device-detail-stepped-steps'));
+    section.appendChild(details);
+    document.body.appendChild(section);
+    document.body.appendChild(createElement('md-filled-select', 'device-detail-overshoot'));
+    return details;
+  };
+
+  const buildCharger = (id: string): SettingsUiDeviceSnapshot & SteppedLoadDescriptorProbe => ({
+    ...buildSteppedDevice(id, [{ id: 'off', planningPowerW: 0 }, { id: '16a', planningPowerW: 3680 }]),
+    deviceClass: 'evcharger',
+    isEvCharger: true,
+  });
+
+  const loadModule = async () => {
+    vi.resetModules();
+    const details = setupDisclosureDom();
+    const module = await import('../src/ui/deviceDetail/steppedLoadDraft.ts');
+    module.initSteppedLoadDraftHandlers({
+      getCurrentDetailDeviceId: () => null,
+      getDeviceById: () => null,
+      persistDeviceControlProfile: async () => true,
+      refreshOpenDeviceDetail: () => undefined,
+    });
+    return { module, details };
+  };
+
+  afterEach(() => {
+    document.body.replaceChildren();
+  });
+
+  it('opens a charger collapsed and a stepped load open, whichever came first', async () => {
+    const { module, details } = await loadModule();
+
+    module.renderSteppedLoadDraft(buildCharger('charger'));
+    expect(details.open).toBe(false);
+    expect(document.getElementById('device-detail-stepped-hint')?.textContent).toBe('2 steps, up to 3.7 kW');
+
+    module.renderSteppedLoadDraft(buildSteppedDevice('heater', [{ id: 'max', planningPowerW: 3000 }]));
+    expect(details.open).toBe(true);
+    expect(document.getElementById('device-detail-stepped-hint')?.textContent).toBe('Steps and planning power');
+  });
+
+  it('keeps the state the owner chose per device across device switches', async () => {
+    const { module, details } = await loadModule();
+    const chargerA = buildCharger('charger-a');
+
+    module.renderSteppedLoadDraft(chargerA);
+    details.open = true;
+    details.dispatchEvent(new Event('toggle'));
+
+    module.renderSteppedLoadDraft(buildCharger('charger-b'));
+    expect(details.open).toBe(false);
+
+    module.renderSteppedLoadDraft(chargerA);
+    expect(details.open).toBe(true);
+  });
+
+  it('names a one-step ladder in the singular', async () => {
+    const { module } = await loadModule();
+
+    module.renderSteppedLoadDraft({
+      ...buildSteppedDevice('one', [{ id: '16a', planningPowerW: 3680 }]),
+      deviceClass: 'evcharger',
+      isEvCharger: true,
+    });
+
+    expect(document.getElementById('device-detail-stepped-hint')?.textContent).toBe('1 step, up to 3.7 kW');
+  });
+});

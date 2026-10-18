@@ -12,9 +12,11 @@ import { resolveDeviceDetailKind, type DeviceDetailKind } from '../deviceKind.ts
 // holding focus is never moved mid-interaction — the next open applies it.
 //
 // Ordering rationale (importance × frequency of use):
-// - EV charger: the Charging card is the device's identity (control readout,
-//   boost, limiting statement); Car feeds it; a step editor exists only for
-//   non-preset chargers. Wiring sinks to Setup.
+// - EV charger: Charging (when and how much to charge: boost, solar surplus)
+//   is the device's identity; Car says where the battery level comes from;
+//   Power limiting gathers Power-limit control with what limiting does and
+//   the rows that refine it. Setup is set-once, and the step editor (only for
+//   non-preset chargers) follows it, collapsed.
 // - Temperature: per-mode targets are the controls owners revisit; price and
 //   solar are the tuning layer; the limiting choice is consequential but
 //   set-once, so it closes the open cards.
@@ -55,7 +57,7 @@ const ALL_SECTION_KEYS = Object.keys(SECTION_IDS) as SectionKey[];
 // previous kind's position.
 const SECTION_HEAD: Record<DeviceDetailKind, readonly SectionKey[]> = {
   battery: ['battery', 'activityLog', 'diagnostics'],
-  ev_charger: ['charging', 'car', 'stepped', 'setup', 'smartTask', 'activityLog', 'diagnostics'],
+  ev_charger: ['charging', 'car', 'shedding', 'setup', 'stepped', 'smartTask', 'activityLog', 'diagnostics'],
   temperature: [
     'modes', 'delta', 'surplus', 'stepped', 'shedding', 'setup', 'smartTask', 'activityLog', 'diagnostics',
   ],
@@ -74,27 +76,24 @@ const sectionElement = (key: SectionKey): HTMLElement | null => (
   document.getElementById(SECTION_IDS[key])
 );
 
-// The EV page carries its limiting statement inside the Charging card (the
-// separate "Power limiting" card disappears for EVs); every other kind keeps
-// the field in its own section. The field node is a singleton, so it moves.
-const placeShedField = (kind: DeviceDetailKind): void => {
-  const field = document.getElementById('device-detail-shed-field');
-  if (!field) return;
-  if (kind === 'ev_charger') {
-    const chargingContent = sectionElement('charging')?.querySelector('.collapse-content');
-    if (chargingContent && field.parentElement !== chargingContent) {
-      chargingContent.appendChild(field);
-    }
-  } else {
-    const sheddingContent = sectionElement('shedding')?.querySelector('.collapse-content');
-    if (sheddingContent && field.parentElement !== sheddingContent) {
-      // The statement/radiogroup field leads the section, ahead of the
-      // limited-temperature parameter row.
-      sheddingContent.insertBefore(field, sheddingContent.firstChild);
-    }
-  }
-  const shedding = sectionElement('shedding');
-  if (shedding) shedding.hidden = kind === 'ev_charger' || kind === 'battery';
+const sectionContent = (key: SectionKey): HTMLElement | null => (
+  sectionElement(key)?.querySelector<HTMLElement>('.collapse-content') ?? null
+);
+
+// Moves are guarded so a refresh that changes nothing touches no node.
+const placeBefore = (node: HTMLElement | null, anchor: HTMLElement | null): void => {
+  if (!node || !anchor?.parentElement || node.nextElementSibling === anchor) return;
+  anchor.parentElement.insertBefore(node, anchor);
+};
+
+const placeAfter = (node: HTMLElement | null, anchor: HTMLElement | null): void => {
+  if (!node || !anchor?.parentElement || anchor.nextElementSibling === node) return;
+  anchor.parentElement.insertBefore(node, anchor.nextSibling);
+};
+
+const appendTo = (node: HTMLElement | null, parent: HTMLElement | null): void => {
+  if (!node || !parent || node.parentElement === parent && parent.lastElementChild === node) return;
+  parent.appendChild(node);
 };
 
 // The Managed switch is a singleton: a battery's page carries it in its own
@@ -108,26 +107,48 @@ const placeManagedRow = (kind: DeviceDetailKind): void => {
     if (batteryList && row.parentElement !== batteryList) batteryList.insertBefore(row, notice?.nextSibling ?? null);
     return;
   }
-  const anchor = document.getElementById('device-detail-temperature-control-disabled-row');
-  if (anchor?.parentElement && row.nextElementSibling !== anchor) anchor.parentElement.insertBefore(row, anchor);
+  placeBefore(row, document.getElementById('device-detail-temperature-control-disabled-row'));
 };
 
-// The Power-limit control switch is a singleton too: a battery's page carries
-// it under Managed in its own section, every other page in Setup, ahead of the
-// start-policy row (its place in the markup). Runs after placeManagedRow, so
-// the battery's Managed row is already in place to anchor it.
-const placeControllableRow = (kind: DeviceDetailKind): void => {
-  const row = document.getElementById('device-detail-controllable-row');
-  if (!row) return;
+// Power-limit control and the two rows that refine it ("Only PELS starts this
+// device", "Leave off until turned on again") are singletons.
+// - Battery: Power-limit control sits under Managed in its own section (the
+//   other two never show there). Runs after placeManagedRow, so the battery's
+//   Managed row is already in place to anchor it.
+// - EV charger: all three join the Power limiting card. The switch and the
+//   start policy lead, ahead of what limiting does; "Leave off" follows it.
+// - Every other page: Setup, ahead of Price-based control, which never moves.
+const placePowerLimitRows = (kind: DeviceDetailKind): void => {
+  const controllable = document.getElementById('device-detail-controllable-row');
+  const startPolicy = document.getElementById('device-detail-start-policy-row');
+  const respectExternalOff = document.getElementById('device-detail-respect-external-off-row');
   if (kind === 'battery') {
-    const managedRow = document.getElementById('device-detail-managed-row');
-    if (managedRow?.parentElement && managedRow.nextElementSibling !== row) {
-      managedRow.parentElement.insertBefore(row, managedRow.nextSibling);
-    }
+    placeAfter(controllable, document.getElementById('device-detail-managed-row'));
     return;
   }
-  const anchor = document.getElementById('device-detail-start-policy-row');
-  if (anchor?.parentElement && row.nextElementSibling !== anchor) anchor.parentElement.insertBefore(row, anchor);
+  if (kind === 'ev_charger') {
+    const shedField = document.getElementById('device-detail-shed-field');
+    placeBefore(startPolicy, shedField);
+    placeBefore(controllable, startPolicy);
+    placeAfter(respectExternalOff, shedField);
+    return;
+  }
+  const priceOptRow = document.getElementById('device-detail-price-opt-row');
+  placeBefore(respectExternalOff, priceOptRow);
+  placeBefore(startPolicy, respectExternalOff);
+  placeBefore(controllable, startPolicy);
+};
+
+// "Charge on solar surplus" is a charging rule on an EV charger's page, so it
+// joins Charge boost in the Charging card; every other page keeps the
+// solar-surplus row in Setup, ahead of Budget exempt.
+const placeSurplusTrackRow = (kind: DeviceDetailKind): void => {
+  const row = document.getElementById('device-detail-surplus-track-row');
+  if (kind === 'ev_charger') {
+    appendTo(row, sectionContent('charging'));
+    return;
+  }
+  placeBefore(row, document.getElementById('device-detail-budget-exempt-row'));
 };
 
 // A battery's page shows its own section and none of a load's: Setup holds
@@ -146,18 +167,13 @@ export const applyDeviceDetailSectionLayout = (
 ): void => {
   const kind = resolveDeviceDetailKind(device);
   placeManagedRow(kind);
-  placeControllableRow(kind);
+  placePowerLimitRows(kind);
+  placeSurplusTrackRow(kind);
   applyBatteryKindVisibility(kind);
   if (appliedKind === kind) return;
 
   const parent = sectionElement('modes')?.parentElement;
   if (!parent) return;
-  // The shed-field placement and the shedding-section visibility must track
-  // the kind even when the reorder is deferred: the Charging card's own
-  // visibility follows the new kind immediately, and skipping this leaves a
-  // page with its limiting surface inside a hidden card (or two limiting
-  // cards at once) after a control-model change re-kinds the device.
-  placeShedField(kind);
   // Never move the node the user is interacting with (md-select keeps its
   // menu/focus state through a change handler that can re-kind the page).
   // The reorder retries on the next apply; appliedKind stays unset so it does.

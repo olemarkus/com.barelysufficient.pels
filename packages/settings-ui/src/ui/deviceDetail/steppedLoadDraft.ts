@@ -16,6 +16,7 @@ import {
   deviceDetailSteppedReset,
   deviceDetailSteppedSave,
   deviceDetailSteppedSection,
+  deviceDetailSteppedHint,
   deviceDetailSteppedSteps,
 } from '../dom.ts';
 import {
@@ -26,7 +27,7 @@ import {
 import { logSettingsError } from '../logging.ts';
 import { state } from '../state.ts';
 import { showToastError } from '../toast.ts';
-import { hasEvTargetPowerPreset, isSteppedLoadControlModel } from '../deviceKind.ts';
+import { hasEvTargetPowerPreset, isSteppedLoadControlModel, resolveDeviceDetailKind } from '../deviceKind.ts';
 import { writeShedBehaviors } from './shedBehavior.ts';
 import { resolveShedBehavior } from '../../../../shared-domain/src/settings/shedBehaviors.ts';
 
@@ -242,6 +243,41 @@ export const updateSetStepOptionLabel = (
   }
 };
 
+const DEFAULT_STEPPED_SECTION_HINT = 'Steps and planning power';
+
+// An EV charger's step card opens collapsed (sectionLayout.ts), so its header
+// summarizes the ladder; every other kind keeps the card's subject.
+const renderSteppedSectionHint = (device: SettingsUiDeviceDetailItem, profile: SteppedLoadProfile): void => {
+  if (!deviceDetailSteppedHint) return;
+  if (resolveDeviceDetailKind(device) !== 'ev_charger' || profile.steps.length === 0) {
+    deviceDetailSteppedHint.textContent = DEFAULT_STEPPED_SECTION_HINT;
+    return;
+  }
+  const maxKw = Math.max(...profile.steps.map((step) => step.planningPowerW)) / 1000;
+  const count = profile.steps.length;
+  deviceDetailSteppedHint.textContent = `${count} ${count === 1 ? 'step' : 'steps'}, up to ${maxKw.toFixed(1)} kW`;
+};
+
+// The step card is one disclosure shared by every device page, so its open
+// state is kept per device. An EV charger's step editor is set once, after
+// installation, and is the tallest thing on its page, so it starts collapsed;
+// every other kind starts open, as before. A card the owner opens or closes
+// stays that way for that device across refreshes and device switches.
+const stepEditorOpenByDeviceId = new Map<string, boolean>();
+let stepEditorDeviceId: string | null = null;
+
+const stepEditorDisclosure = (): HTMLDetailsElement | null => (
+  deviceDetailSteppedSection?.querySelector('details') ?? null
+);
+
+const applyStepEditorDisclosure = (device: SettingsUiDeviceDetailItem): void => {
+  const disclosure = stepEditorDisclosure();
+  if (!disclosure) return;
+  stepEditorDeviceId = device.id;
+  const open = stepEditorOpenByDeviceId.get(device.id) ?? resolveDeviceDetailKind(device) !== 'ev_charger';
+  if (disclosure.open !== open) disclosure.open = open;
+};
+
 export const renderSteppedLoadDraft = (device: SettingsUiDeviceDetailItem) => {
   if (!deviceDetailSteppedSection || !deviceDetailSteppedSteps) return;
 
@@ -266,6 +302,7 @@ export const renderSteppedLoadDraft = (device: SettingsUiDeviceDetailItem) => {
     if (deviceDetailSteppedSave) deviceDetailSteppedSave.disabled = disabled;
   };
   deviceDetailSteppedSection.hidden = !showStepEditor;
+  applyStepEditorDisclosure(device);
   setEditorVisibility(!showStepEditor);
   if (!showStepEditor) {
     clearSteppedLoadDraft(device.id);
@@ -297,12 +334,14 @@ export const renderSteppedLoadDraft = (device: SettingsUiDeviceDetailItem) => {
       ?? getDraftProfileFromCurrentDevice(device);
     setSteppedLoadDraft(device.id, profile);
     updateSetStepOptionLabel(device, profile);
+    renderSteppedSectionHint(device, profile);
     refreshEditorDirtyState();
   };
 
   const profile = getDraftProfileFromCurrentDevice(device);
   setSteppedLoadDraft(device.id, profile);
   updateSetStepOptionLabel(device, profile);
+  renderSteppedSectionHint(device, profile);
   const rows = sortSteppedLoadSteps(profile.steps).map((step) => buildSteppedLoadStepRow({
     step,
     onDraftChanged: syncSteppedLoadDraftState,
@@ -328,6 +367,10 @@ export const initSteppedLoadDraftHandlers = (params: {
   persistDeviceControlProfile: (deviceId: string, profile: SteppedLoadProfile | null) => Promise<boolean>;
   refreshOpenDeviceDetail: () => void;
 }) => {
+  const disclosure = stepEditorDisclosure();
+  disclosure?.addEventListener('toggle', () => {
+    if (stepEditorDeviceId) stepEditorOpenByDeviceId.set(stepEditorDeviceId, disclosure.open);
+  });
   const appendDraftSteppedLoadStep = () => {
     const deviceId = params.getCurrentDetailDeviceId();
     if (!deviceId) return;

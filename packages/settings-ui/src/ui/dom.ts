@@ -255,12 +255,9 @@ export const deviceDetailShedStep = document.querySelector(
   '#device-detail-overshoot-step',
 ) as MdFilledSelectElement;
 export const deviceDetailChargingSection = qs('#device-detail-charging-section');
-export const deviceDetailChargingControlRow = qs('#device-detail-charging-control-row');
-export const deviceDetailChargingControlValue = qs('#device-detail-charging-control-value');
-export const deviceDetailChargingControlChange = document.querySelector<MdButtonElement>(
-  '#device-detail-charging-control-change',
-);
+export const deviceDetailSheddingSection = qs('#device-detail-shedding-section');
 export const deviceDetailSteppedSection = qs('#device-detail-stepped-section');
+export const deviceDetailSteppedHint = qs('#device-detail-stepped-hint');
 export const deviceDetailSteppedIntro = qs('#device-detail-stepped-intro');
 export const deviceDetailSteppedLockedNote = qs('#device-detail-stepped-locked-note');
 export const deviceDetailSteppedHeader = qs('#device-detail-stepped-header');
