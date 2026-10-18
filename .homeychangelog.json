@@ -646,5 +646,8 @@
   },
   "3.16.4": {
     "en": "Smart tasks that have reached their target now say so. The device card reads \"Smart task done, held until its ready-by time\" instead of \"Waiting for cheaper hours\", and the overview counts these devices separately. A finished task no longer uses its extra permissions for top-ups, so it does not go over the daily budget or hold back lower-priority devices once its goal is met. The reserve permission is now called \"May reserve power to start sooner\", since it pauses nothing.\n\nThermostats that have reached their target and draw no power now show Idle instead of Running, including ones that report on and cooling devices. The overview says PELS is not managing any devices when none are set up, instead of \"Quiet hour\". Clear device data now also removes the device's smart task and its \"leave off until turned on again\" choice. It never touches other devices' settings, even if the page hasn't finished loading them."
+  },
+  "3.17.0": {
+    "en": "EV chargers can now stop at a battery level. Turn on \"Charge to a battery level\" on the charger's page and set the level: PELS turns the charger off once the car reaches it, and a smart task can still charge past it in the hours it booked. A car that doesn't report its battery level charges as before, unless you turn off \"Charge before the battery level is known\".\n\nThe charger page is reorganised into Charging, Car, Power limiting and Setup, with the charging steps folded away until you open them."
   }
 }
