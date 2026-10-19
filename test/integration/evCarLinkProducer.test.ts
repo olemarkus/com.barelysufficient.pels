@@ -1,5 +1,11 @@
+import { createEvCarAssociationControl } from '../../lib/device/transport/transportServices';
+import { TransportSnapshotStore } from '../../lib/device/transport/transportSnapshotStore';
+import type { DeviceParseSettings } from '../../lib/device/transport/managerParseDevice';
+import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
+import type { Logger } from '../../lib/utils/types';
+import { partialDouble } from '../helpers/partialDouble';
 import { conformingRead } from '../helpers/deviceListRead';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   EvCarLinkProducer,
   type EvCarLinkEvent,
@@ -1752,5 +1758,301 @@ describe('idle interval provenance', () => {
 
     h.car(carDevice({ state: 'plugged_in_charging', socPct: 44 }), 10_000 + SETTLE_MS + 5_000);
     expect(h.of('ev_car_session_elsewhere')).toHaveLength(0);
+  });
+});
+
+describe('explicit car confirmation', () => {
+  const confirm = () => {
+    seedDisconnected(h, 1_000);
+    h.setCharger({ evChargingState: 'plugged_in_paused' });
+    h.tick(2_000);
+    h.producer.confirmAssociation('charger-1', 'car-1', 3_000);
+  };
+
+  it('uses accepted battery telemetry despite cached unplugged state and creates no vote', () => {
+    confirm();
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({
+      carId: 'car-1', confirmed: true, chargingState: 'plugged_out', socPct: 40,
+    });
+    expect(h.adopted.at(-1)?.socPct).toBe(40);
+    expect(h.snapshot.pairs).toEqual({});
+    h.tick(4_000);
+    h.producer.confirmAssociation('charger-1', 'car-1', 5_000);
+    expect(h.of('ev_car_link_confirmed')).toHaveLength(1);
+  });
+
+  it('clears explicit identification and its battery without changing the selected car', () => {
+    confirm();
+    expect(h.producer.getCarConfirmation('charger-1')).toEqual({ carId: 'car-1', carName: 'Polestar', available: true });
+    h.producer.clearCarConfirmation('charger-1');
+    expect(h.producer.getCarConfirmation('charger-1')).toBeUndefined();
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
+    expect(h.ended).toContain('charger-1');
+    h.tick(5_000);
+    expect(h.snapshot.sessions).toEqual({});
+  });
+
+  it('can clear confirmation during an outage without restoring it when the car recovers', () => {
+    confirm();
+    h.car(carDevice({ state: 'plugged_out', socPct: 40, available: false }), 4_000);
+    expect(h.producer.getCarConfirmation('charger-1')).toEqual({
+      carId: 'car-1', carName: 'Polestar', available: false,
+    });
+    h.producer.clearCarConfirmation('charger-1');
+    h.car(carDevice({ state: 'plugged_out', socPct: 42, available: true }), 5_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
+    expect(h.producer.getCarConfirmation('charger-1')).toBeUndefined();
+  });
+
+  it('can identify a car before its first battery reading and adopt a later reading', () => {
+    const car = carDevice({ state: 'plugged_out' });
+    h.car({ ...car, capabilities: ['ev_charging_state'] }, 1_000);
+    h.setCharger({ evChargingState: 'plugged_in_paused' });
+    h.tick(2_000);
+    h.producer.confirmAssociation('charger-1', 'car-1', 3_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ confirmed: true });
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).not.toHaveProperty('socPct');
+    expect(h.adopted).toHaveLength(0);
+    h.cap('car-1', 'measure_battery', 40, 4_000);
+    expect(h.adopted.at(-1)?.socPct).toBe(40);
+  });
+
+  it('keeps explicit identification when a different car later matches automatically', () => {
+    confirm();
+    h.car(carDevice({ id: 'car-2', state: 'plugged_out', socPct: 70 }), 4_000);
+    h.cap('car-2', 'ev_charging_state', 'plugged_in_charging', 5_000);
+    h.tick(5_000 + SETTLE_MS);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')?.carId).toBe('car-1');
+    h.producer.confirmAssociation('charger-1', 'car-2', 6_000 + SETTLE_MS);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ carId: 'car-2', confirmed: true });
+    expect(h.adopted.at(-1)?.socPct).toBe(70);
+  });
+
+  it('ends on a subsequent disconnect transition, not repeated cached unplugged reads', () => {
+    confirm();
+    h.car(carDevice({ state: 'plugged_out', socPct: 41 }), 4_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')?.confirmed).toBe(true);
+    h.cap('car-1', 'ev_charging_state', 'plugged_in_charging', 5_000);
+    h.cap('car-1', 'ev_charging_state', 'plugged_out', 6_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
+    expect(h.snapshot.sessions).toEqual({});
+  });
+
+  it('suspends on unavailability and resumes a confirmed unplugged car', () => {
+    confirm();
+    h.car(carDevice({ state: 'plugged_out', socPct: 40, available: false }), 4_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
+    expect(h.snapshot.sessions['charger-1']?.confirmed).toBe(true);
+    h.car(carDevice({ state: 'plugged_out', socPct: 42, available: true }), 5_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ confirmed: true, socPct: 42 });
+  });
+
+  it('respects persisted confirmation before opening a provisional link on another charger', () => {
+    h.setCharger({ evChargingState: 'plugged_in_paused' });
+    seedDisconnected(h, 1_000);
+    h.chargers.push(charger({ id: 'charger-2', evChargingState: 'plugged_out' }));
+    h.tick(2_000);
+    h.setCharger({ evChargingState: 'plugged_in_paused' }, 'charger-2');
+    h.tick(3_000);
+    h.snapshot.sessions['charger-1'] = { carId: 'car-1', sinceMs: 2_000, confirmed: true };
+    h.cap('car-1', 'ev_charging_state', 'plugged_in_charging', 4_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ carId: 'car-1', confirmed: true });
+    expect(h.producer.getAssociatedCarForCharger('charger-2')).toBeUndefined();
+  });
+
+  it('resumes confirmation across restart without requiring a car plug report', () => {
+    confirm();
+    const restarted = new Harness();
+    restarted.snapshot = h.snapshot;
+    restarted.setCharger({ evChargingState: 'plugged_in_paused' });
+    restarted.car(carDevice({ state: 'plugged_out', socPct: 40 }), 4_000);
+    expect(restarted.producer.getAssociatedCarForCharger('charger-1')?.confirmed).toBe(true);
+  });
+
+  it('promotes an immediate automatic link to confirmation before rival evidence arrives', () => {
+    seedDisconnected(h, 1_000);
+    h.setCharger({ evChargingState: 'plugged_in_paused' });
+    h.tick(2_000);
+    h.cap('car-1', 'ev_charging_state', 'plugged_in_charging', 3_000);
+    expect(h.of('ev_car_link_provisional')).toHaveLength(1);
+    h.producer.confirmAssociation('charger-1', 'car-1', 4_000);
+    h.car(carDevice({ id: 'car-2', state: 'plugged_out', socPct: 70 }), 5_000);
+    h.cap('car-2', 'ev_charging_state', 'plugged_in_charging', 6_000);
+    h.tick(6_000 + SETTLE_MS);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ carId: 'car-1', confirmed: true });
+    expect(h.of('ev_car_link_provisional_withdrawn')).toHaveLength(0);
+  });
+
+  it('rejects confirmation on another charger while the car has a provisional link', () => {
+    seedDisconnected(h, 1_000);
+    h.setCharger({ evChargingState: 'plugged_in_paused' });
+    h.tick(2_000);
+    h.cap('car-1', 'ev_charging_state', 'plugged_in_charging', 3_000);
+    expect(h.of('ev_car_link_provisional')).toHaveLength(1);
+    expect(h.snapshot.sessions).toEqual({});
+    h.chargers.push(charger({ id: 'charger-2', evChargingState: 'plugged_in_paused' }));
+    expect(() => h.producer.confirmAssociation('charger-2', 'car-1', 4_000)).toThrow('another charger');
+    expect(h.producer.getAssociatedCarForCharger('charger-1')?.carId).toBe('car-1');
+  });
+
+  it('rejects a car already linked elsewhere and ends on deselection', () => {
+    confirm();
+    h.chargers.push(charger({ id: 'charger-2', evChargingState: 'plugged_in_paused' }));
+    expect(() => h.producer.confirmAssociation('charger-2', 'car-1', 4_000)).toThrow('another charger');
+    h.producer.retainConfirmedAssociations(() => false);
+    expect(h.snapshot.sessions).toEqual({});
+    expect(h.ended).toContain('charger-1');
+  });
+
+  it('ends on charger unplug and does not reuse confirmation after replug', () => {
+    confirm();
+    h.setCharger({ evChargingState: 'plugged_out' });
+    h.tick(4_000);
+    h.setCharger({ evChargingState: 'plugged_in_paused' });
+    h.tick(5_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
+  });
+});
+
+
+describe('car association waiting episodes and inventory', () => {
+  const setupControl = () => {
+    const snapshots = new TransportSnapshotStore();
+    const selected = ['car-1'];
+    const settings = partialDouble<DeviceParseSettings>({ getEvCarAssociationCarIds: () => selected });
+    const trigger = vi.fn();
+    const logger = partialDouble<Logger>({ structuredLog: partialDouble<Logger['structuredLog']>({ info: vi.fn() }) });
+    const control = createEvCarAssociationControl(h.producer, settings, snapshots, () => ({ trigger }), logger);
+    const connected = partialDouble<TransportDeviceSnapshot>({
+      id: 'charger-1', name: 'Garage', isEvCharger: true, available: true, evChargingState: 'plugged_in_paused',
+    });
+    return { snapshots, selected, trigger, control, connected };
+  };
+
+  it('preserves confirmation before inventory resolves, then removes a missing endpoint', () => {
+    const { snapshots, control } = setupControl();
+    h.snapshot.sessions['charger-1'] = { carId: 'car-1', sinceMs: 1_000, confirmed: true };
+    control.tick(2_000);
+    expect(h.snapshot.sessions['charger-1']?.confirmed).toBe(true);
+    snapshots.replaceLatestRawDevices([], []);
+    control.tick(3_000);
+    expect(h.snapshot.sessions).toEqual({});
+  });
+
+  it('ends a persisted confirmation on an unplug observed before the first car read', () => {
+    const { snapshots, control, connected } = setupControl();
+    h.snapshot.sessions['charger-1'] = { carId: 'car-1', sinceMs: 1_000, confirmed: true };
+    snapshots.replaceSnapshot([{ ...connected, evChargingState: 'plugged_out' }]);
+    control.observe(2_000);
+    snapshots.replaceSnapshot([connected]);
+    control.observe(3_000);
+    expect(h.snapshot.sessions).toEqual({});
+    expect(control.isWaiting('charger-1')).toBe(true);
+  });
+
+  it('crosses thresholds once per waiting episode, resetting across unplug/replug', async () => {
+    const { snapshots, control, connected, trigger } = setupControl();
+    snapshots.replaceSnapshot([connected]);
+    control.observe(1_000);
+    control.tick(31_000);
+    control.tick(61_000);
+    control.tick(91_000);
+    await Promise.resolve();
+    expect(trigger).toHaveBeenCalledTimes(1);
+    expect(trigger).toHaveBeenLastCalledWith({ charger_name: 'Garage' }, {
+      chargerId: 'charger-1', previousMinutes: 0.5, elapsedMinutes: 1,
+    });
+    snapshots.replaceSnapshot([{ ...connected, evChargingState: 'plugged_out' }]);
+    control.observe(92_000);
+    snapshots.replaceSnapshot([connected]);
+    control.observe(93_000);
+    control.tick(153_000);
+    await Promise.resolve();
+    expect(trigger).toHaveBeenCalledTimes(2);
+  });
+
+  it('retains timeout progress through a charger outage without repeating a threshold', async () => {
+    const { snapshots, control, connected, trigger } = setupControl();
+    snapshots.replaceSnapshot([connected]);
+    control.observe(1_000);
+    control.tick(61_000);
+    await Promise.resolve();
+    expect(trigger).toHaveBeenCalledTimes(1);
+    snapshots.replaceSnapshot([{ ...connected, available: false }]);
+    control.tick(121_000);
+    await Promise.resolve();
+    expect(control.isWaiting('charger-1')).toBe(false);
+    expect(trigger).toHaveBeenCalledTimes(1);
+    snapshots.replaceSnapshot([connected]);
+    control.tick(181_000);
+    await Promise.resolve();
+    expect(trigger).toHaveBeenLastCalledWith({ charger_name: 'Garage' }, {
+      chargerId: 'charger-1', previousMinutes: 1, elapsedMinutes: 3,
+    });
+  });
+
+  it('ends a waiting episode on deselection even while the charger is unavailable', async () => {
+    const { snapshots, control, connected, trigger, selected } = setupControl();
+    snapshots.replaceSnapshot([connected]);
+    control.observe(1_000);
+    snapshots.replaceSnapshot([{ ...connected, available: false }]);
+    selected.length = 0;
+    control.observe(31_000);
+    selected.push('car-1');
+    snapshots.replaceSnapshot([connected]);
+    control.tick(61_000);
+    await Promise.resolve();
+    expect(trigger).not.toHaveBeenCalled();
+    control.tick(121_000);
+    await Promise.resolve();
+    expect(trigger).toHaveBeenLastCalledWith({ charger_name: 'Garage' }, {
+      chargerId: 'charger-1', previousMinutes: 0, elapsedMinutes: 1,
+    });
+  });
+
+  it('ends the timeout wait as soon as automatic matching opens a provisional link', async () => {
+    const { snapshots, control, connected, trigger } = setupControl();
+    seedDisconnected(h, 1_000);
+    h.setCharger({ evChargingState: 'plugged_in_paused' });
+    h.tick(2_000);
+    snapshots.replaceSnapshot([connected]);
+    control.observe(2_000);
+    expect(control.isWaiting('charger-1')).toBe(true);
+    h.cap('car-1', 'ev_charging_state', 'plugged_in_charging', 3_000);
+    expect(h.of('ev_car_link_provisional')).toHaveLength(1);
+    control.observe(3_000);
+    control.tick(63_000);
+    await Promise.resolve();
+    expect(control.isWaiting('charger-1')).toBe(false);
+    expect(trigger).not.toHaveBeenCalled();
+  });
+
+  it('does not restart identification notifications while a confirmed car app is unavailable', async () => {
+    const { snapshots, control, connected, trigger } = setupControl();
+    snapshots.replaceSnapshot([connected]);
+    seedDisconnected(h, 1_000);
+    h.setCharger({ evChargingState: 'plugged_in_paused' });
+    h.tick(2_000);
+    h.producer.confirmAssociation('charger-1', 'car-1', 3_000);
+    control.observe(3_000);
+    h.car(carDevice({ state: 'plugged_out', socPct: 40, available: false }), 4_000);
+    expect(control.isWaiting('charger-1')).toBe(false);
+    control.tick(4_000);
+    control.tick(64_000);
+    await Promise.resolve();
+    expect(trigger).not.toHaveBeenCalled();
+    h.producer.clearCarConfirmation('charger-1');
+    control.observe(65_000);
+    expect(control.isWaiting('charger-1')).toBe(true);
+    control.tick(125_000);
+    await Promise.resolve();
+    expect(trigger).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects unselected cars before altering the current connection', () => {
+    const { snapshots, control, connected } = setupControl();
+    snapshots.replaceSnapshot([connected]);
+    expect(() => control.confirm('charger-1', 'guest')).toThrow('Select this car');
+    expect(h.snapshot.sessions).toEqual({});
   });
 });

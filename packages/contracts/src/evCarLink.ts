@@ -57,6 +57,8 @@ export type EvCarObservedStops = {
  * a normal unplug.
  */
 export type EvCarLinkSession = {
+    /** Explicit identification for this physical connection, without a correlation vote. */
+    confirmed?: true;
     carId: string;
     /** When the session was first committed, carried across the restart. */
     sinceMs: number;

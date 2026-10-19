@@ -14,7 +14,7 @@ const heaterTask = partialDouble<DeferredObjectiveSettingsEntry>({ kind: 'temper
 const coolingTask = partialDouble<DeferredObjectiveSettingsEntry>({ kind: 'temperature', targetTemperatureC: 22 });
 
 const charger = (level: ObjectiveStateOfCharge['level']): ObjectiveDeviceInput => partialDouble<ObjectiveDeviceInput>({
-  objectiveSessionInactive: false,
+  objectiveSessionInactive: false, waitingForCarAssociation: false,
   thermalDirection: 'heating',
   stateOfCharge: { level },
 });
@@ -25,7 +25,7 @@ const thermostat = (
 ): ObjectiveDeviceInput => partialDouble<ObjectiveDeviceInput>({
   id: 'thermostat',
   name: 'Thermostat',
-  objectiveSessionInactive: false,
+  objectiveSessionInactive: false, waitingForCarAssociation: false,
   expectedPowerKw: 1,
   currentDrawKw: 1,
   currentTemperature,

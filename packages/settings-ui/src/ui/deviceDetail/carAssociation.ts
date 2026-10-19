@@ -1,7 +1,11 @@
 import type { EvCarAssociations } from '../../../../contracts/src/types.ts';
 import {
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
+  SETTINGS_UI_CAR_ASSOCIATION_CONFIRM_PATH,
+  SETTINGS_UI_CAR_ASSOCIATION_CLEAR_PATH,
+  SETTINGS_UI_DEVICES_PATH,
   type SettingsUiRecommendationCar,
+  type SettingsUiCarAssociationConfirmation,
 } from '../../../../contracts/src/settingsUiApi.ts';
 import {
   hasMatchedAnotherCurrentCharger,
@@ -20,8 +24,13 @@ import {
   deviceDetailCarSection,
   deviceDetailCarStatus,
 } from '../dom.ts';
-import { callApi, getHomeyTimezone, getSetting, getSettingFresh, sleep } from '../homey.ts';
+import {
+  callApi, getHomeyTimezone, getSetting, getSettingFresh, invalidateApiCacheForAllHomes, sleep,
+} from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
+import { isEvObserved } from '../../../../shared-domain/src/evObservedState.ts';
+import { isEvPlugStateConnected } from '../../../../shared-domain/src/evPlugState.ts';
+import { showToastError } from '../toast.ts';
 import { state } from '../state.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
 
@@ -31,7 +40,7 @@ import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.
  *
  * The backend supplies the eligible cars, just as it does for recommendations.
  * What the user ticks is an ELIGIBILITY set; the association itself
- * is decided by the car-link probe from a coincident plug-in and arrives on the
+ * is decided by the car-link probe or explicitly confirmed and arrives on the
  * device payload as `associatedCar`.
  */
 
@@ -40,6 +49,7 @@ type CarOption = SettingsUiRecommendationCar;
 const runSerializedCarWrite = createSerializedAsyncRunner();
 const ASSOCIATION_READ_RETRY_DELAYS_MS = [250, 750] as const;
 let associationLoadGeneration = 0;
+let confirmationPending = false;
 
 // Cars are fetched lazily on the first charger page. `null` means never loaded.
 let carOptions: CarOption[] | null = null;
@@ -156,6 +166,12 @@ const tickedCarIds = (deviceId: string): readonly string[] => (
   state.evCarAssociations[deviceId]?.carIds ?? []
 );
 
+const positionCarStatus = (confirmed: boolean): void => {
+  if (!deviceDetailCarList || !deviceDetailCarStatus) return;
+  deviceDetailCarList.insertAdjacentElement(confirmed ? 'afterend' : 'beforebegin', deviceDetailCarStatus);
+  deviceDetailCarStatus.classList.toggle('detail-car-status--secondary', confirmed);
+};
+
 const renderStatus = (device: SettingsUiDeviceDetailItem, ticked: readonly string[]): void => {
   if (!deviceDetailCarStatus) return;
   // Only while it is still ticked: the payload decoration lags a write by one
@@ -167,20 +183,31 @@ const renderStatus = (device: SettingsUiDeviceDetailItem, ticked: readonly strin
     deviceDetailCarStatus.textContent = '';
     return;
   }
-  if (associated) {
-    const stateLabel = resolveEvChargingStateLabel(associated.chargingState);
-    const level = typeof associated.socPct === 'number' && Number.isFinite(associated.socPct)
-      ? `${Math.round(associated.socPct)} %`
-      : null;
-    deviceDetailCarStatus.textContent = [formatDisplayDeviceName(associated.carName), stateLabel, level]
-      .filter((part): part is string => part !== null)
-      .join(' · ');
+  const confirmation = device.carConfirmation;
+  const confirmed = confirmation && ticked.includes(confirmation.carId);
+  positionCarStatus(Boolean(confirmed));
+  if (confirmed) {
+    const reportedState = associated
+      ? `Car app reports: ${resolveEvChargingStateLabel(associated.chargingState)}`
+      : 'Car app unavailable';
+    const rowUnavailable = carOptionsUnavailable || !carOptions?.some((car) => car.id === confirmation.carId);
+    deviceDetailCarStatus.textContent = rowUnavailable
+      ? `${formatDisplayDeviceName(confirmation.carName)} · confirmed for this connection · ${reportedState}`
+      : reportedState;
     return;
   }
-  // Ticked but unmatched. Deliberately not "no car": PELS matches a car once its
-  // app reports the plug-in, which for a cloud-polled car can be up to 20 minutes
-  // after the charger, so claiming absence in that gap would often be wrong.
-  deviceDetailCarStatus.textContent = 'Waiting to match a car';
+  if (associated) {
+    deviceDetailCarStatus.textContent = `${formatDisplayDeviceName(associated.carName)} · `
+      + `Car reports: ${resolveEvChargingStateLabel(associated.chargingState)}`;
+    return;
+  }
+  if (!device.available) {
+    deviceDetailCarStatus.textContent = 'Charger unavailable';
+    return;
+  }
+  deviceDetailCarStatus.textContent = isConnectedCharger(device)
+    ? 'Waiting to identify the connected car'
+    : 'No car connected';
 };
 
 /**
@@ -199,8 +226,12 @@ const renderStatus = (device: SettingsUiDeviceDetailItem, ticked: readonly strin
  */
 const renderFlowNote = (device: SettingsUiDeviceDetailItem, ticked: readonly string[]): void => {
   if (!deviceDetailCarFlowNote) return;
-  deviceDetailCarFlowNote.hidden = ticked.length === 0;
-  if (ticked.length === 0) return;
+  deviceDetailCarFlowNote.hidden = ticked.length === 0 || !isConnectedCharger(device);
+  deviceDetailCarFlowNote.classList.remove('field__hint--alert');
+  if (deviceDetailCarFlowNote.hidden) {
+    deviceDetailCarFlowNote.textContent = '';
+    return;
+  }
 
   const decorated = device.associatedCar;
   const matched = decorated && ticked.includes(decorated.carId) ? decorated : undefined;
@@ -208,16 +239,21 @@ const renderFlowNote = (device: SettingsUiDeviceDetailItem, ticked: readonly str
     && typeof matched.socPct === 'number'
     && Number.isFinite(matched.socPct);
   deviceDetailCarFlowNote.classList.toggle('field__hint--alert', !hasBatteryLevel);
+  if (device.carConfirmation && ticked.includes(device.carConfirmation.carId) && !device.carConfirmation.available) {
+    deviceDetailCarFlowNote.textContent = 'The confirmed car is unavailable. '
+      + 'Battery level will return when its app reconnects.';
+    return;
+  }
+  if (device.carConfirmation && hasBatteryLevel) {
+    deviceDetailCarFlowNote.hidden = true;
+    deviceDetailCarFlowNote.textContent = '';
+    return;
+  }
   if (!matched) {
-    deviceDetailCarFlowNote.textContent = mayHaveMatchedSelectedCar(device.id, ticked)
-      ? 'Until a car is matched, this charger has no battery level. While a car is selected, PELS ignores '
-        + 'both the Flow card that reports it and the charger\'s own reading.'
-      // The status line already says no car is matched; this states the
-      // consequence and the way back, conditionally, because not every owner
-      // had another source to return to.
-      : 'This charger has no battery level until PELS matches a selected car. If a Flow card or the '
-        + 'charger itself reported the level before, clear the selection to keep using it, and select '
-        + 'the car again once it shows as matched.';
+    deviceDetailCarFlowNote.textContent = 'Until a car is matched, this charger has no battery level. '
+      + 'Confirm which selected car is connected to use its battery level for this connection. '
+      + "While a car is selected, PELS ignores both the Flow card that reports the level "
+      + "and the charger's own reading.";
     return;
   }
   deviceDetailCarFlowNote.textContent = hasBatteryLevel
@@ -231,21 +267,6 @@ const lastMatchToCharger = (
   chargerId: string,
 ): number | undefined => (
   history.chargerMatches.find((match) => match.chargerId === chargerId)?.lastMatchedAtMs
-);
-
-/**
- * Whether a selected car may have matched this charger. Unknown counts as yes —
- * before the cars load, while the list awaits its re-read, or while the history
- * is unreadable — so the established note stands and nobody is told to clear a
- * selection on missing evidence.
- */
-const mayHaveMatchedSelectedCar = (chargerId: string, ticked: readonly string[]): boolean => (
-  carOptions === null
-  || carOptionsStale
-  || carOptions.some((car) => ticked.includes(car.id) && (
-    car.matchHistory.state === 'unavailable'
-    || lastMatchToCharger(car.matchHistory, chargerId) !== undefined
-  ))
 );
 
 const formatMatchDate = (ms: number): string => new Intl.DateTimeFormat('en-GB', {
@@ -286,6 +307,7 @@ const renderCarRows = (device: SettingsUiDeviceDetailItem, ticked: readonly stri
       : 'Looking for cars…'));
     return;
   }
+  const deviceId = device.id;
   const orphans = orphanedCarIds(ticked, carOptions);
   const rows = [...carOptions, ...orphans];
   if (rows.length === 0) {
@@ -296,6 +318,17 @@ const renderCarRows = (device: SettingsUiDeviceDetailItem, ticked: readonly stri
   }
   for (const car of rows) {
     deviceDetailCarList.append(carRow(device, car, ticked.includes(car.id), !orphans.includes(car)));
+    if (ticked.includes(car.id) && !orphans.includes(car) && device.available && isConnectedCharger(device)
+      && device.carConfirmation?.carId !== car.id) {
+      const button = document.createElement('md-outlined-button');
+      button.textContent = 'Confirm connected car';
+      button.setAttribute('aria-label', `Confirm ${formatDisplayDeviceName(car.name)} as the connected car`);
+      button.className = 'detail-car-confirm';
+      button.toggleAttribute('disabled', confirmationPending);
+      button.addEventListener('click', () => { void updateConfirmation(deviceId, car.id); });
+      deviceDetailCarList.append(button);
+    }
+
   }
 };
 
@@ -306,7 +339,9 @@ const hint = (text: string): HTMLElement => {
   return element;
 };
 
-const carRow = (device: SettingsUiDeviceDetailItem, car: CarOption, checked: boolean, known: boolean): HTMLElement => {
+const carRow = (
+  device: SettingsUiDeviceDetailItem, car: CarOption, checked: boolean, known: boolean,
+): HTMLElement => {
   const deviceId = device.id;
   const row = document.createElement('label');
   row.className = 'md-switch-row detail-car-row';
@@ -321,11 +356,13 @@ const carRow = (device: SettingsUiDeviceDetailItem, car: CarOption, checked: boo
   content.className = 'md-switch-row__content';
   const label = document.createElement('span');
   label.className = 'md-switch-row__label pels-text-settings-label';
-  label.textContent = formatDisplayDeviceName(car.name);
+  const confirmed = device.carConfirmation?.carId === car.id && checked;
+  label.textContent = formatDisplayDeviceName(car.name)
+    + (confirmed ? ' · confirmed for this connection' : '');
   content.append(label);
   // A removed car has no history to show; its row exists only so it can be cleared.
   const matchText = known ? matchHint(car, device) : null;
-  if (matchText !== null) content.append(hint(matchText));
+  if (!confirmed && matchText !== null) content.append(hint(matchText));
   row.append(input, content);
   return row;
 };
@@ -382,6 +419,44 @@ export const renderCarAssociation = (device: SettingsUiDeviceDetailItem | null):
 
   const ticked = tickedCarIds(device.id);
   renderCarRows(device, ticked);
+  if (device.carConfirmation && ticked.includes(device.carConfirmation.carId)) {
+    const button = document.createElement('md-outlined-button');
+    button.textContent = 'Clear confirmation';
+    button.className = 'detail-car-clear';
+    button.toggleAttribute('disabled', confirmationPending);
+    button.addEventListener('click', () => { void updateConfirmation(device.id); });
+    deviceDetailCarList?.append(button);
+  }
   renderStatus(device, ticked);
   renderFlowNote(device, ticked);
+};
+
+const isConnectedCharger = (device: SettingsUiDeviceDetailItem): boolean => (
+  isEvObserved(device) && isEvPlugStateConnected(device.evChargingState)
+);
+
+const updateConfirmation = async (chargerId: string, carId?: string): Promise<void> => {
+  if (confirmationPending) return;
+  confirmationPending = true;
+  renderCarAssociation(currentDevice);
+  try {
+    const { carConfirmation, associatedCar, stateOfCharge } = await callApi<SettingsUiCarAssociationConfirmation>(
+      'POST', carId ? SETTINGS_UI_CAR_ASSOCIATION_CONFIRM_PATH : SETTINGS_UI_CAR_ASSOCIATION_CLEAR_PATH,
+      carId ? { chargerId, carId } : { chargerId },
+    );
+    invalidateApiCacheForAllHomes(SETTINGS_UI_DEVICES_PATH);
+    state.latestDevices = state.latestDevices.map((device) => (
+      device.id === chargerId ? { ...device, carConfirmation, associatedCar, stateOfCharge } : device
+    ));
+    if (currentDevice?.id === chargerId) {
+      currentDevice = { ...currentDevice, carConfirmation, associatedCar, stateOfCharge };
+    }
+    document.dispatchEvent(new CustomEvent('devices-updated', { detail: { devices: state.latestDevices } }));
+  } catch (error) {
+    await logSettingsError('Failed to update the car confirmation', error, 'carAssociation');
+    await showToastError(error, carId ? 'Could not confirm the connected car.' : 'Could not clear the confirmation.');
+  } finally {
+    confirmationPending = false;
+    renderCarAssociation(currentDevice);
+  }
 };

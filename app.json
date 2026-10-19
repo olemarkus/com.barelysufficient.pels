@@ -516,6 +516,14 @@
       "method": "GET",
       "path": "/homey_devices"
     },
+    "ui_car_association_clear": {
+      "method": "POST",
+      "path": "/ui_car_association_clear"
+    },
+    "ui_car_association_confirm": {
+      "method": "POST",
+      "path": "/ui_car_association_confirm"
+    },
     "ui_recommendation_cars": {
       "method": "GET",
       "path": "/ui_recommendation_cars"
@@ -882,6 +890,52 @@
       },
       {
         "title": {
+          "en": "No car matched to a charger after…"
+        },
+        "titleFormatted": {
+          "en": "No car matched to [[charger]] after [[minutes]] minutes"
+        },
+        "args": [
+          {
+            "name": "charger",
+            "type": "autocomplete",
+            "title": {
+              "en": "EV charger"
+            },
+            "placeholder": {
+              "en": "Select a charger with selected cars"
+            }
+          },
+          {
+            "name": "minutes",
+            "type": "range",
+            "title": {
+              "en": "Wait (minutes)"
+            },
+            "min": 1,
+            "max": 60,
+            "step": 1
+          }
+        ],
+        "hint": {
+          "en": "Fires once when a connected charger has waited this long without a car match. Start with 1 minute for a confirmation notification. Automatic matching continues. A match or unplug ends the wait."
+        },
+        "tokens": [
+          {
+            "name": "charger_name",
+            "type": "string",
+            "title": {
+              "en": "Charger name"
+            },
+            "example": {
+              "en": "Garage charger"
+            }
+          }
+        ],
+        "id": "ev_car_association_waiting"
+      },
+      {
+        "title": {
           "en": "Operating mode changed to"
         },
         "titleFormatted": {
@@ -1170,6 +1224,30 @@
           }
         ],
         "id": "deadline_status_is"
+      },
+      {
+        "title": {
+          "en": "A charger is waiting to match a car"
+        },
+        "titleFormatted": {
+          "en": "[[charger]] !{{is|is not}} waiting to match a car"
+        },
+        "args": [
+          {
+            "name": "charger",
+            "type": "autocomplete",
+            "title": {
+              "en": "EV charger"
+            },
+            "placeholder": {
+              "en": "Select a charger with selected cars"
+            }
+          }
+        ],
+        "hint": {
+          "en": "True while the charger is connected, has cars selected in PELS settings, and has no usable car association."
+        },
+        "id": "ev_car_association_waiting"
       },
       {
         "title": {
@@ -1609,6 +1687,40 @@
           }
         ],
         "id": "clear_deadline"
+      },
+      {
+        "title": {
+          "en": "Associate a car with a charger for this connection"
+        },
+        "titleFormatted": {
+          "en": "Associate [[car]] with [[charger]] for this connection"
+        },
+        "args": [
+          {
+            "name": "charger",
+            "type": "autocomplete",
+            "title": {
+              "en": "EV charger"
+            },
+            "placeholder": {
+              "en": "Select a charger with selected cars"
+            }
+          },
+          {
+            "name": "car",
+            "type": "autocomplete",
+            "title": {
+              "en": "Car"
+            },
+            "placeholder": {
+              "en": "Select a car configured for this charger"
+            }
+          }
+        ],
+        "hint": {
+          "en": "Confirms the selected car for the charger’s current connection, using its battery reading even if the car app has not reported it plugged in. Select the charger first. The car must already be selected for this charger in PELS settings. A delayed Flow response applies to the connection active when this action runs."
+        },
+        "id": "confirm_ev_car_association"
       },
       {
         "title": {

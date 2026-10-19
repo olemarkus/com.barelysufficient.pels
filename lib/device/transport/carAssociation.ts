@@ -61,12 +61,11 @@ export const clearAssociatedCarStateOfCharge = (
  * what it observed and stays settings-free, and this is the one place that turns
  * an observation into a write.
  *
- * The CAR's own plug state is the guard on an adopted level — a car that has
- * left has none to lend — and it is applied by the producer, not here:
- * `resolveAssociatedCarSnapshot` refuses to resolve an association for a
- * disconnected car, so there is nothing to write. Re-checking it here would read
- * `chargingState`, which the contract declares display-only precisely so a car
- * app's reporting lag cannot drive a control path.
+ * The producer's resolved association guards adoption. Automatic associations
+ * require connected car telemetry; explicit confirmation permits a cached
+ * unplugged report until a subsequent disconnect transition ends the session.
+ * `chargingState` remains display-only, so reporting lag cannot independently
+ * veto an explicitly confirmed connection here.
  */
 export const applyAssociatedCarStateOfCharge = (
   eligibleCarIds: readonly string[],

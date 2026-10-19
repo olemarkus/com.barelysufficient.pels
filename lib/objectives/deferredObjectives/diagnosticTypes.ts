@@ -58,6 +58,7 @@ export type DeferredObjectiveDiagnosticReasonCode =
   | 'objective_missing_charge_rate'
   | 'objective_missing_device'
   | 'objective_missing_temperature'
+  | 'objective_waiting_for_car'
   | 'objective_progress_stale'
   // Confirmed device-side delivery causes the horizon plan cannot see, set by
   // the live overlay in `deliveryEvidence.ts:reportTaskDeliveryStatus`: the

@@ -70,7 +70,7 @@ const buildDevice = (tempC: number, nowMs: number): MeteredPlanInputDevice & { t
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Connected 300',
   commandableNow: true,
-  objectiveSessionInactive: false,
+  objectiveSessionInactive: false, waitingForCarAssociation: false,
   boostSupported: false,
   boostRequested: false,
   hasStandingDemand: true,

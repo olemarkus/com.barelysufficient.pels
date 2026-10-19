@@ -8913,6 +8913,11 @@ md-switch {
   color: var(--color-semantic-text-primary);
 }
 
+.detail-car-status--secondary {
+  font-weight: var(--font-weight-normal);
+  color: var(--color-semantic-text-secondary);
+}
+
 .detail-car-list {
   display: flex;
   flex-direction: column;
@@ -8930,4 +8935,11 @@ md-switch {
   width: var(--spacing-4);
   height: var(--spacing-4);
   accent-color: var(--color-role-accent);
+}
+
+.detail-car-confirm,
+.detail-car-clear {
+  align-self: flex-start;
+  margin-bottom: var(--spacing-3);
+  max-width: 100%;
 }

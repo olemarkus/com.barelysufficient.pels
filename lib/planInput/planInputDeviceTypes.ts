@@ -25,6 +25,7 @@ import type { PlanInputDevice } from '../plan/planTypes';
 /** Required owner reads used by the planner-input projection. */
 export type PlanInputProjectionSource = {
   getNow: () => Date;
+  isWaitingForCarAssociation: (deviceId: string) => boolean;
   getPowerCalibrationSnapshot: () => PowerCalibrationSnapshot;
   getTargetPowerConfig: (
     deviceId: string,
@@ -72,7 +73,7 @@ export type UnrankedPlanInputDevice = Omit<PlanInputDevice, 'priority'>;
  */
 export type ResolvedPlanInputFacts = Pick<PlanInputDeviceBase,
   | 'currentState' | 'confirmedNotDrawing' | 'commandableNow' | 'commandabilityReason'
-  | 'objectiveKind' | 'objectiveSessionInactive' | 'boostSupported' | 'boostRequested'
+  | 'objectiveKind' | 'objectiveSessionInactive' | 'waitingForCarAssociation' | 'boostSupported' | 'boostRequested'
   | 'canSetControlResolved' | 'startPolicy' | 'control' | 'startPolicyInForce' | 'chargeTargetHold'
   | 'surplusOnly' | 'surplusTracking' | 'externalOffHoldActive' | 'steppedLadderMissing'
   | 'stepPowerCalibration' | 'hasStandingDemand' | 'residualKw' | 'budgetExempt'>

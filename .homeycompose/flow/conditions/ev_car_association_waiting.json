@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "A charger is waiting to match a car"
+  },
+  "titleFormatted": {
+    "en": "[[charger]] !{{is|is not}} waiting to match a car"
+  },
+  "args": [
+    {
+      "name": "charger",
+      "type": "autocomplete",
+      "title": {
+        "en": "EV charger"
+      },
+      "placeholder": {
+        "en": "Select a charger with selected cars"
+      }
+    }
+  ],
+  "hint": {
+    "en": "True while the charger is connected, has cars selected in PELS settings, and has no usable car association."
+  }
+}

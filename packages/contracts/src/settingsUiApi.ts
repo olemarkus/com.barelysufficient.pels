@@ -7,6 +7,9 @@ import type { SettingsUiPowerTracker } from './powerTrackerTypes.js';
 import type { PriceOptimizationSetupRead } from './priceOptimizationSettings.js';
 import type { PriceTimelineLines } from './priceTimeline.js';
 import type {
+  AssociatedCarSnapshot,
+  CarConfirmation,
+  ObservedStateOfCharge,
   DecoratedDeviceSnapshot,
   DeviceStartPolicy,
   HomeBatteryControlCapability,
@@ -39,6 +42,13 @@ export type HomeyEnergyMeterEntry = { id: string; name: string };
 export const SETTINGS_UI_PLAN_PATH = '/ui_plan';
 export const SETTINGS_UI_POWER_PATH = '/ui_power';
 export const SETTINGS_UI_PRICES_PATH = '/ui_prices';
+export const SETTINGS_UI_CAR_ASSOCIATION_CONFIRM_PATH = '/ui_car_association_confirm';
+export const SETTINGS_UI_CAR_ASSOCIATION_CLEAR_PATH = '/ui_car_association_clear';
+export type SettingsUiCarAssociationConfirmation = {
+  carConfirmation?: CarConfirmation;
+  associatedCar?: AssociatedCarSnapshot;
+  stateOfCharge?: ObservedStateOfCharge;
+};
 export const SETTINGS_UI_RECOMMENDATION_CARS_PATH = '/ui_recommendation_cars';
 
 export const SETTINGS_UI_HUB_MARKET_PATH = '/ui_hub_market';

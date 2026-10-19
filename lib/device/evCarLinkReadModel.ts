@@ -15,6 +15,7 @@ import { resolveEvCarChargeLimit } from './evCarLinkSnapshot';
 
 /** The producer's per-charger session record, narrowed to what resolution needs. */
 export type ActiveLinkView = {
+    confirmed?: true;
     carId: string;
     /** When the session was committed. Not used to gate the charge reading — see
      *  the note on `resolveAssociatedCarSnapshot` — but it identifies the session
@@ -45,8 +46,8 @@ export type ActiveLinkView = {
  * decays a level: when it is adopted as the charger's state-of-charge, the
  * session decides whether PELS has one (`resolveStateOfChargeSnapshot`,
  * `lib/device/transport/stateOfCharge.ts`), and the
- * car's own plug state is what ends that session — which is why an association
- * is not resolved at all for a car that reports itself disconnected.
+ * car's disconnect transition ends the session. Explicit confirmation may
+ * identify a car whose cached plug report has not caught up yet.
  */
 export const resolveAssociatedCarSnapshot = (params: {
     cars: ReadonlyMap<string, CarObservation>;
@@ -58,16 +59,13 @@ export const resolveAssociatedCarSnapshot = (params: {
     if (!link) return undefined;
     const car = cars.get(link.carId);
     if (!car) return undefined;
-    // The car's own plug state is the guard, resolved HERE so no consumer has to
-    // ask: an `AssociatedCarSnapshot` cannot exist for a car that has left, and
-    // the charger's adopted level goes with it. The session paths normally get
-    // there first — a disconnect edge clears the session immediately
-    // (`applyCarObservation`), resume forgets one whose car reads disconnected,
-    // and the affinity fallback only considers connected cars — but each of
-    // those needs a prior observation to compare against, and this does not.
-    if (!isEvPlugStateConnected(car.state)) return undefined;
+    // Automatic links require a connected car report. Explicit confirmation
+    // identifies the car despite delayed telemetry; the producer ends it on
+    // a subsequent disconnect transition or charger unplug.
+    if (!link.confirmed && !isEvPlugStateConnected(car.state)) return undefined;
 
     return {
+        ...(link.confirmed ? { confirmed: true as const } : {}),
         carId: link.carId,
         carName: car.name,
         chargingState: car.state,

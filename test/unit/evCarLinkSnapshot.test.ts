@@ -298,3 +298,19 @@ describe('withLegacyEvCarLinkUnder', () => {
     expect(Object.keys(merged.cars).filter((id) => id.startsWith('mem-'))).toHaveLength(3);
   });
 });
+
+describe('persisted explicit confirmations', () => {
+  it('preserves confirmation while older automatic sessions remain unchanged', () => {
+    const sessions = {
+      automatic: { carId: 'car-1', sinceMs: 1_000 },
+      confirmed: { carId: 'car-2', sinceMs: 2_000, confirmed: true },
+    };
+    expect(normalized({ ...createEmptyEvCarLinkSnapshot(), sessions }).sessions).toEqual(sessions);
+  });
+
+  it('does not treat untrusted truthy values as explicit confirmation', () => {
+    const sessions = { charger: { carId: 'car-1', sinceMs: 1_000, confirmed: 'true' } };
+    expect(normalized({ ...createEmptyEvCarLinkSnapshot(), sessions }).sessions.charger)
+      .toEqual({ carId: 'car-1', sinceMs: 1_000 });
+  });
+});

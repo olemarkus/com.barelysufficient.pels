@@ -166,7 +166,7 @@ function buildEvSocLogPayload(
     // itself may well have succeeded. Asserting `not_reported` here would put a
     // domain claim in the canonical event that nothing established. The read
     // failure is reported separately as `ev_charger_snapshot_reload_failed`.
-    level: updatedCharger?.stateOfCharge?.level ?? null,
+    batteryLevel: updatedCharger?.stateOfCharge?.level ?? null,
   };
 }
 

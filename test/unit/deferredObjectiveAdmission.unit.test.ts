@@ -215,7 +215,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       id: 'dev', name: 'dev', targets: [],
       control: fixtureControlPosture({ controllable: false }), controlModel: 'stepped_load',
       expectedPowerKw: 1, expectedPowerSource: 'default',
-      commandableNow: true, objectiveSessionInactive: false,
+      commandableNow: true, objectiveSessionInactive: false, waitingForCarAssociation: false,
       currentDrawKw: 0,
       boostSupported: false,
       boostRequested: false,

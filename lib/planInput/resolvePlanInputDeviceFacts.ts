@@ -149,6 +149,7 @@ export const resolvePlanInputDeviceFacts = (
     commandableNow: commandability.commandableNow,
     ...(commandabilityReason ? { commandabilityReason } : {}),
     ...objective,
+    waitingForCarAssociation: source.isWaitingForCarAssociation(device.id),
     ...resolvePlanBoostFields(boostInput),
     canSetControlResolved,
     startPolicy,

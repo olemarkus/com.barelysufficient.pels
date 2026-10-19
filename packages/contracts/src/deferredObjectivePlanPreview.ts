@@ -51,6 +51,7 @@ export type DeferredObjectivePlanPreviewUnavailableReason =
   | 'missing_prices'
   | 'missing_reading'
   | 'price_feature_disabled'
+  | 'waiting_for_car'
   | 'progress_stale'
   | 'settings_unavailable'
   | 'unknown';

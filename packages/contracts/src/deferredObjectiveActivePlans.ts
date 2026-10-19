@@ -267,6 +267,7 @@ export type DeferredObjectiveActivePlanPendingReason =
   | 'awaiting_horizon_plan'
   | 'price_feature_disabled'
   | 'device_data_missing'
+  | 'waiting_for_car'
   // EV plugged-out / discharging — surfaced as a paused state in the UI.
   | 'invalid_session'
   // Thermal device with no learned `kWhPerUnit` profile yet — the planner has
@@ -318,6 +319,7 @@ export type DeferredObjectiveKwhPerUnitProvenanceV1 = {
 // persisted plans (without the field) continue to load.
 export type DeferredObjectiveActivePlanDiagnosticReason =
   | 'objective_invalid_session'
+  | 'objective_waiting_for_car'
   // Live home-scope truth. Kept on committed plans with a cached revision so
   // consumers can override that stale schedule while the task is out of scope.
   | 'objective_device_in_sub_home'

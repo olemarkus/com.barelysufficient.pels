@@ -172,7 +172,7 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
       thermalDirection: 'heating',
       currentDrawKw: 2,
       expectedPowerKw: 2,
-      objectiveSessionInactive: false,
+      objectiveSessionInactive: false, waitingForCarAssociation: false,
     } as ObjectiveDeviceInput;
     const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
       getDeferredObjectiveSettings: () => ({

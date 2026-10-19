@@ -394,6 +394,25 @@ const temperatureCandidate = (
 } as DeferredObjectivePlanPreviewCandidate);
 
 describe('previewDeferredObjectivePlan', () => {
+  it.each([
+    [true, 'waiting_for_car'],
+    [false, 'progress_stale'],
+  ] as const)('distinguishes car identification from missing battery telemetry (%s)', (waiting, reason) => {
+    const estimate = runPreview({
+      deviceId: 'ev-1',
+      candidate: evCandidate(),
+      ctx: {
+        device: buildEvDevice({ waitingForCarAssociation: waiting, stateOfCharge: undefined }),
+        powerTracker: buildEvPowerTracker(),
+        dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 48 }, () => 5) }),
+        priceOptimizationEnabled: true,
+        capacitySettings: { limitKw: 10, marginKw: 0 },
+      },
+    });
+    expect(estimate.status).toBe('unavailable');
+    expect(estimate.unavailableReason).toBe(reason);
+  });
+
   it('plans a lower-priority candidate against higher-priority smart-task reservations', () => {
     const deadlineAtMs = NOW_MS + 5 * HOUR_MS;
     const candidate = evCandidate({ deadlineAtMs });
@@ -1053,6 +1072,30 @@ describe('previewDeferredObjectivePlan', () => {
 // diagnostic pipeline and schedule helpers. ─────────────────────────────────
 
 describe('previewDeferredObjectivePlan fidelity vs activePlanRecorder', () => {
+  it('persists the identification blocker separately from missing battery telemetry', () => {
+    const diagnostics = buildDeferredObjectiveDiagnostics({
+      hasObservedTask: () => false,
+      hasSolarProduction: false,
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildEvDevice({ waitingForCarAssociation: true, stateOfCharge: undefined })],
+      settings: buildSettings({ deviceId: 'ev-1', candidate: evCandidate() }),
+      powerTracker: buildEvPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      activePlans: createEmptyActivePlans(),
+      powerLimits: previewPowerLimits({ limitKw: 10, marginKw: 0 }),
+    });
+    const { recorder } = buildRecorder();
+    recorder.observe(diagnostics, NOW_MS);
+    expect(recorder.getActivePlansSnapshot().plansByDeviceId['ev-1']).toMatchObject({
+      pending: true,
+      pendingReason: 'waiting_for_car',
+      diagnosticReasonCode: 'objective_waiting_for_car',
+      latest: null,
+    });
+  });
+
   const fidelityCases: ReadonlyArray<{
     name: string;
     deviceId: string;

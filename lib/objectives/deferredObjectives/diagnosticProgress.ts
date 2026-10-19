@@ -64,6 +64,7 @@ export type DeferredObjectiveProgressResolution = {
   reasonCode:
   | 'objective_invalid_session'
   | 'objective_missing_temperature'
+  | 'objective_waiting_for_car'
   | 'objective_progress_stale';
 };
 
@@ -72,7 +73,7 @@ type EvProgress = {
   reasonCode: null;
 } | {
   currentPercent: number | null;
-  reasonCode: 'objective_invalid_session' | 'objective_progress_stale';
+  reasonCode: 'objective_invalid_session' | 'objective_waiting_for_car' | 'objective_progress_stale';
 };
 
 const resolveEvObjectiveProgress = (device: ObjectiveDeviceInput): EvProgress => {
@@ -89,6 +90,9 @@ const resolveEvObjectiveProgress = (device: ObjectiveDeviceInput): EvProgress =>
   // unplugged — plug in to resume."
   if (device.objectiveSessionInactive) {
     return { currentPercent: null, reasonCode: 'objective_invalid_session' };
+  }
+  if (device.waitingForCarAssociation) {
+    return { currentPercent: null, reasonCode: 'objective_waiting_for_car' };
   }
   const level = device.stateOfCharge?.level;
   if (level === undefined) {

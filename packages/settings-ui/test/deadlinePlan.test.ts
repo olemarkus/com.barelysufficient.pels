@@ -1503,6 +1503,16 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.recourse).toBeNull();
   });
 
+  it('replaces a cached schedule with the current missing-car explanation', () => {
+    const input = carCapPlanInput({ limitValue: 70, reached: false }, null, {
+      diagnosticReasonCode: 'objective_waiting_for_car',
+    });
+    const renderInput = resolveRenderInput(input);
+    expect(renderInput.status).toBe('pending');
+    if (renderInput.status !== 'pending') throw new Error('Expected waiting for car');
+    expect(renderInput.pending.hero.headline).toBe('Waiting to identify the connected car');
+  });
+
   it.each([70, 90])('pauses a committed unplugged task before its car limit of %s is reached', (limitValue) => {
     const input = carCapPlanInput({ limitValue, reached: false }, null, {
       diagnosticReasonCode: 'objective_invalid_session',

@@ -140,7 +140,9 @@ export const normalizeEvCarLinkSnapshot = (value: unknown, nowMs: number): EvCar
         const { carId, sinceMs } = raw;
         if (typeof carId !== 'string' || carId.length === 0) return [];
         if (typeof sinceMs !== 'number' || !Number.isFinite(sinceMs) || sinceMs < 0) return [];
-        return [[chargerId, { carId, sinceMs: clamp(sinceMs) }] as const];
+        return [[chargerId, {
+            carId, sinceMs: clamp(sinceMs), ...(raw.confirmed === true ? { confirmed: true as const } : {}),
+        }] as const];
     });
     const cars = Object.entries(carsRaw).flatMap(([carId, raw]) => {
         if (carId.length === 0) return [];

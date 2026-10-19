@@ -14,7 +14,7 @@ const buildDevice = (): PlanInputDevice => withBinaryDiscriminant(withFixtureRes
   expectedPowerKw: 1, expectedPowerSource: 'default',
   name: 'Device',
   commandableNow: true,
-  objectiveSessionInactive: false,
+  objectiveSessionInactive: false, waitingForCarAssociation: false,
   boostSupported: false,
   boostRequested: false,
   hasStandingDemand: true,

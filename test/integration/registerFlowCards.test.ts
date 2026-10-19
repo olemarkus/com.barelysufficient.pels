@@ -124,6 +124,10 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     getSnapshot: vi.fn().mockResolvedValue([]),
     getDeviceDescriptors: vi.fn().mockResolvedValue([]),
     getControllableDevices: () => ({}),
+    confirmCarAssociation: vi.fn(),
+    isWaitingForCarAssociation: vi.fn(() => false),
+    getCarAssociationCarIds: vi.fn(() => []),
+    readCarAssociationCandidates: vi.fn(() => ({ state: 'unavailable' as const })),
     readBatteryControl: () => 'drivable',
     listDeviceTargetModes: vi.fn(() => null),
     setDeviceModeTarget: vi.fn(() => ({ state: 'unavailable' as const })),
@@ -946,7 +950,7 @@ describe('registerFlowCards', () => {
       chargerDeviceId: 'ev-1',
       chargerName: 'Zaptec Go',
       percent: 42,
-      level: { kind: 'known', percent: 42, observedAtMs: Date.parse('2026-03-11T10:00:00Z') },
+      batteryLevel: { kind: 'known', percent: 42, observedAtMs: Date.parse('2026-03-11T10:00:00Z') },
     }));
   });
 
@@ -1062,7 +1066,7 @@ describe('registerFlowCards', () => {
       // The post-report lookup failed, so there is no snapshot to resolve a level
       // from. The event carries `null` rather than claiming the charger has no
       // level — the report itself may have succeeded.
-      level: null,
+      batteryLevel: null,
     }));
     expect(deps.debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'ev_charger_snapshot_reload_failed',
@@ -2091,6 +2095,78 @@ describe('registerFlowCards', () => {
       state: 'on',
     })).rejects.toThrow('Selected device is not supported for this card.');
     expect(deps.reportFlowBackedCapability).not.toHaveBeenCalled();
+  });
+
+  describe('EV car association cards', () => {
+    it('matches only the selected charger and first crossing of each timeout', async () => {
+      const { deps, triggerListeners } = buildDeps();
+      registerFlowCards(deps);
+      const run = triggerListeners.ev_car_association_waiting;
+      const args = { charger: { id: 'ev-1' }, minutes: 1 };
+      await expect(run(args, { chargerId: 'ev-1', previousMinutes: 0.5, elapsedMinutes: 1 })).resolves.toBe(true);
+      await expect(run(args, { chargerId: 'ev-1', previousMinutes: 1, elapsedMinutes: 1.5 })).resolves.toBe(false);
+      await expect(run(args, { chargerId: 'ev-2', previousMinutes: 0, elapsedMinutes: 1 })).resolves.toBe(false);
+      await expect(run({ ...args, minutes: 2 }, {
+        chargerId: 'ev-1', previousMinutes: 0.5, elapsedMinutes: 3,
+      })).resolves.toBe(true);
+      for (const minutes of [0, 61, 1.5, NaN, 'soon']) {
+        await expect(run({ ...args, minutes }, {
+          chargerId: 'ev-1', previousMinutes: 0, elapsedMinutes: 100,
+        })).resolves.toBe(false);
+      }
+      await expect(run(args, { chargerId: 'ev-1', elapsedMinutes: 1 })).resolves.toBe(false);
+      await expect(run(args, { chargerId: 'ev-1', previousMinutes: -1, elapsedMinutes: 1 })).resolves.toBe(false);
+      await expect(run(args, undefined)).resolves.toBe(false);
+    });
+
+    it('confirms the current connection and surfaces a domain rejection', async () => {
+      const { deps, actionListeners } = buildDeps();
+      registerFlowCards(deps);
+      const run = actionListeners.confirm_ev_car_association;
+      await expect(run({ charger: { id: 'ev-1' }, car: { id: 'polestar' } })).resolves.toBe(true);
+      expect(deps.confirmCarAssociation).toHaveBeenCalledWith('ev-1', 'polestar');
+      await expect(run({ charger: 'ev-1' })).rejects.toThrow('Select a charger and a car.');
+      vi.mocked(deps.confirmCarAssociation).mockImplementation(() => { throw new Error('Charger is disconnected.'); });
+      await expect(run({ charger: 'ev-1', car: 'polestar' })).rejects.toThrow('Charger is disconnected.');
+    });
+
+    it('reads waiting from the association owner', async () => {
+      const { deps, actionListeners } = buildDeps({ isWaitingForCarAssociation: vi.fn(() => true) });
+      registerFlowCards(deps);
+      await expect(actionListeners.ev_car_association_waiting({ charger: 'ev-1' })).resolves.toBe(true);
+      expect(deps.isWaitingForCarAssociation).toHaveBeenCalledWith('ev-1');
+      await expect(actionListeners.ev_car_association_waiting({})).resolves.toBe(false);
+    });
+
+    it('offers only chargers with selected cars and only that charger’s cars', async () => {
+      const { deps, actionAutocompleteListeners } = buildDeps({
+        getDeviceDescriptors: vi.fn().mockResolvedValue([
+          transportSnapshotFixture({
+            id: 'ev-1', name: 'Garage', isEvCharger: true, available: true, targets: [],
+            expectedPowerKw: 7, expectedPowerSource: 'default',
+          }),
+          transportSnapshotFixture({
+            id: 'ev-2', name: 'Other', isEvCharger: true, available: true, targets: [],
+            expectedPowerKw: 7, expectedPowerSource: 'default',
+          }),
+          transportSnapshotFixture({
+            id: 'heater', name: 'Heater', isEvCharger: false, available: true, targets: [],
+            expectedPowerKw: 1, expectedPowerSource: 'default',
+          }),
+        ]),
+        getCarAssociationCarIds: vi.fn((id) => id === 'ev-1' ? ['polestar'] : []),
+        readCarAssociationCandidates: vi.fn(() => ({ state: 'resolved' as const, cars: [
+          { id: 'polestar', name: 'Polestar', matchHistory: { state: 'unavailable' as const } },
+          { id: 'kia', name: 'Kia', matchHistory: { state: 'unavailable' as const } },
+        ] })),
+      });
+      registerFlowCards(deps);
+      const autocomplete = actionAutocompleteListeners.confirm_ev_car_association;
+      await expect(autocomplete.charger('')).resolves.toEqual([{ id: 'ev-1', name: 'Garage' }]);
+      await expect(autocomplete.car('', { charger: 'ev-1' })).resolves.toEqual([{ id: 'polestar', name: 'Polestar' }]);
+      await expect(autocomplete.car('kia', { charger: 'ev-1' })).resolves.toEqual([]);
+      await expect(autocomplete.car('')).resolves.toEqual([]);
+    });
   });
 
   describe('capacity_shortfall_sustained', () => {

@@ -15,6 +15,7 @@ import { isEvPlugStateConnected } from '../../packages/shared-domain/src/evPlugS
  */
 
 export type ResumableSession = {
+    confirmed?: true;
     chargerId: string;
     carId: string;
     /** The ORIGINAL session start, carried across the outage. */
@@ -63,14 +64,24 @@ export const resolveResumableSessions = (
         // Absent telemetry is not a disproof — an unobserved car says nothing.
         // Only a reading that affirmatively says disconnected ends the session.
         const chargerDisconnected = !isEvPlugStateConnected(charger.evChargingState);
-        const carDisconnected = car !== undefined && !isEvPlugStateConnected(car.state);
+        const carDisconnected = !session.confirmed && car !== undefined && !isEvPlugStateConnected(car.state);
         if (chargerDisconnected || carDisconnected) {
             forget.push(charger.id);
             continue;
         }
         if (!car) continue;
-        resume.push({ chargerId: charger.id, carId: session.carId, sinceMs: session.sinceMs });
+        const resumed: ResumableSession = { chargerId: charger.id, carId: session.carId, sinceMs: session.sinceMs };
+        if (session.confirmed) resumed.confirmed = true;
+        resume.push(resumed);
     }
     return { resume, forget };
 };
 /* eslint-enable functional/immutable-data */
+
+/** A confirmed connection cannot be displaced by a later automatic match elsewhere. */
+export const isCarConfirmedElsewhere = (
+    sessions: Readonly<Record<string, EvCarLinkSession>>,
+    chargerId: string,
+    carId: string,
+): boolean => Object.entries(sessions).some(([id, session]) =>
+    id !== chargerId && session.confirmed === true && session.carId === carId);

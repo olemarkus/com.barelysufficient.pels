@@ -185,12 +185,9 @@ const resolveSelectedCarMatch = (
 };
 
 /**
- * Why a charger whose selected cars have not matched it has no battery level,
- * and the way back to the Flow PELS now ignores. A selected car removed from
- * Homey can never match, so clearing it is the only remedy. A car matched to
- * another of this home's chargers gets no "yet" and no promise to select it once
- * it matches: it is not about to match here. A removed car selected beside a
- * car still in Homey is named too, since it has to be cleared either way.
+ * A selected car can be confirmed for the current connection. Removed cars
+ * cannot be confirmed and keep the removal remedy. A past match elsewhere
+ * earns no promise that automatic matching will eventually resolve here.
  */
 const unmatchedSelectionBody = (
   charger: SettingsUiDeviceDetailItem,
@@ -214,12 +211,15 @@ const unmatchedSelectionBody = (
     matchHistory.state === 'resolved'
     && hasMatchedAnotherCurrentCharger(matchHistory, charger.id, currentChargerIds)
   ));
+  const confirmation = selected.length === 1
+    ? 'If this car is connected, confirm it in the charger’s Car section to use its battery level.'
+    : 'If one of these cars is connected, confirm it in the charger’s Car section to use its battery level.';
   if (chargesElsewhere) {
     return `${lead}PELS has not matched ${label} to this charger, so the charger has no battery level. `
-      + `Clear the car selection to use the Flow again.${removedNote}`;
+      + `${confirmation}${removedNote}`;
   }
   return `${lead}PELS has not matched ${label} to this charger yet, so the charger has no battery level. `
-    + `Clear the car selection to use the Flow again, and select the car once it shows as matched.${removedNote}`;
+    + `${confirmation}${removedNote}`;
 };
 
 const flowReference = (reporter: SettingsUiEvSocFlowReporter): string => (

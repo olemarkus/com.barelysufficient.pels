@@ -1,0 +1,33 @@
+{
+  "title": {
+    "en": "Associate a car with a charger for this connection"
+  },
+  "titleFormatted": {
+    "en": "Associate [[car]] with [[charger]] for this connection"
+  },
+  "args": [
+    {
+      "name": "charger",
+      "type": "autocomplete",
+      "title": {
+        "en": "EV charger"
+      },
+      "placeholder": {
+        "en": "Select a charger with selected cars"
+      }
+    },
+    {
+      "name": "car",
+      "type": "autocomplete",
+      "title": {
+        "en": "Car"
+      },
+      "placeholder": {
+        "en": "Select a car configured for this charger"
+      }
+    }
+  ],
+  "hint": {
+    "en": "Confirms the selected car for the charger’s current connection, using its battery reading even if the car app has not reported it plugged in. Select the charger first. The car must already be selected for this charger in PELS settings. A delayed Flow response applies to the connection active when this action runs."
+  }
+}

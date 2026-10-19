@@ -263,7 +263,7 @@ describe('setup recommendations', () => {
     // Its only other match is to a charger no longer in Homey, so it may still match here.
     expect(recommendations[0]?.body).toContain('has not matched Kia EV6 to this charger yet');
     expect(recommendations[0]?.body).toContain(
-      'Clear the car selection to use the Flow again, and select the car once it shows as matched.',
+      'If this car is connected, confirm it in the charger’s Car section to use its battery level.',
     );
   });
 
@@ -284,7 +284,7 @@ describe('setup recommendations', () => {
     expect(recommendations[0]?.body).toContain('PELS has not matched Kia EV6 to this charger, so');
     expect(recommendations[0]?.body).not.toContain('yet');
     // Nor does it promise the match the dropped "yet" denies.
-    expect(recommendations[0]?.body).toMatch(/Clear the car selection to use the Flow again\.$/);
+    expect(recommendations[0]?.body).toContain('If this car is connected, confirm it in the charger’s Car section to use its battery level.');
     expect(recommendations[0]?.body).not.toContain('once it shows as matched');
   });
 

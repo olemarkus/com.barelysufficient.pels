@@ -67,7 +67,7 @@ const buildHeaterDevice = (id: string): MeteredPlanInputDevice & { thermalDirect
     expectedPowerSource: 'default',
     name: 'Bathroom heater',
     commandableNow: true,
-    objectiveSessionInactive: false,
+    objectiveSessionInactive: false, waitingForCarAssociation: false,
     boostSupported: false,
     boostRequested: false,
     hasStandingDemand: true,

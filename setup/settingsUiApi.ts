@@ -259,6 +259,7 @@ const buildSettingsUiDeviceList = (
     // call by the transport so a plug-in shows within the probe's settle.
     const observed = host.observer.getObservedRecord(device.id);
     const associatedCar = host.deviceManager?.getAssociatedCar(device.id);
+    const carConfirmation = host.deviceManager?.getCarConfirmation(device.id);
     const stateOfCharge = resolveStateOfCharge(device, readObservedStateOfCharge(observed));
     return {
       ...device,
@@ -269,6 +270,7 @@ const buildSettingsUiDeviceList = (
       // value rather than being blanked.
       ...(observed ? pickLiveObservedFields(observed, resolveLiveObservedFields(device)) : {}),
       ...(associatedCar ? { associatedCar } : {}),
+      ...(carConfirmation ? { carConfirmation } : {}),
       ...(stateOfCharge ? { stateOfCharge } : {}),
       ...readSettingsUiBatteryState(host, device),
       priority: priorities.getPriority(device.id),

@@ -13,7 +13,7 @@ export class TransportSnapshotStore {
   private snapshotByDeviceId = new Map<string, TransportDeviceSnapshot>();
   private readonly trackedRawDeviceById = new Map<string, HomeyDeviceLike>();
   private latestRawDevices: HomeyDeviceLike[] = [];
-  private homeyDeviceIds: ReadonlySet<string> = new Set();
+  private homeyDeviceIds: ReadonlySet<string> | undefined;
   /** The tracked devices' native step channels, built from the raw devices above. */
   readonly nativeSteppedAdapters = new NativeSteppedLoadCommandAdapters();
 
@@ -92,7 +92,12 @@ export class TransportSnapshotStore {
    * inventory a device is truly gone from. Empty before the first full list.
    */
   getHomeyDeviceIds(): ReadonlySet<string> {
-    return this.homeyDeviceIds;
+    return this.homeyDeviceIds ?? new Set();
+  }
+
+  getDeviceMembership(deviceId: string): 'unknown' | 'present' | 'removed' {
+    if (!this.homeyDeviceIds) return 'unknown';
+    return this.homeyDeviceIds.has(deviceId) ? 'present' : 'removed';
   }
 
   getLatestRawDevices(): HomeyDeviceLike[] {

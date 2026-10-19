@@ -37,7 +37,7 @@ const buildDevice = (on: boolean): PlanInputDevice => withBinaryDiscriminant(wit
   name: 'Heater',
   targets: [],
   commandableNow: true,
-  objectiveSessionInactive: false,
+  objectiveSessionInactive: false, waitingForCarAssociation: false,
   boostSupported: false,
   boostRequested: false,
   hasStandingDemand: true,

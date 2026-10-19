@@ -387,6 +387,8 @@ export type PlanInputDeviceBase = {
    * (see the note on `isEvSessionInactive`), and this is the second.
    */
   objectiveSessionInactive: boolean;
+  /** Device owner reports a connected charger waiting to identify a selected car. */
+  waitingForCarAssociation: boolean;
   // No `evBoost` / `temperatureBoost`: a boost threshold is configuration. The
   // producer reads it at its own seam and hands the planner
   // `boostSupported`/`boostRequested` above; the settings UI reads it from that
@@ -908,6 +910,6 @@ export type PlanDeviceCarriedKey =
  */
 export type PlanDeviceStrippedKey =
   'batteryClaim' | 'batteryLevel' | 'batteryPower'
-  | 'binaryControl' | 'binaryControlObservation' | 'evChargingState' | 'measuredPowerKw'
+  | 'binaryControl' | 'binaryControlObservation' | 'carConfirmation' | 'evChargingState' | 'measuredPowerKw'
   | 'measuredPowerIsDirectMeasurement' | 'setpointShedFloorC' | 'steppedLoadProfile' | 'targetPowerConfig'
   | 'temperature' | 'temperatureAdjustmentsDisabled' | 'temperatureControlDisabled' | 'thermostatMode';

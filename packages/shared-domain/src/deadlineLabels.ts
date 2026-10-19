@@ -46,6 +46,7 @@ export type DeadlinePlanPendingReason =
   | 'awaiting_horizon_plan'
   | 'price_feature_disabled'
   | 'device_data_missing'
+  | 'waiting_for_car'
   // EV plugged-out / discharging session — runtime diagnostics emit
   // `objective_invalid_session`; UI surfaces it as a paused state so the user
   // knows the plan resumes once they plug back in.
@@ -160,6 +161,8 @@ const SMART_TASK_WIDGET_WHY_BY_STATUS: Record<SmartTaskListStatusId, string | nu
   satisfied: null,
 };
 
+export const WAITING_FOR_CAR_ASSOCIATION = 'Waiting to identify the connected car';
+
 // EV device-card variant of the unplugged/invalid-session pause line: a card-slot phrasing with no
 // terminal punctuation, promoted to a named constant so the card surface shares
 // one source rather than inlining a second literal.
@@ -170,6 +173,7 @@ Partial<Record<DeferredObjectiveActivePlanPendingReason, string>> = {
   not_yet_planned: 'Choosing the cheapest hours now.',
   awaiting_horizon_plan: 'Waiting for tomorrow’s prices.',
   device_data_missing: 'Waiting for a reading from this device.',
+  waiting_for_car: WAITING_FOR_CAR_ASSOCIATION,
   invalid_session: 'EV is unplugged — plug in to start.',
   missing_capacity: 'Learning energy use from this device.',
   price_feature_disabled: 'Price-aware planning is off.',
@@ -544,6 +548,9 @@ export const resolveSmartTaskWidgetDetailCopy = (
       recourseHint: null,
     };
   }
+  if (input.diagnosticReasonCode === 'objective_waiting_for_car') {
+    return { whyLabel: WAITING_FOR_CAR_ASSOCIATION, recourseHint: null };
+  }
   if (input.statusId === 'cannot_meet') return resolveCannotMeetCopy(input);
   if (input.statusId === 'at_risk') return resolveAtRiskCopy(input);
   if (input.statusId === 'building_plan') {
@@ -802,6 +809,7 @@ const PREVIEW_UNAVAILABLE_COPY_BY_REASON: Record<DeferredObjectivePlanPreviewUna
   missing_prices: 'Can’t preview this yet — prices through this window are not available yet.',
   missing_reading: 'Can’t preview this yet — PELS needs a current device reading.',
   price_feature_disabled: 'Can’t preview this yet — price-aware planning is off.',
+  waiting_for_car: WAITING_FOR_CAR_ASSOCIATION,
   progress_stale: 'Can’t preview this yet — PELS needs a fresher device reading.',
   settings_unavailable: 'Can’t preview this yet — PELS couldn’t read Smart tasks. Try again.',
   unknown: CREATE_SMART_TASK_WIDGET_COPY.previewUnavailable,
@@ -1656,6 +1664,8 @@ const resolveCurrentCauseListStatus = (plan: SmartTaskListStatusPlan): SmartTask
   // a cached revision is no longer being executed and the chip must say so
   // instead of "On track".
   if (diagnosticReasonCode === 'objective_device_unmanaged') return 'paused_unmanaged';
+  // A car limit from the preceding connection says nothing about this car.
+  if (diagnosticReasonCode === 'objective_waiting_for_car') return 'building_plan';
   // A known car limit below the target on a COMMITTED plan. A pending plan has
   // no status to overlay and falls through to the pending ladder, as the detail
   // page's pending hero and the Flow's pending status do. The reported limit
@@ -2294,6 +2304,13 @@ const priceFeatureDisabledCopy = (kindNoun: SmartTaskPlanNoun): DeadlinePendingC
   })
 );
 
+const waitingForCarCopy: DeadlinePendingCopyResolver = (ctx) => ({
+  headline: WAITING_FOR_CAR_ASSOCIATION,
+  body: 'Confirm the connected car on the charger’s device page or with a Flow.',
+  headlineReason: null,
+  recourse: overviewDeviceRecourse(ctx.deviceId),
+});
+
 // `device_data_missing` / `missing_capacity` (and the thermal fall-through
 // for `invalid_session`) share one resolver — same headline, same body, same
 // recourse — keyed by the kind's reading-word + device-noun fallback.
@@ -2437,6 +2454,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       awaiting_horizon_plan: awaitingHorizonCopy('heat plan'),
       price_feature_disabled: priceFeatureDisabledCopy('heat plan'),
       device_data_missing: HEATER_DEVICE_DATA_MISSING,
+      waiting_for_car: HEATER_DEVICE_DATA_MISSING,
       invalid_session: HEATER_DEVICE_DATA_MISSING,
       // Thermal devices aren't chargers; unreachable here, kept as a safety net
       // so a future diagnostic can't leak EV-specific copy onto a heater.
@@ -2517,6 +2535,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       awaiting_horizon_plan: awaitingHorizonCopy('charging plan'),
       price_feature_disabled: priceFeatureDisabledCopy('charging plan'),
       device_data_missing: EV_DEVICE_DATA_MISSING,
+      waiting_for_car: waitingForCarCopy,
       invalid_session: () => ({
         headline: 'Charging paused — EV unplugged',
         body: 'PELS will resume the schedule once the EV is plugged in and reports a valid '
@@ -2580,6 +2599,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       awaiting_horizon_plan: awaitingHorizonCopy('schedule'),
       price_feature_disabled: priceFeatureDisabledCopy('schedule'),
       device_data_missing: ENERGY_DEVICE_DATA_MISSING,
+      waiting_for_car: ENERGY_DEVICE_DATA_MISSING,
       invalid_session: ENERGY_DEVICE_DATA_MISSING,
       missing_capacity: ENERGY_DEVICE_DATA_MISSING,
       device_in_sub_home: separateMeterUnavailableResolver,
@@ -2641,6 +2661,7 @@ export const deadlineLabels = (
         awaiting_horizon_plan: awaitingHorizonCopy('temperature plan'),
         price_feature_disabled: priceFeatureDisabledCopy('temperature plan'),
         device_data_missing: TEMPERATURE_DEVICE_DATA_MISSING,
+        waiting_for_car: TEMPERATURE_DEVICE_DATA_MISSING,
         invalid_session: TEMPERATURE_DEVICE_DATA_MISSING,
       },
       unavailableByReason: {
@@ -2671,6 +2692,7 @@ export const deadlineLabels = (
       awaiting_horizon_plan: awaitingHorizonCopy('cooling plan'),
       price_feature_disabled: priceFeatureDisabledCopy('cooling plan'),
       device_data_missing: COOLING_DEVICE_DATA_MISSING,
+      waiting_for_car: COOLING_DEVICE_DATA_MISSING,
       invalid_session: COOLING_DEVICE_DATA_MISSING,
     },
     unavailableByReason: {

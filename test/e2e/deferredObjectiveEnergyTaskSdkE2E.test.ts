@@ -95,7 +95,7 @@ const buildRelay = (
     expectedPowerSource: 'measured-peak',
     name: 'Water heater relay',
     commandableNow: true,
-    objectiveSessionInactive: false,
+    objectiveSessionInactive: false, waitingForCarAssociation: false,
     boostSupported: false,
     boostRequested: false,
     hasStandingDemand: true,

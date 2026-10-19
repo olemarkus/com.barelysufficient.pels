@@ -174,6 +174,13 @@ export type EvCarAssociationConfig = {
 
 export type EvCarAssociations = Record<string, EvCarAssociationConfig>;
 
+/** User identification remains valid while the car app is temporarily unavailable. */
+export type CarConfirmation = {
+    carId: string;
+    carName: string;
+    available: boolean;
+};
+
 /**
  * The car a charger is associated with FOR THE CURRENT SESSION, resolved by the
  * car-link probe and narrowed to the cars the user ticked for this charger.
@@ -204,6 +211,7 @@ export type EvCarAssociations = Record<string, EvCarAssociationConfig>;
  * they have no way to judge.
  */
 export type AssociatedCarSnapshot = {
+    confirmed?: true;
     carId: string;
     carName: string;
     chargingState: EvChargingState;
@@ -1067,6 +1075,7 @@ export type SteppedLoadDecoration = {
  * so it decorates the payload rather than living on the device snapshot.
  */
 export type AssociatedCarDecoration = {
+    carConfirmation?: CarConfirmation;
     associatedCar?: AssociatedCarSnapshot;
 };
 

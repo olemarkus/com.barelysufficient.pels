@@ -36,7 +36,7 @@ const elbillader: ObjectiveDeviceInput = {
   currentDrawKw: 0,
   expectedPowerKw: 1.38,
   control: { managed: true, commandAuthority: true },
-  objectiveSessionInactive: false,
+  objectiveSessionInactive: false, waitingForCarAssociation: false,
   thermalDirection: 'heating',
   stepPowerCalibration: { '6a': 0.7878 },
 };

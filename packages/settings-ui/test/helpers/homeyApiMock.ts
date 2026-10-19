@@ -15,6 +15,8 @@ import {
 } from '../../../shared-domain/src/settings/dailyBudgetSettings.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
+  SETTINGS_UI_CAR_ASSOCIATION_CONFIRM_PATH,
+  SETTINGS_UI_CAR_ASSOCIATION_CLEAR_PATH,
   SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
   SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH,
   SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH,
@@ -387,6 +389,12 @@ const buildUiBootstrap = async (homey: MockHomeyClient) => ({
 });
 
 const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFactory> = {
+  [buildRouteKey('POST', SETTINGS_UI_CAR_ASSOCIATION_CONFIRM_PATH)]: () => async () => {
+    throw new Error('Configure a car association handler to test confirmation');
+  },
+  [buildRouteKey('POST', SETTINGS_UI_CAR_ASSOCIATION_CLEAR_PATH)]: () => async () => {
+    throw new Error('Configure a car association handler to test clearing confirmation');
+  },
   [buildRouteKey('GET', CHARGING_ACCESS_PATH)]: () => async () => ({ configured: false, state: 'not_configured' }),
   [buildRouteKey('POST', CHARGING_ACCESS_CHECK_PATH)]: () => async () => ({ configured: false, state: 'not_configured' }),
   [buildRouteKey('DELETE', CHARGING_ACCESS_PATH)]: () => async () => ({ configured: false, state: 'not_configured' }),

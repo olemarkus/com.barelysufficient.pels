@@ -31,6 +31,7 @@ import type { FlowSteppedLoadAdmission } from '../ports/flowSteppedLoadAdmission
 import { admitFlowSteppedLoadReport } from './transport/observationFlowStepped';
 import type {
   AssociatedCarSnapshot,
+  CarConfirmation,
   BinaryControlObservation,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
@@ -79,7 +80,7 @@ import {
   readLiveMeters,
 } from './transport/snapshotRefresh';
 import { DeviceSnapshotReader, createDeviceParseSources } from './transport/deviceSnapshotReader';
-import { RealtimeIngestService } from './transport/transportServices';
+import { createEvCarAssociationControl, RealtimeIngestService } from './transport/transportServices';
 import { TransportNotifications } from './transport/transportNotifications';
 import {
     resolveCarAssociationCandidatesRead,
@@ -136,6 +137,7 @@ export class DeviceTransport {
     // never by this producer. See `batteryStateProducer.ts`. Constructed in the
     // constructor body (its emit needs the already-assigned logger).
     private readonly observationProducers: ObservationProducers;
+    private readonly carAssociationControl: ReturnType<typeof createEvCarAssociationControl>;
     private readonly writeService: DeviceWriteService;
     // Read-only PV / solar production awareness producer. Holds the detected solar-id
     // set (the authoritative role-membership set the app's managed/controllable
@@ -155,13 +157,40 @@ export class DeviceTransport {
         deviceId: string, capabilityId: string, value: unknown,
     ): void => {
         this.realtimeIngest.handleCapabilityUpdate(deviceId, capabilityId, value);
+        this.carAssociationControl.observe(Date.now());
     };
 
     /** Heartbeat for the EV car-link probe's elapsed-time decisions. */
-    tickEvCarLink(nowMs: number): void { this.observationProducers.evCarLink.tick(nowMs); }
+    tickEvCarLink(nowMs: number): void {
+        this.carAssociationControl.observe(nowMs);
+        this.observationProducers.evCarLink.tick(nowMs);
+        this.carAssociationControl.tick(nowMs);
+    }
+
+    confirmCarAssociation(chargerId: string, carId: string): void {
+        this.carAssociationControl.confirm(chargerId, carId);
+    }
+
+    getCarConfirmation(chargerId: string): CarConfirmation | undefined {
+        const confirmation = this.observationProducers.evCarLink.getCarConfirmation(chargerId);
+        return confirmation && this.getCarAssociationCarIds(chargerId).includes(confirmation.carId)
+            ? confirmation : undefined;
+    }
+
+    clearCarConfirmation(chargerId: string): void {
+        this.observationProducers.evCarLink.clearCarConfirmation(chargerId);
+        this.carAssociationControl.observe(Date.now());
+    }
+
+    isWaitingForCarAssociation(chargerId: string): boolean { return this.carAssociationControl.isWaiting(chargerId); }
+
+    getCarAssociationCarIds(chargerId: string): readonly string[] {
+        return this.sources.settings.getEvCarAssociationCarIds(chargerId);
+    }
 
     private readonly handleRealtimeDeviceUpdate = (device: HomeyDeviceLike): void => {
         this.realtimeIngest.handleDeviceUpdate(device);
+        this.carAssociationControl.observe(Date.now());
     };
 
     constructor(
@@ -209,6 +238,10 @@ export class DeviceTransport {
             },
             (chargerId) => this.sources.settings.getEvCarAssociationCarIds(chargerId),
         );
+        this.carAssociationControl = createEvCarAssociationControl(
+            this.observationProducers.evCarLink, this.sources.settings, this.snapshotStore,
+            this.getFlowTriggerCard, this.logger,
+        );
         this.observationBridge = new ObservationBridge(
             this.snapshotStore,
             options.observedStateDispatcher,
@@ -247,7 +280,7 @@ export class DeviceTransport {
         const temperatureRecovery = new TemperatureRecoveryService(
             this.observationBridge.state,
             this.snapshotStore,
-            (refreshOptions) => this.refreshService.refresh(refreshOptions),
+            (refreshOptions) => this.refreshSnapshot(refreshOptions),
             (deviceId) => this.observationBridge.nextCursor(deviceId),
             (event) => this.observationBridge.dispatchControlStateChanged(event),
         );
@@ -431,7 +464,9 @@ export class DeviceTransport {
     async refreshSnapshot(
         options: SnapshotRefreshOptions,
     ): Promise<LiveMeterReadings | null> {
-        return this.refreshService.refresh(options);
+        const result = await this.refreshService.refresh(options);
+        this.carAssociationControl.observe(Date.now());
+        return result;
     }
 
     getPeriodicStatusMetrics(): ({ devicesTotal: number } & SnapshotRefreshMetrics) | null {

@@ -1,0 +1,45 @@
+{
+  "title": {
+    "en": "No car matched to a charger after…"
+  },
+  "titleFormatted": {
+    "en": "No car matched to [[charger]] after [[minutes]] minutes"
+  },
+  "args": [
+    {
+      "name": "charger",
+      "type": "autocomplete",
+      "title": {
+        "en": "EV charger"
+      },
+      "placeholder": {
+        "en": "Select a charger with selected cars"
+      }
+    },
+    {
+      "name": "minutes",
+      "type": "range",
+      "title": {
+        "en": "Wait (minutes)"
+      },
+      "min": 1,
+      "max": 60,
+      "step": 1
+    }
+  ],
+  "hint": {
+    "en": "Fires once when a connected charger has waited this long without a car match. Start with 1 minute for a confirmation notification. Automatic matching continues. A match or unplug ends the wait."
+  },
+  "tokens": [
+    {
+      "name": "charger_name",
+      "type": "string",
+      "title": {
+        "en": "Charger name"
+      },
+      "example": {
+        "en": "Garage charger"
+      }
+    }
+  ]
+}

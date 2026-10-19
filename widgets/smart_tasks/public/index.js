@@ -24,6 +24,7 @@
   };
   var SMART_TASK_DEVICE_UNMANAGED_WHY = "PELS isn\u2019t managing this device.";
   var SMART_TASK_DEVICE_UNMANAGED_RECOURSE = "Turn on Managed by PELS in Setup to resume this task.";
+  var WAITING_FOR_CAR_ASSOCIATION = "Waiting to identify the connected car";
   var SMART_TASK_WIDGET_EMPTY_SUBTITLE = "No active smart tasks";
   var SMART_TASK_WIDGET_LOADING = "Loading\u2026";
   var SMART_TASK_WIDGET_LOAD_ERROR_SUBTITLE = "Could not load. Reopen the dashboard.";
@@ -154,6 +155,7 @@
     missing_prices: "Can\u2019t preview this yet \u2014 prices through this window are not available yet.",
     missing_reading: "Can\u2019t preview this yet \u2014 PELS needs a current device reading.",
     price_feature_disabled: "Can\u2019t preview this yet \u2014 price-aware planning is off.",
+    waiting_for_car: WAITING_FOR_CAR_ASSOCIATION,
     progress_stale: "Can\u2019t preview this yet \u2014 PELS needs a fresher device reading.",
     settings_unavailable: "Can\u2019t preview this yet \u2014 PELS couldn\u2019t read Smart tasks. Try again.",
     unknown: CREATE_SMART_TASK_WIDGET_COPY.previewUnavailable
@@ -303,6 +305,12 @@
     headlineReason: "Price-aware optimisation is off in Settings.",
     recourse: { label: "Open Settings", targetTab: "settings" }
   }));
+  var waitingForCarCopy = (ctx) => ({
+    headline: WAITING_FOR_CAR_ASSOCIATION,
+    body: "Confirm the connected car on the charger\u2019s device page or with a Flow.",
+    headlineReason: null,
+    recourse: overviewDeviceRecourse(ctx.deviceId)
+  });
   var deviceDataMissingResolver = (headline, body, readingNoun, fallbackDeviceNoun) => (ctx) => ({
     headline,
     body,
@@ -399,6 +407,7 @@
         awaiting_horizon_plan: awaitingHorizonCopy("heat plan"),
         price_feature_disabled: priceFeatureDisabledCopy("heat plan"),
         device_data_missing: HEATER_DEVICE_DATA_MISSING,
+        waiting_for_car: HEATER_DEVICE_DATA_MISSING,
         invalid_session: HEATER_DEVICE_DATA_MISSING,
         // Thermal devices aren't chargers; unreachable here, kept as a safety net
         // so a future diagnostic can't leak EV-specific copy onto a heater.
@@ -476,6 +485,7 @@
         awaiting_horizon_plan: awaitingHorizonCopy("charging plan"),
         price_feature_disabled: priceFeatureDisabledCopy("charging plan"),
         device_data_missing: EV_DEVICE_DATA_MISSING,
+        waiting_for_car: waitingForCarCopy,
         invalid_session: () => ({
           headline: "Charging paused \u2014 EV unplugged",
           body: "PELS will resume the schedule once the EV is plugged in and reports a valid charging session.",
@@ -535,6 +545,7 @@
         awaiting_horizon_plan: awaitingHorizonCopy("schedule"),
         price_feature_disabled: priceFeatureDisabledCopy("schedule"),
         device_data_missing: ENERGY_DEVICE_DATA_MISSING,
+        waiting_for_car: ENERGY_DEVICE_DATA_MISSING,
         invalid_session: ENERGY_DEVICE_DATA_MISSING,
         missing_capacity: ENERGY_DEVICE_DATA_MISSING,
         device_in_sub_home: separateMeterUnavailableResolver,

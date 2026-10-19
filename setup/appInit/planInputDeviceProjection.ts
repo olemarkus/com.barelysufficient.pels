@@ -1,3 +1,4 @@
+import { requireDeviceManager } from './contextGuards';
 import type { AppContext } from '../../lib/app/appContext';
 import type { PlanInputProjectionSource } from '../../lib/planInput/projectPlanInputDevice';
 import { resolveExternalOffHoldActive } from '../../lib/planInput/externalOffHoldProjection';
@@ -10,6 +11,7 @@ import { resolveExternalOffHoldActive } from '../../lib/planInput/externalOffHol
 export function createPlanInputProjectionSource(ctx: AppContext): PlanInputProjectionSource {
   return {
     getNow: () => ctx.getNow(),
+    isWaitingForCarAssociation: (deviceId) => requireDeviceManager(ctx).isWaitingForCarAssociation(deviceId),
     getPowerCalibrationSnapshot: () => ctx.getPowerCalibrationSnapshot(),
     getTargetPowerConfig: (deviceId) => ctx.deviceControlSettings.getDeviceTargetPowerConfig(deviceId),
     getPriceOptimizationSettings: (deviceId) => ctx.priceOptimizationSettings[deviceId],

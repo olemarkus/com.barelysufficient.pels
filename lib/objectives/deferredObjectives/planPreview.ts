@@ -300,6 +300,7 @@ const resolvePreviewUnavailableReason = (
   if (reasonCode === 'objective_missing_price_horizon') return 'missing_prices';
   if (reasonCode === 'objective_price_feature_disabled') return 'price_feature_disabled';
   if (reasonCode === 'objective_missing_temperature') return 'missing_reading';
+  if (reasonCode === 'objective_waiting_for_car') return 'waiting_for_car';
   if (reasonCode === 'objective_progress_stale') return 'progress_stale';
   return 'unknown';
 };

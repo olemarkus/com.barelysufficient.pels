@@ -334,6 +334,7 @@ export const withMaterializedEvPlugState = <T extends {
   confirmedNotDrawing: boolean;
   objectiveKind?: 'ev_soc';
   objectiveSessionInactive: boolean;
+  waitingForCarAssociation: boolean;
   commandabilityReason?: 'charger_unplugged' | 'charger_discharging';
   startPolicy: DeviceStartPolicy;
   startPolicyInForce: DeviceStartPolicy;
@@ -389,6 +390,7 @@ export const withMaterializedEvPlugState = <T extends {
     ...(isEvCharger ? { objectiveKind: 'ev_soc' as const } : {}),
     // Mirrors `resolvePlanObjective`: the session question, resolved from the
     // plug-state before the producer strips it. Never `commandableNow`.
+    waitingForCarAssociation: (overrides as { waitingForCarAssociation?: boolean }).waitingForCarAssociation ?? false,
     objectiveSessionInactive: isEvCharger
       && (overrides.evChargingState === 'plugged_out'
         || overrides.evChargingState === 'plugged_in_discharging'),

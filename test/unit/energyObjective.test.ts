@@ -31,7 +31,7 @@ const energyTask: DeferredObjectiveEnergySettingsEntry = {
 
 const relay = (overrides: Partial<ObjectiveDeviceInput> = {}): ObjectiveDeviceInput => partialDouble<ObjectiveDeviceInput>({
   id: 'relay',
-  objectiveSessionInactive: false,
+  objectiveSessionInactive: false, waitingForCarAssociation: false,
   ...overrides,
 });
 

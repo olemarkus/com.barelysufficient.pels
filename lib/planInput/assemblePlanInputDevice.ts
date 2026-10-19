@@ -30,6 +30,8 @@ const withoutNonPlanInputFields = (device: ToPlanDeviceInput) => {
     batteryPower: _batteryPower,
     batteryClaim: _batteryClaim,
     batteryLevel: _batteryLevel,
+    // Identification metadata stays with the device; planning uses the resolved waiting fact.
+    carConfirmation: _carConfirmation,
     ...deviceFields
   } = device;
   return deviceFields;

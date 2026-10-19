@@ -2198,14 +2198,12 @@ device-neutral.
   single Flow when possible, and asks the owner to remove the action or disable
   the Flow if it is no longer needed. That removal advice needs a selected car
   that has been matched to this charger (now or in the retained history). Until
-  then the Flow is the owner's only working source, and the recommendation is
-  `<charger> has no battery level` instead: it says the selected car is why PELS
-  ignores the Flow, that PELS has not matched the car yet, and suggests clearing
-  the car selection and selecting the car again once it shows as matched. As in
-  the car picker, "yet" is dropped when every selected car has matched another
-  of the home's chargers that is still in the device list; that body then ends at
-  `Clear the car selection to use the Flow again.`, because a car charging
-  elsewhere is not about to show as matched here. When every selected car has been removed from Homey,
+  then the recommendation is `<charger> has no battery level`: it explains
+  that the selected car is why PELS ignores the Flow, and asks the owner to
+  confirm the connected car in the charger's Car section. The advice is
+  conditional on that car being connected; it does not assume a household car
+  is present. "Yet" is dropped when every selected car has matched another
+  current charger. When every selected car has been removed from Homey,
   the body says `The selected car was removed from Homey` and its only remedy is
   `Clear the “Removed car” selection in the charger’s Car section`, naming the
   picker's row label; it never asks to select a car that no longer exists. A
@@ -2221,20 +2219,26 @@ device-neutral.
   removed or replaced does not count as charging elsewhere. No hint while the match
   history is unreadable or the list failed to refresh. No count: a session
   usually casts one vote on plug-in and another on unplug.
-- While a selected car has never matched this charger, the charger-page Flow
-  note reads `This charger has no battery level until PELS matches a selected
-  car. If a Flow card or the charger itself reported the level before, clear
-  the selection to keep using it, and select the car again once it shows as
-  matched.` Otherwise, before a match, it reads `Until a car is matched, this
-  charger has no battery level. While a car is selected, PELS ignores both the
-  Flow card that reports it and the charger's own reading.`
+- With selected cars, a connected charger and no current match, the charger-page note reads:
+  `Until a car is matched, this charger has no battery level. Confirm which
+  selected car is connected to use its battery level for this connection.
+  While a car is selected, PELS ignores both the Flow card that reports the
+  level and the charger's own reading.` The **Confirm connected car** action
+  applies to the current physical connection. Its status is
+  `<car> · confirmed for this connection`; `Car app reports: <state>` separately
+  describes the car app's telemetry, which can still report unplugged.
+  Display the confirmed identity once and leave the percentage in the battery
+  row. A confirmed car app outage says `Car app unavailable`; it does not ask
+  the user to identify the car again. **Clear confirmation** ends the explicit
+  identification for this connection without changing the selected cars.
+  An unplugged charger shows `No car connected` without a confirmation warning.
 - Flow advice (removal or the no-battery-level warning) needs a car list that
   refreshed successfully and readable match history; otherwise Setup gives
   neither and reports that some checks could not be refreshed.
 - A selected and matched car that has not reported a finite battery level is a
   local warning on the charger page. An unmatched car keeps the more specific
-  `Waiting to match a car` state; it is expected matching latency, not the same
-  fault.
+  `Waiting to identify the connected car` state in charger settings, Smart task
+  previews and widgets. An unplugged charger instead says `No car connected`.
 
 ## Mode label
 

@@ -101,6 +101,8 @@ export type ObjectiveDeviceInput = {
    * absence tsc would catch.
   */
   objectiveSessionInactive: boolean;
+  /** Device owner reports a connected charger waiting to identify a selected car. */
+  waitingForCarAssociation: boolean;
   /** Observer-resolved direction of temperature demand, attached at the objective boundary. */
   thermalDirection: ThermalDirection;
   /**

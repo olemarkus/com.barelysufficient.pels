@@ -189,6 +189,7 @@ describe('app init plan service wiring', () => {
     });
     serviceCtx.deviceManager = {
       getAssociatedCar: () => undefined,
+      isWaitingForCarAssociation: () => false,
       getSnapshot: () => serviceCtx.latestTargetSnapshot,
     } as unknown as AppContext['deviceManager'];
     const service = createPlanService(serviceCtx, buildMainHomeScopeForTest(serviceCtx, () => false), planEngine);

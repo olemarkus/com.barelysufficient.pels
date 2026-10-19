@@ -293,6 +293,9 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     () => context.readHomeBatteryDevices(),
   );
   const context: AppContext = {
+    deviceManager: partialDouble<NonNullable<AppContext['deviceManager']>>({
+      isWaitingForCarAssociation: () => false,
+    }),
     deviceReads,
     deviceConfiguration: createDeviceConfiguration(getDeviceConfigurationStore),
     // Composed the way production composes it (`setup/appHostApi.ts`
@@ -547,6 +550,7 @@ export function createInitializedAppContextMock(options: AppContextMockOptions =
     deviceManager: {
       getSnapshot: vi.fn(() => []),
       getPeriodicStatusMetrics: vi.fn(() => null),
+      isWaitingForCarAssociation: () => false,
     } as never,
     planEngine: {
       state: { sheddingActive: false },

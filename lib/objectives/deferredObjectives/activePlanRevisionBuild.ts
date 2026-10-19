@@ -199,6 +199,7 @@ export const resolvePendingReason = (
   // unplugged" copy variant so the user knows the plan resumes once they
   // plug back in. Without this the hero said the generic "Waiting" with no
   // hint that the action is on the user, not PELS.
+  if (diag.reasonCode === 'objective_waiting_for_car') return 'waiting_for_car';
   if (diag.reasonCode === 'objective_invalid_session') return 'invalid_session';
   // A task whose device moved to a separately-metered home is out of scope,
   // not waiting for prices. Keep this distinct so every user surface can name

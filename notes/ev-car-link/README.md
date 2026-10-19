@@ -515,9 +515,45 @@ Read `/tmp/pels` with the `pels-log-review` skill and check, in order:
 
 - Completing a smart task on `ev_car_self_stopped` itself. The requested target remains the
   obligation; the qualified car limit explains non-delivery rather than reducing requested work.
-- Manual car selection: the user picks which cars are *eligible*, never which one is
-  associated. That stays the probe's call.
 - Directly changing smart-task accounting from the self-stop producer. It lives in
   `lib/device` and publishes device evidence through its port. The task owner combines
   that with generic claimed delivery, applied control and draw observations; confirmed
   non-delivery can release reservations without changing the requested target.
+
+## Explicit confirmation for this connection
+
+The charger page's **Confirm connected car** action and the Flow action
+**Associate [car] with [charger] for this connection** use the same device owner.
+The car must already be selected for that charger, both must be available, and
+another charger must not hold the car. A confirmation uses accepted battery
+telemetry even when the car app still reports unplugged; it never fabricates a
+plug report or a correlation vote. Without a battery reading, the association
+exists but a percentage Smart task still needs that reading.
+
+Confirmation overrides automatic matching for this connection. Confirming a provisional
+automatic link makes it final immediately; later rival evidence cannot withdraw it.
+A provisional link on another charger also prevents confirming that car here. Repeating the
+same confirmation is idempotent; explicitly choosing another selected car
+replaces it. Charger unplug, a subsequent car disconnect transition, removal
+from Homey, or deselection ends it. A cached unplugged car reading does not end
+it. Car unavailability suspends the live association and battery level while
+preserving the confirmed identity for recovery. It does not restart the
+identification timeout. The charger page says `Car app unavailable`.
+**Clear confirmation** removes the explicit identification and its battery
+reading for this connection without changing the selected cars. Automatic
+matching remains enabled, and a connected unidentified charger starts a new wait. Confirmations persist across restart;
+unknown inventory at startup cannot disprove a session.
+
+**No car matched to [charger] after [minutes]** accepts 1–60 minutes independently
+of the automatic coincidence window. Start with one minute for a mobile
+confirmation Flow. The thirty-second heartbeat emits elapsed-time crossings;
+each configured threshold fires once per continuous waiting episode. A charger
+outage retains elapsed progress and pauses notifications until it is available again. Matching
+or unplug ends the episode, and an unresolved connection starts a fresh wait
+after restart. The condition **[Charger] is waiting to match a car** checks current
+state. The trigger provides a readable charger-name token.
+
+A Yes response can run the association action directly; No requires no action.
+There are no opaque session tokens. A delayed response applies to the connection
+active when the action runs. Confirmation publishes the car battery observation;
+normal meter-driven planning consumes it on the next meter reading.

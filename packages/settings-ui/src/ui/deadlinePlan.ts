@@ -267,6 +267,16 @@ export type DeadlineRenderInput =
   | { status: 'completed'; kind: DeferredObjectiveSettingsEntry['kind'] }
   | { status: 'absent' };
 
+const currentSessionPendingReason = (
+  plan: ResolvedDeferredObjectiveActivePlanV1,
+): DeadlinePlanPendingReason | null => {
+  if (plan.diagnosticReasonCode === 'objective_waiting_for_car') return 'waiting_for_car';
+  if (plan.diagnosticReasonCode === 'objective_invalid_session' && resolveReportedCarChargeLimit(plan) === null) {
+    return 'invalid_session';
+  }
+  return null;
+};
+
 export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderInput => {
   const ctxResult = resolveObjectiveContext(params);
   if (ctxResult.kind === 'absent') return { status: 'absent' };
@@ -288,9 +298,9 @@ export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderIn
   // A committed schedule survives unplugging, but cannot describe what runs
   // now. Match the list's pause, except when the car already reached its own
   // lower limit: some chargers end that session with an unplugged reading.
-  if (ctx.activePlan.diagnosticReasonCode === 'objective_invalid_session'
-    && resolveReportedCarChargeLimit(ctx.activePlan) === null) {
-    return { status: 'pending', pending: buildPendingPayload(ctx, priceContext, 'invalid_session') };
+  const sessionPendingReason = currentSessionPendingReason(ctx.activePlan);
+  if (sessionPendingReason !== null) {
+    return { status: 'pending', pending: buildPendingPayload(ctx, priceContext, sessionPendingReason) };
   }
   const result = prepareObjectivePayload(ctx, params);
   if ('kind' in result && result.kind === 'unavailable') {

@@ -66,6 +66,23 @@ const buildSurplusCtx = (): AppContext => {
 };
 
 describe('toPlanDevice — R7b per-home options', () => {
+  it('carries the device owner’s resolved car-identification fact into objective input', () => {
+    const ctx = buildSurplusCtx();
+    if (!ctx.deviceManager) throw new Error('missing fixture device manager');
+    ctx.deviceManager.isWaitingForCarAssociation = (id) => id === SURPLUS_DEVICE_ID;
+    expect(toPlanDevice(ctx, withDeviceConfiguration(buildSurplusWillingSnapshot()))
+      .waitingForCarAssociation).toBe(true);
+  });
+
+  it('keeps car confirmation metadata out of planner input', () => {
+    const snapshot = {
+      ...buildSurplusWillingSnapshot(),
+      carConfirmation: { carId: 'car', carName: 'Polestar', available: true },
+    };
+    const result = toPlanDevice(buildSurplusCtx(), withDeviceConfiguration(snapshot));
+    expect(result).not.toHaveProperty('carConfirmation');
+  });
+
   it('preserves an explicitly unavailable transport snapshot', () => {
     const ctx = buildSurplusCtx();
     const snapshot = { ...buildSurplusWillingSnapshot(), available: false };

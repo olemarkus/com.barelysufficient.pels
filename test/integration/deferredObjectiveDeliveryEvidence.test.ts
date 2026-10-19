@@ -51,7 +51,7 @@ type Device = MeteredPlanInputDevice & {
 const relay = (id: string, drawKw: number, nowMs: number): Device => withBinaryDiscriminant(withFixtureResidualKw({
   id, name: id, available: true, currentDrawKw: drawKw,
   expectedPowerKw: 2, expectedPowerSource: 'measured-peak',
-  commandableNow: true, objectiveSessionInactive: false,
+  commandableNow: true, objectiveSessionInactive: false, waitingForCarAssociation: false,
   boostSupported: false, boostRequested: false,
   hasStandingDemand: true, surplusTracking: false, confirmedNotDrawing: false,
   targets: [], binaryCapabilityId: 'onoff', binaryControl: { on: true },

@@ -515,6 +515,14 @@
       "method": "GET",
       "path": "/homey_devices"
     },
+    "ui_car_association_clear": {
+      "method": "POST",
+      "path": "/ui_car_association_clear"
+    },
+    "ui_car_association_confirm": {
+      "method": "POST",
+      "path": "/ui_car_association_confirm"
+    },
     "ui_recommendation_cars": {
       "method": "GET",
       "path": "/ui_recommendation_cars"

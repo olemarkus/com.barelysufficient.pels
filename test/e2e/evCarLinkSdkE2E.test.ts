@@ -26,6 +26,7 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
+  DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
   EV_CAR_ASSOCIATIONS,
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
@@ -422,6 +423,102 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     await charger.setCapabilityValue('measure_power', 0);
     await pumpMinutes(40);
 
+    expect(socOf(getLatestTargetSnapshotForTests())).toBeUndefined();
+  });
+
+  it('times out, confirms a cached-unplugged car through Flow, and plans its percentage task on meter input', async () => {
+    vi.setSystemTime(Date.UTC(2026, 0, 15, 12, 15, 0));
+    const car = await buildCar();
+    const charger = await buildCharger();
+    await charger.setCapabilityValue('evcharger_charging_state', 'plugged_in_paused');
+    setMockDrivers({ driverA: new MockDriver('driverA', [car, charger]) });
+    seedSettings();
+    const settings = mockHomeyInstance.settings;
+    settings.set('price_optimization_enabled', true);
+    settings.set('native_ev_wiring_devices', { [CHARGER_ID]: true });
+    settings.set('combined_prices', {
+      version: 2,
+      days: { '2026-01-15': { hours: Array.from({ length: 24 }, (_, hour) => ({
+        startsAt: new Date(Date.UTC(2026, 0, 15, hour)).toISOString(),
+        total: 50, isCheap: false, isExpensive: false,
+      })) } },
+      avgPrice: 50, lowThreshold: 40, highThreshold: 60,
+      priceScheme: 'norway', priceUnit: 'øre/kWh',
+    });
+    settings.set(EV_CAR_ASSOCIATIONS, { [CHARGER_ID]: { carIds: [CAR_ID] } });
+    settings.set(`deferred_objective.${CHARGER_ID}`, {
+      enabled: true, kind: 'ev_soc', enforcement: 'soft', targetPercent: 80,
+      deadlineAtMs: Date.now() + 3 * 60 * 60 * 1000,
+    });
+    driveHomeEnergy(liveHomeW(3_000));
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+    const app = createApp();
+    spyLogs(app);
+    await app.onInit();
+    await pumpMinutes(3);
+
+    const flow = mockHomeyInstance.flow;
+    const isWaiting = flow._conditionCardListeners.ev_car_association_waiting;
+    await expect(isWaiting({ charger: CHARGER_ID })).resolves.toBe(true);
+    expect((await chargerFromUi()).associatedCar).toBeUndefined();
+    expect(socOf(getLatestTargetSnapshotForTests())?.level.kind).not.toBe('known');
+    const crossings = flow._triggerCardTriggers.ev_car_association_waiting ?? [];
+    const matches = await Promise.all(crossings.map((crossing) => (
+      flow._triggerCardRunListeners.ev_car_association_waiting(
+        { charger: CHARGER_ID, minutes: 1 }, crossing.state,
+      )
+    )));
+    expect(matches.filter(Boolean)).toHaveLength(1);
+    expect(crossings[matches.indexOf(true)].tokens).toEqual({ charger_name: 'Elbillader' });
+
+    // The user accepts the notification. No car plug-in event is invented, and
+    // this Flow action has no meter-reading or direct plan-rebuild side effect.
+    const planBeforeConfirmation = JSON.stringify(settings.get(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING));
+    await expect(flow._actionCardListeners.confirm_ev_car_association({
+      charger: { id: CHARGER_ID }, car: { id: CAR_ID },
+    })).resolves.toBe(true);
+    await flushDetached();
+    expect(JSON.stringify(settings.get(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING))).toBe(planBeforeConfirmation);
+    await expect(isWaiting({ charger: CHARGER_ID })).resolves.toBe(false);
+    expect(socOf(getLatestTargetSnapshotForTests())).toMatchObject({
+      source: { kind: 'car', carId: CAR_ID },
+      level: { kind: 'known', percent: 40 },
+    });
+    expect((await chargerFromUi()).associatedCar).toMatchObject({
+      carId: CAR_ID, chargingState: 'plugged_out', confirmed: true, socPct: 40,
+    });
+    expect(of('ev_car_link_confirmed')).toHaveLength(1);
+    expect((await chargerFromUi()).carConfirmation).toMatchObject({ carId: CAR_ID, available: true });
+
+    // Periodic Homey Energy readings now let the normal planner consume the
+    // adopted level and book energy for the still-requested 80% target.
+    const emittedBefore = crossings.length;
+    await pumpMinutes(2);
+    const activePlans = settings.get(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING) as {
+      plansByDeviceId?: Record<string, { latest: { energyNeededKWh: number } | null }>;
+    } | null;
+    expect(activePlans?.plansByDeviceId?.[CHARGER_ID]?.latest?.energyNeededKWh).toBeGreaterThan(0);
+    expect(flow._triggerCardTriggers.ev_car_association_waiting).toHaveLength(emittedBefore);
+    expect(putSpy.mock.calls.filter(([path]: unknown[]) => (
+      typeof path === 'string' && path.startsWith(`manager/devices/device/${CAR_ID}/capability/`)
+    ))).toEqual([]);
+
+    car.setAvailable(false);
+    await pumpMinutes(6);
+    expect((await chargerFromUi()).carConfirmation).toMatchObject({ carId: CAR_ID, available: false });
+    expect((await chargerFromUi()).associatedCar).toBeUndefined();
+    expect(socOf(getLatestTargetSnapshotForTests())).toBeUndefined();
+    await expect(isWaiting({ charger: CHARGER_ID })).resolves.toBe(false);
+    expect(flow._triggerCardTriggers.ev_car_association_waiting).toHaveLength(emittedBefore);
+
+    await api.ui_car_association_clear({ homey: mockHomeyInstance as never, body: { chargerId: CHARGER_ID } });
+    expect((await chargerFromUi()).carConfirmation).toBeUndefined();
+    await expect(isWaiting({ charger: CHARGER_ID })).resolves.toBe(true);
+    expect(settings.get(EV_CAR_ASSOCIATIONS)).toEqual({ [CHARGER_ID]: { carIds: [CAR_ID] } });
+
+    await charger.setCapabilityValue('evcharger_charging_state', 'plugged_out');
+    await pumpMinutes(6);
+    expect((await chargerFromUi()).associatedCar).toBeUndefined();
     expect(socOf(getLatestTargetSnapshotForTests())).toBeUndefined();
   });
 

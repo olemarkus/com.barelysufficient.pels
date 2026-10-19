@@ -10,6 +10,8 @@ import type { FlowHomeyLike, HomeyDeviceLike } from '../lib/utils/types';
 import type { ReportSteppedLoadActualStepResult } from '../lib/executor/steppedCommandState';
 import { registerExpectedPowerCard } from './expectedPower';
 import { registerEvChargingPhaseCard } from './evChargingPhaseCard';
+import { registerEvCarAssociationCards } from './evCarAssociationCards';
+import type { SettingsUiRecommendationCarsRead } from '../packages/contracts/src/settingsUiApi';
 import type { HeadroomCardQuery, HeadroomForDeviceDecision } from '../lib/plan/planHeadroomDevice';
 import type { ObservedHeadroom } from '../lib/power/lastTotalPower';
 import type { FlowReportedCapabilityId } from '../lib/device/transport/flowReportedCapabilities';
@@ -106,6 +108,10 @@ export type FlowCardDeps = {
    * reads as a fresh, all-absent map.
    */
   getControllableDevices: () => Readonly<Record<string, boolean>>;
+  confirmCarAssociation: (chargerId: string, carId: string) => void;
+  isWaitingForCarAssociation: (chargerId: string) => boolean;
+  getCarAssociationCarIds: (chargerId: string) => readonly string[];
+  readCarAssociationCandidates: () => SettingsUiRecommendationCarsRead;
   /** Whether PELS can drive this home battery now (the battery control owner's `readControlCapability`). */
   readBatteryControl: (deviceId: string) => HomeBatteryControlCapability | 'not_battery';
   /** The modes a device's target temperature can be set in; `null` when they cannot be read. */
@@ -197,6 +203,7 @@ export function registerFlowCards(deps: FlowCardDeps): void {
     // Last on purpose: this block is unguarded, so a registration that throws
     // takes out every card after it. The newest one goes at the end.
     registerCapacityShortfallSustainedTrigger(deps);
+    registerEvCarAssociationCards(deps);
   } finally {
     stopSpan();
   }

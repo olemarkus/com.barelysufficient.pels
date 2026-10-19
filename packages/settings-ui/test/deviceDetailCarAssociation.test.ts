@@ -1,3 +1,4 @@
+import type { EvObservedFields } from '../../contracts/src/types.ts';
 import type { SettingsUiDeviceDetailItem } from '../src/ui/deviceUtils.ts';
 
 /**
@@ -19,9 +20,13 @@ vi.mock('../src/ui/homey.ts', () => ({
   sleep: (...args: unknown[]) => sleep(...args),
   setSetting: (...args: unknown[]) => setSetting(...args),
   invalidateApiCache: vi.fn(),
+  invalidateApiCacheForAllHomes: vi.fn(),
   getHomeyTimezone: () => 'Europe/Oslo',
 }));
-vi.mock('../src/ui/toast.ts', () => ({ showToast: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../src/ui/toast.ts', () => ({
+  showToast: vi.fn().mockResolvedValue(undefined),
+  showToastError: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock('../src/ui/logging.ts', () => ({ logSettingsError: vi.fn().mockResolvedValue(undefined) }));
 
 const flush = () => new Promise<void>((resolve) => { setTimeout(() => resolve(), 0); });
@@ -37,12 +42,14 @@ const buildDom = () => {
   `;
 };
 
-const charger = (overrides: Partial<SettingsUiDeviceDetailItem> = {}): SettingsUiDeviceDetailItem => ({
+const charger = (overrides: Partial<SettingsUiDeviceDetailItem & EvObservedFields> = {}): SettingsUiDeviceDetailItem => ({
   id: 'charger-1',
   name: 'Elbillader',
   deviceClass: 'evcharger',
   isEvCharger: true,
   targets: [],
+  available: true,
+  evChargingState: 'plugged_in',
   ...overrides,
 } as SettingsUiDeviceDetailItem);
 
@@ -311,7 +318,7 @@ describe('charger car picker', () => {
     }));
     await flush();
 
-    expect(status()).toBe('Polestar 3 · Charging');
+    expect(status()).toBe('Polestar 3 · Car reports: Charging');
   });
 
   it('stops naming a car as associated once it is unticked', async () => {
@@ -330,7 +337,7 @@ describe('charger car picker', () => {
     }));
     await flush();
 
-    expect(status()).toBe('Waiting to match a car');
+    expect(status()).toBe('Waiting to identify the connected car');
   });
 
   it('names the matched car with its state and level', async () => {
@@ -347,7 +354,7 @@ describe('charger car picker', () => {
     }));
     await flush();
 
-    expect(status()).toBe('Polestar 3 · Charging · 63 %');
+    expect(status()).toBe('Polestar 3 · Car reports: Charging');
   });
 
   it('does not claim there is no car while one may still be matching', async () => {
@@ -361,7 +368,7 @@ describe('charger car picker', () => {
 
     // A match takes 20 to 40 minutes after plug-in, so the wording says what PELS
     // knows now rather than asserting the car is absent.
-    expect(status()).toBe('Waiting to match a car');
+    expect(status()).toBe('Waiting to identify the connected car');
   });
 
   it('does not claim the car is supplying a level before one is matched', async () => {
@@ -379,7 +386,7 @@ describe('charger car picker', () => {
     expect(flowNote().textContent).toContain('no battery level');
     // Both suppressed sources are named: an owner whose charger reports its own
     // level must not read a Flow-card-only warning and conclude it is free.
-    expect(flowNote().textContent).toContain('a Flow card or the charger itself');
+    expect(flowNote().textContent).toContain('Confirm which selected car is connected');
     expect(flowNote().classList.contains('field__hint--alert')).toBe(true);
   });
 
@@ -467,7 +474,7 @@ describe('charger car picker', () => {
     const hints = [...document.querySelectorAll('#device-detail-car-list .field__hint')]
       .map((element) => element.textContent);
     expect(hints).toEqual(['Matched to this charger now']);
-    expect(status()).toBe('Kia EV6 · Charging · 54 %');
+    expect(status()).toBe('Kia EV6 · Car reports: Charging');
   });
 
   it('keeps "yet" for a car whose only other match is a charger no longer in Homey', async () => {
@@ -565,7 +572,7 @@ describe('charger car picker', () => {
       .toContain('Last matched to this charger on 3 Oct');
   });
 
-  it('tells the owner to clear a selected car that has never matched this charger', async () => {
+  it('offers confirmation for a selected car that has never matched this charger', async () => {
     const { renderCarAssociation, loadEvCarAssociations } = await import(
       '../src/ui/deviceDetail/carAssociation.ts'
     );
@@ -575,8 +582,8 @@ describe('charger car picker', () => {
     await flush();
 
     expect(flowNote().textContent)
-      .toContain('This charger has no battery level until PELS matches a selected car');
-    expect(flowNote().textContent).toContain('clear the selection to keep using it');
+      .toContain('Until a car is matched, this charger has no battery level');
+    expect(flowNote().textContent).toContain('Confirm which selected car is connected');
   });
 
   it('keeps the waiting note for a selected car that has matched this charger before', async () => {
@@ -611,5 +618,124 @@ describe('charger car picker', () => {
 
     expect(document.querySelectorAll('#device-detail-car-list .field__hint')).toHaveLength(0);
     expect(flowNote().textContent).toContain('Until a car is matched, this charger has no battery level');
+  });
+});
+
+
+describe('confirming the connected car', () => {
+  it('confirms only a selected car and shows the authoritative response with its reported state', async () => {
+    const { renderCarAssociation, loadEvCarAssociations } = await import('../src/ui/deviceDetail/carAssociation.ts');
+    getSetting.mockResolvedValue({ 'charger-1': { carIds: ['car-1'] } });
+    await loadEvCarAssociations();
+    renderCarAssociation(charger());
+    await flush();
+    const button = document.querySelector<HTMLElement>('.detail-car-confirm');
+    expect(button?.getAttribute('aria-label')).toBe('Confirm Polestar 3 as the connected car');
+    const stateOfCharge = { level: { kind: 'known', percent: 63, observedAtMs: 1_000 } };
+    callApi.mockResolvedValueOnce({
+      carConfirmation: { carId: 'car-1', carName: 'Polestar 3', available: true },
+      associatedCar: {
+        carId: 'car-1', carName: 'Polestar 3', confirmed: true,
+        chargingState: 'plugged_out', chargingStateObservedAtMs: 1_000, socPct: 63,
+      },
+      stateOfCharge,
+    });
+    const { state } = await import('../src/ui/state.ts');
+    state.latestDevices = [charger()];
+    button?.click();
+    await flush();
+    expect(callApi).toHaveBeenLastCalledWith('POST', '/ui_car_association_confirm', {
+      chargerId: 'charger-1', carId: 'car-1',
+    });
+    expect(status()).toContain('Car app reports:');
+    expect(status()).not.toContain('63 %');
+    const updated: SettingsUiDeviceDetailItem = state.latestDevices[0];
+    expect(updated.stateOfCharge).toEqual(stateOfCharge);
+    expect(document.querySelector('#device-detail-car-list')?.textContent).toContain('Polestar 3 · confirmed for this connection');
+    expect(document.querySelector('.detail-car-confirm')).toBeNull();
+  });
+
+  it('clears the previous charger level when the confirmed car has no battery reading', async () => {
+    const { renderCarAssociation, loadEvCarAssociations } = await import('../src/ui/deviceDetail/carAssociation.ts');
+    const { state } = await import('../src/ui/state.ts');
+    getSetting.mockResolvedValue({ 'charger-1': { carIds: ['car-1'] } });
+    await loadEvCarAssociations();
+    const device = charger({ stateOfCharge: { level: { kind: 'known', percent: 70, observedAtMs: 1_000 } } });
+    state.latestDevices = [device];
+    renderCarAssociation(device);
+    await flush();
+    callApi.mockResolvedValueOnce({
+      carConfirmation: { carId: 'car-1', carName: 'Polestar 3', available: true },
+      associatedCar: {
+        carId: 'car-1', carName: 'Polestar 3', confirmed: true,
+        chargingState: 'plugged_out', chargingStateObservedAtMs: 1_000,
+      },
+    });
+    document.querySelector<HTMLElement>('.detail-car-confirm')?.click();
+    await flush();
+    const updated: SettingsUiDeviceDetailItem = state.latestDevices[0];
+    expect(updated.stateOfCharge).toBeUndefined();
+    expect(flowNote().textContent).toContain('has not reported a battery level');
+  });
+
+  it('keeps confirmed identity visible when the car app is unavailable', async () => {
+    const { renderCarAssociation, loadEvCarAssociations } = await import('../src/ui/deviceDetail/carAssociation.ts');
+    getSetting.mockResolvedValue({ 'charger-1': { carIds: ['car-1'] } });
+    await loadEvCarAssociations();
+    renderCarAssociation(charger({
+      carConfirmation: { carId: 'car-1', carName: 'Polestar 3', available: false },
+    }));
+    await flush();
+    expect(status()).toBe('Car app unavailable');
+    expect(document.querySelector('#device-detail-car-list')?.textContent)
+      .toContain('Polestar 3 · confirmed for this connection');
+    expect(flowNote().textContent).toContain('Battery level will return');
+    expect(flowNote().textContent).not.toContain('Confirm which');
+    expect(document.querySelector('.detail-car-confirm')).toBeNull();
+    expect(document.querySelector('.detail-car-clear')).not.toBeNull();
+  });
+
+  it('clears confirmation and its battery level, then offers confirmation again', async () => {
+    const { renderCarAssociation, loadEvCarAssociations } = await import('../src/ui/deviceDetail/carAssociation.ts');
+    const { state } = await import('../src/ui/state.ts');
+    getSetting.mockResolvedValue({ 'charger-1': { carIds: ['car-1'] } });
+    await loadEvCarAssociations();
+    const device = charger({
+      carConfirmation: { carId: 'car-1', carName: 'Polestar 3', available: true },
+      associatedCar: {
+        carId: 'car-1', carName: 'Polestar 3', confirmed: true,
+        chargingState: 'plugged_out', chargingStateObservedAtMs: 1_000, socPct: 63,
+      },
+      stateOfCharge: { level: { kind: 'known', percent: 63, observedAtMs: 1_000 } },
+    });
+    state.latestDevices = [device];
+    renderCarAssociation(device);
+    await flush();
+    callApi.mockResolvedValueOnce({});
+    document.querySelector<HTMLElement>('.detail-car-clear')?.click();
+    await flush();
+    expect(callApi).toHaveBeenLastCalledWith('POST', '/ui_car_association_clear', { chargerId: 'charger-1' });
+    const updated: SettingsUiDeviceDetailItem = state.latestDevices[0];
+    expect(updated.carConfirmation).toBeUndefined();
+    expect(updated.associatedCar).toBeUndefined();
+    expect(updated.stateOfCharge).toBeUndefined();
+    expect(status()).toBe('Waiting to identify the connected car');
+    expect(document.querySelector('.detail-car-clear')).toBeNull();
+    expect(document.querySelector('.detail-car-confirm')).not.toBeNull();
+  });
+
+  it('does not offer confirmation for an unplugged charger or an unselected car', async () => {
+    const { renderCarAssociation, loadEvCarAssociations } = await import('../src/ui/deviceDetail/carAssociation.ts');
+    renderCarAssociation(charger());
+    await flush();
+    expect(document.querySelector('.detail-car-confirm')).toBeNull();
+    getSetting.mockResolvedValue({ 'charger-1': { carIds: ['car-1'] } });
+    await loadEvCarAssociations();
+    renderCarAssociation(charger({ evChargingState: 'plugged_out' }));
+    expect(status()).toBe('No car connected');
+    expect(flowNote().hidden).toBe(true);
+    expect(flowNote().textContent).toBe('');
+    expect(flowNote().classList.contains('field__hint--alert')).toBe(false);
+    expect(document.querySelector('.detail-car-confirm')).toBeNull();
   });
 });
