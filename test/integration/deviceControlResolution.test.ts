@@ -434,10 +434,7 @@ describe('device owner control resolution', () => {
     const transport = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       logger,
-      {
-        getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' }),
-        getDeviceTargetPowerConfig: () => ({ preset: 'ev_charger_1_phase', max: 7360 }),
-      },
+      { settings: { getDeviceTargetPowerConfig: () => ({ preset: 'ev_charger_1_phase', max: 7360 }) } },
     );
     const device = (currentLimit: unknown): HomeyDeviceLike => ({
       id: 'futurehome', name: 'Futurehome', class: 'evcharger', driverId: 'homey:app:no.futurehome:ev_charger',
