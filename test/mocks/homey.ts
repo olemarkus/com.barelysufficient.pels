@@ -628,6 +628,15 @@ export const mockHomeyInstance = {
       throw new Error(`Mock API POST not implemented for: ${path}`);
     },
   },
+  dashboards: {
+    _settingAutocompleteListeners: {} as Record<string, Record<string, (query: string) => unknown>>,
+    getWidget: (widgetId: string) => ({
+      registerSettingAutocompleteListener: (name: string, listener: (query: string) => unknown) => {
+        const listeners = mockHomeyInstance.dashboards._settingAutocompleteListeners;
+        listeners[widgetId] = { ...listeners[widgetId], [name]: listener };
+      },
+    }),
+  },
   flow: {
     _tokens: {} as Record<string, MockFlowToken>,
     _actionCardListeners: {} as Record<string, (args: unknown) => Promise<unknown>>,

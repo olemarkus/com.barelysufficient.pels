@@ -22,7 +22,7 @@ import {
 // payload-agnostic (it takes price series + scheduled hours), and esbuild bundles
 // it into this widget's `public/index.js` — so the confirm sheet renders the
 // identical chart with no duplicated render logic.
-import { renderPreviewChart } from '../../../create_smart_task/src/public/previewChart';
+import { renderPreviewChart } from '../../../_shared/smartTaskCreate/previewChart';
 import { clearChildren, hide, setLine, setVisible } from '../../../_shared/widgetDom';
 import { formatPreviewCostLine, formatPreviewEnergyLine } from '../../../_shared/smartTaskPreviewLines';
 import type {

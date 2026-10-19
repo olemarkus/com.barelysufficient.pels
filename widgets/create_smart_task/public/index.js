@@ -812,160 +812,162 @@
   };
   var widgetErrorReporter = (widget, getHomey) => createWidgetErrorReporter({ widget, getHomey, now: () => Date.now() });
 
-  // widgets/create_smart_task/src/public/previewPayloads.ts
-  var PREVIEW_CREATE_SMART_TASK_PAYLOADS = {
-    // Gallery thumbnail: one temperature device and one EV charger so the gallery
-    // shows both goal kinds (°C stepper and % stepper).
-    default: {
-      state: "ready",
-      devices: [
-        {
-          deviceId: "preview-hot-water",
-          deviceName: "Hot water",
-          kind: "temperature",
-          unitSymbol: "\xB0C",
-          goalMin: 5,
-          goalMax: 85,
-          goalStep: 0.5,
-          defaultGoal: 65,
-          currentValue: 48,
-          supportsLimitLowerPriority: false,
-          offersQuickTargets: true
-        },
-        {
-          deviceId: "preview-ev",
-          deviceName: "Driveway charger",
-          kind: "ev_soc",
-          unitSymbol: "%",
-          goalMin: 1,
-          goalMax: 100,
-          goalStep: 1,
-          defaultGoal: 80,
-          currentValue: 42,
-          supportsLimitLowerPriority: true,
-          offersQuickTargets: true
+  // widgets/_shared/widgetDom.ts
+  var clearChildren = (node) => {
+    while (node.firstChild) node.removeChild(node.firstChild);
+  };
+  var setLine = (el, text) => {
+    const visible = Boolean(text && text.trim());
+    el.textContent = visible ? text : "";
+    el.hidden = !visible;
+  };
+  var hide = (el) => {
+    el.hidden = true;
+  };
+  var setVisible = (el, visible) => {
+    el.hidden = !visible;
+  };
+  var closestDataValue = (target, selector, key) => {
+    const el = target.closest(selector);
+    return el instanceof HTMLElement ? el.dataset[key] ?? null : null;
+  };
+
+  // widgets/_shared/widgetHeight.ts
+  var createHeightReporter = (root, widgetWindow, getHomey) => {
+    let observer = null;
+    let lastReportedHeight = 0;
+    const report = () => {
+      const homey = getHomey();
+      if (!homey?.setHeight) return;
+      const bodyStyle = widgetWindow.getComputedStyle(root.ownerDocument.body);
+      const bodyPadding = (Number.parseFloat(bodyStyle.paddingTop) || 0) + (Number.parseFloat(bodyStyle.paddingBottom) || 0);
+      const height = Math.ceil(root.getBoundingClientRect().height + bodyPadding);
+      if (height <= 0 || height === lastReportedHeight) return;
+      lastReportedHeight = height;
+      homey.setHeight(height);
+    };
+    return {
+      observe: () => {
+        if (observer || typeof widgetWindow.ResizeObserver !== "function") return;
+        observer = new widgetWindow.ResizeObserver(() => report());
+        observer.observe(root);
+      },
+      disconnect: () => {
+        observer?.disconnect();
+        observer = null;
+      }
+    };
+  };
+  var installHeightReportingWidget = (widgetWindow, widgetDocument, resolveTargets2, createController) => {
+    let activeHomey = null;
+    let heightReporter = null;
+    return installWidget({
+      widgetWindow,
+      widgetDocument,
+      resolveTargets: resolveTargets2,
+      createController: ({ targets, widgetDocument: doc, widgetWindow: win }) => {
+        heightReporter = createHeightReporter(targets.root, win, () => activeHomey);
+        return createController(targets, doc, win, () => heightReporter?.observe());
+      },
+      onHomeyClient: (homey) => {
+        activeHomey = homey;
+      },
+      wrapController: (controller) => ({
+        ...controller,
+        destroy: () => {
+          controller.destroy();
+          heightReporter?.disconnect();
+          activeHomey = null;
         }
-      ]
-    },
-    // A longer list (eight eligible devices, grouped thermostats → water heaters →
-    // EV) so the picker overflows the widget's fixed height — the harness can then
-    // show how the cut-off list reads with no visible scroll affordance.
-    overflow: {
-      state: "ready",
-      devices: [
-        {
-          deviceId: "preview-living",
-          deviceName: "Living room",
-          kind: "temperature",
-          unitSymbol: "\xB0C",
-          goalMin: 5,
-          goalMax: 30,
-          goalStep: 0.5,
-          defaultGoal: 21,
-          currentValue: 19.5,
-          supportsLimitLowerPriority: false,
-          offersQuickTargets: true
-        },
-        {
-          deviceId: "preview-bedroom",
-          deviceName: "Bedroom",
-          kind: "temperature",
-          unitSymbol: "\xB0C",
-          goalMin: 5,
-          goalMax: 30,
-          goalStep: 0.5,
-          defaultGoal: 18,
-          currentValue: 17.2,
-          supportsLimitLowerPriority: false,
-          offersQuickTargets: true
-        },
-        {
-          deviceId: "preview-bathroom-floor",
-          deviceName: "Bathroom floor",
-          kind: "temperature",
-          unitSymbol: "\xB0C",
-          goalMin: 5,
-          goalMax: 35,
-          goalStep: 0.5,
-          defaultGoal: 24,
-          currentValue: 22.1,
-          supportsLimitLowerPriority: false,
-          offersQuickTargets: true
-        },
-        {
-          deviceId: "preview-office",
-          deviceName: "Office",
-          kind: "temperature",
-          unitSymbol: "\xB0C",
-          goalMin: 5,
-          goalMax: 30,
-          goalStep: 0.5,
-          defaultGoal: 20,
-          currentValue: 20.4,
-          supportsLimitLowerPriority: false,
-          offersQuickTargets: true
-        },
-        {
-          deviceId: "preview-hot-water",
-          deviceName: "Hot water",
-          kind: "temperature",
-          unitSymbol: "\xB0C",
-          goalMin: 5,
-          goalMax: 85,
-          goalStep: 0.5,
-          defaultGoal: 65,
-          currentValue: 48,
-          supportsLimitLowerPriority: false,
-          offersQuickTargets: true
-        },
-        {
-          deviceId: "preview-cabin-water",
-          deviceName: "Cabin water heater",
-          kind: "temperature",
-          unitSymbol: "\xB0C",
-          goalMin: 5,
-          goalMax: 85,
-          goalStep: 0.5,
-          defaultGoal: 60,
-          currentValue: 55,
-          supportsLimitLowerPriority: false,
-          offersQuickTargets: true
-        },
-        {
-          deviceId: "preview-ev",
-          deviceName: "Driveway charger",
-          kind: "ev_soc",
-          unitSymbol: "%",
-          goalMin: 1,
-          goalMax: 100,
-          goalStep: 1,
-          defaultGoal: 80,
-          currentValue: 42,
-          supportsLimitLowerPriority: true,
-          offersQuickTargets: true
-        },
-        {
-          deviceId: "preview-ev-guest",
-          deviceName: "Guest charger",
-          kind: "ev_soc",
-          unitSymbol: "%",
-          goalMin: 1,
-          goalMax: 100,
-          goalStep: 1,
-          defaultGoal: 80,
-          currentValue: 30,
-          supportsLimitLowerPriority: true,
-          offersQuickTargets: true
-        }
-      ]
+      })
+    });
+  };
+
+  // widgets/_shared/smartTaskCreate/flowClient.ts
+  var HOUR_MS = 60 * 60 * 1e3;
+  var PREVIEW_NEXT_HOUR_MS = (() => {
+    const base = /* @__PURE__ */ new Date();
+    base.setHours(19, 0, 0, 0);
+    return base.getTime();
+  })();
+  var PREVIEW_PRICE_CURVE = [92, 79, 74, 63, 59, 66, 51, 44, 48, 69, 81, 107, 119];
+  var PREVIEW_SCHEDULED_INDEX = [7, 8];
+  var PREVIEW_RESPONSE = {
+    ok: true,
+    deadlineAtMs: PREVIEW_NEXT_HOUR_MS + 12 * HOUR_MS,
+    deadlineLabel: "Tomorrow 07:00",
+    // Server-formatted in real responses; a fixed demo window here.
+    scheduledWindowLabel: "02:00\u201304:00",
+    estimate: {
+      budgetRole: "none",
+      status: "on_track",
+      scheduledHours: PREVIEW_SCHEDULED_INDEX.map((index) => ({
+        startsAtMs: PREVIEW_NEXT_HOUR_MS + index * HOUR_MS,
+        plannedKWh: 2
+      })),
+      projectedFinishAtMs: PREVIEW_NEXT_HOUR_MS + 9 * HOUR_MS,
+      energyEstimateKWh: 4,
+      energyExpectedKWh: 3.6,
+      costEstimate: 4.2,
+      costUnit: "kr",
+      priceSeries: PREVIEW_PRICE_CURVE.map((price, index) => ({
+        startsAtMs: PREVIEW_NEXT_HOUR_MS + index * HOUR_MS,
+        price
+      }))
     }
   };
-  var PREVIEW_CREATE_SMART_TASK_DEVICES = PREVIEW_CREATE_SMART_TASK_PAYLOADS.default;
-  var resolveCreateSmartTaskPreviewPayload = (state) => state !== null && Object.prototype.hasOwnProperty.call(PREVIEW_CREATE_SMART_TASK_PAYLOADS, state) ? PREVIEW_CREATE_SMART_TASK_PAYLOADS[state] : PREVIEW_CREATE_SMART_TASK_DEVICES;
+  var PREVIEW_QUICK_TARGETS = {
+    state: "ready",
+    targets: [[65, "20:00", "19:30"], [70, "21:00", "20:20"], [75, "21:30", "21:10"], [80, "22:30", "22:00"]].map(([target, by, likely], index) => ({
+      target,
+      deadlineAtMs: PREVIEW_NEXT_HOUR_MS + (index + 1) * HOUR_MS,
+      readyByLocalTime: by,
+      deadlineLabel: `Today ${by}`,
+      likelyFinishLocalTime: likely,
+      estimate: { ...PREVIEW_RESPONSE.estimate, energyEstimateKWh: 3.4 + index, costEstimate: 5.2 + index }
+    }))
+  };
+  var PREVIEW_CLIENT = {
+    quickTargets: async () => PREVIEW_QUICK_TARGETS,
+    preview: async () => PREVIEW_RESPONSE,
+    create: async () => ({ ok: true })
+  };
+  var createSmartTaskCreateClient = (getHomey, usePreviewData, reporter) => {
+    const call = async (path, body, refused, failure) => {
+      const homey = getHomey();
+      if (!homey) return refused;
+      try {
+        return await homey.api("POST", path, body);
+      } catch (error) {
+        reporter.report("error", failure, error);
+        return refused;
+      }
+    };
+    return {
+      quickTargets: (deviceId) => usePreviewData() ? PREVIEW_CLIENT.quickTargets(deviceId) : call(
+        "/quick_targets",
+        { deviceId },
+        { state: "rejected", reason: "unavailable" },
+        "Failed to load smart task quick targets"
+      ),
+      preview: (request) => usePreviewData() ? PREVIEW_CLIENT.preview(request) : call(
+        "/preview",
+        request,
+        { ok: false, reason: "unavailable" },
+        "Failed to preview smart task"
+      ),
+      create: (request) => usePreviewData() ? PREVIEW_CLIENT.create(request) : call(
+        "/create",
+        request,
+        { ok: false, reason: "unavailable" },
+        "Failed to create smart task"
+      )
+    };
+  };
 
   // packages/shared-domain/src/smartTaskDeadlineFormat.ts
-  var HOUR_MS = 60 * 60 * 1e3;
-  var DAY_MS = 24 * HOUR_MS;
+  var HOUR_MS2 = 60 * 60 * 1e3;
+  var DAY_MS = 24 * HOUR_MS2;
   var formatLocalHHMMFallback = (date) => `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
   var formatLocalHHMM = (ms, timeZone) => {
     const date = new Date(ms);
@@ -1032,47 +1034,6 @@
     return `cheapest hours ${tail}`;
   };
 
-  // packages/shared-domain/src/smartTaskDevicePickerOrder.ts
-  var SMART_TASK_DEVICE_GROUP_ORDER = [
-    "heating",
-    "ev_charger"
-  ];
-  var resolveSmartTaskDeviceGroup = (device) => device.kind === "ev_soc" ? "ev_charger" : "heating";
-  var SMART_TASK_DEVICE_PICKER_COPY = {
-    // One-line eligibility hint under "Choose a device" — a smart task is a goal
-    // on a device PELS manages, so only those appear here. Frames the subset as
-    // intentional rather than a mystery.
-    eligibilityCaption: "Managed heating devices and EV chargers.",
-    groupIconLabels: {
-      heating: "Heating",
-      ev_charger: "EV charger"
-    }
-  };
-  var resolveSmartTaskDeviceGroupIconLabel = (group) => SMART_TASK_DEVICE_PICKER_COPY.groupIconLabels[group];
-  var GROUP_RANK = Object.fromEntries(
-    SMART_TASK_DEVICE_GROUP_ORDER.map((group, index) => [group, index])
-  );
-
-  // widgets/_shared/widgetDom.ts
-  var clearChildren = (node) => {
-    while (node.firstChild) node.removeChild(node.firstChild);
-  };
-  var setLine = (el, text) => {
-    const visible = Boolean(text && text.trim());
-    el.textContent = visible ? text : "";
-    el.hidden = !visible;
-  };
-  var hide = (el) => {
-    el.hidden = true;
-  };
-  var setVisible = (el, visible) => {
-    el.hidden = !visible;
-  };
-  var closestDataValue = (target, selector, key) => {
-    const el = target.closest(selector);
-    return el instanceof HTMLElement ? el.dataset[key] ?? null : null;
-  };
-
   // widgets/_shared/widgetSvg.ts
   var SVG_NS = "http://www.w3.org/2000/svg";
   var createSvg = (chartDocument, tagName, attributes = {}, textContent = "") => {
@@ -1087,7 +1048,7 @@
     return node;
   };
 
-  // widgets/create_smart_task/src/public/previewChart.ts
+  // widgets/_shared/smartTaskCreate/previewChart.ts
   var VIEW = { width: 480, height: 108 };
   var PLOT = { left: 10, right: 470, top: 14, bottom: 104 };
   var PLOT_WIDTH = PLOT.right - PLOT.left;
@@ -1204,74 +1165,10 @@
     });
   };
 
-  // widgets/create_smart_task/src/public/render.ts
+  // widgets/_shared/smartTaskCreate/flowRender.ts
   var formatQuickTargetDeadline = (localTime) => `by ${localTime}`;
   var formatQuickTargetTiming = (deadlineLabel, likelyFinishLocalTime) => likelyFinishLocalTime === null ? `Ready by ${deadlineLabel}` : `Ready by ${deadlineLabel} \xB7 likely done around ${likelyFinishLocalTime}`;
   var C = CREATE_SMART_TASK_WIDGET_COPY;
-  var renderDeviceRow = (template, device) => {
-    const fragment = template.content.cloneNode(true);
-    const li = fragment.querySelector(".row");
-    if (!(li instanceof HTMLElement)) throw new Error("device template missing .row");
-    const button = li.querySelector("[data-device-button]");
-    if (button instanceof HTMLElement) {
-      button.dataset.deviceId = device.deviceId;
-      button.setAttribute("aria-label", `${device.deviceName}, ${C.pickDevicePrompt}`);
-    }
-    const iconEl = li.querySelector("[data-device-icon]");
-    if (iconEl instanceof HTMLElement) {
-      const group = resolveSmartTaskDeviceGroup(device);
-      iconEl.dataset.group = group;
-      iconEl.setAttribute("aria-label", resolveSmartTaskDeviceGroupIconLabel(group));
-    }
-    const nameEl = li.querySelector("[data-device-name]");
-    const metaEl = li.querySelector("[data-device-meta]");
-    if (nameEl instanceof HTMLElement) nameEl.textContent = device.deviceName;
-    if (metaEl instanceof HTMLElement) {
-      metaEl.textContent = formatSmartTaskNowValueLine({
-        currentValue: device.currentValue,
-        unitSymbol: device.unitSymbol
-      }) ?? formatSmartTaskUnknownNowValueLine(device.kind);
-    }
-    return li;
-  };
-  var renderPicker = (targets, payload) => {
-    const {
-      pickerPrompt,
-      pickerCaption,
-      pickerList,
-      pickerEmpty,
-      pickerEmptyHint,
-      pickerRetryBtn,
-      deviceTemplate
-    } = targets;
-    pickerPrompt.textContent = C.pickDevicePrompt;
-    clearChildren(pickerList);
-    if (!payload || payload.state !== "ready") {
-      const isError = !payload || payload.state === "error";
-      setLine(pickerCaption, null);
-      pickerList.hidden = true;
-      pickerEmpty.hidden = false;
-      pickerEmpty.textContent = payload?.state === "empty" ? payload.subtitle : C.loadError;
-      const hint = payload?.state === "empty" ? payload.hint : null;
-      if (hint) {
-        pickerEmptyHint.hidden = false;
-        pickerEmptyHint.textContent = hint;
-      } else {
-        pickerEmptyHint.hidden = true;
-      }
-      pickerRetryBtn.hidden = !isError;
-      pickerRetryBtn.textContent = C.loadErrorRetry;
-      return;
-    }
-    setLine(pickerCaption, SMART_TASK_DEVICE_PICKER_COPY.eligibilityCaption);
-    pickerList.hidden = false;
-    pickerEmpty.hidden = true;
-    pickerEmptyHint.hidden = true;
-    pickerRetryBtn.hidden = true;
-    for (const device of payload.devices) {
-      pickerList.appendChild(renderDeviceRow(deviceTemplate, device));
-    }
-  };
   var resolveReadyByEcho = (readyByLocalTime) => {
     const match = readyByLocalTime.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
     if (!match) return null;
@@ -1473,18 +1370,13 @@
     setLine(targets.previewErrorEl, error);
     createBtn.disabled = submitting || !canCreateFromPreview(response);
   };
-  var renderWidget = (targets, payload, view) => {
-    const { root, pickerView, quickView, composeView, previewView, createdView, createdMsgEl } = targets;
-    root.dataset.view = view.kind;
-    setVisible(pickerView, view.kind === "picker");
-    setVisible(quickView, view.kind === "quick");
-    setVisible(composeView, view.kind === "compose");
-    setVisible(previewView, view.kind === "preview");
-    setVisible(createdView, view.kind === "created");
-    if (view.kind === "picker") {
-      renderPicker(targets, payload);
-      return;
-    }
+  var renderFlow = (targets, view) => {
+    const { quickView, composeView, previewView, createdView, createdMsgEl } = targets;
+    setVisible(quickView, view?.kind === "quick");
+    setVisible(composeView, view?.kind === "compose");
+    setVisible(previewView, view?.kind === "preview");
+    setVisible(createdView, view?.kind === "created");
+    if (view === null) return;
     if (view.kind === "quick") {
       renderQuick(targets, view);
       return;
@@ -1500,7 +1392,7 @@
     createdMsgEl.textContent = C.created;
   };
 
-  // widgets/create_smart_task/src/public/viewTransitions.ts
+  // widgets/_shared/smartTaskCreate/flowTransitions.ts
   var CREATE_SMART_TASK_DEFAULT_READY_BY = "07:00";
   var initialComposeView = (device, origin, start) => ({
     kind: "compose",
@@ -1556,7 +1448,7 @@
         limitLowerPriorityDevices: view.limitLowerPriorityDevices
       };
     }
-    return { kind: "picker" };
+    return null;
   };
   var buildCandidateRequest = (source, deadlineAtMs) => source.goal === null ? null : {
     deviceId: source.device.deviceId,
@@ -1584,7 +1476,7 @@
     return view;
   };
   var quickLoadingView = (device) => ({ kind: "quick", device, quick: { kind: "loading" }, submitting: false, error: null });
-  var deviceSelectedView = (device) => device.offersQuickTargets ? quickLoadingView(device) : initialComposeView(device, { kind: "picker" });
+  var flowStartView = (device) => device.offersQuickTargets ? quickLoadingView(device) : initialComposeView(device, { kind: "entry" });
   var quickTargetsLoadedView = (view, response) => {
     if (response.state === "rejected") {
       return {
@@ -1593,7 +1485,7 @@
         error: resolveCreateSmartTaskRejectCopy(response.reason)
       };
     }
-    return response.state === "ready" && response.targets.length > 0 ? { ...view, quick: { kind: "ready", targets: response.targets, selected: 0 } } : initialComposeView(view.device, { kind: "picker" });
+    return response.state === "ready" && response.targets.length > 0 ? { ...view, quick: { kind: "ready", targets: response.targets, selected: 0 } } : initialComposeView(view.device, { kind: "entry" });
   };
   var submittableRequest = (view) => {
     if (view.kind === "preview") {
@@ -1605,7 +1497,7 @@
     return target ? buildQuickTargetRequest(view.device, target) : null;
   };
 
-  // widgets/create_smart_task/src/public/clickActions.ts
+  // widgets/_shared/smartTaskCreate/flowClicks.ts
   var VIEW_CLICK_KINDS = [
     "select-quick",
     "quick-customize",
@@ -1638,19 +1530,16 @@
       }
     }
   };
-  var resolveQuickClickAction = (eventTarget) => {
+  var resolveQuickFlowClickAction = (eventTarget) => {
     const quickIndex = closestDataValue(eventTarget, "[data-quick-target]", "quickIndex");
     if (quickIndex) return { kind: "select-quick", index: Number(quickIndex) };
     if (eventTarget.closest("[data-quick-start]")) return { kind: "submit" };
     if (eventTarget.closest("[data-quick-customize]")) return { kind: "quick-customize" };
     return null;
   };
-  var resolveClickAction = (eventTarget) => {
+  var resolveFlowClickAction = (eventTarget) => {
     if (!(eventTarget instanceof Element)) return null;
-    const deviceId = closestDataValue(eventTarget, "[data-device-button]", "deviceId");
-    if (deviceId) return { kind: "select-device", deviceId };
-    if (eventTarget.closest("[data-picker-retry]")) return { kind: "retry-load" };
-    const quickAction = resolveQuickClickAction(eventTarget);
+    const quickAction = resolveQuickFlowClickAction(eventTarget);
     if (quickAction) return quickAction;
     if (eventTarget.closest("[data-goal-dec]")) return { kind: "goal-dec" };
     if (eventTarget.closest("[data-goal-inc]")) return { kind: "goal-inc" };
@@ -1664,179 +1553,468 @@
     return null;
   };
 
-  // widgets/create_smart_task/src/public/widgetApp.ts
+  // widgets/_shared/smartTaskCreate/flowController.ts
   var C2 = CREATE_SMART_TASK_WIDGET_COPY;
   var CREATED_FLASH_MS = 1800;
-  var createHeightReporter = (root, widgetWindow, getHomey) => {
-    let observer = null;
-    let lastReportedHeight = 0;
-    const report = () => {
-      const homey = getHomey();
-      if (!homey?.setHeight) return;
-      const bodyStyle = widgetWindow.getComputedStyle(root.ownerDocument.body);
-      const bodyPadding = (Number.parseFloat(bodyStyle.paddingTop) || 0) + (Number.parseFloat(bodyStyle.paddingBottom) || 0);
-      const height = Math.ceil(root.getBoundingClientRect().height + bodyPadding);
-      if (height <= 0 || height === lastReportedHeight) return;
-      lastReportedHeight = height;
-      homey.setHeight(height);
+  var createSmartTaskCreateFlow = (targets, widgetWindow, client, host) => {
+    let view = null;
+    let destroyed = false;
+    let flashTimer = null;
+    let requestSeq = 0;
+    const render = () => {
+      renderFlow(targets, view);
+      host.onRender();
+    };
+    const close = () => {
+      view = null;
+      requestSeq += 1;
+      render();
+    };
+    const setView = (next) => {
+      if (next === view) return;
+      if (next === null) {
+        close();
+        return;
+      }
+      view = next;
+      requestSeq += 1;
+      render();
+    };
+    const loadQuickTargets = async () => {
+      if (view?.kind !== "quick" || view.quick.kind !== "loading") return;
+      const token = ++requestSeq;
+      const response = await client.quickTargets(view.device.deviceId);
+      if (destroyed || token !== requestSeq || view?.kind !== "quick") return;
+      view = quickTargetsLoadedView(view, response);
+      render();
+    };
+    const enterView = (next) => {
+      setView(next);
+      if (view?.kind === "quick" && view.quick.kind === "loading") void loadQuickTargets();
+    };
+    const runPreview = async () => {
+      if (view?.kind !== "compose") return;
+      if (!targets.goalValueEl.reportValidity() || !targets.readyByInput.reportValidity()) return;
+      const request = buildCandidateRequest(view);
+      if (request === null) return;
+      const token = ++requestSeq;
+      const { previewBtn } = targets;
+      previewBtn.disabled = true;
+      previewBtn.textContent = C2.previewing;
+      const response = await client.preview(request);
+      if (destroyed || token !== requestSeq || view?.kind !== "compose") return;
+      view = { ...view, kind: "preview", goal: request.target, response, submitting: false, error: null };
+      render();
+    };
+    const startCreatedFlash = () => {
+      if (flashTimer !== null) widgetWindow.clearTimeout(flashTimer);
+      flashTimer = widgetWindow.setTimeout(() => {
+        flashTimer = null;
+        if (destroyed) return;
+        const token = requestSeq;
+        void host.reloadAfterCreate().then(() => {
+          if (!destroyed && token === requestSeq && view?.kind === "created") close();
+        });
+      }, CREATED_FLASH_MS);
+    };
+    const submit = async () => {
+      if (view === null) return;
+      const request = submittableRequest(view);
+      if (request === null || view.kind !== "quick" && view.kind !== "preview") return;
+      const kind = view.kind;
+      view = { ...view, submitting: true, error: null };
+      const token = ++requestSeq;
+      render();
+      const result = await client.create(request);
+      if (destroyed || token !== requestSeq || view?.kind !== kind) return;
+      view = result.ok ? { kind: "created" } : { ...view, submitting: false, error: resolveCreateSmartTaskRejectCopy(result.reason) };
+      render();
+      if (result.ok) startCreatedFlash();
+    };
+    const handleClick = (event) => {
+      if (view === null) return;
+      const action = resolveFlowClickAction(event.target);
+      if (action === null) return;
+      if (isViewClickAction(action)) {
+        setView(clickedView(action, view, targets));
+        return;
+      }
+      switch (action.kind) {
+        case "preview":
+          void runPreview();
+          break;
+        case "submit":
+          void submit();
+          break;
+        case "back":
+          enterView(backView(view));
+          break;
+        default:
+          assertUnhandledClick(action);
+      }
     };
     return {
-      observe: () => {
-        if (observer || typeof widgetWindow.ResizeObserver !== "function") return;
-        observer = new widgetWindow.ResizeObserver(() => report());
-        observer.observe(root);
+      open: (device) => enterView(flowStartView(device)),
+      isOpen: () => view !== null,
+      currentStep: () => view?.kind ?? null,
+      handleClick,
+      handleInput: (event) => {
+        if (view !== null) setView(editedInputView(view, event.target, targets));
       },
-      disconnect: () => {
-        observer?.disconnect();
-        observer = null;
+      destroy: () => {
+        destroyed = true;
+        if (flashTimer !== null) widgetWindow.clearTimeout(flashTimer);
+        flashTimer = null;
       }
     };
   };
-  var HOUR_MS2 = 60 * 60 * 1e3;
-  var PREVIEW_NEXT_HOUR_MS = (() => {
-    const base = /* @__PURE__ */ new Date();
-    base.setHours(19, 0, 0, 0);
-    return base.getTime();
-  })();
-  var PREVIEW_PRICE_CURVE = [92, 79, 74, 63, 59, 66, 51, 44, 48, 69, 81, 107, 119];
-  var PREVIEW_SCHEDULED_INDEX = [7, 8];
-  var PREVIEW_RESPONSE = {
-    ok: true,
-    deadlineAtMs: PREVIEW_NEXT_HOUR_MS + 12 * HOUR_MS2,
-    deadlineLabel: "Tomorrow 07:00",
-    // Server-formatted in real responses; a fixed demo window here.
-    scheduledWindowLabel: "02:00\u201304:00",
-    estimate: {
-      budgetRole: "none",
-      status: "on_track",
-      scheduledHours: PREVIEW_SCHEDULED_INDEX.map((index) => ({
-        startsAtMs: PREVIEW_NEXT_HOUR_MS + index * HOUR_MS2,
-        plannedKWh: 2
-      })),
-      projectedFinishAtMs: PREVIEW_NEXT_HOUR_MS + 9 * HOUR_MS2,
-      energyEstimateKWh: 4,
-      energyExpectedKWh: 3.6,
-      costEstimate: 4.2,
-      costUnit: "kr",
-      priceSeries: PREVIEW_PRICE_CURVE.map((price, index) => ({
-        startsAtMs: PREVIEW_NEXT_HOUR_MS + index * HOUR_MS2,
-        price
-      }))
+
+  // widgets/_shared/smartTaskCreate/flowView.ts
+  var FLOW_ELEMENTS = {
+    quickView: "[data-quick-view]",
+    quickTitle: "[data-quick-title]",
+    quickStatusEl: "[data-quick-status]",
+    quickList: "[data-quick-list]",
+    quickSummaryEl: "[data-quick-summary]",
+    quickFinishEl: "[data-quick-finish]",
+    quickErrorEl: "[data-quick-error]",
+    composeView: "[data-compose-view]",
+    composeTitle: "[data-compose-title]",
+    goalLabel: "[data-goal-label]",
+    goalUnitEl: "[data-goal-unit]",
+    goalContextEl: "[data-goal-context]",
+    readyByLabel: "[data-ready-by-label]",
+    readyByEchoEl: "[data-ready-by-echo]",
+    composeErrorEl: "[data-compose-error]",
+    extraPermsTitle: "[data-extra-perms-title]",
+    extraPermsHint: "[data-extra-perms-hint]",
+    permBudgetLabel: "[data-perm-budget-label]",
+    permBudgetHint: "[data-perm-budget-hint]",
+    permLimitToggle: "[data-perm-limit]",
+    permLimitLabel: "[data-perm-limit-label]",
+    permLimitHint: "[data-perm-limit-hint]",
+    previewView: "[data-preview-view]",
+    previewTitle: "[data-preview-title]",
+    previewDeviceEl: "[data-preview-device]",
+    previewGoalEl: "[data-preview-goal]",
+    previewChartLegendEl: "[data-preview-chart-legend]",
+    previewChartPriceEl: "[data-preview-chart-price]",
+    previewChartScheduledEl: "[data-preview-chart-scheduled]",
+    previewWarningHintEl: "[data-preview-warning-hint]",
+    previewFeasibilityEl: "[data-preview-feasibility]",
+    previewCostEl: "[data-preview-cost]",
+    previewCostSubtextEl: "[data-preview-cost-subtext]",
+    previewChartEl: "[data-preview-chart]",
+    previewWhenEl: "[data-preview-when]",
+    previewEnergyEl: "[data-preview-energy]",
+    previewCaveatEl: "[data-preview-caveat]",
+    previewUnavailableEl: "[data-preview-unavailable]",
+    previewErrorEl: "[data-preview-error]",
+    createdView: "[data-created-view]",
+    createdMsgEl: "[data-created-msg]"
+  };
+  var FLOW_BUTTONS = {
+    quickBackBtn: "[data-quick-back]",
+    quickCustomizeBtn: "[data-quick-customize]",
+    quickStartBtn: "[data-quick-start]",
+    composeBackBtn: "[data-compose-back]",
+    goalDecBtn: "[data-goal-dec]",
+    goalIncBtn: "[data-goal-inc]",
+    previewBtn: "[data-preview-btn]",
+    previewBackBtn: "[data-preview-back]",
+    createBtn: "[data-create-btn]",
+    previewEditBtn: "[data-preview-edit]"
+  };
+  var FLOW_INPUTS = {
+    permBudgetInput: "[data-perm-budget-input]",
+    permLimitInput: "[data-perm-limit-input]",
+    goalValueEl: "[data-goal-value]",
+    readyByInput: "[data-ready-by-input]"
+  };
+  var queryAll = (d, selectors) => Object.fromEntries(Object.entries(selectors).map(([key, selector]) => [key, d.querySelector(selector)]));
+  var resolveFlowTargets = (d) => {
+    const quickTargetTemplate = d.getElementById("quick-target-template");
+    const elements = queryAll(d, FLOW_ELEMENTS);
+    const buttons = queryAll(d, FLOW_BUTTONS);
+    const inputs = queryAll(d, FLOW_INPUTS);
+    if (!(quickTargetTemplate instanceof HTMLTemplateElement) || Object.values(elements).some((el) => !(el instanceof HTMLElement)) || Object.values(buttons).some((el) => !(el instanceof HTMLButtonElement)) || Object.values(inputs).some((el) => !(el instanceof HTMLInputElement))) {
+      return null;
+    }
+    return { quickTargetTemplate, ...elements, ...buttons, ...inputs };
+  };
+
+  // widgets/create_smart_task/src/public/previewPayloads.ts
+  var PREVIEW_CREATE_SMART_TASK_PAYLOADS = {
+    // Gallery thumbnail: one temperature device and one EV charger so the gallery
+    // shows both goal kinds (°C stepper and % stepper).
+    default: {
+      state: "ready",
+      devices: [
+        {
+          deviceId: "preview-hot-water",
+          deviceName: "Hot water",
+          kind: "temperature",
+          unitSymbol: "\xB0C",
+          goalMin: 5,
+          goalMax: 85,
+          goalStep: 0.5,
+          defaultGoal: 65,
+          currentValue: 48,
+          supportsLimitLowerPriority: false,
+          offersQuickTargets: true
+        },
+        {
+          deviceId: "preview-ev",
+          deviceName: "Driveway charger",
+          kind: "ev_soc",
+          unitSymbol: "%",
+          goalMin: 1,
+          goalMax: 100,
+          goalStep: 1,
+          defaultGoal: 80,
+          currentValue: 42,
+          supportsLimitLowerPriority: true,
+          offersQuickTargets: true
+        }
+      ]
+    },
+    // A longer list (eight eligible devices, grouped thermostats → water heaters →
+    // EV) so the picker overflows the widget's fixed height — the harness can then
+    // show how the cut-off list reads with no visible scroll affordance.
+    overflow: {
+      state: "ready",
+      devices: [
+        {
+          deviceId: "preview-living",
+          deviceName: "Living room",
+          kind: "temperature",
+          unitSymbol: "\xB0C",
+          goalMin: 5,
+          goalMax: 30,
+          goalStep: 0.5,
+          defaultGoal: 21,
+          currentValue: 19.5,
+          supportsLimitLowerPriority: false,
+          offersQuickTargets: true
+        },
+        {
+          deviceId: "preview-bedroom",
+          deviceName: "Bedroom",
+          kind: "temperature",
+          unitSymbol: "\xB0C",
+          goalMin: 5,
+          goalMax: 30,
+          goalStep: 0.5,
+          defaultGoal: 18,
+          currentValue: 17.2,
+          supportsLimitLowerPriority: false,
+          offersQuickTargets: true
+        },
+        {
+          deviceId: "preview-bathroom-floor",
+          deviceName: "Bathroom floor",
+          kind: "temperature",
+          unitSymbol: "\xB0C",
+          goalMin: 5,
+          goalMax: 35,
+          goalStep: 0.5,
+          defaultGoal: 24,
+          currentValue: 22.1,
+          supportsLimitLowerPriority: false,
+          offersQuickTargets: true
+        },
+        {
+          deviceId: "preview-office",
+          deviceName: "Office",
+          kind: "temperature",
+          unitSymbol: "\xB0C",
+          goalMin: 5,
+          goalMax: 30,
+          goalStep: 0.5,
+          defaultGoal: 20,
+          currentValue: 20.4,
+          supportsLimitLowerPriority: false,
+          offersQuickTargets: true
+        },
+        {
+          deviceId: "preview-hot-water",
+          deviceName: "Hot water",
+          kind: "temperature",
+          unitSymbol: "\xB0C",
+          goalMin: 5,
+          goalMax: 85,
+          goalStep: 0.5,
+          defaultGoal: 65,
+          currentValue: 48,
+          supportsLimitLowerPriority: false,
+          offersQuickTargets: true
+        },
+        {
+          deviceId: "preview-cabin-water",
+          deviceName: "Cabin water heater",
+          kind: "temperature",
+          unitSymbol: "\xB0C",
+          goalMin: 5,
+          goalMax: 85,
+          goalStep: 0.5,
+          defaultGoal: 60,
+          currentValue: 55,
+          supportsLimitLowerPriority: false,
+          offersQuickTargets: true
+        },
+        {
+          deviceId: "preview-ev",
+          deviceName: "Driveway charger",
+          kind: "ev_soc",
+          unitSymbol: "%",
+          goalMin: 1,
+          goalMax: 100,
+          goalStep: 1,
+          defaultGoal: 80,
+          currentValue: 42,
+          supportsLimitLowerPriority: true,
+          offersQuickTargets: true
+        },
+        {
+          deviceId: "preview-ev-guest",
+          deviceName: "Guest charger",
+          kind: "ev_soc",
+          unitSymbol: "%",
+          goalMin: 1,
+          goalMax: 100,
+          goalStep: 1,
+          defaultGoal: 80,
+          currentValue: 30,
+          supportsLimitLowerPriority: true,
+          offersQuickTargets: true
+        }
+      ]
     }
   };
+  var PREVIEW_CREATE_SMART_TASK_DEVICES = PREVIEW_CREATE_SMART_TASK_PAYLOADS.default;
+  var resolveCreateSmartTaskPreviewPayload = (state) => state !== null && Object.prototype.hasOwnProperty.call(PREVIEW_CREATE_SMART_TASK_PAYLOADS, state) ? PREVIEW_CREATE_SMART_TASK_PAYLOADS[state] : PREVIEW_CREATE_SMART_TASK_DEVICES;
+
+  // packages/shared-domain/src/smartTaskDevicePickerOrder.ts
+  var SMART_TASK_DEVICE_GROUP_ORDER = [
+    "heating",
+    "ev_charger"
+  ];
+  var resolveSmartTaskDeviceGroup = (device) => device.kind === "ev_soc" ? "ev_charger" : "heating";
+  var SMART_TASK_DEVICE_PICKER_COPY = {
+    // One-line eligibility hint under "Choose a device" — a smart task is a goal
+    // on a device PELS manages, so only those appear here. Frames the subset as
+    // intentional rather than a mystery.
+    eligibilityCaption: "Managed heating devices and EV chargers.",
+    groupIconLabels: {
+      heating: "Heating",
+      ev_charger: "EV charger"
+    }
+  };
+  var resolveSmartTaskDeviceGroupIconLabel = (group) => SMART_TASK_DEVICE_PICKER_COPY.groupIconLabels[group];
+  var GROUP_RANK = Object.fromEntries(
+    SMART_TASK_DEVICE_GROUP_ORDER.map((group, index) => [group, index])
+  );
+
+  // widgets/create_smart_task/src/public/render.ts
+  var C3 = CREATE_SMART_TASK_WIDGET_COPY;
+  var renderDeviceRow = (template, device) => {
+    const fragment = template.content.cloneNode(true);
+    const li = fragment.querySelector(".row");
+    if (!(li instanceof HTMLElement)) throw new Error("device template missing .row");
+    const button = li.querySelector("[data-device-button]");
+    if (button instanceof HTMLElement) {
+      button.dataset.deviceId = device.deviceId;
+      button.setAttribute("aria-label", `${device.deviceName}, ${C3.pickDevicePrompt}`);
+    }
+    const iconEl = li.querySelector("[data-device-icon]");
+    if (iconEl instanceof HTMLElement) {
+      const group = resolveSmartTaskDeviceGroup(device);
+      iconEl.dataset.group = group;
+      iconEl.setAttribute("aria-label", resolveSmartTaskDeviceGroupIconLabel(group));
+    }
+    const nameEl = li.querySelector("[data-device-name]");
+    const metaEl = li.querySelector("[data-device-meta]");
+    if (nameEl instanceof HTMLElement) nameEl.textContent = device.deviceName;
+    if (metaEl instanceof HTMLElement) {
+      metaEl.textContent = formatSmartTaskNowValueLine({
+        currentValue: device.currentValue,
+        unitSymbol: device.unitSymbol
+      }) ?? formatSmartTaskUnknownNowValueLine(device.kind);
+    }
+    return li;
+  };
+  var renderPicker = (targets, payload) => {
+    const {
+      pickerPrompt,
+      pickerCaption,
+      pickerList,
+      pickerEmpty,
+      pickerEmptyHint,
+      pickerRetryBtn,
+      deviceTemplate
+    } = targets;
+    pickerPrompt.textContent = C3.pickDevicePrompt;
+    clearChildren(pickerList);
+    if (!payload || payload.state !== "ready") {
+      const isError = !payload || payload.state === "error";
+      setLine(pickerCaption, null);
+      pickerList.hidden = true;
+      pickerEmpty.hidden = false;
+      pickerEmpty.textContent = payload?.state === "empty" ? payload.subtitle : C3.loadError;
+      const hint = payload?.state === "empty" ? payload.hint : null;
+      if (hint) {
+        pickerEmptyHint.hidden = false;
+        pickerEmptyHint.textContent = hint;
+      } else {
+        pickerEmptyHint.hidden = true;
+      }
+      pickerRetryBtn.hidden = !isError;
+      pickerRetryBtn.textContent = C3.loadErrorRetry;
+      return;
+    }
+    setLine(pickerCaption, SMART_TASK_DEVICE_PICKER_COPY.eligibilityCaption);
+    pickerList.hidden = false;
+    pickerEmpty.hidden = true;
+    pickerEmptyHint.hidden = true;
+    pickerRetryBtn.hidden = true;
+    for (const device of payload.devices) {
+      pickerList.appendChild(renderDeviceRow(deviceTemplate, device));
+    }
+  };
+  var renderPickerView = (targets, payload, visible) => {
+    setVisible(targets.pickerView, visible);
+    if (visible) renderPicker(targets, payload);
+  };
+
+  // widgets/create_smart_task/src/public/widgetApp.ts
+  var C4 = CREATE_SMART_TASK_WIDGET_COPY;
   var resolveTargets = (d) => {
+    const flow = resolveFlowTargets(d);
     const root = d.getElementById("widget-root");
     const deviceTemplate = d.getElementById("device-template");
-    const quickTargetTemplate = d.getElementById("quick-target-template");
-    const map = {
-      pickerView: "[data-picker-view]",
-      pickerPrompt: "[data-picker-prompt]",
-      pickerCaption: "[data-picker-caption]",
-      pickerList: "[data-device-list]",
-      pickerEmpty: "[data-picker-empty]",
-      pickerEmptyHint: "[data-picker-empty-hint]",
-      quickView: "[data-quick-view]",
-      quickTitle: "[data-quick-title]",
-      quickStatusEl: "[data-quick-status]",
-      quickList: "[data-quick-list]",
-      quickSummaryEl: "[data-quick-summary]",
-      quickFinishEl: "[data-quick-finish]",
-      quickErrorEl: "[data-quick-error]",
-      composeView: "[data-compose-view]",
-      composeTitle: "[data-compose-title]",
-      goalLabel: "[data-goal-label]",
-      goalUnitEl: "[data-goal-unit]",
-      goalContextEl: "[data-goal-context]",
-      readyByLabel: "[data-ready-by-label]",
-      readyByEchoEl: "[data-ready-by-echo]",
-      composeErrorEl: "[data-compose-error]",
-      extraPermsTitle: "[data-extra-perms-title]",
-      extraPermsHint: "[data-extra-perms-hint]",
-      permBudgetLabel: "[data-perm-budget-label]",
-      permBudgetHint: "[data-perm-budget-hint]",
-      permLimitToggle: "[data-perm-limit]",
-      permLimitLabel: "[data-perm-limit-label]",
-      permLimitHint: "[data-perm-limit-hint]",
-      previewView: "[data-preview-view]",
-      previewTitle: "[data-preview-title]",
-      previewDeviceEl: "[data-preview-device]",
-      previewGoalEl: "[data-preview-goal]",
-      previewChartLegendEl: "[data-preview-chart-legend]",
-      previewChartPriceEl: "[data-preview-chart-price]",
-      previewChartScheduledEl: "[data-preview-chart-scheduled]",
-      previewWarningHintEl: "[data-preview-warning-hint]",
-      previewFeasibilityEl: "[data-preview-feasibility]",
-      previewCostEl: "[data-preview-cost]",
-      previewCostSubtextEl: "[data-preview-cost-subtext]",
-      previewChartEl: "[data-preview-chart]",
-      previewWhenEl: "[data-preview-when]",
-      previewEnergyEl: "[data-preview-energy]",
-      previewCaveatEl: "[data-preview-caveat]",
-      previewUnavailableEl: "[data-preview-unavailable]",
-      previewErrorEl: "[data-preview-error]",
-      createdView: "[data-created-view]",
-      createdMsgEl: "[data-created-msg]"
+    const elements = {
+      pickerView: d.querySelector("[data-picker-view]"),
+      pickerPrompt: d.querySelector("[data-picker-prompt]"),
+      pickerCaption: d.querySelector("[data-picker-caption]"),
+      pickerList: d.querySelector("[data-device-list]"),
+      pickerEmpty: d.querySelector("[data-picker-empty]"),
+      pickerEmptyHint: d.querySelector("[data-picker-empty-hint]")
     };
-    const buttons = {
-      pickerRetryBtn: "[data-picker-retry]",
-      quickBackBtn: "[data-quick-back]",
-      quickCustomizeBtn: "[data-quick-customize]",
-      quickStartBtn: "[data-quick-start]",
-      composeBackBtn: "[data-compose-back]",
-      goalDecBtn: "[data-goal-dec]",
-      goalIncBtn: "[data-goal-inc]",
-      previewBtn: "[data-preview-btn]",
-      previewBackBtn: "[data-preview-back]",
-      createBtn: "[data-create-btn]",
-      previewEditBtn: "[data-preview-edit]"
-    };
-    const inputs = {
-      permBudgetInput: "[data-perm-budget-input]",
-      permLimitInput: "[data-perm-limit-input]",
-      goalValueEl: "[data-goal-value]",
-      readyByInput: "[data-ready-by-input]"
-    };
-    const generic = Object.fromEntries(
-      Object.entries(map).map(([k, sel]) => [k, d.querySelector(sel)])
-    );
-    const btns = Object.fromEntries(
-      Object.entries(buttons).map(([k, sel]) => [k, d.querySelector(sel)])
-    );
-    const checks = Object.fromEntries(
-      Object.entries(inputs).map(([k, sel]) => [k, d.querySelector(sel)])
-    );
-    if (!(root instanceof HTMLElement) || !(deviceTemplate instanceof HTMLTemplateElement) || !(quickTargetTemplate instanceof HTMLTemplateElement) || Object.values(generic).some((el) => !(el instanceof HTMLElement)) || Object.values(btns).some((el) => !(el instanceof HTMLButtonElement)) || Object.values(checks).some((el) => !(el instanceof HTMLInputElement))) {
+    const pickerRetryBtn = d.querySelector("[data-picker-retry]");
+    if (flow === null || !(root instanceof HTMLElement) || !(deviceTemplate instanceof HTMLTemplateElement) || !(pickerRetryBtn instanceof HTMLButtonElement) || Object.values(elements).some((el) => !(el instanceof HTMLElement))) {
       return null;
     }
     return {
+      ...flow,
       root,
       deviceTemplate,
-      quickTargetTemplate,
-      ...generic,
-      ...btns,
-      ...checks
-    };
-  };
-  var createFlashTimer = (widgetWindow, onElapsed) => {
-    let timer = null;
-    const cancel = () => {
-      if (timer !== null) widgetWindow.clearTimeout(timer);
-      timer = null;
-    };
-    return {
-      start: () => {
-        cancel();
-        timer = widgetWindow.setTimeout(() => {
-          timer = null;
-          onElapsed();
-        }, CREATED_FLASH_MS);
-      },
-      cancel
+      pickerRetryBtn,
+      ...elements
     };
   };
   var fetchDevices = async (homeyRef, usePreviewData, previewState, reporter) => {
     if (usePreviewData) return resolveCreateSmartTaskPreviewPayload(previewState);
-    if (!homeyRef) return { state: "empty", subtitle: C2.notReady, hint: null };
+    if (!homeyRef) return { state: "empty", subtitle: C4.notReady, hint: null };
     try {
       const payload = await homeyRef.api("GET", "/devices");
       reporter.flush();
@@ -1846,141 +2024,52 @@
       return { state: "error" };
     }
   };
-  var fetchPreview = async (homeyRef, usePreviewData, request, reporter) => {
-    if (usePreviewData) return PREVIEW_RESPONSE;
-    if (!homeyRef) return { ok: false, reason: "unavailable" };
-    try {
-      return await homeyRef.api("POST", "/preview", request);
-    } catch (error) {
-      reporter.report("error", "Failed to preview smart task", error);
-      return { ok: false, reason: "unavailable" };
-    }
+  var resolvePickerClick = (eventTarget) => {
+    if (!(eventTarget instanceof Element)) return null;
+    const deviceId = closestDataValue(eventTarget, "[data-device-button]", "deviceId");
+    if (deviceId) return { kind: "select-device", deviceId };
+    if (eventTarget.closest("[data-picker-retry]")) return { kind: "retry-load" };
+    return null;
   };
-  var PREVIEW_QUICK_TARGETS = {
-    state: "ready",
-    targets: [[65, "20:00", "19:30"], [70, "21:00", "20:20"], [75, "21:30", "21:10"], [80, "22:30", "22:00"]].map(([target, by, likely], index) => ({
-      target,
-      deadlineAtMs: PREVIEW_NEXT_HOUR_MS + (index + 1) * HOUR_MS2,
-      readyByLocalTime: by,
-      deadlineLabel: `Today ${by}`,
-      likelyFinishLocalTime: likely,
-      estimate: { ...PREVIEW_RESPONSE.estimate, energyEstimateKWh: 3.4 + index, costEstimate: 5.2 + index }
-    }))
-  };
-  var fetchQuickTargets = async (homeyRef, usePreviewData, deviceId, reporter) => {
-    if (usePreviewData) return PREVIEW_QUICK_TARGETS;
-    if (!homeyRef) return { state: "rejected", reason: "unavailable" };
-    try {
-      return await homeyRef.api("POST", "/quick_targets", { deviceId });
-    } catch (error) {
-      reporter.report("error", "Failed to load smart task quick targets", error);
-      return { state: "rejected", reason: "unavailable" };
-    }
-  };
-  var submitCreate = async (homeyRef, usePreviewData, request, reporter) => {
-    if (usePreviewData) return { ok: true };
-    if (!homeyRef) return { ok: false, reason: "unavailable" };
-    try {
-      return await homeyRef.api("POST", "/create", request);
-    } catch (error) {
-      reporter.report("error", "Failed to create smart task", error);
-      return { ok: false, reason: "unavailable" };
-    }
-  };
-  var createWidgetController = (params) => {
-    const { targets, widgetDocument, widgetWindow, onReady } = params;
+  var createWidgetController = (targets, widgetDocument, widgetWindow, onReady) => {
     let homeyRef = null;
     let initialRenderDone = false;
     let loadSequence = 0;
     let devicesPayload = null;
-    let view = { kind: "picker" };
     let usePreviewData = false;
     let destroyed = false;
-    let requestSeq = 0;
     const reporter = widgetErrorReporter("create_smart_task", () => homeyRef);
-    const render = () => renderWidget(targets, devicesPayload, view);
-    const setView = (next) => {
-      if (next === view) return;
-      view = next;
-      requestSeq += 1;
-      render();
+    const { root } = targets;
+    const render = () => {
+      root.dataset.view = flow.currentStep() ?? "picker";
+      renderPickerView(targets, devicesPayload, !flow.isOpen());
     };
-    const runPreview = async () => {
-      if (view.kind !== "compose") return;
-      if (!targets.goalValueEl.reportValidity() || !targets.readyByInput.reportValidity()) return;
-      const request = buildCandidateRequest(view);
-      if (request === null) return;
-      const token = ++requestSeq;
-      targets.previewBtn.disabled = true;
-      targets.previewBtn.textContent = C2.previewing;
-      const response = await fetchPreview(homeyRef, usePreviewData, request, reporter);
-      if (token !== requestSeq || view.kind !== "compose") return;
-      view = { ...view, kind: "preview", goal: request.target, response, submitting: false, error: null };
-      render();
-    };
-    const submit = async () => {
-      const request = submittableRequest(view);
-      if (request === null || view.kind !== "quick" && view.kind !== "preview") return;
-      const kind = view.kind;
-      view = { ...view, submitting: true, error: null };
-      const token = ++requestSeq;
-      render();
-      const result = await submitCreate(homeyRef, usePreviewData, request, reporter);
-      if (token !== requestSeq || view.kind !== kind) return;
-      view = result.ok ? { kind: "created" } : { ...view, submitting: false, error: resolveCreateSmartTaskRejectCopy(result.reason) };
-      render();
-      if (result.ok) createdFlash.start();
-    };
-    const loadQuickTargets = async () => {
-      if (view.kind !== "quick" || view.quick.kind !== "loading") return;
-      const token = ++requestSeq;
-      const response = await fetchQuickTargets(homeyRef, usePreviewData, view.device.deviceId, reporter);
-      if (destroyed || token !== requestSeq || view.kind !== "quick") return;
-      view = quickTargetsLoadedView(view, response);
-      render();
-    };
-    const enterView = (next) => {
-      setView(next);
-      if (view.kind === "quick" && view.quick.kind === "loading") void loadQuickTargets();
-    };
-    const createdFlash = createFlashTimer(widgetWindow, () => {
-      if (destroyed) return;
-      view = { kind: "picker" };
-      void loadAndRender();
-    });
+    const flow = createSmartTaskCreateFlow(
+      targets,
+      widgetWindow,
+      createSmartTaskCreateClient(() => homeyRef, () => usePreviewData, reporter),
+      {
+        onRender: () => render(),
+        // A created task changes which devices can take a new one.
+        reloadAfterCreate: () => loadAndRender()
+      }
+    );
     const selectDevice = (deviceId) => {
       if (!devicesPayload || devicesPayload.state !== "ready") return;
       const device = devicesPayload.devices.find((entry) => entry.deviceId === deviceId);
-      if (device) enterView(deviceSelectedView(device));
+      if (!device) return;
+      flow.open(device);
     };
     const handleClick = (event) => {
-      const action = resolveClickAction(event.target);
-      if (action === null) return;
-      if (isViewClickAction(action)) {
-        setView(clickedView(action, view, targets));
+      if (flow.isOpen()) {
+        flow.handleClick(event);
         return;
       }
-      switch (action.kind) {
-        case "select-device":
-          selectDevice(action.deviceId);
-          return;
-        case "preview":
-          void runPreview();
-          return;
-        case "submit":
-          void submit();
-          return;
-        case "back":
-          enterView(backView(view));
-          return;
-        case "retry-load":
-          void loadAndRender();
-          return;
-        default:
-          assertUnhandledClick(action);
-      }
+      const action = resolvePickerClick(event.target);
+      if (action?.kind === "select-device") selectDevice(action.deviceId);
+      else if (action?.kind === "retry-load") void loadAndRender();
     };
-    const handleInput = (event) => setView(editedInputView(view, event.target, targets));
+    const handleInput = (event) => flow.handleInput(event);
     const loadAndRender = async () => {
       const loadId = ++loadSequence;
       const searchParams = new URLSearchParams(widgetWindow.location.search);
@@ -1989,7 +2078,7 @@
       const payload = await fetchDevices(homeyRef, usePreviewData, searchParams.get("state"), reporter);
       if (destroyed || loadId !== loadSequence) return;
       devicesPayload = payload;
-      if (view.kind === "picker" || payload.state === "ready") render();
+      render();
       if (!initialRenderDone && homeyRef?.ready) {
         homeyRef.ready();
         initialRenderDone = true;
@@ -2003,43 +2092,20 @@
     };
     const destroy = () => {
       destroyed = true;
-      createdFlash.cancel();
-      targets.root.removeEventListener("click", handleClick);
-      targets.root.removeEventListener("input", handleInput);
+      flow.destroy();
+      root.removeEventListener("click", handleClick);
+      root.removeEventListener("input", handleInput);
     };
-    targets.root.addEventListener("click", handleClick);
-    targets.root.addEventListener("input", handleInput);
+    root.addEventListener("click", handleClick);
+    root.addEventListener("input", handleInput);
     return { bootstrap, destroy, loadAndRender };
   };
-  var installWidget2 = (widgetWindow, widgetDocument) => {
-    let activeHomey = null;
-    let heightReporter = null;
-    return installWidget({
-      widgetWindow,
-      widgetDocument,
-      resolveTargets,
-      createController: ({ targets, widgetDocument: doc, widgetWindow: win }) => {
-        heightReporter = createHeightReporter(targets.root, win, () => activeHomey);
-        return createWidgetController({
-          targets,
-          widgetDocument: doc,
-          widgetWindow: win,
-          onReady: () => heightReporter?.observe()
-        });
-      },
-      onHomeyClient: (homey) => {
-        activeHomey = homey;
-      },
-      wrapController: (controller) => ({
-        ...controller,
-        destroy: () => {
-          controller.destroy();
-          heightReporter?.disconnect();
-          activeHomey = null;
-        }
-      })
-    });
-  };
+  var installWidget2 = (widgetWindow, widgetDocument) => installHeightReportingWidget(
+    widgetWindow,
+    widgetDocument,
+    resolveTargets,
+    createWidgetController
+  );
 
   // widgets/create_smart_task/src/public/index.ts
   var widgetController = installWidget2(window, document);

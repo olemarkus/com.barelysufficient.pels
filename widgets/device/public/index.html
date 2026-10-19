@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Device</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="./index.css">
+  </head>
+  <body class="homey-widget-small">
+    <main id="widget-root" class="widget-root" data-view="tile" aria-label="Device">
+      <!-- The device tile: status, smart task, and the "+ Smart task" action -->
+      <section class="tile-view" data-tile-view>
+        <div class="tile-head">
+          <p class="tile-name" data-tile-name></p>
+          <span class="tile-chip" data-tile-chip hidden></span>
+        </div>
+        <div class="tile-hero" data-tile-hero hidden>
+          <p class="tile-figure">
+            <span class="tile-figure__value" data-tile-figure></span>
+            <span class="tile-figure__context" data-tile-figure-context></span>
+          </p>
+          <p class="tile-power" data-tile-power hidden></p>
+        </div>
+        <p class="tile-reason" data-tile-reason hidden></p>
+        <p class="tile-fact" data-tile-fact hidden></p>
+        <div class="tile-task" data-tile-task hidden>
+          <div class="tile-task__head">
+            <p class="tile-task__goal" data-tile-task-goal></p>
+            <span class="tile-chip" data-tile-task-chip></span>
+          </div>
+          <p class="tile-task__line" data-tile-task-deadline hidden></p>
+          <p class="tile-task__line" data-tile-task-why hidden></p>
+          <p class="tile-task__line" data-tile-task-next hidden></p>
+        </div>
+        <div class="tile-foot" data-tile-foot hidden>
+          <button type="button" class="tile-action" data-tile-add-task><span class="tile-action__label" data-tile-add-task-label>+ Smart task</span></button>
+        </div>
+        <p class="tile-message" data-tile-message hidden></p>
+      </section>
+
+      <!-- smart-task-create-flow:start (shared with the Device widget; keep identical) -->
+      <!-- Step 2: quick targets, each timed to its earliest finish plus slack -->
+      <section class="quick-view" data-quick-view hidden aria-live="polite">
+        <header class="step-header">
+          <button type="button" class="back-btn" data-quick-back aria-label="Back">
+            <span class="back-btn__chevron" aria-hidden="true">&#8592;</span>
+            <span class="back-btn__name" data-quick-title></span>
+          </button>
+        </header>
+        <p class="step-caption" data-quick-status hidden></p>
+        <div class="quick-grid" data-quick-list></div>
+        <p class="preview-line" data-quick-summary hidden></p>
+        <p class="preview-line preview-line--when" data-quick-finish hidden></p>
+        <p class="compose-error" data-quick-error hidden></p>
+        <div class="preview-actions">
+          <button type="button" class="secondary-btn" data-quick-customize>Customize</button>
+          <button type="button" class="primary-btn" data-quick-start>Start</button>
+        </div>
+      </section>
+
+      <!-- Step 3: set goal + ready by -->
+      <section class="compose-view" data-compose-view hidden aria-live="polite">
+        <header class="step-header">
+          <button type="button" class="back-btn" data-compose-back aria-label="Back">
+            <span class="back-btn__chevron" aria-hidden="true">&#8592;</span>
+            <span class="back-btn__name" data-compose-title></span>
+          </button>
+        </header>
+        <div class="field">
+          <label class="field__label" data-goal-label for="task-goal">Goal</label>
+          <div class="stepper">
+            <button type="button" class="stepper__btn" data-goal-dec aria-label="Lower goal">&#8722;</button>
+            <span class="goal-input">
+              <input id="task-goal" class="stepper__value" type="number" step="any" required data-goal-value>
+              <span class="goal-input__unit" data-goal-unit></span>
+            </span>
+            <button type="button" class="stepper__btn" data-goal-inc aria-label="Raise goal">&#43;</button>
+          </div>
+        </div>
+        <p class="goal-context" data-goal-context hidden></p>
+        <div class="field">
+          <label class="field__label" data-ready-by-label for="task-ready-by">Ready by</label>
+          <input id="task-ready-by" class="time-input" type="time" required data-ready-by-input>
+        </div>
+        <p class="ready-by-echo" data-ready-by-echo hidden></p>
+        <p class="compose-error" data-compose-error hidden></p>
+        <!-- Optional, collapsed, OFF by default. Native <details> = an accessible
+             keyboard-operable disclosure with no JS needed for the expand. -->
+        <details class="extra-perms" data-extra-perms>
+          <summary class="extra-perms__summary">
+            <span class="extra-perms__title" data-extra-perms-title>Extra permissions</span>
+            <span class="extra-perms__chevron" aria-hidden="true">&#9662;</span>
+          </summary>
+          <p class="extra-perms__hint" data-extra-perms-hint></p>
+          <label class="perm-toggle">
+            <input type="checkbox" class="perm-toggle__input" data-perm-budget-input>
+            <span class="perm-toggle__text">
+              <span data-perm-budget-label></span>
+              <span class="perm-toggle__hint" data-perm-budget-hint></span>
+            </span>
+          </label>
+          <label class="perm-toggle" data-perm-limit hidden>
+            <input type="checkbox" class="perm-toggle__input" data-perm-limit-input>
+            <span class="perm-toggle__text">
+              <span data-perm-limit-label></span>
+              <span class="perm-toggle__hint" data-perm-limit-hint></span>
+            </span>
+          </label>
+        </details>
+        <button type="button" class="primary-btn" data-preview-btn>Preview</button>
+      </section>
+
+      <!-- Step 4: preview + confirm -->
+      <section class="preview-view" data-preview-view hidden aria-live="polite">
+        <header class="step-header">
+          <button type="button" class="back-btn" data-preview-back aria-label="Back to goal">
+            <span class="back-btn__chevron" aria-hidden="true">&#8592;</span>
+            <span class="back-btn__name" data-preview-title>Preview</span>
+          </button>
+        </header>
+        <div class="preview-body">
+          <p class="preview-device" data-preview-device></p>
+          <p class="preview-line" data-preview-goal></p>
+          <p class="preview-line preview-line--feasibility" data-preview-feasibility hidden></p>
+          <p class="preview-line" data-preview-warning-hint hidden></p>
+          <p class="preview-line preview-line--when" data-preview-when hidden></p>
+          <p class="preview-line preview-line--cost" data-preview-cost hidden></p>
+          <p class="preview-line preview-line--cost-subtext" data-preview-cost-subtext hidden></p>
+          <div class="preview-chart" data-preview-chart hidden></div>
+          <div class="chart-legend" data-preview-chart-legend hidden>
+            <span class="chart-legend__price" data-preview-chart-price></span>
+            <span class="chart-legend__scheduled" data-preview-chart-scheduled></span>
+          </div>
+          <p class="preview-line preview-line--energy" data-preview-energy hidden></p>
+          <p class="preview-line preview-line--unavailable" data-preview-unavailable hidden></p>
+          <p class="preview-line preview-line--caveat" data-preview-caveat hidden></p>
+          <p class="preview-line preview-line--error" data-preview-error hidden></p>
+        </div>
+        <div class="preview-actions">
+          <button type="button" class="secondary-btn" data-preview-edit>Edit task</button>
+          <button type="button" class="primary-btn" data-create-btn>Create task</button>
+        </div>
+      </section>
+
+      <!-- Success flash -->
+      <section class="created-view" data-created-view hidden aria-live="polite">
+        <p class="created-msg" data-created-msg></p>
+      </section>
+      <!-- smart-task-create-flow:end -->
+    </main>
+
+    <!-- smart-task-create-template:start -->
+    <template id="quick-target-template">
+      <button type="button" class="quick-btn" data-quick-target aria-pressed="false" aria-label="Quick target">
+        <span class="quick-btn__target" data-quick-target-value></span>
+        <span data-quick-target-by></span>
+      </button>
+    </template>
+    <!-- smart-task-create-template:end -->
+    <script src="./index.js"></script>
+  </body>
+</html>

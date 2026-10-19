@@ -19,6 +19,7 @@ import {
   SMART_TASK_DEVICE_UNMANAGED_WHY,
 } from '../../packages/shared-domain/src/deadlineLabels';
 import {
+  buildSmartTaskDeviceView,
   buildSmartTasksWidgetPayload,
   EMPTY_SUBTITLE_DEFAULT,
   ENDED_ROW_CAP,
@@ -952,5 +953,56 @@ describe('buildSmartTasksWidgetPayload — recently ended section', () => {
       timeZone: 'UTC',
     });
     expect(payload.state).toBe('empty');
+  });
+});
+
+describe('buildSmartTaskDeviceView', () => {
+  test('words the device\'s running task as the list does, beyond the list\'s three-row cap', () => {
+    const plans: Record<string, ActivePlanFixture> = {};
+    for (let i = 0; i < 5; i += 1) {
+      plans[`d${i}`] = buildPlan({ deviceId: `d${i}`, deviceName: `Dev ${i}`, deadlineAtMs: NOW + (i + 1) * HOUR });
+    }
+    const view = buildSmartTaskDeviceView(buildInput(plans), 'd4');
+    expect(view.active?.row).toMatchObject({ deviceId: 'd4', statusLabel: expect.any(String) });
+    // NOW sits inside the plan's first booked hour.
+    expect(view.active?.run).toEqual({ kind: 'running_now' });
+    expect(view.endedToday).toBeNull();
+  });
+
+  test('names the next booked hour after now, never one already past', () => {
+    const latest = buildPlan({}).latest!;
+    const at = (hours: Array<{ startsAtMs: number; plannedKWh: number }>) => buildSmartTaskDeviceView(
+      buildInput({ dev: buildPlan({ latest: { ...latest, hours } }) }), 'dev',
+    ).active?.run;
+    expect(at([{ startsAtMs: NOW - 2 * HOUR, plannedKWh: 1 }, { startsAtMs: NOW + 2 * HOUR, plannedKWh: 1 },
+      { startsAtMs: NOW + 3 * HOUR, plannedKWh: 0 }])).toEqual({ kind: 'next', startsAtMs: NOW + 2 * HOUR });
+    expect(at([{ startsAtMs: NOW - 2 * HOUR, plannedKWh: 1 }])).toEqual({ kind: 'none_ahead' });
+  });
+
+  test('keeps only a task that ended today, newest first', () => {
+    const view = buildSmartTaskDeviceView({
+      activePlans: null,
+      history: historyPayload({
+        dev: [
+          buildHistoryEntry({ id: 'yesterday', finalizedAtMs: NOW - 11 * HOUR }),
+          buildHistoryEntry({ id: 'early', finalizedAtMs: NOW - 4 * HOUR }),
+          buildHistoryEntry({ id: 'late', finalizedAtMs: NOW - HOUR }),
+        ],
+      }),
+      devices: [],
+      nowMs: NOW,
+      timeZone: 'UTC',
+    }, 'dev');
+    expect(view.active).toBeNull();
+    expect(view.endedToday?.id).toBe('late');
+    // 10:00 UTC: an entry finalized at 23:00 the day before is not today's.
+    const onlyYesterday = buildSmartTaskDeviceView({
+      activePlans: null,
+      history: historyPayload({ dev: [buildHistoryEntry({ finalizedAtMs: NOW - 11 * HOUR })] }),
+      devices: [],
+      nowMs: NOW,
+      timeZone: 'UTC',
+    }, 'dev');
+    expect(onlyYesterday.endedToday).toBeNull();
   });
 });

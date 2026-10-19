@@ -171,7 +171,6 @@ setup/steppedProfileRepair.ts 1
 setup/targetPowerReachabilitySettings.ts 1
 widgets/_shared/widgetClientLog.ts 1
 widgets/_shared/widgetRuntime.ts 3
-widgets/create_smart_task/src/public/widgetApp.ts 1
 widgets/headroom/src/public/widgetApp.ts 1
 widgets/plan_budget/src/planPriceWidgetPayload.ts 4
 widgets/smart_tasks/src/public/widgetApp.ts 2

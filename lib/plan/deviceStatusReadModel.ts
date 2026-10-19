@@ -185,6 +185,21 @@ function resolveFactText(device: DeviceStatusInput, stateWordNamesLevel: boolean
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
+// The device's measure as numbers: the temperature against the target PELS
+// plans for, else a charger's known battery level. The fact line words the same
+// facts where it has them.
+function resolveReading(device: DeviceStatusInput): DeviceStatus['reading'] {
+  if (device.temperature) {
+    return {
+      kind: 'temperature',
+      currentC: device.temperature.currentTemperature,
+      targetC: device.temperature.plannedTarget,
+    };
+  }
+  const level = device.stateOfCharge?.level;
+  return level?.kind === 'known' ? { kind: 'battery', percent: level.percent } : null;
+}
+
 function resolveCardKind(device: DeviceStatusInput): DeviceStatus['cardKind'] {
   if (device.steppedLoad) return 'stepped';
   return device.temperature ? 'temperature' : 'binary';
@@ -213,6 +228,7 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
     cardKind: resolveCardKind(device), kind, tone: displayStateTone(kind), label,
     ...resolvePower(device, limited),
     factText: resolveFactText(device, kind === 'held' && resolvePhysicalStepId(device) !== null),
+    reading: resolveReading(device),
     reason: buildReason(device, dryRun, nowMs), rail: resolveRail(device),
     limited, wouldLimit: dryRun && limited,
     canEaseOff: device.controllable && (kind === 'active' || (limited && (draw ?? 0) > 0)),

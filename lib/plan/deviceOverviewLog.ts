@@ -39,15 +39,18 @@ const toNullableSentenceShape = (text: string | null): string | null => (text ==
  * What makes a log entry: a change of state, reason, rail, kind of power line
  * (live, reported, expected or none) or a categorical fact (a charger's plug
  * turning `Unplugged`). The live power reading and the fact line's measured
- * readings (temperature, battery level) drift without being a state change, the
- * reason's figures move with the pace, and a countdown's end and length are
- * re-anchored on rebuilds that have no recorded start, so none of them may move
- * the signature on their own.
+ * readings (temperature, battery level, also carried as the status `reading`)
+ * drift without being a state change, the reason's figures move with the pace,
+ * and a countdown's end and length are re-anchored on rebuilds that have no
+ * recorded start, so none of them may move the signature on their own.
  */
 export function buildOverviewSignatureForDevice(device: OverviewLogDevice): string {
   const status = { ...device.status,
     powerText: toNullableSentenceShape(device.status.powerText),
-    factText: toNullableSentenceShape(device.status.factText) };
+    factText: toNullableSentenceShape(device.status.factText),
+    // The same measured figures as numbers: only which kind of reading it is
+    // can move the signature.
+    reading: device.status.reading?.kind ?? null };
   const reason = status.reason;
   if (!reason) return JSON.stringify(status);
   const { countdown, detail } = reason;

@@ -19,10 +19,11 @@
         <button type="button" class="retry-btn" data-picker-retry hidden>Try again</button>
       </section>
 
+      <!-- smart-task-create-flow:start (shared with the Device widget; keep identical) -->
       <!-- Step 2: quick targets, each timed to its earliest finish plus slack -->
       <section class="quick-view" data-quick-view hidden aria-live="polite">
         <header class="step-header">
-          <button type="button" class="back-btn" data-quick-back aria-label="Back to devices">
+          <button type="button" class="back-btn" data-quick-back aria-label="Back">
             <span class="back-btn__chevron" aria-hidden="true">&#8592;</span>
             <span class="back-btn__name" data-quick-title></span>
           </button>
@@ -41,7 +42,7 @@
       <!-- Step 3: set goal + ready by -->
       <section class="compose-view" data-compose-view hidden aria-live="polite">
         <header class="step-header">
-          <button type="button" class="back-btn" data-compose-back aria-label="Back to devices">
+          <button type="button" class="back-btn" data-compose-back aria-label="Back">
             <span class="back-btn__chevron" aria-hidden="true">&#8592;</span>
             <span class="back-btn__name" data-compose-title></span>
           </button>
@@ -126,6 +127,7 @@
       <section class="created-view" data-created-view hidden aria-live="polite">
         <p class="created-msg" data-created-msg></p>
       </section>
+      <!-- smart-task-create-flow:end -->
     </main>
 
     <template id="device-template">
@@ -138,12 +140,14 @@
         </button>
       </li>
     </template>
+    <!-- smart-task-create-template:start -->
     <template id="quick-target-template">
       <button type="button" class="quick-btn" data-quick-target aria-pressed="false" aria-label="Quick target">
         <span class="quick-btn__target" data-quick-target-value></span>
         <span data-quick-target-by></span>
       </button>
     </template>
+    <!-- smart-task-create-template:end -->
     <script src="./index.js"></script>
   </body>
 </html>

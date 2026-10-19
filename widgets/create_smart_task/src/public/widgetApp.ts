@@ -1,292 +1,62 @@
-import {
-  CREATE_SMART_TASK_WIDGET_COPY,
-  resolveCreateSmartTaskRejectCopy,
-} from '../../../../packages/shared-domain/src/deadlineLabels';
+import { CREATE_SMART_TASK_WIDGET_COPY } from '../../../../packages/shared-domain/src/deadlineLabels';
 import {
   applyPreviewTheme,
-  installWidget as installSharedWidget,
   type WidgetController as SharedWidgetController,
-  type WidgetHomeyBase,
-  type WidgetWindowBase,
 } from '../../../_shared/widgetRuntime';
 import { widgetErrorReporter, type WidgetErrorReporter } from '../../../_shared/widgetClientLog';
+import { closestDataValue } from '../../../_shared/widgetDom';
+import {
+  installHeightReportingWidget,
+  type HeightReportingHomey,
+  type HeightReportingWindow,
+} from '../../../_shared/widgetHeight';
+import { createSmartTaskCreateClient } from '../../../_shared/smartTaskCreate/flowClient';
+import { createSmartTaskCreateFlow } from '../../../_shared/smartTaskCreate/flowController';
+import { resolveFlowTargets } from '../../../_shared/smartTaskCreate/flowView';
 import { resolveCreateSmartTaskPreviewPayload } from './previewPayloads';
-import { renderWidget, type RenderTargets, type ViewState } from './render';
-import {
-  backView,
-  buildCandidateRequest,
-  deviceSelectedView,
-  editedInputView,
-  quickTargetsLoadedView,
-  submittableRequest,
-} from './viewTransitions';
-import {
-  assertUnhandledClick, clickedView, isViewClickAction, resolveClickAction,
-} from './clickActions';
-import type {
-  CreateSmartTaskCandidateRequest,
-  CreateSmartTaskCreateResponse,
-  CreateSmartTaskDevicesPayload,
-  CreateSmartTaskPreviewResponse,
-  CreateSmartTaskQuickTargetsResponse,
-} from '../createSmartTaskWidgetTypes';
+import { renderPickerView, type RenderTargets } from './render';
+import type { CreateSmartTaskDevicesPayload } from '../createSmartTaskWidgetTypes';
 
 const C = CREATE_SMART_TASK_WIDGET_COPY;
-const CREATED_FLASH_MS = 1800;
 
-export type WidgetWindow = WidgetWindowBase & {
-  // Declared explicitly: the lib.dom `Window` interface doesn't surface the
-  // global `ResizeObserver` constructor as a property, and the widget reads it
-  // off the injected window (optional so non-DOM test windows can omit it).
-  ResizeObserver?: typeof globalThis.ResizeObserver;
-};
-
-// Homey widget API client. Unlike the observe-only widgets, this widget POSTs a
-// body for preview/create — `WidgetHomeyBase.api` already carries the optional
-// body arg.
-export type WidgetHomey = WidgetHomeyBase & {
-  // Resize the widget iframe to fit content. This widget is a multi-step form
-  // whose height varies per view (picker → compose → preview → created), so we
-  // measure after every render and report the height — Homey widgets don't
-  // scroll internally, they size the iframe to what we ask for.
-  setHeight?: (height: number) => void;
-};
-
+export type WidgetWindow = HeightReportingWindow;
+// Homey widget API client. This widget POSTs a body for its flow requests —
+// `WidgetHomeyBase.api` already carries the optional body arg.
+export type WidgetHomey = HeightReportingHomey;
 export type WidgetController = SharedWidgetController<WidgetHomey>;
 
-// Keep the widget iframe sized to its content. Homey widgets don't scroll
-// internally — the dashboard scrolls between widgets and anything past the
-// iframe height is clipped — so instead of a fixed compose height we measure the
-// content-height root and call Homey.setHeight. A ResizeObserver (rather than a
-// synchronous measure in render) is what makes this reliable: the first paint,
-// web-font load, and async device-list arrival all change the height *after* a
-// render returns, so a synchronous read sees a stale/pre-layout value and the
-// widget only self-corrects on the next interaction. The observer fires once
-// layout settles and on every later size change. `getHomey` is read lazily so
-// the reporter created before bootstrap still sees the assigned Homey client.
-// It starts observing only after `Homey.ready()`: Homey ignores `setHeight`
-// before then, and the reporter never repeats a height it already sent, so an
-// early report left the widget clipped at its manifest height.
-const createHeightReporter = (
-  root: HTMLElement,
-  widgetWindow: WidgetWindow,
-  getHomey: () => WidgetHomey | null,
-): { observe: () => void; disconnect: () => void } => {
-  let observer: ResizeObserver | null = null;
-  let lastReportedHeight = 0;
-  const report = (): void => {
-    const homey = getHomey();
-    if (!homey?.setHeight) return;
-    // Homey mounts the widget under <body class="homey-widget-small">, whose
-    // stylesheet pads the body around #widget-root. The root's own box excludes
-    // that padding, so report root height + the body's vertical padding —
-    // otherwise the iframe ends up a few px short and clips each view's bottom.
-    const bodyStyle = widgetWindow.getComputedStyle(root.ownerDocument.body);
-    const bodyPadding = (Number.parseFloat(bodyStyle.paddingTop) || 0)
-      + (Number.parseFloat(bodyStyle.paddingBottom) || 0);
-    const height = Math.ceil(root.getBoundingClientRect().height + bodyPadding);
-    if (height <= 0 || height === lastReportedHeight) return;
-    lastReportedHeight = height;
-    homey.setHeight(height);
-  };
-  return {
-    observe: (): void => {
-      if (observer || typeof widgetWindow.ResizeObserver !== 'function') return;
-      observer = new widgetWindow.ResizeObserver(() => report());
-      observer.observe(root);
-    },
-    disconnect: (): void => {
-      observer?.disconnect();
-      observer = null;
-    },
-  };
-};
-
-// Preview-mode response (used when the widget runs with `?preview=1` or no
-// Homey API is wired). Kept tiny and obviously fictional. Hours are floored to
-// the top of the hour so the rendered window reads as a clean "HH:00–HH:00"
-// range in the demo, matching how real hour-aligned plan buckets render.
-const HOUR_MS = 60 * 60 * 1000;
-// Fixed narrative evening (today 19:00 local) so the demo chart's hour ticks
-// read coherently with the fixed "Scheduled 02:00–04:00" / "before 07:00" copy,
-// regardless of when the preview is captured. Real responses carry
-// backend-resolved (DST-safe) timestamps; this is `?preview=1`-only demo data.
-const PREVIEW_NEXT_HOUR_MS = (() => {
-  const base = new Date();
-  base.setHours(19, 0, 0, 0);
-  return base.getTime();
-})();
-// Demo price curve across the preview window (narratively 19:00 → 07:00): an
-// evening level, an overnight trough, then the morning climb to the deadline.
-// The two scheduled hours sit at the bottom of the trough (02:00–03:00) so the
-// preview chart visibly "picked the cheap hours". øre/kWh; obviously fictional,
-// confined to the `?preview=1` path. Index 0 = now (top of the next hour).
-const PREVIEW_PRICE_CURVE = [92, 79, 74, 63, 59, 66, 51, 44, 48, 69, 81, 107, 119];
-// Scheduled at the trough (indices 7 & 8 → "02:00" / "03:00").
-const PREVIEW_SCHEDULED_INDEX = [7, 8];
-const PREVIEW_RESPONSE: CreateSmartTaskPreviewResponse = {
-  ok: true,
-  deadlineAtMs: PREVIEW_NEXT_HOUR_MS + 12 * HOUR_MS,
-  deadlineLabel: 'Tomorrow 07:00',
-  // Server-formatted in real responses; a fixed demo window here.
-  scheduledWindowLabel: '02:00–04:00',
-  estimate: {
-    budgetRole: 'none',
-    status: 'on_track',
-    scheduledHours: PREVIEW_SCHEDULED_INDEX.map((index) => ({
-      startsAtMs: PREVIEW_NEXT_HOUR_MS + index * HOUR_MS,
-      plannedKWh: 2,
-    })),
-    projectedFinishAtMs: PREVIEW_NEXT_HOUR_MS + 9 * HOUR_MS,
-    energyEstimateKWh: 4,
-    energyExpectedKWh: 3.6,
-    costEstimate: 4.2,
-    costUnit: 'kr',
-    priceSeries: PREVIEW_PRICE_CURVE.map((price, index) => ({
-      startsAtMs: PREVIEW_NEXT_HOUR_MS + index * HOUR_MS,
-      price,
-    })),
-  },
-};
-
 const resolveTargets = (d: Document): RenderTargets | null => {
+  const flow = resolveFlowTargets(d);
   const root = d.getElementById('widget-root');
   const deviceTemplate = d.getElementById('device-template');
-  const quickTargetTemplate = d.getElementById('quick-target-template');
-  const map = {
-    pickerView: '[data-picker-view]',
-    pickerPrompt: '[data-picker-prompt]',
-    pickerCaption: '[data-picker-caption]',
-    pickerList: '[data-device-list]',
-    pickerEmpty: '[data-picker-empty]',
-    pickerEmptyHint: '[data-picker-empty-hint]',
-    quickView: '[data-quick-view]',
-    quickTitle: '[data-quick-title]',
-    quickStatusEl: '[data-quick-status]',
-    quickList: '[data-quick-list]',
-    quickSummaryEl: '[data-quick-summary]',
-    quickFinishEl: '[data-quick-finish]',
-    quickErrorEl: '[data-quick-error]',
-    composeView: '[data-compose-view]',
-    composeTitle: '[data-compose-title]',
-    goalLabel: '[data-goal-label]',
-    goalUnitEl: '[data-goal-unit]',
-    goalContextEl: '[data-goal-context]',
-    readyByLabel: '[data-ready-by-label]',
-    readyByEchoEl: '[data-ready-by-echo]',
-    composeErrorEl: '[data-compose-error]',
-    extraPermsTitle: '[data-extra-perms-title]',
-    extraPermsHint: '[data-extra-perms-hint]',
-    permBudgetLabel: '[data-perm-budget-label]',
-    permBudgetHint: '[data-perm-budget-hint]',
-    permLimitToggle: '[data-perm-limit]',
-    permLimitLabel: '[data-perm-limit-label]',
-    permLimitHint: '[data-perm-limit-hint]',
-    previewView: '[data-preview-view]',
-    previewTitle: '[data-preview-title]',
-    previewDeviceEl: '[data-preview-device]',
-    previewGoalEl: '[data-preview-goal]',
-    previewChartLegendEl: '[data-preview-chart-legend]',
-    previewChartPriceEl: '[data-preview-chart-price]',
-    previewChartScheduledEl: '[data-preview-chart-scheduled]',
-    previewWarningHintEl: '[data-preview-warning-hint]',
-    previewFeasibilityEl: '[data-preview-feasibility]',
-    previewCostEl: '[data-preview-cost]',
-    previewCostSubtextEl: '[data-preview-cost-subtext]',
-    previewChartEl: '[data-preview-chart]',
-    previewWhenEl: '[data-preview-when]',
-    previewEnergyEl: '[data-preview-energy]',
-    previewCaveatEl: '[data-preview-caveat]',
-    previewUnavailableEl: '[data-preview-unavailable]',
-    previewErrorEl: '[data-preview-error]',
-    createdView: '[data-created-view]',
-    createdMsgEl: '[data-created-msg]',
-  } as const;
-  const buttons = {
-    pickerRetryBtn: '[data-picker-retry]',
-    quickBackBtn: '[data-quick-back]',
-    quickCustomizeBtn: '[data-quick-customize]',
-    quickStartBtn: '[data-quick-start]',
-    composeBackBtn: '[data-compose-back]',
-    goalDecBtn: '[data-goal-dec]',
-    goalIncBtn: '[data-goal-inc]',
-    previewBtn: '[data-preview-btn]',
-    previewBackBtn: '[data-preview-back]',
-    createBtn: '[data-create-btn]',
-    previewEditBtn: '[data-preview-edit]',
-  } as const;
-  const inputs = {
-    permBudgetInput: '[data-perm-budget-input]',
-    permLimitInput: '[data-perm-limit-input]',
-    goalValueEl: '[data-goal-value]',
-    readyByInput: '[data-ready-by-input]',
-  } as const;
-
-  const generic = Object.fromEntries(
-    Object.entries(map).map(([k, sel]) => [k, d.querySelector(sel)]),
-  );
-  const btns = Object.fromEntries(
-    Object.entries(buttons).map(([k, sel]) => [k, d.querySelector(sel)]),
-  );
-  const checks = Object.fromEntries(
-    Object.entries(inputs).map(([k, sel]) => [k, d.querySelector(sel)]),
-  );
-
+  const elements = {
+    pickerView: d.querySelector('[data-picker-view]'),
+    pickerPrompt: d.querySelector('[data-picker-prompt]'),
+    pickerCaption: d.querySelector('[data-picker-caption]'),
+    pickerList: d.querySelector('[data-device-list]'),
+    pickerEmpty: d.querySelector('[data-picker-empty]'),
+    pickerEmptyHint: d.querySelector('[data-picker-empty-hint]'),
+  };
+  const pickerRetryBtn = d.querySelector('[data-picker-retry]');
   if (
-    !(root instanceof HTMLElement)
+    flow === null
+    || !(root instanceof HTMLElement)
     || !(deviceTemplate instanceof HTMLTemplateElement)
-    || !(quickTargetTemplate instanceof HTMLTemplateElement)
-    || Object.values(generic).some((el) => !(el instanceof HTMLElement))
-    || Object.values(btns).some((el) => !(el instanceof HTMLButtonElement))
-    || Object.values(checks).some((el) => !(el instanceof HTMLInputElement))
+    || !(pickerRetryBtn instanceof HTMLButtonElement)
+    || Object.values(elements).some((el) => !(el instanceof HTMLElement))
   ) {
     return null;
   }
   return {
-    root,
-    deviceTemplate,
-    quickTargetTemplate,
-    ...(generic as Record<string, HTMLElement>),
-    ...(btns as Record<string, HTMLButtonElement>),
-    ...(checks as Record<string, HTMLInputElement>),
-  } as RenderTargets;
-};
-
-
-// The brief "created" flash before the widget returns to the device list.
-const createFlashTimer = (
-  widgetWindow: WidgetWindow,
-  onElapsed: () => void,
-): { start: () => void; cancel: () => void } => {
-  let timer: number | null = null;
-  const cancel = (): void => {
-    if (timer !== null) widgetWindow.clearTimeout(timer);
-    timer = null;
-  };
-  return {
-    start: (): void => {
-      cancel();
-      timer = widgetWindow.setTimeout(() => {
-        timer = null;
-        onElapsed();
-      }, CREATED_FLASH_MS);
-    },
-    cancel,
+    ...flow, root, deviceTemplate, pickerRetryBtn, ...(elements as Record<keyof typeof elements, HTMLElement>),
   };
 };
 
-// ─── API calls (module-level so the controller closure stays small) ──────────
-// Each helper swallows transport failures into the contract's `{ ok: false }`
-// shape so the controller never has to try/catch.
+// ─── Device list (the creation flow's requests live in the shared client) ────
 //
-// The canned `PREVIEW_*` payloads are CONFINED to the `?preview=1` design-
-// preview path (`usePreviewData`). On a real boot with no API client yet —
-// the SDK bridge hasn't supplied `homeyRef`, or it failed to load — the
-// helpers must NOT pretend canned data is real: devices surface a transient
-// "connecting" state and preview/create report `unavailable`. This is what
-// stops a user from seeing a "Created" flash while nothing was actually
-// created (the create button stays disabled and create can't report success
-// without a real `/create` call). See `notReady` copy in shared-domain.
+// The canned preview payload is CONFINED to the `?preview=1` design-preview
+// path. On a real boot with no API client yet the list surfaces a transient
+// "connecting" state, never the canned sample devices.
 
 const fetchDevices = async (
   homeyRef: WidgetHomey | null,
@@ -315,185 +85,68 @@ const fetchDevices = async (
   }
 };
 
-const fetchPreview = async (
-  homeyRef: WidgetHomey | null,
-  usePreviewData: boolean,
-  request: CreateSmartTaskCandidateRequest,
-  reporter: WidgetErrorReporter,
-): Promise<CreateSmartTaskPreviewResponse> => {
-  if (usePreviewData) return PREVIEW_RESPONSE;
-  if (!homeyRef) return { ok: false, reason: 'unavailable' };
-  try {
-    return await homeyRef.api('POST', '/preview', request) as CreateSmartTaskPreviewResponse;
-  } catch (error) {
-    reporter.report('error', 'Failed to preview smart task', error);
-    return { ok: false, reason: 'unavailable' };
-  }
+type PickerClickAction = { kind: 'select-device'; deviceId: string } | { kind: 'retry-load' };
+
+const resolvePickerClick = (eventTarget: EventTarget | null): PickerClickAction | null => {
+  if (!(eventTarget instanceof Element)) return null;
+  const deviceId = closestDataValue(eventTarget, '[data-device-button]', 'deviceId');
+  if (deviceId) return { kind: 'select-device', deviceId };
+  // Retry the device fetch in place after a load error (see the `error` payload
+  // state) — re-runs loadAndRender so a stuck load recovers without a reopen.
+  if (eventTarget.closest('[data-picker-retry]')) return { kind: 'retry-load' };
+  return null;
 };
 
-// Demo quick targets for `?preview=1`, timed to the fictional evening above.
-const PREVIEW_QUICK_TARGETS: CreateSmartTaskQuickTargetsResponse = {
-  state: 'ready',
-  targets: [[65, '20:00', '19:30'], [70, '21:00', '20:20'], [75, '21:30', '21:10'], [80, '22:30', '22:00']]
-    .map(([target, by, likely], index) => ({
-      target: target as number,
-      deadlineAtMs: PREVIEW_NEXT_HOUR_MS + (index + 1) * HOUR_MS,
-      readyByLocalTime: by as string,
-      deadlineLabel: `Today ${by as string}`,
-      likelyFinishLocalTime: likely as string,
-      estimate: { ...PREVIEW_RESPONSE.estimate, energyEstimateKWh: 3.4 + index, costEstimate: 5.2 + index },
-    })),
-};
-
-const fetchQuickTargets = async (
-  homeyRef: WidgetHomey | null,
-  usePreviewData: boolean,
-  deviceId: string,
-  reporter: WidgetErrorReporter,
-): Promise<CreateSmartTaskQuickTargetsResponse> => {
-  if (usePreviewData) return PREVIEW_QUICK_TARGETS;
-  if (!homeyRef) return { state: 'rejected', reason: 'unavailable' };
-  try {
-    return await homeyRef.api('POST', '/quick_targets', { deviceId }) as CreateSmartTaskQuickTargetsResponse;
-  } catch (error) {
-    reporter.report('error', 'Failed to load smart task quick targets', error);
-    return { state: 'rejected', reason: 'unavailable' };
-  }
-};
-
-const submitCreate = async (
-  homeyRef: WidgetHomey | null,
-  usePreviewData: boolean,
-  request: CreateSmartTaskCandidateRequest,
-  reporter: WidgetErrorReporter,
-): Promise<CreateSmartTaskCreateResponse> => {
-  if (usePreviewData) return { ok: true };
-  // Never report success without a real `/create` round-trip. With no API
-  // client there is nothing to create against, so report `unavailable` rather
-  // than an optimistic `{ ok: true }`.
-  if (!homeyRef) return { ok: false, reason: 'unavailable' };
-  try {
-    return await homeyRef.api('POST', '/create', request) as CreateSmartTaskCreateResponse;
-  } catch (error) {
-    reporter.report('error', 'Failed to create smart task', error);
-    return { ok: false, reason: 'unavailable' };
-  }
-};
-
-export const createWidgetController = (params: {
-  targets: RenderTargets;
-  widgetDocument: Document;
-  widgetWindow: WidgetWindow;
-  // Called once, right after `Homey.ready()`.
-  onReady: () => void;
-}): WidgetController => {
-  const { targets, widgetDocument, widgetWindow, onReady } = params;
+// `onReady` is called once, right after `Homey.ready()`.
+export const createWidgetController = (
+  targets: RenderTargets,
+  widgetDocument: Document,
+  widgetWindow: WidgetWindow,
+  onReady: () => void,
+): WidgetController => {
   let homeyRef: WidgetHomey | null = null;
   let initialRenderDone = false;
   let loadSequence = 0;
   let devicesPayload: CreateSmartTaskDevicesPayload | null = null;
-  let view: ViewState = { kind: 'picker' };
   let usePreviewData = false;
   let destroyed = false;
-  // Latest-request-wins token (bumped on `setView`): a stale preview/create that
-  // resolves after the user moved on is dropped, not applied. See runPreview.
-  let requestSeq = 0;
   const reporter = widgetErrorReporter('create_smart_task', () => homeyRef);
 
-  const render = (): void => renderWidget(targets, devicesPayload, view);
-
-  // Single mutation seam: set the view and re-render. Every view change bumps
-  // the request token so any in-flight preview/create that resolves afterwards
-  // is recognised as stale and dropped (latest-request-wins).
-  const setView = (next: ViewState): void => {
-    if (next === view) return;
-    view = next;
-    requestSeq += 1;
-    render();
+  const { root } = targets;
+  const render = (): void => {
+    root.dataset.view = flow.currentStep() ?? 'picker';
+    renderPickerView(targets, devicesPayload, !flow.isOpen());
   };
 
-  const runPreview = async (): Promise<void> => {
-    if (view.kind !== 'compose') return;
-    if (!targets.goalValueEl.reportValidity() || !targets.readyByInput.reportValidity()) return;
-    const request = buildCandidateRequest(view);
-    if (request === null) return;
-    const token = ++requestSeq;
-    targets.previewBtn.disabled = true;
-    targets.previewBtn.textContent = C.previewing;
-    const response = await fetchPreview(homeyRef, usePreviewData, request, reporter);
-    // Drop a preview that resolved after navigation/device-switch (stale).
-    if (token !== requestSeq || view.kind !== 'compose') return;
-    // Spread the compose view forward so device/goal/ready-by + the opt-in
-    // permissions all carry into the preview state unchanged.
-    view = { ...view, kind: 'preview', goal: request.target, response, submitting: false, error: null };
-    render();
-  };
-
-  // Create from the preview, or straight from a quick target. Success shows the
-  // `created` flash (the success label appears only after `ok: true`);
-  // otherwise the same step shows a retryable error: `deadline_passed` gets a
-  // bespoke "preview again" line, everything else (write_conflict /
-  // unavailable / …) the generic submit-failure copy (resolved in shared-domain).
-  const submit = async (): Promise<void> => {
-    const request = submittableRequest(view);
-    if (request === null || (view.kind !== 'quick' && view.kind !== 'preview')) return;
-    const kind = view.kind;
-    view = { ...view, submitting: true, error: null };
-    const token = ++requestSeq;
-    render();
-    const result = await submitCreate(homeyRef, usePreviewData, request, reporter);
-    // Latest-request-wins: a create that resolves after the user backed out or
-    // switched candidates must not flip the now-different view.
-    if (token !== requestSeq || view.kind !== kind) return;
-    view = result.ok
-      ? { kind: 'created' }
-      : { ...view, submitting: false, error: resolveCreateSmartTaskRejectCopy(result.reason) };
-    render();
-    if (result.ok) createdFlash.start();
-  };
-
-  // Time the quick targets for the device on the quick step.
-  const loadQuickTargets = async (): Promise<void> => {
-    if (view.kind !== 'quick' || view.quick.kind !== 'loading') return;
-    const token = ++requestSeq;
-    const response = await fetchQuickTargets(homeyRef, usePreviewData, view.device.deviceId, reporter);
-    if (destroyed || token !== requestSeq || view.kind !== 'quick') return;
-    view = quickTargetsLoadedView(view, response);
-    render();
-  };
-
-  const enterView = (next: ViewState): void => {
-    setView(next);
-    if (view.kind === 'quick' && view.quick.kind === 'loading') void loadQuickTargets();
-  };
-
-  const createdFlash = createFlashTimer(widgetWindow, () => {
-    if (destroyed) return; // torn down during the success flash — don't resurrect a render
-    view = { kind: 'picker' };
-    void loadAndRender();
-  });
+  const flow = createSmartTaskCreateFlow(
+    targets,
+    widgetWindow,
+    createSmartTaskCreateClient(() => homeyRef, () => usePreviewData, reporter),
+    {
+      onRender: () => render(),
+      // A created task changes which devices can take a new one.
+      reloadAfterCreate: () => loadAndRender(),
+    },
+  );
 
   const selectDevice = (deviceId: string): void => {
     if (!devicesPayload || devicesPayload.state !== 'ready') return;
     const device = devicesPayload.devices.find((entry) => entry.deviceId === deviceId);
-    if (device) enterView(deviceSelectedView(device));
+    if (!device) return;
+    flow.open(device);
   };
 
   const handleClick = (event: Event): void => {
-    const action = resolveClickAction(event.target);
-    if (action === null) return;
-    if (isViewClickAction(action)) { setView(clickedView(action, view, targets)); return; }
-    switch (action.kind) {
-      case 'select-device': selectDevice(action.deviceId); return;
-      case 'preview': void runPreview(); return;
-      case 'submit': void submit(); return;
-      case 'back': enterView(backView(view)); return;
-      case 'retry-load': void loadAndRender(); return;
-      default: assertUnhandledClick(action);
+    if (flow.isOpen()) {
+      flow.handleClick(event);
+      return;
     }
+    const action = resolvePickerClick(event.target);
+    if (action?.kind === 'select-device') selectDevice(action.deviceId);
+    else if (action?.kind === 'retry-load') void loadAndRender();
   };
 
-  const handleInput = (event: Event): void => setView(editedInputView(view, event.target, targets));
+  const handleInput = (event: Event): void => flow.handleInput(event);
 
   const loadAndRender = async (): Promise<void> => {
     const loadId = ++loadSequence;
@@ -504,9 +157,9 @@ export const createWidgetController = (params: {
     // Drop a torn-down or superseded load before touching the DOM (latest-wins).
     if (destroyed || loadId !== loadSequence) return;
     devicesPayload = payload;
-    // Only the picker view depends on the device list; in-progress compose/
-    // preview keep their captured device, so don't reset the user mid-flow.
-    if (view.kind === 'picker' || payload.state === 'ready') render();
+    // Only the device list depends on the payload; an open flow keeps its
+    // captured device, so don't reset the user mid-flow.
+    render();
     if (!initialRenderDone && homeyRef?.ready) {
       homeyRef.ready();
       initialRenderDone = true;
@@ -522,50 +175,19 @@ export const createWidgetController = (params: {
 
   const destroy = (): void => {
     destroyed = true;
-    createdFlash.cancel();
-    targets.root.removeEventListener('click', handleClick);
-    targets.root.removeEventListener('input', handleInput);
+    flow.destroy();
+    root.removeEventListener('click', handleClick);
+    root.removeEventListener('input', handleInput);
   };
 
-  targets.root.addEventListener('click', handleClick);
-  targets.root.addEventListener('input', handleInput);
+  root.addEventListener('click', handleClick);
+  root.addEventListener('input', handleInput);
   return { bootstrap, destroy, loadAndRender };
 };
 
 export const installWidget = (
   widgetWindow: WidgetWindow,
   widgetDocument: Document,
-): WidgetController | null => {
-  // Size the iframe to content (Homey.setHeight) only once a real Homey client
-  // is wired — the no-Homey preview/harness path renders at natural page size.
-  // The reporter is created lazily inside `createController` (once the targets
-  // resolve). It starts observing once the controller has called `Homey.ready()`
-  // and stops in the shared install's `wrapController` destroy hook.
-  let activeHomey: WidgetHomey | null = null;
-  let heightReporter: ReturnType<typeof createHeightReporter> | null = null;
-
-  return installSharedWidget<RenderTargets, WidgetHomey, WidgetWindow>({
-    widgetWindow,
-    widgetDocument,
-    resolveTargets,
-    createController: ({ targets, widgetDocument: doc, widgetWindow: win }) => {
-      heightReporter = createHeightReporter(targets.root, win, () => activeHomey);
-      return createWidgetController({
-        targets, widgetDocument: doc, widgetWindow: win, onReady: () => heightReporter?.observe(),
-      });
-    },
-    onHomeyClient: (homey) => {
-      activeHomey = homey;
-    },
-    wrapController: (controller) => ({
-      ...controller,
-      destroy: (): void => {
-        controller.destroy();
-        heightReporter?.disconnect();
-        // Drop the client so any late ResizeObserver callback short-circuits in
-        // getHomey() instead of calling setHeight on a torn-down widget.
-        activeHomey = null;
-      },
-    }),
-  });
-};
+): WidgetController | null => installHeightReportingWidget<RenderTargets, WidgetHomey>(
+  widgetWindow, widgetDocument, resolveTargets, createWidgetController,
+);

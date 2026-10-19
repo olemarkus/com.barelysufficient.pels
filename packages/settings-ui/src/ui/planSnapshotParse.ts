@@ -47,6 +47,14 @@ const isStatusRail = (value: unknown): boolean => {
     && rail.activeIndex >= 0 && rail.activeIndex < rail.labels.length);
 };
 
+const isStatusReading = (value: unknown): boolean => {
+  if (value === null) return true;
+  if (!value || typeof value !== 'object') return false;
+  const reading = value as Record<string, unknown>;
+  if (reading.kind === 'battery') return isFinite(reading.percent);
+  return reading.kind === 'temperature' && isFinite(reading.currentC) && isFinite(reading.targetC);
+};
+
 const HOLD_CAUSES = new Set<unknown>(['smart_task', 'smart_task_done', 'daily_budget']);
 const isStatus = (value: unknown): boolean => {
   if (!value || typeof value !== 'object') return false;
@@ -57,7 +65,7 @@ const isStatus = (value: unknown): boolean => {
     && ['live', 'expected', 'reported'].includes(status.powerVariant as string)
     && ['limited', 'wouldLimit', 'canEaseOff', 'controlOffDrawing'].every((key) => typeof status[key] === 'boolean')
     && (status.holdCause === null || HOLD_CAUSES.has(status.holdCause))
-    && isStatusReason(status.reason) && isStatusRail(status.rail);
+    && isStatusReason(status.reason) && isStatusRail(status.rail) && isStatusReading(status.reading);
 };
 
 const isPlanDeviceSnapshot = (value: unknown): value is PlanDeviceSnapshot => (

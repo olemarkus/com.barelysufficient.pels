@@ -53,6 +53,7 @@ import {
   SMART_TASK_WIDGET_TARGET_NOUN,
   type SmartTaskListStatusId,
 } from '../../../packages/shared-domain/src/deadlineLabels';
+import { getStartOfDayInTimeZone } from '../../../packages/shared-domain/src/utils/dateUtils';
 import { EMPTY_SUBTITLE_DEFAULT } from './smartTasksWidgetConstants';
 import type {
   SmartTasksWidgetEmptyPayload,
@@ -423,4 +424,70 @@ export const buildSmartTasksWidgetPayload = (input: SmartTasksWidgetInput): Smar
     overflowCount,
     endedRows,
   };
+};
+
+/**
+ * One device's smart task as the device widget shows it: the running task's
+ * row and when its next planned run starts, and the newest task that ended
+ * today (local day), so the tile still answers "did it work?" the morning after.
+ * The same rows the list renders, so the two widgets word a task identically.
+ */
+// Where a running task is in its booked hours: inside one now, waiting for the
+// next one, or past its last.
+export type SmartTaskRunTiming =
+  | { kind: 'running_now' }
+  | { kind: 'next'; startsAtMs: number }
+  | { kind: 'none_ahead' };
+
+export type SmartTaskDeviceView = {
+  // The device's open task, satisfied ones included: a task that reached its
+  // goal still governs the device until its deadline.
+  active: { row: SmartTasksWidgetRow; statusId: SmartTaskListStatusId; run: SmartTaskRunTiming } | null;
+  endedToday: SmartTasksWidgetEndedRow | null;
+};
+
+// Smart-task allocation books whole hours (`lib/plan/AGENTS.md`), so a booked
+// entry covers the hour from its start.
+const HOUR_MS = 60 * 60 * 1000;
+
+const resolveRunTiming = (plan: ResolvedDeferredObjectiveActivePlanV1, nowMs: number): SmartTaskRunTiming => {
+  const booked = hoursWithPlannedEnergy(plan.latest?.hours ?? []);
+  if (booked.some((hour) => hour.startsAtMs <= nowMs && nowMs < hour.startsAtMs + HOUR_MS)) {
+    return { kind: 'running_now' };
+  }
+  const next = booked
+    .filter((hour) => hour.startsAtMs > nowMs)
+    .reduce<number | null>((earliest, hour) => (
+      earliest === null || hour.startsAtMs < earliest ? hour.startsAtMs : earliest
+    ), null);
+  return next === null ? { kind: 'none_ahead' } : { kind: 'next', startsAtMs: next };
+};
+
+export const buildSmartTaskDeviceView = (
+  input: SmartTasksWidgetInput,
+  deviceId: string,
+): SmartTaskDeviceView => {
+  const devicesById = new Map<string, TargetDeviceSnapshot>(
+    input.devices.map((device) => [device.id, device]),
+  );
+  const timeZone = input.timeZone ?? null;
+  const plan = input.activePlans?.plansByDeviceId?.[deviceId];
+  const device = devicesById.get(deviceId);
+  const facts = plan ? resolveSmartTaskRowFacts(plan, device, input.nowMs) : null;
+  const active = plan && facts
+    ? {
+      row: buildRow(deviceId, plan, device, facts, input.nowMs, timeZone),
+      statusId: facts.statusId,
+      run: resolveRunTiming(plan, input.nowMs),
+    }
+    : null;
+  const dayStartMs = getStartOfDayInTimeZone(new Date(input.nowMs), timeZone ?? 'UTC');
+  const entries = input.history?.entriesByDeviceId?.[deviceId] ?? [];
+  const latest = [...entries]
+    .filter((entry) => isFiniteNumber(entry.finalizedAtMs)
+      && entry.finalizedAtMs >= dayStartMs && entry.finalizedAtMs <= input.nowMs)
+    .sort((a, b) => b.finalizedAtMs - a.finalizedAtMs)
+    .map((entry) => buildEndedRow(entry, devicesById, input.nowMs, timeZone))
+    .find((row): row is SmartTasksWidgetEndedRow => row !== null);
+  return { active, endedToday: latest ?? null };
 };

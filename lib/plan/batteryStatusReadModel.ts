@@ -153,6 +153,7 @@ export function buildHomeBatteryStatus(
     cardKind: 'binary' as const,
     powerVariant: 'live' as const,
     factText: resolveFactText(battery, hold),
+    reading: battery.level.kind === 'observed' ? { kind: 'battery' as const, percent: battery.level.percent } : null,
     rail: null,
     limited: false,
     wouldLimit: false,

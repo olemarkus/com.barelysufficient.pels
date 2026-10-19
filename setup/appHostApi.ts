@@ -14,6 +14,7 @@ import {
 } from '../lib/planInput/runtimeDeviceRead';
 import { readFlowDevices } from '../lib/device/deviceFlowRead';
 import type { FlowCardDeps } from '../flowCards/registerFlowCards';
+import { registerDeviceWidgetSettings } from './appInit/registerDeviceWidgetSettings';
 import type { PowerSource } from '../lib/power/powerSource';
 import type {
   DailyBudgetModelPreviewResponse,
@@ -179,6 +180,10 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   }
 
   protected abstract registerAppFlowCards(): void;
+
+  public registerWidgetSettings(): void {
+    registerDeviceWidgetSettings(this.homey.dashboards, this);
+  }
 
   public async handleOperatingModeChange(rawMode: string): Promise<void> {
     const { previous: previousMode, resolved } = this.setHomeOperatingMode(rawMode);

@@ -1,0 +1,209 @@
+/* The renderer switches the tile and the creation flow's steps, and individual
+   lines, by toggling the `hidden` attribute. Any author `display` rule on a
+   hidden-toggled element would beat the user-agent `[hidden] { display: none }`
+   rule, so a hidden step would still render. This blanket author-origin reset
+   re-asserts the UA semantics for every hidden-toggled element in one place. */
+[hidden] {
+  display: none !important;
+}
+
+/* Content-height (not pinned to the iframe): widgetApp measures this element
+   and reports it to Homey via setHeight, so a quiet device is a short tile and
+   the creation flow grows it while open. Keep this on content height. */
+.widget-root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: var(--pw-su-2, 8px);
+  box-sizing: border-box;
+}
+
+/* ----- Tile ----- */
+
+.tile-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pw-su-2, 8px);
+}
+
+.tile-head,
+.tile-task__head {
+  display: flex;
+  align-items: center;
+  gap: var(--pw-su-2, 8px);
+}
+
+.tile-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--pw-font-size-title, 17px);
+  line-height: var(--pw-line-title, 24px);
+  font-weight: var(--pw-weight-medium, 500);
+  color: var(--pw-text, inherit);
+}
+
+/* Homey-native status tag: the Smart tasks widget's chip recipe. The device's
+   status tones map onto its four: running reads ok, limited and warning read
+   warn, resuming reads as in progress, idle and off stay plain. */
+.tile-chip {
+  flex: none;
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  font-weight: var(--pw-weight-medium, 500);
+  padding: 0 var(--pw-su-2, 8px);
+  border-radius: var(--pw-radius-small, 6px);
+  border: 1px solid;
+  border-color: var(--pw-line, rgba(15, 23, 28, 0.12));
+  white-space: nowrap;
+  background: transparent;
+  color: var(--pw-text-muted, #6d7680);
+}
+
+.tile-chip[data-tone="active"],
+.tile-chip[data-tone="ok"] {
+  background: color-mix(in srgb, var(--pw-success, #58c56a) 12%, transparent);
+  border-color: color-mix(in srgb, var(--pw-success, #58c56a) 30%, transparent);
+  color: var(--pw-text-success, #2f8f47);
+}
+
+.tile-chip[data-tone="held"],
+.tile-chip[data-tone="warning"],
+.tile-chip[data-tone="warn"] {
+  background: color-mix(in srgb, var(--pw-warning, #f5a623) 12%, transparent);
+  border-color: color-mix(in srgb, var(--pw-warning, #f5a623) 30%, transparent);
+  color: var(--pw-text-warning, #b9770e);
+}
+
+.tile-chip[data-tone="danger"] {
+  background: color-mix(in srgb, var(--pw-danger, #f0696c) 12%, transparent);
+  border-color: color-mix(in srgb, var(--pw-danger, #f0696c) 30%, transparent);
+  color: var(--pw-text-danger, #f0696c);
+}
+
+.tile-chip[data-tone="resuming"],
+.tile-chip[data-tone="muted"] {
+  background: color-mix(in srgb, var(--pw-info, #3f9fff) 10%, transparent);
+  border-color: color-mix(in srgb, var(--pw-info, #3f9fff) 30%, transparent);
+  color: var(--pw-text, #1f252a);
+}
+
+.tile-hero {
+  display: flex;
+  align-items: baseline;
+  gap: var(--pw-su-2, 8px);
+}
+
+.tile-figure {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--pw-su-2, 8px);
+}
+
+.tile-figure__value {
+  font-size: var(--pw-font-size-display, 20px);
+  line-height: var(--pw-line-display, 28px);
+  font-weight: var(--pw-weight-medium, 500);
+  font-variant-numeric: var(--pw-numeric, tabular-nums);
+  color: var(--pw-text, inherit);
+}
+
+.tile-figure__context,
+.tile-power {
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  font-variant-numeric: var(--pw-numeric, tabular-nums);
+  color: var(--pw-text-muted, #6d7680);
+}
+
+.tile-power {
+  flex: none;
+  margin: 0;
+}
+
+.tile-reason,
+.tile-fact,
+.tile-message {
+  margin: 0;
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  color: var(--pw-text-muted, #6d7680);
+}
+
+.tile-reason[data-tone="warn"] {
+  color: var(--pw-text-warning, #b9770e);
+}
+
+/* The task block sits on a faint tonal fill so it reads as one unit. */
+.tile-task {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pw-su-1, 4px);
+  padding: var(--pw-su-2, 8px) var(--pw-su-3, 12px);
+  border-radius: var(--pw-radius-default, 10px);
+  background: color-mix(in srgb, var(--pw-text, currentColor) 5%, transparent);
+}
+
+.tile-task__goal {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  font-weight: var(--pw-weight-medium, 500);
+  color: var(--pw-text, inherit);
+}
+
+.tile-task__line {
+  margin: 0;
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  font-variant-numeric: var(--pw-numeric, tabular-nums);
+  color: var(--pw-text-muted, #6d7680);
+}
+
+/* The one action: a small outlined tag to look at (the chip recipe's border
+   and radius), a full 48px row to hit, so the tap area stays Material-sized
+   while the tile stays compact. */
+.tile-foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.tile-action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--pw-text, inherit);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tile-action__label {
+  padding: var(--pw-su-1, 4px) var(--pw-su-3, 12px);
+  border: 1px solid;
+  border-color: var(--pw-line, rgba(15, 23, 28, 0.12));
+  border-radius: var(--pw-radius-small, 6px);
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  font-weight: var(--pw-weight-medium, 500);
+}
+
+.tile-action:hover .tile-action__label {
+  background: color-mix(in srgb, var(--pw-text, currentColor) 6%, transparent);
+}
+
+.tile-action:focus-visible {
+  outline: 2px solid var(--pw-text, currentColor);
+  outline-offset: 2px;
+}

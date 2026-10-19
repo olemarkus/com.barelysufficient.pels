@@ -1,3 +1,4 @@
+import type { DeviceStatusReading } from '../../contracts/src/deviceStatus';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../contracts/src/deferredObjectivePlanHistory';
 /* eslint-disable max-lines -- single home for kind-aware smart-task copy
    (chips, status labels, pending-hero variants, history copy, cost & delivered-
@@ -3466,3 +3467,47 @@ export const resolveKwhPerUnitProvenanceRows = (
   }
   return rows;
 };
+
+// ─── Device widget ────────────────────────────────────────────────────────────
+//
+// One device's tile: its overview status, its smart task, and "+ Smart task"
+// (the shared creation flow). The status lines themselves are the overview
+// card's, from the backend; these are only the tile's own words.
+export const DEVICE_WIDGET_COPY = {
+  // Before a device is chosen in the widget's settings.
+  chooseDevice: 'Choose a device in the widget settings.',
+  // The chosen device is no longer in PELS's plan (removed, or not managed).
+  notManaged: 'PELS no longer manages this device. Choose another device in the widget settings.',
+  // No plan yet since the app started: no status rather than a guessed one.
+  starting: 'PELS is starting. Status shows after the first power reading.',
+  loadError: 'Could not load this device.',
+  addSmartTask: '+ Smart task',
+  smartTaskTitle: 'Smart task',
+} as const;
+
+// "Next run 02:00": when a running task's next planned hour starts.
+export const formatDeviceWidgetNextRun = (localTime: string): string => `Next run ${localTime}`;
+// The task is inside one of its planned hours now.
+export const DEVICE_WIDGET_RUNNING_NOW = 'Planned to run now';
+
+// The ended task's one detail line: when it reached its goal ("Reached at
+// 05:42"), else why it was missed, else when it ended ("Ended Today 06:00").
+export const formatDeviceWidgetEndedDetail = (
+  reachedAtLabel: string | null,
+  whyLabel: string | null,
+  finishedLabel: string,
+): string => {
+  if (reachedAtLabel !== null) return reachedAtLabel.charAt(0).toUpperCase() + reachedAtLabel.slice(1);
+  return whyLabel ?? `Ended ${finishedLabel}`;
+};
+
+// The tile's lead figure from a status reading: "54.0 °C" with "target 65 °C",
+// or "58%" with the linked car's name. Same figures the fact line words.
+export const formatDeviceWidgetFigure = (
+  reading: DeviceStatusReading,
+  carName: string | null,
+): { value: string; context: string } => (
+  reading.kind === 'temperature'
+    ? { value: `${reading.currentC.toFixed(1)} °C`, context: `target ${reading.targetC.toFixed(0)} °C` }
+    : { value: `${Math.round(reading.percent)}%`, context: carName ?? '' }
+);

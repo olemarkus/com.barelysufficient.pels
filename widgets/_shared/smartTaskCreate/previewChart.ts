@@ -1,9 +1,9 @@
 import type {
   DeferredObjectivePlanPreviewHour,
   DeferredObjectivePlanPreviewPricePoint,
-} from '../../../../packages/contracts/src/deferredObjectivePlanPreview';
-import { clearChildren } from '../../../_shared/widgetDom';
-import { createSvg } from '../../../_shared/widgetSvg';
+} from '../../../packages/contracts/src/deferredObjectivePlanPreview';
+import { clearChildren } from '../widgetDom';
+import { createSvg } from '../widgetSvg';
 
 // Compact price-curve for the create-task preview: the price line across the
 // now→deadline window with the SCHEDULED hours shaded behind it, so the user

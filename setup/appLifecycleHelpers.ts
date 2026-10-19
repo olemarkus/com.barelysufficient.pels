@@ -134,6 +134,7 @@ export async function startAppServices(ctx: InitializedAppContext): Promise<void
     { delayMs: overheadTokenDelayMs, timerName: 'startupUpdateOverheadToken', ctx: appContext },
   );
   appContext.registerFlowCards();
+  appContext.registerWidgetSettings();
   appContext.snapshotHelpers.startPeriodicSnapshotRefresh();
   appContext.homeyEnergyHelpers.start();
   appContext.generationPollSource.start();

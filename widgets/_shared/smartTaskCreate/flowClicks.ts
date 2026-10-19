@@ -1,17 +1,16 @@
-import { closestDataValue } from '../../../_shared/widgetDom';
-import type { RenderTargets, ViewState } from './render';
+import { closestDataValue } from '../widgetDom';
+import type { FlowTargets, FlowView } from './flowView';
 import {
   budgetToggledView,
   customizeView,
   limitToggledView,
   quickSelectedView,
   steppedGoalView,
-} from './viewTransitions';
+} from './flowTransitions';
 
 // Discriminated action a click maps to. Pure resolution (no closure state) so
 // the controller's dispatcher stays small and the mapping is unit-testable.
-export type ClickAction =
-  | { kind: 'select-device'; deviceId: string }
+export type FlowClickAction =
   | { kind: 'select-quick'; index: number }
   | { kind: 'quick-customize' }
   | { kind: 'goal-dec' }
@@ -21,26 +20,25 @@ export type ClickAction =
   | { kind: 'preview' }
   // Create on the preview and Start on a quick target: the view decides what is sent.
   | { kind: 'submit' }
-  | { kind: 'back' }
-  | { kind: 'retry-load' };
+  | { kind: 'back' };
 
 // The click actions that only move between views, with no request or I/O.
 const VIEW_CLICK_KINDS = [
   'select-quick', 'quick-customize', 'goal-dec', 'goal-inc', 'toggle-budget', 'toggle-limit',
 ] as const;
-export type ViewClickAction = Extract<ClickAction, { kind: typeof VIEW_CLICK_KINDS[number] }>;
+export type ViewClickAction = Extract<FlowClickAction, { kind: typeof VIEW_CLICK_KINDS[number] }>;
 
-// Exhaustiveness guard for the controller's dispatcher: a new ClickAction it
+// Exhaustiveness guard for the controller's dispatcher: a new FlowClickAction it
 // does not handle is a type error at the call.
 export const assertUnhandledClick = (action: never): void => {
   void action;
 };
 
-export const isViewClickAction = (action: ClickAction): action is ViewClickAction => (
+export const isViewClickAction = (action: FlowClickAction): action is ViewClickAction => (
   (VIEW_CLICK_KINDS as readonly string[]).includes(action.kind)
 );
 
-export const clickedView = (action: ViewClickAction, view: ViewState, targets: RenderTargets): ViewState => {
+export const clickedView = (action: ViewClickAction, view: FlowView, targets: FlowTargets): FlowView => {
   switch (action.kind) {
     case 'select-quick': return quickSelectedView(view, action.index);
     case 'quick-customize': return customizeView(view);
@@ -55,7 +53,7 @@ export const clickedView = (action: ViewClickAction, view: ViewState, targets: R
   }
 };
 
-const resolveQuickClickAction = (eventTarget: Element): ClickAction | null => {
+const resolveQuickFlowClickAction = (eventTarget: Element): FlowClickAction | null => {
   const quickIndex = closestDataValue(eventTarget, '[data-quick-target]', 'quickIndex');
   if (quickIndex) return { kind: 'select-quick', index: Number(quickIndex) };
   if (eventTarget.closest('[data-quick-start]')) return { kind: 'submit' };
@@ -63,14 +61,9 @@ const resolveQuickClickAction = (eventTarget: Element): ClickAction | null => {
   return null;
 };
 
-export const resolveClickAction = (eventTarget: EventTarget | null): ClickAction | null => {
+export const resolveFlowClickAction = (eventTarget: EventTarget | null): FlowClickAction | null => {
   if (!(eventTarget instanceof Element)) return null;
-  const deviceId = closestDataValue(eventTarget, '[data-device-button]', 'deviceId');
-  if (deviceId) return { kind: 'select-device', deviceId };
-  // Retry the device fetch in place after a load error (see the `error` payload
-  // state) — re-runs loadAndRender so a stuck load recovers without a reopen.
-  if (eventTarget.closest('[data-picker-retry]')) return { kind: 'retry-load' };
-  const quickAction = resolveQuickClickAction(eventTarget);
+  const quickAction = resolveQuickFlowClickAction(eventTarget);
   if (quickAction) return quickAction;
   if (eventTarget.closest('[data-goal-dec]')) return { kind: 'goal-dec' };
   if (eventTarget.closest('[data-goal-inc]')) return { kind: 'goal-inc' };

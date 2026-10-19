@@ -352,6 +352,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     reloadWeatherCollector: vi.fn(),
     updateOverheadToken: vi.fn(async () => undefined),
     registerFlowCards: vi.fn(),
+    registerWidgetSettings: vi.fn(),
     refreshTargetDevicesSnapshot: vi.fn(async () => undefined),
     recordPowerSample: vi.fn(async () => ({ state: 'admitted' as const, revision: 1 })),
     handleOperatingModeChange: vi.fn(async () => undefined),

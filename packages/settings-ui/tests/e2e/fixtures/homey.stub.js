@@ -1,6 +1,6 @@
 (() => {
   // Complete backend presentations for the declared fixture cases.
-  const FIXTURE_STATUS_BASE = {"cardKind":"binary","kind":"active","tone":"active","label":"Running","powerText":null,"powerVariant":"expected","factText":null,"reason":null,"rail":null,"limited":false,"wouldLimit":false,"canEaseOff":true,"controlOffDrawing":false,"holdCause":null};
+  const FIXTURE_STATUS_BASE = {"cardKind":"binary","kind":"active","tone":"active","label":"Running","powerText":null,"powerVariant":"expected","factText":null,"reading":null,"reason":null,"rail":null,"limited":false,"wouldLimit":false,"canEaseOff":true,"controlOffDrawing":false,"holdCause":null};
   const listeners = Object.create(null);
   const initialOverrides = (
     window.__PELS_HOMEY_STUB__ && typeof window.__PELS_HOMEY_STUB__ === 'object'

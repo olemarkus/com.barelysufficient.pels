@@ -1002,7 +1002,7 @@
     return node;
   };
 
-  // widgets/create_smart_task/src/public/previewChart.ts
+  // widgets/_shared/smartTaskCreate/previewChart.ts
   var VIEW = { width: 480, height: 108 };
   var PLOT = { left: 10, right: 470, top: 14, bottom: 104 };
   var PLOT_WIDTH = PLOT.right - PLOT.left;

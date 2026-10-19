@@ -14,10 +14,28 @@ describe('parsePlanSnapshot resolved status boundary', () => {
     for (const status of [undefined, null, {}, { ...device().status, kind: 'unknown' },
       { ...device().status, reason: { text: 42 } },
       { ...device().status, rail: { labels: [42], activeIndex: 'low' } },
-      { ...device().status, reason: { text: 'Wait', countdown: { endsAtMs: NaN } } }]) {
+      { ...device().status, reason: { text: 'Wait', countdown: { endsAtMs: NaN } } },
+      { ...device().status, reading: undefined },
+      { ...device().status, reading: { kind: 'temperature', currentC: 20, targetC: '21' } },
+      { ...device().status, reading: { kind: 'battery', percent: Number.NaN } }]) {
       expect(parsePlanSnapshot({ devices: [{ ...device(), status, currentState: 'off', plannedState: 'shed' }] }))
         .toBeNull();
     }
+  });
+
+  it('carries the status reading as numbers beside the fact line', () => {
+    const heater = uiDeviceFixture({
+      currentState: 'on', plannedState: 'keep',
+      temperature: { currentTemperature: 54, currentTarget: 65, plannedTarget: 65, thermalDirection: 'heating' },
+    });
+    expect(heater.status.reading).toEqual({ kind: 'temperature', currentC: 54, targetC: 65 });
+    expect(parsePlanSnapshot({ devices: [heater] })?.devices?.[0]?.status.reading)
+      .toEqual({ kind: 'temperature', currentC: 54, targetC: 65 });
+    expect(uiDeviceFixture({ currentState: 'on', plannedState: 'keep', isEvCharger: true,
+      stateOfCharge: { level: { kind: 'known', percent: 58, observedAtMs: 0 } } }).status.reading)
+      .toEqual({ kind: 'battery', percent: 58 });
+    // A plain on/off device's measure is its draw.
+    expect(device().status.reading).toBeNull();
   });
 
   it('drops retired state inputs before inward consumers can use them', () => {

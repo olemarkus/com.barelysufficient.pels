@@ -124,34 +124,14 @@ body {
   --pw-radius-default: var(--homey-border-radius-default, 10px);
 }
 
-/* The renderer switches steps and individual lines by toggling the `hidden`
-   attribute. Any author `display` rule on a hidden-toggled element would beat
-   the user-agent `[hidden] { display: none }` rule (author origin wins over UA
-   regardless of specificity), so a hidden step would still render — the picker,
-   compose, preview, and created steps would stack instead of swapping. This
-   blanket author-origin reset re-asserts the UA semantics for every
-   hidden-toggled element in one place — the step views
-   (.picker-view/.compose-view/.preview-view/.created-view), the device list
-   (.rows), the empty/context/echo lines, the preview lines, and any future
-   hidden-toggled element — so no `display` rule below needs a per-rule
-   `:not([hidden])` guard. */
-[hidden] {
-  display: none !important;
-}
+/* The smart-task creation flow (quick targets, goal form, preview, created
+ * flash), shared by every widget that hosts it: New smart task and Device.
+ * Composed from the `--pw-*` widget tokens only.
+ *
+ * Build: `scripts/build-widgets.mjs` prepends this file (after the token layer)
+ * to the widgets that host the flow. Edit it here; never edit the generated copy.
+ */
 
-/* Content-height (not pinned to the iframe): widgetApp measures this element
-   and reports it to Homey via setHeight; the iframe is sized to fit, so a
-   fixed `height: 100%` would force internal scroll regions, which Homey
-   clips. Keep this on content height. */
-.widget-root {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  gap: var(--pw-su-2, 8px);
-  box-sizing: border-box;
-}
-
-.picker-view,
 .quick-view,
 .compose-view,
 .preview-view,
@@ -171,182 +151,13 @@ body {
   color: var(--pw-text, inherit);
 }
 
-/* Eligibility hint under "Choose a device": explains why only PELS-managed
-   devices appear here. Muted and small — context, not a heading. */
+/* A muted caption line: the device list's eligibility hint, the quick step's
+   loading line. Small context, not a heading. */
 .step-caption {
   margin: 0;
   font-size: var(--pw-font-size-body, 14px);
   line-height: var(--pw-line-body, 20px);
   color: var(--pw-text-muted, #6d7680);
-}
-
-/* ----- Device picker ----- */
-
-.rows {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--pw-su-1, 4px);
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.row {
-  display: block;
-  padding: 0;
-  margin: 0;
-}
-
-.row + .row {
-  border-top: 1px solid;
-  border-top-color: var(--pw-line-light, rgba(15, 23, 28, 0.08));
-}
-
-.row__btn {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 20px;
-  gap: 0 var(--pw-su-2, 8px);
-  align-items: center;
-  padding: var(--pw-su-3, 12px) 0;
-  border: none;
-  border-radius: var(--pw-radius-small, 6px);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: var(--pw-font-size-body, 14px);
-  line-height: var(--pw-line-body, 20px);
-  text-align: left;
-  width: 100%;
-  min-height: 48px;
-  cursor: pointer;
-  transition: background-color 200ms ease-out;
-}
-
-.row__btn:hover {
-  background-color: color-mix(in srgb, var(--pw-text, currentColor) 6%, transparent);
-}
-
-.row__btn:focus-visible {
-  outline: 2px solid var(--pw-text, currentColor);
-  outline-offset: 2px;
-}
-
-/* Per-row device-type icon: a tonal mask tinted with the muted text colour, so
-   the list visually reads as grouped (thermostats → water heaters → EV
-   chargers). The icon glyph itself is a CSS mask data-URI (set per group
-   below); the visible colour comes from `background-color` so it always tracks
-   the dashboard theme. Not a colour declaration, so it's exempt from the
-   bare-literal colour lint. */
-.row__icon {
-  grid-column: 1;
-  grid-row: 1 / 3;
-  width: var(--pw-icon-size, 20px);
-  height: var(--pw-icon-size, 20px);
-  flex: none;
-  align-self: center;
-  background-color: var(--pw-icon, #1f252a);
-  -webkit-mask-position: center;
-  mask-position: center;
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  -webkit-mask-size: contain;
-  mask-size: contain;
-}
-
-/* Thermometer — heating/temperature devices (thermostats, water heaters, heat pumps). */
-.row__icon[data-group="heating"] {
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M13 5a3 3 0 0 0-6 0v7.76a4 4 0 1 0 6 0V5Zm-3-1a1 1 0 0 1 1 1v3H9V5a1 1 0 0 1 1-1Z'/%3E%3C/svg%3E");
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M13 5a3 3 0 0 0-6 0v7.76a4 4 0 1 0 6 0V5Zm-3-1a1 1 0 0 1 1 1v3H9V5a1 1 0 0 1 1-1Z'/%3E%3C/svg%3E");
-}
-
-/* Lightning bolt — EV chargers. */
-.row__icon[data-group="ev_charger"] {
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M13 2 4 14h6l-1 8 9-12h-6l1-8Z'/%3E%3C/svg%3E");
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M13 2 4 14h6l-1 8 9-12h-6l1-8Z'/%3E%3C/svg%3E");
-}
-
-.row__name {
-  grid-column: 2;
-  grid-row: 1;
-  font-size: var(--pw-font-size-title, 17px);
-  line-height: var(--pw-line-title, 24px);
-  font-weight: var(--pw-weight-medium, 500);
-  color: var(--pw-text, inherit);
-  overflow-wrap: anywhere;
-}
-
-.row__meta {
-  grid-column: 2;
-  grid-row: 2;
-  color: var(--pw-text-muted, #6d7680);
-  font-variant-numeric: var(--pw-numeric, tabular-nums);
-  white-space: nowrap;
-}
-
-.row__chevron {
-  grid-column: 3;
-  grid-row: 1 / 3;
-  font-size: var(--pw-font-size-display, 20px);
-  color: var(--pw-text-muted, #6d7680);
-}
-
-/* Empty-state hierarchy: the actionable instruction (`.empty-hint`) is the most
-   legible line — it tells the user exactly how to make a device appear. The
-   "No eligible devices" subtitle (`.empty`) is demoted to a muted caption above
-   it. The whole state stays calm (text colours, never the danger tone) because
-   "nothing set up yet" is not an error. */
-.empty {
-  margin: auto 0 var(--pw-su-1, 4px);
-  font-size: var(--pw-font-size-body, 14px);
-  line-height: var(--pw-line-body, 20px);
-  color: var(--pw-text-muted, #6d7680);
-  text-align: center;
-}
-
-.empty-hint {
-  margin: 0 0 auto;
-  font-size: var(--pw-font-size-title, 17px);
-  line-height: var(--pw-line-title, 24px);
-  font-weight: var(--pw-weight-medium, 500);
-  color: var(--pw-text, inherit);
-  text-align: center;
-}
-
-/* Tap-to-retry for the failed-load state (Material text button): neutral text
-   label on a transparent surface with a background-tint hover, mirroring the
-   `.back-btn` text-button language (the success/accent tone is reserved for
-   positive states, not a fetch failure). Centred under the "Could not load"
-   subtitle, with the 48px minimum touch target. Sits below the subtitle and
-   pushes up off the bottom so it reads as the recovery action. Hidden for the
-   calm `empty` (no eligible devices) state, where retrying changes nothing. */
-.retry-btn {
-  margin: 0 auto auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 48px;
-  padding: 0 var(--pw-su-3, 12px);
-  border: none;
-  border-radius: var(--pw-radius-default, 10px);
-  background: transparent;
-  color: var(--pw-text, currentColor);
-  font: inherit;
-  font-size: var(--pw-font-size-title, 17px);
-  font-weight: var(--pw-weight-bold, 700);
-  cursor: pointer;
-  transition: background 200ms ease-out;
-}
-
-.retry-btn:focus-visible {
-  outline: 2px solid var(--pw-text, currentColor);
-  outline-offset: 2px;
-}
-
-.retry-btn:hover {
-  background-color: color-mix(in srgb, var(--pw-text, currentColor) 6%, transparent);
 }
 
 /* ----- Step header / back ----- */
@@ -906,3 +717,208 @@ body {
   color: var(--pw-text-success, #2f8f47);
   text-align: center;
 }
+
+/* The renderer switches steps and individual lines by toggling the `hidden`
+   attribute. Any author `display` rule on a hidden-toggled element would beat
+   the user-agent `[hidden] { display: none }` rule (author origin wins over UA
+   regardless of specificity), so a hidden step would still render — the picker,
+   compose, preview, and created steps would stack instead of swapping. This
+   blanket author-origin reset re-asserts the UA semantics for every
+   hidden-toggled element in one place — the step views
+   (.picker-view/.compose-view/.preview-view/.created-view), the device list
+   (.rows), the empty/context/echo lines, the preview lines, and any future
+   hidden-toggled element — so no `display` rule below needs a per-rule
+   `:not([hidden])` guard. */
+[hidden] {
+  display: none !important;
+}
+
+/* Content-height (not pinned to the iframe): widgetApp measures this element
+   and reports it to Homey via setHeight; the iframe is sized to fit, so a
+   fixed `height: 100%` would force internal scroll regions, which Homey
+   clips. Keep this on content height. */
+.widget-root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: var(--pw-su-2, 8px);
+  box-sizing: border-box;
+}
+
+.picker-view {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  gap: var(--pw-su-2, 8px);
+}
+
+/* ----- Device picker ----- */
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pw-su-1, 4px);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.row {
+  display: block;
+  padding: 0;
+  margin: 0;
+}
+
+.row + .row {
+  border-top: 1px solid;
+  border-top-color: var(--pw-line-light, rgba(15, 23, 28, 0.08));
+}
+
+.row__btn {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 20px;
+  gap: 0 var(--pw-su-2, 8px);
+  align-items: center;
+  padding: var(--pw-su-3, 12px) 0;
+  border: none;
+  border-radius: var(--pw-radius-small, 6px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  text-align: left;
+  width: 100%;
+  min-height: 48px;
+  cursor: pointer;
+  transition: background-color 200ms ease-out;
+}
+
+.row__btn:hover {
+  background-color: color-mix(in srgb, var(--pw-text, currentColor) 6%, transparent);
+}
+
+.row__btn:focus-visible {
+  outline: 2px solid var(--pw-text, currentColor);
+  outline-offset: 2px;
+}
+
+/* Per-row device-type icon: a tonal mask tinted with the muted text colour, so
+   the list visually reads as grouped (thermostats → water heaters → EV
+   chargers). The icon glyph itself is a CSS mask data-URI (set per group
+   below); the visible colour comes from `background-color` so it always tracks
+   the dashboard theme. Not a colour declaration, so it's exempt from the
+   bare-literal colour lint. */
+.row__icon {
+  grid-column: 1;
+  grid-row: 1 / 3;
+  width: var(--pw-icon-size, 20px);
+  height: var(--pw-icon-size, 20px);
+  flex: none;
+  align-self: center;
+  background-color: var(--pw-icon, #1f252a);
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+/* Thermometer — heating/temperature devices (thermostats, water heaters, heat pumps). */
+.row__icon[data-group="heating"] {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M13 5a3 3 0 0 0-6 0v7.76a4 4 0 1 0 6 0V5Zm-3-1a1 1 0 0 1 1 1v3H9V5a1 1 0 0 1 1-1Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M13 5a3 3 0 0 0-6 0v7.76a4 4 0 1 0 6 0V5Zm-3-1a1 1 0 0 1 1 1v3H9V5a1 1 0 0 1 1-1Z'/%3E%3C/svg%3E");
+}
+
+/* Lightning bolt — EV chargers. */
+.row__icon[data-group="ev_charger"] {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M13 2 4 14h6l-1 8 9-12h-6l1-8Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M13 2 4 14h6l-1 8 9-12h-6l1-8Z'/%3E%3C/svg%3E");
+}
+
+.row__name {
+  grid-column: 2;
+  grid-row: 1;
+  font-size: var(--pw-font-size-title, 17px);
+  line-height: var(--pw-line-title, 24px);
+  font-weight: var(--pw-weight-medium, 500);
+  color: var(--pw-text, inherit);
+  overflow-wrap: anywhere;
+}
+
+.row__meta {
+  grid-column: 2;
+  grid-row: 2;
+  color: var(--pw-text-muted, #6d7680);
+  font-variant-numeric: var(--pw-numeric, tabular-nums);
+  white-space: nowrap;
+}
+
+.row__chevron {
+  grid-column: 3;
+  grid-row: 1 / 3;
+  font-size: var(--pw-font-size-display, 20px);
+  color: var(--pw-text-muted, #6d7680);
+}
+
+/* Empty-state hierarchy: the actionable instruction (`.empty-hint`) is the most
+   legible line — it tells the user exactly how to make a device appear. The
+   "No eligible devices" subtitle (`.empty`) is demoted to a muted caption above
+   it. The whole state stays calm (text colours, never the danger tone) because
+   "nothing set up yet" is not an error. */
+.empty {
+  margin: auto 0 var(--pw-su-1, 4px);
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  color: var(--pw-text-muted, #6d7680);
+  text-align: center;
+}
+
+.empty-hint {
+  margin: 0 0 auto;
+  font-size: var(--pw-font-size-title, 17px);
+  line-height: var(--pw-line-title, 24px);
+  font-weight: var(--pw-weight-medium, 500);
+  color: var(--pw-text, inherit);
+  text-align: center;
+}
+
+/* Tap-to-retry for the failed-load state (Material text button): neutral text
+   label on a transparent surface with a background-tint hover, mirroring the
+   `.back-btn` text-button language (the success/accent tone is reserved for
+   positive states, not a fetch failure). Centred under the "Could not load"
+   subtitle, with the 48px minimum touch target. Sits below the subtitle and
+   pushes up off the bottom so it reads as the recovery action. Hidden for the
+   calm `empty` (no eligible devices) state, where retrying changes nothing. */
+.retry-btn {
+  margin: 0 auto auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 var(--pw-su-3, 12px);
+  border: none;
+  border-radius: var(--pw-radius-default, 10px);
+  background: transparent;
+  color: var(--pw-text, currentColor);
+  font: inherit;
+  font-size: var(--pw-font-size-title, 17px);
+  font-weight: var(--pw-weight-bold, 700);
+  cursor: pointer;
+  transition: background 200ms ease-out;
+}
+
+.retry-btn:focus-visible {
+  outline: 2px solid var(--pw-text, currentColor);
+  outline-offset: 2px;
+}
+
+.retry-btn:hover {
+  background-color: color-mix(in srgb, var(--pw-text, currentColor) 6%, transparent);
+}
+

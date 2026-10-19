@@ -1,11 +1,12 @@
-import { resolveCreateSmartTaskRejectCopy } from '../../../../packages/shared-domain/src/deadlineLabels';
-import { canCreateFromPreview, type ComposeOrigin, type RenderTargets, type ViewState } from './render';
+import { resolveCreateSmartTaskRejectCopy } from '../../../packages/shared-domain/src/deadlineLabels';
+import { canCreateFromPreview } from './flowRender';
+import type { ComposeOrigin, FlowTargets, FlowView } from './flowView';
 import type {
   CreateSmartTaskCandidateRequest,
   CreateSmartTaskDevice,
   CreateSmartTaskQuickTarget,
   CreateSmartTaskQuickTargetsResponse,
-} from '../createSmartTaskWidgetTypes';
+} from './types';
 
 // The ready-by time the goal form opens with: the next 07:00, the usual
 // morning the EV and the water heater are wanted by. The quick targets already
@@ -20,7 +21,7 @@ export const initialComposeView = (
   device: CreateSmartTaskDevice,
   origin: ComposeOrigin,
   start?: CreateSmartTaskQuickTarget,
-): Extract<ViewState, { kind: 'compose' }> => ({
+): Extract<FlowView, { kind: 'compose' }> => ({
   kind: 'compose',
   device,
   origin,
@@ -35,7 +36,7 @@ export const initialComposeView = (
   limitLowerPriorityDevices: false,
 });
 
-export const steppedGoalView = (view: ViewState, direction: 1 | -1): ViewState => {
+export const steppedGoalView = (view: FlowView, direction: 1 | -1): FlowView => {
   if (view.kind !== 'compose') return view;
   const { device, goal } = view;
   if (goal === null) return view;
@@ -44,31 +45,31 @@ export const steppedGoalView = (view: ViewState, direction: 1 | -1): ViewState =
 };
 
 // Pure transitions (mirror steppedGoalView). The two permissions are independent.
-export const budgetToggledView = (view: ViewState, checked: boolean): ViewState => {
+export const budgetToggledView = (view: FlowView, checked: boolean): FlowView => {
   if (view.kind !== 'compose') return view;
   return { ...view, exemptFromBudget: checked };
 };
 
-export const limitToggledView = (view: ViewState, checked: boolean): ViewState => {
+export const limitToggledView = (view: FlowView, checked: boolean): FlowView => {
   if (view.kind !== 'compose') return view;
   return { ...view, limitLowerPriorityDevices: checked };
 };
 
-export const quickSelectedView = (view: ViewState, index: number): ViewState => {
+export const quickSelectedView = (view: FlowView, index: number): FlowView => {
   if (view.kind !== 'quick' || view.quick.kind !== 'ready' || view.submitting) return view;
   if (index < 0 || index >= view.quick.targets.length) return view;
   return { ...view, quick: { ...view.quick, selected: index }, error: null };
 };
 
-export const customizeView = (view: ViewState): ViewState => {
+export const customizeView = (view: FlowView): FlowView => {
   if (view.kind !== 'quick' || view.quick.kind !== 'ready' || view.submitting) return view;
   return initialComposeView(view.device, { kind: 'quick', quick: view.quick }, view.quick.targets[view.quick.selected]);
 };
 
 // "Back" steps preview→compose (keeping the candidate), compose→the step it was
-// opened from, or quick→picker. The quick step comes back as it was timed:
-// re-timing it runs the planner again for every box.
-export const backView = (view: ViewState): ViewState => {
+// opened from, or out of the flow from its first step (`null`). The quick step
+// comes back as it was timed: re-timing it runs the planner again for every box.
+export const backView = (view: FlowView): FlowView | null => {
   if (view.kind === 'compose' && view.origin.kind === 'quick') {
     return { kind: 'quick', device: view.device, quick: view.origin.quick, submitting: false, error: null };
   }
@@ -84,7 +85,7 @@ export const backView = (view: ViewState): ViewState => {
       limitLowerPriorityDevices: view.limitLowerPriorityDevices,
     };
   }
-  return { kind: 'picker' };
+  return null;
 };
 
 // Build the request from the in-progress compose/preview view (both carry the
@@ -94,7 +95,7 @@ export const backView = (view: ViewState): ViewState => {
 // Only opted-in permissions are sent (omitted when off); the server re-gates
 // limit-lower-priority against the device, so this is intent, not authority.
 export const buildCandidateRequest = (
-  source: Extract<ViewState, { kind: 'compose' | 'preview' }>,
+  source: Extract<FlowView, { kind: 'compose' | 'preview' }>,
   deadlineAtMs?: number,
 ): CreateSmartTaskCandidateRequest | null => source.goal === null ? null : ({
   deviceId: source.device.deviceId,
@@ -119,7 +120,7 @@ export const buildQuickTargetRequest = (
   deadlineAtMs: target.deadlineAtMs,
 });
 
-export const editedInputView = (view: ViewState, target: EventTarget | null, targets: RenderTargets): ViewState => {
+export const editedInputView = (view: FlowView, target: EventTarget | null, targets: FlowTargets): FlowView => {
   if (view.kind !== 'compose') return view;
   if (target === targets.goalValueEl) {
     const value = targets.goalValueEl.valueAsNumber;
@@ -130,24 +131,25 @@ export const editedInputView = (view: ViewState, target: EventTarget | null, tar
 };
 
 
-const quickLoadingView = (device: CreateSmartTaskDevice): ViewState => (
+const quickLoadingView = (device: CreateSmartTaskDevice): FlowView => (
   { kind: 'quick', device, quick: { kind: 'loading' }, submitting: false, error: null }
 );
 
-// A chosen device opens its quick targets, or the goal form when it offers none.
-export const deviceSelectedView = (device: CreateSmartTaskDevice): ViewState => (
-  device.offersQuickTargets ? quickLoadingView(device) : initialComposeView(device, { kind: 'picker' })
+// The flow opens a device on its quick targets, or on the goal form when it
+// offers none.
+export const flowStartView = (device: CreateSmartTaskDevice): FlowView => (
+  device.offersQuickTargets ? quickLoadingView(device) : initialComposeView(device, { kind: 'entry' })
 );
 
 // The quick step once its targets are timed. Nothing to offer (no target can be
 // timed, or none finishes within the priced window) opens the goal form
-// instead, whose Back then returns to the device list. A refused request (the
+// instead, whose Back then leaves the flow. A refused request (the
 // device moved to a separate meter, the app unreachable) stays on the step and
 // says why, with Customize still there.
 export const quickTargetsLoadedView = (
-  view: Extract<ViewState, { kind: 'quick' }>,
+  view: Extract<FlowView, { kind: 'quick' }>,
   response: CreateSmartTaskQuickTargetsResponse,
-): ViewState => {
+): FlowView => {
   if (response.state === 'rejected') {
     return {
       ...view, quick: { kind: 'ready', targets: [], selected: 0 },
@@ -156,13 +158,13 @@ export const quickTargetsLoadedView = (
   }
   return response.state === 'ready' && response.targets.length > 0
     ? { ...view, quick: { kind: 'ready', targets: response.targets, selected: 0 } }
-    : initialComposeView(view.device, { kind: 'picker' });
+    : initialComposeView(view.device, { kind: 'entry' });
 };
 
 // What Create (on the preview) or Start (on a quick target) sends, or null when
 // the current step cannot submit. A preview echoes the deadline it resolved, so
 // the created task matches the previewed window exactly (server-validated).
-export const submittableRequest = (view: ViewState): CreateSmartTaskCandidateRequest | null => {
+export const submittableRequest = (view: FlowView): CreateSmartTaskCandidateRequest | null => {
   if (view.kind === 'preview') {
     if (view.submitting || !canCreateFromPreview(view.response) || !view.response.ok) return null;
     return buildCandidateRequest(view, view.response.deadlineAtMs);

@@ -59,6 +59,19 @@ export type FlowPort = {
 };
 
 /**
+ * The dashboard widgets PELS declares, as `homey.dashboards` hands them over:
+ * only the registration of a widget setting's autocomplete.
+ */
+export type DashboardsPort = {
+  getWidget(id: string): {
+    registerSettingAutocompleteListener(
+      name: string,
+      listener: (query: string) => Array<{ id: string; name: string }>,
+    ): unknown;
+  };
+};
+
+/**
  * A handle on ANOTHER app's own API, as `homey.api.getApiApp` hands it over.
  *
  * Only the two reads PELS makes: whether the app is there at all, and one GET

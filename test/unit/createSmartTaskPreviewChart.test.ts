@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { renderPreviewChart } from '../../widgets/create_smart_task/src/public/previewChart';
+import { renderPreviewChart } from '../../widgets/_shared/smartTaskCreate/previewChart';
 
 const HOUR_MS = 60 * 60 * 1000;
 const container = (): HTMLElement => document.createElement('div');

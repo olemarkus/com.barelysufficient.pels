@@ -1,0 +1,37 @@
+{
+  "name": {
+    "en": "Device"
+  },
+  "height": 160,
+  "settings": [
+    {
+      "id": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      }
+    }
+  ],
+  "api": {
+    "getDeviceWidget": {
+      "method": "POST",
+      "path": "/device"
+    },
+    "getCreateSmartTaskQuickTargets": {
+      "method": "POST",
+      "path": "/quick_targets"
+    },
+    "previewCreateSmartTask": {
+      "method": "POST",
+      "path": "/preview"
+    },
+    "createCreateSmartTask": {
+      "method": "POST",
+      "path": "/create"
+    },
+    "logClientError": {
+      "method": "POST",
+      "path": "/log"
+    }
+  }
+}

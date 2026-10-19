@@ -142,6 +142,7 @@ export type AppContext = {
   reloadWeatherCollector: () => void;
   updateOverheadToken: (value?: number) => Promise<void>;
   registerFlowCards: () => void;
+  registerWidgetSettings: () => void;
   refreshTargetDevicesSnapshot: (options?: RefreshTargetDevicesSnapshotOptions) => Promise<void>;
   recordPowerSample: (powerW: number, nowMs?: number) => Promise<PowerSampleAdmission>;
   handleOperatingModeChange: (rawMode: string) => Promise<void>;

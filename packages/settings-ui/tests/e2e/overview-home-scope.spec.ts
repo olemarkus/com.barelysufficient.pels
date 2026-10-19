@@ -58,7 +58,7 @@ const buildPlanFixture = (totalKw: number, device: { id: string; name: string })
     boostActive: false,
     status: {
       cardKind: 'binary', kind: 'active', tone: 'active', label: 'Running',
-      powerText: '0.5 kW', powerVariant: 'live', factText: null, reason: null, rail: null,
+      powerText: '0.5 kW', powerVariant: 'live', factText: null, reading: null, reason: null, rail: null,
       limited: false, wouldLimit: false, canEaseOff: true, controlOffDrawing: false, holdCause: null,
     },
   }],
