@@ -272,7 +272,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   }
 
   public getCreateSmartTaskCandidateDevices(): CreateSmartTaskCandidateDevicesRead {
-    return readCreateSmartTaskCandidateDevices(this.context);
+    return readCreateSmartTaskCandidateDevices(this.context, this.readGoverningModeTargetC);
   }
 
   public resolveSmartTaskHomeScope(deviceId: string): SmartTaskHomeScope {
@@ -368,7 +368,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     return this.smartTaskApi.previewStarvationRescuePlan(deviceId, candidate);
   }
   public previewSmartTaskQuickTargets(deviceId: string): SmartTaskQuickTargetsRead {
-    return this.smartTaskApi.previewSmartTaskQuickTargets(deviceId);
+    return this.smartTaskApi.previewSmartTaskQuickTargets(deviceId, this.getCreateSmartTaskCandidateDevices());
   }
   public previewDeferredObjectivePlan(
     deviceId: string, candidate: DeferredObjectivePlanPreviewCandidate,

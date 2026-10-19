@@ -6,14 +6,13 @@ import type {
   SmartTaskQuickTargetsRead,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
 import type { DeferredObjectiveSettingsKind } from '../../../packages/contracts/src/deferredObjectiveSettings';
-import type { MeasuredPowerObservedProbe } from '../../../packages/contracts/src/types';
+import type { CreateSmartTaskCandidateDevicesRead } from '../../../packages/contracts/src/widgetHostApi';
 import {
   resolveDefaultSmartTaskKind,
-  resolveSmartTaskQuickTargets,
   supportsSmartTaskKind,
-  type SmartTaskDeviceLike,
 } from '../../../packages/shared-domain/src/smartTaskDeviceKind';
 import { buildSmartTaskCandidateBase } from './smartTaskCandidateRequest';
+import { resolveSmartTaskQuickTargets } from './smartTaskQuickTargetValues';
 
 /**
  * Times each quick target against the planner. The earliest finish is not a
@@ -81,7 +80,7 @@ const resolvePricedWindow = (
   if (farthest.status !== 'unavailable') return { kind: 'priced', lastSlot: SEARCH_SLOTS };
   if (!isPastPrices(farthest)) return unavailable(farthest);
   const nearest = probe(firstSlot);
-  if (isPastPrices(nearest) || nearest.status === 'unavailable') return unavailable(nearest);
+  if (nearest.status === 'unavailable') return unavailable(nearest);
   // The first slot past the prices, minus one.
   return { kind: 'priced', lastSlot: firstSlotWhere(firstSlot, SEARCH_SLOTS, (slot) => isPastPrices(probe(slot))) - 1 };
 };
@@ -127,27 +126,31 @@ export const estimateSmartTaskQuickTargets = (
     if (!isOnTrack(atLastSlot)) break;
     const earliestSlot = firstSlotWhere(fromSlot, window.lastSlot, (slot) => isOnTrack(probe(target, slot)));
     fromSlot = earliestSlot;
-    const earliestMs = slotDeadline(earliestSlot);
-    const paddedMs = ceilToSlot(earliestMs + (earliestMs - nowMs) * SLACK_FRACTION);
-    const deadlineAtMs = Math.min(paddedMs, slotDeadline(window.lastSlot));
-    const estimate = probe(target, Math.round((deadlineAtMs - slotZeroMs) / SLOT_MS));
+    const slackSlots = Math.ceil((slotDeadline(earliestSlot) - nowMs) * SLACK_FRACTION / SLOT_MS);
+    const deadlineSlot = Math.min(earliestSlot + slackSlots, window.lastSlot);
+    const estimate = probe(target, deadlineSlot);
     if (!isOnTrack(estimate)) break;
     // eslint-disable-next-line functional/immutable-data -- In-place accumulation of a local result list.
-    quickTargets.push({ target, deadlineAtMs, estimate });
+    quickTargets.push({ target, deadlineAtMs: slotDeadline(deadlineSlot), estimate });
   }
   return { state: 'ready', targets: quickTargets };
 };
 
 /**
- * The quick targets for a new task on `device`, of the kind a creation surface
- * defaults to. A device that takes no task, or a kind with no quick targets,
- * offers none.
+ * The quick targets for a new task on `deviceId`, of the kind a creation surface
+ * defaults to, read from the same candidate list the creation surfaces show. A
+ * device that is not a candidate is `missing_device`; one whose kind has no
+ * quick targets offers none.
  */
 export const previewSmartTaskQuickTargetsForDevice = (
-  device: SmartTaskDeviceLike & MeasuredPowerObservedProbe,
+  candidates: CreateSmartTaskCandidateDevicesRead,
+  deviceId: string,
   preview: SmartTaskQuickTargetPreview,
   nowMs: number,
 ): SmartTaskQuickTargetsRead => {
+  if (candidates.state === 'unavailable') return { state: 'unavailable', reason: 'settings_unavailable' };
+  const device = candidates.devices.find((candidate) => candidate.id === deviceId);
+  if (!device) return { state: 'unavailable', reason: 'missing_device' };
   const kind = resolveDefaultSmartTaskKind(device);
   if (kind === null || !supportsSmartTaskKind(device, kind)) return { state: 'ready', targets: [] };
   return estimateSmartTaskQuickTargets(kind, resolveSmartTaskQuickTargets(device, kind), preview, nowMs);

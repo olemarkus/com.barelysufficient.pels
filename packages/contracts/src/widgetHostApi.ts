@@ -5,7 +5,7 @@ import type {
   StateOfChargeObservedProbe,
   SteppedLoadDecoration,
   SteppedLoadDescriptorProbe,
-  TemperatureObservedProbe,
+  TemperatureObservation,
 } from './types.js';
 import type {
   DeferredObjectivePlanPreviewCandidate,
@@ -35,13 +35,22 @@ export type WidgetObjectiveWriteResult =
   };
 
 /**
+ * A temperature device's observation plus the setpoint its owner's mode wants
+ * (`intendedTargetC`), resolved by the host the way the planner resolves it: the
+ * governing mode's target, or the device's own setpoint when the mode holds
+ * none. While PELS holds a device back, its reported setpoint is PELS's limit,
+ * not the owner's comfort temperature.
+ */
+export type SmartTaskTemperatureObservation = TemperatureObservation & { intendedTargetC: number };
+
+/**
  * A smart-task candidate as the host serves it: the planner's runtime view of
  * the device. Its identity is the resolved facts (`isEvCharger`,
  * `binaryControllable`), never the inventory class, which planner input does
  * not carry.
  */
 export type CreateSmartTaskCandidateDevice = ObservedDeviceState
-  & TemperatureObservedProbe
+  & { temperature?: SmartTaskTemperatureObservation }
   & StateOfChargeObservedProbe
   & SteppedLoadDescriptorProbe
   & Pick<DeviceDescriptor, 'isEvCharger' | 'binaryControllable' | 'controlModel'>

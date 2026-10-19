@@ -15,8 +15,10 @@ import {
   EMPTY_NO_DEVICES_HINT,
   EMPTY_NO_DEVICES_SUBTITLE,
 } from '../../widgets/create_smart_task/src/createSmartTaskWidgetPayload';
+import type { CreateSmartTaskCandidateDevice } from '../../packages/contracts/src/widgetHostApi';
+import { withSmartTaskTemperatureIntent } from '../../lib/objectives/deferredObjectives/smartTaskQuickTargetValues';
 
-const buildDevice = (
+const buildObservedDevice = (
   overrides: Partial<
     TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe
     & SteppedLoadDescriptorProbe
@@ -32,6 +34,12 @@ const buildDevice = (
   binaryControllable: false,
   ...overrides,
 } as TargetDeviceSnapshot & SteppedLoadDescriptorProbe);
+
+// The host adds the owner's setpoint; with no mode target it is the device's own.
+const buildDevice = (
+  overrides: Parameters<typeof buildObservedDevice>[0],
+  modeTargetC: number | null = null,
+): CreateSmartTaskCandidateDevice => withSmartTaskTemperatureIntent(buildObservedDevice(overrides), () => modeTargetC);
 
 describe('buildCreateSmartTaskDevicesPayload', () => {
   it('returns the empty state with hint when no eligible devices', () => {
@@ -76,6 +84,23 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
     // which clamped into a room thermostat's range seeded 40 °C.
     expect(device.defaultGoal).toBe(50);
     expect(device.offersQuickTargets).toBe(true);
+  });
+
+  it('seeds a held-back room from its mode target, not the limit setpoint PELS wrote', () => {
+    const payload = buildCreateSmartTaskDevicesPayload({
+      devices: [buildDevice({
+        id: 'room',
+        name: 'Living room',
+        deviceType: 'temperature',
+        targets: [{ id: 'target_temperature', value: 16, unit: 'C', min: 5, max: 30, step: 0.5 }],
+        temperature: {
+          currentTemperature: 15.8,
+          target: { id: 'target_temperature', value: 16, unit: 'C', min: 5, max: 30, step: 0.5 },
+        },
+      }, 21)],
+    });
+    if (payload.state !== 'ready') throw new Error('expected ready');
+    expect(payload.devices[0]?.defaultGoal).toBe(21);
   });
 
   it('maps an EV charger to a % goal with a 1..100 battery range', () => {
@@ -157,8 +182,7 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
         TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe
         & SteppedLoadDescriptorProbe
       >,
-    ): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe
-      & SteppedLoadDescriptorProbe => buildDevice({
+    ): CreateSmartTaskCandidateDevice => buildDevice({
       id: 'heater',
       name: 'Hot water',
       deviceType: 'temperature',
@@ -171,7 +195,7 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
       steppedLoadProfile: {} as SteppedLoadProfile,
       ...overrides,
     });
-    const firstDevice = (device: TargetDeviceSnapshot & SteppedLoadDescriptorProbe): boolean => {
+    const firstDevice = (device: CreateSmartTaskCandidateDevice): boolean => {
       const payload = buildCreateSmartTaskDevicesPayload({ devices: [device] });
       if (payload.state !== 'ready') throw new Error('expected ready');
       return payload.devices[0].supportsLimitLowerPriority;

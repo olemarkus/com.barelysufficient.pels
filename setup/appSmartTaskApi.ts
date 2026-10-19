@@ -5,7 +5,10 @@ import type {
   DeferredObjectivePlanPreviewEstimate,
   SmartTaskQuickTargetsRead,
 } from '../packages/contracts/src/deferredObjectivePlanPreview';
-import type { WidgetObjectiveWriteResult } from '../packages/contracts/src/widgetHostApi';
+import type {
+  CreateSmartTaskCandidateDevicesRead,
+  WidgetObjectiveWriteResult,
+} from '../packages/contracts/src/widgetHostApi';
 import {
   supportsSmartTaskKind,
   resolveSmartTaskGoalBounds,
@@ -171,16 +174,18 @@ export class AppSmartTaskApi {
     }));
   }
 
-  // The quick targets a creation surface offers for `deviceId`, each timed
-  // against the same preview as `previewDeferredObjectivePlan`. One session
-  // serves every probe, so the household is read once. Quick targets carry no
-  // extra permissions, so there is nothing to gate.
-  public previewSmartTaskQuickTargets(deviceId: string): SmartTaskQuickTargetsRead {
+  // The quick targets a creation surface offers for `deviceId` among
+  // `candidates`, each timed against the same preview as
+  // `previewDeferredObjectivePlan`. One session serves every probe, so the
+  // household is read once. Quick targets carry no extra permissions, so there
+  // is nothing to gate.
+  public previewSmartTaskQuickTargets(
+    deviceId: string,
+    candidates: CreateSmartTaskCandidateDevicesRead,
+  ): SmartTaskQuickTargetsRead {
     const session = this.openPreviewSession(deviceId);
     if (session.state === 'unavailable') return { state: 'unavailable', reason: 'settings_unavailable' };
-    const device = session.device && asMeteredSnapshot(session.device);
-    if (!device) return { state: 'unavailable', reason: 'missing_device' };
-    return previewSmartTaskQuickTargetsForDevice(device, session.preview, this.ctx.getNow().getTime());
+    return previewSmartTaskQuickTargetsForDevice(candidates, deviceId, session.preview, this.ctx.getNow().getTime());
   }
 
   // One household read for any number of candidate previews on `deviceId`.

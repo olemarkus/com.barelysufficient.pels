@@ -244,9 +244,6 @@
     ifYouSavePrefix: "If you save:",
     ifYouSaveRunsWord: "runs"
   };
-  var CREATE_SMART_TASK_DEFAULT_READY_BY = "07:00";
-  var formatQuickTargetDeadline = (localTime) => `by ${localTime}`;
-  var formatQuickTargetTiming = (deadlineLabel, likelyFinishLocalTime) => likelyFinishLocalTime === null ? `Ready by ${deadlineLabel}` : `Ready by ${deadlineLabel} \xB7 likely done around ${likelyFinishLocalTime}`;
   var resolveBuildingPlanChipTone = () => "info";
   var resolvePausedUnpluggedChipTone = () => "warn";
   var resolvePausedUnmanagedChipTone = () => "warn";
@@ -1208,6 +1205,8 @@
   };
 
   // widgets/create_smart_task/src/public/render.ts
+  var formatQuickTargetDeadline = (localTime) => `by ${localTime}`;
+  var formatQuickTargetTiming = (deadlineLabel, likelyFinishLocalTime) => likelyFinishLocalTime === null ? `Ready by ${deadlineLabel}` : `Ready by ${deadlineLabel} \xB7 likely done around ${likelyFinishLocalTime}`;
   var C = CREATE_SMART_TASK_WIDGET_COPY;
   var renderDeviceRow = (template, device) => {
     const fragment = template.content.cloneNode(true);
@@ -1502,6 +1501,7 @@
   };
 
   // widgets/create_smart_task/src/public/viewTransitions.ts
+  var CREATE_SMART_TASK_DEFAULT_READY_BY = "07:00";
   var initialComposeView = (device, origin, start) => ({
     kind: "compose",
     device,
@@ -1606,6 +1606,18 @@
   };
 
   // widgets/create_smart_task/src/public/clickActions.ts
+  var VIEW_CLICK_KINDS = [
+    "select-quick",
+    "quick-customize",
+    "goal-dec",
+    "goal-inc",
+    "toggle-budget",
+    "toggle-limit"
+  ];
+  var assertUnhandledClick = (action) => {
+    void action;
+  };
+  var isViewClickAction = (action) => VIEW_CLICK_KINDS.includes(action.kind);
   var clickedView = (action, view, targets) => {
     switch (action.kind) {
       case "select-quick":
@@ -1620,14 +1632,16 @@
         return budgetToggledView(view, targets.permBudgetInput.checked);
       case "toggle-limit":
         return limitToggledView(view, targets.permLimitInput.checked);
-      default:
-        return null;
+      default: {
+        const unhandled = action;
+        return unhandled;
+      }
     }
   };
   var resolveQuickClickAction = (eventTarget) => {
     const quickIndex = closestDataValue(eventTarget, "[data-quick-target]", "quickIndex");
     if (quickIndex) return { kind: "select-quick", index: Number(quickIndex) };
-    if (eventTarget.closest("[data-quick-start]")) return { kind: "quick-start" };
+    if (eventTarget.closest("[data-quick-start]")) return { kind: "submit" };
     if (eventTarget.closest("[data-quick-customize]")) return { kind: "quick-customize" };
     return null;
   };
@@ -1643,7 +1657,7 @@
     if (eventTarget.closest("[data-perm-budget-input]")) return { kind: "toggle-budget" };
     if (eventTarget.closest("[data-perm-limit-input]")) return { kind: "toggle-limit" };
     if (eventTarget.closest("[data-preview-btn]")) return { kind: "preview" };
-    if (eventTarget.closest("[data-create-btn]")) return { kind: "create" };
+    if (eventTarget.closest("[data-create-btn]")) return { kind: "submit" };
     if (eventTarget.closest("[data-quick-back]") || eventTarget.closest("[data-compose-back]") || eventTarget.closest("[data-preview-back]") || eventTarget.closest("[data-preview-edit]")) {
       return { kind: "back" };
     }
@@ -1942,17 +1956,18 @@
     const handleClick = (event) => {
       const action = resolveClickAction(event.target);
       if (action === null) return;
+      if (isViewClickAction(action)) {
+        setView(clickedView(action, view, targets));
+        return;
+      }
       switch (action.kind) {
         case "select-device":
           selectDevice(action.deviceId);
           return;
-        case "quick-start":
-          void submit();
-          return;
         case "preview":
           void runPreview();
           return;
-        case "create":
+        case "submit":
           void submit();
           return;
         case "back":
@@ -1962,7 +1977,7 @@
           void loadAndRender();
           return;
         default:
-          setView(clickedView(action, view, targets) ?? view);
+          assertUnhandledClick(action);
       }
     };
     const handleInput = (event) => setView(editedInputView(view, event.target, targets));

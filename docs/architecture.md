@@ -182,6 +182,7 @@ executor → plan → {power, dailyBudget, price, objectives, observer}
 dailyBudget → {power, price}
 device → power    (estimatePower utility)
 power ↔ objectives  (type-only cycle, established)
+objectives → home   (home is a pure leaf; smart-task Main-home scope reads the membership port)
 ```
 
 The rules behind this DAG (`no-power-to-peer-except-objectives`, `no-device-to-peer-except-power`, `no-plan-to-device`, `no-observer-to-peer`, `no-price-to-peer`, …) were the gate that drove the `lib/app` dissolution to completion: a helper that, if pushed into a peer, would create a forbidden edge cannot stay inside one.

@@ -25,10 +25,12 @@ export function getSnapshotAdapter(snapshot: AdapterObservation): DeviceAdapter 
 export class DeviceAdapterSessions {
   private readonly sessions: readonly DeviceAdapterSession[];
   constructor(home: HubHomeLocation) { this.sessions = adapters.map((adapter) => adapter.createSession(home)); }
-  observeDevices(devices: readonly HomeyDeviceLike[]): void {
-    for (const device of devices) this.observeDevice(device);
+  observeDevices(devices: readonly HomeyDeviceLike[], readAtMs: number): void {
+    for (const device of devices) this.observeDevice(device, readAtMs);
   }
-  observeDevice(device: HomeyDeviceLike): void { for (const session of this.sessions) session.observeDevice(device); }
+  observeDevice(device: HomeyDeviceLike, readAtMs: number): void {
+    for (const session of this.sessions) session.observeDevice(device, readAtMs);
+  }
   observeCapability(id: string, capability: string, value: unknown): void {
     for (const session of this.sessions) session.observeCapability(id, capability, value);
   }

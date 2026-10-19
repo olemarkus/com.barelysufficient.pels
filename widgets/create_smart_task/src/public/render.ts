@@ -3,8 +3,6 @@ import {
   SMART_TASK_EDIT_COPY,
   SMART_TASK_EXTRA_PERMISSION_HINTS,
   SMART_TASK_EXTRA_PERMISSION_LABELS,
-  formatQuickTargetDeadline,
-  formatQuickTargetTiming,
   formatSmartTaskGoalValue,
   formatSmartTaskGoalContextLine,
   formatSmartTaskNowValueLine,
@@ -29,6 +27,17 @@ import type {
   CreateSmartTaskPreviewResponse,
   CreateSmartTaskQuickTarget,
 } from '../createSmartTaskWidgetTypes';
+
+// A quick-target box's deadline ("by 01:30"), and the selected box's full
+// deadline with its projected finish ("Ready by Tomorrow 01:30 · likely done
+// around 00:50"), which also says which day the box's bare time is on. The
+// times and the deadline label are server-formatted in the Homey timezone.
+const formatQuickTargetDeadline = (localTime: string): string => `by ${localTime}`;
+const formatQuickTargetTiming = (deadlineLabel: string, likelyFinishLocalTime: string | null): string => (
+  likelyFinishLocalTime === null
+    ? `Ready by ${deadlineLabel}`
+    : `Ready by ${deadlineLabel} · likely done around ${likelyFinishLocalTime}`
+);
 
 const C = CREATE_SMART_TASK_WIDGET_COPY;
 

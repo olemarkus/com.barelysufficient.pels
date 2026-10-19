@@ -13,20 +13,34 @@ import {
 export type ClickAction =
   | { kind: 'select-device'; deviceId: string }
   | { kind: 'select-quick'; index: number }
-  | { kind: 'quick-start' }
   | { kind: 'quick-customize' }
   | { kind: 'goal-dec' }
   | { kind: 'goal-inc' }
   | { kind: 'toggle-budget' }
   | { kind: 'toggle-limit' }
   | { kind: 'preview' }
-  | { kind: 'create' }
+  // Create on the preview and Start on a quick target: the view decides what is sent.
+  | { kind: 'submit' }
   | { kind: 'back' }
   | { kind: 'retry-load' };
 
 // The click actions that only move between views, with no request or I/O.
-// Null for an action the controller handles itself.
-export const clickedView = (action: ClickAction, view: ViewState, targets: RenderTargets): ViewState | null => {
+const VIEW_CLICK_KINDS = [
+  'select-quick', 'quick-customize', 'goal-dec', 'goal-inc', 'toggle-budget', 'toggle-limit',
+] as const;
+export type ViewClickAction = Extract<ClickAction, { kind: typeof VIEW_CLICK_KINDS[number] }>;
+
+// Exhaustiveness guard for the controller's dispatcher: a new ClickAction it
+// does not handle is a type error at the call.
+export const assertUnhandledClick = (action: never): void => {
+  void action;
+};
+
+export const isViewClickAction = (action: ClickAction): action is ViewClickAction => (
+  (VIEW_CLICK_KINDS as readonly string[]).includes(action.kind)
+);
+
+export const clickedView = (action: ViewClickAction, view: ViewState, targets: RenderTargets): ViewState => {
   switch (action.kind) {
     case 'select-quick': return quickSelectedView(view, action.index);
     case 'quick-customize': return customizeView(view);
@@ -34,14 +48,17 @@ export const clickedView = (action: ClickAction, view: ViewState, targets: Rende
     case 'goal-inc': return steppedGoalView(view, 1);
     case 'toggle-budget': return budgetToggledView(view, targets.permBudgetInput.checked);
     case 'toggle-limit': return limitToggledView(view, targets.permLimitInput.checked);
-    default: return null;
+    default: {
+      const unhandled: never = action; // exhaustiveness guard: a new view action is a type error here
+      return unhandled;
+    }
   }
 };
 
 const resolveQuickClickAction = (eventTarget: Element): ClickAction | null => {
   const quickIndex = closestDataValue(eventTarget, '[data-quick-target]', 'quickIndex');
   if (quickIndex) return { kind: 'select-quick', index: Number(quickIndex) };
-  if (eventTarget.closest('[data-quick-start]')) return { kind: 'quick-start' };
+  if (eventTarget.closest('[data-quick-start]')) return { kind: 'submit' };
   if (eventTarget.closest('[data-quick-customize]')) return { kind: 'quick-customize' };
   return null;
 };
@@ -63,7 +80,7 @@ export const resolveClickAction = (eventTarget: EventTarget | null): ClickAction
   if (eventTarget.closest('[data-perm-budget-input]')) return { kind: 'toggle-budget' };
   if (eventTarget.closest('[data-perm-limit-input]')) return { kind: 'toggle-limit' };
   if (eventTarget.closest('[data-preview-btn]')) return { kind: 'preview' };
-  if (eventTarget.closest('[data-create-btn]')) return { kind: 'create' };
+  if (eventTarget.closest('[data-create-btn]')) return { kind: 'submit' };
   if (eventTarget.closest('[data-quick-back]') || eventTarget.closest('[data-compose-back]')
     || eventTarget.closest('[data-preview-back]')
     || eventTarget.closest('[data-preview-edit]')) {

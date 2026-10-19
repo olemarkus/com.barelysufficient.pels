@@ -59,6 +59,11 @@ export {
   writeObjectiveForDevice,
 } from './objectiveStore';
 export { buildSmartTaskCandidateDevices } from './smartTaskCandidateDevices';
+export {
+  isDeviceInSmartTaskMainHome,
+  readCreateSmartTaskCandidates,
+  resolveDeviceSmartTaskHomeScope,
+} from './smartTaskHomeScope';
 export { normalizeDeferredObjectiveActivePlans } from './activePlanSettings';
 export { formatDeadlineLocalTime, resolveDeferredObjectiveDeadline } from './deadline';
 export {

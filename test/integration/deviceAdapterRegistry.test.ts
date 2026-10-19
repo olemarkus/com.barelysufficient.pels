@@ -4,6 +4,7 @@ import type { HubHomeLocation } from '../../lib/device/hubHomeLocation';
 import { DeviceAdapterSessions, getDeviceAdapter } from '../../lib/device/deviceAdapterRegistry';
 import { hasSharedChargingInstallation, resolveChargingCurrentAction } from '../../lib/device/chargingCurrentAdapter';
 import { partialDouble } from '../helpers/partialDouble';
+import { FuturehomeChargerSession } from '../../lib/device/futurehome/session';
 
 const cap = <T>(value: T) => ({ value, lastUpdated: new Date().toISOString() });
 const setup = { method: 'flow', confirmation: 'vehicle' } as const;
@@ -36,7 +37,7 @@ test('the generic registry isolates two vehicle sessions and trust recovery', ()
   sessions.setTrustEpoch('connected:1');
   const first = vehicle('first');
   const second = vehicle('second');
-  sessions.observeDevices([...first, ...second]);
+  sessions.observeDevices([...first, ...second], Date.now());
   const firstSnapshot = snapshot(first[0]!);
   const secondSnapshot = snapshot(second[0]!);
   expect(sessions.project(firstSnapshot, setup).available).toBe(true);
@@ -75,7 +76,7 @@ test('an unrelated device retains standard behavior and exposes no integration c
   expect(adapter.nativeCurrentControls).toEqual([]);
 });
 
-test('a Futurehome charger reports its applied current limit and only a one-phase installation', () => {
+test('a Futurehome charger reports its sent current limit and only a one-phase installation', () => {
   const charger = (settings: Record<string, unknown>): HomeyDeviceLike => ({ id: 'futurehome', name: 'Futurehome',
     class: 'evcharger', driverId: 'homey:app:no.futurehome:ev_charger', settings,
     capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'] });
@@ -88,4 +89,34 @@ test('a Futurehome charger reports its applied current limit and only a one-phas
   // Three phases may be an IT grid, which the three-phase preset does not model.
   expect(getDeviceAdapter(charger({ phases: 'three' })).phaseReport(charger({ phases: 'three' })))
     .toEqual({ kind: 'not_reported' });
+});
+
+test('a Futurehome limit is dated by the newest read only, and only on a step at that current', () => {
+  const session = new FuturehomeChargerSession();
+  const charger = (currentLimit: unknown): HomeyDeviceLike => ({ id: 'futurehome', name: 'Futurehome',
+    class: 'evcharger', driverId: 'homey:app:no.futurehome:ev_charger', settings: { currentLimit } });
+  const steppedLoadProfile = { steps: [6, 10, 12, 16].map((amps) => (
+    { id: `${amps}a`, planningPowerW: amps * 230, planningCurrentA: amps })) };
+  const dateOf = (reportedStepId: string) => session.project(
+    partialDouble<TransportDeviceSnapshot>({ id: 'futurehome', reportedStepId, steppedLoadProfile }),
+  ).reportedStepObservedAtMs;
+  const startMs = Date.now();
+  session.observeDevice(charger(16), startMs);
+  expect(dateOf('16a')).toBe(startMs);
+
+  // A device update shows the new limit.
+  vi.advanceTimersByTime(2000);
+  session.observeDevice(charger(10), startMs + 2000);
+  expect(dateOf('10a')).toBe(startMs + 2000);
+  // A refresh fetched before that update still shows the old one: older
+  // evidence, and its parsed 16 A step is not lent the 10 A date.
+  vi.advanceTimersByTime(1000);
+  session.observeDevice(charger(16), startMs + 1000);
+  expect(dateOf('16a')).toBeUndefined();
+  // A value the charger cannot hold is no reading.
+  session.observeDevice(charger(40), startMs + 3000);
+  session.observeDevice(charger(10), startMs + 3000);
+  expect(dateOf('10a')).toBe(startMs + 2000);
+  // A refresh the session never saw (the live feed was down) parsed 12 A: undated.
+  expect(dateOf('12a')).toBeUndefined();
 });

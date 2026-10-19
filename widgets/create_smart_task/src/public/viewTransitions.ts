@@ -1,7 +1,4 @@
-import {
-  CREATE_SMART_TASK_DEFAULT_READY_BY,
-  resolveCreateSmartTaskRejectCopy,
-} from '../../../../packages/shared-domain/src/deadlineLabels';
+import { resolveCreateSmartTaskRejectCopy } from '../../../../packages/shared-domain/src/deadlineLabels';
 import { canCreateFromPreview, type ComposeOrigin, type RenderTargets, type ViewState } from './render';
 import type {
   CreateSmartTaskCandidateRequest,
@@ -9,6 +6,11 @@ import type {
   CreateSmartTaskQuickTarget,
   CreateSmartTaskQuickTargetsResponse,
 } from '../createSmartTaskWidgetTypes';
+
+// The ready-by time the goal form opens with: the next 07:00, the usual
+// morning the EV and the water heater are wanted by. The quick targets already
+// cover "as soon as reasonable"; the form is for a time of the user's own.
+const CREATE_SMART_TASK_DEFAULT_READY_BY = '07:00';
 
 // Pure view transitions and request builders (no closure state) so the
 // controller's click handlers stay one-liners. Each transition returns the next

@@ -2,12 +2,12 @@ import type { CreateSmartTaskCandidateDevice } from '../../../packages/contracts
 import type { SmartTaskCandidateDevice } from '../../../packages/contracts/src/smartTaskEdit';
 import {
   resolveSmartTaskCurrentValue,
-  resolveSmartTaskDeviceDefaultGoal,
-  resolveSmartTaskQuickTargets,
+  resolveSmartTaskDefaultGoal,
   resolveDefaultSmartTaskKind,
   resolveSmartTaskGoalBounds,
   supportsSmartTaskKind,
 } from '../../../packages/shared-domain/src/smartTaskDeviceKind';
+import { resolveSmartTaskQuickTargets } from './smartTaskQuickTargetValues';
 import { deviceSupportsLimitLowerPriority } from './limitGrantGate';
 import {
   compareSmartTaskPickerRows,
@@ -28,6 +28,7 @@ const buildCandidateDevice = (
   if (kind === null || !supportsSmartTaskKind(device, kind)) return null;
   const bounds = resolveSmartTaskGoalBounds(device, kind);
   const currentValue = resolveSmartTaskCurrentValue(device, kind);
+  const quickTargets = resolveSmartTaskQuickTargets(device, kind);
   const name = device.name?.trim();
   return {
     deviceId: device.id,
@@ -37,9 +38,12 @@ const buildCandidateDevice = (
     goalMin: bounds.min,
     goalMax: bounds.max,
     goalStep: bounds.step,
-    defaultGoal: resolveSmartTaskDeviceDefaultGoal(device, kind),
+    // A temperature device seeds from its first quick target: the common-case
+    // 60 °C is a water heater's, and clamped into a room's range it seeded 40 °C.
+    defaultGoal: (kind === 'temperature' ? quickTargets[0] : undefined)
+      ?? resolveSmartTaskDefaultGoal({ kind, bounds, currentValue }),
     currentValue,
-    offersQuickTargets: resolveSmartTaskQuickTargets(device, kind).length > 0,
+    offersQuickTargets: quickTargets.length > 0,
     // Gate-on-effect: the limit-lower-priority permission is inert on a binary
     // device (no higher step to promote to), so the compose toggle is offered
     // only where the write's own gate keeps the grant (preview ≡ persist).

@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  resolveSmartTaskDeviceDefaultGoal,
   resolveSmartTaskQuickTargets,
-  type SmartTaskDeviceLike,
-} from '../../packages/shared-domain/src/smartTaskDeviceKind';
+  type SmartTaskQuickTargetDevice,
+} from '../../lib/objectives/deferredObjectives/smartTaskQuickTargetValues';
 import { estimateSmartTaskQuickTargets } from '../../lib/objectives/deferredObjectives/smartTaskQuickTargets';
 import type {
   DeferredObjectivePlanPreviewCandidate,
@@ -11,13 +10,18 @@ import type {
 } from '../../packages/contracts/src/deferredObjectivePlanPreview';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 
-const device = (fields: Partial<SmartTaskDeviceLike>): SmartTaskDeviceLike => ({
+const device = (fields: Partial<SmartTaskQuickTargetDevice>): SmartTaskQuickTargetDevice => ({
   isEvCharger: false, binaryControllable: false, targets: [], ...fields,
 });
 
-const thermostat = (currentTemperature: number, setpoint: number, min: number, max: number): SmartTaskDeviceLike => (
-  device({ temperature: { currentTemperature, target: { value: setpoint, min, max, step: 0.5 } } })
-);
+// `intended` is the setpoint the owner's mode wants; the reported setpoint by default.
+const thermostat = (
+  currentTemperature: number, setpoint: number, min: number, max: number, intended = setpoint,
+): SmartTaskQuickTargetDevice => device({ temperature: {
+  currentTemperature,
+  target: { id: 'target_temperature', value: setpoint, unit: '°C', min, max, step: 0.5 },
+  intendedTargetC: intended,
+} });
 
 describe('resolveSmartTaskQuickTargets', () => {
   // The cases are the production household's own devices (2026-10-16).
@@ -34,6 +38,10 @@ describe('resolveSmartTaskQuickTargets', () => {
     // A frost-guard setpoint in a warm room, and a room already above its setpoint.
     expect(resolveSmartTaskQuickTargets(thermostat(17.1, 10, 4, 40), 'temperature')).toEqual([18, 19, 20, 21]);
     expect(resolveSmartTaskQuickTargets(thermostat(24.7, 21, 4, 40), 'temperature')).toEqual([25, 26, 27, 28]);
+  });
+
+  it('counts from the mode target, not the limit setpoint of a room PELS holds back', () => {
+    expect(resolveSmartTaskQuickTargets(thermostat(15.8, 16, 4, 40, 21), 'temperature')).toEqual([21, 22, 23, 24]);
   });
 
   it('offers nothing at the device maximum', () => {
@@ -54,11 +62,6 @@ describe('resolveSmartTaskQuickTargets', () => {
   });
 });
 
-describe('resolveSmartTaskDeviceDefaultGoal', () => {
-  it('seeds a room from its first quick target, not the water-heater default', () => {
-    expect(resolveSmartTaskDeviceDefaultGoal(thermostat(20.2, 21, 4, 40), 'temperature')).toBe(21);
-  });
-});
 
 const NOW = Date.UTC(2026, 9, 16, 18, 10);
 const SLOT = 30 * 60 * 1000;

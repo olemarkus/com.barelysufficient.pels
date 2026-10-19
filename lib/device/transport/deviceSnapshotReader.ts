@@ -80,12 +80,25 @@ export class DeviceSnapshotReader {
     return parsed && this.chargingCurrentControl.projectControl(parsed);
   }
 
+  /**
+   * A fresh read: the integration sessions observe it as of when it started (a
+   * device update that arrived while it was fetched is newer than anything in
+   * it), then it is parsed.
+   */
+  parseFetchedDeviceList(
+    list: HomeyDeviceLike[],
+    readAtMs: number,
+    livePowerWByDeviceId: LiveDevicePowerWatts,
+  ): TransportDeviceSnapshot[] {
+    this.chargingCurrentControl.observeDevices(list, readAtMs);
+    return this.parseDeviceList(list, livePowerWByDeviceId);
+  }
+
   parseDeviceList(
     list: HomeyDeviceLike[],
     livePowerWByDeviceId: LiveDevicePowerWatts = {},
     purpose: ParseDevicePurpose = 'runtime',
   ): TransportDeviceSnapshot[] {
-    this.chargingCurrentControl.observeDevices(list);
     const parsed = parseDeviceList(
       list.filter((device) => !getDeviceAdapter(device).retainsPlugObservation(device)),
       livePowerWByDeviceId,

@@ -3,39 +3,23 @@ import type {
   StarvationNotListedDevice,
   StarvationRescueDevice,
 } from '../../packages/contracts/src/starvationRescue';
-import { hasOpenDeferredObjective } from '../../lib/objectives/deferredObjectives';
-import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
+import {
+  hasOpenDeferredObjective,
+  isDeviceInSmartTaskMainHome,
+  readCreateSmartTaskCandidates,
+  resolveDeviceSmartTaskHomeScope,
+} from '../../lib/objectives/deferredObjectives';
 import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
 import type { CreateSmartTaskCandidateDevicesRead } from '../../packages/contracts/src/widgetHostApi';
-import { isRuntimePlannedDevice } from '../appDeviceSupport';
-import { selectMeteredSnapshots } from '../../lib/ports/meteredSnapshots';
 import type { ObjectiveDeviceExclusion } from '../../lib/objectives/deferredObjectives/deviceExclusion';
 import { requireDeviceDiagnosticsService } from './contextGuards';
 
-/**
- * Multi-home v1 scope predicate shared by EVERY smart-task surface: the app's
- * candidate list + create validation (`appSmartTaskApi.ts`), the device-scoped write op's
- * defence-in-depth gate (`buildDeferredObjectiveDeviceWriteDeps`), the
- * set-deadline flow-card autocompletes (`registerAppFlowCards`), and — negated
- * — the decoration controller's diagnostics honesty (`createPlanEngine`).
- *
- * Smart tasks are planned against the MAIN home's meter budget (hard cap,
- * daily-budget overlay, priority-ordered reservations), so a device in a
- * separate-meter sub-home is out of scope. This predicate deliberately answers
- * durable MEMBERSHIP only: provisional/global authority fences must not look
- * like relocation, because lifecycle consumers negate this result to diagnose
- * and disarm tasks that genuinely moved behind another meter.
- */
+// The smart-task scope rules live in `lib/objectives/deferredObjectives/smartTaskHomeScope.ts`.
+// Membership is wired at startup and cleared at teardown; outside that window
+// there is no evidence of relocation and no authority for a new promise.
 export const isSmartTaskDeviceInMainHome = (ctx: AppContext, deviceId: string): boolean => {
   const membership = ctx.homeMembership;
-  // Unknown/provisional membership is NOT evidence of durable relocation.
-  // Treat it as Main here so existing tasks remain intact; every new promise
-  // and device write additionally requires `hasMainHomeSmartTaskAuthority`.
-  if (
-    membership?.isOwnershipReady() !== true
-    || membership.hasPendingOwnershipGeneration?.() !== false
-  ) return true;
-  return membership.getHomeIdForDevice(deviceId) === MAIN_HOME_ID;
+  return membership ? isDeviceInSmartTaskMainHome(membership, deviceId) : true;
 };
 
 /**
@@ -82,59 +66,25 @@ export const resolveSmartTaskDeviceExclusion = (
   return Object.keys(ctx.deviceControlSettings.managedDevices).length === 0 ? null : 'unmanaged';
 };
 
-/**
- * Full authority for a NEW Main-home smart-task promise or terminal command.
- * Unlike the membership-only predicate above, this closes on every producer
- * fence: first-read suspect stores, no-tree active sub-homes,
- * unresolved/colliding Main meter ownership, a configured meter source, or a
- * real sub-home membership. The reason-bearing scope keeps a configured source
- * durable so lifecycle consumers disarm it instead of retrying forever.
- */
+/** Full authority for a NEW Main-home smart-task promise or terminal command. */
 export const hasMainHomeSmartTaskAuthority = (
   ctx: AppContext,
   deviceId: string,
 ): boolean => resolveSmartTaskHomeScope(ctx, deviceId) === 'main';
 
-/** Reason-bearing authority gate for candidate/preview/create/write surfaces. */
-export const resolveSmartTaskHomeScope = (
-  ctx: AppContext,
-  deviceId: string,
-): SmartTaskHomeScope => {
+export const resolveSmartTaskHomeScope = (ctx: AppContext, deviceId: string): SmartTaskHomeScope => {
   const membership = ctx.homeMembership;
-  // Readiness FIRST: the cached map may contain a fail-safe Main/sub-home
-  // resolution built from constructor defaults after a first suspect store
-  // read. It is not durable relocation evidence until both stores are proven.
-  if (
-    membership?.isOwnershipReady() !== true
-    || membership.hasPendingOwnershipGeneration?.() !== false
-  ) return 'unavailable';
-  // Resolve source authority before membership/global fencing: once the active
-  // source set itself is authoritative, source identity is durable even when
-  // that meter belongs to a sub-home or creates a Main-meter ownership
-  // collision. An unavailable source read still wins and remains retryable.
-  const meterSources = membership.getConfiguredMeterSources();
-  if (meterSources.state === 'unavailable') return 'unavailable';
-  if (meterSources.deviceIds.has(deviceId)) return 'source_device';
-  if (membership.getHomeIdForDevice(deviceId) !== MAIN_HOME_ID) return 'sub_home';
-  if (membership.isMainHomeActuationFenced()) return 'unavailable';
-  return 'main';
+  return membership ? resolveDeviceSmartTaskHomeScope(membership, deviceId) : 'unavailable';
 };
 
 export const readCreateSmartTaskCandidateDevices = (
   ctx: AppContext,
+  readModeTargetC: (deviceId: string) => number | null,
 ): CreateSmartTaskCandidateDevicesRead => {
   const membership = ctx.homeMembership;
-  if (!membership || membership.isMainHomeActuationFenced()) {
-    return { state: 'unavailable' };
-  }
-  const meterSources = membership.getConfiguredMeterSources();
-  if (meterSources.state === 'unavailable') return { state: 'unavailable' };
-  return {
-    state: 'ready',
-    devices: selectMeteredSnapshots(ctx.getPlanInputSnapshot()).filter(isRuntimePlannedDevice)
-      .filter((device) => isSmartTaskDeviceInMainHome(ctx, device.id))
-      .filter((device) => !meterSources.deviceIds.has(device.id)),
-  };
+  return membership
+    ? readCreateSmartTaskCandidates(membership, ctx.getPlanInputSnapshot(), readModeTargetC)
+    : { state: 'unavailable' };
 };
 
 // Map a refused device-scoped write outcome onto the app create-lane reject

@@ -30,7 +30,7 @@ export class RealtimeIngestService {
   observeChargingDevice(device: HomeyDeviceLike): void {
     const current = this.reader.chargingCurrentControl;
     current.synchronizeTrust();
-    current.sessions.observeDevice(device);
+    current.sessions.observeDevice(device, Date.now());
     this.synchronizeAdapterState();
   }
 

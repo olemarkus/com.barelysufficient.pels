@@ -80,7 +80,8 @@ export type DeviceAdapter = {
 
 /** Session details remain behind resolved eligibility. */
 export type DeviceAdapterSession = {
-  observeDevice(device: HomeyDeviceLike): void;
+  /** `readAtMs`: when the read that produced `device` started. */
+  observeDevice(device: HomeyDeviceLike, readAtMs: number): void;
   observeCapability(deviceId: string, capabilityId: string, value: unknown): void;
   retainDevices(devices: readonly HomeyDeviceLike[]): void;
   setTrustEpoch(epoch: string): void;

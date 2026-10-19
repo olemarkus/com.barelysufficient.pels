@@ -1,4 +1,5 @@
 import { BatteryManagedSettings } from '../../lib/battery/batteryControlSettings';
+import { withSmartTaskTemperatureIntent } from '../../lib/objectives/deferredObjectives/smartTaskQuickTargetValues';
 import { SurplusPoolReachability } from '../../lib/power/surplusPoolReachable';
 import { deviceControlSettingsFixture } from './deviceControlSettingsFixture';
 import { createDeviceReads, type DeviceReadStore } from '../../lib/device/deviceReads';
@@ -418,7 +419,10 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     get planRebuildThrottle() { return planRebuildThrottle; },
     getUiPickerDevices: () => latestTargetSnapshot,
     settingsUiDeviceReads,
-    getCreateSmartTaskCandidateDevices: () => ({ state: 'ready', devices: latestTargetSnapshot }),
+    getCreateSmartTaskCandidateDevices: () => ({
+      state: 'ready',
+      devices: latestTargetSnapshot.map((device) => withSmartTaskTemperatureIntent(device, () => null)),
+    }),
     get priceOptimizationSettings() { return priceOptimizationSettings; },
     // Production's port with no registry behind it (`buildHomeRuntimeReadPort`).
     homeRuntimeRead: { readHome: () => ({ state: 'unavailable' }) },

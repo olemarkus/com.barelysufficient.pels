@@ -421,7 +421,7 @@ describe('smart-task membership and authority predicates', () => {
 
     expect(resolveSmartTaskHomeScope(ctx, 'meter-1')).toBe('source_device');
     expect(hasMainHomeSmartTaskAuthority(ctx, 'meter-1')).toBe(false);
-    expect(readCreateSmartTaskCandidateDevices(ctx)).toEqual({
+    expect(readCreateSmartTaskCandidateDevices(ctx, () => null)).toEqual({
       state: 'ready',
       devices: [expect.objectContaining({ id: 'heater-1' })],
     });

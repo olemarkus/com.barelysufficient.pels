@@ -337,10 +337,13 @@ module.exports = {
     },
     {
       name: 'no-objectives-to-peer-except-power',
-      comment: 'Objectives is leafward; power <-> objectives type cycle is allowed, all other peer edges forbidden.',
+      comment: 'Objectives is leafward; power <-> objectives type cycle is allowed. Home is allowed too: '
+        + 'it is a pure leaf (no-home-to-peer), so the edge cannot close a cycle, and the smart-task '
+        + 'Main-home scope rules belong with smart tasks, reading the membership port. All other peer '
+        + 'edges forbidden.',
       severity: 'error',
       from: { path: '^lib/objectives/' },
-      to: { path: '^lib/(battery|device|plan|price|dailyBudget|observer|executor|weather|home|thermostat)/' },
+      to: { path: '^lib/(battery|device|plan|price|dailyBudget|observer|executor|weather|thermostat)/' },
     },
     {
       name: 'no-weather-to-peer',

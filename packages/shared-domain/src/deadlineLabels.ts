@@ -979,22 +979,6 @@ export const resolveSmartTaskEditRejectCopy = (reason: string | undefined): stri
   return SMART_TASK_EDIT_COPY.updateError;
 };
 
-// The ready-by time the goal form opens with: the next 07:00, the usual
-// morning the EV and the water heater are wanted by. The quick targets already
-// cover "as soon as reasonable"; the form is for a time of the user's own.
-export const CREATE_SMART_TASK_DEFAULT_READY_BY = '07:00';
-
-// A quick-target box's deadline ("by 01:30"), and the selected box's full
-// deadline with its projected finish ("Ready by Tomorrow 01:30 · likely done
-// around 00:50"), which also says which day the box's bare time is on. The
-// times and the deadline label are server-formatted in the Homey timezone.
-export const formatQuickTargetDeadline = (localTime: string): string => `by ${localTime}`;
-export const formatQuickTargetTiming = (deadlineLabel: string, likelyFinishLocalTime: string | null): string => (
-  likelyFinishLocalTime === null
-    ? `Ready by ${deadlineLabel}`
-    : `Ready by ${deadlineLabel} · likely done around ${likelyFinishLocalTime}`
-);
-
 // Shared chip-tone slug union. Matches the `.plan-chip--*` CSS variants in
 // `packages/settings-ui/public/style.css` (`info`, `muted`, `ok`, `warn`,
 // `alert`). Typing the list-status variant map and the pending-hero tone

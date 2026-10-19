@@ -509,7 +509,7 @@ export class SnapshotRefreshService {
             fetchSource,
         );
         const presentSnapshot = withIgnoredReadEntries(
-            this.reader.parseDeviceList(effectiveList, livePowerByDeviceId),
+            this.reader.parseFetchedDeviceList(effectiveList, start, livePowerByDeviceId),
             previousSnapshot,
             read.ignoredIds,
         );

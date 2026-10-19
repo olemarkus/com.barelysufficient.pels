@@ -55,9 +55,9 @@ export class ChargingCurrentControl {
     return trust.connected;
   }
 
-  observeDevices(devices: readonly HomeyDeviceLike[]): void {
+  observeDevices(devices: readonly HomeyDeviceLike[], readAtMs: number): void {
     void this.homeLocation.refreshIfDue();
-    if (this.synchronizeTrust()) this.sessions.observeDevices(devices);
+    if (this.synchronizeTrust()) this.sessions.observeDevices(devices, readAtMs);
   }
 
   assertControlAllowed(device: HomeyDeviceLike): void {

@@ -20,7 +20,9 @@ import {
   quickTargetsLoadedView,
   submittableRequest,
 } from './viewTransitions';
-import { clickedView, resolveClickAction } from './clickActions';
+import {
+  assertUnhandledClick, clickedView, isViewClickAction, resolveClickAction,
+} from './clickActions';
 import type {
   CreateSmartTaskCandidateRequest,
   CreateSmartTaskCreateResponse,
@@ -480,14 +482,14 @@ export const createWidgetController = (params: {
   const handleClick = (event: Event): void => {
     const action = resolveClickAction(event.target);
     if (action === null) return;
+    if (isViewClickAction(action)) { setView(clickedView(action, view, targets)); return; }
     switch (action.kind) {
       case 'select-device': selectDevice(action.deviceId); return;
-      case 'quick-start': void submit(); return;
       case 'preview': void runPreview(); return;
-      case 'create': void submit(); return;
+      case 'submit': void submit(); return;
       case 'back': enterView(backView(view)); return;
       case 'retry-load': void loadAndRender(); return;
-      default: setView(clickedView(action, view, targets) ?? view);
+      default: assertUnhandledClick(action);
     }
   };
 
