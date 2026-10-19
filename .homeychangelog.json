@@ -655,5 +655,8 @@
   },
   "3.17.2": {
     "en": "The Held-back devices widget now explains itself. It lists devices PELS has kept below their target temperature or battery level for 15 minutes, and when nothing qualifies it names the other limited devices and why each is not listed, for example no target set or listed in a few minutes. EV chargers with \"Charge to a battery level\" turned on now show up there too when PELS holds the car below its level, and \"Let it run now\" charges it to that level. The Available power widget now says how many devices are limited."
+  },
+  "3.18.0": {
+    "en": "The New smart task widget now offers up to four quick targets for the chosen device, each with a ready-by time PELS can meet in the current prices. Tap Start to create the selected one, or Customize to adjust it. EV chargers get the usual battery levels above the car's current level. Thermostats step up from the temperature their mode asks for, 1 °C at a time for rooms and 5 °C for water heaters, so a room PELS is holding back is offered its normal temperature and up. A charger with no car connected can now get a smart task, which waits for the car.\n\nThe Futurehome EV charger now gets PELS's built-in charging current control. PELS sets the current through the charger's own current limit and confirms it from the limit the charger reports back."
   }
 }
