@@ -652,5 +652,8 @@
   },
   "3.17.1": {
     "en": "Charge to a battery level at 100% now leaves charging to the car, as before the setting existed: a full car that still draws power, for example to heat the cabin, is no longer switched off. The setting's hint now says that an energy smart task still charges a car that doesn't report its battery level, and \"Leave off until turned on again\" sits at the end of the charger's Power limiting card."
+  },
+  "3.17.2": {
+    "en": "The Held-back devices widget now explains itself. It lists devices PELS has kept below their target temperature or battery level for 15 minutes, and when nothing qualifies it names the other limited devices and why each is not listed, for example no target set or listed in a few minutes. EV chargers with \"Charge to a battery level\" turned on now show up there too when PELS holds the car below its level, and \"Let it run now\" charges it to that level. The Available power widget now says how many devices are limited."
   }
 }
