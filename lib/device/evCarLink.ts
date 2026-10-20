@@ -114,14 +114,35 @@ export const appendEvLinkHistory = (
     history: EvLinkEdgeHistory,
     side: keyof EvLinkEdgeHistory,
     edge: EvLinkEdge,
+    /** The same selection rule the correlation pass applies (`matchCoincidentEdges`). */
+    admits: (carId: string, chargerId: string) => boolean,
 ): EvLinkEdgeHistory => {
     const next = { ...history, [side]: [...history[side], edge] };
     if (next[side].length <= EV_CAR_LINK_MAX_EDGES_PER_SIDE) return next;
-    const match = matchCoincidentEdges({ ...next, nowMs: edge.atMs });
+    const match = matchCoincidentEdges({ ...next, nowMs: edge.atMs, admits });
     return {
         carEdges: next.carEdges.slice(-EV_CAR_LINK_MAX_EDGES_PER_SIDE),
         chargerEdges: rememberEvLinkAmbiguities(next.chargerEdges, match.ambiguousChargerEdges)
             .slice(-EV_CAR_LINK_MAX_EDGES_PER_SIDE),
+    };
+};
+
+/**
+ * `history` without `carId`'s edges, remembering first every ambiguity they were
+ * evidence for: a car that becomes unavailable or leaves Homey takes its edges
+ * with it, and the rival it was must not turn into a lone candidate.
+ */
+export const dropEvLinkCarEdges = (
+    history: EvLinkEdgeHistory,
+    carId: string,
+    nowMs: number,
+    admits: (carId: string, chargerId: string) => boolean,
+): EvLinkEdgeHistory => {
+    const match = matchCoincidentEdges({ ...history, nowMs, admits });
+    const losing = match.ambiguousBursts.filter((burst) => burst.evidence.some((edge) => edge.deviceId === carId));
+    return {
+        carEdges: history.carEdges.filter((edge) => edge.deviceId !== carId),
+        chargerEdges: rememberEvLinkAmbiguities(history.chargerEdges, losing.flatMap((burst) => burst.chargerEdges)),
     };
 };
 
@@ -149,9 +170,23 @@ export type EvLinkAmbiguity = {
     atMs: number;
 };
 
+/**
+ * One burst the matcher found ambiguous on this pass, with the evidence that
+ * made it so: its candidate car edges and the other chargers' edges that contest
+ * them. Remembering it (`rememberEvLinkAmbiguities`) is for when that evidence
+ * is about to be lost; while it is live, the next pass recomputes it, so a rival
+ * that a selection later sets aside stops counting.
+ */
+export type EvLinkAmbiguousBurst = {
+    chargerEdges: readonly EvLinkEdge[];
+    evidence: readonly EvLinkEdge[];
+};
+
 export type EvLinkMatchResult = {
-    /** Remember these rejections before pruning, even while edges are unsettled. */
+    /** Every charger edge ambiguous on this pass, live or remembered. */
     ambiguousChargerEdges: EvLinkEdge[];
+    /** The bursts found ambiguous from live evidence on this pass. */
+    ambiguousBursts: EvLinkAmbiguousBurst[];
     /** Exactly-one-car-to-one-charger pairings; each is worth a vote. */
     coincidences: EvLinkCoincidence[];
     /**
@@ -215,6 +250,15 @@ export const matchCoincidentEdges = (params: {
     nowMs: number;
     windowMs?: number;
     settleMs?: number;
+    /**
+     * The owner's selection for a charger (`admitsCar`). A car edge that fits a
+     * charger admitting the car is set aside at chargers that do not: neither a
+     * candidate nor a rival there. One that fits no admitting charger is still
+     * evidence of a car plugging in wherever it fits, so it stays a candidate
+     * everywhere: a car selected nowhere it fits, plugged into a charger that
+     * selects another car, must still block that car's link.
+     */
+    admits?: (carId: string, chargerId: string) => boolean;
 }): EvLinkMatchResult => {
     const {
         carEdges,
@@ -222,16 +266,10 @@ export const matchCoincidentEdges = (params: {
         nowMs,
         windowMs = EV_CAR_LINK_COINCIDENCE_WINDOW_MS,
         settleMs = EV_CAR_LINK_COINCIDENCE_WINDOW_MS,
+        admits = () => true,
     } = params;
     const isSettled = (edge: EvLinkEdge): boolean => nowMs - edge.atMs >= settleMs;
-    const scored = chargerEdges
-        .map((chargerEdge) => ({
-            chargerEdge,
-            candidates: carEdges.filter((carEdge) => (
-                carEdge.kind === chargerEdge.kind
-                && Math.abs(carEdge.atMs - chargerEdge.atMs) <= windowMs
-            )),
-        }));
+    const scored = scoreChargerEdges(carEdges, chargerEdges, windowMs, admits);
     const withCandidates = scored.flatMap(({ chargerEdge, candidates }): ScoredChargerEdge[] => (
         hasEdges(candidates) ? [{ chargerEdge, candidates }] : []
     ));
@@ -240,6 +278,7 @@ export const matchCoincidentEdges = (params: {
     const provisionalCoincidences: EvLinkCoincidence[] = [];
     const ambiguities: EvLinkAmbiguity[] = [];
     const ambiguousChargerEdges = new Set(chargerEdges.filter((edge) => edge.ambiguous));
+    const ambiguousBursts: EvLinkAmbiguousBurst[] = [];
 
     for (const entry of withCandidates) {
         const { chargerEdge } = entry;
@@ -251,12 +290,10 @@ export const matchCoincidentEdges = (params: {
         // Negative evidence is permanent for the whole burst. Waiting for its
         // resting edge to settle can lose an earlier rival during sustained
         // reconnects, pruning or bounded-ring eviction.
-        if (ambiguous) {
-            for (const edge of burst.chargerEdges) ambiguousChargerEdges.add(edge);
-        }
         // Only resting edges decide. An unsettled one with a single car and no
         // rival yet is a provisional pairing; only a settled one earns a vote.
         if (burst.restingEdge !== chargerEdge) continue;
+        if (ambiguous) ambiguousBursts.push(toAmbiguousBurst(burst, withCandidates));
         if (!isSettled(chargerEdge)) {
             if (!ambiguous) provisionalCoincidences.push(toCoincidence(chargerEdge, latestEdge(burst.candidates)));
             continue;
@@ -277,11 +314,18 @@ export const matchCoincidentEdges = (params: {
         coincidences.push(toCoincidence(chargerEdge, latestEdge(burst.candidates)));
     }
 
+    // Every edge of an ambiguous burst is ambiguous; each burst is recorded once,
+    // at its resting edge, which is always one of the scored edges.
+    for (const burst of ambiguousBursts) {
+        for (const edge of burst.chargerEdges) ambiguousChargerEdges.add(edge);
+    }
+
     // Every car edge some charger edge fits, whatever was decided about it:
     // ambiguous and superseded edges are explained, just not attributable.
     const matchedCarKeys = new Set(withCandidates.flatMap((entry) => entry.candidates.map(buildEdgeKey)));
     return {
         ambiguousChargerEdges: [...ambiguousChargerEdges],
+        ambiguousBursts,
         coincidences,
         provisionalCoincidences,
         ambiguities,
@@ -289,6 +333,7 @@ export const matchCoincidentEdges = (params: {
         unmatchedChargerEdges: scored
             .filter((entry) => (
                 entry.candidates.length === 0
+                && !entry.setAside
                 && !entry.chargerEdge.ambiguous
                 && isSettled(entry.chargerEdge)
             ))
@@ -390,6 +435,57 @@ const isContestedByAnotherCharger = (
     other.chargerEdge.deviceId !== burst.restingEdge.deviceId
     && other.candidates.some((candidate) => burst.candidates.includes(candidate))
 ));
+
+/**
+ * Each charger edge with the car edges that may pair with it: same kind, inside
+ * the window, and admitted there, unless the car edge fits no charger that
+ * admits it, in which case it stays a candidate wherever it fits (see `admits`).
+ */
+const scoreChargerEdges = (
+    carEdges: readonly EvLinkEdge[],
+    chargerEdges: readonly EvLinkEdge[],
+    windowMs: number,
+    admits: (carId: string, chargerId: string) => boolean,
+): Array<{ chargerEdge: EvLinkEdge; candidates: EvLinkEdge[]; setAside: boolean }> => {
+    const fits = (carEdge: EvLinkEdge, chargerEdge: EvLinkEdge): boolean => (
+        carEdge.kind === chargerEdge.kind && Math.abs(carEdge.atMs - chargerEdge.atMs) <= windowMs
+    );
+    const fitsAdmittingCharger = new Set(carEdges.filter((carEdge) => chargerEdges.some((chargerEdge) => (
+        fits(carEdge, chargerEdge) && admits(carEdge.deviceId, chargerEdge.deviceId)
+    ))));
+    return chargerEdges.map((chargerEdge) => {
+        const fitting = carEdges.filter((carEdge) => fits(carEdge, chargerEdge));
+        const candidates = fitting.filter((carEdge) => (
+            admits(carEdge.deviceId, chargerEdge.deviceId) || !fitsAdmittingCharger.has(carEdge)
+        ));
+        // Explained by a car that plugged in at its own charger: not unexplained.
+        return { chargerEdge, candidates, setAside: candidates.length < fitting.length };
+    });
+};
+
+/** `burst` with its evidence: its candidates and the other chargers' edges that share one. */
+const toAmbiguousBurst = (burst: ChargerEdgeBurst, scored: readonly ScoredChargerEdge[]): EvLinkAmbiguousBurst => ({
+    chargerEdges: burst.chargerEdges,
+    evidence: (burst.candidates as readonly EvLinkEdge[]).concat(scored.filter((other) => (
+        other.chargerEdge.deviceId !== burst.restingEdge.deviceId
+        && other.candidates.some((candidate) => burst.candidates.includes(candidate))
+    )).map((other) => other.chargerEdge)),
+});
+
+/**
+ * The charger edges whose ambiguity must be remembered now: those of bursts
+ * whose evidence (or own edges) is about to be pruned at `retentionMs`.
+ */
+export const ambiguitiesToRemember = (
+    bursts: readonly EvLinkAmbiguousBurst[],
+    nowMs: number,
+    retentionMs: number,
+): EvLinkEdge[] => {
+    const expiring = (edge: EvLinkEdge): boolean => nowMs - edge.atMs > retentionMs;
+    return bursts
+        .filter((burst) => burst.evidence.some(expiring) || burst.chargerEdges.some(expiring))
+        .flatMap((burst) => burst.chargerEdges);
+};
 
 const distinctDeviceIds = (edges: EvLinkEdges): string[] => (
     Array.from(new Set(edges.map((edge) => edge.deviceId)))

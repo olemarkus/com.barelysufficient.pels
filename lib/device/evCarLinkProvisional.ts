@@ -4,7 +4,7 @@
  * battery level reaches the charger at once. See `correlate` in
  * `evCarLinkProducer.ts`; split out to keep that file within its size ceiling.
  */
-import type { EvLinkCoincidence, EvLinkEdge } from './evCarLink';
+import type { EvLinkCoincidence } from './evCarLink';
 import type { ActiveLinkView } from './evCarLinkReadModel';
 
 type Link = ActiveLinkView & { provisional: boolean };
@@ -29,12 +29,14 @@ export const mayOpenProvisionalLink = (
     return true;
 };
 
-/** Chargers whose provisional link stood on an edge a rival has since made ambiguous. */
-export const findContestedProvisionalLinks = (
+/** Chargers whose provisional link no longer matches a current pairing for that charger, car and plug-in. */
+export const findUnsupportedProvisionalLinks = (
     activeLinks: ReadonlyMap<string, Link>,
-    ambiguousChargerEdges: readonly EvLinkEdge[],
+    pairings: readonly EvLinkCoincidence[],
 ): string[] => [...activeLinks].flatMap(([chargerId, link]) => (
-    link.provisional && ambiguousChargerEdges.some((edge) => edge.deviceId === chargerId && edge.atMs === link.sinceMs)
+    link.provisional && !pairings.some((pairing) => (
+        pairing.chargerId === chargerId && pairing.carId === link.carId && pairing.atMs === link.sinceMs
+    ))
         ? [chargerId] : []
 ));
 

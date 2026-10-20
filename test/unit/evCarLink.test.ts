@@ -56,7 +56,7 @@ describe('edge ring', () => {
         edge(`other-${index}`, 'disconnect', index + 1)
       ))],
     };
-    const next = appendEvLinkHistory(history, 'chargerEdges', edge('charger', 'connect', 100));
+    const next = appendEvLinkHistory(history, 'chargerEdges', edge('charger', 'connect', 100), () => true);
     expect(next.chargerEdges).toHaveLength(EV_CAR_LINK_MAX_EDGES_PER_SIDE);
     expect(next.chargerEdges).not.toContain(older);
     expect(next.chargerEdges[next.chargerEdges.length - 1]).toEqual({ ...edge('charger', 'connect', 100), ambiguous: true });
@@ -73,7 +73,7 @@ describe('edge ring', () => {
       ],
       chargerEdges: [edge('charger', 'connect', 0)],
     };
-    const next = appendEvLinkHistory(history, 'carEdges', edge('carB', 'disconnect', 200));
+    const next = appendEvLinkHistory(history, 'carEdges', edge('carB', 'disconnect', 200), () => true);
     expect(next.carEdges).toHaveLength(EV_CAR_LINK_MAX_EDGES_PER_SIDE);
     expect(next.carEdges.some((entry) => entry.deviceId === 'carA')).toBe(false);
     expect(next.chargerEdges).toEqual([{ ...edge('charger', 'connect', 0), ambiguous: true }]);
@@ -85,7 +85,7 @@ describe('edge ring', () => {
       edge('car', 'connect', index)
     ));
     const next = appendEvLinkHistory(
-      { carEdges: filled, chargerEdges: [] }, 'carEdges', edge('car', 'connect', 999),
+      { carEdges: filled, chargerEdges: [] }, 'carEdges', edge('car', 'connect', 999), () => true,
     ).carEdges;
     expect(next).toHaveLength(EV_CAR_LINK_MAX_EDGES_PER_SIDE);
     expect(next[0].atMs).toBe(1);

@@ -45,6 +45,8 @@ export const createObservationProducers = (
     evCarLinkSnapshotAccess: EvCarLinkSnapshotAccess | undefined,
     onAssociatedCarStateOfCharge: EvCarLinkProducerDeps['onAssociatedCarStateOfCharge'],
     onAssociationEnded: EvCarLinkProducerDeps['onAssociationEnded'],
+    /** The cars the owner selected for a charger (`DeviceControlSettings`). */
+    getSelectedCarIds: (chargerId: string) => readonly string[],
 ): ObservationProducers => {
     // Gated: battery and solar re-report the SAME value on every fetch (~1/min),
     // so an unchanged repeat carries nothing. The gate wraps them here rather
@@ -68,6 +70,7 @@ export const createObservationProducers = (
         evCarLinkSnapshotAccess,
         onAssociatedCarStateOfCharge,
         onAssociationEnded,
+        getSelectedCarIds,
     ),
     });
 };

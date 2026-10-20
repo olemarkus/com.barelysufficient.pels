@@ -140,7 +140,7 @@ describe('importLegacyEvCarLinkState', () => {
     get.mockRestore();
     expect(historyResolved).toBe(false);
     const producer = createEvCarLinkProducer(
-      () => {}, () => [], createPersistedEvCarLinkAccess(repository, NOW, historyResolved), undefined, undefined,
+      () => {}, () => [], createPersistedEvCarLinkAccess(repository, NOW, historyResolved), undefined, undefined, () => [],
     );
     expect(producer.readChargerMatchesForCar('car')).toEqual({ state: 'unavailable' });
     // A blob with no snapshot in it holds no history to wait for.
@@ -255,7 +255,7 @@ describe('importLegacyEvCarLinkState', () => {
     expect(historyResolved).toBe(false);
     expect(settings.get(EV_CAR_LINK_STATE)).toEqual(HISTORY);
     const producer = createEvCarLinkProducer(
-      () => {}, () => [], createPersistedEvCarLinkAccess(repository, NOW, historyResolved), undefined, undefined,
+      () => {}, () => [], createPersistedEvCarLinkAccess(repository, NOW, historyResolved), undefined, undefined, () => [],
     );
     expect(producer.readChargerMatchesForCar('car')).toEqual({ state: 'unavailable' });
 

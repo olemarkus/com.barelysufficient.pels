@@ -58,6 +58,7 @@ const charger = (overrides: Partial<EvCarLinkChargerView> = {}): EvCarLinkCharge
   evChargingState: 'plugged_out',
   measuredPowerW: 0,
   controlOn: false,
+  selectedCarIds: [],
   ...overrides,
 });
 
@@ -174,6 +175,162 @@ describe('linking a car to a charger', () => {
     h.cap('car-1', 'ev_charging_state', 'plugged_out', 60_000);
     expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
     expect(h.ended).toEqual(['charger-1']);
+  });
+
+  it('links each car to the charger it is selected for when both plug in together', () => {
+    const W = EV_CAR_LINK_COINCIDENCE_WINDOW_MS;
+    h.chargers = [charger({ selectedCarIds: ['car-1'] }), charger({ id: 'charger-2', selectedCarIds: ['car-2'] })];
+    seedDisconnected(h, 0);
+    h.car(carDevice({ id: 'car-2', state: 'plugged_out', socPct: 60 }), 0);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.setCharger({ evChargingState: 'plugged_in' }, 'charger-2');
+    h.tick(1_000);
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', 2_000);
+    h.cap('car-2', 'ev_charging_state', 'plugged_in', 3_000);
+    // Each car is a candidate only where it is selected: no rival, both link at once.
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ carId: 'car-1' });
+    expect(h.producer.getAssociatedCarForCharger('charger-2')).toMatchObject({ carId: 'car-2' });
+    h.tick(3_000 + W);
+    expect(h.of('ev_car_link_ambiguous')).toEqual([]);
+    expect(h.of('ev_car_link_provisional_withdrawn')).toEqual([]);
+    expect(getEvCarLinkVotes(h.snapshot, 'car-1', 'charger-1')).toBe(1);
+    expect(getEvCarLinkVotes(h.snapshot, 'car-2', 'charger-2')).toBe(1);
+  });
+
+  it('links each car to its selected charger whatever order the four reports arrive in', () => {
+    const W = EV_CAR_LINK_COINCIDENCE_WINDOW_MS;
+    h.chargers = [charger({ selectedCarIds: ['car-1'] }), charger({ id: 'charger-2', selectedCarIds: ['car-2'] })];
+    seedDisconnected(h, 0);
+    h.car(carDevice({ id: 'car-2', state: 'plugged_out', socPct: 60 }), 0);
+    // charger-1, car-1, car-2, then charger-2: both cars fit charger-1 until charger-2 reports.
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.tick(1_000);
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', 2_000);
+    h.cap('car-2', 'ev_charging_state', 'plugged_in', 3_000);
+    h.setCharger({ evChargingState: 'plugged_in' }, 'charger-2');
+    h.tick(4_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ carId: 'car-1' });
+    expect(h.producer.getAssociatedCarForCharger('charger-2')).toMatchObject({ carId: 'car-2' });
+    h.tick(4_000 + W);
+    expect(getEvCarLinkVotes(h.snapshot, 'car-1', 'charger-1')).toBe(1);
+    expect(getEvCarLinkVotes(h.snapshot, 'car-2', 'charger-2')).toBe(1);
+  });
+
+  it('moves a provisional link when the car\'s own charger reports after another one', () => {
+    h.chargers = [charger({ selectedCarIds: ['car-1'] }), charger({ id: 'charger-2', selectedCarIds: ['car-2'] })];
+    seedDisconnected(h, 0);
+    h.car(carDevice({ id: 'car-2', state: 'plugged_out', socPct: 60 }), 0);
+    h.setCharger({ evChargingState: 'plugged_in' }, 'charger-2');
+    h.tick(1_000);
+    // car-1 fits only charger-2 so far, which does not select it: it still pairs there.
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', 2_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-2')).toMatchObject({ carId: 'car-1' });
+    // Its own charger reports: the pairing at charger-2 is gone, and so is that link.
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.tick(3_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ carId: 'car-1' });
+    expect(h.producer.getAssociatedCarForCharger('charger-2')).toBeUndefined();
+    h.cap('car-2', 'ev_charging_state', 'plugged_in', 4_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-2')).toMatchObject({ carId: 'car-2' });
+  });
+
+  it('keeps a charger ambiguous when one of its two cars becomes unavailable', () => {
+    const W = EV_CAR_LINK_COINCIDENCE_WINDOW_MS;
+    seedDisconnected(h, 0);
+    h.car(carDevice({ id: 'car-2', state: 'plugged_out', socPct: 60 }), 0);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.tick(1_000);
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', 2_000);
+    h.cap('car-2', 'ev_charging_state', 'plugged_in', 3_000);
+    h.tick(1_000 + W + 1_000);
+    expect(h.of('ev_car_link_ambiguous')).toHaveLength(1);
+    // car-2's app goes unavailable: its edges go, but the ambiguity they made stays.
+    h.car(carDevice({ id: 'car-2', state: 'plugged_in', socPct: 60, available: false }), 1_000 + W + 2_000);
+    h.tick(3_000 + 2 * W);
+    expect(h.of('ev_car_link_resolved')).toEqual([]);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
+    expect(getEvCarLinkVotes(h.snapshot, 'car-1', 'charger-1')).toBe(0);
+  });
+
+  it('does not let match history give a car back to a charger that set it aside', () => {
+    const W = EV_CAR_LINK_COINCIDENCE_WINDOW_MS;
+    h.snapshot = {
+      version: h.snapshot.version,
+      pairs: { 'car-1|charger-2': { votes: EV_CAR_LINK_MIN_PRIOR_VOTES, lastVotedAtMs: 1 } },
+      cars: {},
+      sessions: {},
+    };
+    h.chargers = [charger({ selectedCarIds: ['car-1'] }), charger({ id: 'charger-2', selectedCarIds: ['car-2'] })];
+    seedDisconnected(h, 0);
+    h.setCharger({ evChargingState: 'plugged_in' }, 'charger-2');
+    h.tick(1_000);
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', 20 * 60_000);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.tick(21 * 60_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ carId: 'car-1' });
+    // charger-2's plug-in settles with car-1 set aside: explained, not unexplained.
+    h.tick(1_000 + W + 1_000);
+    h.tick(21 * 60_000 + W + 1_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ carId: 'car-1' });
+    expect(h.producer.getAssociatedCarForCharger('charger-2')).toBeUndefined();
+  });
+
+  it('still lets a car selected nowhere it fits block the selected car\'s link', () => {
+    const W = EV_CAR_LINK_COINCIDENCE_WINDOW_MS;
+    h.chargers = [charger({ selectedCarIds: ['car-1'] })];
+    seedDisconnected(h, 0);
+    h.car(carDevice({ id: 'car-2', state: 'plugged_out', socPct: 60 }), 0);
+    // car-2 is the one on charger-1; car-1 plugs in somewhere else at the same time.
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.tick(1_000);
+    h.cap('car-2', 'ev_charging_state', 'plugged_in', 2_000);
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', 3_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')?.carId).not.toBe('car-1');
+    h.tick(3_000 + 2 * W + 1_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')?.carId).not.toBe('car-1');
+    expect(getEvCarLinkVotes(h.snapshot, 'car-1', 'charger-1')).toBe(0);
+    // car-2's plug-in is explained by charger-1, so it is not reported as charging elsewhere.
+    expect(h.of('ev_car_session_elsewhere').filter((event) => (
+      event.event === 'ev_car_session_elsewhere' && event.carId === 'car-2'
+    ))).toEqual([]);
+  });
+
+  it('does not let match history pick the selected car when an unselected car is the one plugged in', () => {
+    const W = EV_CAR_LINK_COINCIDENCE_WINDOW_MS;
+    h.snapshot = {
+      version: h.snapshot.version,
+      pairs: { 'car-1|charger-1': { votes: EV_CAR_LINK_MIN_PRIOR_VOTES, lastVotedAtMs: 1 } },
+      cars: {},
+      sessions: {},
+    };
+    h.chargers = [charger({ selectedCarIds: ['car-1'] })];
+    seedDisconnected(h, 0);
+    h.car(carDevice({ id: 'car-2', state: 'plugged_out', socPct: 60 }), 0);
+    // car-1 has been connected elsewhere for longer than a window.
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', 1_000);
+    h.tick(1_000 + 3 * W);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.tick(2_000 + 3 * W);
+    h.cap('car-2', 'ev_charging_state', 'plugged_in', 3_000 + 3 * W);
+    h.tick(3_000 + 5 * W);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')?.carId).not.toBe('car-1');
+  });
+
+  it('keeps today\'s ambiguity when the same two cars are selected for both chargers', () => {
+    const W = EV_CAR_LINK_COINCIDENCE_WINDOW_MS;
+    const both = ['car-1', 'car-2'];
+    h.chargers = [charger({ selectedCarIds: both }), charger({ id: 'charger-2', selectedCarIds: both })];
+    seedDisconnected(h, 0);
+    h.car(carDevice({ id: 'car-2', state: 'plugged_out', socPct: 60 }), 0);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.setCharger({ evChargingState: 'plugged_in' }, 'charger-2');
+    h.tick(1_000);
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', 2_000);
+    h.cap('car-2', 'ev_charging_state', 'plugged_in', 3_000);
+    h.tick(3_000 + W);
+    expect(h.of('ev_car_link_ambiguous')).toHaveLength(2);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
+    expect(h.producer.getAssociatedCarForCharger('charger-2')).toBeUndefined();
   });
 
   it('does not swap two cars between chargers when their delayed reports arrive in reverse order', () => {

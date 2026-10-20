@@ -13,6 +13,7 @@ const charger = (overrides: Partial<EvCarLinkChargerView> = {}): EvCarLinkCharge
   name: 'Elbillader',
   evChargingState: 'plugged_in_charging',
   controlOn: true,
+  selectedCarIds: [],
   ...overrides,
 });
 

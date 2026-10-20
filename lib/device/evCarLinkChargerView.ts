@@ -36,7 +36,18 @@ export type EvCarLinkChargerView = {
     /** Charge already on the charger snapshot (the existing flow card); absent
      *  when that card has never reported. */
     reportedSocPct?: number;
+    /**
+     * The cars the owner selected for this charger; empty when none is. A
+     * selection is the owner saying which cars charge here, so only those cars
+     * can pair with this charger's plug-ins (`admitsCar`).
+     */
+    selectedCarIds: readonly string[];
 };
+
+/** Whether `carId` may pair with this charger: any car without a selection, else a selected one. */
+export const admitsCar = (charger: EvCarLinkChargerView, carId: string): boolean => (
+    charger.selectedCarIds.length === 0 || charger.selectedCarIds.includes(carId)
+);
 
 /**
  * Whether the charger's measured draw is usable evidence about THIS session.

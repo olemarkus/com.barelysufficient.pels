@@ -97,7 +97,7 @@ Open the charger's **Car** section in **More -> Apps -> PELS -> Settings -> Devi
 
 Selecting a car does not itself establish a match. While the page says **Waiting to match a car**, this charger has no battery level. While any car is selected, PELS ignores both the charger's own reading and the **Report battery level for charger** Flow card, including before a match. Clear the selection if you want to use either of those sources instead.
 
-PELS matches cars to chargers whether or not they are selected. Under each car, the **Car** section shows `Last matched to this charger on <date>`, `Not matched to this charger` when the car has matched a different charger that is still in Homey, or `Not matched to this charger yet`. If you already report the battery level through a Flow, wait until the car shows as matched before you select it.
+PELS matches cars to chargers whether or not they are selected; when a car selected for another charger plugs in there, it is matched there, not here. Under each car, the **Car** section shows `Matched to this charger now` for the car on it now, `Last matched to this charger on <date>`, `Not matched to this charger` when the car has matched a different charger that is still in Homey, or `Not matched to this charger yet`. If you already report the battery level through a Flow, wait until the car shows as matched before you select it.
 
 ### Path B: The Charger Reports Battery Percentage
 

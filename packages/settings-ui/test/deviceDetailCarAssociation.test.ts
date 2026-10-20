@@ -446,6 +446,30 @@ describe('charger car picker', () => {
     ]);
   });
 
+  it('says the car on this charger now is matched, before its first match is recorded', async () => {
+    callApi.mockResolvedValue({
+      state: 'resolved',
+      cars: [{ id: 'car-1', name: 'Kia EV6', matchHistory: matchedTo('removed-charger') }],
+    });
+    const { state } = await import('../src/ui/state.ts');
+    state.latestDevices = [charger()] as typeof state.latestDevices;
+    const { renderCarAssociation, loadEvCarAssociations } = await import('../src/ui/deviceDetail/carAssociation.ts');
+    getSetting.mockResolvedValue({ 'charger-1': { carIds: ['car-1'] } });
+    await loadEvCarAssociations();
+    renderCarAssociation(charger({
+      associatedCar: {
+        carId: 'car-1', carName: 'Kia EV6', chargingState: 'plugged_in_charging',
+        chargingStateObservedAtMs: 1_000, socPct: 54,
+      },
+    }));
+    await flush();
+
+    const hints = [...document.querySelectorAll('#device-detail-car-list .field__hint')]
+      .map((element) => element.textContent);
+    expect(hints).toEqual(['Matched to this charger now']);
+    expect(status()).toBe('Kia EV6 · Charging · 54 %');
+  });
+
   it('keeps "yet" for a car whose only other match is a charger no longer in Homey', async () => {
     // Match history is kept for 90 days, so it can name a charger that was
     // since removed or replaced. That car does not charge elsewhere.

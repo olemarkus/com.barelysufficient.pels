@@ -207,6 +207,7 @@ export class DeviceTransport {
                 if (!clearAssociatedCarStateOfCharge(this.snapshotStore, chargerId)) return;
                 this.dispatchObservedStateForDevice(chargerId, 'measure_battery');
             },
+            (chargerId) => this.sources.settings.getEvCarAssociationCarIds(chargerId),
         );
         this.observationBridge = new ObservationBridge(
             this.snapshotStore,

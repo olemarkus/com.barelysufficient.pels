@@ -210,6 +210,34 @@ immediate car report and up to 40 for a late one, which stalled every Smart task
 plug-in for a conflict that real homes almost never produce. Existing persisted-session
 recovery remains separate.
 
+**A charger's car selection narrows who can pair with it.** The owner's selection for a
+charger says which cars charge there (`admitsCar` in `evCarLinkChargerView.ts`; a charger with
+no selection admits every car). A car edge that fits some charger admitting that car is set
+aside at the chargers that do not: neither a candidate nor a rival there (the matcher's
+`admits`, applied in correlation and in the bounded-ring overflow match alike). Without this,
+a two-car home whose cars are plugged in within one window of each other made every charger
+ambiguous even with one car selected per charger, and neither charger got a level for the
+session.
+
+A car edge that fits **no** admitting charger is not set aside anywhere: it is still a car
+plugging in where it fits. Dropping it would hand a charger that selects car A to A while car
+B, selected nowhere, is the one actually on it (A plugged in somewhere else), and would let
+the affinity prior pick A for an edge B explains.
+
+Limits, by design: two cars each selected only for their own charger, plugged into each
+other's chargers at the same moment, look exactly like the normal homecoming and are linked
+the wrong way round; owners whose cars swap chargers select both cars on both. A plug-in
+already marked ambiguous stays so when a selection is made afterwards; the next plug-in
+uses it. A car not selected at a charger still matches it, votes and all, when it fits no
+charger that selects it; set aside, it records no match there.
+
+A charger edge whose fitting car edges were all set aside is explained, not unexplained, so
+the affinity prior does not run on it (`setAside` in `scoreChargerEdges`). Ambiguity is
+remembered only when its evidence is about to go: pruning (`ambiguitiesToRemember`), ring
+overflow (`appendEvLinkHistory`), and a car becoming unavailable or leaving Homey
+(`dropEvLinkCarEdges`). While the evidence is live it is recomputed each pass, which is what
+lets a rival that a later charger report sets aside stop counting.
+
 **Three outcomes, and the distinction is the point:**
 
 - exactly one car matches a charger edge, *and* that car matches no other charger edge → a

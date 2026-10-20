@@ -39,8 +39,8 @@ import {
 import { resolveResumableSessions } from './evCarLinkSessionResume';
 import { EvCarSelfStopWatcher } from './evCarLinkSelfStop';
 import { EvCarLinkReportKeys } from './evCarLinkReportKeys';
-import { finalLinks, findContestedProvisionalLinks, mayOpenProvisionalLink } from './evCarLinkProvisional';
-import { hasSessionPowerEvidence, type EvCarLinkChargerView } from './evCarLinkChargerView';
+import { finalLinks, findUnsupportedProvisionalLinks, mayOpenProvisionalLink } from './evCarLinkProvisional';
+import { admitsCar, hasSessionPowerEvidence, type EvCarLinkChargerView } from './evCarLinkChargerView';
 import {
     applyCarCapability,
     mergeCarObservation,
@@ -54,6 +54,7 @@ import {
     type EvLinkEdgeHistory,
     appendEvLinkHistory,
     rememberEvLinkAmbiguities,
+    ambiguitiesToRemember, dropEvLinkCarEdges,
     isChargingElsewhere,
     matchCoincidentEdges,
     pruneExpiredEvLinkEdges,
@@ -244,7 +245,9 @@ export class EvCarLinkProducer {
         this.cars.set(deviceId, merged);
         const edgeKind = previous ? resolveEvLinkEdge(previous.state, merged.state) : null;
         if (edgeKind !== null) {
-            this.edges = appendEvLinkHistory(this.edges, 'carEdges', { deviceId, kind: edgeKind, atMs: nowMs });
+            this.edges = appendEvLinkHistory(
+                this.edges, 'carEdges', { deviceId, kind: edgeKind, atMs: nowMs }, this.admits,
+            );
         }
         // A trusted car-side unplug ends the session immediately. Waiting for the
         // charger to agree would strand the link whenever the charger's own update
@@ -306,17 +309,17 @@ export class EvCarLinkProducer {
             this.targetedMissesByCarId.set(carId, misses);
             if (misses >= EV_CAR_LINK_TARGETED_MISS_GRACE) removed.push(carId);
         }
-        for (const carId of removed) this.forgetCar(carId);
+        for (const carId of removed) this.forgetCar(carId, options.nowMs);
         this.correlate(options.nowMs);
     }
 
     /** Drop a car Homey no longer reports, plus anything keyed on it. */
-    private forgetCar(carId: string): void {
+    private forgetCar(carId: string, nowMs: number): void {
         this.cars.delete(carId);
         this.unavailableCars.delete(carId);
         this.targetedMissesByCarId.delete(carId);
         this.pendingSocShadows.delete(carId);
-        this.edges.carEdges = this.edges.carEdges.filter((edge) => edge.deviceId !== carId);
+        this.edges = dropEvLinkCarEdges(this.edges, carId, nowMs, this.admits);
         this.clearSessionsForCar(carId);
     }
 
@@ -348,7 +351,7 @@ export class EvCarLinkProducer {
             this.unavailableCars.set(result.deviceId, result.name);
             this.cars.delete(result.deviceId);
             this.pendingSocShadows.delete(result.deviceId);
-            this.edges.carEdges = this.edges.carEdges.filter((edge) => edge.deviceId !== result.deviceId);
+            this.edges = dropEvLinkCarEdges(this.edges, result.deviceId, nowMs, this.admits);
             this.clearSessionsForCar(result.deviceId, true);
             return true;
         }
@@ -390,9 +393,11 @@ export class EvCarLinkProducer {
 
         // Hand the matcher EVERY retained charger edge: it needs the unsettled
         // ones to judge contention, and settles the decision itself.
-        const match = matchCoincidentEdges({ ...this.edges, nowMs });
-        this.edges.chargerEdges = rememberEvLinkAmbiguities(this.edges.chargerEdges, match.ambiguousChargerEdges);
-        this.withdrawContestedProvisionalLinks(match.ambiguousChargerEdges);
+        const match = matchCoincidentEdges({ ...this.edges, nowMs, admits: this.admits });
+        // Remembered only when its evidence is about to go (`ambiguitiesToRemember`).
+        this.edges.chargerEdges = rememberEvLinkAmbiguities(
+            this.edges.chargerEdges, ambiguitiesToRemember(match.ambiguousBursts, nowMs, EDGE_RETENTION_MS));
+        this.withdrawUnsupportedProvisionalLinks([...match.provisionalCoincidences, ...match.coincidences]);
         this.applyCoincidences(match.coincidences, chargers, nowMs);
         for (const pairing of match.provisionalCoincidences) this.openProvisionalLink(pairing, chargers);
         this.reportKeys.reportAmbiguities(match.ambiguities, chargers, this.deps.emit);
@@ -436,7 +441,9 @@ export class EvCarLinkProducer {
             }
             const kind = resolveEvLinkEdge(previous, charger.evChargingState);
             if (kind === null) continue;
-            this.edges = appendEvLinkHistory(this.edges, 'chargerEdges', { deviceId: charger.id, kind, atMs: nowMs });
+            this.edges = appendEvLinkHistory(
+                this.edges, 'chargerEdges', { deviceId: charger.id, kind, atMs: nowMs }, this.admits,
+            );
             if (kind === 'connect') this.chargerConnectedAtMs.set(charger.id, nowMs);
             else this.chargerConnectedAtMs.delete(charger.id);
             // The charger reported its car gone. When the linked car still reports
@@ -522,9 +529,13 @@ export class EvCarLinkProducer {
         });
     }
 
-    /** A rival reported inside the window: the edge a provisional link stood on identifies no car. */
-    private withdrawContestedProvisionalLinks(ambiguousChargerEdges: readonly EvLinkEdge[]): void {
-        for (const chargerId of findContestedProvisionalLinks(this.activeLinks, ambiguousChargerEdges)) {
+    /**
+     * A provisional link stands only while the pairing it came from does: a rival
+     * that made its edge ambiguous, or a charger that turned out to admit its car
+     * elsewhere, withdraws it.
+     */
+    private withdrawUnsupportedProvisionalLinks(pairings: readonly EvLinkCoincidence[]): void {
+        for (const chargerId of findUnsupportedProvisionalLinks(this.activeLinks, pairings)) {
             const link = this.clearSession(chargerId);
             if (link) {
                 this.deps.emit({
@@ -805,6 +816,12 @@ export class EvCarLinkProducer {
         this.selfStop.forget(chargerId);
         return link;
     }
+
+    // The owner's selection for a charger; one that left the list has none to apply.
+    private readonly admits = (carId: string, chargerId: string): boolean => {
+        const charger = this.deps.getChargers().find((entry) => entry.id === chargerId);
+        return charger === undefined || admitsCar(charger, carId);
+    };
 
     private carName = (carId: string): string => this.cars.get(carId)?.name ?? this.unavailableCars.get(carId) ?? carId;
 }

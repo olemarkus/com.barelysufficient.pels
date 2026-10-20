@@ -177,9 +177,9 @@ const renderStatus = (device: SettingsUiDeviceDetailItem, ticked: readonly strin
       .join(' · ');
     return;
   }
-  // Ticked but unmatched. Deliberately not "no car": PELS matches a car 20 to 40
-  // minutes after it plugs in, so claiming absence during that window would be
-  // wrong as often as it was right.
+  // Ticked but unmatched. Deliberately not "no car": PELS matches a car once its
+  // app reports the plug-in, which for a cloud-polled car can be up to 20 minutes
+  // after the charger, so claiming absence in that gap would often be wrong.
   deviceDetailCarStatus.textContent = 'Waiting to match a car';
 };
 
@@ -263,8 +263,11 @@ const currentChargerIds = (): ReadonlySet<string> => new Set(
  * No hint while the history is unreadable or the list awaits its re-read:
  * silence beats a wrong "not matched".
  */
-const matchHint = (car: CarOption, chargerId: string): string | null => {
+const matchHint = (car: CarOption, charger: SettingsUiDeviceDetailItem): string | null => {
+  // The car on this charger now: it is matched even before its first match is recorded.
+  if (charger.associatedCar?.carId === car.id) return 'Matched to this charger now';
   if (carOptionsStale || car.matchHistory.state === 'unavailable') return null;
+  const chargerId = charger.id;
   const lastMatchedAtMs = lastMatchToCharger(car.matchHistory, chargerId);
   if (lastMatchedAtMs !== undefined) return `Last matched to this charger on ${formatMatchDate(lastMatchedAtMs)}`;
   // "yet" promises a match that a car charging on another charger will not bring.
@@ -273,7 +276,7 @@ const matchHint = (car: CarOption, chargerId: string): string | null => {
     : 'Not matched to this charger yet';
 };
 
-const renderCarRows = (deviceId: string, ticked: readonly string[]): void => {
+const renderCarRows = (device: SettingsUiDeviceDetailItem, ticked: readonly string[]): void => {
   if (!deviceDetailCarList) return;
   deviceDetailCarList.replaceChildren();
 
@@ -292,7 +295,7 @@ const renderCarRows = (deviceId: string, ticked: readonly string[]): void => {
     return;
   }
   for (const car of rows) {
-    deviceDetailCarList.append(carRow(deviceId, car, ticked.includes(car.id), !orphans.includes(car)));
+    deviceDetailCarList.append(carRow(device, car, ticked.includes(car.id), !orphans.includes(car)));
   }
 };
 
@@ -303,7 +306,8 @@ const hint = (text: string): HTMLElement => {
   return element;
 };
 
-const carRow = (deviceId: string, car: CarOption, checked: boolean, known: boolean): HTMLElement => {
+const carRow = (device: SettingsUiDeviceDetailItem, car: CarOption, checked: boolean, known: boolean): HTMLElement => {
+  const deviceId = device.id;
   const row = document.createElement('label');
   row.className = 'md-switch-row detail-car-row';
   const input = document.createElement('input');
@@ -320,7 +324,7 @@ const carRow = (deviceId: string, car: CarOption, checked: boolean, known: boole
   label.textContent = formatDisplayDeviceName(car.name);
   content.append(label);
   // A removed car has no history to show; its row exists only so it can be cleared.
-  const matchText = known ? matchHint(car, deviceId) : null;
+  const matchText = known ? matchHint(car, device) : null;
   if (matchText !== null) content.append(hint(matchText));
   row.append(input, content);
   return row;
@@ -377,7 +381,7 @@ export const renderCarAssociation = (device: SettingsUiDeviceDetailItem | null):
   void ensureCarsLoaded(() => renderCarAssociation(currentDevice));
 
   const ticked = tickedCarIds(device.id);
-  renderCarRows(device.id, ticked);
+  renderCarRows(device, ticked);
   renderStatus(device, ticked);
   renderFlowNote(device, ticked);
 };

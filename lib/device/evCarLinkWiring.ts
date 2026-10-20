@@ -41,6 +41,7 @@ export type ChargerViewInput = TargetDeviceSnapshot
  */
 export const buildEvCarLinkChargerViews = (
     snapshots: readonly ChargerViewInput[],
+    getSelectedCarIds: (chargerId: string) => readonly string[],
 ): EvCarLinkChargerView[] => snapshots.flatMap((snapshot) => {
     if (!isEvObserved(snapshot)) return [];
     // Unknowns are OMITTED, never defaulted: a fabricated 0 W would read as
@@ -64,6 +65,7 @@ export const buildEvCarLinkChargerViews = (
             }
             : {}),
         controlOn: snapshot.binaryControl?.on === true,
+        selectedCarIds: getSelectedCarIds(snapshot.id),
         // `hasObservedStateOfCharge` is presence-only, so it also passes a
         // percentage the observation layer has already marked stale or
         // invalidated (an unplug/reconnect). Comparing the car against that would
@@ -104,6 +106,7 @@ export const createEvCarLinkProducer = (
     snapshotAccess: EvCarLinkSnapshotAccess | undefined,
     onAssociatedCarStateOfCharge: EvCarLinkProducerDeps['onAssociatedCarStateOfCharge'],
     onAssociationEnded: EvCarLinkProducerDeps['onAssociationEnded'],
+    getSelectedCarIds: (chargerId: string) => readonly string[],
 ): EvCarLinkProducer => {
     let inMemory: EvCarLinkSnapshot = createEmptyEvCarLinkSnapshot();
     const access: EvCarLinkSnapshotAccess = snapshotAccess ?? {
@@ -113,7 +116,7 @@ export const createEvCarLinkProducer = (
     };
     return new EvCarLinkProducer({
         emit,
-        getChargers: () => buildEvCarLinkChargerViews(getSnapshots()),
+        getChargers: () => buildEvCarLinkChargerViews(getSnapshots(), getSelectedCarIds),
         getSnapshot: access.get,
         setSnapshot: access.set,
         historyResolved: access.historyResolved,
