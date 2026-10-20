@@ -411,10 +411,28 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
    choice is versioned separately, so an earlier dismissal of the old "remove
    the Flow" wording does not hide it.
 
-   *Accepted limitation:* conflicts live in memory and the first detection runs
-   after the snapshot warm-up gate, so after a restart an owner's explicit choice
-   runs natively until the first readable Flow list, and for as long as the Flow
-   list stays unreadable.
+   Both owners' accepted conflicts are kept across a restart
+   (`lib/flowApi/acceptedFlowConflictStore.ts`, userdata tables
+   `native_flow_conflicts` and `charging_current_flow_writes`), so a boot starts
+   from the last accepted answer rather than from none: the first scan runs only
+   after the snapshot warm-up gate, and an unreadable Flow list would otherwise
+   leave an explicit choice running over a known conflict for as long as it
+   stayed unreadable.
+   - Native: `NativeFlowConflictState` (`lib/device/nativeFlowConflictState.ts`,
+     built by `AppNativeWiring`) is seeded when the userdata database opens,
+     before the transport's first parse, and saves every accepted scan,
+     unchanged ones included, which costs no row write and heals a failed save.
+   - Charging current: `ChargingCurrentControl` seeds in its constructor and
+     saves only the current-setting Flows of devices with a charging-current
+     binding, and only when they change; an unreadable store makes the next
+     accept write. It resolves a route against the committed device record, or,
+     for a device the committed list does not hold yet, the record of the read
+     being projected (`observeDevices`, pruned on a full inventory), so the
+     first refresh after a boot, whose committed list is still empty, already
+     holds a saved conflict back.
+   - The app binds both stores to the open database; a save after it closes
+     (teardown) is dropped. A save failure is logged and costs only that
+     restart window.
 
    *Follow-ups:*
    - **Shipped:** a user-triggered **Check again** action on the

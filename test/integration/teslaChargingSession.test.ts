@@ -11,6 +11,8 @@ import { applyNativeEvWiringOverlay } from '../../lib/device/nativeEvWiring';
 import { resolveDeviceClassKey } from '../../lib/device/transport/managerHelpers';
 import { confirmedTeslaCurrent } from '../../lib/device/tesla/charging';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { createChargingFlowWritesStore } from '../../lib/flowApi/acceptedFlowConflictStore';
+import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 
 const now = Date.parse('2026-10-13T10:00:00Z');
 const cap = <T>(value: T, time = Date.now()) => ({ value, lastUpdated: new Date(time).toISOString() });
@@ -438,5 +440,26 @@ test.each([2.5, undefined])('transport forwards projected power %s without inven
       await emitCapability('location', 'measure_location_latitude', 60);
       expect(transport.getSnapshot()[0]).toMatchObject({ measuredPowerKw: powerKw ?? 4 });
     } finally { project.mockRestore(); }
+  } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
+});
+
+test.each([
+  ['no saved conflict', false],
+  ['a saved conflict', true],
+] as const)('the first refresh after a boot projects a selected built-in route with %s', async (_label, conflicted) => {
+  vi.useRealTimers();
+  mockHomeyInstance.settings.set('charging_current_control', { battery: { method: 'built_in', confirmation: 'vehicle' } });
+  const acceptedFlowWrites = createChargingFlowWritesStore(openUserdataDatabase(IN_MEMORY_DATABASE));
+  if (conflicted) {
+    acceptedFlowWrites.write(new Map([['battery', new Map([['charge_current', new Map([['f1', 'Night charge']])]])]]));
+  }
+  const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App,
+    { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test') },
+    { settings: { getDeviceTargetPowerConfig: () => ({ enabled: true, preset: 'ev_charger_3_phase' }) } },
+    undefined, { acceptedFlowWrites });
+  try {
+    await initWithLiveFeed(transport);
+    const [battery] = await seedTransportDevices(transport, devices());
+    expect(battery?.controlAdapter?.currentControl).toBe(conflicted ? undefined : 'built_in');
   } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
 });

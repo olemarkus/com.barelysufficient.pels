@@ -220,7 +220,10 @@ and the `combined_prices` built from them live in the price cache.
   (`lib/dailyBudget/dailyBudgetStateStore.ts`, one row per field, diffed),
   and the per-step power calibration (`lib/device/devicePowerCalibrationStore.ts`,
   one row per device) and the EV car-link probe's votes, stop samples and
-  sessions (`lib/device/evCarLinkStore.ts`, one row per family), each written
+  sessions (`lib/device/evCarLinkStore.ts`, one row per family), and the Flow
+  conflicts the built-in controls last accepted
+  (`lib/flowApi/acceptedFlowConflictStore.ts`: `native_flow_conflicts` and
+  `charging_current_flow_writes`, one row per device, diffed), each written
   through as it changes. A cache belongs here whatever its size (owner, 2026-09-27):
   shrinking one does not make it configuration.
 - **Nowhere** — a value that is a fact of the running app and nothing else. The

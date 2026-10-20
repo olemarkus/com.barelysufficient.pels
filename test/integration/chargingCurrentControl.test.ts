@@ -3,6 +3,8 @@ import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { ChargingCurrentControl } from '../../lib/device/chargingCurrentControl';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import { getLogger } from '../../lib/logging/logger';
+import { createChargingFlowWritesStore } from '../../lib/flowApi/acceptedFlowConflictStore';
+import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import type { ChargingCurrentSetup } from '../../packages/contracts/src/chargingControl';
 
@@ -13,7 +15,7 @@ const zaptec = (writable = false): HomeyDeviceLike => ({ id: 'charger', name: 'Z
 const futurehome = (): HomeyDeviceLike => ({ id: 'futurehome', name: 'Futurehome', class: 'evcharger',
   driverId: 'homey:app:no.futurehome:ev_charger', settings: { currentLimit: 16 },
   capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'] });
-function fixture(device = zaptec()) {
+function fixture(device = zaptec(), flowWritesStore = createChargingFlowWritesStore(openUserdataDatabase(IN_MEMORY_DATABASE))) {
   const values = new Map<string, unknown>();
   const settings = { get: (key: string) => values.get(key), getKeys: () => [...values.keys()],
     set: (key: string, value: unknown) => { values.set(key, value); }, unset: (key: string) => { values.delete(key); } };
@@ -22,9 +24,9 @@ function fixture(device = zaptec()) {
   setRestClient({ get, put: vi.fn() });
   const control = new ChargingCurrentControl({ settings, api: { getLocalUrl: async () => 'http://homey.local' },
     cloud: { getHomeyId: async () => 'test' } },
-  { structuredLog: getLogger('test') }, () => inventory, () => ({ connected: true, revision: 0 }));
+  { structuredLog: getLogger('test') }, () => inventory, () => ({ connected: true, revision: 0 }), flowWritesStore);
   const access = control.access;
-  return { inventory, control, access, get, values };
+  return { inventory, control, access, get, values, flowWritesStore };
 }
 const response = (body: unknown) => ({ status: 200, ok: true, headers: { get: () => 'test' }, json: async () => body });
 afterEach(() => vi.unstubAllGlobals());
@@ -207,4 +209,28 @@ test('the setup read adopts a readable Flow list and reports the route in effect
   expect(read).toMatchObject({ flowCheck: 'conflict', currentRoute: 'flow', setup: { method: 'built_in' } });
   expect(control.builtInRouteKey()).not.toBe(before);
   expect(control.routesBuiltIn('charger')).toBe(false);
+});
+
+test('a held-back route stays held back across a restart on the same store', async () => {
+  const first = fixture(zaptec(true));
+  await first.control.save('charger', selected);
+  first.control.acceptFlowFacts({
+    writes: new Map([['charger', new Map([['available_installation_current', new Map([['f1', 'Night charge']])]])]]),
+    evSocReporters: [],
+  });
+
+  const restarted = fixture(zaptec(true), first.flowWritesStore);
+  restarted.values.set('charging_current_control', first.values.get('charging_current_control'));
+  expect(restarted.control.setup('charger').method).toBe('built_in');
+  expect(restarted.control.routesBuiltIn('charger')).toBe(false);
+});
+
+test('an unreadable store is rewritten by the next accepted scan, even one with no conflict', () => {
+  const write = vi.fn();
+  const store = { read: () => { throw new Error('disk'); }, write };
+  const { control } = fixture(zaptec(true), store);
+  control.acceptFlowFacts({ writes: new Map(), evSocReporters: [] });
+  expect(write).toHaveBeenCalledExactlyOnceWith(new Map());
+  control.acceptFlowFacts({ writes: new Map(), evSocReporters: [] });
+  expect(write).toHaveBeenCalledTimes(1);
 });

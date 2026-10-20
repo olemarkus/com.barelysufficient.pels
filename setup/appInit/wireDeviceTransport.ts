@@ -100,6 +100,7 @@ export function buildDeviceTransport(
     observedStateDispatcher,
     evCarLinkSnapshotAccess: createEvCarLinkAccessForApp(ctx),
     retainedPowerStore: createRetainedPowerStore(ctx.getUserdataDatabase()),
+    acceptedFlowWrites: ctx.getChargingFlowWritesStore(),
     settings: ctx.deviceControlSettings,
     nativeWiring,
     // Also where a moved learned peak is persisted: driven off the learned-peak

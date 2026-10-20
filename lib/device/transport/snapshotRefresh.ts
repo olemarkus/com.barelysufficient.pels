@@ -500,7 +500,7 @@ export class SnapshotRefreshService {
         // Only a full inventory can remove companions. Keep ignored entries' last
         // accepted reads, and resolve membership before parsing publishes eligibility.
         if (fetchSource === 'raw_manager_devices') {
-            this.reader.chargingCurrentControl.sessions.retainDevices(acceptedRawDevices);
+            this.reader.chargingCurrentControl.retainDevices(acceptedRawDevices);
         }
         const effectiveList = observeBatteryStateFromList(
             this.observationProducers.battery,

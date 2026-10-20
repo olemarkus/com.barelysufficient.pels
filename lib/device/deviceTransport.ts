@@ -187,6 +187,7 @@ export class DeviceTransport {
                 const health = this.deviceSdk.getHealth();
                 return { connected: health?.subscriptionState === 'subscribed', revision: health?.reconnectCount ?? 0 };
             },
+            options.acceptedFlowWrites,
         );
         this.observationProducers = createObservationProducers(
             (p) => this.logger.structuredLog.info(p),

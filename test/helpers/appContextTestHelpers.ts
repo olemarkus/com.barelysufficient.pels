@@ -1,3 +1,4 @@
+import { createChargingFlowWritesStore } from '../../lib/flowApi/acceptedFlowConflictStore';
 import { BatteryManagedSettings } from '../../lib/battery/batteryControlSettings';
 import { withSmartTaskTemperatureIntent } from '../../lib/objectives/deferredObjectives/smartTaskQuickTargetValues';
 import { SurplusPoolReachability } from '../../lib/power/surplusPoolReachable';
@@ -273,6 +274,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
   const userdataDatabase = openUserdataDatabase(IN_MEMORY_DATABASE);
   const trackerStore = createTrackerStore(userdataDatabase);
   const powerCalibrationStore = new PowerCalibrationStore(createPowerCalibrationRepository(userdataDatabase));
+  const chargingFlowWritesStore = createChargingFlowWritesStore(userdataDatabase);
   // The real component over the mock settings, observing this helper's tracker
   // the way the Main tracker component observes every state it adopts.
   const surplusPoolReachability = new SurplusPoolReachability(
@@ -335,6 +337,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getTrackerStore: () => trackerStore,
     getUserdataDatabase: () => userdataDatabase,
     getPowerCalibrationStore: () => powerCalibrationStore,
+    getChargingFlowWritesStore: () => chargingFlowWritesStore,
     emitPowerTrackerPersisted: vi.fn(),
     loadCapacitySettings: vi.fn(),
     noteCapacitySettingWritten: vi.fn(),

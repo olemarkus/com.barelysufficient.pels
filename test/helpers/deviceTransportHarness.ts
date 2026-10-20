@@ -26,6 +26,7 @@
  */
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import { createRetainedPowerStore } from '../../lib/device/retainedPowerStore';
+import { createChargingFlowWritesStore } from '../../lib/flowApi/acceptedFlowConflictStore';
 import { vi } from 'vitest';
 import { DeviceTransport } from '../../lib/device/deviceTransport';
 import { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
@@ -163,11 +164,13 @@ export function createTestDeviceTransport(
   // `observedStateDispatcher: undefined` blank the dispatcher while still
   // reading as "caller injected nothing" — a transport that throws on its first
   // dispatch AND a subscribe helper attached to an emitter nothing reaches.
-  const { observedStateDispatcher: injected, retainedPowerStore, ...rest } = options ?? {};
+  const { observedStateDispatcher: injected, retainedPowerStore, acceptedFlowWrites, ...rest } = options ?? {};
   const onSnapshotMutated = options?.onSnapshotMutated ?? (() => undefined);
   // A fresh in-memory store per transport unless the spec passes one: a spec
   // that restarts a transport on the same store is how a restart is modelled.
   const store = retainedPowerStore ?? createRetainedPowerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
+  const flowWrites = acceptedFlowWrites
+    ?? createChargingFlowWritesStore(openUserdataDatabase(IN_MEMORY_DATABASE));
   const owners = testTransportOwners(inputs);
   const resolvedPowerState = testPowerState(powerState);
   if (injected) {
@@ -177,6 +180,7 @@ export function createTestDeviceTransport(
       onSnapshotMutated,
       observedStateDispatcher: injected,
       retainedPowerStore: store,
+      acceptedFlowWrites: flowWrites,
     });
   }
   const emitter = new ObservedStateEmitter();
@@ -186,6 +190,7 @@ export function createTestDeviceTransport(
     onSnapshotMutated,
     observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),
     retainedPowerStore: store,
+    acceptedFlowWrites: flowWrites,
   });
   emitterByTransport.set(transport, emitter);
   return transport;

@@ -1,6 +1,9 @@
 import { detectNativeWiringConflicts, type NativeWiringConflictDetection } from './flowConflictProbe';
 import type { DeviceDescriptorRead } from '../packages/contracts/src/types';
 import type { UserFlowFacts } from '../lib/flowApi/userFlows';
+import type { NativeFlowConflicts } from '../lib/flowApi/acceptedFlowConflictStore';
+import type { AcceptedFlowConflictSlice } from '../lib/flowApi/acceptedFlowConflictStore';
+import { NativeFlowConflictState } from '../lib/device/nativeFlowConflictState';
 import { getRawFromHomeyApi } from '../lib/device/transport/managerHomeyApi';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { resolveNativeWiringEnabled } from '../lib/device/builtInControlFlowGate';
@@ -8,15 +11,15 @@ import type { Logger as PinoLogger } from '../lib/logging/logger';
 import type { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';
 import type { ShutdownLatch } from '../lib/utils/shutdownLatch';
 import type { PlanService } from '../lib/plan/planService';
-import type {
+import {
   FlowConflictRefreshCoordinator,
-  FlowConflictRefreshResult,
+  type FlowConflictRefreshResult,
 } from '../lib/flowApi/flowConflictRefreshCoordinator';
 
 const NATIVE_WIRING_DETECTION_MAX_ATTEMPTS = 3;
 const NATIVE_WIRING_DETECTION_RETRY_DELAY_MS = 2000;
 
-type FlowConflictMap = Record<string, { conflictingCapabilities: readonly string[]; flowName?: string }>;
+type FlowConflictMap = NativeFlowConflicts;
 
 // Stable canonical strings for the native-wiring auto-decision + flow-conflict
 // maps, so the apply path can detect "no change" regardless of key ordering.
@@ -44,13 +47,12 @@ function flowConflictKey(conflicts: FlowConflictMap): string {
  * back through the app instance so test spies/replacements intercept them.
  */
 export type AppNativeWiringDeps = {
-  flowConflictRefreshCoordinator: FlowConflictRefreshCoordinator;
   /** The app's teardown signal: once stopped, the probe drops every side effect. */
   shutdown: ShutdownLatch;
   getAutoNativeWiringDecisions: () => Record<string, boolean>;
   setAutoNativeWiringDecisions: (decisions: Record<string, boolean>) => void;
-  getFlowConflictsByDevice: () => FlowConflictMap;
-  setFlowConflictsByDevice: (conflicts: FlowConflictMap) => void;
+  /** Where the accepted native-wiring conflicts are kept across a restart. */
+  nativeFlowConflictStore: AcceptedFlowConflictSlice<NativeFlowConflicts>;
   getNativeEvWiringDevices: () => Record<string, boolean>;
   /**
    * Hands an accepted Flow list to the charging-current owner
@@ -77,7 +79,13 @@ export type AppNativeWiringDeps = {
 }
 
 export class AppNativeWiring {
-  constructor(private readonly deps: AppNativeWiringDeps) {}
+  /** The accepted native-wiring conflicts; seeded when the userdata database opens. */
+  readonly flowConflicts: NativeFlowConflictState;
+  private readonly flowConflictRefreshCoordinator = new FlowConflictRefreshCoordinator();
+
+  constructor(private readonly deps: AppNativeWiringDeps) {
+    this.flowConflicts = new NativeFlowConflictState(deps.nativeFlowConflictStore);
+  }
 
   runNativeWiringDetectionBestEffort(): void {
     if (this.deps.shutdown.isStopped()) return;
@@ -144,7 +152,7 @@ export class AppNativeWiring {
 
   /** The native-write capabilities a user Flow drives on this device, for the device-detail banner. */
   getFlowConflict(deviceId: string): FlowConflictMap[string] | undefined {
-    return this.deps.getFlowConflictsByDevice()[deviceId];
+    return this.flowConflicts.get(deviceId);
   }
 
   resolveNativeWiringEnabled(deviceId: string): boolean {
@@ -152,7 +160,7 @@ export class AppNativeWiring {
       deviceId,
       this.deps.getNativeEvWiringDevices(),
       this.deps.getAutoNativeWiringDecisions(),
-      this.deps.getFlowConflictsByDevice(),
+      this.flowConflicts.all,
     );
   }
 
@@ -160,13 +168,13 @@ export class AppNativeWiring {
   // startPostStartupBackgroundTasks). The flow-domain coordinator drops
   // overlapping best-effort requests without keeping mutable state in setup.
   async applyNativeWiringAutoDecisions(): Promise<void> {
-    await this.deps.flowConflictRefreshCoordinator.requestBackground(
+    await this.flowConflictRefreshCoordinator.requestBackground(
       () => this.runNativeWiringDecision(),
     );
   }
 
   refreshFlowConflictsForUi(): Promise<FlowConflictRefreshResult> {
-    return this.deps.flowConflictRefreshCoordinator.requestExplicit(
+    return this.flowConflictRefreshCoordinator.requestExplicit(
       () => this.runNativeWiringDecision(),
     );
   }
@@ -198,15 +206,18 @@ export class AppNativeWiring {
     if (
       !chargingRoutesChanged
       && nativeWiringDecisionKey(this.deps.getAutoNativeWiringDecisions()) === nativeWiringDecisionKey(nextDecisions)
-      && flowConflictKey(this.deps.getFlowConflictsByDevice()) === flowConflictKey(nextConflicts)
+      && flowConflictKey(this.flowConflicts.all) === flowConflictKey(nextConflicts)
     ) {
+      // Saved even unchanged: the store writes nothing for it, and a save that
+      // failed earlier is healed.
+      this.flowConflicts.accept(nextConflicts);
       return { state: 'resolved', flowFacts: detection.flowFacts };
     }
 
     const previousDecisions = this.deps.getAutoNativeWiringDecisions();
-    const previousConflicts = this.deps.getFlowConflictsByDevice();
+    const previousConflicts = this.flowConflicts.all;
     this.deps.setAutoNativeWiringDecisions(nextDecisions);
-    this.deps.setFlowConflictsByDevice(nextConflicts);
+    this.flowConflicts.accept(nextConflicts);
     try {
       // Re-parse the snapshot (the native-wiring + conflict providers now
       // report the new state) and rebuild the plan so both the decision and
@@ -225,7 +236,7 @@ export class AppNativeWiring {
       // new routes until the next refresh re-projects it; the retry restores
       // agreement.
       this.deps.setAutoNativeWiringDecisions(previousDecisions);
-      this.deps.setFlowConflictsByDevice(previousConflicts);
+      this.flowConflicts.accept(previousConflicts);
       this.deps.revertChargingFlowFacts();
       throw error;
     }

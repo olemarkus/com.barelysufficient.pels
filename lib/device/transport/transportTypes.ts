@@ -4,6 +4,8 @@ import type {
     NativeWiringRead,
 } from './managerParseDevice';
 import type { BatteryManagedRead } from '../../ports/batteryControlOwner';
+import type { AcceptedFlowConflictSlice } from '../../flowApi/acceptedFlowConflictStore';
+import type { FlowCapabilityWrites } from '../../flowApi/userFlows';
 import type { RetainedPowerStore } from '../retainedPowerStore';
 /**
  * Public type contracts + pure helpers for the `DeviceTransport` leaf and its
@@ -109,6 +111,12 @@ export type DeviceTransportOptions = {
      * database; specs build it on an in-memory one through the harness.
      */
     retainedPowerStore: RetainedPowerStore;
+    /**
+     * The Flow writes the charging-current routes last accepted, kept across a
+     * restart (`lib/flowApi/acceptedFlowConflictStore.ts`), so a selected route
+     * a Flow conflicts with stays held back from boot.
+     */
+    acceptedFlowWrites: AcceptedFlowConflictSlice<FlowCapabilityWrites>;
     /** The owner's per-device configuration (`DeviceControlSettings`). */
     settings: DeviceParseSettings;
     /** Native wiring and Flow conflicts (`AppNativeWiring`). */

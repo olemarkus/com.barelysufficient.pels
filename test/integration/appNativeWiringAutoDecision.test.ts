@@ -120,6 +120,28 @@ describe('applyNativeWiringAutoDecisions', () => {
     expect(app['autoNativeWiringDecisions']).toEqual({});
   });
 
+  it('saves every accepted scan, an unchanged one too, so a failed save heals', async () => {
+    setRestClient({
+      get: async (path) => (path === ADVANCED_FLOW_API_PATH
+        ? { bev: { name: 'PELS BEV', cards: { set: { type: 'action', id: 'homey:device:easee-1:setDynamicChargerCurrent' } } } }
+        : {}),
+      put: vi.fn(),
+    });
+    const easee = {
+      id: 'easee-1', name: 'Easee', nativeWriteCapabilities: ['target_charger_current', 'setDynamicChargerCurrent'],
+    } as unknown as TargetDeviceSnapshot;
+    const { app, refreshTargetDevicesSnapshot } = stubApp([easee]);
+    const accept = vi.spyOn(app['nativeWiring'].flowConflicts, 'accept');
+    const conflicts = { 'easee-1': { conflictingCapabilities: ['setDynamicChargerCurrent'], flowName: 'PELS BEV' } };
+
+    await app['applyNativeWiringAutoDecisions']();
+    expect(accept).toHaveBeenLastCalledWith(conflicts);
+    await app['applyNativeWiringAutoDecisions']();
+    expect(refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(1);
+    expect(accept).toHaveBeenCalledTimes(2);
+    expect(accept).toHaveBeenLastCalledWith(conflicts);
+  });
+
   it('drops a concurrent background run while one is in flight', async () => {
     let releaseGet: () => void = () => {};
     const gate = new Promise<void>((resolve) => { releaseGet = resolve; });
@@ -178,7 +200,7 @@ describe('applyNativeWiringAutoDecisions', () => {
       flowFacts: { writes: new Map(), evSocReporters: [] },
     });
     expect(getCalls).toBe(4);
-    expect(app['flowConflictsByDevice']).toEqual({});
+    expect(app['nativeWiring'].flowConflicts.all).toEqual({});
     expect(app['autoNativeWiringDecisions']).toEqual({ 'hoiax-1': true });
   });
 

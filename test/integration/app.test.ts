@@ -198,15 +198,15 @@ describe('MyApp initialization', () => {
     const app = createApp();
     mockHomeyInstance.settings.set(NATIVE_EV_WIRING_DEVICES, { easee: true });
     app.deviceControlSettings.reload();
-    app['flowConflictsByDevice'] = {
+    app['nativeWiring'].flowConflicts.accept({
       easee: { conflictingCapabilities: ['setDynamicChargerCurrent'], flowName: 'PELS BEV' },
-    };
+    });
 
     const resolve = (id: string) => app['nativeWiring'].resolveNativeWiringEnabled(id);
     expect(resolve('easee')).toBe(false);
 
     // The choice is kept: built-in control resumes once the Flow is gone.
-    app['flowConflictsByDevice'] = {};
+    app['nativeWiring'].flowConflicts.accept({});
     expect(resolve('easee')).toBe(true);
   });
 

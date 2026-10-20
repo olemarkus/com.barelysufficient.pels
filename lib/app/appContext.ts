@@ -1,3 +1,5 @@
+import type { AcceptedFlowConflictSlice } from '../flowApi/acceptedFlowConflictStore';
+import type { FlowCapabilityWrites } from '../flowApi/userFlows';
 import type { ObservedTemperatureModeUpdates } from '../home/observedTemperatureModeUpdates';
 import type { DeviceControlSettings } from '../device/deviceControlSettings';
 import type { TrackerStore } from '../power/trackerStore';
@@ -114,6 +116,11 @@ export type AppContext = {
    * step that opens it, and outlives the database close (see `app.ts`).
    */
   getPowerCalibrationStore: () => PowerCalibrationStore;
+  /**
+   * The charging-current routes' accepted Flow writes, kept across a restart;
+   * reading throws before the boot step that opens the userdata database.
+   */
+  getChargingFlowWritesStore: () => AcceptedFlowConflictSlice<FlowCapabilityWrites>;
   /** Tell the settings UI a home's tracker persisted (the store produces no settings echo). */
   emitPowerTrackerPersisted: (homeId: string) => void;
   /** SDK-bound Main-home capacity reader, constructed once at the composition root. */
