@@ -135,38 +135,73 @@ describe('BuiltInControlFlowConflicts', () => {
     expect(refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(2);
   });
 
-  it('applies the charging page read through the scan queue, and reports the route after it', async () => {
+  const chargingDouble = (
+    order: string[],
+    readFlows: () => Promise<{ status: 'ok'; facts: { writes: Map<string, never>; evSocReporters: [] } }
+      | { status: 'unknown'; reason: string }>,
+    routesMove: () => boolean,
+  ) => partialDouble<MyApp['deviceManager']['chargingCurrentControl']>({
+    acceptFlowFacts: () => { order.push('accept'); return routesMove(); },
+    acceptedFlowWrites: new Map(),
+    restoreFlowWrites: () => { order.push('restore'); },
+    readFlows: async () => { order.push('read'); return readFlows(); },
+    describe: (flows) => { order.push(`describe:${flows.status}`); return []; },
+  });
+  const clearFacts = { writes: new Map<string, never>(), evSocReporters: [] as [] };
+
+  it('reads and applies the charging page Flow list after a running scan, so it never lands over a newer one', async () => {
     let releaseScan: () => void = () => {};
     const scanGate = new Promise<void>((resolve) => { releaseScan = resolve; });
     let getCalls = 0;
     setRestClient({ get: async () => { getCalls += 1; if (getCalls <= 2) await scanGate; return {}; }, put: vi.fn() });
     const { app, refreshTargetDevicesSnapshot } = stubApp([hoiaxCandidate('hoiax-1')]);
     const order: string[] = [];
-    const facts = { writes: new Map(), evSocReporters: [] };
     app.deviceManager = partialDouble<MyApp['deviceManager']>({
       getSnapshot: () => [hoiaxCandidate('hoiax-1')],
-      chargingCurrentControl: partialDouble<MyApp['deviceManager']['chargingCurrentControl']>({
-        acceptFlowFacts: () => { order.push('accept'); return order.length === 2; },
-        acceptedFlowWrites: new Map(),
-        restoreFlowWrites: () => {},
-        readFlows: async () => ({ status: 'ok' as const, facts }),
-        describe: () => { order.push('describe'); return []; },
-      }),
+      chargingCurrentControl: chargingDouble(order, async () => ({ status: 'ok', facts: clearFacts }),
+        () => order.filter((step) => step === 'accept').length === 2),
     });
 
     const scan = app['builtInControlFlowConflicts'].applyBackgroundScan();
     await vi.waitFor(() => { expect(getCalls).toBe(2); });
     const read = app['builtInControlFlowConflicts'].readChargingCurrent();
-    await Promise.resolve();
-    // Queued behind the scan: nothing of the read is applied yet.
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+    // Queued behind the scan: the page has not even read its Flow list yet.
     expect(order).toEqual([]);
 
     releaseScan();
     await scan;
     await expect(read).resolves.toEqual([]);
-    // The scan accepts first; the read's own accept moves a route and re-projects before it reports.
-    expect(order).toEqual(['accept', 'accept', 'describe']);
+    // The scan accepts first; the page reads after it, and its route move re-projects before it reports.
+    expect(order).toEqual(['accept', 'read', 'accept', 'describe:ok']);
     expect(refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports the route last accepted, and applies nothing, when the page cannot read the Flows', async () => {
+    const { app, refreshTargetDevicesSnapshot } = stubApp([hoiaxCandidate('hoiax-1')]);
+    const order: string[] = [];
+    app.deviceManager = partialDouble<MyApp['deviceManager']>({
+      getSnapshot: () => [hoiaxCandidate('hoiax-1')],
+      chargingCurrentControl: chargingDouble(order, async () => ({ status: 'unknown', reason: '403' }), () => true),
+    });
+
+    await expect(app['builtInControlFlowConflicts'].readChargingCurrent()).resolves.toEqual([]);
+    expect(order).toEqual(['read', 'describe:unknown']);
+    expect(refreshTargetDevicesSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('reports the rolled-back route when applying the page read fails', async () => {
+    const { app, refreshTargetDevicesSnapshot } = stubApp([hoiaxCandidate('hoiax-1')]);
+    refreshTargetDevicesSnapshot.mockRejectedValueOnce(new Error('refresh failed'));
+    const order: string[] = [];
+    app.deviceManager = partialDouble<MyApp['deviceManager']>({
+      getSnapshot: () => [hoiaxCandidate('hoiax-1')],
+      chargingCurrentControl: chargingDouble(order, async () => ({ status: 'ok', facts: clearFacts }), () => true),
+    });
+
+    // The page still loads; the failed list was put back before it describes the route.
+    await expect(app['builtInControlFlowConflicts'].readChargingCurrent()).resolves.toEqual([]);
+    expect(order).toEqual(['read', 'accept', 'restore', 'describe:ok']);
   });
 
   it('rolls back when the plan rebuild reports failure', async () => {

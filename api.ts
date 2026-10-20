@@ -107,7 +107,8 @@ function chargingAccess(homey: ApiContext['homey']) {
 export = {
   ui_charging_current: withApiLogging('ui_charging_current', ({ homey }: ApiContext) => {
     const host = readPelsHost(homey);
-    if (!host?.deviceManager) throw new Error(STARTING);
+    // A read can apply a route change, which rebuilds the plan.
+    if (!host?.deviceManager || !host.planService) throw new Error(STARTING);
     return host.readChargingCurrentForUi();
   }),
   ui_charging_current_save: withApiLogging('ui_charging_current_save', async (

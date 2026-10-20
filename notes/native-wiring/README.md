@@ -394,9 +394,9 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
    control over a conflict (`assertBuiltInActivationAllowed`) and holds a
    selected route back by the same rule (`ChargingCurrentControl.routesBuiltIn`),
    fed the same accepted Flow list (`acceptFlowFacts`). Its setup read
-   (`BuiltInControlFlowConflicts.readChargingCurrent`) applies a readable Flow
-   list first, through the same queue and apply as a scan, and then reports the
-   route in effect (`currentRoute`), so the page says **Built-in current control
+   (`BuiltInControlFlowConflicts.readChargingCurrent`) reads and applies its
+   Flow list as one operation in the scan queue, so an older list never lands
+   over a newer scan's, and then reports the route in effect (`currentRoute`), so the page says **Built-in current control
    is paused** exactly when PELS has handed the current to the Flow. Its
    **Check again** runs the same scan, so a cleared Flow resumes the route at once. While held
    back, the device behaves exactly as with built-in control off: PELS fires its

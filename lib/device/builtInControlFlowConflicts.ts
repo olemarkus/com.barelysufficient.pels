@@ -29,6 +29,7 @@ import {
   FlowConflictRefreshCoordinator,
   type FlowConflictRefreshResult,
 } from '../flowApi/flowConflictRefreshCoordinator';
+import type { FlowReadResult } from '../flowApi/readUserFlows';
 import type { UserFlowFacts } from '../flowApi/userFlows';
 import { getLogger } from '../logging/logger';
 import { normalizeError } from '../utils/errorUtils';
@@ -122,22 +123,25 @@ export class BuiltInControlFlowConflicts {
   }
 
   /**
-   * The settings page's charging-current read. A readable Flow list is the
-   * freshest PELS has, so it is applied first, through the same queue as a
-   * scan, and the page reports the route then in effect. A failed apply has
-   * been rolled back; the page reports that route instead.
+   * The settings page's charging-current read. Its Flow list is read and
+   * applied as one queued operation, after any scan before it, so it is the
+   * freshest PELS has and an older list never lands over a newer scan's. The
+   * page then reports the route in effect; a failed apply has been rolled
+   * back, and the page reports that route instead.
    */
   async readChargingCurrent(): Promise<ChargingCurrentRead[]> {
     const charging = this.getChargingCurrentControl();
-    const flows = await charging.readFlows();
-    if (flows.status === 'ok') {
-      try {
-        await this.coordinator.requestExplicit(async () => {
-          await this.apply(this.autoDecisions, this.conflicts.all, flows.facts);
-          return { state: 'resolved', flowFacts: flows.facts };
-        });
-      } catch (error) {
-        logger.warn({ event: 'charging_control_snapshot_refresh_failed', err: normalizeError(error) });
+    let flows: FlowReadResult = { status: 'unknown', reason: 'not read' };
+    try {
+      await this.coordinator.requestExplicit(async () => {
+        flows = await charging.readFlows();
+        if (this.shutdown.isStopped() || flows.status !== 'ok') return { state: 'unavailable' };
+        await this.apply(this.autoDecisions, this.conflicts.all, flows.facts);
+        return { state: 'resolved', flowFacts: flows.facts };
+      });
+    } catch (error) {
+      if (!this.shutdown.isStopped()) {
+        logger.warn({ event: 'charging_flow_list_apply_failed', err: normalizeError(error) });
       }
     }
     return charging.describe(flows);
@@ -229,7 +233,7 @@ export class BuiltInControlFlowConflicts {
       // A rebuild that failed after the snapshot took the new routes leaves it
       // projecting them; project the restored ones, or the planner and the
       // commands would disagree about who sets the device until the next refresh.
-      if (projected) await this.reprojectAfterRollback();
+      if (projected && !this.shutdown.isStopped()) await this.reprojectAfterRollback();
       throw error;
     }
   }
@@ -238,6 +242,7 @@ export class BuiltInControlFlowConflicts {
     try {
       await this.planRuntime.refreshSnapshot();
     } catch (error) {
+      if (this.shutdown.isStopped()) return;
       logger.error({ event: 'flow_conflict_rollback_refresh_failed', err: normalizeError(error) });
     }
   }

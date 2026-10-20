@@ -2,6 +2,9 @@ import { NativeFlowConflictState } from '../../lib/device/nativeFlowConflictStat
 import {
   createChargingFlowWritesStore,
   createNativeFlowConflictStore,
+  whileDatabaseOpen,
+  type AcceptedFlowConflictSlice,
+  type NativeFlowConflicts,
 } from '../../lib/flowApi/acceptedFlowConflictStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 
@@ -47,5 +50,22 @@ describe('accepted Flow conflict stores', () => {
     failing.restoreSaved();
     failing.accept({ easee: { conflictingCapabilities: ['setDynamicChargerCurrent'] } });
     expect(failing.get('easee')).toEqual({ conflictingCapabilities: ['setDynamicChargerCurrent'] });
+  });
+
+  it('follows the open database: a read while it is closed throws, a save after it closed is dropped', () => {
+    const db = openUserdataDatabase(IN_MEMORY_DATABASE);
+    let open: AcceptedFlowConflictSlice<NativeFlowConflicts> | undefined;
+    const slice = whileDatabaseOpen(() => open);
+    expect(() => slice.read()).toThrow('the userdata database is not open');
+
+    open = createNativeFlowConflictStore(db);
+    slice.write({ easee: { conflictingCapabilities: ['setDynamicChargerCurrent'] } });
+    expect(slice.read()).toEqual({ easee: { conflictingCapabilities: ['setDynamicChargerCurrent'] } });
+
+    const store = open;
+    open = undefined;
+    expect(() => { slice.write({}); }).not.toThrow();
+    expect(store.read()).toEqual({ easee: { conflictingCapabilities: ['setDynamicChargerCurrent'] } });
+    db.close();
   });
 });
