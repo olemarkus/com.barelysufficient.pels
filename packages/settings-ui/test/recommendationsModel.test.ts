@@ -151,14 +151,15 @@ describe('setup recommendations', () => {
     expect(recommendations).toHaveLength(1);
     expect(recommendations[0]).toMatchObject({
       id: 'flow-conflict:device-1',
-      title: 'Remove conflicting Flow control for Connected 300',
+      version: 2,
+      title: 'Built-in device control is paused for Connected 300',
       actionLabel: 'Check again',
       target: { kind: 'flow-conflict-check', deviceId: 'device-1' },
     });
-    expect(recommendations[0]?.body).toContain('Charge at night');
-    expect(recommendations[0]?.body).toContain('Disable the Flow');
+    expect(recommendations[0]?.body).toContain('the Flow “Charge at night” controls the same setting');
+    expect(recommendations[0]?.body).toContain('PELS cannot stop a Flow');
+    expect(recommendations[0]?.body).toContain('disable the Flow “Charge at night” or delete its device-control action');
     expect(recommendations[0]?.body).toContain('delete its device-control action');
-    expect(recommendations[0]?.body).toContain('cannot override PELS');
   });
 
   it('recommends choosing a car only once PELS has matched it to a charger', () => {

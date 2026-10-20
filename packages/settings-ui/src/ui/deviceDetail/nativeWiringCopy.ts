@@ -1,39 +1,43 @@
 /* User-facing copy for the settings UI's built-in device-control handoff. */
 
-export const NATIVE_WIRING_FLOW_CONFLICT_TITLE = 'A Homey Flow already controls this device';
-
-export const NATIVE_WIRING_FLOW_CONFLICT_BODY = 'PELS left built-in device control (the switch below) off so it '
-  + 'does not fight your Flow. Your Flow keeps working as it does now. To switch, disable each conflicting Flow '
-  + 'or delete its device-control action, then turn on built-in device control below.';
-
 export type NativeWiringFlowConflictNotice = {
   title: string;
   body: string;
 };
 
+/** How the owner clears a conflicting Flow, shared by the notice and the recommendation. */
+export function flowConflictHandoffStep(flowName: string | undefined): string {
+  return flowName !== undefined && flowName.length > 0
+    ? `disable the Flow “${flowName}” or delete its device-control action, then select “Check again”`
+    : 'disable each conflicting Flow or delete its device-control action, then select “Check again”';
+}
+
+/**
+ * The device-detail notice for a Flow that writes the setting built-in device
+ * control would write. The runtime holds built-in control back while such a
+ * Flow exists (`lib/device/builtInControlFlowGate.ts`), so the copy says that,
+ * and why: PELS cannot stop a Flow, and two writers override each other.
+ * `builtInChosen` is the owner's choice, kept while it is held back.
+ */
 export function nativeWiringFlowConflictNotice(
   flowName: string | undefined,
-  nativeControlEnabled: boolean,
+  builtInChosen: boolean,
 ): NativeWiringFlowConflictNotice {
-  if (nativeControlEnabled) {
-    const flowReference = flowName ? `the Flow “${flowName}”` : 'a Homey Flow';
+  const named = flowName !== undefined && flowName.length > 0;
+  const flowReference = named ? `The Flow “${flowName}”` : 'A Homey Flow';
+  const handoff = flowConflictHandoffStep(flowName);
+  if (builtInChosen) {
     return {
-      title: 'Built-in device control and a Flow control the same setting',
-      body: `Built-in device control is on, and ${flowReference} can still write the same setting. `
-        + 'Disable the Flow, or delete its device-control action, so it cannot override PELS. '
-        + 'You can also turn off built-in control to keep using your Flow.',
-    };
-  }
-  if (flowName !== undefined && flowName.length > 0) {
-    return {
-      title: `The Flow “${flowName}” already controls this device`,
-      body: 'PELS left built-in device control (the switch below) off so it does not fight '
-        + `your Flow “${flowName}”. Your Flow keeps working as it does now. To switch, disable `
-        + `the Flow “${flowName}” or delete its device-control action, then turn on built-in device control below.`,
+      title: 'Built-in device control is paused',
+      body: `${flowReference} controls the same setting, and PELS cannot stop a Flow. `
+        + 'The two would override each other, so PELS leaves the setting to the Flow for now. '
+        + `To use built-in device control, ${handoff}. It resumes on its own.`,
     };
   }
   return {
-    title: NATIVE_WIRING_FLOW_CONFLICT_TITLE,
-    body: NATIVE_WIRING_FLOW_CONFLICT_BODY,
+    title: named ? `The Flow “${flowName}” controls this device` : 'A Homey Flow controls this device',
+    body: 'Your Flow keeps working as it does now. Built-in device control stays off while a Flow '
+      + 'controls the same setting, because the two would override each other. '
+      + `To switch, ${handoff}, and turn on built-in device control below.`,
   };
 }

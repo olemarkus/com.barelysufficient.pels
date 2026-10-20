@@ -2,6 +2,7 @@ import { detectNativeWiringConflicts, type NativeWiringConflictDetection } from 
 import type { DeviceDescriptorRead } from '../packages/contracts/src/types';
 import { getRawFromHomeyApi } from '../lib/device/transport/managerHomeyApi';
 import { normalizeError } from '../lib/utils/errorUtils';
+import { resolveNativeWiringEnabled } from '../lib/device/builtInControlFlowGate';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
 import type { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';
 import type { ShutdownLatch } from '../lib/utils/shutdownLatch';
@@ -137,15 +138,13 @@ export class AppNativeWiring {
     return this.deps.getFlowConflictsByDevice()[deviceId];
   }
 
-  // Explicit user choice (true or false in `nativeEvWiringDevices`) always wins;
-  // for devices the user has never touched, fall back to the conflict-gated
-  // auto-enable decision. See notes/native-wiring/.
   resolveNativeWiringEnabled(deviceId: string): boolean {
-    const nativeEvWiringDevices = this.deps.getNativeEvWiringDevices();
-    if (Object.prototype.hasOwnProperty.call(nativeEvWiringDevices, deviceId)) {
-      return nativeEvWiringDevices[deviceId] === true;
-    }
-    return this.deps.getAutoNativeWiringDecisions()[deviceId] === true;
+    return resolveNativeWiringEnabled(
+      deviceId,
+      this.deps.getNativeEvWiringDevices(),
+      this.deps.getAutoNativeWiringDecisions(),
+      this.deps.getFlowConflictsByDevice(),
+    );
   }
 
   // Startup runs this once and a periodic timer re-runs it (see

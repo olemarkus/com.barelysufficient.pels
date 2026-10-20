@@ -133,6 +133,12 @@ export function hasTargetPowerCapability(capabilities: readonly string[]): boole
  * This is the canonical owned-native-write set used by the flow-conflict
  * detection (notes/native-wiring/): a user Flow writing any of these for the
  * same device conflicts with PELS taking the device over natively.
+ *
+ * `onoff` is not in it, although built-in control writes it for a Hoiax off
+ * step: PELS switches a managed device on and off with built-in control off
+ * as well, so a Flow that only switches it is not made safe by holding
+ * built-in control back, and pausing it would only cost the power levels the
+ * Flow never touches.
  */
 export function resolveNativeSteppedLoadWriteCapabilities(
   capabilities: readonly string[],
@@ -145,7 +151,7 @@ export function resolveNativeSteppedLoadWriteCapabilities(
   const nativeCapabilityId = resolveNativeSteppedLoadCapabilityId(capabilities);
   if (!nativeCapabilityId) return [];
 
-  return capabilities.includes('onoff') ? [nativeCapabilityId, 'onoff'] : [nativeCapabilityId];
+  return [nativeCapabilityId];
 }
 
 /**

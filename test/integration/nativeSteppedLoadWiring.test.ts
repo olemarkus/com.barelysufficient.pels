@@ -443,7 +443,7 @@ describe('native stepped-load wiring', () => {
     // The control caps are stripped from the public capability list, but the
     // conflict-detection field still reports what PELS natively writes.
     expect(parsed.capabilities).not.toContain('max_power_3000');
-    expect(parsed.nativeWriteCapabilities).toEqual(['max_power_3000', 'onoff']);
+    expect(parsed.nativeWriteCapabilities).toEqual(['max_power_3000']);
   });
 
   it('surfaces nativeWriteCapabilities even when native wiring is OFF (PR4 gate population)', async () => {
@@ -458,7 +458,7 @@ describe('native stepped-load wiring', () => {
     // Native wiring disabled → not actively controlled (no stepped controlModel),
     // but it is still a candidate the conflict gate must see.
     expect(parsed.controlModel).toBeUndefined();
-    expect(parsed.nativeWriteCapabilities).toEqual(['max_power_3000', 'onoff']);
+    expect(parsed.nativeWriteCapabilities).toEqual(['max_power_3000']);
   });
 
   it('projects target_power controls as stepped-load wiring at the observation boundary', async () => {

@@ -103,6 +103,17 @@ export const requiresNativeWiringForActivation = (device?: SettingsUiDeviceListI
 );
 
 /**
+ * The owner's built-in device control choice: an explicit entry, or the
+ * auto-enable decision the snapshot reports as active. The runtime holds an
+ * explicit choice back while a Flow writes the same setting, so the snapshot
+ * alone would read that choice as off.
+ */
+export const isBuiltInControlChosen = (
+  device: SettingsUiDeviceListItem,
+  ownerChoices: Readonly<Record<string, boolean>>,
+): boolean => ownerChoices[device.id] === true || device.controlAdapter?.activationEnabled === true;
+
+/**
  * A type predicate, not a plain boolean: the body already proves the device is
  * present (it reads `controlAdapter.kind` off it), so callers should not have to
  * re-check for null afterwards. Generic over the carrier so a

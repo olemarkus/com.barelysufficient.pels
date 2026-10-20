@@ -13,6 +13,7 @@ import {
 } from '../dom.ts';
 import { nativeWiringFlowConflictNotice } from './nativeWiringCopy.ts';
 import {
+  isBuiltInControlChosen,
   requiresNativeWiringForActivation,
   supportsNativeWiringActivation,
   type SettingsUiDeviceDetailItem,
@@ -39,17 +40,21 @@ const expandSetupDisclosure = () => {
   }
 };
 
+const hasFlowConflict = (device: SettingsUiDeviceDetailItem | null): boolean => (
+  (device?.flowConflict?.conflictingCapabilities?.length ?? 0) > 0
+);
+
 const syncFlowConflictNotice = (
   device: SettingsUiDeviceDetailItem | null,
-  nativeWiringEffectiveEnabled: boolean,
+  builtInChosen: boolean,
 ): boolean => {
-  // A Flow remains relevant after opt-in: both writers may now be enabled.
-  const hasConflict = (device?.flowConflict?.conflictingCapabilities?.length ?? 0) > 0;
+  // A Flow remains relevant after opt-in: it holds the owner's choice back.
+  const hasConflict = hasFlowConflict(device);
   if (deviceDetailFlowConflictNotice) {
     deviceDetailFlowConflictNotice.hidden = !hasConflict;
   }
   if (!hasConflict) return false;
-  const notice = nativeWiringFlowConflictNotice(device?.flowConflict?.flowName, nativeWiringEffectiveEnabled);
+  const notice = nativeWiringFlowConflictNotice(device?.flowConflict?.flowName, builtInChosen);
   if (deviceDetailFlowConflictTitle) deviceDetailFlowConflictTitle.textContent = notice.title;
   if (deviceDetailFlowConflictBody) deviceDetailFlowConflictBody.textContent = notice.body;
   return true;
@@ -79,21 +84,21 @@ const syncSetupAutoExpand = (device: SettingsUiDeviceDetailItem | null, shouldEx
 export const setDeviceDetailNativeWiringState = (device: SettingsUiDeviceDetailItem | null) => {
   setChargingCurrentDevice(device?.id ?? '');
   const nativeWiringSupported = supportsNativeWiringActivation(device);
-  const nativeWiringEffectiveEnabled = device
-    ? state.nativeWiringMap[device.id] === true || device.controlAdapter?.activationEnabled === true
-    : false;
+  const builtInChosen = device ? isBuiltInControlChosen(device, state.nativeWiringMap) : false;
   const nativeWiringRequiredAndMissing = requiresNativeWiringForActivation(device);
 
   if (deviceDetailNativeWiringRow) {
     deviceDetailNativeWiringRow.hidden = !nativeWiringSupported;
   }
   if (deviceDetailNativeWiring) {
-    deviceDetailNativeWiring.selected = nativeWiringEffectiveEnabled;
-    deviceDetailNativeWiring.disabled = !nativeWiringSupported || nativeWiringSaveInProgress;
+    deviceDetailNativeWiring.selected = builtInChosen;
+    // A conflicting Flow blocks turning it on; an owner who chose it can still turn it off.
+    deviceDetailNativeWiring.disabled = !nativeWiringSupported || nativeWiringSaveInProgress
+      || (hasFlowConflict(device) && !builtInChosen);
   }
   syncNativeWiringRequirementSurfaces(nativeWiringRequiredAndMissing);
-  const hasFlowConflict = syncFlowConflictNotice(device, nativeWiringEffectiveEnabled);
-  syncSetupAutoExpand(device, nativeWiringRequiredAndMissing || hasFlowConflict);
+  const showsFlowConflict = syncFlowConflictNotice(device, builtInChosen);
+  syncSetupAutoExpand(device, nativeWiringRequiredAndMissing || showsFlowConflict);
 };
 
 export const updateCurrentDeviceNativeWiringSnapshot = (
@@ -156,9 +161,12 @@ export const initDeviceDetailNativeWiringHandler = (params: {
     const device = getDeviceById(deviceId);
     if (!supportsNativeWiringActivation(device)) return;
 
-    const nativeWiringEffectiveEnabled = state.nativeWiringMap[deviceId] === true
-      || device.controlAdapter?.activationEnabled === true;
-    if (deviceDetailNativeWiring.selected === nativeWiringEffectiveEnabled) return;
+    const builtInChosen = isBuiltInControlChosen(device, state.nativeWiringMap);
+    if (deviceDetailNativeWiring.selected === builtInChosen) return;
+    if (deviceDetailNativeWiring.selected && hasFlowConflict(device)) {
+      deviceDetailNativeWiring.selected = false;
+      return;
+    }
     nativeWiringSaveInProgress = true;
     deviceDetailNativeWiring.disabled = true;
     try {

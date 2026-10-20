@@ -9,6 +9,7 @@ import {
   type DeviceStartPolicy,
 } from '../../../shared-domain/src/settings/deviceStartPolicy.ts';
 import {
+  isBuiltInControlChosen,
   requiresNativeWiringForActivation,
   supportsNativeWiringActivation,
   supportsPowerDevice,
@@ -16,6 +17,7 @@ import {
   type SettingsUiDeviceDetailItem,
 } from './deviceUtils.ts';
 import { hasMatchedAnotherCurrentCharger, REMOVED_CAR_LABEL } from './carAssociationCandidates.ts';
+import { flowConflictHandoffStep } from './deviceDetail/nativeWiringCopy.ts';
 
 export type RecommendationDismissals = Record<string, number>;
 
@@ -47,6 +49,7 @@ export type RecommendationGroups = {
 };
 
 const RECOMMENDATION_VERSION = 1;
+const FLOW_CONFLICT_RECOMMENDATION_VERSION = 2;
 
 const recommendationId = (kind: string, entityId: string): string => (
   `${kind}:${encodeURIComponent(entityId)}`
@@ -78,8 +81,7 @@ export const resolveNativeControlRecommendations = (
 ): SetupRecommendation[] => (
   devices.flatMap((device) => {
     const conflict = device.flowConflict;
-    const nativeControlEnabled = nativeWiringEnabledByDeviceId[device.id] === true
-      || device.controlAdapter?.activationEnabled === true;
+    const nativeControlEnabled = isBuiltInControlChosen(device, nativeWiringEnabledByDeviceId);
     const hasConflict = conflict !== undefined && conflict.conflictingCapabilities.length > 0;
     if (nativeControlEnabled && !hasConflict) return [];
     if (!hasConflict && !supportsNativeWiringActivation(device)) return [];
@@ -89,22 +91,21 @@ export const resolveNativeControlRecommendations = (
         : 'the conflicting Flow';
       return [{
         id: recommendationId('flow-conflict', device.id),
-        version: RECOMMENDATION_VERSION,
+        // Version 2: the Flow now holds built-in control back, so an earlier dismissal no longer applies.
+        version: FLOW_CONFLICT_RECOMMENDATION_VERSION,
         category: 'recommendation',
-        title: `Remove conflicting Flow control for ${formatDisplayDeviceName(device.name)}`,
-        body: `Built-in device control is on, but ${flowReference} can still change the same setting. `
-          + 'Disable the Flow, or delete its device-control action, so it cannot override PELS.',
+        title: `Built-in device control is paused for ${formatDisplayDeviceName(device.name)}`,
+        body: `You turned on built-in device control, but ${flowReference} controls the same setting. `
+          + 'PELS cannot stop a Flow, so it leaves the setting to the Flow for now. '
+          + `To use built-in device control, ${flowConflictHandoffStep(conflict?.flowName)}.`,
         actionLabel: 'Check again',
         target: { kind: 'flow-conflict-check', deviceId: device.id },
       }];
     }
-    const flowReference = hasConflict && conflict.flowName
-      ? `To switch, disable the Flow “${conflict.flowName}” or delete its device-control action, `
-        + 'then turn on Built-in device control on the device page.'
-      : 'To switch, disable each conflicting Flow or delete its device-control action, '
-        + 'then turn on Built-in device control on the device page.';
     const body = hasConflict
-      ? `Your current Flow keeps working. PELS can also control this device directly. ${flowReference}`
+      ? 'Your current Flow keeps working. PELS can also control this device directly. '
+        + `To switch, ${flowConflictHandoffStep(conflict.flowName)}, `
+        + 'and turn on built-in device control on the device page.'
       : 'PELS can control this device directly. If you use a Flow to control the same setting, '
         + 'turn off only that action before enabling Built-in device control on the device page.';
     return [{

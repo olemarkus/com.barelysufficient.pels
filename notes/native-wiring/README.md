@@ -186,9 +186,14 @@ intersection, consumed by the conflict classifier in a later PR):
 | Device class | PELS native-write capabilities |
 |---|---|
 | Zaptec EV | `charging_button` |
-| Hoiax stepped | `max_power_3000`, `max_power_2000`, `max_power`, `onoff` (off step) |
+| Hoiax stepped | `max_power_3000`, `max_power_2000`, `max_power` |
 | Generic `target_power` stepped | `target_power` |
 | Easee EV charger | `target_charger_current`, plus the `setDynamicChargerCurrent` card id |
+
+A Hoiax off step also writes `onoff`, but `onoff` is not in the set: PELS
+switches a managed device with built-in control off as well, so a Flow that
+only switches the heater is not a built-in-control conflict, and holding
+built-in control back would only cost the power levels that Flow never touches.
 
 The Easee card id is not a capability, but a user Flow's device action card is
 recorded under the same `homey:device:<deviceId>:<suffix>` key as a capability
@@ -334,7 +339,7 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
    conflict is found.
    - **Runtime default, not a settings write.** `resolveNativeWiringEnabled`
      resolves: an explicit user entry in `NATIVE_EV_WIRING_DEVICES` (true or
-     false) always wins; an untouched device falls back to an in-memory,
+     false) always wins (a known conflict now holds either back; see 6); an untouched device falls back to an in-memory,
      conflict-gated auto-decision (`app.autoNativeWiringDecisions`). Nothing is
      persisted, so there is no migration and no risk of corrupting user state,
      and an explicit opt-out is never auto-reverted.
@@ -365,22 +370,44 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
    raw capability ids (`max_power_3000` would be jargon). The banner ties itself
    to the visible built-in-control switch and describes the safe handoff: keep
    the Flow, turn off only its conflicting device-control action, then enable
-   built-in control. `flowConflict` is display-only and does not affect the
-   control gate.
+   built-in control.
 
    The two notices answer separate questions. **Setup & recommendations**
    recommends available built-in control while it is off, even without Flow
    metadata; in that case its advice is conditional and never claims a Flow
    was detected. A detected conflict adds the safe migration instructions and
-   Flow name. The device-detail Flow notice remains visible after built-in
-   control is enabled, with different copy explaining that the two writers may
-   override each other. Missing required activation retains its own setup
-   notice; a supported legacy Flow setup is not labelled unusable.
+   Flow name. Missing required activation retains its own setup notice; a
+   supported legacy Flow setup is not labelled unusable.
 
    There is one built-in-control switch, which saves the owner's choice
    directly. There is no "only device controller" confirmation: PELS cannot
-   guarantee exclusive control or disable another app or Flow. Detected Flow
-   conflicts are explained by the separate notice.
+   guarantee exclusive control or disable another app or Flow.
+
+6. **A conflict holds built-in control back.** PELS cannot stop a Flow, and a
+   Flow writing the setting PELS writes overrides it (a raised Easee current can
+   pass the house limit). So `resolveNativeWiringEnabled`
+   (`lib/device/builtInControlFlowGate.ts`) returns the owner's choice (explicit
+   entry, else the auto-decision) only while no conflict is known. This
+   supersedes PR4's "explicit entry always wins" for a conflicted device. The
+   charging-current setup (Tesla, Zaptec) already refuses to enable built-in
+   control over a conflict (`assertBuiltInActivationAllowed`). While held
+   back, the device behaves exactly as with built-in control off: PELS fires its
+   stepped-load trigger and reads the step the Flow reports. The saved choice is
+   kept, so clearing the Flow (the 30-minute re-query or **Check again**) re-parses
+   the snapshot and built-in control resumes. An `unknown` read keeps the last
+   accepted conflicts, so a transient Web API failure flips nothing.
+
+   The device-detail switch cannot be turned on while a conflict is known; an
+   owner who turned it on can still turn it off. The notice says built-in
+   control is paused when the owner chose it, and that the Flow keeps the
+   setting otherwise. The **Setup & recommendations** entry for a held-back
+   choice is versioned separately, so an earlier dismissal of the old "remove
+   the Flow" wording does not hide it.
+
+   *Accepted limitation:* conflicts live in memory and the first detection runs
+   after the snapshot warm-up gate, so after a restart an owner's explicit choice
+   runs natively until the first readable Flow list, and for as long as the Flow
+   list stays unreadable.
 
    *Follow-ups:*
    - **Shipped:** a user-triggered **Check again** action on the

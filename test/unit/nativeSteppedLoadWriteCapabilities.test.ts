@@ -14,12 +14,11 @@ describe('resolveNativeSteppedLoadWriteCapabilities', () => {
       .toEqual(['target_power']);
   });
 
-  it('returns the present max_power cap plus onoff for a Hoiax stepper', () => {
+  it('returns the present max_power cap, without onoff, for a Hoiax stepper', () => {
+    // PELS switches the heater with built-in control off too, so a Flow that
+    // only switches it is no built-in-control conflict.
     expect(resolveNativeSteppedLoadWriteCapabilities(['measure_power', 'max_power_3000', 'onoff']))
-      .toEqual(['max_power_3000', 'onoff']);
-  });
-
-  it('omits onoff when the device does not expose it', () => {
+      .toEqual(['max_power_3000']);
     expect(resolveNativeSteppedLoadWriteCapabilities(['max_power_2000']))
       .toEqual(['max_power_2000']);
   });

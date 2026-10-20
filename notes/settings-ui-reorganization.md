@@ -132,7 +132,8 @@ Keep the configuration owners as the place where the user acts:
 Built-in-control recommendations use the device's available, disabled control
 switch independently of Flow detection. Without a detected Flow, advice about
 removing a conflicting action is conditional. The separate Flow notice persists
-when built-in control is on and explains that both writers may override each other.
+when built-in control is on and says it is paused: PELS holds it back while the
+Flow writes the same setting, because the two would override each other.
 
 These signals are current-state facts, not a sequence the user completes once.
 Recommendations may link to them and may be dismissed, but must not duplicate

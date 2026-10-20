@@ -1,4 +1,3 @@
-import { NATIVE_WIRING_FLOW_CONFLICT_TITLE } from '../src/ui/deviceDetail/nativeWiringCopy';
 import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
 
 const buildDom = () => {
@@ -66,7 +65,7 @@ describe('device detail flow-conflict banner', () => {
     }));
 
     expect(notice()?.hidden).toBe(false);
-    expect(title()?.textContent).toBe(NATIVE_WIRING_FLOW_CONFLICT_TITLE);
+    expect(title()?.textContent).toBe('A Homey Flow controls this device');
     expect((body()?.textContent ?? '').length).toBeGreaterThan(0);
     // No raw capability id leaks into the user-facing copy.
     expect(body()?.textContent).not.toContain('max_power_3000');
@@ -82,7 +81,6 @@ describe('device detail flow-conflict banner', () => {
 
     expect(notice()?.hidden).toBe(false);
     expect(title()?.textContent).toContain('Charge at night');
-    expect(title()?.textContent).not.toBe(NATIVE_WIRING_FLOW_CONFLICT_TITLE);
     expect(body()?.textContent).toContain('Charge at night');
     expect(body()?.textContent).toContain('Your Flow keeps working as it does now');
     expect(body()?.textContent).toContain('disable the Flow “Charge at night”');
@@ -105,21 +103,50 @@ describe('device detail flow-conflict banner', () => {
     expect(notice()?.hidden).toBe(false);
   });
 
-  it('warns about competing control when built-in control and a conflicting Flow are both enabled', async () => {
+  it('says built-in control is paused when the owner turned it on and a Flow writes the same setting', async () => {
     buildDom();
+    const { state } = await import('../src/ui/state.ts');
+    state.nativeWiringMap = { 'hoiax-1': true };
     const { setDeviceDetailNativeWiringState } = await import('../src/ui/deviceDetail/nativeWiring.ts');
 
+    // The runtime holds the choice back, so the snapshot reports it inactive.
     setDeviceDetailNativeWiringState(buildDevice({
-      flowConflict: { conflictingCapabilities: ['max_power_3000'] },
-      controlAdapter: { kind: 'capability_adapter', activationRequired: false, activationEnabled: true },
+      flowConflict: { conflictingCapabilities: ['max_power_3000'], flowName: 'Charge at night' },
+      controlAdapter: { kind: 'capability_adapter', activationAvailable: true, activationRequired: false, activationEnabled: false },
     }));
 
     expect(notice()?.hidden).toBe(false);
-    expect(body()?.textContent).toContain('Disable the Flow');
-    expect(body()?.textContent).toContain('delete its device-control action');
-    expect(body()?.textContent).toContain('cannot override PELS');
-    expect(body()?.textContent).not.toContain('left built-in device control');
+    expect(title()?.textContent).toBe('Built-in device control is paused');
+    expect(body()?.textContent).toContain('The Flow “Charge at night” controls the same setting');
+    expect(body()?.textContent).toContain('PELS cannot stop a Flow');
+    expect(body()?.textContent).toContain('disable the Flow “Charge at night” or delete its device-control action');
+    expect(body()?.textContent).toContain('It resumes on its own');
     expect(document.getElementById('device-detail-native-wiring-notice')?.hidden).toBe(true);
+    // The owner can still turn the choice off.
+    const toggle = document.getElementById('device-detail-native-wiring') as HTMLElement & { selected: boolean; disabled: boolean };
+    expect(toggle.selected).toBe(true);
+    expect(toggle.disabled).toBe(false);
+  });
+
+  it('blocks turning built-in control on while a Flow writes the same setting', async () => {
+    buildDom();
+    const { state } = await import('../src/ui/state.ts');
+    state.nativeWiringMap = {};
+    const { setDeviceDetailNativeWiringState } = await import('../src/ui/deviceDetail/nativeWiring.ts');
+    const controlAdapter = {
+      kind: 'capability_adapter', activationAvailable: true, activationRequired: false, activationEnabled: false,
+    } as const;
+
+    setDeviceDetailNativeWiringState(buildDevice({
+      flowConflict: { conflictingCapabilities: ['max_power_3000'] },
+      controlAdapter,
+    }));
+    const toggle = document.getElementById('device-detail-native-wiring') as HTMLElement & { selected: boolean; disabled: boolean };
+    expect(toggle.selected).toBe(false);
+    expect(toggle.disabled).toBe(true);
+
+    setDeviceDetailNativeWiringState(buildDevice({ controlAdapter }));
+    expect(toggle.disabled).toBe(false);
   });
 
   it('hides the banner when there is no flow conflict', async () => {

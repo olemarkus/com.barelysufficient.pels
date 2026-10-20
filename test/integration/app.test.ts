@@ -194,6 +194,22 @@ describe('MyApp initialization', () => {
     expect(resolve('unknown-device')).toBe(false);
   });
 
+  it('holds an explicit built-in control choice back while a Flow writes the same setting', () => {
+    const app = createApp();
+    mockHomeyInstance.settings.set(NATIVE_EV_WIRING_DEVICES, { easee: true });
+    app.deviceControlSettings.reload();
+    app['flowConflictsByDevice'] = {
+      easee: { conflictingCapabilities: ['setDynamicChargerCurrent'], flowName: 'PELS BEV' },
+    };
+
+    const resolve = (id: string) => app['nativeWiring'].resolveNativeWiringEnabled(id);
+    expect(resolve('easee')).toBe(false);
+
+    // The choice is kept: built-in control resumes once the Flow is gone.
+    app['flowConflictsByDevice'] = {};
+    expect(resolve('easee')).toBe(true);
+  });
+
   it('initializes and creates device snapshot', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     await heater.setCapabilityValue('onoff', true);

@@ -48,9 +48,11 @@ PELS does not change the charger's maximum current setting in the Easee app.
 
 ### If you already have a charger Flow
 
-If one of your Flows already sets the charger's current with the Easee card **Set dynamic charger current**, PELS leaves built-in control off and shows **The Flow "…" already controls this device** on the charger's page. Your Flow keeps working as before.
+If one of your Flows already sets the charger's current with the Easee card **Set dynamic charger current**, PELS leaves built-in control off and shows **The Flow "…" controls this device** on the charger's page. Your Flow keeps working as before.
 
-To switch to built-in control, disable or delete the part of that Flow that sets the current. PELS picks that up within 30 minutes and turns built-in control on. You can also turn **Use built-in device control** on yourself right away.
+PELS cannot stop a Flow, and a Flow and PELS setting the same current would override each other. So **Use built-in device control** cannot be turned on while such a Flow exists. If you turned it on before you added the Flow, PELS pauses built-in control, leaves the current to your Flow, and shows **Built-in device control is paused**.
+
+To switch to built-in control, disable or delete the part of that Flow that sets the current, then select **Check again** on the charger's page. Otherwise PELS notices within 30 minutes. Built-in control then turns on by itself, unless you turned **Use built-in device control** off yourself. In that case, turn it on again.
 
 A Flow that only reports the car's battery level to PELS is not a current-control conflict. Keep it if you use Flow battery reporting and have no car selected in the charger's **Car** section. If you select a car there, PELS ignores the battery-reporting Flow.
 
@@ -67,7 +69,7 @@ Select a supported car in the charger's **Car** section to use its battery level
 | Problem | What to check |
 | --- | --- |
 | **Use built-in device control** is not shown | Check that **Control model** is **EV 1-phase** or **EV 3-phase**, and that the charger is paired with the Easee app. |
-| Built-in control stays off | Look for the Flow notice on the charger's page, and disable the part of that Flow that sets the charger current. |
+| Built-in control stays off or is paused | Look for the Flow notice on the charger's page, disable the part of that Flow that sets the charger current, then select **Check again**. |
 | The charger uses more or less power per step than PELS expects | Check that the control model matches the charger's phases. |
 | Charging does not start right after PELS resumes it | Easee waits about 5 minutes after the current is raised. Leave it: starting charging in the Easee app opens a new session at the charger's maximum current. |
 

@@ -2,6 +2,9 @@ import type MyApp from '../../app.ts';
 import { partialDouble } from '../helpers/partialDouble';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
+import { ADVANCED_FLOW_API_PATH } from '../../lib/flowApi/readUserFlows';
+import { mockHomeyInstance } from '../mocks/homey';
+import { NATIVE_EV_WIRING_DEVICES } from '../../lib/utils/settingsKeys';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 // Drives PelsApp.applyNativeWiringAutoDecisions end-to-end: real flow read
@@ -46,6 +49,35 @@ describe('applyNativeWiringAutoDecisions', () => {
     await app['applyNativeWiringAutoDecisions']();
     expect(refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(1);
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds an explicit choice back when a conflicting Flow appears, and re-parses each time', async () => {
+    const easee = {
+      id: 'easee-1',
+      name: 'Easee',
+      nativeWriteCapabilities: ['target_charger_current', 'setDynamicChargerCurrent'],
+    } as unknown as TargetDeviceSnapshot;
+    let flowWrites = true;
+    setRestClient({
+      get: async (path) => (path === ADVANCED_FLOW_API_PATH && flowWrites
+        ? { bev: { name: 'PELS BEV', cards: { set: { type: 'action', id: 'homey:device:easee-1:setDynamicChargerCurrent' } } } }
+        : {}),
+      put: vi.fn(),
+    });
+    const { app, refreshTargetDevicesSnapshot, rebuildPlanFromCache } = stubApp([easee]);
+    mockHomeyInstance.settings.set(NATIVE_EV_WIRING_DEVICES, { 'easee-1': true });
+    app.deviceControlSettings.reload();
+    const resolve = () => app['nativeWiring'].resolveNativeWiringEnabled('easee-1');
+
+    await app['applyNativeWiringAutoDecisions']();
+    expect(resolve()).toBe(false);
+    expect(refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(1);
+    expect(rebuildPlanFromCache).toHaveBeenCalledWith('native_wiring_auto_decision');
+
+    flowWrites = false;
+    await app['applyNativeWiringAutoDecisions']();
+    expect(resolve()).toBe(true);
+    expect(refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(2);
   });
 
   it('drops a concurrent background run while one is in flight', async () => {

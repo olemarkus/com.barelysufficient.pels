@@ -474,7 +474,7 @@ describe('recommendation loading', () => {
       checkAgain?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
       await vi.waitFor(() => {
-        expect(surface?.textContent).not.toContain('Remove conflicting Flow control for Connected 300');
+        expect(surface?.textContent).not.toContain('Built-in device control is paused for Connected 300');
       });
       expect(refreshFlowConflictsApi).toHaveBeenCalledWith('POST', SETTINGS_UI_REFRESH_FLOW_CONFLICTS_PATH, {});
       expect(surface?.textContent).toContain('No setup suggestions right now');
@@ -846,16 +846,18 @@ describe('recommendation loading', () => {
     recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
     try {
       const surface = document.getElementById('setup-recommendations-root');
-      const clickCheckAgain = () => [...surface!.querySelectorAll('md-filled-tonal-button')]
-        .find((button) => button.textContent?.trim() === 'Check again')
+      // The body also says "Check again", so wait on the button, not the surface text.
+      const checkAgainButton = () => [...surface!.querySelectorAll('md-filled-tonal-button')]
+        .find((button) => button.textContent?.trim() === 'Check again');
+      const clickCheckAgain = () => checkAgainButton()
         ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
       clickCheckAgain();
       await vi.waitFor(() => {
         expect(refreshAttempts).toBe(2);
-        expect(surface?.textContent).toContain('Check again');
+        expect(checkAgainButton()).toBeDefined();
       });
-      expect(surface?.textContent).toContain('Remove conflicting Flow control for Connected 300');
+      expect(surface?.textContent).toContain('Built-in device control is paused for Connected 300');
       primeApiCache(SETTINGS_UI_DEVICES_PATH, {
         devices: [conflictedDevice],
         chargerPhasePresets: { state: 'resolved', presets: {} },
@@ -867,22 +869,22 @@ describe('recommendation loading', () => {
       clickCheckAgain();
       await vi.waitFor(() => {
         expect(refreshAttempts).toBe(3);
-        expect(surface?.textContent).toContain('Check again');
+        expect(checkAgainButton()).toBeDefined();
       });
-      expect(surface?.textContent).toContain('Remove conflicting Flow control for Connected 300');
+      expect(surface?.textContent).toContain('Built-in device control is paused for Connected 300');
       const { getTargetDevices } = await import('../src/ui/devices.ts');
       await expect(getTargetDevices()).resolves.toEqual([conflictedDevice]);
 
       clickCheckAgain();
       await vi.waitFor(() => {
         expect(refreshAttempts).toBe(4);
-        expect(surface?.textContent).toContain('Check again');
+        expect(checkAgainButton()).toBeDefined();
       });
-      expect(surface?.textContent).toContain('Remove conflicting Flow control for Connected 300');
+      expect(surface?.textContent).toContain('Built-in device control is paused for Connected 300');
 
       clickCheckAgain();
       await vi.waitFor(() => {
-        expect(surface?.textContent).not.toContain('Remove conflicting Flow control for Connected 300');
+        expect(surface?.textContent).not.toContain('Built-in device control is paused for Connected 300');
       });
       expect(refreshAttempts).toBe(5);
     } finally {
