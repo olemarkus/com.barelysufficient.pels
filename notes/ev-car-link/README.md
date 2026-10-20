@@ -147,7 +147,7 @@ charger's `stateOfCharge`, carrying `source: { kind: 'car', carId }`. Three rule
   charger whose car is sitting at one percentage with nothing new to say — and, because an absent
   level reads to a smart task exactly like a broken one, the task would then never admit the
   charger, so it would never charge, so the level would never change. A closed loop.
-- **A session survives a restart.** The active pair is persisted alongside the votes and restored
+- **A session survives a restart.** The final active pair (not a provisional one) is persisted alongside the votes and restored
   as a CANDIDATE: it becomes an association again only when the charger and that car both
   independently report connected (`evCarLinkSessionResume.ts`). A restart observes no plug-in —
   the plug-in already happened — so without this a charger mid-charge would have no car until the
@@ -188,13 +188,27 @@ the car. Connect/disconnect is a physical event both devices observe independent
 makes it the only self-correlation-free signal available. Charging transitions are
 deliberately not used as link evidence.
 
-**Decide only once both windows have closed.** A positive match waits one full
-20-minute coincidence window after both the charger edge and the matched car edge.
-This gives delayed competing cars and chargers time to report. An immediate car
-report therefore takes about 20 minutes to link; a report 15 minutes after the
-charger takes about 35 minutes. Reports exactly at the boundary take about 40 minutes,
-plus the correlation tick. Battery-dependent features wait for a match during this
-period; existing persisted-session recovery remains separate.
+**Link at once; vote and persist only once both windows have closed.** The coincidence
+window (20 minutes) is how far apart the two plug edges may be, which a slow car cloud
+needs. It is not how long a link waits: when the car edge pairs with exactly one charger
+edge and nothing contests it, the producer opens a **provisional** link straight away
+(`evCarLinkProvisional.ts`, event `ev_car_link_provisional`), so the car's battery level
+reaches the charger as soon as both plug edges are in. A provisional link leaves no
+persisted trace: no vote, no persisted session (so it does not survive a restart), and no
+self-stop evidence (the self-stop watcher sees only final links, and a provisional link
+does not linger after its charger unplugs), because a rival can still withdraw it.
+
+The decision that can not be undone still waits: the vote and the persisted session come
+one full window after both the charger edge and the matched car edge, so every competing
+car and charger has had time to report. The settled pairing then makes the provisional
+link final (`ev_car_link_resolved`). If a rival reports inside the window and makes the
+edge ambiguous, the provisional link is withdrawn (`ev_car_link_provisional_withdrawn`)
+and the charger has no level again. The cost of a withdrawn link is a battery level that
+served the charger for a few minutes; nothing it did is kept.
+Until 2026-10-20 the link itself waited for the window too, about 20 minutes for an
+immediate car report and up to 40 for a late one, which stalled every Smart task at
+plug-in for a conflict that real homes almost never produce. Existing persisted-session
+recovery remains separate.
 
 **Three outcomes, and the distinction is the point:**
 

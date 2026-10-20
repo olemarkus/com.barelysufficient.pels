@@ -39,6 +39,7 @@ import {
 import { resolveResumableSessions } from './evCarLinkSessionResume';
 import { EvCarSelfStopWatcher } from './evCarLinkSelfStop';
 import { EvCarLinkReportKeys } from './evCarLinkReportKeys';
+import { finalLinks, findContestedProvisionalLinks, mayOpenProvisionalLink } from './evCarLinkProvisional';
 import { hasSessionPowerEvidence, type EvCarLinkChargerView } from './evCarLinkChargerView';
 import {
     applyCarCapability,
@@ -47,9 +48,7 @@ import {
     type CarObservation,
 } from './evCarLinkObservation';
 import {
-    EV_CAR_LINK_AWAY_VERDICT_MS,
     EV_CAR_LINK_COINCIDENCE_WINDOW_MS,
-    type EvLinkAmbiguity,
     type EvLinkCoincidence,
     type EvLinkEdge,
     type EvLinkEdgeHistory,
@@ -96,7 +95,8 @@ export type EvCarLinkEventEmitter = (payload: EvCarLinkEvent) => void;
  * on one timestamp lets a stale fetch roll charge backward whenever the plug
  * state happened not to change (which is most of a charging session).
  */
-type ActiveLink = ActiveLinkView & { source: string };
+/** A provisional link earns no vote and is not persisted (`evCarLinkProvisional.ts`). */
+type ActiveLink = ActiveLinkView & { source: string; provisional: boolean };
 
 /** A car's charge reading held until its charger link resolves; see `flushPendingSocShadows`. */
 type PendingSocShadow = { previousSocPct?: number; socPct: number; socAtMs: number };
@@ -367,13 +367,18 @@ export class EvCarLinkProducer {
     /**
      * Sample charger views, diff them into edges, then run every correlation lane.
      *
-     * A charger edge is only matched once it has SETTLED — one full coincidence
+     * A charger edge is only decided once it has SETTLED — one full coincidence
      * window has elapsed since it happened. Deciding eagerly would vote for the
      * first car to plug in and be unable to retract that vote when a second car
      * connects moments later at the same charger, which is exactly the two-car
-     * household this probe has to survive. Resolution waits one full window
-     * after both endpoints report their plug edges, up to two windows after the
-     * first report. Battery-based planning waits for that association.
+     * household this probe has to survive. The vote and the persisted session
+     * wait one full window after both endpoints report their plug edges.
+     *
+     * The link does not wait. A pairing with exactly one car and no rival yet
+     * opens a provisional link at once, so the car's battery level reaches the
+     * charger as soon as both plug edges are in. A rival inside the window makes
+     * the edge ambiguous and withdraws the link; the settled decision makes it
+     * final.
      */
     private correlate(nowMs: number): void {
         const chargers = this.deps.getChargers();
@@ -387,8 +392,10 @@ export class EvCarLinkProducer {
         // ones to judge contention, and settles the decision itself.
         const match = matchCoincidentEdges({ ...this.edges, nowMs });
         this.edges.chargerEdges = rememberEvLinkAmbiguities(this.edges.chargerEdges, match.ambiguousChargerEdges);
+        this.withdrawContestedProvisionalLinks(match.ambiguousChargerEdges);
         this.applyCoincidences(match.coincidences, chargers, nowMs);
-        this.reportAmbiguities(match.ambiguities, chargers);
+        for (const pairing of match.provisionalCoincidences) this.openProvisionalLink(pairing, chargers);
+        this.reportKeys.reportAmbiguities(match.ambiguities, chargers, this.deps.emit);
         this.resolveUnexplainedSessions(match.unmatchedChargerEdges, chargers);
         // BEFORE cold start: a persisted session is direct evidence about this
         // charger, where the cold-start path only has vote history to guess from.
@@ -399,13 +406,14 @@ export class EvCarLinkProducer {
         // at least one matched pass at every age up to retention — there is no
         // separate "about to expire" sweep, and adding one would report
         // successfully-linked edges as away sessions once they aged out.
-        this.reportSessionsElsewhere(match.unmatchedCarEdges, nowMs);
+        this.reportKeys.reportSessionsElsewhere(match.unmatchedCarEdges, nowMs, this.carName, this.deps.emit);
         this.edges.carEdges = pruneExpiredEvLinkEdges(this.edges.carEdges, nowMs, EDGE_RETENTION_MS);
         this.edges.chargerEdges = pruneExpiredEvLinkEdges(this.edges.chargerEdges, nowMs, EDGE_RETENTION_MS);
 
         this.flushPendingSocShadows(chargers);
         this.publishAssociatedCarLevels();
-        this.selfStop.watch(chargers, nowMs, this.activeLinks, this.cars);
+        // Self-stop evidence is persisted, so only a final link may produce it.
+        this.selfStop.watch(chargers, nowMs, finalLinks(this.activeLinks), this.cars);
     }
 
     private ingestChargerEdges(chargers: readonly EvCarLinkChargerView[], nowMs: number): void {
@@ -436,12 +444,13 @@ export class EvCarLinkProducer {
             // car's limit (an Easee reads `plugged_out` then), so the self-stop
             // watcher keeps watching that pair after the association ends.
             if (kind !== 'disconnect') continue;
-            this.selfStop.linger(charger.id, this.clearSession(charger.id), this.cars, nowMs);
+            const ended = this.clearSession(charger.id);
+            this.selfStop.linger(charger.id, ended?.provisional ? undefined : ended, this.cars, nowMs);
         }
     }
 
     getTaskDeliveryConstraint = (chargerId: string) => this.selfStop.getTaskDeliveryConstraint(
-        chargerId, this.deps.getChargers(), this.activeLinks, this.cars);
+        chargerId, this.deps.getChargers(), finalLinks(this.activeLinks), this.cars);
 
     noteStopCommand(chargerId: string, nowMs: number): void { this.selfStop.noteStopCommand(chargerId, nowMs); }
 
@@ -460,8 +469,12 @@ export class EvCarLinkProducer {
             // matcher's contest check runs, so the pair surfaces as an ambiguity
             // instead. Skipping leaves the key unclaimed, so a later pass
             // re-decides this same coincidence.
+            // Until then the pairing is still provisional.
             const carEdgeAtMs = coincidence.atMs + coincidence.deltaMs;
-            if (nowMs - carEdgeAtMs < EV_CAR_LINK_COINCIDENCE_WINDOW_MS) continue;
+            if (nowMs - carEdgeAtMs < EV_CAR_LINK_COINCIDENCE_WINDOW_MS) {
+                this.openProvisionalLink(coincidence, chargers);
+                continue;
+            }
             // Keyed on the charger-edge time as well as the pair: without it a
             // second session's plug-in reuses the first session's key and is
             // skipped, so votes could never accumulate past one per direction.
@@ -487,6 +500,36 @@ export class EvCarLinkProducer {
             });
             if (coincidence.kind === 'connect') {
                 this.resolveSession(coincidence.chargerId, charger, coincidence.atMs, coincidence.carId);
+            }
+        }
+    }
+
+    /** Link the one car a charger's unsettled connect pairs with (`mayOpenProvisionalLink`). */
+    private openProvisionalLink(pairing: EvLinkCoincidence, chargers: readonly EvCarLinkChargerView[]): void {
+        const { chargerId, carId, atMs } = pairing;
+        const charger = chargers.find((entry) => entry.id === chargerId);
+        if (!mayOpenProvisionalLink(this.activeLinks, pairing) || !this.canOpenSession(charger, carId)
+            || this.chargerConnectedAtMs.get(chargerId) !== atMs) return;
+        this.activeLinks.set(chargerId, { carId, source: 'coincidence', sinceMs: atMs, provisional: true });
+        this.deps.emit({
+            component: 'devices',
+            event: 'ev_car_link_provisional',
+            carId,
+            carName: this.carName(carId),
+            chargerId,
+            chargerName: charger?.name ?? chargerId,
+            deltaMs: pairing.deltaMs,
+        });
+    }
+
+    /** A rival reported inside the window: the edge a provisional link stood on identifies no car. */
+    private withdrawContestedProvisionalLinks(ambiguousChargerEdges: readonly EvLinkEdge[]): void {
+        for (const chargerId of findContestedProvisionalLinks(this.activeLinks, ambiguousChargerEdges)) {
+            const link = this.clearSession(chargerId);
+            if (link) {
+                this.deps.emit({
+                    component: 'devices', event: 'ev_car_link_provisional_withdrawn', carId: link.carId, chargerId,
+                });
             }
         }
     }
@@ -563,6 +606,7 @@ export class EvCarLinkProducer {
                 carId: session.carId,
                 sinceMs: session.sinceMs,
                 source: 'resumed',
+                provisional: false,
             });
             this.deps.emit({
                 component: 'devices',
@@ -636,7 +680,9 @@ export class EvCarLinkProducer {
         });
         if (resolution === null) return;
         const existing = this.activeLinks.get(chargerId);
-        if (existing?.carId === resolution.carId && existing.source === resolution.source) return;
+        if (existing?.carId === resolution.carId && existing.source === resolution.source && !existing.provisional) {
+            return;
+        }
         // One car occupies one charger. A missed disconnect leaves the previous
         // charger's entry behind, and without this the same car would be linked
         // to both — charge readings attributed twice and self-stop reported
@@ -652,6 +698,7 @@ export class EvCarLinkProducer {
             carId: resolution.carId,
             source: resolution.source,
             sinceMs: sessionStartedAtMs,
+            provisional: false,
         });
         // Persisted so a restart mid-session can offer to resume it; cleared on
         // every normal session end, so a stale entry can only survive an outage.
@@ -666,45 +713,6 @@ export class EvCarLinkProducer {
             votes: resolution.votes,
             source: resolution.source,
         });
-    }
-
-    private reportAmbiguities(
-        ambiguities: readonly EvLinkAmbiguity[],
-        chargers: readonly EvCarLinkChargerView[],
-    ): void {
-        for (const ambiguity of ambiguities) {
-            const key = `ambiguous|${ambiguity.chargerId}|${ambiguity.kind}|${ambiguity.atMs}`;
-            if (!this.reportKeys.claim(key)) continue;
-            this.deps.emit({
-                component: 'devices',
-                event: 'ev_car_link_ambiguous',
-                chargerId: ambiguity.chargerId,
-                chargerName: chargers.find((entry) => entry.id === ambiguity.chargerId)?.name ?? ambiguity.chargerId,
-                carIds: ambiguity.carIds,
-                kind: ambiguity.kind,
-            });
-        }
-    }
-
-    /**
-     * A car edge older than the coincidence window that never paired means the
-     * car connected somewhere other than a PELS-known charger. Reported once per
-     * edge; it carries NO vote in either direction.
-     */
-    private reportSessionsElsewhere(unmatched: readonly EvLinkEdge[], nowMs: number): void {
-        for (const edge of unmatched) {
-            if (edge.kind !== 'connect') continue;
-            if (nowMs - edge.atMs <= EV_CAR_LINK_AWAY_VERDICT_MS) continue;
-            const key = `elsewhere|${edge.deviceId}|${edge.atMs}`;
-            if (!this.reportKeys.claim(key)) continue;
-            this.deps.emit({
-                component: 'devices',
-                event: 'ev_car_session_elsewhere',
-                carId: edge.deviceId,
-                carName: this.carName(edge.deviceId),
-                reason: 'no_charger_edge',
-            });
-        }
     }
 
     /** Offers each associated charger its car's current level; see the read model. */

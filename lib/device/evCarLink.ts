@@ -154,6 +154,12 @@ export type EvLinkMatchResult = {
     ambiguousChargerEdges: EvLinkEdge[];
     /** Exactly-one-car-to-one-charger pairings; each is worth a vote. */
     coincidences: EvLinkCoincidence[];
+    /**
+     * Pairings on a resting charger edge that has not settled yet, with exactly
+     * one car and no rival so far. Worth a link now, not a vote: a rival can still
+     * report inside the window, which makes the edge ambiguous and withdraws it.
+     */
+    provisionalCoincidences: EvLinkCoincidence[];
     /** A charger edge that several cars could explain — deliberately no vote. */
     ambiguities: EvLinkAmbiguity[];
     /** Car edges that no charger edge explains — a session somewhere else. */
@@ -231,6 +237,7 @@ export const matchCoincidentEdges = (params: {
     ));
 
     const coincidences: EvLinkCoincidence[] = [];
+    const provisionalCoincidences: EvLinkCoincidence[] = [];
     const ambiguities: EvLinkAmbiguity[] = [];
     const ambiguousChargerEdges = new Set(chargerEdges.filter((edge) => edge.ambiguous));
 
@@ -247,8 +254,13 @@ export const matchCoincidentEdges = (params: {
         if (ambiguous) {
             for (const edge of burst.chargerEdges) ambiguousChargerEdges.add(edge);
         }
-        // Only settled resting edges publish a decision or earn a vote.
-        if (!isSettled(chargerEdge) || burst.restingEdge !== chargerEdge) continue;
+        // Only resting edges decide. An unsettled one with a single car and no
+        // rival yet is a provisional pairing; only a settled one earns a vote.
+        if (burst.restingEdge !== chargerEdge) continue;
+        if (!isSettled(chargerEdge)) {
+            if (!ambiguous) provisionalCoincidences.push(toCoincidence(chargerEdge, latestEdge(burst.candidates)));
+            continue;
+        }
         if (ambiguous) {
             ambiguities.push({
                 chargerId: chargerEdge.deviceId,
@@ -262,14 +274,7 @@ export const matchCoincidentEdges = (params: {
         // the caller waits one window past the car edge it is handed before
         // finalising, and only the latest guarantees every charger that could
         // contest any of these edges has been ingested by then.
-        const carEdge = latestEdge(burst.candidates);
-        coincidences.push({
-            carId: carEdge.deviceId,
-            chargerId: chargerEdge.deviceId,
-            kind: chargerEdge.kind,
-            deltaMs: carEdge.atMs - chargerEdge.atMs,
-            atMs: chargerEdge.atMs,
-        });
+        coincidences.push(toCoincidence(chargerEdge, latestEdge(burst.candidates)));
     }
 
     // Every car edge some charger edge fits, whatever was decided about it:
@@ -278,6 +283,7 @@ export const matchCoincidentEdges = (params: {
     return {
         ambiguousChargerEdges: [...ambiguousChargerEdges],
         coincidences,
+        provisionalCoincidences,
         ambiguities,
         unmatchedCarEdges: carEdges.filter((edge) => !matchedCarKeys.has(buildEdgeKey(edge))),
         unmatchedChargerEdges: scored
@@ -290,6 +296,14 @@ export const matchCoincidentEdges = (params: {
     };
 };
 /* eslint-enable functional/immutable-data */
+
+const toCoincidence = (chargerEdge: EvLinkEdge, carEdge: EvLinkEdge): EvLinkCoincidence => ({
+    carId: carEdge.deviceId,
+    chargerId: chargerEdge.deviceId,
+    kind: chargerEdge.kind,
+    deltaMs: carEdge.atMs - chargerEdge.atMs,
+    atMs: chargerEdge.atMs,
+});
 
 const buildEdgeKey = (edge: EvLinkEdge): string => `${edge.deviceId}|${edge.kind}|${edge.atMs}`;
 

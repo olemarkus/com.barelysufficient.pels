@@ -99,6 +99,34 @@ describe('edge ring', () => {
 });
 
 describe('matchCoincidentEdges', () => {
+  it('reports an unsettled single-car pairing as provisional, and a rival as no pairing at all', () => {
+    const lone = matchCoincidentEdges({
+      carEdges: [edge('car-1', 'connect', 2_000)],
+      chargerEdges: [edge('charger-1', 'connect', 1_000)],
+      nowMs: 3_000,
+    });
+    expect(lone.coincidences).toEqual([]);
+    expect(lone.provisionalCoincidences).toEqual([
+      { carId: 'car-1', chargerId: 'charger-1', kind: 'connect', deltaMs: 1_000, atMs: 1_000 },
+    ]);
+
+    const contested = matchCoincidentEdges({
+      carEdges: [edge('car-1', 'connect', 2_000), edge('car-2', 'connect', 2_500)],
+      chargerEdges: [edge('charger-1', 'connect', 1_000)],
+      nowMs: 3_000,
+    });
+    expect(contested.provisionalCoincidences).toEqual([]);
+    expect(contested.ambiguousChargerEdges).toEqual([edge('charger-1', 'connect', 1_000)]);
+
+    const settled = matchCoincidentEdges({
+      carEdges: [edge('car-1', 'connect', 2_000)],
+      chargerEdges: [edge('charger-1', 'connect', 1_000)],
+      nowMs: 1_000 + EV_CAR_LINK_COINCIDENCE_WINDOW_MS,
+    });
+    expect(settled.provisionalCoincidences).toEqual([]);
+    expect(settled.coincidences).toHaveLength(1);
+  });
+
   it('remembers ambiguous unsettled edges without publishing an early decision', () => {
     const chargers = [edge('chargerA', 'connect', 0), edge('chargerB', 'connect', 1_000)];
     const result = matchCoincidentEdges({

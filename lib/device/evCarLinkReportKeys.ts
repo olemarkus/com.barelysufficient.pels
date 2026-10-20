@@ -1,3 +1,7 @@
+import { EV_CAR_LINK_AWAY_VERDICT_MS, type EvLinkAmbiguity, type EvLinkEdge } from './evCarLink';
+import type { EvCarLinkChargerView } from './evCarLinkChargerView';
+import type { EvCarLinkEvent } from './evCarLinkEvents';
+
 /** Bound on the one-shot report-dedupe ring (see `EvCarLinkReportKeys.claim`). */
 const MAX_REPORTED_KEYS = 200;
 
@@ -10,6 +14,49 @@ const MAX_REPORTED_KEYS = 200;
 export class EvCarLinkReportKeys {
     private reportedKeys: string[] = [];
     private readonly reportedKeySet = new Set<string>();
+
+    reportAmbiguities(
+        ambiguities: readonly EvLinkAmbiguity[],
+        chargers: readonly EvCarLinkChargerView[],
+        emit: (event: EvCarLinkEvent) => void,
+    ): void {
+        for (const ambiguity of ambiguities) {
+            const key = `ambiguous|${ambiguity.chargerId}|${ambiguity.kind}|${ambiguity.atMs}`;
+            if (!this.claim(key)) continue;
+            emit({
+                component: 'devices',
+                event: 'ev_car_link_ambiguous',
+                chargerId: ambiguity.chargerId,
+                chargerName: chargers.find((entry) => entry.id === ambiguity.chargerId)?.name ?? ambiguity.chargerId,
+                carIds: ambiguity.carIds,
+                kind: ambiguity.kind,
+            });
+        }
+    }
+
+    /**
+     * A car edge older than the coincidence window that never paired means the
+     * car connected somewhere other than a PELS-known charger. Reported once per
+     * edge; it carries NO vote in either direction.
+     */
+    reportSessionsElsewhere(
+        unmatched: readonly EvLinkEdge[], nowMs: number,
+        carName: (carId: string) => string, emit: (event: EvCarLinkEvent) => void,
+    ): void {
+        for (const edge of unmatched) {
+            if (edge.kind !== 'connect') continue;
+            if (nowMs - edge.atMs <= EV_CAR_LINK_AWAY_VERDICT_MS) continue;
+            const key = `elsewhere|${edge.deviceId}|${edge.atMs}`;
+            if (!this.claim(key)) continue;
+            emit({
+                component: 'devices',
+                event: 'ev_car_session_elsewhere',
+                carId: edge.deviceId,
+                carName: carName(edge.deviceId),
+                reason: 'no_charger_edge',
+            });
+        }
+    }
 
     /** Returns `false` when this key was already reported; records it otherwise. */
     claim(key: string): boolean {

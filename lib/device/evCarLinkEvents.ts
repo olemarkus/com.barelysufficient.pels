@@ -16,6 +16,18 @@ export type EvCarLinkEvent =
         kind: string; deltaMs: number; votes: number;
     }
     | {
+        // The one car a charger's unsettled plug-in pairs with, linked before the
+        // rival window closes: no vote, not persisted. `deltaMs` is car edge minus
+        // charger edge.
+        component: 'devices'; event: 'ev_car_link_provisional';
+        carId: string; carName: string; chargerId: string; chargerName: string; deltaMs: number;
+    }
+    | {
+        // A rival reported inside the window, so the provisional link was dropped.
+        component: 'devices'; event: 'ev_car_link_provisional_withdrawn';
+        carId: string; chargerId: string;
+    }
+    | {
         component: 'devices'; event: 'ev_car_link_resolved';
         carId: string; carName: string; chargerId: string; chargerName: string;
         votes: number; source: string;

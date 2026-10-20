@@ -140,17 +140,40 @@ const plugIn = (harness: Harness, atMs: number, socPct = 40): void => {
 };
 
 describe('linking a car to a charger', () => {
-  it('waits for a 15-minute car report and both competition windows before linking', () => {
+  it('links a 15-minute car report at once, and votes and persists only after both competition windows', () => {
     seedDisconnected(h, 0);
     h.setCharger({ evChargingState: 'plugged_in_charging' });
     h.tick(1_000);
     const carAt = 1_000 + 15 * 60_000;
     h.cap('car-1', 'ev_charging_state', 'plugged_in_charging', carAt);
+    // Linked the moment the car's report pairs with the charger's: its level flows.
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ carId: 'car-1' });
+    expect(h.adopted).toEqual([expect.objectContaining({ chargerId: 'charger-1', carId: 'car-1', socPct: 40 })]);
+    expect(h.of('ev_car_link_provisional')).toEqual([expect.objectContaining({ carId: 'car-1', chargerId: 'charger-1' })]);
+    // Past the charger edge's window but not the car edge's: still provisional.
     h.tick(carAt + EV_CAR_LINK_COINCIDENCE_WINDOW_MS - 1);
     expect(h.of('ev_car_link_resolved')).toEqual([]);
+    expect(getEvCarLinkVotes(h.snapshot, 'car-1', 'charger-1')).toBe(0);
+    expect(h.snapshot.sessions).toEqual({});
     h.tick(carAt + EV_CAR_LINK_COINCIDENCE_WINDOW_MS);
+    expect(h.of('ev_car_link_resolved')).toEqual([expect.objectContaining({ carId: 'car-1', source: 'coincidence' })]);
     expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ carId: 'car-1' });
     expect(getEvCarLinkVotes(h.snapshot, 'car-1', 'charger-1')).toBe(1);
+    expect(h.snapshot.sessions['charger-1']).toMatchObject({ carId: 'car-1' });
+    expect(h.ended).toEqual([]);
+  });
+
+  it('links a car that reports within seconds of the charger without waiting', () => {
+    seedDisconnected(h, 0);
+    h.setCharger({ evChargingState: 'plugged_in_charging' });
+    h.tick(1_000);
+    h.cap('car-1', 'ev_charging_state', 'plugged_in_charging', 4_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ carId: 'car-1' });
+    expect(h.adopted).toHaveLength(1);
+    // The car unplugging ends the provisional link like any other.
+    h.cap('car-1', 'ev_charging_state', 'plugged_out', 60_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
+    expect(h.ended).toEqual(['charger-1']);
   });
 
   it('does not swap two cars between chargers when their delayed reports arrive in reverse order', () => {
@@ -186,7 +209,12 @@ describe('linking a car to a charger', () => {
     h.tick(3 * W + 3_000);
     expect(h.of('ev_car_link_candidate')).toEqual([]);
     expect(h.of('ev_car_link_resolved')).toEqual([]);
-    expect(h.adopted).toEqual([]);
+    // car-1 was alone for a moment and linked provisionally; the rival withdrew it.
+    expect(h.of('ev_car_link_provisional_withdrawn')).toEqual([
+      expect.objectContaining({ carId: 'car-1', chargerId: 'charger-1' }),
+    ]);
+    expect(h.ended).toContain('charger-1');
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
   });
 
   it('does not use affinity after all car candidates of an ambiguous charger expire', () => {
@@ -251,7 +279,12 @@ describe('linking a car to a charger', () => {
       event.event === 'ev_car_link_candidate' && event.kind === 'connect'
     ))).toEqual([]);
     expect(h.of('ev_car_link_resolved')).toEqual([]);
-    expect(h.adopted).toEqual([]);
+    // car-1 was alone for a moment and linked provisionally; the rival withdrew it.
+    expect(h.of('ev_car_link_provisional_withdrawn')).toEqual([
+      expect.objectContaining({ carId: 'car-1', chargerId: 'charger-1' }),
+    ]);
+    expect(h.ended).toContain('charger-1');
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
   });
 
   it('does not open a replacement charger session from an older settled connect', () => {
@@ -265,7 +298,10 @@ describe('linking a car to a charger', () => {
     h.setCharger({ evChargingState: 'plugged_in' });
     h.tick(W + 2_000);
     expect(h.of('ev_car_link_resolved')).toEqual([]);
-    expect(h.adopted).toEqual([]);
+    // The first session linked provisionally while both were plugged in, and
+    // ended with the charger's unplug; the replacement session gets no car.
+    expect(h.ended).toEqual(['charger-1']);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
   });
 
   it('links on a coincident plug-in and votes for the pair', () => {
@@ -599,6 +635,27 @@ describe('self-stop detection', () => {
     plugIn(h, atMs, 79);
     return atMs + SETTLE_MS;
   };
+
+  it('banks no self-stop evidence for a provisional link, even after the charger unplugs', () => {
+    seedDisconnected(h, 0);
+    h.setCharger({ evChargingState: 'plugged_in_charging', measuredPowerW: 7_000, controlOn: true });
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 79 }), 10_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ carId: 'car-1' });
+    // The car stops on its own well inside the rival window.
+    h.setCharger({ measuredPowerW: 0 });
+    h.car(carDevice({ state: 'plugged_in', socPct: 80 }), 20_000);
+    h.tick(20_000 + EV_CAR_LINK_SELF_STOP_MIN_MS);
+    expect(h.of('ev_car_self_stopped')).toEqual([]);
+    expect(h.snapshot.cars['car-1']).toBeUndefined();
+    expect(h.producer.getTaskDeliveryConstraint('charger-1')).toEqual({ kind: 'none' });
+    // An Easee that ends the session reads unplugged while the car stays connected:
+    // a provisional link does not linger into the self-stop watcher either.
+    h.setCharger({ evChargingState: 'plugged_out', measuredPowerW: 0 });
+    h.tick(30_000 + EV_CAR_LINK_SELF_STOP_MIN_MS);
+    h.tick(30_000 + 3 * EV_CAR_LINK_SELF_STOP_MIN_MS);
+    expect(h.of('ev_car_self_stopped')).toEqual([]);
+    expect(h.snapshot.cars['car-1']).toBeUndefined();
+  });
 
   it('reports the car stopping on its own once the dwell elapses', () => {
     const linkedAt = linkAndCharge(10_000);
