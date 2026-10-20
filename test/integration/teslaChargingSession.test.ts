@@ -463,3 +463,45 @@ test.each([
     expect(battery?.controlAdapter?.currentControl).toBe(conflicted ? undefined : 'built_in');
   } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
 });
+
+test('a Flow setting the current holds the built-in route back for step requests and Flow reports until it is gone', async () => {
+  vi.useRealTimers();
+  mockHomeyInstance.settings.set('charging_current_control', { battery: { method: 'built_in', confirmation: 'vehicle' } });
+  const trigger = vi.fn().mockResolvedValue(true);
+  const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App,
+    { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test') },
+    { settings: { getDeviceTargetPowerConfig: () => ({ enabled: true, preset: 'ev_charger_3_phase' }) } },
+    undefined, { getFlowTriggerCard: () => ({ trigger }) });
+  const step = { deviceId: 'battery',
+    profile: { steps: [{ id: 'off', planningPowerW: 0 }, { id: '6a', planningPowerW: 4140 }] },
+    desiredStepId: '6a', planningPowerW: 4140, planningCurrentA: 6 };
+  try {
+    await initWithLiveFeed(transport);
+    const initial = devices();
+    initial[0]!.capabilitiesObj!.measure_charge_current_max = { ...cap(16), setable: true };
+    // As the Flow scan does: accept the Flow list, then refresh the snapshot.
+    transport.chargingCurrentControl.acceptFlowFacts({ evSocReporters: [],
+      writes: new Map([['battery', new Map([['charge_current', new Map([['f1', 'Night charge']])]])]]) });
+    await seedTransportDevices(transport, initial);
+    const put = vi.fn().mockResolvedValue(undefined);
+    setRestClient({ get: vi.fn().mockResolvedValue({}), put });
+
+    await expect(transport.requestSteppedLoadStep(step)).resolves.toEqual({ requested: true, transport: 'flow' });
+    expect(trigger).toHaveBeenCalledExactlyOnceWith({
+      step_id: '6a', planning_power_w: 4140, planning_current_a: 6, previous_step_id: '',
+    }, { deviceId: 'battery' });
+    expect(put).not.toHaveBeenCalled();
+    expect(transport.reportSteppedLoadActualStep('battery', '6a', 4140)).toMatchObject({ kind: 'accepted' });
+
+    transport.chargingCurrentControl.acceptFlowFacts({ writes: new Map(), evSocReporters: [] });
+    await seedTransportDevices(transport, initial);
+    setRestClient({ get: vi.fn().mockResolvedValue({}), put });
+    await expect(transport.requestSteppedLoadStep(step))
+      .resolves.toEqual({ requested: true, transport: 'native_capability' });
+    expect(put).toHaveBeenCalledOnce();
+    expect(put.mock.calls[0]![0]).toContain('measure_charge_current_max');
+    expect(put.mock.calls[0]![1]).toEqual({ value: 6 });
+    expect(trigger).toHaveBeenCalledOnce();
+    expect(transport.reportSteppedLoadActualStep('battery', '6a', 4140)).toEqual({ kind: 'native_control' });
+  } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
+});
