@@ -23,7 +23,7 @@ Open the charger's **Setup → Charging current** section. The Futurehome app on
 
 Each command changes only this charger, so there is no installation to confirm.
 
-Before switching from an existing Flow, remove its **Set current limit** action and choose **Check again**. Enable built-in control and check that the page says **Built-in current control is selected**.
+Before switching from an existing Flow, remove its **Set current limit** action and choose **Check again**. Enable built-in control and check that the page says **Built-in current control is selected**. If you add a current-setting Flow later, PELS cannot stop it, and the two would override each other: the page then says **Built-in current control is paused**, PELS leaves the current to the Flow, and built-in control resumes on its own once you remove that action and choose **Check again**.
 
 ## Flow alternative
 

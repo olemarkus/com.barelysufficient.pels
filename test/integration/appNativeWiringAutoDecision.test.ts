@@ -28,7 +28,13 @@ describe('applyNativeWiringAutoDecisions', () => {
     const refreshTargetDevicesSnapshot = vi.fn().mockResolvedValue(undefined);
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
     app.snapshotWarmupGate = partialDouble<NonNullable<MyApp['snapshotWarmupGate']>>({ wait: async () => {} });
-    app.deviceManager = partialDouble<MyApp['deviceManager']>({ getSnapshot: () => snapshot });
+    app.deviceManager = partialDouble<MyApp['deviceManager']>({
+      getSnapshot: () => snapshot,
+      chargingCurrentControl: partialDouble<MyApp['deviceManager']['chargingCurrentControl']>({
+        acceptFlowFacts: () => false,
+        revertFlowFacts: () => {},
+      }),
+    });
     (app as unknown as { snapshotHelpers: unknown }).snapshotHelpers = { refreshTargetDevicesSnapshot };
     app.planService = partialDouble<MyApp['planService']>({ rebuildPlanFromCache });
     return { app, refreshTargetDevicesSnapshot, rebuildPlanFromCache };
@@ -78,6 +84,40 @@ describe('applyNativeWiringAutoDecisions', () => {
     await app['applyNativeWiringAutoDecisions']();
     expect(resolve()).toBe(true);
     expect(refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it('re-projects when only a charging-current route changes, and reverts it when the refresh fails', async () => {
+    setRestClient({ get: async () => ({}), put: vi.fn() });
+    const { app, refreshTargetDevicesSnapshot, rebuildPlanFromCache } = stubApp([]);
+    const acceptFlowFacts = vi.fn(() => true);
+    const revertFlowFacts = vi.fn();
+    app.deviceManager = partialDouble<MyApp['deviceManager']>({
+      getSnapshot: () => [hoiaxCandidate('hoiax-1')],
+      chargingCurrentControl: partialDouble<MyApp['deviceManager']['chargingCurrentControl']>({
+        acceptFlowFacts, revertFlowFacts,
+      }),
+    });
+    app['autoNativeWiringDecisions'] = { 'hoiax-1': true };
+
+    // The native maps are unchanged; the charging route change alone re-projects.
+    await app['applyNativeWiringAutoDecisions']();
+    expect(acceptFlowFacts).toHaveBeenCalledTimes(1);
+    expect(refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(1);
+    expect(rebuildPlanFromCache).toHaveBeenCalledWith('native_wiring_auto_decision');
+    expect(revertFlowFacts).not.toHaveBeenCalled();
+
+    refreshTargetDevicesSnapshot.mockRejectedValueOnce(new Error('refresh failed'));
+    await expect(app.refreshFlowConflictsForUi()).rejects.toThrow('refresh failed');
+    expect(revertFlowFacts).toHaveBeenCalledTimes(1);
+  });
+
+  it('rolls back when the plan rebuild reports failure', async () => {
+    setRestClient({ get: async () => ({}), put: vi.fn() });
+    const { app, rebuildPlanFromCache } = stubApp([hoiaxCandidate('hoiax-1')]);
+    rebuildPlanFromCache.mockResolvedValueOnce({ failed: true });
+
+    await expect(app.refreshFlowConflictsForUi()).rejects.toThrow('Plan rebuild failed');
+    expect(app['autoNativeWiringDecisions']).toEqual({});
   });
 
   it('drops a concurrent background run while one is in flight', async () => {
@@ -206,6 +246,10 @@ describe('applyNativeWiringAutoDecisions', () => {
     app.snapshotWarmupGate = partialDouble<NonNullable<MyApp['snapshotWarmupGate']>>({ wait: async () => {} });
     app.deviceManager = partialDouble<MyApp['deviceManager']>({
       getSnapshot: () => (++call === 1 ? [] : [hoiaxCandidate('hoiax-1')]),
+      chargingCurrentControl: partialDouble<MyApp['deviceManager']['chargingCurrentControl']>({
+        acceptFlowFacts: () => false,
+        revertFlowFacts: () => {},
+      }),
     });
     (app as unknown as { snapshotHelpers: unknown }).snapshotHelpers = { refreshTargetDevicesSnapshot };
     app.planService = partialDouble<MyApp['planService']>({ rebuildPlanFromCache });

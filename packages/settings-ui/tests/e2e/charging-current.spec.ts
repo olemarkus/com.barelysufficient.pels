@@ -25,13 +25,14 @@ for (const width of [320, 480]) {
               managed_devices: { 'charging-test': true }, controllable_devices: { 'charging-test': true },
             },
             apiHandlers: {
-              'GET /ui_charging_current': () => [{ ...charger, flowCheck: conflict ? 'conflict' : 'clear' }],
+              'GET /ui_charging_current': () => [{ ...charger, flowCheck: conflict ? 'conflict' : 'clear', currentRoute: setup.method }],
               'GET /ui_charging_access': () => ({ configured, state: configured ? 'ready' : 'not_configured' }),
               'PUT /ui_charging_access': () => {
                 if (++saveAttempts === 1) throw new Error('Charging access could not be saved. Try again.');
                 configured = true; return { configured, state: 'ready' };
               },
               'POST /ui_charging_access/check': () => { conflict = false; return { configured, state: 'ready' }; },
+              'POST /ui_refresh_flow_conflicts': () => ({ devices: [], evSocReporters: [] }),
               'PUT /ui_charging_current/charging-test': () => { setup.method = 'built_in'; },
               'DELETE /ui_charging_access': () => { configured = false; return { configured, state: 'not_configured' }; },
             },

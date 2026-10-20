@@ -163,3 +163,48 @@ test('a Futurehome current-limit action in a Flow blocks built-in control', asyn
     ? { limit: { name: 'Charger limit', actions: [{ id: 'homey:device:futurehome:currentLimit' }] } } : {});
   expect((await control.list())[0]).toMatchObject({ flowCheck: 'conflict', flowNames: ['Charger limit'] });
 });
+
+test('a Flow found setting the current after built-in control was selected holds it back until the Flow is gone', async () => {
+  const { control } = fixture(zaptec(true));
+  await control.save('charger', selected);
+  const writing = { writes: new Map([['charger', new Map([['available_installation_current', new Map([['f1', 'Night charge']])]])]]), evSocReporters: [] };
+  const clear = { writes: new Map(), evSocReporters: [] };
+  const snapshot = { id: 'charger', controlAdapter: { kind: 'capability_adapter' as const, activationRequired: false, activationEnabled: false } };
+
+  expect(control.routesBuiltIn('charger')).toBe(true);
+  expect(control.acceptFlowFacts(writing)).toBe(true);
+  // The owner's selection is kept; the current goes through the Flow.
+  expect(control.setup('charger').method).toBe('built_in');
+  expect(control.routesBuiltIn('charger')).toBe(false);
+  expect(control.projectControl(snapshot as never).controlAdapter).not.toHaveProperty('currentControl');
+  // A retained snapshot projected again loses the built-in flag it carried.
+  const retained = { ...snapshot, controlAdapter: { ...snapshot.controlAdapter, currentControl: 'built_in' as const } };
+  expect(control.projectControl(retained as never).controlAdapter).not.toHaveProperty('currentControl');
+  const write = vi.fn();
+  await expect(control.writeCurrent(zaptec(true), 10, write)).rejects.toThrow('not enabled');
+  expect(write).not.toHaveBeenCalled();
+  expect(control.acceptFlowFacts(writing)).toBe(false);
+
+  // A failed re-projection restores the previous list.
+  expect(control.acceptFlowFacts(clear)).toBe(true);
+  control.revertFlowFacts();
+  expect(control.routesBuiltIn('charger')).toBe(false);
+
+  expect(control.acceptFlowFacts(clear)).toBe(true);
+  expect(control.routesBuiltIn('charger')).toBe(true);
+  await control.writeCurrent(zaptec(true), 10, write);
+  expect(write).toHaveBeenCalledExactlyOnceWith('available_installation_current', 10);
+});
+
+test('the setup read adopts a readable Flow list and reports the route in effect', async () => {
+  const { control, get } = fixture(zaptec(true));
+  await control.save('charger', selected);
+  const card = { id: 'homey:device:charger:available_installation_current' };
+  get.mockImplementation(async (path) => (path.includes('advancedflow')
+    ? { a: { name: 'Night charge', enabled: true, cards: { c: { ...card, type: 'action' } } } } : {}));
+  const before = control.builtInRouteKey();
+  const [read] = await control.list();
+  expect(read).toMatchObject({ flowCheck: 'conflict', currentRoute: 'flow', setup: { method: 'built_in' } });
+  expect(control.builtInRouteKey()).not.toBe(before);
+  expect(control.routesBuiltIn('charger')).toBe(false);
+});

@@ -486,6 +486,8 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     getFlowConflictsByDevice: () => this.flowConflictsByDevice,
     setFlowConflictsByDevice: (conflicts) => { this.flowConflictsByDevice = conflicts; },
     getNativeEvWiringDevices: () => this.deviceControlSettings.nativeEvWiringDevices,
+    acceptChargingFlowFacts: (facts) => this.deviceManager.chargingCurrentControl.acceptFlowFacts(facts),
+    revertChargingFlowFacts: () => { this.deviceManager.chargingCurrentControl.revertFlowFacts(); },
     getStructuredLogger: (component) => this.getStructuredLogger(component),
     getDeviceDescriptors: () => this.getDeviceDescriptors(),
     getSnapshotWarmupGate: () => this.snapshotWarmupGate,

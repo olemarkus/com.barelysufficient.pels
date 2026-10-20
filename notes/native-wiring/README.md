@@ -389,8 +389,15 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
    (`lib/device/builtInControlFlowGate.ts`) returns the owner's choice (explicit
    entry, else the auto-decision) only while no conflict is known. This
    supersedes PR4's "explicit entry always wins" for a conflicted device. The
-   charging-current setup (Tesla, Zaptec) already refuses to enable built-in
-   control over a conflict (`assertBuiltInActivationAllowed`). While held
+   charging-current setup (Tesla, Zaptec, Futurehome) refuses to enable built-in
+   control over a conflict (`assertBuiltInActivationAllowed`) and holds a
+   selected route back by the same rule (`ChargingCurrentControl.routesBuiltIn`),
+   fed the same accepted Flow list (`acceptFlowFacts`). Its setup read
+   (`list`) also adopts a readable Flow list and reports the route in effect
+   (`currentRoute`), so the page says **Built-in current control is paused**
+   exactly when PELS has handed the current to the Flow, and the API re-projects
+   the snapshot when that read moved a route. Its **Check again** runs the same
+   scan, so a cleared Flow resumes the route at once. While held
    back, the device behaves exactly as with built-in control off: PELS fires its
    stepped-load trigger and reads the step the Flow reports. The saved choice is
    kept, so clearing the Flow (the 30-minute re-query or **Check again**) re-parses

@@ -12,15 +12,18 @@ export function chargingRecommendations(
     let title: string;
     let body: string;
     const name = formatDisplayDeviceName(device.name);
-    if (device.flowCheck === 'conflict'
-      && (device.setup.method === 'built_in' || access.configured || device.capabilityWritable)) {
+    if (device.setup.method === 'built_in' && device.currentRoute === 'flow') {
+      kind = 'charging-paused';
+      title = `Built-in current control is paused for ${name}`;
+      body = 'A Flow sets the same charging current, and PELS cannot stop a Flow, so PELS leaves the current '
+        + 'to the Flow for now. Remove the current-setting action from the Flow, then select Check again. '
+        + 'To keep the Flow instead, choose Use a Flow on the device page.';
+    } else if (device.flowCheck === 'conflict'
+      && (access.configured || device.capabilityWritable)) {
       kind = 'charging-remove-flow';
       title = `Remove duplicate current control for ${name}`;
-      body = device.setup.method === 'built_in'
-        ? 'Remove the current-setting action from your Flow so it does not compete with built-in control. '
-          + 'Then check again.'
-        : 'A current-setting Flow is configured alongside built-in access. Remove that action, check again, '
-          + 'then explicitly choose built-in control. Adding a key does not switch your existing Flow.';
+      body = 'A current-setting Flow is configured alongside built-in access. Remove that action, check again, '
+        + 'then explicitly choose built-in control. Adding a key does not switch your existing Flow.';
     } else if (device.scope === 'vehicle' && device.setup.confirmation !== 'vehicle') {
       kind = 'charging-owner';
       title = `Choose how PELS controls ${name}`;

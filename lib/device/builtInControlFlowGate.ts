@@ -1,7 +1,8 @@
 /**
  * Whether built-in device control runs, given the owner's choice and their
- * Homey Flows. This is the rule for the native stepped wiring (Hoiax water
- * heaters, Easee chargers).
+ * Homey Flows. One rule for every built-in control: the native stepped wiring
+ * (Hoiax water heaters, Easee chargers) and the charging-current setup (Tesla,
+ * Zaptec, Futurehome; `ChargingCurrentControl.routesBuiltIn`).
  *
  * PELS cannot stop a Flow. When a Flow writes the setting PELS would write
  * under built-in control, the device obeys whichever wrote last, so the two

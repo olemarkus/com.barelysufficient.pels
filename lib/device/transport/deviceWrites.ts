@@ -300,7 +300,7 @@ export class DeviceWriteService {
         await this.setCapability(deviceId, snapshot.binaryCapabilityId, false);
         return { requested: true, transport: 'native_capability' };
       }
-      if (this.chargingCurrentControl.setup(deviceId).method === 'built_in') {
+      if (this.chargingCurrentControl.routesBuiltIn(deviceId)) {
         const transport = await this.chargingCurrentControl.writeCurrent(rawDevice, planningCurrentA,
           (capabilityId, value) => this.setCapability(deviceId, capabilityId, value));
         return { requested: true, transport };

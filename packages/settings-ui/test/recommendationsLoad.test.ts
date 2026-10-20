@@ -1184,7 +1184,7 @@ it.each(['failed_read', 'tab_revisit'] as const)('refreshes charging recommendat
     chargingApi.mockResolvedValue([{ deviceId: 'device-1', name: 'Garage',
       setup: { method: 'flow', confirmation: 'single_charger' },
       scope: 'installation', capabilityWritable: true, sharedInstallation: false,
-      flowCheck: 'conflict', flowNames: ['Current bridge'] }]);
+      flowCheck: 'conflict', flowNames: ['Current bridge'], currentRoute: 'flow' }]);
     document.dispatchEvent(scenario === 'failed_read'
       ? new Event('devices-updated')
       : new CustomEvent('pels:tab-shown', { detail: { tabId: 'recommendations' } }));

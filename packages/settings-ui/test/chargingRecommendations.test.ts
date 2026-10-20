@@ -3,7 +3,7 @@ import type { ChargingCurrentRead } from '../../contracts/src/chargingControl.ts
 const device: ChargingCurrentRead = { deviceId: 'charger', name: 'Garage', setup: {
   method: 'flow', confirmation: 'none',
 }, capabilityWritable: false, scope: 'installation', sharedInstallation: false,
-flowCheck: 'clear', flowNames: [] };
+flowCheck: 'clear', flowNames: [], currentRoute: 'flow' };
 
 test('recommends a key while preserving the Flow alternative', () => {
   const [recommendation] = chargingRecommendations([device], { configured: false, state: 'not_configured' });
@@ -15,11 +15,14 @@ test('nudges removal when both a key and a current-setting Flow exist', () => {
   expect(recommendation?.id).toContain('charging-remove-flow');
   expect(recommendation?.body).toContain('explicitly choose built-in control');
 });
-test('an already selected built-in route warns about competing Flow control without asking to switch again', () => {
-  const [recommendation] = chargingRecommendations([{ ...device, flowCheck: 'conflict',
+test('a selected built-in route held back by a Flow says it is paused without asking to switch again', () => {
+  const [recommendation] = chargingRecommendations([{ ...device, flowCheck: 'conflict', currentRoute: 'flow',
     setup: { method: 'built_in', confirmation: 'single_charger' } }], { configured: false, state: 'not_configured' });
-  expect(recommendation?.body).toContain('does not compete with built-in control');
-  expect(recommendation?.body).not.toContain('choose built-in control');
+  expect(recommendation?.id).toContain('charging-paused');
+  expect(recommendation?.title).toBe('Built-in current control is paused for Garage');
+  expect(recommendation?.body).toContain('PELS cannot stop a Flow');
+  expect(recommendation?.body).toContain('Use a Flow');
+  expect(recommendation?.body).not.toContain('explicitly choose built-in control');
 });
 test('a writable capability does not prompt for a key', () => {
   const [recommendation] = chargingRecommendations([{ ...device, capabilityWritable: true }], { configured: false, state: 'not_configured' });

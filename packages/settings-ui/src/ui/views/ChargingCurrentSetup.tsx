@@ -33,6 +33,16 @@ const ACCESS_COPY: Record<ChargingAccessStatus['state'], string> = {
   unavailable: 'Homey charging access is unavailable. Check the key and try again.',
 };
 
+/** Why a selected built-in route is held back, and how the owner clears it. */
+function pausedHint(flowNames: readonly string[]): string {
+  const subject = flowNames.length === 0 ? 'A Homey Flow sets'
+    : `${flowNames.length === 1 ? 'The Flow' : 'The Flows'} ${flowNames.join(', ')} ${flowNames.length === 1 ? 'sets' : 'set'}`;
+  return `${subject} the same charging current, and PELS cannot stop a Flow. The two would override each other, `
+    + 'so PELS leaves the current to the Flow for now. Remove the current-setting action from the Flow, '
+    + 'then select “Check again”. Built-in current control resumes on its own. '
+    + 'To keep the Flow instead, choose “Use a Flow” below.';
+}
+
 export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
   const { device, access, busy } = props;
   const [key, setKey] = useState('');
@@ -49,13 +59,16 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
   const scopeAllowed = device.flowCheck === 'clear' && !device.sharedInstallation && confirmation;
   const canEnable = scopeAllowed && (device.capabilityWritable || access.state === 'ready');
   const builtIn = device.setup.method === 'built_in';
+  // PELS holds a selected built-in route back while a Flow sets the same current.
+  const paused = builtIn && device.currentRoute === 'flow';
+  const flowNames = device.flowNames.filter(Boolean);
   const needsKey = !device.capabilityWritable && access.state !== 'ready';
   const enableWithKey = !builtIn && needsKey && !access.configured;
   const KeyContainer = access.state === 'ready' ? 'details' : 'div';
   const activationGuidance = <div role="status">
-    {device.flowCheck === 'conflict' && <p class="field__hint">
+    {!builtIn && device.flowCheck === 'conflict' && <p class="field__hint">
       Remove the current-setting action from your Flow before using built-in control. Then select “Check again”.
-      {device.flowNames.filter(Boolean).length > 0 && ` Flows: ${device.flowNames.filter(Boolean).join(', ')}.`}
+      {flowNames.length > 0 && ` Flows: ${flowNames.join(', ')}.`}
     </p>}
     {device.flowCheck === 'unavailable' && <p class="field__hint">
       PELS could not check for current-setting Flows. Select “Check again” to retry before enabling built-in control.
@@ -74,8 +87,10 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
       ? 'Use a Flow to adjust current for this shared installation.'
       : 'Let PELS adjust charging current directly. No Flow needed.'}</p>
     <div role="status">
-      <p><strong>{builtIn ? 'Built-in current control is selected.'
+      <p><strong>{builtIn
+        ? (paused ? 'Built-in current control is paused.' : 'Built-in current control is selected.')
         : device.flowCheck === 'conflict' ? 'Flow control is selected.' : 'Built-in current control is not enabled.'}</strong></p>
+      {paused && <p class="field__hint">{pausedHint(flowNames)}</p>}
       {!builtIn && <p class="field__hint">{device.flowCheck === 'conflict'
         ? 'Your current-setting Flow remains in use until you switch.'
         : 'Enable it below, or set up a Flow to send current changes to the car or charger.'}</p>}

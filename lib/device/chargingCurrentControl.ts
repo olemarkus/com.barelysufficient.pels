@@ -7,6 +7,8 @@ import type { ChargingCurrentRead, ChargingCurrentSetup } from '../../packages/c
 import type { SettingsPort } from '../ports/homeyRuntime';
 import type { HomeyDeviceLike } from '../utils/types';
 import { readFlowCapabilityWrites } from '../flowApi/readUserFlows';
+import type { FlowCapabilityWrites, UserFlowFacts } from '../flowApi/userFlows';
+import { isBuiltInControlInEffect } from './builtInControlFlowGate';
 import {
   hasSharedChargingInstallation, resolveChargingCurrentAdapter, resolveChargingCurrentAction,
 } from './chargingCurrentAdapter';
@@ -17,6 +19,17 @@ import { getRawFromHomeyApi } from './transport/managerHomeyApi';
 
 const SETTINGS_KEY = 'charging_current_control';
 const DEFAULT_SETUP: ChargingCurrentSetup = { method: 'flow', confirmation: 'none' };
+
+/** The Flows that write this binding's current, by Flow id. */
+function currentSettingFlows(adapter: ChargingCurrentBinding, writes: FlowCapabilityWrites): Map<string, string> {
+  const capabilities = adapter.current.kind === 'capability'
+    ? [adapter.current.capabilityId, adapter.actionId] : [adapter.actionId];
+  const names = new Map<string, string>();
+  for (const capability of capabilities) {
+    for (const [id, name] of writes.get(adapter.deviceId)?.get(capability) ?? []) names.set(id, name);
+  }
+  return names;
+}
 
 function readSetup(value: unknown): ChargingCurrentSetup | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
@@ -34,6 +47,10 @@ export class ChargingCurrentControl {
   readonly sessions: DeviceAdapterSessions;
   private readonly homeLocation = new HubHomeLocation();
   private readonly setups = new Map<string, ChargingCurrentSetup>();
+  // The last Flow list PELS accepted. Empty until the first one: with nothing
+  // known, nothing is held back, the same as a Flow list with no writes.
+  private flowWrites: FlowCapabilityWrites = new Map();
+  private previousFlowWrites: FlowCapabilityWrites = new Map();
 
   constructor(
     homey: ChargingAccessHomey,
@@ -65,12 +82,66 @@ export class ChargingCurrentControl {
     this.sessions.assertAllowed(device, this.setup(device.id), connected);
   }
 
+  /**
+   * Accepts a readable Flow list. Answers whether it changed which devices PELS
+   * sets the current of itself, so the caller can re-project the snapshot.
+   */
+  acceptFlowFacts(facts: UserFlowFacts): boolean {
+    const before = this.builtInRouteKey();
+    this.previousFlowWrites = this.flowWrites;
+    this.flowWrites = facts.writes;
+    return this.builtInRouteKey() !== before;
+  }
+
+  /** Restores the Flow list accepted before the last one, when re-projecting for it failed. */
+  revertFlowFacts(): void {
+    this.flowWrites = this.previousFlowWrites;
+  }
+
+  /**
+   * Whether PELS sets this device's current itself: the owner selected built-in
+   * control and no Flow is known to set the same current
+   * (`isBuiltInControlInEffect`). Otherwise the current goes through the
+   * owner's Flow, as with Flow control selected.
+   */
+  routesBuiltIn(deviceId: string): boolean {
+    return this.routesBuiltInFor(deviceId, this.setup(deviceId));
+  }
+
+  // The device is looked up in the last committed device list, so one that
+  // first appears in a refresh is projected without its Flow check for that
+  // refresh: a device newly added to Homey with a conflicting Flow reads as
+  // built-in for one cycle.
+  private routesBuiltInFor(deviceId: string, setup: ChargingCurrentSetup): boolean {
+    const device = this.getDevices().find((entry) => entry.id === deviceId);
+    const adapter = device && resolveChargingCurrentAdapter(device);
+    return isBuiltInControlInEffect(
+      setup.method === 'built_in',
+      adapter !== undefined && currentSettingFlows(adapter, this.flowWrites).size > 0,
+    );
+  }
+
+  /** The devices PELS sets the current of itself, as one comparable key. */
+  builtInRouteKey(): string {
+    return this.getDevices().filter((device) => this.routesBuiltIn(device.id)).map((device) => device.id)
+      .sort().join('|');
+  }
+
   projectControl(source: TransportDeviceSnapshot): TransportDeviceSnapshot {
     const setup = this.setup(source.id);
-    const snapshot = setup.method === 'built_in' && source.controlAdapter
-      ? { ...source, controlAdapter: { ...source.controlAdapter, currentControl: 'built_in' as const } }
-      : source;
-    return this.sessions.project(snapshot, setup);
+    return this.sessions.project(this.withCurrentRoute(source, setup), setup);
+  }
+
+  // A retained snapshot (one whose refresh read was rejected) is projected again
+  // as it is, so a route that is now held back must lose the flag it carried.
+  private withCurrentRoute(source: TransportDeviceSnapshot, setup: ChargingCurrentSetup): TransportDeviceSnapshot {
+    if (!source.controlAdapter) return source;
+    if (this.routesBuiltInFor(source.id, setup)) {
+      return { ...source, controlAdapter: { ...source.controlAdapter, currentControl: 'built_in' } };
+    }
+    if (source.controlAdapter.currentControl === undefined) return source;
+    const { currentControl: _heldBack, ...controlAdapter } = source.controlAdapter;
+    return { ...source, controlAdapter };
   }
 
   setup(deviceId: string): ChargingCurrentSetup {
@@ -81,17 +152,15 @@ export class ChargingCurrentControl {
   async list(): Promise<ChargingCurrentRead[]> {
     const devices = this.getDevices();
     const flows = await readFlowCapabilityWrites({ get: getRawFromHomeyApi });
+    // A readable list is the freshest PELS has: the runtime adopts it, so the
+    // route this read reports is the one in effect. The caller re-projects when
+    // `builtInRouteKey` moved.
+    if (flows.status === 'ok') this.acceptFlowFacts(flows.facts);
     return devices.flatMap((device) => {
       const adapter = resolveChargingCurrentAdapter(device);
       if (!adapter) return [];
-      const names = new Map<string, string>();
-      if (flows.status === 'ok') {
-        const writes = adapter.current.kind === 'capability'
-          ? [adapter.current.capabilityId, adapter.actionId] : [adapter.actionId];
-        for (const capability of writes) {
-          for (const [id, name] of flows.facts.writes.get(device.id)?.get(capability) ?? []) names.set(id, name);
-        }
-      }
+      const names = flows.status === 'ok'
+        ? currentSettingFlows(adapter, flows.facts.writes) : new Map<string, string>();
       let flowCheck: ChargingCurrentRead['flowCheck'] = 'unavailable';
       if (flows.status === 'ok') flowCheck = names.size ? 'conflict' : 'clear';
       return [{
@@ -101,6 +170,7 @@ export class ChargingCurrentControl {
         sharedInstallation: hasSharedChargingInstallation(adapter, devices),
         flowCheck,
         flowNames: [...names.values()],
+        currentRoute: this.routesBuiltIn(device.id) ? 'built_in' : 'flow',
       }];
     });
   }
@@ -146,7 +216,7 @@ export class ChargingCurrentControl {
   ): Promise<'native_capability' | 'homey_action'> {
     this.assertControlAllowed(device);
     const adapter = resolveChargingCurrentAdapter(device);
-    if (!adapter || this.setup(device.id).method !== 'built_in') {
+    if (!adapter || !this.routesBuiltIn(device.id)) {
       throw new Error('Built-in current control is not enabled.');
     }
     this.assertInstallation(adapter);
@@ -159,11 +229,11 @@ export class ChargingCurrentControl {
     }
     const inventory = await getRawFromHomeyApi('manager/flow/flowcardaction');
     // Selection can change while Homey is answering the metadata read.
-    if (this.setup(device.id).method !== 'built_in') throw new Error('Charging-current control changed.');
+    if (!this.routesBuiltIn(device.id)) throw new Error('Charging-current control changed.');
     this.assertInstallation(adapter);
     this.assertControlAllowed(device);
     await this.access.runCurrentAction(device.id, resolveChargingCurrentAction(adapter, inventory, currentA), () => {
-      if (this.setup(device.id).method !== 'built_in') throw new Error('Charging-current control changed.');
+      if (!this.routesBuiltIn(device.id)) throw new Error('Charging-current control changed.');
       this.assertControlAllowed(device);
       this.assertInstallation(adapter);
     }).catch((error: unknown) => {

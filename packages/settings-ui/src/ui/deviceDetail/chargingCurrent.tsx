@@ -3,6 +3,7 @@ import type { ChargingAccessStatus, ChargingCurrentRead, ChargingCurrentSetup } 
 import { CHARGING_ACCESS_PATH, CHARGING_ACCESS_CHECK_PATH, CHARGING_CURRENT_PATH } from '../../../../contracts/src/chargingControl.ts';
 import { callApi } from '../homey.ts';
 import { formatSettingsError } from '../toast.ts';
+import { refreshFlowConflictFactsExplicit } from '../flowConflictRefresh.ts';
 import { ChargingCurrentSetupView, ChargingCurrentLoadView } from '../views/ChargingCurrentSetup.tsx';
 
 let selectedDeviceId = '';
@@ -23,7 +24,11 @@ export function setChargingCurrentDevice(deviceId: string): void {
   const display = () => {
     if (version !== loadVersion) return;
     render(<ChargingCurrentSetupView key={deviceId} device={device} access={access} busy={busy} error={error}
-      onCheck={() => perform(() => callApi('POST', CHARGING_ACCESS_CHECK_PATH))}
+      onCheck={() => perform(async () => {
+        await callApi('POST', CHARGING_ACCESS_CHECK_PATH);
+        // The same scan the periodic check runs, so a cleared Flow resumes built-in control now.
+        await refreshFlowConflictFactsExplicit();
+      })}
       onSaveKey={(key) => perform(() => callApi('PUT', CHARGING_ACCESS_PATH, { key }))}
       onEnableWithKey={(key, setup) => perform(async () => {
         await callApi('PUT', CHARGING_ACCESS_PATH, { key });

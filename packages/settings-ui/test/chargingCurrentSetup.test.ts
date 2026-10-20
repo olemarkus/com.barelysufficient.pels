@@ -2,11 +2,14 @@ import { act } from 'preact/test-utils';
 import type { ChargingCurrentRead } from '../../contracts/src/chargingControl.ts';
 
 const callApi = vi.fn();
-vi.mock('../src/ui/homey.ts', () => ({ callApi: (...args: unknown[]) => callApi(...args) }));
+vi.mock('../src/ui/homey.ts', () => ({
+  callApi: (...args: unknown[]) => callApi(...args),
+  invalidateApiCacheForAllHomes: vi.fn(),
+}));
 const { setChargingCurrentDevice } = await import('../src/ui/deviceDetail/chargingCurrent.tsx');
 const charger: ChargingCurrentRead = { deviceId: 'charger', name: 'Garage',
   setup: { method: 'flow', confirmation: 'single_charger' }, scope: 'installation',
-  capabilityWritable: false, sharedInstallation: false, flowCheck: 'clear', flowNames: [] };
+  capabilityWritable: false, sharedInstallation: false, flowCheck: 'clear', flowNames: [], currentRoute: 'flow' };
 
 beforeEach(() => {
   document.body.innerHTML = '<div id="device-detail-charging-current"></div>';
@@ -62,7 +65,8 @@ function savedSetup(failEnable = false) {
     if (method === 'PUT' && path === '/ui_charging_access') configured = true;
     if (method === 'PUT' && path === '/ui_charging_current/charger') {
       if (failEnable) throw new Error('Could not enable control');
-      device = { ...charger, setup: body as ChargingCurrentRead['setup'] };
+      const setup = body as ChargingCurrentRead['setup'];
+      device = { ...charger, setup, currentRoute: setup.method };
     }
     return path === '/ui_charging_current' ? [device]
       : { configured, state: configured ? 'ready' : 'not_configured' };
@@ -151,4 +155,28 @@ test('a charger-scoped device enables built-in control without a scope confirmat
   expect(document.body.textContent).not.toContain('Control charging through this car');
   await act(async () => button('Use built-in control').click());
   expect(callApi).toHaveBeenCalledWith('PUT', '/ui_charging_current/charger', { method: 'built_in', confirmation: 'none' });
+});
+
+test('says a selected built-in route is paused while a Flow sets the same current', async () => {
+  callApi.mockImplementation(async (_method: string, path: string) => path === '/ui_charging_current'
+    ? [{ ...charger, setup: { method: 'built_in', confirmation: 'single_charger' }, flowCheck: 'conflict', flowNames: ['Night charge'], currentRoute: 'flow' }]
+    : { configured: true, state: 'ready' });
+  await act(async () => setChargingCurrentDevice('charger'));
+  expect(document.body.textContent).toContain('Built-in current control is paused.');
+  expect(document.body.textContent).toContain('The Flow Night charge sets the same charging current, and PELS cannot stop a Flow.');
+  expect(document.body.textContent).toContain('choose “Use a Flow” below');
+  expect(document.body.textContent).toContain('resumes on its own');
+  expect(document.body.textContent).not.toContain('Remove the current-setting action from your Flow before using built-in control');
+});
+
+test('Check again also runs the Flow scan that resumes a paused route', async () => {
+  callApi.mockImplementation(async (_method: string, path: string) => {
+    if (path === '/ui_charging_current') return [{ ...charger, setup: { method: 'built_in', confirmation: 'single_charger' }, flowCheck: 'conflict', currentRoute: 'flow' }];
+    if (path === '/ui_refresh_flow_conflicts') return { devices: [], evSocReporters: [] };
+    return { configured: true, state: 'ready' };
+  });
+  await act(async () => setChargingCurrentDevice('charger'));
+  await act(async () => button('Check again').click());
+  await vi.waitFor(() => expect(callApi).toHaveBeenCalledWith('POST', '/ui_refresh_flow_conflicts', {}));
+  expect(callApi).toHaveBeenCalledWith('POST', '/ui_charging_access/check');
 });

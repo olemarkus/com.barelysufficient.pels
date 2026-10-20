@@ -22,5 +22,10 @@ export type ChargingCurrentRead = {
   sharedInstallation: boolean;
   flowCheck: 'clear' | 'conflict' | 'unavailable';
   flowNames: string[];
+  /**
+   * The route in effect: `setup.method`, except that a selected built-in route
+   * is held back to the Flow while a Flow is known to set the same current.
+   */
+  currentRoute: ChargingCurrentMethod;
 };
 export const CHARGING_CURRENT_PATH = '/ui_charging_current';

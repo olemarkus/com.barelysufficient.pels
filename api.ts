@@ -109,9 +109,22 @@ function chargingCurrentControl(homey: ApiContext['homey']) {
 }
 
 export = {
-  ui_charging_current: withApiLogging('ui_charging_current', ({ homey }: ApiContext) => (
-    chargingCurrentControl(homey).list()
-  )),
+  ui_charging_current: withApiLogging('ui_charging_current', async ({ homey }: ApiContext) => {
+    const control = chargingCurrentControl(homey);
+    const routesBefore = control.builtInRouteKey();
+    const devices = await control.list();
+    // The read adopts the fresh Flow list; project a route it moved, as a save does.
+    if (control.builtInRouteKey() !== routesBefore) {
+      try {
+        await readPelsHost(homey)!.refreshTargetDevicesSnapshot();
+      } catch (error) {
+        readPelsHost(homey)?.getApiStructuredLogger()?.warn({
+          event: 'charging_control_snapshot_refresh_failed', err: normalizeError(error),
+        });
+      }
+    }
+    return devices;
+  }),
   ui_charging_current_save: withApiLogging('ui_charging_current_save', async (
     { homey, params, body }: ApiContext & { params: { deviceId: string }; body?: unknown },
   ) => {

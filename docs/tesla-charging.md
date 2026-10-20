@@ -14,7 +14,7 @@ PELS can manage charging through the **Battery & charging** device in **Tesla Ca
 3. In **Setup → Charging current**, turn on **Control charging through this car**. Manage either the car or its physical charger: turn off **Power-limit control** for the other device.
 4. Create a Homey API key with **Flow** permission using [Homey's API-key guide](https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro). Enter the key and select **Save key and enable**. If a key is already verified, select **Use built-in control**. PELS cannot create this key for you. One key works for all supported cars and chargers on this Homey.
 
-If you already have a current-setting Flow, remove that action and select **Check again** before enabling built-in control. Keep unrelated Flows. Setup is complete when the page says **Built-in current control is selected**. You can replace or remove the saved key under **Manage API key**.
+If you already have a current-setting Flow, remove that action and select **Check again** before enabling built-in control. Keep unrelated Flows. Setup is complete when the page says **Built-in current control is selected**. If you add a current-setting Flow later, PELS cannot stop it, and the two would override each other: the page then says **Built-in current control is paused**, PELS leaves the current to the Flow, and built-in control resumes on its own once you remove that action and choose **Check again**. You can replace or remove the saved key under **Manage API key**.
 
 ## Use a Flow instead
 

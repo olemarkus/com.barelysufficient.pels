@@ -1,5 +1,6 @@
 import { detectNativeWiringConflicts, type NativeWiringConflictDetection } from './flowConflictProbe';
 import type { DeviceDescriptorRead } from '../packages/contracts/src/types';
+import type { UserFlowFacts } from '../lib/flowApi/userFlows';
 import { getRawFromHomeyApi } from '../lib/device/transport/managerHomeyApi';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { resolveNativeWiringEnabled } from '../lib/device/builtInControlFlowGate';
@@ -51,6 +52,14 @@ export type AppNativeWiringDeps = {
   getFlowConflictsByDevice: () => FlowConflictMap;
   setFlowConflictsByDevice: (conflicts: FlowConflictMap) => void;
   getNativeEvWiringDevices: () => Record<string, boolean>;
+  /**
+   * Hands an accepted Flow list to the charging-current owner
+   * (`ChargingCurrentControl.acceptFlowFacts`); answers whether it changed a
+   * Tesla, Zaptec or Futurehome current route.
+   */
+  acceptChargingFlowFacts: (facts: UserFlowFacts) => boolean;
+  /** Restores the Flow list accepted before the last one, when applying it failed. */
+  revertChargingFlowFacts: () => void;
   getStructuredLogger: (component: string) => PinoLogger | undefined;
   /**
    * Descriptors, not the transport: the conflict probe declares
@@ -185,8 +194,10 @@ export class AppNativeWiring {
         ? { conflictingCapabilities: conflict.conflictingCapabilities }
         : { conflictingCapabilities: conflict.conflictingCapabilities, flowName: conflict.flowName };
     }
+    const chargingRoutesChanged = this.deps.acceptChargingFlowFacts(detection.flowFacts);
     if (
-      nativeWiringDecisionKey(this.deps.getAutoNativeWiringDecisions()) === nativeWiringDecisionKey(nextDecisions)
+      !chargingRoutesChanged
+      && nativeWiringDecisionKey(this.deps.getAutoNativeWiringDecisions()) === nativeWiringDecisionKey(nextDecisions)
       && flowConflictKey(this.deps.getFlowConflictsByDevice()) === flowConflictKey(nextConflicts)
     ) {
       return { state: 'resolved', flowFacts: detection.flowFacts };
@@ -202,13 +213,20 @@ export class AppNativeWiring {
       // the surfaced conflict take effect — mirrors the native-wiring
       // settings-change handler.
       await this.deps.refreshTargetDevicesSnapshot();
-      await this.deps.getPlanService()?.rebuildPlanFromCache('native_wiring_auto_decision');
+      // A rebuild reports its failure instead of throwing; roll back on it too,
+      // so the next scan is not taken as "no change" and retries.
+      const rebuild = await this.deps.getPlanService()?.rebuildPlanFromCache('native_wiring_auto_decision');
+      if (rebuild?.failed) throw new Error('Plan rebuild failed after a Flow-conflict change');
     } catch (error) {
       // Keep the apply atomic: if the refresh/rebuild fails, roll both maps
-      // back so a later re-query re-attempts cleanly rather than being
-      // short-circuited by the no-change guard above.
+      // and the charging Flow list back so a later re-query re-attempts cleanly
+      // rather than being short-circuited by the no-change guard above. A
+      // rebuild that fails after a successful refresh leaves the snapshot on the
+      // new routes until the next refresh re-projects it; the retry restores
+      // agreement.
       this.deps.setAutoNativeWiringDecisions(previousDecisions);
       this.deps.setFlowConflictsByDevice(previousConflicts);
+      this.deps.revertChargingFlowFacts();
       throw error;
     }
     return { state: 'resolved', flowFacts: detection.flowFacts };
