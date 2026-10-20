@@ -15,6 +15,13 @@ import type { RestoreCycle, RestoreLoopState, SteppedRestoreNeed } from './types
  * increase it commits, and how it was chosen. A `jump` past the adjacent rung
  * spends the shared batch allowance whether or not the device was limited; an
  * `adjacent` step does so only for a limited device, as ordinary admission.
+ *
+ * The first increase admitted in a cycle may jump as far as the full room
+ * allows, like any single restore; the batch allowance (half the starting
+ * room) bounds what a second or third device may add in the same cycle, when
+ * several loads would arrive together. A charger at its lowest current with
+ * room for its highest therefore climbs in one step and one restore cooldown,
+ * not one rung per cooldown.
  */
 export type SteppedRestoreTarget = {
   step: SteppedLoadStep;
@@ -45,12 +52,18 @@ export function resolveSteppedRestoreTarget(
     const target = admitStepUnderSurplusCeiling(dev, cycle.state, step);
     if (!target) continue;
     const need = resolveSteppedRestoreNeed(cycle, dev, target);
-    if (need.deltaKw <= 0 || !canAdmitWithinBatch(batch, need.neededKw)) continue;
+    if (need.deltaKw <= 0 || !canAdmitJump(batch, need.neededKw)) continue;
     if (isReserveAdmitted(resolveReserveAdmission(
       dev, loop.availableHeadroom, need.neededKw, cycle.headroomReserves,
     ))) return { step: target, need, kind: 'jump' };
   }
   return buildTarget(cycle, dev, fallback, adjacent);
+}
+
+// The first admission of the cycle is bounded by the room itself (reserve
+// admission below); later ones also by the shared batch allowance.
+function canAdmitJump(batch: RestoreCycle['batchState'], neededKw: number): boolean {
+  return batch.admittedCount === 0 || canAdmitWithinBatch(batch, neededKw);
 }
 
 function buildTarget(

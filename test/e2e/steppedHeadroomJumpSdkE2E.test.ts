@@ -21,7 +21,7 @@ describe('a larger stepped increase at the Homey SDK boundary', () => {
   });
   afterEach(async () => { await cleanupApps(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
-  it('writes a distant target directly and waits five minutes before increasing again', async () => {
+  it('writes the top current directly when the room allows, and holds it', async () => {
     const charger = new MockDevice(ID, 'Easee', [
       'onoff', 'measure_power', 'target_charger_current', 'evcharger_charging', 'evcharger_charging_state',
     ], 'evcharger');
@@ -72,19 +72,15 @@ describe('a larger stepped increase at the Homey SDK boundary', () => {
     await app.onInit();
     await vi.advanceTimersByTimeAsync(65_000);
 
+    // The room allows the top current, so the first increase goes all the way:
+    // one write, not one rung per five-minute cooldown.
     expect(currentWrites()).toHaveLength(1);
-    const firstAmps = requestedCurrent(0);
-    expect(firstAmps).toBeGreaterThan(8);
-    expect(firstAmps).toBeLessThan(32);
-    // A real observation confirms the command and its draw. Fresh meter samples
-    // with spare capacity must still not bypass the existing home-wide cooldown.
-    await charger.setCapabilityValue('target_charger_current', firstAmps);
-    await charger.setCapabilityValue('measure_power', firstAmps * 230);
-    totalW = firstAmps * 230 + 620;
-    await vi.advanceTimersByTimeAsync(230_000);
+    expect(requestedCurrent(0)).toBe(32);
+    // A real observation confirms the command and its draw; nothing is left to raise.
+    await charger.setCapabilityValue('target_charger_current', 32);
+    await charger.setCapabilityValue('measure_power', 32 * 230);
+    totalW = 32 * 230 + 620;
+    await vi.advanceTimersByTimeAsync(310_000);
     expect(currentWrites()).toHaveLength(1);
-    await vi.advanceTimersByTimeAsync(80_000);
-    expect(currentWrites()).toHaveLength(2);
-    expect(requestedCurrent(1)).toBeGreaterThan(firstAmps);
   });
 });

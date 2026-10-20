@@ -75,15 +75,16 @@ describe('a stepped restore climb is the step the executor reads back', () => {
     const planned = plan.devices.find((device) => device.id === 'charger');
     // Premise: the planner admitted a climb above the commanded rung.
     expect(planned?.reason.code).toBe(PLAN_REASON_CODES.restoreNeed);
-    const admittedStepId = planned?.desiredStepId;
-    expect(admittedStepId).toBe('10a');
+    const admittedStepId = planned?.desiredStepId ?? '';
+    // 5 kW of room takes the charger past 10 A straight to its top rung.
+    expect(admittedStepId).toBe('16a');
 
     const latestPlanDesiredStepId = resolveLatestPlanDesiredStepId(plan, 'charger', CHARGER_PROFILE);
     expect(latestPlanDesiredStepId).toBe(admittedStepId);
 
     // The executor issued the admitted rung; the charger still reports 6 A.
     const preserved = resolvePlannedDesiredStepToPreserve(
-      inFlightCommand('10a'),
+      inFlightCommand(admittedStepId),
       CHARGER_PROFILE,
       latestPlanDesiredStepId,
       { deviceId: 'charger', stepId: '6a', planningPowerW: 1380, observedAtMs: NOW_MS },

@@ -96,7 +96,7 @@ For EV chargers, PELS keeps capacity suppression separate from charger availabil
 PELS resumes carefully:
 
 1. Higher-priority devices resume first.
-2. Previously limited devices, binary or stepped, may resume in a small batch (up to three) when fresh readings show ample available power. A running stepped device may also jump several levels when the whole increase, with its buffer, uses at most half the available power. With grid import control on, it steps up one level at a time.
+2. Previously limited devices, binary or stepped, may resume in a small batch (up to three) when fresh readings show ample available power. A running stepped device may also jump several levels at once: as far as the available power allows when it is the first increase in that pass, and within half the available power, counting earlier increases, when another device already resumed in the same pass. With grid import control on, it steps up one level at a time.
 3. Extra available power is required beyond the device's expected draw.
 4. Recent limiting and recent failed restart attempts delay another resume.
 5. A lower-priority device may stay limited until a higher-priority device has successfully resumed.

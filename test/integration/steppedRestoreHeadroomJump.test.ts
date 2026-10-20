@@ -29,7 +29,7 @@ function restore(cycle: RestoreCycle, dev: ReturnType<typeof runningDevice>, ava
   });
 }
 
-describe('running stepped loads spend a conservative allowance on a direct jump', () => {
+describe('running stepped loads jump on the full room, and later devices on the batch allowance', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-16T08:00:00Z')); });
   afterEach(() => vi.useRealTimers());
 
@@ -46,8 +46,9 @@ describe('running stepped loads spend a conservative allowance on a direct jump'
   });
 
   it.each([
-    [4.6, '3'], // 2 kW + 0.3 kW buffer exactly fits half.
-    [4.599, '2'],
+    // The first increase in a cycle may use the full room: 4 kW + 0.5 kW buffer.
+    [4.5, '5'],
+    [4.499, '4'],
     [1.3, '2'], // Ordinary one-step admission still uses the full room.
     [1.19, '1'],
   ])('with %s kW available chooses %s', (available, target) => {
@@ -57,11 +58,25 @@ describe('running stepped loads spend a conservative allowance on a direct jump'
     expect(cycle.deviceMap.get(dev.id)?.desiredStepId).toBe(target);
   });
 
+  it('takes an EV charger from 6 A to 32 A in one step when the room allows (prod, 2026-10-17 20:05)', () => {
+    // 1-phase amp ladder at 230 V. In prod the charger climbed 6 → 16 → 24 → 28 → 32 A,
+    // one rung per five-minute restore cooldown, with 4–9 kW free throughout.
+    const amps = [6, 10, 14, 16, 20, 24, 28, 32];
+    const dev = runningDevice({
+      isEvCharger: true, selectedStepId: '6a', desiredStepId: '6a', currentDrawKw: 1.38,
+      steppedLoadProfile: { steps: [{ id: 'off', planningPowerW: 0 }, ...amps.map((a) => ({ id: `${a}a`, planningPowerW: a * 230 }))] },
+    });
+    const cycle = cycleFor(dev, 7.2);
+    restore(cycle, dev, 7.2);
+    expect(cycle.deviceMap.get(dev.id)).toMatchObject({ desiredStepId: '32a' });
+  });
+
   it('prices the target against actual low draw, without crediting nameplate power as already drawn', () => {
     const dev = runningDevice({ currentDrawKw: 0.2 });
     const cycle = cycleFor(dev, 4.6);
     restore(cycle, dev, 4.6);
-    expect(cycle.deviceMap.get(dev.id)).toMatchObject({ desiredStepId: '2', reason: { needKw: 2.08 } });
+    // 3.8 kW above the 0.2 kW actually drawn, plus a 0.48 kW buffer.
+    expect(cycle.deviceMap.get(dev.id)).toMatchObject({ desiredStepId: '4', reason: { needKw: expect.closeTo(4.28) } });
   });
 
   it('preserves higher-priority startup reservations', () => {
@@ -159,7 +174,7 @@ describe('running stepped loads spend a conservative allowance on a direct jump'
   it.each([
     { label: 'ordinary', headroom: 12, grid: false, budget: null, target: '6' },
     { label: 'grid import enabled', headroom: 12, grid: true, budget: null, target: '2' },
-    { label: 'budget binds', headroom: 12, grid: false, budget: 4.6, target: '3' },
+    { label: 'budget binds', headroom: 12, grid: false, budget: 4.6, target: '5' },
     { label: 'no limits', headroom: null, grid: false, budget: null, target: '2' },
   ])('uses real restore-pass eligibility and axes: $label', ({ headroom, grid, budget, target }) => {
     const dev = runningDevice();

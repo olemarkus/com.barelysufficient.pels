@@ -172,8 +172,8 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
     });
 
     const charger = result.planDevices.find((device) => device.id === 'charger');
-    // Half of 5.7 kW funds 10a -> 20a plus buffer, but not 24a.
-    expect(charger?.desiredStepId).toBe('20a');
+    // The first increase in the cycle may use all 5.7 kW: 10a -> 28a plus buffer.
+    expect(charger?.desiredStepId).toBe('28a');
     expect(charger?.reason?.code).toBe(PLAN_REASON_CODES.restoreNeed);
   });
 });
