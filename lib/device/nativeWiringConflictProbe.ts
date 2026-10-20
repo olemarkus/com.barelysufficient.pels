@@ -18,11 +18,11 @@
  * caller invokes this fire-and-forget, so a slow or failing Web API never
  * blocks or fails app startup.
  */
-import { readFlowCapabilityWrites, type FlowApiGet } from '../lib/flowApi/readUserFlows';
-import { classifyFlowConflicts } from '../lib/flowApi/flowConflict';
-import type { UserFlowFacts } from '../lib/flowApi/userFlows';
-import { isToggleGatedNativeWriteSet } from '../lib/device/nativeSteppedLoadWiring';
-import type { DeviceDescriptorRead } from '../packages/contracts/src/types';
+import { readFlowCapabilityWrites, type FlowApiGet } from '../flowApi/readUserFlows';
+import { classifyFlowConflicts } from '../flowApi/flowConflict';
+import type { UserFlowFacts } from '../flowApi/userFlows';
+import { isToggleGatedNativeWriteSet } from './nativeSteppedLoadWiring';
+import type { DeviceDescriptorRead } from '../../packages/contracts/src/types';
 
 // Minimal sink for the probe's outcome line. Narrower than a full pino logger
 // (the probe only emits `.info`), which lets the caller hand in a guarded sink
@@ -67,15 +67,15 @@ function resolveStepCandidates(
   });
 }
 
-export async function detectNativeWiringConflicts(deps: {
-  get: FlowApiGet;
-  getDescriptors: () => readonly DeviceDescriptorRead[];
-  structuredLog?: FlowConflictLog;
-}): Promise<NativeWiringConflictDetection> {
-  const result = await readFlowCapabilityWrites({ get: deps.get });
+export async function detectNativeWiringConflicts(
+  get: FlowApiGet,
+  descriptors: readonly DeviceDescriptorRead[],
+  log: FlowConflictLog,
+): Promise<NativeWiringConflictDetection> {
+  const result = await readFlowCapabilityWrites({ get });
 
   if (result.status === 'unknown') {
-    deps.structuredLog?.info({
+    log.info({
       event: 'flow_conflict_detection',
       outcome: 'unknown',
       reason: result.reason,
@@ -83,7 +83,7 @@ export async function detectNativeWiringConflicts(deps: {
     return { status: 'unknown' };
   }
 
-  const candidates = resolveStepCandidates(deps.getDescriptors());
+  const candidates = resolveStepCandidates(descriptors);
   // Scope conflicts AND auto-enable to the toggle-gated population the gate
   // governs. target_power steppers are always default-on with their toggle
   // hidden, so surfacing a conflict for them would render a banner claiming
@@ -98,7 +98,7 @@ export async function detectNativeWiringConflicts(deps: {
     .filter((candidate) => !conflictedIds.has(candidate.deviceId))
     .map((candidate) => candidate.deviceId);
 
-  deps.structuredLog?.info({
+  log.info({
     event: 'flow_conflict_detection',
     outcome: 'ok',
     candidateCount: candidates.length,

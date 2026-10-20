@@ -25,6 +25,7 @@ import {
 import type { FlowBackedCapabilityReportOutcome } from '../../lib/device/flowBackedCapabilityReport';
 import type { FlowBackedDeviceState } from '../../lib/device/flowBackedDeviceState';
 import { partialDouble } from './partialDouble';
+import type { BuiltInControlFlowConflicts } from '../../lib/device/builtInControlFlowConflicts';
 import { createDeviceControlHelpersForTest } from './deviceControlHelpers';
 import { GenerationPollSource } from '../../lib/power/sources/generationPoll';
 import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
@@ -338,6 +339,11 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getUserdataDatabase: () => userdataDatabase,
     getPowerCalibrationStore: () => powerCalibrationStore,
     getChargingFlowWritesStore: () => chargingFlowWritesStore,
+    builtInControlFlowConflicts: partialDouble<BuiltInControlFlowConflicts>({
+      resolveNativeWiringEnabled: () => false,
+      getFlowConflict: () => undefined,
+      runBackgroundScan: vi.fn(),
+    }),
     emitPowerTrackerPersisted: vi.fn(),
     loadCapacitySettings: vi.fn(),
     noteCapacitySettingWritten: vi.fn(),

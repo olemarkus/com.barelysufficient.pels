@@ -12,7 +12,8 @@
  *
  * One table per owner, one row per device, each written only by its owner:
  * - `native_flow_conflicts`: the conflicts native wiring applied (Hoiax,
- *   Easee), as the device notice shows them (`NativeFlowConflictState`);
+ *   Easee), as the device notice shows them (`NativeFlowConflictState`, held by
+ *   `BuiltInControlFlowConflicts`);
  * - `charging_current_flow_writes`: for each charger or car with built-in
  *   current control, the Flows that set its current (`ChargingCurrentControl`).
  *
@@ -87,3 +88,19 @@ export const createChargingFlowWritesStore = (
     ])))),
   };
 };
+
+/**
+ * A slice bound to the userdata database while it is open. A read while it is
+ * not open throws, which each owner logs; a save after it closed (teardown) is
+ * dropped, as nothing will read it before the next boot's restore.
+ */
+export const whileDatabaseOpen = <T>(
+  current: () => AcceptedFlowConflictSlice<T> | undefined,
+): AcceptedFlowConflictSlice<T> => ({
+  read: () => {
+    const slice = current();
+    if (slice === undefined) throw new Error('the userdata database is not open');
+    return slice.read();
+  },
+  write: (value) => { current()?.write(value); },
+});

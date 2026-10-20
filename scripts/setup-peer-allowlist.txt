@@ -24,7 +24,6 @@ setup/appInit/startBackgroundCollectors.ts 2  # solar, weather
 setup/appInit/taskEvaluationSource.ts 2  # objectives, price
 setup/appInit/weatherAdvisorReadoutAssembler.ts 2  # device, weather
 setup/appInit/wireDeviceTransport.ts 2  # device, observer
-setup/appNativeWiring.ts 2  # device, plan
 setup/appPowerTracker.ts 3  # dailyBudget, device, power
 setup/appRuntimeApi.ts 4  # dailyBudget, device, plan, power
 setup/appServiceWiring.ts 2  # observer, plan

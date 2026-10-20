@@ -188,8 +188,9 @@ test('a Flow found setting the current after built-in control was selected holds
   expect(control.acceptFlowFacts(writing)).toBe(false);
 
   // A failed re-projection restores the previous list.
+  const held = control.acceptedFlowWrites;
   expect(control.acceptFlowFacts(clear)).toBe(true);
-  control.revertFlowFacts();
+  control.restoreFlowWrites(held);
   expect(control.routesBuiltIn('charger')).toBe(false);
 
   expect(control.acceptFlowFacts(clear)).toBe(true);
@@ -198,17 +199,18 @@ test('a Flow found setting the current after built-in control was selected holds
   expect(write).toHaveBeenCalledExactlyOnceWith('available_installation_current', 10);
 });
 
-test('the setup read adopts a readable Flow list and reports the route in effect', async () => {
+test('the setup read reports a Flow it finds and the route last accepted, and accepts nothing itself', async () => {
   const { control, get } = fixture(zaptec(true));
   await control.save('charger', selected);
   const card = { id: 'homey:device:charger:available_installation_current' };
   get.mockImplementation(async (path) => (path.includes('advancedflow')
     ? { a: { name: 'Night charge', enabled: true, cards: { c: { ...card, type: 'action' } } } } : {}));
-  const before = control.builtInRouteKey();
-  const [read] = await control.list();
-  expect(read).toMatchObject({ flowCheck: 'conflict', currentRoute: 'flow', setup: { method: 'built_in' } });
-  expect(control.builtInRouteKey()).not.toBe(before);
-  expect(control.routesBuiltIn('charger')).toBe(false);
+  const flows = await control.readFlows();
+  expect(control.describe(flows)[0]).toMatchObject({ flowCheck: 'conflict', currentRoute: 'built_in' });
+  expect(control.routesBuiltIn('charger')).toBe(true);
+  // `BuiltInControlFlowConflicts.readChargingCurrent` accepts it before describing.
+  if (flows.status === 'ok') control.acceptFlowFacts(flows.facts);
+  expect(control.describe(flows)[0]).toMatchObject({ flowCheck: 'conflict', currentRoute: 'flow', setup: { method: 'built_in' } });
 });
 
 test('a held-back route stays held back across a restart on the same store', async () => {
@@ -230,7 +232,6 @@ test('an unreadable store is rewritten by the next accepted scan, even one with 
   const store = { read: () => { throw new Error('disk'); }, write };
   const { control } = fixture(zaptec(true), store);
   control.acceptFlowFacts({ writes: new Map(), evSocReporters: [] });
+  // The store writes only the rows that changed, so saving the empty list clears what it still holds.
   expect(write).toHaveBeenCalledExactlyOnceWith(new Map());
-  control.acceptFlowFacts({ writes: new Map(), evSocReporters: [] });
-  expect(write).toHaveBeenCalledTimes(1);
 });

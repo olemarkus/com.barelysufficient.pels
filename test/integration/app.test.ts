@@ -181,9 +181,9 @@ describe('MyApp initialization', () => {
     const app = createApp();
     mockHomeyInstance.settings.set(NATIVE_EV_WIRING_DEVICES, { 'user-on': true, 'user-off': false });
     app.deviceControlSettings.reload();
-    app['autoNativeWiringDecisions'] = { 'auto-on': true };
+    app['builtInControlFlowConflicts']['autoDecisions'] = { 'auto-on': true };
 
-    const resolve = (id: string) => app['nativeWiring'].resolveNativeWiringEnabled(id);
+    const resolve = (id: string) => app['builtInControlFlowConflicts'].resolveNativeWiringEnabled(id);
 
     // Explicit user entries always win, even against an auto-decision.
     expect(resolve('user-on')).toBe(true);
@@ -198,15 +198,15 @@ describe('MyApp initialization', () => {
     const app = createApp();
     mockHomeyInstance.settings.set(NATIVE_EV_WIRING_DEVICES, { easee: true });
     app.deviceControlSettings.reload();
-    app['nativeWiring'].flowConflicts.accept({
+    app['builtInControlFlowConflicts']['conflicts'].accept({
       easee: { conflictingCapabilities: ['setDynamicChargerCurrent'], flowName: 'PELS BEV' },
     });
 
-    const resolve = (id: string) => app['nativeWiring'].resolveNativeWiringEnabled(id);
+    const resolve = (id: string) => app['builtInControlFlowConflicts'].resolveNativeWiringEnabled(id);
     expect(resolve('easee')).toBe(false);
 
     // The choice is kept: built-in control resumes once the Flow is gone.
-    app['nativeWiring'].flowConflicts.accept({});
+    app['builtInControlFlowConflicts']['conflicts'].accept({});
     expect(resolve('easee')).toBe(true);
   });
 

@@ -119,7 +119,7 @@ export type DeviceTransportOptions = {
     acceptedFlowWrites: AcceptedFlowConflictSlice<FlowCapabilityWrites>;
     /** The owner's per-device configuration (`DeviceControlSettings`). */
     settings: DeviceParseSettings;
-    /** Native wiring and Flow conflicts (`AppNativeWiring`). */
+    /** Native wiring and Flow conflicts (`BuiltInControlFlowConflicts`). */
     nativeWiring: NativeWiringRead;
     /** The Flow-reported capability values and learned peaks (`FlowBackedDeviceState`). */
     flowBacked: FlowBackedRead;

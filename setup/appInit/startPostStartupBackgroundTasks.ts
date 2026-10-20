@@ -3,7 +3,6 @@ import type { TaskEvaluationSource } from '../../lib/objectives/deferredObjectiv
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { TimerRegistry } from '../../lib/utils/timerRegistry';
 import type { BackgroundTasksController } from '../backgroundTasksController';
-import type { AppNativeWiring } from '../appNativeWiring';
 import type { AppRuntimeHandles } from '../appRuntimeHandles';
 import { createPvForecastSourceSelector } from './createPvForecastSourceSelector';
 import { getLogger } from '../../lib/logging/logger';
@@ -26,7 +25,6 @@ export const startPostStartupBackgroundTasks = (
   backgroundTasks: BackgroundTasksController,
   timers: TimerRegistry,
   handles: AppRuntimeHandles,
-  nativeWiring: AppNativeWiring,
   subscribeDeviceSnapshotCommitted: (listener: () => void) => void,
 ): void => {
   // Name the whole-home meter for an install that has none chosen, when Homey
@@ -100,9 +98,9 @@ export const startPostStartupBackgroundTasks = (
   backgroundTasks.startDeferredObjectiveLifecycleClock(
     createDeferredObjectiveLifecycleEmitter(ctx, taskEvaluationSource),
   );
-  nativeWiring.runNativeWiringDetectionBestEffort();
+  ctx.builtInControlFlowConflicts.runBackgroundScan();
   timers.registerInterval('nativeWiringRequery', setInterval(
-    () => nativeWiring.runNativeWiringDetectionBestEffort(),
+    () => ctx.builtInControlFlowConflicts.runBackgroundScan(),
     NATIVE_WIRING_REQUERY_INTERVAL_MS,
   ));
 };

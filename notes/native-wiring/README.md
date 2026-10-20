@@ -315,7 +315,8 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
 
 1. **PR1 (shipped):** `lib/flowApi/` defensive reader + pure normalizer →
    `Map<deviceId, Set<capabilityId>>`, fail-closed two-arm result, plus a
-   fire-and-forget startup telemetry probe (`setup/flowConflictProbe.ts`)
+   fire-and-forget startup telemetry probe (now
+   `lib/device/nativeWiringConflictProbe.ts`)
    that structured-logs read outcome + write counts. No behaviour change.
 2. **PR2 (shipped):** pure conflict classifier (`lib/flowApi/flowConflict.ts`)
    — intersects the write map with each device's owned native-write
@@ -340,10 +341,10 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
    - **Runtime default, not a settings write.** `resolveNativeWiringEnabled`
      resolves: an explicit user entry in `NATIVE_EV_WIRING_DEVICES` (true or
      false) always wins (a known conflict now holds either back; see 6); an untouched device falls back to an in-memory,
-     conflict-gated auto-decision (`app.autoNativeWiringDecisions`). Nothing is
+     conflict-gated auto-decision (held by `BuiltInControlFlowConflicts`). Nothing is
      persisted, so there is no migration and no risk of corrupting user state,
      and an explicit opt-out is never auto-reverted.
-   - **Gating:** `detectNativeWiringConflicts` (`setup/flowConflictProbe.ts`)
+   - **Gating:** `detectNativeWiringConflicts` (`lib/device/nativeWiringConflictProbe.ts`)
      auto-enables supported candidates with no conflicting Flow; an `unknown` read
      yields no decisions (fail-closed). It runs once after the snapshot
      warm-up gate, then re-parses the snapshot + rebuilds the plan so the
@@ -393,16 +394,26 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
    control over a conflict (`assertBuiltInActivationAllowed`) and holds a
    selected route back by the same rule (`ChargingCurrentControl.routesBuiltIn`),
    fed the same accepted Flow list (`acceptFlowFacts`). Its setup read
-   (`list`) also adopts a readable Flow list and reports the route in effect
-   (`currentRoute`), so the page says **Built-in current control is paused**
-   exactly when PELS has handed the current to the Flow, and the API re-projects
-   the snapshot when that read moved a route. Its **Check again** runs the same
-   scan, so a cleared Flow resumes the route at once. While held
+   (`BuiltInControlFlowConflicts.readChargingCurrent`) applies a readable Flow
+   list first, through the same queue and apply as a scan, and then reports the
+   route in effect (`currentRoute`), so the page says **Built-in current control
+   is paused** exactly when PELS has handed the current to the Flow. Its
+   **Check again** runs the same scan, so a cleared Flow resumes the route at once. While held
    back, the device behaves exactly as with built-in control off: PELS fires its
    stepped-load trigger and reads the step the Flow reports. The saved choice is
    kept, so clearing the Flow (the 30-minute re-query or **Check again**) re-parses
    the snapshot and built-in control resumes. An `unknown` read keeps the last
    accepted conflicts, so a transient Web API failure flips nothing.
+
+   One owner applies every scan: `BuiltInControlFlowConflicts`
+   (`lib/device/builtInControlFlowConflicts.ts`) holds the auto-decisions and
+   the native conflicts, hands the Flow list to `ChargingCurrentControl`, and on
+   a change re-parses the snapshot and rebuilds the plan. The apply is atomic: a
+   failed refresh or a rebuild that reports failure puts back all three, so the
+   next scan is not short-circuited as "no change", and a rebuild that failed
+   after the snapshot took the new routes re-projects the restored ones. Every
+   apply runs through one `FlowConflictRefreshCoordinator`, so a rollback
+   restores what was in effect before its own scan.
 
    The device-detail switch cannot be turned on while a conflict is known; an
    owner who turned it on can still turn it off. The notice says built-in
@@ -419,19 +430,19 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
    leave an explicit choice running over a known conflict for as long as it
    stayed unreadable.
    - Native: `NativeFlowConflictState` (`lib/device/nativeFlowConflictState.ts`,
-     built by `AppNativeWiring`) is seeded when the userdata database opens,
+     held by `BuiltInControlFlowConflicts`) is seeded when the userdata database opens,
      before the transport's first parse, and saves every accepted scan,
      unchanged ones included, which costs no row write and heals a failed save.
    - Charging current: `ChargingCurrentControl` seeds in its constructor and
      saves only the current-setting Flows of devices with a charging-current
-     binding, and only when they change; an unreadable store makes the next
-     accept write. It resolves a route against the committed device record, or,
+     binding; the store writes only the rows that changed, so an unreadable
+     store is rewritten by the next accept. It resolves a route against the committed device record, or,
      for a device the committed list does not hold yet, the record of the read
      being projected (`observeDevices`, pruned on a full inventory), so the
      first refresh after a boot, whose committed list is still empty, already
      holds a saved conflict back.
-   - The app binds both stores to the open database; a save after it closes
-     (teardown) is dropped. A save failure is logged and costs only that
+   - Both stores are bound to the open database (`whileDatabaseOpen`); a save
+     after it closes (teardown) is dropped. A save failure is logged and costs only that
      restart window.
 
    *Follow-ups:*

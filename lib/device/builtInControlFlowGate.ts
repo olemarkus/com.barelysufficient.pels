@@ -1,3 +1,5 @@
+import type { NativeFlowConflicts } from '../flowApi/acceptedFlowConflictStore';
+
 /**
  * Whether built-in device control runs, given the owner's choice and their
  * Homey Flows. One rule for every built-in control: the native stepped wiring
@@ -30,7 +32,7 @@ export function resolveNativeWiringEnabled(
   deviceId: string,
   ownerChoices: Readonly<Record<string, boolean>>,
   autoDecisions: Readonly<Record<string, boolean>>,
-  flowConflicts: Readonly<Record<string, unknown>>,
+  flowConflicts: Readonly<NativeFlowConflicts>,
 ): boolean {
   const chosen = Object.prototype.hasOwnProperty.call(ownerChoices, deviceId)
     ? ownerChoices[deviceId] === true

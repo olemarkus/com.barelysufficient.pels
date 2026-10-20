@@ -17,6 +17,7 @@ import type { PlanInputSnapshotDevice } from '../planInput/runtimeDeviceRead';
 import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 import type { SettingsUiDeviceReads } from '../device/settingsUiDeviceReads';
 import type { DeviceTransportPort } from '../device/deviceTransport';
+import type { BuiltInControlFlowConflicts } from '../device/builtInControlFlowConflicts';
 import type { PowerTrackerState } from '../power/tracker';
 import type { DailyBudgetService } from '../dailyBudget/dailyBudgetService';
 import type { DailyBudgetUiRead, DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
@@ -121,6 +122,8 @@ export type AppContext = {
    * reading throws before the boot step that opens the userdata database.
    */
   getChargingFlowWritesStore: () => AcceptedFlowConflictSlice<FlowCapabilityWrites>;
+  /** The Flow scan behind built-in device control: native wiring's answer, and the periodic re-query. */
+  builtInControlFlowConflicts: BuiltInControlFlowConflicts;
   /** Tell the settings UI a home's tracker persisted (the store produces no settings echo). */
   emitPowerTrackerPersisted: (homeId: string) => void;
   /** SDK-bound Main-home capacity reader, constructed once at the composition root. */

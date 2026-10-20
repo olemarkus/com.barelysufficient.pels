@@ -6,7 +6,7 @@ import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { ChargingCurrentRead, ChargingCurrentSetup } from '../../packages/contracts/src/chargingControl';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import type { HomeyDeviceLike } from '../utils/types';
-import { readFlowCapabilityWrites } from '../flowApi/readUserFlows';
+import { readFlowCapabilityWrites, type FlowReadResult } from '../flowApi/readUserFlows';
 import type { FlowCapabilityWrites, UserFlowFacts } from '../flowApi/userFlows';
 import type { AcceptedFlowConflictSlice } from '../flowApi/acceptedFlowConflictStore';
 import { normalizeError } from '../utils/errorUtils';
@@ -25,18 +25,6 @@ const DEFAULT_SETUP: ChargingCurrentSetup = { method: 'flow', confirmation: 'non
 /** What a Flow writes to set this binding's current: its capability, if any, and its action. */
 function currentSettingCapabilities(adapter: ChargingCurrentBinding): string[] {
   return adapter.current.kind === 'capability' ? [adapter.current.capabilityId, adapter.actionId] : [adapter.actionId];
-}
-
-// Matches no `flowWritesKey`, so the next save always writes.
-const UNREAD_FLOW_WRITES_KEY = 'unread';
-
-/** Comparable form of saved Flow writes; Flow order does not matter. */
-function flowWritesKey(writes: FlowCapabilityWrites): string {
-  return JSON.stringify([...writes].sort(([a], [b]) => a.localeCompare(b)).map(([deviceId, capabilities]) => [
-    deviceId,
-    [...capabilities].sort(([a], [b]) => a.localeCompare(b))
-      .map(([capability, flows]) => [capability, [...flows.keys()].sort()]),
-  ]));
 }
 
 /** The Flows that write this binding's current, by Flow id. */
@@ -67,12 +55,10 @@ export class ChargingCurrentControl {
   // The last Flow list PELS accepted, seeded from the one saved before the
   // restart. Empty with nothing saved: nothing is held back, the same as a Flow
   // list with no writes.
-  private flowWrites: FlowCapabilityWrites;
-  private previousFlowWrites: FlowCapabilityWrites;
-  private savedFlowWritesKey: string;
-  // The devices the reads carried, for a device the committed list does not
-  // hold yet: that list is adopted only after projection, so it is empty for
-  // the first refresh after a boot and lacks a device new in this read.
+  private flowWrites: FlowCapabilityWrites = new Map();
+  // The charging devices the reads carried, for a device the committed list
+  // does not hold yet: that list is adopted only after projection, so it is
+  // empty for the first refresh after a boot and lacks a device new in this read.
   private readonly observedDevices = new Map<string, HomeyDeviceLike>();
 
   constructor(
@@ -80,39 +66,27 @@ export class ChargingCurrentControl {
     private readonly logger: Pick<Logger, 'structuredLog'>,
     private readonly getDevices: () => readonly HomeyDeviceLike[],
     private readonly readTrust: () => { connected: boolean; revision: number },
-    private readonly acceptedFlowWrites: AcceptedFlowConflictSlice<FlowCapabilityWrites>,
+    private readonly flowWritesStore: AcceptedFlowConflictSlice<FlowCapabilityWrites>,
   ) {
     this.settings = homey.settings;
     this.access = new ChargingAccess(homey, logger);
     this.sessions = new DeviceAdapterSessions(this.homeLocation);
-    const saved = this.readSavedFlowWrites();
-    this.flowWrites = saved ?? new Map<string, Map<string, Map<string, string>>>();
-    this.previousFlowWrites = this.flowWrites;
-    // An unreadable store may still hold rows a later scan clears, so the first
-    // accept writes whatever it finds.
-    this.savedFlowWritesKey = saved ? flowWritesKey(saved) : UNREAD_FLOW_WRITES_KEY;
-  }
-
-  private readSavedFlowWrites(): FlowCapabilityWrites | null {
+    // Unreadable, nothing is held back until the next scan; that scan's save
+    // rewrites whatever rows the store still holds.
     try {
-      return this.acceptedFlowWrites.read();
+      this.flowWrites = this.flowWritesStore.read();
     } catch (error) {
       this.logger.structuredLog.error({ event: 'charging_flow_writes_read_failed', err: normalizeError(error) });
-      return null;
     }
   }
 
   // Saves only what the routes read, the current-setting Flows of the devices
-  // with a charging-current binding, and only when it changed. Best-effort: a
-  // failed save costs only the restart window it covers, and is retried by the
-  // next accept.
+  // with a charging-current binding; the store writes only the rows that
+  // changed. Best-effort: a failed save costs only the restart window it
+  // covers, and is retried by the next accept.
   private saveFlowWrites(): void {
-    const relevant = this.currentSettingWrites();
-    const key = flowWritesKey(relevant);
-    if (key === this.savedFlowWritesKey) return;
     try {
-      this.acceptedFlowWrites.write(relevant);
-      this.savedFlowWritesKey = key;
+      this.flowWritesStore.write(this.currentSettingWrites());
     } catch (error) {
       this.logger.structuredLog.error({ event: 'charging_flow_writes_save_failed', err: normalizeError(error) });
     }
@@ -149,7 +123,9 @@ export class ChargingCurrentControl {
   }
 
   observeDevices(devices: readonly HomeyDeviceLike[], readAtMs: number): void {
-    for (const device of devices) this.observedDevices.set(device.id, device);
+    for (const device of devices) {
+      if (resolveChargingCurrentAdapter(device)) this.observedDevices.set(device.id, device);
+    }
     void this.homeLocation.refreshIfDue();
     if (this.synchronizeTrust()) this.sessions.observeDevices(devices, readAtMs);
   }
@@ -165,15 +141,17 @@ export class ChargingCurrentControl {
    */
   acceptFlowFacts(facts: UserFlowFacts): boolean {
     const before = this.builtInRouteKey();
-    this.previousFlowWrites = this.flowWrites;
     this.flowWrites = facts.writes;
     this.saveFlowWrites();
     return this.builtInRouteKey() !== before;
   }
 
-  /** Restores the Flow list accepted before the last one, when re-projecting for it failed. */
-  revertFlowFacts(): void {
-    this.flowWrites = this.previousFlowWrites;
+  /** The Flow list last accepted, for a caller that may have to restore it. */
+  get acceptedFlowWrites(): FlowCapabilityWrites { return this.flowWrites; }
+
+  /** Puts back an earlier accepted list, when applying a later one failed. */
+  restoreFlowWrites(writes: FlowCapabilityWrites): void {
+    this.flowWrites = writes;
     this.saveFlowWrites();
   }
 
@@ -209,8 +187,8 @@ export class ChargingCurrentControl {
     );
   }
 
-  /** The devices PELS sets the current of itself, as one comparable key. */
-  builtInRouteKey(): string {
+  // The devices PELS sets the current of itself, as one comparable key.
+  private builtInRouteKey(): string {
     return this.knownDevices().filter((device) => this.routesBuiltIn(device.id)).map((device) => device.id)
       .sort().join('|');
   }
@@ -237,13 +215,22 @@ export class ChargingCurrentControl {
     return this.setups.get(deviceId) ?? DEFAULT_SETUP;
   }
 
+  /** The Flows that set a current now, read fresh; nothing is accepted here. */
+  readFlows(): Promise<FlowReadResult> {
+    return readFlowCapabilityWrites({ get: getRawFromHomeyApi });
+  }
+
   async list(): Promise<ChargingCurrentRead[]> {
+    return this.describe(await this.readFlows());
+  }
+
+  /**
+   * The setup read for a Flow read. `currentRoute` is the route in effect,
+   * from the Flow list last accepted (`BuiltInControlFlowConflicts`
+   * applies a readable one before the settings page reads this).
+   */
+  describe(flows: FlowReadResult): ChargingCurrentRead[] {
     const devices = this.getDevices();
-    const flows = await readFlowCapabilityWrites({ get: getRawFromHomeyApi });
-    // A readable list is the freshest PELS has: the runtime adopts it, so the
-    // route this read reports is the one in effect. The caller re-projects when
-    // `builtInRouteKey` moved.
-    if (flows.status === 'ok') this.acceptFlowFacts(flows.facts);
     return devices.flatMap((device) => {
       const adapter = resolveChargingCurrentAdapter(device);
       if (!adapter) return [];

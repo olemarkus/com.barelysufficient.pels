@@ -62,7 +62,6 @@ import { startPostStartupBackgroundTasks } from './appInit/startPostStartupBackg
 import type { BackgroundTasksController } from './backgroundTasksController';
 import type { AppPowerTracker } from './appPowerTracker';
 
-import type { AppNativeWiring } from './appNativeWiring';
 import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
 import { installMainFreshnessEscalation } from './appMainFreshnessEscalation';
 import {
@@ -123,7 +122,6 @@ export type AppServiceWiringDeps = {
   homeyApp: Homey.App;
   backgroundTasks: BackgroundTasksController;
   timers: TimerRegistry;
-  nativeWiring: AppNativeWiring;
   powerTrackerHelpers: AppPowerTracker;
   planRebuildScheduler: PlanRebuildScheduler;
   observedStateEmitter: ObservedStateEmitter;
@@ -259,7 +257,6 @@ export class AppServiceWiring {
       this.deps.backgroundTasks,
       this.deps.timers,
       this.deps.handles,
-      this.deps.nativeWiring,
       (listener) => { this.deps.observedStateEmitter.onObservedStateRefresh(listener); },
     );
   }
@@ -301,7 +298,6 @@ export class AppServiceWiring {
       ctx,
       this.deps.homeyApp,
       handles.structuredLogger ?? this.installStructuredLogger(),
-      this.deps.nativeWiring,
       observedStateEmitter.asDispatcher(this.deps.observedHomePower),
     );
     subscribeObservedStateProjection(observedStateEmitter, this.deps.observedDeviceStateProjection);

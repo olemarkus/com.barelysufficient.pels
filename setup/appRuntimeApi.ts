@@ -5,6 +5,7 @@ import type { AppContext } from '../lib/app/appContext';
 import type { FlowConflictRefreshResult } from '../lib/flowApi/flowConflictRefreshCoordinator';
 import type Homey from 'homey';
 import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
+import type { ChargingCurrentRead } from '../packages/contracts/src/chargingControl';
 import type { DebugLoggingTopic } from '../packages/shared-domain/src/utils/debugLogging';
 import { getDebugTopics, setDebugTopics } from '../lib/logging/logger';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
@@ -31,7 +32,7 @@ import {
 } from './appInit/contextGuards';
 import { buildPeriodicStatusLogFields } from '../lib/diagnostics/periodicStatus';
 import type { BackgroundTasksController } from './backgroundTasksController';
-import type { AppNativeWiring } from './appNativeWiring';
+import type { BuiltInControlFlowConflicts } from '../lib/device/builtInControlFlowConflicts';
 import type { AppPowerTracker } from './appPowerTracker';
 import type { AppServiceWiring } from './appServiceWiring';
 import type { PowerCalibrationStore } from '../lib/device/devicePowerCalibrationStore';
@@ -49,7 +50,7 @@ abstract class AppRuntimeApi extends Base {
   protected abstract readonly powerSamplePipeline: PowerSamplePipeline;
   public abstract getPowerCalibrationStore(): PowerCalibrationStore;
   protected abstract readonly serviceWiring: AppServiceWiring;
-  protected abstract readonly nativeWiring: AppNativeWiring;
+  public abstract readonly builtInControlFlowConflicts: BuiltInControlFlowConflicts;
   protected abstract readonly powerTrackerHelpers: AppPowerTracker;
   protected abstract overheadToken?: Homey.FlowToken;
   protected abstract readonly capacitySettingsReloader: CapacitySettingsReloader;
@@ -78,12 +79,11 @@ abstract class AppRuntimeApi extends Base {
     return this.getPowerCalibrationStore().getSnapshot();
   }
   public async onInit(): Promise<void> { await this.serviceWiring.runInit(); }
-  protected delayMs(ms: number): Promise<void> { return this.nativeWiring.delayMs(ms); }
-  protected applyNativeWiringAutoDecisions(): Promise<void> {
-    return this.nativeWiring.applyNativeWiringAutoDecisions();
-  }
   public refreshFlowConflictsForUi(): Promise<FlowConflictRefreshResult> {
-    return this.nativeWiring.refreshFlowConflictsForUi();
+    return this.builtInControlFlowConflicts.refreshForUi();
+  }
+  public readChargingCurrentForUi(): Promise<ChargingCurrentRead[]> {
+    return this.builtInControlFlowConflicts.readChargingCurrent();
   }
   public async onUninit(): Promise<void> { await this.serviceWiring.runUninit(); }
   public getStructuredLogger(component: string): PinoLogger | undefined {

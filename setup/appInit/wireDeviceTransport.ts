@@ -19,7 +19,6 @@ import { getDebugEmitter, type Logger as PinoLogger } from '../../lib/logging/lo
 import { createExternalOffHoldPolicy } from '../externalOffHoldAdapter';
 import { createEvCarLinkAccessForApp } from './evCarLinkAccess';
 import type { AppContext } from '../../lib/app/appContext';
-import type { AppNativeWiring } from '../appNativeWiring';
 
 // The probe's decisions are time-based; mirrors the pre-extraction constant in
 // `appServiceWiring.ts` (30 s — well inside the shortest 90 s probe deadline).
@@ -67,7 +66,6 @@ export function buildDeviceTransport(
   ctx: AppContext,
   homeyApp: Homey.App,
   structuredLogger: PinoLogger,
-  nativeWiring: AppNativeWiring,
   observedStateDispatcher: ObservedStateEmitterDispatcher,
 ): DeviceTransport {
   const structuredLog = structuredLogger.child({ component: 'devices' });
@@ -102,7 +100,7 @@ export function buildDeviceTransport(
     retainedPowerStore: createRetainedPowerStore(ctx.getUserdataDatabase()),
     acceptedFlowWrites: ctx.getChargingFlowWritesStore(),
     settings: ctx.deviceControlSettings,
-    nativeWiring,
+    nativeWiring: ctx.builtInControlFlowConflicts,
     // Also where a moved learned peak is persisted: driven off the learned-peak
     // mutation, NOT the snapshot-mutation seam above. That seam fires on a changed
     // calibration input, and a reading equal to the standing peak changes none of

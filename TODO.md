@@ -1289,10 +1289,9 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       (c) device — `targetPowerProbeScheduler.ts` and `appFlowBacked.ts` are DONE (`lib/device/`).
       `appDeviceSupport.ts` is DONE: its module-level `Set` was the mode-target fill's record of
       what it filled, which now lives on the one `ModeDeviceTargetFill` the app builds
-      (`lib/home/modeDeviceTargetFill.ts`). `appNativeWiring.ts` has its own entry,
-      `` `setup/appNativeWiring.ts` still owns conflict-apply logic above its domains ``,
-      while `appSnapshotHelpers.ts` has none — its state move is part of this umbrella and is not
-      tracked separately;
+      (`lib/home/modeDeviceTargetFill.ts`). `appNativeWiring.ts` is DONE, as
+      `lib/device/builtInControlFlowConflicts.ts`. `appSnapshotHelpers.ts` has no entry of its own:
+      its state move is part of this umbrella and is not tracked separately;
       (d) home — `homeSampledMeterIdentity.ts` is DONE, as `lib/power/sampledMeterIdentity.ts`:
       the fact it holds is about the sample the TRACKER serves, and it imports nothing but the
       freshness constant its expiry derives from. Main-meter authority now lives in
@@ -1305,7 +1304,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       state is DONE too, as `lib/home/homeRuntimeRegistry.ts`, with bundle construction and the
       power-source epoch fence injected as ports, so the home lane holds no setup state;
       (e) composition root and leftovers — DONE. `appServiceWiring.ts`'s late-bound service handles
-      are `PelsApp` fields reached through getter/setter pairs (the `AppNativeWiring` shape), its
+      are `PelsApp` fields reached through getter/setter pairs, its
       membership teardown is a `TeardownRegistry` key, and the prepared-reconcile fence is
       created by the sample ingest queue in `lib/power`, which owns the revision it reads. The background teardown handles are an injected
       `TeardownRegistry` (`lib/utils/`), the dump counter is `lib/diagnostics/deviceDumpId.ts`, and
@@ -1331,19 +1330,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       drove until the cpuwarn watchdog killed the app. Pin the current read-ordering with a test
       before moving them. Done when the seam takes a named argument, all four callbacks are bound at
       construction, and `runPowerSample` builds no closures per sample. Found 2026-09-01. [P2]
-
-- [ ] **`setup/appNativeWiring.ts` still owns conflict-apply logic above its domains.**
-      Its re-entrancy latch moved to the domain-owned
-      `lib/flowApi/flowConflictRefreshCoordinator.ts`: overlapping background scans are dropped,
-      while an explicit user check queues a fresh pass after older work and receives a typed
-      `resolved | unavailable` result. That removed the file from the setup-state allowlist without
-      forcing the distinct policies into `lib/utils/singleFlightLoop.ts`. The file's remaining
-      blocker is different: it names
-      `SnapshotWarmupGate` and `PlanService` types and imports `setup/flowConflictProbe`, so
-      `no-device-to-peer-except-power` bars `lib/device` until those arrive as flat injected
-      callbacks. Done when `AppNativeWiring` takes `awaitSnapshotWarmup` and `rebuildPlanFromCache`
-      as callbacks, the conflict probe is injected or moved, the component lives in `lib/device`,
-      and its setup-peer allowlist line is gone. Found 2026-09-01; state moved 2026-09-21. [P2]
 
 - [ ] **Nothing in CI ever inspects the packaged tree that actually ships.** `npm run validate` is
       `homey app validate && npm run package:check`, and `homey app validate` calls

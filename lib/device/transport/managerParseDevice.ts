@@ -60,7 +60,7 @@ export type DeviceParseSettings = Pick<
 
 /**
  * Whether native wiring is on for a device, and any Flow conflict found for it.
- * Answered today by `AppNativeWiring` in `setup/`, which still owns the decision.
+ * Answered by `BuiltInControlFlowConflicts` (`lib/device/builtInControlFlowConflicts.ts`).
  */
 export type NativeWiringRead = {
     /** The user's explicit choice, else the conflict-gated automatic decision. */

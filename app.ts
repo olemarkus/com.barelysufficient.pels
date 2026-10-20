@@ -60,8 +60,12 @@ import { AppSmartTaskPayloads } from './setup/appSmartTaskPayloads';
 import {
   createHomeRebuildRuntime,
 } from './lib/plan/rebuildScheduler/homeRebuildRuntime';
-import { AppNativeWiring } from './setup/appNativeWiring';
-import { createChargingFlowWritesStore, createNativeFlowConflictStore } from './lib/flowApi/acceptedFlowConflictStore';
+import { BuiltInControlFlowConflicts } from './lib/device/builtInControlFlowConflicts';
+import {
+  createChargingFlowWritesStore, createNativeFlowConflictStore, whileDatabaseOpen,
+  type AcceptedFlowConflictSlice, type NativeFlowConflicts,
+} from './lib/flowApi/acceptedFlowConflictStore';
+import type { FlowCapabilityWrites } from './lib/flowApi/userFlows';
 import {
   AppServiceWiring,
   createHomeRuntimeRegistryForApp,
@@ -160,11 +164,6 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   public getModePrioritiesForUi = (deviceIds: readonly string[]) => (
     this.homeModeCatalog.getPrioritiesForDevices(deviceIds)
   );
-  // Conflict-gated auto-enable decisions for Hoiax native stepped wiring
-  // (notes/native-wiring/). In-memory only — recomputed each startup from the
-  // flow read + conflict classifier. An explicit user entry in
-  // `nativeEvWiringDevices` always takes precedence over this default.
-  private autoNativeWiringDecisions: Record<string, boolean> = {};
   protected flowReportedCapabilities: FlowReportedCapabilitiesByDevice = {};
   public dailyBudgetService!: DailyBudgetService;
   public deferredObjectivePlanHistoryRecorder?: DeferredObjectivePlanHistoryRecorder;
@@ -377,8 +376,8 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   private userdataDatabase?: UserdataDatabase;
   private trackerStore?: TrackerStore;
   private powerCalibrationStore?: PowerCalibrationStore;
-  private nativeFlowConflictStore?: ReturnType<typeof createNativeFlowConflictStore>;
-  private chargingFlowWritesStore?: ReturnType<typeof createChargingFlowWritesStore>;
+  private nativeFlowConflictStore?: AcceptedFlowConflictSlice<NativeFlowConflicts>;
+  private chargingFlowWritesStore?: AcceptedFlowConflictSlice<FlowCapabilityWrites>;
   private openUserdata(): void {
     // The database first: the repositories are built on the one this holds.
     this.userdataDatabase = this.openUserdataDatabase();
@@ -387,7 +386,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     this.nativeFlowConflictStore = createNativeFlowConflictStore(this.userdataDatabase);
     this.chargingFlowWritesStore = createChargingFlowWritesStore(this.userdataDatabase);
     // Before the transport's first parse, so a known conflict holds built-in control back from boot.
-    this.nativeWiring.flowConflicts.restoreSaved();
+    this.builtInControlFlowConflicts.restoreSaved();
   }
   private opened<T>(handle: T | undefined): T {
     if (handle === undefined) throw new Error('the userdata database is not open');
@@ -399,12 +398,8 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   public getPowerCalibrationStore(): PowerCalibrationStore {
     return this.opened(this.powerCalibrationStore);
   }
-  // Bound to the open database; a save after it closes (teardown) is dropped.
-  public getChargingFlowWritesStore(): ReturnType<typeof createChargingFlowWritesStore> {
-    return {
-      read: () => this.opened(this.chargingFlowWritesStore).read(),
-      write: (writes) => { this.chargingFlowWritesStore?.write(writes); },
-    };
+  public getChargingFlowWritesStore(): AcceptedFlowConflictSlice<FlowCapabilityWrites> {
+    return whileDatabaseOpen(() => this.chargingFlowWritesStore);
   }
   public getUserdataDatabase(): UserdataDatabase {
     return this.opened(this.userdataDatabase);
@@ -489,26 +484,18 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     timers: this.timers,
     syncHeadroomUsageObservation: (deviceId, kw) => { this.planService.syncHeadroomUsageObservation(deviceId, kw); },
   });
-  protected readonly nativeWiring = new AppNativeWiring({
-    shutdown: this.shutdown,
-    getAutoNativeWiringDecisions: () => this.autoNativeWiringDecisions,
-    setAutoNativeWiringDecisions: (decisions) => { this.autoNativeWiringDecisions = decisions; },
-    getNativeEvWiringDevices: () => this.deviceControlSettings.nativeEvWiringDevices,
-    acceptChargingFlowFacts: (facts) => this.deviceManager.chargingCurrentControl.acceptFlowFacts(facts),
-    revertChargingFlowFacts: () => { this.deviceManager.chargingCurrentControl.revertFlowFacts(); },
-    // Bound to the open database; a save after it closes (teardown) is dropped.
-    nativeFlowConflictStore: {
-      read: () => this.opened(this.nativeFlowConflictStore).read(),
-      write: (conflicts) => { this.nativeFlowConflictStore?.write(conflicts); },
+  public readonly builtInControlFlowConflicts = new BuiltInControlFlowConflicts(
+    this.shutdown,
+    whileDatabaseOpen(() => this.nativeFlowConflictStore),
+    this.deviceControlSettings,
+    () => this.getDeviceDescriptors(),
+    () => this.deviceManager.chargingCurrentControl,
+    {
+      awaitSnapshotWarmup: async () => { await this.snapshotWarmupGate?.wait(); },
+      refreshSnapshot: () => this.refreshTargetDevicesSnapshot(),
+      rebuildPlan: () => this.planService.rebuildPlanFromCache('native_wiring_auto_decision'),
     },
-    getStructuredLogger: (component) => this.getStructuredLogger(component),
-    getDeviceDescriptors: () => this.getDeviceDescriptors(),
-    getSnapshotWarmupGate: () => this.snapshotWarmupGate,
-    getPlanService: () => this.planService,
-    refreshTargetDevicesSnapshot: () => this.refreshTargetDevicesSnapshot(),
-    delayMs: (ms) => this.delayMs(ms),
-    applyNativeWiringAutoDecisions: () => this.applyNativeWiringAutoDecisions(),
-  });
+  );
   protected readonly powerTrackerHelpers = new AppPowerTracker({
     homey: this.homey,
     timers: this.timers,
@@ -552,7 +539,6 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     homeyApp: this,
     backgroundTasks: this.backgroundTasks,
     timers: this.timers,
-    nativeWiring: this.nativeWiring,
     powerTrackerHelpers: this.powerTrackerHelpers,
     planRebuildScheduler: this.planRebuildScheduler,
     observedStateEmitter: this.observedStateEmitter,

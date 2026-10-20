@@ -47,6 +47,7 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     getModePrioritiesForUi: createFixturePriorityQuery(),
     getSettingsUiManagedDevices: () => [],
     refreshFlowConflictsForUi: notWired('refreshFlowConflictsForUi'),
+    readChargingCurrentForUi: notWired('readChargingCurrentForUi'),
     replacePowerTrackerForUi: notWired('replacePowerTrackerForUi'),
     readHardCapConfiguration: () => ({ state: 'unavailable' }),
     readPriceOptimizationSetup: () => ({ state: 'unavailable' }),

@@ -3,6 +3,7 @@ import type { Logger as PinoLogger } from '../logging/logger';
 import type { FlowConflictRefreshResult } from '../flowApi/flowConflictRefreshCoordinator';
 import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
 import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { ChargingCurrentRead } from '../../packages/contracts/src/chargingControl';
 import type {
   DailyBudgetModelPreviewResponse,
   DailyBudgetModelSettings,
@@ -66,6 +67,7 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
   getModePrioritiesForUi(deviceIds: readonly string[]): ModePriorityOrder;
   getSettingsUiManagedDevices(): DecoratedDeviceSnapshot[];
   refreshFlowConflictsForUi(): Promise<FlowConflictRefreshResult>;
+  readChargingCurrentForUi(): Promise<ChargingCurrentRead[]>;
   replacePowerTrackerForUi(nextState: AppContext['powerTracker']): void;
   readHardCapConfiguration(): SettingsUiHardCapConfigurationRead;
   readPriceOptimizationSetup(): PriceOptimizationSetupRead;

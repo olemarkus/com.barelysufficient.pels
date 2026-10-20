@@ -3,9 +3,10 @@
  *
  * Two call sites grew this pattern independently — the whole-home sample
  * pipeline and the device-snapshot refresh — and each spelled it differently.
- * (`setup/appNativeWiring.ts` looks like a third, but it is the degenerate
- * drop-only variant: an overlapping run is discarded rather than queued,
- * deliberately, so it does NOT adopt this primitive.) The shape the two share:
+ * (The Flow-conflict scan, `lib/flowApi/flowConflictRefreshCoordinator.ts`,
+ * looks like a third, but it is the degenerate drop-only variant: an
+ * overlapping background run is discarded rather than queued, deliberately,
+ * so it does NOT adopt this primitive.) The shape the two share:
  *
  * - a request while idle starts a run;
  * - a request arriving mid-run does NOT start a second one; it queues, and only

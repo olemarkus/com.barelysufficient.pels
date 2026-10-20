@@ -96,45 +96,33 @@ const withApiLogging = <Ctx extends ApiContext, R>(
   }
 };
 
+const STARTING = 'PELS is starting. Try again shortly.';
+
 function chargingAccess(homey: ApiContext['homey']) {
   const transport = readPelsHost(homey)?.deviceManager;
-  if (!transport) throw new Error('PELS is starting. Try again shortly.');
+  if (!transport) throw new Error(STARTING);
   return transport.chargingAccess;
 }
 
-function chargingCurrentControl(homey: ApiContext['homey']) {
-  const transport = readPelsHost(homey)?.deviceManager;
-  if (!transport) throw new Error('PELS is starting. Try again shortly.');
-  return transport.chargingCurrentControl;
-}
-
 export = {
-  ui_charging_current: withApiLogging('ui_charging_current', async ({ homey }: ApiContext) => {
-    const control = chargingCurrentControl(homey);
-    const routesBefore = control.builtInRouteKey();
-    const devices = await control.list();
-    // The read adopts the fresh Flow list; project a route it moved, as a save does.
-    if (control.builtInRouteKey() !== routesBefore) {
-      try {
-        await readPelsHost(homey)!.refreshTargetDevicesSnapshot();
-      } catch (error) {
-        readPelsHost(homey)?.getApiStructuredLogger()?.warn({
-          event: 'charging_control_snapshot_refresh_failed', err: normalizeError(error),
-        });
-      }
-    }
-    return devices;
+  ui_charging_current: withApiLogging('ui_charging_current', ({ homey }: ApiContext) => {
+    const host = readPelsHost(homey);
+    if (!host?.deviceManager) throw new Error(STARTING);
+    return host.readChargingCurrentForUi();
   }),
   ui_charging_current_save: withApiLogging('ui_charging_current_save', async (
     { homey, params, body }: ApiContext & { params: { deviceId: string }; body?: unknown },
   ) => {
-    await chargingCurrentControl(homey).save(params.deviceId, body);
+    const host = readPelsHost(homey);
+    const transport = host?.deviceManager;
+    if (!host || !transport) throw new Error(STARTING);
+    await transport.chargingCurrentControl.save(params.deviceId, body);
     try {
-      await readPelsHost(homey)!.refreshTargetDevicesSnapshot();
+      await host.refreshTargetDevicesSnapshot();
     } catch (error) {
       // The owner has committed the route and already gates commands and Flow
       // reports. A projection failure must not report that this save failed.
-      readPelsHost(homey)?.getApiStructuredLogger()?.warn({
+      host.getApiStructuredLogger()?.warn({
         event: 'charging_control_snapshot_refresh_failed', deviceId: params.deviceId, err: normalizeError(error),
       });
     }
