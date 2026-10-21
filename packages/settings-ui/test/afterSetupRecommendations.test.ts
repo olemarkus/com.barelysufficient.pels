@@ -19,6 +19,7 @@ const everythingApplies: AfterSetupFacts = {
   setupComplete: true,
   devices: [device({ temperature: true, taskCapable: true }), device({ taskCapable: true })],
   priceOptimizationEnabled: true,
+  priceSource: { kind: 'needs_setup' },
   solarSurplusAvailable: true,
   smartTaskConfigured: false,
   market: { state: 'unavailable' },
@@ -42,6 +43,44 @@ describe('after-setup suggestions', () => {
       { kind: 'panel', panelId: 'devices' },
       { kind: 'panel', panelId: 'deadlines' },
     ]);
+  });
+
+  describe('the price suggestion', () => {
+    const prices = (priceSource: AfterSetupFacts['priceSource']) => resolveAfterSetupRecommendations(
+      { ...everythingApplies, priceSource },
+    ).find((entry) => entry.id === 'after-setup:prices');
+
+    it('says the prices are there and makes the assumed source the owner\'s before opening Devices', () => {
+      // Otherwise turning on Price would reopen the setup path on Prices.
+      const suggestion = prices({ kind: 'priced', scheme: 'homey', chosen: false });
+      expect(suggestion).toMatchObject({
+        title: 'Heat in cheap hours',
+        body: 'PELS already has your prices from Homey Energy. Turn on Price for your heating and hot water '
+          + 'so they heat more in cheap hours.',
+        actionLabel: 'Use these prices',
+        target: { kind: 'keep-price-source', scheme: 'homey' },
+      });
+    });
+
+    it('names the source in force and goes straight to Devices once the owner chose it', () => {
+      expect(prices({ kind: 'priced', scheme: 'powerhour', chosen: true })).toMatchObject({
+        body: expect.stringContaining('from Power by the Hour.'),
+        actionLabel: 'Choose devices',
+        target: { kind: 'panel', panelId: 'devices' },
+      });
+    });
+
+    it('sends a home PELS holds no prices for to set them up', () => {
+      expect(prices({ kind: 'needs_setup' })).toMatchObject({
+        actionLabel: 'Set up prices',
+        target: { kind: 'panel', panelId: 'electricity-prices' },
+      });
+    });
+
+    it('keeps one id across its forms, so a dismissal holds', () => {
+      expect(prices({ kind: 'priced', scheme: 'homey', chosen: false })?.version)
+        .toBe(prices({ kind: 'needs_setup' })?.version);
+    });
   });
 
   it('says nothing while the setup path is open: one thing at a time', () => {

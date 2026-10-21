@@ -37,15 +37,21 @@ const CATEGORY_CHIP: Record<SetupRecommendation['category'], string> = {
   optional: 'Optional',
 };
 
-const isFlowConflictCheck = (recommendation: SetupRecommendation): boolean => (
-  recommendation.target.kind === 'flow-conflict-check'
-  || recommendation.target.kind === 'ev-soc-flow-conflict-check'
-);
+// The actions that wait on Homey rather than open a page, and what their
+// button says meanwhile; any other kind has none.
+const busyActionLabel = (recommendation: SetupRecommendation): string | null => {
+  const { kind } = recommendation.target;
+  if (kind === 'flow-conflict-check' || kind === 'ev-soc-flow-conflict-check') return 'Checking…';
+  return kind === 'keep-price-source' ? 'Saving…' : null;
+};
 
 const RecommendationCard = (props: RecommendationCardProps) => {
   const { recommendation, dismissed, onAction, onDismiss, onRestore } = props;
-  const busy = props.busyRecommendationId !== null
-    && isFlowConflictCheck(recommendation);
+  // One action runs at a time: every card that has one waits, and only the
+  // card that started it says what it is doing.
+  const busyLabel = busyActionLabel(recommendation);
+  const busy = props.busyRecommendationId !== null && busyLabel !== null;
+  const running = busy && props.busyRecommendationId === recommendation.id;
   return (
     <article class="pels-surface-card setup-recommendation-card" data-tone={dismissed ? 'muted' : undefined}>
       <div class="setup-recommendation-card__header">
@@ -62,7 +68,7 @@ const RecommendationCard = (props: RecommendationCardProps) => {
             disabled={busy || undefined}
             onClick={() => onAction(recommendation)}
           >
-            {busy ? 'Checking…' : recommendation.actionLabel}
+            {running ? busyLabel : recommendation.actionLabel}
           </MdFilledTonalButton>
         )}
         {props.dismissalStatus === 'available' && <MdTextButton

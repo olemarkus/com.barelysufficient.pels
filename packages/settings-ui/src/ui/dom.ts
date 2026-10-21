@@ -108,6 +108,9 @@ export const settingsCapacityMarginInput = document.querySelector<MdFilledTextFi
 export const settingsCapacityPeriodSelect = document.querySelector<MdFilledSelectElement>(
   '#settings-capacity-period',
 );
+export const settingsCapacityChoice = document.getElementById('settings-capacity-choice');
+export const settingsCapacityChoiceText = document.getElementById('settings-capacity-choice-text');
+export const settingsCapacityKeepButton = document.getElementById('settings-capacity-keep');
 export const settingsCapacityReactionHint = document.querySelector<HTMLElement>(
   '#settings-capacity-reaction',
 );

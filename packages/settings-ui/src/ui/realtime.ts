@@ -29,7 +29,7 @@ import {
   updatePlanPrices,
 } from './plan.ts';
 import { state } from './state.ts';
-import { loadSetupPrices } from './setupPricesLoad.ts';
+import { refreshAfterSetupRecommendations } from './recommendations.ts';
 import { logSettingsWarn } from './logging.ts';
 import { repaintOverviewWithRescueGate } from './overviewRescueGate.ts';
 import {
@@ -113,8 +113,9 @@ const handlePlanUpdated = (plan: unknown) => {
 const handlePricesUpdated = () => {
   invalidateApiCache(SETTINGS_UI_PRICES_PATH);
   refreshPricesIfVisible('realtime prices_updated');
-  // Prices arriving can finish price setup (Homey Energy had none until now).
-  void loadSetupPrices();
+  // Prices arriving can finish price setup (Homey Energy had none until now),
+  // and change what the price suggestion can say PELS already has.
+  runLoggedTask(refreshAfterSetupRecommendations(), 'Failed to refresh setup suggestions after new prices', 'realtime');
   // The daily-budget chart draws the combined prices too. They live in the
   // app's price cache now, not a settings key, so this push is their only
   // change signal.
