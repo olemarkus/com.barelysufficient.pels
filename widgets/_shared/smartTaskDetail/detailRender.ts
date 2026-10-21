@@ -58,7 +58,7 @@ export const formatTaskValue = (value: number, unitSymbol: '°C' | '%' | 'kWh'):
   return `${text} ${unitSymbol}`;
 };
 
-export const formatTargetSentence = (verb: string, targetValue: number, unitSymbol: '°C' | '%' | 'kWh'): string => (
+const formatTargetSentence = (verb: string, targetValue: number, unitSymbol: '°C' | '%' | 'kWh'): string => (
   `${verb} ${formatTaskValue(targetValue, unitSymbol)}`
 );
 

@@ -51,6 +51,7 @@ const TILE_ELEMENTS = {
   tileView: '[data-tile-view]',
   tileTap: '[data-tile-tap]',
   tileChevron: '[data-tile-chevron]',
+  tileActionText: '[data-tile-action-text]',
   tileName: '[data-tile-name]',
   tileChip: '[data-tile-chip]',
   tileHero: '[data-tile-hero]',
@@ -136,9 +137,13 @@ export const createWidgetController = (
   };
 
   const render = (): void => {
+    // A refresh that closes the panel under the focused Back button hands focus
+    // to the tile, not to the page.
+    const backHadFocus = widgetDocument.activeElement === targets.detailBackBtn;
     const view = currentView();
     root.dataset.view = view === 'flow' ? flow.currentStep() ?? 'tile' : view;
     renderDeviceView(targets, tile, chosen?.name ?? null, view);
+    if (backHadFocus && view === 'tile') targets.tileTap.focus();
   };
 
   const flow = createSmartTaskCreateFlow(
@@ -212,7 +217,6 @@ export const createWidgetController = (
       if (!event.target.closest('[data-detail-back]')) return;
       detailOpen = false;
       render();
-      targets.tileTap.focus();
       return;
     }
     if (event.target.closest('[data-tile-tap]')) activateTile();

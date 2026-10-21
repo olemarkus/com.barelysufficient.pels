@@ -84,8 +84,8 @@ Pick the device in the widget's **Device** setting. The tile shows what the devi
 
 Tap the tile:
 
-- With a Smart task running, the tap opens that task's progress trajectory, the same view as tapping the task in **Smart task list**.
-- With no task running, the tap starts one for this device, the same steps as **Create smart task** without choosing a device.
+- With an open Smart task, including one waiting for its hours or still building its plan, the tap opens that task's progress trajectory, the same view as tapping the task in **Smart task list**.
+- With no open task, the tap starts one for this device, the same steps as **Create smart task** without choosing a device.
 
 A device that cannot take a Smart task shows its status only. The tile grows and shrinks with what it has to show, and refreshes about every 60 seconds.
 

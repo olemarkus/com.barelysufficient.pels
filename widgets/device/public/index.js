@@ -724,7 +724,8 @@
     starting: "PELS is starting. Status shows after the first power reading.",
     loadError: "Could not load this device.",
     smartTaskTitle: "Smart task",
-    // What a tap on the tile does, for assistive tech; the chevron shows it.
+    // What a tap on the tile does, read after the tile's content by assistive
+    // tech; the chevron shows it.
     openTaskAction: "Open the smart task",
     startTaskAction: "Start a smart task"
   };
@@ -732,7 +733,7 @@
     if (reachedAtLabel !== null) return reachedAtLabel.charAt(0).toUpperCase() + reachedAtLabel.slice(1);
     return whyLabel ?? `Ended ${finishedLabel}`;
   };
-  var formatDeviceWidgetFigure = (reading, carName) => reading.kind === "temperature" ? { value: `${reading.currentC.toFixed(1)} \xB0C`, context: `target ${reading.targetC.toFixed(0)} \xB0C` } : { value: `${Math.round(reading.percent)} %`, context: carName ?? "" };
+  var formatDeviceWidgetFigure = (reading, carName) => reading.kind === "temperature" ? { value: `${reading.currentC.toFixed(1)} \xB0C`, context: `target ${reading.targetC.toFixed(0)} \xB0C` } : { value: formatSmartTaskGoalValue(Math.round(reading.percent), "%"), context: carName ?? "" };
 
   // widgets/_shared/widgetRuntime.ts
   var applyPreviewTheme = (widgetDocument, searchParams) => {
@@ -2301,7 +2302,7 @@
     neutral: null,
     held: "warn",
     warning: "warn",
-    resuming: "muted"
+    resuming: null
   };
   var setChipTone = (chip, tone) => {
     if (tone === null) delete chip.dataset.tone;
@@ -2326,8 +2327,8 @@
     const { tileTask, tileTaskGoal, tileTaskChip, tileTaskDeadline, tileTaskWhy, tileTaskNext } = targets;
     setVisible(tileTask, task.kind !== "none");
     if (task.kind === "none") return;
-    const goal = formatTargetSentence(task.row.targetActionVerb, task.row.targetValue, task.row.unitSymbol);
-    tileTaskGoal.textContent = `${C3.smartTaskTitle} \xB7 ${goal}`;
+    const goal = formatSmartTaskGoalValue(task.row.targetValue, task.row.unitSymbol);
+    tileTaskGoal.textContent = `${C3.smartTaskTitle} \xB7 ${task.row.targetActionVerb} ${goal}`;
     if (task.kind === "active") {
       const { row: row2 } = task;
       tileTaskChip.textContent = row2.statusLabel;
@@ -2345,19 +2346,19 @@
     setLine(tileTaskNext, null);
   };
   var renderTileAction = (targets, action) => {
-    const { tileTap, tileChevron } = targets;
+    const { tileTap, tileChevron, tileActionText } = targets;
     setVisible(tileChevron, action !== null);
     if (action === null) {
       tileTap.removeAttribute("role");
       tileTap.removeAttribute("tabindex");
-      tileTap.removeAttribute("aria-label");
       delete tileTap.dataset.action;
+      tileActionText.textContent = "";
       return;
     }
     tileTap.setAttribute("role", "button");
     tileTap.setAttribute("tabindex", "0");
-    tileTap.setAttribute("aria-label", action.kind === "open_task" ? C3.openTaskAction : C3.startTaskAction);
     tileTap.dataset.action = action.kind;
+    tileActionText.textContent = action.kind === "open_task" ? C3.openTaskAction : C3.startTaskAction;
   };
   var renderDevice = (targets, payload) => {
     const { device, task } = payload;
@@ -2430,6 +2431,7 @@
     tileView: "[data-tile-view]",
     tileTap: "[data-tile-tap]",
     tileChevron: "[data-tile-chevron]",
+    tileActionText: "[data-tile-action-text]",
     tileName: "[data-tile-name]",
     tileChip: "[data-tile-chip]",
     tileHero: "[data-tile-hero]",
@@ -2488,9 +2490,11 @@
       return detailOpen ? "detail" : "tile";
     };
     const render = () => {
+      const backHadFocus = widgetDocument.activeElement === targets.detailBackBtn;
       const view = currentView();
       root.dataset.view = view === "flow" ? flow.currentStep() ?? "tile" : view;
       renderDeviceView(targets, tile, chosen?.name ?? null, view);
+      if (backHadFocus && view === "tile") targets.tileTap.focus();
     };
     const flow = createSmartTaskCreateFlow(
       targets,
@@ -2555,7 +2559,6 @@
         if (!event.target.closest("[data-detail-back]")) return;
         detailOpen = false;
         render();
-        targets.tileTap.focus();
         return;
       }
       if (event.target.closest("[data-tile-tap]")) activateTile();

@@ -66,7 +66,9 @@ describe('Device insight widget browser', () => {
     // Limited is the state the status chip colours; no task, so a tap starts one.
     expect(document.querySelector<HTMLElement>('[data-tile-chip]')?.dataset.tone).toBe('warn');
     expect(tap()?.getAttribute('role')).toBe('button');
-    expect(tap()?.getAttribute('aria-label')).toBe(DEVICE_WIDGET_COPY.startTaskAction);
+    expect(text('[data-tile-action-text]')).toBe(DEVICE_WIDGET_COPY.startTaskAction);
+    // The button is named by its content, so the status stays audible.
+    expect(tap()?.hasAttribute('aria-label')).toBe(false);
     expect(shown('[data-tile-chevron]')).toBe(true);
   });
 
@@ -74,13 +76,13 @@ describe('Device insight widget browser', () => {
     await connect(resolveDeviceWidgetPreviewPayload('ev'));
     // A running device reads as plain status; colour is for limits and task outcomes.
     expect(document.querySelector<HTMLElement>('[data-tile-chip]')?.dataset.tone).toBeUndefined();
-    expect(text('[data-tile-figure]')).toBe('58 %');
+    expect(text('[data-tile-figure]')).toBe('58%');
     expect(text('[data-tile-figure-context]')).toBe('Model Y');
     // The fact line ("Charging · 58 % · level 16 A") would repeat the figure.
     expect(shown('[data-tile-fact]')).toBe(false);
-    expect(text('[data-tile-task-goal]')).toBe('Smart task · Charge to 80 %');
+    expect(text('[data-tile-task-goal]')).toBe('Smart task · Charge to 80%');
     expect(text('[data-tile-task-next]')).toBe('Next run 02:00');
-    expect(tap()?.getAttribute('aria-label')).toBe(DEVICE_WIDGET_COPY.openTaskAction);
+    expect(text('[data-tile-action-text]')).toBe(DEVICE_WIDGET_COPY.openTaskAction);
     (document.querySelector('[data-tile-name]') as HTMLElement).click();
     expect(view()).toBe('detail');
     expect(shown('[data-tile-view]')).toBe(false);
@@ -93,6 +95,32 @@ describe('Device insight widget browser', () => {
     expect(shown('[data-detail-view]')).toBe(false);
   });
 
+  test('a refresh that finds the task ended closes the detail and keeps focus on the tile', async () => {
+    vi.useFakeTimers();
+    try {
+      let reads = 0;
+      const homey: WidgetHomey = {
+        getSettings: () => ({ device: { id: 'ev', name: 'Garage charger' } }),
+        ready: () => undefined,
+        api: async () => {
+          reads += 1;
+          return resolveDeviceWidgetPreviewPayload(reads === 1 ? 'ev' : 'nocar');
+        },
+      };
+      installWidget(window as WidgetWindow, document);
+      (window as WidgetWindow).onHomeyReady?.(homey as never);
+      await flushPromises();
+      tap()?.click();
+      expect(view()).toBe('detail');
+      expect(document.activeElement).toBe(document.querySelector('[data-detail-back]'));
+      await vi.advanceTimersByTimeAsync(61_000);
+      expect(view()).toBe('tile');
+      expect(document.activeElement).toBe(tap());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('Enter on the tile opens it, like a tap', async () => {
     await connect(resolveDeviceWidgetPreviewPayload('ev'));
     tap()?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -103,6 +131,7 @@ describe('Device insight widget browser', () => {
     await connect(resolveDeviceWidgetPreviewPayload('plain'));
     expect(tap()?.hasAttribute('role')).toBe(false);
     expect(shown('[data-tile-chevron]')).toBe(false);
+    expect(text('[data-tile-action-text]')).toBe('');
     (document.querySelector('[data-tile-name]') as HTMLElement).click();
     expect(view()).toBe('tile');
   });
@@ -161,7 +190,7 @@ describe('Device insight widget browser', () => {
       reload.resolve(resolveDeviceWidgetPreviewPayload('ev'));
       await flushPromises();
       expect(view()).toBe('tile');
-      expect(tap()?.getAttribute('aria-label')).toBe(DEVICE_WIDGET_COPY.openTaskAction);
+      expect(text('[data-tile-action-text]')).toBe(DEVICE_WIDGET_COPY.openTaskAction);
     } finally {
       vi.useRealTimers();
     }

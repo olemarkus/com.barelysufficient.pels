@@ -26,10 +26,22 @@
 }
 
 .tile-tap {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--pw-su-2, 8px);
   border-radius: var(--pw-radius-small, 6px);
+}
+
+/* What a tap does, read out at the end of the tile's own content (a button
+   takes its name from its content, so the status stays audible). */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* With an action the whole tile is the tap target (role="button"). */

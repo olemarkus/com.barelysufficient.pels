@@ -2,12 +2,12 @@ import {
   DEVICE_WIDGET_COPY,
   formatDeviceWidgetEndedDetail,
   formatDeviceWidgetFigure,
+  formatSmartTaskGoalValue,
 } from '../../../../packages/shared-domain/src/deadlineLabels';
 import { hide, setLine, setVisible } from '../../../_shared/widgetDom';
 import type { FlowTargets } from '../../../_shared/smartTaskCreate/flowView';
 import type { CreateSmartTaskDevice } from '../../../_shared/smartTaskCreate/types';
 import {
-  formatTargetSentence,
   renderActiveDetail,
   type DetailTargets,
 } from '../../../_shared/smartTaskDetail/detailRender';
@@ -25,6 +25,7 @@ export type RenderTargets = FlowTargets & DetailTargets & {
   tileView: HTMLElement;
   tileTap: HTMLElement;
   tileChevron: HTMLElement;
+  tileActionText: HTMLElement;
   tileName: HTMLElement;
   tileChip: HTMLElement;
   tileHero: HTMLElement;
@@ -64,14 +65,15 @@ export const resolveTileAction = (state: TileState): TileAction => {
 };
 
 // The device's status tone on the shared chip: a limited or warning state is
-// the only one the chip colours; running, idle and off read as plain status.
+// the only one the chip colours; running, resuming, idle and off read as plain
+// status.
 const STATUS_CHIP_TONE: Record<DeviceStatus['tone'], string | null> = {
   active: null,
   idle: null,
   neutral: null,
   held: 'warn',
   warning: 'warn',
-  resuming: 'muted',
+  resuming: null,
 };
 
 const setChipTone = (chip: HTMLElement, tone: string | null): void => {
@@ -107,8 +109,8 @@ const renderTask = (targets: RenderTargets, task: DeviceWidgetTask): void => {
   const { tileTask, tileTaskGoal, tileTaskChip, tileTaskDeadline, tileTaskWhy, tileTaskNext } = targets;
   setVisible(tileTask, task.kind !== 'none');
   if (task.kind === 'none') return;
-  const goal = formatTargetSentence(task.row.targetActionVerb, task.row.targetValue, task.row.unitSymbol);
-  tileTaskGoal.textContent = `${C.smartTaskTitle} · ${goal}`;
+  const goal = formatSmartTaskGoalValue(task.row.targetValue, task.row.unitSymbol);
+  tileTaskGoal.textContent = `${C.smartTaskTitle} · ${task.row.targetActionVerb} ${goal}`;
   if (task.kind === 'active') {
     const { row } = task;
     tileTaskChip.textContent = row.statusLabel;
@@ -127,21 +129,22 @@ const renderTask = (targets: RenderTargets, task: DeviceWidgetTask): void => {
 };
 
 // The tile is one tap target while it has an action: a button to assistive
-// tech, with a chevron to the eye.
+// tech, named by its own content plus what a tap does, with a chevron to the
+// eye.
 const renderTileAction = (targets: RenderTargets, action: TileAction): void => {
-  const { tileTap, tileChevron } = targets;
+  const { tileTap, tileChevron, tileActionText } = targets;
   setVisible(tileChevron, action !== null);
   if (action === null) {
     tileTap.removeAttribute('role');
     tileTap.removeAttribute('tabindex');
-    tileTap.removeAttribute('aria-label');
     delete tileTap.dataset.action;
+    tileActionText.textContent = '';
     return;
   }
   tileTap.setAttribute('role', 'button');
   tileTap.setAttribute('tabindex', '0');
-  tileTap.setAttribute('aria-label', action.kind === 'open_task' ? C.openTaskAction : C.startTaskAction);
   tileTap.dataset.action = action.kind;
+  tileActionText.textContent = action.kind === 'open_task' ? C.openTaskAction : C.startTaskAction;
 };
 
 const renderDevice = (targets: RenderTargets, payload: Extract<DeviceWidgetPayload, { state: 'ready' }>): void => {

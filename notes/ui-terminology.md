@@ -681,11 +681,11 @@ The picker names say what each widget does: **Create smart task** (`create_smart
 | Concept | Text |
 |---|---|
 | Tile status chip | The overview state word (`Charging`, `Limited`); only a limited or warning state is coloured |
-| Lead figure | `54.0 °C` with `target 65 °C`, or `58 %` with the car's name |
-| Task block title | `Smart task · Charge to 80 %` |
+| Lead figure | `54.0 °C` with `target 65 °C`, or `58%` with the car's name (`formatSmartTaskGoalValue` spacing) |
+| Task block title | `Smart task · Charge to 80%` |
 | Next planned hour | `Next run 02:00`, or `Planned to run now` |
 | Ended task (rest of the day) | `Reached at 05:42`, else why it was missed, else `Ended Today 06:00` |
-| What a tap does (screen reader) | `Open the smart task` with a task running, else `Start a smart task` |
+| What a tap does (read after the tile's content) | `Open the smart task` with an open task (queued or building a plan included), else `Start a smart task` |
 | No device chosen | `Choose a device in the widget settings.` |
 
 ## Home battery vocabulary

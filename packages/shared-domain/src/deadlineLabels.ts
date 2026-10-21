@@ -3505,7 +3505,8 @@ export const DEVICE_WIDGET_COPY = {
   starting: 'PELS is starting. Status shows after the first power reading.',
   loadError: 'Could not load this device.',
   smartTaskTitle: 'Smart task',
-  // What a tap on the tile does, for assistive tech; the chevron shows it.
+  // What a tap on the tile does, read after the tile's content by assistive
+  // tech; the chevron shows it.
   openTaskAction: 'Open the smart task',
   startTaskAction: 'Start a smart task',
 } as const;
@@ -3527,12 +3528,12 @@ export const formatDeviceWidgetEndedDetail = (
 };
 
 // The tile's lead figure from a status reading: "54.0 °C" with "target 65 °C",
-// or "58 %" with the linked car's name. Same figures the fact line words.
+// or "58%" with the linked car's name, spaced as smart-task goals are.
 export const formatDeviceWidgetFigure = (
   reading: DeviceStatusReading,
   carName: string | null,
 ): { value: string; context: string } => (
   reading.kind === 'temperature'
     ? { value: `${reading.currentC.toFixed(1)} °C`, context: `target ${reading.targetC.toFixed(0)} °C` }
-    : { value: `${Math.round(reading.percent)} %`, context: carName ?? '' }
+    : { value: formatSmartTaskGoalValue(Math.round(reading.percent), '%'), context: carName ?? '' }
 );
