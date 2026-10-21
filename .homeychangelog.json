@@ -664,5 +664,8 @@
   },
   "3.18.2": {
     "en": "EV chargers and other devices with power levels now step up faster when there is room. PELS raises them as far as the available power allows in one go, instead of one part of the way every five minutes.\n\nIn a home with two cars and two chargers, each car now gets matched to the charger it is selected for, even when both cars are plugged in at the same time. Before, neither charger got a battery level for that charge. If your cars use either charger, select both cars on both chargers. The charger's Car section now says Matched to this charger now for the car that is plugged in."
+  },
+  "3.19.0": {
+    "en": "New Device insight widget: pick one managed device and see its status, its own figure such as temperature against target or battery level, why PELS is limiting it, and its smart task. Tap the tile to open its smart task, or to create one for that device. The other two smart task widgets are now called Create smart task and Smart task list.\n\nWhen a car app is slow to report the plug-in, you can now tell PELS which car is connected. Use Confirm connected car in the charger's Car section, or the new Flow cards: a trigger when no car is matched after a wait you choose, a waiting condition, and an action that associates a car for this connection. A smart task that waits for this now says it is waiting to identify the connected car."
   }
 }
