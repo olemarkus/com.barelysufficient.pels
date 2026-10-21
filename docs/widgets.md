@@ -5,7 +5,7 @@ description: Pin PELS widgets to a Homey dashboard to watch available power, ele
 
 # Dashboard Widgets
 
-PELS ships six small widgets you can pin to a Homey dashboard. Most show status at a glance and refresh on their own; two are interactive — **New smart task** lets you create a task and **Held-back devices** lets you release one — straight from the dashboard.
+PELS ships seven small widgets you can pin to a Homey dashboard. Most show status at a glance and refresh on their own; three are interactive, straight from the dashboard: **Create smart task** creates a task, **Device insight** shows one device and opens or starts its task, and **Held-back devices** releases a held device.
 
 Add any widget from your Homey dashboard's widget picker, then place it where you want.
 
@@ -46,11 +46,11 @@ Answers **"where will today land?"**
 
 The widget shows today's hourly plan as a chart — managed and background usage against the daily budget — with the cheaper and more expensive hours marked, a now-line, and a projected end-of-day total in kWh and money. Use it to see at a glance whether the day is tracking to plan and which hours are the cheap ones.
 
-## Smart tasks
+## Smart task list
 
 Answers **"are my smart tasks on track?"**
 
-![Smart tasks widget listing three tasks ranked by attention needed, each with a status chip and ready-by time](/screenshots/widgets/smart-tasks.png)
+![Smart task list widget listing three tasks ranked by attention needed, each with a status chip and ready-by time](/screenshots/widgets/smart-tasks.png)
 
 The widget lists up to three active Smart tasks, ranked by how much attention they need: tasks PELS expects to miss first, then at-risk, then pending, then on-track. Satisfied tasks drop off automatically.
 
@@ -66,29 +66,42 @@ If you have more than three active Smart tasks, a small `+N in Smart tasks` line
 
 Tap any row to open a compact **progress trajectory**: the planned line (where PELS expects the device to be heading toward its target) overlaid with the measured line (where it actually is so far), against a dashed target reference, with the hours PELS scheduled shaded behind them. A colour-coded legend names each line and the target value, so you can see at a glance whether a task is keeping up with its plan or falling behind.
 
-![Smart tasks widget detail: a planned-vs-measured progress trajectory for an at-risk task, with the measured line tracking below the plan toward a dashed target line](/screenshots/widgets/smart-tasks-detail.png)
+![Smart task list widget detail: a planned-vs-measured progress trajectory for an at-risk task, with the measured line tracking below the plan toward a dashed target line](/screenshots/widgets/smart-tasks-detail.png)
 
 ### Recently ended tasks
 
 Below the active list, a **Recently ended** section shows tasks that finished in the last 24 hours — whether they reached their target, missed it, or were abandoned — each with an outcome chip and the time it ended. Tap one to see how the run actually played out against its plan. When the list is longer than the widget, scroll it inside the widget to reach the rest.
 
-![Smart tasks widget: a Recently ended section listing a succeeded and a missed task, and the trajectory detail of a succeeded EV charge reaching its target](/screenshots/widgets/smart-tasks-ended.png)
+![Smart task list widget: a Recently ended section listing a succeeded and a missed task, and the trajectory detail of a succeeded EV charge reaching its target](/screenshots/widgets/smart-tasks-ended.png)
 
 The widget refreshes about every 60 seconds.
 
-## New smart task
+## Device insight
+
+Answers **"how is this one device doing, and is its task on track?"**
+
+Pick the device in the widget's **Device** setting. The tile shows what the device page's status shows: its state, its figure (temperature against target, or the car's battery level), its power, and the reason when PELS is limiting it. When the device has a Smart task, a block under it shows the goal, the **Ready by** time, the status chip and when it next runs. A task that ended today stays on the tile with its outcome for the rest of the day.
+
+Tap the tile:
+
+- With a Smart task running, the tap opens that task's progress trajectory, the same view as tapping the task in **Smart task list**.
+- With no task running, the tap starts one for this device, the same steps as **Create smart task** without choosing a device.
+
+A device that cannot take a Smart task shows its status only. The tile grows and shrinks with what it has to show, and refreshes about every 60 seconds.
+
+## Create smart task
 
 Answers **"get this device ready by a time — without building a Flow."**
 
-An interactive widget that creates a Smart task in a few taps: pick an eligible device (thermostat, water heater, or EV charger), type the goal and a specific **Ready by** time or use the preset shortcuts, then preview and confirm. The resolved day is shown so you can check whether the time is today or tomorrow. The preview shows the hours PELS would pick, the estimated cost, and a price curve with the chosen hours highlighted. An optional **Extra permissions** section lets a task go over the daily budget or limit lower-priority devices — both still stay within the hard cap. (A third permission, **reserve power so this task can start sooner**, is available from Flow.)
+An interactive widget that creates a Smart task in a few taps: pick an eligible device (thermostat, water heater, or EV charger), then tap one of the quick targets, each timed to finish soon after the earliest possible time, or **Customize** to set the goal and a specific **Ready by** time, then preview and confirm. The resolved day is shown so you can check whether the time is today or tomorrow. The preview shows the hours PELS would pick, the estimated cost, and a price curve with the chosen hours highlighted. An optional **Extra permissions** section lets a task go over the daily budget or limit lower-priority devices — both still stay within the hard cap. (A third permission, **reserve power so this task can start sooner**, is available from Flow.)
 
-![New smart task widget, step 1: choosing an eligible device](/screenshots/widgets/new-smart-task-1-pick-device.png)
+![Create smart task widget, step 1: choosing an eligible device](/screenshots/widgets/new-smart-task-1-pick-device.png)
 *Step 1 — pick an eligible device.*
 
-![New smart task widget, step 2: setting the goal temperature and a ready-by time](/screenshots/widgets/new-smart-task-2-set-goal.png)
+![Create smart task widget, step 2: setting the goal temperature and a ready-by time](/screenshots/widgets/new-smart-task-2-set-goal.png)
 *Step 2 — set the goal and a **Ready by** time (with optional **Extra permissions**).*
 
-![New smart task widget, step 3: the preview with estimated cost and a price curve highlighting the chosen hours](/screenshots/widgets/new-smart-task-3-preview.png)
+![Create smart task widget, step 3: the preview with estimated cost and a price curve highlighting the chosen hours](/screenshots/widgets/new-smart-task-3-preview.png)
 *Step 3 — preview the cost and chosen hours, then confirm.*
 
 The preview is honest about whether the task can be created:
@@ -121,8 +134,9 @@ The one row without the button is a device that already has its own Smart task: 
 - **Available power** — a constant read on capacity pressure when you run heavy loads (an EV charger, a sauna, a wallbox heater).
 - **Electricity price** — to see whether power is cheap or expensive now, and when that changes.
 - **Budget and Price** — to see where today's energy and cost will land, and which hours are cheapest.
-- **Smart tasks** — when you depend on smart-task deadlines; the widget turns red before you'd otherwise notice a miss.
-- **New smart task** — to set a one-off ready-by goal without opening the app or building a Flow.
+- **Smart task list** — when you depend on smart-task deadlines; the widget turns red before you'd otherwise notice a miss.
+- **Device insight** — to keep one important device, such as the EV charger or water heater, and its task in view.
+- **Create smart task** — to set a one-off ready-by goal without opening the app or building a Flow.
 - **Held-back devices** — to see which devices PELS has kept below their target, and optionally let one run now.
 
 All widgets read from the same data PELS already maintains for the app itself, so adding them costs nothing in extra polling or device traffic.

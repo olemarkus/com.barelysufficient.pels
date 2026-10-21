@@ -37,7 +37,7 @@
   var SMART_TASK_EXTRA_PERMISSIONS_TITLE = "Extra permissions";
   var CREATE_SMART_TASK_WIDGET_COPY = {
     // Step 1 — device picker.
-    pickDeviceTitle: "New smart task",
+    pickDeviceTitle: "Create smart task",
     pickDevicePrompt: "Choose a device",
     emptyNoDevices: "No eligible devices",
     // Warmer than a bare capability list: name the device kinds AND the next
@@ -952,9 +952,6 @@
     ]
   };
 
-  // widgets/smart_tasks/src/smartTasksWidgetConstants.ts
-  var EMPTY_SUBTITLE_DEFAULT = SMART_TASK_WIDGET_EMPTY_SUBTITLE;
-
   // widgets/_shared/widgetDom.ts
   var clearChildren = (node) => {
     while (node.firstChild) node.removeChild(node.firstChild);
@@ -979,7 +976,7 @@
     return node;
   };
 
-  // widgets/smart_tasks/src/public/trajectoryChart.ts
+  // widgets/_shared/smartTaskDetail/trajectoryChart.ts
   var MIN_LINE_POINTS = 2;
   var isDrawableLine = (points) => (points?.length ?? 0) >= MIN_LINE_POINTS;
   var FALLBACK_SIZE = { width: 480, height: 96 };
@@ -1200,21 +1197,102 @@
     return true;
   };
 
-  // widgets/smart_tasks/src/public/render.ts
-  var formatValue = (value, unitSymbol) => {
+  // widgets/_shared/smartTaskDetail/detailRender.ts
+  var DETAIL_ELEMENTS = {
+    detailView: "[data-detail-view]",
+    detailHeaderEl: "[data-detail-name]",
+    detailChipEl: "[data-detail-chip]",
+    detailDeadlineEl: "[data-detail-deadline]",
+    detailChartEl: "[data-detail-chart]",
+    detailTargetEl: "[data-detail-target]",
+    detailWhyEl: "[data-detail-why]",
+    detailRecourseEl: "[data-detail-recourse]",
+    detailMetaEl: "[data-detail-meta]",
+    detailConfidenceEl: "[data-detail-confidence]"
+  };
+  var resolveDetailTargets = (widgetDocument) => {
+    const elements = {};
+    for (const [key, selector] of Object.entries(DETAIL_ELEMENTS)) {
+      const element = widgetDocument.querySelector(selector);
+      if (!(element instanceof HTMLElement)) return null;
+      elements[key] = element;
+    }
+    const detailBackBtn = widgetDocument.querySelector("[data-detail-back]");
+    if (!(detailBackBtn instanceof HTMLButtonElement)) return null;
+    return { ...elements, detailBackBtn };
+  };
+  var formatTaskValue = (value, unitSymbol) => {
     const rounded = Math.round(value * 10) / 10;
     const text = rounded % 1 === 0 ? `${Math.round(rounded)}` : rounded.toFixed(1);
     return `${text} ${unitSymbol}`;
   };
+  var formatTargetSentence = (verb, targetValue, unitSymbol) => `${verb} ${formatTaskValue(targetValue, unitSymbol)}`;
+  var renderChart = (el, chart) => {
+    el.hidden = false;
+    const drawn = chart !== null && renderTrajectoryChart(el, chart);
+    el.hidden = !drawn;
+  };
+  var renderActiveDetail = (targets, row) => {
+    const {
+      detailHeaderEl,
+      detailChipEl,
+      detailDeadlineEl,
+      detailChartEl,
+      detailTargetEl,
+      detailWhyEl,
+      detailRecourseEl,
+      detailMetaEl,
+      detailConfidenceEl
+    } = targets;
+    detailHeaderEl.textContent = row.deviceName;
+    detailChipEl.textContent = row.statusLabel;
+    detailChipEl.dataset.tone = row.tone;
+    setLine(detailDeadlineEl, `${row.etaVerb} ${row.deadlineLongLabel}`);
+    detailTargetEl.textContent = formatTargetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
+    detailTargetEl.hidden = false;
+    setLine(detailWhyEl, row.whyLabel);
+    setLine(detailRecourseEl, row.recourseHint);
+    setLine(detailMetaEl, row.planMetaLabel);
+    setLine(detailConfidenceEl, row.confidenceLabel);
+    renderChart(detailChartEl, row.chart);
+  };
+  var renderEndedDetail = (targets, row) => {
+    const {
+      detailHeaderEl,
+      detailChipEl,
+      detailDeadlineEl,
+      detailChartEl,
+      detailTargetEl,
+      detailWhyEl,
+      detailRecourseEl,
+      detailMetaEl,
+      detailConfidenceEl
+    } = targets;
+    detailHeaderEl.textContent = row.deviceName;
+    detailChipEl.textContent = row.outcomeLabel;
+    detailChipEl.dataset.tone = row.outcomeTone;
+    setLine(detailDeadlineEl, row.finishedLabel);
+    detailTargetEl.textContent = row.progressLabel ?? formatTargetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
+    detailTargetEl.hidden = false;
+    setLine(detailWhyEl, row.reachedAtLabel ?? row.whyLabel);
+    setLine(detailRecourseEl, row.recourseHint);
+    setLine(detailMetaEl, null);
+    setLine(detailConfidenceEl, null);
+    renderChart(detailChartEl, row.chart);
+  };
+
+  // widgets/smart_tasks/src/smartTasksWidgetConstants.ts
+  var EMPTY_SUBTITLE_DEFAULT = SMART_TASK_WIDGET_EMPTY_SUBTITLE;
+
+  // widgets/smart_tasks/src/public/render.ts
   var formatValuesLine = (row) => {
-    const target = formatValue(row.targetValue, row.unitSymbol);
+    const target = formatTaskValue(row.targetValue, row.unitSymbol);
     if (row.currentValue === null || !Number.isFinite(row.currentValue)) {
       return `${row.targetNoun} ${target}`;
     }
-    return `${formatValue(row.currentValue, row.unitSymbol)} \u2192 ${target}`;
+    return `${formatTaskValue(row.currentValue, row.unitSymbol)} \u2192 ${target}`;
   };
   var formatRowEta = (row) => `${row.etaVerb} ${row.finishLabel}`;
-  var targetSentence = (verb, targetValue, unitSymbol) => `${verb} ${formatValue(targetValue, unitSymbol)}`;
   var renderRow = (template, row) => {
     const fragment = template.content.cloneNode(true);
     const li = fragment.querySelector(".row");
@@ -1261,7 +1339,7 @@
     const chipEl = li.querySelector("[data-ended-chip]");
     if (nameEl instanceof HTMLElement) nameEl.textContent = row.deviceName;
     if (valuesEl instanceof HTMLElement) {
-      valuesEl.textContent = `${SMART_TASK_WIDGET_TARGET_NOUN} ${formatValue(row.targetValue, row.unitSymbol)}`;
+      valuesEl.textContent = `${SMART_TASK_WIDGET_TARGET_NOUN} ${formatTaskValue(row.targetValue, row.unitSymbol)}`;
     }
     if (finishedEl instanceof HTMLElement) finishedEl.textContent = row.finishedLabel;
     if (chipEl instanceof HTMLElement) {
@@ -1322,59 +1400,6 @@
       emptyHintEl.hidden = true;
     }
     overflowEl.hidden = true;
-  };
-  var renderChart = (el, chart) => {
-    el.hidden = false;
-    const drawn = chart !== null && renderTrajectoryChart(el, chart);
-    el.hidden = !drawn;
-  };
-  var renderActiveDetail = (targets, row) => {
-    const {
-      detailHeaderEl,
-      detailChipEl,
-      detailDeadlineEl,
-      detailChartEl,
-      detailTargetEl,
-      detailWhyEl,
-      detailRecourseEl,
-      detailMetaEl,
-      detailConfidenceEl
-    } = targets;
-    detailHeaderEl.textContent = row.deviceName;
-    detailChipEl.textContent = row.statusLabel;
-    detailChipEl.dataset.tone = row.tone;
-    setLine(detailDeadlineEl, `${row.etaVerb} ${row.deadlineLongLabel}`);
-    detailTargetEl.textContent = targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
-    detailTargetEl.hidden = false;
-    setLine(detailWhyEl, row.whyLabel);
-    setLine(detailRecourseEl, row.recourseHint);
-    setLine(detailMetaEl, row.planMetaLabel);
-    setLine(detailConfidenceEl, row.confidenceLabel);
-    renderChart(detailChartEl, row.chart);
-  };
-  var renderEndedDetail = (targets, row) => {
-    const {
-      detailHeaderEl,
-      detailChipEl,
-      detailDeadlineEl,
-      detailChartEl,
-      detailTargetEl,
-      detailWhyEl,
-      detailRecourseEl,
-      detailMetaEl,
-      detailConfidenceEl
-    } = targets;
-    detailHeaderEl.textContent = row.deviceName;
-    detailChipEl.textContent = row.outcomeLabel;
-    detailChipEl.dataset.tone = row.outcomeTone;
-    setLine(detailDeadlineEl, row.finishedLabel);
-    detailTargetEl.textContent = row.progressLabel ?? targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
-    detailTargetEl.hidden = false;
-    setLine(detailWhyEl, row.reachedAtLabel ?? row.whyLabel);
-    setLine(detailRecourseEl, row.recourseHint);
-    setLine(detailMetaEl, null);
-    setLine(detailConfidenceEl, null);
-    renderChart(detailChartEl, row.chart);
   };
   var fallBackToList = (targets, payload) => {
     const { root, listView, detailView } = targets;
@@ -1500,23 +1525,13 @@
   };
   var GENERIC_TARGET_SELECTORS = {
     listView: "[data-list-view]",
-    detailView: "[data-detail-view]",
     rowsList: "[data-rows]",
     emptyEl: "[data-empty]",
     emptyHintEl: "[data-empty-hint]",
     overflowEl: "[data-overflow]",
     endedSectionEl: "[data-ended-section]",
     endedHeadingEl: "[data-ended-heading]",
-    endedRowsList: "[data-ended-rows]",
-    detailHeaderEl: "[data-detail-name]",
-    detailChipEl: "[data-detail-chip]",
-    detailDeadlineEl: "[data-detail-deadline]",
-    detailChartEl: "[data-detail-chart]",
-    detailTargetEl: "[data-detail-target]",
-    detailWhyEl: "[data-detail-why]",
-    detailRecourseEl: "[data-detail-recourse]",
-    detailMetaEl: "[data-detail-meta]",
-    detailConfidenceEl: "[data-detail-confidence]"
+    endedRowsList: "[data-ended-rows]"
   };
   var resolveGenericTargets = (widgetDocument) => {
     const entries = Object.entries(GENERIC_TARGET_SELECTORS).map(([key, selector]) => {
@@ -1530,12 +1545,12 @@
     const root = widgetDocument.getElementById("widget-root");
     const rowTemplate = widgetDocument.getElementById("row-template");
     const endedRowTemplate = widgetDocument.getElementById("ended-row-template");
-    const detailBackBtn = widgetDocument.querySelector("[data-detail-back]");
+    const detail = resolveDetailTargets(widgetDocument);
     const generic = resolveGenericTargets(widgetDocument);
-    if (!(root instanceof HTMLElement) || !(rowTemplate instanceof HTMLTemplateElement) || !(endedRowTemplate instanceof HTMLTemplateElement) || !(detailBackBtn instanceof HTMLButtonElement) || generic === null) {
+    if (!(root instanceof HTMLElement) || !(rowTemplate instanceof HTMLTemplateElement) || !(endedRowTemplate instanceof HTMLTemplateElement) || detail === null || generic === null) {
       return null;
     }
-    return { root, rowTemplate, endedRowTemplate, detailBackBtn, ...generic };
+    return { root, rowTemplate, endedRowTemplate, ...detail, ...generic };
   };
   var createWidgetController = (params) => {
     const { targets, widgetDocument, widgetWindow } = params;

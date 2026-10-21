@@ -2446,7 +2446,7 @@
   "widgets": {
     "create_smart_task": {
       "name": {
-        "en": "New smart task"
+        "en": "Create smart task"
       },
       "height": 380,
       "api": {
@@ -2476,7 +2476,7 @@
     },
     "device": {
       "name": {
-        "en": "Device"
+        "en": "Device insight"
       },
       "height": 160,
       "settings": [
@@ -2620,7 +2620,7 @@
     },
     "smart_tasks": {
       "name": {
-        "en": "Smart tasks"
+        "en": "Smart task list"
       },
       "height": "100%",
       "api": {

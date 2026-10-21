@@ -79,7 +79,12 @@ describe('Device widget read', () => {
     expect(payload).toMatchObject({
       state: 'ready',
       // Queued: its why line names when the cheaper hours start, so no "Next run" repeats it.
-      task: { kind: 'active', goalLabel: 'Heat to 65 °C', whyLabel: expect.stringMatching(/\d\d:\d\d/), nextRunLabel: null },
+      // The task travels as the Smart task list's row, so a tap opens the same detail.
+      task: {
+        kind: 'active',
+        row: { deviceId: 'heater', targetActionVerb: 'Heat to', targetValue: 65, whyLabel: expect.stringMatching(/\d\d:\d\d/) },
+        nextRunLabel: null,
+      },
       createDevice: null,
     });
   });

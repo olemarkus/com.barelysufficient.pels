@@ -3,40 +3,41 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Device</title>
+    <title>Device insight</title>
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="./index.css">
   </head>
   <body class="homey-widget-small">
-    <main id="widget-root" class="widget-root" data-view="tile" aria-label="Device">
-      <!-- The device tile: status, smart task, and the "+ Smart task" action -->
+    <main id="widget-root" class="widget-root" data-view="tile" aria-label="Device insight">
+      <!-- The device tile: status and smart task. The whole tile is the tap
+           target (the task's detail, or the creation flow) when it has one. -->
       <section class="tile-view" data-tile-view>
-        <div class="tile-head">
-          <p class="tile-name" data-tile-name></p>
-          <span class="tile-chip" data-tile-chip hidden></span>
-        </div>
-        <div class="tile-hero" data-tile-hero hidden>
-          <p class="tile-figure">
-            <span class="tile-figure__value" data-tile-figure></span>
-            <span class="tile-figure__context" data-tile-figure-context></span>
-          </p>
-          <p class="tile-power" data-tile-power hidden></p>
-        </div>
-        <p class="tile-reason" data-tile-reason hidden></p>
-        <p class="tile-fact" data-tile-fact hidden></p>
-        <div class="tile-task" data-tile-task hidden>
-          <div class="tile-task__head">
-            <p class="tile-task__goal" data-tile-task-goal></p>
-            <span class="tile-chip" data-tile-task-chip></span>
+        <div class="tile-tap" data-tile-tap>
+          <div class="tile-head">
+            <p class="tile-name" data-tile-name></p>
+            <span class="chip" data-tile-chip hidden></span>
+            <span class="tile-chevron" data-tile-chevron aria-hidden="true" hidden></span>
           </div>
-          <p class="tile-task__line" data-tile-task-deadline hidden></p>
-          <p class="tile-task__line" data-tile-task-why hidden></p>
-          <p class="tile-task__line" data-tile-task-next hidden></p>
+          <div class="tile-hero" data-tile-hero hidden>
+            <p class="tile-figure">
+              <span class="tile-figure__value" data-tile-figure></span>
+              <span class="tile-figure__context" data-tile-figure-context></span>
+            </p>
+            <p class="tile-power" data-tile-power hidden></p>
+          </div>
+          <p class="tile-reason" data-tile-reason hidden></p>
+          <p class="tile-fact" data-tile-fact hidden></p>
+          <div class="tile-task" data-tile-task hidden>
+            <div class="tile-task__head">
+              <p class="tile-task__goal" data-tile-task-goal></p>
+              <span class="chip" data-tile-task-chip></span>
+            </div>
+            <p class="tile-task__line" data-tile-task-deadline hidden></p>
+            <p class="tile-task__line" data-tile-task-why hidden></p>
+            <p class="tile-task__line" data-tile-task-next hidden></p>
+          </div>
+          <p class="tile-message" data-tile-message hidden></p>
         </div>
-        <div class="tile-foot" data-tile-foot hidden>
-          <button type="button" class="tile-action" data-tile-add-task><span class="tile-action__label" data-tile-add-task-label>+ Smart task</span></button>
-        </div>
-        <p class="tile-message" data-tile-message hidden></p>
       </section>
 
       <!-- smart-task-create-flow:start (shared with the Device widget; keep identical) -->
@@ -148,6 +149,27 @@
         <p class="created-msg" data-created-msg></p>
       </section>
       <!-- smart-task-create-flow:end -->
+
+      <!-- smart-task-detail:start (shared by Smart task list and Device insight; keep identical) -->
+      <section id="smart-task-detail" class="detail-view" data-detail-view hidden aria-live="polite">
+        <header class="detail-header">
+          <button type="button" class="back-btn" data-detail-back aria-label="Back">
+            <span class="back-btn__icon" aria-hidden="true"></span>
+            <span class="back-btn__name" data-detail-name></span>
+          </button>
+          <span class="chip" data-detail-chip></span>
+        </header>
+        <div class="detail-body">
+          <p class="detail-line detail-line--target" data-detail-target></p>
+          <p class="detail-line detail-line--deadline" data-detail-deadline hidden></p>
+          <div class="detail-chart" data-detail-chart hidden></div>
+          <p class="detail-line detail-line--why" data-detail-why hidden></p>
+          <p class="detail-line detail-line--recourse" data-detail-recourse hidden></p>
+          <p class="detail-line detail-line--meta" data-detail-meta hidden></p>
+          <p class="detail-line detail-line--confidence" data-detail-confidence hidden></p>
+        </div>
+      </section>
+      <!-- smart-task-detail:end -->
     </main>
 
     <!-- smart-task-create-template:start -->

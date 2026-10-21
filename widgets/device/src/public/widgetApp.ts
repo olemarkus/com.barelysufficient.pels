@@ -15,7 +15,14 @@ import { createSmartTaskCreateClient } from '../../../_shared/smartTaskCreate/fl
 import { createSmartTaskCreateFlow } from '../../../_shared/smartTaskCreate/flowController';
 import { resolveFlowTargets } from '../../../_shared/smartTaskCreate/flowView';
 import { resolveDeviceWidgetPreviewPayload } from './previewPayloads';
-import { renderTileView, type RenderTargets, type TileState } from './render';
+import { resolveDetailTargets } from '../../../_shared/smartTaskDetail/detailRender';
+import {
+  renderDeviceView,
+  resolveTileAction,
+  type DeviceView,
+  type RenderTargets,
+  type TileState,
+} from './render';
 import type { DeviceWidgetPayload } from '../deviceWidgetTypes';
 
 const C = DEVICE_WIDGET_COPY;
@@ -42,6 +49,8 @@ const readChosenDevice = (homey: WidgetHomey | null): ChosenDevice | null => {
 
 const TILE_ELEMENTS = {
   tileView: '[data-tile-view]',
+  tileTap: '[data-tile-tap]',
+  tileChevron: '[data-tile-chevron]',
   tileName: '[data-tile-name]',
   tileChip: '[data-tile-chip]',
   tileHero: '[data-tile-hero]',
@@ -56,27 +65,25 @@ const TILE_ELEMENTS = {
   tileTaskDeadline: '[data-tile-task-deadline]',
   tileTaskWhy: '[data-tile-task-why]',
   tileTaskNext: '[data-tile-task-next]',
-  tileFoot: '[data-tile-foot]',
   tileMessage: '[data-tile-message]',
-  tileAddTaskLabel: '[data-tile-add-task-label]',
 } as const;
 
 const resolveTargets = (d: Document): RenderTargets | null => {
   const flow = resolveFlowTargets(d);
+  const detail = resolveDetailTargets(d);
   const root = d.getElementById('widget-root');
-  const tileAddTaskBtn = d.querySelector('[data-tile-add-task]');
   const elements = Object.fromEntries(
     Object.entries(TILE_ELEMENTS).map(([key, selector]) => [key, d.querySelector(selector)]),
   );
   if (
     flow === null
+    || detail === null
     || !(root instanceof HTMLElement)
-    || !(tileAddTaskBtn instanceof HTMLButtonElement)
     || Object.values(elements).some((el) => !(el instanceof HTMLElement))
   ) {
     return null;
   }
-  return { ...flow, root, tileAddTaskBtn, ...(elements as Record<keyof typeof TILE_ELEMENTS, HTMLElement>) };
+  return { ...flow, ...detail, root, ...(elements as Record<keyof typeof TILE_ELEMENTS, HTMLElement>) };
 };
 
 const fetchDevice = async (
@@ -98,6 +105,9 @@ const fetchDevice = async (
   }
 };
 
+// The tile is a role="button" element, so Enter and Space activate it.
+const isActivationKey = (event: KeyboardEvent): boolean => event.key === 'Enter' || event.key === ' ';
+
 // `onReady` is called once, right after `Homey.ready()`.
 export const createWidgetController = (
   targets: RenderTargets,
@@ -112,12 +122,23 @@ export const createWidgetController = (
   let chosen: ChosenDevice | null = null;
   let usePreviewData = false;
   let destroyed = false;
+  // The open task's detail panel is up (a tap on the tile opened it).
+  let detailOpen = false;
   const reporter = widgetErrorReporter('device', () => homeyRef);
 
   const { root } = targets;
+  // The detail panel stays up only while the task it shows is still open; a
+  // read that finds it ended or gone drops back to the tile.
+  const currentView = (): DeviceView => {
+    if (flow.isOpen()) return 'flow';
+    if (detailOpen && resolveTileAction(tile)?.kind !== 'open_task') detailOpen = false;
+    return detailOpen ? 'detail' : 'tile';
+  };
+
   const render = (): void => {
-    root.dataset.view = flow.currentStep() ?? 'tile';
-    renderTileView(targets, tile, chosen?.name ?? null, !flow.isOpen());
+    const view = currentView();
+    root.dataset.view = view === 'flow' ? flow.currentStep() ?? 'tile' : view;
+    renderDeviceView(targets, tile, chosen?.name ?? null, view);
   };
 
   const flow = createSmartTaskCreateFlow(
@@ -161,21 +182,46 @@ export const createWidgetController = (
     widgetWindow,
     widgetDocument,
     intervalMs: REFRESH_INTERVAL_MS,
-    // A background read never disturbs a task being composed.
+    // A background read never disturbs a task being composed; an open detail
+    // panel refreshes with it.
     onTick: () => {
       if (!flow.isOpen()) void loadAndRender();
     },
   });
+
+  // A tap on the tile opens the open task's detail, or the creation flow for
+  // this device when it has no open task.
+  const activateTile = (): void => {
+    const action = resolveTileAction(tile);
+    if (action?.kind === 'open_task') {
+      detailOpen = true;
+      render();
+      targets.detailBackBtn.focus();
+      return;
+    }
+    if (action?.kind === 'start_task') flow.open(action.device);
+  };
 
   const handleClick = (event: Event): void => {
     if (flow.isOpen()) {
       flow.handleClick(event);
       return;
     }
-    if (!(event.target instanceof Element) || !event.target.closest('[data-tile-add-task]')) return;
-    if (tile.kind === 'payload' && tile.payload.state === 'ready' && tile.payload.createDevice) {
-      flow.open(tile.payload.createDevice);
+    if (!(event.target instanceof Element)) return;
+    if (detailOpen) {
+      if (!event.target.closest('[data-detail-back]')) return;
+      detailOpen = false;
+      render();
+      targets.tileTap.focus();
+      return;
     }
+    if (event.target.closest('[data-tile-tap]')) activateTile();
+  };
+
+  const handleKeydown = (event: KeyboardEvent): void => {
+    if (flow.isOpen() || detailOpen || event.target !== targets.tileTap || !isActivationKey(event)) return;
+    event.preventDefault();
+    activateTile();
   };
 
   const handleInput = (event: Event): void => flow.handleInput(event);
@@ -194,10 +240,12 @@ export const createWidgetController = (
     flow.destroy();
     root.removeEventListener('click', handleClick);
     root.removeEventListener('input', handleInput);
+    root.removeEventListener('keydown', handleKeydown);
   };
 
   root.addEventListener('click', handleClick);
   root.addEventListener('input', handleInput);
+  root.addEventListener('keydown', handleKeydown);
   return { bootstrap, destroy, loadAndRender };
 };
 

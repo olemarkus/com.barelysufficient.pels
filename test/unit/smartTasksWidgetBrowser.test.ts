@@ -2,7 +2,7 @@
 import { installWidget } from '../../widgets/smart_tasks/src/public/widgetApp';
 import type { WidgetHomey, WidgetWindow } from '../../widgets/smart_tasks/src/public/widgetApp';
 import { PREVIEW_SMART_TASKS_PAYLOAD } from '../../widgets/smart_tasks/src/public/previewPayloads';
-import { renderTrajectoryChart } from '../../widgets/smart_tasks/src/public/trajectoryChart';
+import { renderTrajectoryChart } from '../../widgets/_shared/smartTaskDetail/trajectoryChart';
 import type { DeferredPlanHistoryChartData } from '../../packages/shared-domain/src/deferredPlanHistoryChartData';
 import type { SmartTasksWidgetPayload } from '../../widgets/smart_tasks/src/smartTasksWidgetTypes';
 import {

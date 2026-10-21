@@ -17,7 +17,7 @@ import type {
 
 const C = CREATE_SMART_TASK_WIDGET_COPY;
 
-// The New smart task widget: a device list, and the shared creation flow
+// The Create smart task widget: a device list, and the shared creation flow
 // (`widgets/_shared/smartTaskCreate`) for the chosen device.
 export type RenderTargets = FlowTargets & {
   root: HTMLElement;

@@ -674,6 +674,20 @@ The **Available power** (headroom) dashboard widget shares vocabulary with the r
 - **No-measurement empty state** reads **"No new power readings"** (`HEADROOM_WIDGET_COPY.noReadingsSubtitle`), in the value slot beside "No data yet" / "Reopen the dashboard": shown when the status behind the tile was the silent-meter fail-closed pass (`powerKnown: false`, meter silent, or stuck on one value, past the 10-minute shed timeout). The blob carries no headroom then and nothing derived from it is drawn, not even dimmed (owner ruling 2026-09-02); the bare lead matches the Overview's no-readings banner without its time qualifier.
 - **Price chip** uses the canonical **"Price low"** / **"Price high"** pair from `priceLevelChips.ts` — never the bare "Cheap" / "Expensive". The widget only ever renders the chip for `cheap` / `expensive` (`SHOW_PRICE_CHIP_FOR` in the renderer); for both `normal` and `unknown` the chip is hidden. The placeholder dash is only the `headroomPriceChipLabel` return value for `unknown` (so logging has a stable token) — the widget never paints it. The screen-reader phrase is the grammatical **"Price: low"** / **"Price: high"** (`headroomPriceAriaLabel`), never the broken "Price Cheap" / "Price Normal" form.
 
+### Smart-task widgets and Device insight
+
+The picker names say what each widget does: **Create smart task** (`create_smart_task`) creates one, **Smart task list** (`smart_tasks`) lists them, **Device insight** (`device`) follows one device. The settings page's own action stays **New smart task**. Source of truth: `DEVICE_WIDGET_COPY` and the `formatDeviceWidget*` helpers in `packages/shared-domain/src/deadlineLabels.ts`.
+
+| Concept | Text |
+|---|---|
+| Tile status chip | The overview state word (`Charging`, `Limited`); only a limited or warning state is coloured |
+| Lead figure | `54.0 °C` with `target 65 °C`, or `58 %` with the car's name |
+| Task block title | `Smart task · Charge to 80 %` |
+| Next planned hour | `Next run 02:00`, or `Planned to run now` |
+| Ended task (rest of the day) | `Reached at 05:42`, else why it was missed, else `Ended Today 06:00` |
+| What a tap does (screen reader) | `Open the smart task` with a task running, else `Start a smart task` |
+| No device chosen | `Choose a device in the widget settings.` |
+
 ## Home battery vocabulary
 
 A managed home battery has its own Overview card and device page. While PELS

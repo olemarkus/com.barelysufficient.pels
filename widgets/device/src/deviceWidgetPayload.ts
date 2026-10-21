@@ -1,8 +1,6 @@
 import {
   DEVICE_WIDGET_RUNNING_NOW,
-  formatDeviceWidgetEndedDetail,
   formatDeviceWidgetNextRun,
-  formatSmartTaskGoalValue,
 } from '../../../packages/shared-domain/src/deadlineLabels';
 import { formatLocalHHMM } from '../../../packages/shared-domain/src/smartTaskDeadlineFormat';
 import { buildSmartTaskCandidateDevices } from '../../../lib/objectives/deferredObjectives';
@@ -15,9 +13,9 @@ import {
 } from '../../smart_tasks/src/smartTasksWidgetPayload';
 import type { DeviceWidgetPayload, DeviceWidgetTask } from './deviceWidgetTypes';
 
-// The Device widget's read for one device. It runs no planner: it reads the
+// The Device insight widget's read for one device. It runs no planner: it reads the
 // plan snapshot published for the UI (with each device's resolved status) and
-// assembles the same read models the Smart tasks and New smart task widgets
+// assembles the same read models the Smart task list and Create smart task widgets
 // serve (active plans, recent history, creation candidates), filtered to one
 // device. Its cost per read is theirs, once a minute per tile.
 
@@ -29,26 +27,10 @@ const resolveRunLabel = (run: SmartTaskRunTiming, timeZone: string | null): stri
 const toTask = (view: SmartTaskDeviceView, timeZone: string | null): DeviceWidgetTask => {
   if (view.active) {
     const { row, statusId, run } = view.active;
-    return {
-      kind: 'active',
-      goalLabel: `${row.targetActionVerb} ${formatSmartTaskGoalValue(row.targetValue, row.unitSymbol)}`,
-      deadlineLabel: `${row.etaVerb} ${row.finishLabel}`,
-      statusLabel: row.statusLabel,
-      tone: row.tone,
-      whyLabel: row.whyLabel,
-      // A queued task's why line already says when its cheaper hours start.
-      nextRunLabel: statusId === 'queued' ? null : resolveRunLabel(run, timeZone),
-    };
+    // A queued task's why line already says when its cheaper hours start.
+    return { kind: 'active', row, nextRunLabel: statusId === 'queued' ? null : resolveRunLabel(run, timeZone) };
   }
-  const ended = view.endedToday;
-  if (!ended) return { kind: 'none' };
-  return {
-    kind: 'ended',
-    goalLabel: `${ended.targetActionVerb} ${formatSmartTaskGoalValue(ended.targetValue, ended.unitSymbol)}`,
-    outcomeLabel: ended.outcomeLabel,
-    tone: ended.outcomeTone,
-    detailLabel: formatDeviceWidgetEndedDetail(ended.reachedAtLabel, ended.whyLabel, ended.finishedLabel),
-  };
+  return view.endedToday ? { kind: 'ended', row: view.endedToday } : { kind: 'none' };
 };
 
 export const buildDeviceWidgetPayload = (

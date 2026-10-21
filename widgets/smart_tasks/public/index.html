@@ -3,12 +3,12 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Smart tasks</title>
+    <title>Smart task list</title>
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="./index.css">
   </head>
   <body class="homey-widget-full">
-    <main id="widget-root" class="homey-widget widget-root" data-state="ready" data-view="list" aria-label="Smart tasks">
+    <main id="widget-root" class="homey-widget widget-root" data-state="ready" data-view="list" aria-label="Smart task list">
       <section class="list-view" data-list-view>
         <ol class="rows" data-rows></ol>
         <p class="empty" data-empty hidden></p>
@@ -19,9 +19,10 @@
           <ol class="rows ended__rows" data-ended-rows></ol>
         </div>
       </section>
+      <!-- smart-task-detail:start (shared by Smart task list and Device insight; keep identical) -->
       <section id="smart-task-detail" class="detail-view" data-detail-view hidden aria-live="polite">
         <header class="detail-header">
-          <button type="button" class="back-btn" data-detail-back aria-label="Back to smart tasks">
+          <button type="button" class="back-btn" data-detail-back aria-label="Back">
             <span class="back-btn__icon" aria-hidden="true"></span>
             <span class="back-btn__name" data-detail-name></span>
           </button>
@@ -37,6 +38,7 @@
           <p class="detail-line detail-line--confidence" data-detail-confidence hidden></p>
         </div>
       </section>
+      <!-- smart-task-detail:end -->
     </main>
     <template id="row-template">
       <li class="row">

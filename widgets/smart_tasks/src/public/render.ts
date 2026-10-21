@@ -12,8 +12,13 @@ import type {
   SmartTasksWidgetReadyPayload,
   SmartTasksWidgetRow,
 } from '../smartTasksWidgetTypes';
-import { renderTrajectoryChart } from './trajectoryChart';
-import { clearChildren, setLine } from '../../../_shared/widgetDom';
+import {
+  formatTaskValue as formatValue,
+  renderActiveDetail,
+  renderEndedDetail,
+  type DetailTargets,
+} from '../../../_shared/smartTaskDetail/detailRender';
+import { clearChildren } from '../../../_shared/widgetDom';
 
 // `section` disambiguates the two lists; `key` is the row identity WITHIN its
 // section — `deviceId` for an active task (one active plan per device), the
@@ -23,10 +28,9 @@ type ViewState =
   | { kind: 'list' }
   | { kind: 'detail'; section: 'active' | 'ended'; key: string };
 
-export type RenderTargets = {
+export type RenderTargets = DetailTargets & {
   root: HTMLElement;
   listView: HTMLElement;
-  detailView: HTMLElement;
   rowsList: HTMLElement;
   emptyEl: HTMLElement;
   emptyHintEl: HTMLElement;
@@ -36,22 +40,6 @@ export type RenderTargets = {
   endedRowsList: HTMLElement;
   rowTemplate: HTMLTemplateElement;
   endedRowTemplate: HTMLTemplateElement;
-  detailBackBtn: HTMLButtonElement;
-  detailHeaderEl: HTMLElement;
-  detailChipEl: HTMLElement;
-  detailDeadlineEl: HTMLElement;
-  detailChartEl: HTMLElement;
-  detailTargetEl: HTMLElement;
-  detailWhyEl: HTMLElement;
-  detailRecourseEl: HTMLElement;
-  detailMetaEl: HTMLElement;
-  detailConfidenceEl: HTMLElement;
-};
-
-const formatValue = (value: number, unitSymbol: '°C' | '%' | 'kWh'): string => {
-  const rounded = Math.round(value * 10) / 10;
-  const text = rounded % 1 === 0 ? `${Math.round(rounded)}` : rounded.toFixed(1);
-  return `${text} ${unitSymbol}`;
 };
 
 // Words (`targetNoun`, `etaVerb`, `targetActionVerb`) are producer-resolved in
@@ -67,10 +55,6 @@ const formatValuesLine = (row: SmartTasksWidgetRow): string => {
 };
 
 const formatRowEta = (row: SmartTasksWidgetRow): string => `${row.etaVerb} ${row.finishLabel}`;
-
-const targetSentence = (verb: string, targetValue: number, unitSymbol: '°C' | '%' | 'kWh'): string => (
-  `${verb} ${formatValue(targetValue, unitSymbol)}`
-);
 
 const renderRow = (template: HTMLTemplateElement, row: SmartTasksWidgetRow): HTMLElement => {
   const fragment = template.content.cloneNode(true) as DocumentFragment;
@@ -201,61 +185,6 @@ const renderListEmpty = (
     emptyHintEl.hidden = true;
   }
   overflowEl.hidden = true;
-};
-
-// Draws the trajectory chart, or hides the container when there's nothing
-// chartable so the text lines carry the panel.
-// Shown BEFORE drawing, so the chart measures its laid-out size.
-const renderChart = (el: HTMLElement, chart: SmartTasksWidgetRow['chart']): void => {
-  /* eslint-disable no-param-reassign -- `el` is a DOM write sink. */
-  el.hidden = false;
-  const drawn = chart !== null && renderTrajectoryChart(el, chart);
-  el.hidden = !drawn;
-  /* eslint-enable no-param-reassign */
-};
-
-const renderActiveDetail = (targets: RenderTargets, row: SmartTasksWidgetRow): void => {
-  const {
-    detailHeaderEl, detailChipEl, detailDeadlineEl, detailChartEl, detailTargetEl,
-    detailWhyEl, detailRecourseEl, detailMetaEl, detailConfidenceEl,
-  } = targets;
-  detailHeaderEl.textContent = row.deviceName;
-  detailChipEl.textContent = row.statusLabel;
-  detailChipEl.dataset.tone = row.tone;
-  setLine(detailDeadlineEl, `${row.etaVerb} ${row.deadlineLongLabel}`);
-  // Detail target line repeats the action verb so it stands on its own.
-  detailTargetEl.textContent = targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
-  detailTargetEl.hidden = false;
-  setLine(detailWhyEl, row.whyLabel);
-  setLine(detailRecourseEl, row.recourseHint);
-  setLine(detailMetaEl, row.planMetaLabel);
-  setLine(detailConfidenceEl, row.confidenceLabel);
-  // Last: the chart fills the room the text lines leave.
-  renderChart(detailChartEl, row.chart);
-};
-
-const renderEndedDetail = (targets: RenderTargets, row: SmartTasksWidgetEndedRow): void => {
-  const {
-    detailHeaderEl, detailChipEl, detailDeadlineEl, detailChartEl, detailTargetEl,
-    detailWhyEl, detailRecourseEl, detailMetaEl, detailConfidenceEl,
-  } = targets;
-  detailHeaderEl.textContent = row.deviceName;
-  detailChipEl.textContent = row.outcomeLabel;
-  detailChipEl.dataset.tone = row.outcomeTone;
-  setLine(detailDeadlineEl, row.finishedLabel);
-  // Headline = the progress recap ("38 → 55 · target 55 °C") — the postmortem
-  // story — falling back to the plain goal when start/final couldn't be resolved.
-  detailTargetEl.textContent = row.progressLabel
-    ?? targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
-  detailTargetEl.hidden = false;
-  // Succeeded → "reached at HH:MM"; Missed → the blameless why sentence + the
-  // budget/device recourse hint. Abandoned carries neither.
-  setLine(detailWhyEl, row.reachedAtLabel ?? row.whyLabel);
-  setLine(detailRecourseEl, row.recourseHint);
-  setLine(detailMetaEl, null);
-  setLine(detailConfidenceEl, null);
-  // Last: the chart fills the room the text lines leave.
-  renderChart(detailChartEl, row.chart);
 };
 
 // Falls the detail view back to the list (used when the selected row dropped

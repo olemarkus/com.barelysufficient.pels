@@ -11,6 +11,7 @@ import {
 import { widgetErrorReporter } from '../../../_shared/widgetClientLog';
 import { measureBox, observeBox } from '../../../_shared/widgetChartSize';
 import { PREVIEW_SMART_TASKS_PAYLOAD } from './previewPayloads';
+import { resolveDetailTargets } from '../../../_shared/smartTaskDetail/detailRender';
 import { renderLoading, renderWidget, type RenderTargets } from './render';
 import type { SmartTasksWidgetPayload } from '../smartTasksWidgetTypes';
 
@@ -108,13 +109,12 @@ const wireInteraction = (
   };
 };
 
-// The detail panel's plain HTMLElement slots, keyed by the RenderTargets field
-// name. `root` (id lookup), `rowTemplate` (HTMLTemplateElement) and
-// `detailBackBtn` (HTMLButtonElement) are resolved separately because they need
-// a narrower instanceof check than the generic slots below.
+// The list's plain HTMLElement slots, keyed by the RenderTargets field name.
+// `root` (id lookup) and the row templates (HTMLTemplateElement) are resolved
+// separately because they need a narrower instanceof check; the detail panel's
+// slots come from its shared module.
 const GENERIC_TARGET_SELECTORS = {
   listView: '[data-list-view]',
-  detailView: '[data-detail-view]',
   rowsList: '[data-rows]',
   emptyEl: '[data-empty]',
   emptyHintEl: '[data-empty-hint]',
@@ -122,15 +122,6 @@ const GENERIC_TARGET_SELECTORS = {
   endedSectionEl: '[data-ended-section]',
   endedHeadingEl: '[data-ended-heading]',
   endedRowsList: '[data-ended-rows]',
-  detailHeaderEl: '[data-detail-name]',
-  detailChipEl: '[data-detail-chip]',
-  detailDeadlineEl: '[data-detail-deadline]',
-  detailChartEl: '[data-detail-chart]',
-  detailTargetEl: '[data-detail-target]',
-  detailWhyEl: '[data-detail-why]',
-  detailRecourseEl: '[data-detail-recourse]',
-  detailMetaEl: '[data-detail-meta]',
-  detailConfidenceEl: '[data-detail-confidence]',
 } as const;
 
 type GenericTargetKey = keyof typeof GENERIC_TARGET_SELECTORS;
@@ -149,18 +140,18 @@ const resolveTargets = (widgetDocument: Document): RenderTargets | null => {
   const root = widgetDocument.getElementById('widget-root');
   const rowTemplate = widgetDocument.getElementById('row-template');
   const endedRowTemplate = widgetDocument.getElementById('ended-row-template');
-  const detailBackBtn = widgetDocument.querySelector('[data-detail-back]');
+  const detail = resolveDetailTargets(widgetDocument);
   const generic = resolveGenericTargets(widgetDocument);
   if (
     !(root instanceof HTMLElement)
     || !(rowTemplate instanceof HTMLTemplateElement)
     || !(endedRowTemplate instanceof HTMLTemplateElement)
-    || !(detailBackBtn instanceof HTMLButtonElement)
+    || detail === null
     || generic === null
   ) {
     return null;
   }
-  return { root, rowTemplate, endedRowTemplate, detailBackBtn, ...generic };
+  return { root, rowTemplate, endedRowTemplate, ...detail, ...generic };
 };
 
 export const createWidgetController = (params: {

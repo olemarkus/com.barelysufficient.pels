@@ -3,7 +3,7 @@ import { readPelsHost } from '../../../lib/app/pelsHost';
 import { buildDeviceWidgetPayload } from './deviceWidgetPayload';
 import type { DeviceWidgetPayload } from './deviceWidgetTypes';
 
-// The creation flow's routes are the New smart task widget's own handlers: the
+// The creation flow's routes are the Create smart task widget's own handlers: the
 // same request, the same validation, the same app methods.
 export {
   createCreateSmartTask,

@@ -29,10 +29,14 @@
   var WHY_AT_RISK_BUDGET = "Today\u2019s daily budget may run out before the deadline.";
   var WHY_CANNOT_MEET_BUDGET_PARTIAL = "Today\u2019s daily budget is holding part of this back, but there is not enough time either.";
   var WHY_AT_RISK_BUDGET_PARTIAL = "Today\u2019s daily budget may be holding part of this back, and time is short too.";
+  var SMART_TASK_WIDGET_CHART_PLANNED_LABEL = "Planned";
+  var SMART_TASK_WIDGET_CHART_MEASURED_LABEL = "Measured";
+  var SMART_TASK_WIDGET_CHART_TARGET_LABEL = "Target";
+  var SMART_TASK_WIDGET_CHART_RUN_BAND_LABEL = "Scheduled";
   var SMART_TASK_EXTRA_PERMISSIONS_TITLE = "Extra permissions";
   var CREATE_SMART_TASK_WIDGET_COPY = {
     // Step 1 — device picker.
-    pickDeviceTitle: "New smart task",
+    pickDeviceTitle: "Create smart task",
     pickDevicePrompt: "Choose a device",
     emptyNoDevices: "No eligible devices",
     // Warmer than a bare capability list: name the device kinds AND the next
@@ -719,10 +723,16 @@
     // No plan yet since the app started: no status rather than a guessed one.
     starting: "PELS is starting. Status shows after the first power reading.",
     loadError: "Could not load this device.",
-    addSmartTask: "+ Smart task",
-    smartTaskTitle: "Smart task"
+    smartTaskTitle: "Smart task",
+    // What a tap on the tile does, for assistive tech; the chevron shows it.
+    openTaskAction: "Open the smart task",
+    startTaskAction: "Start a smart task"
   };
-  var formatDeviceWidgetFigure = (reading, carName) => reading.kind === "temperature" ? { value: `${reading.currentC.toFixed(1)} \xB0C`, context: `target ${reading.targetC.toFixed(0)} \xB0C` } : { value: `${Math.round(reading.percent)}%`, context: carName ?? "" };
+  var formatDeviceWidgetEndedDetail = (reachedAtLabel, whyLabel, finishedLabel) => {
+    if (reachedAtLabel !== null) return reachedAtLabel.charAt(0).toUpperCase() + reachedAtLabel.slice(1);
+    return whyLabel ?? `Ended ${finishedLabel}`;
+  };
+  var formatDeviceWidgetFigure = (reading, carName) => reading.kind === "temperature" ? { value: `${reading.currentC.toFixed(1)} \xB0C`, context: `target ${reading.targetC.toFixed(0)} \xB0C` } : { value: `${Math.round(reading.percent)} %`, context: carName ?? "" };
 
   // widgets/_shared/widgetRuntime.ts
   var applyPreviewTheme = (widgetDocument, searchParams) => {
@@ -1820,6 +1830,64 @@
     holdCause: null,
     ...fields
   });
+  var T = 17e11;
+  var H = 60 * 60 * 1e3;
+  var EV_PLANNED = [
+    { atMs: T, value: 58 },
+    { atMs: T + H, value: 58 },
+    { atMs: T + 2 * H, value: 69 },
+    { atMs: T + 3 * H, value: 80 }
+  ];
+  var evTaskRow = {
+    deviceId: "ev",
+    deviceName: "Garage charger",
+    kind: "ev_soc",
+    unitSymbol: "%",
+    currentValue: 58,
+    targetValue: 80,
+    finishLabel: "07:00",
+    statusLabel: "On track",
+    tone: "ok",
+    etaVerb: "Ready by",
+    targetActionVerb: "Charge to",
+    targetNoun: "Target",
+    deadlineLongLabel: "Tomorrow 07:00",
+    planMetaLabel: "Estimate \u22482h \xB7 7.2 kW \xB7 \u224814 kWh",
+    confidenceLabel: null,
+    whyLabel: null,
+    recourseHint: null,
+    chart: {
+      mode: "trajectory",
+      unit: "%",
+      windowStartMs: T,
+      windowEndMs: T + 3 * H,
+      plannedOriginal: EV_PLANNED,
+      plannedFinal: null,
+      plannedVisible: EV_PLANNED,
+      replanned: false,
+      observed: [{ atMs: T, value: 58 }],
+      runBands: [{ fromMs: T + H, toMs: T + 3 * H }],
+      target: 80,
+      metAtMs: null,
+      metMarkerValue: null
+    }
+  };
+  var heaterEndedRow = {
+    id: "heater-ended",
+    deviceId: "heater",
+    deviceName: "Water heater",
+    unitSymbol: "\xB0C",
+    targetValue: 65,
+    targetActionVerb: "Heat to",
+    outcomeLabel: "Succeeded",
+    outcomeTone: "ok",
+    finishedLabel: "Today 06:00",
+    progressLabel: "48 \u2192 65 \xB0C  \xB7  target 65 \xB0C",
+    reachedAtLabel: "reached at 05:48",
+    whyLabel: null,
+    recourseHint: null,
+    chart: null
+  };
   var heaterCandidate = {
     deviceId: "heater",
     deviceName: "Water heater",
@@ -1861,15 +1929,7 @@
           reading: { kind: "battery", percent: 58 }
         })
       },
-      task: {
-        kind: "active",
-        goalLabel: "Charge to 80%",
-        deadlineLabel: "Ready by 07:00",
-        statusLabel: "On track",
-        tone: "ok",
-        whyLabel: null,
-        nextRunLabel: "Next run 02:00"
-      },
+      task: { kind: "active", row: evTaskRow, nextRunLabel: "Next run 02:00" },
       createDevice: null
     },
     heater: {
@@ -1907,13 +1967,7 @@
           reading: { kind: "temperature", currentC: 63, targetC: 65 }
         })
       },
-      task: {
-        kind: "ended",
-        goalLabel: "Heat to 65 \xB0C",
-        outcomeLabel: "Succeeded",
-        tone: "ok",
-        detailLabel: "Reached at 05:48"
-      },
+      task: { kind: "ended", row: heaterEndedRow },
       createDevice: heaterCandidate
     },
     nocar: {
@@ -1943,8 +1997,316 @@
   };
   var resolveDeviceWidgetPreviewPayload = (state) => PREVIEW_PAYLOADS[state ?? "ev"] ?? PREVIEW_PAYLOADS.ev;
 
+  // widgets/_shared/widgetChartSize.ts
+  var measureBox = (el, fallback) => {
+    const rect = el.getBoundingClientRect();
+    const width = Math.floor(rect.width);
+    const height = Math.floor(rect.height);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return fallback;
+    return { width, height };
+  };
+
+  // widgets/_shared/smartTaskDetail/trajectoryChart.ts
+  var MIN_LINE_POINTS = 2;
+  var isDrawableLine = (points) => (points?.length ?? 0) >= MIN_LINE_POINTS;
+  var FALLBACK_SIZE = { width: 480, height: 96 };
+  var PLOT_INSET = { x: 8, y: 10 };
+  var resolveFrame = ({ width, height }) => ({
+    width,
+    height,
+    left: PLOT_INSET.x,
+    right: Math.max(PLOT_INSET.x + 1, width - PLOT_INSET.x),
+    top: PLOT_INSET.y,
+    bottom: Math.max(PLOT_INSET.y + 1, height - PLOT_INSET.y)
+  });
+  var makeXScale = (startMs, endMs, frame) => {
+    const span = endMs - startMs;
+    if (!Number.isFinite(span) || span <= 0) return () => frame.left;
+    return (atMs) => {
+      const fraction = Math.max(0, Math.min(1, (atMs - startMs) / span));
+      return frame.left + fraction * (frame.right - frame.left);
+    };
+  };
+  var makeYScale2 = (values, frame) => {
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const pad = max > min ? (max - min) * 0.12 : Math.max(1, Math.abs(max) * 0.1);
+    const lo = min - pad;
+    const span = max + pad - lo;
+    return (value) => frame.bottom - (value - lo) / span * (frame.bottom - frame.top);
+  };
+  var buildPolyline = (points, xScale, yScale) => points.map((point, index) => `${index === 0 ? "M" : "L"}${xScale(point.atMs).toFixed(1)} ${yScale(point.value).toFixed(1)}`).join(" ");
+  var buildSmoothPath = (points, xScale, yScale) => {
+    if (points.length < 3) return buildPolyline(points, xScale, yScale);
+    const pts = points.map((p) => ({ x: xScale(p.atMs), y: yScale(p.value) }));
+    const n = pts.length;
+    const dx = [];
+    const slope = [];
+    for (let i = 0; i < n - 1; i += 1) {
+      dx[i] = pts[i + 1].x - pts[i].x;
+      slope[i] = dx[i] > 0 ? (pts[i + 1].y - pts[i].y) / dx[i] : 0;
+    }
+    const tangents = [slope[0]];
+    for (let i = 1; i < n - 1; i += 1) {
+      const prev = slope[i - 1];
+      const next = slope[i];
+      if (prev * next <= 0) {
+        tangents[i] = 0;
+        continue;
+      }
+      const w1 = 2 * dx[i] + dx[i - 1];
+      const w2 = dx[i] + 2 * dx[i - 1];
+      tangents[i] = (w1 + w2) / (w1 / prev + w2 / next);
+    }
+    tangents[n - 1] = slope[n - 2];
+    let path = `M${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+    for (let i = 0; i < n - 1; i += 1) {
+      const third = dx[i] / 3;
+      const c1y = pts[i].y + tangents[i] * third;
+      const c2y = pts[i + 1].y - tangents[i + 1] * third;
+      path += ` C${(pts[i].x + third).toFixed(1)} ${c1y.toFixed(1)} ${(pts[i + 1].x - third).toFixed(1)} ${c2y.toFixed(1)} ${pts[i + 1].x.toFixed(1)} ${pts[i + 1].y.toFixed(1)}`;
+    }
+    return path;
+  };
+  var buildStepPath2 = (points, xScale, yScale) => {
+    if (points.length === 0) return "";
+    const xy = points.map((p) => ({ x: xScale(p.atMs), y: yScale(p.value) }));
+    let path = `M${xy[0].x.toFixed(1)} ${xy[0].y.toFixed(1)}`;
+    for (let i = 1; i < xy.length; i += 1) {
+      path += ` L${xy[i].x.toFixed(1)} ${xy[i - 1].y.toFixed(1)} L${xy[i].x.toFixed(1)} ${xy[i].y.toFixed(1)}`;
+    }
+    return path;
+  };
+  var appendLegend = (container, data) => {
+    const doc = container.ownerDocument;
+    const legend = doc.createElement("div");
+    legend.className = "tchart__legend";
+    const addItem = (modifier, text) => {
+      const item = doc.createElement("span");
+      item.className = `tchart__legend-item tchart__legend-item--${modifier}`;
+      item.textContent = text;
+      legend.appendChild(item);
+      return item;
+    };
+    if (isDrawableLine(data.plannedOriginal) || isDrawableLine(data.plannedFinal)) {
+      addItem("planned", SMART_TASK_WIDGET_CHART_PLANNED_LABEL);
+    }
+    if (isDrawableLine(data.observed)) {
+      addItem("measured", SMART_TASK_WIDGET_CHART_MEASURED_LABEL);
+    }
+    if (data.target !== null && data.unit !== null) {
+      const rounded = Math.round(data.target * 10) / 10;
+      const valueText = rounded % 1 === 0 ? `${Math.round(rounded)}` : rounded.toFixed(1);
+      addItem("target", `${SMART_TASK_WIDGET_CHART_TARGET_LABEL} ${valueText} ${data.unit}`);
+    }
+    if (data.runBands.length > 0) {
+      const item = addItem("band", SMART_TASK_WIDGET_CHART_RUN_BAND_LABEL);
+      const swatch = doc.createElement("span");
+      swatch.className = "tchart__legend-swatch";
+      item.prepend(swatch);
+    }
+    if (legend.childNodes.length > 0) container.appendChild(legend);
+  };
+  var appendRunBands = (svg, bands, xScale, frame) => {
+    const doc = svg.ownerDocument;
+    for (const band of bands) {
+      const x1 = xScale(band.fromMs);
+      const x2 = xScale(band.toMs);
+      if (x2 <= x1) continue;
+      svg.appendChild(createSvg(doc, "rect", {
+        class: "tchart__band",
+        x: x1.toFixed(1),
+        y: frame.top,
+        width: (x2 - x1).toFixed(1),
+        height: frame.bottom - frame.top
+      }));
+    }
+  };
+  var formatAxisValue = (value) => {
+    const rounded = Math.round(value * 10) / 10;
+    return rounded % 1 === 0 ? `${Math.round(rounded)}` : rounded.toFixed(1);
+  };
+  var Y_LABEL_GAP = 4;
+  var appendYAxisLabels = (svg, data, values, yScale, frame) => {
+    const doc = svg.ownerDocument;
+    const { unit } = data;
+    const dataMin = Math.min(...values);
+    const dataMax = Math.max(...values);
+    if (dataMax <= dataMin) return;
+    const maxLabel = unit ? `${formatAxisValue(dataMax)} ${unit}` : formatAxisValue(dataMax);
+    const maxLabelY = Math.max(14, yScale(dataMax) - Y_LABEL_GAP);
+    const minLabelY = Math.min(frame.height - 4, yScale(dataMin) + Y_LABEL_GAP + 12);
+    svg.appendChild(createSvg(doc, "text", {
+      class: "tchart__axis",
+      x: frame.left,
+      y: maxLabelY,
+      "text-anchor": "start"
+    }, maxLabel));
+    svg.appendChild(createSvg(doc, "text", {
+      class: "tchart__axis",
+      x: frame.left,
+      y: minLabelY,
+      "text-anchor": "start"
+    }, formatAxisValue(dataMin)));
+  };
+  var collectValues = (data) => {
+    const values = [];
+    for (const point of data.plannedOriginal) values.push(point.value);
+    for (const point of data.plannedFinal ?? []) values.push(point.value);
+    for (const point of data.observed) values.push(point.value);
+    if (data.target !== null) values.push(data.target);
+    return values.filter((value) => Number.isFinite(value));
+  };
+  var mountSvg = (container, data) => {
+    appendLegend(container, data);
+    const svg = createSvg(container.ownerDocument, "svg", { class: "tchart", role: "img" });
+    container.appendChild(svg);
+    const frame = resolveFrame(measureBox(svg, FALLBACK_SIZE));
+    svg.setAttribute("viewBox", `0 0 ${frame.width} ${frame.height}`);
+    return { svg, frame };
+  };
+  var renderTrajectoryChart = (container, data) => {
+    const doc = container.ownerDocument;
+    clearChildren(container);
+    if (data.mode !== "trajectory") return false;
+    const hasPlanned = isDrawableLine(data.plannedOriginal);
+    const hasRevised = isDrawableLine(data.plannedFinal);
+    const hasObserved = isDrawableLine(data.observed);
+    if (!hasPlanned && !hasRevised && !hasObserved) return false;
+    const values = collectValues(data);
+    if (values.length === 0) return false;
+    const { svg, frame } = mountSvg(container, data);
+    const xScale = makeXScale(data.windowStartMs, data.windowEndMs, frame);
+    const yScale = makeYScale2(values, frame);
+    appendRunBands(svg, data.runBands, xScale, frame);
+    if (data.target !== null) {
+      const y = yScale(data.target);
+      svg.appendChild(createSvg(doc, "line", {
+        class: "tchart__target",
+        x1: frame.left,
+        y1: y,
+        x2: frame.right,
+        y2: y
+      }));
+    }
+    if (hasRevised && data.plannedFinal) {
+      svg.appendChild(createSvg(doc, "path", {
+        class: "tchart__planned-revised",
+        d: buildStepPath2(data.plannedFinal, xScale, yScale)
+      }));
+    }
+    if (hasPlanned) {
+      svg.appendChild(createSvg(doc, "path", {
+        class: "tchart__planned",
+        d: buildStepPath2(data.plannedOriginal, xScale, yScale)
+      }));
+    }
+    if (hasObserved) {
+      svg.appendChild(createSvg(doc, "path", {
+        class: "tchart__observed",
+        d: buildSmoothPath(data.observed, xScale, yScale)
+      }));
+    }
+    if (data.metAtMs !== null && data.metMarkerValue !== null) {
+      svg.appendChild(createSvg(doc, "circle", {
+        class: "tchart__marker",
+        cx: xScale(data.metAtMs),
+        cy: yScale(data.metMarkerValue),
+        r: 4
+      }));
+    } else if (hasObserved) {
+      const last = data.observed[data.observed.length - 1];
+      svg.appendChild(createSvg(doc, "circle", {
+        class: "tchart__now",
+        cx: xScale(last.atMs),
+        cy: yScale(last.value),
+        r: 4
+      }));
+    }
+    appendYAxisLabels(svg, data, values, yScale, frame);
+    return true;
+  };
+
+  // widgets/_shared/smartTaskDetail/detailRender.ts
+  var DETAIL_ELEMENTS = {
+    detailView: "[data-detail-view]",
+    detailHeaderEl: "[data-detail-name]",
+    detailChipEl: "[data-detail-chip]",
+    detailDeadlineEl: "[data-detail-deadline]",
+    detailChartEl: "[data-detail-chart]",
+    detailTargetEl: "[data-detail-target]",
+    detailWhyEl: "[data-detail-why]",
+    detailRecourseEl: "[data-detail-recourse]",
+    detailMetaEl: "[data-detail-meta]",
+    detailConfidenceEl: "[data-detail-confidence]"
+  };
+  var resolveDetailTargets = (widgetDocument) => {
+    const elements = {};
+    for (const [key, selector] of Object.entries(DETAIL_ELEMENTS)) {
+      const element = widgetDocument.querySelector(selector);
+      if (!(element instanceof HTMLElement)) return null;
+      elements[key] = element;
+    }
+    const detailBackBtn = widgetDocument.querySelector("[data-detail-back]");
+    if (!(detailBackBtn instanceof HTMLButtonElement)) return null;
+    return { ...elements, detailBackBtn };
+  };
+  var formatTaskValue = (value, unitSymbol) => {
+    const rounded = Math.round(value * 10) / 10;
+    const text = rounded % 1 === 0 ? `${Math.round(rounded)}` : rounded.toFixed(1);
+    return `${text} ${unitSymbol}`;
+  };
+  var formatTargetSentence = (verb, targetValue, unitSymbol) => `${verb} ${formatTaskValue(targetValue, unitSymbol)}`;
+  var renderChart = (el, chart) => {
+    el.hidden = false;
+    const drawn = chart !== null && renderTrajectoryChart(el, chart);
+    el.hidden = !drawn;
+  };
+  var renderActiveDetail = (targets, row) => {
+    const {
+      detailHeaderEl,
+      detailChipEl,
+      detailDeadlineEl,
+      detailChartEl,
+      detailTargetEl,
+      detailWhyEl,
+      detailRecourseEl,
+      detailMetaEl,
+      detailConfidenceEl
+    } = targets;
+    detailHeaderEl.textContent = row.deviceName;
+    detailChipEl.textContent = row.statusLabel;
+    detailChipEl.dataset.tone = row.tone;
+    setLine(detailDeadlineEl, `${row.etaVerb} ${row.deadlineLongLabel}`);
+    detailTargetEl.textContent = formatTargetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
+    detailTargetEl.hidden = false;
+    setLine(detailWhyEl, row.whyLabel);
+    setLine(detailRecourseEl, row.recourseHint);
+    setLine(detailMetaEl, row.planMetaLabel);
+    setLine(detailConfidenceEl, row.confidenceLabel);
+    renderChart(detailChartEl, row.chart);
+  };
+
   // widgets/device/src/public/render.ts
   var C3 = DEVICE_WIDGET_COPY;
+  var resolveTileAction = (state) => {
+    if (state.kind !== "payload" || state.payload.state !== "ready") return null;
+    if (state.payload.task.kind === "active") return { kind: "open_task" };
+    const { createDevice } = state.payload;
+    return createDevice !== null ? { kind: "start_task", device: createDevice } : null;
+  };
+  var STATUS_CHIP_TONE = {
+    active: null,
+    idle: null,
+    neutral: null,
+    held: "warn",
+    warning: "warn",
+    resuming: "muted"
+  };
+  var setChipTone = (chip, tone) => {
+    if (tone === null) delete chip.dataset.tone;
+    else chip.dataset.tone = tone;
+  };
   var renderHero = (targets, status2, carName) => {
     const { tileHero, tileFigure, tileFigureContext, tilePower } = targets;
     if (status2.reading !== null) {
@@ -1964,37 +2326,53 @@
     const { tileTask, tileTaskGoal, tileTaskChip, tileTaskDeadline, tileTaskWhy, tileTaskNext } = targets;
     setVisible(tileTask, task.kind !== "none");
     if (task.kind === "none") return;
-    tileTaskGoal.textContent = `${C3.smartTaskTitle} \xB7 ${task.goalLabel}`;
+    const goal = formatTargetSentence(task.row.targetActionVerb, task.row.targetValue, task.row.unitSymbol);
+    tileTaskGoal.textContent = `${C3.smartTaskTitle} \xB7 ${goal}`;
     if (task.kind === "active") {
-      tileTaskChip.textContent = task.statusLabel;
-      tileTaskChip.dataset.tone = task.tone;
-      setLine(tileTaskDeadline, task.deadlineLabel);
-      setLine(tileTaskWhy, task.whyLabel);
+      const { row: row2 } = task;
+      tileTaskChip.textContent = row2.statusLabel;
+      setChipTone(tileTaskChip, row2.tone);
+      setLine(tileTaskDeadline, `${row2.etaVerb} ${row2.finishLabel}`);
+      setLine(tileTaskWhy, row2.whyLabel);
       setLine(tileTaskNext, task.nextRunLabel);
       return;
     }
-    tileTaskChip.textContent = task.outcomeLabel;
-    tileTaskChip.dataset.tone = task.tone;
+    const { row } = task;
+    tileTaskChip.textContent = row.outcomeLabel;
+    setChipTone(tileTaskChip, row.outcomeTone);
     setLine(tileTaskDeadline, null);
-    setLine(tileTaskWhy, task.detailLabel);
+    setLine(tileTaskWhy, formatDeviceWidgetEndedDetail(row.reachedAtLabel, row.whyLabel, row.finishedLabel));
     setLine(tileTaskNext, null);
   };
+  var renderTileAction = (targets, action) => {
+    const { tileTap, tileChevron } = targets;
+    setVisible(tileChevron, action !== null);
+    if (action === null) {
+      tileTap.removeAttribute("role");
+      tileTap.removeAttribute("tabindex");
+      tileTap.removeAttribute("aria-label");
+      delete tileTap.dataset.action;
+      return;
+    }
+    tileTap.setAttribute("role", "button");
+    tileTap.setAttribute("tabindex", "0");
+    tileTap.setAttribute("aria-label", action.kind === "open_task" ? C3.openTaskAction : C3.startTaskAction);
+    tileTap.dataset.action = action.kind;
+  };
   var renderDevice = (targets, payload) => {
-    const { device, task, createDevice } = payload;
+    const { device, task } = payload;
     const { status: status2 } = device;
-    const { tileName, tileChip, tileReason, tileFact, tileFoot, tileAddTaskLabel } = targets;
+    const { tileName, tileChip, tileReason, tileFact } = targets;
     tileName.textContent = device.name;
     setVisible(tileName, true);
     tileChip.textContent = status2.label;
-    tileChip.dataset.tone = status2.tone;
+    setChipTone(tileChip, STATUS_CHIP_TONE[status2.tone]);
     setVisible(tileChip, true);
     renderHero(targets, status2, device.carName);
     setLine(tileReason, status2.reason?.text ?? null);
     tileReason.dataset.tone = status2.limited ? "warn" : "muted";
     setLine(tileFact, status2.reading === null ? status2.factText : null);
     renderTask(targets, task);
-    tileAddTaskLabel.textContent = C3.addSmartTask;
-    setVisible(tileFoot, createDevice !== null);
   };
   var hideDevice = (targets) => {
     for (const element of [
@@ -2002,8 +2380,7 @@
       targets.tileHero,
       targets.tileReason,
       targets.tileFact,
-      targets.tileTask,
-      targets.tileFoot
+      targets.tileTask
     ]) hide(element);
   };
   var resolveMessage = (state) => {
@@ -2011,9 +2388,17 @@
     if (state.payload.state === "not_managed") return C3.notManaged;
     return state.payload.state === "starting" ? C3.starting : null;
   };
-  var renderTileView = (targets, state, deviceName, visible) => {
-    setVisible(targets.tileView, visible);
-    if (!visible) return;
+  var renderDeviceView = (targets, state, deviceName, view) => {
+    setVisible(targets.tileView, view === "tile");
+    setVisible(targets.detailView, view === "detail");
+    if (view === "detail") {
+      if (state.kind === "payload" && state.payload.state === "ready" && state.payload.task.kind === "active") {
+        renderActiveDetail(targets, state.payload.task.row);
+      }
+      return;
+    }
+    if (view === "flow") return;
+    renderTileAction(targets, resolveTileAction(state));
     if (state.kind === "payload" && state.payload.state === "ready") {
       hide(targets.tileMessage);
       renderDevice(targets, state.payload);
@@ -2043,6 +2428,8 @@
   };
   var TILE_ELEMENTS = {
     tileView: "[data-tile-view]",
+    tileTap: "[data-tile-tap]",
+    tileChevron: "[data-tile-chevron]",
     tileName: "[data-tile-name]",
     tileChip: "[data-tile-chip]",
     tileHero: "[data-tile-hero]",
@@ -2057,21 +2444,19 @@
     tileTaskDeadline: "[data-tile-task-deadline]",
     tileTaskWhy: "[data-tile-task-why]",
     tileTaskNext: "[data-tile-task-next]",
-    tileFoot: "[data-tile-foot]",
-    tileMessage: "[data-tile-message]",
-    tileAddTaskLabel: "[data-tile-add-task-label]"
+    tileMessage: "[data-tile-message]"
   };
   var resolveTargets = (d) => {
     const flow = resolveFlowTargets(d);
+    const detail = resolveDetailTargets(d);
     const root = d.getElementById("widget-root");
-    const tileAddTaskBtn = d.querySelector("[data-tile-add-task]");
     const elements = Object.fromEntries(
       Object.entries(TILE_ELEMENTS).map(([key, selector]) => [key, d.querySelector(selector)])
     );
-    if (flow === null || !(root instanceof HTMLElement) || !(tileAddTaskBtn instanceof HTMLButtonElement) || Object.values(elements).some((el) => !(el instanceof HTMLElement))) {
+    if (flow === null || detail === null || !(root instanceof HTMLElement) || Object.values(elements).some((el) => !(el instanceof HTMLElement))) {
       return null;
     }
-    return { ...flow, root, tileAddTaskBtn, ...elements };
+    return { ...flow, ...detail, root, ...elements };
   };
   var fetchDevice = async (homeyRef, deviceId, reporter, widgetWindow) => {
     if (!homeyRef) return { kind: "loading" };
@@ -2085,6 +2470,7 @@
       return { kind: "message", text: C4.loadError };
     }
   };
+  var isActivationKey = (event) => event.key === "Enter" || event.key === " ";
   var createWidgetController = (targets, widgetDocument, widgetWindow, onReady) => {
     let homeyRef = null;
     let initialRenderDone = false;
@@ -2093,11 +2479,18 @@
     let chosen = null;
     let usePreviewData = false;
     let destroyed = false;
+    let detailOpen = false;
     const reporter = widgetErrorReporter("device", () => homeyRef);
     const { root } = targets;
+    const currentView = () => {
+      if (flow.isOpen()) return "flow";
+      if (detailOpen && resolveTileAction(tile)?.kind !== "open_task") detailOpen = false;
+      return detailOpen ? "detail" : "tile";
+    };
     const render = () => {
-      root.dataset.view = flow.currentStep() ?? "tile";
-      renderTileView(targets, tile, chosen?.name ?? null, !flow.isOpen());
+      const view = currentView();
+      root.dataset.view = view === "flow" ? flow.currentStep() ?? "tile" : view;
+      renderDeviceView(targets, tile, chosen?.name ?? null, view);
     };
     const flow = createSmartTaskCreateFlow(
       targets,
@@ -2136,20 +2529,41 @@
       widgetWindow,
       widgetDocument,
       intervalMs: REFRESH_INTERVAL_MS,
-      // A background read never disturbs a task being composed.
+      // A background read never disturbs a task being composed; an open detail
+      // panel refreshes with it.
       onTick: () => {
         if (!flow.isOpen()) void loadAndRender();
       }
     });
+    const activateTile = () => {
+      const action = resolveTileAction(tile);
+      if (action?.kind === "open_task") {
+        detailOpen = true;
+        render();
+        targets.detailBackBtn.focus();
+        return;
+      }
+      if (action?.kind === "start_task") flow.open(action.device);
+    };
     const handleClick = (event) => {
       if (flow.isOpen()) {
         flow.handleClick(event);
         return;
       }
-      if (!(event.target instanceof Element) || !event.target.closest("[data-tile-add-task]")) return;
-      if (tile.kind === "payload" && tile.payload.state === "ready" && tile.payload.createDevice) {
-        flow.open(tile.payload.createDevice);
+      if (!(event.target instanceof Element)) return;
+      if (detailOpen) {
+        if (!event.target.closest("[data-detail-back]")) return;
+        detailOpen = false;
+        render();
+        targets.tileTap.focus();
+        return;
       }
+      if (event.target.closest("[data-tile-tap]")) activateTile();
+    };
+    const handleKeydown = (event) => {
+      if (flow.isOpen() || detailOpen || event.target !== targets.tileTap || !isActivationKey(event)) return;
+      event.preventDefault();
+      activateTile();
     };
     const handleInput = (event) => flow.handleInput(event);
     const bootstrap = (homey) => {
@@ -2165,9 +2579,11 @@
       flow.destroy();
       root.removeEventListener("click", handleClick);
       root.removeEventListener("input", handleInput);
+      root.removeEventListener("keydown", handleKeydown);
     };
     root.addEventListener("click", handleClick);
     root.addEventListener("input", handleInput);
+    root.addEventListener("keydown", handleKeydown);
     return { bootstrap, destroy, loadAndRender };
   };
   var installWidget2 = (widgetWindow, widgetDocument) => installHeightReportingWidget(

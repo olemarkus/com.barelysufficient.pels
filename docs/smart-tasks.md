@@ -26,7 +26,7 @@ The quickest way is **New smart task** on the **Smart tasks** page: choose a man
 
 The preview also says what happens to the device **When the task is done**, from the device's own settings (see [Power-Limit Control and Tasks](#power-limit-control-and-tasks)). **Change** opens those settings without losing what you have typed.
 
-Smart tasks can also be created from Homey Flow action cards, for a task that should be set up on a schedule, or from the **New smart task** dashboard widget:
+Smart tasks can also be created from Homey Flow action cards, for a task that should be set up on a schedule, or from the **Create smart task** dashboard widget:
 
 | Action card | Use for |
 | --- | --- |
@@ -37,7 +37,7 @@ Smart tasks can also be created from Homey Flow action cards, for a task that sh
 
 The ready-by value is written as local time, for example `07:00`. PELS stores the next matching future time when the Flow runs. It does not automatically repeat the same task every day unless your Flow runs again.
 
-The **New smart task** widget is for one-off dashboard creation without a Flow. It offers managed heating devices and EV chargers (energy tasks are created from the Smart tasks page or the Flow card), previews the scheduled hours and cost estimate, then creates the task. If the preview says **Cannot finish**, the widget warns that the goal may not be reached in time. You can edit the task or choose **Create anyway**; the task still respects your power limits. See [Dashboard Widgets](/widgets) for the full widget set.
+The **Create smart task** widget is for one-off dashboard creation without a Flow. It offers managed heating devices and EV chargers (energy tasks are created from the Smart tasks page or the Flow card), previews the scheduled hours and cost estimate, then creates the task. If the preview says **Cannot finish**, the widget warns that the goal may not be reached in time. You can edit the task or choose **Create anyway**; the task still respects your power limits. See [Dashboard Widgets](/widgets) for the full widget set.
 
 ## What PELS Plans
 
@@ -115,7 +115,7 @@ Four places set these permissions:
 | --- | --- |
 | **Smart task page → Edit task → Extra permissions** | Turning a permission on **or off** for an existing task, with the estimate re-priced under the change before you save. |
 | **Smart tasks page → New smart task → Extra permissions** | Granting any of the three while creating the task (**limit lower-priority devices** only for devices with power levels). The preview is priced with them. |
-| **New smart task** widget | Granting **go over today's budget** or **limit lower-priority devices** while creating the task. It has no toggle for the third one. |
+| **Create smart task** widget | Granting **go over today's budget** or **limit lower-priority devices** while creating the task. It has no toggle for the third one. |
 | **Set what a smart task may do** action card | Granting a permission from a Flow — for example only once a task reports **At risk**. |
 
 | Permission | What it allows |
@@ -131,7 +131,7 @@ The Flow card also asks when the permission applies:
 | **At no time** | The permission is off. |
 | **While it's scheduled to run** | The permission applies during the task's planned hours, and stays set until you change it or clear the task. |
 
-The **Edit task** toggles and the **New smart task** widget set the same thing as **While it's scheduled to run**; switching a toggle off is the same as **At no time**.
+The **Edit task** toggles and the **Create smart task** widget set the same thing as **While it's scheduled to run**; switching a toggle off is the same as **At no time**.
 
 **limit lower-priority devices** is offered only for devices with power levels, such as a water heater with several heating steps. It works on its own: it makes room by turning down lower-priority devices, within both the hard cap and today's budget. To let the task use more than today's budget allows, also turn on **go over today's budget**. Editing a task only changes the permissions the page shows you — with one exception: a permission that can have no effect on the device may be dropped when you save.
 

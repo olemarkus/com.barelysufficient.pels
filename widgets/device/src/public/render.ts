@@ -1,19 +1,30 @@
 import {
   DEVICE_WIDGET_COPY,
+  formatDeviceWidgetEndedDetail,
   formatDeviceWidgetFigure,
 } from '../../../../packages/shared-domain/src/deadlineLabels';
 import { hide, setLine, setVisible } from '../../../_shared/widgetDom';
 import type { FlowTargets } from '../../../_shared/smartTaskCreate/flowView';
+import type { CreateSmartTaskDevice } from '../../../_shared/smartTaskCreate/types';
+import {
+  formatTargetSentence,
+  renderActiveDetail,
+  type DetailTargets,
+} from '../../../_shared/smartTaskDetail/detailRender';
 import type { DeviceStatus } from '../../../../packages/contracts/src/deviceStatus';
 import type { DeviceWidgetPayload, DeviceWidgetTask } from '../deviceWidgetTypes';
 
 const C = DEVICE_WIDGET_COPY;
 
-// The Device widget: one device's tile, and the shared creation flow
-// (`widgets/_shared/smartTaskCreate`) behind its "+ Smart task".
-export type RenderTargets = FlowTargets & {
+// The Device insight widget: one device's tile, the shared smart-task detail
+// panel (`widgets/_shared/smartTaskDetail`) a tap opens while the device has an
+// open task, and the shared creation flow (`widgets/_shared/smartTaskCreate`) a
+// tap opens while it has none.
+export type RenderTargets = FlowTargets & DetailTargets & {
   root: HTMLElement;
   tileView: HTMLElement;
+  tileTap: HTMLElement;
+  tileChevron: HTMLElement;
   tileName: HTMLElement;
   tileChip: HTMLElement;
   tileHero: HTMLElement;
@@ -28,9 +39,6 @@ export type RenderTargets = FlowTargets & {
   tileTaskDeadline: HTMLElement;
   tileTaskWhy: HTMLElement;
   tileTaskNext: HTMLElement;
-  tileFoot: HTMLElement;
-  tileAddTaskBtn: HTMLButtonElement;
-  tileAddTaskLabel: HTMLElement;
   tileMessage: HTMLElement;
 };
 
@@ -40,6 +48,38 @@ export type TileState =
   | { kind: 'loading' }
   | { kind: 'payload'; payload: DeviceWidgetPayload }
   | { kind: 'message'; text: string };
+
+// What a tap on the tile does: open the device's open task, start one, or
+// nothing (no task support, or nothing to show yet).
+export type TileAction =
+  | { kind: 'open_task' }
+  | { kind: 'start_task'; device: CreateSmartTaskDevice }
+  | null;
+
+export const resolveTileAction = (state: TileState): TileAction => {
+  if (state.kind !== 'payload' || state.payload.state !== 'ready') return null;
+  if (state.payload.task.kind === 'active') return { kind: 'open_task' };
+  const { createDevice } = state.payload;
+  return createDevice !== null ? { kind: 'start_task', device: createDevice } : null;
+};
+
+// The device's status tone on the shared chip: a limited or warning state is
+// the only one the chip colours; running, idle and off read as plain status.
+const STATUS_CHIP_TONE: Record<DeviceStatus['tone'], string | null> = {
+  active: null,
+  idle: null,
+  neutral: null,
+  held: 'warn',
+  warning: 'warn',
+  resuming: 'muted',
+};
+
+const setChipTone = (chip: HTMLElement, tone: string | null): void => {
+  /* eslint-disable no-param-reassign -- `chip` is a DOM write sink. */
+  if (tone === null) delete chip.dataset.tone;
+  else chip.dataset.tone = tone;
+  /* eslint-enable no-param-reassign */
+};
 
 // The lead figure is the status reading; a device without one leads with its
 // draw. The power line beside a reading is the draw too.
@@ -67,30 +107,51 @@ const renderTask = (targets: RenderTargets, task: DeviceWidgetTask): void => {
   const { tileTask, tileTaskGoal, tileTaskChip, tileTaskDeadline, tileTaskWhy, tileTaskNext } = targets;
   setVisible(tileTask, task.kind !== 'none');
   if (task.kind === 'none') return;
-  tileTaskGoal.textContent = `${C.smartTaskTitle} · ${task.goalLabel}`;
+  const goal = formatTargetSentence(task.row.targetActionVerb, task.row.targetValue, task.row.unitSymbol);
+  tileTaskGoal.textContent = `${C.smartTaskTitle} · ${goal}`;
   if (task.kind === 'active') {
-    tileTaskChip.textContent = task.statusLabel;
-    tileTaskChip.dataset.tone = task.tone;
-    setLine(tileTaskDeadline, task.deadlineLabel);
-    setLine(tileTaskWhy, task.whyLabel);
+    const { row } = task;
+    tileTaskChip.textContent = row.statusLabel;
+    setChipTone(tileTaskChip, row.tone);
+    setLine(tileTaskDeadline, `${row.etaVerb} ${row.finishLabel}`);
+    setLine(tileTaskWhy, row.whyLabel);
     setLine(tileTaskNext, task.nextRunLabel);
     return;
   }
-  tileTaskChip.textContent = task.outcomeLabel;
-  tileTaskChip.dataset.tone = task.tone;
+  const { row } = task;
+  tileTaskChip.textContent = row.outcomeLabel;
+  setChipTone(tileTaskChip, row.outcomeTone);
   setLine(tileTaskDeadline, null);
-  setLine(tileTaskWhy, task.detailLabel);
+  setLine(tileTaskWhy, formatDeviceWidgetEndedDetail(row.reachedAtLabel, row.whyLabel, row.finishedLabel));
   setLine(tileTaskNext, null);
 };
 
+// The tile is one tap target while it has an action: a button to assistive
+// tech, with a chevron to the eye.
+const renderTileAction = (targets: RenderTargets, action: TileAction): void => {
+  const { tileTap, tileChevron } = targets;
+  setVisible(tileChevron, action !== null);
+  if (action === null) {
+    tileTap.removeAttribute('role');
+    tileTap.removeAttribute('tabindex');
+    tileTap.removeAttribute('aria-label');
+    delete tileTap.dataset.action;
+    return;
+  }
+  tileTap.setAttribute('role', 'button');
+  tileTap.setAttribute('tabindex', '0');
+  tileTap.setAttribute('aria-label', action.kind === 'open_task' ? C.openTaskAction : C.startTaskAction);
+  tileTap.dataset.action = action.kind;
+};
+
 const renderDevice = (targets: RenderTargets, payload: Extract<DeviceWidgetPayload, { state: 'ready' }>): void => {
-  const { device, task, createDevice } = payload;
+  const { device, task } = payload;
   const { status } = device;
-  const { tileName, tileChip, tileReason, tileFact, tileFoot, tileAddTaskLabel } = targets;
+  const { tileName, tileChip, tileReason, tileFact } = targets;
   tileName.textContent = device.name;
   setVisible(tileName, true);
   tileChip.textContent = status.label;
-  tileChip.dataset.tone = status.tone;
+  setChipTone(tileChip, STATUS_CHIP_TONE[status.tone]);
   setVisible(tileChip, true);
   renderHero(targets, status, device.carName);
   setLine(tileReason, status.reason?.text ?? null);
@@ -100,13 +161,11 @@ const renderDevice = (targets: RenderTargets, payload: Extract<DeviceWidgetPaylo
   // the state. Without one it is the tile's only fact ("Unplugged").
   setLine(tileFact, status.reading === null ? status.factText : null);
   renderTask(targets, task);
-  tileAddTaskLabel.textContent = C.addSmartTask;
-  setVisible(tileFoot, createDevice !== null);
 };
 
 const hideDevice = (targets: RenderTargets): void => {
   for (const element of [
-    targets.tileChip, targets.tileHero, targets.tileReason, targets.tileFact, targets.tileTask, targets.tileFoot,
+    targets.tileChip, targets.tileHero, targets.tileReason, targets.tileFact, targets.tileTask,
   ]) hide(element);
 };
 
@@ -116,15 +175,27 @@ const resolveMessage = (state: Exclude<TileState, { kind: 'loading' }>): string 
   return state.payload.state === 'starting' ? C.starting : null;
 };
 
-/** The tile, shown while the creation flow is closed. */
-export const renderTileView = (
+// Which of the widget's views is up: the tile, the open task's detail panel,
+// or the creation flow (which renders itself).
+export type DeviceView = 'tile' | 'detail' | 'flow';
+
+/** The tile and the detail panel; each is shown only while it is the view. */
+export const renderDeviceView = (
   targets: RenderTargets,
   state: TileState,
   deviceName: string | null,
-  visible: boolean,
+  view: DeviceView,
 ): void => {
-  setVisible(targets.tileView, visible);
-  if (!visible) return;
+  setVisible(targets.tileView, view === 'tile');
+  setVisible(targets.detailView, view === 'detail');
+  if (view === 'detail') {
+    if (state.kind === 'payload' && state.payload.state === 'ready' && state.payload.task.kind === 'active') {
+      renderActiveDetail(targets, state.payload.task.row);
+    }
+    return;
+  }
+  if (view === 'flow') return;
+  renderTileAction(targets, resolveTileAction(state));
   if (state.kind === 'payload' && state.payload.state === 'ready') {
     hide(targets.tileMessage);
     renderDevice(targets, state.payload);

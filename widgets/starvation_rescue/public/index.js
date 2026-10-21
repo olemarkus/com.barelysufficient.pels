@@ -380,7 +380,7 @@
   var SMART_TASK_EXTRA_PERMISSIONS_TITLE = "Extra permissions";
   var CREATE_SMART_TASK_WIDGET_COPY = {
     // Step 1 — device picker.
-    pickDeviceTitle: "New smart task",
+    pickDeviceTitle: "Create smart task",
     pickDevicePrompt: "Choose a device",
     emptyNoDevices: "No eligible devices",
     // Warmer than a bare capability list: name the device kinds AND the next

@@ -18,6 +18,7 @@ const flushPromises = async (): Promise<void> => {
 const text = (selector: string): string | null | undefined => document.querySelector(selector)?.textContent;
 const shown = (selector: string): boolean => !document.querySelector(selector)?.hasAttribute('hidden');
 const view = (): string | undefined => document.getElementById('widget-root')?.dataset.view;
+const tap = (): HTMLElement | null => document.querySelector<HTMLElement>('[data-tile-tap]');
 
 const connect = async (
   payload: DeviceWidgetPayload,
@@ -39,7 +40,7 @@ const connect = async (
   await flushPromises();
 };
 
-describe('device widget browser', () => {
+describe('Device insight widget browser', () => {
   beforeEach(() => {
     window.history.replaceState({}, '', '/');
     delete (window as WidgetWindow).onHomeyReady;
@@ -62,24 +63,55 @@ describe('device widget browser', () => {
     expect(text('[data-tile-reason]')).toBe('Waiting to resume — 0.8 kW more needed');
     // The temperature fact only words the figure the tile already leads with.
     expect(shown('[data-tile-fact]')).toBe(false);
-    expect(shown('[data-tile-foot]')).toBe(true);
+    // Limited is the state the status chip colours; no task, so a tap starts one.
+    expect(document.querySelector<HTMLElement>('[data-tile-chip]')?.dataset.tone).toBe('warn');
+    expect(tap()?.getAttribute('role')).toBe('button');
+    expect(tap()?.getAttribute('aria-label')).toBe(DEVICE_WIDGET_COPY.startTaskAction);
+    expect(shown('[data-tile-chevron]')).toBe(true);
   });
 
-  test('a running task takes the action\'s place', async () => {
+  test('summarises a running task, and a tap opens its detail until Back', async () => {
     await connect(resolveDeviceWidgetPreviewPayload('ev'));
-    expect(text('[data-tile-figure]')).toBe('58%');
+    // A running device reads as plain status; colour is for limits and task outcomes.
+    expect(document.querySelector<HTMLElement>('[data-tile-chip]')?.dataset.tone).toBeUndefined();
+    expect(text('[data-tile-figure]')).toBe('58 %');
     expect(text('[data-tile-figure-context]')).toBe('Model Y');
     // The fact line ("Charging · 58 % · level 16 A") would repeat the figure.
     expect(shown('[data-tile-fact]')).toBe(false);
-    expect(text('[data-tile-task-goal]')).toBe('Smart task · Charge to 80%');
+    expect(text('[data-tile-task-goal]')).toBe('Smart task · Charge to 80 %');
     expect(text('[data-tile-task-next]')).toBe('Next run 02:00');
-    expect(shown('[data-tile-foot]')).toBe(false);
+    expect(tap()?.getAttribute('aria-label')).toBe(DEVICE_WIDGET_COPY.openTaskAction);
+    (document.querySelector('[data-tile-name]') as HTMLElement).click();
+    expect(view()).toBe('detail');
+    expect(shown('[data-tile-view]')).toBe(false);
+    expect(text('[data-detail-name]')).toBe('Garage charger');
+    expect(text('[data-detail-chip]')).toBe('On track');
+    expect(text('[data-detail-target]')).toBe('Charge to 80 %');
+    expect(text('[data-detail-deadline]')).toBe('Ready by Tomorrow 07:00');
+    (document.querySelector('[data-detail-back]') as HTMLElement).click();
+    expect(view()).toBe('tile');
+    expect(shown('[data-detail-view]')).toBe(false);
   });
 
-  test('+ Smart task opens the shared creation flow, and Back returns to the tile', async () => {
+  test('Enter on the tile opens it, like a tap', async () => {
+    await connect(resolveDeviceWidgetPreviewPayload('ev'));
+    tap()?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(view()).toBe('detail');
+  });
+
+  test('a device that takes no task has no tap target', async () => {
+    await connect(resolveDeviceWidgetPreviewPayload('plain'));
+    expect(tap()?.hasAttribute('role')).toBe(false);
+    expect(shown('[data-tile-chevron]')).toBe(false);
+    (document.querySelector('[data-tile-name]') as HTMLElement).click();
+    expect(view()).toBe('tile');
+  });
+
+  test('a tap with no open task opens the shared creation flow, and Back returns to the tile', async () => {
     const calls: Array<{ path: string; body: unknown }> = [];
-    await connect(resolveDeviceWidgetPreviewPayload('heater'), calls);
-    (document.querySelector('[data-tile-add-task]') as HTMLElement).click();
+    await connect(resolveDeviceWidgetPreviewPayload('ended'), calls);
+    expect(text('[data-tile-task-why]')).toBe('Reached at 05:48');
+    (document.querySelector('[data-tile-figure]') as HTMLElement).click();
     await flushPromises();
     expect(calls.some((call) => call.path === '/quick_targets')).toBe(true);
     // No target could be timed (prices missing): the flow opens on the goal form.
@@ -116,7 +148,7 @@ describe('device widget browser', () => {
       installWidget(window as WidgetWindow, document);
       (window as WidgetWindow).onHomeyReady?.(homey as never);
       await flushPromises();
-      (document.querySelector('[data-tile-add-task]') as HTMLElement).click();
+      tap()?.click();
       await flushPromises();
       (document.querySelector('[data-preview-btn]') as HTMLElement).click();
       await flushPromises();
@@ -129,7 +161,7 @@ describe('device widget browser', () => {
       reload.resolve(resolveDeviceWidgetPreviewPayload('ev'));
       await flushPromises();
       expect(view()).toBe('tile');
-      expect(shown('[data-tile-foot]')).toBe(false);
+      expect(tap()?.getAttribute('aria-label')).toBe(DEVICE_WIDGET_COPY.openTaskAction);
     } finally {
       vi.useRealTimers();
     }

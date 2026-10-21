@@ -27,8 +27,8 @@ SoC-based deadline charging is the best EV charging pattern in PELS because it c
 
 The result is calmer:
 
-- If you only want confirmation, the **Smart tasks** widget tells you whether the car is on track.
-- If this is your first charging setup, the **New smart task** widget lets you create the task without learning modes.
+- If you only want confirmation, the **Smart task list** widget tells you whether the car is on track.
+- If this is your first charging setup, the **Create smart task** widget lets you create the task without learning modes.
 - If you optimize every run, the plan view shows which hours were selected and why.
 - If a previous run missed, the next run gives you an early **At risk** or **Cannot finish** signal.
 - If a notification sends you here, the active EV smart task is the one thing to check first.
@@ -131,17 +131,17 @@ Create an EV charging dashboard and add these PELS widgets:
 
 | Widget | Use it for |
 | --- | --- |
-| **New smart task** | Create the charging task from the dashboard. |
-| **Smart tasks** | Watch whether the EV task is **On track**, **At risk**, or **Cannot finish**. |
+| **Create smart task** | Create the charging task from the dashboard. |
+| **Smart task list** | Watch whether the EV task is **On track**, **At risk**, or **Cannot finish**. |
 | **Available power** | See whether the home is close to the hard cap right now. |
 | **Budget and Price** | See today's budget, price shape, and whether the day is tracking to plan. |
 | **Held-back devices** | Optional: see devices PELS has kept below their target, including a charger below its battery level, and let one run when you deliberately want it sooner. |
 
-Put **New smart task** near **Smart tasks**. The first creates the task; the second tells you whether it is still healthy.
+Put **Create smart task** near **Smart task list**. The first creates the task; the second tells you whether it is still healthy.
 
 ## Step 4: Create The Charging Task
 
-From the **New smart task** widget:
+From the **Create smart task** widget:
 
 1. Pick the EV charger.
 2. Set the target, for example `80%`.
@@ -151,7 +151,7 @@ From the **New smart task** widget:
 
 Leave **Extra permissions** off for the first run. A normal EV deadline should prove itself inside the daily budget and hard cap before you give it more leeway.
 
-After confirmation, the **Smart tasks** widget and the PELS **Smart tasks** page show the active charging task.
+After confirmation, the **Smart task list** widget and the PELS **Smart tasks** page show the active charging task.
 
 ## Step 5: Read The Result
 
@@ -197,7 +197,7 @@ Use deadline charging when the car's final battery level matters.
 
 | Problem | What to check |
 | --- | --- |
-| The charger is not offered in **New smart task** | Confirm it is paired in Homey, visible in PELS, **Managed by PELS**, and configured as **EV 1-phase** or **EV 3-phase**. |
+| The charger is not offered in **Create smart task** | Confirm it is paired in Homey, visible in PELS, **Managed by PELS**, and configured as **EV 1-phase** or **EV 3-phase**. |
 | Battery percentage does not appear | Check whether the value is on the charger or on a separate car device. If it is on the car device, select the car in the charger's **Car** section (Path A) and wait for PELS to match it. If the car is not listed there, report its battery percentage with **Report battery level for charger** (Path C). |
 | The task stays at **Building plan…** | Check that price data is available through the ready-by time. Tomorrow's prices may not be published yet. |
 | The charger starts in an hour outside the plotted task plan | The task keeps that hour without planned energy, because it is cheaper than the planned hours or the task cannot finish otherwise, and charges there when power is available. A deferred hour is held off. Turn **Power-limit control** off to prevent normal run-when-power-is-available behavior when no active task controls the charger. |

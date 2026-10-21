@@ -163,157 +163,20 @@ body {
   padding: var(--pw-su-2, 8px);
 }
 
-/* The renderer switches views and individual lines by toggling the `hidden`
-   attribute. Any author `display` rule on a hidden-toggled element would beat
-   the user-agent `[hidden] { display: none }` rule (author origin wins over UA
-   regardless of specificity), so a hidden view/list would still render — the
-   list and detail views would stack instead of swapping. This blanket
-   author-origin reset re-asserts the UA semantics for every hidden-toggled
-   element in one place — views (.list-view/.detail-view), the row list (.rows),
-   the empty/overflow lines, the detail lines, and any future hidden-toggled
-   element — so no `display` rule below needs a per-rule `:not([hidden])`
-   guard. */
-[hidden] {
-  display: none !important;
-}
+/* Controls shared by the PELS widgets: the status tag (chip) and the back
+ * button that heads a sub-view. Composed from the `--pw-*` widget tokens only.
+ *
+ * Build: `scripts/build-widgets.mjs` prepends this file (after the token layer)
+ * to the widgets that use them. Edit it here; never edit the generated copy.
+ */
 
-/* The frame layout (`widget-frame.css`, shared with the chart widgets) pins
-   the root to the iframe at the manifest height; the widget never calls
-   `Homey.setHeight`. Each view is a flex column that takes the whole root, and
-   the part that can outgrow it scrolls INSIDE the widget: the whole list view
-   (active rows + "Recently ended"), and the detail view's body under its fixed
-   header. `overscroll-behavior: contain` keeps a scroll that hits the end from
-   dragging the dashboard, and `touch-action: pan-y` lets a vertical swipe
-   scroll the list on touch screens. */
-.list-view,
-.detail-view {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  flex: 1 1 auto;
-  gap: var(--pw-su-2, 8px);
-}
+/* ----- Status tag ----- */
 
-.list-view,
-.detail-body {
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  touch-action: pan-y;
-}
-
-/* ----- List view ----- */
-
-.rows {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--pw-su-1, 4px);
-  flex: none;
-}
-
-.row {
-  display: block;
-  padding: 0;
-  margin: 0;
-}
-
-.row__btn {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: auto auto;
-  gap: 0 var(--pw-su-2, 8px);
-  align-items: baseline;
-  padding: var(--pw-su-1, 4px) var(--pw-su-2, 8px);
-  border: none;
-  border-radius: var(--pw-radius-small, 6px);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: var(--pw-font-size-body, 14px);
-  line-height: var(--pw-line-body, 20px);
-  text-align: left;
-  width: 100%;
-  min-height: 48px;
-  cursor: pointer;
-  transition: background-color 200ms ease-out;
-}
-
-.row__btn:hover {
-  background-color: color-mix(in srgb, var(--pw-text, currentColor) 6%, transparent);
-}
-
-.row__btn:focus-visible {
-  outline: 2px solid var(--pw-text, currentColor);
-  outline-offset: 2px;
-}
-
-.row[data-tone="danger"] .row__btn {
-  background: color-mix(in srgb, var(--pw-danger, #f0696c) 12%, transparent);
-}
-
-.row[data-tone="warn"] .row__btn {
-  background: color-mix(in srgb, var(--pw-warning, #f5a623) 12%, transparent);
-}
-
-.row__name {
-  grid-column: 1;
-  grid-row: 1;
-  font-weight: var(--pw-weight-medium, 500);
-  color: var(--pw-text, inherit);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.row__values {
-  grid-column: 1;
-  grid-row: 2;
-  font-size: var(--pw-font-size-body, 14px);
-  color: var(--pw-text-muted, #6d7680);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.row__eta {
-  grid-column: 2;
-  grid-row: 2;
-  color: var(--pw-text, inherit);
-  font-variant-numeric: var(--pw-numeric, tabular-nums);
-  white-space: nowrap;
-}
-
-.row[data-tone="danger"] .row__eta {
-  color: var(--pw-text-danger, #f0696c);
-  font-weight: var(--pw-weight-medium, 500);
-}
-
-.row[data-tone="warn"] .row__eta {
-  color: var(--pw-text-warning, #b9770e);
-  font-weight: var(--pw-weight-medium, 500);
-}
-
-/* The 12% tonal row wash is near-invisible over the dark Homey host, so on a
-   warn/danger row only the chip + eta carried the signal while the values line
-   stayed the same muted grey as an inert row. Tint the values with the Homey
-   warning/danger text token (the same one the eta uses) so the whole left
-   column reads as warning at a glance — text emphasis, not a louder fill. */
-.row[data-tone="danger"] .row__values {
-  color: var(--pw-text-danger, #f0696c);
-}
-
-.row[data-tone="warn"] .row__values {
-  color: var(--pw-text-warning, #b9770e);
-}
-
-/* Homey-native status tag (shared recipe with headroom + create_smart_task):
-   medium weight, small radius, faint tonal border over a light tonal fill — a
-   soft tag, not a saturated pill. */
+/* Homey-native status tag: medium weight, small radius, faint tonal border
+   over a light tonal fill. A soft tag, not a saturated pill. Plain (no tone)
+   is a neutral state; `ok`, `warn` and `danger` carry the outcome; `muted` is
+   the in-progress info tint. */
 .chip {
-  grid-column: 2;
-  grid-row: 1;
   font-size: var(--pw-font-size-body, 14px);
   line-height: var(--pw-line-body, 20px);
   font-weight: var(--pw-weight-medium, 500);
@@ -352,81 +215,7 @@ body {
   color: var(--pw-text, #1f252a);
 }
 
-.empty {
-  margin: auto 0 0;
-  font-size: var(--pw-font-size-title, 17px);
-  line-height: var(--pw-line-title, 24px);
-  color: var(--pw-text-muted, #6d7680);
-  text-align: center;
-}
-
-.empty-hint {
-  margin: var(--pw-su-1, 4px) 0 auto;
-  font-size: var(--pw-font-size-body, 14px);
-  line-height: var(--pw-line-body, 20px);
-  color: var(--pw-text-muted, #6d7680);
-  text-align: center;
-}
-
-.overflow {
-  margin: 0;
-  font-size: var(--pw-font-size-body, 14px);
-  line-height: var(--pw-line-body, 20px);
-  color: var(--pw-text-muted, #6d7680);
-  text-align: right;
-}
-
-/* ----- Recently ended section ----- */
-
-/* Sits below the active rows, separated by a faint rule so it reads as a
-   distinct "history" group rather than more live tasks. */
-.ended {
-  border-top: 1px solid;
-  border-top-color: var(--pw-line-light, rgba(15, 23, 28, 0.08));
-  padding-top: var(--pw-su-1, 4px);
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  gap: var(--pw-su-1, 4px);
-}
-
-.ended__heading {
-  margin: 0;
-  font-size: var(--pw-font-size-body, 14px);
-  line-height: var(--pw-line-body, 20px);
-  font-weight: var(--pw-weight-medium, 500);
-  color: var(--pw-text-muted, #6d7680);
-}
-
-/* Ended rows don't carry a live danger/warn background wash — the outcome chip
-   alone conveys the result, keeping the history group visually calm. */
-.ended__rows {
-  flex: none;
-}
-
-.ended__rows .row[data-tone="warn"] .row__btn {
-  background: transparent;
-}
-
-/* …and for the same reason the value line stays muted on ended rows: a Missed
-   outcome carries `data-tone="warn"`, which would otherwise inherit the active
-   warning/danger value tint above and re-introduce active colour into the calm
-   history group. The outcome chip alone conveys the result. */
-.ended__rows .row[data-tone="warn"] .row__values,
-.ended__rows .row[data-tone="danger"] .row__values {
-  color: var(--pw-text-muted, #6d7680);
-}
-
-/* ----- Detail view ----- */
-
-.detail-header {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--pw-su-2, 8px);
-  min-height: 48px;
-}
+/* ----- Back button ----- */
 
 .back-btn {
   display: inline-flex;
@@ -487,6 +276,33 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+
+/* A text arrow, for the creation flow's step headers. */
+.back-btn__chevron {
+  font-size: var(--pw-font-size-display, 20px);
+  flex: none;
+}
+
+/* The smart-task detail panel (target, deadline, trajectory chart, why and
+ * estimate lines), shared by every widget that opens one: Smart task list and
+ * Device insight. The panel's scroll and fill layout belongs to each host.
+ * Composed from the `--pw-*` widget tokens only; the chip and back button come
+ * from `widget-controls.css`.
+ *
+ * Build: `scripts/build-widgets.mjs` prepends this file to the widgets that host
+ * the panel. Edit it here; never edit the generated copy.
+ */
+
+/* ----- Detail view ----- */
+
+.detail-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pw-su-2, 8px);
+  min-height: 48px;
 }
 
 .detail-header .chip {
@@ -690,4 +506,221 @@ body {
   border-radius: 2px;
   background: var(--pw-chart-band, rgba(88, 197, 106, 0.1));
   border: 1px solid color-mix(in srgb, var(--pw-chart-measured, #58c56a) 45%, transparent);
+}
+
+/* The renderer switches views and individual lines by toggling the `hidden`
+   attribute. Any author `display` rule on a hidden-toggled element would beat
+   the user-agent `[hidden] { display: none }` rule (author origin wins over UA
+   regardless of specificity), so a hidden view/list would still render — the
+   list and detail views would stack instead of swapping. This blanket
+   author-origin reset re-asserts the UA semantics for every hidden-toggled
+   element in one place — views (.list-view/.detail-view), the row list (.rows),
+   the empty/overflow lines, the detail lines, and any future hidden-toggled
+   element — so no `display` rule below needs a per-rule `:not([hidden])`
+   guard. */
+[hidden] {
+  display: none !important;
+}
+
+/* The frame layout (`widget-frame.css`, shared with the chart widgets) pins
+   the root to the iframe at the manifest height; the widget never calls
+   `Homey.setHeight`. Each view is a flex column that takes the whole root, and
+   the part that can outgrow it scrolls INSIDE the widget: the whole list view
+   (active rows + "Recently ended"), and the detail view's body under its fixed
+   header. `overscroll-behavior: contain` keeps a scroll that hits the end from
+   dragging the dashboard, and `touch-action: pan-y` lets a vertical swipe
+   scroll the list on touch screens. */
+.list-view,
+.detail-view {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  gap: var(--pw-su-2, 8px);
+}
+
+.list-view,
+.detail-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+/* ----- List view ----- */
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pw-su-1, 4px);
+  flex: none;
+}
+
+.row {
+  display: block;
+  padding: 0;
+  margin: 0;
+}
+
+.row__btn {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  gap: 0 var(--pw-su-2, 8px);
+  align-items: baseline;
+  padding: var(--pw-su-1, 4px) var(--pw-su-2, 8px);
+  border: none;
+  border-radius: var(--pw-radius-small, 6px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  text-align: left;
+  width: 100%;
+  min-height: 48px;
+  cursor: pointer;
+  transition: background-color 200ms ease-out;
+}
+
+.row__btn:hover {
+  background-color: color-mix(in srgb, var(--pw-text, currentColor) 6%, transparent);
+}
+
+.row__btn:focus-visible {
+  outline: 2px solid var(--pw-text, currentColor);
+  outline-offset: 2px;
+}
+
+.row[data-tone="danger"] .row__btn {
+  background: color-mix(in srgb, var(--pw-danger, #f0696c) 12%, transparent);
+}
+
+.row[data-tone="warn"] .row__btn {
+  background: color-mix(in srgb, var(--pw-warning, #f5a623) 12%, transparent);
+}
+
+.row__name {
+  grid-column: 1;
+  grid-row: 1;
+  font-weight: var(--pw-weight-medium, 500);
+  color: var(--pw-text, inherit);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row__values {
+  grid-column: 1;
+  grid-row: 2;
+  font-size: var(--pw-font-size-body, 14px);
+  color: var(--pw-text-muted, #6d7680);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row__eta {
+  grid-column: 2;
+  grid-row: 2;
+  color: var(--pw-text, inherit);
+  font-variant-numeric: var(--pw-numeric, tabular-nums);
+  white-space: nowrap;
+}
+
+.row[data-tone="danger"] .row__eta {
+  color: var(--pw-text-danger, #f0696c);
+  font-weight: var(--pw-weight-medium, 500);
+}
+
+.row[data-tone="warn"] .row__eta {
+  color: var(--pw-text-warning, #b9770e);
+  font-weight: var(--pw-weight-medium, 500);
+}
+
+/* The 12% tonal row wash is near-invisible over the dark Homey host, so on a
+   warn/danger row only the chip + eta carried the signal while the values line
+   stayed the same muted grey as an inert row. Tint the values with the Homey
+   warning/danger text token (the same one the eta uses) so the whole left
+   column reads as warning at a glance — text emphasis, not a louder fill. */
+.row[data-tone="danger"] .row__values {
+  color: var(--pw-text-danger, #f0696c);
+}
+
+.row[data-tone="warn"] .row__values {
+  color: var(--pw-text-warning, #b9770e);
+}
+
+/* The status tag recipe is shared (`widget-controls.css`); in a row it sits in
+   the right-hand column of the first line. */
+.row .chip {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.empty {
+  margin: auto 0 0;
+  font-size: var(--pw-font-size-title, 17px);
+  line-height: var(--pw-line-title, 24px);
+  color: var(--pw-text-muted, #6d7680);
+  text-align: center;
+}
+
+.empty-hint {
+  margin: var(--pw-su-1, 4px) 0 auto;
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  color: var(--pw-text-muted, #6d7680);
+  text-align: center;
+}
+
+.overflow {
+  margin: 0;
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  color: var(--pw-text-muted, #6d7680);
+  text-align: right;
+}
+
+/* ----- Recently ended section ----- */
+
+/* Sits below the active rows, separated by a faint rule so it reads as a
+   distinct "history" group rather than more live tasks. */
+.ended {
+  border-top: 1px solid;
+  border-top-color: var(--pw-line-light, rgba(15, 23, 28, 0.08));
+  padding-top: var(--pw-su-1, 4px);
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--pw-su-1, 4px);
+}
+
+.ended__heading {
+  margin: 0;
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  font-weight: var(--pw-weight-medium, 500);
+  color: var(--pw-text-muted, #6d7680);
+}
+
+/* Ended rows don't carry a live danger/warn background wash — the outcome chip
+   alone conveys the result, keeping the history group visually calm. */
+.ended__rows {
+  flex: none;
+}
+
+.ended__rows .row[data-tone="warn"] .row__btn {
+  background: transparent;
+}
+
+/* …and for the same reason the value line stays muted on ended rows: a Missed
+   outcome carries `data-tone="warn"`, which would otherwise inherit the active
+   warning/danger value tint above and re-introduce active colour into the calm
+   history group. The outcome chip alone conveys the result. */
+.ended__rows .row[data-tone="warn"] .row__values,
+.ended__rows .row[data-tone="danger"] .row__values {
+  color: var(--pw-text-muted, #6d7680);
 }

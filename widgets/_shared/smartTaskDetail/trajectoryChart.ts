@@ -3,14 +3,14 @@ import {
   SMART_TASK_WIDGET_CHART_PLANNED_LABEL,
   SMART_TASK_WIDGET_CHART_RUN_BAND_LABEL,
   SMART_TASK_WIDGET_CHART_TARGET_LABEL,
-} from '../../../../packages/shared-domain/src/deadlineLabels';
+} from '../../../packages/shared-domain/src/deadlineLabels';
 import type {
   DeferredPlanHistoryChartData,
   DeferredPlanHistoryChartPoint,
-} from '../../../../packages/shared-domain/src/deferredPlanHistoryChartData';
-import { measureBox, type BoxSize } from '../../../_shared/widgetChartSize';
-import { clearChildren } from '../../../_shared/widgetDom';
-import { createSvg } from '../../../_shared/widgetSvg';
+} from '../../../packages/shared-domain/src/deferredPlanHistoryChartData';
+import { measureBox, type BoxSize } from '../widgetChartSize';
+import { clearChildren } from '../widgetDom';
+import { createSvg } from '../widgetSvg';
 
 // Compact planned-vs-actual trajectory for the smart-tasks detail panel: the
 // planned progress staircase (where the device should be heading toward target

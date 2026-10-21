@@ -1,6 +1,7 @@
 /* The smart-task creation flow (quick targets, goal form, preview, created
  * flash), shared by every widget that hosts it: New smart task and Device.
- * Composed from the `--pw-*` widget tokens only.
+ * Composed from the `--pw-*` widget tokens only; the back button comes from
+ * `widget-controls.css`.
  *
  * Build: `scripts/build-widgets.mjs` prepends this file (after the token layer)
  * to the widgets that host the flow. Edit it here; never edit the generated copy.
@@ -41,52 +42,6 @@
   align-items: center;
   gap: var(--pw-su-2, 8px);
   min-height: 48px;
-}
-
-.back-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--pw-su-1, 4px);
-  background: transparent;
-  border: none;
-
-  /* Explicit text token, not `inherit`: the dashboard host supplies the
-     inherited body colour, but a host (or harness) that doesn't would leave the
-     dark-theme title invisible (black on dark). `--pw-text` resolves the same
-     colour the host would supply. */
-  color: var(--pw-text, inherit);
-  font: inherit;
-  font-size: var(--pw-font-size-title, 17px);
-  line-height: var(--pw-line-title, 24px);
-  font-weight: var(--pw-weight-medium, 500);
-  padding: var(--pw-su-1, 4px) var(--pw-su-2, 8px) var(--pw-su-1, 4px) 0;
-  border-radius: var(--pw-radius-small, 6px);
-  cursor: pointer;
-  text-align: left;
-  min-height: 48px;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.back-btn:hover {
-  background-color: color-mix(in srgb, var(--pw-text, currentColor) 6%, transparent);
-}
-
-.back-btn:focus-visible {
-  outline: 2px solid var(--pw-text, currentColor);
-  outline-offset: 2px;
-}
-
-.back-btn__chevron {
-  font-size: var(--pw-font-size-display, 20px);
-  flex: none;
-}
-
-.back-btn__name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
 }
 
 /* ----- Fields (goal + ready-by) ----- */

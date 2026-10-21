@@ -577,9 +577,9 @@ export const resolveSmartTaskWidgetDetailCopy = (
 
 // Compressed empty-state pointer for the widget, which has no create action of
 // its own. Names both routes a dashboard owner has: a Flow card or the separate
-// "New smart task" widget.
+// "Create smart task" widget.
 export const SMART_TASK_WIDGET_EMPTY_HINT
-  = 'Add a smart task from a Flow card for a managed device, or use the New smart task widget to see it here.';
+  = 'Add a smart task from a Flow card for a managed device, or use the Create smart task widget to see it here.';
 
 // Widget empty-state subtitle. Lives here (not inlined in the widget package)
 // so runtime logging and the widget render the same string per
@@ -642,7 +642,7 @@ export const formatSmartTaskWidgetOverflow = (count: number): string =>
 export const SMART_TASK_EXTRA_PERMISSIONS_TITLE = 'Extra permissions';
 
 // ─── Create-smart-task widget copy ───────────────────────────────────────────
-// User-facing strings for the standalone "New smart task" dashboard widget.
+// User-facing strings for the standalone "Create smart task" dashboard widget.
 // Housed here (not inlined in the widget package) so the strings sit beside the
 // rest of the smart-task vocabulary and runtime log breadcrumbs can reuse the
 // same wording per `feedback_ui_text_shared_with_logs`. The widget lets the
@@ -651,7 +651,7 @@ export const SMART_TASK_EXTRA_PERMISSIONS_TITLE = 'Extra permissions';
 // vocabulary only, no shed/restore/headroom jargon (`notes/ui-terminology.md`).
 export const CREATE_SMART_TASK_WIDGET_COPY = {
   // Step 1 — device picker.
-  pickDeviceTitle: 'New smart task',
+  pickDeviceTitle: 'Create smart task',
   pickDevicePrompt: 'Choose a device',
   emptyNoDevices: 'No eligible devices',
   // Warmer than a bare capability list: name the device kinds AND the next
@@ -3490,11 +3490,12 @@ export const resolveKwhPerUnitProvenanceRows = (
   return rows;
 };
 
-// ─── Device widget ────────────────────────────────────────────────────────────
+// ─── Device insight widget ────────────────────────────────────────────────────
 //
-// One device's tile: its overview status, its smart task, and "+ Smart task"
-// (the shared creation flow). The status lines themselves are the overview
-// card's, from the backend; these are only the tile's own words.
+// One device's tile: its overview status and its smart task. A tap opens the
+// task's detail, or the shared creation flow when the device has no open task.
+// The status lines themselves are the overview card's, from the backend; these
+// are only the tile's own words.
 export const DEVICE_WIDGET_COPY = {
   // Before a device is chosen in the widget's settings.
   chooseDevice: 'Choose a device in the widget settings.',
@@ -3503,8 +3504,10 @@ export const DEVICE_WIDGET_COPY = {
   // No plan yet since the app started: no status rather than a guessed one.
   starting: 'PELS is starting. Status shows after the first power reading.',
   loadError: 'Could not load this device.',
-  addSmartTask: '+ Smart task',
   smartTaskTitle: 'Smart task',
+  // What a tap on the tile does, for assistive tech; the chevron shows it.
+  openTaskAction: 'Open the smart task',
+  startTaskAction: 'Start a smart task',
 } as const;
 
 // "Next run 02:00": when a running task's next planned hour starts.
@@ -3524,12 +3527,12 @@ export const formatDeviceWidgetEndedDetail = (
 };
 
 // The tile's lead figure from a status reading: "54.0 °C" with "target 65 °C",
-// or "58%" with the linked car's name. Same figures the fact line words.
+// or "58 %" with the linked car's name. Same figures the fact line words.
 export const formatDeviceWidgetFigure = (
   reading: DeviceStatusReading,
   carName: string | null,
 ): { value: string; context: string } => (
   reading.kind === 'temperature'
     ? { value: `${reading.currentC.toFixed(1)} °C`, context: `target ${reading.targetC.toFixed(0)} °C` }
-    : { value: `${Math.round(reading.percent)}%`, context: carName ?? '' }
+    : { value: `${Math.round(reading.percent)} %`, context: carName ?? '' }
 );
