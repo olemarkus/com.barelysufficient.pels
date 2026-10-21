@@ -71,7 +71,6 @@ import type { RestorePlanResult } from './restore';
 import { trackPlanStage, trackPlanStageAsync } from './planStageTiming';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
-import { incPerfCounter } from '../utils/perfCounters';
 import { resolveDailySoftLimitBucket } from './planDailyBudgetWindow';
 import {
   ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
@@ -613,14 +612,6 @@ export class PlanBuilder {
 
   private applySheddingOutcome(sheddingPlan: SheddingPlan): void {
     this.state.applySheddingOutcome(sheddingPlan.outcome, sheddingPlan.recoveredAtMs);
-    if (sheddingPlan.guardInShortfall !== this.state.inShortfall) {
-      // Commit the durable signal before advancing the shared planner state.
-      // If settings throws, the next build must still observe the transition
-      // and retry instead of treating an unpersisted latch as complete.
-      this.deps.setCapacityInShortfall(sheddingPlan.guardInShortfall);
-      this.state.inShortfall = sheddingPlan.guardInShortfall;
-      incPerfCounter('settings_set.capacity_in_shortfall');
-    }
   }
 
 }

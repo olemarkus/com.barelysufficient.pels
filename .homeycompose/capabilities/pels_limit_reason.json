@@ -1,12 +1,45 @@
 {
-  "type": "string",
+  "type": "enum",
   "title": {
     "en": "Limit reason"
   },
   "desc": {
-    "en": "Why PELS is currently limiting devices or delaying resume"
+    "en": "Which limit PELS is currently holding devices back for"
   },
   "getable": true,
   "setable": false,
+  "uiComponent": "sensor",
+  "values": [
+    {
+      "id": "none",
+      "title": {
+        "en": "Not limiting"
+      }
+    },
+    {
+      "id": "hourly",
+      "title": {
+        "en": "Capacity limit"
+      }
+    },
+    {
+      "id": "daily",
+      "title": {
+        "en": "Daily budget"
+      }
+    },
+    {
+      "id": "grid",
+      "title": {
+        "en": "Grid import limit"
+      }
+    },
+    {
+      "id": "both",
+      "title": {
+        "en": "Several limits"
+      }
+    }
+  ],
   "icon": "/assets/capabilities/pels_limit_reason.svg"
 }

@@ -193,4 +193,4 @@ These are exposed on the PELS Insights device:
 - `pels_hourly_limit_kw` (the current effective safe pace in kW; the capability keeps its historical name, but the value is the lowest enabled limit: the capacity-period pace, the daily budget pace, or the level where PELS starts reducing loads under the Grid import limit; empty while every power limit is off)
 - `pels_daily_budget_remaining_kwh`
 - `pels_daily_budget_exceeded`
-- `pels_limit_reason` (indicates whether limits are due to hourly or daily budget)
+- `pels_limit_reason` (which limit is holding devices back: the capacity limit, the daily budget, the grid import limit, or several)

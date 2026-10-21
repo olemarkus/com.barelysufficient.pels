@@ -134,3 +134,35 @@ describe('pels_insights — the capabilities hear the main home\'s status from t
     expect(device.capabilityValues.has('pels_headroom')).toBe(false);
   });
 });
+
+describe('pels_insights — the shortfall, period usage and limit reason come from the status', () => {
+  it('mirrors capacityShortfall, periodUsageKwh and limitReason onto their capabilities', async () => {
+    // `pels_shortfall` used to be read from the `capacity_in_shortfall`
+    // setting, a second source beside the status every other capability uses.
+    const device = new PelsInsightsDevice();
+    await device.updateFromStatus({
+      ...MEASURED_STATUS,
+      periodUsageKwh: 0.6,
+      capacityShortfall: true,
+      limitReason: 'grid',
+    });
+
+    expect(device.capabilityValues.get('pels_shortfall')).toBe(true);
+    expect(device.capabilityValues.get('pels_period_usage')).toBe(0.6);
+    expect(device.capabilityValues.get('pels_limit_reason')).toBe('grid');
+
+    await device.updateFromStatus({ ...MEASURED_STATUS, periodUsageKwh: 0.7, capacityShortfall: false });
+
+    expect(device.capabilityValues.get('pels_shortfall')).toBe(false);
+  });
+
+  it('still writes the shortfall when an earlier capability write rejects', async () => {
+    const device = new PelsInsightsDevice();
+    device.failingCapabilityIds.add('pels_headroom');
+
+    await device.updateFromStatus({ ...MEASURED_STATUS, periodUsageKwh: 0.6, capacityShortfall: true });
+
+    expect(device.capabilityValues.get('pels_shortfall')).toBe(true);
+    expect(device.capabilityValues.get('pels_period_usage')).toBe(0.6);
+  });
+});

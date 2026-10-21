@@ -113,7 +113,7 @@ describe('capacity settings reloader', () => {
   it('ignores a write on that path for a key that is not a capacity scalar', () => {
     const store = scriptedStore([RESOLVED]);
     const { reloader, install, rebuild } = build(store, true);
-    reloader.reloadAfterWrite('capacity_in_shortfall');
+    reloader.reloadAfterWrite('device_last_controlled_ms');
     expect(store.noteWrite).not.toHaveBeenCalled();
     expect(store.read).not.toHaveBeenCalled();
     expect(install).not.toHaveBeenCalled();

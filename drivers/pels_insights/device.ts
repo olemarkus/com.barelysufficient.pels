@@ -34,9 +34,11 @@ const STATUS_CAPABILITY_MAP: CapabilityEntry[] = [
   { key: 'headroomKw', id: 'pels_headroom', type: 'number' },
   { key: 'powerLimitKw', id: 'pels_hourly_limit_kw', type: 'number' },
   { key: 'hourlyUsageKwh', id: 'pels_hourly_usage', type: 'number' },
+  { key: 'periodUsageKwh', id: 'pels_period_usage', type: 'number' },
   { key: 'dailyBudgetRemainingKwh', id: 'pels_daily_budget_remaining_kwh', type: 'number' },
   { key: 'dailyBudgetExceeded', id: 'pels_daily_budget_exceeded', type: 'boolean' },
   { key: 'limitReason', id: 'pels_limit_reason', type: 'string' },
+  { key: 'capacityShortfall', id: 'pels_shortfall', type: 'boolean' },
   { key: 'controlledKw', id: 'pels_controlled_power', type: 'number' },
   { key: 'uncontrolledKw', id: 'pels_uncontrolled_power', type: 'number' },
   { key: 'priceLevel', id: 'pels_price_level', type: 'string' },
@@ -50,6 +52,7 @@ const REQUIRED_CAPABILITIES = [
   'pels_headroom',
   'pels_hourly_limit_kw',
   'pels_hourly_usage',
+  'pels_period_usage',
   'pels_daily_budget_remaining_kwh',
   'pels_daily_budget_exceeded',
   'pels_limit_reason',
@@ -166,7 +169,6 @@ class PelsInsightsDevice extends Homey.Device {
     }
 
     await this.refreshModeOptions();
-    await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
     // `homey.app` is the running PELS app; a shell without the registry (a
     // torn-down app) leaves the capabilities at their last values, like a
     // status that has not been published yet. Subscribed BEFORE the initial
@@ -188,16 +190,12 @@ class PelsInsightsDevice extends Homey.Device {
       await this.commitModeSelection(value.trim());
     });
 
-    this.homey.settings.on('set', async (key: string) => {
+    this.homey.settings.on('set', (key: string) => {
       if (this.destroyed) return;
       if (MODE_SOURCE_SETTING_KEYS.has(key)) {
         // A single priority reorder can fire many `set` events in one tick;
         // coalesce them into one refresh instead of one SDK roundtrip each.
         this.scheduleModeOptionsRefresh();
-      }
-
-      if (key === 'capacity_in_shortfall') {
-        await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
       }
     });
   }
@@ -348,34 +346,30 @@ class PelsInsightsDevice extends Homey.Device {
     }
   }
 
-  async updateShortfall(inShortfall: boolean): Promise<void> {
-    try {
-      await this.setCapabilityValue('pels_shortfall', Boolean(inShortfall));
-    } catch (error) {
-      deviceLogger.error({
-        event: 'pels_insights_update_shortfall_failed',
-        err: normalizeError(error),
-      });
+  async updateFromStatus(status: PelsStatus): Promise<void> {
+    // One write at a time, each on its own: a rejected write must not skip the
+    // capabilities after it, "Manual action needed" among them.
+    for (const { key, id, type } of STATUS_CAPABILITY_MAP) {
+      const value = status[key];
+      if (shouldSetCapability(value, type)) {
+        await this.writeStatusCapability(id, value);
+      } else if (shouldClearCapability(status, id)) {
+        // Unmeasured, or no limit enabled: the blob omitted the figure on
+        // purpose, so the capability is cleared — a null reads as "no value"
+        // on the Insights chart, never as the last measured watts or the
+        // last enabled limit.
+        await this.writeStatusCapability(id, null);
+      }
     }
   }
 
-  async updateFromStatus(status: PelsStatus): Promise<void> {
+  private async writeStatusCapability(id: string, value: unknown): Promise<void> {
     try {
-      for (const { key, id, type } of STATUS_CAPABILITY_MAP) {
-        const value = status[key];
-        if (shouldSetCapability(value, type)) {
-          await this.setCapabilityValue(id, value);
-        } else if (shouldClearCapability(status, id)) {
-          // Unmeasured, or no limit enabled: the blob omitted the figure on
-          // purpose, so the capability is cleared — a null reads as "no value"
-          // on the Insights chart, never as the last measured watts or the
-          // last enabled limit.
-          await this.setCapabilityValue(id, null);
-        }
-      }
+      await this.setCapabilityValue(id, value);
     } catch (error) {
       deviceLogger.error({
         event: 'pels_insights_update_status_capabilities_failed',
+        capability: id,
         err: normalizeError(error),
       });
     }

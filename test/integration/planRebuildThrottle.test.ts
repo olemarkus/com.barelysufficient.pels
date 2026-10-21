@@ -609,6 +609,40 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
 
+  // The guard needs 60 s of recovery and the hold lasts up to 30 s, so the
+  // reading that ends a held shortfall usually lands inside the hold. Without a
+  // rebuild on it, the plan and the published status (the Insights device's
+  // "Manual action needed") stay in shortfall until the next refresh.
+  it('rebuilds on the reading that ends a held shortfall', async () => {
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
+    const guard = await createGuardInShortfall();
+    const { throttle, recordReading } = await createTestPlanRebuildThrottle({
+      rebuildPlanFromCache,
+      capacityGuard: guard,
+      lastRebuild: { msAgo: 0, reading: { currentPowerW: 10_400, unactionable: true, shortfallUnrecoverable: true } },
+    });
+    const calm: ThrottleSampleForTest = { currentPowerW: 500, unactionable: true, shortfallUnrecoverable: true };
+
+    // Recovery starts on a held reading; the max-interval refresh follows.
+    await sampleThrottle(throttle, calm);
+    expect(recordReading).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(40_000);
+    const refresh = sampleThrottle(throttle, calm);
+    await vi.advanceTimersByTimeAsync(15_000);
+    await refresh;
+    expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('shortfall');
+    rebuildPlanFromCache.mockClear();
+
+    // 62 s after recovery started, inside the hold: the guard clears on this reading.
+    await vi.advanceTimersByTimeAsync(7_000);
+    const recovered = sampleThrottle(throttle, calm);
+    await vi.advanceTimersByTimeAsync(15_000);
+    await recovered;
+
+    expect(guard.isInShortfall()).toBe(false);
+    expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('shortfall_recovered');
+  });
+
   it('does not throttle a hard-cap breach when there is still something to shed', async () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = await createTestPlanRebuildThrottle({

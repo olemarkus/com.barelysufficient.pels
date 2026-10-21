@@ -10,6 +10,7 @@
     "pels_headroom",
     "pels_hourly_limit_kw",
     "pels_hourly_usage",
+    "pels_period_usage",
     "pels_daily_budget_remaining_kwh",
     "pels_daily_budget_exceeded",
     "pels_limit_reason",

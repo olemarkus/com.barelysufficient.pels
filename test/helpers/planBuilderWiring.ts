@@ -20,7 +20,6 @@ type PlanBuilderWiring = Omit<PlanBuilderDeps,
  * the guard, capacity settings and power tracker, and overrides the rest.
  */
 export const planBuilderWiring = (): PlanBuilderWiring => ({
-  setCapacityInShortfall: vi.fn(),
   getCapacityDryRun: () => false,
   getInferredSurplusKw: () => 0,
   leaveOffOnRelease: () => 'released',

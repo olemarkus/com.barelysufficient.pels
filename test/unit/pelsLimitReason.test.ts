@@ -34,7 +34,7 @@ describe('pels status limit reason', () => {
   } as const;
 
   const buildPlan = (params: {
-    softLimitSource: 'capacity' | 'daily';
+    softLimitSource: 'capacity' | 'daily' | 'grid';
     reason: string | DeviceReason;
     headroomKw?: number;
     /** The producer-resolved flag; false = the unmeasured fail-closed build, which carries no headroom. */
@@ -106,6 +106,39 @@ describe('pels status limit reason', () => {
     // attribute to the cap (see homeLimitsStatus composeHomeLimitsStateLine).
     expect(status.limitReason).toBe('none');
     expect(status.devicesOff).toBe(1);
+  });
+
+  it('reports grid when the grid import limit holds a device back', () => {
+    const plan = buildPlan({ softLimitSource: 'grid', reason: { code: PLAN_REASON_CODES.gridImport } });
+
+    const status = buildPelsStatus(
+      plan,
+      PriceLevel.NORMAL,
+      Date.UTC(2026, 1, 7, 12, 0, 0),
+      false,
+    );
+
+    expect(status.limitReason).toBe('grid');
+    expect(status.devicesOff).toBe(1);
+  });
+
+  it('reports both when the grid import limit and the daily budget each hold a device back', () => {
+    const plan = buildPlan({ softLimitSource: 'grid', reason: { code: PLAN_REASON_CODES.gridImport } });
+    plan.devices.push({
+      ...plan.devices[0],
+      id: 'dev-2',
+      name: 'Bathroom Floor',
+      reason: { code: PLAN_REASON_CODES.dailyBudget },
+    });
+
+    const status = buildPelsStatus(
+      plan,
+      PriceLevel.NORMAL,
+      Date.UTC(2026, 1, 7, 12, 0, 0),
+      false,
+    );
+
+    expect(status.limitReason).toBe('both');
   });
 
   it('reports none when the only shed device is held off by its smart task or start policy', () => {

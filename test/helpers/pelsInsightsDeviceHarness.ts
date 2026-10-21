@@ -91,7 +91,13 @@ export class FakeInsightsDeviceBase {
     /* no-op for tests */
   }
 
+  // Capability ids whose writes reject, to model one failing SDK write.
+  public failingCapabilityIds = new Set<string>();
+
   async setCapabilityValue(capabilityId: string, value: unknown): Promise<void> {
+    if (this.failingCapabilityIds.has(capabilityId)) {
+      throw new Error(`capability write rejected: ${capabilityId}`);
+    }
     this.capabilityValues.set(capabilityId, value);
   }
 

@@ -969,7 +969,6 @@ describe('executor drift through PlanExecutor.driftObservationDeps', () => {
     const deps: PlanExecutorDeps = {
       getHomeDisplayName: () => 'Main home',
       homeId: 'main',
-      setCapacityInShortfall: vi.fn(),
       persistLastControlledMs: vi.fn(),
       getDeviceConfiguration: (deviceId) => configuration.get(deviceId),
       getDeviceConfigurations: () => configuration.getAll(),

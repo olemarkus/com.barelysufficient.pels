@@ -547,7 +547,7 @@ export type SettingsUiPowerStatus = {
   /** Devices the plan currently holds off; the Limits card's count. */
   devicesOff?: number;
   /** Which ceiling is limiting the home right now; the Limits card's status line. */
-  limitReason?: 'none' | 'hourly' | 'daily' | 'both';
+  limitReason?: 'none' | 'hourly' | 'daily' | 'grid' | 'both';
   capacityShortfall?: boolean;
   shortfallBudgetThresholdKw?: number | null;
   shortfallBudgetHeadroomKw?: number | null;

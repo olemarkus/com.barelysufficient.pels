@@ -277,7 +277,6 @@ const buildExecutor = (
   const deps: PlanExecutorDeps & { homey: Homey.App['homey'] } = {
     getHomeDisplayName: () => 'Main home',
     homeId: 'main',
-    setCapacityInShortfall: vi.fn(),
     // Forward the injected persist writer to the same homey.settings.set spy the
     // production wiring targets (DEVICE_LAST_CONTROLLED_MS), so the existing
     // persistence assertions keep observing the real write key.
@@ -356,67 +355,6 @@ beforeEach(() => { logCapture = captureLogger(); });
 afterEach(() => { logCapture.restore(); });
 
 describe('PlanExecutor shortfall side-effect retry', () => {
-  it('keeps enter and clear retryable when the durable writer fails once', async () => {
-    const state = createPlanEngineState();
-    let failNextWrite = true;
-    const setCapacityInShortfall = vi.fn((_value: boolean) => {
-      if (!failNextWrite) return;
-      failNextWrite = false;
-      throw new Error('settings unavailable');
-    });
-    const { executor } = buildExecutor(state, undefined, {
-      setCapacityInShortfall,
-    });
-    const gate = createCapacityShortfallSideEffectGate({
-      isDiscarded: () => false,
-      isTemporarilyFenced: () => false,
-      applyShortfall: (deficitKw) => executor.handleShortfall(deficitKw),
-      applyClear: () => executor.handleShortfallCleared(),
-    });
-
-    await expect(gate.onShortfall(2)).rejects.toThrow('settings unavailable');
-    expect(state.inShortfall).toBe(false);
-
-    await expect(gate.flush()).resolves.toBe(true);
-    expect(state.inShortfall).toBe(true);
-
-    failNextWrite = true;
-    await expect(gate.onShortfallCleared()).rejects.toThrow('settings unavailable');
-    expect(state.inShortfall).toBe(true);
-    await expect(gate.flush()).resolves.toBe(true);
-    expect(state.inShortfall).toBe(false);
-    expect(setCapacityInShortfall.mock.calls.map(([value]) => value))
-      .toEqual([true, true, false, false]);
-  });
-
-  it('emits deferred state transitions after Builder pre-sync', async () => {
-    const state = createPlanEngineState();
-    state.inShortfall = true;
-    const setCapacityInShortfall = vi.fn();
-    const { executor } = buildExecutor(state, undefined, {
-      setCapacityInShortfall,
-    });
-    const gate = createCapacityShortfallSideEffectGate({
-      isDiscarded: () => false,
-      isTemporarilyFenced: () => false,
-      applyShortfall: (deficitKw) => executor.handleShortfall(deficitKw),
-      applyClear: () => executor.handleShortfallCleared(),
-    });
-
-    // Builder already persisted/synchronized the guard state while the
-    // immediate state callback was fenced. Executor must still apply it.
-    await gate.onShortfall(1);
-    expect(setCapacityInShortfall).not.toHaveBeenCalled();
-
-    // Model Builder pre-syncing the clear before the retained callback lands.
-    state.inShortfall = false;
-    await gate.onShortfallCleared();
-    state.inShortfall = true;
-    await gate.onShortfall(2);
-
-    expect(setCapacityInShortfall).not.toHaveBeenCalled();
-  });
-
   it('holds a pre-existing deferred transition until a superseding sample settles', async () => {
     let authorityFenced = true;
     const applyShortfall = vi.fn().mockResolvedValue(undefined);

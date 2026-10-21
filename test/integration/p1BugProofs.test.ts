@@ -70,7 +70,6 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
     getShedBehavior: () => ({ action: 'turn_off' }),
     getHomeDisplayName: () => 'Main home',
     homeId: 'main',
-    setCapacityInShortfall: vi.fn(),
     persistLastControlledMs: vi.fn(),
     getDeviceConfiguration: (id) => {
       const device = deviceManager.getSnapshotByDeviceId(id);

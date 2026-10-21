@@ -283,8 +283,17 @@ export class PlanRebuildThrottle {
       && !maxIntervalExceeded
     ) {
       incPerfCounter('plan_rebuild_skipped_shortfall_unrecoverable_total');
-      return signal.shortfallThresholdKw === null
-        ? Promise.resolve() : guard.recordReading(signal.totalKw, signal.shortfallThresholdKw);
+      if (signal.shortfallThresholdKw === null) return Promise.resolve();
+      return guard.recordReading(signal.totalKw, signal.shortfallThresholdKw).then(() => {
+        if (guard.isInShortfall()) return undefined;
+        // This reading closed the incident. Decide on it now: restores may
+        // proceed again, and the published status (the Insights device's
+        // "Manual action needed") must leave shortfall with the guard rather
+        // than wait out the max interval, or the next reading on a sparse source.
+        const recovered: PowerRebuildSignal = { ...signal, isInShortfall: false };
+        const decision = resolveRebuildDecision(recovered, this.memory(), now, cadence.maxIntervalMs);
+        return this.request(recovered, decision, 'shortfall_recovered', now);
+      });
     }
     const memory = this.memory();
     const decision = resolveRebuildDecision(signal, memory, now, cadence.maxIntervalMs);

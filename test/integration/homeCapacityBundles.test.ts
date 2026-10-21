@@ -1371,11 +1371,9 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
     expect({
       triggerCount: capacityShortfallTrigger.mock.calls.length,
-      persisted: mockHomeyInstance.settings.get('capacity_in_shortfall:h_a'),
       retryScheduled: rig.ctx.timers.has('home:h_a:shortfallSideEffectRetry'),
     }).toEqual({
       triggerCount: 1,
-      persisted: true,
       retryScheduled: false,
     });
     // The global card is shared with the Main home, so the area has to name

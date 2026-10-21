@@ -119,7 +119,6 @@ export function createPlanEngineComposition(
   // binds them live, because the mode target is the restore anchor (see
   // `homeScope.ts`).
   const builder = new PlanBuilder({
-    setCapacityInShortfall: scope.setCapacityInShortfall,
     getCapacityDryRun: scope.getCapacityDryRun,
     capacityGuard: options.capacityGuard,
     getCapacitySettings: scope.getCapacitySettings,
@@ -149,7 +148,6 @@ export function createPlanEngineComposition(
     // The id is already a plain scope field (a home id cannot change without a
     // new scope), so log correlation needs no extra getter.
     homeId: scope.homeId,
-    setCapacityInShortfall: scope.setCapacityInShortfall,
     persistLastControlledMs: scope.persistLastControlledMs,
     // Runtime configuration and observed state come from their respective
     // owners. Device inventory metadata does not enter planner or executor.

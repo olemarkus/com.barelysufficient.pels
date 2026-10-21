@@ -10,7 +10,7 @@ import { partialDouble } from '../helpers/partialDouble';
 const STATUS: PelsStatus = {
   powerLimitKw: 8,
   shortfallBudgetThresholdKw: null,
-  hourlyUsageKwh: 0, priceLevel: PriceLevel.UNKNOWN, devicesOn: 0, devicesOff: 0, lastPowerUpdate: 1, dryRunEffective: true,
+  hourlyUsageKwh: 0, periodUsageKwh: 0, capacityShortfall: false, priceLevel: PriceLevel.UNKNOWN, devicesOn: 0, devicesOff: 0, lastPowerUpdate: 1, dryRunEffective: true,
 };
 
 // The WebView's freshness signal for a status that lives in memory: every

@@ -1108,17 +1108,20 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Architecture and tooling debt
 
-- [ ] **The plan-shortfall side-effect gate keeps its deferred transition and retry in `setup/`.**
-      `createCapacityShortfallSideEffectGate` (`setup/capacityShortfallSideEffectGate.ts`) holds a
-      mutable `deferred` transition in a closure, and `createHomeCapacityGuard`
-      (`setup/homeRuntime/createHomeCapacityGuard.ts`) arms its bounded retry timer; together they
-      decide when `PlanService.handleShortfall` and the clear run under the authority and
-      prepared-apply fences. `setup/AGENTS.md` keeps runtime state and decisions with their `lib/`
-      owner, and `npm run setup:stateless` does not catch a closure-held `let`. **What changes:**
-      move the gate and its retry arming to the `lib/` owner of the prepared-apply fence, leaving
-      `setup/` to construct it, and teach the stateless guard to flag a reassigned closure `let` in
-      a `setup/` factory. **Done when:** no file under `setup/` holds the deferred shortfall
-      transition or schedules its retry, and the guard fails on the old shape. [P2]
+- [ ] **The plan-shortfall side-effect gate now fences only two log lines.**
+      `createCapacityShortfallSideEffectGate` (`setup/capacityShortfallSideEffectGate.ts`), its retry
+      timer in `createHomeCapacityGuard`, and the prepared-apply hold/flush threaded through
+      `setup/appServiceWiring.ts`, `createHomeCapacityBundle.ts` and the `lib/home/subHome*`
+      recovery modules exist to defer `PlanService.handleShortfall` / `handleShortfallCleared`
+      under the authority and prepared-apply fences. Since `capacity_in_shortfall` was retired,
+      those calls reach only `ShortfallExecutor`, which writes two `executor_plan_log` lines that
+      repeat `CapacityGuard`'s own `hard_cap_shortfall_detected` / clear events. The gate also holds
+      a closure `let` in `setup/`, which `setup/AGENTS.md` forbids. **What changes:** delete
+      `ShortfallExecutor`, the gate, its retry timer and the hold/flush plumbing; the guard's
+      `onShortfall` / `onShortfallCleared` callbacks keep only the Flow alert dispatch. **Done
+      when:** no `ShortfallSideEffect` symbol remains, `PlanEngine` has no `handleShortfall`, and the
+      shortfall Flow alert tests in `test/integration/plan.test.ts` and
+      `test/integration/homeCapacityBundles.test.ts` still pass. [P2]
 
 - [ ] **The settings UI's two price-adjustment editors encode and parse the stored values themselves.**
       `price_optimization_settings` has a shared owner for the adjustment range and its stored

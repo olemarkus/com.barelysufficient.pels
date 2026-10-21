@@ -436,8 +436,6 @@ export class PlanEngineState {
    */
   readonly swapLedger = new SwapLedger();
 
-  inShortfall: boolean = false;
-
   /**
    * The shedding latch: true from the build that decides to shed until a build
    * sees headroom clear `SHEDDING_CLEAR_THRESHOLD_KW`. Latched rather than

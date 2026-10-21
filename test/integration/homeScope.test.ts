@@ -1,7 +1,6 @@
 import { describe, expect, it, type Mock } from 'vitest';
 import {
   CAPACITY_DRY_RUN,
-  CAPACITY_IN_SHORTFALL,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   DEVICE_LAST_CONTROLLED_MS,
@@ -23,6 +22,8 @@ describe('buildMainHomeScope', () => {
     powerLimitKw: 8,
     shortfallBudgetThresholdKw: null,
     hourlyUsageKwh: 0,
+    periodUsageKwh: 0,
+    capacityShortfall: false,
     priceLevel: PriceLevel.NORMAL,
     devicesOn: 0,
     devicesOff: 0,
@@ -57,12 +58,10 @@ describe('buildMainHomeScope', () => {
     const scope = buildMainHomeScopeForTest(ctx, () => false);
     const setSpy = ctx.homey.settings.set as unknown as Mock;
 
-    scope.setCapacityInShortfall(true);
     scope.persistLastControlledMs({ 'device-1': 123 });
     scope.publishPelsStatus(minimalStatus);
 
     expect(scope.homeId).toBe(MAIN_HOME_ID);
-    expect(setSpy).toHaveBeenCalledWith(CAPACITY_IN_SHORTFALL, true);
     expect(setSpy).toHaveBeenCalledWith(DEVICE_LAST_CONTROLLED_MS, { 'device-1': 123 });
     expect(ctx.planStatuses.read(MAIN_HOME_ID)).toEqual({ state: 'resolved', status: minimalStatus });
     expect(setSpy).not.toHaveBeenCalledWith('pels_status', expect.anything());
