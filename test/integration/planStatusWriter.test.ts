@@ -140,6 +140,32 @@ describe('PlanStatusWriter posture-flip persist', () => {
     expect(h.writeSpy.mock.calls[2][0]).toMatchObject({ powerKnown: true, headroomKw: 3 });
   });
 
+  it('forces a persist when a capacity shortfall starts or ends inside the window', () => {
+    // The Insights device's "Manual action needed" and the Limits card's
+    // shortfall line read the published shortfall; it must not wait out the
+    // throttle. The meta signature moves with it, as it does in production.
+    const h = makeWriter(false);
+    const shortfallPlan = (capacityShortfall: boolean): DevicePlan => ({
+      meta: buildPlanMeta({ totalKw: 3, softLimitKw: 6, headroomKw: 3, capacityShortfall }),
+      devices: [],
+      storageReleases: [],
+    });
+
+    nowSpy.mockReturnValue(BASE_MS);
+    h.writer.update(shortfallPlan(false), CHANGES);
+    expect(h.writeSpy).toHaveBeenCalledTimes(1);
+
+    nowSpy.mockReturnValue(BASE_MS + 5000);
+    h.writer.update(shortfallPlan(true), { ...CHANGES, metaSignature: 'shortfall' });
+    expect(h.writeSpy).toHaveBeenCalledTimes(2);
+    expect(h.writeSpy.mock.calls[1][0]).toMatchObject({ capacityShortfall: true });
+
+    nowSpy.mockReturnValue(BASE_MS + 10_000);
+    h.writer.update(shortfallPlan(false), CHANGES);
+    expect(h.writeSpy).toHaveBeenCalledTimes(3);
+    expect(h.writeSpy.mock.calls[2][0]).toMatchObject({ capacityShortfall: false });
+  });
+
   it('still throttles a non-posture volatile change inside the window', () => {
     const h = makeWriter(false);
 

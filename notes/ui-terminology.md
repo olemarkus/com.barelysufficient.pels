@@ -119,7 +119,7 @@ Grid import control adds the independent `grid` source. When every power
 constraint is disabled, the source is `null` and the overview states that
 limits are off. Neither state claims a settlement-period pace.
 (Unrelated to `limitReason` in the home-limits payload, which has a real
-four-member union including `both`.)
+`both` member meaning more than one limit at once.)
 
 So the on-track subline reads `Safe pace now 1.9 kW · set by today's budget`,
 and the over-pace subline folds the same clause into its existing parenthetical:

@@ -1,0 +1,18 @@
+{
+  "type": "number",
+  "title": {
+    "en": "Used this capacity period"
+  },
+  "desc": {
+    "en": "kWh used so far in the current capacity period, the hour or the quarter the hard cap is judged against"
+  },
+  "units": {
+    "en": "kWh"
+  },
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "insights": true,
+  "decimals": 2,
+  "icon": "/assets/capabilities/pels_hourly_usage.svg"
+}

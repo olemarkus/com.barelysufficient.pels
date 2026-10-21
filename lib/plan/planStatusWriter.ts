@@ -75,6 +75,14 @@ export class PlanStatusWriter {
    * to correct it. Undefined until the first write.
    */
   private lastPelsStatusWrittenPowerIsMeasured: boolean | undefined = undefined;
+  /**
+   * The capacity shortfall the last published status carried. Entering or
+   * leaving one is material even inside the volatile throttle: the Insights
+   * device's "Manual action needed" and the Limits card's shortfall line read
+   * it, and it is the owner's cue to act now, not within the minute.
+   * Inert until the first write, which is forced anyway.
+   */
+  private lastPelsStatusWrittenCapacityShortfall = false;
   private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
 
   constructor(private deps: PlanStatusWriterDeps) {}
@@ -94,21 +102,14 @@ export class PlanStatusWriter {
     this.notifyPriceLevelChanged(priceLevel);
     this.lastNotifiedPriceLevel = priceLevel;
 
-    if (this.computationIsDeadWork(changes?.actionChanged === true, plan.meta.powerIsMeasured, now)) {
+    if (this.computationIsDeadWork(changes?.actionChanged === true, plan.meta, now)) {
       incPerfCounter('plan_status_skipped_throttle_total');
       incPerfCounter('plan_status_compute_skipped_total');
       return 0;
     }
     const computation = this.compute(plan, priceLevel, changes);
 
-    return this.maybeWriteStatus(
-      computation.status,
-      computation.statusJson,
-      changes?.actionChanged === true,
-      computation.dryRunEffective,
-      computation.powerIsMeasured,
-      now,
-    );
+    return this.maybeWriteStatus(computation, changes?.actionChanged === true, now);
   }
 
   /**
@@ -121,9 +122,10 @@ export class PlanStatusWriter {
    * half — paid that cost for nothing. `planRebuildStatus` is 170 ms of a 311 ms
    * rebuild, and the write itself only accounts for 100 ms of it.
    *
-   * The four reasons that can force a write inside the throttle window are all
+   * The five reasons that can force a write inside the throttle window are all
    * knowable without the status: the first-ever write, an action-signature
-   * change, a dry-run posture flip, and a measured/unmeasured flip. Mirror exactly those, so this stays a
+   * change, a dry-run posture flip, a measured/unmeasured flip, and a capacity
+   * shortfall entered or left. Mirror exactly those, so this stays a
    * fast path in front of `resolveWriteReason` rather than a second policy —
    * every case it lets through is still decided there.
    *
@@ -133,11 +135,12 @@ export class PlanStatusWriter {
    * a property of the status blob, and nothing guarantees another rebuild inside
    * the hour that could carry a deferred one.
    */
-  private computationIsDeadWork(actionChanged: boolean, powerIsMeasured: boolean, now: number): boolean {
+  private computationIsDeadWork(actionChanged: boolean, meta: DevicePlan['meta'], now: number): boolean {
     if (this.lastPelsStatusWriteMs === 0) return false;
     if (actionChanged) return false;
     if (this.deps.getCapacityDryRun() !== this.lastPelsStatusWrittenDryRunEffective) return false;
-    if (powerIsMeasured !== this.lastPelsStatusWrittenPowerIsMeasured) return false;
+    if (meta.powerIsMeasured !== this.lastPelsStatusWrittenPowerIsMeasured) return false;
+    if (meta.capacityShortfall !== this.lastPelsStatusWrittenCapacityShortfall) return false;
     return now - this.lastPelsStatusWriteMs <= VOLATILE_WRITE_THROTTLE_MS;
   }
 
@@ -178,26 +181,18 @@ export class PlanStatusWriter {
     return result;
   }
 
-  private maybeWriteStatus(
-    status: PelsStatus,
-    statusJson: string,
-    actionChanged: boolean,
-    dryRunEffective: boolean,
-    powerIsMeasured: boolean,
-    now: number,
-  ): number {
-    const reason = this.resolveWriteReason(statusJson, actionChanged, dryRunEffective, powerIsMeasured, now);
+  private maybeWriteStatus(computation: PelsStatusComputation, actionChanged: boolean, now: number): number {
+    const reason = this.resolveWriteReason(computation, actionChanged, now);
     if (!reason) return 0;
-    return this.writeStatus(status, statusJson, dryRunEffective, powerIsMeasured, reason, now);
+    return this.writeStatus(computation, reason, now);
   }
 
   private resolveWriteReason(
-    statusJson: string,
+    computation: PelsStatusComputation,
     actionChanged: boolean,
-    dryRunEffective: boolean,
-    powerIsMeasured: boolean,
     now: number,
   ): PelsStatusWriteReason | null {
+    const { status, statusJson, dryRunEffective, powerIsMeasured } = computation;
     if (statusJson === this.lastPelsStatusWrittenJson) return null;
     if (this.lastPelsStatusWriteMs === 0) return 'initial';
     if (actionChanged) return 'action_changed';
@@ -210,20 +205,15 @@ export class PlanStatusWriter {
     // home's Limits card reflects live/simulating promptly, busting the
     // volatile throttle.
     if (dryRunEffective !== this.lastPelsStatusWrittenDryRunEffective) return 'posture_flip';
+    if (status.capacityShortfall !== this.lastPelsStatusWrittenCapacityShortfall) return 'shortfall_flip';
     if (now - this.lastPelsStatusWriteMs > VOLATILE_WRITE_THROTTLE_MS) return 'throttle';
 
     incPerfCounter('plan_status_skipped_throttle_total');
     return null;
   }
 
-  private writeStatus(
-    status: PelsStatus,
-    statusJson: string,
-    dryRunEffective: boolean,
-    powerIsMeasured: boolean,
-    reason: PelsStatusWriteReason,
-    now: number,
-  ): number {
+  private writeStatus(computation: PelsStatusComputation, reason: PelsStatusWriteReason, now: number): number {
+    const { status, statusJson, dryRunEffective, powerIsMeasured } = computation;
     // The publish runs every listener inline — the realtime push to the
     // WebView, the Insights driver's capability writes — so its time is still
     // worth a metric, as `plan_rebuild_status_write_ms`.
@@ -232,6 +222,7 @@ export class PlanStatusWriter {
     this.lastPelsStatusWrittenJson = statusJson;
     this.lastPelsStatusWrittenDryRunEffective = dryRunEffective;
     this.lastPelsStatusWrittenPowerIsMeasured = powerIsMeasured;
+    this.lastPelsStatusWrittenCapacityShortfall = status.capacityShortfall;
     this.lastPelsStatusWriteMs = now;
     incPerfCounter('plan_status_published');
     incPerfCounter(`plan_status_published_reason.${reason}_total`);

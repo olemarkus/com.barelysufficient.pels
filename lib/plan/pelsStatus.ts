@@ -11,6 +11,13 @@ import type { DevicePlan, PlanMeta } from './planTypes';
 import { NEUTRAL_STARTUP_HOLD_REASON } from './restore/devices';
 
 /**
+ * Which limit is holding devices back. `hourly` names the capacity limit
+ * (it predates the 15-minute period, and Flows compare the text); `both`
+ * means more than one of the three limits at once.
+ */
+export type PelsLimitReason = 'none' | 'hourly' | 'daily' | 'grid' | 'both';
+
+/**
  * The live status of a home, published by its plan service into
  * `planStatusRegistry.ts` and read by the settings-UI API, the headroom widget
  * and the Insights driver. It is held in memory and nothing outside the app
@@ -37,10 +44,16 @@ export type PelsStatus = {
    */
   powerLimitKw: number | null;
   hourlyUsageKwh: number;
+  /**
+   * Energy used so far in the current capacity period (the hour, or the
+   * quarter on the 15-minute period): the energy the hard cap is judged
+   * against. Equal to `hourlyUsageKwh` on the hourly period.
+   */
+  periodUsageKwh: number;
   dailyBudgetRemainingKwh?: number;
   dailyBudgetExceeded?: boolean;
-  limitReason?: 'none' | 'hourly' | 'daily' | 'both';
-  capacityShortfall?: boolean;
+  limitReason?: PelsLimitReason;
+  capacityShortfall: boolean;
   /**
    * `null` when Capacity limit is off: no capacity period, no threshold
    * (`resolveShortfallThresholdKw`). This and the two headroom figures below
@@ -117,6 +130,7 @@ export function buildPelsStatus(
     ...resolveMeasuredStatusFields(plan.meta),
     powerLimitKw: plan.meta.softLimitKw,
     hourlyUsageKwh: plan.meta.hourUsedKWh,
+    periodUsageKwh: plan.meta.usedKWh,
     dailyBudgetRemainingKwh: plan.meta.dailyBudgetRemainingKWh,
     dailyBudgetExceeded: plan.meta.dailyBudgetExceeded,
     limitReason,
@@ -243,18 +257,23 @@ type PlanStatusSummary = {
   hasLimitDrivenShedDevices: boolean;
   hasHourlyReason: boolean;
   hasDailyReason: boolean;
+  hasGridReason: boolean;
 };
 
 // The `|| limitSource === 'both'` arms these used to carry were dead: the
 // producer (`resolveSoftLimitSource`) answers `'capacity'` when the two paces
 // coincide, never a third "both" state. Not to be confused with `limitReason`
-// below, whose four-member union DOES include a real `'both'`.
+// below, whose union DOES include a real `'both'` (more than one limit).
 function isDailySourceActive(limitSource: SoftLimitSource): boolean {
   return limitSource === 'daily';
 }
 
 function isCapacitySourceActive(limitSource: SoftLimitSource): boolean {
   return limitSource === 'capacity';
+}
+
+function isGridSourceActive(limitSource: SoftLimitSource): boolean {
+  return limitSource === 'grid';
 }
 
 function isRestoreHoldShedReason(reason: DeviceReason): boolean {
@@ -268,11 +287,13 @@ function isRestoreHoldShedReason(reason: DeviceReason): boolean {
 function resolveReasonFlags(reason: DeviceReason): {
   hasHourlyReason: boolean;
   hasDailyReason: boolean;
+  hasGridReason: boolean;
 } {
   if (reason.code === NEUTRAL_STARTUP_HOLD_REASON.code) {
     return {
       hasHourlyReason: false,
       hasDailyReason: false,
+      hasGridReason: false,
     };
   }
   return {
@@ -286,6 +307,7 @@ function resolveReasonFlags(reason: DeviceReason): {
       || reason.code === PLAN_REASON_CODES.capacity
       || reason.code === PLAN_REASON_CODES.meterSilent,
     hasDailyReason: reason.code === PLAN_REASON_CODES.dailyBudget,
+    hasGridReason: reason.code === PLAN_REASON_CODES.gridImport,
   };
 }
 
@@ -297,6 +319,7 @@ function summarizePlanForStatus(plan: DevicePlan): PlanStatusSummary {
     hasLimitDrivenShedDevices: false,
     hasHourlyReason: false,
     hasDailyReason: false,
+    hasGridReason: false,
   };
 
   for (const device of plan.devices) {
@@ -322,6 +345,7 @@ function summarizePlanForStatus(plan: DevicePlan): PlanStatusSummary {
     const reasonFlags = resolveReasonFlags(device.reason);
     summary.hasHourlyReason = summary.hasHourlyReason || reasonFlags.hasHourlyReason;
     summary.hasDailyReason = summary.hasDailyReason || reasonFlags.hasDailyReason;
+    summary.hasGridReason = summary.hasGridReason || reasonFlags.hasGridReason;
     summary.hasLimitDrivenShedDevices = summary.hasLimitDrivenShedDevices || !isRestoreHoldShedReason(device.reason);
   }
 
@@ -356,7 +380,7 @@ function resolveDailyLimited(params: DailyLimitParams): boolean {
   return dailyLimitedByReason || dailyLimitedByShedState || dailyLimitedByNegativeHeadroom;
 }
 
-function resolveLimitReason(plan: DevicePlan, summary: PlanStatusSummary): 'none' | 'hourly' | 'daily' | 'both' {
+function resolveLimitReason(plan: DevicePlan, summary: PlanStatusSummary): PelsLimitReason {
   // Both claims require a MEASUREMENT this cycle: `headroomKw` exists only on
   // the measured meta, so the narrowing is also what makes it readable.
   const hasShedDevices = plan.meta.powerIsMeasured && summary.hasLimitDrivenShedDevices;
@@ -379,10 +403,16 @@ function resolveLimitReason(plan: DevicePlan, summary: PlanStatusSummary): 'none
     headroomNegative,
     dailySourceActive,
   });
+  // The grid import limit holds a device back by its reason, or binds the
+  // pace while devices are held or the house is over it.
+  const gridLimited = summary.hasGridReason
+    || (isGridSourceActive(limitSource) && (hasShedDevices || headroomNegative));
 
-  // When both limits are active, show 'both' for clarity, but capacity always wins for shedding decisions
-  if (dailyLimitedResolved && hourlyLimited) return 'both';
-  if (dailyLimitedResolved) return 'daily';
-  if (hourlyLimited) return 'hourly';
-  return 'none';
+  const active: PelsLimitReason[] = [
+    ...(hourlyLimited ? ['hourly' as const] : []),
+    ...(dailyLimitedResolved ? ['daily' as const] : []),
+    ...(gridLimited ? ['grid' as const] : []),
+  ];
+  if (active.length > 1) return 'both';
+  return active[0] ?? 'none';
 }

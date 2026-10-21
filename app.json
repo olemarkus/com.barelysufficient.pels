@@ -2413,6 +2413,7 @@
         "pels_headroom",
         "pels_hourly_limit_kw",
         "pels_hourly_usage",
+        "pels_period_usage",
         "pels_daily_budget_remaining_kwh",
         "pels_daily_budget_exceeded",
         "pels_limit_reason",
@@ -2889,16 +2890,67 @@
       "icon": "/assets/capabilities/pels_insights.svg"
     },
     "pels_limit_reason": {
-      "type": "string",
+      "type": "enum",
       "title": {
         "en": "Limit reason"
       },
       "desc": {
-        "en": "Why PELS is currently limiting devices or delaying resume"
+        "en": "Which limit PELS is currently holding devices back for"
       },
       "getable": true,
       "setable": false,
+      "uiComponent": "sensor",
+      "values": [
+        {
+          "id": "none",
+          "title": {
+            "en": "Not limiting"
+          }
+        },
+        {
+          "id": "hourly",
+          "title": {
+            "en": "Capacity limit"
+          }
+        },
+        {
+          "id": "daily",
+          "title": {
+            "en": "Daily budget"
+          }
+        },
+        {
+          "id": "grid",
+          "title": {
+            "en": "Grid import limit"
+          }
+        },
+        {
+          "id": "both",
+          "title": {
+            "en": "Several limits"
+          }
+        }
+      ],
       "icon": "/assets/capabilities/pels_limit_reason.svg"
+    },
+    "pels_period_usage": {
+      "type": "number",
+      "title": {
+        "en": "Used this capacity period"
+      },
+      "desc": {
+        "en": "kWh used so far in the current capacity period, the hour or the quarter the hard cap is judged against"
+      },
+      "units": {
+        "en": "kWh"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "decimals": 2,
+      "icon": "/assets/capabilities/pels_hourly_usage.svg"
     },
     "pels_price_level": {
       "type": "enum",

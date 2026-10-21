@@ -8,6 +8,8 @@ const status = (headroomKw: number): PelsStatus => ({
   powerLimitKw: 8,
   shortfallBudgetThresholdKw: null,
   hourlyUsageKwh: 0.4,
+  periodUsageKwh: 0.4,
+  capacityShortfall: false,
   priceLevel: PriceLevel.NORMAL,
   devicesOn: 1,
   devicesOff: 0,

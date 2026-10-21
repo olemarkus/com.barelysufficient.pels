@@ -33,7 +33,7 @@ export type HomeLimitsChipTone = 'ok' | 'warn';
  * settling holds count in `devicesOff` but resolve to `'none'`, so the state
  * line must NOT attribute a `'none'` hold to the cap.
  */
-export type HomeLimitsLimitReason = 'none' | 'hourly' | 'daily' | 'both';
+export type HomeLimitsLimitReason = 'none' | 'hourly' | 'daily' | 'grid' | 'both';
 
 export type HomeLimitsStatus = {
   /**
@@ -95,7 +95,7 @@ const toSafeCount = (value: unknown): number | null => (
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null
 );
 
-const LIMIT_REASONS: ReadonlySet<string> = new Set(['none', 'hourly', 'daily', 'both']);
+const LIMIT_REASONS: ReadonlySet<string> = new Set(['none', 'hourly', 'daily', 'grid', 'both']);
 
 /** Discriminate the untrusted `limitReason` into the recognized enum, else null. */
 const toLimitReason = (value: unknown): HomeLimitsLimitReason | null => (
@@ -198,7 +198,8 @@ export const resolveHomeLimitsPostureChip = (
  * meter-settling, restore-throttled/-pending, startup) as well as real cap
  * limits, but the producer marks those transient holds `limitReason: 'none'`.
  * So the line names the cap ONLY for a capacity-driven reason ('hourly'/'both'),
- * a daily-budget reason names the budget, and a 'none' hold reads as a momentary
+ * a daily-budget reason names the budget, a grid reason names the grid import
+ * limit, and a 'none' hold reads as a momentary
  * "resuming shortly" — never a false "Limiting … to stay under the cap."
  */
 export const composeHomeLimitsStateLine = (status: HomeLimitsStatus): string => {
@@ -223,6 +224,9 @@ export const composeHomeLimitsStateLine = (status: HomeLimitsStatus): string => 
   }
   if (status.limitReason === 'daily') {
     return `Limiting ${formatHomeDeviceCount(count)} to stay within today’s daily budget.`;
+  }
+  if (status.limitReason === 'grid') {
+    return `Limiting ${formatHomeDeviceCount(count)} to stay under the grid import limit.`;
   }
   return `Holding ${formatHomeDeviceCount(count)} for a moment — resuming shortly.`;
 };

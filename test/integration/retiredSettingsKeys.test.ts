@@ -27,6 +27,16 @@ describe('unsetRetiredSettingsKeys', () => {
     expect(mockHomeyInstance.settings.getKeys()).toEqual(['managed_devices']);
   });
 
+  it('unsets a per-home retired key for the main home and every meter area', () => {
+    mockHomeyInstance.settings.set('capacity_in_shortfall', false);
+    mockHomeyInstance.settings.set('capacity_in_shortfall:h_area', true);
+    mockHomeyInstance.settings.set('capacity_limit_kw:h_area', 8);
+
+    unsetRetiredSettingsKeys(mockHomeyInstance.settings);
+
+    expect(mockHomeyInstance.settings.getKeys()).toEqual(['capacity_limit_kw:h_area']);
+  });
+
   it('writes nothing once the retired keys are gone', () => {
     mockHomeyInstance.settings.set('managed_devices', { heater: true });
     const unset = vi.spyOn(mockHomeyInstance.settings, 'unset');

@@ -79,7 +79,6 @@ const ALLOWED = new Set([
   'planExecutorPredicates.ts -> planSteppedLoad',
   'planExecutorPredicates.ts -> planTypes',
   'shedReleaseActuation.ts -> planTypes',
-  'shortfallExecutor.ts -> planState',
   'targetCommandRetry.ts -> planState',
   'targetExecutor.ts -> planTypes',
 ]);

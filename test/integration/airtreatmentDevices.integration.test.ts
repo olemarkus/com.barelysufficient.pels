@@ -210,7 +210,6 @@ describe('Airtreatment device integration', () => {
     app.computeDynamicSoftLimit = () => 10;
     app.computeDynamicSoftLimit = () => 10;
     app.capacityGuard.isInShortfall = () => false;
-    app.planEngine.state.inShortfall = false;
     app.planEngine.state.sheddingActive = false;
 
     await app.refreshTargetDevicesSnapshot();

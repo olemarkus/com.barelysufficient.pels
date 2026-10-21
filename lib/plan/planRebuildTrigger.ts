@@ -33,6 +33,9 @@
 export const POWER_SAMPLE_REBUILD_TRIGGERS = [
   'initial',
   'shortfall',
+  // The reading that ended a capacity shortfall while rebuilds were held to the
+  // max interval (`rebuildScheduler/throttle.ts`).
+  'shortfall_recovered',
   'hard_cap_breach',
   'grid_import_pressure',
   'headroom_tight',

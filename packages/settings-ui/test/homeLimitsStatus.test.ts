@@ -229,6 +229,12 @@ describe('posture chip + state line copy', () => {
     )).toBe('Limiting 1 device to stay within today’s daily budget.');
   });
 
+  it('names the grid import limit for a grid-limit reason', () => {
+    expect(composeHomeLimitsStateLine(
+      resolveHomeLimitsStatus({ limitReason: 'grid', devicesOff: 2 }, { dryRun: false, hardCapKw: 8 }),
+    )).toBe('Limiting 2 devices to stay under the grid import limit.');
+  });
+
   it('keeps simulation idle for a transient hold, would-limit only for a real reason', () => {
     expect(composeHomeLimitsStateLine(
       resolveHomeLimitsStatus({ limitReason: 'none', devicesOff: 3 }, { dryRun: true, hardCapKw: 8 }),

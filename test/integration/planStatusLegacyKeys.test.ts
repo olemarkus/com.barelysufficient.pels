@@ -16,11 +16,11 @@ describe('retireLegacyPlanStatusKeys', () => {
     mockHomeyInstance.settings.set('pels_status', { headroomKw: 1 });
     mockHomeyInstance.settings.set('pels_status:h_area', { headroomKw: 2 });
     mockHomeyInstance.settings.set('pels_status_unrelated', 'kept');
-    mockHomeyInstance.settings.set('capacity_in_shortfall', false);
+    mockHomeyInstance.settings.set('device_last_controlled_ms', {});
 
     retireLegacyPlanStatusKeys(mockHomeyInstance.settings);
 
-    expect(mockHomeyInstance.settings.getKeys().sort()).toEqual(['capacity_in_shortfall', 'pels_status_unrelated']);
+    expect(mockHomeyInstance.settings.getKeys().sort()).toEqual(['device_last_controlled_ms', 'pels_status_unrelated']);
   });
 
   it('touches nothing when the key list cannot be read', () => {

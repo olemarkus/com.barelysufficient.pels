@@ -178,7 +178,7 @@ For the full vocabulary, see the [Glossary](/glossary).
 - [Cost-Saving Functions](/cost-saving-functions) for choosing between power limiting, budget, price shift, tasks, and Flows
 - [Smart Tasks](/smart-tasks) for charging or heating a device by a ready-by time
 - [Book Cheap Hours With Flows](/how-to-book-cheap-hours-with-flows) for fixed cheapest-hour windows
-- [PELS Insights](/insights-device) for dashboards and quick status
+- [PELS Insights](/insights-device) for history charts and PELS values in Flows and other apps
 - [Configure an EV Charger](/ev-charger) for current-controlled EV charging
 - [Tips and Best Practices](/tips-and-best-practices) for tuning advice
 - [Daily Energy Budget](/daily-budget) for daily pacing and budget control

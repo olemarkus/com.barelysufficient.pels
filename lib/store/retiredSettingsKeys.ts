@@ -37,8 +37,19 @@ const RETIRED_SETTINGS_KEYS: ReadonlySet<string> = new Set([
   'ev_car_link_state_initialized',
 ]);
 
+// Retired keys every home wrote, the main home bare and each meter area
+// suffixed `:<homeId>` (`homeScopedSettingsKey`). `capacity_in_shortfall` was
+// read only by the Insights device, which now reads the shortfall from the
+// live status.
+const RETIRED_PER_HOME_SETTINGS_KEYS: readonly string[] = ['capacity_in_shortfall'];
+
+const isRetiredSettingsKey = (key: string): boolean => (
+  RETIRED_SETTINGS_KEYS.has(key)
+  || RETIRED_PER_HOME_SETTINGS_KEYS.some((base) => key === base || key.startsWith(`${base}:`))
+);
+
 export const unsetRetiredSettingsKeys = (settings: SettingsPort): void => {
-  const keys = listLegacySettingsKeys(settings, (key) => RETIRED_SETTINGS_KEYS.has(key));
+  const keys = listLegacySettingsKeys(settings, isRetiredSettingsKey);
   if (keys === null || keys.length === 0) return;
   try {
     for (const key of keys) settings.unset(key);

@@ -111,7 +111,7 @@ export class PlanExecutor {
   private readonly lifecycleFallback: LifecycleFallbackDispatcher;
 
   constructor(private readonly deps: PlanExecutorDeps, private readonly state: PlanEngineState) {
-    this.shortfallExecutor = new ShortfallExecutor(deps, state);
+    this.shortfallExecutor = new ShortfallExecutor(deps);
     this.ctx = {
       owner: 'ordinary',
       state,

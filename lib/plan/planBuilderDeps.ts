@@ -21,7 +21,6 @@ import type { ResolveTemperatureSetpoints } from '../../packages/planner-types/s
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 
 export type PlanBuilderDeps = {
-  setCapacityInShortfall: (inShortfall: boolean) => void;
   /** Per-home dry-run posture — the same fact `shouldApplyPlan` consults
    * before actuating. */
   getCapacityDryRun: () => boolean;

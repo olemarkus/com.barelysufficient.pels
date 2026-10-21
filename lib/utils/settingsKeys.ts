@@ -177,7 +177,6 @@ export const DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH = 'deferred_objective_hour
 /** Runtime-owned per-device EV target-power reachability; never written by the settings UI. */
 export const DEVICE_TARGET_POWER_REACHABILITY = 'device_target_power_reachability';
 export const DEVICE_LAST_CONTROLLED_MS = 'device_last_controlled_ms';
-export const CAPACITY_IN_SHORTFALL = 'capacity_in_shortfall';
 // Legacy: the daily budget's plan and learned profiles live in the userdata
 // store (lib/dailyBudget/dailyBudgetStateStore.ts). As a settings key it is only
 // read by the legacy import.

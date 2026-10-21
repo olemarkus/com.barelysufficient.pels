@@ -95,7 +95,6 @@ const buildHarness = (scenario: Scenario) => {
     leaveOffOnRelease: () => 'released',
     getInferredSurplusKw: () => 0,
     getCapacityDryRun: () => false,
-    setCapacityInShortfall: vi.fn(),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
     getCapacitySettings: () => scenario.settings,
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
