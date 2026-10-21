@@ -18,6 +18,9 @@ import {
   settingsCapacityMonthlyPeak,
   settingsCapacityMarginAlert,
   settingsCapacityReactionHint,
+  settingsCapacityChoice,
+  settingsCapacityChoiceText,
+  settingsCapacityKeepButton,
   type MdFilledTextFieldElement,
 } from './dom.ts';
 
@@ -30,6 +33,26 @@ export const syncCapacityReactionHint = (limit: number, margin: number) => {
   // only the loud accent value so the two surfaces never contradict.
   const reactionAt = usableCapacityKw(limit, margin).toFixed(1);
   settingsCapacityReactionHint.textContent = `${reactionAt} kW`;
+};
+
+const formatHardCapKw = (limitKw: number): string => `${Number(limitKw.toFixed(1))} kW`;
+
+/**
+ * Until the owner saves a hard cap, the field shows the built-in one, and the
+ * form only saves a change: an owner happy with that number had no way to make
+ * it theirs, and the Limits setup step stayed open. So while none is saved the
+ * page says which number PELS runs on and offers to keep it.
+ */
+export const syncHardCapChoice = (configured: boolean, scalars: CapacityScalarSettings): void => {
+  if (!settingsCapacityChoice) return;
+  settingsCapacityChoice.hidden = configured;
+  if (configured) return;
+  const limit = formatHardCapKw(scalars.limitKw);
+  if (settingsCapacityChoiceText) {
+    settingsCapacityChoiceText.textContent = `Not chosen yet. PELS uses ${limit}. `
+      + `Set the level you want to stay under, or keep ${limit}.`;
+  }
+  if (settingsCapacityKeepButton) settingsCapacityKeepButton.textContent = `Keep ${limit}`;
 };
 
 export const MARGIN_NOT_BELOW_LIMIT_MESSAGE

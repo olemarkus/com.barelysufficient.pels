@@ -20,6 +20,8 @@ const LIMITS_FORM_TEMPLATE = [
   '<span id="settings-capacity-reaction"></span>',
   '<div id="settings-capacity-monthly-peak" hidden><span id="settings-capacity-monthly-peak-value">Peak unavailable</span></div>',
   '<small id="settings-capacity-margin-alert" hidden></small>',
+  '<div id="settings-capacity-choice" hidden><small id="settings-capacity-choice-text"></small>',
+  '<md-outlined-button id="settings-capacity-keep"></md-outlined-button></div>',
   '<md-filled-select id="settings-power-source"></md-filled-select>',
   '<md-switch id="settings-simulation-mode"></md-switch>',
   '<div id="dry-run-banner" hidden></div>',
@@ -90,7 +92,7 @@ const loadCapacityModuleWithWriter = async (
         capacityScalars: {
           state: 'resolved',
           scalars: {
-            limitKw: settingsStore.capacity_limit_kw,
+            limitKw: settingsStore.capacity_limit_kw ?? 10,
             marginKw: settingsStore.capacity_margin_kw,
             periodMinutes: settingsStore.capacity_period_minutes ?? 60,
             dryRun: settingsStore.capacity_dry_run,
@@ -101,7 +103,7 @@ const loadCapacityModuleWithWriter = async (
             ),
           },
         },
-        hardCapConfiguration: { state: 'unavailable' },
+        hardCapConfiguration: { state: 'resolved', configured: settingsStore.capacity_limit_kw !== undefined },
       })),
   }));
   const showToast = vi.fn().mockResolvedValue(undefined);
@@ -139,6 +141,31 @@ const loadCapacityModule = async (
 );
 
 describe('Limits & safety inline validation', () => {
+
+  it('offers to keep the built-in hard cap until the owner saves one, and keeping it saves it', async () => {
+    // The form saves only a change, so without Keep an owner happy with the
+    // built-in number could never make it theirs.
+    const dom = buildLimitsDom();
+    const { capacity, settingsStore } = await loadCapacityModule({ capacity_limit_kw: undefined });
+    await capacity.loadCapacitySettings();
+    const choice = document.querySelector('#settings-capacity-choice') as HTMLElement;
+    expect(choice.hidden).toBe(false);
+    expect(document.querySelector('#settings-capacity-choice-text')?.textContent)
+      .toBe('Not chosen yet. PELS uses 10 kW. Set the level you want to stay under, or keep 10 kW.');
+    expect(document.querySelector('#settings-capacity-keep')?.textContent).toBe('Keep 10 kW');
+    expect(dom.limit.value).toBe('10');
+
+    await capacity.saveSettingsLimitsSettings();
+    expect(settingsStore.capacity_limit_kw).toBe(10);
+    expect(choice.hidden).toBe(true);
+  });
+
+  it('offers nothing to keep once a hard cap is saved', async () => {
+    buildLimitsDom();
+    const { capacity } = await loadCapacityModule();
+    await capacity.loadCapacitySettings();
+    expect((document.querySelector('#settings-capacity-choice') as HTMLElement).hidden).toBe(true);
+  });
 
   it('writes the grid threshold before enabling grid control, independently of capacity', async () => {
     const dom = buildLimitsDom();

@@ -2,6 +2,7 @@ import {
   readPowerLimitSettings,
   syncPowerLimitSwitches,
   syncCapacityLimitControls,
+  syncHardCapChoice,
   validatePowerLimitSettings,
 } from './powerLimitControls.ts';
 export {
@@ -111,6 +112,13 @@ let lastGoodCapacityScalars: CapacityScalarSettings = {
   marginKw: 0.2,
   dryRun: true,
   periodMinutes: DEFAULT_CAPACITY_PERIOD_MINUTES,
+};
+
+// Whether the owner has saved a hard cap decides both the setup path's Limits
+// step and the page's offer to keep the built-in one, so they move together.
+const publishHardCapRead = (configured: boolean, scalars: CapacityScalarSettings): void => {
+  publishSetupHardCapRead(configured, scalars);
+  syncHardCapChoice(configured, scalars);
 };
 
 // An unavailable read is a no-op: the last shown peak (or the template's
@@ -377,7 +385,7 @@ export const loadStaleDataStatus = async () => {
   else if (lastBannerReadings !== undefined) refreshStaleDataBanner();
   else publishSetupPowerUnavailable();
   if (power.hardCapConfiguration.state === 'resolved' && power.capacityScalars.state === 'resolved') {
-    publishSetupHardCapRead(power.hardCapConfiguration.configured, power.capacityScalars.scalars);
+    publishHardCapRead(power.hardCapConfiguration.configured, power.capacityScalars.scalars);
   } else {
     publishSetupHardCapUnavailable();
   }
@@ -453,7 +461,7 @@ export const loadCapacitySettings = async () => {
   commitCapacityScalars(resolved);
   if (powerRead.state === 'resolved') {
     const configuration = powerRead.payload.hardCapConfiguration;
-    if (configuration.state === 'resolved') publishSetupHardCapRead(configuration.configured, resolved);
+    if (configuration.state === 'resolved') publishHardCapRead(configuration.configured, resolved);
     else publishSetupHardCapUnavailable();
     renderMonthlyQuarterPeak(powerRead.payload.capacityPeak);
   } else publishSetupHardCapUnavailable();
@@ -521,7 +529,7 @@ const saveCapacitySettingsCommand = async (
   const dryRunChanged = state.dryRun !== committed.dryRun;
   commitCapacityScalars(committed);
   if (command.kind === 'limits') {
-    publishSetupHardCapRead(true, committed);
+    publishHardCapRead(true, committed);
     syncCapacityLimitControls(committed);
   } else {
     syncSimulationModeControl(committed.dryRun);
