@@ -661,5 +661,8 @@
   },
   "3.18.1": {
     "en": "A selected car now gives its charger a battery level as soon as both report the plug-in, so a smart task can start planning right away instead of after about 20 minutes. If another car or charger reports at the same time, PELS drops that match again.\n\nBuilt-in device control no longer fights a Homey Flow that sets the same thing, such as an Easee charging current, a Høiax power level or a Tesla, Zaptec or Futurehome charging current. While such a Flow exists, PELS pauses built-in control and leaves the setting to the Flow, and the device page explains how to switch. It resumes on its own once the Flow is gone, also after a restart. A Flow that only turns a Høiax on and off no longer counts."
+  },
+  "3.18.2": {
+    "en": "EV chargers and other devices with power levels now step up faster when there is room. PELS raises them as far as the available power allows in one go, instead of one part of the way every five minutes.\n\nIn a home with two cars and two chargers, each car now gets matched to the charger it is selected for, even when both cars are plugged in at the same time. Before, neither charger got a battery level for that charge. If your cars use either charger, select both cars on both chargers. The charger's Car section now says Matched to this charger now for the car that is plugged in."
   }
 }
