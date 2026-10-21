@@ -1,4 +1,4 @@
-import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUiApi.ts';
+import type { PriceSchemeSetting, SettingsUiHubMarketRead } from '../../../contracts/src/settingsUiApi.ts';
 import type { SetupRecommendation } from './recommendationsModel.ts';
 
 /**
@@ -41,12 +41,24 @@ export type AfterSetupDevice = {
   usesSolarSurplus: boolean;
 };
 
+/**
+ * Where the home's prices come from, as far as the price suggestion needs it:
+ * `priced` when PELS holds prices from the source in force and nothing but
+ * choosing that source is left to set up, and whether the owner chose it;
+ * `needs_setup` when it holds none yet, or the source still needs settings
+ * only the prices page asks for.
+ */
+export type AfterSetupPriceSource =
+  | { kind: 'priced'; scheme: PriceSchemeSetting; chosen: boolean }
+  | { kind: 'needs_setup' };
+
 export type AfterSetupFacts = {
   setupComplete: boolean;
   /** Managed devices only; their Price and solar flags come from the price settings. */
   devices: readonly AfterSetupDevice[];
   /** Producer-resolved global owner choice; explicit Off suppresses the Price suggestion. */
   priceOptimizationEnabled: boolean;
+  priceSource: AfterSetupPriceSource;
   /**
    * The home has solar AND the surplus engine can act on it. Both: a home with
    * panels but a pool the runtime declines would be offered a toggle that
@@ -91,22 +103,53 @@ const FLANDERS_PERIOD: SetupRecommendation = {
 const suggestion = (
   id: string,
   copy: Pick<SetupRecommendation, 'title' | 'body' | 'actionLabel'>,
-  panelId: string,
+  target: SetupRecommendation['target'],
 ): SetupRecommendation => ({
   id: `after-setup:${id}`,
   version: VERSION,
   category: 'optional',
   ...copy,
-  target: { kind: 'panel', panelId },
+  target,
 });
 
-const PRICES = suggestion('prices', {
-  title: 'Heat more while power is cheap',
-  body: 'PELS can raise the temperature a little in cheap hours and lower it in expensive ones, so heating '
-    + 'and hot water run when power costs least. Choose where your prices come from, then turn on Price '
-    + 'for the devices that should follow them.',
-  actionLabel: 'Set up prices',
-}, 'electricity-prices');
+const panel = (panelId: string): SetupRecommendation['target'] => ({ kind: 'panel', panelId });
+
+const PRICES_TITLE = 'Heat in cheap hours';
+
+const PRICE_SOURCE_NAMES: Record<PriceSchemeSetting, string> = {
+  norway: 'the Norway source',
+  homey: 'Homey Energy',
+  powerhour: 'Power by the Hour',
+  flow: 'your Flow',
+};
+
+/**
+ * Prices are rarely what is missing: outside Norway PELS assumes a source that
+ * already has them. So the suggestion says they are there and goes straight to
+ * the devices. While the owner has not chosen that source, its button makes it
+ * theirs first, or the setup path would reopen on Prices the moment a device
+ * follows them. A home PELS holds no prices for, or whose source needs more
+ * than that choice, is sent to set them up.
+ * The car is the Smart task suggestion's: Price acts on temperature targets.
+ */
+const resolvePricesSuggestion = (source: AfterSetupPriceSource): SetupRecommendation => {
+  if (source.kind === 'needs_setup') return suggestion('prices', {
+    title: PRICES_TITLE,
+    body: 'PELS can raise the temperature a little in cheap hours and lower it in expensive ones, so heating '
+      + 'and hot water run when power costs least. Choose where your prices come from, then turn on Price '
+      + 'for the devices that should follow them.',
+    actionLabel: 'Set up prices',
+  }, panel('electricity-prices'));
+  const body = `PELS already has your prices from ${PRICE_SOURCE_NAMES[source.scheme]}. Turn on Price for your `
+    + 'heating and hot water so they heat more in cheap hours.';
+  return source.chosen
+    ? suggestion('prices', { title: PRICES_TITLE, body, actionLabel: 'Choose devices' }, panel('devices'))
+    : suggestion(
+      'prices',
+      { title: PRICES_TITLE, body, actionLabel: 'Use these prices' },
+      { kind: 'keep-price-source', scheme: source.scheme },
+    );
+};
 
 // True of both kinds of solar home this applies to: one that exports, and a
 // zero-export home whose inverter throttles what it cannot use. Neither "exports"
@@ -116,7 +159,7 @@ const SOLAR = suggestion('solar', {
   body: 'PELS can run a device, or heat a little more, while your solar produces more than the home is '
     + 'using, so that power is used at home. Turn on Use solar surplus on the devices that should take it.',
   actionLabel: 'Choose devices',
-}, 'devices');
+}, panel('devices'));
 
 const SMART_TASKS = suggestion('smart-tasks', {
   title: 'Have something ready by a set time',
@@ -124,7 +167,7 @@ const SMART_TASKS = suggestion('smart-tasks', {
     + 'the cheapest hours before then. Add one from a Flow with the Add charging task or Add heating task '
     + 'action, or from the New smart task widget on a dashboard.',
   actionLabel: 'Open Smart tasks',
-}, 'deadlines');
+}, panel('deadlines'));
 
 const usesAny = (devices: readonly AfterSetupDevice[], flag: 'priceConfigured' | 'usesSolarSurplus'): boolean => (
   devices.some((device) => device[flag])
@@ -138,7 +181,7 @@ const resolvePricesAndSolar = (
   const prices = facts.priceOptimizationEnabled
     && devices.some((device) => device.temperature)
     && !usesAny(devices, 'priceConfigured')
-    ? [PRICES] : [];
+    ? [resolvePricesSuggestion(facts.priceSource)] : [];
   const solar = facts.solarSurplusAvailable
     && devices.some((device) => device.limitable)
     && !usesAny(devices, 'usesSolarSurplus')

@@ -36,7 +36,10 @@ import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUiA
  * solar and dynamic prices; the lede says what builds on the steps rather than
  * selling one limit, and the Limits step names the capacity period it runs on,
  * because a quarter-hour tariff on the hourly default is the one silent way to
- * get this setup wrong.
+ * get this setup wrong. Sweden is the one market where the step asks instead:
+ * whether a home pays a capacity charge depends on its grid company, so while
+ * the built-in cap runs unchosen, the step asks which before the owner limits a
+ * home to a tariff it may not have.
  *
  * Simulation is not a step. It is on by default and the path says so while it
  * is open, but a configured home left simulating is a finished setup: the slim
@@ -188,7 +191,19 @@ export const isBelgianHourlySetup = (market: SettingsUiHubMarketRead, hardCap: S
   return capacity !== null && isBelgianHourly(market, capacity.periodMinutes);
 };
 
+// In Sweden a capacity charge depends on the grid company: many homes pay one,
+// many pay only for their fuse size. While the built-in cap runs unchosen the
+// step asks which, instead of presuming a tariff the home may not have.
+const formatSwedishCapacityQuestion = (capacity: SetupCapacityLimit): string => (
+  `Does your grid company charge for your highest ${capacity.periodMinutes === 15 ? '15-minute' : 'hourly'} use? `
+  + 'If so, set your hard cap. If not, turn off Capacity limit.'
+);
+
 const resolveHardCapDetail = (hardCap: SetupHardCap, market: SettingsUiHubMarketRead): string => {
+  // Only while the step is open: beside a grid import limit the step is done.
+  if (hardCap.state === 'unset' && market.state === 'resolved' && market.country === 'SE') {
+    return formatSwedishCapacityQuestion(hardCap);
+  }
   const summary = formatLimitsSummary(hardCap);
   return isBelgianHourlySetup(market, hardCap) ? `${summary}.${FLANDERS_PERIOD_NOTE}` : summary;
 };

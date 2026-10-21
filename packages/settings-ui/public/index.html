@@ -617,6 +617,15 @@
                meaning the whole house the moment the home is split. -->
           <small class="field__hint" id="settings-capacity-limit-hint">The peak or tariff step you want to protect. PELS keeps each selected period&rsquo;s average power under this. No capacity tariff where you live? Turn off Capacity limit.</small>
         </label>
+        <!-- Shown while no hard cap has been saved: the number above is the
+             built-in one, and the form only saves a change, so Keep is how an
+             owner makes it theirs (capacity.ts syncHardCapChoice). -->
+        <div class="field" id="settings-capacity-choice" hidden>
+          <small class="field__hint field__hint--alert" id="settings-capacity-choice-text"></small>
+          <div class="form__actions">
+            <md-outlined-button type="button" id="settings-capacity-keep"></md-outlined-button>
+          </div>
+        </div>
         <label class="field">
           <span class="field__label pels-text-settings-label" id="settings-capacity-margin-label">Safety margin</span>
           <md-filled-text-field id="settings-capacity-margin" name="settings_capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required suffix-text="kW" aria-labelledby="settings-capacity-margin-label"></md-filled-text-field>

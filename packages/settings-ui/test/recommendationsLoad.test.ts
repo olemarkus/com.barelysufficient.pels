@@ -143,6 +143,7 @@ beforeEach(() => {
       setupComplete: true,
       devices: [],
       priceOptimizationEnabled: true,
+      priceSource: { kind: 'needs_setup' },
       solarSurplusAvailable: false,
       smartTaskConfigured: false,
       market: { state: 'unavailable' },
@@ -404,6 +405,7 @@ describe('recommendation loading', () => {
           usesSolarSurplus: false,
         }],
         priceOptimizationEnabled: true,
+        priceSource: { kind: 'needs_setup' },
         solarSurplusAvailable: false,
         smartTaskConfigured: false,
         market: { state: 'unavailable' },
@@ -416,7 +418,7 @@ describe('recommendation loading', () => {
     recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
     try {
       const surface = document.getElementById('setup-recommendations-root');
-      expect(surface?.textContent).toContain('Heat more while power is cheap');
+      expect(surface?.textContent).toContain('Heat in cheap hours');
 
       afterSetupRead = {
         state: 'resolved',
@@ -424,7 +426,7 @@ describe('recommendation loading', () => {
       };
       publishHomeScopeChange();
 
-      expect(surface?.textContent).not.toContain('Heat more while power is cheap');
+      expect(surface?.textContent).not.toContain('Heat in cheap hours');
       expect(surface?.textContent).toContain('No setup suggestions right now');
     } finally {
       for (const [type, listener, options] of listeners.mock.calls) {

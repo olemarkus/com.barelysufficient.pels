@@ -255,7 +255,7 @@ test.describe('Onboarding links', () => {
     await banner.getByText('See what').click();
 
     const list = page.locator('#setup-recommendations-root');
-    await expect(list).toContainText('Heat more while power is cheap');
+    await expect(list).toContainText('Heat in cheap hours');
     await expect(list).toContainText('Use more of your own solar');
     await expect(list).toContainText('Have something ready by a set time');
     // Optional, never "Recommended": nothing is wrong with a home that skips them.
@@ -268,7 +268,7 @@ test.describe('Onboarding links', () => {
     await expect(page.locator('#settings-nav-chip-recommendations')).toHaveText('2');
 
     // Each action opens the page that sets the feature up.
-    await list.locator('.setup-recommendation-card', { hasText: 'Heat more while power is cheap' })
+    await list.locator('.setup-recommendation-card', { hasText: 'Heat in cheap hours' })
       .getByText('Set up prices').click();
     await expect(page.locator('#electricity-prices-panel')).toBeVisible();
   });
@@ -353,10 +353,10 @@ test.describe('Onboarding links', () => {
     };
 
     expect(await titlesFor('NL')).toEqual([
-      'Use more of your own solar', 'Heat more while power is cheap', 'Have something ready by a set time',
+      'Use more of your own solar', 'Heat in cheap hours', 'Have something ready by a set time',
     ]);
     expect(await titlesFor('NO')).toEqual([
-      'Heat more while power is cheap', 'Use more of your own solar', 'Have something ready by a set time',
+      'Heat in cheap hours', 'Use more of your own solar', 'Have something ready by a set time',
     ]);
   });
 

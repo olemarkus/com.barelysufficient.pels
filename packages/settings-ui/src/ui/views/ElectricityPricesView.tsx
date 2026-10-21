@@ -43,6 +43,7 @@ import {
   formatPriceWidgetPrice,
   formatPriceWidgetSubline,
   resolvePriceWidgetAmountUnit,
+  resolvePriceWidgetAxisUnit,
 } from '../../../../shared-domain/src/priceWidgetCopy.ts';
 import type { PriceLevelSummaryRead, PriceThresholdSuggestion } from '../../../../contracts/src/settingsUiApi.ts';
 
@@ -119,7 +120,7 @@ const Header = () => (
   <AppBar
     back={{ target: 'settings', label: 'Back to Settings' }}
     title="Electricity prices"
-    lede="Choose where prices come from and what counts as cheap or expensive. PELS uses these to shape the daily budget toward cheaper hours."
+    lede="Choose where prices come from and what counts as cheap or expensive. PELS uses these to heat more in cheap hours and to plan Smart tasks."
   />
 );
 
@@ -464,8 +465,7 @@ const schemeNote = (scheme: PriceScheme, hasGridCompany: boolean): string | null
       + 'come from Power by the Hour, pick that source instead — it needs no flow.';
   }
   if (scheme === 'homey') {
-    return 'Homey Energy uses values as provided (currency/tax may vary). '
-      + 'Prices are read from your Homey Energy settings and used directly.';
+    return 'Uses the prices Homey Energy shows, including any fees you added there.';
   }
   if (scheme === 'powerhour') {
     return 'Power by the Hour supplies prices straight from that app, with the '
@@ -725,10 +725,16 @@ const SOURCE_NAMES: Record<PriceScheme, { short: string; inSentence: string }> =
   powerhour: { short: 'Power by the Hour', inSentence: 'Power by the Hour' },
 };
 
-const ASSUMED_BECAUSE: Record<Extract<PriceSourceAssumption, { kind: 'assumed' }>['reason'], string> = {
-  in_norway: 'Your Homey is in Norway, so ',
-  outside_norway: 'Your Homey is outside Norway, so ',
-  location_unknown: '',
+type AssumptionReason = Extract<PriceSourceAssumption, { kind: 'assumed' }>['reason'];
+
+// Without the hub's location PELS stays on the source every home had before
+// it could read one, and says so: an owner outside Norway must not take the
+// Norway prices for a guess about where they live.
+const assumedSourceHint = (reason: AssumptionReason, name: { inSentence: string }): string => {
+  if (reason === 'in_norway') return `Not chosen yet. Your Homey is in Norway, so PELS uses ${name.inSentence}.`;
+  if (reason === 'outside_norway') return `Not chosen yet. Your Homey is outside Norway, so PELS uses ${name.inSentence}.`;
+  return 'Not chosen yet. PELS couldn’t tell where your Homey is, so it uses Norway’s prices. '
+    + 'Outside Norway, choose where your prices come from above.';
 };
 
 type SourceStatusLines = { hint: ComponentChildren; followUp: ComponentChildren };
@@ -774,12 +780,14 @@ const resolveSourceStatusLines = (props: ElectricityPricesViewProps): SourceStat
   return {
     hint: (
       <small class="field__hint field__hint--alert">
-        {`Not chosen yet. ${ASSUMED_BECAUSE[assumption.reason]}PELS uses ${name.inSentence}.`}
+        {assumedSourceHint(assumption.reason, name)}
       </small>
     ),
     followUp: (
       <div class="form__actions">
-        <MdOutlinedButton type="button" onClick={handlers.onKeepSource}>{`Keep ${name.short}`}</MdOutlinedButton>
+        <MdOutlinedButton type="button" onClick={handlers.onKeepSource}>
+          {`${assumption.reason === 'location_unknown' ? 'Use' : 'Keep'} ${name.short}`}
+        </MdOutlinedButton>
       </div>
     ),
   };
@@ -1108,6 +1116,20 @@ const PriceLevelLines = ({ summary, handlers }: {
   );
 };
 
+// The minimum difference is in the source's own unit: the one its known prices
+// carry, or øre on the Norway source. The prices read describes the source in
+// force, so right after the owner picks another one it names no unit until it
+// is read again, rather than the old source's.
+const minDiffUnitProps = (config: PriceConfigState): { 'suffix-text'?: string } => {
+  const summary = config.priceLevelSummary;
+  const describesShownSource = config.priceSetup.state === 'resolved'
+    && config.priceSetup.setup.source.scheme === config.priceScheme;
+  let unit = '';
+  if (config.priceScheme === 'norway') unit = 'øre/kWh';
+  else if (summary.state === 'ready' && describesShownSource) unit = resolvePriceWidgetAxisUnit(summary.priceUnit);
+  return unit === '' ? {} : { 'suffix-text': unit };
+};
+
 const ThresholdForm = ({ config, handlers }: {
   config: PriceConfigState;
   handlers: ElectricityPricesHandlers;
@@ -1143,7 +1165,7 @@ const ThresholdForm = ({ config, handlers }: {
         min="0"
         max="1000"
         step="any"
-        {...(config.priceScheme === 'norway' ? { 'suffix-text': 'øre/kWh' } : {})}
+        {...minDiffUnitProps(config)}
         inputmode="decimal"
         aria-labelledby="electricity-prices-min-diff-label"
         onChange={(e) => {

@@ -50,6 +50,7 @@ import {
   refreshFlowConflictFactsExplicit,
 } from './flowConflictRefresh.ts';
 import { showToast, showToastError } from './toast.ts';
+import { keepPriceSchemeInForce } from './priceSettingsPersistence.ts';
 import { subscribeToHomeScope } from './homeScope.ts';
 
 export type RecommendationNavigation = {
@@ -311,6 +312,23 @@ const runRecommendationAction = (recommendation: SetupRecommendation): void => {
         );
       })
       .catch((error) => showToastError(error, 'Could not check Homey Flows. Try again.'))
+      .finally(() => {
+        busyRecommendationId = null;
+        refreshRecommendationSurfaces();
+      });
+    return;
+  }
+  if (target.kind === 'keep-price-source') {
+    if (busyRecommendationId !== null) return;
+    busyRecommendationId = recommendation.id;
+    refreshRecommendationSurfaces();
+    void keepPriceSchemeInForce(target.scheme)
+      .then((kept) => {
+        if (!kept) return showToast('The price source changed. Check it under Electricity prices.', 'warn');
+        if (navigationRead.state === 'resolved') navigationRead.navigation.openPanel('devices');
+        return undefined;
+      })
+      .catch((error) => showToastError(error, 'Could not save the price source. Try again.'))
       .finally(() => {
         busyRecommendationId = null;
         refreshRecommendationSurfaces();

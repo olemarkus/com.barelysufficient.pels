@@ -13,6 +13,7 @@ import {
   settingsCapacityLimitInput,
   settingsCapacityMarginInput,
   settingsCapacityPeriodSelect,
+  settingsCapacityKeepButton,
   settingsPowerSourceSelect,
   settingsSimulationModeInput,
   simulationDisableButton,
@@ -291,6 +292,9 @@ const initLimitsAndSimulationHandlers = () => {
   settingsCapacityLimitInput?.addEventListener('change', () => autoSaveSettingsLimits());
   settingsCapacityMarginInput?.addEventListener('change', () => autoSaveSettingsLimits());
   settingsCapacityPeriodSelect?.addEventListener('change', () => autoSaveSettingsLimits());
+  // Saving the form as shown writes the hard cap key, which is what makes the
+  // built-in number the owner's own (`syncHardCapChoice`).
+  settingsCapacityKeepButton?.addEventListener('click', () => autoSaveSettingsLimits());
   // The power-source select persists itself through the guarded ui_homes_save
   // seam (the runtime refuses Flow while meter areas run), so it never rides
   // the bulk limits save. The handler owns its own error/rollback path.

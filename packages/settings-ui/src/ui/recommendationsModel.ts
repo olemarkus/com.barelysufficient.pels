@@ -1,4 +1,5 @@
 import type {
+  PriceSchemeSetting,
   SettingsUiRecommendationCar,
   SettingsUiEvSocFlowReporter,
 } from '../../../contracts/src/settingsUiApi.ts';
@@ -28,7 +29,9 @@ export type RecommendationTarget =
   | { kind: 'flow-conflict-check'; deviceId: string }
   | { kind: 'ev-soc-flow-conflict-check'; deviceId: string }
   // A settings panel or top-level tab, by its `data-panel` / `data-tab` id.
-  | { kind: 'panel'; panelId: string };
+  | { kind: 'panel'; panelId: string }
+  // Save the price source in force as the owner's choice, then open Devices.
+  | { kind: 'keep-price-source'; scheme: PriceSchemeSetting };
 
 export type SetupRecommendation = {
   id: string;

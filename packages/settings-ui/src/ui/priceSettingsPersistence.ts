@@ -50,6 +50,19 @@ export const readPriceSchemeInForce = async (): Promise<PriceScheme> => {
 /** Save the price source the owner picked. The only write of `price_scheme`. */
 export const savePriceScheme = (scheme: PriceScheme): Promise<void> => setSetting(PRICE_SCHEME, scheme);
 
+/**
+ * Make the source PELS prices with the owner's own, from a surface other than
+ * Electricity prices. Keeping the source in force changes no unit, so the
+ * export price needs no settling. A source that moved since the surface drew
+ * it is not saved (`false`): the owner agreed to the one they saw.
+ */
+export const keepPriceSchemeInForce = async (scheme: PriceScheme): Promise<boolean> => {
+  if (await readPriceSchemeInForce() !== scheme) return false;
+  await savePriceScheme(scheme);
+  invalidateApiCache(SETTINGS_UI_PRICES_PATH);
+  return true;
+};
+
 const PRICE_AREAS: ReadonlySet<string> = new Set(['NO1', 'NO2', 'NO3', 'NO4', 'NO5']);
 
 export const isPriceArea = (value: string): boolean => PRICE_AREAS.has(value);

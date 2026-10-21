@@ -688,6 +688,21 @@ describe('ElectricityPricesView, Power by the Hour source', () => {
       expect(onKeepSource).toHaveBeenCalledTimes(1);
     });
 
+    it('says PELS could not tell where the Homey is before an owner keeps the Norway source', () => {
+      const onKeepSource = vi.fn();
+      const mount = mountWith({ priceScheme: 'norway' }, {
+        sourceAssumption: { kind: 'assumed', reason: 'location_unknown' },
+        handlers: buildHandlers({ onKeepSource }),
+      });
+
+      expect(alertHints(mount)).toContain('Not chosen yet. PELS couldn’t tell where your Homey is, so it uses '
+        + 'Norway’s prices. Outside Norway, choose where your prices come from above.');
+      const use = Array.from(mount.querySelectorAll('md-outlined-button'))
+        .find((button) => button.textContent === 'Use Norway') as HTMLElement | undefined;
+      use?.click();
+      expect(onKeepSource).toHaveBeenCalledTimes(1);
+    });
+
     it('says Homey Energy has no prices, with where to set them up, rather than offering to keep it', () => {
       const mount = mountWith({
         priceScheme: 'homey',

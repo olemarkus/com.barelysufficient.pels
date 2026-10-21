@@ -1,6 +1,7 @@
 import type { PriceOptimizationSetup } from '../../../contracts/src/priceOptimizationSettings.ts';
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
-import type { AfterSetupDevice, AfterSetupFacts } from './afterSetupRecommendations.ts';
+import type { NorwayPriceSetup, SettingsUiPricesPayload } from '../../../contracts/src/settingsUiApi.ts';
+import type { AfterSetupDevice, AfterSetupFacts, AfterSetupPriceSource } from './afterSetupRecommendations.ts';
 import { hasLoadedDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
 import { supportsPowerDevice, supportsTemperatureControlDevice } from './deviceUtils.ts';
 import { logSettingsError } from './logging.ts';
@@ -12,7 +13,28 @@ import { state } from './state.ts';
 type PriceSetupState =
   | { state: 'loading' }
   | { state: 'unavailable' }
-  | { state: 'ready'; setup: PriceOptimizationSetup };
+  | { state: 'ready'; setup: PriceOptimizationSetup; priceSource: AfterSetupPriceSource };
+
+// Prices PELS can show are prices it can classify, so a ready level summary is
+// the producer's own word that the source in force has delivered some. A source
+// PELS fell back to without knowing where the hub is (`default`) is no answer
+// to offer: Electricity prices asks that owner to choose, and so does this.
+// Nor is the Norway source while a Norway setting is still assumed: keeping
+// the source alone would leave the setup path's Prices step open.
+const isNorwaySetupChosen = ({ gridCompany, priceArea, pricingModel }: NorwayPriceSetup): boolean => (
+  gridCompany.kind === 'chosen' && priceArea.chosen && pricingModel.chosen
+);
+
+export const resolvePriceSource = (
+  payload: Pick<SettingsUiPricesPayload, 'priceSetup' | 'priceLevelSummary'>,
+): AfterSetupPriceSource => {
+  const { priceSetup, priceLevelSummary } = payload;
+  if (priceSetup.state !== 'resolved' || priceLevelSummary.state !== 'ready') return { kind: 'needs_setup' };
+  const { source, norway } = priceSetup.setup;
+  if (source.basis.kind === 'default') return { kind: 'needs_setup' };
+  if (source.scheme === 'norway' && !isNorwaySetupChosen(norway)) return { kind: 'needs_setup' };
+  return { kind: 'priced', scheme: source.scheme, chosen: source.basis.kind === 'chosen' };
+};
 
 export type AfterSetupFactsRead =
   | { state: 'loading' }
@@ -30,9 +52,12 @@ export const loadAfterSetupFacts = async (): Promise<void> => {
   priceSetupLoadGeneration += 1;
   const generation = priceSetupLoadGeneration;
   try {
-    const read = (await getPricesReadModel()).priceOptimizationSetup;
+    const payload = await getPricesReadModel();
+    const read = payload.priceOptimizationSetup;
     if (generation !== priceSetupLoadGeneration) return;
-    if (read.state === 'resolved') priceSetupState = { state: 'ready', setup: read.setup };
+    if (read.state === 'resolved') {
+      priceSetupState = { state: 'ready', setup: read.setup, priceSource: resolvePriceSource(payload) };
+    }
     else if (priceSetupState.state !== 'ready') priceSetupState = { state: 'unavailable' };
   } catch (error) {
     await logSettingsError('Failed to read price settings for suggestions', error, 'setup recommendations');
@@ -79,6 +104,7 @@ export const readAfterSetupFacts = (): AfterSetupFactsRead => {
       setupComplete: setupPath.state === 'complete',
       devices: resolveDevices(priceSetupState.setup, membership),
       priceOptimizationEnabled: priceSetupState.setup.enabled,
+      priceSource: priceSetupState.priceSource,
       solarSurplusAvailable: state.surplusPoolReachable
         && (state.hasManagedSolarDevice || state.hasExhibitedExport),
       market: readSetupMarket(),

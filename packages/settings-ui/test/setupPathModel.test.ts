@@ -142,6 +142,38 @@ describe('setup path', () => {
       expect(detailOf(belgian(15), 'hardCap')).toBe('10 kW hard cap (15-minute average) until you set yours');
     });
 
+    it('asks a Swedish home whether it pays for its peak instead of presuming a tariff', () => {
+      // Whether a Swedish home pays a capacity charge depends on its grid company.
+      const swedish = (periodMinutes: 15 | 60) => ({
+        ...belgian(periodMinutes), market: { state: 'resolved' as const, country: 'SE' },
+      });
+      expect(detailOf(swedish(60), 'hardCap')).toBe('Does your grid company charge for your highest hourly use? '
+        + 'If so, set your hard cap. If not, turn off Capacity limit.');
+      expect(detailOf(swedish(15), 'hardCap')).toContain('your highest 15-minute use?');
+    });
+
+    it('keeps a Swedish home\'s grid import limit in a finished Limits step', () => {
+      const withGrid = {
+        ...belgian(60),
+        market: { state: 'resolved' as const, country: 'SE' },
+        hardCap: {
+          state: 'grid' as const,
+          limitKw: 11,
+          capacity: { state: 'unset' as const, runningLimitKw: 10, periodMinutes: 60 as const },
+        },
+      };
+      expect(detailOf(withGrid, 'hardCap')).toBe('11 kW grid import limit, 10 kW hard cap (hourly average) until you set yours');
+    });
+
+    it('states a Swedish home\'s own choice once it has made one', () => {
+      const saved = {
+        ...belgian(60),
+        market: { state: 'resolved' as const, country: 'SE' },
+        hardCap: { state: 'saved' as const, limitKw: 6, marginKw: 0.2, periodMinutes: 60 as const },
+      };
+      expect(detailOf(saved, 'hardCap')).toBe('6 kW hard cap (hourly average), 0.2 kW safety margin');
+    });
+
     it('gives a Norwegian hub, and an unknown one, exactly the neutral copy', () => {
       const norwegian = { ...belgian(60), market: { state: 'resolved' as const, country: 'NO' } };
       const unknown = { ...belgian(60), market: { state: 'unavailable' as const } };
