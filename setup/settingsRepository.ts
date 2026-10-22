@@ -1,8 +1,6 @@
 import type Homey from 'homey';
-import {
-  parseFlowReportedCapabilities,
-  type FlowReportedCapabilitiesByDevice,
-} from '../lib/device/transport/flowReportedCapabilities';
+import type { FlowReportedCapabilitiesByDevice } from '../lib/device/transport/flowReportedCapabilities';
+import { readFlowReportedCapabilitiesSetting } from '../lib/device/flowReportedCapabilitiesSetting';
 import {
   classifyExpectedPowerOverridesSetting,
   classifyLearnedPeaksSetting,
@@ -34,14 +32,8 @@ import {
 export class SettingsRepository {
   constructor(private readonly homey: Homey.App['homey']) {}
 
-  /**
-   * Parses the persisted `FLOW_REPORTED_DEVICE_CAPABILITIES` shape.
-   * Returns an empty map when the setting is missing or malformed.
-   */
-  loadFlowReportedCapabilities(): FlowReportedCapabilitiesByDevice {
-    return parseFlowReportedCapabilities(
-      this.homey.settings.get(FLOW_REPORTED_DEVICE_CAPABILITIES) as unknown,
-    );
+  loadFlowReportedCapabilities(): ReturnType<typeof readFlowReportedCapabilitiesSetting> {
+    return readFlowReportedCapabilitiesSetting(this.homey.settings);
   }
 
   /**
