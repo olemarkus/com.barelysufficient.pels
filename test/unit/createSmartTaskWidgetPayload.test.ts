@@ -127,6 +127,21 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
     });
   });
 
+  it('offers a plugged-in charger with no battery level an energy goal, and still drops a relay', () => {
+    const livePower = { measuredPowerKw: 0, measuredPowerIsDirectMeasurement: true };
+    const payload = buildCreateSmartTaskDevicesPayload({
+      devices: [
+        { ...buildDevice({ id: 'ev', name: 'Driveway', isEvCharger: true }), ...livePower, evChargingState: 'plugged_in' },
+        { ...buildDevice({ id: 'relay', name: 'Water heater', binaryControllable: true }), ...livePower },
+      ],
+    });
+    if (payload.state !== 'ready') throw new Error('expected ready');
+    expect(payload.devices).toHaveLength(1);
+    expect(payload.devices[0]).toMatchObject({
+      deviceId: 'ev', kind: 'energy', unitSymbol: 'kWh', currentValue: null, offersQuickTargets: true,
+    });
+  });
+
   it('falls back to a thermostat range when a temperature device has no target bounds', () => {
     const payload = buildCreateSmartTaskDevicesPayload({
       devices: [buildDevice({

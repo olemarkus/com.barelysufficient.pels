@@ -20,11 +20,13 @@ export type CreateSmartTaskWidgetInput = {
 export const buildCreateSmartTaskDevicesPayload = (
   input: CreateSmartTaskWidgetInput,
 ): CreateSmartTaskDevicesPayload => {
+  const chargerIds = new Set(input.devices.filter((device) => device.isEvCharger).map((device) => device.id));
   const devices = buildSmartTaskCandidateDevices(input.devices)
-    // Energy tasks are created from the "Add energy task" Flow card or the
-    // Smart tasks page, not here: the widget's picker, preview and goal stepper
-    // are shaped for a level to reach, not an amount to deliver.
-    .filter((device) => device.kind !== 'energy');
+    // A relay's energy task is created from the "Add energy task" Flow card or
+    // the Smart tasks page, not here: with no quick targets it would open on a
+    // bare kWh stepper. A plugged-in charger with no battery level is offered
+    // energy quick targets (`resolveSmartTaskCreationKind`), so it stays.
+    .filter((device) => device.kind !== 'energy' || chargerIds.has(device.deviceId));
 
   if (devices.length === 0) {
     return { state: 'empty', subtitle: EMPTY_NO_DEVICES_SUBTITLE, hint: EMPTY_NO_DEVICES_HINT };

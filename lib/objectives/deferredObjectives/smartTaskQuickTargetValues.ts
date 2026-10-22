@@ -17,7 +17,10 @@ import {
 // EV: the usual battery-health stops, topped up from the highest remaining tens
 // when the car is already past some of them (at 58 % that adds 90 %, never a 60 %
 // that is two points away). Without a known battery level there is no
-// plan to time a target against, so there are no quick targets.
+// plan to time a battery target against; a plugged-in charger without one is
+// offered an energy task instead (`resolveSmartTaskCreationKind`), in steps of
+// 10 kWh. The estimator drops an amount the charger cannot deliver within the
+// published prices, so a slow charger simply shows fewer of them.
 //
 // Temperature: the device class cannot tell a room from a water heater (a water
 // heater reports `heater`, the class panel heaters use too), and the headroom to
@@ -31,6 +34,7 @@ import {
 const QUICK_TARGET_COUNT = 4;
 const PREFERRED_EV_QUICK_TARGETS = [50, 70, 80, 100];
 const EV_QUICK_TARGET_POOL = [50, 60, 70, 80, 90, 100];
+const EV_ENERGY_QUICK_TARGETS_KWH = [10, 20, 30, 40];
 const STORAGE_HEATER_OPERATING_POINT_C = 35;
 const STORAGE_HEATER_QUICK_STEP_C = 5;
 const ROOM_QUICK_STEP_C = 1;
@@ -76,14 +80,15 @@ const resolveTemperatureQuickTargets = (
 
 /**
  * The quick targets to offer for a new task of `kind` on `device`, ascending.
- * Empty when there is nothing to offer: an energy task, a charger with no known
- * battery level, or a device already at its maximum.
+ * Empty when there is nothing to offer: an energy task on anything but a
+ * charger, a battery target with no known level, or a device already at its
+ * maximum.
  */
 export const resolveSmartTaskQuickTargets = (
   device: SmartTaskQuickTargetDevice,
   kind: DeferredObjectiveSettingsKind,
 ): number[] => {
-  if (kind === 'energy') return [];
+  if (kind === 'energy') return device.isEvCharger ? [...EV_ENERGY_QUICK_TARGETS_KWH] : [];
   if (kind === 'ev_soc') {
     const current = resolveSmartTaskCurrentValue(device, kind);
     return current === null ? [] : resolveEvQuickTargets(current);

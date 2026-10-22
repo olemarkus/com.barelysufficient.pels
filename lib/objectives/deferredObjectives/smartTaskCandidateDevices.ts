@@ -3,7 +3,7 @@ import type { SmartTaskCandidateDevice } from '../../../packages/contracts/src/s
 import {
   resolveSmartTaskCurrentValue,
   resolveSmartTaskDefaultGoal,
-  resolveDefaultSmartTaskKind,
+  resolveSmartTaskCreationKind,
   resolveSmartTaskGoalBounds,
   supportsSmartTaskKind,
 } from '../../../packages/shared-domain/src/smartTaskDeviceKind';
@@ -22,7 +22,7 @@ const buildCandidateDevice = (
   // kind gate reads.
   device: CreateSmartTaskCandidateDevice,
 ): SmartTaskCandidateDevice | null => {
-  const kind = resolveDefaultSmartTaskKind(device);
+  const kind = resolveSmartTaskCreationKind(device);
   // The creation gate every path asks: an energy task also needs a live power
   // reading to count its progress from.
   if (kind === null || !supportsSmartTaskKind(device, kind)) return null;

@@ -8,7 +8,7 @@ import type {
 import type { DeferredObjectiveSettingsKind } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { CreateSmartTaskCandidateDevicesRead } from '../../../packages/contracts/src/widgetHostApi';
 import {
-  resolveDefaultSmartTaskKind,
+  resolveSmartTaskCreationKind,
   supportsSmartTaskKind,
 } from '../../../packages/shared-domain/src/smartTaskDeviceKind';
 import { buildSmartTaskCandidateBase } from './smartTaskCandidateRequest';
@@ -151,7 +151,7 @@ export const previewSmartTaskQuickTargetsForDevice = (
   if (candidates.state === 'unavailable') return { state: 'unavailable', reason: 'settings_unavailable' };
   const device = candidates.devices.find((candidate) => candidate.id === deviceId);
   if (!device) return { state: 'unavailable', reason: 'missing_device' };
-  const kind = resolveDefaultSmartTaskKind(device);
+  const kind = resolveSmartTaskCreationKind(device);
   if (kind === null || !supportsSmartTaskKind(device, kind)) return { state: 'ready', targets: [] };
   return estimateSmartTaskQuickTargets(kind, resolveSmartTaskQuickTargets(device, kind), preview, nowMs);
 };
