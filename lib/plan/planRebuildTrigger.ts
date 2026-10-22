@@ -20,7 +20,7 @@
  *
  * The `reason` it replaces was never purely decorative — three call sites read
  * it back: `resolveRestoreDecisionPhase` (startup vs runtime restore admission),
- * `isTightReason` (tight-noop backoff bookkeeping), and `getPlanRebuildLogLevel`,
+ * `isTightReason` (tight-noop backoff bookkeeping), and `shouldLogPlanRebuildAtInfo`,
  * which additionally sniffed `startsWith('settings:')`. Each matched raw strings
  * that nothing guaranteed a caller would spell the same way.
  */

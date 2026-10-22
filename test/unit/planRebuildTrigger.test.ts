@@ -4,7 +4,7 @@ import {
   PLAN_REBUILD_TRIGGERS,
   POWER_SAMPLE_REBUILD_TRIGGERS,
 } from '../../lib/plan/planRebuildTrigger';
-import { getPlanRebuildLogLevel } from '../../lib/plan/planRebuildMetrics';
+import { shouldLogPlanRebuildAtInfo } from '../../lib/plan/planRebuildMetrics';
 
 describe('describePlanRebuildTrigger', () => {
   it('leaves a trigger that carries no detail exactly as it is named', () => {
@@ -23,25 +23,25 @@ describe('describePlanRebuildTrigger', () => {
 
 });
 
-// `getPlanRebuildLogLevel` matched `reason.startsWith('settings:')` before the set
+// `shouldLogPlanRebuildAtInfo` matched `reason.startsWith('settings:')` before the set
 // was closed and now matches `trigger === 'settings'`. It had no test at any tier,
 // and it decides whether an operator sees the line at all.
-describe('getPlanRebuildLogLevel', () => {
+describe('shouldLogPlanRebuildAtInfo', () => {
   const quietOutcome = {
     failed: false, appliedActions: false, actionChanged: false,
-  } as Parameters<typeof getPlanRebuildLogLevel>[2];
+  } as Parameters<typeof shouldLogPlanRebuildAtInfo>[2];
 
   it('logs a settings rebuild at info however its detail is spelled', () => {
-    expect(getPlanRebuildLogLevel('settings', 10, quietOutcome)).toBe('info');
+    expect(shouldLogPlanRebuildAtInfo('settings', 10, quietOutcome)).toBe(true);
   });
 
   it('keeps startup and the first build at info', () => {
-    expect(getPlanRebuildLogLevel('initial', 10, quietOutcome)).toBe('info');
-    expect(getPlanRebuildLogLevel('startup_snapshot_bootstrap', 10, quietOutcome)).toBe('info');
+    expect(shouldLogPlanRebuildAtInfo('initial', 10, quietOutcome)).toBe(true);
+    expect(shouldLogPlanRebuildAtInfo('startup_snapshot_bootstrap', 10, quietOutcome)).toBe(true);
   });
 
   it('stays silent for an ordinary quiet power-sample rebuild', () => {
-    expect(getPlanRebuildLogLevel('power_delta', 10, quietOutcome)).toBeNull();
+    expect(shouldLogPlanRebuildAtInfo('power_delta', 10, quietOutcome)).toBe(false);
   });
 });
 
