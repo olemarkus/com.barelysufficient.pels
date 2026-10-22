@@ -120,7 +120,6 @@ export type SheddingDeps = {
   // touching `state.pendingBinaryCommands[id]` directly.
   pendingBinaryCommandStore: PendingBinaryCommandStore;
   log: (...args: unknown[]) => void;
-  debugStructured?: import('../../logging/logger').StructuredDebugEmitter;
   structuredLog?: import('../../logging/logger').Logger;
 };
 

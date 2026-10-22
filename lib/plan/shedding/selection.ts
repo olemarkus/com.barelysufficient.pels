@@ -1,9 +1,11 @@
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
-import type { StructuredDebugEmitter } from '../../logging/logger';
+import { getDebugEmitter } from '../../logging/logger';
 import type { PlanContext } from '../planContext';
 import { chooseShedRung } from './steppedCandidates';
 import { resolveStorageSpend } from './storageCandidate';
 import type { LoadShedCandidate, ShedCandidate, StorageSetpoint, StorageShedCandidate } from './types';
+
+const debug = getDebugEmitter('plan', 'plan');
 
 /**
  * Greedy pick over the ranked candidates: take them in order until the deficit
@@ -53,7 +55,6 @@ export function selectShedDevices(
   needed: number,
   reason: DeviceReason,
   shedAllCandidates: boolean,
-  debugStructured?: StructuredDebugEmitter,
 ): ShedSelection {
   const shedSet = new Set<string>();
   const shedReasons = new Map<string, DeviceReason>();
@@ -65,7 +66,7 @@ export function selectShedDevices(
     if (shouldStopSelection(shedAllCandidates, remaining)) break;
     if (nextCandidate.effectivePower <= 0) continue;
     if (nextCandidate.kind === 'storage') {
-      const spent = spendStorageCandidate(nextCandidate, remaining, storageSetpoints, debugStructured);
+      const spent = spendStorageCandidate(nextCandidate, remaining, storageSetpoints);
       if (spent === null || nextCandidate.unconfirmedRelief) continue;
       remaining -= spent.reliefKw;
       creditedKw.set(nextCandidate.id, spent.chargeReliefKw);
@@ -75,7 +76,7 @@ export function selectShedDevices(
     shedSet.add(nextCandidate.id);
     shedReasons.set(nextCandidate.id, reason);
     if (spend.toStepId !== undefined) shedStepTargets.set(nextCandidate.id, spend.toStepId);
-    logSelectedCandidate(nextCandidate, spend, debugStructured);
+    logSelectedCandidate(nextCandidate, spend);
     if (nextCandidate.unconfirmedRelief) continue;
     remaining -= spend.reliefKw;
     creditedKw.set(nextCandidate.id, spend.reliefKw);
@@ -105,7 +106,6 @@ function spendStorageCandidate(
   candidate: StorageShedCandidate,
   remainingKw: number,
   storageSetpoints: Map<string, StorageSetpoint>,
-  debugStructured: StructuredDebugEmitter | undefined,
 ): ReturnType<typeof resolveStorageSpend> {
   const banked = !candidate.unconfirmedRelief;
   if (!banked && candidate.hold.kind === 'limit') {
@@ -115,7 +115,7 @@ function spendStorageCandidate(
   const spend = resolveStorageSpend(candidate, remainingKw);
   if (spend === null) return null;
   storageSetpoints.set(candidate.id, { setpointW: spend.setpointW, banked, storage: candidate.storage });
-  debugStructured?.({
+  debug({
     event: 'plan_shed_storage_limit',
     deviceId: candidate.id,
     deviceName: candidate.name,
@@ -155,11 +155,9 @@ function shouldStopSelection(shedAllCandidates: boolean, remaining: number): boo
 function logSelectedCandidate(
   candidate: LoadShedCandidate,
   spend: CandidateSpend,
-  debugStructured?: StructuredDebugEmitter,
 ): void {
-  if (!debugStructured) return;
   if (candidate.kind === 'stepped') {
-    debugStructured({
+    debug({
       event: 'plan_shed_step_down',
       deviceId: candidate.id,
       deviceName: candidate.name,
@@ -173,7 +171,7 @@ function logSelectedCandidate(
     return;
   }
   if (candidate.kind === 'temperature') {
-    debugStructured({
+    debug({
       event: 'plan_shed_set_temperature',
       deviceId: candidate.id,
       deviceName: candidate.name,

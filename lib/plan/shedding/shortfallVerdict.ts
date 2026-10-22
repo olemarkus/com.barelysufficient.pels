@@ -120,12 +120,12 @@ function walkShedCandidates(
   deps: SheddingDeps,
   storage: StorageRelief,
 ): ShedCandidate[] {
-  return buildSheddingCandidates({
+  return buildSheddingCandidates(
     // The verdict reads the measurement alone: no battery credit or debit. A
     // held battery is still priced from its hold.
-    ...buildShedCandidateParams(context, power, state, deps, { ...storage, shed: NO_STORAGE_SHED_TERM }),
-    deps: { ...deps, debugStructured: undefined },
-  }, context.nowTs).candidates;
+    buildShedCandidateParams(context, power, state, deps, { ...storage, shed: NO_STORAGE_SHED_TERM }),
+    context.nowTs,
+  ).candidates;
 }
 
 /**

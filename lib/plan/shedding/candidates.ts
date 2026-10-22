@@ -4,7 +4,7 @@ import type { MeteredPlanInputDevice, PlanInputDevice } from '../planTypes';
 import { isMeteredPlanDevice } from '../planMeteredDevice';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { compareDeviceIdAsc } from '../planSort';
-import { resolveRecentRestoreState } from './overshoot';
+import { resolveRecentRestoreState, type RecentRestoreState } from './overshoot';
 import {
   buildBinaryCandidate,
   buildTemperatureCandidate,
@@ -122,13 +122,14 @@ export function buildShedCandidateParams(
 export function buildSheddingCandidates(params: ShedCandidateParams, nowTs: number): {
   candidates: ShedCandidate[];
   physicalLimitBreached: boolean;
+  diagnostics: ShedCandidateSkipRecorder;
 } {
   const candidates: ShedCandidate[] = [];
   // Every exit below either produces a candidate or records why it did not, so a
   // cycle that sheds nothing can say which devices it considered and what stopped
   // each one (`candidateSkipLog.ts`). Devices that are not controllable at all
   // are out of scope rather than skipped, and are not recorded.
-  const recorder = createShedCandidateSkipRecorder(params.deps.debugStructured);
+  const recorder = createShedCandidateSkipRecorder();
 
   for (const device of params.devices) {
     const walked = walkDevice(device, params, recorder, nowTs);
@@ -140,10 +141,9 @@ export function buildSheddingCandidates(params: ShedCandidateParams, nowTs: numb
     candidates.push(walked.candidate);
   }
 
-  recorder.emit();
-
   return {
     candidates: rankCandidates(candidates),
+    diagnostics: recorder,
     // Surfaced so the shed reason is attributed from the SAME breach decision that
     // gated budget-exempt candidates above, rather than a recomputation that could
     // drift from it.
@@ -214,13 +214,17 @@ function addStorageCandidate(
   recorder: ShedCandidateSkipRecorder,
   nowTs: number,
 ): StorageShedCandidate | null {
-  const { storageLimit, state, needed, deps } = params;
+  const { storageLimit, state, needed } = params;
   if (storageLimit.kind !== 'measured') return null;
+  const restore: RecentRestoreState = params.bypassRecentRestore
+    ? { recentlyRestored: false }
+    : resolveRecentRestoreState(device, state, nowTs, needed);
+  if (restore.recentlyRestored) recorder.recordRecentRestore(device, restore.sinceRestoreMs, needed);
   const candidate = buildStorageCandidate(
     device,
     storageLimit.levers[device.id],
     storageLimit.drawKw,
-    !params.bypassRecentRestore && resolveRecentRestoreState(device, state, nowTs, needed, deps.debugStructured),
+    restore.recentlyRestored,
     nowTs,
   );
   if (typeof candidate !== 'string') return candidate;
@@ -246,9 +250,11 @@ function addCandidatePower(
     deps,
   } = params;
   const priority = device.priority;
-  const recentlyRestored = !bypassRecentRestore && resolveRecentRestoreState(
-    device, state, nowTs, needed, deps.debugStructured,
-  );
+  const restore: RecentRestoreState = bypassRecentRestore
+    ? { recentlyRestored: false }
+    : resolveRecentRestoreState(device, state, nowTs, needed);
+  if (restore.recentlyRestored) recorder.recordRecentRestore(device, restore.sinceRestoreMs, needed);
+  const { recentlyRestored } = restore;
   if (isSteppedLoadDevice(device)) {
     return buildSteppedCandidate({
       device,

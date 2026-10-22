@@ -91,7 +91,6 @@ export function buildSheddingDeps(deps: PlanBuilderDeps, shortfallThresholdKw: n
     getShedBehavior: (deviceId) => deps.getShedBehavior(deviceId),
     pendingBinaryCommandStore: deps.pendingBinaryCommandStore,
     log: (...args: unknown[]) => deps.log(...args),
-    debugStructured: deps.debugStructured,
     structuredLog: deps.structuredLog,
   };
 }
@@ -221,7 +220,7 @@ export class SilentMeterPlanBuilder {
 
   private shedEverything(context: PlanContext, shortfallThresholdKw: number | null, nowTs: number): SheddingPlan {
     const deps = buildSheddingDeps(this.deps, shortfallThresholdKw);
-    const { candidates } = buildSheddingCandidates({
+    const { candidates, diagnostics } = buildSheddingCandidates({
       bypassRecentRestore: false,
       devices: context.devices,
       needed: Number.POSITIVE_INFINITY,
@@ -235,12 +234,12 @@ export class SilentMeterPlanBuilder {
       state: this.state,
       deps,
     }, context.nowTs);
+    diagnostics.emit();
     const selection = selectShedDevices(
       candidates,
       Number.POSITIVE_INFINITY,
       this.directiveReason(),
       true,
-      this.deps.debugStructured,
     );
     // Every controllable device the candidate walk did not pick is shed too:
     // a device already off, a thermostat already at its shed setpoint, a
