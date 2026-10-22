@@ -21,6 +21,7 @@ import type {
   PriceSetupSuggestion,
   SettingsUiHubMarketRead,
   SettingsUiRecommendationCarsRead,
+  SettingsUiVersionRead,
 } from './packages/contracts/src/settingsUiApi';
 import {
   buildSettingsUiBootstrap,
@@ -277,6 +278,13 @@ export = {
   ui_recommendation_cars: withApiLogging('ui_recommendation_cars', (
     { homey }: ApiContext,
   ): SettingsUiRecommendationCarsRead => readCarAssociationCandidatesFromHomey(homey)),
+  // Answers without the runtime being wired, so the web app can pick its build
+  // while PELS is still starting.
+  ui_version: withApiLogging('ui_version', ({ homey }: ApiContext): SettingsUiVersionRead => {
+    const { version } = homey.manifest as { version?: unknown };
+    if (typeof version !== 'string') throw new Error('The app manifest has no version');
+    return { version, timeZone: homey.clock.getTimezone() };
+  }),
   // Where the hub is, from Homey's location-derived `country`. `lib/home` owns the
   // read and resolves every failure to `unavailable`, so this never throws and
   // never blocks the settings UI: it asks once, after its first paint.

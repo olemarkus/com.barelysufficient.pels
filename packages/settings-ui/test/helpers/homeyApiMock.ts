@@ -30,6 +30,7 @@ import {
   SETTINGS_UI_HUB_MARKET_PATH,
   SETTINGS_UI_PRICE_SETUP_SUGGESTION_PATH,
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
+  SETTINGS_UI_VERSION_PATH,
   SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH,
   SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
   SETTINGS_UI_REFRESH_DEVICES_PATH,
@@ -440,6 +441,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('GET', '/diagnostics/budget/decisions')]: () => async () => {
     throw new Error('from and to are required');
   },
+  [buildRouteKey('GET', SETTINGS_UI_VERSION_PATH)]: () => async () => ({ version: '0.0.0-test', timeZone: 'Europe/Oslo' }),
   [buildRouteKey('GET', HOMEY_DEVICES_PATH)]: (homey) => async () => getUiOverride(homey, 'homeyDevices') ?? [],
   [buildRouteKey('GET', SETTINGS_UI_RECOMMENDATION_CARS_PATH)]: (homey) => async () => ({
     state: 'resolved',

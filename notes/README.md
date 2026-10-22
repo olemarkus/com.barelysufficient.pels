@@ -50,6 +50,8 @@ design-of-record behind those digests.
 
 - `settings-ui-reorganization.md` — *(partially shipped)* Overview/Budget/Usage/Smart-tasks/Settings
   ownership model.
+- `web-app.md` — *(partially shipped)* the settings UI outside Homey: API-key access, one build
+  per PELS version behind a launcher for several Homeys, measured load time.
 
 ## Deferred-load objectives & deadlines
 

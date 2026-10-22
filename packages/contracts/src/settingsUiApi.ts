@@ -51,6 +51,14 @@ export type SettingsUiCarAssociationConfirmation = {
 };
 export const SETTINGS_UI_RECOMMENDATION_CARS_PATH = '/ui_recommendation_cars';
 
+// The PELS version running on this Homey, and the Homey's timezone. The
+// standalone web app reads it to load the settings UI build made for that
+// version and to show times in the Homey's zone, which its API key cannot read
+// from Homey itself. An installed PELS without this route (Express's 404
+// "Cannot GET") predates the web app.
+export const SETTINGS_UI_VERSION_PATH = '/ui_version';
+export type SettingsUiVersionRead = { version: string; timeZone: string };
+
 export const SETTINGS_UI_HUB_MARKET_PATH = '/ui_hub_market';
 export const SETTINGS_UI_PRICE_SETUP_SUGGESTION_PATH = '/ui_price_setup_suggestion';
 

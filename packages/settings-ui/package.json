@@ -4,7 +4,8 @@
   "type": "module",
   "dependencies": {
     "@material/web": "^2.4.1",
-    "preact": "^11.0.0"
+    "preact": "^11.0.0",
+    "socket.io-client": "^2.5.0"
   },
   "scripts": {
     "clean": "rm -rf dist",
@@ -12,6 +13,7 @@
     "build:script": "esbuild src/script.ts --bundle --outfile=dist/script.js --format=iife --target=es2020 --minify --jsx=automatic --jsx-import-source=preact",
     "build:tokens": "style-dictionary build --config style-dictionary.config.mjs",
     "copy:public": "node scripts/copy-public.mjs",
+    "build:remote": "npm run build && node scripts/build-remote.mjs",
     "lint": "eslint src test tests ../contracts/src ../shared-domain/src --max-warnings=0",
     "test": "npm run build && npm run test:unit && PELS_E2E_BUILD=0 npm run test:layout",
     "test:unit": "node ../../scripts/with-validation-lock.mjs settings-ui:test:unit -- vitest run --config vitest.config.ts",

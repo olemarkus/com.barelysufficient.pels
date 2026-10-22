@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>PELS</title>
+  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./webapp.css">
+</head>
+<body>
+  <main class="screen">
+    <section class="card panel" aria-labelledby="webapp-homeys-title">
+      <h2 id="webapp-homeys-title">Your Homeys</h2>
+      <p class="field__hint" id="webapp-homeys-empty" hidden>Add a Homey that runs PELS to open it here.</p>
+      <ul class="webapp-homey-list" id="webapp-homey-list"></ul>
+      <md-text-button type="button" id="webapp-add-homey">Add a Homey</md-text-button>
+    </section>
+
+    <section class="card panel" id="webapp-add-panel" aria-labelledby="webapp-add-title" hidden>
+      <h2 id="webapp-add-title">Add a Homey</h2>
+      <form class="form-grid settings-form-card" id="webapp-add-form" novalidate>
+        <div class="field">
+          <span class="field__label pels-text-settings-label" id="webapp-name-label">Name</span>
+          <md-filled-text-field name="name" autocomplete="off" aria-labelledby="webapp-name-label"></md-filled-text-field>
+          <small class="field__hint">Shown when you switch between Homeys, for example House or Cabin.</small>
+        </div>
+        <div class="field">
+          <span class="field__label pels-text-settings-label" id="webapp-address-label">Homey</span>
+          <md-filled-text-field name="address" autocomplete="off" aria-labelledby="webapp-address-label"></md-filled-text-field>
+          <small class="field__hint">Paste the address of the Homey web app (my.homey.app) while it shows this Homey, or the Homey's local address.</small>
+        </div>
+        <div class="field">
+          <span class="field__label pels-text-settings-label" id="webapp-key-label">API key</span>
+          <md-filled-text-field name="key" type="password" autocomplete="off" aria-labelledby="webapp-key-label"></md-filled-text-field>
+          <small class="field__hint">Create one in the Homey web app under Settings, API Keys, with permission to control apps. The key can read and change the settings of every app on this Homey. It is kept in this browser only; delete it in Homey to disconnect.</small>
+        </div>
+        <md-filled-button type="submit">Add</md-filled-button>
+      </form>
+    </section>
+  </main>
+  <script src="./launcher.js"></script>
+</body>
+</html>

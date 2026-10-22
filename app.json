@@ -528,6 +528,10 @@
       "method": "GET",
       "path": "/ui_recommendation_cars"
     },
+    "ui_version": {
+      "method": "GET",
+      "path": "/ui_version"
+    },
     "ui_hub_market": {
       "method": "GET",
       "path": "/ui_hub_market"
