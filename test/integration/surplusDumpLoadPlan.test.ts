@@ -1,3 +1,4 @@
+import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { withDeviceConfiguration } from '../utils/planTestUtils';
 import { SwapLedger } from '../../lib/plan/swap';
 import { hasBinaryCommand } from '../../lib/executor/executablePlan';
@@ -115,6 +116,7 @@ const makeHarness = (params: {
   const decorate = params.decorate;
   const builder = new PlanBuilder({
       ...planBuilderWiring(),
+      pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       leaveOffOnRelease: params.leaveOffOnRelease ?? ((): ReleaseHoldOutcome => 'released'),
     capacityGuard: guard,
     getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw, marginKw: 0.2, periodMinutes: 60 }),
@@ -216,6 +218,29 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     // PELS's own record is released either way; the hold now owns "stay off".
     expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toBeUndefined();
     expect(h.state.shedDecisions.standingShedIds.has(PUMP)).toBe(false);
+  });
+
+  it.each([0.5, 12])('waits for a pending OFF before releasing solar posture at %s kW', async (totalKw) => {
+    const leaveOffOnRelease = vi.fn((): ReleaseHoldOutcome => 'held');
+    const h = makeHarness({ totalKw, leaveOffOnRelease });
+    await h.builder.buildDevicePlanSnapshot([buildPump({ on: true })]);
+    const pending = createPendingBinaryCommandStore(h.state.pendingBinaryCommands);
+    pending.record(PUMP, { desired: false, startedMs: Date.now() });
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await h.builder.buildDevicePlanSnapshot([buildPump({ on: true, surplusOnly: false })]);
+    expect(leaveOffOnRelease).not.toHaveBeenCalled();
+    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toEqual({ surplus: true, startPolicy: false });
+
+    pending.clear(PUMP);
+    await vi.advanceTimersByTimeAsync(1000);
+    const after = await h.builder.buildDevicePlanSnapshot([
+      { ...buildPump({ on: false, surplusOnly: false }), currentState: 'off' },
+    ]);
+    expect(leaveOffOnRelease).toHaveBeenCalledWith(PUMP);
+    expect(deviceOf(after, PUMP)?.externalOffHoldActive).toBe(true);
+    expect(intentOf(after, PUMP)?.desiredOn).not.toBe(true);
+    expect(h.state.shedDecisions.surplusOnlyByDevice[PUMP]).toBeUndefined();
   });
 
   it('resumes a de-opted dump load its owner did not ask to leave off', async () => {

@@ -14,6 +14,7 @@
  * no state and the hold is empty — pinned by the byte-identity integration test
  * in `test/integration/surplusDumpLoadPlan.test.ts`.
  */
+import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import type { PlanEngineState } from './planState';
 import type { BaselineOffPosture, ShedDecisions } from './shedDecisions';
 import type { PlanContext } from './planContext';
@@ -94,6 +95,7 @@ export function runStandingPostureHolds(
   // "Leave off until turned on again" at the moment a standing posture is
   // released (`PlanBuilderDeps.leaveOffOnRelease`).
   leaveOffOnRelease: (deviceId: string) => ReleaseHoldOutcome,
+  pendingBinaryCommands: PendingBinaryCommandStore,
 ): StandingPostureHolds {
   const { admittedDevices } = decoration;
   const surplusHold = resolveSurplusHold(admittedDevices, state, excludeIds);
@@ -114,6 +116,7 @@ export function runStandingPostureHolds(
     state.shedDecisions,
     getConfig,
     leaveOffOnRelease,
+    pendingBinaryCommands,
   );
   // Merged into one map because reason normalization asks one question of it:
   // "did a standing posture hold this device this cycle?".
@@ -206,6 +209,7 @@ export function runSilentMeterSurplusHold(
   decoration: DeferredDecorationBundle,
   cycle: { getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined; nowTs: number },
   leaveOffOnRelease: (deviceId: string) => ReleaseHoldOutcome,
+  pendingBinaryCommands: PendingBinaryCommandStore,
 ): Map<string, DeviceReason> {
   const { admittedDevices } = decoration;
   const excludeIds = resolvePostureExcludeIds(decoration, admittedDevices);
@@ -227,6 +231,7 @@ export function runSilentMeterSurplusHold(
     state.shedDecisions,
     cycle.getConfig,
     leaveOffOnRelease,
+    pendingBinaryCommands,
   );
   // Written in rising precedence, the same as the measured pass: the start
   // policy over surplus, and the charge target last, so it wins the card. A
@@ -261,10 +266,13 @@ export function applyPostSheddingHolds(
   shedDecisions: ShedDecisions,
   getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined,
   leaveOffOnRelease: (deviceId: string) => ReleaseHoldOutcome,
+  pendingBinaryCommands: PendingBinaryCommandStore,
 ): ReadonlySet<string> {
   mergeHoldsIntoShedSet(sheddingPlan.shedSet, [decoration.forceShedSet, surplusHoldIds]);
   clearShedStepTargets(sheddingPlan.shedStepTargets, surplusHoldIds);
-  return releaseAbandonedSurplusPosture(shedDecisions, decoration.admittedDevices, getConfig, leaveOffOnRelease);
+  return releaseAbandonedSurplusPosture(
+    shedDecisions, decoration.admittedDevices, getConfig, leaveOffOnRelease, pendingBinaryCommands,
+  );
 }
 
 /**
@@ -336,6 +344,7 @@ function releaseAbandonedSurplusPosture(
   admittedDevices: PlanInputDevice[],
   getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined,
   leaveOffOnRelease: (deviceId: string) => ReleaseHoldOutcome,
+  pendingBinaryCommands: PendingBinaryCommandStore,
 ): ReadonlySet<string> {
   const stamps = Object.entries(shedDecisions.surplusOnlyByDevice);
   const heldOffIds = new Set<string>();
@@ -354,18 +363,14 @@ function releaseAbandonedSurplusPosture(
   // on again" has planning effect only while the device is still observed off
   // (`resolveExternalOffHoldActive`), and a running device must never be marked
   // held. A device that left the snapshot is in neither set and is simply released.
-  const observedOffById = new Map(
-    admittedDevices
-      .filter((dev) => isBinaryPlanDevice(dev) && dev.currentOn === false)
-      .map((dev) => [dev.id, dev]),
-  );
+  const binaryById = new Map(admittedDevices.filter((dev) => isBinaryPlanDevice(dev)).map((dev) => [dev.id, dev]));
   for (const [id, posture] of stamps) {
     if (baselineOffNow.has(id)) continue; // still a baseline-off device — keep the stamp
-    const observedOff = observedOffById.get(id);
-    const withdrawn = observedOff !== undefined && !isBaselineOffStillWanted(observedOff, posture, getConfig);
-    // Asked on THIS build whatever else holds the device: the plan's finalization
-    // drops the posture stamp of a device capacity is still shedding, so this is
-    // the only build that sees the release.
+    const device = binaryById.get(id);
+    // Keep the release evidence until an in-flight OFF lands. Pending is not
+    // observed OFF and must not mint a hold on a device still running.
+    if (device?.currentOn && pendingBinaryCommands.hasActiveTurnOff(id)) continue;
+    const withdrawn = device?.currentOn === false && !isBaselineOffStillWanted(device, posture, getConfig);
     const outcome = withdrawn ? leaveOffOnRelease(id) : 'released';
     // `unavailable` decides nothing (a transient settings failure is a no-op):
     // the device stays off this build, as the hold's own fail-closed read would

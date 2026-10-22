@@ -328,6 +328,7 @@ export class PlanBuilder {
       postureExcludeIds,
       (deviceId) => this.priceOptimizationSettings[deviceId],
       this.deps.leaveOffOnRelease,
+      this.deps.pendingBinaryCommandStore,
     ));
     // A hold the posture pass just recorded is part of this build's input from
     // here on, exactly as the producer will report it next build: without it

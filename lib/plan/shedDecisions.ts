@@ -141,9 +141,9 @@ export class ShedDecisions {
 
   /**
    * Record one plan build's final shed and keep decisions, against the
-   * decorated input the build planned from. The posture stamp is REFRESHED for
-   * every currently planned-shed device, so toggling the posture off while
-   * held clears it.
+   * decorated input the build planned from. Standing postures refresh their
+   * stamps here; the posture release pass alone clears them after pending OFF
+   * commands settle and the owner's leave-off choice has been resolved.
    */
   recordPlannedShed(
     planDevices: readonly DevicePlanDevice[],
@@ -171,8 +171,6 @@ export class ShedDecisions {
       const posture = postureById.get(id);
       if (posture) {
         this.surplusOnlyByDevice[id] = posture;
-      } else {
-        delete this.surplusOnlyByDevice[id];
       }
     }
     this.standingShedIds = new Set(planDevices
