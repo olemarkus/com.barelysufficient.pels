@@ -338,7 +338,7 @@ describe('PlanService', () => {
         getPlanDevices,
         getObservedRecord: () => ({ id: 'dev-1', name: 'Heater', targets: [], available: true,
           measuredPowerKw: live.currentDrawKw, measuredPowerIsDirectMeasurement: true,
-          temperature: { currentTemperature: live.currentTemperature, target: { id: 'target_temperature', value: live.setpointC } },
+          temperature: { currentTemperature: live.currentTemperature, target: { id: 'target_temperature', value: live.setpointC, unit: '°C' } },
         }),
         getObservedTemperature: () => ({ kind: 'observed', value: {
           currentTemperature: live.currentTemperature, currentTarget: live.setpointC,
@@ -408,7 +408,7 @@ describe('PlanService', () => {
           measuredPowerKw: excursion && axis === 'draw' ? 1.2 : 0,
           measuredPowerIsDirectMeasurement: true,
           temperature: { currentTemperature: excursion && axis === 'temperature' ? 55 : 61.5,
-            target: { id: 'target_temperature', value: 65 } },
+            target: { id: 'target_temperature', value: 65, unit: '°C' } },
         };
         emitter.emitObservedStateRefresh({
           entries: [{ observationSeq, observedAtMs: Date.now(), observed }], ignoredReadIds: [],
