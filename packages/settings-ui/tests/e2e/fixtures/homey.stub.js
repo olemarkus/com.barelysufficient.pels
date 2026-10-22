@@ -2516,7 +2516,7 @@
       } catch (err) {
         callback(err);
       }
-    }, 10);
+    }, initialOverrides.latencyMs ?? 10);
   };
 
   const Homey = {
@@ -2530,7 +2530,7 @@
     get: (key, cb) => {
       setTimeout(() => {
         cb(null, settings[key]);
-      }, 5);
+      }, initialOverrides.latencyMs ?? 5);
     },
 
     set: (key, value, cb) => {
@@ -2538,7 +2538,7 @@
       setTimeout(() => {
         cb(null);
         emit('settings.set', key);
-      }, 5);
+      }, initialOverrides.latencyMs ?? 5);
     },
 
     api,
