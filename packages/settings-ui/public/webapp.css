@@ -22,7 +22,8 @@
   color: var(--pels-text-muted);
 }
 
-.webapp-homey-row__actions {
+.webapp-homey-row__actions,
+.webapp-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--spacing-2);
@@ -52,4 +53,32 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.webapp-pair-codes {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
+/* A code scans reliably only as dark modules on a light ground, in either
+   theme. */
+.webapp-pair-code {
+  width: min(100%, 320px);
+  box-sizing: border-box;
+  margin: 0;
+  padding: var(--spacing-2);
+  border-radius: var(--radius-lg);
+  background: var(--color-base-white);
+}
+
+.webapp-pair-code figcaption {
+  padding-top: var(--spacing-2);
+  color: var(--color-base-black);
+  text-align: center;
+}
+
+.webapp-pair-code svg {
+  display: block;
+  width: 100%;
+  height: auto;
 }
