@@ -51,6 +51,25 @@ jobs:
           PELS_DOCS_TEST_REF: ${{ github.event.inputs.test_ref || vars.PELS_DOCS_TEST_REF }}
           PELS_DOCS_DEV_REF: ${{ github.event.inputs.dev_ref || vars.PELS_DOCS_DEV_REF }}
 
+      # The launcher comes from this checkout; each version's build from the
+      # webapp-builds branch that .github/workflows/webapp-build.yml fills.
+      - name: Add the web app
+        run: |
+          npm --workspace @pels/settings-ui run build:remote
+          store="$(mktemp -d)"
+          # Exit 2 is the only answer that means the branch does not exist yet;
+          # any other failure must stop here rather than publish an empty set.
+          probe=0
+          git ls-remote --exit-code --heads origin webapp-builds >/dev/null || probe=$?
+          if [ "$probe" -eq 0 ]; then
+            git fetch --no-tags --depth=1 origin webapp-builds
+            git archive FETCH_HEAD | tar -x -C "$store"
+          elif [ "$probe" -ne 2 ]; then
+            echo "Could not read the webapp-builds branch (git ls-remote exit $probe)" >&2
+            exit 1
+          fi
+          node scripts/webapp-site.mjs assemble packages/settings-ui/dist-remote "$store" docs/.vitepress/dist/app
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:

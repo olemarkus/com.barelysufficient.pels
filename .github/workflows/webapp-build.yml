@@ -1,0 +1,85 @@
+name: Web app build
+
+# Every release tag publishes the settings UI build made for that PELS version.
+# The build goes into the `webapp-builds` branch (one squashed commit holding
+# the newest builds, see scripts/webapp-site.mjs), and the docs deploy copies
+# that branch to /app/ next to the launcher it builds from main.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to (re)publish, e.g. v3.21.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: write
+
+# Releases publish one at a time, in order; `queue: max` keeps every waiting
+# release instead of only the newest.
+concurrency:
+  group: webapp-builds
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check the release tag
+        env:
+          RELEASE: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          if ! printf '%s' "$RELEASE" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Not a release tag: $RELEASE" >&2
+            exit 1
+          fi
+
+      - name: Checkout the release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Setup toolchain and dependencies
+        uses: ./.github/actions/setup
+
+      - name: Build the web app
+        run: npm --workspace @pels/settings-ui run build:remote
+
+      - name: Add the build to the webapp-builds branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          store="$(mktemp -d)"
+          # Exit 2 is the only answer that means the branch does not exist yet;
+          # any other failure must stop here rather than publish an empty set.
+          probe=0
+          git ls-remote --exit-code --heads origin webapp-builds >/dev/null || probe=$?
+          if [ "$probe" -eq 0 ]; then
+            git fetch --no-tags --depth=1 origin webapp-builds
+            git archive FETCH_HEAD | tar -x -C "$store"
+          elif [ "$probe" -ne 2 ]; then
+            echo "Could not read the webapp-builds branch (git ls-remote exit $probe)" >&2
+            exit 1
+          fi
+          node scripts/webapp-site.mjs store packages/settings-ui/dist-remote "$store"
+          cd "$store"
+          git init -q -b webapp-builds
+          git add -A
+          git -c user.name="github-actions[bot]" \
+            -c user.email="41898283+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "Web app builds through ${RELEASE}"
+          git push -q --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" webapp-builds
+
+      # A push made with GITHUB_TOKEN starts no workflow; a dispatch does.
+      - name: Redeploy the site
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run docs.yml --ref main --repo "${GITHUB_REPOSITORY}"
