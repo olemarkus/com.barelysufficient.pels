@@ -84,8 +84,6 @@ import {
 import { loadBudgetAdjust } from './budgetAdjustController.ts';
 import {
   dismissSettingsAdjustOnBudgetTab,
-  openBudgetAdjustFromSettings,
-  openBudgetWeatherView,
   setBudgetAdjustSettingsNavigator,
   setBudgetUsageNavigator,
 } from './budgetRedesign.ts';
@@ -130,10 +128,16 @@ import { handleResetStats } from './resetStats.ts';
 import { createSwitchField } from './components.ts';
 import {
   initRealtimeListeners,
-  setActiveTabIndicator,
   showTab,
   startStaleDataRefreshInterval,
 } from './realtime.ts';
+import {
+  initShellRouter,
+  initialShellPanel,
+  navigateBackTo,
+  renderPanel,
+} from './tabNavigation.ts';
+import { panelFromSearch } from './shellRoutes.ts';
 import {
   mountDeadlinePlan,
   setDeadlinePlanCloseHandler,
@@ -168,10 +172,10 @@ const scrollSettingsAnchorWhenVisible = (selector: string, attempt = 0): void =>
 };
 
 const initTabHandlers = () => {
-  // The Budget header's Done button navigates back to Settings through
-  // showTab so the leave path (draft discard, referrer reset, toast) stays
-  // identical to a tab-bar exit.
-  setBudgetAdjustSettingsNavigator(() => showTab('settings'));
+  // The Budget header's Done button goes back to Settings like an app-bar back
+  // arrow; the panel switch runs the same leave path (draft discard, referrer
+  // reset, toast) as a tab-bar exit.
+  setBudgetAdjustSettingsNavigator(() => navigateBackTo('settings'));
   setBudgetUsageNavigator(() => {
     // The recourse answers "what used the energy TODAY" — reset a lingering
     // Yesterday selection before the jump.
@@ -205,26 +209,15 @@ const initTabHandlers = () => {
     const trigger = event.target.closest<HTMLElement>('[data-settings-target]');
     const target = trigger?.dataset.settingsTarget;
     if (!target) return;
-    // 'budget-adjust' is a virtual target: it matches no data-panel, and
-    // letting it reach showTab would hide every panel. Open the Budget tab
-    // with the Adjust view active and a Settings return target instead.
-    // Keep the "Settings" tab indicator lit (the Daily budget editor is a
-    // Settings sub-page, exactly like its eight `.pels-appbar` siblings), so
-    // opening it doesn't read as a teleport to a different tab — the same
-    // sibling-panel indicator trick the deadline-plan deep-link uses.
-    if (target === 'budget-adjust') {
-      openBudgetAdjustFromSettings();
-      showTab('budget');
-      setActiveTabIndicator('settings');
+    // An app-bar back arrow steps back through history when it returns to the
+    // page this one was opened from, instead of adding an entry.
+    if (trigger.classList.contains('pels-appbar__back')) {
+      navigateBackTo(target);
       return;
     }
-    // 'budget-weather' is the same kind of virtual target: open the Budget
-    // tab with the Weather insight detail view active (deep-link parity).
-    if (target === 'budget-weather') {
-      openBudgetWeatherView();
-      showTab('budget');
-      return;
-    }
+    // 'budget-adjust' and 'budget-weather' match no data-panel: they are
+    // routes for views on the Budget panel, which `showTab` opens (see
+    // shellRoutes.ts), so they get URLs like every other page.
     // Some deep links promise a control that only exists in the Main home's
     // scope (Power source, the whole-home meter). Following one while a meter
     // area is selected would land the user on a page whose promised target is
@@ -512,8 +505,10 @@ const initializeBootHandlers = () => {
     openDevice: openDeviceDetailAt,
   });
   initSmartTaskCreateController(showTab);
-  showTab('overview');
+  renderPanel('overview');
   initTabHandlers();
+  // Before the Smart task router: Back from its page is left to it.
+  initShellRouter();
   // Register deep-link interception before awaited startup reads begin. The
   // overview can paint smart-task links while those reads are still pending;
   // without the capture handler, an early tap performs a full navigation.
@@ -576,6 +571,17 @@ const prepareHomeySdk = async () => {
   return false;
 };
 
+// Boot shows the Overview first, whose activation settles what every page
+// reads (the meter-area roster) and which the initial data load completes.
+// The page the URL names opens after that load, unless the owner already
+// went elsewhere.
+const openInitialRoute = () => {
+  const routeId = initialShellPanel();
+  if (routeId === 'overview' || state.activePanel !== 'overview') return;
+  if (panelFromSearch(window.location.search) !== routeId) return;
+  renderPanel(routeId);
+};
+
 export const boot = async () => {
   resetSettingsUiPerf();
   markSettingsUi('boot:start');
@@ -595,6 +601,7 @@ export const boot = async () => {
     markSettingsUi('boot:bootstrap-loaded');
     initializeBootHandlers();
     await loadInitialData(bootstrap);
+    openInitialRoute();
     startStaleDataRefreshInterval();
     markBootComplete();
     startDailyBudgetRefreshInterval();

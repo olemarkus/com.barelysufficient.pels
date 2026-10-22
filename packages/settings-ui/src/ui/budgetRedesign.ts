@@ -297,6 +297,12 @@ export const openBudgetWeatherView = (): void => {
   doRender();
 };
 
+// Back from the Weather insight route to the Budget page's own route.
+export const showBudgetPlanView = (): void => {
+  currentBudgetLocalView = 'plan';
+  doRender();
+};
+
 export const renderBudgetRedesign = (
   payload: DailyBudgetUiPayload | null,
   view: BudgetDayView,

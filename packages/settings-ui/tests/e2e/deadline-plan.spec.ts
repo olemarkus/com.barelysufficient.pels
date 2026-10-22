@@ -333,15 +333,17 @@ test.describe('Deadline plan', () => {
       await expect(overviewTab(page)).toHaveAttribute('aria-selected', 'false');
     });
 
-    test('clicking a different shell-nav tab from plan-detail clears the deep-link URL', async ({ page }) => {
+    test('clicking a different shell-nav tab from plan-detail replaces the deep-link URL', async ({ page }) => {
       await page.setViewportSize({ width: 480, height: 900 });
       await openDeadlinePlan(page);
 
       await page.getByRole('tab', { name: 'Budget' }).click();
       await expect(page.locator('#budget-panel')).toBeVisible();
       await expect(deadlinePanel(page)).toBeHidden();
-      // URL should be reset so a reload doesn't re-open the closed plan.
-      await expect.poll(() => new URL(page.url()).searchParams.get('page')).toBeNull();
+      // The URL names Budget, so a reload lands there instead of re-opening the
+      // closed plan.
+      await expect.poll(() => new URL(page.url()).searchParams.get('page')).toBe('budget');
+      expect(new URL(page.url()).searchParams.get('deviceId')).toBeNull();
       await expect(page.getByRole('tab', { name: 'Budget' })).toHaveAttribute('aria-selected', 'true');
     });
   });
