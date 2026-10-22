@@ -4,6 +4,7 @@ import {
   formatDeadlineLocalTime,
   mapSmartTaskAppReason,
   parseSmartTaskCandidateRequest,
+  parseSmartTaskQuickTargetsRequest,
   resolveSmartTaskRequestDeadline,
   resolveSmartTaskWriteDeadline,
 } from '../../../lib/objectives/deferredObjectives';
@@ -109,20 +110,22 @@ export const previewCreateSmartTask = async (
   };
 };
 
-// The quick-target boxes for one device. The body is `{ deviceId }`; the app
-// picks the targets and times each one, so the widget only renders them.
+// The quick-target boxes for one device. The body is `{ deviceId, kind }`, the
+// goal the widget shows; the app picks the targets and times each one, so the
+// widget only renders them.
 export const getCreateSmartTaskQuickTargets = async (
   { homey, body }: WidgetApiContext & WidgetApiBody,
 ): Promise<CreateSmartTaskQuickTargetsResponse> => {
-  const deviceId = readDeviceId(body);
-  if (deviceId === null) return { state: 'rejected', reason: 'invalid_request' };
+  const request = parseSmartTaskQuickTargetsRequest(body);
+  if (request === null) return { state: 'rejected', reason: 'invalid_request' };
+  const { deviceId } = request;
   if (typeof homey.app?.previewSmartTaskQuickTargets !== 'function') {
     return { state: 'rejected', reason: 'unavailable' };
   }
   if (typeof homey.app.resolveSmartTaskHomeScope !== 'function') return { state: 'rejected', reason: 'unavailable' };
   const scopeReject = rejectForHomeScope(homey.app.resolveSmartTaskHomeScope(deviceId));
   if (scopeReject !== null) return { state: 'rejected', reason: scopeReject };
-  const read = homey.app.previewSmartTaskQuickTargets(deviceId);
+  const read = homey.app.previewSmartTaskQuickTargets(deviceId, request.kind);
   if (read.state === 'unavailable') return read;
   const timeZone = readTimeZone(homey);
   const nowMs = Date.now();
@@ -146,12 +149,6 @@ export const getCreateSmartTaskQuickTargets = async (
 const withoutPriceSeries = (
   { priceSeries: _priceSeries, ...estimate }: DeferredObjectivePlanPreviewEstimate,
 ): DeferredObjectivePlanPreviewEstimate => estimate;
-
-const readDeviceId = (body: unknown): string | null => {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
-  const { deviceId } = body as { deviceId?: unknown };
-  return typeof deviceId === 'string' && deviceId.trim().length > 0 ? deviceId.trim() : null;
-};
 
 export const createCreateSmartTask = async (
   { homey, body }: WidgetApiContext & WidgetApiBody,

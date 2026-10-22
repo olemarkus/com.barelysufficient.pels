@@ -24,6 +24,10 @@ export type SmartTaskCandidateDevice = {
   deviceId: string;
   deviceName: string;
   kind: DeferredObjectiveSettingsKind;
+  // The picker family, from what the device is rather than the goal it is
+  // offered: a charger offered an amount of energy is still an EV charger
+  // (`resolveSmartTaskDeviceGroup`).
+  group: 'heating' | 'ev_charger';
   unitSymbol: DeferredObjectiveUnit;
   goalMin: number;
   goalMax: number;

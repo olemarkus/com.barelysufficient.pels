@@ -1,3 +1,4 @@
+import type { DeferredObjectiveSettingsKind } from '../packages/contracts/src/deferredObjectiveSettings';
 import type { AppContext } from '../lib/app/appContext';
 import type { DailyBudgetUiPayload } from '../packages/contracts/src/dailyBudgetTypes';
 import type { PlanInputSnapshotDevice } from '../lib/planInput/runtimeDeviceRead';
@@ -174,18 +175,21 @@ export class AppSmartTaskApi {
     }));
   }
 
-  // The quick targets a creation surface offers for `deviceId` among
-  // `candidates`, each timed against the same preview as
+  // The quick targets a creation surface offers for a `kind` task on `deviceId`
+  // among `candidates`, each timed against the same preview as
   // `previewDeferredObjectivePlan`. One session serves every probe, so the
   // household is read once. Quick targets carry no extra permissions, so there
   // is nothing to gate.
   public previewSmartTaskQuickTargets(
     deviceId: string,
+    kind: DeferredObjectiveSettingsKind,
     candidates: CreateSmartTaskCandidateDevicesRead,
   ): SmartTaskQuickTargetsRead {
     const session = this.openPreviewSession(deviceId);
     if (session.state === 'unavailable') return { state: 'unavailable', reason: 'settings_unavailable' };
-    return previewSmartTaskQuickTargetsForDevice(candidates, deviceId, session.preview, this.ctx.getNow().getTime());
+    return previewSmartTaskQuickTargetsForDevice(
+      candidates, deviceId, kind, session.preview, this.ctx.getNow().getTime(),
+    );
   }
 
   // One household read for any number of candidate previews on `deviceId`.

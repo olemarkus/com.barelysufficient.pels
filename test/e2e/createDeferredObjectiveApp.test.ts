@@ -252,8 +252,10 @@ describe('createDeferredObjective (app)', () => {
     const read = app.getCreateSmartTaskCandidateDevices();
     expect(read.state).toBe('ready');
     const payload = buildCreateSmartTaskDevicesPayload({ devices: read.state === 'ready' ? read.devices : [] });
+    // Plugged in with no battery level, the widget offers an amount of energy
+    // (`resolveSmartTaskCreationKind`); a battery target is still accepted below.
     expect(payload.state === 'ready' ? payload.devices : []).toEqual(expect.arrayContaining([
-      expect.objectContaining({ deviceId: 'ev-1', kind: 'ev_soc' }),
+      expect.objectContaining({ deviceId: 'ev-1', kind: 'energy', offersQuickTargets: true }),
     ]));
 
     const result = app.createDeferredObjective('ev-1', {

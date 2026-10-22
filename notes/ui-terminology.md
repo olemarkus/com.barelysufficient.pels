@@ -899,16 +899,6 @@ Source of truth: `packages/shared-domain/src/deadlineLabels.ts`. Pull every labe
 An energy task has no level of its own that PELS learns a rate for (its rate is exact, one kWh per
 kWh), so its `About this estimate` card shows no per-unit rate row. Its current value is a running total: `2.0 kWh delivered`, never `2.0 kWh now`.
 
-### Smart task goal for a charger with no battery level
-
-A charger that is plugged in while PELS has no battery level for the car is offered an energy task
-on every creation surface: the Smart tasks page's `New smart task`, the device page's
-`Add smart task` and the `Create smart task` widget (`resolveSmartTaskCreationKind`). A battery
-target cannot be planned without the level, so offering one there sets up a task that waits all
-night. The widget's quick targets are `10 kWh`, `20 kWh`, `30 kWh` and `40 kWh`, minus any the
-charger cannot deliver within the published prices. Unplugged, or once a level arrives, the
-surfaces offer the battery target again. The Flow cards name their own goal and are unaffected.
-
 The estimate card leads with `Guaranteed power`, followed by `Latest power reading`.
 Show `At least … kW`: the current revision's minimum planning power is a lower
 bound, not the full per-period reservation. Individual periods may reserve more.
@@ -963,6 +953,17 @@ collapses to a single figure once the buffer fades with learning. The range
 itself signals approximation — no narrating sentence sits beneath it.
 
 Rule: a temperature device must never render the words *charge*, *charging*, or *EV* in user-facing text.
+
+### Smart task goal for a charger with no battery level
+
+A charger that is plugged in while PELS has no battery level for the car is offered an energy task
+on every creation surface: the Smart tasks page's `New smart task`, the device page's
+`Add smart task` and the `Create smart task` widget (`resolveSmartTaskCreationKind`). A battery
+target cannot be planned without the level, so offering one there sets up a task that waits all
+night. The widget's quick targets are `10 kWh`, `20 kWh`, `30 kWh` and `40 kWh`, minus any the
+charger cannot deliver within the published prices. Unplugged, or once a level arrives, the
+surfaces offer the battery target again. The picker still lists and draws it as an EV charger. The
+Flow cards name their own goal and are unaffected.
 
 ### A smart task held below its target by the car's own charge limit
 

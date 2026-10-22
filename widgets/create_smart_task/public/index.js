@@ -955,9 +955,9 @@
       }
     };
     return {
-      quickTargets: (deviceId) => usePreviewData() ? PREVIEW_CLIENT.quickTargets(deviceId) : call(
+      quickTargets: (device) => usePreviewData() ? PREVIEW_CLIENT.quickTargets(device) : call(
         "/quick_targets",
-        { deviceId },
+        { deviceId: device.deviceId, kind: device.kind },
         { state: "rejected", reason: "unavailable" },
         "Failed to load smart task quick targets"
       ),
@@ -1594,7 +1594,7 @@
     const loadQuickTargets = async () => {
       if (view?.kind !== "quick" || view.quick.kind !== "loading") return;
       const token = ++requestSeq;
-      const response = await client.quickTargets(view.device.deviceId);
+      const response = await client.quickTargets(view.device);
       if (destroyed || token !== requestSeq || view?.kind !== "quick") return;
       view = quickTargetsLoadedView(view, response);
       render();
@@ -1765,6 +1765,7 @@
           deviceId: "preview-hot-water",
           deviceName: "Hot water",
           kind: "temperature",
+          group: "heating",
           unitSymbol: "\xB0C",
           goalMin: 5,
           goalMax: 85,
@@ -1778,6 +1779,7 @@
           deviceId: "preview-ev",
           deviceName: "Driveway charger",
           kind: "ev_soc",
+          group: "ev_charger",
           unitSymbol: "%",
           goalMin: 1,
           goalMax: 100,
@@ -1799,6 +1801,7 @@
           deviceId: "preview-living",
           deviceName: "Living room",
           kind: "temperature",
+          group: "heating",
           unitSymbol: "\xB0C",
           goalMin: 5,
           goalMax: 30,
@@ -1812,6 +1815,7 @@
           deviceId: "preview-bedroom",
           deviceName: "Bedroom",
           kind: "temperature",
+          group: "heating",
           unitSymbol: "\xB0C",
           goalMin: 5,
           goalMax: 30,
@@ -1825,6 +1829,7 @@
           deviceId: "preview-bathroom-floor",
           deviceName: "Bathroom floor",
           kind: "temperature",
+          group: "heating",
           unitSymbol: "\xB0C",
           goalMin: 5,
           goalMax: 35,
@@ -1838,6 +1843,7 @@
           deviceId: "preview-office",
           deviceName: "Office",
           kind: "temperature",
+          group: "heating",
           unitSymbol: "\xB0C",
           goalMin: 5,
           goalMax: 30,
@@ -1851,6 +1857,7 @@
           deviceId: "preview-hot-water",
           deviceName: "Hot water",
           kind: "temperature",
+          group: "heating",
           unitSymbol: "\xB0C",
           goalMin: 5,
           goalMax: 85,
@@ -1864,6 +1871,7 @@
           deviceId: "preview-cabin-water",
           deviceName: "Cabin water heater",
           kind: "temperature",
+          group: "heating",
           unitSymbol: "\xB0C",
           goalMin: 5,
           goalMax: 85,
@@ -1877,6 +1885,7 @@
           deviceId: "preview-ev",
           deviceName: "Driveway charger",
           kind: "ev_soc",
+          group: "ev_charger",
           unitSymbol: "%",
           goalMin: 1,
           goalMax: 100,
@@ -1890,6 +1899,7 @@
           deviceId: "preview-ev-guest",
           deviceName: "Guest charger",
           kind: "ev_soc",
+          group: "ev_charger",
           unitSymbol: "%",
           goalMin: 1,
           goalMax: 100,
@@ -1910,7 +1920,6 @@
     "heating",
     "ev_charger"
   ];
-  var resolveSmartTaskDeviceGroup = (device) => device.kind === "ev_soc" ? "ev_charger" : "heating";
   var SMART_TASK_DEVICE_PICKER_COPY = {
     // One-line eligibility hint under "Choose a device" — a smart task is a goal
     // on a device PELS manages, so only those appear here. Frames the subset as
@@ -1939,7 +1948,7 @@
     }
     const iconEl = li.querySelector("[data-device-icon]");
     if (iconEl instanceof HTMLElement) {
-      const group = resolveSmartTaskDeviceGroup(device);
+      const { group } = device;
       iconEl.dataset.group = group;
       iconEl.setAttribute("aria-label", resolveSmartTaskDeviceGroupIconLabel(group));
     }

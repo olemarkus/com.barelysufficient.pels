@@ -452,9 +452,9 @@ describe('getCreateSmartTaskQuickTargets', () => {
       targets: [{ target: 80, deadlineAtMs, estimate: buildEstimate({ projectedFinishAtMs: Date.UTC(2026, 0, 1, 5, 40) }) }],
     }));
     const response = await getCreateSmartTaskQuickTargets({
-      ...buildContext({ previewSmartTaskQuickTargets }), body: { deviceId: 'ev-1' },
+      ...buildContext({ previewSmartTaskQuickTargets }), body: { deviceId: 'ev-1', kind: 'ev_soc' },
     });
-    expect(previewSmartTaskQuickTargets).toHaveBeenCalledWith('ev-1');
+    expect(previewSmartTaskQuickTargets).toHaveBeenCalledWith('ev-1', 'ev_soc');
     expect(response).toMatchObject({
       state: 'ready',
       targets: [{ target: 80, deadlineAtMs, readyByLocalTime: '07:30', likelyFinishLocalTime: '06:40' }],
@@ -464,17 +464,20 @@ describe('getCreateSmartTaskQuickTargets', () => {
   it('passes through why no target can be timed', async () => {
     const previewSmartTaskQuickTargets = vi.fn(() => ({ state: 'unavailable', reason: 'invalid_session' }));
     expect(await getCreateSmartTaskQuickTargets({
-      ...buildContext({ previewSmartTaskQuickTargets }), body: { deviceId: 'ev-1' },
+      ...buildContext({ previewSmartTaskQuickTargets }), body: { deviceId: 'ev-1', kind: 'ev_soc' },
     })).toEqual({ state: 'unavailable', reason: 'invalid_session' });
   });
 
-  it('rejects a body without a device, and a sub-home device', async () => {
+  it('rejects a body without a device or a goal kind, and a sub-home device', async () => {
     const previewSmartTaskQuickTargets = vi.fn();
     expect(await getCreateSmartTaskQuickTargets({ ...buildContext({ previewSmartTaskQuickTargets }), body: {} }))
       .toEqual({ state: 'rejected', reason: 'invalid_request' });
     expect(await getCreateSmartTaskQuickTargets({
+      ...buildContext({ previewSmartTaskQuickTargets }), body: { deviceId: 'ev-1' },
+    })).toEqual({ state: 'rejected', reason: 'invalid_request' });
+    expect(await getCreateSmartTaskQuickTargets({
       ...buildContext({ previewSmartTaskQuickTargets, resolveSmartTaskHomeScope: vi.fn(() => 'sub_home') }),
-      body: { deviceId: 'ev-1' },
+      body: { deviceId: 'ev-1', kind: 'ev_soc' },
     })).toEqual({ state: 'rejected', reason: 'device_in_sub_home' });
     expect(previewSmartTaskQuickTargets).not.toHaveBeenCalled();
   });

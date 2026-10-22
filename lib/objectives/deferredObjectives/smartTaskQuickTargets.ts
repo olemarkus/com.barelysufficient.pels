@@ -7,10 +7,7 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
 import type { DeferredObjectiveSettingsKind } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { CreateSmartTaskCandidateDevicesRead } from '../../../packages/contracts/src/widgetHostApi';
-import {
-  resolveSmartTaskCreationKind,
-  supportsSmartTaskKind,
-} from '../../../packages/shared-domain/src/smartTaskDeviceKind';
+import { supportsSmartTaskKind } from '../../../packages/shared-domain/src/smartTaskDeviceKind';
 import { buildSmartTaskCandidateBase } from './smartTaskCandidateRequest';
 import { resolveSmartTaskQuickTargets } from './smartTaskQuickTargetValues';
 
@@ -137,21 +134,24 @@ export const estimateSmartTaskQuickTargets = (
 };
 
 /**
- * The quick targets for a new task on `deviceId`, of the kind a creation surface
- * defaults to, read from the same candidate list the creation surfaces show. A
- * device that is not a candidate is `missing_device`; one whose kind has no
- * quick targets offers none.
+ * The quick targets for a new `kind` task on `deviceId`, read from the same
+ * candidate list the creation surfaces show. The kind is the one the surface
+ * shows, not re-resolved: a charger's offered goal follows its battery level, so
+ * a level arriving after the list loaded would otherwise time battery targets
+ * for a screen that labels and creates them as energy. A device that is not a
+ * candidate is `missing_device`; one that cannot take `kind`, or whose kind has
+ * no quick targets, offers none.
  */
 export const previewSmartTaskQuickTargetsForDevice = (
   candidates: CreateSmartTaskCandidateDevicesRead,
   deviceId: string,
+  kind: DeferredObjectiveSettingsKind,
   preview: SmartTaskQuickTargetPreview,
   nowMs: number,
 ): SmartTaskQuickTargetsRead => {
   if (candidates.state === 'unavailable') return { state: 'unavailable', reason: 'settings_unavailable' };
   const device = candidates.devices.find((candidate) => candidate.id === deviceId);
   if (!device) return { state: 'unavailable', reason: 'missing_device' };
-  const kind = resolveSmartTaskCreationKind(device);
-  if (kind === null || !supportsSmartTaskKind(device, kind)) return { state: 'ready', targets: [] };
+  if (!supportsSmartTaskKind(device, kind)) return { state: 'ready', targets: [] };
   return estimateSmartTaskQuickTargets(kind, resolveSmartTaskQuickTargets(device, kind), preview, nowMs);
 };

@@ -10,15 +10,15 @@ import {
 } from '../../packages/shared-domain/src/smartTaskDevicePickerOrder';
 
 describe('resolveSmartTaskDeviceGroup', () => {
-  it('maps an EV-SoC device to the ev_charger group', () => {
-    expect(resolveSmartTaskDeviceGroup({ kind: 'ev_soc' })).toBe('ev_charger');
+  it('maps an EV charger to the ev_charger group, whatever goal it is offered', () => {
+    expect(resolveSmartTaskDeviceGroup({ isEvCharger: true })).toBe('ev_charger');
   });
 
-  it('maps every temperature device to the heating group', () => {
+  it('maps every other device to the heating group', () => {
     // The runtime normalizes device classes into a fixed set with no
-    // water-heater class, so all temperature goals (thermostats, water heaters,
-    // heat pumps) group as heating — the kind is the only reliable signal.
-    expect(resolveSmartTaskDeviceGroup({ kind: 'temperature' })).toBe('heating');
+    // water-heater class, so thermostats, water heaters and relays all group
+    // as heating.
+    expect(resolveSmartTaskDeviceGroup({ isEvCharger: false })).toBe('heating');
   });
 });
 

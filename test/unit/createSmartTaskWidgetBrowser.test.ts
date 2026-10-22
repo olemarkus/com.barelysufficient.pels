@@ -830,7 +830,7 @@ describe('create smart task widget quick targets', () => {
   test('shows each target with its deadline and creates the tapped one with that deadline', async () => {
     const calls: { path: string; body: unknown }[] = [];
     await connect(QUICK, calls);
-    expect(calls[0]).toEqual({ path: '/quick_targets', body: { deviceId: 'ev' } });
+    expect(calls[0]).toEqual({ path: '/quick_targets', body: { deviceId: 'ev', kind: 'ev_soc' } });
     expect(document.getElementById('widget-root')?.dataset.view).toBe('quick');
     const boxes = [...document.querySelectorAll('[data-quick-target]')].map((box) => [
       box.querySelector('[data-quick-target-value]')?.textContent,

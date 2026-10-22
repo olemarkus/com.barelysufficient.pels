@@ -81,6 +81,21 @@ export const parseSmartTaskCandidateRequest = (body: unknown): SmartTaskCandidat
   };
 };
 
+// The quick-target request: the device and the goal the creation surface shows
+// for it. The kind is the surface's, not re-derived here: a charger's offered
+// goal follows its battery level (`resolveSmartTaskCreationKind`), and targets
+// timed for a goal the surface no longer shows would be labelled and created as
+// the wrong one.
+export const parseSmartTaskQuickTargetsRequest = (
+  body: unknown,
+): Pick<SmartTaskCandidateRequest, 'deviceId' | 'kind'> | null => {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const request = body as Partial<SmartTaskCandidateRequest>;
+  const deviceId = typeof request.deviceId === 'string' ? request.deviceId.trim() : '';
+  if (!deviceId || !isObjectiveKind(request.kind)) return null;
+  return { deviceId, kind: request.kind };
+};
+
 // A permission slot is well-formed only when it is absent or a literal boolean.
 // `undefined` covers both "key omitted" and "key present as undefined"; the two
 // are indistinguishable over the JSON body and mean the same thing here.
