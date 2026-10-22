@@ -283,7 +283,15 @@ export = {
   ui_version: withApiLogging('ui_version', async ({ homey }: ApiContext): Promise<SettingsUiVersionRead> => {
     const { version } = homey.manifest as { version?: unknown };
     if (typeof version !== 'string') throw new Error('The app manifest has no version');
-    return { version, timeZone: homey.clock.getTimezone(), homeyId: await homey.cloud.getHomeyId() };
+    return {
+      version,
+      timeZone: homey.clock.getTimezone(),
+      homeyId: await homey.cloud.getHomeyId(),
+      // Lets the web app reach this Homey on the home network instead of
+      // through the cloud. Without it the web app keeps using the cloud, so a
+      // failed read must not fail the version answer.
+      localAddress: await homey.cloud.getLocalAddress().catch(() => null),
+    };
   }),
   // Where the hub is, from Homey's location-derived `country`. `lib/home` owns the
   // read and resolves every failure to `unavailable`, so this never throws and

@@ -59,13 +59,13 @@ const start = () => {
   const root = createFakeSocket(namespaces);
   const onEvent = vi.fn();
   const onStatus = vi.fn();
-  connectRemoteRealtime(
+  const close = connectRemoteRealtime(
     { baseUrl: 'https://homey.example', homeyId: 'abc', token: 'u:s:t' },
     () => root,
     onEvent,
     onStatus,
   );
-  return { root, namespaces, onEvent, onStatus };
+  return { root, namespaces, onEvent, onStatus, close };
 };
 
 const connectNamespace = (root: FakeSocket, namespaces: Map<string, FakeSocket>, namespace: string) => {
@@ -110,6 +110,21 @@ describe('remote realtime', () => {
     expect(first.closed).toBe(true);
     first.fire('homey:app:com.barelysufficient.pels', 'plan_updated', {});
     expect(onEvent).not.toHaveBeenCalled();
+  });
+
+  it('closes both sockets and stops passing events on when the page moves elsewhere', () => {
+    const { root, namespaces, onEvent, onStatus, close } = start();
+    const socket = connectNamespace(root, namespaces, '/api-1');
+
+    close();
+
+    expect(root.closed).toBe(true);
+    expect(socket.closed).toBe(true);
+    expect(onStatus).toHaveBeenLastCalledWith('offline');
+    socket.fire('homey:app:com.barelysufficient.pels', 'plan_updated', {});
+    root.fire('connect');
+    expect(onEvent).not.toHaveBeenCalled();
+    expect(root.emitted.filter(([event]) => event === 'handshakeClient')).toHaveLength(1);
   });
 
   it('reports a refused handshake', () => {

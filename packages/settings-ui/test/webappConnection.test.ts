@@ -1,8 +1,10 @@
+import { cloudAddressFor, localUrlFromAddress, parseHomeyAddress } from '../src/remote/homeyAddress.ts';
 import {
   findStoredHomey,
+  learnCloudUrl,
+  learnLocalUrl,
   loadStoredHomeys,
   markLastHomey,
-  parseHomeyAddress,
   pickBuildHomeyId,
   removeStoredHomey,
   saveStoredHomey,
@@ -17,22 +19,78 @@ const homey = (overrides: Partial<StoredHomey> = {}): StoredHomey => ({
   baseUrl: `https://${HOMEY_ID}.connect.athom.com`,
   homeyId: HOMEY_ID,
   token: 'user:session:salt',
+  localUrl: null,
   ...overrides,
 });
 
+const RELAY = `https://${HOMEY_ID}.connect.athom.com`;
+const CLOUD = `https://${HOMEY_ID}.homey.athom-prod-euwest1-001.homeypro.net`;
+
 describe('parseHomeyAddress', () => {
   it.each([
-    [HOMEY_ID, `https://${HOMEY_ID}.connect.athom.com`, HOMEY_ID],
-    [`https://my.homey.app/homeys/${HOMEY_ID}/settings/apps`, `https://${HOMEY_ID}.connect.athom.com`, HOMEY_ID],
-    [`https://${HOMEY_ID}.connect.athom.com/`, `https://${HOMEY_ID}.connect.athom.com`, HOMEY_ID],
-    ['https://192-168-1-50.homey.homeylocal.com:4860/', 'https://192-168-1-50.homey.homeylocal.com:4860', null],
-  ])('reads %s', (input, baseUrl, homeyId) => {
-    expect(parseHomeyAddress(input)).toEqual({ baseUrl, homeyId });
+    [HOMEY_ID, RELAY],
+    [`https://my.homey.app/homeys/${HOMEY_ID}/settings/apps`, RELAY],
+    [`${RELAY}/`, RELAY],
+    [`${CLOUD}/`, CLOUD],
+    [`https://${OTHER_ID}.homey.athom-prod-euwest1-001-shs.homeyshs.net`, `https://${OTHER_ID}.homey.athom-prod-euwest1-001-shs.homeyshs.net`],
+  ])('reads %s as a cloud address', (input, baseUrl) => {
+    const homeyId = new URL(baseUrl).hostname.split('.')[0];
+    expect(parseHomeyAddress(input)).toEqual({ kind: 'cloud', baseUrl, homeyId });
   });
 
-  it.each(['', 'not an address', 'https://my.homey.app/', 'ftp://192.168.1.50'])('refuses %j', (input) => {
+  it('reads a home-network address, whose Homey a ping names', () => {
+    expect(parseHomeyAddress('https://192-168-1-50.homey.homeylocal.com:4860/'))
+      .toEqual({ kind: 'local', baseUrl: 'https://192-168-1-50.homey.homeylocal.com:4860' });
+  });
+
+  // An API key goes wherever the address leads, so nothing but the owner's
+  // Homey passes: no other host, no plain HTTP, no public or odd-port address.
+  it.each([
+    '', 'not an address', 'https://my.homey.app/', 'ftp://192.168.1.50',
+    'https://nope.connect.athom.com', 'https://nope.homey.athom-prod-euwest1-001.homeypro.net',
+    'https://attacker.example', 'http://192.168.1.50', 'https://192.168.1.50',
+    'http://192-168-1-50.homey.homeylocal.com', 'https://8-8-8-8.homey.homeylocal.com',
+    'https://192-168-1-50.homey.homeylocal.com:8443',
+  ])('refuses %j', (input) => {
     expect(parseHomeyAddress(input)).toBeNull();
   });
+});
+
+describe('cloudAddressFor', () => {
+  // It reads links, so nothing but an Athom host named for this Homey passes.
+  it('accepts this Homey\'s own cloud host and the relay', () => {
+    expect(cloudAddressFor(CLOUD, HOMEY_ID)).toBe(CLOUD);
+    expect(cloudAddressFor(`${RELAY}/x`, HOMEY_ID)).toBe(RELAY);
+  });
+
+  it.each([
+    `https://${OTHER_ID}.homey.athom-prod-euwest1-001.homeypro.net`,
+    `http://${HOMEY_ID}.homey.athom-prod-euwest1-001.homeypro.net`,
+    `https://${HOMEY_ID}.homey.athom-prod-euwest1-001.homeypro.net.evil.example`,
+    `https://${HOMEY_ID}.evil.example`,
+    'https://192-168-1-50.homey.homeylocal.com',
+    'not a url',
+  ])('ignores %s', (origin) => {
+    expect(cloudAddressFor(origin, HOMEY_ID)).toBeNull();
+  });
+});
+
+describe('localUrlFromAddress', () => {
+  it.each([
+    ['192.168.89.239:4859', 'https://192-168-89-239.homey.homeylocal.com:4860'],
+    ['192.168.89.241:80', 'https://192-168-89-241.homey.homeylocal.com'],
+    ['10.0.0.5', 'https://10-0-0-5.homey.homeylocal.com'],
+    ['172.20.1.2:80', 'https://172-20-1-2.homey.homeylocal.com'],
+  ])('gives %s the secure address the Athom account lists', (address, url) => {
+    expect(localUrlFromAddress(address)).toBe(url);
+  });
+
+  it.each([null, undefined, '', 'homey.local:80', '8.8.8.8:80', '192.168.1.300', '192.168.1.5:8080'])(
+    'has no usable address for %j',
+    (address) => {
+      expect(localUrlFromAddress(address)).toBeNull();
+    },
+  );
 });
 
 describe('stored Homeys', () => {
@@ -55,6 +113,69 @@ describe('stored Homeys', () => {
 
     removeStoredHomey(window.localStorage, HOMEY_ID);
     expect(loadStoredHomeys(window.localStorage)).toEqual({ homeys: [], lastHomeyId: null });
+  });
+
+  it('keeps a Homey in its place when it is saved again', () => {
+    saveStoredHomey(window.localStorage, homey());
+    saveStoredHomey(window.localStorage, homey({ name: 'Cabin', homeyId: OTHER_ID }));
+    saveStoredHomey(window.localStorage, homey({ name: 'House again' }));
+
+    expect(loadStoredHomeys(window.localStorage).homeys.map((entry) => entry.name)).toEqual(['House again', 'Cabin']);
+  });
+
+  it('learns a better address, and keeps the old one when the Homey reports none', () => {
+    saveStoredHomey(window.localStorage, homey());
+    learnLocalUrl(window.localStorage, HOMEY_ID, 'https://10-0-0-5.homey.homeylocal.com');
+    learnLocalUrl(window.localStorage, HOMEY_ID, null);
+    learnCloudUrl(window.localStorage, HOMEY_ID, CLOUD);
+
+    expect(findStoredHomey(window.localStorage, HOMEY_ID))
+      .toEqual(homey({ baseUrl: CLOUD, localUrl: 'https://10-0-0-5.homey.homeylocal.com' }));
+  });
+
+  it('answers with the stored record when the browser refuses to keep a learned address', () => {
+    saveStoredHomey(window.localStorage, homey());
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError');
+    });
+    try {
+      expect(learnLocalUrl(window.localStorage, HOMEY_ID, 'https://10-0-0-5.homey.homeylocal.com')).toEqual(homey());
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('keeps a key saved while an address was being learned', () => {
+    saveStoredHomey(window.localStorage, homey());
+    saveStoredHomey(window.localStorage, homey({ token: 'user:newer:key' }));
+
+    learnLocalUrl(window.localStorage, HOMEY_ID, 'https://10-0-0-5.homey.homeylocal.com');
+
+    expect(findStoredHomey(window.localStorage, HOMEY_ID)?.token).toBe('user:newer:key');
+  });
+
+  it('drops a stored address that does not lead to this Homey', () => {
+    window.localStorage.setItem('pels.webapp.homeys.v1', JSON.stringify({
+      homeys: [{ ...homey(), baseUrl: 'https://attacker.example', localUrl: 'https://attacker.example' }],
+      lastHomeyId: HOMEY_ID,
+    }));
+
+    expect(findStoredHomey(window.localStorage, HOMEY_ID)).toEqual(homey({ baseUrl: RELAY, localUrl: null }));
+  });
+
+  it('moves a home-network address stored as the only address over to localUrl', () => {
+    window.localStorage.setItem('pels.webapp.homeys.v1', JSON.stringify({
+      homeys: [{ name: 'House', baseUrl: 'https://192-168-1-50.homey.homeylocal.com', homeyId: HOMEY_ID, token: 'u:s:t' }],
+      lastHomeyId: HOMEY_ID,
+    }));
+
+    expect(findStoredHomey(window.localStorage, HOMEY_ID)).toEqual({
+      name: 'House',
+      homeyId: HOMEY_ID,
+      token: 'u:s:t',
+      baseUrl: RELAY,
+      localUrl: 'https://192-168-1-50.homey.homeylocal.com',
+    });
   });
 
   it('drops a malformed entry without losing the others', () => {

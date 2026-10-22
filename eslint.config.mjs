@@ -247,6 +247,7 @@ export default tseslint.config(
       'docs/.vitepress/dist/**',
       'docs/.vitepress/cache/**',
       'packages/settings-ui/dist/**',
+      'packages/settings-ui/dist-remote/**',
       'packages/settings-ui/playwright-report/**',
       'packages/settings-ui/test-results/**',
       'packages/settings-ui/blob-report/**',

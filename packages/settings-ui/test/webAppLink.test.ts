@@ -33,6 +33,22 @@ describe('Open in a browser link', () => {
     expect(address.closest('.field')?.hasAttribute('hidden')).toBe(false);
   });
 
+  it('shows and links this Homey\'s cloud host when Homey serves the page from it', async () => {
+    const cloud = 'https://65687b03c6bcab0c0a4464c3.homey.athom-prod-euwest1-001.homeypro.net';
+    vi.stubGlobal('location', { ...window.location, origin: cloud });
+    try {
+      callApi.mockResolvedValue({ version: '3.21.0', timeZone: 'Europe/Oslo', homeyId: '65687b03c6bcab0c0a4464c3' });
+
+      await refreshWebAppLink();
+
+      expect(link()?.getAttribute('href'))
+        .toBe(`${WEB_APP_URL}?open=65687b03c6bcab0c0a4464c3&via=${encodeURIComponent(cloud)}`);
+      expect((document.getElementById('web-app-homey-address') as HTMLElement & { value: string }).value).toBe(cloud);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('ignores an answer without a Homey id', async () => {
     callApi.mockResolvedValue({ version: '3.20.0', timeZone: 'Europe/Oslo' });
 
