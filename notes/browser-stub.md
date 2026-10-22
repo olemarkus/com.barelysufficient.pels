@@ -1,7 +1,7 @@
 # Browser Homey Stub — Audit Scenario Framework
 
 The settings UI runs in a browser inside Homey's WebView and talks to a small
-Homey SDK via `window.Homey`. For Playwright tests, screenshot audits, and
+Homey SDK via `window.Homey`. For Playwright tests, screenshot audits, boot benchmarks, and
 local development we replace that SDK with a stub
 (`packages/settings-ui/tests/e2e/fixtures/homey.stub.js`) that fabricates
 responses for every declared API route.
@@ -52,6 +52,13 @@ await page.evaluate(() => (window as any).Homey.__stub.listAuditScenarios());
 await page.evaluate(() => (window as any).Homey.__stub.getActiveAuditScenario());
 await page.evaluate(() => (window as any).Homey.__stub.clearAuditScenario());
 ```
+
+## Boot benchmark
+
+`npm run bench:settings-ui:boot -- --baseline-dir <checkout>` uses this same
+stub for both bundles. It sets `window.__PELS_HOMEY_STUB__.latencyMs` before
+loading the stub to apply each benchmark latency to SDK get, set, and API calls.
+Without that override, the stub keeps its usual 5 ms settings and 10 ms API delays.
 
 ## Usage from a Vitest unit test
 

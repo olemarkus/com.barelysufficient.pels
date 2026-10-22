@@ -7,8 +7,6 @@ import { performance } from 'node:perf_hooks';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 
-globalThis.performance = performance;
-
 const require = createRequire(import.meta.url);
 const { JSDOM, VirtualConsole } = require('jsdom');
 const { readOptionValue, stripScriptElements } = require('./lib/settingsUiScriptUtils.cjs');
@@ -108,244 +106,6 @@ const deepClone = (value) => (
   value == null ? value : JSON.parse(JSON.stringify(value))
 );
 
-const buildFixture = () => {
-  const settings = {
-    operating_mode: 'home',
-    active_mode: 'home',
-    capacity_priorities: ['dev_heatpump', 'dev_waterheater'],
-    mode_device_targets: {
-      home: {
-        dev_heatpump: { priority: 1, temperature: 22 },
-        dev_waterheater: { priority: 2, temperature: 65 },
-      },
-      away: {
-        dev_heatpump: { priority: 1, temperature: 18 },
-        dev_waterheater: { priority: 2, temperature: 55 },
-      },
-    },
-    controllable_devices: {
-      dev_heatpump: true,
-      dev_waterheater: true,
-    },
-    managed_devices: {
-      dev_heatpump: true,
-      dev_waterheater: true,
-    },
-    mode_aliases: { home: 'Home', away: 'Away' },
-    plan_snapshot: {
-      meta: {
-        totalKw: 5.3,
-        softLimitKw: 6,
-        headroomKw: 0.7,
-      },
-      devices: [
-        {
-          id: 'dev_heatpump',
-          name: 'Living Room Heat Pump',
-          currentState: 'on',
-          plannedState: 'keep',
-          currentTarget: 21,
-          plannedTarget: 22,
-          currentTemperature: 20.3,
-          priority: 1,
-          controllable: true,
-          expectedPowerKw: 1.6,
-          measuredPowerKw: 1.2,
-          reason: 'Cheap hour, preheating',
-        },
-        {
-          id: 'dev_waterheater',
-          name: 'Water Heater',
-          currentState: 'on',
-          plannedState: 'shed',
-          priority: 2,
-          controllable: true,
-          expectedPowerKw: 2,
-          measuredPowerKw: 2.1,
-          reason: 'Approaching capacity cap',
-        },
-      ],
-    },
-    target_devices_snapshot: [
-      {
-        id: 'dev_heatpump',
-        name: 'Living Room Heat Pump',
-        zone: 'Living room',
-        class: 'heatpump',
-        priority: 1,
-        targetTemperature: 22,
-        currentTemperature: 20.3,
-        capabilities: ['measure_power', 'target_temperature'],
-        available: true,
-      },
-      {
-        id: 'dev_waterheater',
-        name: 'Water Heater',
-        zone: 'Utility room',
-        class: 'waterheater',
-        priority: 2,
-        targetTemperature: 65,
-        currentTemperature: 61,
-        capabilities: ['measure_power', 'onoff'],
-        available: true,
-      },
-    ],
-    power_tracker_state: {
-      lastTimestamp: Date.now(),
-      lastPowerW: 4300,
-      buckets: Object.fromEntries(
-        Array.from({ length: 24 }, (_, hour) => [new Date(Date.now() - ((23 - hour) * 3600 * 1000)).toISOString(), 0.4 + ((hour % 5) * 0.08)]),
-      ),
-      controlledBuckets: {},
-      uncontrolledBuckets: {},
-      hourlyBudgets: {},
-      dailyBudgetCaps: {},
-      dailyTotals: {},
-      unreliablePeriods: [],
-    },
-    capacity_limit_kw: 6,
-    daily_budget_enabled: true,
-    daily_budget_kwh: 12,
-    daily_budget_price_shaping_enabled: true,
-    daily_budget_controlled_weight: 0.7,
-    daily_budget_price_flex_share: 0.3,
-    pels_status: {
-      state: 'running',
-      updatedAt: new Date().toISOString(),
-    },
-    app_heartbeat: Date.now(),
-    overshoot_behaviors: {},
-    price_optimization_settings: {
-      dev_heatpump: { enabled: true, cheapDelta: 5, expensiveDelta: -5 },
-      dev_waterheater: { enabled: false, cheapDelta: 5, expensiveDelta: -5 },
-    },
-    price_scheme: 'homey',
-    nettleie_fylke: 'Oslo',
-    debug_logging_topics: [],
-    debug_logging_enabled: false,
-    capacity_margin_kw: 0.5,
-    norway_price_model: 'spot',
-    nettleie_orgnr: '123456789',
-    capacity_dry_run: false,
-    price_area: 'NO1',
-    nettleie_tariffgruppe: 'Husholdning',
-    provider_surcharge: 0.05,
-    price_threshold_percent: 20,
-    price_min_diff_ore: 10,
-    price_optimization_enabled: true,
-    homey_prices_currency: 'NOK',
-    homey_prices_today: Array.from({ length: 24 }, (_, hour) => ({ startsAt: new Date(Date.now() + (hour * 3600 * 1000)).toISOString(), price: 0.8 + ((hour % 6) * 0.1) })),
-    homey_prices_tomorrow: Array.from({ length: 24 }, (_, hour) => ({ startsAt: new Date(Date.now() + ((24 + hour) * 3600 * 1000)).toISOString(), price: 0.7 + ((hour % 5) * 0.1) })),
-    combined_prices: {
-      prices: Array.from({ length: 48 }, (_, hour) => ({
-        startsAt: new Date(Date.now() + (hour * 3600 * 1000)).toISOString(),
-        total: 60 + ((hour % 6) * 8),
-        spotPriceExVat: 48 + ((hour % 6) * 6),
-        vatMultiplier: 1.25,
-      })),
-      priceUnit: 'ore/kWh',
-      priceScheme: 'norway',
-    },
-  };
-
-  const dailyBudget = {
-    dayKey: new Date().toISOString().slice(0, 10),
-    timeZone: 'Europe/Oslo',
-    nowUtc: new Date().toISOString(),
-    currentBucketIndex: new Date().getUTCHours(),
-    budget: {
-      enabled: true,
-      dailyBudgetKWh: 12,
-      priceShapingEnabled: true,
-    },
-    state: {
-      usedNowKWh: 3.6,
-      allowedNowKWh: 4.1,
-      remainingKWh: 8.4,
-      deviationKWh: -0.5,
-      exceeded: false,
-      frozen: false,
-      confidence: 0.72,
-      priceShapingActive: true,
-    },
-    buckets: {
-      startUtc: Array.from({ length: 24 }, (_, hour) => new Date(Date.now() + (hour * 3600 * 1000)).toISOString()),
-      startLocalLabels: Array.from({ length: 24 }, (_, hour) => String(hour).padStart(2, '0')),
-      plannedWeight: Array.from({ length: 24 }, (_, hour) => (hour >= 6 && hour <= 9) || (hour >= 17 && hour <= 21) ? 1.4 : 0.8),
-      plannedKWh: Array.from({ length: 24 }, (_, hour) => ((hour >= 6 && hour <= 9) || (hour >= 17 && hour <= 21) ? 0.5 : 0.28)),
-      actualKWh: Array.from({ length: 24 }, (_, hour) => (hour <= new Date().getUTCHours() ? 0.3 + ((hour % 4) * 0.05) : null)),
-      allowedCumKWh: Array.from({ length: 24 }, (_, hour) => Number(((hour + 1) * 0.45).toFixed(3))),
-      price: Array.from({ length: 24 }, (_, hour) => Number((0.8 + ((hour % 6) * 0.1)).toFixed(3))),
-    },
-  };
-
-  const apiPayloads = {
-    'GET /daily_budget': dailyBudget,
-    'GET /homey_devices': [
-      { id: 'dev_heatpump', name: 'Living Room Heat Pump' },
-      { id: 'dev_floorheat', name: 'Bathroom Floor Heat' },
-      { id: 'dev_waterheater', name: 'Water Heater' },
-      { id: 'dev_evcharger', name: 'EV Charger' },
-    ],
-    'POST /settings_ui_log': { ok: true },
-    'GET /ui_bootstrap': {
-      settings,
-      dailyBudget,
-      featureAccess: { canToggleOverviewRedesign: false },
-      devices: settings.target_devices_snapshot,
-      plan: settings.plan_snapshot,
-      power: {
-        tracker: settings.power_tracker_state,
-        status: {
-          state: 'live',
-          status: {
-            lastPowerUpdate: settings.power_tracker_state.lastTimestamp,
-            priceLevel: 'normal',
-          },
-        },
-        heartbeat: Date.now(),
-      },
-      prices: {
-        combinedPrices: settings.combined_prices,
-        priceArea: settings.price_area,
-        flowToday: null,
-        flowTomorrow: null,
-        homeyCurrency: settings.homey_prices_currency,
-        homeyToday: settings.homey_prices_today,
-        homeyTomorrow: settings.homey_prices_tomorrow,
-      },
-    },
-    'GET /ui_devices': {
-      devices: settings.target_devices_snapshot,
-    },
-    'GET /ui_plan': {
-      plan: settings.plan_snapshot,
-    },
-    'GET /ui_power': {
-      tracker: settings.power_tracker_state,
-      status: {
-        state: 'live',
-        status: {
-          lastPowerUpdate: settings.power_tracker_state.lastTimestamp,
-          priceLevel: 'normal',
-        },
-      },
-      heartbeat: Date.now(),
-    },
-    'GET /ui_prices': {
-      combinedPrices: settings.combined_prices,
-      priceArea: settings.price_area,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: settings.homey_prices_currency,
-      homeyToday: settings.homey_prices_today,
-      homeyTomorrow: settings.homey_prices_tomorrow,
-    },
-  };
-
-  return { apiPayloads, settings };
-};
-
 const createCanvasContextStub = () => ({
   canvas: {},
   arc() {},
@@ -422,8 +182,11 @@ const getReadyState = (windowObject) => {
   return modeOptions > 0 && deviceRows > 0;
 };
 
-const runSingleIteration = async ({ html, label, latencyMs, scriptSource }) => {
-  const { apiPayloads, settings } = buildFixture();
+const runSingleIteration = async ({ html, latencyMs, scriptSource }) => {
+  const homeyStubSource = await fs.readFile(
+    new URL('../packages/settings-ui/tests/e2e/fixtures/homey.stub.js', import.meta.url),
+    'utf8',
+  );
   const getKeyCounts = {};
   const apiPathCounts = {};
   let getCalls = 0;
@@ -441,9 +204,6 @@ const runSingleIteration = async ({ html, label, latencyMs, scriptSource }) => {
   });
 
   const { window } = dom;
-  window.performance = performance;
-  window.requestAnimationFrame = (callback) => setTimeout(() => callback(window.performance.now()), 16);
-  window.cancelAnimationFrame = (id) => clearTimeout(id);
   window.ResizeObserver = class {
     disconnect() {}
     observe() {}
@@ -463,72 +223,48 @@ const runSingleIteration = async ({ html, label, latencyMs, scriptSource }) => {
     removeListener() {},
   });
   window.scrollTo = () => {};
+  window.HTMLElement.prototype.scrollTo = () => {};
   window.HTMLElement.prototype.scrollIntoView = () => {};
+  // jsdom does not implement the form-associated APIs used by Material controls.
+  window.ElementInternals.prototype.setFormValue = () => {};
+  window.ElementInternals.prototype.setValidity = () => {};
   window.HTMLCanvasElement.prototype.getContext = () => createCanvasContextStub();
   window.HTMLCanvasElement.prototype.toDataURL = () => 'data:image/png;base64,';
   window.SVGElement.prototype.getBBox = () => ({ x: 0, y: 0, width: 100, height: 20 });
 
-  const listeners = new Map();
-  const delayResult = (value, callback) => {
-    setTimeout(() => callback(null, deepClone(value)), latencyMs);
+  window.__PELS_HOMEY_STUB__ = { latencyMs };
+  window.eval(homeyStubSource);
+  const homey = window.Homey;
+  const get = homey.get.bind(homey);
+  const api = homey.api.bind(homey);
+  homey.get = (key, callback) => {
+    getCalls += 1;
+    getKeyCounts[key] = (getKeyCounts[key] || 0) + 1;
+    return get(key, callback);
+  };
+  homey.api = (method, uri, ...args) => {
+    apiCalls += 1;
+    const routeKey = `${String(method).toUpperCase()} ${uri}`;
+    apiPathCounts[routeKey] = (apiPathCounts[routeKey] || 0) + 1;
+    return api(method, uri, ...args);
   };
 
-  const homey = {
-    __: (key) => key,
-    clock: { getTimezone: () => 'Europe/Oslo' },
-    off(event, callback) {
-      const handlers = listeners.get(event) || [];
-      listeners.set(event, handlers.filter((entry) => entry !== callback));
-    },
-    on(event, callback) {
-      const handlers = listeners.get(event) || [];
-      handlers.push(callback);
-      listeners.set(event, handlers);
-    },
-    ready: async () => {},
-    get(key, callback) {
-      getCalls += 1;
-      getKeyCounts[key] = (getKeyCounts[key] || 0) + 1;
-      delayResult(settings[key], callback);
-    },
-    set(key, value, callback) {
-      settings[key] = deepClone(value);
-      setTimeout(() => callback(null), latencyMs);
-    },
-    api(method, uri, bodyOrCallback, callbackMaybe) {
-      apiCalls += 1;
-      const callback = typeof bodyOrCallback === 'function' ? bodyOrCallback : callbackMaybe;
-      const routeKey = `${String(method).toUpperCase()} ${uri}`;
-      apiPathCounts[routeKey] = (apiPathCounts[routeKey] || 0) + 1;
-      if (typeof callback !== 'function') {
-        throw new Error(`Missing callback for ${routeKey}`);
-      }
-      if (!(routeKey in apiPayloads)) {
-        setTimeout(() => callback(new Error(`${label}: no mock for ${routeKey}`)), latencyMs);
-        return;
-      }
-      delayResult(apiPayloads[routeKey], callback);
-    },
-  };
-
-  window.Homey = homey;
-
-  const startedAt = performance.now();
-  window.eval(scriptSource);
-  await waitFor(() => getReadyState(window), DEFAULT_TIMEOUT_MS);
-  const bootMs = performance.now() - startedAt;
-  const perfSnapshot = deepClone(window.__PELS_SETTINGS_UI_PERF__ || null);
-  dom.window.close();
-
-  return {
-    apiCalls,
-    apiPathCounts,
-    bootMs,
-    getCalls,
-    getKeyCounts,
-    perfSnapshot,
-    roundTrips: getCalls + apiCalls,
-  };
+  try {
+    const startedAt = performance.now();
+    window.eval(scriptSource);
+    await waitFor(() => getReadyState(window), DEFAULT_TIMEOUT_MS);
+    return {
+      apiCalls,
+      apiPathCounts,
+      bootMs: performance.now() - startedAt,
+      getCalls,
+      getKeyCounts,
+      perfSnapshot: deepClone(window.__PELS_SETTINGS_UI_PERF__ || null),
+      roundTrips: getCalls + apiCalls,
+    };
+  } finally {
+    dom.window.close();
+  }
 };
 
 const median = (values) => {
@@ -540,10 +276,10 @@ const average = (values) => (
   values.reduce((sum, value) => sum + value, 0) / values.length
 );
 
-const runScenario = async ({ html, iterations, label, latencyMs, scriptSource }) => {
+const runScenario = async ({ html, iterations, latencyMs, scriptSource }) => {
   const runs = [];
   for (let index = 0; index < iterations; index += 1) {
-    runs.push(await runSingleIteration({ html, label, latencyMs, scriptSource }));
+    runs.push(await runSingleIteration({ html, latencyMs, scriptSource }));
   }
 
   return {
@@ -605,14 +341,12 @@ const main = async () => {
       baseline: await runScenario({
         html: baselineBundle.html,
         iterations: args.iterations,
-        label: 'baseline',
         latencyMs,
         scriptSource: baselineBundle.scriptSource,
       }),
       candidate: await runScenario({
         html: candidateBundle.html,
         iterations: args.iterations,
-        label: 'candidate',
         latencyMs,
         scriptSource: candidateBundle.scriptSource,
       }),
