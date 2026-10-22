@@ -10,6 +10,7 @@ import type {
   ObservedEvChargingStateRead,
   ObservedStateOfChargeRead,
   ObservedTemperatureRead,
+  ObservedDeviceReads,
 } from '../observer/observedDeviceStateProjection';
 import type { PelsStatus } from './pelsStatus';
 import type { PriceLevel } from '../price/priceLevels';
@@ -67,6 +68,8 @@ export type PlanServiceDeps = {
   publishPelsStatus: (status: PelsStatus) => void;
   planEngine: PlanServicePlanEngine;
   getPlanDevices: () => PlanInputDevice[];
+  /** Accepted single-device truth for idle evidence, without projecting the whole home. */
+  getObservedRecord: ObservedDeviceReads['getObservedRecord'];
   /**
    * Whether the owner has granted PELS standing command authority over a
    * device: Power-limit control, or "Only PELS starts this device". Answers for

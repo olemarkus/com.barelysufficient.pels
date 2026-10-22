@@ -272,7 +272,9 @@ const classifyByGapAndDuration = (
 };
 
 /** Validate an accepted hold against current observations without booking another sample. */
-export const nearTargetIdleStillApplies = (input: IdleDetectorInput): boolean => (
+export const nearTargetIdleStillApplies = (
+  input: Pick<IdleDetectorInput, 'currentDrawKw' | 'currentTemperature' | 'targetTemperature'>,
+): boolean => (
   measuredIsIdle(input.currentDrawKw) && classifyByGapAndDuration(
     computeTemperatureGap(input.currentTemperature, input.targetTemperature),
     IDLE_HOLD_MIN_DURATION_MS,

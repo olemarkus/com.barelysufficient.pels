@@ -226,6 +226,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
     // outside action), main's plan does not contain the device, and main's
     // rebuild state describes a different house.
     getOwningHomeHooks: () => ({
+      observeIdleEvidence: planService.observeIdleEvidence.bind(planService),
       syncLivePlanState: planService.syncLivePlanState.bind(planService),
       hasPendingBinaryCommand: (deviceId) => (
         planEngine.hasAttributablePendingBinaryCommand(deviceId)

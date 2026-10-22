@@ -31,7 +31,6 @@ import type { PlanServiceDeps } from './planServiceDeps';
 import type {
   DevicePlan,
   PlanChangeSet,
-  PlanInputDevice,
   StatusPlanChanges,
 } from './planTypes';
 import type { PlanRebuildOutcome } from '../planContract/planActuationResult';
@@ -57,12 +56,6 @@ export type PlanRebuildHost = {
   stampPlanGeneratedAt: (plan: DevicePlan, nowMs?: number) => DevicePlan;
   preservePlanGeneratedAt: (plan: DevicePlan, basePlan: DevicePlan) => DevicePlan;
   emitPlanUpdated: (plan: DevicePlan) => void;
-  /**
-   * Run `build` with `devices` held as the plan input for its whole duration,
-   * so a read made from inside the build (a smart task's stall evidence) sees
-   * the devices the build decides on instead of projecting the home again.
-   */
-  buildOver: (devices: readonly PlanInputDevice[], build: () => Promise<DevicePlan>) => Promise<DevicePlan>;
 };
 
 export async function performPlanRebuild(
@@ -186,7 +179,7 @@ async function buildPlanForRebuild(
   planEngine.state.currentRebuildTrigger = trigger;
   let plan: DevicePlan;
   try {
-    plan = await host.buildOver(liveDevices, () => planEngine.buildDevicePlanSnapshot(liveDevices));
+    plan = await planEngine.buildDevicePlanSnapshot(liveDevices);
   } finally {
     planEngine.state.currentRebuildTrigger = null;
   }

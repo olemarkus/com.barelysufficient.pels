@@ -136,3 +136,13 @@ export function syncOwningHomeLivePlanState(
   const owner = router?.getOwningHomeRouteForDevice(event.deviceId)?.hooks ?? requirePlanService(ctx);
   return owner.syncLivePlanState(event.source);
 }
+
+/** Consume accepted device evidence in its owning home before any queued refresh. */
+export function observeOwningHomeIdleEvidence(
+  ctx: AppContext,
+  deviceId: string,
+  router: OwningHomeRouter | undefined,
+): void {
+  const owner = router?.getOwningHomeRouteForDevice(deviceId)?.hooks ?? requirePlanService(ctx);
+  owner.observeIdleEvidence(deviceId);
+}

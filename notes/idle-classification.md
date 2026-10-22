@@ -149,7 +149,11 @@ does).
   plan, whose draw is still the build's. Observation-driven
   status refreshes reuse the last classification: the capped-idle window keeps a
   bounded sample history sized for the plan cadence, and sampling per
-  observation would push its first half out.
+  observation would push its first half out. Trusted device deltas and snapshot
+  refreshes withdraw accepted near-target evidence synchronously when draw
+  resumes or temperature
+  leaves its hold band, before status refreshes coalesce. Stall-evidence reads
+  never mutate classifier state.
 - `lib/plan/settingsOverviewReadModel.ts` — reads classification through a
   deps callback and passes it into `buildDeviceStatus`
   (`lib/plan/deviceStatusReadModel.ts`), which emits it as `status.reason`

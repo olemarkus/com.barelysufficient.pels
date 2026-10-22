@@ -38,6 +38,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     // `toPlanDevice` + shared planned-set predicate); the invariants are
     // documented at the closure in `setup/homeRuntime/homeScope.ts`.
     getPlanDevices: scope.getPlanDevices,
+    getObservedRecord: (deviceId) => ctx.observer.getObservedRecord(deviceId),
     hasStandingCommandGrant: (deviceId) => resolveStandingCommandGrant(planInputSource, deviceId),
     // Explicit observer projection: transport capability and Flow bindings must
     // never cross into the plan-owned service merely because structural typing

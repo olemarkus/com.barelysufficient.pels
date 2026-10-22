@@ -1,10 +1,13 @@
 import { captureLogger } from '../utils/loggerCapture';
 import { PassThrough } from 'node:stream';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import { ObservedDeviceStateProjection } from '../../lib/observer/observedDeviceStateProjection';
+import { subscribeObservedStateProjection } from '../../setup/appInit/wireDeviceTransport';
 import { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
-import { invalidateOwningHomeRebuildSuppression } from '../../setup/appObservedControlStateRuntime';
+import { invalidateOwningHomeRebuildSuppression, observeOwningHomeIdleEvidence } from '../../setup/appObservedControlStateRuntime';
 import { subscribePlanObservedState } from '../../setup/appInit/planObservedStateSubscription';
 import type { Mock } from 'vitest';
+import { IDLE_HOLD_MIN_DURATION_MS } from '../../lib/observer/idleDetector';
 import { PlanService } from '../../lib/plan/planService';
 import { partialDouble } from '../helpers/partialDouble';
 import type { Logger } from '../../lib/logging/logger';
@@ -25,7 +28,7 @@ import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMateriali
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { steppedPlanDevice } from '../utils/planTestUtils';
-import type { BinaryControlObservation } from '../../packages/contracts/src/types';
+import type { BinaryControlObservation, ProjectedObservedDeviceState } from '../../packages/contracts/src/types';
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import * as pelsStatusModule from '../../lib/plan/pelsStatus';
 import { getRecentPlanRebuildTraces } from '../../lib/utils/planRebuildTrace';
@@ -315,6 +318,129 @@ describe('PlanService', () => {
     if (homeId !== 'main') expect(getHomeBatteryCard).not.toHaveBeenCalled();
   });
 
+  it.each(['draw', 'temperature'] as const)(
+    'withdraws accepted warmth on a transient %s observation before queued status refreshes run',
+    async (axis) => {
+      const live: LiveHeater = { on: true, currentDrawKw: 0, expectedPowerKw: 2,
+        currentTemperature: 61.5, setpointC: 65 };
+      const plan = buildPlan(65, 'keep', {}, { currentDrawKw: 0, currentState: 'on' });
+      let releaseBuild!: (value: DevicePlan) => void;
+      const builtPlan = new Promise<DevicePlan>((resolve) => { releaseBuild = resolve; });
+      let markBuildEntered!: () => void;
+      const buildEntered = new Promise<void>((resolve) => { markBuildEntered = resolve; });
+      const engine = { ...createMockPlanEngine(),
+        buildDevicePlanSnapshot: vi.fn(() => { markBuildEntered(); return builtPlan; }),
+        getDeviceExecutionStates: vi.fn(() => new Map(plan.devices.map((device) => (
+          [device.id, executionStateFixture(device)]
+        )))) };
+      const getPlanDevices = vi.fn(() => [liveHeaterInput(live)]);
+      const { service } = createPlanService({ planEngine: engine,
+        getPlanDevices,
+        getObservedRecord: () => ({ id: 'dev-1', name: 'Heater', targets: [], available: true,
+          measuredPowerKw: live.currentDrawKw, measuredPowerIsDirectMeasurement: true,
+          temperature: { currentTemperature: live.currentTemperature, target: { id: 'target_temperature', value: live.setpointC } },
+        }),
+        getObservedTemperature: () => ({ kind: 'observed', value: {
+          currentTemperature: live.currentTemperature, currentTarget: live.setpointC,
+        } }),
+      });
+      service['rebuildHost'].publishPlan(plan, 1_000_000);
+      const idle = { id: 'dev-1', name: 'Heater', currentState: 'on', currentDrawKw: 0,
+        plannedState: 'keep' as const, temperature: { currentTemperature: 61.5, currentTarget: 65 } };
+      service['idleClassifier'].classifyAll([idle], 1_000_000);
+      service['idleClassifier'].classifyAll([idle], 1_000_000 + IDLE_HOLD_MIN_DURATION_MS);
+      expect(service.getStallEvidence('dev-1')).toMatchObject({ classification: 'near_target_idle' });
+      const rebuild = service.rebuildPlanFromCache('power_delta');
+      await buildEntered;
+
+      if (axis === 'draw') live.currentDrawKw = 1.2;
+      else live.currentTemperature = 55;
+      service.observeIdleEvidence('dev-1');
+      const first = service.syncLivePlanState('realtime_capability');
+      live.currentDrawKw = 0;
+      live.currentTemperature = 61.5;
+      service.observeIdleEvidence('dev-1');
+      const second = service.syncLivePlanState('realtime_capability');
+      expect(first).toBe(second);
+      expect(service.getStallEvidence('dev-1')).toBeUndefined();
+      expect(engine.buildDevicePlanSnapshot).toHaveBeenCalledTimes(1);
+      expect(engine.applyPlanActions).not.toHaveBeenCalled();
+      expect(getPlanDevices).toHaveBeenCalledTimes(1);
+      releaseBuild(plan);
+      await rebuild;
+      await first;
+      expect(service.getStallEvidence('dev-1')).toBeUndefined();
+
+      const nextSampleAtMs = Date.now();
+      service['idleClassifier'].classifyAll([idle], nextSampleAtMs);
+      expect(service.getStallEvidence('dev-1')).toBeUndefined();
+      service['idleClassifier'].classifyAll([idle], nextSampleAtMs + IDLE_HOLD_MIN_DURATION_MS);
+      expect(service.getStallEvidence('dev-1')).toMatchObject({ classification: 'near_target_idle' });
+    },
+  );
+
+  it.each(['draw', 'temperature'] as const)(
+    'withdraws accepted warmth synchronously on a snapshot %s excursion before the next snapshot',
+    async (axis) => {
+      const projection = new ObservedDeviceStateProjection();
+      const emitter = new ObservedStateEmitter();
+      subscribeObservedStateProjection(emitter, projection);
+      const plan = buildPlan(65, 'keep', {}, { currentDrawKw: 0, currentState: 'on' });
+      const engine = { ...createMockPlanEngine(),
+        getDeviceExecutionStates: vi.fn(() => new Map(plan.devices.map((device) => (
+          [device.id, executionStateFixture(device)]
+        )))) };
+      const { service } = createPlanService({ planEngine: engine,
+        getObservedRecord: projection.getObservedRecord.bind(projection),
+        getObservedTemperature: projection.getObservedTemperature.bind(projection),
+      });
+      service['rebuildHost'].publishPlan(plan, Date.now());
+      const ctx = createAppContextMock({ planService: service });
+      subscribePlanObservedState({
+        ctx, observedStateEmitter: emitter, getHomeRuntimeRegistry: () => undefined,
+        observeIdleEvidence: (id) => observeOwningHomeIdleEvidence(ctx, id, undefined),
+        syncLivePlanState: (event) => service.syncLivePlanState(event.source),
+        syncExternalOffHold: vi.fn(), invalidateRebuildSuppression: vi.fn(),
+      });
+      const snapshot = (observationSeq: number, excursion: boolean) => {
+        const observed: ProjectedObservedDeviceState = {
+          id: 'dev-1', name: 'Heater', available: true, targets: [],
+          measuredPowerKw: excursion && axis === 'draw' ? 1.2 : 0,
+          measuredPowerIsDirectMeasurement: true,
+          temperature: { currentTemperature: excursion && axis === 'temperature' ? 55 : 61.5,
+            target: { id: 'target_temperature', value: 65 } },
+        };
+        emitter.emitObservedStateRefresh({
+          entries: [{ observationSeq, observedAtMs: Date.now(), observed }], ignoredReadIds: [],
+        });
+      };
+      snapshot(1, false);
+      const idle = { id: 'dev-1', name: 'Heater', currentState: 'on', currentDrawKw: 0,
+        plannedState: 'keep' as const, temperature: { currentTemperature: 61.5, currentTarget: 65 } };
+      service['idleClassifier'].classifyAll([idle], Date.now() - IDLE_HOLD_MIN_DURATION_MS);
+      service['idleClassifier'].classifyAll([idle], Date.now());
+      // A rejected old refresh cannot revoke evidence against a newer accepted observation.
+      snapshot(0, true);
+      expect(service.getStallEvidence('dev-1')).toMatchObject({ classification: 'near_target_idle' });
+
+      snapshot(2, true);
+      const first = service.syncLivePlanState('snapshot_refresh');
+      snapshot(3, false);
+      const second = service.syncLivePlanState('snapshot_refresh');
+      expect(first).toBe(second);
+      expect(service['idleClassifier'].getClassification('dev-1')).toBeUndefined();
+      expect(service.getStallEvidence('dev-1')).toBeUndefined();
+      await first;
+      expect(service.getStallEvidence('dev-1')).toBeUndefined();
+      expect(engine.buildDevicePlanSnapshot).not.toHaveBeenCalled();
+      expect(engine.applyPlanActions).not.toHaveBeenCalled();
+      service['idleClassifier'].classifyAll([idle], Date.now());
+      expect(service.getStallEvidence('dev-1')).toBeUndefined();
+      service['idleClassifier'].classifyAll([idle], Date.now() + IDLE_HOLD_MIN_DURATION_MS);
+      expect(service.getStallEvidence('dev-1')).toMatchObject({ classification: 'near_target_idle' });
+    },
+  );
+
   it('joins observations queued behind one live sync into a single status build', async () => {
     const device = steppedPlanDevice({ id: 'heater', currentState: 'on', currentDrawKw: 1.2,
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
@@ -540,10 +666,9 @@ describe('PlanService', () => {
     expect(planUpdatedCalls[1][1].devices[0].status.factText).toContain('target 21 °C');
   });
 
-  it('projects the plan input once per build, however many smart tasks read stall evidence', async () => {
-    // The build's smart-task decoration asks for stall evidence once per active
-    // temperature task. Each ask reads the devices that build decides on; none
-    // projects the whole home again.
+  it('reads stall evidence without projecting plan input, inside or outside a build', async () => {
+    // Smart-task decoration and external readers both use the single-device
+    // observer record; evidence never needs the full plan-input projection.
     const getPlanDevices = vi.fn((): PlanInputDevice[] => []);
     const { service, deps } = createPlanService({ getPlanDevices });
     let projectionsInsideBuild: number | null = null;
@@ -559,9 +684,9 @@ describe('PlanService', () => {
     expect(projectionsInsideBuild).toBe(0);
     expect(getPlanDevices).toHaveBeenCalledTimes(1);
 
-    // Between builds there is no held input, so the read projects the current one.
+    // Between builds the evidence read still needs no plan-input projection.
     service.getStallEvidence('heater-1');
-    expect(getPlanDevices).toHaveBeenCalledTimes(2);
+    expect(getPlanDevices).toHaveBeenCalledTimes(1);
   });
 
   it('ignores shortfall reason jitter when computing comparable detail changes', async () => {
@@ -1631,6 +1756,7 @@ describe('PlanService', () => {
       observedStateEmitter: emitter,
       getHomeRuntimeRegistry: () => undefined,
       syncLivePlanState: () => Promise.resolve(false),
+      observeIdleEvidence: service.observeIdleEvidence.bind(service),
       syncExternalOffHold: vi.fn(),
       invalidateRebuildSuppression: (deviceId) => invalidateOwningHomeRebuildSuppression(ctx, deviceId, undefined),
     });

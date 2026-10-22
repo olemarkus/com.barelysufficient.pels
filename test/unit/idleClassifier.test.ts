@@ -124,10 +124,23 @@ describe('createIdleClassifier', () => {
     it('withdraws stale near-target evidence on a trusted temperature regression without another plan', () => {
       const classifier = parkedClassifier();
       expect(classifier.getLiveStallEvidence(heaterAt())).toBeDefined();
-      expect(classifier.getLiveStallEvidence(heaterAt({ temperature: { currentTemperature: 55, currentTarget: 65 } })))
-        .toBeUndefined();
+      classifier.observeDevice(heaterAt({ temperature: { currentTemperature: 55, currentTarget: 65 } }));
       expect(classifier.getStallEvidence('heater-1')).toBeUndefined();
       expect(classifier.getLiveStallEvidence(heaterAt())).toBeUndefined();
+    });
+
+    it('leaves accepted evidence and its hold unchanged however often live readers ask', () => {
+      const classifier = parkedClassifier();
+      const accepted = classifier.getStallEvidence('heater-1');
+      for (const device of [heaterAt({ currentDrawKw: 1.2 }),
+        heaterAt({ temperature: { currentTemperature: 55, currentTarget: 65 } })]) {
+        expect(classifier.getLiveStallEvidence(device)).toBeUndefined();
+        expect(classifier.getClassification('heater-1')).toBe('near_target_idle');
+        expect(classifier.getStallEvidence('heater-1')).toEqual(accepted);
+        expect(classifier.getLiveStallEvidence(heaterAt())).toEqual(accepted);
+      }
+      classifier.classifyAll([heaterAt()], 1_000_001 + IDLE_HOLD_MIN_DURATION_MS);
+      expect(classifier.getStallEvidence('heater-1')).toEqual(accepted);
     });
 
     it('keeps the observer exit hysteresis and reports the latest trusted gap', () => {
@@ -189,7 +202,8 @@ describe('createIdleClassifier', () => {
 
     it('withdraws acceptance when drawing resumes and waits for a new hold', () => {
       const classifier = parkedClassifier();
-      expect(classifier.getLiveStallEvidence(heaterAt({ currentDrawKw: 1.2 }))).toBeUndefined();
+      classifier.observeDevice(heaterAt({ currentDrawKw: 1.2 }));
+      classifier.observeDevice(heaterAt());
       expect(classifier.getLiveStallEvidence(heaterAt())).toBeUndefined();
       classifier.classifyAll([heaterAt()], 2_000_000);
       expect(classifier.getStallEvidence('heater-1')).toBeUndefined();

@@ -94,6 +94,7 @@ import { PriceLevel } from '../../lib/price/priceLevels';
  * than for any one of them.
  */
 export type OwningHomeHooks = {
+  observeIdleEvidence: PlanService['observeIdleEvidence'];
   syncLivePlanState: PlanService['syncLivePlanState'];
   hasPendingBinaryCommand: (deviceId: string) => boolean;
   clearRecentBinaryOffCommand: (deviceId: string) => void;

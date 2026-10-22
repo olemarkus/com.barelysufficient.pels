@@ -205,6 +205,8 @@ export type ObservedDeviceReads = {
      *   and EV state together to decide whether the device has moved off plan
      *   (`ObserverDeviceRead`, `lib/executor/executorDeviceRead.ts`), joined with
      *   the configuration's charger identity;
+     * - idle completion evidence, which reads measured draw and temperature
+     *   from one accepted record, including while a plan build is in flight;
      * - external-off hold detection, which reads the binary observation and the
      *   plug state beside the configuration's charger identity.
      *

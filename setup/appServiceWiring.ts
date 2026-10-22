@@ -66,6 +66,7 @@ import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
 import { installMainFreshnessEscalation } from './appMainFreshnessEscalation';
 import {
   invalidateOwningHomeRebuildSuppression, syncOwningHomeLivePlanState, syncExternalOffHoldForObservation,
+  observeOwningHomeIdleEvidence,
 } from './appObservedControlStateRuntime';
 export { createHomeRuntimeRegistryForApp };
 
@@ -543,6 +544,7 @@ export class AppServiceWiring {
       getHomeRuntimeRegistry: () => handles.homeRuntimeRegistry,
       syncExternalOffHold: (event) => this.syncExternalOffHold(event),
       syncLivePlanState: (event) => syncOwningHomeLivePlanState(ctx, event, handles.homeRuntimeRegistry),
+      observeIdleEvidence: (deviceId) => observeOwningHomeIdleEvidence(ctx, deviceId, handles.homeRuntimeRegistry),
       invalidateRebuildSuppression: (deviceId) => this.invalidateRebuildSuppression(deviceId),
     });
   }

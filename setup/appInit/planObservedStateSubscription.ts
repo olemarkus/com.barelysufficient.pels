@@ -15,6 +15,8 @@ import { canDeviceChangeOwningHomeActionableLoad, type OwningHomeRouter } from '
  */
 export type PlanObservedStateSubscriptionDeps = {
   ctx: AppContext;
+  /** Synchronous evidence withdrawal, after the observer has admitted this delta or refresh. */
+  observeIdleEvidence: (deviceId: string) => void;
   syncLivePlanState: (event: ObservedStateChangedEvent) => Promise<boolean>;
   observedStateEmitter: ObservedStateEmitter;
   /**
@@ -86,6 +88,9 @@ const canFalsifyUnactionableVerdict = (deps: PlanObservedStateSubscriptionDeps, 
  */
 export function subscribePlanObservedState(deps: PlanObservedStateSubscriptionDeps): void {
   const emitter = deps.observedStateEmitter;
+  emitter.onObservedStateRefresh((event) => {
+    for (const entry of event.entries) deps.observeIdleEvidence(entry.observed.id);
+  });
   emitter.onObservedControlStateChanged((event: ObservedControlStateChangedEvent) => {
     deps.syncExternalOffHold(event);
     if (!canFalsifyUnactionableVerdict(deps, event.deviceId)) return;
@@ -93,6 +98,7 @@ export function subscribePlanObservedState(deps: PlanObservedStateSubscriptionDe
     deps.invalidateRebuildSuppression(event.deviceId);
   });
   emitter.onObservedStateChanged((event: ObservedStateChangedEvent) => {
+    deps.observeIdleEvidence(event.deviceId);
     if (
       event.measurePowerBecameSignificantlyPositive === true
       && canFalsifyUnactionableVerdict(deps, event.deviceId)
