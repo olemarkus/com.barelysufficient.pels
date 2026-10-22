@@ -3,7 +3,11 @@ import {
   resolveSmartTaskQuickTargets,
   type SmartTaskQuickTargetDevice,
 } from '../../lib/objectives/deferredObjectives/smartTaskQuickTargetValues';
-import { estimateSmartTaskQuickTargets } from '../../lib/objectives/deferredObjectives/smartTaskQuickTargets';
+import {
+  estimateSmartTaskQuickTargets,
+  previewSmartTaskQuickTargetsForDevice,
+} from '../../lib/objectives/deferredObjectives/smartTaskQuickTargets';
+import type { CreateSmartTaskCandidateDevice } from '../../packages/contracts/src/widgetHostApi';
 import type {
   DeferredObjectivePlanPreviewCandidate,
   DeferredObjectivePlanPreviewEstimate,
@@ -56,9 +60,13 @@ describe('resolveSmartTaskQuickTargets', () => {
     expect(resolveSmartTaskQuickTargets(charger(100), 'ev_soc')).toEqual([]);
   });
 
-  it('offers nothing for a charger without a known level, or for an energy task', () => {
+  it('offers no battery target for a charger without a known level, and nothing for a relay energy task', () => {
     expect(resolveSmartTaskQuickTargets(device({ isEvCharger: true }), 'ev_soc')).toEqual([]);
     expect(resolveSmartTaskQuickTargets(device({ binaryControllable: true }), 'energy')).toEqual([]);
+  });
+
+  it('offers a charger energy amounts in 10 kWh steps', () => {
+    expect(resolveSmartTaskQuickTargets(device({ isEvCharger: true }), 'energy')).toEqual([10, 20, 30, 40]);
   });
 });
 
@@ -67,9 +75,10 @@ const NOW = Date.UTC(2026, 9, 16, 18, 10);
 const SLOT = 30 * 60 * 1000;
 const FIRST_SLOT = Date.UTC(2026, 9, 16, 18, 30);
 
-const targetOf = (candidate: DeferredObjectivePlanPreviewCandidate): number => (
-  candidate.kind === 'ev_soc' ? candidate.targetPercent : Number.NaN
-);
+const targetOf = (candidate: DeferredObjectivePlanPreviewCandidate): number => {
+  if (candidate.kind === 'ev_soc') return candidate.targetPercent;
+  return candidate.kind === 'energy' ? candidate.targetEnergyKWh : Number.NaN;
+};
 
 // A planner stand-in: each target needs a fixed time from now, and the projected
 // finish is when that time runs out.
@@ -154,5 +163,24 @@ describe('estimateSmartTaskQuickTargets', () => {
     estimateSmartTaskQuickTargets('ev_soc', [50, 70, 80, 100], preview, NOW);
     expect(new Set(calls).size).toBe(calls.length);
     expect(calls.length).toBeLessThanOrEqual(32);
+  });
+});
+
+describe('previewSmartTaskQuickTargetsForDevice', () => {
+  // A charger whose car app never reported the plug-in: connected, no level.
+  const charger = {
+    id: 'easee', name: 'Easee', targets: [], isEvCharger: true, binaryControllable: true,
+    evChargingState: 'plugged_in', measuredPowerKw: 0, measuredPowerIsDirectMeasurement: true,
+  } as unknown as CreateSmartTaskCandidateDevice;
+
+  it('times energy amounts for a plugged-in charger with no battery level', () => {
+    const { preview, calls } = fakePreview({ 10: 2, 20: 4, 30: 6, 40: 8 });
+    const read = previewSmartTaskQuickTargetsForDevice(
+      { state: 'ready', devices: [charger] }, 'easee', preview, NOW,
+    );
+    expect(read.state).toBe('ready');
+    if (read.state !== 'ready') return;
+    expect(read.targets.map((target) => target.target)).toEqual([10, 20, 30, 40]);
+    expect(calls.every((call) => !call.startsWith('NaN'))).toBe(true);
   });
 });

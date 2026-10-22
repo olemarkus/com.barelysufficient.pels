@@ -37,7 +37,7 @@ Smart tasks can also be created from Homey Flow action cards, for a task that sh
 
 The ready-by value is written as local time, for example `07:00`. PELS stores the next matching future time when the Flow runs. It does not automatically repeat the same task every day unless your Flow runs again.
 
-The **Create smart task** widget is for one-off dashboard creation without a Flow. It offers managed heating devices and EV chargers (energy tasks are created from the Smart tasks page or the Flow card), previews the scheduled hours and cost estimate, then creates the task. If the preview says **Cannot finish**, the widget warns that the goal may not be reached in time. You can edit the task or choose **Create anyway**; the task still respects your power limits. See [Dashboard Widgets](/widgets) for the full widget set.
+The **Create smart task** widget is for one-off dashboard creation without a Flow. It offers managed heating devices and EV chargers (energy tasks for on/off devices are created from the Smart tasks page or the Flow card), previews the scheduled hours and cost estimate, then creates the task. If the preview says **Cannot finish**, the widget warns that the goal may not be reached in time. You can edit the task or choose **Create anyway**; the task still respects your power limits. See [Dashboard Widgets](/widgets) for the full widget set.
 
 ## What PELS Plans
 
@@ -180,7 +180,7 @@ Progress is the energy the device takes after the task starts, counted from its 
 
 Which devices can take one: plain on/off devices and EV chargers, including chargers with current control. Other stepped loads, thermostats and other devices with a target temperature are not eligible. The device also needs a live power reading, its own power measurement or Homey Energy's live figure for it. A device that only reports a cumulative energy meter is not offered, because its power figure lags behind switching it on and off.
 
-**For an EV charger**, use the **Add energy task** Flow card, select the charger, and set an amount such as `20 kWh` by `07:00`. The settings UI and New smart task widget still create battery-target tasks for chargers. Existing energy tasks can be viewed and edited in the settings UI. If the car stops accepting charge before the requested energy is delivered, the energy task can end as missed even if the car is full.
+**For an EV charger**, use the **Add energy task** Flow card, select the charger, and set an amount such as `20 kWh` by `07:00`. While a charger is plugged in and PELS has no battery level for the car, **New smart task**, the device page's **Add smart task** and the **Create smart task** widget offer an energy task instead of a battery target, and the widget offers `10 kWh` to `40 kWh` as one-tap choices. Otherwise they create battery-target tasks. Existing energy tasks can be viewed and edited in the settings UI. If the car stops accepting charge before the requested energy is delivered, the energy task can end as missed even if the car is full.
 
 A task starts when it is created, so the window runs from the moment the Flow fires until the ready-by time. To heat a water heater every night between 22:00 and 06:00, run **Add energy task** from a Flow that fires at 22:00 with ready-by `06:00`. Running the card again for the same ready-by time keeps the energy already delivered; a new night starts from zero.
 

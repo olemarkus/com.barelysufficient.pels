@@ -4,12 +4,15 @@ import type {
 } from '../../contracts/src/deferredObjectiveSettings.js';
 import type {
   DeviceDescriptor,
+  EvObservedProbe,
   MeasuredPowerObservedProbe,
   ObservedDeviceState,
   ObservedStateOfCharge,
   SteppedLoadDescriptorProbe,
 } from '../../contracts/src/types.js';
 import { deadlineLabels } from './deadlineLabels.js';
+import { isEvObserved } from './evObservedState.js';
+import { isEvPlugStateConnected } from './evPlugState.js';
 import { hasLiveMeasuredPower } from './measuredPowerObservedState.js';
 import { isSteppedLoadSnapshot } from './steppedLoadObservedState.js';
 import { MAX_TARGET_ENERGY_KWH, MIN_TARGET_ENERGY_KWH } from './settings/deferredObjectiveSettings.js';
@@ -89,6 +92,24 @@ export const supportsSmartTaskKind = (
     ? (device.isEvCharger || resolveDefaultSmartTaskKind(device) === 'energy') && hasLiveMeasuredPower(device)
     : resolveDefaultSmartTaskKind(device) === kind
 );
+
+/**
+ * The goal a creation surface (New smart task widget, Smart tasks page) offers
+ * for `device` right now. The default goal, except for a plugged-in charger with
+ * no battery level: a battery target cannot be planned without the level, and a
+ * car app that never reports one (Kia's cloud skipping the plug-in report) left
+ * that task waiting all night. An amount of energy plans from the charger's own
+ * power instead. Unplugged, the battery target stays: a task made then waits for
+ * the car. Flow cards name their goal and do not ask this.
+ */
+export const resolveSmartTaskCreationKind = (
+  device: SmartTaskDeviceLike & MeasuredPowerObservedProbe & EvObservedProbe,
+): DeferredObjectiveSettingsKind | null => {
+  const kind = resolveDefaultSmartTaskKind(device);
+  if (kind !== 'ev_soc' || !isEvObserved(device) || !isEvPlugStateConnected(device.evChargingState)) return kind;
+  if (resolveSmartTaskCurrentValue(device, 'ev_soc') !== null) return kind;
+  return supportsSmartTaskKind(device, 'energy') ? 'energy' : kind;
+};
 
 // Inclusive goal bounds + step for a kind. Temperature pulls min/max/step from
 // the device's settable target when present, falling back to a sane thermostat

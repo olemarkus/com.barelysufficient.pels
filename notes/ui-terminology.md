@@ -899,6 +899,16 @@ Source of truth: `packages/shared-domain/src/deadlineLabels.ts`. Pull every labe
 An energy task has no level of its own that PELS learns a rate for (its rate is exact, one kWh per
 kWh), so its `About this estimate` card shows no per-unit rate row. Its current value is a running total: `2.0 kWh delivered`, never `2.0 kWh now`.
 
+### Smart task goal for a charger with no battery level
+
+A charger that is plugged in while PELS has no battery level for the car is offered an energy task
+on every creation surface: the Smart tasks page's `New smart task`, the device page's
+`Add smart task` and the `Create smart task` widget (`resolveSmartTaskCreationKind`). A battery
+target cannot be planned without the level, so offering one there sets up a task that waits all
+night. The widget's quick targets are `10 kWh`, `20 kWh`, `30 kWh` and `40 kWh`, minus any the
+charger cannot deliver within the published prices. Unplugged, or once a level arrives, the
+surfaces offer the battery target again. The Flow cards name their own goal and are unaffected.
+
 The estimate card leads with `Guaranteed power`, followed by `Latest power reading`.
 Show `At least … kW`: the current revision's minimum planning power is a lower
 bound, not the full per-period reservation. Individual periods may reserve more.
@@ -2242,7 +2252,11 @@ device-neutral.
   `Until a car is matched, this charger has no battery level. Confirm which
   selected car is connected to use its battery level for this connection.
   While a car is selected, PELS ignores both the Flow card that reports the
-  level and the charger's own reading.` The **Confirm connected car** action
+  level and the charger's own reading. A smart task for an amount of energy
+  needs no battery level.` The last sentence points at the page's Add smart
+  task, which offers an energy task for a plugged-in charger with no battery
+  level (see "Smart task goal for a charger with no battery level"). The
+  **Confirm connected car** action
   applies to the current physical connection. Its status is
   `<car> · confirmed for this connection`; `Car app reports: <state>` separately
   describes the car app's telemetry, which can still report unplugged.

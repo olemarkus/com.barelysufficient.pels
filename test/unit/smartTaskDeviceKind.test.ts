@@ -3,6 +3,7 @@ import {
   resolveSmartTaskCurrentValue,
   resolveSmartTaskDefaultGoal,
   resolveDefaultSmartTaskKind,
+  resolveSmartTaskCreationKind,
   resolveSmartTaskGoalBounds,
   supportsSmartTaskKind,
 } from '../../packages/shared-domain/src/smartTaskDeviceKind';
@@ -116,6 +117,44 @@ describe('energy tasks: pure on/off devices', () => {
 
   it('asks nothing of metering for the other kinds', () => {
     expect(supportsSmartTaskKind(smartTaskDevice({ targets: [], isEvCharger: true }), 'ev_soc')).toBe(true);
+  });
+});
+
+describe('resolveSmartTaskCreationKind', () => {
+  const livePower = { measuredPowerKw: 0, measuredPowerIsDirectMeasurement: true };
+  const charger = smartTaskDevice({ isEvCharger: true, binaryControllable: true, targets: [], ...livePower });
+
+  it('offers an energy task for a plugged-in charger with no battery level', () => {
+    expect(resolveSmartTaskCreationKind({ ...charger, evChargingState: 'plugged_in' })).toBe('energy');
+    expect(resolveSmartTaskCreationKind({
+      ...charger,
+      evChargingState: 'plugged_in_paused',
+      stateOfCharge: stateOfChargeFixture({ percent: 40, unavailable: 'not_reported' }),
+    })).toBe('energy');
+  });
+
+  it('keeps the battery target once a level is known', () => {
+    expect(resolveSmartTaskCreationKind({
+      ...charger, evChargingState: 'plugged_in', stateOfCharge: stateOfChargeFixture({ percent: 40, carId: 'kia' }),
+    })).toBe('ev_soc');
+  });
+
+  it('keeps the battery target for an unplugged charger, whose task waits for the car', () => {
+    expect(resolveSmartTaskCreationKind({ ...charger, evChargingState: 'plugged_out' })).toBe('ev_soc');
+  });
+
+  it('keeps the battery target when the charger has no live power reading to count energy', () => {
+    expect(resolveSmartTaskCreationKind({
+      ...charger, measuredPowerIsDirectMeasurement: false, evChargingState: 'plugged_in',
+    })).toBe('ev_soc');
+  });
+
+  it('answers the default kind for every other device', () => {
+    const relay = smartTaskDevice({ binaryControllable: true, targets: [] as TargetCapabilitySnapshot[] });
+    expect(resolveSmartTaskCreationKind(relay)).toBe('energy');
+    expect(resolveSmartTaskCreationKind(smartTaskDevice({
+      targets: [], temperature: { currentTemperature: 18, target: { value: 20 } },
+    }))).toBe('temperature');
   });
 });
 
