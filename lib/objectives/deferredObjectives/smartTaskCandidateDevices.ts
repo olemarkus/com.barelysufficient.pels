@@ -34,6 +34,7 @@ const buildCandidateDevice = (
     deviceId: device.id,
     deviceName: name && name.length > 0 ? name : device.id,
     kind,
+    group: resolveSmartTaskDeviceGroup(device),
     unitSymbol: bounds.unit,
     goalMin: bounds.min,
     goalMax: bounds.max,
@@ -67,6 +68,6 @@ export const buildSmartTaskCandidateDevices = (
   .map(buildCandidateDevice)
   .filter((device): device is SmartTaskCandidateDevice => device !== null)
   .sort((a, b) => compareSmartTaskPickerRows(
-    { group: resolveSmartTaskDeviceGroup(a), deviceName: a.deviceName },
-    { group: resolveSmartTaskDeviceGroup(b), deviceName: b.deviceName },
+    { group: a.group, deviceName: a.deviceName },
+    { group: b.group, deviceName: b.deviceName },
   ));

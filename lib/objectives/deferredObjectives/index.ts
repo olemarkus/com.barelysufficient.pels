@@ -70,6 +70,7 @@ export {
   buildValidSmartTaskCandidate,
   mapSmartTaskAppReason,
   parseSmartTaskCandidateRequest,
+  parseSmartTaskQuickTargetsRequest,
   resolveSmartTaskRequestDeadline,
   resolveSmartTaskWriteDeadline,
 } from './smartTaskCandidateRequest';

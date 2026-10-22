@@ -92,7 +92,7 @@ export const createSmartTaskCreateFlow = (
   const loadQuickTargets = async (): Promise<void> => {
     if (view?.kind !== 'quick' || view.quick.kind !== 'loading') return;
     const token = ++requestSeq;
-    const response = await client.quickTargets(view.device.deviceId);
+    const response = await client.quickTargets(view.device);
     if (destroyed || token !== requestSeq || view?.kind !== 'quick') return;
     view = quickTargetsLoadedView(view, response);
     render();

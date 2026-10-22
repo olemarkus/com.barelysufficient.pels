@@ -1,4 +1,5 @@
-import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings.js';
+import type { SmartTaskCandidateDevice } from '../../contracts/src/smartTaskEdit.js';
+import type { DeviceDescriptor } from '../../contracts/src/types.js';
 
 // Intentional ordering + grouping for the "New smart task" device picker.
 //
@@ -13,8 +14,9 @@ import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferred
 // manager normalizes every class into a fixed set that has no water-heater
 // class (a Høiax-style water heater arrives as `heater`), so the snapshot
 // can't distinguish a water heater from a space thermostat. The reliable
-// signal is the smart-task kind (`ev_soc` vs temperature), so that is what we
-// group by.
+// signal is the resolved EV-charger identity, so that is what we group by: not
+// the smart-task kind, which for a plugged-in charger with no battery level is
+// an amount of energy, like a water-heater relay's.
 //
 // Lives in shared-domain (browser-safe) so the create-smart-task widget payload
 // builder is the single owner of the order; the group labels double as the row
@@ -22,27 +24,20 @@ import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferred
 
 // The two device families a smart task can target, in display order: heating
 // (the common case) first, EV chargers (heaviest/rarest) last.
-export type SmartTaskDeviceGroup = 'heating' | 'ev_charger';
+export type SmartTaskDeviceGroup = SmartTaskCandidateDevice['group'];
 
 export const SMART_TASK_DEVICE_GROUP_ORDER: readonly SmartTaskDeviceGroup[] = [
   'heating',
   'ev_charger',
 ] as const;
 
-// Structural input — the relevant slice of the device snapshot. Grouping keys
-// off the already-resolved smart-task `kind` only (see the header note on why
-// device class can't reliably distinguish water heaters from thermostats).
-export type SmartTaskDevicePickerLike = {
-  kind: DeferredObjectiveSettingsKind;
-};
-
 // Resolve which display group a smart-task-eligible device belongs to: an EV
-// charge-level goal (`ev_soc`) is an EV charger; every temperature goal is a
-// heating device.
+// charger is an EV charger whatever goal it is offered; every other eligible
+// device is a heating device.
 export const resolveSmartTaskDeviceGroup = (
-  device: SmartTaskDevicePickerLike,
+  device: Pick<DeviceDescriptor, 'isEvCharger'>,
 ): SmartTaskDeviceGroup => (
-  device.kind === 'ev_soc' ? 'ev_charger' : 'heating'
+  device.isEvCharger ? 'ev_charger' : 'heating'
 );
 
 // Picker copy that belongs with the ordering, kept out of the shared

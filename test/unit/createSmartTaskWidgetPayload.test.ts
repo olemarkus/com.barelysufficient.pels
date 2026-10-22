@@ -138,7 +138,7 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
     if (payload.state !== 'ready') throw new Error('expected ready');
     expect(payload.devices).toHaveLength(1);
     expect(payload.devices[0]).toMatchObject({
-      deviceId: 'ev', kind: 'energy', unitSymbol: 'kWh', currentValue: null, offersQuickTargets: true,
+      deviceId: 'ev', kind: 'energy', group: 'ev_charger', unitSymbol: 'kWh', currentValue: null, offersQuickTargets: true,
     });
   });
 

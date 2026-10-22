@@ -3,6 +3,7 @@ import type { WidgetHomeyBase } from '../widgetRuntime';
 import type {
   CreateSmartTaskCandidateRequest,
   CreateSmartTaskCreateResponse,
+  CreateSmartTaskDevice,
   CreateSmartTaskPreviewResponse,
   CreateSmartTaskQuickTargetsResponse,
 } from './types';
@@ -20,7 +21,7 @@ import type {
  * created.
  */
 export type SmartTaskCreateClient = {
-  quickTargets(deviceId: string): Promise<CreateSmartTaskQuickTargetsResponse>;
+  quickTargets(device: CreateSmartTaskDevice): Promise<CreateSmartTaskQuickTargetsResponse>;
   preview(request: CreateSmartTaskCandidateRequest): Promise<CreateSmartTaskPreviewResponse>;
   create(request: CreateSmartTaskCandidateRequest): Promise<CreateSmartTaskCreateResponse>;
 };
@@ -109,8 +110,8 @@ export const createSmartTaskCreateClient = (
     }
   };
   return {
-    quickTargets: (deviceId) => (usePreviewData() ? PREVIEW_CLIENT.quickTargets(deviceId) : call(
-      '/quick_targets', { deviceId }, { state: 'rejected', reason: 'unavailable' },
+    quickTargets: (device) => (usePreviewData() ? PREVIEW_CLIENT.quickTargets(device) : call(
+      '/quick_targets', { deviceId: device.deviceId, kind: device.kind }, { state: 'rejected', reason: 'unavailable' },
       'Failed to load smart task quick targets',
     )),
     preview: (request) => (usePreviewData() ? PREVIEW_CLIENT.preview(request) : call(

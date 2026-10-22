@@ -1,3 +1,4 @@
+import type { DeferredObjectiveSettingsKind } from '../packages/contracts/src/deferredObjectiveSettings';
 import type { NewSmartTaskWriteResult } from '../packages/contracts/src/smartTaskEdit';
 import { getDebugEmitter } from '../lib/logging/logger';
 import type { BudgetDailyHistory, BudgetDecisionHistory } from '../packages/contracts/src/budgetDiagnostics';
@@ -372,8 +373,10 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   } {
     return this.smartTaskApi.previewStarvationRescuePlan(deviceId, candidate);
   }
-  public previewSmartTaskQuickTargets(deviceId: string): SmartTaskQuickTargetsRead {
-    return this.smartTaskApi.previewSmartTaskQuickTargets(deviceId, this.getCreateSmartTaskCandidateDevices());
+  public previewSmartTaskQuickTargets(
+    deviceId: string, kind: DeferredObjectiveSettingsKind,
+  ): SmartTaskQuickTargetsRead {
+    return this.smartTaskApi.previewSmartTaskQuickTargets(deviceId, kind, this.getCreateSmartTaskCandidateDevices());
   }
   public previewDeferredObjectivePlan(
     deviceId: string, candidate: DeferredObjectivePlanPreviewCandidate,

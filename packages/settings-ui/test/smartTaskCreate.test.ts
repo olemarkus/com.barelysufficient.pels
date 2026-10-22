@@ -29,6 +29,7 @@ const HEATER: SmartTaskCandidateDevice = {
   deviceId: 'heater',
   deviceName: 'Water heater',
   kind: 'temperature',
+  group: 'heating',
   unitSymbol: '°C',
   goalMin: 30,
   goalMax: 75,

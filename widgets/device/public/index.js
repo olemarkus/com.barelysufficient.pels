@@ -993,9 +993,9 @@
       }
     };
     return {
-      quickTargets: (deviceId) => usePreviewData() ? PREVIEW_CLIENT.quickTargets(deviceId) : call(
+      quickTargets: (device) => usePreviewData() ? PREVIEW_CLIENT.quickTargets(device) : call(
         "/quick_targets",
-        { deviceId },
+        { deviceId: device.deviceId, kind: device.kind },
         { state: "rejected", reason: "unavailable" },
         "Failed to load smart task quick targets"
       ),
@@ -1652,7 +1652,7 @@
     const loadQuickTargets = async () => {
       if (view?.kind !== "quick" || view.quick.kind !== "loading") return;
       const token = ++requestSeq;
-      const response = await client.quickTargets(view.device.deviceId);
+      const response = await client.quickTargets(view.device);
       if (destroyed || token !== requestSeq || view?.kind !== "quick") return;
       view = quickTargetsLoadedView(view, response);
       render();
@@ -1893,6 +1893,7 @@
     deviceId: "heater",
     deviceName: "Water heater",
     kind: "temperature",
+    group: "heating",
     unitSymbol: "\xB0C",
     goalMin: 20,
     goalMax: 85,
@@ -1906,6 +1907,7 @@
     deviceId: "ev",
     deviceName: "Garage charger",
     kind: "ev_soc",
+    group: "ev_charger",
     unitSymbol: "%",
     goalMin: 1,
     goalMax: 100,

@@ -5,7 +5,6 @@ import {
 } from '../../../../packages/shared-domain/src/deadlineLabels';
 import {
   SMART_TASK_DEVICE_PICKER_COPY,
-  resolveSmartTaskDeviceGroup,
   resolveSmartTaskDeviceGroupIconLabel,
 } from '../../../../packages/shared-domain/src/smartTaskDevicePickerOrder';
 import { clearChildren, setLine, setVisible } from '../../../_shared/widgetDom';
@@ -49,7 +48,7 @@ const renderDeviceRow = (
   if (iconEl instanceof HTMLElement) {
     // The CSS picks the glyph mask from `data-group`; the aria-label names the
     // device family so the icon isn't an unlabelled image to a screen reader.
-    const group = resolveSmartTaskDeviceGroup(device);
+    const { group } = device;
     iconEl.dataset.group = group;
     iconEl.setAttribute('aria-label', resolveSmartTaskDeviceGroupIconLabel(group));
   }

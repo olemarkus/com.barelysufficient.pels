@@ -176,11 +176,33 @@ describe('previewSmartTaskQuickTargetsForDevice', () => {
   it('times energy amounts for a plugged-in charger with no battery level', () => {
     const { preview, calls } = fakePreview({ 10: 2, 20: 4, 30: 6, 40: 8 });
     const read = previewSmartTaskQuickTargetsForDevice(
-      { state: 'ready', devices: [charger] }, 'easee', preview, NOW,
+      { state: 'ready', devices: [charger] }, 'easee', 'energy', preview, NOW,
     );
     expect(read.state).toBe('ready');
     if (read.state !== 'ready') return;
     expect(read.targets.map((target) => target.target)).toEqual([10, 20, 30, 40]);
     expect(calls.every((call) => !call.startsWith('NaN'))).toBe(true);
+  });
+
+  // The widget loaded its list while the level was unknown and shows energy; the
+  // level has arrived since. Re-resolving the goal would time battery targets
+  // that the widget then labels and creates as kWh.
+  it('times the goal the surface shows, not the one the device would be offered now', () => {
+    const withLevel = {
+      ...charger,
+      stateOfCharge: { level: { kind: 'known', percent: 40 } },
+    } as unknown as CreateSmartTaskCandidateDevice;
+    const { preview } = fakePreview({ 10: 2, 20: 4, 30: 6, 40: 8 });
+    const read = previewSmartTaskQuickTargetsForDevice(
+      { state: 'ready', devices: [withLevel] }, 'easee', 'energy', preview, NOW,
+    );
+    expect(read.state === 'ready' ? read.targets.map((target) => target.target) : null).toEqual([10, 20, 30, 40]);
+  });
+
+  it('offers no battery targets while the level is unknown', () => {
+    const { preview } = fakePreview({});
+    expect(previewSmartTaskQuickTargetsForDevice(
+      { state: 'ready', devices: [charger] }, 'easee', 'ev_soc', preview, NOW,
+    )).toEqual({ state: 'ready', targets: [] });
   });
 });
