@@ -32,6 +32,7 @@ import type {
 } from '../../packages/contracts/src/settingsUiApi';
 import type { ApiPort, SettingsPort } from '../ports/homeyRuntime';
 import { POWERHOUR_DEVICE_ID } from '../utils/settingsKeys';
+import { readSettingsKeyList } from '../utils/settingsKeyList';
 import { toHourlyPeriods } from './hourlyPriceProjection';
 import {
   fetchPowerhourPrices,
@@ -80,9 +81,10 @@ export const readPowerhourDeviceChoice = (settings: SettingsPort): PowerhourDevi
   if (deviceId !== null) return { kind: 'chosen', deviceId };
   // A stored empty string is the choice cleared on purpose, not a failed read.
   if (typeof raw === 'string') return { kind: 'unchosen' };
-  return settings.getKeys().includes(POWERHOUR_DEVICE_ID)
-    ? { kind: 'unreadable' }
-    : { kind: 'unchosen' };
+  const keys = readSettingsKeyList(settings);
+  return keys.status === 'resolved' && !keys.keys.includes(POWERHOUR_DEVICE_ID)
+    ? { kind: 'unchosen' }
+    : { kind: 'unreadable' };
 };
 
 export const resolvePowerhourDevice = (
@@ -100,6 +102,43 @@ export const resolvePowerhourDevice = (
   const [only] = devices;
   if (devices.length === 1 && only) return { kind: 'selected', device: only };
   return { kind: 'device_missing', deviceId: '' };
+};
+
+/**
+ * Whether Power by the Hour can price this home without asking the owner
+ * anything, for the source PELS assumes outside Norway (`PriceSchemeResolver`).
+ *
+ * `price_device` when one device would price it: the owner's choice, or the
+ * only device there is. `none` when the app answered that it cannot: it is not
+ * running, PELS may not ask it, it has no device, or it has several and no
+ * choice says which zone is meant. `unread` when a read went unanswered, which
+ * says neither, so the source in force stays.
+ */
+export type PowerhourPresence = 'price_device' | 'none' | 'unread';
+
+export const resolvePowerhourPresence = (
+  read: PowerhourRead,
+  choice: PowerhourDeviceChoice,
+): PowerhourPresence => {
+  if (read.kind === 'unavailable') {
+    return read.reason === 'read_failed' || read.reason === 'malformed' ? 'unread' : 'none';
+  }
+  const resolution = resolvePowerhourDevice(read.devices, choice);
+  if (resolution.kind === 'selected') return 'price_device';
+  return resolution.kind === 'unreadable' ? 'unread' : 'none';
+};
+
+/** One fresh read of the app and the owner's device choice; a settings read that throws is `unread`. */
+export const readPowerhourPresence = async (
+  api: Pick<ApiPort, 'getApiApp'>,
+  settings: SettingsPort,
+): Promise<PowerhourPresence> => {
+  const read = await fetchPowerhourPrices(api);
+  try {
+    return resolvePowerhourPresence(read, readPowerhourDeviceChoice(settings));
+  } catch {
+    return 'unread';
+  }
 };
 
 /** The device list as the settings UI has to render it. */

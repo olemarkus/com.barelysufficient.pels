@@ -42,14 +42,17 @@ export type AfterSetupDevice = {
 };
 
 /**
- * Where the home's prices come from, as far as the price suggestion needs it:
+ * Where the home's prices come from, as far as the price suggestions need it:
  * `priced` when PELS holds prices from the source in force and nothing but
  * choosing that source is left to set up, and whether the owner chose it;
- * `needs_setup` when it holds none yet, or the source still needs settings
- * only the prices page asks for.
+ * `powerhour_offered` when that source is Homey Energy, assumed, while Power by
+ * the Hour has a price device that could price the home instead; `needs_setup`
+ * when it holds none yet, or the source still needs settings only the prices
+ * page asks for.
  */
 export type AfterSetupPriceSource =
   | { kind: 'priced'; scheme: PriceSchemeSetting; chosen: boolean }
+  | { kind: 'powerhour_offered' }
   | { kind: 'needs_setup' };
 
 export type AfterSetupFacts = {
@@ -128,12 +131,12 @@ const PRICE_SOURCE_NAMES: Record<PriceSchemeSetting, string> = {
  * already has them. So the suggestion says they are there and goes straight to
  * the devices. While the owner has not chosen that source, its button makes it
  * theirs first, or the setup path would reopen on Prices the moment a device
- * follows them. A home PELS holds no prices for, or whose source needs more
- * than that choice, is sent to set them up.
+ * follows them. A home PELS holds no prices for, whose source needs more than
+ * that choice, or that has two sources to choose between, is sent to set them up.
  * The car is the Smart task suggestion's: Price acts on temperature targets.
  */
 const resolvePricesSuggestion = (source: AfterSetupPriceSource): SetupRecommendation => {
-  if (source.kind === 'needs_setup') return suggestion('prices', {
+  if (source.kind !== 'priced') return suggestion('prices', {
     title: PRICES_TITLE,
     body: 'PELS can raise the temperature a little in cheap hours and lower it in expensive ones, so heating '
       + 'and hot water run when power costs least. Choose where your prices come from, then turn on Price '

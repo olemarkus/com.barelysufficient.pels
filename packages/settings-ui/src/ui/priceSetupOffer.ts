@@ -47,6 +47,11 @@ const parsePriceArea = (value: unknown): PriceSetupSuggestion['priceArea'] => {
     : { kind: 'none' };
 };
 
+const parsePowerhour = (value: unknown): PriceSetupSuggestion['powerhour'] => {
+  const kind = asRecord(value)?.kind;
+  return kind === 'has_price_device' || kind === 'no_price_device' ? { kind } : { kind: 'none' };
+};
+
 /**
  * The runtime's suggestion as it crosses the Homey API bridge, validated once
  * here, each part on its own: a malformed part is a part with nothing to offer.
@@ -57,9 +62,7 @@ export const parsePriceSetupSuggestion = (value: unknown): PriceSetupSuggestion 
     ? {
       gridCompany: parseGridCompany(read.gridCompany),
       priceArea: parsePriceArea(read.priceArea),
-      powerhour: asRecord(read.powerhour)?.kind === 'has_price_device'
-        ? { kind: 'has_price_device' }
-        : { kind: 'none' },
+      powerhour: parsePowerhour(read.powerhour),
     }
     : NO_SUGGESTION;
 };
@@ -100,12 +103,13 @@ const NO_OFFER: PriceSetupOffer = { kind: 'none' };
 
 /**
  * Whether the page should ask for a suggestion: a Norway setup still missing
- * its grid company or price area, or Homey Energy with no prices, where Power
- * by the Hour may have them.
+ * its grid company or price area, or Homey Energy with no prices or not
+ * chosen, where Power by the Hour may have prices to use instead.
  */
 export const priceSetupNeedsSuggestion = (read: PriceSetupRead, homeyHasPrices: boolean): boolean => {
   if (read.state !== 'resolved') return false;
-  if (read.setup.source.scheme === 'homey') return !homeyHasPrices;
+  const { source } = read.setup;
+  if (source.scheme === 'homey') return !homeyHasPrices || source.basis.kind !== 'chosen';
   if (read.setup.source.scheme !== 'norway') return false;
   const { norway } = read.setup;
   return norway.gridCompany.kind === 'none' || !norway.priceArea.chosen;

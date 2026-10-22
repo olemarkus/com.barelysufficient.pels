@@ -5,6 +5,7 @@ import type { AfterSetupDevice, AfterSetupFacts, AfterSetupPriceSource } from '.
 import { hasLoadedDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
 import { supportsPowerDevice, supportsTemperatureControlDevice } from './deviceUtils.ts';
 import { logSettingsError } from './logging.ts';
+import { loadPriceSetupSuggestion } from './priceSetupOffer.ts';
 import { getPricesReadModel } from './prices.ts';
 import { readHomeMembership, type HomeMembershipRead } from './homeScope.ts';
 import { isBelgianHomeOnHourlyPeriod, readSetupMarket, readSetupPath } from './setupPathFacts.ts';
@@ -36,6 +37,17 @@ export const resolvePriceSource = (
   return { kind: 'priced', scheme: source.scheme, chosen: source.basis.kind === 'chosen' };
 };
 
+/**
+ * Homey Energy PELS assumed, while Power by the Hour has a price device, is a
+ * choice between two sources rather than one to keep. Asked only then: the
+ * answer is an app-to-app read, and a failed one is no offer.
+ */
+export const offerPowerhour = async (source: AfterSetupPriceSource): Promise<AfterSetupPriceSource> => {
+  if (source.kind !== 'priced' || source.scheme !== 'homey' || source.chosen) return source;
+  const suggestion = await loadPriceSetupSuggestion();
+  return suggestion.powerhour.kind === 'has_price_device' ? { kind: 'powerhour_offered' } : source;
+};
+
 export type AfterSetupFactsRead =
   | { state: 'loading' }
   | { state: 'unavailable' }
@@ -56,7 +68,9 @@ export const loadAfterSetupFacts = async (): Promise<void> => {
     const read = payload.priceOptimizationSetup;
     if (generation !== priceSetupLoadGeneration) return;
     if (read.state === 'resolved') {
-      priceSetupState = { state: 'ready', setup: read.setup, priceSource: resolvePriceSource(payload) };
+      const priceSource = await offerPowerhour(resolvePriceSource(payload));
+      if (generation !== priceSetupLoadGeneration) return;
+      priceSetupState = { state: 'ready', setup: read.setup, priceSource };
     }
     else if (priceSetupState.state !== 'ready') priceSetupState = { state: 'unavailable' };
   } catch (error) {

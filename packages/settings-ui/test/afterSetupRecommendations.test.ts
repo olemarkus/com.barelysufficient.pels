@@ -77,6 +77,15 @@ describe('after-setup suggestions', () => {
       });
     });
 
+    it('asks for the source when Power by the Hour could price the home instead of Homey Energy', () => {
+      // Keeping Homey Energy from here would leave the owner's markups in
+      // Power by the Hour unused without their having seen the choice.
+      expect(prices({ kind: 'powerhour_offered' })).toMatchObject({
+        actionLabel: 'Set up prices',
+        target: { kind: 'panel', panelId: 'electricity-prices' },
+      });
+    });
+
     it('keeps one id across its forms, so a dismissal holds', () => {
       expect(prices({ kind: 'priced', scheme: 'homey', chosen: false })?.version)
         .toBe(prices({ kind: 'needs_setup' })?.version);

@@ -199,8 +199,9 @@ export const resolvePowerhourPayload = (payload: unknown): PowerhourRead => {
  * `getInstalled()` is asked first so the two states the owner can act on stay
  * apart: an app that is not there answers `app_unavailable`, while one that is
  * there and still fails the GET answers `read_failed`. A throw from
- * `getInstalled()` itself is treated as the app being unavailable — the only
- * thing that call reports on is the app.
+ * `getInstalled()` itself is `read_failed` too: the question went unanswered,
+ * which says nothing about whether the app is there, and PELS falls back from
+ * a Power by the Hour source it assumed only on an answer that it is not.
  */
 export const fetchPowerhourPrices = async (
   api: Pick<ApiPort, 'getApiApp'>,
@@ -209,8 +210,12 @@ export const fetchPowerhourPrices = async (
   const apiApp = resolvePowerhourApiApp(api, appId);
   if (!apiApp) return { kind: 'unavailable', reason: 'not_permitted' };
 
-  const installed = await apiApp.getInstalled().catch(() => false);
-  if (!installed) return { kind: 'unavailable', reason: 'app_unavailable' };
+  const installed = await apiApp.getInstalled().then(
+    (value: boolean) => ({ ok: true as const, value }),
+    () => ({ ok: false as const, value: false }),
+  );
+  if (!installed.ok) return { kind: 'unavailable', reason: 'read_failed' };
+  if (!installed.value) return { kind: 'unavailable', reason: 'app_unavailable' };
 
   const payload = await apiApp.get(DAP_PRICES_PATH).then(
     (value: unknown) => ({ ok: true as const, value }),
