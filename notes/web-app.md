@@ -12,9 +12,8 @@ built by `npm --workspace @pels/settings-ui run build:remote` into
 
 Each Homey is reached with an API key the owner creates in the Homey web app
 (Settings, API Keys) with permission to control apps (`homey.app.control`),
-sent as `Authorization: Bearer` to the Athom cloud relay
-(`https://<homeyId>.connect.athom.com`) or the Homey's LAN address. Verified in
-the supervisor and live on the test Homey:
+sent as `Authorization: Bearer` to one of the Homey's addresses (see
+Addresses). Verified in the supervisor and live on the test Homey:
 
 - PELS's non-public routes require exactly `homey.app.control`; Homey's
   app-settings endpoints accept it too, so `Homey.get`/`set`/`api` map one to
@@ -25,15 +24,15 @@ the supervisor and live on the test Homey:
   `homey.app.readonly`, which cannot call PELS routes.
 - Self-registered OAuth clients only get read-only app scopes, so a "log in
   with Homey" flow cannot replace the key.
-- The relay answers CORS preflights for `authorization` and `content-type`
-  with `access-control-allow-origin: *`.
+- Every address answers CORS preflights for `authorization` and
+  `content-type` with `access-control-allow-origin: *`.
 
 Realtime uses Homey's socket.io v2 protocol (`handshakeClient` with the key,
 then `subscribe` to `homey:app:<id>` on the returned namespace). It carries the
-same events the WebView delivers, `settings.set`/`settings.unset` included. The
-relay socket works on a Homey Pro (verified with the owner's own session); on
-the self-hosted test Homey it answers `homey_offline`, so test realtime there
-over the LAN address.
+same events the WebView delivers, `settings.set`/`settings.unset` included. It
+works on the home-network address and on the Homey's own cloud host; the relay
+socket works on a Homey Pro but answers `homey_offline` on the self-hosted test
+Homey.
 
 Homey only sends settings events while the socket is up, and the settings UI
 caches settings until one arrives. After a reconnect the build compares all
@@ -41,6 +40,48 @@ PELS settings with the copy taken while live and announces each difference as
 the event Homey would have sent; a key announced while live is announced again,
 so a value changed and changed back across the drop is not missed. Runtime read
 models catch up on their own refresh timers or with the next event.
+
+## Addresses
+
+A Homey has three addresses the web app can use, in this order of preference:
+
+1. **Home network**, `https://<a-b-c-d>.homey.homeylocal.com` (`:4860` on a
+   Self-Hosted Server). Quickest, and no cloud limit applies. `ui_version`
+   reports Homey's own `ip:port` (`ManagerCloud.getLocalAddress`, which gives
+   the HTTP port); the web app keeps it as the HTTPS address the Athom account
+   lists for the same Homey (HTTP 80 → HTTPS 443, Self-Hosted Server 4859 →
+   4860, both verified against the account's `localUrlSecure`).
+2. **The Homey's own cloud host**, `<homeyId>.homey.<cluster>.homeypro.net`
+   (`.homeyshs.net` for a Self-Hosted Server). Homey's web app serves the
+   settings page and all its calls from it. The cluster cannot be derived from
+   the id, and the Athom account API that lists it needs an Athom login, so the
+   web app learns it from the PELS settings page (below) or a pasted address.
+3. **The relay**, `<homeyId>.connect.athom.com`, the only address a bare id
+   gives. It limits each Homey: in a burst of 200 calls it let 37 through and
+   answered the rest with 429 for about a minute, unauthenticated pings
+   included, while the cloud host answered all 200 (test Homey, 2026-10-22).
+
+An API key goes wherever its address leads, so the web app accepts, keeps and
+uses only these forms (`remote/homeyAddress.ts`): an HTTPS Athom cloud host
+named for that Homey, or `https://<private IPv4>.homey.homeylocal.com` on port
+443 or 4860. Anything else pasted is refused, and anything else found in
+storage is dropped.
+
+Each start pings the home-network address (`/api/manager/system/ping`, 1.5 s)
+and uses it only when it answers with this Homey's id (Homey exposes
+`X-Homey-ID` there; the cloud does not); otherwise calls go to the cloud
+address. The launcher hands the address it checked to the build it opens
+through this tab's session storage, taken once and only while the stored
+record still holds that address, so opening a Homey probes once and a link
+cannot skip the check.
+
+A call on the home network that gets no answer within 10 s, or cannot reach
+Homey at all, as when a phone leaves home with the page open, moves the page
+to the cloud address and the socket follows. Reads under way are sent again
+from the cloud; a write is not, since it may have reached Homey, and fails as
+it would in the WebView. A 429 is waited out and the call sent again (about 2,
+5, 10, 20 and 30 s, spread so a page's calls do not return together), while
+the page says Homey's cloud connection is busy.
 
 ## Several Homeys, one version each
 
@@ -51,7 +92,8 @@ the root:
 
 - keeps the owner's Homeys (localStorage `pels.webapp.homeys.v1`, shared by the
   launcher and every build because they share an origin; the record may only
-  gain optional fields),
+  gain optional fields, so `baseUrl` stays the cloud address every build can
+  use and the home-network address is the optional `localUrl`),
 - reads each Homey's version from `GET /ui_version` and opens the build for it
   (the route also returns the Homey's timezone, which the key cannot read from
   Homey itself),
@@ -84,10 +126,12 @@ The web app lives at `https://pels.barelysufficient.org/app/`, next to the docs.
   `versions.json` (`scripts/webapp-site.mjs assemble`). Launcher changes go live
   with the next main push, without a release.
 - Test-channel versions are tags too, so they get builds before Live does.
-- From the published site, a Homey's LAN address (`*.homey.homeylocal.com`,
-  which resolves to a private IP) is a request from a public site into the
-  local network, which Chrome may put behind a permission prompt; the cloud
-  address (`<homeyId>.connect.athom.com`) is not affected.
+- From the published site, the home-network address
+  (`*.homey.homeylocal.com`, which resolves to a private IP) is a request from
+  a public site into the local network, which Chrome may put behind a
+  permission prompt. When it is refused, or a router blocks private answers
+  for public names (DNS rebinding protection), the ping fails and the cloud
+  address serves.
 - GitHub Pages caches files for up to 10 minutes, so a new build can take that
   long to appear; the launcher says to try again in a few minutes meanwhile.
 - `manifest.webmanifest` (start URL and scope `/app/`, standalone) and the icons
@@ -99,17 +143,22 @@ The web app lives at `https://pels.barelysufficient.org/app/`, next to the docs.
 ## From the Homey settings page
 
 Settings → Open in a browser explains the API key, shows this Homey's address
-to copy (the id comes from `ui_version`) and links to `/app/?open=<homeyId>`,
-which opens that Homey once the owner has added it. The web app never fills in
-an address from a link: where an API key is sent must come from the owner, or
-a crafted link naming someone else's Homey could collect keys. The web app
-removes this entry from its own settings hub.
+to copy and links to `/app/?open=<homeyId>`, which opens that Homey once the
+owner has added it. When Homey's web app serves the page from the Homey's own
+cloud host, that host is the address shown and the link carries it
+(`&via=<host>`); otherwise the address is the bare id from `ui_version`. The
+web app takes `via` only for a Homey it already lists, only an Athom host
+named for that Homey, and only once that host answers a ping. It never fills in the add form from a link: where an API
+key is sent must come from the owner, or a crafted link naming someone else's
+Homey could collect keys. The web app removes this entry from its own settings
+hub.
 
 ## Load time
 
 Measured on the test Homey: about 40 requests per boot in about 7 sequential
-waves. Through the relay a small request takes about 0.35 s and `ui_bootstrap`
-0.8 to 1.4 s, so a boot costs roughly 3 to 4 s. Duplicate reads all fall in
+waves. Through the cloud a small request takes about 0.35 s and `ui_bootstrap`
+0.8 to 1.4 s, so a boot costs roughly 3 to 4 s; on the home network the waves
+cost little. Duplicate reads all fall in
 the same wave as their twin, so sharing in-flight reads saves requests but not
 time, and it weakens the settings UI's "newer refresh wins" guards; it was
 tried and dropped. Fewer waves is the lever, for example `ui_bootstrap`

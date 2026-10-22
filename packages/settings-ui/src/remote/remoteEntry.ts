@@ -4,6 +4,7 @@ import { boot } from '../ui/boot.ts';
 import type { HomeySettingsClient } from '../ui/homey.ts';
 import {
   findStoredHomey,
+  learnLocalUrl,
   loadStoredHomeys,
   markLastHomey,
   pickBuildHomeyId,
@@ -14,10 +15,17 @@ import {
   createRemoteEventHub,
   createRemoteHomeyClient,
   createRemoteRequest,
+  type RemoteEventHub,
 } from './remoteHomeyClient.ts';
 import { connectRemoteRealtime } from './remoteRealtime.ts';
 import { createSettingsResync } from './remoteSettingsResync.ts';
 import { readHomeyVersion } from './launchDecision.ts';
+import {
+  chooseAddress,
+  createRemoteTarget,
+  takeHandedAddress,
+  type RemoteTarget,
+} from './remoteTarget.ts';
 
 // One published build of the web app: the settings UI of exactly one PELS
 // version, with the WebView's injected `Homey` replaced by a client that talks
@@ -49,7 +57,8 @@ const rememberTabHomey = (homeyId: string) => {
   }
 };
 
-// The Homey this page shows, with a way back to the list of Homeys.
+// The Homey this page shows, with a way back to the list of Homeys and a
+// line for while Homey's cloud holds calls back.
 const renderHomeyBar = (homey: StoredHomey) => {
   const bar = document.createElement('div');
   bar.className = 'webapp-homey-bar';
@@ -60,7 +69,12 @@ const renderHomeyBar = (homey: StoredHomey) => {
   switcher.setAttribute('href', `${LAUNCHER}?choose`);
   switcher.textContent = 'Switch Homey';
   bar.append(name, switcher);
-  document.body.prepend(bar);
+  const busy = document.createElement('p');
+  busy.className = 'webapp-homey-bar__busy';
+  busy.textContent = 'Homey\'s cloud connection is busy. Trying again…';
+  busy.hidden = true;
+  document.body.prepend(bar, busy);
+  return busy;
 };
 
 const start = async () => {
@@ -72,7 +86,13 @@ const start = async () => {
     window.location.replace(`${LAUNCHER}?choose`);
     return;
   }
-  const request = createRemoteRequest(homey, fetchImpl);
+  const target = createRemoteTarget(homey, takeHandedAddress(homey) ?? await chooseAddress(homey, fetchImpl));
+  // The bar goes up before the first call, so a wait on the cloud shows from
+  // the start; a build that sends the owner back to the launcher leaves at once.
+  const busyLine = renderHomeyBar(homey);
+  const request = createRemoteRequest(target, fetchImpl, (busy) => {
+    busyLine.hidden = !busy;
+  });
   // Only this build's own version opens here. A Homey that did not answer
   // still opens, to the UI's own connection errors and retries; anything else
   // (PELS updated since, removed, stopped, or the key deleted) goes back to the
@@ -88,9 +108,9 @@ const start = async () => {
     window.location.replace(`${LAUNCHER}?open=${encodeURIComponent(homey.homeyId)}`);
     return;
   }
+  if (read.state === 'version') learnLocalUrl(storage, homey.homeyId, read.localUrl);
   markLastHomey(storage, homey.homeyId);
   rememberTabHomey(homey.homeyId);
-  renderHomeyBar(homey);
   // The settings hub's "Open in a browser" leads here; inside the web app it
   // has nothing to offer.
   document.getElementById('web-app-nav-card')?.remove();
@@ -103,9 +123,21 @@ const start = async () => {
     // until it answers, the browser's zone is the only one known.
     read.state === 'version' ? read.timeZone : Intl.DateTimeFormat().resolvedOptions().timeZone,
   );
-  const resync = createSettingsResync(request, events.dispatch);
-  connectRemoteRealtime(
-    homey,
+  followRealtime(target, events, createSettingsResync(request, events.dispatch));
+  (window as WindowWithReady).onHomeyReady?.(client);
+  await boot();
+};
+
+// Homey's live events, from wherever the page's calls go. Leaving the home
+// network moves the calls to the cloud; the socket follows, and the settings
+// catch-up after it reconnects covers the gap.
+const followRealtime = (
+  target: RemoteTarget,
+  events: RemoteEventHub,
+  resync: ReturnType<typeof createSettingsResync>,
+) => {
+  const connectRealtime = () => connectRemoteRealtime(
+    target.connection(),
     (baseUrl) => io(baseUrl, { transports: ['websocket'], autoConnect: false }),
     (event, data) => {
       if ((event === 'settings.set' || event === 'settings.unset') && typeof data === 'string') {
@@ -119,8 +151,11 @@ const start = async () => {
       resync.onStatus(status);
     },
   );
-  (window as WindowWithReady).onHomeyReady?.(client);
-  await boot();
+  let closeRealtime = connectRealtime();
+  target.onMove(() => {
+    closeRealtime();
+    closeRealtime = connectRealtime();
+  });
 };
 
 void start();

@@ -1071,8 +1071,8 @@ Design-of-record: `notes/web-app.md`.
 
 - [ ] **Boot reads ~15 settings one by one after `ui_bootstrap`.**
       `buildSettingsUiBootstrap` in `setup/settingsUiApi.ts` and `packages/settings-ui/src/ui/boot.ts`.
-      A boot is about 40 requests in 7 sequential waves (`notes/web-app.md`); over the cloud relay
-      each wave costs ~0.35 s. **What changes:** the bootstrap payload carries the settings the
+      A boot is about 40 requests in 7 sequential waves (`notes/web-app.md`); over the cloud each
+      wave costs ~0.35 s. **What changes:** the bootstrap payload carries the settings the
       boot reads right after it (`export_price_source`, `pv_forecast_source`,
       `battery_control_devices`, `mode_catalog_initialized`, `homes_config`,
       `homes_config_initialized`, `ev_boost_settings`, `ev_charge_target_settings`,

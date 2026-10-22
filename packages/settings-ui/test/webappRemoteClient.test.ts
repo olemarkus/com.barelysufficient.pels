@@ -5,16 +5,25 @@ import {
   RemoteHomeyError,
   type RemoteFetch,
 } from '../src/remote/remoteHomeyClient.ts';
+import type { StoredHomey } from '../src/remote/remoteConnection.ts';
+import { createRemoteTarget, handOverAddress, takeHandedAddress } from '../src/remote/remoteTarget.ts';
 import type { HomeySettingsClient } from '../src/ui/homey.ts';
 
-const connection = { baseUrl: 'https://homey.example', homeyId: '65687b03c6bcab0c0a4464c3', token: 'u:s:t' };
+const homey: StoredHomey = {
+  name: 'House',
+  baseUrl: 'https://homey.example',
+  homeyId: '65687b03c6bcab0c0a4464c3',
+  token: 'u:s:t',
+  localUrl: 'https://192-168-1-50.homey.homeylocal.com',
+};
 
 const respond = (status: number, body: string): Response => new Response(status === 204 ? null : body, { status });
 
 const setup = (response: () => Response | Promise<Response>) => {
   const fetchImpl = vi.fn<RemoteFetch>(async () => response());
   const events = createRemoteEventHub();
-  const client = createRemoteHomeyClient(createRemoteRequest(connection, fetchImpl), events, 'Europe/Oslo');
+  const request = createRemoteRequest(createRemoteTarget(homey, 'cloud'), fetchImpl, () => {});
+  const client = createRemoteHomeyClient(request, events, 'Europe/Oslo');
   return { client, events, fetchImpl };
 };
 
@@ -74,6 +83,134 @@ describe('remote Homey client', () => {
     const failure = callApi(client, 'GET', '/ui_plan');
     await expect(failure).rejects.toBeInstanceOf(RemoteHomeyError);
     await expect(failure).rejects.toThrow('Network request failed (Failed to fetch)');
+  });
+
+  // A link cannot skip the check that this Homey answers at home: only the
+  // launcher, in the same tab, hands the address it checked over, and only once.
+  it('takes a handed-over address once, only for its Homey, and only while stored', () => {
+    const local = homey.localUrl ?? '';
+    handOverAddress(homey.homeyId, local);
+    expect(takeHandedAddress({ ...homey, homeyId: '6acdea6cd18dc40482d6bc10' })).toBeNull();
+    handOverAddress(homey.homeyId, local);
+    expect(takeHandedAddress(homey)).toBe('local');
+    expect(takeHandedAddress(homey)).toBeNull();
+    handOverAddress(homey.homeyId, local);
+    expect(takeHandedAddress({ ...homey, localUrl: 'https://10-0-0-9.homey.homeylocal.com' })).toBeNull();
+    handOverAddress(homey.homeyId, homey.baseUrl);
+    expect(takeHandedAddress(homey)).toBe('cloud');
+  });
+
+  describe('when the home network stops answering', () => {
+    const offHome = () => {
+      const target = createRemoteTarget(homey, 'local');
+      const moved = vi.fn();
+      target.onMove(moved);
+      const fetchImpl = vi.fn<RemoteFetch>(async (url) => {
+        if (url.startsWith(homey.localUrl ?? '')) throw new TypeError('Failed to fetch');
+        return respond(200, '{"ok":true}');
+      });
+      return { target, moved, fetchImpl, request: createRemoteRequest(target, fetchImpl, () => {}) };
+    };
+    const origins = (fetchImpl: ReturnType<typeof vi.fn<RemoteFetch>>) => (
+      fetchImpl.mock.calls.map(([url]) => new URL(url).origin)
+    );
+
+    it('reads from the cloud instead, and moves the page there once', async () => {
+      const { target, moved, fetchImpl, request } = offHome();
+
+      await expect(request('GET', '/a')).resolves.toEqual({ ok: true });
+      await request('GET', '/b');
+
+      expect(origins(fetchImpl)).toEqual([
+        'https://192-168-1-50.homey.homeylocal.com', 'https://homey.example', 'https://homey.example',
+      ]);
+      expect(target.address()).toBe('cloud');
+      expect(moved).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends every read that was under way to the cloud, not only the first', async () => {
+      const { fetchImpl, request } = offHome();
+
+      await expect(Promise.all([request('GET', '/a'), request('GET', '/b')])).resolves.toEqual([{ ok: true }, { ok: true }]);
+      expect(origins(fetchImpl).filter((origin) => origin === 'https://homey.example')).toHaveLength(2);
+    });
+
+    // The write may have reached Homey before the connection dropped.
+    it('does not send a write a second time', async () => {
+      const { target, fetchImpl, request } = offHome();
+
+      await expect(request('POST', '/ui_smart_task_create', { id: 't' })).rejects.toThrow('Network request failed');
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(target.address()).toBe('cloud');
+    });
+
+    it('gives up on a home-network call that gets no answer', async () => {
+      vi.useFakeTimers();
+      try {
+        const target = createRemoteTarget(homey, 'local');
+        const fetchImpl = vi.fn<RemoteFetch>((url, init) => (url.startsWith(homey.localUrl ?? '')
+          ? new Promise<Response>((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+          })
+          : Promise.resolve(respond(200, '{"ok":true}'))));
+        const result = createRemoteRequest(target, fetchImpl, () => {})('GET', '/a');
+
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        await expect(result).resolves.toEqual({ ok: true });
+        expect(target.address()).toBe('cloud');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe('while Homey\'s cloud refuses calls', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it('waits, sends the call again, and reports the wait', async () => {
+      const answers = [respond(429, ''), respond(429, ''), respond(200, '{"ok":true}')];
+      const fetchImpl = vi.fn<RemoteFetch>(async () => answers.shift() ?? respond(500, ''));
+      const busy = vi.fn();
+      const result = createRemoteRequest(createRemoteTarget(homey, 'cloud'), fetchImpl, busy)('PUT', '/x', { a: 1 });
+
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      await expect(result).resolves.toEqual({ ok: true });
+      expect(fetchImpl).toHaveBeenCalledTimes(3);
+      expect(fetchImpl.mock.calls.every(([, init]) => init.body === '{"a":1}')).toBe(true);
+      expect(busy.mock.calls).toEqual([[true], [false]]);
+    });
+
+    it('stays busy while any call still waits', async () => {
+      const waiting = [respond(429, ''), respond(200, '{"ok":true}')];
+      const fetchImpl = vi.fn<RemoteFetch>(async (url) => (url.endsWith('/slow') ? waiting.shift()! : respond(200, '{}')));
+      const busy = vi.fn();
+      const request = createRemoteRequest(createRemoteTarget(homey, 'cloud'), fetchImpl, busy);
+      const slow = request('GET', '/slow');
+      await vi.advanceTimersByTimeAsync(0);
+
+      await request('GET', '/quick');
+      expect(busy.mock.calls).toEqual([[true]]);
+
+      await vi.advanceTimersByTimeAsync(3_000);
+      await slow;
+      expect(busy.mock.calls).toEqual([[true], [false]]);
+    });
+
+    it('gives up after about a minute', async () => {
+      const fetchImpl = vi.fn<RemoteFetch>(async () => respond(429, ''));
+      const busy = vi.fn();
+      const result = createRemoteRequest(createRemoteTarget(homey, 'cloud'), fetchImpl, busy)('GET', '/x');
+      const settled = expect(result).rejects.toMatchObject({ status: 429 });
+
+      await vi.advanceTimersByTimeAsync(90_000);
+
+      await settled;
+      expect(fetchImpl).toHaveBeenCalledTimes(6);
+      expect(busy).toHaveBeenLastCalledWith(false);
+    });
   });
 
   it('hands each event payload to the listeners as the WebView does', () => {

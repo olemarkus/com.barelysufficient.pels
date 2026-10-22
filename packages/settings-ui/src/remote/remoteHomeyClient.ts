@@ -1,5 +1,6 @@
 import type { HomeyCallback, HomeySettingsClient } from '../ui/homey.ts';
-import { PELS_APP_ID, type RemoteConnection } from './remoteConnection.ts';
+import { PELS_APP_ID } from './remoteConnection.ts';
+import type { RemoteTarget } from './remoteTarget.ts';
 
 type Method = 'DELETE' | 'GET' | 'POST' | 'PUT';
 
@@ -71,27 +72,96 @@ const readBody = async (response: Response): Promise<unknown> => {
 
 export type RemoteFetch = (input: string, init: RequestInit) => Promise<Response>;
 
-export const createRemoteRequest = (connection: RemoteConnection, fetchImpl: RemoteFetch) => (
-  async (method: Method, path: string, body?: unknown): Promise<unknown> => {
-    let response: Response;
-    try {
-      response = await fetchImpl(`${connection.baseUrl}${path}`, {
-        method,
-        headers: {
-          Authorization: `Bearer ${connection.token}`,
-          ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-        },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-    } catch (error) {
-      // fetch rejects only on transport failure; the UI retries reads on
-      // this wording, as it does for the WebView's own network errors.
-      throw new RemoteHomeyError(`Network request failed (${errorDetail(error)})`, 0);
-    }
-    if (!response.ok) throw new RemoteHomeyError(await readErrorMessage(response), response.status);
-    return readBody(response);
+// Homey's cloud answers 429 once a Homey gets more calls than it allows; the
+// relay does so after a few dozen in a burst and lets calls through again
+// within about a minute. A refused call was not run, so waiting and sending it
+// again is safe for writes too. The waits are spread so the calls of one page
+// do not all come back at the same moment.
+const BUSY_RETRY_DELAYS_MS = [2_000, 5_000, 10_000, 20_000, 30_000];
+
+const wait = (ms: number) => new Promise<void>((resolve) => {
+  setTimeout(resolve, ms * (0.75 + Math.random() * 0.5));
+});
+
+// A call on the home network that gets no answer, as when the phone has just
+// left home, is given up on after this long so the page can move to the cloud.
+// Homey answers there within a second or two.
+const LOCAL_CALL_TIMEOUT_MS = 10_000;
+
+const fetchWithin = async (
+  fetchImpl: RemoteFetch,
+  url: string,
+  init: RequestInit,
+  timeoutMs: number | null,
+): Promise<Response> => {
+  if (timeoutMs === null) return fetchImpl(url, init);
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), timeoutMs);
+  try {
+    return await fetchImpl(url, { ...init, signal: abort.signal });
+  } finally {
+    clearTimeout(timer);
   }
-);
+};
+
+// One call to wherever the target points now. A read that could not reach the
+// Homey on the home network is sent again from the cloud. A write is not: it
+// may have reached Homey before the connection dropped, so it fails as
+// written, and the UI's own handling of a failed write applies.
+const send = async (
+  target: RemoteTarget,
+  fetchImpl: RemoteFetch,
+  method: Method,
+  path: string,
+  body: unknown,
+): Promise<Response> => {
+  const { baseUrl, token } = target.connection();
+  try {
+    return await fetchWithin(fetchImpl, `${baseUrl}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }, target.address() === 'local' ? LOCAL_CALL_TIMEOUT_MS : null);
+  } catch (error) {
+    if (target.leftHomeNetwork(baseUrl) && method === 'GET') return send(target, fetchImpl, method, path, body);
+    // fetch rejects only on transport failure; the UI retries reads on
+    // this wording, as it does for the WebView's own network errors.
+    throw new RemoteHomeyError(`Network request failed (${errorDetail(error)})`, 0);
+  }
+};
+
+// `onBusy` follows whether any call is waiting out the cloud's limit, for the
+// page to say so instead of showing empty views.
+export const createRemoteRequest = (target: RemoteTarget, fetchImpl: RemoteFetch, onBusy: (busy: boolean) => void) => {
+  let waiting = 0;
+  return async (method: Method, path: string, body?: unknown): Promise<unknown> => {
+    let busyRetries = 0;
+    try {
+      for (;;) {
+        const response = await send(target, fetchImpl, method, path, body);
+        const delay = response.status === 429 ? BUSY_RETRY_DELAYS_MS[busyRetries] : undefined;
+        if (delay === undefined) {
+          if (!response.ok) throw new RemoteHomeyError(await readErrorMessage(response), response.status);
+          return await readBody(response);
+        }
+        if (busyRetries === 0) {
+          waiting += 1;
+          onBusy(true);
+        }
+        busyRetries += 1;
+        await wait(delay);
+      }
+    } finally {
+      if (busyRetries > 0) {
+        waiting -= 1;
+        if (waiting === 0) onBusy(false);
+      }
+    }
+  };
+};
 
 export type RemoteRequest = ReturnType<typeof createRemoteRequest>;
 

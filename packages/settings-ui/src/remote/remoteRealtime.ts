@@ -22,12 +22,13 @@ const APP_URI = `homey:app:${PELS_APP_ID}`;
 // namespace; on that namespace, `subscribe` to the app's URI and its events
 // arrive as `(event, data)` on that URI. A reconnect can hand out a new
 // namespace, so each connect redoes the handshake and drops the old namespace.
+// Returns a close, for when the page moves to another address.
 export const connectRemoteRealtime = (
   connection: RemoteConnection,
   createSocket: (baseUrl: string) => RealtimeSocket,
   onEvent: (event: string, data: unknown) => void,
   onStatus: (status: RealtimeStatus) => void,
-): void => {
+): (() => void) => {
   const root = createSocket(connection.baseUrl);
   let namespaceSocket: RealtimeSocket | null = null;
 
@@ -67,4 +68,11 @@ export const connectRemoteRealtime = (
   });
   root.on('disconnect', () => onStatus('offline'));
   root.open();
+  return () => {
+    dropNamespace();
+    root.off('connect');
+    root.off('disconnect');
+    root.close();
+    onStatus('offline');
+  };
 };

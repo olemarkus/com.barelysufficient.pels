@@ -2,18 +2,25 @@ import {
   SETTINGS_UI_VERSION_PATH,
   type SettingsUiVersionRead,
 } from '../../../contracts/src/settingsUiApi.ts';
+import { cloudAddressFor } from '../remote/homeyAddress.ts';
 import { callApi } from './homey.ts';
 import { logSettingsWarn } from './logging.ts';
 
 // The "Open in a browser" sub-page shows this Homey's address to copy into the
 // web app, and links to the web app so it opens this Homey once it is added.
-// The web app never takes an address from a link: where an API key is sent
-// must come from the owner, here from their own Homey's settings page.
+// The web app never adds a Homey from a link: where an API key is sent must
+// come from the owner, here from their own Homey's settings page.
 export const WEB_APP_URL = 'https://pels.barelysufficient.org/app/';
 
-export const buildWebAppHref = (homeyId: string): string => (
-  `${WEB_APP_URL}?open=${encodeURIComponent(homeyId)}`
-);
+// Homey's web app serves this page from the Homey's own cloud host, which
+// takes far more calls than the relay a bare id leads to. The link carries it
+// (`via`) for a Homey the web app already lists, and the address to copy is
+// that host whenever this page knows it.
+export const buildWebAppHref = (homeyId: string, cloudUrl: string | null): string => {
+  const params = new URLSearchParams({ open: homeyId });
+  if (cloudUrl) params.set('via', cloudUrl);
+  return `${WEB_APP_URL}?${params.toString()}`;
+};
 
 type TextField = HTMLElement & { value: string };
 
@@ -27,8 +34,9 @@ export const refreshWebAppLink = async (): Promise<void> => {
     const read = await callApi<Partial<SettingsUiVersionRead> | null>('GET', SETTINGS_UI_VERSION_PATH);
     const homeyId = read?.homeyId;
     if (typeof homeyId !== 'string' || homeyId === '') throw new Error('The version answer carries no Homey id');
-    link.setAttribute('href', buildWebAppHref(homeyId));
-    address.value = homeyId;
+    const cloudUrl = cloudAddressFor(window.location.origin, homeyId);
+    link.setAttribute('href', buildWebAppHref(homeyId, cloudUrl));
+    address.value = cloudUrl ?? homeyId;
     address.closest<HTMLElement>('.field')?.removeAttribute('hidden');
   } catch (error) {
     link.setAttribute('href', WEB_APP_URL);

@@ -121,9 +121,30 @@ describe('web app version API', () => {
     const homey = partialDouble<Homey.App['homey']>({
       manifest: { version: '3.20.0' },
       clock: partialDouble<Homey.App['homey']['clock']>({ getTimezone: () => 'Europe/Oslo' }),
-      cloud: partialDouble<Homey.App['homey']['cloud']>({ getHomeyId: async () => '65687b03c6bcab0c0a4464c3' }),
+      cloud: partialDouble<Homey.App['homey']['cloud']>({
+        getHomeyId: async () => '65687b03c6bcab0c0a4464c3',
+        getLocalAddress: async () => '192.168.1.50:80',
+      }),
     });
-    await expect(api.ui_version({ homey })).resolves
-      .toEqual({ version: '3.20.0', timeZone: 'Europe/Oslo', homeyId: '65687b03c6bcab0c0a4464c3' });
+    await expect(api.ui_version({ homey })).resolves.toEqual({
+      version: '3.20.0',
+      timeZone: 'Europe/Oslo',
+      homeyId: '65687b03c6bcab0c0a4464c3',
+      localAddress: '192.168.1.50:80',
+    });
+  });
+
+  it('still answers when Homey cannot say its home-network address', async () => {
+    const homey = partialDouble<Homey.App['homey']>({
+      manifest: { version: '3.20.0' },
+      clock: partialDouble<Homey.App['homey']['clock']>({ getTimezone: () => 'Europe/Oslo' }),
+      cloud: partialDouble<Homey.App['homey']['cloud']>({
+        getHomeyId: async () => '65687b03c6bcab0c0a4464c3',
+        getLocalAddress: async () => {
+          throw new Error('not available');
+        },
+      }),
+    });
+    await expect(api.ui_version({ homey })).resolves.toMatchObject({ localAddress: null });
   });
 });

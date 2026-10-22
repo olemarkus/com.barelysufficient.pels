@@ -15,7 +15,7 @@ const response = (status: number, body: string) => new Response(body, { status }
 
 let publishedVersions = '["3.20.0"]';
 
-const loadLauncher = async (homey: (pathname: string) => Response, ready: () => void = () => {
+const loadLauncher = async (homey: (pathname: string, url: URL) => Response, ready: () => void = () => {
   expect(document.getElementById('webapp-add-panel')?.hidden).toBe(false);
 }) => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'webapp-launcher.html'), 'utf8');
@@ -25,7 +25,8 @@ const loadLauncher = async (homey: (pathname: string) => Response, ready: () => 
   Element.prototype.scrollIntoView = vi.fn();
   vi.stubGlobal('fetch', vi.fn(async (input: string) => {
     if (input === 'versions.json') return response(200, publishedVersions);
-    return homey(new URL(input).pathname);
+    const url = new URL(input);
+    return homey(url.pathname, url);
   }));
   vi.resetModules();
   await import('../src/remote/launcherEntry.ts');
@@ -123,6 +124,95 @@ describe('web app launcher', () => {
     } finally {
       window.history.replaceState(null, '', '/');
     }
+  });
+
+  describe('choosing where to reach a Homey', () => {
+    const CLOUD = `https://${HOMEY_ID}.homey.athom-prod-euwest1-001.homeypro.net`;
+    const LOCAL = 'https://192-168-1-50.homey.homeylocal.com';
+    const stored = () => JSON.parse(window.localStorage.getItem('pels.webapp.homeys.v1') ?? '{}') as {
+      homeys: { baseUrl: string; localUrl?: string | null }[];
+    };
+    const listHouse = (localUrl: string | null) => window.localStorage.setItem('pels.webapp.homeys.v1', JSON.stringify({
+      homeys: [{ name: 'House', baseUrl: `https://${HOMEY_ID}.connect.athom.com`, homeyId: HOMEY_ID, token: 'u:s:t', localUrl }],
+      lastHomeyId: HOMEY_ID,
+    }));
+    // The build path and the address choice handed to it in this tab.
+    const openWith = async (search: string, homey: (pathname: string, url: URL) => Response) => {
+      const assign = vi.fn();
+      vi.stubGlobal('location', { ...window.location, search, assign });
+      await loadLauncher(homey, () => expect(assign).toHaveBeenCalled());
+      const handed = JSON.parse(window.sessionStorage.getItem('pels.webapp.addressChoice') ?? 'null') as
+        { baseUrl: string } | null;
+      const address = handed?.baseUrl.includes('homeylocal') ? 'local' : 'cloud';
+      return `${String(assign.mock.calls[0]?.[0])} ${address}`;
+    };
+    beforeEach(() => window.sessionStorage.clear());
+    const version = (localAddress: string | null) => response(
+      200,
+      JSON.stringify({ version: '3.20.0', timeZone: 'Europe/Oslo', homeyId: HOMEY_ID, localAddress }),
+    );
+
+    it('switches a listed Homey to the cloud host the PELS settings page links with', async () => {
+      listHouse(null);
+      const hosts: string[] = [];
+      await openWith(`?open=${HOMEY_ID}&via=${encodeURIComponent(CLOUD)}`, (pathname, url) => {
+        hosts.push(`${url.origin}${pathname}`);
+        return pathname === '/api/manager/system/ping' ? response(200, '') : version(null);
+      });
+
+      expect(stored().homeys[0]?.baseUrl).toBe(CLOUD);
+      expect(hosts).toEqual([`${CLOUD}/api/manager/system/ping`, `${CLOUD}${VERSION_PATH}`]);
+    });
+
+    it('keeps the relay when the linked cloud host does not answer', async () => {
+      listHouse(null);
+      await openWith(`?open=${HOMEY_ID}&via=${encodeURIComponent(CLOUD)}`, (pathname, url) => (
+        url.origin === CLOUD ? response(502, '') : version(null)
+      ));
+
+      expect(stored().homeys[0]?.baseUrl).toBe(`https://${HOMEY_ID}.connect.athom.com`);
+    });
+
+    it('ignores a linked host that is not this Homey\'s', async () => {
+      listHouse(null);
+      await openWith(`?open=${HOMEY_ID}&via=${encodeURIComponent('https://evil.example')}`, () => version(null));
+
+      expect(stored().homeys[0]?.baseUrl).toBe(`https://${HOMEY_ID}.connect.athom.com`);
+    });
+
+    it('keeps the home-network address the Homey reports, and tries it before opening', async () => {
+      listHouse(null);
+      const path = await openWith('', (pathname) => (pathname === '/api/manager/system/ping'
+        ? new Response('', { status: 200, headers: { 'X-Homey-ID': HOMEY_ID } })
+        : version('192.168.1.50:80')));
+
+      expect(stored().homeys[0]?.localUrl).toBe(LOCAL);
+      expect(path).toBe(`v3.20.0/#homey=${HOMEY_ID} local`);
+    });
+
+    it('opens on the home network when this Homey answers there', async () => {
+      listHouse(LOCAL);
+      const hosts: string[] = [];
+      const path = await openWith('', (pathname, url) => {
+        hosts.push(url.origin);
+        if (pathname === '/api/manager/system/ping') {
+          return new Response('', { status: 200, headers: { 'X-Homey-ID': HOMEY_ID } });
+        }
+        return version('192.168.1.50:80');
+      });
+
+      expect(path).toBe(`v3.20.0/#homey=${HOMEY_ID} local`);
+      expect(hosts).toEqual([LOCAL, LOCAL]);
+    });
+
+    it('stays on the cloud when another Homey answers on the home-network address', async () => {
+      listHouse(LOCAL);
+      const path = await openWith('', (pathname) => (pathname === '/api/manager/system/ping'
+        ? new Response('', { status: 200, headers: { 'X-Homey-ID': '6acdea6cd18dc40482d6bc10' } })
+        : version(null)));
+
+      expect(path).toBe(`v3.20.0/#homey=${HOMEY_ID} cloud`);
+    });
   });
 
   it('shows the add form for a named Homey that is not listed, not the last one', async () => {

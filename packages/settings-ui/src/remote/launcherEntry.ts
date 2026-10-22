@@ -3,13 +3,22 @@ import '@material/web/button/filled-button.js';
 import '@material/web/button/filled-tonal-button.js';
 import '@material/web/button/text-button.js';
 import {
+  cloudAddressFor,
+  cloudAnswers,
+  parseHomeyAddress,
+  pingHomeyId,
+  relayUrl,
+  type HomeyAddress,
+} from './homeyAddress.ts';
+import {
+  findStoredHomey,
   isHomeyApiKey,
+  learnCloudUrl,
+  learnLocalUrl,
   loadStoredHomeys,
   markLastHomey,
-  parseHomeyAddress,
   readBrowserStorage,
   removeStoredHomey,
-  resolveLanHomeyId,
   saveStoredHomey,
   type StoredHomey,
 } from './remoteConnection.ts';
@@ -27,15 +36,25 @@ import {
   readHomeyVersion,
   type LaunchDecision,
 } from './launchDecision.ts';
+import {
+  chooseAddress,
+  createRemoteTarget,
+  handOverAddress,
+  type AddressChoice,
+} from './remoteTarget.ts';
 
 // The web app's start page: the owner's Homeys, each opened in the settings UI
 // build made for the PELS version it runs. It never runs PELS UI itself, so it
 // works for every PELS version, including ones from before the web app.
 
-type TextField = HTMLElement & { value: string; error: boolean; errorText: string };
+type TextField = HTMLElement & { value: string; error: boolean; errorText: string; supportingText: string };
 
-// The launcher's own failure, not the Homey's: the list of builds did not load.
-type RowStatus = LaunchDecision | { state: 'builds-unavailable' };
+type RowStatus =
+  | LaunchDecision
+  // The launcher's own failure, not the Homey's: the list of builds did not load.
+  | { state: 'builds-unavailable' }
+  // Homey's cloud refused calls for a moment; the check waits and tries again.
+  | { state: 'busy' };
 
 const storage = readBrowserStorage();
 const fetchImpl = (input: string, init: RequestInit) => window.fetch(input, init);
@@ -49,6 +68,11 @@ const addForm = byId<HTMLFormElement>('webapp-add-form');
 const nameField = addForm.querySelector('[name="name"]') as TextField;
 const addressField = addForm.querySelector('[name="address"]') as TextField;
 const keyField = addForm.querySelector('[name="key"]') as TextField;
+
+// A Homey added by its home-network address names itself on a ping, and a
+// linked cloud address must answer before it is kept.
+const ADDRESS_CHECK_TIMEOUT_MS = 10_000;
+const BUSY = 'Homey\'s cloud connection is busy. Trying again…';
 
 const KEY_NO_LONGER_ACCEPTED = 'Homey no longer accepts the saved key. Paste a new one.';
 const STORAGE_REFUSED = 'This browser did not save the Homey. Allow this site to store data, then add it again.';
@@ -70,12 +94,24 @@ const loadPublishedVersions = async (): Promise<string[] | null> => {
   }
 };
 
-const checkHomey = async (homey: StoredHomey): Promise<RowStatus> => {
-  const [published, read] = await Promise.all([
-    loadPublishedVersions(),
-    readHomeyVersion(createRemoteRequest(homey, fetchImpl)),
-  ]);
-  return published ? decideLaunch(read, published) : { state: 'builds-unavailable' };
+// One check of a listed Homey, with the address it answered on and what it
+// taught about itself (the home-network address it reports).
+type HomeyCheck = { homey: StoredHomey; address: AddressChoice; status: RowStatus };
+
+const checkHomey = async (homey: StoredHomey, onBusy: (busy: boolean) => void): Promise<HomeyCheck> => {
+  const readVersion = async () => {
+    const target = createRemoteTarget(homey, await chooseAddress(homey, fetchImpl));
+    return { target, read: await readHomeyVersion(createRemoteRequest(target, fetchImpl, onBusy)) };
+  };
+  const [published, { target, read }] = await Promise.all([loadPublishedVersions(), readVersion()]);
+  const learned = (read.state === 'version' ? learnLocalUrl(storage, homey.homeyId, read.localUrl) : null) ?? homey;
+  return {
+    homey: learned,
+    // A home-network address the Homey has just reported is tried before
+    // opening, so the first session can use it too.
+    address: learned.localUrl === homey.localUrl ? target.address() : await chooseAddress(learned, fetchImpl),
+    status: published ? decideLaunch(read, published) : { state: 'builds-unavailable' },
+  };
 };
 
 const statusText = (status: RowStatus | null): string => {
@@ -99,6 +135,8 @@ const statusText = (status: RowStatus | null): string => {
       return `This Homey did not answer (${status.detail}).`;
     case 'builds-unavailable':
       return 'The web app could not load its list of builds. Try again in a moment.';
+    case 'busy':
+      return BUSY;
     default: {
       const exhaustive: never = status;
       return exhaustive;
@@ -106,8 +144,9 @@ const statusText = (status: RowStatus | null): string => {
   }
 };
 
-const openHomey = (homey: StoredHomey, version: string) => {
+const openHomey = (homey: StoredHomey, version: string, address: AddressChoice) => {
   markLastHomey(storage, homey.homeyId);
+  handOverAddress(homey.homeyId, address === 'local' && homey.localUrl !== null ? homey.localUrl : homey.baseUrl);
   window.location.assign(buildPathFor(version, homey.homeyId));
 };
 
@@ -131,7 +170,7 @@ const button = (tag: 'md-filled-tonal-button' | 'md-text-button', label: string,
 
 const rows = new Map<string, HTMLLIElement>();
 
-const renderRow = (homey: StoredHomey, status: RowStatus | null) => {
+const renderRow = (homey: StoredHomey, status: RowStatus | null, address: AddressChoice) => {
   const row = document.createElement('li');
   row.className = 'webapp-homey-row';
   const name = document.createElement('span');
@@ -143,12 +182,12 @@ const renderRow = (homey: StoredHomey, status: RowStatus | null) => {
   const actions = document.createElement('div');
   actions.className = 'webapp-homey-row__actions';
   if (status?.state === 'open') {
-    actions.append(button('md-filled-tonal-button', 'Open', () => openHomey(homey, status.version)));
+    actions.append(button('md-filled-tonal-button', 'Open', () => openHomey(homey, status.version, address)));
   } else if (status?.state === 'key-refused') {
     actions.append(button('md-filled-tonal-button', 'Add new key', () => (
       showAddPanel({ name: homey.name, address: homey.baseUrl }, null)
     )));
-  } else if (status) {
+  } else if (status && status.state !== 'busy') {
     actions.append(button('md-text-button', 'Check again', () => {
       void checkAndRender(homey);
     }));
@@ -164,9 +203,11 @@ const renderRow = (homey: StoredHomey, status: RowStatus | null) => {
   rows.set(homey.homeyId, row);
 };
 
-const checkAndRender = async (homey: StoredHomey): Promise<void> => {
-  renderRow(homey, null);
-  renderRow(homey, await checkHomey(homey));
+const checkAndRender = async (homey: StoredHomey): Promise<HomeyCheck> => {
+  renderRow(homey, null, 'cloud');
+  const check = await checkHomey(homey, (busy) => renderRow(homey, busy ? { state: 'busy' } : null, 'cloud'));
+  renderRow(check.homey, check.status, check.address);
+  return check;
 };
 
 const render = async () => {
@@ -198,43 +239,81 @@ const checkApiKey = async (
   }
 };
 
+// The Homey an added address and key describe. A cloud address names its
+// Homey; a home-network address is asked. A new key for a listed Homey keeps
+// the addresses learned for it.
+const homeyFromForm = async (address: HomeyAddress, name: string, token: string): Promise<StoredHomey | null> => {
+  if (address.kind === 'cloud') {
+    const listed = findStoredHomey(storage, address.homeyId);
+    return { name, homeyId: address.homeyId, token, baseUrl: address.baseUrl, localUrl: listed?.localUrl ?? null };
+  }
+  const homeyId = await pingHomeyId(address.baseUrl, fetchImpl, ADDRESS_CHECK_TIMEOUT_MS);
+  if (!homeyId) return null;
+  const listed = findStoredHomey(storage, homeyId);
+  return { name, homeyId, token, baseUrl: listed?.baseUrl ?? relayUrl(homeyId), localUrl: address.baseUrl };
+};
+
+const addHomey = async () => {
+  const name = nameField.value.trim();
+  setFieldError(nameField, name ? null : 'Give this Homey a name.');
+  const address = parseHomeyAddress(addressField.value);
+  setFieldError(addressField, address ? null : 'Paste the address the PELS settings page shows.');
+  const token = keyField.value.trim();
+  const tokenValid = isHomeyApiKey(token);
+  setFieldError(keyField, tokenValid ? null : 'Paste the whole API key.');
+  if (!name || !address || !tokenValid) return;
+
+  const homey = await homeyFromForm(address, name, token);
+  if (!homey) {
+    setFieldError(addressField, 'No Homey answered at this address.');
+    return;
+  }
+  const target = createRemoteTarget(homey, address.kind);
+  const keyCheck = await checkApiKey(createRemoteRequest(target, fetchImpl, (busy) => {
+    addressField.supportingText = busy ? BUSY : '';
+  }));
+  if (keyCheck.state === 'key-refused') {
+    setFieldError(keyField, 'Homey refused this key. Check that it may control apps.');
+    return;
+  }
+  if (keyCheck.state === 'unreachable') {
+    setFieldError(addressField, `This Homey did not answer (${keyCheck.detail}).`);
+    return;
+  }
+  if (!saveStoredHomey(storage, homey)) {
+    setFieldError(nameField, STORAGE_REFUSED);
+    return;
+  }
+  addPanel.hidden = true;
+  await render();
+};
+
+// One addition at a time: a second submit while Homey is still being asked
+// would race the first one's messages and its save.
+let adding = false;
 addForm.addEventListener('submit', (event) => {
   event.preventDefault();
-  void (async () => {
-    const name = nameField.value.trim();
-    setFieldError(nameField, name ? null : 'Give this Homey a name.');
-    const address = parseHomeyAddress(addressField.value);
-    setFieldError(addressField, address ? null : 'Paste the my.homey.app address or the local address.');
-    const token = keyField.value.trim();
-    const tokenValid = isHomeyApiKey(token);
-    setFieldError(keyField, tokenValid ? null : 'Paste the whole API key.');
-    if (!name || !address || !tokenValid) return;
-
-    const homeyId = address.homeyId ?? await resolveLanHomeyId(address.baseUrl);
-    if (!homeyId) {
-      setFieldError(addressField, 'No Homey answered at this address.');
-      return;
-    }
-    const homey: StoredHomey = { name, baseUrl: address.baseUrl, homeyId, token };
-    const keyCheck = await checkApiKey(createRemoteRequest(homey, fetchImpl));
-    if (keyCheck.state === 'key-refused') {
-      setFieldError(keyField, 'Homey refused this key. Check that it may control apps.');
-      return;
-    }
-    if (keyCheck.state === 'unreachable') {
-      setFieldError(addressField, `This Homey did not answer (${keyCheck.detail}).`);
-      return;
-    }
-    if (!saveStoredHomey(storage, homey)) {
-      setFieldError(nameField, STORAGE_REFUSED);
-      return;
-    }
-    addPanel.hidden = true;
-    await render();
-  })();
+  if (adding) return;
+  adding = true;
+  void addHomey().finally(() => {
+    adding = false;
+  });
 });
 
 byId<HTMLElement>('webapp-add-homey').addEventListener('click', () => showAddPanel(null, null));
+
+// The PELS settings page links here with its own cloud host (`via`), which
+// Homey's web app serves it from. A listed Homey switches to that host once it
+// answers; anything but an Athom host named for that Homey is ignored.
+const learnLinkedCloudAddress = async () => {
+  const homeyId = params.get('open');
+  const listed = homeyId ? findStoredHomey(storage, homeyId) : null;
+  const cloudUrl = listed ? cloudAddressFor(params.get('via') ?? '', listed.homeyId) : null;
+  if (!listed || !cloudUrl || cloudUrl === listed.baseUrl) return;
+  if (await cloudAnswers(cloudUrl, fetchImpl, ADDRESS_CHECK_TIMEOUT_MS)) {
+    learnCloudUrl(storage, listed.homeyId, cloudUrl);
+  }
+};
 
 // The installed app starts here and goes straight to a Homey: the one a build
 // or the PELS settings page names (`open`), else the one opened last. It stays
@@ -242,6 +321,7 @@ byId<HTMLElement>('webapp-add-homey').addEventListener('click', () => showAddPan
 // new key. A link never fills in the add form: where an API key is sent must
 // come from the owner, or a crafted link could collect keys.
 const start = async () => {
+  await learnLinkedCloudAddress();
   const stored = loadStoredHomeys(storage);
   const byHomeyId = (homeyId: string | null) => (
     stored.homeys.find((homey) => homey.homeyId === homeyId) ?? null
@@ -251,9 +331,10 @@ const start = async () => {
   // the owner came to add it.
   const target = params.has('open') ? byHomeyId(params.get('open')) : byHomeyId(stored.lastHomeyId);
   if (!reauth && !params.has('choose') && target) {
-    const status = await checkHomey(target);
-    if (status.state === 'open') {
-      openHomey(target, status.version);
+    emptyHint.hidden = true;
+    const check = await checkAndRender(target);
+    if (check.status.state === 'open') {
+      openHomey(check.homey, check.status.version, check.address);
       return;
     }
   }

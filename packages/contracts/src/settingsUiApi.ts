@@ -58,7 +58,15 @@ export const SETTINGS_UI_RECOMMENDATION_CARS_PATH = '/ui_recommendation_cars';
 // this Homey already filled in. An installed PELS without this route (Express's 404
 // "Cannot GET") predates the web app.
 export const SETTINGS_UI_VERSION_PATH = '/ui_version';
-export type SettingsUiVersionRead = { version: string; timeZone: string; homeyId: string };
+export type SettingsUiVersionRead = {
+  version: string;
+  timeZone: string;
+  homeyId: string;
+  // Homey's own `ip:port` on the home network, as `ManagerCloud.getLocalAddress`
+  // reports it; null when Homey could not say. Older PELS versions do not
+  // send it.
+  localAddress: string | null;
+};
 
 export const SETTINGS_UI_HUB_MARKET_PATH = '/ui_hub_market';
 export const SETTINGS_UI_PRICE_SETUP_SUGGESTION_PATH = '/ui_price_setup_suggestion';

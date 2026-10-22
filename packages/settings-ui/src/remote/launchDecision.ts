@@ -1,4 +1,5 @@
 import { SETTINGS_UI_VERSION_PATH, type SettingsUiVersionRead } from '../../../contracts/src/settingsUiApi.ts';
+import { localUrlFromAddress } from './homeyAddress.ts';
 import { PELS_APP_ID } from './remoteConnection.ts';
 import {
   RemoteHomeyError,
@@ -17,9 +18,17 @@ type HomeyVersionProblem =
   | { state: 'key-refused' }
   | { state: 'unreachable'; detail: string };
 
-export type HomeyVersionRead = { state: 'version'; version: string; timeZone: string } | HomeyVersionProblem;
+export type HomeyVersionRead =
+  // `localUrl` is null when the Homey did not report a usable home-network
+  // address; a PELS from before the web app knew it does not report one.
+  | { state: 'version'; version: string; timeZone: string; localUrl: string | null }
+  | HomeyVersionProblem;
 
-const isVersionRead = (value: unknown): value is SettingsUiVersionRead => (
+// Every PELS with the route sends the version and zone; `localAddress` came
+// later and is read on its own.
+type VersionAnswer = Pick<SettingsUiVersionRead, 'version' | 'timeZone'> & { localAddress?: unknown };
+
+const isVersionRead = (value: unknown): value is VersionAnswer => (
   typeof value === 'object' && value !== null
   && typeof (value as Partial<Record<keyof SettingsUiVersionRead, unknown>>).version === 'string'
   && typeof (value as Partial<Record<keyof SettingsUiVersionRead, unknown>>).timeZone === 'string'
@@ -29,7 +38,12 @@ export const readHomeyVersion = async (request: RemoteRequest): Promise<HomeyVer
   try {
     const read = await request('GET', `/api/app/${PELS_APP_ID}${SETTINGS_UI_VERSION_PATH}`);
     return isVersionRead(read)
-      ? { state: 'version', version: read.version, timeZone: read.timeZone }
+      ? {
+        state: 'version',
+        version: read.version,
+        timeZone: read.timeZone,
+        localUrl: localUrlFromAddress(read.localAddress),
+      }
       : { state: 'unreachable', detail: 'unexpected version answer' };
   } catch (error) {
     if (isKeyRefused(error)) return { state: 'key-refused' };
