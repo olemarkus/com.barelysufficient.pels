@@ -82,6 +82,14 @@ const initDeviceDetailHistoryHandler = (
       ctx.closeDeviceDetail();
     }
   });
+  // A close that did not go through Back (a flow that leaves the overlay for
+  // another page) leaves its entry behind as a no-op. The overlay no longer
+  // owns it: the next open pushes its own entry, so its close never pops a
+  // page entry pushed since (the shell router gives every page one).
+  document.addEventListener('device-detail-closed', () => {
+    if (closeRequestInFlight) return;
+    historyEntryActive = false;
+  });
 };
 
 

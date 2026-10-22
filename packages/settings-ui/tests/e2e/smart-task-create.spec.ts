@@ -110,6 +110,13 @@ test.describe('Create smart task from settings', () => {
     await expect(overlay).toBeVisible();
     await expect(page.locator('#devices-panel')).toBeVisible();
     await expect(box.getByRole('button', { name: 'Add smart task' })).toBeVisible();
+
+    // Closing the reopened device page consumes its own history entry: the
+    // owner stays on Devices instead of stepping back past it.
+    await overlay.locator('#device-detail-close').click();
+    await expect(overlay).toBeHidden();
+    await expect(page.locator('#devices-panel')).toBeVisible();
+    await expect.poll(() => new URL(page.url()).searchParams.get('page')).toBe('settings/devices');
   });
 });
 

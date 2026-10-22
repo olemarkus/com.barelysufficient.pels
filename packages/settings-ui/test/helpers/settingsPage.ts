@@ -44,6 +44,9 @@ export const getDiagnosticsMetricValue = (label: string): string | null => {
  * Basic render test for the settings UI with Homey mocked.
  */
 export const buildDom = () => {
+  // A fresh page load: the shell router opens the page the URL names, so a
+  // route left by the previous test must not carry over.
+  window.history.replaceState(null, '', '/');
   document.body.innerHTML = `
     <div id="toast"></div>
     <div id="status-badge"></div>

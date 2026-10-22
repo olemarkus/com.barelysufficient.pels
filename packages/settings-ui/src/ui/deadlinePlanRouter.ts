@@ -1,5 +1,7 @@
 import { isDeadlinePlanRoute } from './deadlineUrls.ts';
-import { setActiveTabIndicator, showTab } from './realtime.ts';
+import { setActiveTabIndicator } from './realtime.ts';
+import { initialShellPanel, renderPanel, replaceTab } from './tabNavigation.ts';
+import { isShellPanel, shellRouteUrl } from './shellRoutes.ts';
 
 const PANEL_ID = 'deadline-plan-panel';
 // Shell-nav tab id for the Smart tasks section. The deadline-plan view is a
@@ -20,8 +22,10 @@ const showDeadlinePlanPanel = (): void => {
   setActiveTabIndicator(DEADLINE_PLAN_TAB_ID);
 };
 
+// The closed plan's history entry becomes the fallback tab's, so the plan is
+// not one Back away and reload lands on that tab.
 const hideDeadlinePlanPanel = (fallbackTab: string): void => {
-  showTab(fallbackTab);
+  replaceTab(fallbackTab);
 };
 
 type CloseOptions = {
@@ -75,10 +79,9 @@ export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
       window.history.back();
       return;
     }
-    // Replace the deadline-plan URL with the Smart tasks list so reload /
-    // history-back lands on a coherent surface instead of re-opening the
-    // closed plan.
-    window.history.replaceState(null, '', './');
+    // `hideDeadlinePlanPanel` replaces the deadline-plan URL with the fallback
+    // tab's, so reload / history-back lands on a coherent surface instead of
+    // re-opening the closed plan.
     deps.unmount();
     // Clear `panelVisible` *before* `hideDeadlinePlanPanel` runs `showTab`,
     // which dispatches `pels:tab-shown`. The router's own tab-shown listener
@@ -103,10 +106,13 @@ export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
     // deadline-plan view — otherwise the boot path's initial tab choice
     // would be overwritten.
     if (panelVisible) {
-      // Clear `panelVisible` before the inner `showTab` runs (see `closeView`
-      // comment) so the tab-shown listener doesn't re-enter unmount.
+      // Clear `panelVisible` before the panel switch runs (see `closeView`
+      // comment) so the tab-shown listener doesn't re-enter unmount. The close
+      // button names where it lands; a plain Back shows the page it went
+      // back to.
       panelVisible = false;
-      hideDeadlinePlanPanel(pendingFallbackTab ?? 'deadlines');
+      if (pendingFallbackTab) hideDeadlinePlanPanel(pendingFallbackTab);
+      else renderPanel(initialShellPanel());
     }
     pendingFallbackTab = null;
     deps.unmount();
@@ -172,20 +178,21 @@ export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
 
   // Listen for shell-nav tab activations. When the user clicks a tab while
   // the plan-detail panel is visible (e.g. they followed a smart-task chip
-  // from Overview and now want to jump straight to Budget), `showTab` hides
-  // the deadline-plan panel and lights up the chosen tab — but the URL still
-  // carries `?page=deadline-plan&…`, so a reload would re-open the closed
-  // plan. Mirror `closeView`'s replaceState path: drop the deadline-plan URL,
-  // unmount the React tree, and reset the in-memory state. We don't re-apply
-  // `setActiveTabIndicator` here because `showTab` already lit the right tab.
-  document.addEventListener('pels:tab-shown', () => {
+  // from Overview and now want to jump straight to Budget), `showTab` gives
+  // the chosen tab its own history entry and URL, hides the deadline-plan
+  // panel and lights up the chosen tab. Unmount the React tree and reset the
+  // in-memory state. A panel shown without navigating (a renderer call) can
+  // leave `?page=deadline-plan&…` in place, so a reload would re-open the
+  // closed plan: give that entry the shown panel's URL instead.
+  document.addEventListener('pels:tab-shown', (event) => {
     if (!panelVisible) return;
     panelVisible = false;
     pendingFallbackTab = null;
     pendingOnSettled = null;
     openedViaPushState = false;
-    if (isDeadlinePlanRoute(window.location.search)) {
-      window.history.replaceState(null, '', './');
+    const tabId = (event as CustomEvent<{ tabId?: string }>).detail?.tabId;
+    if (isDeadlinePlanRoute(window.location.search) && typeof tabId === 'string' && isShellPanel(tabId)) {
+      window.history.replaceState(window.history.state, '', shellRouteUrl(tabId, window.location));
     }
     deps.unmount();
   });

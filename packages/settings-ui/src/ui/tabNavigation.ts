@@ -7,7 +7,13 @@ import { invalidateApiCacheForAllHomes } from './homey.ts';
 import { openElectricityPricesView, refreshPriceConfigView } from './priceConfig.ts';
 import { refreshDailyBudgetPlan } from './dailyBudget.ts';
 import { discardBudgetAdjust, getBudgetAdjustView } from './budgetAdjustController.ts';
-import { resetBudgetAdjustReturnTarget } from './budgetRedesign.ts';
+import {
+  dismissSettingsAdjustOnBudgetTab,
+  openBudgetAdjustFromSettings,
+  openBudgetWeatherView,
+  resetBudgetAdjustReturnTarget,
+  showBudgetPlanView,
+} from './budgetRedesign.ts';
 import { showToast } from './toast.ts';
 import { state } from './state.ts';
 import { refreshDeadlinesList } from './deadlinesList.ts';
@@ -28,6 +34,14 @@ import {
 } from './uiRefreshTasks.ts';
 import { loadModeAndPriorities, renderPriorities } from './modes.ts';
 import { refreshWebAppLink } from './webAppLink.ts';
+import { isDeadlinePlanRoute } from './deadlineUrls.ts';
+import {
+  SETTINGS_SUB_PANELS,
+  isBudgetViewRoute,
+  isShellPanel,
+  panelFromSearch,
+  shellRouteUrl,
+} from './shellRoutes.ts';
 
 /**
  * Shell navigation: which panel is visible, which shell-nav entry is lit, and
@@ -36,18 +50,8 @@ import { refreshWebAppLink } from './webAppLink.ts';
  * every new sub-page adds a case here, every new push adds a handler there.
  */
 
-const REDESIGN_SETTINGS_SECTIONS = new Set([
-  'recommendations',
-  'limits',
-  'devices',
-  'modes',
-  'electricity-prices',
-  'price-aware-devices',
-  'weather',
-  'simulation',
-  'web-app',
-  'advanced',
-]);
+// Every Settings sub-page lights the Settings tab.
+const REDESIGN_SETTINGS_SECTIONS = new Set<string>(SETTINGS_SUB_PANELS);
 
 const DEVICE_DEPENDENT_TABS = new Set([
   'recommendations',
@@ -196,7 +200,7 @@ export const setActiveTabIndicator = (tabId: string): void => {
   }
 };
 
-export const showTab = (tabId: string) => {
+const showPanel = (tabId: string) => {
   if (tabId !== 'usage') clearUsageReturnLink();
   discardBudgetAdjustOnLeave(tabId);
   setActiveTabIndicator(tabId);
@@ -215,4 +219,102 @@ export const showTab = (tabId: string) => {
     if (!state.devicesLoaded && !state.devicesLoading) loadDevicesOnce();
     else ensureDevicePanelsPainted();
   }
+};
+
+// The route on screen: a panel id, or a Budget view route that shares the
+// Budget panel (see shellRoutes.ts). Back and Forward compare against it.
+let currentRouteId = 'overview';
+
+// Leaving a Budget view route for the plain Budget page closes the view, as a
+// Budget-tab tap does for the editor (with the same unsaved-changes notice).
+const closeBudgetViewFor = (nextRouteId: string) => {
+  if (nextRouteId !== 'budget') return;
+  if (currentRouteId === 'budget-adjust' && dismissSettingsAdjustOnBudgetTab()) {
+    void showToast('Discarded unsaved budget changes.');
+  } else if (currentRouteId === 'budget-weather') {
+    showBudgetPlanView();
+  }
+};
+
+// Shows a route without touching history: the router's renderer. A Budget
+// view route opens its view on the Budget panel; the Daily budget editor keeps
+// the Settings tab lit, as the Settings page it is.
+export const renderPanel = (routeId: string) => {
+  closeBudgetViewFor(routeId);
+  currentRouteId = routeId;
+  if (!isBudgetViewRoute(routeId)) {
+    showPanel(routeId);
+    return;
+  }
+  if (routeId === 'budget-adjust') {
+    openBudgetAdjustFromSettings();
+    showPanel('budget');
+    setActiveTabIndicator('settings');
+    return;
+  }
+  openBudgetWeatherView();
+  showPanel('budget');
+};
+
+// History entries record the page they came from, so an app-bar back arrow
+// can step back instead of piling a new entry on top.
+type ShellHistoryState = { pelsShellPanel: string; pelsFrom: string };
+
+const readShellHistoryState = (): ShellHistoryState | null => {
+  const entry: unknown = window.history.state;
+  if (typeof entry !== 'object' || entry === null) return null;
+  const { pelsShellPanel, pelsFrom } = entry as Partial<ShellHistoryState>;
+  return typeof pelsShellPanel === 'string' && typeof pelsFrom === 'string' ? { pelsShellPanel, pelsFrom } : null;
+};
+
+/**
+ * Navigates to a panel: a shell page gets its own history entry and URL
+ * (`?page=…`, see shellRoutes.ts), so Back, Forward, reload and links reach
+ * it. A panel already named by the URL is only shown.
+ */
+export const showTab = (tabId: string) => {
+  if (isShellPanel(tabId) && panelFromSearch(window.location.search) !== tabId) {
+    const entry: ShellHistoryState = { pelsShellPanel: tabId, pelsFrom: currentRouteId };
+    window.history.pushState(entry, '', shellRouteUrl(tabId, window.location));
+  }
+  renderPanel(tabId);
+};
+
+// Shows a panel in place of the current history entry, for a page that
+// replaces another (a closed Smart task landing on its fallback tab).
+export const replaceTab = (tabId: string) => {
+  if (isShellPanel(tabId)) {
+    const entry: ShellHistoryState = { pelsShellPanel: tabId, pelsFrom: readShellHistoryState()?.pelsFrom ?? '' };
+    window.history.replaceState(entry, '', shellRouteUrl(tabId, window.location));
+  }
+  renderPanel(tabId);
+};
+
+// An app-bar back arrow: step back when this page was opened from its parent,
+// so the history matches what the arrow did; otherwise open the parent.
+export const navigateBackTo = (parentId: string) => {
+  if (readShellHistoryState()?.pelsFrom === parentId) {
+    window.history.back();
+    return;
+  }
+  showTab(parentId);
+};
+
+// The panel the page opens on: the one its URL names, else the Overview.
+export const initialShellPanel = (): string => panelFromSearch(window.location.search) ?? 'overview';
+
+const isDeadlinePlanShown = (): boolean => (
+  document.getElementById('deadline-plan-panel')?.classList.contains('hidden') === false
+);
+
+// Back and Forward show the page the URL names. The Smart task router owns its
+// own routes and closes its panel itself; an entry for the page already shown
+// (the device detail overlay's) changes nothing.
+export const initShellRouter = () => {
+  window.addEventListener('popstate', () => {
+    if (isDeadlinePlanRoute(window.location.search) || isDeadlinePlanShown()) return;
+    const routeId = panelFromSearch(window.location.search) ?? 'overview';
+    if (routeId === currentRouteId) return;
+    renderPanel(routeId);
+  });
 };

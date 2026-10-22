@@ -76,9 +76,10 @@ describe('settings script', () => {
     const back = document.querySelector('.pels-appbar__back');
     expect(back).not.toBeNull();
 
+    // The arrow steps back through history, which the browser delivers a task
+    // later.
     (back as HTMLElement).click();
-    await flushPromises();
-    expect(settingsPanel?.classList.contains('hidden')).toBe(false);
+    await waitFor(() => settingsPanel?.classList.contains('hidden') === false);
     expect(budgetPanel?.classList.contains('hidden')).toBe(true);
 
     // The settings-initiated session fully ended: a direct Budget-tab visit
@@ -151,8 +152,7 @@ describe('settings script', () => {
     await flushPromises();
     expect((document.querySelector('.pels-appbar__back') as HTMLElement).classList.contains('confirming')).toBe(true);
     (document.querySelector('.pels-appbar__back') as HTMLElement).click();
-    await flushPromises();
-    expect(document.querySelector('#settings-panel')?.classList.contains('hidden')).toBe(false);
+    await waitFor(() => document.querySelector('#settings-panel')?.classList.contains('hidden') === false);
     expect(showToast).not.toHaveBeenCalledWith('Discarded unsaved budget changes.');
   });
 
