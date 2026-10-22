@@ -22,7 +22,6 @@ import {
   type ReserveInsufficient,
 } from '../admission';
 import { getRestoreNeed } from './support';
-import { buildMeterSettlingReason } from '../planReasonStrings';
 import { attemptSwapRestore } from './swap';
 import {
   canAdmitWithinBatch,
@@ -172,7 +171,7 @@ function rejectBinaryRestore(
  */
 function resolveBatchFullReason(cycle: RestoreCycle): DevicePlanDevice['reason'] {
   return resolveMeterSettlingReason(cycle.timing, cycle.state.actuation.lastRestoreMs, true)
-    ?? buildMeterSettlingReason(null);
+    ?? { code: PLAN_REASON_CODES.meterSettling };
 }
 
 function rejectBinaryRestoreForInsufficientHeadroom(

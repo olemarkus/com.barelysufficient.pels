@@ -23,33 +23,7 @@ import { resolveMeterSettlingReason } from './restore/timing';
 import { emitRestoreDebugEventOnChange } from './planDebugDedupe';
 import type { HoldLoopState, HoldPass } from './planReasonsShared';
 
-/**
- * Whether this cycle's restore pass took its cooldown lane
- * (`applyRestorePlanInCooldown` in `restore/index.ts`): the shortfall guard,
- * latched shedding, the shed cooldown and startup stabilization all win over
- * the restore cooldown in that lane's `if` chain, and each marks the binary and
- * stepped candidates with its own cause. The setpoint lane names the
- * meter-settling window only when that lane ran, so both lanes name the same
- * cause for the same cycle.
- */
-function restorePassTookCooldownLane(pass: HoldPass): boolean {
-  const { timing } = pass.restoreResult;
-  const { sheddingActive, guardInShortfall } = pass.sheddingPlan;
-  return timing.inRestoreCooldown
-    && !guardInShortfall
-    && !sheddingActive
-    && !timing.inCooldown
-    && !timing.inStartupStabilization;
-}
-
-/**
- * The meter-settling hold, for a setpoint device sitting at its shed floor
- * while a global restore cooldown runs: the last restore's draw has not yet
- * shown up on the whole-home meter, so nothing resumes until it does — the same
- * window the binary and stepped lanes name (`restore/marking.ts`). Resolved
- * here from the pass's own timing, not handed in as a pre-decided reason; the
- * hold lane owns the setpoint decision and decides it from its inputs.
- */
+/** Hold a device at its observed shed floor until the last restore has a newer reading. */
 export function resolveMeterSettlingHold(
   pass: HoldPass,
   wasShedLastPlan: boolean,
@@ -57,7 +31,9 @@ export function resolveMeterSettlingHold(
 ): HoldDecision | null {
   const { state } = pass;
   const { timing } = pass.restoreResult;
-  if (!restorePassTookCooldownLane(pass) || !wasShedLastPlan || !observedAtShedFloor) return null;
+  const { sheddingActive, guardInShortfall } = pass.sheddingPlan;
+  if (!wasShedLastPlan || !observedAtShedFloor || guardInShortfall || sheddingActive
+    || timing.inCooldown || timing.inStartupStabilization) return null;
   const reason = resolveMeterSettlingReason(timing, state.actuation.lastRestoreMs);
   if (reason === null) return null;
   return { type: 'hold', reason: { code: 'existing', reason } };

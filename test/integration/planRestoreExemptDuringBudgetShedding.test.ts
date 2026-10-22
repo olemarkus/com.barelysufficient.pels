@@ -87,6 +87,7 @@ const stateWithPreviouslyShed = (...deviceIds: string[]) => {
 const runLane = (params: {
   devices: ReturnType<typeof buildPlanDevice>[];
   context?: PlanCycleSpec;
+  measurementTs?: number;
   state?: ReturnType<typeof createPlanEngineState>;
 }) => {
   const state = params.state ?? createPlanEngineState();
@@ -96,7 +97,7 @@ const runLane = (params: {
     state,
     sheddingActive: true,
     deps: {
-      powerTracker: { lastTimestamp: Date.now() } as PowerTrackerState,
+      powerTracker: { lastTimestamp: params.measurementTs ?? Date.now() } as PowerTrackerState,
       temperatureSetpoints: new Map(),
       getShedBehavior: () => ({ action: 'turn_off' as const }),
     },
@@ -126,6 +127,26 @@ describe('budget-exempt restore lane during budget-driven shedding', () => {
     expect(heater?.plannedState).not.toBe('shed');
     expect(thermostat?.plannedState).toBe('shed');
     expect(thermostat?.reason?.code).toBe(PLAN_REASON_CODES.dailyBudget);
+  });
+
+  it.each([-1, 0, 1])('requires a post-restore reading even during daily-budget overshoot (%i ms)', (sampleOffsetMs) => {
+    const state = stateWithPreviouslyShed('exempt-heater');
+    state.actuation.lastRestoreMs = Date.now() - 599_000;
+    const result = runLane({
+      devices: [offExemptHeater()],
+      state,
+      measurementTs: state.actuation.lastRestoreMs + sampleOffsetMs,
+    });
+
+    expect(result.timing.activeOvershoot).toBe(true);
+    expect(result.timing.inRestoreCooldown).toBe(false);
+    expect(result.restoredThisCycle.has('exempt-heater')).toBe(sampleOffsetMs > 0);
+    if (sampleOffsetMs <= 0) {
+      expect(result.planDevices[0]).toMatchObject({
+        plannedState: 'shed',
+        reason: { code: PLAN_REASON_CODES.meterSettling },
+      });
+    }
   });
 
   it('rejects an exempt candidate inside the lane when the capacity axis cannot cover its need', () => {

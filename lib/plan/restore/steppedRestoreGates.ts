@@ -78,10 +78,9 @@ export function applySteppedDeviceGates(
     emitRestoreDebugEventOnChange(state, `stepped:${dev.id}`, payload, { ...payload, remainingSec: undefined });
     return true;
   };
-  const lastRestoreTs = deviceIsActive
-    ? (state.actuation.lastDeviceRestoreMs[dev.id] ?? null)
-    : state.actuation.lastRestoreMs;
-  const meterSettlingReason = resolveMeterSettlingReason(timing, lastRestoreTs, gateRestoredOneThisCycle);
+  const meterSettlingReason = resolveMeterSettlingReason(
+    timing, state.actuation.lastRestoreMs, gateRestoredOneThisCycle,
+  );
   if (meterSettlingReason !== null) return reject(meterSettlingReason, 'meter_settling');
   const gateReason = resolveCapacityRestoreBlockReason(timing, inCycleRestoreWait(gateRestoredOneThisCycle), true);
   if (gateReason) return reject(gateReason, 'restore_gate');

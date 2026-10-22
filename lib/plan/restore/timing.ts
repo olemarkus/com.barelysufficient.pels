@@ -237,7 +237,6 @@ export function getShedCooldownState(
 }
 
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
-import { buildMeterSettlingReason } from '../planReasonStrings';
 
 /**
  * The countdown fields a timer hold reason carries, for the card to
@@ -328,25 +327,16 @@ export function buildRestoreCooldownReason(timing: RestoreTiming): DeviceReason 
 }
 
 /**
- * The meter-settling hold: the draw of the last restore (or of this cycle's,
- * once one was admitted) has not yet shown up on the whole-home meter, so
- * nothing else resumes until a reading after it lands or the settle window
- * ends. Null when no window is open. The one owner of the remaining time and
- * the countdown the card interpolates, so each restore lane resolves it once.
+ * Wait for a whole-home reading after the last restore (or this cycle's
+ * admission). Elapsed time alone is not evidence of the added load.
  */
 export function resolveMeterSettlingReason(
   timing: RestoreTiming,
   lastRestoreTs: number | null,
   restoredOneThisCycle = false,
 ): DeviceReason | null {
-  if (timing.activeOvershoot) return null;
   const referenceRestoreTs = restoredOneThisCycle ? timing.nowTs : lastRestoreTs;
-  if (typeof referenceRestoreTs !== 'number') return null;
+  if (referenceRestoreTs === null) return null;
   if (timing.measurementTs !== null && timing.measurementTs > referenceRestoreTs) return null;
-  const remainingMs = (referenceRestoreTs + RESTORE_COOLDOWN_MS) - timing.nowTs;
-  if (remainingMs <= 0) return null;
-  return buildMeterSettlingReason(Math.ceil(remainingMs / 1000), {
-    countdownStartedAtMs: referenceRestoreTs,
-    countdownTotalSec: Math.ceil(RESTORE_COOLDOWN_MS / 1000),
-  });
+  return { code: PLAN_REASON_CODES.meterSettling };
 }

@@ -11,7 +11,7 @@ These earlier issues have already been addressed and should not be re-triaged as
   The reservation was a second pacing timer competing with the restore cooldown, and the
   measurement that would have released it early is not available: the whole-home meter is a sum,
   so a heater switching off while a charger starts hides the load entirely. Protection is the
-  restore cooldown alone (`notes/state-management/actuation-clocks-and-settle.md`)
+  restore cooldown and a whole-home reading newer than the last restore (`notes/state-management/actuation-clocks-and-settle.md`)
 - target-based restores go through the same restore admission gate as normal restores
 - ~~near-zero post-reserve restores are blocked by a hard admission floor~~ — **removed
   2026-09-15.** A flat `RESTORE_ADMISSION_RESERVE_KW` was withheld from every candidate and the
@@ -95,7 +95,10 @@ Batching is intentionally narrow:
   released for confirmed no-draw is not active, and the device is then subject to the invariant
   like any other
 
-After a batch, the normal meter-settling / restore-cooldown behavior still blocks the next cycle.
+After a batch, the next cycle waits for both the restore cooldown and a whole-home reading
+strictly newer than the last restore. The meter wait has no timeout escape: an unchanged or
+missing sample cannot admit another cycle's restore, even after the cooldown ends. This is
+separate from same-cycle batching, which accounts for each admission against one shared ledger.
 
 ## Questions still worth answering
 

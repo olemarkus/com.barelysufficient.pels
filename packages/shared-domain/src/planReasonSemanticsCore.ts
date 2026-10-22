@@ -25,7 +25,7 @@ export const PLAN_REASON_CODES = {
   // to bind: the device needs a new reading, not freed power, to resume. Never a
   // carrier (no kW is honest without a measurement) and, like
   // `awaitingSolarSurplus`, carries NO detail, so it is byte-stable across plan
-  // cycles. Distinct from `meterSettling`, a countdown on a reporting meter.
+  // cycles. Distinct from `meterSettling`, a wait for a post-restore reading or a device settling countdown.
   meterSilent: 'meter_silent',
   deferredObjectiveAvoid: 'deferred_objective_avoid',
   // The device's smart task has reached its target and holds the device in the
@@ -198,7 +198,7 @@ export type DeviceReason =
   | ({ code: typeof PLAN_REASON_CODES.shortfall } & AdmissionShortfall & ReserveHolder)
   | ({ code: typeof PLAN_REASON_CODES.cooldownShedding; remainingSec: number } & CountdownReasonTiming)
   | ({ code: typeof PLAN_REASON_CODES.cooldownRestore; remainingSec: number } & CountdownReasonTiming)
-  | ({ code: typeof PLAN_REASON_CODES.meterSettling; remainingSec: number } & CountdownReasonTiming)
+  | ({ code: typeof PLAN_REASON_CODES.meterSettling; remainingSec?: number } & CountdownReasonTiming)
   | ({ code: typeof PLAN_REASON_CODES.activationBackoff; remainingSec: number } & CountdownReasonTiming)
   | ({ code: typeof PLAN_REASON_CODES.restorePending; remainingSec: number } & CountdownReasonTiming)
   | { code: typeof PLAN_REASON_CODES.restoreThrottled }
