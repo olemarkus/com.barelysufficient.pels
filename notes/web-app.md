@@ -88,7 +88,7 @@ the page says Homey's cloud connection is busy.
 API keys are made in the Homey web app, whose API Keys page cannot be used at
 phone width (the settings menu covers it; Chrome's Desktop site option works).
 So the owner adds Homeys on a computer, and the launcher there shows a code
-for the phone's camera (Add to your phone). The code is a link to the launcher
+for the phone's camera (Show code for a phone). The code is a link to the launcher
 with every listed Homey after `#pair=`: name, key, and cloud address, or just
 the id when that is the relay (`remote/phonePairing.ts`). The fragment never
 reaches the web server; the code is drawn in the page (`uqr`) and removed

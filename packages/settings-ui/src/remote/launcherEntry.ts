@@ -2,7 +2,6 @@ import '@material/web/textfield/filled-text-field.js';
 import '@material/web/button/filled-button.js';
 import '@material/web/button/filled-tonal-button.js';
 import '@material/web/button/text-button.js';
-import { renderSVG } from 'uqr';
 import {
   HOMEY_ID_PATTERN,
   cloudAddressFor,
@@ -40,7 +39,8 @@ import {
   readHomeyVersion,
   type LaunchDecision,
 } from './launchDecision.ts';
-import { pairingLink, readPairing, type PairingRead } from './phonePairing.ts';
+import { drawPairingCodes } from './pairingCodes.ts';
+import { readPairing, type PairingRead } from './phonePairing.ts';
 import {
   chooseAddress,
   createRemoteTarget,
@@ -68,6 +68,12 @@ const params = new URLSearchParams(window.location.search);
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const list = byId<HTMLUListElement>('webapp-homey-list');
 const emptyHint = byId<HTMLElement>('webapp-homeys-empty');
+const phoneLead = byId<HTMLElement>('webapp-phone-lead');
+const homeysPanel = byId<HTMLElement>('webapp-homeys-panel');
+const addTitle = byId<HTMLElement>('webapp-add-title');
+const addSubmit = byId<HTMLElement & { disabled: boolean }>('webapp-add-submit');
+const addCancel = byId<HTMLElement>('webapp-add-cancel');
+const installButton = byId<HTMLElement>('webapp-install');
 const addPanel = byId<HTMLElement>('webapp-add-panel');
 const addForm = byId<HTMLFormElement>('webapp-add-form');
 const nameField = addForm.querySelector('[name="name"]') as TextField;
@@ -78,14 +84,16 @@ const pairPanel = byId<HTMLElement>('webapp-pair-panel');
 const pairCodes = byId<HTMLElement>('webapp-pair-codes');
 const importPanel = byId<HTMLElement>('webapp-import-panel');
 const importText = byId<HTMLElement>('webapp-import-text');
+const importTitle = byId<HTMLElement>('webapp-import-title');
+const importCancel = byId<HTMLElement>('webapp-import-cancel');
 const importAdd = byId<HTMLElement>('webapp-import-add');
 
 // A Homey added by its home-network address names itself on a ping, and a
 // linked cloud address must answer before it is kept.
 const ADDRESS_CHECK_TIMEOUT_MS = 10_000;
 const BUSY = 'Homey\'s cloud connection is busy. Trying again…';
+const UNREACHABLE = 'This Homey could not be reached. Check that it is online, then check again.';
 
-const KEY_NO_LONGER_ACCEPTED = 'Homey no longer accepts the saved key. Paste a new one.';
 const STORAGE_REFUSED = 'This browser did not save the Homey. Allow this site to store data, then add it again.';
 
 const setFieldError = (field: TextField, message: string | null) => {
@@ -131,21 +139,22 @@ const statusText = (status: RowStatus | null): string => {
     case 'open':
       return `PELS ${status.version}`;
     case 'update-pels':
-      return `The web app does not cover PELS ${status.version}. Update PELS on this Homey to open it here.`;
+      return `The web app has no build for PELS ${status.version}. Update PELS on this Homey to open it here.`;
     case 'predates-web-app':
       return 'This Homey runs a PELS version from before the web app. Update PELS on this Homey to open it here.';
     case 'build-not-published':
-      return `PELS ${status.version} is newer than the web app. Try again in a few minutes.`;
+      return `PELS ${status.version} is newer than the web app. Check again in a few minutes.`;
     case 'pels-missing':
       return 'PELS is not installed on this Homey.';
     case 'pels-not-running':
-      return 'PELS is not running on this Homey. It may be starting; if this stays, check PELS in the Homey app.';
+      return 'PELS is not running on this Homey. If it is starting, check again in a minute; otherwise restart PELS '
+        + 'in the Homey app.';
     case 'key-refused':
       return 'This Homey no longer accepts the saved key. Add a new key.';
     case 'unreachable':
-      return `This Homey did not answer (${status.detail}).`;
+      return UNREACHABLE;
     case 'builds-unavailable':
-      return 'The web app could not load its list of builds. Try again in a moment.';
+      return 'The web app could not load its list of builds. Check again in a moment.';
     case 'busy':
       return BUSY;
     default: {
@@ -161,14 +170,18 @@ const openHomey = (homey: StoredHomey, version: string, address: AddressChoice) 
   window.location.assign(buildPathFor(version, homey.homeyId));
 };
 
-const showAddPanel = (prefill: { name: string; address: string } | null, keyError: string | null) => {
+// The add form, or the same form asking for a new key for a listed Homey.
+const showAddPanel = (rekey: StoredHomey | null) => {
   addPanel.hidden = false;
-  nameField.value = prefill?.name ?? '';
-  addressField.value = prefill?.address ?? '';
+  addTitle.textContent = rekey ? `New key for ${rekey.name}` : 'Add a Homey';
+  addSubmit.textContent = rekey ? 'Save key' : 'Add';
+  addCancel.hidden = loadStoredHomeys(storage).homeys.length === 0;
+  nameField.value = rekey?.name ?? '';
+  addressField.value = rekey?.baseUrl ?? '';
   keyField.value = '';
   setFieldError(nameField, null);
   setFieldError(addressField, null);
-  setFieldError(keyField, keyError);
+  setFieldError(keyField, null);
   addPanel.scrollIntoView({ behavior: 'smooth' });
 };
 
@@ -181,6 +194,43 @@ const button = (tag: 'md-filled-tonal-button' | 'md-text-button', label: string,
 
 const rows = new Map<string, HTMLLIElement>();
 
+// Removing forgets the only copy of the key in this browser, and Homey shows
+// a key just once, so it is confirmed in the row first.
+const confirmRemoval = (row: HTMLElement, homey: StoredHomey, actions: HTMLElement) => {
+  const question = document.createElement('p');
+  question.className = 'webapp-homey-row__status';
+  question.textContent = `Remove ${homey.name} from this browser? Adding it again takes a new API key.`;
+  const confirm = document.createElement('div');
+  confirm.className = 'webapp-homey-row__actions';
+  confirm.append(
+    button('md-filled-tonal-button', 'Remove', () => {
+      removeStoredHomey(storage, homey.homeyId);
+      void render();
+    }),
+    button('md-text-button', 'Keep', () => {
+      question.replaceWith(actions);
+      confirm.remove();
+    }),
+  );
+  actions.replaceWith(question);
+  row.append(confirm);
+};
+
+const rowAction = (homey: StoredHomey, status: RowStatus | null, address: AddressChoice): HTMLElement | null => {
+  if (status?.state === 'open') {
+    return button('md-filled-tonal-button', 'Open', () => openHomey(homey, status.version, address));
+  }
+  if (status?.state === 'key-refused') {
+    return button('md-filled-tonal-button', 'Add new key', () => showAddPanel(homey));
+  }
+  if (status && status.state !== 'busy') {
+    return button('md-text-button', 'Check again', () => {
+      void checkAndRender(homey);
+    });
+  }
+  return null;
+};
+
 const renderRow = (homey: StoredHomey, status: RowStatus | null, address: AddressChoice) => {
   const row = document.createElement('li');
   row.className = 'webapp-homey-row';
@@ -189,24 +239,16 @@ const renderRow = (homey: StoredHomey, status: RowStatus | null, address: Addres
   name.textContent = homey.name;
   const statusLine = document.createElement('p');
   statusLine.className = 'webapp-homey-row__status';
+  statusLine.classList.toggle(
+    'webapp-homey-row__status--problem',
+    status !== null && status.state !== 'open' && status.state !== 'busy',
+  );
   statusLine.textContent = statusText(status);
   const actions = document.createElement('div');
   actions.className = 'webapp-homey-row__actions';
-  if (status?.state === 'open') {
-    actions.append(button('md-filled-tonal-button', 'Open', () => openHomey(homey, status.version, address)));
-  } else if (status?.state === 'key-refused') {
-    actions.append(button('md-filled-tonal-button', 'Add new key', () => (
-      showAddPanel({ name: homey.name, address: homey.baseUrl }, null)
-    )));
-  } else if (status && status.state !== 'busy') {
-    actions.append(button('md-text-button', 'Check again', () => {
-      void checkAndRender(homey);
-    }));
-  }
-  actions.append(button('md-text-button', 'Remove', () => {
-    removeStoredHomey(storage, homey.homeyId);
-    void render();
-  }));
+  const action = rowAction(homey, status, address);
+  if (action) actions.append(action);
+  actions.append(button('md-text-button', 'Remove', () => confirmRemoval(row, homey, actions)));
   row.append(name, statusLine, actions);
   const previous = rows.get(homey.homeyId);
   if (previous) previous.replaceWith(row);
@@ -226,12 +268,13 @@ const render = async () => {
   rows.clear();
   list.replaceChildren();
   emptyHint.hidden = homeys.length > 0;
+  phoneLead.hidden = homeys.length > 0;
   pairButton.hidden = homeys.length === 0;
   // A code drawn for the list as it was would still carry a removed key.
   pairCodes.replaceChildren();
   pairPanel.hidden = true;
   if (homeys.length === 0) {
-    showAddPanel(null, null);
+    showAddPanel(null);
     return;
   }
   await Promise.all(homeys.map(checkAndRender));
@@ -275,7 +318,8 @@ const addHomey = async () => {
     : 'Give this Homey a name.';
   setFieldError(nameField, name && name.length <= MAX_HOMEY_NAME_LENGTH ? null : nameError);
   const address = parseHomeyAddress(addressField.value);
-  setFieldError(addressField, address ? null : 'Paste the address the PELS settings page shows.');
+  setFieldError(addressField, address ? null : 'Use the address from PELS Settings → Open in a browser, or this '
+    + 'Homey\'s page in the Homey web app. An IP address alone does not work.');
   const token = keyField.value.trim();
   const tokenValid = isHomeyApiKey(token);
   setFieldError(keyField, tokenValid ? null : 'Paste the whole API key.');
@@ -291,11 +335,11 @@ const addHomey = async () => {
     addressField.supportingText = busy ? BUSY : '';
   }));
   if (keyCheck.state === 'key-refused') {
-    setFieldError(keyField, 'Homey refused this key. Check that it may control apps.');
+    setFieldError(keyField, 'Homey refused this key. Check that it has permission to control apps.');
     return;
   }
   if (keyCheck.state === 'unreachable') {
-    setFieldError(addressField, `This Homey did not answer (${keyCheck.detail}).`);
+    setFieldError(addressField, 'This Homey could not be reached. Check that it is online, then try again.');
     return;
   }
   if (!saveStoredHomey(storage, homey)) {
@@ -307,62 +351,48 @@ const addHomey = async () => {
 };
 
 // One addition at a time: a second submit while Homey is still being asked
-// would race the first one's messages and its save.
+// would race the first one's messages and its save. The button says it is
+// waiting, which can take a while through a busy cloud.
 let adding = false;
 addForm.addEventListener('submit', (event) => {
   event.preventDefault();
   if (adding) return;
   adding = true;
+  const label = addSubmit.textContent;
+  addSubmit.disabled = true;
+  addSubmit.textContent = 'Checking…';
   void addHomey().finally(() => {
     adding = false;
+    addSubmit.disabled = false;
+    addSubmit.textContent = label;
   });
 });
+addCancel.addEventListener('click', () => {
+  addPanel.hidden = true;
+});
 
-byId<HTMLElement>('webapp-add-homey').addEventListener('click', () => showAddPanel(null, null));
+byId<HTMLElement>('webapp-add-homey').addEventListener('click', () => showAddPanel(null));
 
-// The code for the phone, drawn here so the keys never leave this page, and
-// removed again once the owner is done with it or the list changes.
-const drawCode = (link: string, caption: string | null): HTMLElement => {
-  const svg = renderSVG(link, { ecc: 'M', border: 2, whiteColor: '#ffffff', blackColor: '#000000' });
-  const code = document.createElement('figure');
-  code.className = 'webapp-pair-code';
-  code.setAttribute('role', 'img');
-  code.setAttribute('aria-label', `Code ${caption ? `for ${caption} ` : ''}to scan with your phone`);
-  code.append(new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement);
-  if (caption) {
-    const label = document.createElement('figcaption');
-    label.textContent = caption;
-    code.append(label);
-  }
-  return code;
-};
+// Installing is offered where the browser offers it (Chrome on Android and
+// computers); it then lives on the home screen and opens the last Homey.
+type InstallPrompt = Event & { prompt: () => Promise<unknown> };
+let installPrompt: InstallPrompt | null = null;
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  installPrompt = event as InstallPrompt;
+  installButton.hidden = false;
+});
+installButton.addEventListener('click', () => {
+  installButton.hidden = true;
+  void installPrompt?.prompt();
+  installPrompt = null;
+});
 
-// A Homey whose code does not fit, which only a name stored before names had
-// a bound can cause, is named instead of failing the whole panel.
-const drawHomeyCode = (launcher: string, homey: StoredHomey): HTMLElement => {
-  try {
-    return drawCode(pairingLink(launcher, [homey]), homey.name);
-  } catch {
-    const note = document.createElement('p');
-    note.className = 'field__hint';
-    note.textContent = `${homey.name}: the name is too long for a code. `
-      + 'Remove this Homey and add it with a shorter name.';
-    return note;
-  }
-};
-
-// One code for every Homey when they fit in one; past that (around eight
-// Homeys), a code each.
+// The code for the phone, removed again once the owner is done with it or the
+// list changes.
 pairButton.addEventListener('click', () => {
-  const { homeys } = loadStoredHomeys(storage);
   const launcher = new URL('./', window.location.href).href;
-  let codes: HTMLElement[];
-  try {
-    codes = [drawCode(pairingLink(launcher, homeys), null)];
-  } catch {
-    codes = homeys.map((homey) => drawHomeyCode(launcher, homey));
-  }
-  pairCodes.replaceChildren(...codes);
+  pairCodes.replaceChildren(...drawPairingCodes(launcher, loadStoredHomeys(storage).homeys));
   pairPanel.hidden = false;
   pairPanel.scrollIntoView({ behavior: 'smooth' });
 });
@@ -377,26 +407,53 @@ byId<HTMLElement>('webapp-pair-done').addEventListener('click', () => {
 // addresses learned for it. Everything goes in one write.
 let pairedHomeys: StoredHomey[] = [];
 
-const mergePaired = async (homey: StoredHomey): Promise<StoredHomey | null> => {
+type PairedOutcome = { state: 'add'; homey: StoredHomey } | { state: 'key-refused' } | { state: 'unreachable' };
+
+const mergePaired = async (homey: StoredHomey): Promise<PairedOutcome> => {
   const listed = findStoredHomey(storage, homey.homeyId);
-  if (!listed) return homey;
+  if (!listed) return { state: 'add', homey };
   const merged: StoredHomey = {
     ...homey,
     baseUrl: listed.baseUrl === relayUrl(listed.homeyId) ? homey.baseUrl : listed.baseUrl,
     localUrl: listed.localUrl,
   };
-  if (homey.token === listed.token) return merged;
+  if (homey.token === listed.token) return { state: 'add', homey: merged };
   const check = await checkApiKey(createRemoteRequest(createRemoteTarget(merged, 'cloud'), fetchImpl, () => {}));
-  return check.state === 'accepted' ? merged : null;
+  return check.state === 'accepted' ? { state: 'add', homey: merged } : check;
+};
+
+// Both outcomes keep the key saved here; only the reason differs.
+const keptKeyText = (paired: readonly StoredHomey[], outcomes: readonly PairedOutcome[]): string => {
+  const named = (state: PairedOutcome['state']) => paired
+    .filter((_homey, index) => outcomes[index]?.state === state)
+    .map((homey) => homey.name)
+    .join(', ');
+  return [
+    named('key-refused')
+      ? `Kept the key saved here for ${named('key-refused')}: Homey refused the key in the code.`
+      : '',
+    named('unreachable')
+      ? `Kept the key saved here for ${named('unreachable')}: that Homey could not be reached. Scan the code again to `
+        + 'retry.'
+      : '',
+  ].filter(Boolean).join(' ');
+};
+
+const closeOffer = () => {
+  importPanel.hidden = true;
+  homeysPanel.hidden = false;
+  void render();
 };
 
 const offerPairedHomeys = (pairing: Exclude<PairingRead, { state: 'none' }>) => {
   addPanel.hidden = true;
+  homeysPanel.hidden = loadStoredHomeys(storage).homeys.length === 0;
   importPanel.hidden = false;
-  importPanel.scrollIntoView({ behavior: 'smooth' });
   importAdd.hidden = pairing.state !== 'homeys';
   if (pairing.state !== 'homeys') {
-    importText.textContent = 'This code could not be read. Show it again on the computer and scan it once more.';
+    importTitle.textContent = 'This code could not be read';
+    importCancel.textContent = 'Close';
+    importText.textContent = 'Show it again on the other device and scan it once more.';
     return;
   }
   pairedHomeys = pairing.homeys;
@@ -404,36 +461,37 @@ const offerPairedHomeys = (pairing: Exclude<PairingRead, { state: 'none' }>) => 
     .filter((homey) => (findStoredHomey(storage, homey.homeyId)?.token ?? homey.token) !== homey.token)
     .map((homey) => homey.name);
   importText.textContent = [
-    `From the code your computer showed: ${pairing.homeys.map((homey) => homey.name).join(', ')}.`,
+    `Homeys in this code: ${pairing.homeys.map((homey) => homey.name).join(', ')}.`,
     rekeyed.length > 0
       ? `The key saved here for ${rekeyed.join(', ')} is replaced once Homey accepts the new one.`
       : '',
-    'Add only a code from your own computer: this browser keeps the API keys of these Homeys.',
+    'Add them only if the code came from your own computer or phone; this browser keeps their API keys.',
   ].filter(Boolean).join(' ');
 };
 
 importAdd.addEventListener('click', () => {
   importAdd.hidden = true;
   void (async () => {
-    const merged = await Promise.all(pairedHomeys.map(mergePaired));
-    const accepted = merged.filter((homey): homey is StoredHomey => homey !== null);
-    const refused = pairedHomeys.filter((_homey, index) => merged[index] === null).map((homey) => homey.name);
-    if (!saveStoredHomeys(storage, accepted)) {
+    const outcomes = await Promise.all(pairedHomeys.map(mergePaired));
+    const added = outcomes.flatMap((outcome) => (outcome.state === 'add' ? [outcome.homey] : []));
+    if (!saveStoredHomeys(storage, added)) {
       importText.textContent = STORAGE_REFUSED;
       importAdd.hidden = false;
       return;
     }
-    importText.textContent = refused.length > 0
-      ? `Kept the key saved here for ${refused.join(', ')}: Homey did not accept the key in the code.`
-      : '';
-    importPanel.hidden = refused.length === 0;
+    const kept = keptKeyText(pairedHomeys, outcomes);
+    if (!kept) {
+      closeOffer();
+      return;
+    }
+    importTitle.textContent = 'Some keys were kept';
+    importText.textContent = kept;
+    importCancel.textContent = 'Close';
+    homeysPanel.hidden = false;
     await render();
   })();
 });
-byId<HTMLElement>('webapp-import-cancel').addEventListener('click', () => {
-  importPanel.hidden = true;
-  void render();
-});
+importCancel.addEventListener('click', closeOffer);
 
 // The Homey web app's API Keys page for the Homey the owner came to add or
 // re-key, when a link names it; the Homey web app's start page otherwise.
@@ -496,7 +554,7 @@ const start = async () => {
     }
   }
   await render();
-  if (reauth) showAddPanel({ name: reauth.name, address: reauth.baseUrl }, KEY_NO_LONGER_ACCEPTED);
+  if (reauth) showAddPanel(reauth);
 };
 
 void start();

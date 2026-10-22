@@ -123,6 +123,7 @@ import {
   resetSettingsUiPerf,
 } from './perf.ts';
 import { initTooltips } from './tooltips.ts';
+import { initWebAppAddressCopy } from './webAppLink.ts';
 import { initDebouncedSaveFlush } from './utils.ts';
 import { handleResetStats } from './resetStats.ts';
 import { createSwitchField } from './components.ts';
@@ -498,6 +499,7 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
 
 const initializeBootHandlers = () => {
   initTooltips();
+  initWebAppAddressCopy();
   initDebouncedSaveFlush();
   initRealtimeListeners();
   initRecommendationSurfaces({

@@ -22,7 +22,23 @@ export const buildWebAppHref = (homeyId: string, cloudUrl: string | null): strin
   return `${WEB_APP_URL}?${params.toString()}`;
 };
 
-type TextField = HTMLElement & { value: string };
+type TextField = HTMLElement & { value: string; select: () => void };
+
+// Copies the address; where the WebView refuses the clipboard, the address is
+// selected for the owner's own copy.
+export const initWebAppAddressCopy = (): void => {
+  const copy = document.getElementById('web-app-copy-address');
+  const address = document.getElementById('web-app-homey-address') as TextField | null;
+  if (!copy || !address) return;
+  copy.addEventListener('click', () => {
+    navigator.clipboard.writeText(address.value).then(
+      () => {
+        copy.textContent = 'Copied';
+      },
+      () => address.select(),
+    );
+  });
+};
 
 // Without the id the link still opens the web app, and the owner copies the
 // address from the Homey web app instead.
