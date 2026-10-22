@@ -65,6 +65,8 @@ export type IdleClassifierDeviceInput = {
   plannedState: PlannedDeviceState;
 };
 
+export type IdleClassifierObservation = Pick<IdleClassifierDeviceInput, 'id' | 'currentDrawKw' | 'temperature'>;
+
 export type IdleClassifier = {
   classifyAll: (devices: readonly IdleClassifierDeviceInput[], now: number) => void;
   /**
@@ -79,7 +81,9 @@ export type IdleClassifier = {
    * target, so the two travel together and cannot be read apart.
    */
   getStallEvidence: (deviceId: string) => StallEvidence | undefined;
-  getLiveStallEvidence: (device: IdleClassifierDeviceInput) => StallEvidence | undefined;
+  getLiveStallEvidence: (device: IdleClassifierObservation) => StallEvidence | undefined;
+  /** Withdraw accepted warmth on a trusted observation, without booking a detector sample. */
+  observeDevice: (device: IdleClassifierObservation) => void;
 };
 
 const debugLog = getDebugEmitter('observer', 'plan');
@@ -233,11 +237,12 @@ const emitPowerEdge = (
 
 /** Keep the accepted setpoint basis while fresh observations still support its hold. */
 const liveNearTargetEvidence = (
-  device: IdleClassifierDeviceInput,
+  device: IdleClassifierObservation,
   evidence: StallEvidence | undefined,
 ): StallEvidence | undefined => {
   if (evidence === undefined) return undefined;
-  const current = { ...toDetectorInput(device, Date.now()),
+  const current = { currentDrawKw: device.currentDrawKw,
+    currentTemperature: device.temperature?.currentTemperature,
     targetTemperature: evidence.classifiedAgainstTargetValue };
   if (!nearTargetIdleStillApplies(current) || device.temperature === undefined) return undefined;
   return { ...evidence,
@@ -310,18 +315,20 @@ export function createIdleClassifier(logger?: PinoLogger): IdleClassifier {
     return { classification: result.classification, classifiedAgainstTargetValue, temperatureGapC };
   };
 
-  const getLiveStallEvidence = (device: IdleClassifierDeviceInput): StallEvidence | undefined => {
+  const getLiveStallEvidence = (device: IdleClassifierObservation): StallEvidence | undefined => {
     const accepted = acceptedNearTargetById.get(device.id);
     if (accepted === undefined) return getStallEvidence(device.id);
-    const current = liveNearTargetEvidence(device, accepted);
-    if (current === undefined) {
+    return liveNearTargetEvidence(device, accepted);
+  };
+
+  const observeDevice = (device: IdleClassifierObservation): void => {
+    const accepted = acceptedNearTargetById.get(device.id);
+    if (accepted !== undefined && liveNearTargetEvidence(device, accepted) === undefined) {
       acceptedNearTargetById.delete(device.id);
       lastResultById.delete(device.id);
       state.delete(device.id);
-      return undefined;
     }
-    return current;
   };
 
-  return { classifyAll, getClassification, getStallEvidence, getLiveStallEvidence };
+  return { classifyAll, getClassification, getStallEvidence, getLiveStallEvidence, observeDevice };
 }

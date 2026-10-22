@@ -34,6 +34,7 @@ describe('observed temperature mode updates ask the owning home whether a device
       homeId: 'area-1',
       hooks: {
         isDeviceLimited: vi.fn(() => params.areaLimited === true),
+        observeIdleEvidence: vi.fn(),
         syncLivePlanState: vi.fn().mockResolvedValue(false),
       hasPendingBinaryCommand: () => false,
         clearRecentBinaryOffCommand: () => {},

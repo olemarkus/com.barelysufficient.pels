@@ -5,6 +5,7 @@ import { SnapshotWarmupGate } from '../../lib/plan/snapshotWarmupGate';
 
 type PlanServiceWiring = Pick<PlanServiceDeps,
   | 'getAssociatedCarChargingState'
+  | 'getObservedRecord'
   | 'getSteppedLoadProfileById'
   | 'schedulePostActuationRefresh'
   | 'loggers'
@@ -24,6 +25,7 @@ type PlanServiceWiring = Pick<PlanServiceDeps,
  */
 export const planServiceWiring = (): PlanServiceWiring => ({
   getAssociatedCarChargingState: () => undefined,
+  getObservedRecord: () => undefined,
   getSteppedLoadProfileById: () => new Map(),
   schedulePostActuationRefresh: () => undefined,
   loggers: { debugStructured: vi.fn() },

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { syncOwningHomeLivePlanState } from '../../setup/appObservedControlStateRuntime';
+import { observeOwningHomeIdleEvidence, syncOwningHomeLivePlanState } from '../../setup/appObservedControlStateRuntime';
 import type { OwningHomeHooks } from '../../setup/homeRuntime/createHomeCapacityBundle';
 import type { AppContext } from '../../lib/app/appContext';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
@@ -81,6 +81,7 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
       clearRecentBinaryOffCommand: vi.fn(),
     } as unknown as AppContext['planEngine'];
     const hooks: OwningHomeHooks = {
+      observeIdleEvidence: vi.fn(),
       syncLivePlanState: vi.fn().mockResolvedValue(false),
       hasPendingBinaryCommand: subPending,
       clearRecentBinaryOffCommand: vi.fn(),
@@ -163,6 +164,7 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
         'sub-dev': {
           homeId: 'h_sub',
           hooks: {
+            observeIdleEvidence: vi.fn(),
             syncLivePlanState: vi.fn().mockResolvedValue(false),
       hasPendingBinaryCommand: () => false,
             clearRecentBinaryOffCommand: vi.fn(),
@@ -201,6 +203,7 @@ describe('rebuild-suppression invalidation routing (R7b P1#1)', () => {
         'sub-dev': {
           homeId: 'h_sub',
           hooks: {
+            observeIdleEvidence: vi.fn(),
             syncLivePlanState: vi.fn().mockResolvedValue(false),
       hasPendingBinaryCommand: () => false,
             clearRecentBinaryOffCommand: vi.fn(),
@@ -243,6 +246,7 @@ describe('actionable-load routing', () => {
       'sub-dev': {
         homeId: 'h_sub',
         hooks: {
+          observeIdleEvidence: vi.fn(),
           syncLivePlanState: vi.fn().mockResolvedValue(false),
           hasPendingBinaryCommand: () => false,
           clearRecentBinaryOffCommand: vi.fn(),
@@ -270,12 +274,38 @@ describe('actionable-load routing', () => {
   });
 });
 
+describe('owning-home idle evidence', () => {
+  it('withdraws evidence synchronously in the device owner without scheduling a refresh or rebuild', () => {
+    const mainObserve = vi.fn();
+    const subObserve = vi.fn();
+    const syncLivePlanState = vi.fn();
+    const rebuildPlan = vi.fn();
+    const ctx = createAppContextMock({ planService: { observeIdleEvidence: mainObserve,
+      syncLivePlanState, rebuildPlanFromCache: rebuildPlan } as unknown as PlanService });
+    const router = routerFor({ 'sub-device': { homeId: 'sub-home', hooks: {
+      observeIdleEvidence: subObserve, syncLivePlanState, rebuildPlan,
+      hasPendingBinaryCommand: () => false, clearRecentBinaryOffCommand: () => undefined,
+      invalidateRebuildSuppression: () => undefined, isDeviceLimited: () => false,
+      canDeviceChangeActionableLoad: () => false,
+    } } });
+    observeOwningHomeIdleEvidence(ctx, 'sub-device', router);
+    expect(subObserve).toHaveBeenCalledWith('sub-device');
+    expect(mainObserve).not.toHaveBeenCalled();
+    observeOwningHomeIdleEvidence(ctx, 'main-device', router);
+    expect(mainObserve).toHaveBeenCalledWith('main-device');
+    expect(subObserve).toHaveBeenCalledTimes(1);
+    expect(syncLivePlanState).not.toHaveBeenCalled();
+    expect(rebuildPlan).not.toHaveBeenCalled();
+  });
+});
+
 describe('owning-home live-status refresh', () => {
   it('refreshes the sub-home owner and falls back to main for its own device', async () => {
     const mainRefresh = vi.fn().mockResolvedValue(true);
     const subRefresh = vi.fn().mockResolvedValue(true);
     const ctx = createAppContextMock({ planService: { syncLivePlanState: mainRefresh } as unknown as PlanService });
     const hooks: OwningHomeHooks = {
+      observeIdleEvidence: vi.fn(),
       syncLivePlanState: subRefresh,
       hasPendingBinaryCommand: () => false, clearRecentBinaryOffCommand: () => undefined,
       rebuildPlan: async () => undefined, invalidateRebuildSuppression: () => undefined,

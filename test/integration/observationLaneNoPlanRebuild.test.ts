@@ -179,6 +179,7 @@ describe('a discharging home battery on the observation lane', () => {
     subscribePlanObservedState({
       ctx,
       syncLivePlanState: (event) => syncLivePlanState(event.source),
+      observeIdleEvidence: vi.fn(),
       observedStateEmitter: laneEmitter,
       syncExternalOffHold: vi.fn(),
       invalidateRebuildSuppression,

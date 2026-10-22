@@ -16,8 +16,11 @@ import {
   createIdleClassifier,
   type IdleClassifier,
   type IdleClassifierDeviceInput,
+  type IdleClassifierObservation,
 } from '../observer/idleClassifier';
 import type { StallEvidence } from '../../packages/contracts/src/idleClassification';
+import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
+import { readObservedTemperatureState } from '../observer/observedDeviceStateProjection';
 import type { PendingBinaryLiveDevice } from '../ports/controlCommandConfirmation';
 import { PlanStatusWriter } from './planStatusWriter';
 import type {
@@ -157,8 +160,6 @@ export class PlanService {
   private changeTracker: PlanChangeTracker;
   private readonly rebuildHost: PlanRebuildHost;
   private readonly queuedLiveSyncs = new Map<PendingTargetObservationSource, Promise<boolean>>();
-  /** The plan input of the build in progress, held for reads made from inside it; `null` between builds. */
-  private buildDevices: readonly PlanInputDevice[] | null = null;
 
   constructor(private deps: PlanServiceDeps) {
     this.idleClassifier = createIdleClassifier(deps.loggers.structuredLog);
@@ -187,17 +188,7 @@ export class PlanService {
       stampPlanGeneratedAt: (plan, nowMs) => this.stampPlanGeneratedAt(plan, nowMs),
       preservePlanGeneratedAt: (plan, basePlan) => this.preservePlanGeneratedAt(plan, basePlan),
       emitPlanUpdated: (plan) => this.emitPlanUpdated(plan),
-      buildOver: (devices, build) => this.buildOver(devices, build),
     };
-  }
-
-  private async buildOver(devices: readonly PlanInputDevice[], build: () => Promise<DevicePlan>): Promise<DevicePlan> {
-    this.buildDevices = devices;
-    try {
-      return await build();
-    } finally {
-      this.buildDevices = null;
-    }
   }
 
   buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
@@ -227,28 +218,25 @@ export class PlanService {
     return resolveTaskDeliveryControl(device, execution);
   }
 
-  /**
-   * Validate observer completion evidence against current accepted observations without rebuilding.
-   *
-   * A build asks this once per active temperature smart task, from inside its
-   * decoration. It then reads the devices that build is deciding on: projecting
-   * the whole home again per task would repeat the build's own input work for
-   * one device each time. Any other caller while a build is in flight (the
-   * lifecycle clock, the smart-task API) reads that same list, at most one build
-   * old; outside a build it projects the current input.
-   */
+  /** Read completion evidence against the observer's accepted device record without rebuilding. */
   getStallEvidence(deviceId: string): StallEvidence | undefined {
-    const devices = this.buildDevices ?? this.deps.getPlanDevices();
-    const current = devices.find((device) => device.id === deviceId);
-    const decision = this.getLatestPlanSnapshot()?.devices.find((device) => device.id === deviceId);
-    const temperature = this.deps.getObservedTemperature(deviceId);
-    if (!current || !isMeteredPlanDevice(current) || !decision || !current.available
-      || temperature.kind !== 'observed') return undefined;
-    return this.idleClassifier.getLiveStallEvidence({
-      id: current.id, name: current.name, currentState: current.currentState,
-      currentDrawKw: current.currentDrawKw, plannedState: decision.plannedState,
-      temperature: temperature.value,
-    });
+    const device = this.getIdleObservation(deviceId);
+    return device && this.idleClassifier.getLiveStallEvidence(device);
+  }
+
+  /** Consume every trusted observation before status refreshes can coalesce in the plan queue. */
+  observeIdleEvidence(deviceId: string): void {
+    const device = this.getIdleObservation(deviceId);
+    if (device) this.idleClassifier.observeDevice(device);
+  }
+
+  private getIdleObservation(deviceId: string): IdleClassifierObservation | undefined {
+    const current = this.deps.getObservedRecord(deviceId);
+    if (!current?.available || !hasObservedMeasuredPower(current)
+      || !this.getLatestPlanSnapshot()?.devices.some((device) => device.id === deviceId)) return undefined;
+    const temperature = readObservedTemperatureState(current);
+    if (temperature.kind !== 'observed') return undefined;
+    return { id: current.id, currentDrawKw: current.measuredPowerKw, temperature: temperature.value };
   }
 
   computePhysicalPowerLimit(): number | null {
