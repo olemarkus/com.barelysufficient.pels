@@ -15,9 +15,11 @@
  * in `test/integration/surplusDumpLoadPlan.test.ts`.
  */
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
+import { resolvePriceOptimizationConfig } from '../price/priceOptimizer';
 import type { PlanEngineState } from './planState';
 import type { BaselineOffPosture, ShedDecisions } from './shedDecisions';
 import type { PlanContext } from './planContext';
+import type { PlanBuilderDeps } from './planBuilderDeps';
 import type { PlanInputDevice } from './planTypes';
 import type { SheddingPlan } from './shedding/types';
 import type { ReleaseHoldOutcome } from '../observer/externalOffHold';
@@ -207,13 +209,16 @@ export function runSilentMeterSurplusHold(
   state: PlanEngineState,
   sheddingPlan: SheddingPlan,
   decoration: DeferredDecorationBundle,
-  cycle: { getConfig: (deviceId: string) => PriceOptDeviceConfig | undefined; nowTs: number },
-  leaveOffOnRelease: (deviceId: string) => ReleaseHoldOutcome,
-  pendingBinaryCommands: PendingBinaryCommandStore,
+  nowTs: number,
+  deps: Pick<PlanBuilderDeps, 'getPriceOptimizationSettings' | 'leaveOffOnRelease' | 'pendingBinaryCommandStore'>,
 ): Map<string, DeviceReason> {
+  const priceSettings = deps.getPriceOptimizationSettings();
   const { admittedDevices } = decoration;
   const excludeIds = resolvePostureExcludeIds(decoration, admittedDevices);
-  withdrawSurplusEligibility(context.devices, state, cycle.getConfig, excludeIds, cycle.nowTs);
+  withdrawSurplusEligibility(
+    context.devices, state,
+    (deviceId) => resolvePriceOptimizationConfig(priceSettings, deviceId), excludeIds, nowTs,
+  );
   const surplusHold = resolveSurplusHold(admittedDevices, state, excludeIds);
   // BOTH standing postures, here as on the measured path. A standing posture is
   // not capacity pressure, so a missing meter does not change what it decides —
@@ -229,9 +234,9 @@ export function runSilentMeterSurplusHold(
     decoration,
     new Set([...surplusHold.holdIds, ...startPolicyHold.holdIds, ...chargeTargetHold.holdIds]),
     state.shedDecisions,
-    cycle.getConfig,
-    leaveOffOnRelease,
-    pendingBinaryCommands,
+    (deviceId) => priceSettings[deviceId],
+    deps.leaveOffOnRelease,
+    deps.pendingBinaryCommandStore,
   );
   // Written in rising precedence, the same as the measured pass: the start
   // policy over surplus, and the charge target last, so it wins the card. A

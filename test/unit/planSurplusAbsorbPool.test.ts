@@ -34,7 +34,7 @@ const buildDevice = (
   targets: [{ id: 'target_temperature', value: MODE_C, unit: 'C', min: 0, max: 95, step: 0.5 }],
 });
 
-const surplusConfig = { surplusWilling: true, surplusDelta: 2 };
+const surplusConfig = { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusLiftC: 2 };
 
 const resolve = (params: {
   state: PlanEngineState;

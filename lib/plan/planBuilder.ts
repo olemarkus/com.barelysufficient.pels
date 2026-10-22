@@ -27,6 +27,7 @@
  * Capacity-model internals: `docs/technical.md`.
  */
 import CapacityGuard from '../power/capacityGuard';
+import { resolvePriceOptimizationConfig } from '../price/priceOptimizer';
 import type { PowerTrackerState } from '../power/tracker';
 import type { PlanBuilderDeps } from './planBuilderDeps';
 import { resolvePowerCycleReading } from '../power/powerCycleReading';
@@ -410,7 +411,8 @@ export class PlanBuilder {
     const storage = resolveStorageSurplus(context.devices, this.state.storageLeverByDevice, power.drawKw * 1000);
     return trackPlanStage('plan_surplus_eligibility_ms', () => resolveSurplusEligibility(
       selectSurplusCandidates(
-        context.devices, this.state, (deviceId) => this.priceOptimizationSettings[deviceId], excludeIds,
+        context.devices, this.state,
+        (deviceId) => resolvePriceOptimizationConfig(this.priceOptimizationSettings, deviceId), excludeIds,
       ),
       this.state,
       // Producer-resolved: the signed net is always a number (the carried reading).

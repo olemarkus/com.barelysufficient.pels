@@ -219,7 +219,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       excludeIds: new Set(),
       // Even if a (nonsensical) surplus config were present, the temperature-boost
       // filter drops the battery before allocation.
-      getConfig: () => ({ surplusWilling: true, surplusDelta: 2 }),
+      getConfig: () => ({ enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusLiftC: 2 }),
       nowTs: Date.UTC(2025, 0, 1, 12, 0, 0),
     });
     expect(state.surplusEligibilityByDevice[BATTERY_ID]).toBeUndefined();
