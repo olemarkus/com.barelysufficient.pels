@@ -1,6 +1,6 @@
 import type CapacityGuard from '../../power/capacityGuard';
 import type { LatchedMeterReading } from '../../power/lastTotalPower';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../../logging/logger';
+import type { Logger as PinoLogger } from '../../logging/logger';
 import type { PlanEngineState, StorageLeverState } from '../planState';
 import type { MeasuredPower } from '../planContext';
 import type { PlanInputDevice } from '../planTypes';
@@ -73,28 +73,23 @@ export function emitOvershootEscalationBlocked(
   });
 }
 
+export type RecentRestoreState =
+  | { recentlyRestored: false }
+  | { recentlyRestored: true; sinceRestoreMs: number };
+
 export function resolveRecentRestoreState(
-  device: Pick<PlanInputDevice, 'id' | 'name'>,
+  device: Pick<PlanInputDevice, 'id'>,
   state: PlanEngineState,
   nowTs: number,
   /** Severity, sentinel-carrying — this is the one reader that wants it. */
   needed: number,
-  debugStructured?: StructuredDebugEmitter,
-): boolean {
+): RecentRestoreState {
   const lastRestore = state.actuation.lastDeviceRestoreMs[device.id];
-  if (!lastRestore) return false;
+  if (!lastRestore) return { recentlyRestored: false };
   const sinceRestoreMs = nowTs - lastRestore;
   const recentlyRestored = sinceRestoreMs < RECENT_RESTORE_SHED_GRACE_MS;
   const overshootSevere = needed > RECENT_RESTORE_OVERSHOOT_BYPASS_KW;
-  if (recentlyRestored && !overshootSevere) {
-    debugStructured?.({
-      event: 'plan_shed_deprioritized_recent_restore',
-      deviceId: device.id,
-      deviceName: device.name,
-      sinceRestoreSec: Math.round(sinceRestoreMs / 1000),
-      overshootKw: needed,
-    });
-    return true;
-  }
-  return false;
+  return recentlyRestored && !overshootSevere
+    ? { recentlyRestored: true, sinceRestoreMs }
+    : { recentlyRestored: false };
 }

@@ -1,3 +1,4 @@
+import { getDebugEmitter } from '../../logging/logger';
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { NO_SHEDDING_OUTCOME, type PlanEngineState, type SheddingOutcome } from '../planState';
 import type { MeasuredPower, PlanContext } from '../planContext';
@@ -35,6 +36,8 @@ import { resolveSheddingLatch } from './sheddingLatch';
 import { reportShortfallToGuard } from './shortfallVerdict';
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
+const debug = getDebugEmitter('plan', 'plan');
+
 export async function buildSheddingPlan(
   context: PlanContext,
   power: MeasuredPower,
@@ -117,7 +120,9 @@ function planShedding(
   const { hourlyBudgetExhausted, shedsEverything, leadingStorageOnly } = entry;
 
   const candidateParams = buildShedCandidateParams(context, power, state, deps, storage);
-  const walked = restrictToLeadingStorage(buildSheddingCandidates(candidateParams, nowTs), leadingStorageOnly);
+  const gathered = buildSheddingCandidates(candidateParams, nowTs);
+  gathered.diagnostics.emit();
+  const walked = restrictToLeadingStorage(gathered, leadingStorageOnly);
   // The grace defers every device: with no battery ranked ahead of them there
   // is nothing to decide, exactly as without a battery.
   if (leadingStorageOnly && walked.candidates.length === 0) return emptySheddingResult(NO_SHEDDING_OUTCOME);
@@ -140,7 +145,7 @@ function planShedding(
   }
   const escalatedSameSample = measurementDecision.kind === 'proceed' && measurementDecision.escalatedSameSample;
   if (escalatedSameSample) {
-    deps.debugStructured?.({ event: 'plan_shed_escalating_unchanged_measurement' });
+    debug({ event: 'plan_shed_escalating_unchanged_measurement' });
   }
   const { candidates } = walked;
   const result = selectShedDevices(
@@ -155,7 +160,6 @@ function planShedding(
       hourlyBudgetExhausted,
     ),
     shedsEverything,
-    deps.debugStructured,
   );
 
   if (isEmptySelection(result)) {
@@ -240,9 +244,9 @@ function skipSheddingAwaitingMeasurement(
   held: PendingShedRelief | null,
   hourlyBudgetExhausted: boolean,
 ): PlanSheddingResult {
-  const { deps, limitSource } = candidateParams;
+  const { limitSource } = candidateParams;
   if (held === null || held.held.size === 0) {
-    deps.debugStructured?.({ event: 'plan_shed_skipped_awaiting_measurement', heldShedDevices: 0 });
+    debug({ event: 'plan_shed_skipped_awaiting_measurement', heldShedDevices: 0 });
     return emptySheddingResult(retainPendingLatch(held));
   }
   const decision = holdPendingShedDecision(
@@ -250,7 +254,7 @@ function skipSheddingAwaitingMeasurement(
     held,
     resolveShedReason(limitSource, candidateSummary.physicalLimitBreached, hourlyBudgetExhausted),
   );
-  deps.debugStructured?.({
+  debug({
     event: 'plan_shed_skipped_awaiting_measurement',
     heldShedDevices: decision.shedSet.size,
   });
@@ -289,7 +293,7 @@ function shedBeyondPendingRelief(
   nowTs: number,
   hourlyBudgetExhausted: boolean,
 ): PlanSheddingResult {
-  const { deps, deficitKw: needed, limitSource } = candidateParams;
+  const { deficitKw: needed, limitSource } = candidateParams;
   const { candidates } = candidateSummary;
   const reason = resolveShedReason(limitSource, candidateSummary.physicalLimitBreached, hourlyBudgetExhausted);
   const held = holdPendingShedDecision(candidates, pending, reason);
@@ -303,7 +307,7 @@ function shedBeyondPendingRelief(
     heldShedDevices: held.shedSet.size,
   };
   if (residualKw <= PENDING_RELIEF_EPSILON_KW) {
-    deps.debugStructured?.({ event: 'plan_shed_held_pending_relief', ...creditFields });
+    debug({ event: 'plan_shed_held_pending_relief', ...creditFields });
     return {
       ...held, outcome: retainPendingLatch(pending), pendingReliefKw: pending.totalKw,
     };
@@ -313,9 +317,8 @@ function shedBeyondPendingRelief(
     residualKw,
     reason,
     false,
-    deps.debugStructured,
   );
-  deps.debugStructured?.({
+  debug({
     event: 'plan_shed_beyond_pending_relief',
     ...creditFields,
     residualKw,

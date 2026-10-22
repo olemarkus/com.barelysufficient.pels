@@ -50,7 +50,6 @@ const buildDeps = (state: ReturnType<typeof createPlanEngineState>, capacityGuar
   getShedBehavior: () => ({ action: 'turn_off' as const }),
   // Cap-less device sorts first (higher number sheds first).
   log: vi.fn(),
-  debugStructured: vi.fn(),
 });
 
 const buildCapacityGuard = (): CapacityGuard => ({

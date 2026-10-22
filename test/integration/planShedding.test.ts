@@ -1,3 +1,4 @@
+import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import type { Logger as PinoLogger } from '../../lib/logging/logger';
 import { partialDouble } from '../helpers/partialDouble';
 import { buildPlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFixture';
@@ -27,6 +28,10 @@ import {
   resolveFixtureCurrentOn,
 } from '../utils/planTestUtils';
 import { capacityGuardSpy, sheddingWiring } from '../helpers/sheddingWiring';
+
+let capture: LoggerCapture;
+beforeEach(() => { capture = captureLogger('info', ['plan']); });
+afterEach(() => { capture.restore(); });
 
 // Shared empty pending-binary-command store for deps blocks that build their
 // engine state inline (or declare it after the deps object) and never seed
@@ -1629,7 +1634,6 @@ describe('buildSheddingPlan', () => {
 
     const capacityGuard = capacityGuardSpy();
 
-    const debugStructured = vi.fn();
     const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices,
@@ -1646,14 +1650,13 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         shortfallThresholdKw: 10,
         powerTracker: { lastTimestamp: 950, lastPowerW: 8_770 } as PowerTrackerState,
-        debugStructured,
       },
     );
 
     expect(result.shedSet.has('charger')).toBe(true);
     // The chosen rung covers the deficit on its own, so nothing else is limited.
     expect(result.shedSet.has('bath')).toBe(false);
-    expect(debugStructured).toHaveBeenCalledWith(
+    expect(capture.events).toContainEqual(
       expect.objectContaining({
         event: 'plan_shed_step_down',
         deviceId: 'charger',
@@ -1682,7 +1685,6 @@ describe('buildSheddingPlan', () => {
 
     const capacityGuard = capacityGuardSpy();
 
-    const debugStructured = vi.fn();
     const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
@@ -1734,7 +1736,6 @@ describe('buildSheddingPlan', () => {
         // answer the opening deficit with a step reduction, so both follow
         // ordinary priority ordering.
         log: vi.fn(),
-        debugStructured,
       },
     );
 
@@ -1744,7 +1745,7 @@ describe('buildSheddingPlan', () => {
     // (2.9 kW priced, the whole charger delivered) is what a rung fixed at build
     // time would have taken.
     expect(result.shedStepTargets.get('charger')).toBe('6a');
-    expect(debugStructured).toHaveBeenCalledWith(
+    expect(capture.events).toContainEqual(
       expect.objectContaining({
         event: 'plan_shed_step_down',
         deviceId: 'charger',
@@ -1770,7 +1771,6 @@ describe('buildSheddingPlan', () => {
 
     const capacityGuard = capacityGuardSpy();
 
-    const debugStructured = vi.fn();
     const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
@@ -1838,7 +1838,6 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         shortfallThresholdKw: 10,
         powerTracker: { lastTimestamp: 980, lastPowerW: 10_000 } as PowerTrackerState,
-        debugStructured,
       },
     );
 
@@ -1846,7 +1845,7 @@ describe('buildSheddingPlan', () => {
     expect(result.shedSet.has('heater')).toBe(true);
     expect(result.shedSet.has('charger')).toBe(true);
     expect(result.shedStepTargets.get('charger')).toBe('6a');
-    expect(debugStructured).toHaveBeenCalledWith(
+    expect(capture.events).toContainEqual(
       expect.objectContaining({
         event: 'plan_shed_step_down',
         deviceId: 'charger',
@@ -2147,12 +2146,15 @@ describe('buildSheddingPlan', () => {
   // One fact, read by both the fixture's residual and the planner's own deps.
   const AT_SETPOINT_SHED_BEHAVIOR = { action: 'set_temperature', temperature: 15 } as const;
 
-  it('skips a setpoint limit that would make the device work harder', async () => {
+  it.each([true, false])('skips a demand-adding setpoint and gates its diagnostics on the plan topic (%s)', async (debugEnabled) => {
+    capture.restore();
+    capture = captureLogger('info', debugEnabled ? ['plan'] : []);
     // A cooling unit targeting 24 with a cooling limit of 20: writing the limit
     // would ADD demand. The candidate is skipped, and the skip log says why.
     const state = createPlanEngineState();
+    state.actuation.markRestore('ac', Date.now() - 1_000);
     const capacityGuard = capacityGuardSpy();
-    const debugStructured = vi.fn();
+
     const shedBehavior = { action: 'set_temperature', temperature: 20 } as const;
 
     const result = await buildSheddingPlanForSpec(
@@ -2173,11 +2175,11 @@ describe('buildSheddingPlan', () => {
             shedBehavior,
           }),
         ],
-        total: 4.8,
+        total: 4.4,
         softLimit: 4,
         capacitySoftLimit: 4,
-        headroomRaw: -0.8,
-        headroom: -0.8,
+        headroomRaw: -0.4,
+        headroom: -0.4,
         softLimitSource: 'capacity',
       }),
       state,
@@ -2187,13 +2189,16 @@ describe('buildSheddingPlan', () => {
         shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 1003, lastPowerW: 4_800 } as PowerTrackerState,
         getShedBehavior: () => shedBehavior,
-        debugStructured,
       },
     );
 
     expect(result.shedSet.has('ac')).toBe(false);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(capture.findEvents('plan_shed_candidates_skipped')).toHaveLength(debugEnabled ? 1 : 0);
+    expect(capture.findEvents('plan_shed_deprioritized_recent_restore')).toHaveLength(debugEnabled ? 1 : 0);
+    if (!debugEnabled) return;
+    expect(capture.events).toContainEqual(expect.objectContaining({
       event: 'plan_shed_candidates_skipped',
+      component: 'plan', debugTopic: 'plan',
       skippedCandidateCount: 1,
       skippedCandidateReasons: [{ reason: 'limit_would_add_demand', count: 1 }],
     }));
@@ -2203,7 +2208,6 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = capacityGuardSpy();
-    const debugStructured = vi.fn();
 
     const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
@@ -2240,7 +2244,6 @@ describe('buildSheddingPlan', () => {
         shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 1003, lastPowerW: 4_800 } as PowerTrackerState,
         getShedBehavior: () => AT_SETPOINT_SHED_BEHAVIOR,
-        debugStructured,
       },
     );
 
@@ -2248,7 +2251,7 @@ describe('buildSheddingPlan', () => {
     // The device is already parked at its shed setpoint, which is exactly why
     // nothing is reducible — the skip log says so instead of reading as "no
     // candidates" with no explanation.
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(capture.events).toContainEqual(expect.objectContaining({
       event: 'plan_shed_candidates_skipped',
       skippedCandidateCount: 1,
       skippedCandidateReasons: [{ reason: 'already_at_shed_temperature', count: 1 }],
@@ -2267,7 +2270,6 @@ describe('buildSheddingPlan', () => {
     state.actuation.lastDeviceRestoreMs.stepper = Date.now() - 30_000;
 
     const capacityGuard = capacityGuardSpy();
-    const debugStructured = vi.fn();
 
     const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
@@ -2304,7 +2306,6 @@ describe('buildSheddingPlan', () => {
         shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 1004, lastPowerW: 4_400 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'set_step' }),
-        debugStructured,
       },
     );
 
@@ -2312,7 +2313,7 @@ describe('buildSheddingPlan', () => {
     // A `set_step` device already at its lowest ACTIVE step has no rung left:
     // the ladder descent must not reach the off step for it, because turning
     // it off is not the shed behaviour its owner configured.
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(capture.events).toContainEqual(expect.objectContaining({
       event: 'plan_shed_candidates_skipped',
       skippedCandidateCount: 1,
       skippedCandidateReasons: [{ reason: 'no_lower_step_reachable', count: 1 }],
@@ -2323,7 +2324,6 @@ describe('buildSheddingPlan', () => {
     const state = createPlanEngineState();
 
     const capacityGuard = capacityGuardSpy();
-    const debugStructured = vi.fn();
 
     const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
@@ -2350,12 +2350,11 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         shortfallThresholdKw: 8,
         powerTracker: { lastTimestamp: 1005, lastPowerW: 4_400 } as PowerTrackerState,
-        debugStructured,
       },
     );
 
     expect(result.shedSet.size).toBe(0);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(capture.events).toContainEqual(expect.objectContaining({
       event: 'plan_shed_candidates_skipped',
       skippedCandidateCount: 1,
       skippedCandidateReasons: [{ reason: 'budget_exempt_daily_only', count: 1 }],
@@ -2803,7 +2802,6 @@ describe('buildSheddingPlan', () => {
         return 10;
       },
       log: vi.fn(),
-      debugStructured: vi.fn(),
     };
 
     // Shared state across cycles — carries forward lastShedPlanMeasurementTs.
@@ -2951,7 +2949,6 @@ describe('buildSheddingPlan', () => {
       shortfallThresholdKw: 6,
       getShedBehavior: () => ({ action: 'turn_off' }),
       log: vi.fn(),
-      debugStructured: vi.fn(),
     };
 
     const { context, power } = buildContext({
@@ -3017,7 +3014,7 @@ describe('buildSheddingPlan', () => {
       { decidedAtMs: firstDecisionAtMs, creditedKw: 0.8 },
     ]);
     expect(state.overshoot.shouldEscalate(firstDecisionAtMs + 30_000)).toBe(true);
-    expect(deps.debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_shed_skipped_awaiting_measurement' }));
+    expect(capture.events).toContainEqual(expect.objectContaining({ event: 'plan_shed_skipped_awaiting_measurement' }));
   });
 
   // Field incident 2026-08-01: after the lowest-priority device was shed, the
@@ -3086,7 +3083,6 @@ describe('buildSheddingPlan', () => {
       } as unknown as CapacityGuard,
       getShedBehavior: () => ({ action: 'turn_off' }),
       log: vi.fn(),
-      debugStructured: vi.fn(),
     });
 
     // Cycle 1 of the incident: the sub-cap overshoot sheds the lowest-priority
@@ -3146,7 +3142,7 @@ describe('buildSheddingPlan', () => {
       // shed rather than restarting on every held cycle.
       if (repeatResult.outcome.kind !== 'held') throw new Error(`expected a hold, got ${repeatResult.outcome.kind}`);
       expect(repeatResult.outcome.latch.decisions.get('vvb')?.map((decision) => decision.decidedAtMs)).toEqual([decidedAtMs]);
-      expect(deps.debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      expect(capture.events).toContainEqual(expect.objectContaining({
         event: 'plan_shed_held_pending_relief',
         pendingReliefKw: 2,
         realisedKw: 0,
@@ -3451,8 +3447,8 @@ describe('buildSheddingPlan', () => {
       const landedAt = (stepId: string, drawKw: number) => ({
         selectedStepId: stepId, desiredStepId: stepId, currentDrawKw: drawKw,
       });
-      const creditedOn = (deps: SheddingDeps, pendingReliefKw: number) => expect(deps.debugStructured)
-        .toHaveBeenCalledWith(expect.objectContaining({
+      const creditedOn = (pendingReliefKw: number) => expect(capture.events)
+        .toContainEqual(expect.objectContaining({
           event: 'plan_shed_beyond_pending_relief',
           pendingReliefKw: expect.closeTo(pendingReliefKw, 6),
         }));
@@ -3464,18 +3460,18 @@ describe('buildSheddingPlan', () => {
       // its own 30 s.
       const second = await cycle(10_000, landedAt('14a', 3.22), 6.336 - 1.321 + 2.5);
       expect(second.result.shedStepTargets.get('ev')).toBe('10a');
-      creditedOn(second.deps, CHARGER_DRAW_KW - 3.22);
+      creditedOn(CHARGER_DRAW_KW - 3.22);
       const third = await cycle(20_000, landedAt('10a', 2.3), 6.336 - 1.321 + 2.5 - 0.92 + 1);
       expect(third.result.shedStepTargets.get('ev')).toBe('6a');
       expect(third.result.shedSet.has('bath')).toBe(false);
-      creditedOn(third.deps, (CHARGER_DRAW_KW - 3.22) + (3.22 - 2.3));
+      creditedOn((CHARGER_DRAW_KW - 3.22) + (3.22 - 2.3));
       // At 30 s the 14 A step's window has closed on its own stamp: only the two
       // steps decided since are credited, and the bathroom floor answers the
       // rest. Re-dated with each later step, the 14 A step was still credited
       // here and the floor stayed on until the charger's last step expired. The
       // expired step stays in the latch only as its claim on a later fall.
       const fourth = await cycle(30_000, landedAt('6a', 1.38), 6.336 - 1.321 + 2.5 - 0.92 + 1 - 0.92 + 1);
-      creditedOn(fourth.deps, (3.22 - 2.3) + (2.3 - 1.38));
+      creditedOn((3.22 - 2.3) + (2.3 - 1.38));
       expect(fourth.result.shedSet.has('bath')).toBe(true);
       expect(state.shedPlanLatch?.decisions.get('ev')?.map((decision) => decision.decidedAtMs))
         .toEqual([shedAtMs, shedAtMs + 10_000, shedAtMs + 20_000]);
@@ -3692,13 +3688,13 @@ describe('buildSheddingPlan', () => {
       expect([...(await cycle(0, true, 1.8)).result.shedSet]).toEqual(['heater']);
       // The heater is off and the reading has fallen 1.2 kW: it has seen the shed,
       // and the house is still over with nothing left to limit.
-      const seen = await cycle(5_000, false, 0.6);
-      expect(seen.deps.debugStructured).not.toHaveBeenCalledWith(expect.objectContaining(credited));
+      await cycle(5_000, false, 0.6);
+      expect(capture.events).not.toContainEqual(expect.objectContaining(credited));
       expect(state.shedPlanLatch?.decisions.has('heater')).toBe(false);
       // A 1 kW load lifts the reading back up. The heater's relief is already on
       // it, so nothing is on its way and none is credited.
-      const lifted = await cycle(10_000, false, 1.6);
-      expect(lifted.deps.debugStructured).not.toHaveBeenCalledWith(expect.objectContaining(credited));
+      await cycle(10_000, false, 1.6);
+      expect(capture.events).not.toContainEqual(expect.objectContaining(credited));
     });
 
     it('holds a decision in its window on a rebuild of the same sample, adding nothing', async () => {
@@ -3724,7 +3720,6 @@ describe('buildSheddingPlan', () => {
     state.overshoot.enter(Date.now() - 10_000);
     state.lastShedPlanMeasurementTs = 500;
 
-    const debugStructured = vi.fn();
     const capacityGuard = capacityGuardSpy();
 
     const result = await buildSheddingPlanForSpec(
@@ -3751,20 +3746,18 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 500, lastPowerW: 4_800 } as PowerTrackerState,
-        debugStructured,
       },
     );
 
     expect(result.shedSet.size).toBe(0);
     expect(result.outcome).toEqual({ kind: 'none' });
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_shed_skipped_awaiting_measurement' }));
+    expect(capture.events).toContainEqual(expect.objectContaining({ event: 'plan_shed_skipped_awaiting_measurement' }));
   });
 
   it('records a device confirmed off as skipped, not as load it could shed', async () => {
     const state = createPlanEngineState();
 
     const capacityGuard = capacityGuardSpy();
-    const debugStructured = vi.fn();
 
     const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
@@ -3790,12 +3783,11 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 1006, lastPowerW: 4_800 } as PowerTrackerState,
-        debugStructured,
       },
     );
 
     expect(result.shedSet.size).toBe(0);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(capture.events).toContainEqual(expect.objectContaining({
       event: 'plan_shed_candidates_skipped',
       skippedCandidateCount: 1,
       skippedCandidateReasons: [{ reason: 'binary_confirmed_off', count: 1 }],
@@ -3916,7 +3908,7 @@ describe('buildSheddingPlan', () => {
 
   it('records why a stepped device was skipped when no rung releases power', async () => {
     const state = createPlanEngineState();
-    const debugStructured = vi.fn();
+
     const capacityGuard = capacityGuardSpy();
 
     const result = await buildSheddingPlanForSpec(
@@ -3964,12 +3956,11 @@ describe('buildSheddingPlan', () => {
         shortfallThresholdKw: 5.04,
         powerTracker: { lastTimestamp: 2002, lastPowerW: 5_566 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'set_step' }),
-        debugStructured,
       },
     );
 
     expect(result.shedSet.size).toBe(0);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(capture.events).toContainEqual(expect.objectContaining({
       event: 'plan_shed_candidates_skipped',
       skippedCandidateCount: 1,
       skippedCandidateReasons: [{ reason: 'zero_step_relief', count: 1 }],
@@ -3986,7 +3977,7 @@ describe('buildSheddingPlan', () => {
 
   it('sheds a set_step device at a deeper rung when its adjacent rung prices at zero', async () => {
     const state = createPlanEngineState();
-    const debugStructured = vi.fn();
+
     const capacityGuard = capacityGuardSpy();
 
     const result = await buildSheddingPlanForSpec(
@@ -4036,7 +4027,6 @@ describe('buildSheddingPlan', () => {
         shortfallThresholdKw: 5.04,
         powerTracker: { lastTimestamp: 2003, lastPowerW: 5_000 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'set_step' }),
-        debugStructured,
       },
     );
 
@@ -4044,7 +4034,7 @@ describe('buildSheddingPlan', () => {
     // `low` is both the rung that was priced and the rung materialization
     // commands — never `off`, which a `set_step` shed may not reach.
     expect(result.shedStepTargets.get('heater')).toBe('low');
-    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(capture.events).not.toContainEqual(expect.objectContaining({
       event: 'plan_shed_candidates_skipped',
     }));
   });
@@ -4186,7 +4176,6 @@ describe('buildSheddingPlan', () => {
 
     const capacityGuard = capacityGuardSpy();
 
-    const debugStructured = vi.fn();
     const result = await buildSheddingPlanForSpec(
       ...cycleArgs({
         devices: [
@@ -4231,11 +4220,10 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         shortfallThresholdKw: 10,
         powerTracker: { lastTimestamp: 1010, lastPowerW: 7_640 } as PowerTrackerState,
-        debugStructured,
       },
     );
 
-    expect(debugStructured).toHaveBeenCalledWith(
+    expect(capture.events).toContainEqual(
       expect.objectContaining({
         event: 'plan_shed_step_down',
         deviceId: 'charger',
@@ -4411,7 +4399,6 @@ describe('buildSheddingPlan', () => {
     state.overshoot.enter(Date.now() - 31_000);
     state.lastShedPlanMeasurementTs = 500;
 
-    const debugStructured = vi.fn();
     const capacityGuard = capacityGuardSpy();
 
     const result = await buildSheddingPlanForSpec(
@@ -4438,13 +4425,12 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 500, lastPowerW: 4_800 } as PowerTrackerState,
-        debugStructured,
       },
     );
 
     expect(result.shedSet.size).toBe(0);
     expect(result.outcome).toEqual({ kind: 'none' });
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_shed_skipped_awaiting_measurement' }));
+    expect(capture.events).toContainEqual(expect.objectContaining({ event: 'plan_shed_skipped_awaiting_measurement' }));
   });
 
   it('does escalate same-sample shedding after the interval when capacity is breached under a tighter daily limit', async () => {
@@ -4452,7 +4438,6 @@ describe('buildSheddingPlan', () => {
     state.overshoot.enter(Date.now() - 31_000);
     state.lastShedPlanMeasurementTs = 500;
 
-    const debugStructured = vi.fn();
     const capacityGuard = capacityGuardSpy();
 
     const result = await buildSheddingPlanForSpec(
@@ -4479,13 +4464,12 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         shortfallThresholdKw: 4,
         powerTracker: { lastTimestamp: 500, lastPowerW: 5_200 } as PowerTrackerState,
-        debugStructured,
       },
     );
 
     expect(result.shedSet.has('dev-cap')).toBe(true);
     expect(result.outcome).toMatchObject({ kind: 'shed', atMs: Date.now(), escalatedSameSample: true });
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_shed_escalating_unchanged_measurement' }));
+    expect(capture.events).toContainEqual(expect.objectContaining({ event: 'plan_shed_escalating_unchanged_measurement' }));
   });
 
   it('keeps shedding active until headroom clears the restore margin plus hysteresis', async () => {
@@ -4511,7 +4495,6 @@ describe('buildSheddingPlan', () => {
         pendingBinaryCommandStore: emptyPendingStore,
         getShedBehavior: () => ({ action: 'turn_off' }),
         log: vi.fn(),
-        debugStructured: vi.fn(),
       },
     );
 
@@ -4542,7 +4525,6 @@ describe('buildSheddingPlan', () => {
         pendingBinaryCommandStore: emptyPendingStore,
         getShedBehavior: () => ({ action: 'turn_off' }),
         log: vi.fn(),
-        debugStructured: vi.fn(),
       },
     );
 
@@ -4575,7 +4557,6 @@ describe('buildSheddingPlan', () => {
         pendingBinaryCommandStore: emptyPendingStore,
         getShedBehavior: () => ({ action: 'turn_off' }),
         log: vi.fn(),
-        debugStructured: vi.fn(),
       },
     );
 
@@ -4606,7 +4587,6 @@ describe('buildSheddingPlan', () => {
         pendingBinaryCommandStore: emptyPendingStore,
         getShedBehavior: () => ({ action: 'turn_off' }),
         log: vi.fn(),
-        debugStructured: vi.fn(),
       },
     );
 

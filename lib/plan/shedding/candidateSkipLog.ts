@@ -23,8 +23,10 @@
  * and are not recorded — matching `controlledDevices` in the capacity summary,
  * which counts the same set.
  */
-import type { StructuredDebugEmitter } from '../../logging/logger';
+import { getDebugEmitter, isDebugTopicEnabled } from '../../logging/logger';
 import type { MeteredPlanInputDevice } from '../planTypes';
+
+const debug = getDebugEmitter('plan', 'plan');
 
 export type ShedCandidateSkipReason =
   | 'binary_confirmed_off'
@@ -69,17 +71,22 @@ export type ShedCandidateSkipRecorder = {
     rungsTried?: string[],
   ) => void;
   recordStorage: (params: StorageCandidateSkipRecord) => void;
+  recordRecentRestore: (device: { id: string; name?: string }, sinceRestoreMs: number, neededKw: number) => void;
   emit: () => void;
 };
 
-export function createShedCandidateSkipRecorder(
-  debugStructured?: StructuredDebugEmitter,
-): ShedCandidateSkipRecorder {
+/** Gather once; only the selection pass emits. The shortfall probe stays quiet. */
+export function createShedCandidateSkipRecorder(): ShedCandidateSkipRecorder {
+  const recentRestores: Array<{
+    event: 'plan_shed_deprioritized_recent_restore';
+    deviceId: string; deviceName?: string; sinceRestoreSec: number; overshootKw: number;
+  }> = [];
   const skipped: SkippedDeviceRecord[] = [];
   const counts = new Map<ShedCandidateSkipReason, number>();
   return {
     /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
     record: (device, reasonCode, rungsTried) => {
+      if (!isDebugTopicEnabled('plan')) return;
       skipped.push({
         deviceId: device.id,
         deviceName: device.name,
@@ -90,13 +97,24 @@ export function createShedCandidateSkipRecorder(
       counts.set(reasonCode, (counts.get(reasonCode) ?? 0) + 1);
     },
     recordStorage: ({ device, batterySignedPowerW, reasonCode }) => {
+      if (!isDebugTopicEnabled('plan')) return;
       skipped.push({ deviceId: device.id, deviceName: device.name, reasonCode, batterySignedPowerW });
       counts.set(reasonCode, (counts.get(reasonCode) ?? 0) + 1);
     },
+    recordRecentRestore: (device, sinceRestoreMs, neededKw) => {
+      if (!isDebugTopicEnabled('plan')) return;
+      recentRestores.push({
+        event: 'plan_shed_deprioritized_recent_restore',
+        deviceId: device.id, deviceName: device.name,
+        sinceRestoreSec: Math.round(sinceRestoreMs / 1000), overshootKw: neededKw,
+      });
+    },
     /* eslint-enable functional/immutable-data */
     emit: () => {
-      if (!debugStructured || skipped.length === 0) return;
-      debugStructured({
+      if (!isDebugTopicEnabled('plan')) return;
+      for (const restored of recentRestores) debug(restored);
+      if (skipped.length === 0) return;
+      debug({
         event: 'plan_shed_candidates_skipped',
         skippedCandidateCount: skipped.length,
         skippedCandidateReasons: [...counts.entries()].map(([reason, count]) => ({ reason, count })),
