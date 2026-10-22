@@ -101,7 +101,6 @@ export type FlowBackedDeviceStateDeps = {
 }
 
 export class FlowBackedDeviceState {
-  private flowReportedCapabilitiesEmptyParseWarned = false;
   private flowBackedCardsAvailable?: boolean;
   private flowDeviceAutocompleteCache?: { devices: HomeyDeviceLike[]; fetchedAtMs: number };
   private flowDeviceAutocompleteRequest?: Promise<HomeyDeviceLike[]>;
@@ -279,27 +278,9 @@ export class FlowBackedDeviceState {
   }
 
   private loadFlowReportedCapabilities(): void {
-    const parsed = this.deps.persistence.loadFlowReportedCapabilities();
-    // Homey SDK reads can transiently return falsy/empty data even when the
-    // underlying setting is intact (see `feedback_homey_sdk_unreliable`). If
-    // the parse came back empty but we already hold non-empty in-memory state,
-    // treat this as a transient miss and keep the existing map rather than
-    // wiping it. The persisted setting is also left untouched, so the next
-    // successful read will reconcile from disk.
-    const existing = this.deps.getFlowReportedCapabilities();
-    if (
-      Object.keys(parsed).length === 0
-      && Object.keys(existing).length > 0
-    ) {
-      if (!this.flowReportedCapabilitiesEmptyParseWarned) {
-        this.flowReportedCapabilitiesEmptyParseWarned = true;
-        this.deps.getStructuredLogger('devices')?.warn({
-          event: 'flow_capabilities_load_empty_parse_keeping_existing',
-          inMemoryDeviceCount: Object.keys(existing).length,
-        });
-      }
-      return;
-    }
+    const read = this.deps.persistence.loadFlowReportedCapabilities();
+    if (read.state === 'unavailable') return;
+    const parsed = read.capabilities;
     const filtered = this.filterAvailableFlowReportedCapabilities(parsed);
     this.deps.setFlowReportedCapabilities(filtered);
     if (JSON.stringify(parsed) === JSON.stringify(filtered)) {
