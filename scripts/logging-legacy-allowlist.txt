@@ -40,18 +40,13 @@ setup/homeRuntime/homeTrackerConfigSafety.ts 1
 setup/settingsUiApi.ts 2
 
 # --- Plan and observer lane -------------------------------------------------
-# Includes planBinaryControlHelpers.ts, which owns binary_command_skipped (one of
-# the four dark events above), and planServiceRebuild.ts, whose computed level
-# resolves to `debug` for actionChanged-only rebuilds — so plan_rebuild_completed
-# is absent from production for exactly that case while its info branches are
-# present. telemetryObserver.ts is the opposite case: a correct topic-gated debug
-# child, written by hand instead of calling getDebugEmitter.
+# telemetryObserver.ts uses a correct topic-gated debug child, written by hand
+# instead of calling getDebugEmitter.
 lib/observer/pendingBinaryCommands.ts 4
 lib/plan/admission/headroomReserve.ts 1
 lib/plan/admission/surplusAbsorb.ts 1
 lib/plan/planBoost.ts 1
 lib/plan/planBuilderSilentMeter.ts 1
-lib/plan/planServiceRebuild.ts 1
 lib/plan/rebuildScheduler/telemetryObserver.ts 1
 
 # --- Remaining domain modules -----------------------------------------------

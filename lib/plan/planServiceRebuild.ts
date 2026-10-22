@@ -15,14 +15,14 @@ import { incPerfCounter } from '../utils/perfCounters';
 import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { normalizeError } from '../utils/errorUtils';
-import { getLogger, withRebuildContext } from '../logging/logger';
+import { getDebugEmitter, getLogger, isDebugTopicEnabled, withRebuildContext } from '../logging/logger';
 import { buildPlanDetailSignature, buildPublishedPlanCapacityStateSummary } from './planLogging';
 import type { PublishedPlan } from './publishedPlan';
 import { hasShedding } from './planServiceInternals';
 import {
   buildPlanHeadroomLogFields,
   createPlanRebuildOutcome,
-  getPlanRebuildLogLevel,
+  shouldLogPlanRebuildAtInfo,
   recordPlanRebuildMetrics,
 } from './planRebuildMetrics';
 import { normalizePlanMeta } from './planStatusHelpers';
@@ -38,6 +38,7 @@ import type { PlanRebuildOutcome } from '../planContract/planActuationResult';
 import type { PendingBinaryLiveDevice } from '../ports/controlCommandConfirmation';
 
 const logger = getLogger('plan/service');
+const emitPlanDebug = getDebugEmitter('plan', 'plan');
 
 // State + collaborator seam onto `PlanService`. Built once in the service
 // constructor (closures over its private fields), so rebuild orchestration
@@ -94,9 +95,9 @@ export async function performPlanRebuild(
       recordPlanRebuildMetrics(reason, queueWaitMs, queueDepth, rebuildStart, outcome);
       recordOpRssDelta('plan_rebuild_ms', rssBefore, safeRss());
       stopSpan();
-      const rebuildLogLevel = getPlanRebuildLogLevel(trigger, durationMs, outcome);
-      if (rebuildLogLevel) {
-        (host.deps.loggers.structuredLog ?? logger)[rebuildLogLevel]({
+      const logAtInfo = shouldLogPlanRebuildAtInfo(trigger, durationMs, outcome);
+      if (logAtInfo || (outcome.actionChanged && isDebugTopicEnabled('plan'))) {
+        const event = {
           event: 'plan_rebuild_completed',
           durationMs,
           buildMs: outcome.buildMs,
@@ -114,7 +115,9 @@ export async function performPlanRebuild(
           failed: outcome.failed,
           ...buildPlanHeadroomLogFields(host.getLatestPlanSnapshot()),
           ...buildPublishedPlanCapacityStateSummary(host.getLatestPublishedPlan()),
-        });
+        };
+        if (logAtInfo) (host.deps.loggers.structuredLog ?? logger).info(event);
+        else emitPlanDebug(event);
       }
     }
   };

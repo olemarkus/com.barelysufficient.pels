@@ -1,3 +1,4 @@
+import { captureLogger } from '../utils/loggerCapture';
 import { PassThrough } from 'node:stream';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
@@ -2418,34 +2419,34 @@ describe('PlanService', () => {
     expect((structuredLog.info.mock.calls[0]?.[0] as { durationMs: number }).durationMs).toBeGreaterThanOrEqual(1500);
   });
 
-  it('emits plan_rebuild_completed at debug level when actionChanged but no actions applied (dry-run)', async () => {
-    const structuredLog = { info: vi.fn(), debug: vi.fn() };
-    const { service, deps } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog), debugStructured: vi.fn() },
-      getCapacityDryRun: () => true,
-      readSimulationSetting: () => true,
-    });
+  it.each([true, false])('gates decision-only rebuilds on the plan debug topic (%s)', async (enabled) => {
+    // Production roots run at info. A module logger's .debug() silently drops
+    // this event even with the topic enabled; capture the actual destination.
+    const capture = captureLogger('info', enabled ? ['plan'] : []);
+    try {
+      const { service, deps } = createPlanService({
+        getCapacityDryRun: () => true,
+        readSimulationSetting: () => true,
+      });
+      await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
+      capture.events.length = 0;
+      (deps.planEngine.buildDevicePlanSnapshot as Mock).mockResolvedValueOnce(
+        buildPlan(20, 'keep', {}, { plannedState: 'shed' }),
+      );
+      await service.rebuildPlanFromCache('power_delta');
 
-    // Seed
-    await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
-    structuredLog.info.mockClear();
-    structuredLog.debug.mockClear();
-
-    // Return a plan with different plannedState to trigger actionChanged
-    (deps.planEngine.buildDevicePlanSnapshot as Mock).mockResolvedValueOnce(
-      buildPlan(20, 'keep', {}, { plannedState: 'shed' }),
-    );
-    await service.rebuildPlanFromCache('power_delta');
-
-    expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
-      event: 'plan_rebuild_completed',
-    }));
-    expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'plan_rebuild_completed',
-      actionChanged: true,
-      appliedActions: false,
-      deviceWriteCount: 0,
-    }));
+      const events = capture.findEvents('plan_rebuild_completed');
+      expect(events).toHaveLength(enabled ? 1 : 0);
+      if (enabled) expect(events[0]).toMatchObject({
+        component: 'plan',
+        debugTopic: 'plan',
+        actionChanged: true,
+        appliedActions: false,
+        deviceWriteCount: 0,
+      });
+    } finally {
+      capture.restore();
+    }
   });
 
   it('emits plan_rebuild_completed with concrete deviceWriteCount when actuation wrote to devices', async () => {
