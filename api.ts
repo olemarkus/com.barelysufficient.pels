@@ -280,10 +280,10 @@ export = {
   ): SettingsUiRecommendationCarsRead => readCarAssociationCandidatesFromHomey(homey)),
   // Answers without the runtime being wired, so the web app can pick its build
   // while PELS is still starting.
-  ui_version: withApiLogging('ui_version', ({ homey }: ApiContext): SettingsUiVersionRead => {
+  ui_version: withApiLogging('ui_version', async ({ homey }: ApiContext): Promise<SettingsUiVersionRead> => {
     const { version } = homey.manifest as { version?: unknown };
     if (typeof version !== 'string') throw new Error('The app manifest has no version');
-    return { version, timeZone: homey.clock.getTimezone() };
+    return { version, timeZone: homey.clock.getTimezone(), homeyId: await homey.cloud.getHomeyId() };
   }),
   // Where the hub is, from Homey's location-derived `country`. `lib/home` owns the
   // read and resolves every failure to `unavailable`, so this never throws and

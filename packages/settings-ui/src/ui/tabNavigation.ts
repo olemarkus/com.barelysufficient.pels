@@ -27,6 +27,7 @@ import {
   runLoggedTask,
 } from './uiRefreshTasks.ts';
 import { loadModeAndPriorities, renderPriorities } from './modes.ts';
+import { refreshWebAppLink } from './webAppLink.ts';
 
 /**
  * Shell navigation: which panel is visible, which shell-nav entry is lit, and
@@ -44,6 +45,7 @@ const REDESIGN_SETTINGS_SECTIONS = new Set([
   'price-aware-devices',
   'weather',
   'simulation',
+  'web-app',
   'advanced',
 ]);
 
@@ -70,7 +72,21 @@ const refreshHomeSettingsPanel = (tabId: string): void => {
   );
 };
 
+// Panels whose activation is one logged refresh. Weather refreshes the insight
+// picker's validity lines (a no-op while its flag is off); the web app page
+// fills in this Homey's link.
+const SINGLE_REFRESH_PANELS: Record<string, { refresh: () => Promise<void>; failure: string }> = {
+  deadlines: { refresh: refreshDeadlinesList, failure: 'Failed to load deadlines list' },
+  weather: { refresh: refreshWeatherInsightOnWeatherPanel, failure: 'Failed to refresh weather insight' },
+  'web-app': { refresh: refreshWebAppLink, failure: 'Failed to prepare the web app link' },
+};
+
 const runTabActivationSideEffects = (tabId: string) => {
+  const singleRefresh = SINGLE_REFRESH_PANELS[tabId];
+  if (singleRefresh) {
+    runLoggedTask(singleRefresh.refresh(), singleRefresh.failure, 'showTab');
+    return;
+  }
   if (tabId === 'overview') {
     paintOverviewIfOwed();
     // The Overview's cards are device rows, so it needs the device payload —
@@ -123,10 +139,6 @@ const runTabActivationSideEffects = (tabId: string) => {
     runLoggedTask(refreshWeatherInsightOnBudgetTab(), 'Failed to refresh weather insight', 'showTab');
     return;
   }
-  if (tabId === 'deadlines') {
-    runLoggedTask(refreshDeadlinesList(), 'Failed to load deadlines list', 'showTab');
-    return;
-  }
   if (tabId === 'limits' || tabId === 'simulation') {
     runLoggedTask(loadCapacitySettings(), 'Failed to load limits and simulation settings', 'showTab');
     // The per-home switcher + meter-area editor live on the Limits panel only.
@@ -140,11 +152,6 @@ const runTabActivationSideEffects = (tabId: string) => {
     // open; Modes then reloads its selected area's catalog and filtered rows.
     refreshHomeSettingsPanel(tabId);
     return;
-  }
-  if (tabId === 'weather') {
-    // Refresh the Weather insight picker validity lines when its sub-page opens;
-    // no-op while the flag is off.
-    runLoggedTask(refreshWeatherInsightOnWeatherPanel(), 'Failed to refresh weather insight', 'showTab');
   }
 };
 
