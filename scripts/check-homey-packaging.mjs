@@ -25,26 +25,8 @@ const forbiddenNodeModules = prunedNodeModules;
  */
 const maxBuildBytes = 18 * 1024 * 1024;
 
-/**
- * `homey app validate` builds `.homeybuild` WITHOUT production dependencies
- * (`preprocess({ copyAppProductionDependencies: app instanceof AppPython })`,
- * false for a Node app), while `homey app build`/`install`/`run`/`publish`
- * build it with them. `npm run validate` is the validate flavour, so the tree
- * this script usually sees has no `node_modules` at all — and node_modules is
- * where every pruned package, sourcemap and `.d.ts` lives, plus ~3.5 MB of the
- * shipped weight.
- *
- * So those assertions are reported as NOT EVALUATED rather than passed. A
- * check that silently succeeds on a tree that cannot contain what it hunts for
- * is worse than no check: it certifies a package nobody measured. To exercise
- * them for real, produce a full tree first (`npx homey app build`) and then run
- * this script.
- */
-const nodeModulesDependentChecks = [
-  'pruned node_modules packages',
-  'sourcemap / .d.ts sweep',
-  'total package size',
-];
+// Validation omits production dependencies. `npm run validate` follows it with
+// a full build so this guard always inspects the package that ships.
 
 /**
  * Everything the packaged app is allowed to have at its root. An allowlist
@@ -105,13 +87,16 @@ const walk = async (absoluteDir) => {
 try {
   await fs.access(homeyBuildDir);
 } catch {
-  console.error('homey packaging check failed: .homeybuild does not exist. Run `npm run validate` or `homey app validate` first.');
+  console.error('homey packaging check failed: .homeybuild does not exist. Run `npm run validate` first.');
   process.exit(1);
 }
 
-const hasNodeModules = await fs
-  .access(path.join(homeyBuildDir, 'node_modules'))
-  .then(() => true, () => false);
+try {
+  await fs.access(path.join(homeyBuildDir, 'node_modules'));
+} catch {
+  console.error('homey packaging check failed: production dependencies are missing. Run `npm run validate` first.');
+  process.exit(1);
+}
 
 await walk(homeyBuildDir);
 
@@ -135,16 +120,14 @@ try {
   }
 }
 
-if (hasNodeModules) {
-  for (const moduleName of forbiddenNodeModules) {
-    const modulePath = path.join(homeyBuildDir, 'node_modules', ...moduleName.split('/'));
-    try {
-      await fs.access(modulePath);
-      failures.push(`node_modules/${moduleName} is still present.`);
-    } catch (error) {
-      if (!isNotFoundError(error)) {
-        failures.push(`node_modules/${moduleName} could not be inspected: ${error instanceof Error ? error.message : String(error)}`);
-      }
+for (const moduleName of forbiddenNodeModules) {
+  const modulePath = path.join(homeyBuildDir, 'node_modules', ...moduleName.split('/'));
+  try {
+    await fs.access(modulePath);
+    failures.push(`node_modules/${moduleName} is still present.`);
+  } catch (error) {
+    if (!isNotFoundError(error)) {
+      failures.push(`node_modules/${moduleName} could not be inspected: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }
@@ -167,7 +150,7 @@ try {
 
 const asMb = (bytes) => (bytes / 1024 / 1024).toFixed(1);
 
-if (hasNodeModules && totalBytes > maxBuildBytes) {
+if (totalBytes > maxBuildBytes) {
   failures.push(
     `packaged app is ${asMb(totalBytes)} MB, over the ${asMb(maxBuildBytes)} MB ceiling. Find what leaked in (\`du -sh .homeybuild/*\`) before raising it.`,
   );
@@ -181,12 +164,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-if (hasNodeModules) {
-  console.log(`homey packaging check passed (full build, ${asMb(totalBytes)} MB).`);
-} else {
-  // Do not let this read as a clean bill of health for the whole package.
-  console.log(`homey packaging check passed for the source tree (${asMb(totalBytes)} MB, no node_modules).`);
-  console.log(`  NOT EVALUATED: ${nodeModulesDependentChecks.join(', ')}.`);
-  console.log('  This build came from `homey app validate`, which omits production dependencies.');
-  console.log('  Run `npx homey app build` then `npm run package:check` to check the tree that actually ships.');
-}
+console.log(`homey packaging check passed (full build, ${asMb(totalBytes)} MB).`);
