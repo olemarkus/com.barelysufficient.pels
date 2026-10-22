@@ -29,6 +29,10 @@ export type StoredHomey = RemoteConnection & {
 
 const API_KEY_PATTERN = /^[^:\s]+:[^:\s]+:[^:\s]+$/;
 
+// A name is a label for switching between Homeys; the bound keeps every
+// Homey's phone code within what one QR code holds.
+export const MAX_HOMEY_NAME_LENGTH = 60;
+
 export const isHomeyApiKey = (value: string): boolean => API_KEY_PATTERN.test(value.trim());
 
 // One storage record shared by the launcher and every per-version build: they
@@ -112,15 +116,19 @@ export const findStoredHomey = (storage: Storage | null, homeyId: string): Store
 );
 
 // Adding a Homey that is already listed replaces it in place: that is how a
-// new key or a newly learned address for the same Homey is stored.
-export const saveStoredHomey = (storage: Storage | null, homey: StoredHomey): boolean => {
+// new key or a newly learned address for the same Homey is stored. Several
+// Homeys go in one write, so a refused write keeps none of them.
+export const saveStoredHomeys = (storage: Storage | null, added: readonly StoredHomey[]): boolean => {
   const current = loadStoredHomeys(storage);
-  const listed = current.homeys.some((entry) => entry.homeyId === homey.homeyId);
-  const homeys = listed
-    ? current.homeys.map((entry) => (entry.homeyId === homey.homeyId ? homey : entry))
-    : [...current.homeys, homey];
-  return write(storage, { ...current, homeys });
+  const byId = new Map(added.map((homey) => [homey.homeyId, homey]));
+  const homeys = current.homeys.map((entry) => byId.get(entry.homeyId) ?? entry);
+  const listedIds = new Set(current.homeys.map((entry) => entry.homeyId));
+  return write(storage, { ...current, homeys: [...homeys, ...added.filter((homey) => !listedIds.has(homey.homeyId))] });
 };
+
+export const saveStoredHomey = (storage: Storage | null, homey: StoredHomey): boolean => (
+  saveStoredHomeys(storage, [homey])
+);
 
 // A better address for a listed Homey, kept for the next start. The record is
 // read again first, so a key saved meanwhile (another tab, a slow check) is

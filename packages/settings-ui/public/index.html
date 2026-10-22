@@ -730,15 +730,16 @@
       <div class="form-grid settings-form-card">
         <p class="field__hint">PELS also runs in a browser, on a computer or from your phone's home screen, with every Homey you add there.</p>
         <ol class="field__hint">
-          <li>In the Homey Web App → Settings → API Keys, create a key with permission to control apps. Only the Homey's owner can create keys. <a href="https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro" target="_blank" rel="noopener noreferrer">Create an API key</a></li>
-          <li>Open the web app, choose Add a Homey and paste this Homey's address and the key.</li>
+          <li>On a computer, in the Homey Web App → Settings → API Keys, create a key with permission to control apps. Only the Homey's owner can create keys. <a href="https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro" target="_blank" rel="noopener noreferrer">Create an API key</a></li>
+          <li>On the computer, open the web app, choose Add a Homey and paste this Homey's address and the key.</li>
+          <li>For your phone, choose Add to your phone in the web app on the computer and scan the code with the phone's camera.</li>
           <li>To keep it on your phone: on Android, choose Install app in Chrome's menu; on iPhone, choose Share, then Add to Home Screen in Safari.</li>
         </ol>
         <div class="field" hidden>
           <span class="field__label pels-text-settings-label" id="web-app-homey-address-label">This Homey's address</span>
           <md-filled-text-field id="web-app-homey-address" readonly aria-labelledby="web-app-homey-address-label"></md-filled-text-field>
         </div>
-        <p class="field__hint">The key can read and change the settings of every app on this Homey. It stays in the browser you paste it into; delete it in Homey to disconnect.</p>
+        <p class="field__hint">The key can read and change the settings of every app on this Homey. It stays only in the browsers you add it to; delete it in Homey to disconnect.</p>
         <md-filled-button id="web-app-open-link" href="https://pels.barelysufficient.org/app/" target="_blank">Open the web app</md-filled-button>
       </div>
     </section>

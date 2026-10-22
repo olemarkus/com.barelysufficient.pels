@@ -2,7 +2,9 @@ import '@material/web/textfield/filled-text-field.js';
 import '@material/web/button/filled-button.js';
 import '@material/web/button/filled-tonal-button.js';
 import '@material/web/button/text-button.js';
+import { renderSVG } from 'uqr';
 import {
+  HOMEY_ID_PATTERN,
   cloudAddressFor,
   cloudAnswers,
   parseHomeyAddress,
@@ -18,8 +20,10 @@ import {
   loadStoredHomeys,
   markLastHomey,
   readBrowserStorage,
+  MAX_HOMEY_NAME_LENGTH,
   removeStoredHomey,
   saveStoredHomey,
+  saveStoredHomeys,
   type StoredHomey,
 } from './remoteConnection.ts';
 import {
@@ -36,6 +40,7 @@ import {
   readHomeyVersion,
   type LaunchDecision,
 } from './launchDecision.ts';
+import { pairingLink, readPairing, type PairingRead } from './phonePairing.ts';
 import {
   chooseAddress,
   createRemoteTarget,
@@ -68,6 +73,12 @@ const addForm = byId<HTMLFormElement>('webapp-add-form');
 const nameField = addForm.querySelector('[name="name"]') as TextField;
 const addressField = addForm.querySelector('[name="address"]') as TextField;
 const keyField = addForm.querySelector('[name="key"]') as TextField;
+const pairButton = byId<HTMLElement>('webapp-pair-phone');
+const pairPanel = byId<HTMLElement>('webapp-pair-panel');
+const pairCodes = byId<HTMLElement>('webapp-pair-codes');
+const importPanel = byId<HTMLElement>('webapp-import-panel');
+const importText = byId<HTMLElement>('webapp-import-text');
+const importAdd = byId<HTMLElement>('webapp-import-add');
 
 // A Homey added by its home-network address names itself on a ping, and a
 // linked cloud address must answer before it is kept.
@@ -215,6 +226,10 @@ const render = async () => {
   rows.clear();
   list.replaceChildren();
   emptyHint.hidden = homeys.length > 0;
+  pairButton.hidden = homeys.length === 0;
+  // A code drawn for the list as it was would still carry a removed key.
+  pairCodes.replaceChildren();
+  pairPanel.hidden = true;
   if (homeys.length === 0) {
     showAddPanel(null, null);
     return;
@@ -255,13 +270,16 @@ const homeyFromForm = async (address: HomeyAddress, name: string, token: string)
 
 const addHomey = async () => {
   const name = nameField.value.trim();
-  setFieldError(nameField, name ? null : 'Give this Homey a name.');
+  const nameError = name.length > MAX_HOMEY_NAME_LENGTH
+    ? `Keep the name to ${MAX_HOMEY_NAME_LENGTH} characters.`
+    : 'Give this Homey a name.';
+  setFieldError(nameField, name && name.length <= MAX_HOMEY_NAME_LENGTH ? null : nameError);
   const address = parseHomeyAddress(addressField.value);
   setFieldError(addressField, address ? null : 'Paste the address the PELS settings page shows.');
   const token = keyField.value.trim();
   const tokenValid = isHomeyApiKey(token);
   setFieldError(keyField, tokenValid ? null : 'Paste the whole API key.');
-  if (!name || !address || !tokenValid) return;
+  if (!name || name.length > MAX_HOMEY_NAME_LENGTH || !address || !tokenValid) return;
 
   const homey = await homeyFromForm(address, name, token);
   if (!homey) {
@@ -302,6 +320,131 @@ addForm.addEventListener('submit', (event) => {
 
 byId<HTMLElement>('webapp-add-homey').addEventListener('click', () => showAddPanel(null, null));
 
+// The code for the phone, drawn here so the keys never leave this page, and
+// removed again once the owner is done with it or the list changes.
+const drawCode = (link: string, caption: string | null): HTMLElement => {
+  const svg = renderSVG(link, { ecc: 'M', border: 2, whiteColor: '#ffffff', blackColor: '#000000' });
+  const code = document.createElement('figure');
+  code.className = 'webapp-pair-code';
+  code.setAttribute('role', 'img');
+  code.setAttribute('aria-label', `Code ${caption ? `for ${caption} ` : ''}to scan with your phone`);
+  code.append(new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement);
+  if (caption) {
+    const label = document.createElement('figcaption');
+    label.textContent = caption;
+    code.append(label);
+  }
+  return code;
+};
+
+// A Homey whose code does not fit, which only a name stored before names had
+// a bound can cause, is named instead of failing the whole panel.
+const drawHomeyCode = (launcher: string, homey: StoredHomey): HTMLElement => {
+  try {
+    return drawCode(pairingLink(launcher, [homey]), homey.name);
+  } catch {
+    const note = document.createElement('p');
+    note.className = 'field__hint';
+    note.textContent = `${homey.name}: the name is too long for a code. `
+      + 'Remove this Homey and add it with a shorter name.';
+    return note;
+  }
+};
+
+// One code for every Homey when they fit in one; past that (around eight
+// Homeys), a code each.
+pairButton.addEventListener('click', () => {
+  const { homeys } = loadStoredHomeys(storage);
+  const launcher = new URL('./', window.location.href).href;
+  let codes: HTMLElement[];
+  try {
+    codes = [drawCode(pairingLink(launcher, homeys), null)];
+  } catch {
+    codes = homeys.map((homey) => drawHomeyCode(launcher, homey));
+  }
+  pairCodes.replaceChildren(...codes);
+  pairPanel.hidden = false;
+  pairPanel.scrollIntoView({ behavior: 'smooth' });
+});
+byId<HTMLElement>('webapp-pair-done').addEventListener('click', () => {
+  pairCodes.replaceChildren();
+  pairPanel.hidden = true;
+});
+
+// On the phone: the Homeys a code carried, added only once the owner agrees.
+// A code could come from someone else, so a key in it replaces a key saved
+// here only once that Homey accepts it, and a Homey already listed keeps the
+// addresses learned for it. Everything goes in one write.
+let pairedHomeys: StoredHomey[] = [];
+
+const mergePaired = async (homey: StoredHomey): Promise<StoredHomey | null> => {
+  const listed = findStoredHomey(storage, homey.homeyId);
+  if (!listed) return homey;
+  const merged: StoredHomey = {
+    ...homey,
+    baseUrl: listed.baseUrl === relayUrl(listed.homeyId) ? homey.baseUrl : listed.baseUrl,
+    localUrl: listed.localUrl,
+  };
+  if (homey.token === listed.token) return merged;
+  const check = await checkApiKey(createRemoteRequest(createRemoteTarget(merged, 'cloud'), fetchImpl, () => {}));
+  return check.state === 'accepted' ? merged : null;
+};
+
+const offerPairedHomeys = (pairing: Exclude<PairingRead, { state: 'none' }>) => {
+  addPanel.hidden = true;
+  importPanel.hidden = false;
+  importPanel.scrollIntoView({ behavior: 'smooth' });
+  importAdd.hidden = pairing.state !== 'homeys';
+  if (pairing.state !== 'homeys') {
+    importText.textContent = 'This code could not be read. Show it again on the computer and scan it once more.';
+    return;
+  }
+  pairedHomeys = pairing.homeys;
+  const rekeyed = pairing.homeys
+    .filter((homey) => (findStoredHomey(storage, homey.homeyId)?.token ?? homey.token) !== homey.token)
+    .map((homey) => homey.name);
+  importText.textContent = [
+    `From the code your computer showed: ${pairing.homeys.map((homey) => homey.name).join(', ')}.`,
+    rekeyed.length > 0
+      ? `The key saved here for ${rekeyed.join(', ')} is replaced once Homey accepts the new one.`
+      : '',
+    'Add only a code from your own computer: this browser keeps the API keys of these Homeys.',
+  ].filter(Boolean).join(' ');
+};
+
+importAdd.addEventListener('click', () => {
+  importAdd.hidden = true;
+  void (async () => {
+    const merged = await Promise.all(pairedHomeys.map(mergePaired));
+    const accepted = merged.filter((homey): homey is StoredHomey => homey !== null);
+    const refused = pairedHomeys.filter((_homey, index) => merged[index] === null).map((homey) => homey.name);
+    if (!saveStoredHomeys(storage, accepted)) {
+      importText.textContent = STORAGE_REFUSED;
+      importAdd.hidden = false;
+      return;
+    }
+    importText.textContent = refused.length > 0
+      ? `Kept the key saved here for ${refused.join(', ')}: Homey did not accept the key in the code.`
+      : '';
+    importPanel.hidden = refused.length === 0;
+    await render();
+  })();
+});
+byId<HTMLElement>('webapp-import-cancel').addEventListener('click', () => {
+  importPanel.hidden = true;
+  void render();
+});
+
+// The Homey web app's API Keys page for the Homey the owner came to add or
+// re-key, when a link names it; the Homey web app's start page otherwise.
+const pointToApiKeys = () => {
+  const homeyId = params.get('reauth') ?? params.get('open');
+  if (!homeyId || !HOMEY_ID_PATTERN.test(homeyId)) return;
+  byId<HTMLAnchorElement>('webapp-api-keys-link').href = (
+    `https://my.homey.app/homeys/${homeyId.toLowerCase()}/settings/system/api-keys`
+  );
+};
+
 // The PELS settings page links here with its own cloud host (`via`), which
 // Homey's web app serves it from. A listed Homey switches to that host once it
 // answers; anything but an Athom host named for that Homey is ignored.
@@ -321,7 +464,21 @@ const learnLinkedCloudAddress = async () => {
 // new key. A link never fills in the add form: where an API key is sent must
 // come from the owner, or a crafted link could collect keys.
 const start = async () => {
+  // A code's keys leave the address bar before anything else happens.
+  const pairing = readPairing(window.location.hash);
+  if (pairing.state !== 'none') {
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`);
+  }
+  pointToApiKeys();
   await learnLinkedCloudAddress();
+  if (pairing.state !== 'none') {
+    // `render` shows the add form at once when nothing is listed; the offer
+    // then takes its place.
+    const rendering = render();
+    offerPairedHomeys(pairing);
+    await rendering;
+    return;
+  }
   const stored = loadStoredHomeys(storage);
   const byHomeyId = (homeyId: string | null) => (
     stored.homeys.find((homey) => homey.homeyId === homeyId) ?? null

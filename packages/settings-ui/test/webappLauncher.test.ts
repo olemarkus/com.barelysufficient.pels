@@ -215,6 +215,206 @@ describe('web app launcher', () => {
     });
   });
 
+  describe('adding Homeys to a phone', () => {
+    const CABIN_ID = '6acdea6cd18dc40482d6bc10';
+    const listed = (homeys: object[]) => window.localStorage.setItem(
+      'pels.webapp.homeys.v1',
+      JSON.stringify({ homeys, lastHomeyId: null }),
+    );
+    const house = { name: 'House', baseUrl: `https://${HOMEY_ID}.connect.athom.com`, homeyId: HOMEY_ID, token: 'u:s:t' };
+    const versionAnswer = () => response(200, '{"version":"3.20.0","timeZone":"Europe/Oslo"}');
+
+    it('shows a code on the computer, and takes it away when done', async () => {
+      listed([house]);
+      await loadLauncher(versionAnswer, () => expect(document.getElementById('webapp-pair-phone')?.hidden).toBe(false));
+
+      document.getElementById('webapp-pair-phone')?.click();
+      expect(document.getElementById('webapp-pair-panel')?.hidden).toBe(false);
+      expect(document.querySelectorAll('#webapp-pair-codes svg')).toHaveLength(1);
+
+      document.getElementById('webapp-pair-done')?.click();
+      expect(document.getElementById('webapp-pair-codes')?.children).toHaveLength(0);
+    });
+
+    it('takes the code away when a Homey is removed', async () => {
+      listed([house, { ...house, name: 'Cabin', homeyId: CABIN_ID, baseUrl: `https://${CABIN_ID}.connect.athom.com` }]);
+      await loadLauncher(versionAnswer, () => expect(document.getElementById('webapp-pair-phone')?.hidden).toBe(false));
+      document.getElementById('webapp-pair-phone')?.click();
+
+      ([...document.querySelectorAll('md-text-button')].find((element) => element.textContent === 'Remove') as HTMLElement)
+        .click();
+
+      await vi.waitFor(() => expect(document.getElementById('webapp-pair-panel')?.hidden).toBe(true));
+      expect(document.getElementById('webapp-pair-codes')?.children).toHaveLength(0);
+    });
+
+    it('names a Homey whose code cannot fit instead of failing the panel', async () => {
+      listed([house, { ...house, name: 'x'.repeat(3000), homeyId: CABIN_ID, baseUrl: `https://${CABIN_ID}.connect.athom.com` }]);
+      await loadLauncher(versionAnswer, () => expect(document.getElementById('webapp-pair-phone')?.hidden).toBe(false));
+
+      document.getElementById('webapp-pair-phone')?.click();
+
+      expect(document.querySelectorAll('#webapp-pair-codes figure')).toHaveLength(1);
+      expect(document.getElementById('webapp-pair-codes')?.textContent).toContain('the name is too long for a code');
+    });
+
+    it('shows a code per Homey when they do not fit in one', async () => {
+      const many = Array.from({ length: 12 }, (_unused, index) => ({
+        name: `Homey ${index}`,
+        homeyId: index.toString(16).padStart(24, 'a'),
+        token: `${'1'.repeat(36)}:${'2'.repeat(36)}:${index.toString().padStart(40, '3')}`,
+        baseUrl: `https://${index.toString(16).padStart(24, 'a')}.homey.athom-prod-euwest1-001.homeypro.net`,
+      }));
+      listed(many);
+      await loadLauncher(versionAnswer, () => expect(document.getElementById('webapp-pair-phone')?.hidden).toBe(false));
+
+      document.getElementById('webapp-pair-phone')?.click();
+
+      const codes = [...document.querySelectorAll('#webapp-pair-codes figure')];
+      expect(codes).toHaveLength(12);
+      expect(codes[3]?.textContent).toBe('Homey 3');
+    });
+
+    it('takes the code out of the address bar and adds its Homeys only when asked', async () => {
+      listed([{ ...house, localUrl: 'https://192-168-1-50.homey.homeylocal.com' }]);
+      const { pairingLink } = await import('../src/remote/phonePairing.ts');
+      const link = pairingLink('http://localhost:3000/', [
+        { name: 'Home', homeyId: HOMEY_ID, token: 'u:new:key', baseUrl: `https://${HOMEY_ID}.connect.athom.com`, localUrl: null },
+        { name: 'Cabin', homeyId: CABIN_ID, token: 'u:s:t', baseUrl: `https://${CABIN_ID}.connect.athom.com`, localUrl: null },
+      ]);
+      window.history.replaceState(null, '', `/${new URL(link).hash}`);
+      try {
+        await loadLauncher(versionAnswer, () => expect(document.getElementById('webapp-import-panel')?.hidden).toBe(false));
+
+        expect(window.location.hash).toBe('');
+        expect(document.getElementById('webapp-import-text')?.textContent).toContain('Home, Cabin');
+        expect(storedNames()).toEqual(['House']);
+
+        document.getElementById('webapp-import-add')?.click();
+
+        await vi.waitFor(() => expect(document.getElementById('webapp-import-panel')?.hidden).toBe(true));
+        const stored = JSON.parse(window.localStorage.getItem('pels.webapp.homeys.v1') ?? '{}') as {
+          homeys: { name: string; token: string; localUrl: string | null }[];
+        };
+        expect(stored.homeys.map(({ name, token, localUrl }) => [name, token, localUrl])).toEqual([
+          ['Home', 'u:new:key', 'https://192-168-1-50.homey.homeylocal.com'],
+          ['Cabin', 'u:s:t', null],
+        ]);
+      } finally {
+        window.history.replaceState(null, '', '/');
+      }
+    });
+
+    const scan = async (homeys: object[], search = '') => {
+      const { pairingLink } = await import('../src/remote/phonePairing.ts');
+      const link = pairingLink('http://localhost:3000/', homeys as never);
+      window.history.replaceState(null, '', `/${search}${new URL(link).hash}`);
+    };
+    const stored = () => (JSON.parse(window.localStorage.getItem('pels.webapp.homeys.v1') ?? '{"homeys":[]}') as {
+      homeys: { name: string; token: string; baseUrl: string }[];
+    }).homeys;
+
+    it('keeps a saved key that Homey does not accept in place of the one in the code', async () => {
+      const cloud = `https://${HOMEY_ID}.homey.athom-prod-euwest1-001.homeypro.net`;
+      listed([{ ...house, baseUrl: cloud }]);
+      await scan([{ name: 'Home', homeyId: HOMEY_ID, token: 'a:b:c', baseUrl: `https://${HOMEY_ID}.connect.athom.com` }]);
+      try {
+        await loadLauncher(
+          (pathname) => (pathname === KEY_CHECK_PATH ? response(401, '{"error":"Invalid Session"}') : versionAnswer()),
+          () => expect(document.getElementById('webapp-import-panel')?.hidden).toBe(false),
+        );
+        expect(document.getElementById('webapp-import-text')?.textContent).toContain('key saved here for Home');
+
+        document.getElementById('webapp-import-add')?.click();
+
+        await vi.waitFor(() => expect(document.getElementById('webapp-import-text')?.textContent)
+          .toContain('Kept the key saved here for Home'));
+        expect(stored()).toEqual([{ ...house, baseUrl: cloud, localUrl: null }]);
+      } finally {
+        window.history.replaceState(null, '', '/');
+      }
+    });
+
+    it('replaces a saved key Homey accepts, and keeps the cloud host learned here', async () => {
+      const cloud = `https://${HOMEY_ID}.homey.athom-prod-euwest1-001.homeypro.net`;
+      listed([{ ...house, baseUrl: cloud }]);
+      await scan([{ name: 'Home', homeyId: HOMEY_ID, token: 'u:new:key', baseUrl: `https://${HOMEY_ID}.connect.athom.com` }]);
+      try {
+        await loadLauncher(versionAnswer, () => expect(document.getElementById('webapp-import-panel')?.hidden).toBe(false));
+
+        document.getElementById('webapp-import-add')?.click();
+
+        await vi.waitFor(() => expect(stored()[0]?.token).toBe('u:new:key'));
+        expect(stored()[0]?.baseUrl).toBe(cloud);
+      } finally {
+        window.history.replaceState(null, '', '/');
+      }
+    });
+
+    it('adds none of a code\'s Homeys when the browser refuses to store them', async () => {
+      await scan([
+        { name: 'Home', homeyId: HOMEY_ID, token: 'u:s:t', baseUrl: `https://${HOMEY_ID}.connect.athom.com` },
+        { name: 'Cabin', homeyId: CABIN_ID, token: 'u:s:t', baseUrl: `https://${CABIN_ID}.connect.athom.com` },
+      ]);
+      try {
+        await loadLauncher(versionAnswer, () => expect(document.getElementById('webapp-import-panel')?.hidden).toBe(false));
+        vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+          throw new Error('QuotaExceededError');
+        });
+
+        document.getElementById('webapp-import-add')?.click();
+
+        await vi.waitFor(() => expect(document.getElementById('webapp-import-text')?.textContent)
+          .toContain('did not save'));
+        vi.restoreAllMocks();
+        expect(stored()).toEqual([]);
+      } finally {
+        window.history.replaceState(null, '', '/');
+      }
+    });
+
+    it('asks before adding, and opens nothing, even when a link names a Homey', async () => {
+      listed([house]);
+      const assign = vi.fn();
+      await scan([{ name: 'Cabin', homeyId: CABIN_ID, token: 'u:s:t', baseUrl: `https://${CABIN_ID}.connect.athom.com` }], `?open=${HOMEY_ID}`);
+      vi.stubGlobal('location', { ...window.location, assign });
+      try {
+        await loadLauncher(versionAnswer, () => expect(document.getElementById('webapp-import-panel')?.hidden).toBe(false));
+        await vi.waitFor(() => expect(document.getElementById('webapp-homey-list')?.textContent).toContain('PELS 3.20.0'));
+
+        expect(assign).not.toHaveBeenCalled();
+        expect(stored().map((homey) => homey.name)).toEqual(['House']);
+      } finally {
+        vi.unstubAllGlobals();
+        window.history.replaceState(null, '', '/');
+      }
+    });
+
+    it('says when a code could not be read, and adds nothing', async () => {
+      window.history.replaceState(null, '', '/#pair=not-a-code');
+      try {
+        await loadLauncher(versionAnswer, () => expect(document.getElementById('webapp-import-panel')?.hidden).toBe(false));
+
+        expect(document.getElementById('webapp-import-text')?.textContent).toContain('could not be read');
+        expect(document.getElementById('webapp-import-add')?.hidden).toBe(true);
+        expect(window.location.hash).toBe('');
+      } finally {
+        window.history.replaceState(null, '', '/');
+      }
+    });
+  });
+
+  it('points the key hint at the API Keys page of the Homey a link names', async () => {
+    window.history.replaceState(null, '', `/?open=${HOMEY_ID}`);
+    try {
+      await loadLauncher(() => response(200, 'null'));
+      expect(document.getElementById('webapp-api-keys-link')?.getAttribute('href'))
+        .toBe(`https://my.homey.app/homeys/${HOMEY_ID}/settings/system/api-keys`);
+    } finally {
+      window.history.replaceState(null, '', '/');
+    }
+  });
+
   it('shows the add form for a named Homey that is not listed, not the last one', async () => {
     window.localStorage.setItem('pels.webapp.homeys.v1', JSON.stringify({
       homeys: [{ name: 'House', baseUrl: `https://${HOMEY_ID}.connect.athom.com`, homeyId: HOMEY_ID, token: 'u:s:t' }],

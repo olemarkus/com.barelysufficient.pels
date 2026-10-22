@@ -83,6 +83,30 @@ it would in the WebView. A 429 is waited out and the call sent again (about 2,
 5, 10, 20 and 30 s, spread so a page's calls do not return together), while
 the page says Homey's cloud connection is busy.
 
+## Adding Homeys to a phone
+
+API keys are made in the Homey web app, whose API Keys page cannot be used at
+phone width (the settings menu covers it; Chrome's Desktop site option works).
+So the owner adds Homeys on a computer, and the launcher there shows a code
+for the phone's camera (Add to your phone). The code is a link to the launcher
+with every listed Homey after `#pair=`: name, key, and cloud address, or just
+the id when that is the relay (`remote/phonePairing.ts`). The fragment never
+reaches the web server; the code is drawn in the page (`uqr`) and removed
+when the owner is done. The phone learns each home-network address on first
+open, as any browser does.
+
+Three Homeys make a code of about 800 characters (QR version 23), which an
+independent decoder read from the 320 px rendering; past about eight Homeys
+one code cannot hold them all, and the launcher draws a code per Homey. On the
+phone the launcher removes the fragment from the address bar first, then asks
+before adding, and saves everything in one write.
+
+A code could be made by anyone. It may only carry Athom cloud addresses for
+the Homeys it names, as a pasted address may, and a code with anything else is
+refused whole. A key in a code replaces a key the phone already has for that
+Homey only once Homey accepts it, so a crafted code cannot knock out a working
+key; a Homey already listed keeps the addresses learned for it.
+
 ## Several Homeys, one version each
 
 The settings UI and its routes change together in every release, and one
@@ -142,8 +166,9 @@ The web app lives at `https://pels.barelysufficient.org/app/`, next to the docs.
 
 ## From the Homey settings page
 
-Settings → Open in a browser explains the API key, shows this Homey's address
-to copy and links to `/app/?open=<homeyId>`, which opens that Homey once the
+Settings → Open in a browser walks through adding the Homey on a computer and
+then the phone, shows this Homey's address to copy and links to
+`/app/?open=<homeyId>`, which opens that Homey once the
 owner has added it. When Homey's web app serves the page from the Homey's own
 cloud host, that host is the address shown and the link carries it
 (`&via=<host>`); otherwise the address is the bare id from `ui_version`. The
