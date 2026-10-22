@@ -10,6 +10,7 @@ import type {
 } from '../../packages/contracts/src/settingsUiApi';
 import type { PriceDataStore } from './priceDataStore';
 import { settleExportPriceForSourceChange } from './exportPrice';
+import type { PowerhourPresence } from './powerhourScheme';
 import { NORWAY_SETTING_KEYS } from './priceServiceNorway';
 import type { PriceScheme } from './priceTypes';
 
@@ -61,6 +62,28 @@ export const assumePriceSchemeForCountry = (country: string): PriceScheme => (
 );
 
 /**
+ * Outside Norway, Power by the Hour instead of Homey Energy when it can price
+ * the home: an owner who installed it and paired a price device set their
+ * markups there, so its prices are the ones they expect.
+ *
+ * Once devices follow prices, PELS moves them between the two by itself in
+ * neither direction: every price, the cheap and expensive hours and Smart task
+ * costs would shift with nothing saying why, and a Power by the Hour that is
+ * still starting after a reboot answers that it cannot price the home. The
+ * settings UI offers the move instead. While nothing follows prices, Power by
+ * the Hour that cannot price the home hands back to Homey Energy, an unanswered
+ * read keeps it, and the next refresh that finds it pricing the home moves back.
+ */
+const assumeSchemeOutsideNorway = (
+  inForce: PriceScheme,
+  powerhour: PowerhourPresence,
+  devicesFollowPrices: boolean,
+): PriceScheme => {
+  if (inForce === 'powerhour' && (devicesFollowPrices || powerhour !== 'none')) return 'powerhour';
+  return powerhour === 'price_device' && !devicesFollowPrices ? 'powerhour' : 'homey';
+};
+
+/**
  * What a refresh of the price source did. `held`: PELS would move to
  * `resolution` by itself, but the export price could not be read to settle it
  * for the new source, so the source in force stays and the next refresh tries
@@ -85,7 +108,8 @@ const NO_SWITCH: PriceSourceSwitch = { kind: 'none' };
  * and Norgespris off their prices. Otherwise the source is assumed from the
  * hub's country. Until the hub reports it, the source in force stays: the one
  * cached at the last boot, or on a first boot the Norway source every home had
- * before the key existed.
+ * before the key existed. Outside Norway, Power by the Hour can take Homey
+ * Energy's place (see `assumeSchemeOutsideNorway`).
  *
  * A saved source applies at once: whoever saved it settled the export price
  * for it. Any other change of source is one PELS makes by itself, and waits
@@ -104,6 +128,10 @@ const NO_SWITCH: PriceSourceSwitch = { kind: 'none' };
 export class PriceSchemeResolver {
   /** The hub's country, or `null` until Homey answers after this boot. */
   private hubCountry: string | null = null;
+  /** Power by the Hour as the last refresh found it. */
+  private powerhour: PowerhourPresence = 'unread';
+  /** Whether devices followed prices at the last refresh; `true` until one has asked. */
+  private devicesFollowPrices = true;
   private lastAccepted: ResolvedPriceScheme;
   private lastAcceptedCached = true;
 
@@ -114,6 +142,20 @@ export class PriceSchemeResolver {
     this.lastAccepted = readCachedResolution(store.readPriceSchemeResolution()) ?? DEFAULT_RESOLUTION;
   }
 
+  /**
+   * Whether a refresh could move the source to or from Power by the Hour: not
+   * while the owner's saved source is in force, nor on a hub in Norway. When it
+   * cannot, the refresh need not ask that app. A settings read that throws
+   * answers yes: asking costs one local read, and the refresh decides as usual.
+   */
+  readsPowerhour(): boolean {
+    try {
+      return !isPriceSchemeSetting(this.settings.get(PRICE_SCHEME)) && this.hubCountry !== 'NO';
+    } catch {
+      return true;
+    }
+  }
+
   resolve(): ResolvedPriceScheme {
     const reading = this.read();
     if (reading === null || this.waitsForRefresh(reading)) return this.lastAccepted;
@@ -122,11 +164,18 @@ export class PriceSchemeResolver {
 
   /**
    * Take a fresh read of the hub's country, an unanswered one changing nothing,
-   * and move to the source PELS now assumes once the export price is settled
-   * for it. A failed export write throws and leaves the source in force.
+   * and of whether Power by the Hour can price the home and devices follow
+   * prices, and move to the source PELS now assumes once the export price is
+   * settled for it. A failed export write throws and leaves the source in force.
    */
-  refresh(market: SettingsUiHubMarketRead): PriceSourceSwitch {
+  refresh(
+    market: SettingsUiHubMarketRead,
+    powerhour: PowerhourPresence,
+    devicesFollowPrices: boolean,
+  ): PriceSourceSwitch {
     if (market.state === 'resolved') this.hubCountry = market.country;
+    this.powerhour = powerhour;
+    this.devicesFollowPrices = devicesFollowPrices;
     try {
       return this.switchSource();
     } finally {
@@ -157,10 +206,17 @@ export class PriceSchemeResolver {
     if (NORWAY_SOURCE_KEYS.some((key) => keys.keys.includes(key))) return { resolution: NORWAY_CHOSEN, saved: false };
     const country = this.hubCountry;
     if (country === null) return null;
-    return {
-      resolution: { scheme: assumePriceSchemeForCountry(country), basis: { kind: 'hub_location', country } },
-      saved: false,
+    const resolution: ResolvedPriceScheme = {
+      scheme: this.assumeScheme(country),
+      basis: { kind: 'hub_location', country },
     };
+    return { resolution, saved: false };
+  }
+
+  private assumeScheme(country: string): PriceScheme {
+    const scheme = assumePriceSchemeForCountry(country);
+    if (scheme !== 'homey') return scheme;
+    return assumeSchemeOutsideNorway(this.lastAccepted.scheme, this.powerhour, this.devicesFollowPrices);
   }
 
   private waitsForRefresh(reading: SourceReading): boolean {

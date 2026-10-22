@@ -1,6 +1,8 @@
 import {
   buildPowerhourPayloads,
+  readPowerhourDeviceChoice,
   resolvePowerhourDevice,
+  resolvePowerhourPresence,
   resolvePowerhourSourceUiStatus,
   type PowerhourCache,
   type PowerhourCachedDay,
@@ -84,6 +86,47 @@ describe('choosing which Power by the Hour device prices the home', () => {
   // A choice PELS could not read is not a choice the owner did not make.
   it('decides nothing when the choice could not be read', () => {
     expect(resolvePowerhourDevice([a, b], { kind: 'unreadable' })).toEqual({ kind: 'unreadable' });
+  });
+});
+
+describe('reading the owner’s device choice', () => {
+  const settingsWith = (keys: string[]) => ({
+    get: () => undefined, set: () => undefined, unset: () => undefined, getKeys: () => keys,
+  });
+
+  it('is unchosen only when the key list says it was never written', () => {
+    expect(readPowerhourDeviceChoice(settingsWith(['capacity_limit_kw']))).toEqual(unchosen);
+    expect(readPowerhourDeviceChoice(settingsWith(['powerhour_device_id']))).toEqual({ kind: 'unreadable' });
+  });
+
+  // An empty list is the SDK's unreadable store, not a choice never made.
+  it('reads nothing from an empty key list', () => {
+    expect(readPowerhourDeviceChoice(settingsWith([]))).toEqual({ kind: 'unreadable' });
+  });
+});
+
+describe('whether Power by the Hour can price the home', () => {
+  const a = device({ deviceId: 'a' });
+  const b = device({ deviceId: 'b' });
+  const resolved = (devices: PowerhourDevice[]) => ({ kind: 'resolved' as const, devices });
+
+  it('has a price device when one would price the home without a question', () => {
+    expect(resolvePowerhourPresence(resolved([a]), unchosen)).toBe('price_device');
+    expect(resolvePowerhourPresence(resolved([a, b]), chosen('b'))).toBe('price_device');
+  });
+
+  it('has none when the app answers it cannot', () => {
+    expect(resolvePowerhourPresence(resolved([]), unchosen)).toBe('none');
+    expect(resolvePowerhourPresence(resolved([a, b]), unchosen)).toBe('none');
+    expect(resolvePowerhourPresence({ kind: 'unavailable', reason: 'app_unavailable' }, unchosen)).toBe('none');
+    expect(resolvePowerhourPresence({ kind: 'unavailable', reason: 'not_permitted' }, unchosen)).toBe('none');
+  });
+
+  // An unanswered read must not move a home off a source PELS assumed.
+  it('reads nothing from a read that went unanswered', () => {
+    expect(resolvePowerhourPresence({ kind: 'unavailable', reason: 'read_failed' }, unchosen)).toBe('unread');
+    expect(resolvePowerhourPresence({ kind: 'unavailable', reason: 'malformed' }, unchosen)).toBe('unread');
+    expect(resolvePowerhourPresence(resolved([a]), { kind: 'unreadable' })).toBe('unread');
   });
 });
 

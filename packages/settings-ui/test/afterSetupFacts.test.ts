@@ -5,7 +5,10 @@ import type {
   PriceSchemeSetting,
   SettingsUiPricesPayload,
 } from '../../contracts/src/settingsUiApi.ts';
-import { resolvePriceSource } from '../src/ui/afterSetupFacts.ts';
+import { offerPowerhour, resolvePriceSource } from '../src/ui/afterSetupFacts.ts';
+import { loadPriceSetupSuggestion } from '../src/ui/priceSetupOffer.ts';
+
+vi.mock('../src/ui/priceSetupOffer.ts', () => ({ loadPriceSetupSuggestion: vi.fn() }));
 
 const assumed = <T>(value: T) => ({ value, chosen: false });
 const chosen = <T>(value: T) => ({ value, chosen: true });
@@ -67,5 +70,31 @@ describe('where the price suggestion says prices come from', () => {
     };
     expect(resolvePriceSource(payload('norway', { kind: 'chosen' }, allChosen)))
       .toEqual({ kind: 'priced', scheme: 'norway', chosen: true });
+  });
+});
+
+describe('offering Power by the Hour in place of an assumed Homey Energy', () => {
+  const suggesting = (kind: 'has_price_device' | 'none') => vi.mocked(loadPriceSetupSuggestion).mockResolvedValue({
+    gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind },
+  });
+
+  beforeEach(() => vi.mocked(loadPriceSetupSuggestion).mockReset());
+
+  it('makes an assumed Homey Energy a choice when Power by the Hour has a price device', async () => {
+    suggesting('has_price_device');
+    await expect(offerPowerhour({ kind: 'priced', scheme: 'homey', chosen: false }))
+      .resolves.toEqual({ kind: 'powerhour_offered' });
+  });
+
+  it('keeps the source when Power by the Hour has nothing to offer', async () => {
+    suggesting('none');
+    await expect(offerPowerhour({ kind: 'priced', scheme: 'homey', chosen: false }))
+      .resolves.toEqual({ kind: 'priced', scheme: 'homey', chosen: false });
+  });
+
+  it('asks Power by the Hour nothing for a chosen source or one without prices', async () => {
+    await offerPowerhour({ kind: 'priced', scheme: 'homey', chosen: true });
+    await offerPowerhour({ kind: 'needs_setup' });
+    expect(loadPriceSetupSuggestion).not.toHaveBeenCalled();
   });
 });

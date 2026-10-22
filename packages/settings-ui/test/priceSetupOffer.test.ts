@@ -40,6 +40,8 @@ describe('parsePriceSetupSuggestion', () => {
   it('reads whether Power by the Hour has a price device', () => {
     expect(parsePriceSetupSuggestion({ ...NOTHING, powerhour: { kind: 'has_price_device' } }).powerhour)
       .toEqual({ kind: 'has_price_device' });
+    expect(parsePriceSetupSuggestion({ ...NOTHING, powerhour: { kind: 'no_price_device' } }).powerhour)
+      .toEqual({ kind: 'no_price_device' });
     expect(parsePriceSetupSuggestion({ ...NOTHING, powerhour: 'yes' }).powerhour).toEqual({ kind: 'none' });
   });
 
@@ -66,6 +68,17 @@ describe('priceSetupNeedsSuggestion', () => {
     // Homey Energy without prices: Power by the Hour may have them.
     expect(priceSetupNeedsSuggestion(norwayRead({}, 'homey'), false)).toBe(true);
     expect(priceSetupNeedsSuggestion({ state: 'unavailable' }, true)).toBe(false);
+  });
+
+  it('asks on a Homey Energy source PELS assumed, where Power by the Hour may be the better one', () => {
+    const assumedHomey: PriceSetupRead = {
+      state: 'resolved',
+      setup: {
+        source: { scheme: 'homey', basis: { kind: 'hub_location', country: 'SE' } },
+        norway: NOTHING_CHOSEN,
+      },
+    };
+    expect(priceSetupNeedsSuggestion(assumedHomey, true)).toBe(true);
   });
 });
 

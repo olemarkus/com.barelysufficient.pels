@@ -104,7 +104,7 @@ If your Homey has dynamic electricity prices configured, PELS can read them dire
 
 This is the recommended path **outside Norway**. PELS ships a built-in Norwegian spot price source with full grid-tariff and electricity-support calculation, and outside Norway, Homey Energy delivers the same all-in hourly prices straight into PELS — every supported country, no extra configuration.
 
-Until you choose a price source yourself, PELS uses Homey Energy on a Homey outside Norway, going by the country Homey reports for its location. A source you choose always takes over.
+Until you choose a price source yourself, PELS uses Homey Energy on a Homey outside Norway, going by the country Homey reports for its location. If you run the Power by the Hour app and it can price your home (its only price device, or the one you picked), PELS uses that instead, with the markups you set there, as long as no device follows prices yet. A source you choose always takes over.
 
 ### Setup
 

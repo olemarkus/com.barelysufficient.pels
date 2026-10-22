@@ -150,3 +150,36 @@ describe('createPriceOptimizationSettingsStore setup read', () => {
     expect(store.readSetup()).toEqual({ state: 'unavailable' });
   });
 });
+
+describe('createPriceOptimizationSettingsStore devicesFollowPrices', () => {
+  const entry = (enabled: boolean) => ({ enabled, cheapDelta: 1, expensiveDelta: -1 });
+
+  it('answers no on a fresh install and for explicit opt-outs', () => {
+    const fresh = new MockSettings();
+    fresh.set(PRICE_THRESHOLD_PERCENT, 25);
+    expect(createPriceOptimizationSettingsStore(fresh).devicesFollowPrices()).toBe(false);
+
+    const optedOut = new MockSettings();
+    optedOut.set(PRICE_OPTIMIZATION_SETTINGS, { heater: entry(false) });
+    expect(createPriceOptimizationSettingsStore(optedOut).devicesFollowPrices()).toBe(false);
+  });
+
+  it('answers yes when a device has Price on, unless Respond to prices is off', () => {
+    const settings = new MockSettings();
+    settings.set(PRICE_OPTIMIZATION_SETTINGS, { heater: entry(true) });
+    const store = createPriceOptimizationSettingsStore(settings);
+    expect(store.devicesFollowPrices()).toBe(true);
+
+    settings.set(PRICE_OPTIMIZATION_ENABLED, false);
+    expect(store.devicesFollowPrices()).toBe(false);
+  });
+
+  it('answers yes when the settings cannot be read', () => {
+    // An empty key list is the SDK's unreadable store, not a fresh install.
+    expect(createPriceOptimizationSettingsStore(new MockSettings()).devicesFollowPrices()).toBe(true);
+
+    const malformed = new MockSettings();
+    malformed.set(PRICE_OPTIMIZATION_SETTINGS, { heater: { enabled: 'yes' } });
+    expect(createPriceOptimizationSettingsStore(malformed).devicesFollowPrices()).toBe(true);
+  });
+});

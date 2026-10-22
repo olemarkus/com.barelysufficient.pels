@@ -45,6 +45,12 @@ export type PriceOptimizationSettingsStore = {
   isEnabled(): boolean;
   readDeviceSettings(): PriceOptimizationDeviceSettingsRead;
   readSetup(): PriceOptimizationSetupRead;
+  /**
+   * Whether any device follows prices: Respond to prices on and Price on for
+   * at least one device. A read that does not come back counts as yes, the
+   * answer that keeps PELS from moving the price source by itself.
+   */
+  devicesFollowPrices(): boolean;
   getThresholdPercent(): number;
   getMinDiffOre(): number;
 };
@@ -160,6 +166,21 @@ export const createPriceOptimizationSettingsStore = (
       };
     } catch {
       return { state: 'unavailable' };
+    }
+  },
+  devicesFollowPrices(): boolean {
+    try {
+      if (settings.get(PRICE_OPTIMIZATION_ENABLED) === false) return false;
+      const raw = settings.get(PRICE_OPTIMIZATION_SETTINGS);
+      if (raw === null || raw === undefined) {
+        const keys = settings.getKeys();
+        // An empty key list is the SDK's transient unreadable-store answer.
+        return keys.length === 0 || keys.includes(PRICE_OPTIMIZATION_SETTINGS);
+      }
+      const read = classifyDeviceSettings(raw);
+      return read.state === 'unavailable' || Object.values(read.settings).some((setting) => setting.enabled);
+    } catch {
+      return true;
     }
   },
   getThresholdPercent(): number {

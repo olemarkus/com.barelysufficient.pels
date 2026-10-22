@@ -160,14 +160,14 @@ describe('Power by the Hour read', () => {
     expect(get).not.toHaveBeenCalled();
   });
 
-  // `getInstalled` reports on the app and nothing else, so a throw from it is
-  // the app being unavailable rather than a fifth state.
-  it('treats a thrown install check as the app being unavailable', async () => {
+  // An unanswered install check says nothing about whether the app is there,
+  // so a source PELS assumed must not fall back on it.
+  it('reports a thrown install check as a read failure', async () => {
     const read = await fetchPowerhourPrices(apiWith({
       getInstalled: async () => { throw new Error('gone'); },
       get: async () => ({ prices: [device()] }),
     }));
-    expect(read).toEqual({ kind: 'unavailable', reason: 'app_unavailable' });
+    expect(read).toEqual({ kind: 'unavailable', reason: 'read_failed' });
   });
 
   // A running app that will not answer is a transient the next refresh may fix

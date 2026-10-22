@@ -688,6 +688,55 @@ describe('ElectricityPricesView, Power by the Hour source', () => {
       expect(onKeepSource).toHaveBeenCalledTimes(1);
     });
 
+    describe('with Power by the Hour installed', () => {
+      const HOMEY_PRICED = {
+        hasPrices: true,
+        currency: 'EUR',
+        currencyTone: 'ok',
+        today: { text: 'Loaded', tone: 'ok' },
+        tomorrow: { text: 'Loaded', tone: 'ok' },
+        priceSetupIssue: null,
+      } as const;
+      const suggestion = (kind: 'has_price_device' | 'no_price_device') => ({
+        gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind },
+      } as const);
+      const outsideNorway = { kind: 'assumed', reason: 'outside_norway' } as const;
+      const buttonLabels = (mount: HTMLElement) => (
+        Array.from(mount.querySelectorAll('md-outlined-button')).map((button) => button.textContent)
+      );
+
+      it('names the markups an assumed Power by the Hour prices with', () => {
+        const mount = mountWith({ priceScheme: 'powerhour' }, { sourceAssumption: outsideNorway });
+
+        expect(alertHints(mount))
+          .toContain('Not chosen yet. PELS uses Power by the Hour, with the markups you set there.');
+        expect(buttonLabels(mount)).toContain('Keep Power by the Hour');
+      });
+
+      it('says why PELS uses Homey Energy when Power by the Hour has no price device', () => {
+        const mount = mountWith({
+          priceScheme: 'homey', homeyStatus: HOMEY_PRICED, priceSetupSuggestion: suggestion('no_price_device'),
+        }, { sourceAssumption: outsideNorway });
+
+        expect(alertHints(mount))
+          .toEqual(['Not chosen yet. Power by the Hour has no price device, so PELS uses Homey Energy.']);
+        expect(buttonLabels(mount)).not.toContain('Use Power by the Hour');
+      });
+
+      it('offers Power by the Hour next to keeping an assumed Homey Energy', () => {
+        const onSchemeChange = vi.fn();
+        const mount = mountWith({
+          priceScheme: 'homey', homeyStatus: HOMEY_PRICED, priceSetupSuggestion: suggestion('has_price_device'),
+        }, { sourceAssumption: outsideNorway, handlers: buildHandlers({ onSchemeChange }) });
+
+        expect(buttonLabels(mount)).toEqual(expect.arrayContaining(['Keep Homey Energy', 'Use Power by the Hour']));
+        const use = Array.from(mount.querySelectorAll('md-outlined-button'))
+          .find((button) => button.textContent === 'Use Power by the Hour') as HTMLElement | undefined;
+        use?.click();
+        expect(onSchemeChange).toHaveBeenCalledWith('powerhour');
+      });
+    });
+
     it('says PELS could not tell where the Homey is before an owner keeps the Norway source', () => {
       const onKeepSource = vi.fn();
       const mount = mountWith({ priceScheme: 'norway' }, {

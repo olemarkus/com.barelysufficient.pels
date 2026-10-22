@@ -1471,7 +1471,12 @@ never saw). On Electricity prices:
 - Source assumed: `Not chosen yet. Your Homey is in Norway, so PELS uses the
   Norway source.` / `Not chosen yet. Your Homey is outside Norway, so PELS uses
   Homey Energy.` with a `Keep Norway` / `Keep Homey Energy` button, because
-  selecting the value the select already shows changes nothing.
+  selecting the value the select already shows changes nothing. Power by the
+  Hour assumed outside Norway: `Not chosen yet. PELS uses Power by the Hour,
+  with the markups you set there.`; Homey Energy because the app has no price
+  device: `Not chosen yet. Power by the Hour has no price device, so PELS uses
+  Homey Energy.` Homey Energy assumed while Power by the Hour has a price device
+  adds a `Use Power by the Hour` button next to `Keep Homey Energy`.
 - Homey Energy without prices, whoever chose it: `Homey Energy has no electricity
   prices for your Homey yet.`, then where to turn them on (`Energy >
   Electricity` in the Homey app, then Refresh prices) or to choose another

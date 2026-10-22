@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockHomeyInstance, resetMockHomey } from '../../mocks/homey';
+import { mockHomeyInstance, resetMockHomey, setMockApiApp } from '../../mocks/homey';
 import { PriceCoordinator } from '../../../lib/price/priceCoordinator';
 import { createPriceOptimizationSettingsStore } from '../../../lib/price/priceOptimizationSettingsStore';
 import { createPriceDataStore } from '../../../lib/price/priceDataStore';
+import { POWERHOUR_APP_ID } from '../../../lib/price/powerhourPriceFetch';
 import {
-  EXPORT_FIXED, EXPORT_PRICE_ENABLED, EXPORT_SPOT_FACTOR, PRICE_SCHEME,
+  EXPORT_FIXED, EXPORT_PRICE_ENABLED, EXPORT_SPOT_FACTOR, PRICE_OPTIMIZATION_SETTINGS, PRICE_SCHEME,
 } from '../../../lib/utils/settingsKeys';
 import type { SettingsUiHubMarketRead } from '../../../packages/contracts/src/settingsUiApi';
 import { createInMemoryPriceCache } from '../../helpers/priceCacheForTests';
@@ -67,6 +68,66 @@ describe('price source assumed from the hub country', () => {
     expect(info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'export_price_settled_for_source_change', plan: 'disable_export',
     }));
+  });
+
+  describe('with Power by the Hour pricing the home', () => {
+    const NL_DEVICE = {
+      deviceId: '10YNL----------L_abc',
+      deviceName: 'NL',
+      driverType: 'dap',
+      biddingZone: '10YNL----------L',
+      currency: '€',
+      priceInterval: 60,
+      slots: [{ time: '2026-10-13T10:00:00.000Z', importPrice: 0.21, exportPrice: 0, isForecast: false }],
+    };
+
+    beforeEach(() => {
+      setMockApiApp(POWERHOUR_APP_ID, { installed: true, get: async () => ({ prices: [NL_DEVICE] }) });
+    });
+
+    it('prices from Power by the Hour while nothing follows prices yet', async () => {
+      const { coordinator, info } = createCoordinator(hubMarketIn('NL'));
+
+      await coordinator.refreshSpotPrices();
+
+      expect(info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'price_source_switched', scheme: 'powerhour', basis: { kind: 'hub_location', country: 'NL' },
+      }));
+    });
+
+    it('lets a later refresh decide when an earlier one\'s reads were overtaken', async () => {
+      // The earlier refresh found Power by the Hour not running, then waited on
+      // the hub's country while a later refresh found it priced the home.
+      let answerFirst: (market: SettingsUiHubMarketRead) => void = () => undefined;
+      const markets = [
+        new Promise<SettingsUiHubMarketRead>((resolve) => { answerFirst = resolve; }),
+        Promise.resolve<SettingsUiHubMarketRead>({ state: 'resolved', country: 'NL' }),
+      ];
+      const { coordinator } = createCoordinator(async () => markets.shift() ?? hubMarketIn('NL')());
+      setMockApiApp(POWERHOUR_APP_ID, { installed: false, get: async () => ({ prices: [] }) });
+      const earlier = coordinator.refreshSpotPrices();
+      setMockApiApp(POWERHOUR_APP_ID, { installed: true, get: async () => ({ prices: [NL_DEVICE] }) });
+      await coordinator.refreshSpotPrices();
+
+      answerFirst({ state: 'resolved', country: 'NL' });
+      await earlier;
+
+      const read = coordinator.readPriceSetup();
+      expect(read.state === 'resolved' && read.setup.source.scheme).toBe('powerhour');
+    });
+
+    it('leaves the move to the owner once a device follows prices', async () => {
+      mockHomeyInstance.settings.set(PRICE_OPTIMIZATION_SETTINGS, {
+        heater: { enabled: true, cheapDelta: 1, expensiveDelta: -1 },
+      });
+      const { coordinator } = createCoordinator(hubMarketIn('NL'));
+
+      await coordinator.refreshSpotPrices();
+
+      const read = coordinator.readPriceSetup();
+      expect(read.state === 'resolved' && read.setup.source)
+        .toEqual({ scheme: 'homey', basis: { kind: 'hub_location', country: 'NL' } });
+    });
   });
 
   it('leaves a saved source alone in any country', async () => {

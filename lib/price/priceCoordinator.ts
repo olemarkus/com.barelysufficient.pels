@@ -34,6 +34,7 @@ import {
   type HubLocationRead,
 } from './norwayPriceSetupSuggestion';
 import { fetchPowerhourPrices } from './powerhourPriceFetch';
+import { readPowerhourPresence, type PowerhourPresence } from './powerhourScheme';
 import { readPriceSetup } from './priceSetupRead';
 import type { PriceSourceSwitch } from './priceSchemeResolution';
 import type { BudgetPriceInputs } from './budgetPrice';
@@ -125,6 +126,9 @@ export class PriceCoordinator {
   // the callback would call updateCombinedPrices and reschedule itself.
   private stopped = false;
   private priceOptimizationEnabled = true;
+  // Counts spot refreshes, so one whose reads were overtaken by a later
+  // refresh's leaves the source to that one (see `refreshSpotPrices`).
+  private spotRefreshCount = 0;
   private priceOptimizationSettings: PriceOptimizationDeviceSettings = {};
 
   /**
@@ -204,7 +208,8 @@ export class PriceCoordinator {
   // A local app-to-app read: Power by the Hour answers from the Homey itself.
   private async probePowerhourPriceDevice(): Promise<PriceSetupSuggestion['powerhour']> {
     const read = await fetchPowerhourPrices(this.deps.homey.api);
-    return read.kind === 'resolved' && read.devices.length > 0 ? { kind: 'has_price_device' } : NO_POWERHOUR;
+    if (read.kind !== 'resolved') return NO_POWERHOUR;
+    return read.devices.length > 0 ? { kind: 'has_price_device' } : { kind: 'no_price_device' };
   }
 
   updatePriceOptimizationEnabled(logChange = false): void {
@@ -292,9 +297,21 @@ export class PriceCoordinator {
   async refreshSpotPrices(forceRefresh = false): Promise<void> {
     const stopSpan = startRuntimeSpan('price_refresh_spot');
     try {
-      // The hub's country first: on a home whose owner never chose a source it
-      // decides which source this refresh fetches from.
-      const sourceSwitched = this.refreshPriceSource(await this.deps.readHubMarket());
+      // The hub's country and Power by the Hour first: on a home whose owner
+      // never chose a source they decide which source this refresh fetches from.
+      // Refreshes can overlap (the three-hourly cycle, the owner's Refresh
+      // prices), and reads that a later refresh has overtaken are older news
+      // than the reads it decides on, so they move no source.
+      this.spotRefreshCount += 1;
+      const refresh = this.spotRefreshCount;
+      // Not asked, Power by the Hour is `unread`, which moves no source.
+      const [market, powerhour] = await Promise.all([
+        this.deps.readHubMarket(),
+        this.priceService.readsPowerhourForPriceSource()
+          ? readPowerhourPresence(this.deps.homey.api, this.deps.homey.settings)
+          : 'unread' as const,
+      ]);
+      const sourceSwitched = refresh === this.spotRefreshCount && this.refreshPriceSource(market, powerhour);
       await this.priceService.refreshSpotPrices(forceRefresh || sourceSwitched);
       if (sourceSwitched) this.priceService.updateCombinedPrices();
     } catch (error) {
@@ -320,11 +337,15 @@ export class PriceCoordinator {
   }
 
   /** Answers whether PELS switched source, the cue to fetch prices from the new one. */
-  private refreshPriceSource(market: SettingsUiHubMarketRead): boolean {
+  private refreshPriceSource(market: SettingsUiHubMarketRead, powerhour: PowerhourPresence): boolean {
     const logger = this.deps.structuredLog ?? moduleLogger;
     let sourceSwitch: PriceSourceSwitch;
     try {
-      sourceSwitch = this.priceService.refreshPriceSource(market);
+      sourceSwitch = this.priceService.refreshPriceSource(
+        market,
+        powerhour,
+        this.deps.priceOptimizationSettingsStore.devicesFollowPrices(),
+      );
     } catch (error) {
       logger.error({ event: 'price_source_switch_failed', err: normalizeError(error) });
       return false;

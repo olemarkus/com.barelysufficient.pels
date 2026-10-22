@@ -45,7 +45,7 @@ import {
   resolveNorwayHourlyPrices,
   type NorwaySchemeSettings,
 } from './priceServiceNorway';
-import { mirrorPowerhourPrices, type PowerhourSourceUiStatus } from './powerhourScheme';
+import { mirrorPowerhourPrices, type PowerhourPresence, type PowerhourSourceUiStatus } from './powerhourScheme';
 import { applyExportPrices, type ExportPriceConfig } from './exportPrice';
 import { applyBudgetPrices, type BudgetPriceInputs } from './budgetPrice';
 import { buildPriceTimeline } from './priceTimeline';
@@ -131,9 +131,18 @@ export default class PriceService {
     return this.priceSchemeResolver.resolve();
   }
 
-  /** A fresh read of the hub's country, and any switch of source PELS makes by itself. */
-  refreshPriceSource(market: SettingsUiHubMarketRead): PriceSourceSwitch {
-    return this.priceSchemeResolver.refresh(market);
+  /** See `PriceSchemeResolver.readsPowerhour`. */
+  readsPowerhourForPriceSource(): boolean {
+    return this.priceSchemeResolver.readsPowerhour();
+  }
+
+  /** Fresh reads of what the assumed source depends on, and any switch of source PELS makes by itself. */
+  refreshPriceSource(
+    market: SettingsUiHubMarketRead,
+    powerhour: PowerhourPresence,
+    devicesFollowPrices: boolean,
+  ): PriceSourceSwitch {
+    return this.priceSchemeResolver.refresh(market, powerhour, devicesFollowPrices);
   }
 
   // Public so app-level callers (e.g. the deferred-objective plan-preview cost

@@ -14,6 +14,7 @@ import { normalizeNorwayPriceModel, normalizePriceSchemeSelection } from '../pri
 import type {
   PowerhourDeviceUiOption,
   PowerhourSourceUiStatus,
+  PriceSetupSuggestion,
 } from '../../../../contracts/src/settingsUiApi.ts';
 import { resolvePriceLevelChip } from '../../../../shared-domain/src/priceLevelChips.ts';
 import { resolvePvForecastStatusLine } from '../../../../shared-domain/src/solar/pvForecastSourceStatus.ts';
@@ -729,10 +730,23 @@ type AssumptionReason = Extract<PriceSourceAssumption, { kind: 'assumed' }>['rea
 
 // Without the hub's location PELS stays on the source every home had before
 // it could read one, and says so: an owner outside Norway must not take the
-// Norway prices for a guess about where they live.
-const assumedSourceHint = (reason: AssumptionReason, name: { inSentence: string }): string => {
+// Norway prices for a guess about where they live. Outside Norway, PELS takes
+// Power by the Hour over Homey Energy when it has a price device, so the hint
+// names the markups the owner set there, or why PELS uses Homey Energy instead.
+const assumedSourceHint = (
+  reason: AssumptionReason,
+  scheme: PriceScheme,
+  powerhour: PriceSetupSuggestion['powerhour'],
+): string => {
+  const name = SOURCE_NAMES[scheme];
   if (reason === 'in_norway') return `Not chosen yet. Your Homey is in Norway, so PELS uses ${name.inSentence}.`;
-  if (reason === 'outside_norway') return `Not chosen yet. Your Homey is outside Norway, so PELS uses ${name.inSentence}.`;
+  if (reason === 'outside_norway') {
+    if (scheme === 'powerhour') return 'Not chosen yet. PELS uses Power by the Hour, with the markups you set there.';
+    if (scheme === 'homey' && powerhour.kind === 'no_price_device') {
+      return 'Not chosen yet. Power by the Hour has no price device, so PELS uses Homey Energy.';
+    }
+    return `Not chosen yet. Your Homey is outside Norway, so PELS uses ${name.inSentence}.`;
+  }
   return 'Not chosen yet. PELS couldn’t tell where your Homey is, so it uses Norway’s prices. '
     + 'Outside Norway, choose where your prices come from above.';
 };
@@ -749,9 +763,12 @@ type SourceStatusLines = { hint: ComponentChildren; followUp: ComponentChildren 
 const resolveSourceStatusLines = (props: ElectricityPricesViewProps): SourceStatusLines => {
   const { config, handlers } = props;
   const name = SOURCE_NAMES[config.priceScheme];
+  // Power by the Hour, installed with a price device, can price a Homey Energy
+  // home now: one with no prices, or one whose devices already followed Homey
+  // Energy's prices when PELS assumed it, so PELS left the move to the owner.
+  const powerhourReady = config.priceScheme === 'homey'
+    && config.priceSetupSuggestion.powerhour.kind === 'has_price_device';
   if (config.priceScheme === 'homey' && config.homeyStatus?.hasPrices === false) {
-    // Power by the Hour, installed with a price device, can price the home now.
-    const powerhourReady = config.priceSetupSuggestion.powerhour.kind === 'has_price_device';
     return {
       hint: <small class="field__hint field__hint--alert">Homey Energy has no electricity prices for your Homey yet.</small>,
       followUp: (
@@ -780,7 +797,7 @@ const resolveSourceStatusLines = (props: ElectricityPricesViewProps): SourceStat
   return {
     hint: (
       <small class="field__hint field__hint--alert">
-        {assumedSourceHint(assumption.reason, name)}
+        {assumedSourceHint(assumption.reason, config.priceScheme, config.priceSetupSuggestion.powerhour)}
       </small>
     ),
     followUp: (
@@ -788,6 +805,11 @@ const resolveSourceStatusLines = (props: ElectricityPricesViewProps): SourceStat
         <MdOutlinedButton type="button" onClick={handlers.onKeepSource}>
           {`${assumption.reason === 'location_unknown' ? 'Use' : 'Keep'} ${name.short}`}
         </MdOutlinedButton>
+        {powerhourReady && (
+          <MdOutlinedButton type="button" onClick={() => handlers.onSchemeChange('powerhour')}>
+            Use Power by the Hour
+          </MdOutlinedButton>
+        )}
       </div>
     ),
   };

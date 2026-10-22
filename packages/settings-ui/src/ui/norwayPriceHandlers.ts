@@ -125,7 +125,7 @@ export const createNorwayPriceHandlers = (ctx: NorwayPriceHandlersContext) => {
   // coordinates to NVE and Kartverket, so it runs only when the owner opens the
   // page and something is still missing, and never again after an answer. The
   // same answer says whether Power by the Hour could price a Homey Energy home
-  // that has no prices.
+  // that has no prices, or whose source PELS assumed.
   // Per source: an answer for Homey Energy says nothing about Norway, so an
   // owner who switches source in the same visit is asked about the new one.
   let suggestionRequestedFor: string | null = null;
