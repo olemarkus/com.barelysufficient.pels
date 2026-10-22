@@ -1,3 +1,4 @@
+import { resolvePriceOptimizationConfig } from '../../lib/price/priceOptimizer';
 // Unit tests for the binary "Run on solar surplus" dump-load rung (PR-7):
 // the producer candidacy predicate (`resolveSurplusOnlyPosture`), the standing
 // hold selection (`resolveSurplusHold`), the mixed temperature+binary surplus
@@ -186,7 +187,7 @@ const allocatorPass = (params: {
   signedNetKw: number;
   nowTs: number;
   priorities?: Record<string, number>;
-  configs?: Record<string, { surplusWilling: boolean; surplusDelta: number }>;
+  configs?: Parameters<typeof resolvePriceOptimizationConfig>[0];
   excludeIds?: ReadonlySet<string>;
 }) => resolveSurplusEligibilityForSpec({
   // The rank rides on the device: the producer ranks the whole planned set
@@ -200,7 +201,7 @@ const allocatorPass = (params: {
   inferredSurplusKw: 0,
   storage: NO_STORAGE_SURPLUS,
   excludeIds: params.excludeIds ?? new Set(),
-  getConfig: (deviceId) => params.configs?.[deviceId],
+  getConfig: (deviceId) => resolvePriceOptimizationConfig(params.configs ?? {}, deviceId),
   nowTs: params.nowTs,
 });
 
@@ -217,7 +218,7 @@ describe('resolveSurplusEligibility (mixed temp + binary pool)', () => {
     const state = createPlanEngineState(0);
     const devices = [dumpLoad('pump'), tempDevice('tank', 1)];
     const priorities = { tank: 1, pump: 2 };
-    const configs = { tank: { surplusWilling: true, surplusDelta: 2 } };
+    const configs = { tank: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true, surplusDelta: 2 } };
     // Export of 1.5 kW covers ONE 1 kW device (+0.25 reserve), not both.
     allocatorPass({ state, devices, signedNetKw: -1.5, nowTs: 0, priorities, configs });
     allocatorPass({ state, devices, signedNetKw: -1.5, nowTs: SURPLUS_ABSORB_SETTLE_MS, priorities, configs });
@@ -268,7 +269,7 @@ describe('resolveSurplusEligibility (mixed temp + binary pool)', () => {
     const state = createPlanEngineState(0);
     const devices = [dumpLoad('pump'), tempDevice('tank', 2)];
     const priorities = { tank: 2, pump: 1 };
-    const configs = { tank: { surplusWilling: true, surplusDelta: 2 } };
+    const configs = { tank: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true, surplusDelta: 2 } };
     allocatorPass({ state, devices, signedNetKw: -1.5, nowTs: 0, priorities, configs });
     allocatorPass({ state, devices, signedNetKw: -1.5, nowTs: SURPLUS_ABSORB_SETTLE_MS, priorities, configs });
     expect(state.surplusEligibilityByDevice.pump?.eligible).toBe(true);

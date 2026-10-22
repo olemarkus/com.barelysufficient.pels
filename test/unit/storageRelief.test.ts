@@ -569,7 +569,7 @@ describe('a raise past the own mode\'s charge, ranked against the consumers belo
       inferredSurplusKw: 0,
       storage: resolveStorageSurplus(devices, levers, signedNetW),
       excludeIds: new Set(),
-      getConfig: () => ({ surplusWilling: true, surplusDelta: 2 }),
+      getConfig: () => ({ enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusLiftC: 2 }),
       nowTs: NOW,
     });
     const relief = decideStorageRelief(

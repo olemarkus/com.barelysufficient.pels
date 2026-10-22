@@ -62,7 +62,7 @@ const resolve = (params: {
     inferredSurplusKw: 0,
     storage: NO_STORAGE_SURPLUS,
     excludeIds: new Set(),
-    getConfig: () => ({ surplusWilling: true, surplusDelta: 2 }),
+    getConfig: () => ({ enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusLiftC: 2 }),
     debugStructured: params.debugStructured,
     nowTs: params.nowTs,
   });

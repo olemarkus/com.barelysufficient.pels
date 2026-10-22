@@ -1,3 +1,4 @@
+import { resolvePriceOptimizationConfig } from '../../lib/price/priceOptimizer';
 // Integration test for SURPLUS-ABSORB: raising a willing thermostat's setpoint to
 // self-consume exported solar.
 //
@@ -118,7 +119,7 @@ const buildDevices = (params: {
     inferredSurplusKw: 0,
     storage: params.storage ?? NO_STORAGE_SURPLUS,
     excludeIds: new Set(),
-    getConfig: (deviceId) => params.deps.getPriceOptimizationSettings()[deviceId],
+    getConfig: (deviceId) => resolvePriceOptimizationConfig(params.deps.getPriceOptimizationSettings(), deviceId),
     nowTs: Date.now(),
   });
   return buildInitialPlanDevicesForSpec({
@@ -363,7 +364,7 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
         inferredSurplusKw,
         storage: NO_STORAGE_SURPLUS,
         excludeIds: new Set(),
-        getConfig: (deviceId) => deps(true).getPriceOptimizationSettings()[deviceId],
+        getConfig: (deviceId) => resolvePriceOptimizationConfig(deps(true).getPriceOptimizationSettings(), deviceId),
         debugStructured: options.debugStructured,
         nowTs: Date.now(),
       });

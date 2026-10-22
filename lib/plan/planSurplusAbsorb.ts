@@ -53,17 +53,7 @@ export type PriceOptDeviceConfig = {
   surplusDelta: number;
 };
 
-type SurplusConfig = Pick<PriceOptDeviceConfig, 'surplusWilling' | 'surplusDelta'>;
-
 const positiveOrZero = (value: unknown): number => (isFiniteNumber(value) && value > 0 ? value : 0);
-
-// A device only absorbs surplus when it is willing AND has a real (finite, > 0)
-// lift configured; a no-op (zero/absent/NaN delta) must not be admitted to the
-// allocator, or it would reserve export it never draws and starve lower-priority
-// devices.
-const willingWithLift = (config: SurplusConfig | undefined): boolean => (
-  config !== undefined && config.surplusWilling && config.surplusDelta > 0
-);
 
 /**
  * "Run on solar surplus" dump-load candidacy (PR-7) — the SINGLE resolution of
@@ -628,7 +618,7 @@ const resolveHeldStep = (
 export function withdrawSurplusEligibility(
   devices: PlanInputDevice[],
   state: PlanEngineState,
-  getConfig: (deviceId: string) => SurplusConfig | undefined,
+  getConfig: (deviceId: string) => ResolvedPriceOptimizationConfig,
   excludeIds: ReadonlySet<string>,
   nowTs: number,
 ): void {
@@ -647,7 +637,7 @@ export function withdrawSurplusEligibility(
 export function selectSurplusCandidates(
   devices: PlanInputDevice[],
   state: PlanEngineState,
-  getConfig: (deviceId: string) => SurplusConfig | undefined,
+  getConfig: (deviceId: string) => ResolvedPriceOptimizationConfig,
   // Smart-task precedence at the ALLOCATION stage (mirrors the hold exclusion):
   // a device an active deferred objective currently governs must never be
   // eligible for surplus and must never RESERVE the shared pool ahead of a
@@ -662,7 +652,7 @@ export function selectSurplusCandidates(
       && !excludeIds.has(dev.id)
       && (dev.surplusOnly === true
         || dev.surplusTracking
-        || (willingWithLift(getConfig(dev.id)) && supportsTemperatureLift(dev))),
+        || (getConfig(dev.id).surplusLiftC > 0 && supportsTemperatureLift(dev))),
   );
   pruneNonCandidateSurplusState(state, new Set(willing.map((dev) => dev.id)));
   return willing;
@@ -693,7 +683,7 @@ export function selectSurplusCandidates(
  *
  * The willing set is the union of ALL THREE surplus modalities in ONE pool,
  * ordered purely by user priority: temperature devices with a real lift
- * (`willingWithLift`), binary dump loads carrying the producer-resolved
+ * (`surplusLiftC > 0`), binary dump loads carrying the producer-resolved
  * `surplusOnly` posture, and stepped loads carrying `surplusTracking`. Every one
  * of them runs the same settle/dwell/hard-off gate, so a thermostat, a pool pump
  * and an EV charger can never all engage on the same export.
