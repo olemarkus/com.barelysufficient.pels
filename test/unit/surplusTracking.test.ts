@@ -1,3 +1,4 @@
+import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 // Unit tests for the surplus-TRACKING modality (the third, modulating absorber):
 // `resolveSurplusTrackingPosture` candidacy, the ladder helper
 // `resolveHighestStepWithinKw`, and the variable-claimant branch of
@@ -514,6 +515,7 @@ describe('a solar stop that lands on a device capacity already priced', () => {
       state.shedDecisions,
       () => undefined,
       () => 'released',
+      createPendingBinaryCommandStore({}),
     );
 
     expect(shedSet.has(CHARGER_ID)).toBe(true);
@@ -531,6 +533,7 @@ describe('a solar stop that lands on a device capacity already priced', () => {
       state.shedDecisions,
       () => undefined,
       () => 'released',
+      createPendingBinaryCommandStore({}),
     );
 
     expect(shedStepTargets.get(CHARGER_ID)).toBe('medium');

@@ -124,6 +124,7 @@ export class SilentMeterPlanBuilder {
       context, this.state, sheddingPlan, decoration,
       { getConfig: (deviceId) => this.deps.getPriceOptimizationSettings()[deviceId], nowTs },
       this.deps.leaveOffOnRelease,
+      this.deps.pendingBinaryCommandStore,
     );
     for (const [id, reason] of surplusHoldReasonById) sheddingPlan.shedReasons.set(id, reason);
     // A smart task's forced shed rides in through the hold merge with no reason
