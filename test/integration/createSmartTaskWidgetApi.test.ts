@@ -61,6 +61,9 @@ const buildContext = (app: Partial<AppMock>) => ({
     // widget entry points receive the `CreateSmartTaskHostApi`-shaped context.
     app: {
       resolveSmartTaskHomeScope: vi.fn(() => 'main'),
+      getCreateSmartTaskCandidateDevices: vi.fn(() => ({
+        state: 'ready', devices: [evDevice, { ...evDevice, id: 'heater-1' }],
+      })),
       ...app,
     } as unknown as CreateSmartTaskHostApi,
     clock: { getTimezone: () => TIME_ZONE },
@@ -96,7 +99,7 @@ describe('getCreateSmartTaskDevices', () => {
   });
 
   it('returns an error when the app method is missing', async () => {
-    const payload = await getCreateSmartTaskDevices(buildContext({}));
+    const payload = await getCreateSmartTaskDevices({ homey: {} });
     expect(payload.state).toBe('error');
   });
 
@@ -337,7 +340,7 @@ describe('createCreateSmartTask', () => {
       enforcement: 'soft',
       targetTemperatureC: 65,
       deadlineAtMs: expectedDeadline('07:00'),
-    });
+    }, 'replace');
   });
 
   it('maps an app rejection reason to the response', async () => {
@@ -480,5 +483,46 @@ describe('getCreateSmartTaskQuickTargets', () => {
       body: { deviceId: 'ev-1', kind: 'ev_soc' },
     })).toEqual({ state: 'rejected', reason: 'device_in_sub_home' });
     expect(previewSmartTaskQuickTargets).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('widget standing permissions', () => {
+  it('preserves unmentioned grants and upgrades an explicit grant for preview and create', async () => {
+    const previewDeferredObjectivePlan = vi.fn((_id: string, _candidate: DeferredObjectivePlanPreviewCandidate) => buildEstimate());
+    const createDeferredObjective = vi.fn(() => ({ ok: true }));
+    const context = buildContext({
+      previewDeferredObjectivePlan,
+      createDeferredObjective,
+      getCreateSmartTaskCandidateDevices: vi.fn(() => ({ state: 'ready', devices: [{
+        ...evDevice,
+        rescue: { exemptFromBudget: 'at_risk', limitLowerPriorityDevices: 'always' },
+      }] })),
+    });
+    const body = {
+      deviceId: 'ev-1', kind: 'ev_soc', target: 80, readyByLocalTime: '07:00',
+      exemptFromBudget: true, pauseLowerPriorityDevices: true,
+    };
+    expect(await previewCreateSmartTask({ ...context, body })).toMatchObject({ ok: true });
+    expect(await createCreateSmartTask({ ...context, body })).toEqual({ ok: true });
+    const candidate = previewDeferredObjectivePlan.mock.calls[0]?.[1];
+    expect(candidate).toMatchObject({ rescue: {
+      exemptFromBudget: 'always', limitLowerPriorityDevices: 'always', pauseLowerPriorityDevices: 'always',
+    } });
+    expect(createDeferredObjective).toHaveBeenCalledWith('ev-1', candidate, 'replace');
+  });
+
+  it('refuses preview and create when standing permissions cannot be read', async () => {
+    const previewDeferredObjectivePlan = vi.fn((_id: string, _candidate: DeferredObjectivePlanPreviewCandidate) => buildEstimate());
+    const createDeferredObjective = vi.fn(() => ({ ok: true }));
+    const context = buildContext({
+      previewDeferredObjectivePlan, createDeferredObjective,
+      getCreateSmartTaskCandidateDevices: vi.fn(() => ({ state: 'unavailable' })),
+    });
+    const body = { deviceId: 'ev-1', kind: 'ev_soc', target: 80, readyByLocalTime: '07:00' };
+    expect(await previewCreateSmartTask({ ...context, body })).toEqual({ ok: false, reason: 'unavailable' });
+    expect(await createCreateSmartTask({ ...context, body })).toEqual({ ok: false, reason: 'unavailable' });
+    expect(previewDeferredObjectivePlan).not.toHaveBeenCalled();
+    expect(createDeferredObjective).not.toHaveBeenCalled();
   });
 });

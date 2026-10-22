@@ -658,6 +658,45 @@ describe('create smart task widget browser', () => {
     });
     const input = (sel: string): HTMLInputElement => document.querySelector(sel) as HTMLInputElement;
 
+    test('hides the disclosure when every permission already stands unconditionally', async () => {
+      const device = { ...steppedDevice, rescue: {
+        exemptFromBudget: 'always', limitLowerPriorityDevices: 'always', pauseLowerPriorityDevices: 'always',
+      } };
+      installWidget(window as WidgetWindow, document);
+      ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(buildHomey([device], []));
+      await flushPromises();
+      click('[data-device-button]');
+      expect((document.querySelector('[data-extra-perms]') as HTMLElement).hidden).toBe(true);
+    });
+
+    test('offers conditional grants as upgrades, suppresses always grants, and carries reserve through Back', async () => {
+      const createCalls: unknown[] = [];
+      const device = { ...steppedDevice, rescue: {
+        exemptFromBudget: 'always', limitLowerPriorityDevices: 'at_risk', pauseLowerPriorityDevices: 'at_risk',
+      } };
+      installWidget(window as WidgetWindow, document);
+      ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(buildHomey([device], createCalls));
+      await flushPromises();
+      click('[data-device-button]');
+      expect((document.querySelector('[data-perm-budget]') as HTMLElement).hidden).toBe(true);
+      expect((document.querySelector('[data-perm-limit]') as HTMLElement).hidden).toBe(false);
+      expect((document.querySelector('[data-perm-reserve]') as HTMLElement).hidden).toBe(false);
+      expect(document.querySelector('[data-perm-reserve-hint]')?.textContent)
+        .toBe(SMART_TASK_EXTRA_PERMISSION_HINTS.pauseLowerPriorityDevices);
+      click('[data-perm-reserve-input]');
+      click('[data-preview-btn]');
+      await flushPromises();
+      click('[data-preview-back]');
+      expect(input('[data-perm-reserve-input]').checked).toBe(true);
+      click('[data-preview-btn]');
+      await flushPromises();
+      click('[data-create-btn]');
+      await flushPromises();
+      expect(createCalls[0]).toMatchObject({ pauseLowerPriorityDevices: true });
+      expect(createCalls[0]).not.toHaveProperty('exemptFromBudget');
+      expect(createCalls[0]).not.toHaveProperty('limitLowerPriorityDevices');
+    });
+
     test('offers limit-lower-priority for an eligible device on its own, and sends it without the budget exemption', async () => {
       const createCalls: unknown[] = [];
       installWidget(window as WidgetWindow, document);

@@ -13,7 +13,7 @@ import type {
   DeferredObjectivePlanPreviewEstimate,
   SmartTaskQuickTargetsRead,
 } from './deferredObjectivePlanPreview.js';
-import type { DeferredObjectiveSettingsKind } from './deferredObjectiveSettings.js';
+import type { DeferredObjectiveRescuePermissions, DeferredObjectiveSettingsKind } from './deferredObjectiveSettings.js';
 import type { StarvationNotListedDevice, StarvationRescueDevice } from './starvationRescue.js';
 import type { DailyBudgetUiRead } from './dailyBudgetTypes.js';
 import type { ResolvedDeferredObjectiveActivePlansV1 } from './deferredObjectiveActivePlans.js';
@@ -52,7 +52,7 @@ export type SmartTaskTemperatureObservation = TemperatureObservation & { intende
  * not carry.
  */
 export type CreateSmartTaskCandidateDevice = ObservedDeviceState
-  & { temperature?: SmartTaskTemperatureObservation }
+  & { temperature?: SmartTaskTemperatureObservation; rescue?: DeferredObjectiveRescuePermissions }
   & StateOfChargeObservedProbe
   // The plug state picks a charger's creation goal (`resolveSmartTaskCreationKind`).
   & EvObservedProbe
@@ -76,6 +76,7 @@ export type CreateSmartTaskHostApi = {
   createDeferredObjective(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
+    rescuePolicy?: 'preserve' | 'replace',
   ): WidgetObjectiveWriteResult;
 };
 

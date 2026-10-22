@@ -83,7 +83,7 @@ export const readCreateSmartTaskCandidateDevices = (
 ): CreateSmartTaskCandidateDevicesRead => {
   const membership = ctx.homeMembership;
   return membership
-    ? readCreateSmartTaskCandidates(membership, ctx.getPlanInputSnapshot(), readModeTargetC)
+    ? readCreateSmartTaskCandidates(membership, ctx.getPlanInputSnapshot(), readModeTargetC, ctx.homey.settings)
     : { state: 'unavailable' };
 };
 

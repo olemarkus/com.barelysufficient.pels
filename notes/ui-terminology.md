@@ -1265,8 +1265,8 @@ Reserve *plan* for the planning layer. Smart-task surfaces use *deadline*, *obje
 
 ### Smart-task extra permissions
 
-Four surfaces set these: the create-smart-task widget's opt-in disclosure (budget
-+ limit only), the smart-task detail page's editor (all three, on **and** off),
+Four surfaces set these: the create-smart-task widget's opt-in disclosure (all
+three), the smart-task detail page's editor (all three, on **and** off),
 the `allow_smart_task_rescue` Flow action, and the Held-back devices "Let it run
 now" lane, which grants them implicitly. Their strings come from
 `SMART_TASK_EXTRA_PERMISSIONS_TITLE` / `SMART_TASK_EXTRA_PERMISSION_LABELS` in
@@ -1292,8 +1292,9 @@ single read-only row whose canonical label is **`Extra permissions`**
 naming the Flow card would send a user out to build an automation for something
 the row sits right beside. The editor's own disclosure reuses
 `SMART_TASK_EXTRA_PERMISSIONS_TITLE` (`Extra permissions`) with the edit-lane hint
-`Only used to hit this ready-by time.` — the widget's "Off unless you turn them
-on" is false for a task that already holds a grant. On a surface where the user
+`Only used to hit this ready-by time.` The creation widget uses the same hint
+and suppresses a permission toggle only when an `always` grant already stands;
+a conditional grant stays available for upgrading. On a surface where the user
 GRANTS a permission rather than reads one back, each toggle also carries its
 `SMART_TASK_EXTRA_PERMISSION_HINTS` line: `May reserve power to start sooner` on
 its own does not say whose power is held back, so its hint names the held-back

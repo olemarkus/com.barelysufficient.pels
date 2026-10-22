@@ -34,6 +34,7 @@ export const initialComposeView = (
   // prior task's opt-ins.
   exemptFromBudget: false,
   limitLowerPriorityDevices: false,
+  pauseLowerPriorityDevices: false,
 });
 
 export const steppedGoalView = (view: FlowView, direction: 1 | -1): FlowView => {
@@ -44,7 +45,7 @@ export const steppedGoalView = (view: FlowView, direction: 1 | -1): FlowView => 
   return { ...view, goal: Math.min(device.goalMax, Math.max(device.goalMin, next)) };
 };
 
-// Pure transitions (mirror steppedGoalView). The two permissions are independent.
+// Pure transitions (mirror steppedGoalView). Permissions are independent.
 export const budgetToggledView = (view: FlowView, checked: boolean): FlowView => {
   if (view.kind !== 'compose') return view;
   return { ...view, exemptFromBudget: checked };
@@ -54,6 +55,10 @@ export const limitToggledView = (view: FlowView, checked: boolean): FlowView => 
   if (view.kind !== 'compose') return view;
   return { ...view, limitLowerPriorityDevices: checked };
 };
+
+export const reserveToggledView = (view: FlowView, checked: boolean): FlowView => (
+  view.kind === 'compose' ? { ...view, pauseLowerPriorityDevices: checked } : view
+);
 
 export const quickSelectedView = (view: FlowView, index: number): FlowView => {
   if (view.kind !== 'quick' || view.quick.kind !== 'ready' || view.submitting) return view;
@@ -83,6 +88,7 @@ export const backView = (view: FlowView): FlowView | null => {
       // Keep the opt-in extra permissions when stepping back to edit the goal.
       exemptFromBudget: view.exemptFromBudget,
       limitLowerPriorityDevices: view.limitLowerPriorityDevices,
+      pauseLowerPriorityDevices: view.pauseLowerPriorityDevices,
     };
   }
   return null;
@@ -105,6 +111,7 @@ export const buildCandidateRequest = (
   ...(deadlineAtMs === undefined ? {} : { deadlineAtMs }),
   ...(source.exemptFromBudget ? { exemptFromBudget: true } : {}),
   ...(source.limitLowerPriorityDevices ? { limitLowerPriorityDevices: true } : {}),
+  ...(source.pauseLowerPriorityDevices ? { pauseLowerPriorityDevices: true } : {}),
 });
 
 // Start on a quick target: the target and the deadline it was timed to, echoed

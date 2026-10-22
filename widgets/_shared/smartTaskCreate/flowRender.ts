@@ -51,7 +51,7 @@ const resolveReadyByEcho = (readyByLocalTime: string): string | null => {
   return `${C.readyByLabel} ${formatSmartTaskDeadlineLong(next.getTime(), now.getTime(), null)}`;
 };
 
-// The collapsed "Extra permissions" disclosure. Both toggles reflect the view's
+// The collapsed "Extra permissions" disclosure. Toggles reflect the view's
 // opt-in state; the limit-lower-priority toggle is only OFFERED for a device that
 // can use it (`supportsLimitLowerPriority`, gated on effect server-side).
 const renderExtraPermissions = (
@@ -59,20 +59,29 @@ const renderExtraPermissions = (
   view: Extract<FlowView, { kind: 'compose' }>,
 ): void => {
   const {
-    extraPermsTitle, extraPermsHint,
-    permBudgetInput, permBudgetLabel, permBudgetHint,
+    extraPermsDisclosure, extraPermsTitle, extraPermsHint,
+    permBudgetToggle, permBudgetInput, permBudgetLabel, permBudgetHint,
+    permReserveToggle, permReserveInput, permReserveLabel, permReserveHint,
     permLimitToggle, permLimitInput, permLimitLabel, permLimitHint,
   } = targets;
   extraPermsTitle.textContent = C.extraPermissionsTitle;
-  extraPermsHint.textContent = C.extraPermissionsHint;
+  extraPermsHint.textContent = SMART_TASK_EDIT_COPY.permissionsHint;
   permBudgetLabel.textContent = SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget;
   permBudgetHint.textContent = SMART_TASK_EXTRA_PERMISSION_HINTS.exemptFromBudget;
+  const standing = view.device.rescue;
+  setVisible(permBudgetToggle, standing?.exemptFromBudget !== 'always');
   permBudgetInput.checked = view.exemptFromBudget;
   permLimitLabel.textContent = SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices;
   permLimitHint.textContent = SMART_TASK_EXTRA_PERMISSION_HINTS.limitLowerPriorityDevices;
-  const offerLimit = view.device.supportsLimitLowerPriority;
+  const offerLimit = view.device.supportsLimitLowerPriority
+    && standing?.limitLowerPriorityDevices !== 'always';
   setVisible(permLimitToggle, offerLimit);
   permLimitInput.checked = view.limitLowerPriorityDevices;
+  setVisible(permReserveToggle, standing?.pauseLowerPriorityDevices !== 'always');
+  permReserveLabel.textContent = SMART_TASK_EXTRA_PERMISSION_LABELS.pauseLowerPriorityDevices;
+  permReserveHint.textContent = SMART_TASK_EXTRA_PERMISSION_HINTS.pauseLowerPriorityDevices;
+  permReserveInput.checked = view.pauseLowerPriorityDevices;
+  setVisible(extraPermsDisclosure, !permBudgetToggle.hidden || !permLimitToggle.hidden || !permReserveToggle.hidden);
 };
 
 const renderCompose = (

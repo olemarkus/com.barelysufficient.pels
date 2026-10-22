@@ -1191,26 +1191,39 @@
   };
   var renderExtraPermissions = (targets, view) => {
     const {
+      extraPermsDisclosure,
       extraPermsTitle,
       extraPermsHint,
+      permBudgetToggle,
       permBudgetInput,
       permBudgetLabel,
       permBudgetHint,
+      permReserveToggle,
+      permReserveInput,
+      permReserveLabel,
+      permReserveHint,
       permLimitToggle,
       permLimitInput,
       permLimitLabel,
       permLimitHint
     } = targets;
     extraPermsTitle.textContent = C.extraPermissionsTitle;
-    extraPermsHint.textContent = C.extraPermissionsHint;
+    extraPermsHint.textContent = SMART_TASK_EDIT_COPY.permissionsHint;
     permBudgetLabel.textContent = SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget;
     permBudgetHint.textContent = SMART_TASK_EXTRA_PERMISSION_HINTS.exemptFromBudget;
+    const standing = view.device.rescue;
+    setVisible(permBudgetToggle, standing?.exemptFromBudget !== "always");
     permBudgetInput.checked = view.exemptFromBudget;
     permLimitLabel.textContent = SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices;
     permLimitHint.textContent = SMART_TASK_EXTRA_PERMISSION_HINTS.limitLowerPriorityDevices;
-    const offerLimit = view.device.supportsLimitLowerPriority;
+    const offerLimit = view.device.supportsLimitLowerPriority && standing?.limitLowerPriorityDevices !== "always";
     setVisible(permLimitToggle, offerLimit);
     permLimitInput.checked = view.limitLowerPriorityDevices;
+    setVisible(permReserveToggle, standing?.pauseLowerPriorityDevices !== "always");
+    permReserveLabel.textContent = SMART_TASK_EXTRA_PERMISSION_LABELS.pauseLowerPriorityDevices;
+    permReserveHint.textContent = SMART_TASK_EXTRA_PERMISSION_HINTS.pauseLowerPriorityDevices;
+    permReserveInput.checked = view.pauseLowerPriorityDevices;
+    setVisible(extraPermsDisclosure, !permBudgetToggle.hidden || !permLimitToggle.hidden || !permReserveToggle.hidden);
   };
   var renderCompose = (targets, view) => {
     const { device, goal, readyByLocalTime } = view;
@@ -1417,7 +1430,8 @@
     // Extra permissions always start off — a fresh device choice never inherits a
     // prior task's opt-ins.
     exemptFromBudget: false,
-    limitLowerPriorityDevices: false
+    limitLowerPriorityDevices: false,
+    pauseLowerPriorityDevices: false
   });
   var steppedGoalView = (view, direction) => {
     if (view.kind !== "compose") return view;
@@ -1434,6 +1448,7 @@
     if (view.kind !== "compose") return view;
     return { ...view, limitLowerPriorityDevices: checked };
   };
+  var reserveToggledView = (view, checked) => view.kind === "compose" ? { ...view, pauseLowerPriorityDevices: checked } : view;
   var quickSelectedView = (view, index) => {
     if (view.kind !== "quick" || view.quick.kind !== "ready" || view.submitting) return view;
     if (index < 0 || index >= view.quick.targets.length) return view;
@@ -1456,7 +1471,8 @@
         readyByLocalTime: view.readyByLocalTime,
         // Keep the opt-in extra permissions when stepping back to edit the goal.
         exemptFromBudget: view.exemptFromBudget,
-        limitLowerPriorityDevices: view.limitLowerPriorityDevices
+        limitLowerPriorityDevices: view.limitLowerPriorityDevices,
+        pauseLowerPriorityDevices: view.pauseLowerPriorityDevices
       };
     }
     return null;
@@ -1468,7 +1484,8 @@
     readyByLocalTime: source.readyByLocalTime,
     ...deadlineAtMs === void 0 ? {} : { deadlineAtMs },
     ...source.exemptFromBudget ? { exemptFromBudget: true } : {},
-    ...source.limitLowerPriorityDevices ? { limitLowerPriorityDevices: true } : {}
+    ...source.limitLowerPriorityDevices ? { limitLowerPriorityDevices: true } : {},
+    ...source.pauseLowerPriorityDevices ? { pauseLowerPriorityDevices: true } : {}
   };
   var buildQuickTargetRequest = (device, target) => ({
     deviceId: device.deviceId,
@@ -1515,7 +1532,8 @@
     "goal-dec",
     "goal-inc",
     "toggle-budget",
-    "toggle-limit"
+    "toggle-limit",
+    "toggle-reserve"
   ];
   var assertUnhandledClick = (action) => {
     void action;
@@ -1535,6 +1553,8 @@
         return budgetToggledView(view, targets.permBudgetInput.checked);
       case "toggle-limit":
         return limitToggledView(view, targets.permLimitInput.checked);
+      case "toggle-reserve":
+        return reserveToggledView(view, targets.permReserveInput.checked);
       default: {
         const unhandled = action;
         return unhandled;
@@ -1556,6 +1576,7 @@
     if (eventTarget.closest("[data-goal-inc]")) return { kind: "goal-inc" };
     if (eventTarget.closest("[data-perm-budget-input]")) return { kind: "toggle-budget" };
     if (eventTarget.closest("[data-perm-limit-input]")) return { kind: "toggle-limit" };
+    if (eventTarget.closest("[data-perm-reserve-input]")) return { kind: "toggle-reserve" };
     if (eventTarget.closest("[data-preview-btn]")) return { kind: "preview" };
     if (eventTarget.closest("[data-create-btn]")) return { kind: "submit" };
     if (eventTarget.closest("[data-quick-back]") || eventTarget.closest("[data-compose-back]") || eventTarget.closest("[data-preview-back]") || eventTarget.closest("[data-preview-edit]")) {
@@ -1697,13 +1718,18 @@
     readyByLabel: "[data-ready-by-label]",
     readyByEchoEl: "[data-ready-by-echo]",
     composeErrorEl: "[data-compose-error]",
+    extraPermsDisclosure: "[data-extra-perms]",
     extraPermsTitle: "[data-extra-perms-title]",
     extraPermsHint: "[data-extra-perms-hint]",
+    permBudgetToggle: "[data-perm-budget]",
     permBudgetLabel: "[data-perm-budget-label]",
     permBudgetHint: "[data-perm-budget-hint]",
     permLimitToggle: "[data-perm-limit]",
     permLimitLabel: "[data-perm-limit-label]",
     permLimitHint: "[data-perm-limit-hint]",
+    permReserveToggle: "[data-perm-reserve]",
+    permReserveLabel: "[data-perm-reserve-label]",
+    permReserveHint: "[data-perm-reserve-hint]",
     previewView: "[data-preview-view]",
     previewTitle: "[data-preview-title]",
     previewDeviceEl: "[data-preview-device]",
@@ -1739,6 +1765,7 @@
   var FLOW_INPUTS = {
     permBudgetInput: "[data-perm-budget-input]",
     permLimitInput: "[data-perm-limit-input]",
+    permReserveInput: "[data-perm-reserve-input]",
     goalValueEl: "[data-goal-value]",
     readyByInput: "[data-ready-by-input]"
   };
