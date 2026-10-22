@@ -524,7 +524,7 @@
         <md-list-item type="button" class="settings-nav-card" data-settings-target="web-app" id="web-app-nav-card">
           <svg slot="start" class="settings-nav-card__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8.5 2.5h7A1.5 1.5 0 0 1 17 4v16a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 7 20V4a1.5 1.5 0 0 1 1.5-1.5zM11 18.5h2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <span slot="headline" class="settings-nav-card__title pels-text-card-title">Open in a browser</span>
-          <span slot="supporting-text" class="settings-nav-card__description">Use PELS from a phone home screen or a computer</span>
+          <span slot="supporting-text" class="settings-nav-card__description">Use PELS from your phone's home screen or a computer</span>
           <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
         </md-list-item>
         <md-list-item type="button" class="settings-nav-card settings-nav-card--quiet" data-settings-target="advanced">
@@ -730,16 +730,17 @@
       <div class="form-grid settings-form-card">
         <p class="field__hint">PELS also runs in a browser, on a computer or from your phone's home screen, with every Homey you add there.</p>
         <ol class="field__hint">
-          <li>On a computer, in the Homey Web App → Settings → API Keys, create a key with permission to control apps. Only the Homey's owner can create keys. <a href="https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro" target="_blank" rel="noopener noreferrer">Create an API key</a></li>
-          <li>On the computer, open the web app, choose Add a Homey and paste this Homey's address and the key.</li>
-          <li>For your phone, choose Add to your phone in the web app on the computer and scan the code with the phone's camera.</li>
+          <li>On a computer, in the Homey web app → Settings → API Keys, create a key with permission to control apps. Only the Homey's owner can create keys. <a href="https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro" target="_blank" rel="noopener noreferrer">How to create an API key</a></li>
+          <li>On the computer, open pels.barelysufficient.org/app, choose Add a Homey and paste the key and this Homey's address: the one below, or the address of this Homey's page in the Homey web app.</li>
+          <li>For your phone, choose Show code for a phone in the PELS web app on the computer and scan the code with the phone's camera.</li>
           <li>To keep it on your phone: on Android, choose Install app in Chrome's menu; on iPhone, choose Share, then Add to Home Screen in Safari.</li>
         </ol>
         <div class="field" hidden>
           <span class="field__label pels-text-settings-label" id="web-app-homey-address-label">This Homey's address</span>
           <md-filled-text-field id="web-app-homey-address" readonly aria-labelledby="web-app-homey-address-label"></md-filled-text-field>
+          <md-text-button type="button" id="web-app-copy-address">Copy address</md-text-button>
         </div>
-        <p class="field__hint">The key can read and change the settings of every app on this Homey. It stays only in the browsers you add it to; delete it in Homey to disconnect.</p>
+        <p class="field__hint">The key can read and change the settings of every app on this Homey. It is kept only in the browsers you add it to, never sent to the PELS website; delete it in Homey to disconnect.</p>
         <md-filled-button id="web-app-open-link" href="https://pels.barelysufficient.org/app/" target="_blank">Open the web app</md-filled-button>
       </div>
     </section>

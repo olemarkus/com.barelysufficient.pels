@@ -8,7 +8,7 @@ vi.mock('../src/ui/logging.ts', () => ({
   logSettingsWarn: (...args: unknown[]) => logSettingsWarn(...args),
 }));
 
-const { WEB_APP_URL, refreshWebAppLink } = await import('../src/ui/webAppLink.ts');
+const { WEB_APP_URL, initWebAppAddressCopy, refreshWebAppLink } = await import('../src/ui/webAppLink.ts');
 
 const link = () => document.getElementById('web-app-open-link');
 
@@ -17,6 +17,7 @@ describe('Open in a browser link', () => {
     document.body.innerHTML = [
       '<div class="field" hidden><md-filled-text-field id="web-app-homey-address" readonly></md-filled-text-field></div>',
       `<md-filled-button id="web-app-open-link" href="${WEB_APP_URL}"></md-filled-button>`,
+      '<md-text-button id="web-app-copy-address">Copy address</md-text-button>',
     ].join('');
     callApi.mockReset();
   });
@@ -44,6 +45,27 @@ describe('Open in a browser link', () => {
       expect(link()?.getAttribute('href'))
         .toBe(`${WEB_APP_URL}?open=65687b03c6bcab0c0a4464c3&via=${encodeURIComponent(cloud)}`);
       expect((document.getElementById('web-app-homey-address') as HTMLElement & { value: string }).value).toBe(cloud);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('copies the address, and selects it where the clipboard is refused', async () => {
+    const address = document.getElementById('web-app-homey-address') as HTMLElement & { value: string; select: () => void };
+    address.value = 'https://65687b03c6bcab0c0a4464c3.homey.athom-prod-euwest1-001.homeypro.net';
+    address.select = vi.fn();
+    const writeText = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('denied'));
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    try {
+      initWebAppAddressCopy();
+      const copy = document.getElementById('web-app-copy-address') as HTMLElement;
+
+      copy.click();
+      await vi.waitFor(() => expect(copy.textContent).toBe('Copied'));
+      expect(writeText).toHaveBeenCalledWith(address.value);
+
+      copy.click();
+      await vi.waitFor(() => expect(address.select).toHaveBeenCalled());
     } finally {
       vi.unstubAllGlobals();
     }

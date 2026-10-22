@@ -22,11 +22,39 @@
   color: var(--pels-text-muted);
 }
 
+/* A Homey that cannot be opened as it is. */
+.webapp-homey-row__status--problem {
+  color: var(--color-state-warning-text);
+}
+
+.webapp-brand {
+  margin: 0;
+  padding: 0 var(--spacing-3);
+}
+
+/* Phone and computer get different guidance: a phone cannot make API keys,
+   so it is pointed at a computer. Same hardware probe as the palette. */
+@media (hover: hover) and (pointer: fine) {
+  .webapp-touch-only {
+    display: none;
+  }
+}
+
+@media not ((hover: hover) and (pointer: fine)) {
+  .webapp-computer-only {
+    display: none;
+  }
+}
+
 .webapp-homey-row__actions,
 .webapp-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--spacing-2);
+}
+
+.panel > .webapp-actions {
+  margin-top: var(--spacing-2);
 }
 
 .webapp-homey-bar {
@@ -50,6 +78,7 @@
 }
 
 .webapp-homey-bar__name {
+  color: var(--pels-text-card-title-color);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

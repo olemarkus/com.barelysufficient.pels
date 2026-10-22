@@ -14,31 +14,35 @@
 </head>
 <body>
   <main class="screen">
-    <section class="card panel" aria-labelledby="webapp-homeys-title">
-      <h2 id="webapp-homeys-title">Your Homeys</h2>
-      <p class="field__hint" id="webapp-homeys-empty" hidden>Add a Homey that runs PELS to open it here.</p>
-      <ul class="webapp-homey-list" id="webapp-homey-list"></ul>
-      <div class="webapp-actions">
-        <md-text-button type="button" id="webapp-add-homey">Add a Homey</md-text-button>
-        <md-text-button type="button" id="webapp-pair-phone" hidden>Add to your phone</md-text-button>
-      </div>
-    </section>
-
-    <section class="card panel" id="webapp-pair-panel" aria-labelledby="webapp-pair-title" hidden>
-      <h2 id="webapp-pair-title">Add to your phone</h2>
-      <p class="field__hint">Scan this code with your phone's camera. It opens the web app on the phone, ready to add the Homeys listed here.</p>
-      <div class="webapp-pair-codes" id="webapp-pair-codes"></div>
-      <p class="field__hint">The code holds the API keys of these Homeys, which can read and change the settings of every app on them. Show it only to your own phone.</p>
-      <md-filled-tonal-button type="button" id="webapp-pair-done">Done</md-filled-tonal-button>
-    </section>
+    <p class="webapp-brand pels-text-settings-label">PELS</p>
 
     <section class="card panel" id="webapp-import-panel" aria-labelledby="webapp-import-title" hidden>
-      <h2 id="webapp-import-title">Add these Homeys?</h2>
+      <h2 id="webapp-import-title">Add Homeys from this code?</h2>
       <p class="field__hint" id="webapp-import-text"></p>
       <div class="webapp-actions">
         <md-filled-button type="button" id="webapp-import-add">Add</md-filled-button>
         <md-text-button type="button" id="webapp-import-cancel">Cancel</md-text-button>
       </div>
+    </section>
+
+    <section class="card panel" id="webapp-homeys-panel" aria-labelledby="webapp-homeys-title">
+      <h2 id="webapp-homeys-title">Your Homeys</h2>
+      <p class="field__hint webapp-computer-only" id="webapp-homeys-empty" hidden>Add a Homey that runs PELS to open it here.</p>
+      <p class="field__hint webapp-touch-only" id="webapp-phone-lead" hidden>Add your Homeys on a computer at pels.barelysufficient.org/app, choose Show code for a phone there, and scan the code with this phone.</p>
+      <ul class="webapp-homey-list" id="webapp-homey-list"></ul>
+      <div class="webapp-actions">
+        <md-text-button type="button" id="webapp-add-homey">Add a Homey</md-text-button>
+        <md-text-button type="button" id="webapp-pair-phone" hidden>Show code for a phone</md-text-button>
+        <md-text-button type="button" id="webapp-install" hidden>Install app</md-text-button>
+      </div>
+    </section>
+
+    <section class="card panel" id="webapp-pair-panel" aria-labelledby="webapp-pair-title" hidden>
+      <h2 id="webapp-pair-title">Code for a phone</h2>
+      <p class="field__hint">Scan this code with your phone's camera. It opens the web app on the phone, ready to add the Homeys listed here.</p>
+      <div class="webapp-pair-codes" id="webapp-pair-codes"></div>
+      <p class="field__hint">The code holds these Homeys' API keys. Each key can read and change the settings of every app on its Homey. Show the code only to your own phone.</p>
+      <md-filled-tonal-button type="button" id="webapp-pair-done">Done</md-filled-tonal-button>
     </section>
 
     <section class="card panel" id="webapp-add-panel" aria-labelledby="webapp-add-title" hidden>
@@ -50,17 +54,20 @@
           <small class="field__hint">Shown when you switch between Homeys, for example House or Cabin.</small>
         </div>
         <div class="field">
-          <span class="field__label pels-text-settings-label" id="webapp-address-label">Homey</span>
+          <span class="field__label pels-text-settings-label" id="webapp-address-label">Homey address</span>
           <md-filled-text-field name="address" autocomplete="off" aria-labelledby="webapp-address-label"></md-filled-text-field>
-          <small class="field__hint">Paste the address PELS shows on this Homey under Settings, Open in a browser.</small>
+          <small class="field__hint">Paste the address PELS shows under Settings → Open in a browser, or the address of this Homey's page in the Homey web app.</small>
         </div>
         <div class="field">
           <span class="field__label pels-text-settings-label" id="webapp-key-label">API key</span>
           <md-filled-text-field name="key" type="password" autocomplete="off" aria-labelledby="webapp-key-label"></md-filled-text-field>
-          <small class="field__hint">Create one in the Homey web app under Settings, API Keys, with permission to control apps: <a id="webapp-api-keys-link" href="https://my.homey.app/" target="_blank" rel="noopener noreferrer">open the Homey web app</a>. The key can read and change the settings of every app on this Homey. It is kept only in the browsers you add it to, never on this website; delete it in Homey to disconnect.</small>
-          <small class="field__hint">On a phone, the Homey web app needs Chrome's Desktop site option for API Keys. It is easier to add the Homey on a computer and choose Add to your phone there.</small>
+          <small class="field__hint">Create one in the Homey web app → Settings → API Keys, with permission to control apps: <a id="webapp-api-keys-link" href="https://my.homey.app/" target="_blank" rel="noopener noreferrer">open the Homey web app</a>. The key can read and change the settings of every app on this Homey. It is kept only in the browsers you add it to, never sent to the PELS website; delete it in Homey to disconnect.</small>
+          <small class="field__hint webapp-touch-only">On a phone, the Homey web app needs Chrome's Desktop site option for API Keys. It is easier to add the Homey on a computer and choose Show code for a phone there.</small>
         </div>
-        <md-filled-button type="submit">Add</md-filled-button>
+        <div class="webapp-actions">
+          <md-filled-button type="submit" id="webapp-add-submit">Add</md-filled-button>
+          <md-text-button type="button" id="webapp-add-cancel" hidden>Cancel</md-text-button>
+        </div>
       </form>
     </section>
   </main>

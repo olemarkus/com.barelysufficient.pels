@@ -64,7 +64,7 @@ describe('web app launcher', () => {
     await submitHomey();
 
     await vi.waitFor(() => expect(keyField().error).toBe(true));
-    expect(keyField().errorText).toBe('Homey refused this key. Check that it may control apps.');
+    expect(keyField().errorText).toBe('Homey refused this key. Check that it has permission to control apps.');
     expect(storedNames()).toEqual([]);
   });
 
@@ -243,6 +243,8 @@ describe('web app launcher', () => {
 
       ([...document.querySelectorAll('md-text-button')].find((element) => element.textContent === 'Remove') as HTMLElement)
         .click();
+      ([...document.querySelectorAll('md-filled-tonal-button')]
+        .find((element) => element.textContent === 'Remove') as HTMLElement).click();
 
       await vi.waitFor(() => expect(document.getElementById('webapp-pair-panel')?.hidden).toBe(true));
       expect(document.getElementById('webapp-pair-codes')?.children).toHaveLength(0);
@@ -328,8 +330,27 @@ describe('web app launcher', () => {
         document.getElementById('webapp-import-add')?.click();
 
         await vi.waitFor(() => expect(document.getElementById('webapp-import-text')?.textContent)
-          .toContain('Kept the key saved here for Home'));
+          .toBe('Kept the key saved here for Home: Homey refused the key in the code.'));
         expect(stored()).toEqual([{ ...house, baseUrl: cloud, localUrl: null }]);
+      } finally {
+        window.history.replaceState(null, '', '/');
+      }
+    });
+
+    it('says a Homey could not be reached, not that its key was refused', async () => {
+      listed([house]);
+      await scan([{ name: 'Home', homeyId: HOMEY_ID, token: 'a:b:c', baseUrl: `https://${HOMEY_ID}.connect.athom.com` }]);
+      try {
+        await loadLauncher(
+          (pathname) => (pathname === KEY_CHECK_PATH ? response(502, '') : versionAnswer()),
+          () => expect(document.getElementById('webapp-import-panel')?.hidden).toBe(false),
+        );
+
+        document.getElementById('webapp-import-add')?.click();
+
+        await vi.waitFor(() => expect(document.getElementById('webapp-import-text')?.textContent)
+          .toContain('that Homey could not be reached'));
+        expect(stored()[0]?.token).toBe('u:s:t');
       } finally {
         window.history.replaceState(null, '', '/');
       }
@@ -395,13 +416,56 @@ describe('web app launcher', () => {
       try {
         await loadLauncher(versionAnswer, () => expect(document.getElementById('webapp-import-panel')?.hidden).toBe(false));
 
-        expect(document.getElementById('webapp-import-text')?.textContent).toContain('could not be read');
+        expect(document.getElementById('webapp-import-title')?.textContent).toBe('This code could not be read');
         expect(document.getElementById('webapp-import-add')?.hidden).toBe(true);
         expect(window.location.hash).toBe('');
       } finally {
         window.history.replaceState(null, '', '/');
       }
     });
+  });
+
+  it('asks before removing a Homey, and keeps it on Keep', async () => {
+    window.localStorage.setItem('pels.webapp.homeys.v1', JSON.stringify({
+      homeys: [{ name: 'House', baseUrl: `https://${HOMEY_ID}.connect.athom.com`, homeyId: HOMEY_ID, token: 'u:s:t' }],
+      lastHomeyId: null,
+    }));
+    window.history.replaceState(null, '', '/?choose');
+    try {
+      const list = () => document.getElementById('webapp-homey-list')?.textContent ?? '';
+      await loadLauncher(
+        () => response(200, '{"version":"3.20.0","timeZone":"Europe/Oslo"}'),
+        () => expect(list()).toContain('PELS 3.20.0'),
+      );
+      const textButton = (label: string) => [...document.querySelectorAll('md-text-button')]
+        .find((element) => element.textContent === label) as HTMLElement;
+
+      textButton('Remove').click();
+      expect(list()).toContain('Remove House from this browser?');
+      textButton('Keep').click();
+
+      expect(list()).not.toContain('Remove House from this browser?');
+      expect(storedNames()).toEqual(['House']);
+    } finally {
+      window.history.replaceState(null, '', '/');
+    }
+  });
+
+  it('asks for a new key for the Homey that refused the saved one', async () => {
+    window.localStorage.setItem('pels.webapp.homeys.v1', JSON.stringify({
+      homeys: [{ name: 'House', baseUrl: `https://${HOMEY_ID}.connect.athom.com`, homeyId: HOMEY_ID, token: 'u:s:t' }],
+      lastHomeyId: HOMEY_ID,
+    }));
+    window.history.replaceState(null, '', `/?reauth=${HOMEY_ID}`);
+    try {
+      await loadLauncher(() => response(200, '{"version":"3.20.0","timeZone":"Europe/Oslo"}'));
+
+      expect(document.getElementById('webapp-add-title')?.textContent).toBe('New key for House');
+      expect(document.getElementById('webapp-add-submit')?.textContent).toBe('Save key');
+      expect(keyField().error).toBe(false);
+    } finally {
+      window.history.replaceState(null, '', '/');
+    }
   });
 
   it('points the key hint at the API Keys page of the Homey a link names', async () => {

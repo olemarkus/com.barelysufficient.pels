@@ -67,7 +67,7 @@ const renderHomeyBar = (homey: StoredHomey) => {
   name.textContent = homey.name;
   const switcher = document.createElement('md-text-button');
   switcher.setAttribute('href', `${LAUNCHER}?choose`);
-  switcher.textContent = 'Switch Homey';
+  switcher.textContent = 'Your Homeys';
   bar.append(name, switcher);
   const busy = document.createElement('p');
   busy.className = 'webapp-homey-bar__busy';
