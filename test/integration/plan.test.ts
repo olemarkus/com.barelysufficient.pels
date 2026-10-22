@@ -2372,7 +2372,7 @@ describe('Device plan snapshot', () => {
     const higherPriorityPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-high');
 
     expect(pendingLowPlan?.plannedState).toBe('shed');
-    expect(reasonText(pendingLowPlan?.reason)).toMatch(/^meter settling \(\d+s remaining\)$/);
+    expect(reasonText(pendingLowPlan?.reason)).toBe('meter settling');
     expect(higherPriorityPlan?.plannedState).not.toBe('shed');
     expect(reasonText(higherPriorityPlan?.reason)).not.toContain('swap pending');
   });
