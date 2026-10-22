@@ -52,6 +52,7 @@ const buildCandidateDevice = (
     // devices helps at any priority, and swap selection already refuses
     // anything not strictly lower.
     supportsLimitLowerPriority: deviceSupportsLimitLowerPriority(device),
+    rescue: device.rescue,
   };
 };
 

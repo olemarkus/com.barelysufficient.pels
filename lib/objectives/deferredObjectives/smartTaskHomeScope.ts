@@ -1,3 +1,4 @@
+import { readDeferredObjectiveRoster, type ObjectiveSettingsStore } from './objectiveStore';
 import type { HomeMembershipPort } from '../../home/membership';
 import type { SmartTaskHomeScope } from '../../../packages/contracts/src/smartTaskHomeScope';
 import type { CreateSmartTaskCandidateDevicesRead } from '../../../packages/contracts/src/widgetHostApi';
@@ -67,10 +68,13 @@ export const readCreateSmartTaskCandidates = <T extends SmartTaskCandidateSource
   membership: HomeMembershipPort,
   devices: readonly T[],
   readModeTargetC: (deviceId: string) => number | null,
+  store: ObjectiveSettingsStore,
 ): CreateSmartTaskCandidateDevicesRead => {
   if (membership.isMainHomeActuationFenced()) return { state: 'unavailable' };
   const meterSources = membership.getConfiguredMeterSources();
   if (meterSources.state === 'unavailable') return { state: 'unavailable' };
+  const roster = readDeferredObjectiveRoster(store);
+  if (roster.status === 'unavailable') return { state: 'unavailable' };
   return {
     state: 'ready',
     devices: selectMeteredSnapshots(devices)
@@ -78,6 +82,9 @@ export const readCreateSmartTaskCandidates = <T extends SmartTaskCandidateSource
       .filter((device) => device.managed)
       .filter((device) => isDeviceInSmartTaskMainHome(membership, device.id))
       .filter((device) => !meterSources.deviceIds.has(device.id))
-      .map((device) => withSmartTaskTemperatureIntent(device, readModeTargetC)),
+      .map((device) => ({
+        ...withSmartTaskTemperatureIntent(device, readModeTargetC),
+        rescue: roster.settings.objectivesByDeviceId[device.id]?.rescue,
+      })),
   };
 };

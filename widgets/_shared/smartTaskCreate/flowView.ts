@@ -32,12 +32,13 @@ export type FlowView =
     // A cleared input stays a draft; preview requires a valid numeric goal.
     goal: number | null;
     readyByLocalTime: string;
-    // Opt-in "Extra permissions", both default off and carried through
+    // Opt-in "Extra permissions", default off and carried through
     // compose → preview → create so the user's choice survives a re-render and
     // the preview/create reflect it. `limitLowerPriorityDevices` is only
     // offered when the device can use it (`device.supportsLimitLowerPriority`).
     exemptFromBudget: boolean;
     limitLowerPriorityDevices: boolean;
+    pauseLowerPriorityDevices: boolean;
   }
   | {
     kind: 'preview';
@@ -47,6 +48,7 @@ export type FlowView =
     readyByLocalTime: string;
     exemptFromBudget: boolean;
     limitLowerPriorityDevices: boolean;
+    pauseLowerPriorityDevices: boolean;
     response: CreateSmartTaskPreviewResponse;
     submitting: boolean;
     error: string | null;
@@ -84,8 +86,10 @@ export type FlowTargets = {
   readyByEchoEl: HTMLElement;
   composeErrorEl: HTMLElement;
   // Extra permissions disclosure
+  extraPermsDisclosure: HTMLElement;
   extraPermsTitle: HTMLElement;
   extraPermsHint: HTMLElement;
+  permBudgetToggle: HTMLElement;
   permBudgetInput: HTMLInputElement;
   permBudgetLabel: HTMLElement;
   permBudgetHint: HTMLElement;
@@ -93,6 +97,10 @@ export type FlowTargets = {
   permLimitInput: HTMLInputElement;
   permLimitLabel: HTMLElement;
   permLimitHint: HTMLElement;
+  permReserveToggle: HTMLElement;
+  permReserveInput: HTMLInputElement;
+  permReserveLabel: HTMLElement;
+  permReserveHint: HTMLElement;
   previewBtn: HTMLButtonElement;
   // Preview — task intent leads, followed by feasibility and estimates.
   previewView: HTMLElement;
@@ -136,13 +144,18 @@ const FLOW_ELEMENTS = {
   readyByLabel: '[data-ready-by-label]',
   readyByEchoEl: '[data-ready-by-echo]',
   composeErrorEl: '[data-compose-error]',
+  extraPermsDisclosure: '[data-extra-perms]',
   extraPermsTitle: '[data-extra-perms-title]',
   extraPermsHint: '[data-extra-perms-hint]',
+  permBudgetToggle: '[data-perm-budget]',
   permBudgetLabel: '[data-perm-budget-label]',
   permBudgetHint: '[data-perm-budget-hint]',
   permLimitToggle: '[data-perm-limit]',
   permLimitLabel: '[data-perm-limit-label]',
   permLimitHint: '[data-perm-limit-hint]',
+  permReserveToggle: '[data-perm-reserve]',
+  permReserveLabel: '[data-perm-reserve-label]',
+  permReserveHint: '[data-perm-reserve-hint]',
   previewView: '[data-preview-view]',
   previewTitle: '[data-preview-title]',
   previewDeviceEl: '[data-preview-device]',
@@ -180,6 +193,7 @@ const FLOW_BUTTONS = {
 const FLOW_INPUTS = {
   permBudgetInput: '[data-perm-budget-input]',
   permLimitInput: '[data-perm-limit-input]',
+  permReserveInput: '[data-perm-reserve-input]',
   goalValueEl: '[data-goal-value]',
   readyByInput: '[data-ready-by-input]',
 } as const;

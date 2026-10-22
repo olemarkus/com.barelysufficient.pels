@@ -9,6 +9,7 @@
 import type { DeferredObjectivePlanPreviewEstimate } from './deferredObjectivePlanPreview.js';
 import type { WidgetObjectiveWriteResult } from './widgetHostApi.js';
 import type {
+  DeferredObjectiveRescuePermissions,
   DeferredObjectiveSettingsKind,
   DeferredObjectiveUnit,
 } from './deferredObjectiveSettings.js';
@@ -44,6 +45,7 @@ export type SmartTaskCandidateDevice = {
   // a permission that would be a no-op for a binary device. The budget-exempt
   // toggle has no such gate (any device can exceed the soft daily budget).
   supportsLimitLowerPriority: boolean;
+  rescue?: DeferredObjectiveRescuePermissions;
 };
 
 // The settings UI's candidate list. `unavailable` is a failed read of the app's
@@ -86,8 +88,8 @@ export type SmartTaskCandidateRequest = {
   //     additive without needing a lane of its own.
   //   - `false` REVOKES. The settings-UI editor sends all three explicitly, so
   //     an unchecked toggle actually takes the permission away.
-  //   - `true` grants, at the mode it already stands at if it stands — so a
-  //     boolean toggle can never promote a conditional `'at_risk'` grant.
+  //   - `true` grants. Editing preserves a standing mode; widget creation
+  //     explicitly upgrades a selected conditional grant to `'always'`.
   // The merge lives in `buildCandidateRescue`
   // (`lib/objectives/deferredObjectives/smartTaskCandidateRequest.ts`), which is
   // the single owner of it: callers persist its result verbatim rather than

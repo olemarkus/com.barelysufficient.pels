@@ -152,22 +152,16 @@ export const resolveSmartTaskWriteDeadline = (
   return { ok: true, deadlineAtMs };
 };
 
-// Resolve ONE permission's persisted mode from the request and what the task
-// already holds. Three cases, and the difference between the first two is the
-// whole point of reading the request's booleans as `boolean | undefined`:
-//   - ABSENT   → keep the standing mode verbatim. The request didn't mention
-//                this permission, so it expresses no opinion about it.
-//   - `true`   → granted, at its EXISTING mode if it already stands. The UI only
-//                ever expresses granted/not-granted, so mapping a left-alone
-//                toggle straight to `'always'` would silently upgrade a standing
-//                `'at_risk'` grant. Turning one on from off mints `'always'`.
-//   - `false`  → revoked.
+// Absence preserves a standing mode; false revokes. An editor's true keeps
+// the existing mode, whereas an explicit creation grant upgrades to always.
 const resolveGrantedMode = (
   requested: boolean | undefined,
   current: DeferredObjectiveRescueMode | undefined,
+  grantMode: 'preserve' | 'always',
 ): DeferredObjectiveRescueMode | undefined => {
   if (requested === undefined) return current;
-  return requested ? current ?? 'always' : undefined;
+  if (!requested) return undefined;
+  return grantMode === 'always' ? 'always' : current ?? 'always';
 };
 
 // Resolve the candidate's COMPLETE `rescue` field from the request plus the
@@ -176,21 +170,22 @@ const resolveGrantedMode = (
 // write the result verbatim (`rescue: 'replace'`) rather than re-deriving it, so
 // the preview and the persist can't diverge. `undefined` when nothing is granted.
 //
-// A caller that passes NO standing (the create widget) gets the pre-existing
-// behaviour: absent resolves to nothing, and the write layer's whole-object
-// `preserve` policy is what keeps a standing permission there.
+// Creation grants explicitly upgrade to always; edits preserve existing modes.
 const buildCandidateRescue = (
   request: SmartTaskCandidateRequest,
-  standing?: DeferredObjectiveRescuePermissions,
+  standing: DeferredObjectiveRescuePermissions | undefined,
+  grantMode: 'preserve' | 'always',
 ): DeferredObjectiveRescuePermissions | undefined => {
-  const exemptFromBudget = resolveGrantedMode(request.exemptFromBudget, standing?.exemptFromBudget);
+  const exemptFromBudget = resolveGrantedMode(request.exemptFromBudget, standing?.exemptFromBudget, grantMode);
   const limitLowerPriorityDevices = resolveGrantedMode(
     request.limitLowerPriorityDevices,
     standing?.limitLowerPriorityDevices,
+    grantMode,
   );
   const pauseLowerPriorityDevices = resolveGrantedMode(
     request.pauseLowerPriorityDevices,
     standing?.pauseLowerPriorityDevices,
+    grantMode,
   );
   if (!exemptFromBudget && !limitLowerPriorityDevices && !pauseLowerPriorityDevices) return undefined;
   return {
@@ -231,13 +226,13 @@ export const buildSmartTaskCandidateBase = (
 export const buildValidSmartTaskCandidate = (
   request: SmartTaskCandidateRequest,
   deadlineAtMs: number,
-  // The task's CURRENT permissions, when the caller has them (the edit lane).
-  // Only used to keep a left-on permission at its existing mode; a caller
-  // without them (the create widget) mints `'always'` as before.
+  // Current permissions are merged per key; creation explicitly upgrades a
+  // selected permission while editing retains the mode of a left-on toggle.
   standingRescue?: DeferredObjectiveRescuePermissions,
+  grantMode: 'preserve' | 'always' = 'preserve',
 ): DeferredObjectivePlanPreviewCandidate | null => {
   const base = buildSmartTaskCandidateBase(request.kind, request.target, deadlineAtMs);
-  const rescue = buildCandidateRescue(request, standingRescue);
+  const rescue = buildCandidateRescue(request, standingRescue, grantMode);
   const candidate: DeferredObjectivePlanPreviewCandidate = rescue ? { ...base, rescue } : base;
   return normalizeDeferredObjectiveSettingsEntry({ ...candidate, enabled: true }) ? candidate : null;
 };

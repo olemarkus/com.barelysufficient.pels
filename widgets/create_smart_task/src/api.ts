@@ -96,7 +96,11 @@ export const previewCreateSmartTask = async (
   const deadlineAtMs = resolveSmartTaskRequestDeadline(request, timeZone, nowMs);
   if (deadlineAtMs === null) return previewReject('invalid_ready_by');
 
-  const candidate = buildValidSmartTaskCandidate(request, deadlineAtMs);
+  const devices = homey.app.getCreateSmartTaskCandidateDevices();
+  if (devices.state === 'unavailable') return previewReject('unavailable');
+  const device = devices.devices.find((entry) => entry.id === request.deviceId);
+  if (!device) return previewReject('invalid_candidate');
+  const candidate = buildValidSmartTaskCandidate(request, deadlineAtMs, device.rescue, 'always');
   if (!candidate) return previewReject('invalid_candidate');
   const estimate = homey.app.previewDeferredObjectivePlan(request.deviceId, candidate);
   return {
@@ -171,9 +175,13 @@ export const createCreateSmartTask = async (
   const deadline = resolveSmartTaskWriteDeadline(request, timeZone, nowMs);
   if (!deadline.ok) return createReject(deadline.reason);
 
-  const candidate = buildValidSmartTaskCandidate(request, deadline.deadlineAtMs);
+  const devices = homey.app.getCreateSmartTaskCandidateDevices();
+  if (devices.state === 'unavailable') return createReject('unavailable');
+  const device = devices.devices.find((entry) => entry.id === request.deviceId);
+  if (!device) return createReject('invalid_candidate');
+  const candidate = buildValidSmartTaskCandidate(request, deadline.deadlineAtMs, device.rescue, 'always');
   if (!candidate) return createReject('invalid_candidate');
-  const result = homey.app.createDeferredObjective(request.deviceId, candidate);
+  const result = homey.app.createDeferredObjective(request.deviceId, candidate, 'replace');
   if (result.ok) return { ok: true };
   return createReject(mapSmartTaskAppReason(result.reason));
 };

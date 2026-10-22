@@ -4,6 +4,7 @@ import {
   budgetToggledView,
   customizeView,
   limitToggledView,
+  reserveToggledView,
   quickSelectedView,
   steppedGoalView,
 } from './flowTransitions';
@@ -17,6 +18,7 @@ export type FlowClickAction =
   | { kind: 'goal-inc' }
   | { kind: 'toggle-budget' }
   | { kind: 'toggle-limit' }
+  | { kind: 'toggle-reserve' }
   | { kind: 'preview' }
   // Create on the preview and Start on a quick target: the view decides what is sent.
   | { kind: 'submit' }
@@ -24,7 +26,7 @@ export type FlowClickAction =
 
 // The click actions that only move between views, with no request or I/O.
 const VIEW_CLICK_KINDS = [
-  'select-quick', 'quick-customize', 'goal-dec', 'goal-inc', 'toggle-budget', 'toggle-limit',
+  'select-quick', 'quick-customize', 'goal-dec', 'goal-inc', 'toggle-budget', 'toggle-limit', 'toggle-reserve',
 ] as const;
 export type ViewClickAction = Extract<FlowClickAction, { kind: typeof VIEW_CLICK_KINDS[number] }>;
 
@@ -46,6 +48,7 @@ export const clickedView = (action: ViewClickAction, view: FlowView, targets: Fl
     case 'goal-inc': return steppedGoalView(view, 1);
     case 'toggle-budget': return budgetToggledView(view, targets.permBudgetInput.checked);
     case 'toggle-limit': return limitToggledView(view, targets.permLimitInput.checked);
+    case 'toggle-reserve': return reserveToggledView(view, targets.permReserveInput.checked);
     default: {
       const unhandled: never = action; // exhaustiveness guard: a new view action is a type error here
       return unhandled;
@@ -72,6 +75,7 @@ export const resolveFlowClickAction = (eventTarget: EventTarget | null): FlowCli
   // also lands.
   if (eventTarget.closest('[data-perm-budget-input]')) return { kind: 'toggle-budget' };
   if (eventTarget.closest('[data-perm-limit-input]')) return { kind: 'toggle-limit' };
+  if (eventTarget.closest('[data-perm-reserve-input]')) return { kind: 'toggle-reserve' };
   if (eventTarget.closest('[data-preview-btn]')) return { kind: 'preview' };
   if (eventTarget.closest('[data-create-btn]')) return { kind: 'submit' };
   if (eventTarget.closest('[data-quick-back]') || eventTarget.closest('[data-compose-back]')
