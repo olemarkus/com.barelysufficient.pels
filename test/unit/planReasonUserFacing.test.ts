@@ -59,6 +59,11 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
       expected: 'Waiting after limiting a device (30s)',
     },
     {
+      label: 'post-restore meter wait has no estimated countdown',
+      reason: { code: PLAN_REASON_CODES.meterSettling },
+      expected: 'Waiting for a new power reading',
+    },
+    {
       label: 'meter settling maps to the meter-stabilise label',
       reason: { code: PLAN_REASON_CODES.meterSettling, remainingSec: 10 },
       expected: 'Waiting for power meter to stabilise (10s)',

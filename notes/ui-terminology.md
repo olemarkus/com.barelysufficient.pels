@@ -432,6 +432,11 @@ card, from the shared formatter: `Waiting after limiting a device (30s)`,
 `Delaying restart after recent failed attempt (12s)`, `Left off after startup`,
 `Waiting after startup`.
 
+After a resume, waiting for a whole-home reading newer than that resume reads
+`Waiting for a new power reading`, without a countdown: elapsed time does not
+supply the missing reading. A device's timed settling attempt retains
+`Waiting for power meter to stabilise (8s)`.
+
 The meter-outage hold reads `Waiting for a new power reading` on the card, in
 device detail and in the activity log alike (`PLAN_STATE_METER_SILENT_STATUS`,
 reason code `meterSilent`). The whole-home meter stopped reporting past the

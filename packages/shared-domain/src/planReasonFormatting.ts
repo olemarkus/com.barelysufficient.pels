@@ -148,6 +148,7 @@ function isTimedReason(reason: DeviceReason): reason is TimedReason {
 }
 
 function formatTimedReason(reason: TimedReason): string {
+  if (reason.remainingSec === undefined) return 'meter settling';
   const remainingSec = formatRemainingSec(reason.remainingSec);
   switch (reason.code) {
     case PLAN_REASON_CODES.cooldownShedding:
@@ -497,6 +498,9 @@ function formatDetailReasonUserFacing(reason: DetailReason): string {
 }
 
 function formatTimedReasonUserFacing(reason: TimedReason): string {
+  if (reason.remainingSec === undefined) {
+    return 'Waiting for a new power reading';
+  }
   if (reason.code === PLAN_REASON_CODES.cooldownRestore) {
     return `Waiting to resume — ${formatRemainingSec(reason.remainingSec)}s`;
   }
