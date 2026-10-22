@@ -1,6 +1,6 @@
 # Standalone web app
 
-*(partially shipped: client, launcher and `ui_version`; publishing tracked in `TODO.md`)*
+*(shipped: client, launcher, `ui_version`, publishing at `/app/`)*
 
 The web app runs the settings UI outside Homey: from a browser or an installed
 PWA, against one or more Homeys. It is the same settings bundle as the Homey
@@ -69,6 +69,32 @@ gone since. The settings UI navigates with query-string routes that drop the
 `#homey=` fragment, so a tab keeps its Homey in session storage across those
 navigations and reloads; a link opened in a new tab falls back to the Homey
 opened last.
+
+## Publishing
+
+The web app lives at `https://pels.barelysufficient.org/app/`, next to the docs.
+
+- Every release tag runs `.github/workflows/webapp-build.yml`: it builds that
+  tag's web app and stores its `v<version>/` in the `webapp-builds` branch, one
+  squashed commit holding the newest 40 versions
+  (`scripts/webapp-site.mjs store`), then redeploys the docs. A release from
+  before the web app has no such workflow, so nothing runs for it.
+- The docs deploy (`.github/workflows/docs.yml`) builds the launcher, manifest
+  and icons from main, copies every stored build next to them and writes
+  `versions.json` (`scripts/webapp-site.mjs assemble`). Launcher changes go live
+  with the next main push, without a release.
+- Test-channel versions are tags too, so they get builds before Live does.
+- From the published site, a Homey's LAN address (`*.homey.homeylocal.com`,
+  which resolves to a private IP) is a request from a public site into the
+  local network, which Chrome may put behind a permission prompt; the cloud
+  address (`<homeyId>.connect.athom.com`) is not affected.
+- GitHub Pages caches files for up to 10 minutes, so a new build can take that
+  long to appear; the launcher says to try again in a few minutes meanwhile.
+- `manifest.webmanifest` (start URL and scope `/app/`, standalone) and the icons
+  make it installable from Chrome over HTTPS; no service worker is needed for
+  that, and the data is live anyway. The icons are `assets/icon.svg` on the
+  dark background (`#0c111b`) in the accent green (`#4ade80`), rendered with
+  Inkscape; the maskable one keeps the glyph inside the 60 % safe zone.
 
 ## Load time
 
