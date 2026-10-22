@@ -1065,6 +1065,43 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       gating on the state word keeps the informative case without the echo. Source: 2026-08-04
       `pels-copy-and-terminology` pass on the signal-2 change. [P3]
 
+## Standalone web app
+
+Design-of-record: `notes/web-app.md`.
+
+- [ ] **Publish the web app's per-version builds with each release.** `scripts/release.mjs` and
+      `.github/workflows/docs.yml` (site at pels.barelysufficient.org). **What changes:** every
+      release, Test channel included, runs `npm --workspace @pels/settings-ui run build:remote` and
+      adds its `v<version>/` directory under `/app/` without removing the versions already
+      published (the docs deploy rebuilds from main, so the builds need a persistent home, for
+      example release assets merged at deploy time), merges `versions.json`, and lands before the
+      release reaches Homeys. The launcher bundle gets a content-hashed name and `index.html` /
+      `versions.json` short cache lifetimes, since browsers otherwise keep a stale launcher.
+      **Done when:** a Homey on the newest Test version opens from `/app/`, and a Homey on an
+      earlier published version still opens its own build. [P2]
+
+- [ ] **Boot reads ~15 settings one by one after `ui_bootstrap`.**
+      `buildSettingsUiBootstrap` in `setup/settingsUiApi.ts` and `packages/settings-ui/src/ui/boot.ts`.
+      A boot is about 40 requests in 7 sequential waves (`notes/web-app.md`); over the cloud relay
+      each wave costs ~0.35 s. **What changes:** the bootstrap payload carries the settings the
+      boot reads right after it (`export_price_source`, `pv_forecast_source`,
+      `battery_control_devices`, `mode_catalog_initialized`, `homes_config`,
+      `homes_config_initialized`, `ev_boost_settings`, `ev_charge_target_settings`,
+      `device_expected_power_overrides`, `ev_car_associations`,
+      `weather_advisor_first_estimate_seen`, `power_source`) and boot primes them with
+      `applySettingsPatch`. **Done when:** a boot against the test Homey issues no setting GET for
+      those keys (browser resource timings) and needs fewer than 7 sequential waves. [P2]
+
+- [ ] **The web app cannot be installed as an app.** `packages/settings-ui/public/webapp-launcher.html`
+      and `packages/settings-ui/scripts/build-remote.mjs`. **What changes:** add a web app manifest
+      (start URL = the launcher, PELS icons) and a service worker that caches only the launcher
+      shell. **Done when:** Chrome on Android offers "Install app" on the launcher, and the
+      installed app opens straight to the last Homey. *Persona:* Orchestrator
+      (`notes/personas.md`). *Hypothesis:* owners who steer their home day to day check PELS more
+      often when it is one tap from the home screen instead of Homey's More, Apps, PELS,
+      Configure. *Why it's needed:* reaching PELS outside Homey's settings page is the point of
+      the web app. [P3]
+
 ## Diagnostics, logging and alerts
 
 - [ ] **A device that vanishes mid-overshoot is attributed to background load.**
@@ -1107,6 +1144,13 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       ever rides `keep` needs a different classification argument from one that rides `shed`. [P3]
 
 ## Architecture and tooling debt
+
+- [ ] **`npm run bench:settings-ui:boot` fails before it measures anything.**
+      `scripts/benchmark-settings-ui-boot.mjs` stops with "Cannot set property performance of
+      [object Window] which has only a getter" (seen 2026-10-22 on Node 22). **What changes:** set
+      `performance` on the jsdom window with `Object.defineProperty` (or stop overwriting it).
+      **Done when:** `node scripts/benchmark-settings-ui-boot.mjs --iterations 1 --baseline-dir .`
+      prints boot timings. [P2]
 
 - [ ] **The plan-shortfall side-effect gate keeps its deferred transition and retry in `setup/`.**
       `createCapacityShortfallSideEffectGate` (`setup/capacityShortfallSideEffectGate.ts`) holds a

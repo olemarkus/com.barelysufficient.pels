@@ -1,0 +1,47 @@
+/* Standalone web app only: the Homey list and the Homey bar above the
+   settings shell. Never loaded by the Homey settings page. */
+
+.webapp-homey-list {
+  display: grid;
+  gap: var(--spacing-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.webapp-homey-row {
+  display: grid;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3);
+  border: 1px solid var(--pels-surface-outline);
+  border-radius: var(--radius-lg);
+}
+
+.webapp-homey-row__status {
+  margin: 0;
+  color: var(--pels-text-muted);
+}
+
+.webapp-homey-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+}
+
+.webapp-homey-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+  width: min(100%, 480px);
+  margin: 0 auto;
+  box-sizing: border-box;
+  padding: var(--spacing-2) var(--spacing-3) 0;
+  color: var(--pels-text-muted);
+}
+
+.webapp-homey-bar__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

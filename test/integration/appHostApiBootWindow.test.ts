@@ -113,3 +113,15 @@ describe('budget history app API wiring', () => {
       .toThrow('Budget history is unavailable during startup');
   });
 });
+
+describe('web app version API', () => {
+  // The standalone web app picks its settings UI build from this answer, so it
+  // must come from the manifest alone and work before the app is wired.
+  it('answers the manifest version and the Homey timezone without a running app', async () => {
+    const homey = partialDouble<Homey.App['homey']>({
+      manifest: { version: '3.20.0' },
+      clock: partialDouble<Homey.App['homey']['clock']>({ getTimezone: () => 'Europe/Oslo' }),
+    });
+    await expect(api.ui_version({ homey })).resolves.toEqual({ version: '3.20.0', timeZone: 'Europe/Oslo' });
+  });
+});

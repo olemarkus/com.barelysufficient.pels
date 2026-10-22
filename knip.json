@@ -34,6 +34,7 @@
     },
     "packages/settings-ui": {
       "entry": [
+        "src/remote/*Entry.ts",
         "test/**/*.test.ts",
         "tests/**/*.spec.ts"
       ],
