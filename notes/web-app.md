@@ -96,6 +96,15 @@ The web app lives at `https://pels.barelysufficient.org/app/`, next to the docs.
   dark background (`#0c111b`) in the accent green (`#4ade80`), rendered with
   Inkscape; the maskable one keeps the glyph inside the 60 % safe zone.
 
+## From the Homey settings page
+
+Settings → Open in a browser explains the API key, shows this Homey's address
+to copy (the id comes from `ui_version`) and links to `/app/?open=<homeyId>`,
+which opens that Homey once the owner has added it. The web app never fills in
+an address from a link: where an API key is sent must come from the owner, or
+a crafted link naming someone else's Homey could collect keys. The web app
+removes this entry from its own settings hub.
+
 ## Load time
 
 Measured on the test Homey: about 40 requests per boot in about 7 sequential

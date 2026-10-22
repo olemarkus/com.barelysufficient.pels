@@ -91,6 +91,9 @@ const start = async () => {
   markLastHomey(storage, homey.homeyId);
   rememberTabHomey(homey.homeyId);
   renderHomeyBar(homey);
+  // The settings hub's "Open in a browser" leads here; inside the web app it
+  // has nothing to offer.
+  document.getElementById('web-app-nav-card')?.remove();
 
   const events = createRemoteEventHub();
   const client = createRemoteHomeyClient(

@@ -111,4 +111,35 @@ describe('web app launcher', () => {
 
     await vi.waitFor(() => expect(list()).toContain('PELS 3.20.0'));
   });
+
+  // Where an API key is sent must come from the owner: a crafted link naming
+  // someone else's Homey must not be able to collect keys.
+  it.each(['add', 'open'])('never fills in the add form from ?%s=', async (param) => {
+    window.history.replaceState(null, '', `/?${param}=${HOMEY_ID}`);
+    try {
+      await loadLauncher(() => response(200, 'null'));
+      const addressField = document.querySelector('#webapp-add-form [name="address"]') as TextField;
+      expect(addressField.value).toBe('');
+    } finally {
+      window.history.replaceState(null, '', '/');
+    }
+  });
+
+  it('shows the add form for a named Homey that is not listed, not the last one', async () => {
+    window.localStorage.setItem('pels.webapp.homeys.v1', JSON.stringify({
+      homeys: [{ name: 'House', baseUrl: `https://${HOMEY_ID}.connect.athom.com`, homeyId: HOMEY_ID, token: 'u:s:t' }],
+      lastHomeyId: HOMEY_ID,
+    }));
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, search: '?open=6acdea6cd18dc40482d6bc10', assign });
+    try {
+      await loadLauncher(
+        () => response(200, '{"version":"3.20.0","timeZone":"Europe/Oslo","homeyId":"x"}'),
+        () => expect(document.getElementById('webapp-homey-list')?.textContent).toContain('PELS 3.20.0'),
+      );
+      expect(assign).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

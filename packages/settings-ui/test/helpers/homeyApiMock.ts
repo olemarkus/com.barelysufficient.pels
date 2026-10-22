@@ -441,7 +441,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('GET', '/diagnostics/budget/decisions')]: () => async () => {
     throw new Error('from and to are required');
   },
-  [buildRouteKey('GET', SETTINGS_UI_VERSION_PATH)]: () => async () => ({ version: '0.0.0-test', timeZone: 'Europe/Oslo' }),
+  [buildRouteKey('GET', SETTINGS_UI_VERSION_PATH)]: () => async () => ({ version: '0.0.0-test', timeZone: 'Europe/Oslo', homeyId: '65687b03c6bcab0c0a4464c3' }),
   [buildRouteKey('GET', HOMEY_DEVICES_PATH)]: (homey) => async () => getUiOverride(homey, 'homeyDevices') ?? [],
   [buildRouteKey('GET', SETTINGS_UI_RECOMMENDATION_CARS_PATH)]: (homey) => async () => ({
     state: 'resolved',

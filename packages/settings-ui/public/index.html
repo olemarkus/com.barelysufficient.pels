@@ -521,6 +521,12 @@
           <span slot="end" class="plan-chip plan-chip--warn settings-nav-card__chip" id="settings-nav-chip-simulation" hidden>On</span>
           <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
         </md-list-item>
+        <md-list-item type="button" class="settings-nav-card" data-settings-target="web-app" id="web-app-nav-card">
+          <svg slot="start" class="settings-nav-card__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8.5 2.5h7A1.5 1.5 0 0 1 17 4v16a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 7 20V4a1.5 1.5 0 0 1 1.5-1.5zM11 18.5h2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span slot="headline" class="settings-nav-card__title pels-text-card-title">Open in a browser</span>
+          <span slot="supporting-text" class="settings-nav-card__description">Use PELS from a phone home screen or a computer</span>
+          <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
+        </md-list-item>
         <md-list-item type="button" class="settings-nav-card settings-nav-card--quiet" data-settings-target="advanced">
           <svg slot="start" class="settings-nav-card__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1M18.7 18.7l-2.1-2.1M7.4 7.4 5.3 5.3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
           <span slot="headline" class="settings-nav-card__title pels-text-card-title">Advanced</span>
@@ -711,6 +717,29 @@
             <span class="pels-skeleton pels-skeleton--card"></span>
           </div>
         </div>
+      </div>
+    </section>
+
+    <section class="card panel hidden settings-detail-panel" id="web-app-panel" data-panel="web-app" aria-labelledby="web-app-title">
+      <div class="pels-appbar">
+        <md-icon-button type="button" class="pels-appbar__back" data-settings-target="settings" aria-label="Back to Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
+        </md-icon-button>
+        <h2 class="pels-appbar__title" id="web-app-title">Open in a browser</h2>
+      </div>
+      <div class="form-grid settings-form-card">
+        <p class="field__hint">PELS also runs in a browser, on a computer or from your phone's home screen, with every Homey you add there.</p>
+        <ol class="field__hint">
+          <li>In the Homey Web App → Settings → API Keys, create a key with permission to control apps. Only the Homey's owner can create keys. <a href="https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro" target="_blank" rel="noopener noreferrer">Create an API key</a></li>
+          <li>Open the web app, choose Add a Homey and paste this Homey's address and the key.</li>
+          <li>To keep it on your phone: on Android, choose Install app in Chrome's menu; on iPhone, choose Share, then Add to Home Screen in Safari.</li>
+        </ol>
+        <div class="field" hidden>
+          <span class="field__label pels-text-settings-label" id="web-app-homey-address-label">This Homey's address</span>
+          <md-filled-text-field id="web-app-homey-address" readonly aria-labelledby="web-app-homey-address-label"></md-filled-text-field>
+        </div>
+        <p class="field__hint">The key can read and change the settings of every app on this Homey. It stays in the browser you paste it into; delete it in Homey to disconnect.</p>
+        <md-filled-button id="web-app-open-link" href="https://pels.barelysufficient.org/app/" target="_blank">Open the web app</md-filled-button>
       </div>
     </section>
 

@@ -50,6 +50,7 @@ const nameField = addForm.querySelector('[name="name"]') as TextField;
 const addressField = addForm.querySelector('[name="address"]') as TextField;
 const keyField = addForm.querySelector('[name="key"]') as TextField;
 
+const KEY_NO_LONGER_ACCEPTED = 'Homey no longer accepts the saved key. Paste a new one.';
 const STORAGE_REFUSED = 'This browser did not save the Homey. Allow this site to store data, then add it again.';
 
 const setFieldError = (field: TextField, message: string | null) => {
@@ -110,10 +111,10 @@ const openHomey = (homey: StoredHomey, version: string) => {
   window.location.assign(buildPathFor(version, homey.homeyId));
 };
 
-const showAddPanel = (prefill: StoredHomey | null, keyError: string | null) => {
+const showAddPanel = (prefill: { name: string; address: string } | null, keyError: string | null) => {
   addPanel.hidden = false;
   nameField.value = prefill?.name ?? '';
-  addressField.value = prefill?.baseUrl ?? '';
+  addressField.value = prefill?.address ?? '';
   keyField.value = '';
   setFieldError(nameField, null);
   setFieldError(addressField, null);
@@ -144,7 +145,9 @@ const renderRow = (homey: StoredHomey, status: RowStatus | null) => {
   if (status?.state === 'open') {
     actions.append(button('md-filled-tonal-button', 'Open', () => openHomey(homey, status.version)));
   } else if (status?.state === 'key-refused') {
-    actions.append(button('md-filled-tonal-button', 'Add new key', () => showAddPanel(homey, null)));
+    actions.append(button('md-filled-tonal-button', 'Add new key', () => (
+      showAddPanel({ name: homey.name, address: homey.baseUrl }, null)
+    )));
   } else if (status) {
     actions.append(button('md-text-button', 'Check again', () => {
       void checkAndRender(homey);
@@ -234,15 +237,19 @@ addForm.addEventListener('submit', (event) => {
 byId<HTMLElement>('webapp-add-homey').addEventListener('click', () => showAddPanel(null, null));
 
 // The installed app starts here and goes straight to a Homey: the one a build
-// sent back (`open`), else the one opened last. It stays on the list when the
-// owner came to choose, or a build sent them back for a new key.
+// or the PELS settings page names (`open`), else the one opened last. It stays
+// on the list when the owner came to choose, or a build sent them back for a
+// new key. A link never fills in the add form: where an API key is sent must
+// come from the owner, or a crafted link could collect keys.
 const start = async () => {
   const stored = loadStoredHomeys(storage);
   const byHomeyId = (homeyId: string | null) => (
     stored.homeys.find((homey) => homey.homeyId === homeyId) ?? null
   );
   const reauth = byHomeyId(params.get('reauth'));
-  const target = byHomeyId(params.get('open')) ?? byHomeyId(stored.lastHomeyId);
+  // A named Homey that is not listed yet must not fall back to the last one:
+  // the owner came to add it.
+  const target = params.has('open') ? byHomeyId(params.get('open')) : byHomeyId(stored.lastHomeyId);
   if (!reauth && !params.has('choose') && target) {
     const status = await checkHomey(target);
     if (status.state === 'open') {
@@ -251,7 +258,7 @@ const start = async () => {
     }
   }
   await render();
-  if (reauth) showAddPanel(reauth, 'Homey no longer accepts the saved key. Paste a new one.');
+  if (reauth) showAddPanel({ name: reauth.name, address: reauth.baseUrl }, KEY_NO_LONGER_ACCEPTED);
 };
 
 void start();
