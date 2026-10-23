@@ -1131,23 +1131,6 @@ Design-of-record: `notes/web-app.md`.
       window at `STARTUP_RESTORE_BLOCK_MS`. Source: layering review of the restore-back-off state
       layer, 2026-09-08.
 
-- [ ] **P2 — the shedding pass's `shed` outcome carries two nullables no production build can
-      produce.** `SheddingOutcome` (`lib/plan/planState.ts`) declares `measurementTs: number | null`
-      and `latch: ShedPlanLatch | null`, and `applySheddingOutcome` sniffs both before writing. The
-      pass reaches `buildSheddingPlan` only from a measured build, after `resolvePowerCycleReading`
-      has required a finite sample on the same tracker, so `powerTracker.lastTimestamp` and
-      `lastPowerW` are always present there; the pass still re-derives their absence
-      (`lib/plan/shedding/buildSheddingPlan.ts`, `resolveMeasurementPowerW` and the `?? null` on the
-      stamp) and `resolvePendingShedRelief` sniffs the watts again. Change: make both fields
-      required on the `shed` variant, read them through `requireLastSampleAtMs` and a watts-returning
-      sibling of `requireLastTotalPowerKw` (`lib/power/lastTotalPower.ts`), drop the two `!== null`
-      writes in `applySheddingOutcome`, and give the ~80 tracker fixtures in
-      `test/integration/planShedding.test.ts` (and the three other `buildSheddingPlan` specs) the
-      watts a sampled tracker carries — checking each multi-cycle case that repeats a stamp, since a
-      fixture that gains watts can newly be credited pending relief. Done when the `shed`
-      variant has no `| null` and `resolveMeasurementPowerW` is gone. Source: layering review of the
-      shed-outcome state layer, 2026-09-08.
-
 - [ ] **P2 — three `setup/` files compose peers the guard's seed banked as permanent budget.**
       `npm run setup:boundaries` seeds its ratchet from the tree it merges against, so the counts it
       now enforces (55 cross-peer, 33 SDK) include files no one has named: `setup/settingsUiHomesApi.ts`

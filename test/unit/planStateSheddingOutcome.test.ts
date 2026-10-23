@@ -42,17 +42,21 @@ describe('PlanEngineState.applySheddingOutcome', () => {
     expect(state.overshoot.shouldEscalate(T + 30_000)).toBe(true);
   });
 
-  it('keeps the previous sample stamp and latch when a shed carried neither', () => {
+  it('replaces the previous sample and latch when a same-sample escalation sheds again', () => {
     const state = stateInIncident();
-    state.lastShedPlanMeasurementTs = T - 5_000;
+    state.lastShedPlanMeasurementTs = T - 500;
     state.shedPlanLatch = latch;
+    const nextLatch: ShedPlanLatch = {
+      ...latch,
+      decisions: new Map([...latch.decisions, ['heater', [{ decidedAtMs: T, creditedKw: 1 }]]]),
+    };
     state.applySheddingOutcome(
-      { kind: 'shed', atMs: T, measurementTs: null, latch: null, escalatedSameSample: true },
+      { kind: 'shed', atMs: T, measurementTs: T - 500, latch: nextLatch, escalatedSameSample: true },
       null,
     );
 
-    expect(state.lastShedPlanMeasurementTs).toBe(T - 5_000);
-    expect(state.shedPlanLatch).toBe(latch);
+    expect(state.lastShedPlanMeasurementTs).toBe(T - 500);
+    expect(state.shedPlanLatch).toBe(nextLatch);
     expect(state.overshoot.shouldEscalate(T + 10_000)).toBe(false);
   });
 

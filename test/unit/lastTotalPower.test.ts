@@ -1,4 +1,25 @@
-import { hasHeadroomFor, resolveLastTotalPowerKw, resolveObservedHeadroom } from '../../lib/power/lastTotalPower';
+import {
+  hasHeadroomFor, requireLatchedMeterReading, resolveLastTotalPowerKw, resolveObservedHeadroom,
+} from '../../lib/power/lastTotalPower';
+
+describe('requireLatchedMeterReading', () => {
+  it.each([3500, 0, -2100])('preserves signed watts %s and the sample timestamp together', (powerW) => {
+    expect(requireLatchedMeterReading({ lastPowerW: powerW, lastTimestamp: 1234 }))
+      .toEqual({ powerW, atMs: 1234 });
+  });
+
+  it.each([
+    {},
+    { lastPowerW: 3500 },
+    { lastTimestamp: 1234 },
+    { lastPowerW: Number.NaN, lastTimestamp: 1234 },
+    { lastPowerW: Number.POSITIVE_INFINITY, lastTimestamp: 1234 },
+    { lastPowerW: 3500, lastTimestamp: Number.NaN },
+    { lastPowerW: 3500, lastTimestamp: Number.NEGATIVE_INFINITY },
+  ])('rejects a build without a complete finite sample: %j', (tracker) => {
+    expect(() => requireLatchedMeterReading(tracker)).toThrow('latched meter reading required');
+  });
+});
 
 describe('resolveLastTotalPowerKw', () => {
   it('converts the latched watts to kW', () => {

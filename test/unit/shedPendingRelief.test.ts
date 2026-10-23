@@ -381,9 +381,8 @@ describe('resolvePendingShedRelief', () => {
     expect(pending.totalKw).toBe(0);
   });
 
-  it('answers nothing without a latch or without watts on the sample', () => {
+  it('answers nothing before a shed has latched', () => {
     expect(resolvePendingShedRelief(null, [charger()], 6_378, NOW, {}, true)).toBeNull();
-    expect(resolvePendingShedRelief(chargerLatch(), [charger()], null, NOW, {}, true)).toBeNull();
   });
 });
 

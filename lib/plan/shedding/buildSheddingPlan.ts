@@ -2,7 +2,7 @@ import type { DeviceReason } from '../../../packages/shared-domain/src/planReaso
 import { NO_SHEDDING_OUTCOME, type PlanEngineState, type SheddingOutcome } from '../planState';
 import type { MeasuredPower, PlanContext } from '../planContext';
 
-import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
+import { requireLatchedMeterReading } from '../../power/lastTotalPower';
 import {
   type PlanSheddingResult,
   type ShedCandidateParams,
@@ -123,10 +123,9 @@ function planShedding(
   if (leadingStorageOnly && walked.candidates.length === 0) return emptySheddingResult(NO_SHEDDING_OUTCOME);
   const needed = candidateParams.deficitKw;
 
-  const measurementTs = deps.powerTracker.lastTimestamp ?? null;
-  const measurementPowerW = resolveMeasurementPowerW(deps.powerTracker);
+  const measurement = requireLatchedMeterReading(deps.powerTracker);
   const measurementDecision = resolveSameMeasurementSheddingDecision(
-    state, context.devices, measurementTs, measurementPowerW, nowTs, power, storage.levers,
+    state, context.devices, measurement, nowTs, power, storage.levers,
   );
   // Shedding every candidate goes on every cycle regardless of the sample: the
   // deficit is the whole hour's, not this reading's. An hour a battery answers
@@ -136,7 +135,7 @@ function planShedding(
   }
   if (!shedsEverything && measurementDecision.kind === 'credit_pending_relief') {
     return shedBeyondPendingRelief(
-      candidateParams, walked, measurementDecision.pending, measurementTs, nowTs, hourlyBudgetExhausted,
+      candidateParams, walked, measurementDecision.pending, measurement.atMs, nowTs, hourlyBudgetExhausted,
     );
   }
   const escalatedSameSample = measurementDecision.kind === 'proceed' && measurementDecision.escalatedSameSample;
@@ -164,19 +163,17 @@ function planShedding(
       // Nothing to shed: any retirement the pending answer found still lands.
       return emptySheddingResult(retainPendingLatch(measurementDecision.pending));
     }
-    return blockEscalation(context, deps, needed, candidates.length, measurementTs, nowTs);
+    return blockEscalation(context, deps, needed, candidates.length, measurement.atMs, nowTs);
   }
   // The reading and the decision it produced latch as one pair (copied:
   // `shedSet` is mutated downstream when holds are merged in).
-  const latch = measurementPowerW === null
-    ? null
-    : latchShedDecision(result, null, measurementPowerW, nowTs, context.devices);
+  const latch = latchShedDecision(result, null, measurement.powerW, nowTs, context.devices);
   return {
     shedSet: result.shedSet,
     shedReasons: result.shedReasons,
     shedStepTargets: result.shedStepTargets,
     storageSetpoints: result.storageSetpoints,
-    outcome: { kind: 'shed', atMs: nowTs, measurementTs, latch, escalatedSameSample },
+    outcome: { kind: 'shed', atMs: nowTs, measurementTs: measurement.atMs, latch, escalatedSameSample },
     pendingReliefKw: 0,
   };
 }
@@ -227,14 +224,6 @@ function restrictToLeadingStorage(
   if (!leadingStorageOnly) return walked;
   const firstLoad = walked.candidates.findIndex((candidate) => candidate.kind !== 'storage');
   return { ...walked, candidates: firstLoad === -1 ? walked.candidates : walked.candidates.slice(0, firstLoad) };
-}
-
-/**
- * The tracker's latched watts, finiteness-gated at the read: a junk latch must
- * never become the value a shed decision is held against.
- */
-function resolveMeasurementPowerW(powerTracker: SheddingDeps['powerTracker']): number | null {
-  return isFiniteNumber(powerTracker.lastPowerW) ? powerTracker.lastPowerW : null;
 }
 
 /**
@@ -296,7 +285,7 @@ function shedBeyondPendingRelief(
   candidateParams: ShedCandidateParams,
   candidateSummary: ReturnType<typeof buildSheddingCandidates>,
   pending: PendingShedRelief,
-  measurementTs: number | null,
+  measurementTs: number,
   nowTs: number,
   hourlyBudgetExhausted: boolean,
 ): PlanSheddingResult {
@@ -384,7 +373,7 @@ function blockEscalation(
   /** The deficit the escalation found nothing to shed against, kW. */
   needed: number,
   candidateCount: number,
-  measurementTs: number | null,
+  measurementTs: number,
   nowTs: number,
 ): PlanSheddingResult {
   if (context.devices.some((device) => device.control.commandAuthority)) {

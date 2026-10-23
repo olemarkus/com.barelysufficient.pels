@@ -172,7 +172,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 100, lastPowerW: 3_306 } as PowerTrackerState,
       },
       overshootDecision,
     );
@@ -218,7 +218,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 100, lastPowerW: 5_400 } as PowerTrackerState,
       },
       // The deficit is real; only the decision to act on it is waiting.
       { actionable: true, shedActionable: false },
@@ -263,7 +263,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 100, lastPowerW: 3_306 } as PowerTrackerState,
       },
       overshootDecision,
     );
@@ -302,7 +302,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 5,
-        powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 100, lastPowerW: 5_200 } as PowerTrackerState,
       },
       overshootDecision,
     );
@@ -331,7 +331,7 @@ describe('buildSheddingPlan', () => {
       ...sheddingWiring(state),
       capacityGuard,
       shortfallThresholdKw: 5,
-      powerTracker: { lastTimestamp: Date.now() } as PowerTrackerState,
+      powerTracker: { lastTimestamp: Date.now(), lastPowerW: 0 } as PowerTrackerState,
     }, { actionable: false, shedActionable: false });
 
     expect(result.shedSet.size).toBe(0);
@@ -388,7 +388,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 4,
-        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 123, lastPowerW: 4_400 } as PowerTrackerState,
         getShedBehavior: (deviceId: string) => (
           deviceId === 'dev-at-temp'
             ? { action: 'set_temperature', temperature: 15 }
@@ -450,7 +450,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 4.5,
-        powerTracker: { lastTimestamp: 789 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 789, lastPowerW: 5_000 } as PowerTrackerState,
       },
     );
 
@@ -496,7 +496,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 4,
-        powerTracker: { lastTimestamp: 456 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 456, lastPowerW: 6_000 } as PowerTrackerState,
       },
     );
 
@@ -537,7 +537,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 4,
-        powerTracker: { lastTimestamp: 999 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 999, lastPowerW: 4_800 } as PowerTrackerState,
       },
     );
 
@@ -598,7 +598,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 4,
-        powerTracker: { lastTimestamp: 999 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 999, lastPowerW: 3_000 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 55 }),
       },
     );
@@ -669,7 +669,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 4,
-        powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 500, lastPowerW: 3_500 } as PowerTrackerState,
         getShedBehavior: (deviceId: string) => (
           deviceId === 'dev-heater'
             ? { action: 'set_temperature', temperature: 15 }
@@ -748,7 +748,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 4,
-        powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 500, lastPowerW: 3_500 } as PowerTrackerState,
         getShedBehavior: (deviceId: string) => (
           deviceId === 'dev-heater'
             ? { action: 'set_temperature', temperature: 15 }
@@ -805,7 +805,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 4,
-        powerTracker: { lastTimestamp: 600 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 600, lastPowerW: 3_000 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 18 }),
       },
     );
@@ -842,7 +842,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 111 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 111, lastPowerW: 4_100 } as PowerTrackerState,
       },
     );
 
@@ -883,7 +883,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 113 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 113, lastPowerW: 4_100 } as PowerTrackerState,
       },
     );
 
@@ -928,7 +928,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 115 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 115, lastPowerW: 4_100 } as PowerTrackerState,
       },
     );
 
@@ -975,7 +975,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 116 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 116, lastPowerW: 2_200 } as PowerTrackerState,
       },
     );
 
@@ -1017,7 +1017,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 114 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 114, lastPowerW: 4_100 } as PowerTrackerState,
       },
     );
 
@@ -1054,7 +1054,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 112 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 112, lastPowerW: 4_100 } as PowerTrackerState,
         getShedBehavior: (deviceId: string) => (
           deviceId === 'connected-300'
             ? { action: 'set_step' }
@@ -1102,7 +1102,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 222 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 222, lastPowerW: 3_600 } as PowerTrackerState,
         getShedBehavior: (deviceId: string) => (
           deviceId === 'connected-300'
             ? { action: 'set_step' }
@@ -1151,7 +1151,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 223 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 223, lastPowerW: 4_000 } as PowerTrackerState,
         getShedBehavior: (deviceId: string) => (
           deviceId === 'connected-300'
             ? { action: 'set_step' }
@@ -1200,7 +1200,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 224 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 224, lastPowerW: 4_000 } as PowerTrackerState,
         getShedBehavior: (deviceId: string) => (
           deviceId === 'connected-300'
             ? { action: 'set_step' }
@@ -1241,7 +1241,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 333 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 333, lastPowerW: 2_900 } as PowerTrackerState,
         getShedBehavior: (deviceId: string) => (
           deviceId === 'connected-300'
             ? { action: 'set_step' }
@@ -1288,7 +1288,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 334 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 334, lastPowerW: 1_500 } as PowerTrackerState,
       },
     );
 
@@ -1337,7 +1337,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 335 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 335, lastPowerW: 4_230 } as PowerTrackerState,
       },
     );
 
@@ -1376,7 +1376,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 444 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 444, lastPowerW: 4_100 } as PowerTrackerState,
         getShedBehavior: (deviceId: string) => (
           deviceId === 'connected-300'
             ? { action: 'set_step' }
@@ -1428,7 +1428,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 445 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 445, lastPowerW: 4_000 } as PowerTrackerState,
         getShedBehavior: (deviceId: string) => (
           deviceId === 'connected-300'
             ? { action: 'set_step' }
@@ -1475,7 +1475,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 445 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 445, lastPowerW: 4_100 } as PowerTrackerState,
         getShedBehavior: (deviceId: string) => (
           deviceId === 'connected-300'
             ? { action: 'set_step' }
@@ -1522,7 +1522,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 555 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 555, lastPowerW: 4_100 } as PowerTrackerState,
         getShedBehavior: (deviceId: string) => (
           deviceId === 'connected-300'
             ? { action: 'set_step' }
@@ -1584,7 +1584,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 10,
-        powerTracker: { lastTimestamp: 700 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 700, lastPowerW: 4_000 } as PowerTrackerState,
         // Binary device has higher priority (10 > 1) so would normally shed first
         log: vi.fn(),
       },
@@ -1645,7 +1645,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 10,
-        powerTracker: { lastTimestamp: 950 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 950, lastPowerW: 8_770 } as PowerTrackerState,
         debugStructured,
       },
     );
@@ -1729,7 +1729,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 10,
-        powerTracker: { lastTimestamp: 970 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 970, lastPowerW: 8_440 } as PowerTrackerState,
         // The heater is ranked to be limited first, and neither candidate can
         // answer the opening deficit with a step reduction, so both follow
         // ordinary priority ordering.
@@ -1837,7 +1837,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 10,
-        powerTracker: { lastTimestamp: 980 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 980, lastPowerW: 10_000 } as PowerTrackerState,
         debugStructured,
       },
     );
@@ -1913,7 +1913,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 10,
-        powerTracker: { lastTimestamp: 800 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 800, lastPowerW: 4_000 } as PowerTrackerState,
       },
     );
 
@@ -1964,7 +1964,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 666 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 666, lastPowerW: 3_100 } as PowerTrackerState,
       },
     );
 
@@ -2020,7 +2020,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 667 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 667, lastPowerW: 4_230 } as PowerTrackerState,
       },
     );
 
@@ -2063,7 +2063,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 1_000 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 1_000, lastPowerW: 8_000 } as PowerTrackerState,
       },
     );
 
@@ -2091,7 +2091,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 999 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 999, lastPowerW: 7_000 } as PowerTrackerState,
       },
     );
 
@@ -2132,7 +2132,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 1001 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 1001, lastPowerW: 7_000 } as PowerTrackerState,
       },
     );
 
@@ -2185,7 +2185,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 4,
-        powerTracker: { lastTimestamp: 1003 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 1003, lastPowerW: 4_800 } as PowerTrackerState,
         getShedBehavior: () => shedBehavior,
         debugStructured,
       },
@@ -2238,7 +2238,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 4,
-        powerTracker: { lastTimestamp: 1003 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 1003, lastPowerW: 4_800 } as PowerTrackerState,
         getShedBehavior: () => AT_SETPOINT_SHED_BEHAVIOR,
         debugStructured,
       },
@@ -2302,7 +2302,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 4,
-        powerTracker: { lastTimestamp: 1004 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 1004, lastPowerW: 4_400 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'set_step' }),
         debugStructured,
       },
@@ -2349,7 +2349,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 8,
-        powerTracker: { lastTimestamp: 1005 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 1005, lastPowerW: 4_400 } as PowerTrackerState,
         debugStructured,
       },
     );
@@ -2398,7 +2398,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 8,
-        powerTracker: { lastTimestamp: 1003 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 1003, lastPowerW: 3_000 } as PowerTrackerState,
       },
     );
 
@@ -2443,7 +2443,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 2.5,
-        powerTracker: { lastTimestamp: 1004 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 1004, lastPowerW: 3_000 } as PowerTrackerState,
       },
     );
 
@@ -2487,7 +2487,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 2.5,
-        powerTracker: { lastTimestamp: 1005 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 1005, lastPowerW: 3_000 } as PowerTrackerState,
       },
     );
 
@@ -2525,7 +2525,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 6,
-        powerTracker: { lastTimestamp: 200 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 200, lastPowerW: 1_500 } as PowerTrackerState,
       },
     );
 
@@ -2575,7 +2575,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 2,
-        powerTracker: { lastTimestamp: 300 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 300, lastPowerW: 2_500 } as PowerTrackerState,
       },
     );
 
@@ -2625,7 +2625,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 2,
-        powerTracker: { lastTimestamp: 300 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 300, lastPowerW: 2_800 } as PowerTrackerState,
       },
     );
 
@@ -2678,7 +2678,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 2,
-        powerTracker: { lastTimestamp: 300 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 300, lastPowerW: 2_500 } as PowerTrackerState,
       },
     );
 
@@ -2712,7 +2712,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 5,
-        powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 100, lastPowerW: 1_000 } as PowerTrackerState,
       },
     );
 
@@ -2739,7 +2739,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 5,
-        powerTracker: { lastTimestamp: 200 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 200, lastPowerW: 1_000 } as PowerTrackerState,
       },
     );
 
@@ -2793,7 +2793,6 @@ describe('buildSheddingPlan', () => {
     const baseDeps = {
       capacityGuard,
       shortfallThresholdKw: 10,
-      powerTracker: { lastTimestamp: 900 } as PowerTrackerState,
       pendingBinaryCommandStore: emptyPendingStore,
       getShedBehavior: () => ({ action: 'turn_off' as const }),
       // Distinct priorities: binary highest (20), stepped-a mid (15), stepped-b low (10).
@@ -2832,7 +2831,7 @@ describe('buildSheddingPlan', () => {
         softLimitSource: 'capacity',
       }),
       state,
-      { ...baseDeps, powerTracker: { lastTimestamp: 901 } as PowerTrackerState },
+      { ...baseDeps, powerTracker: { lastTimestamp: Date.now(), lastPowerW: 4_500 } as PowerTrackerState },
     );
 
     expect(result1.shedSet.has('stepped-a')).toBe(true);
@@ -2841,6 +2840,10 @@ describe('buildSheddingPlan', () => {
 
     // Apply state updates from cycle 1 (lastShedPlanMeasurementTs, lastInstabilityMs).
     state.applySheddingOutcome(result1.outcome, result1.recoveredAtMs);
+
+    // This test compares priority ordering once the previous decision's credit
+    // window has ended. Pending-relief tests below cover readings during it.
+    vi.advanceTimersByTime(30_000);
 
     // Cycle 2: stepped-a now at low, stepped-b still at max (preemptive). Its
     // `max -> low` frees 0.9 kW, which covers the 0.8 kW still needed, so again
@@ -2860,13 +2863,14 @@ describe('buildSheddingPlan', () => {
         softLimitSource: 'capacity',
       }),
       state,
-      { ...baseDeps, powerTracker: { lastTimestamp: 902 } as PowerTrackerState },
+      { ...baseDeps, powerTracker: { lastTimestamp: Date.now(), lastPowerW: 3_800 } as PowerTrackerState },
     );
 
     expect(result2.shedSet.has('stepped-b')).toBe(true);
     expect(result2.shedSet.has('binary-dev')).toBe(false);
 
     state.applySheddingOutcome(result2.outcome, result2.recoveredAtMs);
+    vi.advanceTimersByTime(30_000);
 
     // Cycle 3: both stepped devices at lowest active step. No more preemptive
     // candidates, so normal priority ordering resumes and binary device sheds.
@@ -2885,7 +2889,7 @@ describe('buildSheddingPlan', () => {
         softLimitSource: 'capacity',
       }),
       state,
-      { ...baseDeps, powerTracker: { lastTimestamp: 903 } as PowerTrackerState },
+      { ...baseDeps, powerTracker: { lastTimestamp: Date.now(), lastPowerW: 4_000 } as PowerTrackerState },
     );
 
     // Binary device should now shed (highest priority among non-preemptive candidates).
@@ -2928,7 +2932,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 4,
-        powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 500, lastPowerW: 4_800 } as PowerTrackerState,
       },
     );
 
@@ -2976,7 +2980,7 @@ describe('buildSheddingPlan', () => {
         ...deps,
         capacityGuard,
         shortfallThresholdKw: 4,
-        powerTracker: { lastTimestamp: 501 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 501, lastPowerW: 4_800 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       },
     );
@@ -2996,13 +3000,23 @@ describe('buildSheddingPlan', () => {
         ...deps,
         capacityGuard,
         shortfallThresholdKw: 4,
-        powerTracker: { lastTimestamp: 501 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 501, lastPowerW: 4_800 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       },
     );
 
-    expect(sameSampleResult.shedSet.size).toBe(0);
-    expect(sameSampleResult.outcome).toEqual({ kind: 'none' });
+    // The first shed remains in the plan while its relief is pending. Holding
+    // that decision is not another mitigation and cannot renew its window.
+    expect([...sameSampleResult.shedSet]).toEqual(['dev-fresh']);
+    expect(sameSampleResult.outcome.kind).toBe('held');
+    const firstDecisionAtMs = context.nowTs;
+    state.applySheddingOutcome(sameSampleResult.outcome, sameSampleResult.recoveredAtMs);
+    expect(state.lastShedPlanMeasurementTs).toBe(501);
+    expect(state.restoreBackoff.lastInstabilityMs).toBe(firstDecisionAtMs);
+    expect(state.shedPlanLatch?.decisions.get('dev-fresh')).toEqual([
+      { decidedAtMs: firstDecisionAtMs, creditedKw: 0.8 },
+    ]);
+    expect(state.overshoot.shouldEscalate(firstDecisionAtMs + 30_000)).toBe(true);
     expect(deps.debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_shed_skipped_awaiting_measurement' }));
   });
 
@@ -3096,7 +3110,9 @@ describe('buildSheddingPlan', () => {
       expect([...result.shedSet]).toEqual(['vvb']);
       // The pass latches its own selection alongside the reading it acted on.
       if (result.outcome.kind !== 'shed') throw new Error(`expected a shed outcome, got ${result.outcome.kind}`);
-      expect([...(result.outcome.latch?.decisions.keys() ?? [])]).toEqual(['vvb']);
+      expect([...result.outcome.latch.decisions.keys()]).toEqual(['vvb']);
+      expect(result.outcome.measurementTs).toBe(1_000);
+      expect(result.outcome.latch.powerW).toBe(UNCHANGED_READING_W);
       state.applySheddingOutcome(result.outcome, result.recoveredAtMs);
       return state;
     };
@@ -3411,11 +3427,11 @@ describe('buildSheddingPlan', () => {
       // The 14 A step is on the charger already: it keeps its own decision and
       // stamp, still outstanding against this reading, and the 10 A step gets a
       // decision of its own.
-      expect(result.outcome.latch?.decisions.get('ev')).toEqual([
+      expect(result.outcome.latch.decisions.get('ev')).toEqual([
         { decidedAtMs: Date.now() - 3_000, creditedKw: expect.closeTo(CHARGER_DRAW_KW - 3.22, 6) },
         { decidedAtMs: Date.now(), creditedKw: expect.closeTo(3.07 - 2.3, 6) },
       ]);
-      expect(result.outcome.latch?.stepTargets.get('ev')?.stepId).toBe('10a');
+      expect(result.outcome.latch.stepTargets.get('ev')?.stepId).toBe('10a');
     });
 
     it('does not re-date relief a charger has delivered while a rising load walks it down', async () => {
@@ -3542,8 +3558,8 @@ describe('buildSheddingPlan', () => {
       if (result.outcome.kind !== 'shed') throw new Error(`expected a shed outcome, got ${result.outcome.kind}`);
       // Without its rung, the next reading would count the charger's whole draw
       // as still to come.
-      expect(result.outcome.latch?.stepTargets.get('ev')?.stepId).toBe('6a');
-      expect(result.outcome.latch?.decisions.get('ev')).toEqual([
+      expect(result.outcome.latch.stepTargets.get('ev')?.stepId).toBe('6a');
+      expect(result.outcome.latch.decisions.get('ev')).toEqual([
         { decidedAtMs: expect.any(Number), creditedKw: expect.closeTo(CHARGER_DRAW_KW - 1.38, 6) },
       ]);
     });
@@ -3734,7 +3750,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 4,
-        powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 500, lastPowerW: 4_800 } as PowerTrackerState,
         debugStructured,
       },
     );
@@ -3773,7 +3789,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 4,
-        powerTracker: { lastTimestamp: 1006 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 1006, lastPowerW: 4_800 } as PowerTrackerState,
         debugStructured,
       },
     );
@@ -3835,7 +3851,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 5.04,
-        powerTracker: { lastTimestamp: 2001 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 2001, lastPowerW: 5_566 } as PowerTrackerState,
       },
     );
 
@@ -3890,7 +3906,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 5.04,
-        powerTracker: { lastTimestamp: 2003 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 2003, lastPowerW: 8_000 } as PowerTrackerState,
       },
     );
 
@@ -3946,7 +3962,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 5.04,
-        powerTracker: { lastTimestamp: 2002 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 2002, lastPowerW: 5_566 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'set_step' }),
         debugStructured,
       },
@@ -4018,7 +4034,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 5.04,
-        powerTracker: { lastTimestamp: 2003 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 2003, lastPowerW: 5_000 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'set_step' }),
         debugStructured,
       },
@@ -4077,7 +4093,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 10,
-        powerTracker: { lastTimestamp: 1007 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 1007, lastPowerW: 0 } as PowerTrackerState,
       },
       { actionable: false, shedActionable: false },
     );
@@ -4145,7 +4161,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 10,
-        powerTracker: { lastTimestamp: 1008 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 1008, lastPowerW: 0 } as PowerTrackerState,
         getShedBehavior: (deviceId) => (deviceId === 'temp'
           ? { action: 'set_temperature', temperature: 17 }
           : { action: 'set_step' }),
@@ -4214,7 +4230,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 10,
-        powerTracker: { lastTimestamp: 1010 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 1010, lastPowerW: 7_640 } as PowerTrackerState,
         debugStructured,
       },
     );
@@ -4270,7 +4286,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 10,
-        powerTracker: { lastTimestamp: 1009 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 1009, lastPowerW: 0 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'set_step' }),
       },
       { actionable: false, shedActionable: false },
@@ -4323,7 +4339,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 4,
-        powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 500, lastPowerW: 4_800 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 15 }),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
       },
@@ -4380,7 +4396,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 4,
-        powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 500, lastPowerW: 4_800 } as PowerTrackerState,
         structuredLog: partialDouble<PinoLogger>(structuredLog),
       },
     );
@@ -4421,7 +4437,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 4,
-        powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 500, lastPowerW: 4_800 } as PowerTrackerState,
         debugStructured,
       },
     );
@@ -4462,7 +4478,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 4,
-        powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 500, lastPowerW: 5_200 } as PowerTrackerState,
         debugStructured,
       },
     );
@@ -4491,7 +4507,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard: guard,
         shortfallThresholdKw: Number.POSITIVE_INFINITY,
-        powerTracker: { lastTimestamp: 800 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 800, lastPowerW: 3_650 } as PowerTrackerState,
         pendingBinaryCommandStore: emptyPendingStore,
         getShedBehavior: () => ({ action: 'turn_off' }),
         log: vi.fn(),
@@ -4522,7 +4538,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         shortfallThresholdKw: 5,
-        powerTracker: { lastTimestamp: 800 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 800, lastPowerW: 4_790 } as PowerTrackerState,
         pendingBinaryCommandStore: emptyPendingStore,
         getShedBehavior: () => ({ action: 'turn_off' }),
         log: vi.fn(),
@@ -4555,7 +4571,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard: guard,
         shortfallThresholdKw: Number.POSITIVE_INFINITY,
-        powerTracker: { lastTimestamp: 800 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 800, lastPowerW: 3_650 } as PowerTrackerState,
         pendingBinaryCommandStore: emptyPendingStore,
         getShedBehavior: () => ({ action: 'turn_off' }),
         log: vi.fn(),
@@ -4586,7 +4602,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard: guard,
         shortfallThresholdKw: Number.POSITIVE_INFINITY,
-        powerTracker: { lastTimestamp: 801 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 801, lastPowerW: 3_590 } as PowerTrackerState,
         pendingBinaryCommandStore: emptyPendingStore,
         getShedBehavior: () => ({ action: 'turn_off' }),
         log: vi.fn(),
@@ -4631,7 +4647,7 @@ describe('buildSheddingPlan', () => {
         ...sheddingWiring(state),
         capacityGuard,
         shortfallThresholdKw: 8,
-        powerTracker: { lastTimestamp: 4001 } as PowerTrackerState,
+        powerTracker: { lastTimestamp: 4001, lastPowerW: 3_000 } as PowerTrackerState,
       },
     );
 
