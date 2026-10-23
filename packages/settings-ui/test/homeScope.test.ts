@@ -7,7 +7,7 @@ import {
   MAIN_HOME_ID,
 } from '../../shared-domain/src/settings/settingsKeys.ts';
 import { SETTINGS_UI_HOMES_PATH } from '../../contracts/src/settingsUiHomes.ts';
-import { HOME_SCOPE_BAR_LABEL } from '../../shared-domain/src/homeScopeCopy.ts';
+import { HOME_SCOPE_BAR_LABEL } from '../src/ui/homeScopeCopy.ts';
 import {
   getHomeScope,
   getHomeIdForUiDevice,

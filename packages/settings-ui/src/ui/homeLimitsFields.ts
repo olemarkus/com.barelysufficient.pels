@@ -4,9 +4,9 @@ import {
   HOME_LIMITS_MARGIN_NEGATIVE,
   HOME_LIMITS_MARGIN_TOO_HIGH,
   HOME_LIMITS_VALUE_PLACEHOLDER,
-} from '../../../shared-domain/src/homeLimitsCopy.ts';
+} from './homeLimitsCopy.ts';
 import { usableCapacityKw } from '../../../shared-domain/src/capacityAllowance.ts';
-import { formatHomeLimitsKw } from '../../../shared-domain/src/homeLimitsStatus.ts';
+import { formatHomeLimitsKw } from './homeLimitsStatus.ts';
 
 // Value rules for the meter-area editor's two number fields, hard cap and
 // safety margin: reading the typed text, the live margin alert, the derived

@@ -116,6 +116,7 @@ packages/settings-ui/src/ui/deviceDetail/targetPowerConfig.ts 1
 packages/settings-ui/src/ui/devices.ts 2
 packages/settings-ui/src/ui/echartsRegistry.ts 1
 packages/settings-ui/src/ui/exportPriceSettings.ts 1
+packages/settings-ui/src/ui/homesManagementCopy.ts 1
 packages/settings-ui/src/ui/modeRename.ts 1
 packages/settings-ui/src/ui/powerStats.ts 3
 packages/settings-ui/src/ui/powerUsageSplit.ts 1
@@ -147,7 +148,6 @@ packages/shared-domain/src/deferredPlanHistoryDetailInteraction.ts 1
 packages/shared-domain/src/energySignature/energySignature.ts 1
 packages/shared-domain/src/evChargingStateLabel.ts 1
 packages/shared-domain/src/homesManagement.ts 3
-packages/shared-domain/src/homesManagementCopy.ts 1
 packages/shared-domain/src/overviewSmartTaskRow.ts 1
 packages/shared-domain/src/planReasonFormatting.ts 1
 packages/shared-domain/src/simulationPosture.ts 1

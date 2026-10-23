@@ -8,7 +8,7 @@ import {
   HOMES_METER_HINT,
   HOMES_NO_METER_DEVICES,
   HOMES_REFRESH_FAILED,
-} from '../../shared-domain/src/homesManagementCopy.ts';
+} from '../src/ui/homesManagementCopy.ts';
 
 /* -------------------------------------------------------------------------- *
  * Controller-level coverage for the two load states the "Multiple meters"

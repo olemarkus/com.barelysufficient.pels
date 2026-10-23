@@ -16,7 +16,7 @@ import {
   type SmartTaskListStatusId,
 } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { formatSmartTaskListDateTime } from '../../../../shared-domain/src/deferredPlanHistory.ts';
-import { HOME_SCOPE_SMART_TASKS_MAIN_ONLY_NOTICE } from '../../../../shared-domain/src/homeScopeCopy.ts';
+import { HOME_SCOPE_SMART_TASKS_MAIN_ONLY_NOTICE } from '../homeScopeCopy.ts';
 import { formatTimeInTimeZone } from '../../../../shared-domain/src/utils/dateUtils.ts';
 import {
   DEADLINES_LIST_BASELINE_EYEBROW,

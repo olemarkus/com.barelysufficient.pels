@@ -16,7 +16,7 @@ import {
   composeDraftWarningLine,
   composeSubHomeSupportingLine,
   formatZoneDeviceCount,
-} from '../../shared-domain/src/homesManagementCopy';
+} from '../src/ui/homesManagementCopy';
 
 // SHS-shaped zone fixture:
 //

@@ -8,7 +8,7 @@ import {
   HOMES_POWER_SOURCE_NEEDED_BY_AREAS,
   HOMES_POWER_SOURCE_SAVE_DEGRADED,
   HOMES_POWER_SOURCE_SAVE_FAILED,
-} from '../../shared-domain/src/homeAreaConfigRulesCopy';
+} from '../src/ui/homeAreaConfigRulesCopy';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,

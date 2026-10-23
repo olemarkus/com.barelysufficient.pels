@@ -33,10 +33,10 @@ import {
   HOMES_REMOVED_TOAST,
   HOMES_SAVE_FAILED_TOAST,
   HOMES_SAVED_TOAST,
-} from '../../../shared-domain/src/homesManagementCopy.ts';
+} from './homesManagementCopy.ts';
 import {
   composeHomeAreaSaveRefusalLine,
-} from '../../../shared-domain/src/homeAreaConfigRulesCopy.ts';
+} from './homeAreaConfigRulesCopy.ts';
 import { callApi, getSettingFresh } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { ERROR_DURATION_MS, showToast, showToastError } from './toast.ts';

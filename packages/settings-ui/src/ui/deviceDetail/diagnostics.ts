@@ -24,7 +24,7 @@ import {
   formatStarvationTarget,
   STARVATION_WAITING_FOR_POWER_COPY,
 } from '../../../../shared-domain/src/planStarvation.ts';
-import { HOME_SCOPE_DIAGNOSTICS_NOT_MEASURED } from '../../../../shared-domain/src/homeScopeCopy.ts';
+import { HOME_SCOPE_DIAGNOSTICS_NOT_MEASURED } from '../homeScopeCopy.ts';
 import {
   deviceDetailDiagnosticsCards,
   deviceDetailDiagnosticsDisclosure,

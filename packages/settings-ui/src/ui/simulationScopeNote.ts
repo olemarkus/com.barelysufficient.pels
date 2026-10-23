@@ -1,4 +1,4 @@
-import { HOME_SCOPE_SIMULATION_MAIN_ONLY_NOTE } from '../../../shared-domain/src/homeScopeCopy.ts';
+import { HOME_SCOPE_SIMULATION_MAIN_ONLY_NOTE } from './homeScopeCopy.ts';
 import { simulationHomeScopeNote } from './dom.ts';
 
 /**

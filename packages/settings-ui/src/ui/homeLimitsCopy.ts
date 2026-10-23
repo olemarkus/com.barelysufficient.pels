@@ -14,12 +14,10 @@
  * happens ("let PELS limit devices", "only simulating"), never the planner's
  * shed/restore words.
  *
- * Lives in shared-domain so the settings UI and any future runtime logging
- * speak the same words for the same state (`feedback_ui_text_shared_with_logs`).
- * Import this module directly — there is no shared-domain barrel.
+ * Browser-only copy shared by the settings UI surfaces.
  */
 
-import { resolveHomeAreaDisplayName } from './homeNames';
+import { resolveHomeAreaDisplayName } from '../../../shared-domain/src/homeNames';
 
 // ── Cap + margin fields (units in the label per the style rules) ─────────────
 
@@ -58,10 +56,8 @@ export const HOME_LIMITS_GLOBAL_SETTINGS_ELSEWHERE = 'Power source is set once f
   + 'Switch to Main home to change either.';
 export const HOME_LIMITS_MARGIN_LABEL = 'Safety margin (kW)';
 // Save-time validation copy. Byte-aligned with the Main-home form's messages
-// (`capacity.ts`); duplicated deliberately — importing shared-domain into the
-// stable Main-home path would change that byte-identical surface, so the two
-// stay in step by convention (the notes/ui-terminology copy-origin rule yields
-// here to the byte-identical-main constraint).
+// (`capacity.ts`); these existing copies stay in step by convention (the
+// notes/ui-terminology copy-origin rule yields to the byte-identical-main constraint).
 export const HOME_LIMITS_MARGIN_TOO_HIGH
   = 'Safety margin must be less than the hard cap. Lower the margin to continue.';
 export const HOME_LIMITS_HARD_CAP_POSITIVE = 'Hard cap must be positive.';

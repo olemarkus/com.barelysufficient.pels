@@ -17,7 +17,7 @@ import {
 import {
   composeDraftErrorLine,
   HOMES_MAIN_METER_SAVE_DEGRADED,
-} from '../../../shared-domain/src/homesManagementCopy.ts';
+} from './homesManagementCopy.ts';
 import {
   WHOLE_HOME_METER_HINT,
   WHOLE_HOME_METER_LOADING_OPTION,
@@ -27,7 +27,7 @@ import {
   WHOLE_HOME_METER_PLACEHOLDER_OPTION,
   WHOLE_HOME_METER_SAVE_FAILED,
   WHOLE_HOME_METER_SAVED,
-} from '../../../shared-domain/src/homeAreaConfigRulesCopy.ts';
+} from './homeAreaConfigRulesCopy.ts';
 import { POWER_SOURCE } from '../../../shared-domain/src/settings/settingsKeys.ts';
 
 export type MeterSelectEntry = { value: string; label: string };

@@ -12,7 +12,7 @@ import {
   HOME_LIMITS_INACTIVE_CHIP,
   HOME_LIMITS_INACTIVE_STATUS,
   HOME_LIMITS_GLOBAL_SETTINGS_ELSEWHERE,
-} from '../../../../shared-domain/src/homeLimitsCopy.ts';
+} from '../homeLimitsCopy.ts';
 import {
   composeHomeLimitsStateLine,
   formatHomeLimitsKw,
@@ -21,8 +21,8 @@ import {
   HOME_LIMITS_STATUS_TITLE,
   resolveHomeLimitsPostureChip,
   type HomeLimitsStatus,
-} from '../../../../shared-domain/src/homeLimitsStatus.ts';
-import { composeHomeScopedTitle } from '../../../../shared-domain/src/homeScopeCopy.ts';
+} from '../homeLimitsStatus.ts';
+import { composeHomeScopedTitle } from '../homeScopeCopy.ts';
 import { MdFilledSelect, MdSelectOption, MdSwitch, readSwitchSelected } from './materialWebJSX.tsx';
 import type { CapacityPeriodMinutes } from '../../../../contracts/src/capacitySettings.ts';
 import type { SettingsUiCapacityPeak } from '../../../../contracts/src/settingsUiApi.ts';

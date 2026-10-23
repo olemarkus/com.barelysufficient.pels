@@ -6,13 +6,11 @@
  * **Main home**. The internal words (`sub-home`, `homeId`, `membership`)
  * never surface. Copy says what happens, stays short and factual.
  *
- * Lives in shared-domain so the settings UI and any future runtime logging
- * speak the same words for the same state (`feedback_ui_text_shared_with_logs`).
- * Import this module directly — there is no shared-domain barrel.
+ * Browser-only copy shared by the settings UI surfaces.
  */
 
-import { resolveHomeAreaDisplayName } from './homeNames';
-import type { SubHomeDraftError, SubHomeDraftWarning } from './homesManagement';
+import { resolveHomeAreaDisplayName } from '../../../shared-domain/src/homeNames';
+import type { SubHomeDraftError, SubHomeDraftWarning } from '../../../shared-domain/src/homesManagement';
 
 // The hub nav card + panel title strings ("Multiple meters" / "Parts of your
 // home with their own meter") live in the static `public/index.html` markup,

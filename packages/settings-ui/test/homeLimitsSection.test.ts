@@ -4,7 +4,7 @@ import {
   type HomeLimitsEditorView,
   type HomeLimitsSectionProps,
 } from '../src/ui/views/HomeLimitsSection.tsx';
-import { resolveHomeLimitsStatus } from '../../shared-domain/src/homeLimitsStatus.ts';
+import { resolveHomeLimitsStatus } from '../src/ui/homeLimitsStatus.ts';
 
 /* -------------------------------------------------------------------------- *
  * Per-home Limits section render tests: progressive-disclosure visibility, the

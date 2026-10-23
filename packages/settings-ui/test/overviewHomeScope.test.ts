@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   HOME_SCOPE_OVERVIEW_UNAVAILABLE_BODY,
   HOME_SCOPE_OVERVIEW_UNAVAILABLE_HEADLINE,
-} from '../../shared-domain/src/homeScopeCopy.ts';
+} from '../src/ui/homeScopeCopy.ts';
 import type { OverviewDeferredObjectiveActivePlans } from '../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { DeferredObjectiveSettingsV1 } from '../../contracts/src/deferredObjectiveSettings.ts';
 import type { SettingsUiHomesPayload } from '../../contracts/src/settingsUiHomes.ts';

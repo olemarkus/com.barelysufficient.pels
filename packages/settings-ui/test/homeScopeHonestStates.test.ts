@@ -3,7 +3,7 @@ import {
   HOME_SCOPE_ACTIVITY_NOT_RECORDED,
   HOME_SCOPE_DIAGNOSTICS_NOT_MEASURED,
   HOME_SCOPE_SIMULATION_MAIN_ONLY_NOTE,
-} from '../../shared-domain/src/homeScopeCopy.ts';
+} from '../src/ui/homeScopeCopy.ts';
 import {
   CAPACITY_DRY_RUN,
   HOMES_CONFIG,

@@ -7,9 +7,7 @@
  * plain statement of what is on screen ("Showing Rental unit") rather than a
  * settings field. Internal words (`sub-home`, `homeId`, `scope`) never surface.
  *
- * Lives in shared-domain so the settings UI and any future runtime logging
- * speak the same words for the same state (`feedback_ui_text_shared_with_logs`).
- * Import this module directly — there is no shared-domain barrel.
+ * Browser-only copy shared by the settings UI surfaces.
  */
 
 import { HOME_LIMITS_CONTROL_LABEL } from './homeLimitsCopy';
@@ -24,7 +22,7 @@ export const HOME_SCOPE_BAR_LABEL = 'Showing';
  * for the Limits switcher, the meter-clash refusal and the `capacity_shortfall`
  * Flow token), so the scope bar cannot drift to a second spelling of one home.
  */
-export { HOMES_MAIN_HOME_NAME as MAIN_HOME_NAME } from './homeNames';
+export { HOMES_MAIN_HOME_NAME as MAIN_HOME_NAME } from '../../../shared-domain/src/homeNames';
 
 /**
  * Appends the home to a title that would otherwise read as whole-home, e.g.

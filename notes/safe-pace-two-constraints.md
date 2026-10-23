@@ -639,7 +639,7 @@ Two further consequences:
   Do not build a second fold for it. `resolveLimitReason`
   (`lib/plan/pelsStatus.ts:265-291`) already computes a three-way
   `'none' | 'hourly' | 'daily' | 'both'` for the separate `limitReason` field on
-  PelsStatus, the insights device, and `packages/shared-domain/src/homeLimitsStatus.ts`,
+  PelsStatus, the insights device, and `packages/settings-ui/src/ui/homeLimitsStatus.ts`,
   and it does return `'both'`. It derives that from `softLimitSource` plus shed
   state and headroom sign, which is a downstream proxy for exactly the breach
   predicates above. Feed it the real predicates rather than leaving it to

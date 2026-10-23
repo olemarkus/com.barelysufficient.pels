@@ -5,7 +5,7 @@ import {
 import {
   composeHomeBadgeLabel,
   composeHomeBadgeTooltip,
-} from '../../../shared-domain/src/homesManagementCopy.ts';
+} from './homesManagementCopy.ts';
 import { resolveHomeAreaDisplayName } from '../../../shared-domain/src/homeNames.ts';
 import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
