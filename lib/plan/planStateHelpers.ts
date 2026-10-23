@@ -1,3 +1,4 @@
+import { isPendingBinaryCommandActive } from '../observer/pendingBinaryCommandTypes';
 import type { PlanEngineState } from './planState';
 import type { OvershootIncidentRead } from './overshootIncident';
 import type { ActuationPendingRead } from './actuationRecord';
@@ -20,7 +21,7 @@ export type PlanConvergenceOptions = {
 const hasPendingPlanWork = (planState: PlanConvergenceState): boolean => (
   planState.actuation.hasInFlight()
   || Object.keys(planState.pendingTargetCommands).length > 0
-  || Object.keys(planState.pendingBinaryCommands).length > 0
+  || Object.values(planState.pendingBinaryCommands).some((pending) => isPendingBinaryCommandActive({ pending }))
 );
 
 /**

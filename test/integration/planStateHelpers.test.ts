@@ -1,3 +1,6 @@
+import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
+import { resolvePlanRebuildPosture } from '../../lib/plan/planRebuildPosture';
+import { buildEmptyCapacityStateSummary } from '../../lib/power/capacityStateSummary';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { isPlanActivelyConverging } from '../../lib/plan/planStateHelpers';
 
@@ -76,6 +79,45 @@ describe('isPlanActivelyConverging', () => {
     };
 
     expect(isPlanActivelyConverging(state, { unactionable: false })).toBe(true);
+  });
+
+  it('stops bypassing rebuild guards exactly when the last binary command expires', () => {
+    const state = createPlanEngineState();
+    state.pendingBinaryCommands = {
+      heater: { dispatchState: 'accepted', desired: true, startedMs: Date.now() },
+    };
+    const summary = {
+      ...buildEmptyCapacityStateSummary(),
+      remainingActionableControlledLoad: false,
+      remainingReducibleControlledLoad: false,
+    };
+    vi.advanceTimersByTime(CONTROL_COMMAND_CONFIRMATION_MS - 1);
+    expect(resolvePlanRebuildPosture(summary, state).planConvergenceActive).toBe(true);
+    vi.advanceTimersByTime(1);
+    expect(resolvePlanRebuildPosture(summary, state)).toMatchObject({
+      planConvergenceActive: false,
+      unactionable: true,
+      shortfallUnrecoverable: true,
+    });
+    expect(Object.keys(state.pendingBinaryCommands)).toEqual(['heater']);
+  });
+
+  it('keeps overdue target retries actionable even when binary commands have expired', () => {
+    const state = createPlanEngineState();
+    state.pendingBinaryCommands = {
+      heater: { dispatchState: 'accepted', desired: true, startedMs: Date.now() - CONTROL_COMMAND_CONFIRMATION_MS },
+    };
+    state.pendingTargetCommands = {
+      thermostat: {
+        desired: 21,
+        startedMs: Date.now() - CONTROL_COMMAND_CONFIRMATION_MS,
+        lastAttemptMs: Date.now() - CONTROL_COMMAND_CONFIRMATION_MS,
+        retryCount: 1,
+        nextRetryAtMs: Date.now() - 1,
+        status: 'temporary_unavailable',
+      },
+    };
+    expect(isPlanActivelyConverging(state, { unactionable: true })).toBe(true);
   });
 
   it('returns false for recent device shed and restore timestamps alone', () => {
