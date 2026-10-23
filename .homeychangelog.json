@@ -673,5 +673,8 @@
   },
   "3.21.0": {
     "en": "PELS now also runs in a browser, on a computer or from your phone's home screen. Settings, Open in a browser shows how to create an API key on your Homey and add it at pels.barelysufficient.org/app. You can add several Homeys and switch between them, and move them to your phone by scanning a code the computer shows. At home the browser talks to Homey on your own network; away from home it goes through Homey's cloud.\n\nEvery page in PELS settings now has its own address, so Back returns to the page you came from and a reload stays on the same page."
+  },
+  "3.21.1": {
+    "en": "Links that open a new tab now work in the Homey web app, including Open the web app and the guides for creating an API key.\n\nPELS in a browser now stays fast away from home. Once you have opened PELS settings in the Homey web app away from home, the browser reaches your Homey through its own cloud address instead of a slower shared one. PELS settings also load faster, especially in the browser."
   }
 }
