@@ -21,7 +21,7 @@
  * `state.pendingBinaryCommands[id]` directly — the store binds to that
  * backing `Record` (supplied by `PlanEngine`) but is the only path that
  * mutates or evicts it. The field survives only as the store's backing
- * store and the `isPlanActivelyConverging` emptiness probe; no consumer
+ * store and the `isPlanActivelyConverging` active-command probe; no consumer
  * reads or evicts it in place.
  */
 import {

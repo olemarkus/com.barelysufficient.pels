@@ -189,36 +189,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       the confirmation deadline, times the command out, and asserts both handles are still
       distinguishable. P2. Source: pels-runtime-reality on PR #2290, 2026-09-03. [P2]
 
-- [ ] **`hasPendingPlanWork` counts EXPIRED pending commands, costing one un-throttled rebuild
-      per timeout.** `lib/plan/planStateHelpers.ts` — `hasPendingPlanWork` asks
-      `Object.keys(planState.pendingBinaryCommands).length > 0` (and the same for
-      `pendingTargetCommands`), a raw key count with no freshness test. `isPlanActivelyConverging`
-      returns true whenever that is true, and lets the rebuild scheduler bypass the
-      unrecoverable-shortfall skip, the unactionable throttle and the tight-unactionable floor. An
-      expired command cannot change anything, so it is exactly the case that contract excludes.
-      **Bounded, and NOT the watchdog scenario.** An earlier draft of this entry claimed the flag
-      could stay stuck true and reproduce the `cpuwarn` kill its docblock records. It cannot:
-      `reconcilePendingEntry` (`lib/observer/pendingBinaryCommands.ts`) clears an expired entry, and
-      `buildPlanForRebuild` runs that sweep BEFORE it builds
-      (`lib/plan/planServiceRebuild.ts`) — so the first rebuild the bypass buys is also the rebuild
-      that clears the entry. The cost is at most one extra un-throttled rebuild per timeout, not a
-      loop. Corrected after Codex and `pels-runtime-reality` independently made this point on
-      PR #2290.
-      Change: ask freshness rather than presence for the BINARY half — the store already exposes the
-      vocabulary (`isPendingBinaryCommandActive`, and the `hasActiveCommand` / `hasActiveTurnOn` /
-      `hasActiveTurnOff` family). **Do not give `pendingTargetCommands` the same treatment without
-      checking what "expired" means there:** a target entry sits at `status:
-      'temporary_unavailable'` with a scheduled `nextRetryAtMs`, and an elapsed retry time is
-      ACTIONABLE work rather than a dead command, so a naive active-only predicate would suppress
-      real convergence — the opposite defect, and a worse one. The two halves need different
-      predicates, or the target half needs none.
-      Done when an expired-only BINARY pending map makes `isPlanActivelyConverging` return false,
-      pinned by a unit test that seeds one expired entry and asserts the guards are not bypassed,
-      with a companion test proving a target entry past its `nextRetryAtMs` still counts as pending
-      work. P3 — bounded to one rebuild, no demonstrated misbehaviour, and the honest value is
-      removing a contract violation that reads worse than it is. Source: observer cleanup sweep,
-      2026-09-03. [P3]
-
 - [ ] **The surplus allocator still decides "willing with a lift" from the raw price-opt entry.**
       `resolvePriceOptimizationConfig` (`lib/price/priceOptimizer.ts`) resolves a device's entry
       into required fields, and the setpoint resolver and the planner's lift gate read it. The
