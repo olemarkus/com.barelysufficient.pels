@@ -20,6 +20,10 @@
 //
 // `homey app version --commit` is not used: it builds its git commit through a
 // shell without escaping, so a straight double quote in the changelog breaks it.
+//
+// The commit and pushes skip git hooks. The bump touches only the version
+// files, `start` validates the app itself, and the bump PR's CI checks the
+// rest; the hooks would only re-run checks origin/main has already passed.
 
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -129,7 +133,7 @@ const start = (level, changelogFile, dryRun) => {
   const unexpected = changed.filter((file) => !BUMP_FILES.includes(file));
   if (unexpected.length > 0) fail(`the bump changed more than the version files: ${unexpected.join(", ")}`);
   run("git", ["add", ...BUMP_FILES]);
-  withTempFile(`Bump version to ${tag}\n\nChangelog: ${changelog}\n`, (file) => run("git", ["commit", "-F", file]));
+  withTempFile(`Bump version to ${tag}\n\nChangelog: ${changelog}\n`, (file) => run("git", ["commit", "--no-verify", "-F", file]));
   withTempFile(`${changelog}\n`, (file) => run("git", ["tag", "-a", tag, "-F", file]));
 
   if (dryRun) {
@@ -140,7 +144,7 @@ const start = (level, changelogFile, dryRun) => {
     return;
   }
 
-  run("git", ["push", "-u", "origin", branch]);
+  run("git", ["push", "--no-verify", "-u", "origin", branch]);
   run("gh", ["pr", "create", "--base", "main", "--head", branch, "--title", `Bump version to ${tag}`, "--body", `Release ${tag}.\n\n${changelog}`]);
   run("gh", ["pr", "merge", branch, "--rebase", "--auto", "--delete-branch"]);
   if (startBranch !== "HEAD") run("git", ["switch", startBranch]);
@@ -180,7 +184,7 @@ const finish = async () => {
   fetchOrigin();
   const landed = versionAt("origin/main");
   if (landed !== version) fail(`origin/main's app.json reads ${landed}, not ${version}; the tag stays local`);
-  run("git", ["push", "origin", tag]);
+  run("git", ["push", "--no-verify", "origin", tag]);
   const current = read("git", ["rev-parse", "--abbrev-ref", "HEAD"]);
   if (current === "main" && read("git", ["status", "--porcelain"]) === "") run("git", ["merge", "--ff-only", "origin/main"]);
   if (succeeds("git", ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`])) run("git", ["branch", "-D", branch]);
