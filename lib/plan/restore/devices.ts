@@ -260,7 +260,7 @@ export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {
   // task is driving it this hour is not held, and it is precisely a HELD-OFF
   // device the task has to be able to start. Reading the raw enum here pinned
   // every such device `inactive`, and no start intent is ever built for an
-  // inactive device — so "it runs when a Smart task needs it to" was false for
+  // inactive device — so "it runs when a smart task needs it to" was false for
   // every device the hold had already taken off.
   //
   // This is also the whole of the card treatment. `inactive` resolves to the

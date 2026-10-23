@@ -1230,7 +1230,7 @@
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">
-              <p class="muted">
+              <p class="muted" id="device-detail-car-intro">
                 Select the cars that charge here. When PELS matches one to this charger, it reads that car's battery level.
               </p>
               <p class="detail-car-status" id="device-detail-car-status" hidden></p>
@@ -1348,7 +1348,7 @@
                   </md-filled-select>
                   <small class="field__hint pels-text-body" id="device-detail-temperature-control-hint"></small>
                   <small class="field__hint pels-text-body" id="device-detail-temperature-control-power-hint" hidden></small>
-                  <small class="field__hint pels-text-body" id="device-detail-temperature-control-disabled-smart-task-hint" hidden>Clear this device&rsquo;s active Smart task before changing how PELS handles its temperature.</small>
+                  <small class="field__hint pels-text-body" id="device-detail-temperature-control-disabled-smart-task-hint" hidden>Clear this device&rsquo;s active smart task before changing how PELS handles its temperature.</small>
                 </div>
 
                 <!-- Moved into the Battery section, under Managed, on a
@@ -1380,8 +1380,8 @@
                   <md-switch id="device-detail-start-policy"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Only PELS starts this device</span>
-                    <small class="field__hint">If this device is started in Homey, on the device, or by another Flow, PELS turns it off again. It runs when a Smart task needs it to, and not otherwise.</small>
-                    <small class="field__hint" id="device-detail-start-policy-no-task-hint" hidden>This device has no Smart task, so nothing will start it while this is on.</small>
+                    <small class="field__hint">If this device is started in Homey, on the device, or by another Flow, PELS turns it off again. It runs when a smart task needs it to, and not otherwise.</small>
+                    <small class="field__hint" id="device-detail-start-policy-no-task-hint" hidden>This device has no smart task, so nothing will start it while this is on.</small>
                     <small class="field__hint" id="device-detail-start-policy-paused-hint" hidden>Paused while Power-limit control is on, because PELS already decides when this device runs. It applies again if Power-limit control is turned off.</small>
                   </span>
                 </div>

@@ -35,6 +35,7 @@ const buildDom = () => {
   document.body.innerHTML = `
     <div id="toast"></div>
     <section id="device-detail-car-section" hidden>
+      <p id="device-detail-car-intro"></p>
       <div id="device-detail-car-list"></div>
       <p id="device-detail-car-status"></p>
       <small id="device-detail-car-flow-note" hidden></small>
@@ -89,6 +90,7 @@ describe('charger car picker', () => {
 
     expect(rows().map((input) => input.dataset.carId)).toEqual(['car-1']);
     expect(callApi).toHaveBeenCalledWith('GET', '/ui_recommendation_cars');
+    expect((document.querySelector('#device-detail-car-intro') as HTMLElement).hidden).toBe(false);
   });
 
   it('offers and saves eligible Kia and Hyundai vehicles', async () => {
@@ -192,6 +194,8 @@ describe('charger car picker', () => {
 
     expect(document.querySelector('#device-detail-car-list')?.textContent)
       .toContain('No cars found');
+    // The instruction to select a car has nothing to act on with none listed.
+    expect((document.querySelector('#device-detail-car-intro') as HTMLElement).hidden).toBe(true);
   });
 
   it.each([

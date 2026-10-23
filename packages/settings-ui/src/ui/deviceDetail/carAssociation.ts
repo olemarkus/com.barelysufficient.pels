@@ -20,6 +20,7 @@ import { normalizeEvCarAssociations } from '../../../../shared-domain/src/settin
 import { resolveEvChargingStateLabel } from '../../../../shared-domain/src/evChargingStateLabel.ts';
 import {
   deviceDetailCarFlowNote,
+  deviceDetailCarIntro,
   deviceDetailCarList,
   deviceDetailCarSection,
   deviceDetailCarStatus,
@@ -301,6 +302,7 @@ const matchHint = (car: CarOption, charger: SettingsUiDeviceDetailItem): string 
 const renderCarRows = (device: SettingsUiDeviceDetailItem, ticked: readonly string[]): void => {
   if (!deviceDetailCarList) return;
   deviceDetailCarList.replaceChildren();
+  if (deviceDetailCarIntro) deviceDetailCarIntro.hidden = false;
 
   if (carOptions === null || carOptionsUnavailable) {
     deviceDetailCarList.append(hint(carOptionsUnavailable
@@ -312,6 +314,9 @@ const renderCarRows = (device: SettingsUiDeviceDetailItem, ticked: readonly stri
   const orphans = orphanedCarIds(ticked, carOptions);
   const rows = [...carOptions, ...orphans];
   if (rows.length === 0) {
+    // With no car to select, the instruction above has nothing to act on: the
+    // empty-state line carries the card alone.
+    if (deviceDetailCarIntro) deviceDetailCarIntro.hidden = true;
     deviceDetailCarList.append(hint(
       'No cars found. A car app that reports charging state and battery level will show up here.',
     ));

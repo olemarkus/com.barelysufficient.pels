@@ -50,7 +50,7 @@ import {
  * (`../restore/devices.ts`) still has to know whether the hold is what keeps it
  * there. While the set reached only this function, that reader answered from the
  * raw policy, so a task's planned hour could never start a held device — "it
- * runs when a Smart task needs it to" was false for every device the hold had
+ * runs when a smart task needs it to" was false for every device the hold had
  * already taken off (release review, 2026-09-10).
  *
  * It is deliberately NARROWER than the precedence set the solar-surplus hold
