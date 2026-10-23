@@ -1128,12 +1128,7 @@ Design-of-record: `notes/web-app.md`.
       Done when none of the keys listed above is left in
       `GET /api/manager/apps/app/com.barelysufficient.pels/setting` on the production Homey, which
       leaves about 16 kB of configuration and live latches. Count writes by diffing successive reads of that endpoint, not with
-      the `settings_set.*` perf counter, which covers only `capacity_in_shortfall`. Also retire the two dev harnesses that still read keys that are
-      gone (the tracker key, `pels_status`, `app_heartbeat`, `target_devices_snapshot`, the price
-      payload keys and `combined_prices`):
-      `scripts/measure-settings-ui-homey.mjs` (`buildPowerPayload` and the device list) and the
-      fixture in `scripts/benchmark-settings-ui-boot.mjs`, by pointing them at the `ui_power` and
-      device API payloads.
+      the `settings_set.*` perf counter, which covers only `capacity_in_shortfall`.
 
 - [ ] **The tracker store has no schema version, and the objective profiles ride it as one JSON
       scalar.** `lib/power/trackerStore.ts` writes `objectiveProfiles` — every device's learned

@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import http from 'node:http';
-import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -10,18 +9,12 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 
 const require = createRequire(import.meta.url);
-const { SETTINGS_UI_BOOTSTRAP_KEYS } = require('./lib/settingsUiBootstrapKeys.cjs');
 const { readOptionValue } = require('./lib/settingsUiScriptUtils.cjs');
 
 const DEFAULT_APP_ID = 'com.barelysufficient.pels';
 const DEFAULT_ITERATIONS = 3;
 const DEFAULT_VIEWPORT = { width: 480, height: 900 };
 const ATHOM_CLI_SETTINGS_PATH = path.join(process.env.HOME || '', '.athom-cli', 'settings.json');
-const DEFAULT_OVERVIEW_REDESIGN_TOGGLE_HOMEY_ID_HASHES = new Set([
-  '3c9207efba429629030489371722f72f8e96bff1cf8c106c304bb1f055e22a8b',
-  '4e57091f5b42550e7bf53b206cf5ffa4b548b40aad7d3a1999e4ebf7677abd4b',
-]);
-
 const CONTENT_TYPES = new Map([
   ['.css', 'text/css; charset=utf-8'],
   ['.html', 'text/html; charset=utf-8'],
@@ -101,25 +94,6 @@ export const parseArgs = (argv) => {
 const deepClone = (value) => (
   value == null ? value : JSON.parse(JSON.stringify(value))
 );
-
-const getAllowedOverviewRedesignHomeyIdHashes = () => {
-  const hashes = new Set(DEFAULT_OVERVIEW_REDESIGN_TOGGLE_HOMEY_ID_HASHES);
-  const raw = String(process.env.PELS_OVERVIEW_REDESIGN_HOMEY_ID_HASHES ?? '');
-  raw.split(',').forEach((value) => {
-    const trimmed = value.trim();
-    if (trimmed) hashes.add(trimmed);
-  });
-  return hashes;
-};
-
-const hashHomeyId = (homeyId) => (
-  createHash('sha256').update(homeyId).digest('hex')
-);
-
-const getFeatureAccess = (homeyId) => ({
-  canToggleOverviewRedesign: typeof homeyId === 'string'
-    && getAllowedOverviewRedesignHomeyIdHashes().has(hashHomeyId(homeyId)),
-});
 
 const runBuild = (repoDir) => {
   const result = spawnSync('npm', ['run', 'build:settings'], {
@@ -239,10 +213,6 @@ const createHomeyContext = async ({ appId, homeyId }) => {
     }
   };
 
-  const getAllSettings = async () => (
-    recordAsync('getAppSettings', async () => homeyApi.apps.getAppSettings({ id: appId }))
-  );
-
   const getSetting = async (key) => (
     recordAsync(`getAppSetting:${key}`, async () => homeyApi.apps.getAppSetting({ id: appId, name: key }))
   );
@@ -274,75 +244,6 @@ const createHomeyContext = async ({ appId, homeyId }) => {
     });
   };
 
-  const getArraySetting = (allSettings, key) => (
-    Array.isArray(allSettings[key]) ? allSettings[key] : []
-  );
-
-  // Mirrors the producer's read-boundary classification
-  // (`classifyPowerStatusRead`, setup/settingsUiAppRuntime.ts): a raw blob on
-  // the wire would be classified `read_failed` by the client seam and the
-  // measurement would exercise the missing-power paths instead of the surface
-  // it is timing. Keep in sync with the producer.
-  const buildPowerPayload = (allSettings) => {
-    const tracker = allSettings.power_tracker_state;
-    const status = allSettings.pels_status;
-    const heartbeat = allSettings.app_heartbeat;
-    const lastPowerW = tracker && typeof tracker === 'object' ? tracker.lastPowerW : undefined;
-    const measured = typeof lastPowerW === 'number' && Number.isFinite(lastPowerW);
-    let statusRead = { state: 'unavailable', reason: 'no_measurement' };
-    if (measured) {
-      statusRead = status && typeof status === 'object' && !Array.isArray(status)
-        ? { state: 'live', status }
-        : { state: 'unavailable', reason: 'no_status_recorded' };
-    }
-    return {
-      heartbeat: typeof heartbeat === 'number' ? heartbeat : null,
-      status: statusRead,
-      tracker: tracker && typeof tracker === 'object' ? tracker : null,
-    };
-  };
-
-  const buildPricesPayload = (allSettings) => {
-    const priceArea = allSettings.price_area;
-    const homeyCurrency = allSettings.homey_prices_currency;
-    return {
-      combinedPrices: allSettings.combined_prices ?? null,
-      flowToday: allSettings.flow_prices_today ?? null,
-      flowTomorrow: allSettings.flow_prices_tomorrow ?? null,
-      homeyCurrency: typeof homeyCurrency === 'string' ? homeyCurrency : null,
-      homeyToday: allSettings.homey_prices_today ?? null,
-      homeyTomorrow: allSettings.homey_prices_tomorrow ?? null,
-      priceArea: typeof priceArea === 'string' ? priceArea : null,
-    };
-  };
-
-  const getDailyBudgetPayload = async () => {
-    try {
-      return await callInstalledAppApi('GET', '/daily_budget');
-    } catch {
-      return null;
-    }
-  };
-
-  const buildUiBootstrap = async () => {
-    const [allSettings, dailyBudget] = await Promise.all([
-      getAllSettings(),
-      getDailyBudgetPayload(),
-    ]);
-    const settings = Object.fromEntries(
-      SETTINGS_UI_BOOTSTRAP_KEYS.map((key) => [key, allSettings[key]]),
-    );
-    return {
-      dailyBudget,
-      featureAccess: getFeatureAccess(selectedHomeyId),
-      devices: getArraySetting(allSettings, 'target_devices_snapshot'),
-      plan: null,
-      power: buildPowerPayload(allSettings),
-      prices: buildPricesPayload(allSettings),
-      settings,
-    };
-  };
-
   return {
     destroy: async () => {
       await homeyApi.destroy();
@@ -351,27 +252,6 @@ const createHomeyContext = async ({ appId, homeyId }) => {
     getTimezone: () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     handleAppApi: async (method, uri, body) => {
       const normalizedMethod = String(method).toUpperCase();
-      if (normalizedMethod === 'GET' && uri === '/ui_bootstrap') {
-        try {
-          return await callInstalledAppApi('GET', '/ui_bootstrap');
-        } catch {
-          return buildUiBootstrap();
-        }
-      }
-      if (normalizedMethod === 'GET' && uri === '/ui_devices') {
-        return callInstalledAppApi('GET', '/ui_devices');
-      }
-      if (normalizedMethod === 'GET' && uri === '/ui_plan') {
-        return callInstalledAppApi('GET', '/ui_plan');
-      }
-      if (normalizedMethod === 'GET' && uri === '/ui_power') {
-        const allSettings = await getAllSettings();
-        return buildPowerPayload(allSettings);
-      }
-      if (normalizedMethod === 'GET' && uri === '/ui_prices') {
-        const allSettings = await getAllSettings();
-        return buildPricesPayload(allSettings);
-      }
       if (normalizedMethod === 'POST' && uri === '/settings_ui_log') {
         return { ok: true };
       }

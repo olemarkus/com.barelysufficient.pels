@@ -1,7 +1,6 @@
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { TextDecoder, TextEncoder } from 'node:util';
-import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../../lib/utils/settingsUiBootstrapKeys';
 
 const globalWithEncoding = globalThis as typeof globalThis & {
   TextDecoder?: typeof TextDecoder;
@@ -18,10 +17,6 @@ const {
   readOptionValue: (argv: string[], index: number, option: string, valueHint?: string) => string;
   stripScriptElements: (html: string) => string;
 };
-const { SETTINGS_UI_BOOTSTRAP_KEYS: SCRIPT_BOOTSTRAP_KEYS } = require('../../scripts/lib/settingsUiBootstrapKeys.cjs') as {
-  SETTINGS_UI_BOOTSTRAP_KEYS: string[];
-};
-
 describe('settings UI measurement scripts', () => {
   it('removes script tags from benchmark HTML fixtures', async () => {
     const sanitized = stripScriptElements(`
@@ -68,9 +63,5 @@ describe('settings UI measurement scripts', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout.trim()).toBe('function');
-  });
-
-  it('keeps the script bootstrap keys aligned with the contract list', async () => {
-    expect(SCRIPT_BOOTSTRAP_KEYS).toEqual([...SETTINGS_UI_BOOTSTRAP_KEYS]);
   });
 });
