@@ -1786,6 +1786,12 @@ that reuses a label the app also shows UNSCOPED elsewhere carries the home too
 never reads as the Overview's whole-home `Power now`). Everything else on a
 scoped page leaves the naming to the sticky bar.
 
+The **Power source** select reads `Not set` until a source has been chosen
+(its options are `Flow card` and `Power meter`). An unset source runs as Flow,
+but preselecting `Flow card` made the choice look made and could not be
+confirmed, since picking the option already shown is no change. The placeholder
+is disabled, so it is never picked or saved (`POWER_SOURCE_NOT_SET_VALUE`).
+
 Settings that are **not** home-scoped must not sit under the bar's claim. On
 Limits & safety, `Power source` and `Whole-home meter` are app-global, so they
 live in their own card that steps aside in area scope, replaced by

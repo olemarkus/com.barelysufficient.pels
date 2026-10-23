@@ -668,7 +668,11 @@
         <div class="field">
           <span class="field__label pels-text-settings-label" id="settings-power-source-label">Power source</span>
           <md-filled-select id="settings-power-source" name="settings_power_source" aria-labelledby="settings-power-source-label">
-            <md-select-option value="flow" selected><div slot="headline">Flow card</div></md-select-option>
+            <!-- Value must match POWER_SOURCE_NOT_SET_VALUE in powerSourceSave.ts. Shown until a
+                 persisted source paints over it; disabled, so it can never be picked or posted,
+                 and choosing Flow card from it is a real change that saves. -->
+            <md-select-option value="__pels_power_source_unset__" selected disabled><div slot="headline">Not set</div></md-select-option>
+            <md-select-option value="flow"><div slot="headline">Flow card</div></md-select-option>
             <md-select-option value="homey_energy"><div slot="headline">Power meter</div></md-select-option>
           </md-filled-select>
           <small class="field__hint">Where whole-home power readings come from.</small>

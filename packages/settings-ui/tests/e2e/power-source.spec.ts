@@ -16,13 +16,25 @@ const setMaterialSelectValue = async (page: Page, selector: string, value: strin
 };
 
 test.describe('Power source setting', () => {
-  test('defaults to "Flow card" when no setting is stored', async ({ page }) => {
+  test('reads "Not set" when no setting is stored, and choosing Flow card saves it', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await openLimitsAndSafety(page);
 
     const select = page.locator('#settings-power-source');
     await expect(select).toBeVisible();
-    await expect(select).toHaveJSProperty('value', 'flow');
+    await expect(select).toHaveJSProperty('value', '__pels_power_source_unset__');
+    await expect(select).toHaveJSProperty('displayText', 'Not set');
+
+    // Flow card is a real change from the placeholder, so the choice persists.
+    await setMaterialSelectValue(page, '#settings-power-source', 'flow');
+    await expect(page.locator('#toast')).toContainText('Power source saved');
+    const stored = await page.evaluate(() => new Promise<unknown>((resolve, reject) => {
+      (window as unknown as StubWindow).Homey.get(
+        'power_source',
+        (error: Error | null, value?: unknown) => (error ? reject(error) : resolve(value)),
+      );
+    }));
+    expect(stored).toBe('flow');
   });
 
   test('loads persisted "homey_energy" value on startup', async ({ page }) => {
@@ -42,7 +54,7 @@ test.describe('Power source setting', () => {
     await openLimitsAndSafety(page);
 
     const select = page.locator('#settings-power-source');
-    await expect(select).toHaveJSProperty('value', 'flow');
+    await expect(select).toHaveJSProperty('value', '__pels_power_source_unset__');
 
     // Step 1: the switch is a DRAFT — nothing persists, the picker is
     // revealed, and the prompt names what finishes the switch.

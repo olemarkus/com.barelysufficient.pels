@@ -693,19 +693,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       native primitive (the design-system-unification direction) so both scopes read as one control. Source:
       pels-m3-critic review of the U3 per-home Limits surface, 2026-07-20. [P2]
 
-- [ ] **Power source select shows "Flow card" while unset and never explains the Flow.** On the
-      Limits & safety page the unset select is indistinguishable from a made choice, and no copy on
-      the journey says a Flow with the report-power action card must exist. Worse: the preselected
-      "Flow card" cannot be *confirmed* — picking the already-displayed option fires no change
-      event, so `power_source` stays unset and the banner keeps asking (Codex P2 on PR #1856). Add
-      a "Not set" placeholder while `power_source` is unset (md-select `displayText` sentinel
-      idiom) — which also makes choosing Flow a real value change that persists — and a one-line
-      per-source hint under the select. Done when a fresh install's Power source reads "Not set"
-      and choosing Flow persists `power_source`. Persona: brand-new owner on first open, arriving
-      from the setup path's Power meter row; hypothesis: naming the unset state and the Flow
-      requirement closes the last gap between the link and a working setup. Source: pels-ux-fit +
-      Codex review (2026-07-19). [P2]
-
 - [ ] **Settings-UI structural consolidation train (deferred by the 2026-07 coherence review).**
       A designed, not-yet-executed train that unwinds the two-rendering-paradigms mess within the
       approved map `notes/settings-ui-semantic-map.md`. Order: shared Preact primitives in
