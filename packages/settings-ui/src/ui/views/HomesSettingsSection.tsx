@@ -33,7 +33,7 @@ import {
   HOMES_ZONE_LABEL,
   HOMES_ZONE_PLACEHOLDER,
   HOMES_ZONES_UNAVAILABLE,
-} from '../../../../shared-domain/src/homesManagementCopy.ts';
+} from '../homesManagementCopy.ts';
 import { resolveHomeAreaDisplayName } from '../../../../shared-domain/src/homeNames.ts';
 import { MdFilledButton, MdTextButton } from './materialWebJSX.tsx';
 

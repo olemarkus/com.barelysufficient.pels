@@ -3,7 +3,7 @@ import { resolveHomeScopedRead } from '../../contracts/src/homeScopedRead.ts';
 import {
   HOME_SCOPE_USAGE_UNAVAILABLE_BODY,
   HOME_SCOPE_USAGE_UNAVAILABLE_HEADLINE,
-} from '../../shared-domain/src/homeScopeCopy.ts';
+} from '../src/ui/homeScopeCopy.ts';
 import type { HomeyCallback, HomeySettingsClient } from '../src/ui/homey.ts';
 
 /* -------------------------------------------------------------------------- *

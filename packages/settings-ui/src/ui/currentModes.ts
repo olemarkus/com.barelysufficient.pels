@@ -7,7 +7,7 @@ import {
   homeScopedSettingsKey,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { DEFAULT_MODE_NAME } from '../../../shared-domain/src/modeLabels.ts';
-import { MAIN_HOME_NAME } from '../../../shared-domain/src/homeScopeCopy.ts';
+import { MAIN_HOME_NAME } from './homeScopeCopy.ts';
 import { getSetting, setSetting } from './homey.ts';
 import { getHomeScope, readHomeMembership, subscribeToHomeScope } from './homeScope.ts';
 import { logSettingsError } from './logging.ts';

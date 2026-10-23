@@ -1,6 +1,6 @@
 import { render } from 'preact';
 import type { SettingsUiDeviceLogEntry } from '../../../../contracts/src/settingsUiApi.ts';
-import { HOME_SCOPE_ACTIVITY_NOT_RECORDED } from '../../../../shared-domain/src/homeScopeCopy.ts';
+import { HOME_SCOPE_ACTIVITY_NOT_RECORDED } from '../homeScopeCopy.ts';
 import { chipModifierForTone } from './chipModifier.ts';
 import {
   collapseRepeatedLogEntries,

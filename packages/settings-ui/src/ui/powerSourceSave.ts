@@ -14,7 +14,7 @@ import {
   composePowerSourceSaveRefusalLine,
   HOMES_POWER_SOURCE_SAVE_FAILED,
   POWER_SOURCE_PICK_METER_PROMPT,
-} from '../../../shared-domain/src/homeAreaConfigRulesCopy.ts';
+} from './homeAreaConfigRulesCopy.ts';
 import {
   normalizePowerSource,
   refreshStaleDataBanner,

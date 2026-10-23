@@ -8,7 +8,7 @@
  * and the save toast never say the same thing two ways.
  */
 
-import type { SettingsUiHomesSaveRefusal } from '../../contracts/src/settingsUiHomes';
+import type { SettingsUiHomesSaveRefusal } from '../../../contracts/src/settingsUiHomes';
 import {
   composeDraftErrorLine,
   HOMES_CONFIG_DEGRADED,

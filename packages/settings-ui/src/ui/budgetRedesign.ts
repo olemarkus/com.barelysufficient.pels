@@ -43,7 +43,7 @@ import {
 } from './budgetRedesignResolvers.ts';
 import { resolveExportPriceNowLine } from './budgetExportPriceLine.ts';
 import type { CombinedPriceRow } from './combinedPrices.ts';
-import { HOME_SCOPE_BUDGET_MAIN_ONLY_LINE } from '../../../shared-domain/src/homeScopeCopy.ts';
+import { HOME_SCOPE_BUDGET_MAIN_ONLY_LINE } from './homeScopeCopy.ts';
 import { areMeterAreasInUse, subscribeToHomeScope } from './homeScope.ts';
 
 export type { BudgetDayView } from './budgetRedesignResolvers.ts';

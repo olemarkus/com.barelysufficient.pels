@@ -4,7 +4,7 @@ import { PlanHero, type HeroContext } from './PlanHero.tsx';
 import {
   HOME_SCOPE_OVERVIEW_UNAVAILABLE_BODY,
   HOME_SCOPE_OVERVIEW_UNAVAILABLE_HEADLINE,
-} from '../../../../shared-domain/src/homeScopeCopy.ts';
+} from '../homeScopeCopy.ts';
 import {
   formatOverviewSmartTaskRowLine,
   type OverviewSmartTaskRow,
@@ -136,8 +136,7 @@ const PlanUndecidedCard = ({ row }: { row: Extract<OverviewDeviceRow, { kind: 'u
 
 // Honest per-home state (multi-home), the Usage tab's `#usage-scope-unavailable`
 // contract on the Preact surface: one notice card INSTEAD of the data sections.
-// Copy comes from shared-domain (`homeScopeCopy.ts`) so the words can never
-// drift from the Usage notice's or a future runtime log line's.
+// Copy comes from `homeScopeCopy.ts`, shared with the Usage notice.
 const ScopeUnavailableNotice = () => (
   <section
     class="pels-surface-card plan-scope-unavailable"

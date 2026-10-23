@@ -378,7 +378,7 @@ home owns a separate catalog.
 Everything else states its scope honestly once meter areas are IN USE (active
 roster + `runtimeActive`; a held pre-GA config renders none of these because
 its devices still belong to Main). Copy in
-`packages/shared-domain/src/homeScopeCopy.ts`:
+`packages/settings-ui/src/ui/homeScopeCopy.ts`:
 
 - **Budget tab** carries a Main-home scope line (the budget is Main's, above).
 - **Smart tasks list** carries a Main-only notice (R8 refuses area devices).

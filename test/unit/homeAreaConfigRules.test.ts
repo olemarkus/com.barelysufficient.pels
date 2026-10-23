@@ -17,7 +17,7 @@ import {
   HOMES_AREA_NEEDS_MAIN_METER,
   HOMES_POWER_SOURCE_NEEDED_BY_AREAS,
   HOMES_POWER_SOURCE_SAVE_FAILED,
-} from '../../packages/shared-domain/src/homeAreaConfigRulesCopy';
+} from '../../packages/settings-ui/src/ui/homeAreaConfigRulesCopy';
 import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames';
 
 describe('normalizeHomeAreaName', () => {
@@ -117,15 +117,7 @@ describe('findHomeAreaNameRejection', () => {
     // label to prove the reserved comparison folds through NFC exactly like
     // the duplicate check: a-ring precomposed (\u00e5) vs A + combining ring.
     vi.resetModules();
-    // Partial mocks of BOTH candidate sources: the reserved list reads the
-    // canonical Main-home label, whose home module moved during the train
-    // (homeLimitsCopy's switcher alias retired; the name itself now lives in
-    // the dependency-neutral homeNames leaf). Spreading the originals keeps
-    // every other export intact either way.
-    vi.doMock('../../packages/shared-domain/src/homeLimitsCopy', async (importOriginal) => ({
-      ...(await importOriginal<Record<string, unknown>>()),
-      HOME_LIMITS_MAIN_HOME_OPTION: 'Hovedm\u00e5ler',
-    }));
+    // The reserved list reads the canonical name from the dependency-neutral leaf.
     vi.doMock('../../packages/shared-domain/src/homeNames', async (importOriginal) => ({
       ...(await importOriginal<Record<string, unknown>>()),
       HOMES_MAIN_HOME_NAME: 'Hovedm\u00e5ler',
@@ -135,7 +127,6 @@ describe('findHomeAreaNameRejection', () => {
       expect(rules.findHomeAreaNameRejection({ name: ' HOVEDMA\u030aLER ', otherNames: [] }))
         .toEqual({ reason: 'name_reserved', reservedName: 'Hovedm\u00e5ler' });
     } finally {
-      vi.doUnmock('../../packages/shared-domain/src/homeLimitsCopy');
       vi.doUnmock('../../packages/shared-domain/src/homeNames');
       vi.resetModules();
     }

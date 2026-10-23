@@ -1,5 +1,5 @@
 import { render } from 'preact';
-import { HOME_SCOPE_BAR_LABEL } from '../../../../shared-domain/src/homeScopeCopy.ts';
+import { HOME_SCOPE_BAR_LABEL } from '../homeScopeCopy.ts';
 import { MdFilledTonalButton, MdMenu, MdMenuItem } from './materialWebJSX.tsx';
 
 // The shell's global home scope bar (multi-home): one 48 px row that names which

@@ -3,7 +3,7 @@ import { HOMEY_ENERGY_METERS_PATH } from '../../contracts/src/settingsUiApi.ts';
 import {
   WHOLE_HOME_METER_HINT,
   WHOLE_HOME_METER_NONE_FOUND_HINT,
-} from '../../shared-domain/src/homeAreaConfigRulesCopy.ts';
+} from '../src/ui/homeAreaConfigRulesCopy.ts';
 
 /* -------------------------------------------------------------------------- *
  * The whole-home meter picker refetches its list on every sync: an empty

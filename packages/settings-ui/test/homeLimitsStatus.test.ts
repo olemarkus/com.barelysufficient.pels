@@ -13,8 +13,8 @@ import {
   HOME_LIMITS_STATUS_SIMULATING_IDLE,
   resolveHomeLimitsPostureChip,
   resolveHomeLimitsStatus,
-} from '../../shared-domain/src/homeLimitsStatus.ts';
-import { composeHomeLimitsSimulationNotice } from '../../shared-domain/src/homeLimitsCopy.ts';
+} from '../src/ui/homeLimitsStatus.ts';
+import { composeHomeLimitsSimulationNotice } from '../src/ui/homeLimitsCopy.ts';
 
 /* -------------------------------------------------------------------------- *
  * Per-home Limits status boundary resolver + copy (multi-home U3). Pins the

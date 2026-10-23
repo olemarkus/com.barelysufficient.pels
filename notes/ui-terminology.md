@@ -1740,9 +1740,9 @@ section above):
 
 The Settings → Multiple meters surface manages parts of the home with their
 own electricity meter. Canonical labels (source:
-`packages/shared-domain/src/homesManagementCopy.ts`, plus
+`packages/settings-ui/src/ui/homesManagementCopy.ts`, plus
 `homeAreaConfigRulesCopy.ts` for the save-refusal lines and the home names
-themselves in the `homeNames.ts` leaf beside them; the nav-card/panel
+themselves in the shared `packages/shared-domain/src/homeNames.ts` leaf; the nav-card/panel
 chrome lives in the static settings markup):
 
 | Concept | Label |
@@ -1758,7 +1758,7 @@ chrome lives in the static settings markup):
 Once a meter area exists, the shell renders one 48 px row naming which part of
 the home the page is about: `Showing` followed by the selected home's name
 (`Showing Main home`, `Showing Rental unit`). Source: `HOME_SCOPE_BAR_LABEL` in
-`packages/shared-domain/src/homeScopeCopy.ts`; the complement's name is the
+`packages/settings-ui/src/ui/homeScopeCopy.ts`; the complement's name is the
 single `MAIN_HOME_NAME` export in the same module, which every surface naming
 the Main home reads.
 
@@ -1875,7 +1875,7 @@ matters" sentence lives in the tooltip
 (`This device belongs to “Rental unit” and counts against that meter.`), which
 doubles as the full-name reveal when a long area name is truncated. Source:
 `composeHomeBadgeLabel` / `composeHomeBadgeTooltip` in
-`packages/shared-domain/src/homesManagementCopy.ts`.
+`packages/settings-ui/src/ui/homesManagementCopy.ts`.
 
 Modes is filtered instead: the shell's **Showing** picker chooses one home, and
 the list contains only managed devices assigned to it. Do not repeat a home

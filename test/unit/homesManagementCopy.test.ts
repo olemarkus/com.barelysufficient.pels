@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   composeDeleteConfirmBody,
   composeDraftErrorLine,
-} from '../../packages/shared-domain/src/homesManagementCopy';
+} from '../../packages/settings-ui/src/ui/homesManagementCopy';
 import {
   HOMES_MAIN_HOME_NAME,
   HOMES_UNNAMED_AREA_NAME,
@@ -15,7 +15,7 @@ import {
 import {
   composeHomeLimitsInactiveNotice,
   composeHomeLimitsSimulationNotice,
-} from '../../packages/shared-domain/src/homeLimitsCopy';
+} from '../../packages/settings-ui/src/ui/homeLimitsCopy';
 
 describe('resolveHomeAreaDisplayName', () => {
   it('uses the saved area name', () => {

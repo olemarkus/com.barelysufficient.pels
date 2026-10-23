@@ -5,7 +5,7 @@ import {
   MAIN_HOME_ID,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { SETTINGS_UI_HOMES_PATH } from '../../../contracts/src/settingsUiHomes.ts';
-import { MAIN_HOME_NAME } from '../../../shared-domain/src/homeScopeCopy.ts';
+import { MAIN_HOME_NAME } from './homeScopeCopy.ts';
 import { resolveHomeAreaDisplayName } from '../../../shared-domain/src/homeNames.ts';
 import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';

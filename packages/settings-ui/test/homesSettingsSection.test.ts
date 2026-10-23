@@ -18,13 +18,13 @@ import {
   HOMES_METER_MISSING_OPTION,
   HOMES_NO_METER_DEVICES,
   HOMES_ZONES_UNAVAILABLE,
-} from '../../shared-domain/src/homesManagementCopy';
+} from '../src/ui/homesManagementCopy';
 
 /* -------------------------------------------------------------------------- *
  * Multiple meters section render tests: the progressive-disclosure branches
  * (empty explainer vs management list), the inline delete-confirm step, and
  * the create/edit form's pickers + validation lines. Copy assertions pin the
- * rendered text to the shared-domain homesManagementCopy helpers.
+ * rendered text to the shared homesManagementCopy helpers.
  * -------------------------------------------------------------------------- */
 
 const noop = (): void => {};

@@ -987,17 +987,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       requirement closes the last gap between the link and a working setup. Source: pels-ux-fit +
       Codex review (2026-07-19). [P2]
 
-- [ ] **`homeLimitsCopy.ts` sits in shared-domain with no Node consumer.**
-      `packages/shared-domain/src/homeLimitsCopy.ts` is imported only by the settings UI, by other
-      shared-domain copy modules (`homesManagementCopy.ts`, `homeScopeCopy.ts`, `homeNames.ts`) and
-      by tests; nothing under `lib/`, `setup/`, `flowCards/` or `drivers/` reads it. Shared-domain
-      requires a real browser AND Node use, so this is placement debt. Trace the same question
-      through that cluster first (one of them may have a runtime importer that keeps it), then
-      move whatever is browser-only to `packages/settings-ui/src/ui/` as a move-only,
-      byte-identical change with import depths bumped, and run `knip`. Done when no module left
-      in shared-domain from that cluster lacks a Node importer. Source: Codex review on the
-      no-capacity-tariff copy PR (2026-09-20). [P2]
-
 - [ ] **Settings-UI structural consolidation train (deferred by the 2026-07 coherence review).**
       A designed, not-yet-executed train that unwinds the two-rendering-paradigms mess within the
       approved map `notes/settings-ui-semantic-map.md`. Order: shared Preact primitives in

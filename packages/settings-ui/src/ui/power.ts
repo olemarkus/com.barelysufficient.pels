@@ -36,7 +36,7 @@ import type { SettingsUiPowerTracker } from '../../../contracts/src/powerTracker
 import {
   HOME_SCOPE_USAGE_UNAVAILABLE_BODY,
   HOME_SCOPE_USAGE_UNAVAILABLE_HEADLINE,
-} from '../../../shared-domain/src/homeScopeCopy.ts';
+} from './homeScopeCopy.ts';
 import {
   formatPowerUsageEmptyAwaitingSamples,
   formatPowerUsageEmptyForMeterArea,

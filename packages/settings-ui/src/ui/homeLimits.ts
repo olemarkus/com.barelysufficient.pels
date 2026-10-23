@@ -20,13 +20,13 @@ import {
   HOME_LIMITS_MAIN_HARD_CAP_HINT_WITH_AREAS,
   HOME_LIMITS_SAVE_FAILED_TOAST,
   HOME_LIMITS_SAVED_TOAST,
-} from '../../../shared-domain/src/homeLimitsCopy.ts';
+} from './homeLimitsCopy.ts';
 import {
   DEFAULT_CAPACITY_PERIOD_MINUTES,
   resolveCapacityPeriodMinutes,
 } from '../../../shared-domain/src/settings/capacityPeriod.ts';
 import type { CapacityPeriodMinutes } from '../../../contracts/src/capacitySettings.ts';
-import { resolveHomeLimitsStatus } from '../../../shared-domain/src/homeLimitsStatus.ts';
+import { resolveHomeLimitsStatus } from './homeLimitsStatus.ts';
 import { getHomeScope, refreshHomeScope, subscribeToHomeScope } from './homeScope.ts';
 import {
   getApiReadModel, getSettingFresh, homeScopedApiUri, invalidateApiCache, setSetting,

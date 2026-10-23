@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { renderBudgetOverview, type BudgetOverviewProps } from '../src/ui/views/BudgetOverview.tsx';
-import { HOME_SCOPE_BUDGET_MAIN_ONLY_LINE } from '../../shared-domain/src/homeScopeCopy.ts';
+import { HOME_SCOPE_BUDGET_MAIN_ONLY_LINE } from '../src/ui/homeScopeCopy.ts';
 import { budgetOverviewProps } from './helpers/budgetOverviewProps.ts';
 
 /* -------------------------------------------------------------------------- *
