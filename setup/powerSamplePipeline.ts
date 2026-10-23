@@ -11,6 +11,7 @@ import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
 import { resolveObjectiveSampleDevices } from '../lib/objectives/samples';
 import { buildPublishedPlanCapacityStateSummary } from '../lib/plan/planLogging';
+import { resolvePublishedBudgetExemptDeviceIds } from '../lib/plan/publishedPlan';
 import { resolvePlanRebuildPosture } from '../lib/plan/planRebuildPosture';
 import { addPerfDuration, incPerfCounter } from '../lib/utils/perfCounters';
 import type { PreparedReconcileFence } from '../lib/power/preparedReconcileFence';
@@ -300,7 +301,8 @@ export class PowerSamplePipeline {
       const planEngine = this.deps.getPlanEngine();
       const planService = this.deps.getPlanService();
       const planState = planEngine.state;
-      const latestPlanSummary = buildPublishedPlanCapacityStateSummary(planService.getLatestPublishedPlan());
+      const latestPublishedPlan = planService.getLatestPublishedPlan();
+      const latestPlanSummary = buildPublishedPlanCapacityStateSummary(latestPublishedPlan);
       // What the last plan says about whether rebuilding can change anything,
       // resolved by the planner (`resolvePlanRebuildPosture`); the throttle gates
       // on it so an unwinnable state rides the max-interval cadence instead of
@@ -315,6 +317,7 @@ export class PowerSamplePipeline {
         capacitySettings,
         timeZone: this.deps.getTimeZone(),
         getDeviceSurfaces: () => this.deps.getDeviceSurfaces(),
+        planBudgetExemptDeviceIds: resolvePublishedBudgetExemptDeviceIds(latestPublishedPlan, nowMs),
         powerTracker,
         updateObjectiveProfiles: this.updateObjectiveProfiles,
         schedulePlanRebuild: async () => {

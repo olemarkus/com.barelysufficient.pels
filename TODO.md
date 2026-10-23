@@ -490,18 +490,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Daily budget and weather
 
-- [ ] **A smart task's "May go over daily budget" lifts the pace but its energy still counts as
-      used.** The exempt kWh integral (`exemptBuckets`, accrued in `lib/power/sampleIngest.ts`) reads
-      the raw snapshot's `budgetExempt`, which carries only the owner's static
-      `budget_exempt_devices` setting. A smart task's exemption is set on the plan device only
-      (`lib/objectives/deferredObjectives/admission.ts`), so the control threshold in
-      `lib/plan/planBuilder.ts` treats the task's device as exempt while its kWh lands in the
-      counted bucket: `budgetPaceKw` falls while the task runs and the rest of the day is squeezed.
-      Change: publish the plan cycle's resolved exempt device ids to a power-owned reader that
-      `sampleIngest` consults beside the static flag (setup may not hold that state). Done when an
-      integration spec shows a device exempted only by a smart task booking its measured draw into
-      `exemptBuckets`. Source: pels-runtime-reality on the exempt-bucket fix, 2026-09-24. [P2]
-
 - [ ] **A budget-axis restore rejection is attributed as capacity pressure when
       `softLimitSource` is 'capacity'.** With an off exempt device projecting, the binding source
       can read 'capacity' (`budgetPaceKw + projectedExempt > capacityPace`) while the per-axis

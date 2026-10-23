@@ -140,6 +140,7 @@ describe('recordPowerSampleForApp', () => {
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getDeviceSurfaces,
+      planBudgetExemptDeviceIds: new Set(),
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
 
@@ -156,6 +157,7 @@ describe('recordPowerSampleForApp', () => {
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getDeviceSurfaces,
+      planBudgetExemptDeviceIds: new Set(),
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
 
@@ -167,6 +169,46 @@ describe('recordPowerSampleForApp', () => {
 
     const bucketKey = new Date(start).toISOString();
     expect(tracker.exemptBuckets?.[bucketKey]).toBeCloseTo(0.2, 3);
+  });
+
+  it('books a device the plan exempts (a smart task) as exempt, though its own flag is off', async () => {
+    // A smart task's "may go over daily budget" exempts its device on the plan
+    // only; the threshold already treats it so, and the energy must match or the
+    // task's kWh is counted as used and squeezes the rest of the day.
+    let tracker: PowerTrackerState = {};
+    const start = Date.UTC(2025, 0, 1, 0, 0, 0);
+    const getDeviceSurfaces = () => deviceSurfacesFixtures([
+      {
+        available: true,
+        id: 'dev-task',
+        expectedPowerKw: 2,
+        expectedPowerSource: 'default' as const,
+        name: 'Water heater on a smart task',
+        targets: [],
+        measuredPowerKw: 2,
+        budgetExempt: false,
+      },
+    ]);
+    const sample = (nowMs: number) => recordPowerSampleForApp({
+      generationSegments: [],
+      currentPowerW: 2000,
+      nowMs,
+      timeZone: 'UTC',
+      capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
+      getDeviceSurfaces,
+      planBudgetExemptDeviceIds: new Set(['dev-task']),
+      powerTracker: tracker,
+      updateObjectiveProfiles: ({ state }) => state,
+      schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
+      saveState: (nextState) => {
+        tracker = nextState;
+      },
+    });
+
+    await sample(start);
+    await sample(start + 30 * 60 * 1000);
+
+    expect(tracker.exemptBuckets?.[new Date(start).toISOString()]).toBeCloseTo(1, 3);
   });
 
   it('books nothing for an OFF exempt device, however large its configured power', async () => {
@@ -208,6 +250,7 @@ describe('recordPowerSampleForApp', () => {
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getDeviceSurfaces,
+      planBudgetExemptDeviceIds: new Set(),
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
 
@@ -224,6 +267,7 @@ describe('recordPowerSampleForApp', () => {
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getDeviceSurfaces,
+      planBudgetExemptDeviceIds: new Set(),
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
 
@@ -262,6 +306,7 @@ describe('recordPowerSampleForApp', () => {
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getDeviceSurfaces,
+      planBudgetExemptDeviceIds: new Set(),
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
 
@@ -278,6 +323,7 @@ describe('recordPowerSampleForApp', () => {
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getDeviceSurfaces,
+      planBudgetExemptDeviceIds: new Set(),
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
 
@@ -350,6 +396,7 @@ describe('recordPowerSampleForApp', () => {
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getDeviceSurfaces,
+      planBudgetExemptDeviceIds: new Set(),
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -366,6 +413,7 @@ describe('recordPowerSampleForApp', () => {
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getDeviceSurfaces,
+      planBudgetExemptDeviceIds: new Set(),
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -405,6 +453,7 @@ describe('recordPowerSampleForApp', () => {
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getDeviceSurfaces,
+      planBudgetExemptDeviceIds: new Set(),
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -421,6 +470,7 @@ describe('recordPowerSampleForApp', () => {
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getDeviceSurfaces,
+      planBudgetExemptDeviceIds: new Set(),
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -444,6 +494,7 @@ describe('recordPowerSampleForApp', () => {
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getDeviceSurfaces: () => [],
+      planBudgetExemptDeviceIds: new Set(),
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -505,6 +556,7 @@ describe('recordPowerSampleForApp', () => {
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getDeviceSurfaces,
+      planBudgetExemptDeviceIds: new Set(),
       powerTracker: tracker,
       updateObjectiveProfiles: updateProfiles,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -522,6 +574,7 @@ describe('recordPowerSampleForApp', () => {
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getDeviceSurfaces,
+      planBudgetExemptDeviceIds: new Set(),
       powerTracker: tracker,
       updateObjectiveProfiles: updateProfiles,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
@@ -578,6 +631,7 @@ describe('recordPowerSampleForApp', () => {
         timeZone: 'UTC',
         capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
         getDeviceSurfaces: params.getDeviceSurfaces as never,
+        planBudgetExemptDeviceIds: new Set(),
         powerTracker: {},
         updateObjectiveProfiles: ({ state }) => state,
         schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
