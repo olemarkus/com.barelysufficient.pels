@@ -1,8 +1,5 @@
 import type { EvBoostSettings } from '../../../contracts/src/types';
-
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
+import { isFiniteNumber } from '../numberGuards';
 
 export const normalizeEvBoostSettings = (value: unknown): EvBoostSettings => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};

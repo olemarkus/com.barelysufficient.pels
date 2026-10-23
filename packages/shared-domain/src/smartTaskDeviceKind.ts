@@ -14,6 +14,7 @@ import { deadlineLabels } from './deadlineLabels.js';
 import { isEvObserved } from './evObservedState.js';
 import { isEvPlugStateConnected } from './evPlugState.js';
 import { hasLiveMeasuredPower } from './measuredPowerObservedState.js';
+import { isFiniteNumber } from './numberGuards.js';
 import { isSteppedLoadSnapshot } from './steppedLoadObservedState.js';
 import { MAX_TARGET_ENERGY_KWH, MIN_TARGET_ENERGY_KWH } from './settings/deferredObjectiveSettings.js';
 
@@ -126,10 +127,6 @@ const ENERGY_TARGET_STEP_KWH = 0.1;
 const TEMPERATURE_FALLBACK_MIN = 5;
 const TEMPERATURE_FALLBACK_MAX = 95;
 const TEMPERATURE_FALLBACK_STEP = 0.5;
-
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
 
 export const resolveSmartTaskGoalBounds = (
   device: SmartTaskDeviceLike,
