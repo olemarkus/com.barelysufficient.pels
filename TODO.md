@@ -922,29 +922,27 @@ Design-of-record: `notes/web-app.md`.
       `emitRestoreDebugEventOnChange` and `emitSwapDebug` resolved their own emitters, every
       forward above them was dead and came out, `RestoreDeps.debugStructured` included — ten
       declarations for two terminal readers.
-      `lib/plan/shedding/**`, `lib/device/**`, `lib/objectives/**` and the `lib/plan` builder
-      with `planTargetControl.ts` are done too.
-      Fix, one cluster per PR, leaf-first — `lib/dailyBudget`, and last
+      `lib/plan/shedding/**`, `lib/device/**`, `lib/objectives/**`, `lib/dailyBudget` and the
+      `lib/plan` builder with `planTargetControl.ts` are done too. The daily-budget manager keeps
+      its emitter and gate as required injected deps, because the Budget Adjust candidate it also
+      runs must stay silent.
+      Fix, one cluster per PR, leaf-first — last
       `setup/**` + `flowCards/**` with the `Loggers` type: replace the parameter with a module-scope
       `getDebugEmitter(...)`, delete the field from that file's parameter types and from every
       intermediate that only forwarded it, and delete the fallbacks of the form
       `debugStructured ?? (p) => moduleLogger.debug(p)` — those emit nothing in production, because
-      the pino root runs at `info`, and they are what make the optional parameter look free. One
-      remains behind a named `debugFallbackEmit` const (`dailyBudgetManager.ts`) and two more use a local
-      `logger` rather than `moduleLogger`, so grep the `??` rather than the literal. In specs, the
-      second argument of `captureLogger(level, topics)` (`test/utils/loggerCapture.ts`) replaces the
-      `debugStructured` spy.
-      Diagnostics and idle classification now resolve their emitters at the leaves. Daily-budget
-      previews deliberately inject silent logging; preserve that preview behavior when migrating
-      `DailyBudgetService` and its managers.
+      the pino root runs at `info`, and they are what make the optional parameter look free. Some
+      use a local `logger` rather than `moduleLogger`, so grep the `??` rather than the literal. In specs, the
+      `captureDebugTopic(topic)` (`test/utils/loggerCapture.ts`) replaces the `debugStructured` spy.
+      Diagnostics and idle classification now resolve their emitters at the leaves.
       Two invariants every cluster must hold. **`component` and `topic` stay separate arguments**:
       `devices` events are emitted under `devices`, `reconcile`, and `snapshot`, and Flow-card
       settings events are `component: 'flow'` on topic `settings`. And **a gate must name the same
       topic as the sink it guards**, through `isDebugTopicEnabled(topic)`.
-      The threaded predicates that shadow the topic set go with the parameter:
-      `isDebugTopicEnabled`
-      (`setup/appInit/createDailyBudgetService.ts`, plus the two closures in `app.ts` feeding
-      `SchedulerTelemetryObserver` and `createBackgroundTasks`). Each is a second spelling of
+      The threaded predicates that shadow the topic set go with the parameter: the closures in
+      `app.ts` and `setup/homeRuntime/createHomeCapacityBundle.ts` feeding
+      `SchedulerTelemetryObserver`, and the one in `setup/backgroundTasksController.ts` feeding
+      `perfLogging`. Each is a second spelling of
       `isDebugTopicEnabled`, which reads the one published set.
       Done when `grep -rn 'debugStructured?:' app.ts lib setup flowCards drivers` returns nothing,
       those predicates are gone with it, and the distinct `(component, debugTopic)` pairs in a

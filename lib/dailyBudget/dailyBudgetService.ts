@@ -39,23 +39,22 @@ import { incPerfCounter } from '../utils/perfCounters';
 import { recordOpDuration, safeRss } from '../utils/opRssTracker';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { normalizeError } from '../utils/errorUtils';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
+import { getDebugEmitter, isDebugTopicEnabled, type Logger as PinoLogger } from '../logging/logger';
 import { resolvePlanningPowerCeiling } from '../power/capacityModel';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 
 const discardDebug = (): void => undefined;
+const emitDailyBudgetDebug = getDebugEmitter('daily_budget', 'daily_budget');
 
 type DailyBudgetServiceDeps = {
   dailyBudgetStateStore: DailyBudgetStateStore;
   getTimeZone: () => string;
-  isDebugTopicEnabled?: (topic: 'daily_budget') => boolean;
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
   getCapacitySettings: () => PowerLimitSettings;
   combinedPricesReader: CombinedPricesReader;
   dailyBudgetSettingsStore: DailyBudgetSettingsStore;
   structuredLog: PinoLogger;
-  debugStructured?: StructuredDebugEmitter;
 };
 
 type BudgetLogState = {
@@ -92,9 +91,9 @@ export class DailyBudgetService {
 
   constructor(private deps: DailyBudgetServiceDeps) {
     this.manager = new DailyBudgetManager({
-      isDebugTopicEnabled: (topic) => this.deps.isDebugTopicEnabled?.(topic) ?? true,
+      isDebugTopicEnabled,
       structuredDebug: (payload: Record<string, unknown>) => this.emitStructuredDailyBudgetDebug(payload),
-      debugStructured: this.deps.debugStructured,
+      debugStructured: emitDailyBudgetDebug,
     });
   }
 
@@ -321,7 +320,7 @@ export class DailyBudgetService {
   }
 
   private shouldIncludeConfidenceBootstrapDebug(): boolean {
-    return this.deps.isDebugTopicEnabled?.('daily_budget') ?? false;
+    return isDebugTopicEnabled('daily_budget');
   }
 
   private emitStructuredDailyBudgetDebug(payload: Record<string, unknown>): void {

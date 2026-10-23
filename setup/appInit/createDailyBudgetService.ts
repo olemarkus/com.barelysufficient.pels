@@ -1,4 +1,3 @@
-import { getDebugEmitter } from '../../lib/logging/logger';
 import { DailyBudgetService } from '../../lib/dailyBudget/dailyBudgetService';
 import { createDailyBudgetSettingsStore } from '../dailyBudgetSettingsAdapter';
 import {
@@ -31,7 +30,6 @@ export function createDailyBudgetService(ctx: AppContext): DailyBudgetService {
   const priceCoordinator = requirePriceCoordinator(ctx);
   return new DailyBudgetService({
     getTimeZone: () => ctx.getTimeZone(),
-    isDebugTopicEnabled: (topic) => ctx.debugLoggingTopics.has(topic),
     getPowerTracker: () => ctx.powerTracker,
     getPriceOptimizationEnabled: () => priceCoordinator.getPriceOptimizationEnabled(),
     getCapacitySettings: () => ctx.capacitySettings,
@@ -39,6 +37,5 @@ export function createDailyBudgetService(ctx: AppContext): DailyBudgetService {
     dailyBudgetSettingsStore: createDailyBudgetSettingsStore(ctx.homey),
     dailyBudgetStateStore: createDailyBudgetStateStoreForApp(ctx),
     structuredLog: ctx.getStructuredLogger('daily_budget'),
-    debugStructured: getDebugEmitter('daily_budget', 'daily_budget'),
   });
 }

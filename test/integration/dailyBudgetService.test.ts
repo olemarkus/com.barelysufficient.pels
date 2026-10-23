@@ -1,3 +1,4 @@
+import { captureDebugTopic } from '../utils/loggerCapture';
 import { DailyBudgetService } from '../../lib/dailyBudget/dailyBudgetService';
 import type { CombinedPriceData } from '../../lib/dailyBudget/dailyBudgetMath';
 import type { DailyBudgetPlanInputs } from '../../lib/dailyBudget/dailyBudgetManagerTypes';
@@ -431,7 +432,7 @@ describe('DailyBudgetService', () => {
       snapshot: buildDayPayload({ dateKey: '2025-03-15', confidence: 0.72 }),
       persistReason: null,
     }));
-    service['deps'].isDebugTopicEnabled = () => topicOn;
+    captureDebugTopic('daily_budget', { enabled: topicOn });
     service['manager'].update = updateSpy;
 
     service.updateState({ nowMs: NOW_MS });

@@ -4,9 +4,9 @@ import type { UncontrolledReservePlanDiagnostics } from './dailyBudgetPlanCaps';
 export function logUncontrolledReserveDebug(
   diagnostics: UncontrolledReservePlanDiagnostics,
   reserveMode: number,
-  structuredDebug: ((payload: Record<string, unknown>) => void) | undefined,
+  structuredDebug: (payload: Record<string, unknown>) => void,
 ): void {
-  structuredDebug?.({
+  structuredDebug({
     component: 'daily_budget',
     event: 'uncontrolled_reserve_plan',
     mode: reserveMode >= UNMANAGED_RESERVE_CONSERVATIVE_MODE ? 'conservative' : 'balanced',

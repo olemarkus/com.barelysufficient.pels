@@ -1,3 +1,4 @@
+import { dailyBudgetManagerDeps } from '../helpers/dailyBudgetManagerDeps';
 import { DailyBudgetManager } from '../../lib/dailyBudget/dailyBudgetManager';
 import { CONTROLLED_USAGE_WEIGHT, PRICE_SHAPING_FLEX_SHARE } from '../../lib/dailyBudget/dailyBudgetConstants';
 import {
@@ -10,8 +11,7 @@ const TZ = 'Europe/Oslo';
 
 describe('daily budget history reproduction', () => {
   it('builds history without crashing', () => {
-    const manager = new DailyBudgetManager({
-    });
+    const manager = new DailyBudgetManager(dailyBudgetManagerDeps());
 
     // Use a fixed "now" to keep the test deterministic.
     const nowMs = Date.UTC(2024, 0, 15, 12, 0, 0);
