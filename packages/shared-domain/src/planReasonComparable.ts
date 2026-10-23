@@ -216,7 +216,7 @@ export function buildComparableDeviceReason(reason: DeviceReason | undefined): C
         code: reason.code,
         needW: quantizeKwToW(reason.needKw),
         availableW: quantizeKwToW(reason.availableKw),
-        marginW: quantizeKwToW(reason.marginKw),
+        marginW: quantizeKwToW(reason.admissionMarginKw),
         penaltyExtraW: quantizeKwToW(reason.penaltyExtraKw),
         swapReserveW: quantizeKwToW(reason.swapReserveKw),
         effectiveAvailableW: quantizeKwToW(reason.effectiveAvailableKw),

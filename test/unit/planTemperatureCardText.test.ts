@@ -73,7 +73,7 @@ describe('resolveTemperatureReasonLine', () => {
         needKw: 1.25,
         availableKw: 0.45,
         effectiveAvailableKw: null,
-        marginKw: -0.8,
+        admissionMarginKw: -0.8,
         penaltyExtraKw: null,
         swapReserveKw: null,
       },

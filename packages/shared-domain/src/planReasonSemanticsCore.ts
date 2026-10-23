@@ -226,7 +226,7 @@ export type DeviceReason =
     code: typeof PLAN_REASON_CODES.insufficientHeadroom;
     needKw: number;
     availableKw: number;
-    marginKw: number;
+    admissionMarginKw: number;
     penaltyExtraKw: number | null;
     swapReserveKw: number | null;
     effectiveAvailableKw: number | null;

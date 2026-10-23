@@ -15,7 +15,7 @@ export type { RestorePowerSource };
 export function buildInsufficientHeadroomUpdate(
   neededKw: number,
   availableKw: number,
-  marginKw: number,
+  admissionMarginKw: number,
   penaltyExtraKw: number | null,
   swapReserveKw: number | null,
   effectiveAvailableKw: number | null,
@@ -23,7 +23,7 @@ export function buildInsufficientHeadroomUpdate(
   return {
     plannedState: 'shed',
     reason: buildRestoreHeadroomReason(
-      neededKw, availableKw, marginKw, penaltyExtraKw, swapReserveKw, effectiveAvailableKw,
+      neededKw, availableKw, admissionMarginKw, penaltyExtraKw, swapReserveKw, effectiveAvailableKw,
     ),
   };
 }

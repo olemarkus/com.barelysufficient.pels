@@ -202,7 +202,7 @@ function formatInsufficientHeadroom(
   const effectiveSummary = formatEffectiveSummary(reason);
 
   // Two forms, and there is no third. Admission fails exactly when the margin is
-  // negative, and every producer builds `marginKw` off the same figure it puts
+  // negative, and every producer builds `admissionMarginKw` off the same figure it puts
   // in `availableKw` (or in `effectiveAvailableKw` on the swap path) — so a
   // rejection always has one of these two short of the need.
   //
@@ -308,21 +308,10 @@ const readFiniteNumber = (value: unknown): number | null => (
   typeof value === 'number' && Number.isFinite(value) ? value : null
 );
 
-// The kW a blocked restore is actually short by — the number that, if it became
-// available, would admit the device. Admission passes at `marginKw >= 0`
-// (`isRestoreAdmitted`, `lib/plan/admission/reserve.ts`), and `marginKw` already
-// folds in the inflated need and any swap reserve (via effective available), so
-// the honest gap is simply the negated margin.
-//
-// This used to be `minimumRequired − postReserveMargin`, because two flat
-// constants sat between "fits" and "admitted" and a gap of `need − available`
-// understated the real bar by ~0.5 kW — prod 2026-08-01, cards read "0.5 kW more
-// needed" for a device that needed ~1.05 kW more. Those constants are gone, so
-// the two quantities have converged and the correction with them. A `shortfall`
-// hold carries its gap as `shortfallKw`, like every ceiling hold. Accepts `unknown`
-// because temperature-card callers hold the reason untyped after the snapshot
-// boundary — so the finiteness guards below stay even though the type now
-// promises both margins (a snapshot from another build is untrusted input).
+// The kW a blocked restore is short by. Admission passes at `marginKw >= 0`
+// (`isRestoreAdmitted`, `lib/plan/admission/reserve.ts`); the reason carries that
+// resolved result as `admissionMarginKw`, including inflated need and swap
+// reserves. Its negation is the gap. Other ceiling holds carry `shortfallKw`.
 // Ceil to the 0.1 kW display resolution (with an epsilon guard against float
 // noise like 0.799999… → 0.8). Rounding DOWN would contradict the resolver's
 // contract: a true gap of 1.04 kW rendered as "1.0" invites freeing exactly
@@ -342,13 +331,11 @@ export function resolveRestoreShortfallKw(reason: unknown): number | null {
   const carried = readFiniteNumber(r['shortfallKw']);
   if (carried !== null) return carried > 0 ? carried : null;
   if (r['code'] === PLAN_REASON_CODES.insufficientHeadroom) {
-    const marginKw = readFiniteNumber(r['marginKw']);
-    // Required `number` on the reason type. A snapshot that still lacks it is
-    // malformed, not "legacy": derive nothing and let the card fall to its bare
-    // waiting line rather than fabricating a gap from `needKw` against an
-    // availability figure the producer never resolved.
-    if (marginKw === null) return null;
-    return ceilToDisplayKw(-marginKw);
+    const admissionMarginKw = readFiniteNumber(r['admissionMarginKw']);
+    // Raw card helpers accept unknown values. An incomplete reason carries no
+    // reliable gap; let the card use its waiting line.
+    if (admissionMarginKw === null) return null;
+    return ceilToDisplayKw(-admissionMarginKw);
   }
   return null;
 }

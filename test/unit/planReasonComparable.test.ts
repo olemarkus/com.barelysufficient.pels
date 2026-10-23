@@ -38,7 +38,7 @@ describe('buildComparableDeviceReason', () => {
     const baseReason = (overrides: Partial<{
       needKw: number;
       availableKw: number;
-      marginKw: number;
+      admissionMarginKw: number;
       penaltyExtraKw: number | null;
       swapReserveKw: number | null;
       effectiveAvailableKw: number | null;
@@ -46,7 +46,7 @@ describe('buildComparableDeviceReason', () => {
       code: PLAN_REASON_CODES.insufficientHeadroom,
       needKw: overrides.needKw ?? 2.345,
       availableKw: overrides.availableKw === undefined ? 1.234 : overrides.availableKw,
-      marginKw: overrides.marginKw === undefined ? 0.123 : overrides.marginKw,
+      admissionMarginKw: overrides.admissionMarginKw === undefined ? 0.123 : overrides.admissionMarginKw,
       penaltyExtraKw: overrides.penaltyExtraKw === undefined ? 0.05 : overrides.penaltyExtraKw,
       swapReserveKw: overrides.swapReserveKw === undefined ? 0.3 : overrides.swapReserveKw,
       effectiveAvailableKw: overrides.effectiveAvailableKw === undefined ? 1.5 : overrides.effectiveAvailableKw,

@@ -145,7 +145,7 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
         code: PLAN_REASON_CODES.insufficientHeadroom,
         needKw: 2,
         availableKw: 2.4,
-        marginKw: -0.3,
+        admissionMarginKw: -0.3,
         penaltyExtraKw: null,
         swapReserveKw: 0.3,
         effectiveAvailableKw: 1.7,

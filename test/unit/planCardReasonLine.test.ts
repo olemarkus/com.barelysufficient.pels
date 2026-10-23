@@ -86,7 +86,7 @@ describe('resolveHeldCardReasonLine', () => {
         code: PLAN_REASON_CODES.insufficientHeadroom,
         needKw: 1.36,
         availableKw: 1.03,
-        marginKw: -0.33,
+        admissionMarginKw: -0.33,
         penaltyExtraKw: null,
         swapReserveKw: null,
         effectiveAvailableKw: null,
