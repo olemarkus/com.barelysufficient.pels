@@ -19,7 +19,7 @@ const tempSample = (overrides: Partial<DeviceObjectiveProfileSample> & {
 const step = (
   previous: DeviceObjectiveProfile | undefined,
   sample: DeviceObjectiveProfileSample,
-): DeviceObjectiveProfile => updateDeviceObjectiveProfile(previous, sample, 'dev', 'Device', () => undefined, undefined);
+): DeviceObjectiveProfile => updateDeviceObjectiveProfile(previous, sample, 'dev', 'Device', undefined);
 
 describe('objective profile energy accumulator', () => {
   it('sums sub-intervals at their own left-edge power across a rise_too_small skip', () => {

@@ -1,3 +1,4 @@
+import { captureDebugTopic } from '../utils/loggerCapture';
 import type { ObjectiveObservedQuantity } from '../../packages/shared-domain/src/objectiveObservedQuantity';
 import { withResolvedCurrentDraw } from '../utils/objectiveSampleDevice';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
@@ -56,9 +57,8 @@ const ingestEvSample = (params: {
   atMs: number;
   measuredPowerKw?: number;
   deviceId?: string;
-  debugStructured?: (payload: Record<string, unknown>) => void;
 }): PowerTrackerState => {
-  const { state, percent, atMs, measuredPowerKw, deviceId, debugStructured = () => undefined } = params;
+  const { state, percent, atMs, measuredPowerKw, deviceId } = params;
   return updateObjectiveProfilesFromSnapshot(
     state,
     [
@@ -69,7 +69,6 @@ const ingestEvSample = (params: {
       }),
     ],
     atMs,
-    debugStructured,
     undefined,
   );
 };
@@ -192,7 +191,7 @@ describe('EV kWhPerUnit learning', () => {
     it('treats an unchanged SoC as no observation, not a rejection', () => {
       // The level holds until it changes, so a sample at the same percent is not
       // judged at all: no rejection counted, no event, and the baseline stays.
-      const debugStructured = vi.fn();
+      const profileDebug = captureDebugTopic('objective_profiles');
       let state: PowerTrackerState = ingestEvSample({
         state: {}, percent: 40, atMs: startMs, deviceId: 'ev-noprogress',
       });
@@ -201,14 +200,13 @@ describe('EV kWhPerUnit learning', () => {
         percent: 40,
         atMs: startMs + hourMs,
         deviceId: 'ev-noprogress',
-        debugStructured,
       });
 
       const profile = state.objectiveProfiles?.['ev-noprogress'];
       expect(profile?.acceptedSamples).toBe(0);
       expect(profile?.rejectedSamples).toBe(0);
       expect(profile?.lastSample.observedAtMs).toBe(startMs);
-      expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+      expect(profileDebug.events()).not.toContainEqual(expect.objectContaining({
         event: 'objective_profile_sample_rejected',
       }));
     });
@@ -271,10 +269,10 @@ describe('EV kWhPerUnit learning', () => {
     // ~1.4, which sized the night's smart task at 0.85 kWh/%.
     it('does not bill the first tick after a resume, which carries charge from before the pause', () => {
       const minuteMs = 60 * 1000;
-      const debugStructured = vi.fn();
+      const profileDebug = captureDebugTopic('objective_profiles');
       const at = (minutes: number, percent: number, measuredPowerKw: number) => (state: PowerTrackerState) => (
         ingestEvSample({
-          state, percent, atMs: startMs + minutes * minuteMs, measuredPowerKw, deviceId: 'ev-paused', debugStructured,
+          state, percent, atMs: startMs + minutes * minuteMs, measuredPowerKw, deviceId: 'ev-paused',
         })
       );
       const steps = [
@@ -288,7 +286,7 @@ describe('EV kWhPerUnit learning', () => {
       const state = steps.reduce(
         (current, step) => step(current),
         ingestEvSample({
-          state: {}, percent: 60, atMs: startMs, measuredPowerKw: 1.35, deviceId: 'ev-paused', debugStructured,
+          state: {}, percent: 60, atMs: startMs, measuredPowerKw: 1.35, deviceId: 'ev-paused',
         }),
       );
 
@@ -297,7 +295,7 @@ describe('EV kWhPerUnit learning', () => {
         expect.closeTo(1.35, 6),
         expect.closeTo(1.35, 6),
       ]);
-      expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      expect(profileDebug.events()).toContainEqual(expect.objectContaining({
         event: 'objective_profile_sample_rejected',
         reasonCode: 'objective_profile_baseline_mid_step',
       }));
@@ -307,7 +305,7 @@ describe('EV kWhPerUnit learning', () => {
       // Baseline 40 % at startMs; second sample carries the same observedAtMs
       // but a different (would-be accepted) value. The timing guard runs
       // before the value-delta check, so this trips `non_monotonic_time`.
-      const debugStructured = vi.fn();
+      const profileDebug = captureDebugTopic('objective_profiles');
       let state: PowerTrackerState = ingestEvSample({
         state: {}, percent: 40, atMs: startMs, deviceId: 'ev-duplicate',
       });
@@ -316,14 +314,13 @@ describe('EV kWhPerUnit learning', () => {
         percent: 50,
         atMs: startMs,
         deviceId: 'ev-duplicate',
-        debugStructured,
       });
 
       const profile = state.objectiveProfiles?.['ev-duplicate'];
       expect(profile?.acceptedSamples).toBe(0);
       expect(profile?.rejectedSamples).toBe(1);
       expect(profile?.kwhPerUnit).toBeUndefined();
-      expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      expect(profileDebug.events()).toContainEqual(expect.objectContaining({
         event: 'objective_profile_sample_rejected',
         reasonCode: 'objective_profile_non_monotonic_time',
       }));
@@ -334,7 +331,7 @@ describe('EV kWhPerUnit learning', () => {
       // MIN_SOC_RISE_PERCENT threshold, intervalMs above the
       // OBJECTIVE_PROFILE_MIN_INTERVAL_MS guard so the value-delta check is
       // the one that fires).
-      const debugStructured = vi.fn();
+      const profileDebug = captureDebugTopic('objective_profiles');
       const tooSmallRise = MIN_SOC_RISE_PERCENT - 0.1;
       const intervalMs = OBJECTIVE_PROFILE_MIN_INTERVAL_MS + 60_000;
 
@@ -346,14 +343,13 @@ describe('EV kWhPerUnit learning', () => {
         percent: 40 + tooSmallRise,
         atMs: startMs + intervalMs,
         deviceId: 'ev-toosmall',
-        debugStructured,
       });
 
       const profile = state.objectiveProfiles?.['ev-toosmall'];
       expect(profile?.acceptedSamples).toBe(0);
       expect(profile?.rejectedSamples).toBe(1);
       expect(profile?.kwhPerUnit).toBeUndefined();
-      expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      expect(profileDebug.events()).toContainEqual(expect.objectContaining({
         event: 'objective_profile_sample_rejected',
         reasonCode: 'objective_profile_progress_too_small',
       }));

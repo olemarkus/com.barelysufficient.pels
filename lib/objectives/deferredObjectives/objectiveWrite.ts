@@ -13,7 +13,7 @@ import {
 } from './objectiveStore';
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { isSmartTaskOpen } from '../../../packages/shared-domain/src/settings/deferredObjectiveSettings';
-import type { StructuredDebugEmitter } from '../../logging/logger';
+import { getDebugEmitter } from '../../logging/logger';
 import { DEFERRED_OBJECTIVES_PERKEY_MIGRATED } from '../../utils/settingsKeys';
 import type { SmartTaskHomeScope } from '../../../packages/contracts/src/smartTaskHomeScope';
 import type { CurrentTaskEvaluationReader } from './currentTaskEvaluation';
@@ -83,10 +83,6 @@ export type DeferredObjectiveDeviceWriteDeps = {
   // Clearing is deliberately NOT gated — a user must always be able to clear a
   // task whose device was later moved to a sub-home.
   resolveDeviceHomeScope?: (deviceId: string) => SmartTaskHomeScope;
-  // Topic-gated structured debug sink (gated on the `deferred_objectives` debug
-  // topic), wired by `buildDeferredObjectiveDeviceWriteDeps`. Optional so test
-  // harnesses can omit it. Used only to surface refusals (see `refuse`).
-  debugStructured?: StructuredDebugEmitter;
 };
 
 /** Capture against the old settings before a write can replace its obligation. */
@@ -104,21 +100,22 @@ const readPreviousEvaluation = (
 // refused.
 type ObjectiveWriteOp = 'upsert' | 'rescue' | 'clear';
 
+const emitObjectiveDebug = getDebugEmitter('deferred_objectives', 'deferred_objectives');
+
 // Emit a topic-gated debug breadcrumb for a refused write and return the
 // outcome. A refusal is a self-healing transient (the guards leave persisted
 // state intact and the caller surfaces a retry), so it is a diagnostic payload
-// — the project's `debugStructured` emitter (info/error go through the prose
-// logger; structured debug goes here) is the right sink, NOT an error-sink log.
+// — the `deferred_objectives` debug topic (info/error go through `getLogger`;
+// structured debug goes here) is the right sink, NOT an error-sink log.
 // Without this, a transient refusal was visible only as the user-facing card
 // error and left no server-side trace to correlate against.
 const refuse = (
-  deps: DeferredObjectiveDeviceWriteDeps,
   op: ObjectiveWriteOp,
   deviceId: string,
   reason: 'migration_deferred' | 'untrusted_absence' | 'device_in_sub_home'
     | 'device_not_planned' | 'ownership_unavailable',
 ): ObjectiveWriteOutcome => {
-  deps.debugStructured?.({ event: 'objective_write_refused', op, deviceId, reason });
+  emitObjectiveDebug({ event: 'objective_write_refused', op, deviceId, reason });
   return { persisted: false, reason };
 };
 
@@ -178,9 +175,9 @@ const refuseForHomeScope = (
   deviceId: string,
 ): ObjectiveWriteOutcome | null => {
   const homeScope = deps.resolveDeviceHomeScope?.(deviceId) ?? 'main';
-  if (homeScope === 'sub_home') return refuse(deps, 'upsert', deviceId, 'device_in_sub_home');
-  if (homeScope === 'source_device') return refuse(deps, 'upsert', deviceId, 'device_not_planned');
-  if (homeScope === 'unavailable') return refuse(deps, 'upsert', deviceId, 'ownership_unavailable');
+  if (homeScope === 'sub_home') return refuse('upsert', deviceId, 'device_in_sub_home');
+  if (homeScope === 'source_device') return refuse('upsert', deviceId, 'device_not_planned');
+  if (homeScope === 'unavailable') return refuse('upsert', deviceId, 'ownership_unavailable');
   return null;
 };
 
@@ -210,17 +207,17 @@ function writeObjective(
   // ungated so a task on a relocated device can always be removed.
   const scopeRefusal = refuseForHomeScope(deps, deviceId);
   if (scopeRefusal !== null) return scopeRefusal;
-  if (!ensureMigrated(deps)) return refuse(deps, 'upsert', deviceId, 'migration_deferred');
+  if (!ensureMigrated(deps)) return refuse('upsert', deviceId, 'migration_deferred');
   const prevEntry = readObjectiveForDevice(deps.store, deviceId);
   // Flaky-read guard: only proceed as a genuine create when the absence is
   // TRUSTWORTHY (key list readable AND key absent). A present-but-unreadable key
   // OR a store-wide empty `getKeys()` both mean "can't trust this is objective-less",
   // so refuse rather than overwrite the user's objective / drop a preserved rescue.
   if (prevEntry === undefined && !objectiveAbsenceIsTrustworthy(deps.store, deviceId)) {
-    return refuse(deps, 'upsert', deviceId, 'untrusted_absence');
+    return refuse('upsert', deviceId, 'untrusted_absence');
   }
   if (openTask === 'refuse' && prevEntry !== undefined && isSmartTaskOpen(prevEntry, deps.nowMs)) {
-    deps.debugStructured?.({ event: 'objective_write_refused', op: 'upsert', deviceId, reason: 'open_task_exists' });
+    emitObjectiveDebug({ event: 'objective_write_refused', op: 'upsert', deviceId, reason: 'open_task_exists' });
     return { persisted: false, reason: 'open_task_exists' };
   }
   // Preserve a standing rescue permission unless the caller is authoritative
@@ -250,7 +247,7 @@ export const clearObjectiveForDevice = (
   deps: DeferredObjectiveDeviceWriteDeps,
   params: { deviceId: string; deviceName: string | null },
 ): ObjectiveWriteOutcome => {
-  if (!ensureMigrated(deps)) return refuse(deps, 'clear', params.deviceId, 'migration_deferred');
+  if (!ensureMigrated(deps)) return refuse('clear', params.deviceId, 'migration_deferred');
   const { deviceId, deviceName } = params;
   // Skip ONLY when the absence is TRUSTWORTHY (key list readable AND key absent) —
   // a genuine no-op worth skipping the notify for. A present key OR a

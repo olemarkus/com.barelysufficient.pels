@@ -2,7 +2,7 @@ import { reportTaskDeliveryStatus, type TaskDeliveryReader } from './deliveryEvi
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
 import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { ObjectiveDeviceSource } from '../types';
-import type { StructuredDebugEmitter } from '../../logging/logger';
+import { getDebugEmitter, isDebugTopicEnabled } from '../../logging/logger';
 import type { EnergyTaskDeliveryTracker } from './energyDelivery';
 import {
   buildDeferredObjectiveDiagnostics,
@@ -24,6 +24,8 @@ import type { DeferredObjectiveHoursRemainingTracker } from './hoursRemainingCro
 import type { DeferredObjectiveSettingsV1 } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { isDeferredObjectiveExpired } from './diagnosticTypes';
 import { PriorityAllocationTracker } from './priorityAllocation';
+
+const emitObjectiveDebug = getDebugEmitter('deferred_objectives', 'deferred_objectives');
 
 /**
  * Clock-driven smart-task lifecycle emission.
@@ -69,7 +71,6 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
   getDevices: () => ObjectiveDeviceSource[];
   // The budget overlay; the allocation horizon's prices come from the source.
   getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
-  getDeferredObjectiveDebugStructured?: () => StructuredDebugEmitter | undefined;
   deferredObjectiveStatusBus: DeferredObjectiveStatusBus;
   deferredObjectiveHoursRemainingBus: DeferredObjectiveHoursRemainingBus;
   deferredObjectiveHoursRemainingTracker: DeferredObjectiveHoursRemainingTracker;
@@ -171,12 +172,12 @@ export class DeferredObjectiveLifecycleEmitter {
     // Finalization and terminal fallback still observe expired tasks. Their
     // history outcome is authoritative; no live verdict survives the deadline.
     const liveDiagnostics = diagnostics.filter((diagnostic) => !isDeferredObjectiveExpired(diagnostic, nowMs));
-    const debugStructured = this.deps.getDeferredObjectiveDebugStructured?.();
     // Reset the announce memory whenever the topic is off, so enabling the
     // debug topic to investigate a task always yields its current state on the
     // next tick instead of silence left over from the last time it was on.
-    this.announced = debugStructured
-      ? emitDeferredObjectiveDiagnostics(liveDiagnostics, nowMs, this.announced, debugStructured)
+    // Building the payloads is the cost, so the topic gates that too.
+    this.announced = isDebugTopicEnabled('deferred_objectives')
+      ? emitDeferredObjectiveDiagnostics(liveDiagnostics, nowMs, this.announced, emitObjectiveDebug)
       : new Map();
     emitDeferredObjectiveStatusTransitions(liveDiagnostics, this.deps.deferredObjectiveStatusBus, nowMs);
     this.deps.deferredObjectiveHoursRemainingTracker.observe(

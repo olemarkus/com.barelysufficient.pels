@@ -1,3 +1,4 @@
+import { captureDebugTopic } from '../utils/loggerCapture';
 import type { ObjectiveObservedQuantity } from '../../packages/shared-domain/src/objectiveObservedQuantity';
 import { withResolvedCurrentDraw } from '../utils/objectiveSampleDevice';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
@@ -120,7 +121,6 @@ const ORDINARY_HISTORY = Array.from({ length: 10 }, () => 0.5);
 const applyWindow = (
   previous: DeviceObjectiveProfile,
   valueDelta: number,
-  debugStructured: (payload: Record<string, unknown>) => void = () => undefined,
 ): DeviceObjectiveProfile => updateDeviceObjectiveProfile(
   previous,
   sampleAt(
@@ -129,7 +129,6 @@ const applyWindow = (
   ),
   'heater-1',
   'Device',
-  debugStructured,
   undefined,
 );
 
@@ -152,18 +151,18 @@ describe('objective profile energy band', () => {
 
   it('refuses a refill window that costs several times what the device has ever needed', () => {
     const previous = profileWithHistory(ORDINARY_HISTORY);
-    const debugStructured = vi.fn();
+    const profileDebug = captureDebugTopic('objective_profiles');
     // A draw left the tank stratified: 2 kWh buys 0.8 °C at the sensor while the
     // cold water underneath is reheated — five times the device's norm. That is
     // the refill, and it is not heating.
-    const next = applyWindow(previous, 0.8, debugStructured);
+    const next = applyWindow(previous, 0.8);
 
     expect(next.acceptedSamples).toBe(10);
     expect(next.rejectedSamples).toBe(1);
     // The learned rate is untouched — the whole point.
     expect(next.kwhPerUnit?.sampleCount).toBe(10);
     expect(next.samples).toHaveLength(10);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(profileDebug.events()).toContainEqual(expect.objectContaining({
       event: 'objective_profile_sample_rejected',
       reasonCode: 'objective_profile_energy_per_unit_out_of_range',
       kwhPerUnit: expect.closeTo(2.5, 6),
@@ -204,7 +203,6 @@ describe('objective profile energy band', () => {
       sampleAt(startMs + hourMs, previous.lastSample.value - 8),
       'heater-1',
       'Device',
-      () => undefined,
       undefined,
     );
     expect(afterFall.rejectedSamples).toBe(1);
@@ -233,10 +231,10 @@ describe('objective profile energy band', () => {
     expect(afterRefill.subIntervalStartMs).toBeUndefined();
 
     // So the next window is priced on its own: 2 kWh over 4 °C, not 4 over 4.8.
-    const debugStructured = vi.fn();
-    const afterOrdinary = applyWindow(afterRefill, 4, debugStructured);
+    const profileDebug = captureDebugTopic('objective_profiles');
+    const afterOrdinary = applyWindow(afterRefill, 4);
     expect(afterOrdinary.acceptedSamples).toBe(11);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(profileDebug.events()).toContainEqual(expect.objectContaining({
       event: 'objective_profile_sample_recorded',
       kwhPerUnit: expect.closeTo(0.5, 6),
     }));
@@ -254,7 +252,6 @@ describe('objective profile energy band', () => {
       // spec below asserts that same reason is emitted for `heater-1`.
       'heater-2',
       'Device',
-      () => undefined,
       undefined,
     );
 
@@ -277,7 +274,7 @@ describe('objective profile energy band', () => {
 
   it('refuses a timing-invalid sample before it is ever priced', () => {
     const previous = profileWithHistory(ORDINARY_HISTORY);
-    const debugStructured = vi.fn();
+    const profileDebug = captureDebugTopic('objective_profiles');
     const next = updateDeviceObjectiveProfile(
       previous,
       // One minute after the baseline — below the minimum sampling interval, so
@@ -285,15 +282,14 @@ describe('objective profile energy band', () => {
       sampleAt(startMs + 60 * 1000, previous.lastSample.value + 4),
       'heater-1',
       'Device',
-      debugStructured,
       undefined,
     );
 
     expect(next.rejectedSamples).toBe(1);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(profileDebug.events()).toContainEqual(expect.objectContaining({
       reasonCode: 'objective_profile_interval_too_short',
     }));
-    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(profileDebug.events()).not.toContainEqual(expect.objectContaining({
       reasonCode: 'objective_profile_energy_per_unit_out_of_range',
     }));
   });
@@ -392,7 +388,6 @@ describe('the learned rate follows the same horizon as admission', () => {
       sampleAt(lateMs + hourMs, 51.25),
       'heater-3',
       'Device',
-      () => undefined,
       undefined,
     );
 
@@ -432,7 +427,6 @@ describe('objective profiles through the snapshot pipeline', () => {
           lastFreshDataMs: startMs + hour * hourMs,
         })],
         startMs + hour * hourMs,
-        () => undefined,
         undefined,
       );
     }
@@ -448,7 +442,6 @@ describe('objective profiles through the snapshot pipeline', () => {
         lastFreshDataMs: startMs + 11 * hourMs,
       })],
       startMs + 11 * hourMs,
-      () => undefined,
       undefined,
     );
     // The refill: 2 kWh buys 0.8 °C at the sensor while the tank re-heats the
@@ -460,7 +453,6 @@ describe('objective profiles through the snapshot pipeline', () => {
         lastFreshDataMs: startMs + 12 * hourMs,
       })],
       startMs + 12 * hourMs,
-      () => undefined,
       undefined,
     );
 
@@ -488,7 +480,6 @@ describe('objective profiles through the snapshot pipeline', () => {
           }),
         })],
         startMs + hour * hourMs,
-        () => undefined,
         undefined,
       );
     }
@@ -506,7 +497,6 @@ describe('objective profiles through the snapshot pipeline', () => {
         }),
       })],
       startMs + 11 * hourMs,
-      () => undefined,
       undefined,
     );
     // ...then steps back 50 points on 7 kWh, at 0.14 kWh per unit.
@@ -519,7 +509,6 @@ describe('objective profiles through the snapshot pipeline', () => {
         }),
       })],
       startMs + 12 * hourMs,
-      () => undefined,
       undefined,
     );
 
