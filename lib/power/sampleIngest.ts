@@ -259,6 +259,12 @@ export async function recordPowerSampleForApp(params: {
   capacitySettings: CapacitySettings;
   /** Inventory metadata joined with accepted Observer state for attribution. */
   getDeviceSurfaces: () => DeviceSurfaces[];
+  /**
+   * Devices the plan in force exempts from the daily budget beyond their own
+   * static flag (a smart task's claim; `resolvePublishedBudgetExemptDeviceIds`).
+   * Their measured draw books as exempt energy, as the threshold already treats it.
+   */
+  planBudgetExemptDeviceIds: ReadonlySet<string>;
   powerTracker: PowerTrackerState;
   schedulePlanRebuild: () => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
@@ -272,6 +278,7 @@ export async function recordPowerSampleForApp(params: {
     timeZone,
     capacitySettings,
     getDeviceSurfaces,
+    planBudgetExemptDeviceIds,
     powerTracker,
     schedulePlanRebuild,
     saveState,
@@ -284,6 +291,7 @@ export async function recordPowerSampleForApp(params: {
   // an unpopulated controllable flag counts as managed usage.
   const usageDevices = devices.map((device) => ({
     ...device,
+    budgetExempt: device.budgetExempt === true || planBudgetExemptDeviceIds.has(device.id),
     currentDrawKw: normalizeMeasuredPowerKw(device.measuredPowerKw) ?? 0,
     countsAsManagedUsage: device.controllable !== false,
   }));

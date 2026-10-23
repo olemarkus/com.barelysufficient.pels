@@ -801,6 +801,12 @@ spend an off exempt device's projection), the exempt kWh integrated at
 `lib/power/sampleIngest.ts`, and, eventually, the hero's display value
 (§ "Overview hero").
 
+On the sample path a device is exempt when its own flag says so OR the plan in
+force exempts it (`resolvePublishedBudgetExemptDeviceIds`), because a smart
+task's "may go over daily budget" exempts its device on the plan only. A plan
+published in an earlier tracker hour answers nothing, since a task's claim is
+per hour.
+
 The alternative policy, allocating solar pro-rata across exempt and non-exempt
 load instead of to non-exempt first, was considered and rejected: it would let an
 exempt device consume solar that then pushes the budget down on everything else,
