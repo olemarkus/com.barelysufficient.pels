@@ -11,13 +11,19 @@ import type {
 } from './dailyBudgetTypes';
 import { OBSERVED_HOURLY_STATS_FIELDS } from './observedHourlyStats';
 
+/**
+ * The manager's debug output, injected rather than resolved here because the
+ * service runs two managers: the live one writes to the `daily_budget` topic,
+ * and the Budget Adjust candidate that plans unsaved settings writes nothing,
+ * since its entries would read like the live plan's.
+ */
 export type DailyBudgetManagerDeps = {
-  isDebugTopicEnabled?: (topic: 'daily_budget') => boolean;
-  structuredDebug?: (payload: Record<string, unknown>) => void;
+  isDebugTopicEnabled: (topic: 'daily_budget') => boolean;
+  structuredDebug: (payload: Record<string, unknown>) => void;
   // Topic-gated (`daily_budget`) structured debug for discrete lifecycle events
   // (freeze/unfreeze/recompute/learning). Distinct from `structuredDebug`, which
   // is gated on confidence-bootstrap only.
-  debugStructured?: import('../logging/logger').StructuredDebugEmitter;
+  debugStructured: import('../logging/logger').StructuredDebugEmitter;
 };
 
 /**

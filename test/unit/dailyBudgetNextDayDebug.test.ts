@@ -1,3 +1,4 @@
+import { dailyBudgetManagerDeps } from '../helpers/dailyBudgetManagerDeps';
 import { DailyBudgetManager } from '../../lib/dailyBudget/dailyBudgetManager';
 import type { DailyBudgetPlanInputs } from '../../lib/dailyBudget/dailyBudgetManagerTypes';
 import type { DailyBudgetDayPayload, DailyBudgetSettings } from '../../lib/dailyBudget/dailyBudgetTypes';
@@ -31,10 +32,10 @@ const INPUTS: DailyBudgetPlanInputs = {
 
 const buildManager = (isDebugTopicEnabled = true) => {
   const debugStructured = vi.fn<StructuredDebugEmitter>();
-  const manager = new DailyBudgetManager({
+  const manager = new DailyBudgetManager(dailyBudgetManagerDeps({
     isDebugTopicEnabled: () => isDebugTopicEnabled,
     debugStructured,
-  });
+  }));
   return { manager, debugStructured };
 };
 

@@ -52,13 +52,9 @@ import {
   resolveConfidence,
 } from './dailyBudgetConfidenceCache';
 import { resolveDailyBudgetPersistReason } from './dailyBudgetStatePersistence';
-import { getDebugEmitter } from '../logging/logger';
 import { resolveStoredPlanBreakdown, type StoredPlanBreakdown } from './dailyBudgetStoredPlanBreakdown';
 
 const DEFAULT_PROFILE = buildDefaultProfile();
-// The (test-only; production always wires `debugStructured`) fallback: the same
-// topic-gated channel production wires.
-const debugFallbackEmit = getDebugEmitter('daily_budget', 'daily_budget');
 
 export class DailyBudgetManager {
   private state: DailyBudgetState = {};
@@ -91,11 +87,6 @@ export class DailyBudgetManager {
 
   constructor(private deps: DailyBudgetManagerDeps) { }
 
-  // Topic-gated (`daily_budget`) structured debug for lifecycle events. Falls
-  // back to the module's own topic emitter when none is wired (tests).
-  private emitDebug(payload: Record<string, unknown>): void {
-    (this.deps.debugStructured ?? debugFallbackEmit)(payload);
-  }
   loadState(state: DailyBudgetState | null): void { if (state !== null) this.state = { ...state }; }
   /** See `resolveObservedGrossBackgroundKwh`. */
   observedGrossBackgroundKwh(hourOfDay: number): number | undefined {
@@ -188,7 +179,6 @@ export class DailyBudgetManager {
     this.maybeUnfreezeFromDeviation(context, enabled, budgetControlDeviationKWh);
     const snapshot = buildSnapshotAndLogDebug({
       deps: this.deps,
-      debugStructured: (payload) => this.emitDebug(payload),
       state: this.state,
       settings,
       enabled,
@@ -216,7 +206,7 @@ export class DailyBudgetManager {
       defaultProfile: DEFAULT_PROFILE,
       nowMs: context.nowMs,
     });
-    if (result.logEvent) this.emitDebug(result.logEvent);
+    if (result.logEvent) this.deps.debugStructured(result.logEvent);
     if (result.shouldMarkDirty) this.markDirty('rollover');
     this.state = result.nextState;
     this.learnedModelRevision += 1;
@@ -238,7 +228,7 @@ export class DailyBudgetManager {
     }
     this.state.frozen = false;
     this.markDirty('manual');
-    this.emitDebug({ event: 'daily_budget_recompute_requested', reason: 'clearing_frozen_plan' });
+    this.deps.debugStructured({ event: 'daily_budget_recompute_requested', reason: 'clearing_frozen_plan' });
   }
 
   private preparePlanState(context: DayContext, enabled: boolean, dailyBudgetKWh: number): ExistingPlanState {
@@ -253,7 +243,7 @@ export class DailyBudgetManager {
     if (enabled && planState.existingPlan && !this.state.frozen && planState.deviationExisting > 0) {
       this.state.frozen = true;
       this.markDirty('frozen');
-      this.emitDebug({ event: 'daily_budget_plan_frozen', deviationKWh: planState.deviationExisting });
+      this.deps.debugStructured({ event: 'daily_budget_plan_frozen', deviationKWh: planState.deviationExisting });
     }
     return planState;
   }
@@ -358,14 +348,14 @@ export class DailyBudgetManager {
       this.state = result.nextState;
       this.learnedModelRevision += 1;
       this.markDirty('observed_stats');
-      if (result.logEvent) this.emitDebug(result.logEvent);
+      if (result.logEvent) this.deps.debugStructured(result.logEvent);
     }
   }
 
   private maybeFreezeFromDeviation(enabled: boolean, deviationKWh: number): void {
     if (!enabled || deviationKWh <= 0 || this.state.frozen) return;
     this.state.frozen = true; this.markDirty('frozen');
-    this.emitDebug({ event: 'daily_budget_plan_frozen', deviationKWh });
+    this.deps.debugStructured({ event: 'daily_budget_plan_frozen', deviationKWh });
   }
 
   private maybeUnfreezeFromDeviation(context: DayContext, enabled: boolean, deviationKWh: number): void {
@@ -383,7 +373,7 @@ export class DailyBudgetManager {
     if (Number.isFinite(currentBucketStartUtcMs)) this.state.lastPlanBucketStartUtcMs = currentBucketStartUtcMs;
     this.lastPlanRebuildMs = 0;
     this.markDirty('frozen');
-    this.emitDebug({ event: 'daily_budget_plan_unfrozen', deviationKWh });
+    this.deps.debugStructured({ event: 'daily_budget_plan_unfrozen', deviationKWh });
   }
 
   private consumePersistReason(): DailyBudgetStatePersistReason | null {
@@ -454,9 +444,9 @@ export class DailyBudgetManager {
    * was built on.
    */
   logNextDayPlan(preview: DailyBudgetPreview, settings: DailyBudgetSettings, inputs: DailyBudgetPlanInputs): void {
-    if (!isDailyBudgetEnabled(settings) || !(this.deps.isDebugTopicEnabled?.('daily_budget') ?? true)) return;
+    if (!isDailyBudgetEnabled(settings) || !this.deps.isDebugTopicEnabled('daily_budget')) return;
     logDailyBudgetPlanDebug({
-      debugStructured: (payload) => this.emitDebug(payload),
+      debugStructured: this.deps.debugStructured,
       snapshot: preview.snapshot,
       priceData: preview.priceData,
       priceOptimizationEnabled: inputs.priceOptimizationEnabled,

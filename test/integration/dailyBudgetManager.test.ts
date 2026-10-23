@@ -1,3 +1,4 @@
+import { dailyBudgetManagerDeps } from '../helpers/dailyBudgetManagerDeps';
 import {
   DailyBudgetManager,
   buildDefaultProfile,
@@ -18,9 +19,9 @@ import { buildDayContext } from '../../lib/dailyBudget/dailyBudgetState';
 
 const TZ = 'Europe/Oslo';
 
-const buildManager = (overrides: Partial<ConstructorParameters<typeof DailyBudgetManager>[0]> = {}) => new DailyBudgetManager({
-  ...overrides,
-});
+const buildManager = (overrides: Partial<ConstructorParameters<typeof DailyBudgetManager>[0]> = {}) => (
+  new DailyBudgetManager(dailyBudgetManagerDeps(overrides))
+);
 
 const buildSettings = (overrides: Partial<{
   enabled: boolean;

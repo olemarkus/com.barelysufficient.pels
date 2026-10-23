@@ -1,7 +1,8 @@
+import { captureDebugTopic } from '../utils/loggerCapture';
 import type Homey from 'homey';
 import { DailyBudgetService } from '../../lib/dailyBudget/dailyBudgetService';
 import type { DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
-import type { Logger, StructuredDebugEmitter } from '../../lib/logging/logger';
+import type { Logger } from '../../lib/logging/logger';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { resolvePlanningPowerCeiling } from '../../lib/power/capacityModel';
 import type { SettingsPort } from '../../lib/ports/homeyRuntime';
@@ -98,10 +99,9 @@ const buildHarness = (combinedPricesReader?: CombinedPricesReader) => {
   const writeState = vi.fn();
   const info = vi.fn();
   const error = vi.fn();
-  const debugStructured = vi.fn<StructuredDebugEmitter>();
+  const dailyBudgetDebug = captureDebugTopic('daily_budget');
   const service = new DailyBudgetService({
     getTimeZone: () => TZ,
-    isDebugTopicEnabled: () => true,
     getPowerTracker: () => tracker.state,
     getPriceOptimizationEnabled: () => true,
     getCapacitySettings: () => POWER_LIMITS,
@@ -109,19 +109,18 @@ const buildHarness = (combinedPricesReader?: CombinedPricesReader) => {
     dailyBudgetSettingsStore: createDailyBudgetSettingsStore(homey),
     dailyBudgetStateStore: { read: () => null, write: writeState },
     structuredLog: partialDouble<Logger>({ info: info as Logger['info'], error: error as Logger['error'] }),
-    debugStructured,
   });
   service.loadSettings();
   service.loadState();
-  return { service, prices, tracker, readStore, writeState, info, error, debugStructured };
+  return { service, prices, tracker, readStore, writeState, info, error, dailyBudgetDebug };
 };
 
 const planDebugEntries = (
-  debugStructured: ReturnType<typeof vi.fn<StructuredDebugEmitter>>,
+  dailyBudgetDebug: ReturnType<typeof captureDebugTopic>,
   variant: 'current' | 'next_day',
-): PlanDebugEntry[] => debugStructured.mock.calls
-  .map(([payload]) => payload as PlanDebugEntry)
-  .filter((payload) => payload.event === 'daily_budget_plan_debug' && payload.variant === variant);
+): PlanDebugEntry[] => dailyBudgetDebug.findEvents('daily_budget_plan_debug')
+  .map((payload) => payload as unknown as PlanDebugEntry)
+  .filter((payload) => payload.variant === variant);
 
 describe('DailyBudgetService next-day plan log', () => {
   afterEach(() => {
@@ -129,28 +128,28 @@ describe('DailyBudgetService next-day plan log', () => {
   });
 
   it('writes no next-day entry on a routine update that rebuilds only today\'s plan', () => {
-    const { service, debugStructured } = buildHarness();
+    const { service, dailyBudgetDebug } = buildHarness();
     service.updateState({ nowMs: NOW_MS });
-    expect(planDebugEntries(debugStructured, 'next_day')).toHaveLength(1);
-    debugStructured.mockClear();
+    expect(planDebugEntries(dailyBudgetDebug, 'next_day')).toHaveLength(1);
+    dailyBudgetDebug.clear();
 
     // The next hour: today's plan rebuilds, tomorrow's inputs are unchanged.
     service.updateState({ nowMs: NOW_MS + HOUR_MS + 10_000 });
 
-    expect(planDebugEntries(debugStructured, 'current')).toHaveLength(1);
-    expect(planDebugEntries(debugStructured, 'next_day')).toHaveLength(0);
+    expect(planDebugEntries(dailyBudgetDebug, 'current')).toHaveLength(1);
+    expect(planDebugEntries(dailyBudgetDebug, 'next_day')).toHaveLength(0);
   });
 
   it('writes tomorrow\'s live preview once when tomorrow\'s prices arrive', () => {
-    const { service, prices, debugStructured } = buildHarness();
+    const { service, prices, dailyBudgetDebug } = buildHarness();
     service.updateState({ nowMs: NOW_MS });
     service.updateState({ nowMs: NOW_MS + 10_000 });
-    debugStructured.mockClear();
+    dailyBudgetDebug.clear();
 
     prices.store = buildPriceStore(true);
     service.updateState({ nowMs: NOW_MS + 20_000 });
 
-    const [entry, ...extra] = planDebugEntries(debugStructured, 'next_day');
+    const [entry, ...extra] = planDebugEntries(dailyBudgetDebug, 'next_day');
     expect(extra).toHaveLength(0);
     expect(entry?.dateKey).toBe('2025-03-16');
     expect(entry?.buckets.price).toEqual(TOMORROW_TOTALS);
@@ -162,45 +161,45 @@ describe('DailyBudgetService next-day plan log', () => {
     expect(entry?.meta.planningCeiling).toEqual(resolvePlanningPowerCeiling(POWER_LIMITS));
     expect(entry?.meta.priceSpreadFactor).toBeGreaterThan(0);
 
-    debugStructured.mockClear();
+    dailyBudgetDebug.clear();
     service.updateState({ nowMs: NOW_MS + 30_000 });
-    expect(planDebugEntries(debugStructured, 'next_day')).toHaveLength(0);
+    expect(planDebugEntries(dailyBudgetDebug, 'next_day')).toHaveLength(0);
   });
 
   it('writes it once when the budget settings are applied', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(NOW_MS);
-    const { service, debugStructured } = buildHarness();
+    const { service, dailyBudgetDebug } = buildHarness();
     service.updateState({ nowMs: NOW_MS });
-    debugStructured.mockClear();
+    dailyBudgetDebug.clear();
 
     vi.setSystemTime(NOW_MS + 10_000);
     service.applyModelSettings({ dailyBudgetKWh: 25 });
 
-    const entries = planDebugEntries(debugStructured, 'next_day');
+    const entries = planDebugEntries(dailyBudgetDebug, 'next_day');
     expect(entries).toHaveLength(1);
     expect(entries[0]?.meta.settings.dailyBudgetKWh).toBe(25);
   });
 
   it('writes it once for the new tomorrow when the day rolls over', () => {
-    const { service, debugStructured } = buildHarness();
+    const { service, dailyBudgetDebug } = buildHarness();
     // 23:59:50 and then 00:00:10 in Oslo.
     service.updateState({ nowMs: TOMORROW_START_UTC_MS - 10_000 });
-    debugStructured.mockClear();
+    dailyBudgetDebug.clear();
 
     service.updateState({ nowMs: TOMORROW_START_UTC_MS + 10_000 });
 
-    const entries = planDebugEntries(debugStructured, 'next_day');
+    const entries = planDebugEntries(dailyBudgetDebug, 'next_day');
     expect(entries).toHaveLength(1);
     expect(entries[0]?.dateKey).toBe('2025-03-17');
   });
 
   it('reads the prices once per update, for today, the adjacent days and the next-day entry', () => {
-    const { service, readStore, debugStructured } = buildHarness();
+    const { service, readStore, dailyBudgetDebug } = buildHarness();
 
     service.updateState({ nowMs: NOW_MS });
 
-    expect(planDebugEntries(debugStructured, 'next_day')).toHaveLength(1);
+    expect(planDebugEntries(dailyBudgetDebug, 'next_day')).toHaveLength(1);
     expect(readStore).toHaveBeenCalledTimes(1);
   });
 
@@ -218,30 +217,30 @@ describe('DailyBudgetService next-day plan log', () => {
     };
     const requestRebuild = vi.fn(() => priceCache.write(COMBINED_PRICES, buildPriceStore(true)));
     const reader = createCombinedPricesReader(createPriceDataStore(settingsPort, priceCache), requestRebuild);
-    const { service, debugStructured } = buildHarness(reader);
+    const { service, dailyBudgetDebug } = buildHarness(reader);
 
     service.updateState({ nowMs: NOW_MS });
 
     expect(requestRebuild).toHaveBeenCalledTimes(1);
     expect(service.getSnapshot()?.days['2025-03-16']?.buckets.price).toBeUndefined();
-    const [unpriced, ...extraUnpriced] = planDebugEntries(debugStructured, 'next_day');
+    const [unpriced, ...extraUnpriced] = planDebugEntries(dailyBudgetDebug, 'next_day');
     expect(extraUnpriced).toHaveLength(0);
     expect(unpriced?.buckets.price).toBeUndefined();
     expect(unpriced?.meta.priceSpreadFactor).toBe(0);
-    debugStructured.mockClear();
+    dailyBudgetDebug.clear();
 
     service.updateState({ nowMs: NOW_MS + 10_000 });
 
     expect(requestRebuild).toHaveBeenCalledTimes(1);
     expect(service.getSnapshot()?.days['2025-03-16']?.buckets.price).toEqual(TOMORROW_TOTALS);
-    const [entry, ...extra] = planDebugEntries(debugStructured, 'next_day');
+    const [entry, ...extra] = planDebugEntries(dailyBudgetDebug, 'next_day');
     expect(extra).toHaveLength(0);
     expect(entry?.buckets.price).toEqual(TOMORROW_TOTALS);
     expect(entry?.meta.priceSpreadFactor).toBeGreaterThan(0);
   });
 
   it('keeps the update and its persistence when the next-day entry fails', () => {
-    const { service, writeState, error, debugStructured } = buildHarness();
+    const { service, writeState, error, dailyBudgetDebug } = buildHarness();
     service.updateState({ nowMs: TOMORROW_START_UTC_MS - 10_000 });
     writeState.mockClear();
     service['manager'].logNextDayPlan = () => {
@@ -258,23 +257,23 @@ describe('DailyBudgetService next-day plan log', () => {
     expect(error).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'daily_budget_state_update_failed' }));
     expect(service.getSnapshot()?.todayKey).toBe('2025-03-16');
     expect(writeState).toHaveBeenCalled();
-    expect(planDebugEntries(debugStructured, 'current').length).toBeGreaterThan(0);
+    expect(planDebugEntries(dailyBudgetDebug, 'current').length).toBeGreaterThan(0);
   });
 
   it('writes no daily_budget debug entry for the Budget Adjust model preview', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(NOW_MS);
-    const { service, prices, tracker, info, debugStructured } = buildHarness();
+    const { service, prices, tracker, info, dailyBudgetDebug } = buildHarness();
     prices.store = buildPriceStore(true);
     service.updateState({ nowMs: NOW_MS });
-    expect(planDebugEntries(debugStructured, 'next_day')).toHaveLength(1);
+    expect(planDebugEntries(dailyBudgetDebug, 'next_day')).toHaveLength(1);
     // Overrun the current hour so the live plan freezes: the candidate then also
     // takes the recompute-a-frozen-plan path.
     tracker.state = { buckets: { [new Date(NOW_MS).toISOString()]: 10 } };
     service.updateState({ nowMs: NOW_MS + 10_000 });
     expect(service.getSnapshot()?.days['2025-03-15']?.state.frozen).toBe(true);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'daily_budget_plan_frozen' }));
-    debugStructured.mockClear();
+    expect(dailyBudgetDebug.events()).toContainEqual(expect.objectContaining({ event: 'daily_budget_plan_frozen' }));
+    dailyBudgetDebug.clear();
     info.mockClear();
 
     vi.setSystemTime(NOW_MS + 20_000);
@@ -283,7 +282,7 @@ describe('DailyBudgetService next-day plan log', () => {
     expect(preview.candidate.todayKey).toBe('2025-03-15');
     expect(preview.candidate.tomorrowKey).toBe('2025-03-16');
     expect(preview.candidate.days['2025-03-15']?.budget.dailyBudgetKWh).toBe(30);
-    expect(debugStructured).not.toHaveBeenCalled();
+    expect(dailyBudgetDebug.events()).toHaveLength(0);
     expect(info).not.toHaveBeenCalledWith(expect.objectContaining({ debugTopic: 'daily_budget' }));
   });
 });

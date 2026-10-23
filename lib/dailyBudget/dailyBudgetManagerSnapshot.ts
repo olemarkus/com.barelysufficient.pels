@@ -34,7 +34,6 @@ function logBudgetSummary(
 
 export function buildSnapshotAndLogDebug(params: {
   deps: DailyBudgetManagerDeps;
-  debugStructured: StructuredDebugEmitter;
   state: DailyBudgetState;
   settings: DailyBudgetSettings;
   enabled: boolean;
@@ -48,7 +47,6 @@ export function buildSnapshotAndLogDebug(params: {
 }): DailyBudgetDayPayload {
   const {
     deps,
-    debugStructured,
     state,
     settings,
     enabled,
@@ -62,8 +60,8 @@ export function buildSnapshotAndLogDebug(params: {
   } = params;
   // Only a rebuild carries bounds, and only a rebuild is logged.
   const { bounds } = plan;
-  const shouldLog = bounds !== undefined && (deps.isDebugTopicEnabled?.('daily_budget') ?? true);
-  if (shouldLog) logBudgetSummary(debugStructured, context, budget);
+  const shouldLog = bounds !== undefined && deps.isDebugTopicEnabled('daily_budget');
+  if (shouldLog) logBudgetSummary(deps.debugStructured, context, budget);
   const profileData = getEffectiveProfileData(state, settings, defaultProfile);
   const breakdown = plan.plannedUncontrolledKWh && plan.plannedControlledKWh
     ? {
@@ -93,7 +91,7 @@ export function buildSnapshotAndLogDebug(params: {
   });
   if (shouldLog) {
     logDailyBudgetPlanDebug({
-      debugStructured,
+      debugStructured: deps.debugStructured,
       snapshot,
       priceData: plan.priceData,
       priceOptimizationEnabled,
