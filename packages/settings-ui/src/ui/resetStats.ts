@@ -9,6 +9,19 @@ import { showToast, showToastError } from './toast.ts';
 import { logSettingsError, logSettingsInfo } from './logging.ts';
 import { refreshDailyBudgetPlan } from './dailyBudget.ts';
 import type { MdButtonElement } from './dom.ts';
+import { areMeterAreasInUse, subscribeToHomeScope } from './homeScope.ts';
+import { RESET_USAGE_HISTORY_DESCRIPTION, RESET_USAGE_HISTORY_DESCRIPTION_MAIN_HOME } from './homeScopeCopy.ts';
+
+// The reset clears the Main home's history only, so once meter areas exist the
+// description says so rather than "all usage history".
+export const renderResetStatsDescription = (): void => {
+  const description = document.getElementById('reset-stats-description');
+  if (!description) return;
+  description.textContent = areMeterAreasInUse()
+    ? RESET_USAGE_HISTORY_DESCRIPTION_MAIN_HOME
+    : RESET_USAGE_HISTORY_DESCRIPTION;
+};
+subscribeToHomeScope(renderResetStatsDescription);
 
 let resetTimeout: ReturnType<typeof setTimeout> | null = null;
 

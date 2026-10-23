@@ -29,13 +29,14 @@ import { getApiReadModel, getHomeyTimezone } from './homey.ts';
 import { classifyHardCapConfigurationRead } from './hardCapConfigurationRead.ts';
 import { classifyCapacityPeak } from './capacityPeakRead.ts';
 import { classifyCapacityScalarsRead } from './capacityScalarsRead.ts';
-import { getHomeScope } from './homeScope.ts';
+import { areMeterAreasInUse, getHomeScope } from './homeScope.ts';
 import { readUsagePower } from './usagePowerRead.ts';
 import { createToggleGroup } from './components.ts';
 import type { SettingsUiPowerTracker } from '../../../contracts/src/powerTrackerTypes.ts';
 import {
   HOME_SCOPE_USAGE_UNAVAILABLE_BODY,
   HOME_SCOPE_USAGE_UNAVAILABLE_HEADLINE,
+  resolveUsageFooterText,
 } from './homeScopeCopy.ts';
 import {
   formatPowerUsageEmptyAwaitingSamples,
@@ -498,6 +499,10 @@ export const renderPowerStatsFromRead = async (
     if (!isCurrentRun()) return;
     applyUsageScopeReadState(read.state);
     if (read.state === 'unavailable') return;
+    // In the same fenced pass as the figures, so the footer names the home they
+    // belong to (the reset it points at clears the Main home only).
+    const footer = document.getElementById('usage-footer-text');
+    if (footer) footer.textContent = resolveUsageFooterText(getHomeScope().selectedHomeId, areMeterAreasInUse());
     const { stats, timeZone } = computePowerStats(read.payload.tracker);
     latestPowerStats = stats;
     latestPowerStatsTimeZone = timeZone;
