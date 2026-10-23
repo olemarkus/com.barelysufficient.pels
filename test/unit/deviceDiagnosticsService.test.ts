@@ -1756,13 +1756,6 @@ describe('budget-attributed unresolved heater demand', () => {
   const MIN = 60000;
   const dateKey = '2026-10-02';
   const start = getDateKeyStartMs(dateKey, 'Europe/Oslo') + 12 * 3600000;
-
-  beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(start);
-  });
-  afterEach(() => { vi.useRealTimers(); });
-
   const deniedFacts: Partial<ObservationFacts> = { budgetPressureDenied: true, budgetUnservedDenied: true,
     countingCause: 'daily_budget', expectedPowerKw: 2 };
   const denied = buildObservation(deniedFacts);
