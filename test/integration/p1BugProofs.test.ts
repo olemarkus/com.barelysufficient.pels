@@ -35,6 +35,7 @@ import { deviceSurfacesFixture } from '../utils/deviceSnapshotFixture';
 import { noStorageTransport } from '../helpers/storageTransportStub';
 
 const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) => ({
+  nowTs: Date.UTC(2025, 0, 1, 0, 0, 0),
   gridImportLimitKw: null,
   gridImportTargetKw: null,
   devices,
