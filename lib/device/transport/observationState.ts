@@ -37,14 +37,12 @@ export type DeviceDebugObservedSources = {
 export type DeviceTransportObservationState = {
     debugObservedSourcesByDeviceId: Map<string, DeviceDebugObservedSources>;
     capabilityObservations: Map<string, CapabilityObservation>;
-    latestLocalWriteMsByDeviceId: Map<string, number>;
 };
 
 export function createObservationState(): DeviceTransportObservationState {
     return {
         debugObservedSourcesByDeviceId: new Map(),
         capabilityObservations: new Map(),
-        latestLocalWriteMsByDeviceId: new Map(),
     };
 }
 

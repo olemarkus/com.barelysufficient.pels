@@ -24,5 +24,4 @@ export {
     recordLocalWriteObservation,
     recordSnapshotCapabilityObservations,
     recordCapabilityObservation,
-    resolveLatestLocalWriteMs,
 } from './observationRecord';

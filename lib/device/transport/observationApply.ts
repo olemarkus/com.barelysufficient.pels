@@ -56,10 +56,7 @@ function applyControlCapabilityObservation(
     }
     if (controlChanged) snapshot.binaryControl = { on: observation.value };
     if (!controlChanged && !evChargingChanged) return false;
-    if (observation.source === 'local_write') {
-        snapshot.lastLocalWriteMs = Math.max(snapshot.lastLocalWriteMs ?? 0, observation.observedAt);
-        return true;
-    }
+    if (observation.source === 'local_write') return true;
     snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAt);
     snapshot.lastUpdated = snapshot.lastFreshDataMs ?? snapshot.lastUpdated;
     return true;
@@ -160,10 +157,7 @@ function applyTargetCapabilityObservation(
         nextValue,
     );
     if (!targetChanged && !exactObservationChanged) return false;
-    if (observation.source === 'local_write') {
-        snapshot.lastLocalWriteMs = Math.max(snapshot.lastLocalWriteMs ?? 0, observation.observedAt);
-        return true;
-    }
+    if (observation.source === 'local_write') return true;
     snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAt);
     snapshot.lastUpdated = snapshot.lastFreshDataMs;
     return true;
@@ -181,9 +175,7 @@ function applyTemperatureTargetObservation(
     const result = updateTemperatureTarget(snapshot, observation.value);
     if (!result.changed) return false;
     const mutableSnapshot = snapshot;
-    if (observation.source === 'local_write') {
-        mutableSnapshot.lastLocalWriteMs = Math.max(snapshot.lastLocalWriteMs ?? 0, observation.observedAt);
-    } else {
+    if (observation.source !== 'local_write') {
         mutableSnapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAt);
         mutableSnapshot.lastUpdated = mutableSnapshot.lastFreshDataMs;
     }

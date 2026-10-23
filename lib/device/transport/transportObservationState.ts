@@ -124,7 +124,6 @@ export class TransportObservationState {
   clear(): void {
     this.observations.debugObservedSourcesByDeviceId.clear();
     this.observations.capabilityObservations.clear();
-    this.observations.latestLocalWriteMsByDeviceId.clear();
     this.observationSeqByDeviceId.clear();
     this.localCapabilityWrites.clear();
     this.realtimeCapabilityEventTimesByKey.clear();

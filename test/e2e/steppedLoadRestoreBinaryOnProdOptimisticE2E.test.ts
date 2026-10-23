@@ -105,7 +105,6 @@ const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
   isPowerCapable: isDevicePowerCapable,
   // No restart in these specs: nothing was restored.
   getRestoredPowerReading: () => undefined,
-  resolveLatestLocalWriteMs: () => undefined,
 });
 
 // The native `max_power_2000` capability value the device reports. 'high_power'

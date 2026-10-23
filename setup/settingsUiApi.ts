@@ -183,7 +183,6 @@ const LIVE_OBSERVED_FIELDS = [
   'evChargingObservedAtMs',
   'evChargingState',
   'lastFreshDataMs',
-  'lastLocalWriteMs',
   'lastUpdated',
 ] as const satisfies readonly (keyof ProjectedObservedDeviceState)[];
 

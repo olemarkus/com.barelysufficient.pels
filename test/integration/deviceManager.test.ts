@@ -230,7 +230,6 @@ describe('DeviceTransport', () => {
                 expectedPowerSource: 'load-setting',
                 lastFreshDataMs: new Date('2026-04-01T11:53:00.000Z').getTime(),
                 lastUpdated: new Date('2026-04-01T11:53:00.000Z').getTime(),
-                lastLocalWriteMs: undefined,
             }));
             expect(parsed.targets).toEqual([{
                 id: 'target_temperature',
@@ -3506,7 +3505,6 @@ describe('DeviceTransport', () => {
                 id: 'target_temperature',
                 value: 22,
             }));
-            expect(deviceManager.getSnapshot()[0]?.lastLocalWriteMs).toBeDefined();
             expect(deviceManager.getDebugObservedSources('dev1')?.localWrites.target_temperature).toEqual(
                 expect.objectContaining({
                     path: 'local_write',
@@ -3732,14 +3730,12 @@ describe('DeviceTransport', () => {
                 await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     lastFreshDataMs: new Date('2026-03-20T05:59:00.000Z').getTime(),
-                    lastLocalWriteMs: undefined,
                     targets: [expect.objectContaining({ id: 'target_temperature', value: 23 })],
                 }));
 
                 vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
                 await deviceManager.setCapability('dev1', 'target_temperature', 16);
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    lastLocalWriteMs: new Date('2026-03-20T06:00:01.000Z').getTime(),
                     targets: [expect.objectContaining({ id: 'target_temperature', value: 23 })],
                 }));
 
@@ -3756,7 +3752,6 @@ describe('DeviceTransport', () => {
 
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     lastFreshDataMs: new Date('2026-03-20T05:59:30.000Z').getTime(),
-                    lastLocalWriteMs: new Date('2026-03-20T06:00:01.000Z').getTime(),
                     targets: [expect.objectContaining({ id: 'target_temperature', value: 16 })],
                 }));
             } finally {
@@ -3785,7 +3780,6 @@ describe('DeviceTransport', () => {
                 vi.setSystemTime(new Date('2026-03-20T06:00:01.000Z'));
                 await deviceManager.setCapability('dev1', 'target_temperature', 16);
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    lastLocalWriteMs: new Date('2026-03-20T06:00:01.000Z').getTime(),
                     targets: [expect.objectContaining({ id: 'target_temperature', value: 23 })],
                 }));
 
@@ -5985,9 +5979,6 @@ describe('DeviceTransport', () => {
                     // Local onoff write
                     await deviceManager.setCapability('dev1', 'onoff', false);
                     expect(deviceManager.getSnapshot()[0].binaryControl?.on).toBe(true);
-                    expect(deviceManager.getSnapshot()[0].lastLocalWriteMs).toBe(
-                        new Date('2026-04-01T12:01:00.000Z').getTime(),
-                    );
                     expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(freshnessAtRefresh);
 
                     vi.setSystemTime(new Date('2026-04-01T12:02:00.000Z'));
@@ -5995,9 +5986,6 @@ describe('DeviceTransport', () => {
                     // Local target_temperature write stays pending until a confirmation observation.
                     await deviceManager.setCapability('dev1', 'target_temperature', 18);
                     expect(deviceManager.getSnapshot()[0].targets.find((t) => t.id === 'target_temperature')?.value).toBe(20);
-                    expect(deviceManager.getSnapshot()[0].lastLocalWriteMs).toBe(
-                        new Date('2026-04-01T12:02:00.000Z').getTime(),
-                    );
                     expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(freshnessAtRefresh);
                 } finally {
                     vi.useRealTimers();

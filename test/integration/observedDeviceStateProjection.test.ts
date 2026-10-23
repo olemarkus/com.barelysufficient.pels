@@ -313,7 +313,6 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
             reportedStepPowerW: 500,
             reportedStepObservedAtMs: 6,
             lastFreshDataMs: 7,
-            lastLocalWriteMs: 8,
             lastUpdated: 9,
         } as unknown as TransportDeviceSnapshot;
         // The two the fixture carries only to satisfy the snapshot type: they are
@@ -361,6 +360,25 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+
+    it('drops the binary observation from the projection when the driver sends an invalid control payload', async () => {
+        // A driver reporting `onoff: null` (or a string) makes the transport discard
+        // the binary observation it held. The projection must lose it too: the
+        // external-off hold reads its capability id off the projection, and a kept
+        // observation would still name one.
+        const h = await buildHarness();
+        mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', true, '2026-03-20T06:00:00.000Z') });
+        await h.transport.refreshSnapshot({ meterDeviceIds: [] });
+        await emitCapability('dev1', 'onoff', true);
+        expect(h.projection.getObservedRecord('dev1')?.binaryControlObservation).toBeDefined();
+
+        await emitCapability('dev1', 'onoff', null);
+
+        expect(h.transport.getSnapshotByDeviceId('dev1')?.binaryControlObservation).toBeUndefined();
+        expect(h.projection.getObservedRecord('dev1')?.binaryControlObservation).toBeUndefined();
+        assertShadowEquality(h);
+        h.transport.destroy();
     });
 
     it('does NOT dispatch a REJECTED freshness reading', async () => {
@@ -461,12 +479,11 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
             await h.transport.refreshSnapshot({ meterDeviceIds: [] });
             expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);
 
-            // Force every Date.now() to strictly increase so the optimistic
-            // write (lastLocalWriteMs = T1) and the subsequent
-            // recordLocalWriteObservation (lastLocalWriteMs = T2 > T1) land on
-            // different timestamps. The dispatch must happen AFTER that bump or
-            // the projection keeps T1 while the snapshot holds T2 — shadow
-            // divergence this assertion would then catch deterministically.
+            // Force every Date.now() to strictly increase, so a stamp written
+            // before the dispatch can never equal one written after it by
+            // coincidence: the dispatch must follow the last write to the
+            // snapshot, or the shadow-equality assertion below catches the
+            // divergence deterministically.
             let nowTick = Date.parse('2026-03-20T06:10:00.000Z');
             vi.spyOn(Date, 'now').mockImplementation(() => { nowTick += 1; return nowTick; });
 

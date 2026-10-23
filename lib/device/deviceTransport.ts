@@ -286,7 +286,6 @@ export class DeviceTransport {
         );
         this.reader = new DeviceSnapshotReader(
             this.snapshotStore,
-            this.observationBridge,
             this.sources,
             this.powerState,
             this.retainedPower,

@@ -107,7 +107,6 @@ const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
   isPowerCapable: isDevicePowerCapable,
   // No restart in these specs: nothing was restored.
   getRestoredPowerReading: () => undefined,
-  resolveLatestLocalWriteMs: () => undefined,
 });
 
 // Prod fidelity: `evcharger_charging` + `target_power` + the plug-state axis.

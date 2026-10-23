@@ -12,10 +12,8 @@ import {
   type DeviceParseSources,
   type ParseDevicePurpose,
 } from './managerParseDevice';
-import { resolveLatestLocalWriteMs } from './managerObservation';
 import type { ResolvedTransportPowerState } from './transportTypes';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-import type { ObservationBridge } from './observationBridge';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
 import { getDeviceId } from './managerHelpers';
 import { isHomeBatteryDevice } from '../managerEnergy';
@@ -46,7 +44,6 @@ export function createDeviceParseSources(
 export class DeviceSnapshotReader {
   constructor(
     readonly snapshotStore: TransportSnapshotStore,
-    private readonly observationBridge: ObservationBridge,
     readonly sources: DeviceParseSources,
     readonly powerState: ResolvedTransportPowerState,
     readonly retainedPower: RetainedPowerPersistence,
@@ -193,10 +190,6 @@ export class DeviceSnapshotReader {
       getCapabilityObj: getCapabilityObj,
       isPowerCapable: isDevicePowerCapable,
       getRestoredPowerReading: (deviceId: string) => this.retainedPower.restoredReading(deviceId),
-      resolveLatestLocalWriteMs: (deviceId: string) => resolveLatestLocalWriteMs(
-        this.observationBridge.state.getObservationState(),
-        deviceId,
-      ),
     };
   }
 }

@@ -211,7 +211,6 @@ export function assembleDeviceSnapshot(params: {
     const { identity, deps, overlay, capsStatus, now, livePowerWByDeviceId,
         previousSnapshot, purpose, managedDecision } = params;
     const { effectiveDevice, deviceId, deviceClassKey, deviceLabel } = identity;
-    const { resolveLatestLocalWriteMs } = deps;
     // Resolved once here and handed to both consumers: the power estimate needs it
     // for the EV rung of its default, and the snapshot control needs it for
     // everything else. It is a pure function of (deviceClassKey, capabilities), so
@@ -257,7 +256,6 @@ export function assembleDeviceSnapshot(params: {
         deps.settings.getEvCarAssociationCarIds(deviceId),
     );
     const binaryControlObservation = resolveBinaryControlObservation(overlay, control.binaryCapabilityId);
-    const lastLocalWriteMs = resolveLatestLocalWriteMs(deviceId);
     const parsed: TransportDeviceSnapshot = {
         id: deviceId,
         name: effectiveDevice.name,
@@ -306,7 +304,6 @@ export function assembleDeviceSnapshot(params: {
         canSetControl: control.canSetControl,
         available: control.available,
         lastFreshDataMs,
-        lastLocalWriteMs,
         lastUpdated: lastFreshDataMs,
     };
     return withHomeBatteryParseFields(parsed, effectiveDevice, deviceClassKey, overlay, previousSnapshot);

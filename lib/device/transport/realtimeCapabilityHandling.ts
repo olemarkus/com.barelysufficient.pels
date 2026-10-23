@@ -60,8 +60,8 @@ function applyBinaryCapabilityUpdate(
     const nextOn = resolveBinaryAxisOn(snapshot, capabilityId, true);
     // NOT dispatched when the fold is unchanged, though
     // `applyBinaryObservationToSnapshot` may have re-stamped
-    // `binaryControlObservation` — see the `TODO.md` entry on transport writes
-    // that never reach the projection. The one-line dispatch that belongs here by
+    // `binaryControlObservation`, so the projection's stamp can lag the
+    // transport's until the next dispatch. The one-line dispatch that belongs here by
     // analogy with `measure_power` cuts across binary-settle semantics: a report
     // equal to the PRE-write value while PELS's own command is in flight is
     // deliberately kept quiet ("keeps equal realtime control truth quiet after an
@@ -204,7 +204,9 @@ function handleBinaryCapabilityEvent(
         return false;
     }
     if (capabilityId !== 'onoff' && capabilityId !== 'evcharger_charging') return false;
-    ingest.binaryEvidence.clearInvalidControlPayload(snapshot.id, capabilityId);
+    if (ingest.binaryEvidence.clearInvalidControlPayload(snapshot.id, capabilityId)) {
+        dispatchRealtimeObservation(ingest, snapshot.id, capabilityId);
+    }
     return true;
 }
 

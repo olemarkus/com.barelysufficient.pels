@@ -105,7 +105,6 @@ const buildParseDeps = (logger: Logger, profile: SteppedLoadProfile): DeviceTran
   isPowerCapable: isDevicePowerCapable,
   // No restart in these specs: nothing was restored.
   getRestoredPowerReading: () => undefined,
-  resolveLatestLocalWriteMs: () => undefined,
 });
 
 // An Easee-style charger: official `evcharger_charging` control capability
