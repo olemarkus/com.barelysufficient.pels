@@ -162,8 +162,8 @@ export type ShedLatchDecision = {
  * (`applySheddingOutcome`). One of four things happened this cycle: nothing
  * (withheld, or nothing to shed), decisions in their window held with nothing
  * added, an escalation that found no candidate, or a shed — which stamps the
- * instability clock, the sample it acted on, the latch when the reading carried
- * watts, and whether it was a same-sample escalation.
+ * instability clock, the sample it acted on, its latch, and whether it was a
+ * same-sample escalation.
  */
 export type SheddingOutcome =
   | { kind: 'none' }
@@ -179,8 +179,8 @@ export type SheddingOutcome =
   | {
     kind: 'shed';
     atMs: number;
-    measurementTs: number | null;
-    latch: ShedPlanLatch | null;
+    measurementTs: number;
+    latch: ShedPlanLatch;
     escalatedSameSample: boolean;
   };
 
@@ -423,8 +423,8 @@ export class PlanEngineState {
       return;
     }
     this.restoreBackoff.noteInstability(outcome.atMs);
-    if (outcome.measurementTs !== null) this.lastShedPlanMeasurementTs = outcome.measurementTs;
-    if (outcome.latch !== null) this.shedPlanLatch = outcome.latch;
+    this.lastShedPlanMeasurementTs = outcome.measurementTs;
+    this.shedPlanLatch = outcome.latch;
     if (outcome.escalatedSameSample) this.overshoot.noteEscalation(outcome.atMs);
   }
 

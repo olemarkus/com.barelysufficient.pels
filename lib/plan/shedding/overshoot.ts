@@ -1,4 +1,5 @@
 import type CapacityGuard from '../../power/capacityGuard';
+import type { LatchedMeterReading } from '../../power/lastTotalPower';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../../logging/logger';
 import type { PlanEngineState, StorageLeverState } from '../planState';
 import type { MeasuredPower } from '../planContext';
@@ -31,17 +32,15 @@ export type SameMeasurementSheddingDecision =
 export function resolveSameMeasurementSheddingDecision(
   state: PlanEngineState,
   devices: readonly PlanInputDevice[],
-  measurementTs: number | null,
-  measurementPowerW: number | null,
+  measurement: LatchedMeterReading,
   nowTs: number,
   power: MeasuredPower,
   /** The holds this cycle's storage stage left (`StorageRelief.levers`). */
   storageLevers: Readonly<Record<string, StorageLeverState>>,
 ): SameMeasurementSheddingDecision {
-  const alreadyShedThisSample = measurementTs !== null
-    && measurementTs === state.lastShedPlanMeasurementTs;
+  const alreadyShedThisSample = measurement.atMs === state.lastShedPlanMeasurementTs;
   const pending = resolvePendingShedRelief(
-    state.shedPlanLatch, devices, measurementPowerW, nowTs, storageLevers, !power.gridBreached,
+    state.shedPlanLatch, devices, measurement.powerW, nowTs, storageLevers, !power.gridBreached,
   );
   if (!alreadyShedThisSample) {
     // With nothing outstanding the reading is believed as it stands; the pending
@@ -60,7 +59,7 @@ export function emitOvershootEscalationBlocked(
   capacityGuard: CapacityGuard,
   neededKw: number,
   remainingCandidates: number,
-  measurementTs: number | null,
+  measurementTs: number,
   nowTs: number,
   structuredLog?: PinoLogger,
 ): void {
@@ -70,7 +69,7 @@ export function emitOvershootEscalationBlocked(
     reasonCode: 'no_candidates',
     neededKw,
     remainingCandidates,
-    measurementAgeMs: measurementTs === null ? null : Math.max(0, nowTs - measurementTs),
+    measurementAgeMs: Math.max(0, nowTs - measurementTs),
   });
 }
 

@@ -45,7 +45,7 @@ const buildContext = (devices: PlanInputDevice[], headroom: number): PlanCycle =
 const buildDeps = (state: ReturnType<typeof createPlanEngineState>, capacityGuard: CapacityGuard) => ({
   capacityGuard,
   shortfallThresholdKw: Number.POSITIVE_INFINITY,
-  powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
+  powerTracker: { lastTimestamp: 100, lastPowerW: FIXTURE_TOTAL_KW * 1000 } as PowerTrackerState,
   pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
   getShedBehavior: () => ({ action: 'turn_off' as const }),
   // Cap-less device sorts first (higher number sheds first).

@@ -51,8 +51,10 @@ const decidedAt = (decidedAtMs: number): Partial<ShedPlanLatch> => ({
   decisions: new Map([['vvb', [{ decidedAtMs, creditedKw: 2 }]]]),
 });
 
-const decide = (state: ReturnType<typeof shedState>, measurementTs: number, powerW: number | null) => (
-  resolveSameMeasurementSheddingDecision(state, devices, measurementTs, powerW, NOW, buildMeasuredPower({ capacityBreached: true }), {})
+const decide = (state: ReturnType<typeof shedState>, atMs: number, powerW: number) => (
+  resolveSameMeasurementSheddingDecision(
+    state, devices, { atMs, powerW }, NOW, buildMeasuredPower({ capacityBreached: true }), {},
+  )
 );
 
 describe('resolveSameMeasurementSheddingDecision', () => {
@@ -88,10 +90,6 @@ describe('resolveSameMeasurementSheddingDecision', () => {
     const decision = decide(shedState({ latch: decidedAt(NOW + 60_000) }), NOW, READING_W);
 
     expect(decision.kind).toBe('proceed');
-  });
-
-  it('does not credit when the tracker carries no usable reading', () => {
-    expect(decide(shedState(), NOW, null).kind).toBe('proceed');
   });
 
   it('does not credit the first shed of a fresh overshoot once the earlier latch is cleared', () => {
@@ -131,8 +129,7 @@ describe('resolveSameMeasurementSheddingDecision', () => {
       const decision = resolveSameMeasurementSheddingDecision(
         shedState({ overshootMitigatedAtMs: NOW - 30_000 }),
         devices,
-        SAMPLE_TS,
-        READING_W,
+        { atMs: SAMPLE_TS, powerW: READING_W },
         NOW,
         buildMeasuredPower(),
         {},

@@ -181,9 +181,8 @@ type ReliefShare = {
 
 /**
  * The latched decisions that still stand, and the relief to credit for them,
- * against this cycle's reading — or null when there is no latch, or this sample
- * carries no watts to count against. Nothing standing is an answer too: its
- * `retained` latch is what retires the rest for good.
+ * against this cycle's reading — or null when there is no latch. Nothing
+ * standing is an answer too: its `retained` latch retires the rest for good.
  *
  * `creditDelivered` says whether relief a device's meter shows delivered keeps
  * its credit until the whole-home reading shows it. The one production caller
@@ -193,12 +192,12 @@ type ReliefShare = {
 export function resolvePendingShedRelief(
   latch: ShedPlanLatch | null,
   devices: readonly PlanInputDevice[],
-  powerW: number | null,
+  powerW: number,
   nowTs: number,
   storageLevers: StorageLevers,
   creditDelivered: boolean,
 ): PendingShedRelief | null {
-  if (latch === null || powerW === null) return null;
+  if (latch === null) return null;
   const devicesById = new Map(devices.map((device) => [device.id, device]));
   // A decision whose device has left the snapshot, or whose rung is gone, is
   // dropped with its claim: a later fall that shows its step goes to the newer

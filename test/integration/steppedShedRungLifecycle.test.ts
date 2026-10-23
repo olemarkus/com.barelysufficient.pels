@@ -97,7 +97,7 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
     const sheddingPlan = await buildSheddingPlanForSpec(context, context, state, {
       capacityGuard,
       shortfallThresholdKw: 10,
-      powerTracker: { lastTimestamp: 900 } as PowerTrackerState,
+      powerTracker: { lastTimestamp: 900, lastPowerW: 8_770 } as PowerTrackerState,
       pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       getShedBehavior,
       log: vi.fn(),

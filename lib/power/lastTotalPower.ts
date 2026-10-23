@@ -110,6 +110,17 @@ export function resolveLatchedMeterReading(
   return { powerW: lastPowerW, atMs: lastTimestamp };
 }
 
+/** A complete signed sample for consumers reached only after the measurement gate admits a build. */
+export function requireLatchedMeterReading(
+  powerTracker: Pick<PowerTrackerState, 'lastPowerW' | 'lastTimestamp'>,
+): LatchedMeterReading {
+  const reading = resolveLatchedMeterReading(powerTracker);
+  if (reading === undefined) {
+    throw new Error('latched meter reading required — a consumer of an admitted sample read an unsampled tracker');
+  }
+  return reading;
+}
+
 /**
  * The latched whole-home total, for consumers reached only from an ADMITTED
  * sample — the tracker persists `lastPowerW` before it awaits them, and every
