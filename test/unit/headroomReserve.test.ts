@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildReservedForStartReason,
+  type HeadroomReserveClock,
   resolveClaimedReserveKw,
   resolveHeadroomReserves,
   resolveReserveAdmission,
@@ -24,22 +25,46 @@ const waiting = (over: Parameters<typeof buildPlanDevice>[0]): DevicePlanDevice 
 
 const NOW = 1_800_000_000_000;
 
+const HOUR = '2027-01-15T08';
+
+/**
+ * A reserve already holding in this hour, last ticked ten seconds ago on a cycle that held, unless a
+ * case says otherwise.
+ */
+const holding = (heldMs: number, lastTickMs = NOW - 10_000, heldLastCycle = true): HeadroomReserveClock => (
+  { kind: 'holding', heldMs, lastTickMs, heldLastCycle, hourBucketKey: HOUR }
+);
+
+/** The clock a cycle at NOW leaves behind. */
+const tickedAt = (heldMs: number, heldLastCycle = true): HeadroomReserveClock => (
+  { kind: 'holding', heldMs, lastTickMs: NOW, heldLastCycle, hourBucketKey: HOUR }
+);
+
+// `restoresRun` stands in for the restore pass's answer to whether any restore lane runs this
+// cycle; every case is one where it does unless it says otherwise.
 const run = (devices: DevicePlanDevice[], over?: {
-  armed?: Record<string, number>;
+  clocks?: Record<string, HeadroomReserveClock>;
   nowTs?: number;
+  restoresRun?: boolean;
+  hourBucketKey?: string;
 }) => {
-  const state = { headroomReserveArmedMs: over?.armed ?? {} };
-  const reserves = resolveHeadroomReserves(devices, state, over?.nowTs ?? NOW);
-  return { reserves, armed: state.headroomReserveArmedMs };
+  const state = { headroomReserveClocks: over?.clocks ?? {} };
+  const reserves = resolveHeadroomReserves(
+    devices,
+    state,
+    { nowTs: over?.nowTs ?? NOW, hourBucketKey: over?.hourBucketKey ?? HOUR },
+    over?.restoresRun ?? true,
+  );
+  return { reserves, clocks: state.headroomReserveClocks };
 };
 
 describe('resolveHeadroomReserves', () => {
-  it('arms a reserve for the device\'s lowest active step and stamps the clock', () => {
-    const { reserves, armed } = run([
+  it('arms a reserve for the device\'s lowest active step and starts its clock', () => {
+    const { reserves, clocks } = run([
       waiting({ id: 'heater', priority: 1, reservesStartupPower: true, steppedLoadProfile: steppedProfile }),
     ]);
     expect(reserves).toEqual([{ deviceId: 'heater', deviceName: 'Device', priority: 1, kw: 1.25 }]);
-    expect(armed.heater).toBe(NOW);
+    expect(clocks.heater).toEqual(tickedAt(0));
   });
 
   it('reserves the LOWEST active step, never the step the device is heading for', () => {
@@ -126,7 +151,7 @@ describe('resolveHeadroomReserves', () => {
     for (const blocked of blockers) {
       const { reserves } = run(
         [waiting({ id: 'heater', priority: 1, reservesStartupPower: true, expectedPowerKw: 1.19, ...blocked })],
-        { armed: { heater: NOW - 1000 } },
+        { clocks: { heater: holding(1_000) } },
       );
       expect({ blocked, reserves }).toEqual({ blocked, reserves: [] });
     }
@@ -136,7 +161,7 @@ describe('resolveHeadroomReserves', () => {
     // A charger on marginal Wi-Fi reporting `available: false` for one poll must not reset the
     // 15-minute clock — the bound is the only protection against a reserve that never resolves,
     // and re-arming on every blip would make it unreachable.
-    const armedAt = NOW - 1000;
+    const clock = holding(5_000);
     const blips: Parameters<typeof buildPlanDevice>[0][] = [
       { available: false },
       { isEvCharger: true, evChargingState: 'plugged_out' },
@@ -144,40 +169,94 @@ describe('resolveHeadroomReserves', () => {
       { expectedPowerKw: undefined},
     ];
     for (const blip of blips) {
-      const { armed } = run(
+      const { clocks } = run(
         [waiting({ id: 'heater', priority: 1, reservesStartupPower: true, expectedPowerKw: 1.19, ...blip })],
-        { armed: { heater: armedAt } },
+        { clocks: { heater: clock } },
       );
-      expect(armed.heater).toBe(armedAt);
+      // Kept, or advanced by a held cycle: never back to nothing held.
+      const after = clocks.heater;
+      expect(after?.kind === 'holding' && after.heldMs >= 5_000).toBe(true);
     }
   });
 
   it('lapses the reserve once it has been held longer than the bound', () => {
-    const armedAt = NOW - HEADROOM_RESERVE_MAX_MS - 1;
-    const { reserves, armed } = run(
+    const { reserves, clocks } = run(
       [waiting({ id: 'heater', priority: 1, reservesStartupPower: true, expectedPowerKw: 1.19 })],
-      { armed: { heater: armedAt } },
+      { clocks: { heater: holding(HEADROOM_RESERVE_MAX_MS - 5_000) } },
     );
     expect(reserves).toEqual([]);
-    // The stamp is KEPT so the lapse sticks instead of re-arming every cycle.
-    expect(armed.heater).toBe(armedAt);
+    // The lapse is KEPT for the hour so it sticks instead of re-arming every cycle.
+    expect(clocks.heater).toEqual({ kind: 'expired', hourBucketKey: HOUR });
   });
 
   it('still holds the reserve just inside the bound', () => {
     const { reserves } = run(
       [waiting({ id: 'heater', priority: 1, reservesStartupPower: true, expectedPowerKw: 1.19 })],
-      { armed: { heater: NOW - HEADROOM_RESERVE_MAX_MS } },
+      { clocks: { heater: holding(HEADROOM_RESERVE_MAX_MS - 10_000) } },
     );
     expect(reserves).toHaveLength(1);
   });
 
-  it('prunes the clock of a device that has left the snapshot', () => {
-    const { armed } = run(
-      [waiting({ id: 'heater', priority: 1, reservesStartupPower: true, expectedPowerKw: 1.19 })],
-      { armed: { gone: NOW - 1000, heater: NOW - 1000 } },
+  it('counts no time after a cycle in which no restore lane ran', () => {
+    // Shortfall, an overshoot or a cooldown: nothing is restored, so the reserve holds nobody
+    // back, and a tight hour full of those cycles must not use up its window.
+    const heater = waiting({ id: 'heater', priority: 1, reservesStartupPower: true, expectedPowerKw: 1.19 });
+    const { reserves, clocks } = run(
+      [heater],
+      { clocks: { heater: holding(HEADROOM_RESERVE_MAX_MS - 1_000, NOW - 30_000, false) } },
     );
-    expect(armed.gone).toBeUndefined();
-    expect(armed.heater).toBe(NOW - 1000);
+    expect(reserves).toHaveLength(1);
+    expect(clocks.heater).toEqual(tickedAt(HEADROOM_RESERVE_MAX_MS - 1_000));
+    // And this cycle's own answer governs the time to the next one.
+    expect(run([heater], { restoresRun: false }).clocks.heater).toEqual(tickedAt(0, false));
+  });
+
+  it('counts the whole gap after a cycle that held, as a slow Flow source holds devices that long', () => {
+    // Reported every 5 minutes, the plan made under the reserve kept lower-priority devices off for
+    // all of them: the reserve lapses on its window, not after an hour and more of such gaps.
+    const { clocks } = run(
+      [waiting({ id: 'heater', priority: 1, reservesStartupPower: true, expectedPowerKw: 1.19 })],
+      { clocks: { heater: holding(0, NOW - 5 * 60_000) } },
+    );
+    expect(clocks.heater).toEqual(tickedAt(5 * 60_000));
+  });
+
+  it('counts at most the meter-silence timeout for one gap', () => {
+    // Past ten minutes without a reading the meter counts as stopped and the fail-closed pass
+    // takes over, so the reserve held nobody back for the rest of the gap.
+    const { clocks } = run(
+      [waiting({ id: 'heater', priority: 1, reservesStartupPower: true, expectedPowerKw: 1.19 })],
+      { clocks: { heater: holding(0, NOW - 20 * 60_000) } },
+    );
+    expect(clocks.heater).toEqual(tickedAt(10 * 60_000));
+  });
+
+  it('starts a clock held in an earlier hour over', () => {
+    const { clocks } = run(
+      [waiting({ id: 'heater', priority: 1, reservesStartupPower: true, expectedPowerKw: 1.19 })],
+      { clocks: { heater: holding(14 * 60_000) }, hourBucketKey: '2027-01-15T09' },
+    );
+    expect(clocks.heater).toEqual({ ...tickedAt(0), hourBucketKey: '2027-01-15T09' });
+  });
+
+  it('stays lapsed for the rest of the hour, and arms afresh in a later one', () => {
+    const heater = waiting({ id: 'heater', priority: 1, reservesStartupPower: true, expectedPowerKw: 1.19 });
+    const lapsed: HeadroomReserveClock = { kind: 'expired', hourBucketKey: HOUR };
+
+    expect(run([heater], { clocks: { heater: lapsed } }).reserves).toEqual([]);
+
+    const nextHour = run([heater], { clocks: { heater: lapsed }, hourBucketKey: '2027-01-15T09' });
+    expect(nextHour.reserves).toHaveLength(1);
+    expect(nextHour.clocks.heater).toEqual({ ...tickedAt(0), hourBucketKey: '2027-01-15T09' });
+  });
+
+  it('prunes the clock of a device that has left the snapshot', () => {
+    const { clocks } = run(
+      [waiting({ id: 'heater', priority: 1, reservesStartupPower: true, expectedPowerKw: 1.19 })],
+      { clocks: { gone: holding(1_000), heater: holding(1_000) } },
+    );
+    expect(clocks.gone).toBeUndefined();
+    expect(clocks.heater).toEqual(tickedAt(11_000));
   });
 });
 
@@ -195,10 +274,10 @@ describe('resolveHeadroomReserves — release, and the step-1 boundary', () => {
       measuredPowerKw: 0,
       expectedPowerKw: 1.19,
     });
-    const { reserves, armed } = run([atSetpoint], { armed: { heater: NOW - 1000 } });
+    const { reserves, clocks } = run([atSetpoint], { clocks: { heater: holding(1_000) } });
     expect(reserves).toEqual([]);
     // And it stays released a cycle later, when the element has cut out and draw reads zero.
-    expect(run([atSetpoint], { armed, nowTs: NOW + 60_000 }).reserves).toEqual([]);
+    expect(run([atSetpoint], { clocks, nowTs: NOW + 60_000 }).reserves).toEqual([]);
   });
 
   it('stays released once started, so a target-only thermostat cannot re-arm as its element cycles', () => {
@@ -220,18 +299,18 @@ describe('resolveHeadroomReserves — release, and the step-1 boundary', () => {
     });
 
     // Cycle 1: element running -> released, and the release is latched.
-    const started = run([targetOnly(0.8)], { armed: { panel: NOW - 1000 } });
+    const started = run([targetOnly(0.8)], { clocks: { panel: holding(1_000) } });
     expect(started.reserves).toEqual([]);
 
     // Cycle 2: element cut out at setpoint. Draw alone would re-arm; the latch must hold.
-    const cycledOff = run([targetOnly(0)], { armed: started.armed, nowTs: NOW + 60_000 });
+    const cycledOff = run([targetOnly(0)], { clocks: started.clocks, nowTs: NOW + 60_000 });
     expect(cycledOff.reserves).toEqual([]);
   });
 
   it('releases the moment the reported step confirms step 1, even while the draw is still low', () => {
     // 0.2 kW is well under the half-of-1.25 draw proxy the old pause-hold used, so a draw-only
     // test would keep holding here. Confirmed step evidence releases immediately.
-    const { reserves, armed } = run(
+    const { reserves, clocks } = run(
       [waiting({
         id: 'charger',
         priority: 1,
@@ -240,12 +319,12 @@ describe('resolveHeadroomReserves — release, and the step-1 boundary', () => {
         reportedStepId: 'low',
         measuredPowerKw: 0.2,
       })],
-      { armed: { charger: NOW - 1000 } },
+      { clocks: { charger: holding(1_000) } },
     );
     expect(reserves).toEqual([]);
-    // The arming clock is spent, not merely reset: a later cycle cannot re-arm it.
+    // The clock is spent, not merely reset: a later cycle cannot re-arm it.
     expect(run([waiting({ id: 'charger', priority: 1, reservesStartupPower: true, expectedPowerKw: 1.19 })],
-      { armed, nowTs: NOW + 60_000 }).reserves).toEqual([]);
+      { clocks, nowTs: NOW + 60_000 }).reserves).toEqual([]);
   });
 
   it('releases at a step ABOVE step 1 too — nothing is reserved while the device climbs', () => {
