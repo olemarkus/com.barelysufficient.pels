@@ -30,6 +30,7 @@ import type { EvCarLinkEvent } from './evCarLinkEvents';
 import type { EvCarChargerMatchHistory, EvCarLinkSnapshot } from '../../packages/contracts/src/evCarLink';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { DeviceListRead } from './deviceListRead';
+import { advanceTargetedMiss, type TargetedMissState } from './transport/targetedSnapshotMerge';
 import {
     collectAssociatedCarLevels,
     resolveAssociatedCarSnapshot,
@@ -78,14 +79,6 @@ import {
  */
 const EDGE_RETENTION_MS = EV_CAR_LINK_COINCIDENCE_WINDOW_MS * 3;
 
-/**
- * Consecutive targeted reads that must miss a car before it is dropped. One miss
- * cannot distinguish a deleted device from a transient read failure, and Homey
- * SDK reads do fail transiently — so give it a few rounds, the same shape as the
- * battery producer's narrowing grace.
- */
-const EV_CAR_LINK_TARGETED_MISS_GRACE = 3;
-
 export type { EvCarLinkEvent } from './evCarLinkEvents';
 export type EvCarLinkEventEmitter = (payload: EvCarLinkEvent) => void;
 
@@ -124,6 +117,9 @@ export class EvCarLinkProducer {
     /** Cars Homey still reports but explicitly marks unavailable. Kept only so
      *  targeted refresh can discover recovery; never offered to correlation. */
     private readonly unavailableCars = new Map<string, string>();
+    /** Cars Homey reports with no readable plug state yet. Requested on every
+     *  targeted refresh so a later readable state is seen; never correlated. */
+    private readonly unreadCars = new Set<string>();
     private readonly lastChargerState = new Map<string, EvChargingState>();
     private readonly chargerConnectedAtMs = new Map<string, number>();
     private readonly activeLinks = new Map<string, ActiveLink>();
@@ -132,8 +128,13 @@ export class EvCarLinkProducer {
     /** Chargers whose persisted session has already been resumed this run, so a
      *  resume is not re-emitted every correlation pass. */
     private readonly resumedChargerIds = new Set<string>();
-    /** Consecutive targeted reads that requested a car and did not return it. */
-    private readonly targetedMissesByCarId = new Map<string, number>();
+    /**
+     * Targeted reads that requested a car and did not return it. One miss cannot
+     * tell a deleted car from a transient read failure, and post-actuation and
+     * stuck-command refreshes arrive in bursts, so a car is dropped only on the
+     * snapshot's own count-plus-wall-clock grace (`advanceTargetedMiss`).
+     */
+    private readonly targetedMissesByCarId = new Map<string, TargetedMissState>();
     /** Charge readings awaiting link resolution, by car. */
     private readonly pendingSocShadows = new Map<string, PendingSocShadow>();
     /** One-shot dedupe for events re-derived on every correlation pass. */
@@ -150,11 +151,6 @@ export class EvCarLinkProducer {
             carName: (carId) => this.carName(carId),
         });
         this.socShadows = new EvCarLinkSocShadowReporter(deps, this.selfStop, (carId) => this.carName(carId));
-    }
-
-    /** Whether `deviceId` is a currently-tracked car. */
-    isCarDevice(deviceId: string): boolean {
-        return this.cars.has(deviceId) || this.unavailableCars.has(deviceId);
     }
 
     /** This charger's car for the CURRENT session; rules in `evCarLinkReadModel.ts`. */
@@ -213,7 +209,7 @@ export class EvCarLinkProducer {
      * would go unobserved for as long as that feed was down.
      */
     getObservedCarDeviceIds(): string[] {
-        return [...this.cars.keys(), ...this.unavailableCars.keys()];
+        return [...this.cars.keys(), ...this.unavailableCars.keys(), ...this.unreadCars];
     }
 
     /**
@@ -342,9 +338,9 @@ export class EvCarLinkProducer {
             // indistinguishable in one read, and the periodic refresh is ALWAYS
             // targeted — so without a miss count a deleted car is never dropped,
             // keeps being requested, and stays an affinity candidate forever.
-            const misses = (this.targetedMissesByCarId.get(carId) ?? 0) + 1;
-            this.targetedMissesByCarId.set(carId, misses);
-            if (misses >= EV_CAR_LINK_TARGETED_MISS_GRACE) removed.push(carId);
+            const { state, graceExceeded } = advanceTargetedMiss(this.targetedMissesByCarId.get(carId), options.nowMs);
+            this.targetedMissesByCarId.set(carId, state);
+            if (graceExceeded) removed.push(carId);
         }
         for (const carId of removed) this.forgetCar(carId, options.nowMs);
         this.correlate(options.nowMs);
@@ -354,6 +350,7 @@ export class EvCarLinkProducer {
     private forgetCar(carId: string, nowMs: number): void {
         this.cars.delete(carId);
         this.unavailableCars.delete(carId);
+        this.unreadCars.delete(carId);
         this.targetedMissesByCarId.delete(carId);
         this.pendingSocShadows.delete(carId);
         this.edges = dropEvLinkCarEdges(this.edges, carId, nowMs, this.admits);
@@ -386,6 +383,7 @@ export class EvCarLinkProducer {
         if (!result) return false;
         if (result.kind === 'unavailable') {
             this.unavailableCars.set(result.deviceId, result.name);
+            this.unreadCars.delete(result.deviceId);
             this.cars.delete(result.deviceId);
             this.pendingSocShadows.delete(result.deviceId);
             this.edges = dropEvLinkCarEdges(this.edges, result.deviceId, nowMs, this.admits);
@@ -397,8 +395,13 @@ export class EvCarLinkProducer {
 
         const previous = this.cars.get(deviceId);
         const merged = mergeCarObservation(previous, reading);
-        // No readable plug state ever: stay untracked rather than hold an unknown.
-        if (!merged) return true;
+        // No readable plug state ever: hold no observation rather than an
+        // unknown, but keep requesting the car so a readable state is seen.
+        if (!merged) {
+            this.unreadCars.add(deviceId);
+            return true;
+        }
+        this.unreadCars.delete(deviceId);
         this.unavailableCars.delete(deviceId);
         this.applyCarObservation(deviceId, previous, merged, nowMs);
         return true;

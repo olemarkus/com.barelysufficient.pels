@@ -5,6 +5,7 @@ import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSn
 import type { Logger } from '../../lib/utils/types';
 import { partialDouble } from '../helpers/partialDouble';
 import { conformingRead } from '../helpers/deviceListRead';
+import { TARGETED_DEVICE_MISS_GRACE_MS } from '../../lib/device/transport/targetedSnapshotMerge';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   EvCarLinkProducer,
@@ -1252,17 +1253,18 @@ describe('observation ordering and membership', () => {
     expect(h.of('ev_car_link_resolved')).toHaveLength(1);
   });
 
-  it('never tracks a car that has no readable plug state', () => {
+  it('stores no observation for a car that has no readable plug state', () => {
     // An unknown must not be stored and handed inward. A car whose capability is
-    // unreadable is simply not tracked until a valid reading arrives.
+    // unreadable holds no observation until a valid reading arrives; it is only
+    // requested again, so that reading is seen.
     h.producer.observe(conformingRead([{
       id: 'car-1', name: 'Polestar', class: 'car',
       capabilities: ['ev_charging_state'], capabilitiesObj: {},
     } as unknown as HomeyDeviceLike]), { fullRefresh: true, nowMs: 0 });
-    expect(h.producer.getObservedCarDeviceIds()).toEqual([]);
-    expect(h.producer.isCarDevice('car-1')).toBe(false);
-
-    h.producer.observe(conformingRead([carDevice({ state: 'plugged_out', socPct: 40 })]), { fullRefresh: true, nowMs: 1_000 });
+    h.setCharger({ evChargingState: 'plugged_in_charging' });
+    h.tick(1_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
+    expect(h.events).toHaveLength(0);
     expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
   });
 
@@ -1530,7 +1532,7 @@ describe('session lifecycle', () => {
       id: 'thermo', name: 'Stue', class: 'thermostat', capabilities: [], capabilitiesObj: {},
     } as unknown as HomeyDeviceLike;
     h.producer.noteDeviceUpdate(thermostat, 0);
-    expect(h.producer.isCarDevice('thermo')).toBe(false);
+    expect(h.producer.getObservedCarDeviceIds()).toEqual([]);
     expect(h.events).toHaveLength(0);
   });
 });
@@ -1559,7 +1561,7 @@ describe('realtime capability events', () => {
     h.cap('unknown-device', 'ev_charging_state', 'plugged_in_charging', 1_000);
     h.cap('unknown-device', 'measure_battery', 50, 2_000);
     expect(h.events).toHaveLength(0);
-    expect(h.producer.isCarDevice('unknown-device')).toBe(false);
+    expect(h.producer.getObservedCarDeviceIds()).toEqual([]);
   });
 
   it('keeps the held value when a capability event is unreadable or stale', () => {
@@ -1647,19 +1649,36 @@ describe('round-seven findings', () => {
     expect(stops[0].stoppedAtSocPct).toBeUndefined();
   });
 
-  it('drops a car that repeated targeted reads no longer return', () => {
+  it('drops a car that repeated targeted reads no longer return, but not on a burst', () => {
     // The periodic refresh is ALWAYS targeted, so a deleted car would otherwise
     // never be forgotten — it keeps being requested and stays an affinity
-    // candidate. One miss is not proof, so it takes a few.
+    // candidate. One miss is not proof, and post-actuation and stuck-command
+    // refreshes come in bursts, so it takes the snapshot's own grace: enough
+    // misses AND long enough.
     h.producer.observe(conformingRead([carDevice({ state: 'plugged_out', socPct: 40 })]), { fullRefresh: true, nowMs: 0 });
     expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
 
     h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 1_000 });
     h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 2_000 });
+    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 3_000 });
     expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
 
-    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 3_000 });
+    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 1_000 + TARGETED_DEVICE_MISS_GRACE_MS });
     expect(h.producer.getObservedCarDeviceIds()).toEqual([]);
+  });
+
+  it('keeps requesting a car first seen without a readable plug state, and tracks it once one reads', () => {
+    h.producer.observe(conformingRead([carDevice({ socPct: 40 })]), { fullRefresh: true, nowMs: 0 });
+    // Requested by the next targeted refresh, though nothing is observed yet.
+    expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
+
+    // That refresh reads its plug state at last, and the car links like any other.
+    h.producer.observe(conformingRead([carDevice({ state: 'plugged_out', socPct: 40 })]), { fullRefresh: false, nowMs: 300_000 });
+    h.setCharger({ evChargingState: 'plugged_in_charging' });
+    h.tick(301_000);
+    h.cap('car-1', 'ev_charging_state', 'plugged_in_charging', 304_000);
+
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ carId: 'car-1' });
   });
 
   it('forgives an intermittent targeted miss', () => {
@@ -1678,7 +1697,6 @@ describe('round-seven findings', () => {
       carDevice({ state: 'plugged_in_charging', socPct: 40, available: false }),
     ]), { fullRefresh: true, nowMs: 0 });
 
-    expect(h.producer.isCarDevice('car-1')).toBe(true);
     expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
 
     h.producer.observe(conformingRead([
@@ -1700,6 +1718,10 @@ describe('round-seven findings', () => {
     expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
 
     h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: SETTLE_MS + 203_000 });
+    // Three misses seconds apart are a burst, not a removal.
+    expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
+
+    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: SETTLE_MS + 201_000 + TARGETED_DEVICE_MISS_GRACE_MS });
     expect(h.producer.getObservedCarDeviceIds()).toEqual([]);
     expect(h.snapshot.sessions?.['charger-1']).toBeUndefined();
   });
