@@ -787,29 +787,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       test drives a device into a zone the cached tree has never seen and asserts it is never
       planned by the wrong home. Source: Codex P1 on PR #2252, 2026-08-31. [P2]
 
-- [ ] **The executor classifies a transport exception to decide whether a write was unacknowledged
-      — the actuator seam should hand it that answer already resolved.** Both dispatch paths catch
-      the raw throw and ask `isHomeyRequestTimeout` themselves:
-      `dispatchBinaryControlDecision` (`lib/executor/binaryControlDispatch.ts`) and
-      `executeSteppedLoadCommand` (`lib/executor/steppedLoadExecutorCommand.ts`). That is a control
-      layer inspecting error provenance to reconstruct a fact the transport already knew, which is
-      the shape root `AGENTS.md` § "Clean and trusted interfaces between layers" forbids. The
-      predicate's home in `lib/utils/errorUtils.ts` is correct and not the issue — the caller is.
-
-      **Where:** `ActuatorOutcome` (`lib/actuator/deviceCommand.ts`) and `applyBinary` / `applyStep`
-      (`lib/actuator/deviceActuator.ts`), which today let the exception pass straight through.
-
-      **What changes:** add an unacknowledged member to `ActuatorOutcome` (e.g.
-      `{ requested: true; acknowledged: false }`) and make the actuator the single place that calls
-      `isHomeyRequestTimeout`, carrying the transport through. Fold
-      `SteppedLoadStepRequestResult`'s `flow_trigger_timeout` into the same vocabulary so one
-      outcome has one name. `no-actuator-to-peer` permits `lib/actuator → lib/utils` as the config
-      stands, so no boundary change is needed.
-
-      **Done when:** `grep -rn isHomeyRequestTimeout lib/executor/` is empty and both executor
-      `catch` blocks handle only definite failures — pinned by the existing stepped and binary
-      outcome-unknown tests. [P2]
-
 - [ ] **Three EV car-link membership gaps that keep the probe blind to a car.** All three leave a
       car unobserved rather than mis-observed, so they cap what the probe can measure without
       corrupting anything. (a) *Cars initially missing a readable plug state are never retained.* A class `car` device

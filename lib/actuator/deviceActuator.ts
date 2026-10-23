@@ -1,3 +1,5 @@
+import { SteppedLoadTransportError } from '../ports/steppedLoadWrite';
+import { isHomeyRequestTimeout } from '../utils/errorUtils';
 import type { ActuatorOutcome, ActuatorTransport, DeviceCommand } from './deviceCommand';
 
 /**
@@ -21,8 +23,13 @@ const applyBinary = async (
   transport: ActuatorTransport,
   command: Extract<DeviceCommand, { kind: 'binary' }>,
 ): Promise<ActuatorOutcome> => {
-  await transport.requestBinaryControl(command.deviceId, command.desired);
-  return { requested: true, kind: 'binary' };
+  try {
+    await transport.requestBinaryControl(command.deviceId, command.desired);
+    return { requested: true, kind: 'binary', acknowledged: true };
+  } catch (err) {
+    if (!isHomeyRequestTimeout(err)) throw err;
+    return { requested: true, kind: 'binary', acknowledged: false, err };
+  }
 };
 
 const applyTarget = async (
@@ -37,23 +44,18 @@ const applyStep = async (
   transport: ActuatorTransport,
   command: Extract<DeviceCommand, { kind: 'step' }>,
 ): Promise<ActuatorOutcome> => {
-  // Invoke on `transport` directly so a class-method implementation keeps its
-  // `this` receiver (don't detach into a local const).
-  const result = await transport.requestSteppedLoadStep({
-    deviceId: command.deviceId,
-    profile: command.profile,
-    desiredStepId: command.desiredStepId,
-    planningPowerW: command.planningPowerW,
-    planningCurrentA: command.planningCurrentA,
-    previousStepId: command.previousStepId,
-  });
-  // Carry the transport's reason across: an unacknowledged Flow trigger is not
-  // the same outcome as "no stepped surface", and flattening both to a bare
-  // `{ requested: false }` here is what made the distinction unreachable.
-  if (!result.requested) {
-    return { requested: false, ...(result.reason ? { reason: result.reason } : {}) };
+  try {
+    const result = await transport.requestSteppedLoadStep(command);
+    return result.requested ? { kind: 'step', ...result } : result;
+  } catch (error) {
+    const err = error instanceof SteppedLoadTransportError ? error.cause : error;
+    if (!isHomeyRequestTimeout(err)) throw error;
+    return {
+      requested: true, kind: 'step', acknowledged: false,
+      transport: error instanceof SteppedLoadTransportError ? error.transport : 'native_capability',
+      reasonCode: 'command_request_timed_out', err,
+    };
   }
-  return { requested: true, kind: 'step', steppedResult: result };
 };
 
 const applyStoragePower = async (

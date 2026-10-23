@@ -180,9 +180,9 @@ describe('disabled temperature control', () => {
   // device and nothing surfaced the divergence.
   it('fences the setpoint live while letting binary and step commands through', async () => {
     const apply = vi.fn(async (command: DeviceCommand): Promise<ActuatorOutcome> => {
-      if (command.kind === 'binary') return { requested: true, kind: 'binary' };
+      if (command.kind === 'binary') return { requested: true, kind: 'binary', acknowledged: true };
       if (command.kind === 'step') {
-        return { requested: true, kind: 'step', steppedResult: { requested: true, transport: 'native_capability' } };
+        return { requested: true, kind: 'step', acknowledged: true, transport: 'native_capability' };
       }
       if (command.kind === 'target') return { requested: true, kind: 'target', requestedTargetValue: command.value };
       throw new Error(`No ${command.kind} command in this spec`);
@@ -210,19 +210,19 @@ describe('disabled temperature control', () => {
     })).resolves.toEqual({
       requested: true,
       kind: 'step',
-      steppedResult: { requested: true, transport: 'native_capability' },
+      acknowledged: true, transport: 'native_capability',
     });
     await expect(actuator.apply({
       kind: 'binary', deviceId: 'thermostat-1', desired: false,
     })).resolves.toEqual({
       requested: true,
-      kind: 'binary',
+      kind: 'binary', acknowledged: true,
     });
     await expect(actuator.apply({
       kind: 'binary', deviceId: 'thermostat-1', desired: true,
     })).resolves.toEqual({
       requested: true,
-      kind: 'binary',
+      kind: 'binary', acknowledged: true,
     });
     // Everything but the setpoint reached the base actuator.
     expect(apply).toHaveBeenCalledTimes(3);

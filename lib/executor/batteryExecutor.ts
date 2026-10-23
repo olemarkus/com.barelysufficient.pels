@@ -295,7 +295,7 @@ export class BatteryExecutor {
         const sent = await this.actuator.apply({
           kind: 'storage_power', deviceId: device.id, setpointW: decision.setpointW,
         });
-        if (!sent.requested && sent.reason === 'claim_rejected') {
+        if (!sent.requested && 'reason' in sent && sent.reason === 'claim_rejected') {
           return { kind: sent.reason, errorMessage: sent.errorMessage };
         }
         if (!sent.requested || sent.kind !== 'storage_power') return 'skipped';

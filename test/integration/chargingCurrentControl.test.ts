@@ -1,4 +1,4 @@
-import { SteppedLoadRequestTimeoutError } from '../../lib/ports/steppedLoadWrite';
+import { SteppedLoadTransportError } from '../../lib/ports/steppedLoadWrite';
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { ChargingCurrentControl } from '../../lib/device/chargingCurrentControl';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
@@ -135,7 +135,7 @@ test.each([false, true])('current timeout preserves its actual writable=%s route
     await expect(command).rejects.toBe(timeout);
     expect(access.runCurrentAction).not.toHaveBeenCalled();
   } else {
-    await expect(command).rejects.toBeInstanceOf(SteppedLoadRequestTimeoutError);
+    await expect(command).rejects.toBeInstanceOf(SteppedLoadTransportError);
     await expect(command).rejects.toMatchObject({ transport: 'homey_action', cause: timeout });
     expect(capabilityWrite).not.toHaveBeenCalled();
   }

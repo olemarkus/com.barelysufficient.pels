@@ -298,12 +298,12 @@ export class DeviceWriteService {
       if (isSteppedLoadOffStep(profile, desiredStepId)) {
         if (!snapshot?.binaryCapabilityId) return { requested: false };
         await this.setCapability(deviceId, snapshot.binaryCapabilityId, false);
-        return { requested: true, transport: 'native_capability' };
+        return { requested: true, acknowledged: true, transport: 'native_capability' };
       }
       if (this.chargingCurrentControl.routesBuiltIn(deviceId)) {
         const transport = await this.chargingCurrentControl.writeCurrent(rawDevice, planningCurrentA,
           (capabilityId, value) => this.setCapability(deviceId, capabilityId, value));
-        return { requested: true, transport };
+        return { requested: true, acknowledged: true, transport };
       }
     }
     if (snapshot && isNativeSteppedLoadControlEnabled(snapshot)) {
@@ -313,7 +313,9 @@ export class DeviceWriteService {
         desiredStepId,
         (capabilityId, value) => this.setCapability(deviceId, capabilityId, value),
       );
-      return nativeRequested ? { requested: true, transport: 'native_capability' } : { requested: false };
+      return nativeRequested
+        ? { requested: true, acknowledged: true, transport: 'native_capability' }
+        : { requested: false };
     }
 
     return this.triggerSteppedFlow(params, snapshot);
@@ -347,9 +349,9 @@ export class DeviceWriteService {
           commandTransport: 'flow',
           timeoutMs: FLOW_TRIGGER_ACCEPTANCE_TIMEOUT_MS,
         });
-        return { requested: false, reason: 'flow_trigger_timeout' };
+        return { requested: true, acknowledged: false, transport: 'flow', reasonCode: 'flow_trigger_timeout' };
       }
-      return { requested: true, transport: 'flow' };
+      return { requested: true, acknowledged: true, transport: 'flow' };
     } catch (error: unknown) {
       this.logger.structuredLog.error({
         event: 'stepped_load_command_failed',

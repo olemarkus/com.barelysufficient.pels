@@ -13,11 +13,11 @@ export type SteppedLoadWrite = {
 /** Channel actually used to issue a stepped-load request. */
 export type SteppedLoadStepRequestTransport = 'native_capability' | 'homey_action' | 'flow';
 
-/** An issued request whose outcome is unknown, with its actual transport retained. */
-export class SteppedLoadRequestTimeoutError extends Error {
-  constructor(readonly transport: SteppedLoadStepRequestTransport, cause: Error) {
-    super(cause.message, { cause });
-    this.name = 'SteppedLoadRequestTimeoutError';
+/** A transport failure retaining the channel and original cause for the actuator. */
+export class SteppedLoadTransportError extends Error {
+  constructor(readonly transport: SteppedLoadStepRequestTransport, cause: unknown) {
+    super('Stepped-load transport failed', { cause });
+    this.name = 'SteppedLoadTransportError';
   }
 }
 
@@ -26,5 +26,6 @@ export class SteppedLoadRequestTimeoutError extends Error {
  * the device's reported step reaches the executor through the observer.
  */
 export type SteppedLoadStepRequestResult =
-  | { requested: false; reason?: 'flow_trigger_timeout' }
-  | { requested: true; transport: SteppedLoadStepRequestTransport };
+  | { requested: false }
+  | { requested: true; acknowledged: true; transport: SteppedLoadStepRequestTransport }
+  | { requested: true; acknowledged: false; transport: 'flow'; reasonCode: 'flow_trigger_timeout' };

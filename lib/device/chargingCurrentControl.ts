@@ -1,5 +1,4 @@
-import { SteppedLoadRequestTimeoutError } from '../ports/steppedLoadWrite';
-import { isHomeyRequestTimeout } from '../utils/errorUtils';
+import { SteppedLoadTransportError } from '../ports/steppedLoadWrite';
 import { DeviceAdapterSessions } from './deviceAdapterRegistry';
 import { HubHomeLocation } from './hubHomeLocation';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
@@ -302,7 +301,9 @@ export class ChargingCurrentControl {
       await setCapability(adapter.current.capabilityId, currentA);
       return 'native_capability';
     }
-    const inventory = await getRawFromHomeyApi('manager/flow/flowcardaction');
+    const inventory = await getRawFromHomeyApi('manager/flow/flowcardaction').catch((cause: unknown) => {
+      throw new Error('Unable to read charging-current action metadata', { cause });
+    });
     // Selection can change while Homey is answering the metadata read.
     if (!this.routesBuiltIn(device.id)) throw new Error('Charging-current control changed.');
     this.assertInstallation(adapter);
@@ -312,10 +313,7 @@ export class ChargingCurrentControl {
       this.assertControlAllowed(device);
       this.assertInstallation(adapter);
     }).catch((error: unknown) => {
-      if (error instanceof Error && isHomeyRequestTimeout(error)) {
-        throw new SteppedLoadRequestTimeoutError('homey_action', error);
-      }
-      throw error;
+      throw new SteppedLoadTransportError('homey_action', error);
     });
     return 'homey_action';
   }

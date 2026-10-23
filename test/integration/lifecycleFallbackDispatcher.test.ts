@@ -144,7 +144,7 @@ const createTestActuator = (
     if (command.kind === 'binary') {
       return {
         requested: true as const,
-        kind: 'binary' as const,
+        kind: 'binary' as const, acknowledged: true as const,
       };
     }
     if (command.kind === 'target') {
@@ -157,7 +157,7 @@ const createTestActuator = (
     return {
       requested: true as const,
       kind: 'step' as const,
-      steppedResult: { requested: true as const, transport: 'native_capability' as const },
+      acknowledged: true as const, transport: 'native_capability' as const,
     };
   });
   return {
@@ -415,7 +415,7 @@ describe('LifecycleFallbackDispatcher', () => {
 
   it('dispatches and settles an EV objective through a producer-projected step-only axis', async () => {
     const state = createPlanEngineState();
-    const requestSteppedLoadStep = vi.fn().mockResolvedValue({ requested: true, transport: 'capability' });
+    const requestSteppedLoadStep = vi.fn().mockResolvedValue({ requested: true, acknowledged: true as const, transport: 'native_capability' });
     let reportedStepId = 'high';
     const buildProjectedRequest = () => {
       const raw = {
@@ -547,7 +547,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const logs = captureLogger('debug', ['plan']);
     onTestFinished(() => logs.restore());
     const state = createPlanEngineState();
-    const requestSteppedLoadStep = vi.fn().mockResolvedValue({ requested: true, transport: 'capability' });
+    const requestSteppedLoadStep = vi.fn().mockResolvedValue({ requested: true, acknowledged: true as const, transport: 'native_capability' });
     const raw = {
       id: 'heater-1',
       name: 'Read-only switch heater',
@@ -912,7 +912,7 @@ describe('LifecycleFallbackDispatcher', () => {
     ['turn_off is configured for a stepped-only device', { action: 'turn_off' }],
   ] as const)('falls back to the preferred safe step when %s', async (_scenario, behavior) => {
     const state = createPlanEngineState();
-    const requestSteppedLoadStep = vi.fn().mockResolvedValue({ requested: true, transport: 'capability' });
+    const requestSteppedLoadStep = vi.fn().mockResolvedValue({ requested: true, acknowledged: true as const, transport: 'native_capability' });
     let reportedStepId: string | undefined = undefined;
     const buildDevice = () => buildLifecycleSnapshot({
       binaryControllable: false,
@@ -955,9 +955,9 @@ describe('LifecycleFallbackDispatcher', () => {
 
   it('suppresses a second stepped fallback tick from decorated command pending while raw telemetry lags', async () => {
     const state = createPlanEngineState();
-    let resolveStep: ((value: { requested: true; transport: 'native_capability' }) => void) | undefined;
+    let resolveStep: ((value: { requested: true; acknowledged: true; transport: 'native_capability' }) => void) | undefined;
     const requestSteppedLoadStep = vi.fn(() => new Promise<{
-      requested: true; transport: 'native_capability';
+      requested: true; acknowledged: true; transport: 'native_capability';
     }>(
       (resolve) => { resolveStep = resolve; },
     ));
@@ -998,7 +998,7 @@ describe('LifecycleFallbackDispatcher', () => {
     await flush();
 
     expect(requestSteppedLoadStep).toHaveBeenCalledTimes(1);
-    resolveStep?.({ requested: true, transport: 'native_capability' });
+    resolveStep?.({ requested: true, acknowledged: true as const, transport: 'native_capability' });
     await flush();
     expect(requestSteppedLoadStep).toHaveBeenCalledTimes(1);
   });
@@ -1008,7 +1008,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const marked = vi.fn();
     const requestSteppedLoadStep = vi.fn().mockResolvedValue({
       requested: true,
-      transport: 'native_capability',
+      acknowledged: true as const, transport: 'native_capability',
     });
     const device = buildLifecycleSnapshot({
       binaryControllable: false,
@@ -1072,10 +1072,10 @@ describe('LifecycleFallbackDispatcher', () => {
   ] as const)('skips a %s ordinary step collision without replay', async (_kind, ordinaryStepId) => {
     const state = createPlanEngineState();
     const steppedCommandClaim = createSteppedCommandClaim();
-    let resolveLifecycle: ((value: { requested: true; transport: 'capability' }) => void) | undefined;
+    let resolveLifecycle: ((value: { requested: true; acknowledged: true; transport: 'native_capability' }) => void) | undefined;
     const requestSteppedLoadStep = vi.fn()
       .mockImplementationOnce(() => new Promise((resolve) => { resolveLifecycle = resolve; }))
-      .mockResolvedValue({ requested: true, transport: 'capability' });
+      .mockResolvedValue({ requested: true, acknowledged: true as const, transport: 'native_capability' });
     const profile = {
       steps: [
         { id: 'off', planningPowerW: 0 },
@@ -1109,7 +1109,7 @@ describe('LifecycleFallbackDispatcher', () => {
     )).toBe(false);
     expect(requestSteppedLoadStep).toHaveBeenCalledTimes(1);
 
-    resolveLifecycle?.({ requested: true, transport: 'capability' });
+    resolveLifecycle?.({ requested: true, acknowledged: true as const, transport: 'native_capability' });
     await lifecycle;
     await flush();
     expect(requestSteppedLoadStep).toHaveBeenCalledTimes(1);
@@ -1135,7 +1135,7 @@ describe('LifecycleFallbackDispatcher', () => {
       id: 'heater-1', name: 'Stepped heater', controlModel: 'stepped_load',
       targets: [], reportedStepId: 'low', selectedStepId: 'low', steppedLoadProfile: profile,
     });
-    const requestSteppedLoadStep = vi.fn().mockResolvedValue({ requested: true, transport: 'capability' });
+    const requestSteppedLoadStep = vi.fn().mockResolvedValue({ requested: true, acknowledged: true as const, transport: 'native_capability' });
     const dispatcher = new LifecycleFallbackDispatcher({
       ctx: createTestExecutorCommandContext(state, { actuator: stepActuator(requestSteppedLoadStep) }),
       getDevice: () => device,
@@ -2037,10 +2037,10 @@ describe('LifecycleFallbackDispatcher', () => {
   it('retries step fallback immediately after an opposing ordinary claim releases', async () => {
     const state = createPlanEngineState();
     const steppedCommandClaim = createSteppedCommandClaim();
-    let resolveOrdinary: ((value: { requested: true; transport: 'capability' }) => void) | undefined;
+    let resolveOrdinary: ((value: { requested: true; acknowledged: true; transport: 'native_capability' }) => void) | undefined;
     const requestSteppedLoadStep = vi.fn()
       .mockImplementationOnce(() => new Promise((resolve) => { resolveOrdinary = resolve; }))
-      .mockResolvedValue({ requested: true, transport: 'capability' });
+      .mockResolvedValue({ requested: true, acknowledged: true as const, transport: 'native_capability' });
     const profile = {
       steps: [
         { id: 'low', planningPowerW: 1_000 },
@@ -2083,7 +2083,7 @@ describe('LifecycleFallbackDispatcher', () => {
     })).toEqual({ settled: false });
     expect(requestSteppedLoadStep).toHaveBeenCalledTimes(1);
 
-    resolveOrdinary?.({ requested: true, transport: 'capability' });
+    resolveOrdinary?.({ requested: true, acknowledged: true as const, transport: 'native_capability' });
     await ordinary;
     await flush();
     expect(requestSteppedLoadStep).toHaveBeenCalledTimes(2);

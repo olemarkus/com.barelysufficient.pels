@@ -473,3 +473,11 @@ executor never sees a `shedAction` for it: its setpoint leaves selection as
 and reaches the storage lane as an ordinary `StorageDecision`. The restore
 lane hands a limit hold back in priority order (release reason `restored`);
 there is no idle-timer hand-back.
+
+Binary and stepped actuator outcomes distinguish issued requests from acknowledgement.
+Every issued binary/step outcome carries `acknowledged`; a step also carries its
+actual transport. The actuator resolves Homey write timeouts into unacknowledged
+outcomes. A Flow trigger timeout is likewise issued but unacknowledged. Metadata
+read failures before dispatch remain failures, with their original cause retained.
+Executors consume this result without inspecting transport exceptions, and retain
+existing telemetry confirmation, pending state and conservative cooldown accounting.

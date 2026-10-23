@@ -257,7 +257,7 @@ const buildExecutor = (
         params.desiredStepId,
         (capabilityId, value) => deviceManager.setCapability(params.deviceId, capabilityId, value),
       );
-      if (nativeRequested) return { requested: true, transport: 'native_capability' as const };
+      if (nativeRequested) return { requested: true, acknowledged: true as const, transport: 'native_capability' as const };
       const triggerPromise = triggerCards.desired_stepped_load_changed.trigger({
         step_id: params.desiredStepId,
         planning_power_w: params.planningPowerW,
@@ -267,7 +267,7 @@ const buildExecutor = (
         deviceId: params.deviceId,
       });
       void Promise.resolve(triggerPromise);
-      return { requested: true, transport: 'flow' as const };
+      return { requested: true, acknowledged: true as const, transport: 'flow' as const };
     }),
   });
   const flowMock = {
@@ -2433,7 +2433,7 @@ describe('PlanExecutor stepped loads', () => {
         markFirstWriteStarted();
         await firstWriteReleased;
       }
-      return { requested: true, transport: 'flow' as const };
+      return { requested: true, acknowledged: true as const, transport: 'flow' as const };
     });
 
     const applying = executor.applyPlanActions(plan);
