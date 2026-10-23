@@ -3,9 +3,9 @@ import type {
   EvChargingState,
   SteppedLoadProfile,
   ThermalDirection,
-} from '../../contracts/src/types.js';
-import type { DeviceReason } from './planReasonSemantics';
-import type { PlannedTemperatureState } from './plannedTemperatureState';
+} from './types.js';
+import type { DeviceReason } from '../../shared-domain/src/planReasonSemantics.js';
+import type { PlannedTemperatureState } from '../../shared-domain/src/plannedTemperatureState.js';
 
 /**
  * The overview card's temperature facet: the planner's trio plus which way the

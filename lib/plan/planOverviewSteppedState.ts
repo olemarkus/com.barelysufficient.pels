@@ -1,4 +1,4 @@
-import type { DeviceOverviewSteppedLoad } from '../../packages/shared-domain/src/deviceOverview';
+import type { DeviceOverviewSteppedLoad } from '../../packages/contracts/src/deviceOverview';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
 import { getSteppedLoadHighestStep, getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';

@@ -10,7 +10,7 @@ import {
 } from '../../packages/shared-domain/src/planStateLabels';
 import { resolveHeldCardReasonLine } from './planCardReasonLine';
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
-import type { DeviceOverviewSnapshot } from '../../packages/shared-domain/src/deviceOverview';
+import type { DeviceOverviewSnapshot } from '../../packages/contracts/src/deviceOverview';
 
 type TemperatureDevice = DeviceOverviewSnapshot & {
   stateKind?: PlanStateKind;

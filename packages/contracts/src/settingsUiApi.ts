@@ -20,7 +20,7 @@ import type {
 import type {
   DeviceOverviewSnapshot,
   DeviceOverviewStrings,
-} from '../../shared-domain/src/deviceOverview.js';
+} from './deviceOverview.js';
 import type { DeviceStatus } from './deviceStatus.js';
 import type { EvCarChargerMatchHistory } from './evCarLink.js';
 

@@ -3,7 +3,7 @@ import type { DeviceStatus, DeviceStatusCountdown } from '../../packages/contrac
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
 import type { IdleClassification } from '../../packages/contracts/src/idleClassification';
-import type { DeviceOverviewSnapshot } from '../../packages/shared-domain/src/deviceOverview';
+import type { DeviceOverviewSnapshot } from '../../packages/contracts/src/deviceOverview';
 import {
   displayStateLabel, displayStateTone, isHoldReasonCode, resolveDisplayStateKind, resolveIntentStateKind,
 } from '../../packages/shared-domain/src/planCardGrammar';

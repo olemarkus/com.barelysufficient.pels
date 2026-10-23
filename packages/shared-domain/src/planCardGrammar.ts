@@ -40,7 +40,7 @@ import {
   type PlanStateTone,
 } from './planStateLabels';
 import { formatStarvationBadge } from './planStarvation';
-import type { DeviceOverviewSnapshot } from './deviceOverview';
+import type { DeviceOverviewSnapshot } from '../../contracts/src/deviceOverview';
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
 
 const isPlanStateKind = (value: string | undefined): value is PlanStateKind => (

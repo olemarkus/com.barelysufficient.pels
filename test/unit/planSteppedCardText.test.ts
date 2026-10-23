@@ -13,7 +13,7 @@ import {
 } from '../../packages/shared-domain/src/planStateLabels';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
-import type { DeviceOverviewSteppedLoad } from '../../packages/shared-domain/src/deviceOverview';
+import type { DeviceOverviewSteppedLoad } from '../../packages/contracts/src/deviceOverview';
 
 const NOW_MS = 1_000_000;
 
