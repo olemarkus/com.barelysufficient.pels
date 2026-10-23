@@ -1,6 +1,7 @@
 import type { DevicePlanDevice, MeteredDevicePlanDevice } from '../planTypes';
 import { isMeteredPlanDevice } from '../planMeteredDevice';
 import type { PlanEngineState } from '../planState';
+import type { PlanContext } from '../planContext';
 import {
   PLAN_REASON_CODES,
   type DeviceReason,
@@ -14,6 +15,7 @@ import {
   getSteppedLoadStep,
 } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { HEADROOM_RESERVE_MAX_MS } from '../planConstants';
+import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../../../packages/shared-domain/src/powerFreshness';
 import { buildRestoreAdmissionMetrics, isRestoreAdmitted, type RestoreAdmissionMetrics } from './reserve';
 
 /**
@@ -66,39 +68,67 @@ export type HeadroomReserve = {
 
 type ReserveOutcome = 'armed' | 'expired' | 'satisfied' | 'not_startable' | 'unknown_device_power';
 
-// Sentinel stored in place of an arming timestamp once a device has been seen to start. The
-// reservation is a one-shot per grant: get the device going, then stay out of the way. Without the
-// latch, any device whose only start evidence is instantaneous draw — a target-only thermostat has
-// no binary handle and no step axis — alternates between satisfied and waiting as its element duty
-// cycles, minting a fresh bound every time and holding lower-priority devices out indefinitely.
-// Cleared when the permission goes away, since the record is rebuilt from the flagged devices.
-const RELEASED = -1;
+/**
+ * A startup reservation's clock. The bound is on time spent HOLDING (cycles in which a restore
+ * lane runs, so a lower-priority device could have been admitted into the block), not on
+ * wall-clock since arming: a capacity-tight hour spends much of its time in shortfall, overshoot or
+ * a cooldown, when nothing is restored and the reserve holds nobody back, and a wall-clock bound
+ * let those cycles use up the window before a real block appeared. The budget-exempt lane counts
+ * too, whoever holds the reserve: it admits against the same reduced headroom, so a home pinned
+ * under its daily budget for hours still lapses the reserve in its window.
+ *
+ *  - `holding`: armed in `hourBucketKey`, with the held time so far, when it was last ticked, and
+ *    whether that cycle held. The time up to the next cycle is the plan of THAT cycle at work, so
+ *    it counts as held by that cycle's answer, not the next one's. A clock from an earlier hour
+ *    starts over, as an expired one does, since smart tasks book by the hour.
+ *  - `expired`: held past the bound in `hourBucketKey`. It stays expired for the rest of that hour
+ *    and arms afresh in a later one; a wall-clock stamp could never re-arm once lapsed, even after
+ *    the blocking load had gone.
+ *  - `released`: the device started under this grant. A one-shot: get it going, then stay out of
+ *    the way. Without the latch, a device whose only start evidence is instantaneous draw (a
+ *    target-only thermostat has no binary handle and no step axis) alternates between satisfied and
+ *    waiting as its element duty cycles, holding lower-priority devices out indefinitely. Dropped
+ *    when the permission goes away, since the record is rebuilt from the flagged devices.
+ */
+export type HeadroomReserveClock =
+  | { kind: 'holding'; heldMs: number; lastTickMs: number; heldLastCycle: boolean; hourBucketKey: string }
+  | { kind: 'expired'; hourBucketKey: string }
+  | { kind: 'released' };
 
 /**
- * Resolve this cycle's active startup reservations and re-stamp the arming clock.
+ * The most one gap between cycles adds to the held time. A Flow power source that reports every
+ * few minutes holds devices off for every one of those minutes, so the gap counts whole; past the
+ * meter-silence timeout the meter counts as stopped, the fail-closed pass takes over, and the
+ * reserve holds nobody back.
+ */
+const MAX_HELD_STEP_MS = POWER_SAMPLE_STALE_SHED_TIMEOUT_MS;
+
+/**
+ * Resolve this cycle's active startup reservations and advance their clocks.
  *
- * `state.headroomReserveArmedMs` is rebuilt from scratch each call rather than mutated in place,
- * so a device that leaves the snapshot or stops requesting a reserve cannot leave a stale stamp
- * behind. A reserve that expires keeps its stamp (it must stay expired, not re-arm and flap); one
- * that is satisfied or withdrawn drops its stamp, so a later start gets a fresh window.
+ * `state.headroomReserveClocks` is rebuilt from scratch each call rather than mutated in place, so
+ * a device that leaves the snapshot or stops requesting a reserve cannot leave a stale clock
+ * behind. `restoresRun` is whether any restore lane runs this cycle; the time until the next
+ * cycle counts as held only after one that did.
  */
 /* eslint-disable functional/immutable-data, no-param-reassign --
    In-place update avoids another state or accumulator copy. */
 export function resolveHeadroomReserves(
   devices: readonly DevicePlanDevice[],
-  state: Pick<PlanEngineState, 'headroomReserveArmedMs'>,
-  nowTs: number,
+  state: Pick<PlanEngineState, 'headroomReserveClocks'>,
+  context: Pick<PlanContext, 'nowTs' | 'hourBucketKey'>,
+  restoresRun: boolean,
 ): HeadroomReserve[] {
-  const previousArmedMs = state.headroomReserveArmedMs;
-  const nextArmedMs: Record<string, number> = {};
+  const previousClocks = state.headroomReserveClocks;
+  const nextClocks: Record<string, HeadroomReserveClock> = {};
   const reserves: HeadroomReserve[] = [];
 
   for (const device of devices) {
     // A reserve is a block of available power held for a start, which only a
     // device with a power reading can be priced for or seen to satisfy.
     if (device.reservesStartupPower !== true || !isMeteredPlanDevice(device)) continue;
-    const decision = resolveReserveForDevice(device, previousArmedMs[device.id] ?? null, nowTs);
-    if (decision.armedMs !== null) nextArmedMs[device.id] = decision.armedMs;
+    const decision = resolveReserveForDevice(device, previousClocks[device.id] ?? null, context, restoresRun);
+    if (decision.clock !== null) nextClocks[device.id] = decision.clock;
     if (decision.reserve) reserves.push(decision.reserve);
     emitReserveDebug({
       event: 'headroom_reserve_decision',
@@ -106,56 +136,77 @@ export function resolveHeadroomReserves(
       deviceName: device.name,
       outcome: decision.outcome,
       startupKw: resolveStartupPowerKw(device),
-      armedMs: decision.armedMs,
-      ageMs: decision.armedMs === null ? null : nowTs - decision.armedMs,
+      restoresRun,
+      heldMs: decision.clock?.kind === 'holding' ? decision.clock.heldMs : null,
     });
   }
 
-  state.headroomReserveArmedMs = nextArmedMs;
+  state.headroomReserveClocks = nextClocks;
   return reserves;
 }
 /* eslint-enable functional/immutable-data, no-param-reassign */
 
 type ReserveDecision = {
   outcome: ReserveOutcome;
-  // The arming stamp to carry into the next cycle, or null to drop it (so a later start gets a
-  // fresh window). An expired reserve keeps its stamp so the lapse sticks instead of re-arming.
-  armedMs: number | null;
+  // The clock to carry into the next cycle, or null to drop it (so a later start gets a fresh
+  // window).
+  clock: HeadroomReserveClock | null;
   reserve: HeadroomReserve | null;
 };
 
+/**
+ * The time a reserve has held in this hour, up to now. A fresh clock, or one armed or lapsed in an
+ * earlier hour, has held nothing yet; otherwise the gap since the last cycle counts when that cycle
+ * held.
+ */
+function resolveHeldMs(
+  clock: HeadroomReserveClock | null,
+  { nowTs, hourBucketKey }: Pick<PlanContext, 'nowTs' | 'hourBucketKey'>,
+): number {
+  if (clock?.kind !== 'holding' || clock.hourBucketKey !== hourBucketKey) return 0;
+  if (!clock.heldLastCycle) return clock.heldMs;
+  return clock.heldMs + Math.min(Math.max(0, nowTs - clock.lastTickMs), MAX_HELD_STEP_MS);
+}
+
 function resolveReserveForDevice(
   device: MeteredDevicePlanDevice,
-  armedMs: number | null,
-  nowTs: number,
+  clock: HeadroomReserveClock | null,
+  context: Pick<PlanContext, 'nowTs' | 'hourBucketKey'>,
+  restoresRun: boolean,
 ): ReserveDecision {
+  const { nowTs, hourBucketKey } = context;
   // Already started once under this grant — stay released, whatever the meter says right now.
-  if (armedMs === RELEASED) return { outcome: 'satisfied', armedMs: RELEASED, reserve: null };
+  if (clock?.kind === 'released') return { outcome: 'satisfied', clock, reserve: null };
 
   // Both of the next two gates read fields a flaky Homey poll can flip for a single cycle
   // (`steppedLoadProfile`, `available`, `commandableNow`). They withhold the reserve for that
-  // cycle but KEEP the arming stamp: dropping it would restart the 15-minute bound on every blip,
-  // and the bound is the only protection against a reserve that can never be satisfied. Only a
+  // cycle but KEEP the clock: dropping it would restart the 15-minute bound on every blip, and
+  // the bound is the only protection against a reserve that can never be satisfied. Only a
   // genuine start (`satisfied`) or a withdrawn permission clears the clock.
   const startupKw = resolveStartupPowerKw(device);
   // Cannot reason about its draw → no reserve.
-  if (startupKw === null) return { outcome: 'unknown_device_power', armedMs, reserve: null };
+  if (startupKw === null) return { outcome: 'unknown_device_power', clock, reserve: null };
 
   // The device will never start, so reserving on its behalf is pure cost to everyone else.
-  if (!isStartable(device)) return { outcome: 'not_startable', armedMs, reserve: null };
+  if (!isStartable(device)) return { outcome: 'not_startable', clock, reserve: null };
 
-  if (isStartupSatisfied(device, startupKw)) return { outcome: 'satisfied', armedMs: RELEASED, reserve: null };
+  if (isStartupSatisfied(device, startupKw)) {
+    return { outcome: 'satisfied', clock: { kind: 'released' }, reserve: null };
+  }
 
-  const armedSince = armedMs ?? nowTs;
+  if (clock?.kind === 'expired' && clock.hourBucketKey === hourBucketKey) {
+    return { outcome: 'expired', clock, reserve: null };
+  }
+  const heldMs = resolveHeldMs(clock, context);
   // Bounded so an unsatisfiable reserve — a priority-2 device behind an immovable priority-1 load,
-  // say — cannot hold lower-priority devices off indefinitely.
-  if (nowTs - armedSince > HEADROOM_RESERVE_MAX_MS) {
-    return { outcome: 'expired', armedMs: armedSince, reserve: null };
+  // say — cannot hold lower-priority devices off for more than the window in any hour.
+  if (heldMs > HEADROOM_RESERVE_MAX_MS) {
+    return { outcome: 'expired', clock: { kind: 'expired', hourBucketKey }, reserve: null };
   }
 
   return {
     outcome: 'armed',
-    armedMs: armedSince,
+    clock: { kind: 'holding', heldMs, lastTickMs: nowTs, heldLastCycle: restoresRun, hourBucketKey },
     reserve: {
       deviceId: device.id,
       deviceName: device.name,

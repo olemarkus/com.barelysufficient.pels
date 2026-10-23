@@ -6,6 +6,7 @@ import { ActuationRecord } from './actuationRecord';
 import { RestoreBackoff } from './restoreBackoff';
 import { ShedDecisions } from './shedDecisions';
 import { SwapLedger } from './swap';
+import type { HeadroomReserveClock } from './admission/headroomReserve';
 import type {
   BinaryControlDiscriminantProbe,
   DevicePlanDevice,
@@ -351,16 +352,13 @@ export class PlanEngineState {
    */
   externalOffHoldLiftedIds: ReadonlySet<string> = new Set();
 
-
   /**
-   * Arming clock for startup power reservations (`lib/plan/admission/headroomReserve.ts`): when a
-   * device carrying `reservesStartupPower` first began holding a block back from lower-priority
-   * admission. Rebuilt wholesale each resolve — a device that leaves the snapshot, stops
-   * requesting, or reaches its lowest active step drops its stamp, while an expired reserve keeps
-   * its stamp so it stays expired instead of re-arming every cycle. In-memory only: a restart
-   * simply gives a still-waiting device a fresh window.
+   * The startup reservation clocks (`HeadroomReserveClock`), one per device carrying
+   * `reservesStartupPower`. Rebuilt wholesale each resolve, so a device that leaves the snapshot or
+   * stops requesting drops its clock. In-memory only: a restart simply gives a still-waiting device
+   * a fresh window.
    */
-  headroomReserveArmedMs: Record<string, number> = {};
+  headroomReserveClocks: Record<string, HeadroomReserveClock> = {};
 
   activationAttemptByDevice: Record<string, ActivationAttempt> = {};
 

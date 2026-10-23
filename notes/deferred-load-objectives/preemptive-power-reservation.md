@@ -62,9 +62,16 @@ axis, so without the latch it would alternate between satisfied and waiting on e
 cycle, minting a fresh bound each time and holding lower-priority devices out for the whole window.
 Get the device going, then stay out of the way.
 
-**Bounded lifetime.** A reserve lapses after `HEADROOM_RESERVE_MAX_MS` (15 min). Without it, a
-priority-2 device waiting behind an immovable priority-1 load would hold priority-3+ devices out of
-admission forever for a start that is never coming.
+**Bounded lifetime.** A reserve lapses once it has held for `HEADROOM_RESERVE_MAX_MS` (15 min) in
+an hour. The time up to each next cycle counts when the cycle before it ran a restore lane (the
+budget-exempt one included, since it admits against the same reduced headroom), because that
+cycle's plan is what keeps lower-priority devices off until the next reading: shortfall, overshoot
+and cooldown cycles, when nothing is restored and the reserve holds nobody back, do not use it up,
+and a Flow source reporting every few minutes uses it up in its 15 minutes, not after an hour of
+such gaps. One gap counts at most the 10-minute meter-silence timeout, after which the fail-closed
+pass takes over. Held time starts over each hour, and a lapsed reserve stays lapsed for the rest of
+the hour and arms afresh in the next, since smart tasks book by the hour. Without the bound, a priority-2 device waiting behind an immovable priority-1 load would hold
+priority-3+ devices out of admission forever for a start that is never coming.
 
 **The claim is an amount kept free, not a ceiling.** The subtraction that produces effective
 headroom is signed and unclamped. Clamping it at zero inverts when available power is already
@@ -107,9 +114,9 @@ reservation is the same as a shed. It is classified as a hold (`HOLD_REASON_CODE
 2026-08-08, it **runs the starvation clock** — `reservedForStart` is a counting cause, because PELS
 is the reason the held device is down (`notes/starvation/README.md`). It used to pause the clock on
 the grounds that the reserve is bounded by `HEADROOM_RESERVE_MAX_MS`; that bound is a property of
-the mechanism, not something the held device experiences, and the reserve's 15-minute ceiling is
-exactly the starvation entry delay, so a maximally long reservation now sits right at the entry
-boundary. The code says so. Claiming the reserve "does not affect other devices" would be a
+the mechanism, not something the held device experiences, and the reserve's 15 minutes of held
+time an hour is exactly the starvation entry delay, so a maximally long reservation reaches the
+entry boundary. The code says so. Claiming the reserve "does not affect other devices" would be a
 rationalisation.
 
 What is actually different is the mechanism, and it is checkable:

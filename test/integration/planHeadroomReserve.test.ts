@@ -243,8 +243,14 @@ describe('PlanBuilder startup power reservation', () => {
     expect(deviceOf(await builder.buildDevicePlanSnapshot(settled), 'thermostat')?.reason?.code)
       .toBe(PLAN_REASON_CODES.reservedForStart);
 
-    vi.advanceTimersByTime(HEADROOM_RESERVE_MAX_MS + 1000);
-    const lapsed = await builder.buildDevicePlanSnapshot(settled);
+    // The bound is on HELD time, which a cycle adds to at most a minute of: drive one rebuild a
+    // minute, as readings would, until the window is spent.
+    const heldMinutes = HEADROOM_RESERVE_MAX_MS / 60_000;
+    let lapsed = await builder.buildDevicePlanSnapshot(settled);
+    for (let minute = 0; minute <= heldMinutes; minute += 1) {
+      vi.advanceTimersByTime(60_000);
+      lapsed = await builder.buildDevicePlanSnapshot(settled);
+    }
     expect(deviceOf(lapsed, 'thermostat')?.reason?.code).not.toBe(PLAN_REASON_CODES.reservedForStart);
     // Positive assertion: the device actually gets to resume once the reservation lapses.
     expect(stateOf(lapsed, 'thermostat')).toBe('keep');

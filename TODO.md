@@ -73,23 +73,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Shed and restore control
 
-- [ ] **Bound the startup reservation on time spent HOLDING, not wall-clock since first sighting.**
-      `resolveCycleHeadroomReserves` runs at the top of `applyRestorePlan` (`lib/plan/restore/index.ts`),
-      so `HEADROOM_RESERVE_MAX_MS` burns during every window in which the reserve enforces nothing:
-      `guardInShortfall`, active overshoot, shed cooldown (60 s), restore
-      cooldown (60–300 s), startup stabilization. *Hypothesis:* a capacity-tight hour with three
-      shed/restore cycles can consume most of the 15 minutes without the reserve ever holding a
-      device back; the home then calms, a real contiguous block appears, and the reserve has already
-      lapsed — the exact out-competition the feature exists to stop. Worse in `power_source = flow`,
-      where a 20-minute sample gap can consume the entire window in one go. Fix: advance the clock
-      only on the `armed` outcome, or record held-cycles rather than a start timestamp. *Persona:*
-      owner with an EV charger on a smart task in a busy home. Source: pels-runtime-reality on
-      preemptive-power-reservation, 2026-08-01.
-      **Includes the re-arm half.** A reservation that lapses mid-window can never re-arm even if
-      the blocking load disappears, because only a genuine start clears the stamp in
-      `resolveReserveForDevice`. Allow re-arm after a cool-off, or key the lapse to the planned
-      bucket. Done when both the bound and the re-arm are covered. *P2*
-
 ## Smart tasks
 
 
