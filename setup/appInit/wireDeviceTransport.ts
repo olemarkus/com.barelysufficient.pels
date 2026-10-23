@@ -15,7 +15,7 @@ import type { ObservedStateEmitter } from '../../lib/observer/observedStateEvent
 import type { ObservedStateEmitterDispatcher } from '../../lib/ports/observedStateEvents';
 import type { ObservedDeviceStateProjection } from '../../lib/observer/observedDeviceStateProjection';
 import { createCalibrationSnapshotMutationHook } from '../../lib/device/devicePowerCalibrationStore';
-import { getDebugEmitter, type Logger as PinoLogger } from '../../lib/logging/logger';
+import type { Logger as PinoLogger } from '../../lib/logging/logger';
 import { createExternalOffHoldPolicy } from '../externalOffHoldAdapter';
 import { createEvCarLinkAccessForApp } from './evCarLinkAccess';
 import type { AppContext } from '../../lib/app/appContext';
@@ -78,10 +78,7 @@ export function buildDeviceTransport(
   // wiring-assigns-ctx-members house pattern).
   // eslint-disable-next-line functional/immutable-data, no-param-reassign -- shared AppContext write
   ctx.externalOffHold = createExternalOffHoldPolicy(ctx.homey.settings);
-  const observeCalibrationSnapshotMutation = createCalibrationSnapshotMutationHook(
-    ctx.getPowerCalibrationStore(),
-    getDebugEmitter('power_calibration', 'power_calibration'),
-  );
+  const observeCalibrationSnapshotMutation = createCalibrationSnapshotMutationHook(ctx.getPowerCalibrationStore());
   return new DeviceTransport(homeyApp, {
     log: ctx.log.bind(ctx),
     error: ctx.error.bind(ctx),

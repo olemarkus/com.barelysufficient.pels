@@ -15,7 +15,6 @@ import {
     type LiveDevicePowerWatts,
 } from '../managerEnergy';
 import type { DeviceMeasuredPowerResolver } from '../measuredPowerResolver';
-import type { StructuredDebugEmitter } from '../../logging/logger';
 import { resolveParseDeviceIdentity } from './managerParseIdentity';
 import { isHomeBatteryDevice } from '../managerEnergy';
 export { applyDeviceDriverOverride } from './managerParseIdentity';
@@ -80,7 +79,6 @@ export type FlowBackedRead = Pick<
 
 export type DeviceTransportParseDeps = {
     logger: Logger;
-    debugStructured?: StructuredDebugEmitter;
     settings: DeviceParseSettings;
     nativeWiring: NativeWiringRead;
     flowBacked: FlowBackedRead;

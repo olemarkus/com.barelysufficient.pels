@@ -1,7 +1,9 @@
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
-import type { StructuredDebugEmitter } from '../../logging/logger';
+import { getDebugEmitter } from '../../logging/logger';
 import type { DeviceCapabilityMap } from '../managerControl';
 import { isBatteryOrSolarClassKey } from './managerHelpers';
+
+const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
 const TARGET_TEMPERATURE_CAPABILITY_ID = 'target_temperature';
 const POWER_CAPABILITY_PREFIXES = ['measure_power', 'meter_power'] as const;
@@ -13,14 +15,12 @@ export function resolveDeviceCapabilities(params: {
   deviceId: string;
   deviceLabel: string;
   capabilities: string[];
-  debugStructured?: StructuredDebugEmitter;
 }): { targetCaps: string[]; hasPower: boolean } | null {
   const {
     deviceClassKey,
     deviceId,
     deviceLabel,
     capabilities,
-    debugStructured,
   } = params;
   const hasPower = hasPowerCapability(capabilities);
   const targetCaps = capabilities.includes('measure_temperature')
@@ -37,7 +37,7 @@ export function resolveDeviceCapabilities(params: {
   }
   if (deviceClassKey === 'evcharger') {
     if (!capabilities.includes('evcharger_charging')) {
-      debugStructured?.({
+      emitDeviceDebug({
         event: 'device_skipped_missing_capability',
         deviceClass: deviceClassKey,
         deviceId,
@@ -85,15 +85,13 @@ export function buildTargets(
     capabilityObj: DeviceCapabilityMap;
     deviceId?: string;
     deviceLabel: string;
-    debugStructured?: StructuredDebugEmitter;
-  },
+    },
 ): TargetDeviceSnapshot['targets'] {
   const {
     targetCaps,
     capabilityObj,
     deviceId,
     deviceLabel,
-    debugStructured,
   } = params;
   return targetCaps.flatMap((capId) => {
     const capability = capabilityObj[capId];
@@ -103,8 +101,7 @@ export function buildTargets(
       capId,
       deviceId,
       deviceLabel,
-      debugStructured,
-    });
+      });
     if (resolvedValue === undefined) return [];
     return [{
       id: capId,
@@ -133,17 +130,15 @@ function resolveTargetCapabilityValue(params: {
   capId: string;
   deviceId?: string;
   deviceLabel: string;
-  debugStructured?: StructuredDebugEmitter;
 }): number | undefined {
   const {
     value,
     capId,
     deviceId,
     deviceLabel,
-    debugStructured,
   } = params;
   if (typeof value === 'number' && Number.isFinite(value)) return value;
-  debugStructured?.({
+  emitDeviceDebug({
     event: 'target_capability_value_malformed',
     ...(deviceId !== undefined ? { deviceId } : {}),
     deviceName: deviceLabel,

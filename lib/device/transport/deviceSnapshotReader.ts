@@ -4,7 +4,6 @@ import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import type { LiveDevicePowerWatts } from '../managerEnergy';
 import type { RetainedPowerPersistence } from '../retainedPowerPersistence';
-import { getDebugEmitter } from '../../logging/logger';
 import {
   applyDeviceDriverOverride,
   isDevicePowerCapable,
@@ -26,7 +25,6 @@ import type { BatteryControlRead } from '../../ports/batteryControlOwner';
 import { DeviceManagement, type DeviceRoleMembership } from '../deviceRoleReads';
 import type { DeviceTransportOptions } from './transportTypes';
 
-const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
 /**
  * The owners every parse reads, from the ones the transport was handed and its
@@ -190,7 +188,6 @@ export class DeviceSnapshotReader {
     return {
       logger: this.logger,
       ...this.sources,
-      debugStructured: emitDeviceDebug,
       powerState: this.powerState,
       measuredPowerResolver: this.retainedPower.resolver,
       getCapabilityObj: getCapabilityObj,

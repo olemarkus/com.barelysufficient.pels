@@ -4,7 +4,7 @@ import type {
   TargetPowerSteppedLoadConfig,
 } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
-import type { StructuredDebugEmitter } from '../logging/logger';
+import { getDebugEmitter } from '../logging/logger';
 import {
   augmentCapabilitiesWithFlowReports,
   getFlowEffectiveRequiredCapabilitiesForType,
@@ -42,6 +42,8 @@ import { withoutTargetPowerReachability } from './targetPowerReachability';
 import { hasUsableSteppedLoadLadder } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { resolveTargetPowerPresetPhaseCount } from '../../packages/shared-domain/src/targetPowerStepping';
 import { isBatteryOrSolarClassKey } from '../../packages/shared-domain/src/batteryOrSolarRole';
+
+const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
 export type FlowEffectiveRequiredCapabilityId =
   'onoff'
@@ -442,7 +444,6 @@ export function resolveCandidateCapabilities(
     ReturnType<typeof resolveFlowCapabilityOverlay>,
     'capabilities' | 'controlAdapter' | 'steppedLoadProfile'
   >,
-  debugStructured: StructuredDebugEmitter | undefined,
 ): { targetCaps: string[]; hasPower: boolean } | null {
   const { deviceClassKey, deviceId, deviceLabel } = identity;
   const { capabilities, controlAdapter, steppedLoadProfile } = overlay;
@@ -455,7 +456,7 @@ export function resolveCandidateCapabilities(
   // device downstream — there is no such thing as an EV charger PELS manages
   // without a plug-state.
   if (deviceClassKey === 'evcharger' && !capabilities.includes('evcharger_charging_state')) {
-    debugStructured?.({
+    emitDeviceDebug({
       event: 'device_skipped_missing_capability',
       deviceClass: deviceClassKey,
       deviceId,
@@ -486,7 +487,6 @@ export function resolveCandidateCapabilities(
     deviceId,
     deviceLabel,
     capabilities,
-    debugStructured,
   });
   if (resolved) return resolved;
   // A stepped-load profile is an independent control facet. Missing or invalid

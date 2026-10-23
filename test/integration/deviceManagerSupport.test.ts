@@ -147,7 +147,6 @@ describe('device manager support helpers', () => {
       step: 5,
     }]);
 
-    const debugStructured = vi.fn();
     expect(buildTargets({
       targetCaps: ['target_temperature'],
       capabilityObj: {
@@ -155,9 +154,8 @@ describe('device manager support helpers', () => {
       },
       deviceId: 'broken-device',
       deviceLabel: 'Broken Device',
-      debugStructured,
     })).toEqual([]);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'target_capability_value_malformed',
       deviceId: 'broken-device',
       deviceName: 'Broken Device',
@@ -189,15 +187,13 @@ describe('device manager support helpers', () => {
   });
 
   it('resolves device parse capabilities and power capability lookup', () => {
-    const debugStructured = vi.fn();
     expect(resolveDeviceCapabilities({
       deviceClassKey: 'evcharger',
       deviceId: 'ev1',
       deviceLabel: 'EV 1',
       capabilities: ['measure_power'],
-      debugStructured,
     })).toBeNull();
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'device_skipped_missing_capability',
       deviceId: 'ev1',
       missingCapability: 'evcharger_charging',
@@ -208,9 +204,8 @@ describe('device manager support helpers', () => {
     expect(resolveCandidateCapabilities(
       { deviceClassKey: 'evcharger', deviceId: 'ev2', deviceLabel: 'EV 2' },
       { capabilities: ['evcharger_charging', 'measure_power'] },
-      debugStructured,
     )).toBeNull();
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'device_skipped_missing_capability',
       deviceId: 'ev2',
       missingCapability: 'evcharger_charging_state',
@@ -218,9 +213,8 @@ describe('device manager support helpers', () => {
     expect(resolveCandidateCapabilities(
       { deviceClassKey: 'evcharger', deviceId: 'ev3', deviceLabel: 'EV 3' },
       { capabilities: ['target_power', 'measure_power'], controlAdapter: { activationAvailable: true } as never },
-      debugStructured,
     )).toBeNull();
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'device_skipped_missing_capability',
       deviceId: 'ev3',
       missingCapability: 'evcharger_charging_state',
