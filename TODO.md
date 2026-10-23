@@ -393,21 +393,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Solar and surplus
 
-- [ ] **Solar export price — migrate the smart-task *preview* price reader onto the planning price.**
-      The export-price model, the derived `budgetPrice`, its planning consumers (daily-budget
-      shaping/allocation, smart-task horizons — all `budgetPrice ?? total`; price levels and the lowest-price Flow cards stay on `total`,
-      money/receipt surfaces deliberately staying on `total`), the export-price settings section, the
-      Budget-tab "Export price now" subline, AND the planning-price DISPLAY surfaces (smart-task schedule
-      chart/readout/caption, Budget hourly-plan curve + `using your solar` note, `plan_budget` widget
-      curve + projected-cost estimate, Electricity "Right now" export row) all SHIPPED —
-      byte-identical to today for a non-prosumer, money/receipt figures kept on `total`. The one consumer
-      left on the import price is the smart-task **preview** reader
-      (`buildDeferredObjectivePolicyWindowPrices` / `...PolicyBucketPrices` in
-      `lib/objectives/deferredObjectives/policyHorizon.ts`): it still sources `buckets.price` (total-based)
-      from the daily-budget snapshot, so the create-task widget's preview curve/cost can disagree with the
-      planning-price allocation for prosumers. Fold it onto the planning price (matching the horizon allocator).
-      *Persona:* prosumer (Norwegian plusskunde, or NL post-saldering) self-consuming solar. [P2]
-
 - [ ] **A smart task and "match solar surplus" cannot combine on one device — the task wins outright.**
       `runSurplusPass` (`lib/plan/planBuilderSurplus.ts:74-79`) drops every device in
       `admittedDeviceIds` from BOTH the allocator and the hold, so a charger with a soft deadline

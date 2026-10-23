@@ -155,7 +155,7 @@ export type DeferredObjectiveHorizonBucket = {
   startMs: number;
   endMs: number;
   // Raw per-bucket price in the source currency (øre, EUR, eurocent, … — the
-  // series carries no unit at this layer; see `collectSnapshotPriceBuckets`).
+  // series carries no unit at this layer; see `buildPriceHorizonFromCombined`).
   // The SOLE price signal: the allocator fills hours cheapest-first by comparing
   // these prices relatively (currency-invariant band, see `bucketAllocation.ts`)
   // and the live deferral compares them by ratio. Optional/back-compat: missing →

@@ -24,6 +24,7 @@ import {
   buildDeferredObjectivePolicyWindowPrices,
 } from './policyHorizon';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
+import type { BuildPriceHorizon } from './diagnosticTypes';
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { PriorityAllocationTracker } from './priorityAllocation';
 
@@ -83,7 +84,7 @@ export const previewDeferredObjectivePlan = (
   { kind: 'preview', candidateDeviceId: deviceId },
   ).find((diagnostic) => diagnostic.deviceId === deviceId);
   if (!diag) throw new Error(`Preview candidate ${deviceId} missing from its own roster`);
-  return buildEstimateFromDiagnostic(diag, snapshot, candidate, priceRateLabel);
+  return buildEstimateFromDiagnostic(diag, snapshot, candidate, priceRateLabel, readers.buildPriceHorizon);
 };
 
 // Reflect the (already-gated) candidate rescue permissions onto a flat
@@ -224,6 +225,7 @@ const buildEstimateFromDiagnostic = (
   snapshot: TaskEvaluationSnapshot,
   candidate: DeferredObjectivePlanPreviewCandidate,
   priceRateLabel: string,
+  buildPriceHorizon: BuildPriceHorizon,
 ): DeferredObjectivePlanPreviewEstimate => {
   const { dailyBudgetSnapshot, nowMs } = snapshot;
   const { deadlineAtMs } = candidate;
@@ -249,10 +251,13 @@ const buildEstimateFromDiagnostic = (
   // `costEstimate` is a TOTAL amount (Σ kWh × price), so it must be labelled
   // with the money unit, never the per-kWh rate label `priceRateLabel` carries.
   const costUnit = priceRateLabelToAmountUnit(priceRateLabel);
-  // Hourly price curve across the now→deadline window for the preview chart.
-  // Same snapshot prices the cost above is summed from, and epoch-hour-floored on
-  // the same basis as `scheduledHours`, so the widget joins them by `startsAtMs`.
-  const priceSeries = buildDeferredObjectivePolicyWindowPrices(dailyBudgetSnapshot, nowMs, deadlineAtMs)
+  // Hourly price curve across the now→deadline window for the preview chart: the
+  // planning prices the candidate's own horizon was allocated on, so the curve
+  // ranks the hours the way the schedule did, epoch-hour-floored on the same basis
+  // as `scheduledHours` so the widget joins them by `startsAtMs`. Read only once a
+  // plan exists.
+  const priceHorizon = buildPriceHorizon(nowMs, deadlineAtMs);
+  const priceSeries = buildDeferredObjectivePolicyWindowPrices(priceHorizon, nowMs, deadlineAtMs)
     .map((point) => ({ startsAtMs: point.startMs, price: point.price }));
   const atPowerLimitNow = resolveAtPowerLimitNow(scheduledHours, snapshot);
   const floorShortfallCause = resolveFloorShortfallCause(diag.horizonPlan.statusDetail);
@@ -316,11 +321,13 @@ const resolveEnergyExpectedKWh = (diag: DeferredObjectiveDiagnostic): number | n
   return rounded === planned ? null : rounded;
 };
 
-// Cost = Σ(planned useful kWh × bucket price) over the planned buckets, using
-// the same per-bucket price source the policy horizon consumed. Iterates the
-// raw planned buckets (not the hour-collapsed schedule) so a bucket split at
-// `planningEndMs` still prices against its own source bucket. Returns null when
-// nothing is planned or no price is available for any planned bucket.
+// Cost = Σ(planned useful kWh × bucket money price) over the planned buckets.
+// Money, not the planning price the plan was allocated on: the saved task's own
+// "Estimated cost" (`deadlinePlanHero.ts`) is on `total`, so the preview and the
+// task show one figure for one schedule. Iterates the raw planned buckets (not
+// the hour-collapsed schedule) so a bucket split at `planningEndMs` still prices
+// against its own source bucket. Returns null when nothing is planned or no
+// price is available for any planned bucket.
 const resolveCostEstimate = (
   horizonPlan: NonNullable<DeferredObjectiveDiagnostic['horizonPlan']>,
   dailyBudgetSnapshot: DailyBudgetUiPayload | null,
