@@ -1,0 +1,144 @@
+import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
+import type { DailyBudgetDayPayload } from '../../packages/contracts/src/dailyBudgetTypes';
+import type { SettingsUiPlanSnapshot, SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/settingsUiApi';
+import type { SupportReportSection, SupportReportValue } from '../../packages/contracts/src/supportReport';
+import type {
+  DeviceDescriptor, EvObservedProbe, MeasuredPowerObservedProbe, ObservedDeviceState, StateOfChargeObservedProbe,
+  SteppedLoadDescriptorProbe, TemperatureObservedProbe,
+} from '../../packages/contracts/src/types';
+import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
+import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
+import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
+import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
+import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
+import { isTemperaturePlanDevice } from '../plan/planTemperatureDevice';
+import type { DevicePlanDevice } from '../plan/planTypes';
+
+const present = (key: string, value: SupportReportValue | undefined): Record<string, SupportReportValue> => (
+  value === undefined ? {} : { [key]: value }
+);
+
+/** Semantic snapshot facets read by the report, without transport routing or write metadata. */
+export type SupportReportDeviceSnapshot = Pick<DeviceDescriptor,
+  'id' | 'name' | 'deviceClass' | 'deviceType' | 'managed' | 'binaryControllable' | 'isEvCharger'
+  | 'expectedPowerKw' | 'expectedPowerSource' | 'controlModel' | 'flowBacked' | 'budgetExempt'
+  | 'priority' | 'controlAdapter'>
+  & Pick<ObservedDeviceState, 'available' | 'lastUpdated' | 'binaryControl' | 'targets'>
+  & EvObservedProbe
+  & MeasuredPowerObservedProbe & StateOfChargeObservedProbe & SteppedLoadDescriptorProbe & TemperatureObservedProbe;
+
+const reportDeviceMeasurements = (device: SupportReportDeviceSnapshot): Record<string, SupportReportValue> => ({
+  ...(hasObservedMeasuredPower(device) ? {
+    measuredPowerKw: device.measuredPowerKw,
+    ...present('measuredPowerObservedAtMs', device.measuredPowerObservedAtMs),
+  } : {}),
+  ...(hasObservedTemperature(device) ? {
+    temperatureC: device.temperature.currentTemperature,
+    targetTemperatureC: device.temperature.target.value,
+  } : {}),
+  ...(isEvObserved(device) ? { evChargingState: device.evChargingState } : {}),
+  ...(hasObservedStateOfCharge(device) && device.stateOfCharge.level.kind === 'known' ? {
+    stateOfChargePercent: device.stateOfCharge.level.percent,
+    stateOfChargeObservedAtMs: device.stateOfCharge.level.observedAtMs,
+  } : {}),
+});
+
+export const reportDeviceSnapshot = (device: SupportReportDeviceSnapshot): SupportReportSection => ({
+  title: 'Current device observation and configuration',
+  values: {
+    id: device.id, name: device.name, deviceClass: device.deviceClass, deviceType: device.deviceType,
+    managed: device.managed, available: device.available, binaryControllable: device.binaryControllable,
+    expectedPowerKw: device.expectedPowerKw, expectedPowerSource: device.expectedPowerSource,
+    ...present('controlModel', device.controlModel),
+    ...present('flowBacked', device.flowBacked),
+    ...present('budgetExempt', device.budgetExempt),
+    ...present('priority', device.priority),
+    ...present('lastUpdatedMs', device.lastUpdated),
+    ...(device.binaryControl ? { binaryOn: device.binaryControl.on } : {}),
+    targets: device.targets.map((target) => ({ id: target.id, unit: target.unit, ...present('value', target.value) })),
+    ...(device.controlAdapter ? {
+      controlAdapter: {
+        kind: device.controlAdapter.kind,
+        activationRequired: device.controlAdapter.activationRequired,
+        activationEnabled: device.controlAdapter.activationEnabled,
+        ...present('currentControl', device.controlAdapter.currentControl),
+        ...present('activationAvailable', device.controlAdapter.activationAvailable),
+      },
+    } : {}),
+    ...reportDeviceMeasurements(device),
+    ...(isSteppedLoadSnapshot(device) ? {
+      steps: device.steppedLoadProfile.steps.map((step) => ({
+        id: step.id, planningPowerW: step.planningPowerW, ...present('planningCurrentA', step.planningCurrentA),
+      })),
+    } : {}),
+  },
+});
+
+export const reportDeviceDecision = (device: DevicePlanDevice): SupportReportSection => ({
+  title: 'Current device plan',
+  values: {
+    plannedState: device.plannedState,
+    currentState: device.currentState,
+    reasonCode: device.reason.code,
+    priority: device.priority,
+    ...present('desiredStepId', device.desiredStepId),
+    ...present('lastDesiredStepId', device.lastDesiredStepId),
+    ...present('reportedStepId', device.reportedStepId),
+    ...present('lastStepCommandIssuedAtMs', device.lastStepCommandIssuedAt),
+    ...present('stepCommandStatus', device.stepCommandStatus),
+    ...(isTemperaturePlanDevice(device) ? {
+      currentTemperatureC: device.currentTemperature,
+      currentTargetC: device.currentTarget,
+      plannedTargetC: device.plannedTarget,
+    } : {}),
+  },
+});
+
+export const reportDevicePresentation = (device: SettingsUiPlanDeviceSnapshot): SupportReportSection => ({
+  title: 'Current device status',
+  values: {
+    state: device.status.kind, label: device.status.label, power: device.status.powerText,
+    fact: device.status.factText, reason: device.status.reason?.text ?? null,
+    limited: device.status.limited, wouldLimit: device.status.wouldLimit,
+  },
+});
+
+export const reportHomePlan = (plan: SettingsUiPlanSnapshot): SupportReportSection => ({
+  title: 'Current home plan',
+  values: {
+    ...present('planGeneratedAtMs', plan.generatedAtMs),
+    ...(plan.meta ? {
+      powerKw: plan.meta.totalKw,
+      powerIsMeasured: plan.meta.powerIsMeasured,
+      powerObservedAtMs: plan.meta.lastPowerUpdateMs,
+      capacityPaceKw: plan.meta.capacitySoftLimitKw,
+      budgetPaceKw: plan.meta.budgetPaceKw,
+      gridImportLimitKw: plan.meta.gridImportLimitKw,
+      gridImportTargetKw: plan.meta.gridImportTargetKw,
+      limitingConstraint: plan.meta.softLimitSource,
+      usedKWh: plan.meta.usedKWh,
+      hourBudgetKWh: plan.meta.hourBudgetKWh,
+      capacityPeriodMinutes: plan.meta.capacityPeriodMinutes,
+    } : {}),
+  },
+});
+
+export const reportCapacitySettings = (settings: CapacityScalarSettings): SupportReportSection => ({
+  title: 'Current limits settings',
+  values: {
+    capacityEnabled: settings.capacityEnabled, hardCapKw: settings.limitKw,
+    safetyMarginKw: settings.marginKw, capacityPeriodMinutes: settings.periodMinutes,
+    gridImportLimitKw: settings.gridImportLimitKw, simulation: settings.dryRun,
+  },
+});
+
+export const reportDailyBudget = (day: DailyBudgetDayPayload): SupportReportSection => ({
+  title: 'Current daily budget',
+  values: {
+    date: day.dateKey, timeZone: day.timeZone, updatedAt: day.nowUtc,
+    enabled: day.budget.enabled, dailyBudgetKWh: day.budget.dailyBudgetKWh,
+    priceShapingEnabled: day.budget.priceShapingEnabled,
+    usedKWh: day.state.usedNowKWh, allowedKWh: day.state.allowedNowKWh,
+    remainingKWh: day.state.remainingKWh, exceeded: day.state.exceeded,
+  },
+});

@@ -108,7 +108,22 @@ function chargingAccess(homey: ApiContext['homey']) {
   return transport.chargingAccess;
 }
 
+function supportReports(homey: ApiContext['homey']) {
+  const host = readPelsHost(homey);
+  if (!host) throw new Error(STARTING);
+  return host.supportReports;
+}
+
 export = {
+  support_report_prepare: withApiLogging('support_report_prepare', (
+    { homey, body }: ApiContext & { body?: unknown },
+  ) => supportReports(homey).prepare(body)),
+  support_report_get: withApiLogging('support_report_get', (
+    { homey, params }: ApiContext & { params: { id: string } },
+  ) => supportReports(homey).get(params.id)),
+  support_report_send: withApiLogging('support_report_send', (
+    { homey, params, body }: ApiContext & { params: { id: string }; body?: unknown },
+  ) => supportReports(homey).send(params.id, body)),
   ui_car_association_confirm: withApiLogging('ui_car_association_confirm', (
     { homey, body }: ApiContext & { body?: unknown },
   ): SettingsUiCarAssociationConfirmation => {

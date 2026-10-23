@@ -428,6 +428,18 @@
       "method": "GET",
       "path": "/ui_device_log"
     },
+    "support_report_prepare": {
+      "method": "POST",
+      "path": "/support-report/prepare"
+    },
+    "support_report_get": {
+      "method": "GET",
+      "path": "/support-report/:id"
+    },
+    "support_report_send": {
+      "method": "POST",
+      "path": "/support-report/:id/send"
+    },
     "ui_deferred_objective_history": {
       "method": "GET",
       "path": "/ui_deferred_objective_history"
