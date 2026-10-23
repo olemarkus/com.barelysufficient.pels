@@ -29,6 +29,7 @@ describe('assembleWeatherAdvisorReadout', () => {
     const collector = partialDouble<WeatherCollector>({
       getHistoryStateSnapshot: () => ({ records: [] }),
       isBackfillRunning: () => false,
+      isMetLocationMissing: () => false,
     });
 
     // The assembler reads the owner directly. It must not replace the applied

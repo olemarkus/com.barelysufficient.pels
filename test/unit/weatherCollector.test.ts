@@ -1337,6 +1337,32 @@ describe('WeatherCollector', () => {
     expect(lastWritten(store).metForecast?.byDay[TOMORROW_KEY]?.meanTempC).toBe(-1);
   });
 
+  it('remembers that the hub has no location until a forecast arrives', async () => {
+    let outcome: MetForecastFetchResult = { outcome: 'no_location' };
+    const fetchForecast = vi.fn(async (): Promise<MetForecastFetchResult> => outcome);
+    const { collector } = buildHarness({ fetchForecast });
+    collector.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(collector.isMetLocationMissing()).toBe(true);
+    collector.stop();
+
+    // The owner set a location: the next refresh stores a forecast and clears it.
+    outcome = { outcome: 'ok', days: metDays() };
+    collector.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    collector.stop();
+    expect(collector.isMetLocationMissing()).toBe(false);
+  });
+
+  it('does not read a failed MET fetch as a missing location', async () => {
+    const fetchForecast = vi.fn(async (): Promise<MetForecastFetchResult> => ({ outcome: 'failed' }));
+    const { collector } = buildHarness({ fetchForecast });
+    collector.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    collector.stop();
+    expect(collector.isMetLocationMissing()).toBe(false);
+  });
+
   it('keeps the cached forecast unchanged on a 304 not_modified', async () => {
     const fetchForecast = vi.fn(async (): Promise<MetForecastFetchResult> => ({ outcome: 'not_modified' }));
     // Cached, covers both days, but already expired → a conditional refetch (304).

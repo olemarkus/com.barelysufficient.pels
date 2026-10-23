@@ -436,7 +436,12 @@ export type WeatherRecentDay = {
  * learning, where there is no prediction) shares one answer; consumers map it
  * straight to copy and never re-derive it from settings (resolution-in-producer).
  */
-export type WeatherForecastStatus = 'forecast' | 'recent_days';
+/**
+ * `no_location` is `recent_days` with its cause known: MET was never asked,
+ * because the Homey has no location set. A reader that only knows the first two
+ * values reads it as `recent_days`, which is what it renders.
+ */
+export type WeatherForecastStatus = 'forecast' | 'recent_days' | 'no_location';
 
 /**
  * Live reading of a configured device, resolved by the producer so the Settings

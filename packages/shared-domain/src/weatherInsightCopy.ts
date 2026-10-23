@@ -101,15 +101,19 @@ export const composeTomorrowTitle = (tempC: number): string => (
 
 export const WEATHER_SOURCE_FORECAST = 'Forecast for tomorrow’s average';
 /**
- * MET unavailable / partial / no hub geolocation → the prediction leans on the
- * trailing week of observed days.
+ * MET unavailable / partial → the prediction leans on the trailing week of
+ * observed days.
  */
 export const WEATHER_SOURCE_PERSISTENCE = 'Forecast unavailable — showing what recent weather suggests.';
+/** No hub location: the same fallback, naming the one fix the owner controls. */
+export const WEATHER_SOURCE_NO_LOCATION = 'Showing what recent weather suggests: your Homey has no location set. '
+  + 'Set it in the Homey app to get tomorrow’s forecast.';
 
 /** Maps the producer-resolved forecast provenance to the Tomorrow-card source line. */
-export const composeForecastSourceLine = (status: WeatherForecastStatus): string => (
-  status === 'forecast' ? WEATHER_SOURCE_FORECAST : WEATHER_SOURCE_PERSISTENCE
-);
+export const composeForecastSourceLine = (status: WeatherForecastStatus): string => {
+  if (status === 'forecast') return WEATHER_SOURCE_FORECAST;
+  return status === 'no_location' ? WEATHER_SOURCE_NO_LOCATION : WEATHER_SOURCE_PERSISTENCE;
+};
 
 export const WEATHER_ROW_EXPECTED_USAGE = 'Expected usage';
 export const WEATHER_ROW_SUGGESTED_BUDGET = 'Suggested daily budget';

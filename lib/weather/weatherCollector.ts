@@ -101,6 +101,12 @@ export class WeatherCollector {
   private readonly backfillChain: WeatherBackfillChain;
   /** Single-flights the MET refresh so the periodic timer can't overlap the rollup-path one. */
   private metRefreshInFlight = false;
+  /**
+   * Whether the last MET fetch was refused for want of a hub location, so the
+   * readout can name that fix instead of the generic recent-days fallback. Held
+   * in memory only: the first refresh after a restart learns it again.
+   */
+  private metLocationMissing = false;
   private running = false;
   /**
    * Bumped on every stop(). Async continuations capture it before awaiting
@@ -236,6 +242,11 @@ export class WeatherCollector {
    */
   isBackfillRunning(): boolean {
     return this.backfillChain.isRunning();
+  }
+
+  /** Whether the last MET fetch was refused for want of a hub location. */
+  isMetLocationMissing(): boolean {
+    return this.metLocationMissing;
   }
 
   /** Persist immediately, bypassing the debounce (shutdown path). Still honors the load grace. */
@@ -469,10 +480,7 @@ export class WeatherCollector {
   }
 
   private getCurrentDateKey(): string {
-    return getDateKeyInTimeZone(
-      new Date(this.deps.getNowMs()),
-      this.deps.getTimeZone(),
-    );
+    return getDateKeyInTimeZone(new Date(this.deps.getNowMs()), this.deps.getTimeZone());
   }
 
   private writeState(): void {
@@ -522,17 +530,17 @@ export class WeatherCollector {
     this.metRefreshInFlight = true;
     const generation = this.runGeneration;
     try {
-      const todayKey = (): string => getDateKeyInTimeZone(new Date(this.deps.getNowMs()), this.deps.getTimeZone());
       await runMetForecastRefresh({
         fetchForecast: this.deps.fetchForecast,
         getCache: () => this.state.metForecast,
         getNowMs: () => this.deps.getNowMs(),
-        getTodayKey: todayKey,
-        getTomorrowKey: () => shiftDateKey(todayKey(), 1),
+        getTodayKey: () => this.getCurrentDateKey(),
+        getTomorrowKey: () => shiftDateKey(this.getCurrentDateKey(), 1),
         isStillCurrent: () => generation === this.runGeneration && this.running,
         storeCache: (cache) => { this.state = { ...this.state, metForecast: cache }; this.markDirty(); },
         logRefreshed: (cache) => this.deps.logger.info(metRefreshedLogFields(cache)),
         warnUnavailable: (outcome) => this.warnThrottled({ event: 'weather_met_forecast_unavailable', outcome }),
+        setLocationMissing: (missing) => { this.metLocationMissing = missing; },
       });
     } finally {
       this.metRefreshInFlight = false;
@@ -615,11 +623,9 @@ export class WeatherCollector {
 
   /** refreshMetForecast wrapped so a transient failure logs instead of rejecting the caller. */
   private async refreshMetForecastSafely(): Promise<void> {
-    try {
-      await this.refreshMetForecast();
-    } catch (error) {
-      this.deps.logger.warn({ event: 'weather_met_forecast_refresh_failed', err: normalizeError(error) });
-    }
+    await this.refreshMetForecast().catch((error: unknown) => (
+      this.deps.logger.warn({ event: 'weather_met_forecast_refresh_failed', err: normalizeError(error) })
+    ));
   }
 
   /**
@@ -639,7 +645,7 @@ export class WeatherCollector {
 
   /** Roll any accumulator days the app slept through (boot catch-up). */
   private catchUpRollups(): void {
-    const todayKey = getDateKeyInTimeZone(new Date(this.deps.getNowMs()), this.deps.getTimeZone());
+    const todayKey = this.getCurrentDateKey();
     const pendingKeys = Object.keys(this.state.accumulators ?? {})
       .filter((dateKey) => dateKey < todayKey)
       .sort();
@@ -664,7 +670,7 @@ export class WeatherCollector {
    * only age the correction, unless a terminal task miss proves budget damage.
    */
   private resolveAppliedBudgetKwh(dateKey: string): number | undefined {
-    const todayKey = getDateKeyInTimeZone(new Date(this.deps.getNowMs()), this.deps.getTimeZone());
+    const todayKey = this.getCurrentDateKey();
     if (dateKey !== shiftDateKey(todayKey, -1)) return undefined;
     return this.deps.getAppliedDailyBudgetKwh();
   }

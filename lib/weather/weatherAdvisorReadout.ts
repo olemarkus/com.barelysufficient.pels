@@ -73,6 +73,8 @@ export type WeatherAdvisorReadoutInput = {
    * names the limit that sets it.
    */
   powerLimitSettings: PowerLimitSettings;
+  /** The last MET fetch was refused for want of a hub location (`WeatherCollector`). */
+  metLocationMissing: boolean;
   nowMs: number;
   timeZone: string;
 };
@@ -115,10 +117,14 @@ export function buildWeatherAdvisorReadout(
   // records (a previously-configured device's history) must not leak into the
   // setup card as if they described the current configuration.
   const autoApplyEcho = resolveAutoApplyEcho(input);
+  // A recent-days fallback whose cause is a missing hub location says so.
+  const withLocationCause = (status: WeatherForecastStatus): WeatherForecastStatus => (
+    status === 'recent_days' && input.metLocationMissing ? 'no_location' : status
+  );
   if (!settings.outdoorDeviceId) {
     const needsDevice = buildNeedsDevicePayload({
       settingsEcho,
-      forecastStatus: resolvePayloadForecastStatus(state, tomorrowKey),
+      forecastStatus: withLocationCause(resolvePayloadForecastStatus(state, tomorrowKey)),
       outdoorReading,
       dailyBudgetKwh,
       autoApplyEcho,
@@ -136,7 +142,7 @@ export function buildWeatherAdvisorReadout(
   const usableYearRecords = yearRecords.filter((record) => isUsableSignatureDay(record));
 
   const tomorrow = fit ? resolveTomorrowOutlook(input, fit, todayKey) : null;
-  const forecastStatus = resolveOutlookForecastStatus(tomorrow, state, tomorrowKey);
+  const forecastStatus = withLocationCause(resolveOutlookForecastStatus(tomorrow, state, tomorrowKey));
 
   const payload: WeatherAdvisorReadoutPayload = {
     state: readoutState,

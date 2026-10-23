@@ -96,7 +96,7 @@ When the **Grid import limit** sets the day's ceiling instead (Capacity limit is
 
 ## When the forecast isn't available
 
-Tomorrow's forecast comes from a live MET Norway request keyed to your Homey hub's location. When PELS can't get a usable forecast — the service is briefly unavailable, or your hub has no location set — it falls back to what the last several days of weather suggest and labels the card *"Forecast unavailable — showing what recent weather suggests."* The prediction still works; it's just based on recent days rather than tomorrow's specific forecast.
+Tomorrow's forecast comes from a live MET Norway request keyed to your Homey hub's location. When PELS can't get a usable forecast, the prediction comes from what the last several days of weather suggest. If the service is briefly unavailable, the card reads *"Forecast unavailable — showing what recent weather suggests."* If your hub has no location set, the card says so: *"Showing what recent weather suggests: your Homey has no location set. Set it in the Homey app to get tomorrow's forecast."* The forecast returns once the location is set.
 
 The *"Weather data from MET Norway"* attribution on the card and in the detail view is required by MET's terms whenever forecast data is shown.
 

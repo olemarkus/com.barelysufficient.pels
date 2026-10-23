@@ -70,6 +70,12 @@ describe('composeForecastSourceLine', () => {
     expect(line).toContain('recent weather');
     expect(line).not.toContain('forecast device');
   });
+
+  it('names the missing Homey location as the fix when that is why there is no forecast', () => {
+    expect(composeForecastSourceLine('no_location'))
+      .toBe('Showing what recent weather suggests: your Homey has no location set. '
+        + 'Set it in the Homey app to get tomorrow’s forecast.');
+  });
 });
 
 describe('composeDeviceFooter', () => {
