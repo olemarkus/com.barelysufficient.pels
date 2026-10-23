@@ -17,7 +17,7 @@ export type SchedulerTelemetryObserverDeps = {
    * home keeps its own window.
    */
   homeId: HomeId;
-  getStructuredLogger: () => PinoLogger | undefined;
+  getStructuredLogger: () => PinoLogger;
   isDebugTopicEnabled: (topic: DebugLoggingTopic) => boolean;
   getNowMs: () => number;
   /** The throttle's `cancel`: a cancelled power intent releases the rebuild queued for it. */
@@ -76,7 +76,7 @@ export class SchedulerTelemetryObserver {
   };
 
   readonly onIntentError = (intent: RebuildIntent, error: Error): void => {
-    this.deps.getStructuredLogger()?.child({ component: 'plan' }).error({
+    this.deps.getStructuredLogger().child({ component: 'plan' }).error({
       event: 'plan_rebuild_power_sample_failed',
       homeId: this.deps.homeId,
       intentKind: intent.kind,

@@ -37,6 +37,7 @@ import {
 } from '../../lib/home/homeRegistryStore';
 import { buildMainHomeScopeForTest, createAppContextMock } from '../helpers/appContextTestHelpers';
 import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
+import { testLogger } from '../utils/testLogger';
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 
@@ -90,7 +91,7 @@ const makeMembershipService = (
     assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
     getZoneTree: () => ZONES,
     getDevices: () => devices,
-    getLogger: () => undefined,
+    getLogger: () => testLogger,
     getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: mainMeterDeviceId }),
     getConfiguredPowerSource: () => ({ state: 'resolved', value: powerSource }),
     legacyMultiHomeEnabled: true,
@@ -154,7 +155,7 @@ describe('filterDevicesForHome identity guard', () => {
       assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
       getZoneTree: () => ZONES,
       getDevices: () => membershipInputs,
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
       getMainMeterSelection,
       getConfiguredPowerSource: () => ({ state: 'resolved', value: 'flow' }),
       legacyMultiHomeEnabled: true,
@@ -179,7 +180,7 @@ describe('filterDevicesForHome identity guard', () => {
       assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
       getZoneTree: () => ZONES,
       getDevices: () => membershipInputs,
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
       getMainMeterSelection,
       getConfiguredPowerSource: () => ({
         state: 'suspect',
@@ -216,7 +217,7 @@ describe('filterDevicesForHome identity guard', () => {
       assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
       getZoneTree: () => ZONES,
       getDevices: () => membershipInputs,
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
       getMainMeterSelection: () => selection,
       legacyMultiHomeEnabled: true,
     });

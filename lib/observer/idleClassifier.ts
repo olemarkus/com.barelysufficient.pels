@@ -138,7 +138,7 @@ const surpriseFor = (classification: ReportableClassification): DeviationSurpris
 const emitTransitionLog = (
   device: IdleClassifierDeviceInput,
   result: IdleDetectorResult,
-  logger: PinoLogger | undefined,
+  logger: PinoLogger,
 ): void => {
   const { classification, previousClassification, idleDurationMs, temperatureGapC } = result;
 
@@ -249,7 +249,7 @@ const liveNearTargetEvidence = (
     temperatureGapC: evidence.classifiedAgainstTargetValue - device.temperature.currentTemperature };
 };
 
-export function createIdleClassifier(logger?: PinoLogger): IdleClassifier {
+export function createIdleClassifier(logger: PinoLogger): IdleClassifier {
   const state: IdleDetectorState = new Map();
   const lastResultById = new Map<string, IdleDetectorResult>();
   // Current classification follows the latest plan posture; accepted warmth has

@@ -45,7 +45,7 @@ export type HomeMembershipServiceDeps = {
   getZoneTree: () => ZoneTree | null;
   /** Devices from the latest target snapshot with their zone ids. */
   getDevices: () => readonly HomeMembershipDeviceInput[];
-  getLogger: () => PinoLogger | undefined;
+  getLogger: () => PinoLogger;
   /**
    * Semantic Main-meter selection, normalized at the settings boundary.
    * `unavailable` is a domain authority state; raw SDK values/errors never
@@ -309,7 +309,7 @@ export class HomeMembershipService implements HomeMembershipPort {
       // Mode-catalog settings are an external boundary. Their failure must not
       // consume the one-shot readiness edges; publish readiness and let the
       // owned recovery prepare again before its next plan build.
-      this.deps.getLogger()?.error({
+      this.deps.getLogger().error({
         event: 'home_ownership_mode_catalog_prepare_failed',
         err: normalizeError(error),
       });
@@ -573,7 +573,7 @@ export class HomeMembershipService implements HomeMembershipPort {
   // once per snapshot refresh.
   private noteSuspectEdge(storeKey: HomeStoreKey, suspect: boolean): void {
     if (suspect && !this.suspectByStoreKey[storeKey]) {
-      this.deps.getLogger()?.warn({
+      this.deps.getLogger().warn({
         event: 'home_membership_store_read_suspect',
         storeKey,
         detail: 'keeping previously cached value',
@@ -593,7 +593,7 @@ export class HomeMembershipService implements HomeMembershipPort {
     const diagnosticFingerprint = `${this.runtimeActive ? 'active' : 'held'}|${fingerprint}`;
     if (diagnosticFingerprint === this.lastRecomputeFingerprint) return;
     this.lastRecomputeFingerprint = diagnosticFingerprint;
-    this.deps.getLogger()?.info({
+    this.deps.getLogger().info({
       event: 'home_membership_recomputed',
       runtimeActive: this.runtimeActive,
       devicesTotal: Object.keys(this.membershipByDeviceId).length,

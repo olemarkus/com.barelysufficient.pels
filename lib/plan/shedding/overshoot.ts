@@ -61,9 +61,9 @@ export function emitOvershootEscalationBlocked(
   remainingCandidates: number,
   measurementTs: number,
   nowTs: number,
-  structuredLog?: PinoLogger,
+  structuredLog: PinoLogger,
 ): void {
-  structuredLog?.info({
+  structuredLog.info({
     event: 'capacity_overshoot_escalation_blocked',
     incidentId: capacityGuard.getCurrentIncidentId() ?? undefined,
     reasonCode: 'no_candidates',

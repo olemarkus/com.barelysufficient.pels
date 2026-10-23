@@ -7,9 +7,7 @@ import { getCapabilities, resolveDeviceClassKey } from '../lib/device/transport/
 import { incPerfCounter } from '../lib/utils/perfCounters';
 import { readFlowDeviceArg, readFlowRawArg } from './flowArgParsers';
 import type { FlowCardDeps } from './registerFlowCards';
-import { getLogger } from '../lib/logging/logger';
 
-const moduleLogger = getLogger('flowcards/flow-backed-device');
 
 type FlowBackedCardTarget = 'binary' | 'evcharger' | 'binary_or_evcharger';
 
@@ -190,7 +188,7 @@ function emitFlowBackedCapabilityReportLog(
   } else if (reportOutcome.kind === 'freshness_only') {
     event = 'flow_backed_capability_report_freshness_updated';
   }
-  (deps.structuredLog ?? moduleLogger).info({
+  deps.structuredLog.info({
     event,
     sourceCardId: cardId,
     deviceId: device.id,

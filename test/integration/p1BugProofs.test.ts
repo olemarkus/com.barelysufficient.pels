@@ -33,6 +33,7 @@ import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { deviceSurfacesFixture } from '../utils/deviceSnapshotFixture';
 import { noStorageTransport } from '../helpers/storageTransportStub';
+import { testLogger } from '../utils/testLogger';
 
 const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) => ({
   nowTs: Date.UTC(2025, 0, 1, 0, 0, 0),
@@ -224,6 +225,7 @@ describe('P1 bug proofs', () => {
         pendingReliefKw: 0,
       },
       {
+        structuredLog: testLogger,
         capacityGuard,
         shortfallThresholdKw: 5,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,

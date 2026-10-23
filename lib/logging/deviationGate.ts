@@ -23,7 +23,7 @@ export type DeviationSurprise = { level: 'info' | 'warn'; reasonCode: string } |
  * `notes/logging/diagnostics-report-deviation-gating.md`.
  */
 export function emitGated(args: {
-  logger: PinoLogger | undefined;
+  logger: PinoLogger;
   debugEmitter: StructuredDebugEmitter;
   event: string;
   fields: Record<string, unknown>;
@@ -41,14 +41,13 @@ export function emitGated(args: {
   } = args;
 
   // Build the payload once, carrying reasonCode whenever the line is surprising,
-  // so a surprise is never silently lost: if there is no ungated logger, or the
-  // surprise is deduped, it still reaches the topic-gated debug tier WITH its
-  // reasonCode for a topic-on deep dive.
+  // so a surprise is never silently lost: if it is deduped, it still reaches the
+  // topic-gated debug tier WITH its reasonCode for a topic-on deep dive.
   const payload = surprise
     ? { event, ...fields, reasonCode: surprise.reasonCode }
     : { event, ...fields };
 
-  if (surprise && logger) {
+  if (surprise) {
     const allow = dedupe
       ? shouldEmitOnChange({ ...dedupe, signature: surprise.reasonCode })
       : true;

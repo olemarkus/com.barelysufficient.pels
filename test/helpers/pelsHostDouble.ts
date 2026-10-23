@@ -5,6 +5,7 @@ import { createEmptyPowerCalibrationSnapshot } from '../../lib/device/devicePowe
 import { NO_PRICE_SOURCE_PAYLOADS } from '../../setup/settingsUiApi';
 import { createFixturePriorityQuery } from './modePriorityFixtures';
 import { observedDeviceReadsDouble } from './observedDeviceReadsDouble';
+import { testLogger } from '../utils/testLogger';
 
 const notWired = (member: string) => (): never => {
   throw new Error(`pelsHostDouble: ${member} is not wired in this fixture`);
@@ -62,7 +63,7 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     createDeferredObjective: notWired('createDeferredObjective'),
     createNewDeferredObjective: notWired('createNewDeferredObjective'),
     cancelDeferredObjective: notWired('cancelDeferredObjective'),
-    getApiStructuredLogger: () => undefined,
+    getApiStructuredLogger: () => testLogger,
     getCreateSmartTaskCandidateDevices: () => ({ state: 'unavailable' }),
     resolveSmartTaskHomeScope: () => 'unavailable',
     previewDeferredObjectivePlan: notWired('previewDeferredObjectivePlan'),

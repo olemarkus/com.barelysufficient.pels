@@ -20,7 +20,6 @@
  * it about.
  */
 import type { AppContext } from '../../lib/app/appContext';
-import { getLogger } from '../../lib/logging/logger';
 import { isCapacityShortfallAlertActive } from '../../lib/plan/planBudget';
 import type { PlanService } from '../../lib/plan/planService';
 import CapacityGuard from '../../lib/power/capacityGuard';
@@ -91,7 +90,7 @@ export const createHomeCapacityGuard = (
     ctx.timers.registerTimeout(retryTimerKey, setTimeout(() => {
       ctx.timers.clear(retryTimerKey);
       void shortfallSideEffectGate.flush().catch((error: unknown) => {
-        ctx.getStructuredLogger('capacity')?.warn({
+        ctx.getStructuredLogger('capacity').warn({
           event: 'home_shortfall_side_effect_retry_failed',
           homeId: scope.homeId,
           err: normalizeError(error),
@@ -138,7 +137,7 @@ export const createHomeCapacityGuard = (
     // answers `undefined` only in the boot window before structured logging is
     // wired, and classifying that is setup's job. The guard is handed a
     // definite logger and never branches on whether logging came up.
-    structuredLog: ctx.getStructuredLogger('capacity') ?? getLogger('power/capacity-guard'),
+    structuredLog: ctx.getStructuredLogger('capacity'),
   });
   return { guard, shortfallSideEffectGate };
 };

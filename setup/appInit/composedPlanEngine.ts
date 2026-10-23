@@ -6,7 +6,7 @@ import type { SteppedReportedStepStore } from '../../lib/observer/steppedReporte
 import { hasPlanExecutionDriftAgainstIntent } from '../../lib/executor/executorConvergence';
 import type { PlanExecutor } from '../../lib/executor/planExecutor';
 import type { PlanActuationResult } from '../../lib/planContract/planActuationResult';
-import { getLogger, type Logger as PinoLogger, type StructuredDebugEmitter } from '../../lib/logging/logger';
+import { type Logger as PinoLogger, type StructuredDebugEmitter } from '../../lib/logging/logger';
 import {
   syncPendingBinaryCommands,
   type PendingBinaryCommandStore,
@@ -34,7 +34,6 @@ import type {
   PlanInputDevice,
 } from '../../lib/plan/planTypes';
 
-const moduleLogger = getLogger('plan/engine');
 
 export type PlanEngineComposition = {
   state: PlanEngineState;
@@ -54,7 +53,7 @@ export type PlanEngineComposition = {
     | 'syncStorageCommands'>;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   debugStructured?: StructuredDebugEmitter;
-  structuredLog?: PinoLogger;
+  structuredLog: PinoLogger;
 };
 
 /** Setup-owned facade binding the planner and executor to one state instance. */
@@ -81,7 +80,7 @@ export class ComposedPlanEngine implements PlanEngine {
     this.executor = composition.executor;
     this.deviceDiagnostics = composition.deviceDiagnostics;
     this.debugStructuredFn = composition.debugStructured;
-    this.structuredLog = composition.structuredLog ?? moduleLogger;
+    this.structuredLog = composition.structuredLog;
   }
 
   public async buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {

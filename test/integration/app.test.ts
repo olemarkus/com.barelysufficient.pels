@@ -1,6 +1,6 @@
 import type { ComposedPlanEngine } from '../../setup/appInit/composedPlanEngine';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
-import { getDebugEmitter, type Logger } from '../../lib/logging/logger';
+import { getDebugEmitter } from '../../lib/logging/logger';
 import type { PvForecastController } from '../../setup/appInit/createPvForecastService';
 import type { BackgroundCollectors } from '../../setup/appInit/startBackgroundCollectors';
 import type { WeatherCollector } from '../../lib/weather/weatherCollector';
@@ -410,15 +410,13 @@ describe('MyApp initialization', () => {
 
   it('builds component child loggers without debugTopic bindings', () => {
     const app = createApp();
-    const childLogger = { info: vi.fn() };
-    const child = vi.fn().mockReturnValue(childLogger);
+    const capture = captureLogger('info', []);
 
-    app['runtime'].structuredLogger = partialDouble<Logger>({ child: child as unknown as Logger['child'] });
+    app.getStructuredLogger('reconcile').info({ event: 'probe' });
 
-    const logger = app.getStructuredLogger('reconcile');
-
-    expect(logger).toBe(childLogger);
-    expect(child).toHaveBeenCalledWith({ component: 'reconcile' });
+    expect(capture.findEvent('probe')).toMatchObject({ component: 'reconcile' });
+    expect(capture.findEvent('probe')).not.toHaveProperty('debugTopic');
+    capture.restore();
   });
 
   // The emitter reads the process-wide topic set, so these drive the real seam
@@ -3184,11 +3182,7 @@ describe('periodic snapshot refresh scheduling', () => {
 
   it('keeps snapshot refresh trigger fanout best-effort when one flow-backed trigger fails', async () => {
     const app = createApp();
-    const info = vi.fn();
-    const warn = vi.fn();
-    app['runtime'].structuredLogger = partialDouble<Logger>({
-      child: vi.fn(() => ({ info, warn })) as unknown as Logger['child'],
-    });
+    const capture = captureLogger('info', []);
     app['flowReportedCapabilities'] = {
       'dev-1': {
         onoff: { value: true, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
@@ -3216,21 +3210,25 @@ describe('periodic snapshot refresh scheduling', () => {
 
     await expect(app.flowBacked.emitFlowBackedRefreshRequests(['dev-1', 'dev-2'])).resolves.toBeUndefined();
 
-    expect(warn).toHaveBeenCalledWith(expect.objectContaining({
+    expect(capture.events).toContainEqual(expect.objectContaining({
+      level: 40,
       event: 'flow_backed_refresh_request_failed',
       deviceId: 'dev-1',
       err: expect.objectContaining({ message: 'boom' }),
     }));
-    expect(info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(capture.events).toContainEqual(expect.objectContaining({
+      level: 30,
       event: 'flow_backed_refresh_requested',
       deviceId: 'dev-1',
       deviceName: 'Relay 1',
     }));
-    expect(info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(capture.events).toContainEqual(expect.objectContaining({
+      level: 30,
       event: 'flow_backed_refresh_requested',
       deviceId: 'dev-2',
       deviceName: 'Relay 2',
     }));
+    capture.restore();
   });
 
   it('does not emit flow-backed refresh requests for unmanaged Zaptec native-wiring candidates', async () => {

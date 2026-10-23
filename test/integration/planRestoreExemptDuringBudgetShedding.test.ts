@@ -24,6 +24,7 @@ import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { buildBindingDailyBudgetSnapshot } from '../helpers/bindingDailyBudgetFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
+import { testLogger } from '../utils/testLogger';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -97,6 +98,7 @@ const runLane = (params: {
     state,
     sheddingActive: true,
     deps: {
+      structuredLog: testLogger,
       powerTracker: { lastTimestamp: params.measurementTs ?? Date.now() } as PowerTrackerState,
       temperatureSetpoints: new Map(),
       getShedBehavior: () => ({ action: 'turn_off' as const }),

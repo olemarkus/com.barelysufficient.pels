@@ -4,6 +4,7 @@ import { createDailyBudgetStateStore } from '../../lib/dailyBudget/dailyBudgetSt
 import { IN_MEMORY_DATABASE, openUserdataDatabase, type UserdataDatabase } from '../../lib/store/userdataDatabase';
 import type Homey from 'homey';
 import { partialDouble } from '../helpers/partialDouble';
+import { testLogger } from '../utils/testLogger';
 
 type AppHomey = Homey.App['homey'];
 import type { PowerTrackerState } from '../../lib/power/tracker';
@@ -51,6 +52,7 @@ function buildService(
   getTracker: () => PowerTrackerState,
 ): DailyBudgetService {
   return new DailyBudgetService({
+    structuredLog: testLogger,
     getTimeZone: () => TZ,
     getPowerTracker: getTracker,
     getPriceOptimizationEnabled: () => false,

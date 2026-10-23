@@ -240,7 +240,7 @@ async function setDeviceBooleanSetting(
   // also sees an untracked device and decides for itself what that means. Log the skip
   // so the user-facing flow still has a trace, naming which of the two it was.
   if (!deviceFilter(device)) {
-    deps.getStructuredLogger('devices')?.info({
+    deps.getStructuredLogger('devices').info({
       event: 'device_setting_toggle_skipped',
       setting: settingKind,
       reasonCode: device === undefined ? 'device_not_tracked' : 'device_not_eligible',
@@ -253,7 +253,7 @@ async function setDeviceBooleanSetting(
   // device, and every other device's entry would be gone. Fail the card so the
   // Flow shows the refusal instead of a success that did nothing.
   if (writeDeviceFlagSetting(deps.homey.settings, settingKey, deviceId, enabled) === 'unavailable') {
-    deps.getStructuredLogger('devices')?.warn({
+    deps.getStructuredLogger('devices').warn({
       event: 'device_setting_toggle_failed',
       setting: settingKind,
       reasonCode: 'setting_unreadable',
@@ -263,7 +263,7 @@ async function setDeviceBooleanSetting(
     });
     throw new Error(`PELS could not save the ${label}. Try again shortly.`);
   }
-  deps.getStructuredLogger('devices')?.info({
+  deps.getStructuredLogger('devices').info({
     event: 'device_setting_toggled',
     setting: settingKind,
     enabled,

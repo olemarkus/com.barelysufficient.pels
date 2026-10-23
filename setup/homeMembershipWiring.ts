@@ -36,7 +36,7 @@ export const wireHomeMembershipService = (
     try {
       service.recompute();
     } catch (error) {
-      params.getLogger()?.error({
+      params.getLogger().error({
         event: 'home_membership_recompute_failed',
         trigger,
         err: normalizeError(error),

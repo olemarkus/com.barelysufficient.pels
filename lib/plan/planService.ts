@@ -5,7 +5,6 @@ import { normalizeError } from '../utils/errorUtils';
 import { PLAN_STATUS_PUBLISHED_EVENT } from '../utils/settingsKeys';
 import { buildPlanDetailSignature } from './planLogging';
 import { createPlanRebuildOutcome } from './planRebuildMetrics';
-import { getLogger } from '../logging/logger';
 import { runWithContext } from '../logging/alsContext';
 import type {
   SettingsUiDeviceLogPayload,
@@ -97,7 +96,6 @@ import type { DeviceExecutionState } from '../planContract/deviceExecutionState'
  * Governing references: `docs/technical.md`, `lib/plan/AGENTS.md`.
  */
 
-const logger = getLogger('plan/service');
 
 export type { PlanServiceDeps } from './planServiceDeps';
 
@@ -511,7 +509,7 @@ export class PlanService {
       })
       .catch((error) => {
         this.withHomeLogContext(() => {
-          (this.deps.loggers.structuredLog ?? logger).error({
+          this.deps.loggers.structuredLog.error({
             event: 'plan_operation_failed',
             message: errorMessage,
             error: normalizeError(error),
@@ -595,7 +593,7 @@ export class PlanService {
     const realtime = api?.realtime;
     if (typeof realtime === 'function') {
       realtime.call(api, event, payload)
-        .catch((err: unknown) => (this.deps.loggers.structuredLog ?? logger).error({
+        .catch((err: unknown) => this.deps.loggers.structuredLog.error({
           event: 'plan_updated_emit_failed',
           realtimeEvent: event,
           error: normalizeError(err),

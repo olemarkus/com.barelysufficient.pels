@@ -1023,21 +1023,6 @@ Design-of-record: `notes/web-app.md`.
       a `setup/` factory. **Done when:** no file under `setup/` holds the deferred shortfall
       transition or schedules its retry, and the guard fails on the old shape. [P2]
 
-- [ ] **The component loggers are optional because the getter that makes them can return
-      `undefined`.** `getStructuredLogger` (`setup/appRuntimeApi.ts`) returns
-      `this.structuredLogger?.child(...)`, so every dep it feeds declares `structuredLog?:` and its
-      consumer falls back: about 60 `getStructuredLogger(...)?.` call sites and about 70
-      `structuredLog ??` / `structuredLog?.` / `structuredLog?:` lines across `app.ts`, `lib/`
-      (price, diagnostics, daily budget, plan, `lib/observer/idleClassifier.ts`,
-      `lib/device/flowBackedDeviceState.ts`), `setup/` and `flowCards/`. The root logger is
-      installed before any of them is built, and both paths write to the same root, so the
-      fallbacks never change what is logged; they only hide that. (The device transport's
-      `Logger.structuredLog` is already required and unhedged.) **What changes:** have the getter
-      return a logger that always exists (install the root before the first caller, or hand out a
-      late-bound `getLogger` child), make the deps' `structuredLog` required, delete the fallbacks.
-      **Done when:** `getStructuredLogger` returns `PinoLogger`, and no `?.` or `??` on a component
-      logger remains in `app.ts`, `lib/`, `setup/` or `flowCards/`. [P2]
-
 - [ ] **No end-to-end cover for the start policy's actuation claim.** The feature's core
       assertion is that nothing new actuates — the executor's existing convergence writes a
       device whose observation disagrees with its plan, so an unplanned start is ordinary drift.

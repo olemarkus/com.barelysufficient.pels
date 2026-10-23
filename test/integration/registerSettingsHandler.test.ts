@@ -14,6 +14,7 @@ import {
   POWER_SOURCE,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
 } from '../../lib/utils/settingsKeys';
+import { testLogger } from '../utils/testLogger';
 
 // One store for the file: no spec here persists a tracker, the context only needs the seam.
 const trackerStore = createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
@@ -42,7 +43,7 @@ const buildContext = () => {
     } as never,
     log: vi.fn(),
     error: vi.fn(),
-    getStructuredLogger: vi.fn(),
+    getStructuredLogger: vi.fn(() => testLogger),
     getNow: () => new Date('2026-04-16T00:00:00.000Z'),
     getTimeZone: () => 'Europe/Oslo',
     notifyOperatingModeChanged: vi.fn(),

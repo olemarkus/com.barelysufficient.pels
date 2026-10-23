@@ -7,5 +7,5 @@ import type { StructuredDebugEmitter, Logger as PinoLogger } from '../logging/lo
 export type PriceServiceLoggingSinks = {
   debugStructured: StructuredDebugEmitter;
   errorLog?: (...args: unknown[]) => void;
-  structuredLog?: PinoLogger;
+  structuredLog: PinoLogger;
 };

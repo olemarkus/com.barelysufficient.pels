@@ -33,7 +33,7 @@ export const startHomeCapacityBundle = (
   runtime: SubHomeRuntime,
 ): void => {
   void planService.rebuildPlanFromCache('home_bundle_created').catch((error: unknown) => {
-    logger()?.error({
+    logger().error({
       event: 'home_bundle_initial_rebuild_failed',
       homeId: runtime.homeId,
       err: normalizeError(error),
@@ -41,7 +41,7 @@ export const startHomeCapacityBundle = (
   });
   const { meterDeviceId } = runtime.getHomeConfig();
   const { limitKw, dryRun } = runtime.getCapacityScalars();
-  logger()?.info({
+  logger().info({
     event: 'home_capacity_bundle_created',
     homeId: runtime.homeId,
     meterDeviceId,
@@ -74,12 +74,12 @@ const buildSettingsRebuild = (
   void params.planService.rebuildPlanFromCache('settings', { detail: settingsSource })
     .then((outcome) => {
       if (!outcome.failed || params.runtime.isTornDown()) return;
-      params.logger()?.error({
+      params.logger().error({
         event: failureEvent,
         homeId: params.runtime.homeId,
       });
     }).catch((error: unknown) => {
-      params.logger()?.error({
+      params.logger().error({
         event: failureEvent,
         homeId: params.runtime.homeId,
         err: normalizeError(error),
@@ -209,7 +209,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       // (`handleCapacityLimitChange` also bypasses the sample scheduler).
       void planService.rebuildPlanFromCache('settings', { detail: 'home_capacity_scalars' })
         .catch((error: unknown) => {
-          logger()?.error({ event: 'home_capacity_reload_rebuild_failed', homeId, err: normalizeError(error) });
+          logger().error({ event: 'home_capacity_reload_rebuild_failed', homeId, err: normalizeError(error) });
         });
     },
   });
@@ -266,7 +266,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       void pipeline.recordPowerSample(powerW, sampleNowMs)
         .then(() => { membershipReadyEdge.apply(); })
         .catch((error: unknown) => {
-          logger()?.error({ event: 'home_meter_sample_failed', homeId, err: normalizeError(error) });
+          logger().error({ event: 'home_meter_sample_failed', homeId, err: normalizeError(error) });
         });
     },
     reloadCapacityScalars,
@@ -310,7 +310,7 @@ export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams):
       // the homes-config commit may already have reset the latch there, so the
       // flush re-upserts the in-memory latch and this reset is what clears it.
       const resetSucceeded = options?.resetMeterFreshness !== true || tracker.resetFreshness();
-      logger()?.info({ event: 'home_capacity_bundle_torn_down', homeId });
+      logger().info({ event: 'home_capacity_bundle_torn_down', homeId });
       return resetSucceeded;
     },
   };

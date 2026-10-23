@@ -20,7 +20,7 @@ export type NorwayPriceSetupSuggestionPorts = {
   readHubMarket: () => Promise<SettingsUiHubMarketRead>;
   readHubLocation: () => Promise<HubLocationRead>;
   homeyWebApiGet: HomeyWebApiGet;
-  structuredLog?: PinoLogger;
+  structuredLog: PinoLogger;
 };
 
 type Lookup<T> = { kind: 'found'; value: T } | { kind: 'none' } | { kind: 'failed' };
@@ -167,7 +167,7 @@ export class NorwayPriceSetupSuggester {
       norway.gridCompany.kind === 'none' ? this.suggestGridCompany() : gridCompanyAnswer(NO_GRID_COMPANY, 'not_needed'),
       norway.priceArea.chosen ? NO_PRICE_AREA : this.readHomeyEnergyArea(),
     ]);
-    this.ports.structuredLog?.info({
+    this.ports.structuredLog.info({
       event: 'price_setup_suggestion',
       gridCompany: gridCompany.outcome,
       priceArea: priceArea.kind === 'none' ? 'none' : 'found',

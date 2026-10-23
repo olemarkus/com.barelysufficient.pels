@@ -6,6 +6,7 @@ import { createPriceDataStore } from '../../../lib/price/priceDataStore';
 import { POWERHOUR_APP_ID } from '../../../lib/price/powerhourPriceFetch';
 import { createInMemoryPriceCache } from '../../helpers/priceCacheForTests';
 import { homeyWebApiServing, hubMarketIn } from '../../helpers/homeyWebApiStub';
+import { testLogger } from '../../utils/testLogger';
 
 const POWERHOUR_DEVICE = {
   deviceId: '10YNL----------L_abc',
@@ -22,6 +23,7 @@ const createCoordinator = (country = 'NL') => {
     kind: 'resolved' as const, coordinates: { latitude: 52.37, longitude: 4.9 },
   }));
   const coordinator = new PriceCoordinator({
+    structuredLog: testLogger,
     homey: mockHomeyInstance as never,
     priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance.settings),
     priceDataStore: createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),

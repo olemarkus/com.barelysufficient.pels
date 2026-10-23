@@ -119,7 +119,7 @@ export type SheddingDeps = {
   // unconfirmed-relief state through `peek(id)` (raw read) instead of
   // touching `state.pendingBinaryCommands[id]` directly.
   pendingBinaryCommandStore: PendingBinaryCommandStore;
-  structuredLog?: import('../../logging/logger').Logger;
+  structuredLog: import('../../logging/logger').Logger;
 };
 
 export type PlanSheddingResult = {

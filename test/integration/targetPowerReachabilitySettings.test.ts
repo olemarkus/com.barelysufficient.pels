@@ -6,6 +6,7 @@ import type { DeviceTargetPowerConfigs } from '../../packages/contracts/src/type
 import { createTargetPowerReachabilityAppWiring } from '../../setup/appTargetPowerReachabilityWiring';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import type { AppContext } from '../../lib/app/appContext';
+import { testLogger } from '../utils/testLogger';
 
 const baseConfigs: DeviceTargetPowerConfigs = {
   charger: {
@@ -152,7 +153,7 @@ describe('targetPowerReachabilitySettings', () => {
         reconcileTargetPowerReachability: vi.fn(),
         hasPendingTargetPowerProbe: vi.fn(() => false),
       },
-      getStructuredLogger: vi.fn(() => undefined),
+      getStructuredLogger: vi.fn(() => testLogger),
     } as unknown as AppContext;
     const rebuildOwningHomePlanForDevice = vi.fn().mockResolvedValue(undefined);
     const wiring = createTargetPowerReachabilityAppWiring(ctx, rebuildOwningHomePlanForDevice);

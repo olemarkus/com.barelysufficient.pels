@@ -32,7 +32,7 @@ type ReportHomeTrackerConfigSafetyFailure = (
 ) => void;
 
 type ApiLoggerProvider = {
-  getApiStructuredLogger(): PinoLogger | undefined;
+  getApiStructuredLogger(): PinoLogger;
 };
 
 /** Shape-guarded access to the app's structured API logger; `null` when unwired. */

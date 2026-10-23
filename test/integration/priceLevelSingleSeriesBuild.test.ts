@@ -10,6 +10,7 @@ import {
 } from '../../packages/shared-domain/src/utils/dateUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import { noHomeyEnergyPrices, noHomeyWebApi } from '../helpers/homeyWebApiStub';
+import { testLogger } from '../utils/testLogger';
 
 /**
  * `getCombinedPricePeriods()` has no cache: every call re-reads ~12 settings,
@@ -30,7 +31,7 @@ let priceCache = createInMemoryPriceCache();
 
 const createService = (): PriceService => new PriceService(
   mockHomeyInstance as unknown as Homey.App['homey'],
-  { debugStructured: () => {} },
+  { structuredLog: testLogger, debugStructured: () => {} },
   () => TZ,
   noHomeyEnergyPrices,
   createPriceDataStore(mockHomeyInstance.settings, priceCache),

@@ -22,6 +22,7 @@ import {
   buildTargetPowerReachabilityState,
   type TargetPowerConfigWithReachability,
 } from '../../lib/device/targetPowerReachability';
+import { testLogger } from '../utils/testLogger';
 
 const steppedProfiles: DeviceControlProfiles = {
   'dev-1': {
@@ -63,7 +64,7 @@ describe('resolved device control composition and command lifecycle', () => {
       steppedLoadProfile: resolveEvTargetPowerConfirmedProfile(config, 1380) });
     const stores = steppedStoresForTest();
     const helpers = createDeviceControlHelpersForTest(() => [snapshot], stores, () => config,
-      () => true, () => {}, () => null, {});
+      () => true, () => {}, () => null, { structuredLog: testLogger });
     helpers.markSteppedLoadDesiredStepIssued({ deviceId: snapshot.id, desiredStepId: '8a',
       previousStepId: '6a', issuedAtMs: 1000 });
     expect(stores.store.getDesired(snapshot.id)?.targetPowerProbeConfirmedMaxPowerW).toBe(1380);
@@ -90,7 +91,7 @@ describe('resolved device control composition and command lifecycle', () => {
     const stores = steppedStoresForTest();
     const update = vi.fn(() => true);
     const helpers = createDeviceControlHelpersForTest(() => [snapshot], stores, () => config,
-      update, () => {}, () => null, {});
+      update, () => {}, () => null, { structuredLog: testLogger });
     helpers.markSteppedLoadDesiredStepIssued({ deviceId: snapshot.id, desiredStepId: '8a',
       previousStepId: '6a', issuedAtMs: 1000 });
     expect(stores.store.getDesired(snapshot.id)?.planningPowerW).toBe(1840);
@@ -511,7 +512,7 @@ describe('resolved device control composition and command lifecycle', () => {
       steppedLoadProfile: resolveEvTargetPowerConfirmedProfile(config, 1_380) });
     const stores = steppedStoresForTest();
     const helpers = createDeviceControlHelpersForTest(() => [snapshot], stores, () => config,
-      () => true, () => {}, () => null, {});
+      () => true, () => {}, () => null, { structuredLog: testLogger });
     helpers.markSteppedLoadDesiredStepIssued({ deviceId: snapshot.id, desiredStepId: '8a',
       previousStepId: '6a', issuedAtMs: 1_000, unacknowledged: true });
     helpers.reconcileTargetPowerReachability([snapshot], 1_100);
@@ -670,7 +671,7 @@ describe('resolved device control composition and command lifecycle', () => {
     });
     const stores = steppedStoresForTest();
     const helpers = createDeviceControlHelpersForTest(
-      () => [snapshot], stores, () => config, () => true, () => {}, () => null, { debugStructured: vi.fn() },
+      () => [snapshot], stores, () => config, () => true, () => {}, () => null, { structuredLog: testLogger, debugStructured: vi.fn() },
     );
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', '16a', 3_000)).toBe('invalid');
@@ -752,7 +753,7 @@ describe('resolved device control composition and command lifecycle', () => {
     const helpers = createDeviceControlHelpersForTest(
       () => snapshots, stores, () => undefined,
       () => false, () => {}, () => null,
-      { structuredLog: undefined, debugStructured: vi.fn() },
+      { structuredLog: testLogger, debugStructured: vi.fn() },
     );
 
     expect(helpers.getSteppedLoadProfile('dev-1')).toBe(steppedProfiles['dev-1']);
@@ -773,7 +774,7 @@ describe('resolved device control composition and command lifecycle', () => {
     const helpers = createDeviceControlHelpersForTest(
       () => snapshots, stores, () => undefined,
       () => false, () => {}, () => null,
-      { structuredLog: undefined, debugStructured: vi.fn() },
+      { structuredLog: testLogger, debugStructured: vi.fn() },
     );
 
     expect(helpers.getSteppedLoadProfile('dev-1')).toBeNull();

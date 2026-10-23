@@ -94,6 +94,7 @@ import {
 import type { ToPlanDeviceInput } from '../../lib/planInput/planInputDeviceTypes';
 import { fixtureDeviceReason } from './deviceReasonTestUtils.ts';
 import { type DescriptorIdentity, resolveFixtureDescriptorIdentity } from './deviceSnapshotFixture';
+import { testLogger } from './testLogger';
 
 /** A home without a battery, as the surplus allocator sees it: no claimant, no discharge. */
 export const NO_STORAGE_SURPLUS: StorageSurplus = { claimants: [], dischargeW: 0 };
@@ -1442,6 +1443,7 @@ export const restoreCycleFixture = (
 ): RestoreCycle => ({
   state,
   deps: {
+    structuredLog: testLogger,
     powerTracker: {} as PowerTrackerState,
     getShedBehavior: () => ({ action: 'turn_off' }),
     temperatureSetpoints: new Map(),

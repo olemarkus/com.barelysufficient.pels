@@ -79,7 +79,7 @@ const convergeLifecycleFallback = (
     // no commandable axis (a temperature-control-disabled thermostat with no
     // `onoff`) is a real configuration, so it takes the same graced retry as a
     // device PELS cannot observe — never an immediate, silent disarm.
-    ctx.getStructuredLogger('deferred_objectives')?.warn({
+    ctx.getStructuredLogger('deferred_objectives').warn({
       event: 'smart_task_fallback_device_undriveable',
       reasonCode: 'no_writable_axis',
       deviceId,

@@ -68,6 +68,7 @@ import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
 import { buildTaskEvaluationSource } from '../../setup/appInit/taskEvaluationSource';
 import type { TaskEvaluationSource } from '../../lib/objectives/deferredObjectives';
 import { resolveMainMeterRead } from '../../lib/home/homeMeters';
+import { testLogger } from '../utils/testLogger';
 
 const homeModeCatalogByContext = new WeakMap<AppContext, HomeModeCatalog>();
 
@@ -209,7 +210,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getLatestTargetSnapshot: () => latestTargetSnapshot,
     resolveManagedState: () => false,
     isCapacityControlEnabled: () => false,
-    getStructuredLogger: () => undefined,
+    getStructuredLogger: () => testLogger,
     getNow: () => new Date('2026-04-16T00:00:00.000Z'),
     logPeriodicStatus: vi.fn(),
     getFlowReportedDeviceIds: vi.fn(() => []),
@@ -242,7 +243,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
   const deviceControlHelpers = deviceControlHelpersOverride ?? createDeviceControlHelpersForTest(
     () => latestTargetSnapshot, steppedStores,
     (deviceId) => context.deviceControlSettings.getDeviceTargetPowerConfig(deviceId),
-    () => false, () => {}, () => null, { debugStructured: vi.fn() },
+    () => false, () => {}, () => null, { structuredLog: testLogger, debugStructured: vi.fn() },
   );
 
   // The real inventory reads over the fixture go through production projections.
@@ -288,7 +289,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     () => homeModeCatalog.getSnapshot(),
     () => context.deviceControlSettings.managedDevices,
     () => context.homeMembership,
-    () => undefined,
+    () => testLogger,
     () => context.readHomeBatteryDevices(),
   );
   const context: AppContext = {
@@ -322,7 +323,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getCombinedPricesForUi: () => null,
     log: vi.fn(),
     error: vi.fn(),
-    getStructuredLogger: vi.fn(() => undefined),
+    getStructuredLogger: vi.fn(() => testLogger),
     getNow: () => new Date('2026-04-16T00:00:00.000Z'),
     getTimeZone: () => 'Europe/Oslo',
     capacitySettingsStore: {
@@ -412,7 +413,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
       homeId: MAIN_HOME_ID,
       getPowerTracker: () => powerTracker,
       nowMs: () => Date.now(),
-      structuredLog: () => undefined,
+      structuredLog: () => testLogger,
     }),
     get capacitySettings() { return capacitySettings; },
     set capacitySettings(value) { capacitySettings = value; },

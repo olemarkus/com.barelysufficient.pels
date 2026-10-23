@@ -15,6 +15,7 @@ import { VAT_MULTIPLIER_STANDARD } from '../../lib/price/priceComponents';
 import { EXPORT_FIXED, EXPORT_PRICE_ENABLED, EXPORT_SPOT_FACTOR, PRICE_SCHEME } from '../../lib/utils/settingsKeys';
 import { noHomeyEnergyPrices, noHomeyWebApi } from '../helpers/homeyWebApiStub';
 import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
+import { testLogger } from '../utils/testLogger';
 
 const TZ = 'Europe/Oslo';
 
@@ -22,7 +23,7 @@ let priceCache = createInMemoryPriceCache();
 
 const createService = (): PriceService => new PriceService(
   mockHomeyInstance as unknown as Homey.App['homey'],
-  { debugStructured: () => {} },
+  { structuredLog: testLogger, debugStructured: () => {} },
   () => TZ,
   noHomeyEnergyPrices,
   createPriceDataStore(mockHomeyInstance.settings, priceCache),

@@ -5,6 +5,7 @@ import { createLearnedPowerPeakState } from '../../lib/device/learnedPowerPeakSt
 import { DEVICE_POWER_PEAKS } from '../../lib/utils/settingsKeys';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { PEAK_REANCHOR_INTERVAL_MS, type LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
+import { testLogger } from '../utils/testLogger';
 
 const NOW = Date.UTC(2026, 7, 9, 12, 0, 0);
 const PERSIST_MIN_INTERVAL_MS = 60_000;
@@ -22,6 +23,7 @@ describe('learned power peak persistence', () => {
 
   const buildState = (homey: Homey.App['homey'] = mockHomeyInstance as unknown as Homey.App['homey']) => (
     createLearnedPowerPeakState({
+      getStructuredLogger: () => testLogger,
       persistence: new SettingsRepository(homey),
       getPeaks: () => peaks,
       timers,

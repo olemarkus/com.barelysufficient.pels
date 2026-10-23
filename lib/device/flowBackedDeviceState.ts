@@ -86,7 +86,7 @@ export type FlowBackedDeviceStateDeps = {
   isFlowCardAvailable: (kind: 'action' | 'trigger', cardId: string) => boolean;
   /** The refresh-request trigger card, resolved: `available` carries the call. */
   getFlowBackedRefreshTrigger: () => FlowBackedRefreshTrigger;
-  getStructuredLogger: (component: string) => PinoLogger | undefined;
+  getStructuredLogger: (component: string) => PinoLogger;
   getFlowReportedCapabilities: () => FlowReportedCapabilitiesByDevice;
   setFlowReportedCapabilities: (state: FlowReportedCapabilitiesByDevice) => void;
   getDeviceManager: () => DeviceTransport | undefined;
@@ -203,7 +203,7 @@ export class FlowBackedDeviceState {
       this.unpersistedExpectedOverrideDeviceIds.delete(deviceId);
     } catch (error) {
       this.unpersistedExpectedOverrideDeviceIds.add(deviceId);
-      this.deps.getStructuredLogger('devices')?.error({
+      this.deps.getStructuredLogger('devices').error({
         event: 'expected_power_override_write_failed',
         deviceId,
         err: normalizeError(error),
@@ -287,7 +287,7 @@ export class FlowBackedDeviceState {
       return;
     }
     this.deps.persistence.saveFlowReportedCapabilities(filtered);
-    this.deps.getStructuredLogger('devices')?.info({
+    this.deps.getStructuredLogger('devices').info({
       event: 'flow_backed_state_cleared',
       reasonCode: 'cards_unavailable',
       previousDeviceCount: Object.keys(parsed).length,
@@ -428,7 +428,7 @@ export class FlowBackedDeviceState {
       if (!deviceId || seen.has(deviceId)) continue;
       seen.add(deviceId);
       const device = deviceById.get(deviceId);
-      this.deps.getStructuredLogger('devices')?.info({
+      this.deps.getStructuredLogger('devices').info({
         event: 'flow_backed_refresh_requested',
         deviceId,
         deviceName: device?.name,
@@ -442,7 +442,7 @@ export class FlowBackedDeviceState {
       const results = await Promise.allSettled(triggers.map(({ trigger }) => trigger));
       for (const [index, result] of results.entries()) {
         if (result.status === 'fulfilled') continue;
-        this.deps.getStructuredLogger('devices')?.warn({
+        this.deps.getStructuredLogger('devices').warn({
           event: 'flow_backed_refresh_request_failed',
           deviceId: triggers[index]?.deviceId,
           err: normalizeError(result.reason),

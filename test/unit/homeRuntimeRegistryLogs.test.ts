@@ -2,8 +2,7 @@
 // (`lib/home/homeRuntimeRegistryLogs.ts`). These are pure functions over an
 // injected logger: log audits key on the event names and `detail` wording, so
 // the point of the test is that each condition keeps emitting the documented
-// event at the documented level — and that a missing `homes` logger is a
-// silent no-op rather than a throw on a diagnostics-only path.
+// event at the documented level.
 import { describe, expect, it, vi } from 'vitest';
 import type { Logger as PinoLogger } from '../../lib/logging/logger';
 import {
@@ -105,18 +104,5 @@ describe('homeRuntimeRegistryLogs', () => {
       generation: 4,
       detail: expect.stringContaining('bundle replacement failed'),
     });
-  });
-
-  it('is a no-op when the homes logger is unavailable', () => {
-    expect(() => {
-      logSubHomesUnderFlowSource(undefined, 1);
-      logIncompleteIdentityTransition(undefined, home);
-      logBundleReplacementFailure(undefined, home, new Error('boom'));
-      logPowerSourceTransitionIncomplete(undefined, { generation: 1, powerSource: 'flow', cause: 'freshness_reset' });
-      logPowerSourceTransitionIncomplete(
-        undefined,
-        { generation: 2, powerSource: 'flow', cause: 'bundle_replacement', error: new Error('x') },
-      );
-    }).not.toThrow();
   });
 });

@@ -72,7 +72,7 @@ export const startPostStartupBackgroundTasks = (
     try {
       ctx.priceCoordinator.updateCombinedPrices();
     } catch (error) {
-      ctx.getStructuredLogger('solar')?.warn({
+      ctx.getStructuredLogger('solar').warn({
         event: 'pv_forecast_price_recompute_failed',
         err: normalizeError(error),
       });

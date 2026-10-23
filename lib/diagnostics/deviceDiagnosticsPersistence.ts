@@ -22,11 +22,10 @@ import type {
   DeviceDiagnosticsServiceDeps,
   LiveDemandObservation,
 } from './deviceDiagnosticsServiceTypes';
-import { getDebugEmitter, getLogger, isDebugTopicEnabled } from '../logging/logger';
+import { getDebugEmitter, isDebugTopicEnabled } from '../logging/logger';
 import { normalizeError } from '../utils/errorUtils';
 import { clampPenaltyLevel } from './deviceDiagnosticsNumbers';
 
-const moduleLogger = getLogger('diagnostics/device');
 const debug = getDebugEmitter('diagnostics', 'diagnostics');
 const MS_PER_HOUR = 60 * 60 * 1000;
 
@@ -392,7 +391,7 @@ export class DeviceDiagnosticsPersistence {
         ...(bytes === undefined ? {} : { bytes }),
       });
     } catch (error) {
-      (this.deps.structuredLog ?? moduleLogger).error({
+      this.deps.structuredLog.error({
         event: 'diagnostics_persist_failed',
         reason,
         err: normalizeError(error),

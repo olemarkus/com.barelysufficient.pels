@@ -98,7 +98,7 @@ export type AppContext = {
   homey: Homey.App['homey'];
   log: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
-  getStructuredLogger: (component: string) => PinoLogger | undefined;
+  getStructuredLogger: (component: string) => PinoLogger;
   getNow: () => Date;
   getTimeZone: () => string;
   notifyOperatingModeChanged: (mode: string) => void;

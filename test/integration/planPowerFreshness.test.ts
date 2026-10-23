@@ -210,7 +210,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
       getCapacitySettings: () => settings,
       getPowerTracker: () => params.tracker,
-      structuredLog: params.structuredLog as never,
+      ...(params.structuredLog ? { structuredLog: params.structuredLog as never } : {}),
     }, params.state ?? createPlanEngineState());
   }
 

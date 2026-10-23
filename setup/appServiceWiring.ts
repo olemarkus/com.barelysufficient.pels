@@ -180,7 +180,7 @@ export class AppServiceWiring {
     const { ctx } = this.deps;
     const deferStartupBootstrap = usesProductionStartupOrder();
     const logStartupStepFailure = (label: string, error: Error): void => {
-      this.deps.handles.structuredLogger?.child({ component: 'startup' }).error({
+      ctx.getStructuredLogger('startup').error({
         event: 'startup_step_failed',
         reasonCode: 'startup_step_failed',
         stepLabel: label,
@@ -442,9 +442,9 @@ export class AppServiceWiring {
         // suppression.
         const payload = { event: 'snapshot_warmup_gate_released', reason, timeoutMs };
         if (reason === 'timeout') {
-          warmupLogger?.warn(payload);
+          warmupLogger.warn(payload);
         } else {
-          warmupLogger?.info(payload);
+          warmupLogger.info(payload);
         }
       },
     });

@@ -35,6 +35,7 @@ import { emitActivationTransition } from '../../lib/plan/planHeadroomState';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 import { buildDeviceDiagnosticsRecorderStub } from '../mocks/deviceDiagnosticsRecorder';
+import { testLogger } from '../utils/testLogger';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -486,6 +487,7 @@ describe('activation backoff', () => {
       state,
       sheddingActive: false,
       deps: {
+        structuredLog: testLogger,
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
@@ -522,6 +524,7 @@ describe('activation backoff', () => {
       state,
       sheddingActive: false,
       deps: {
+        structuredLog: testLogger,
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
@@ -616,6 +619,7 @@ describe('activation backoff', () => {
       state,
       sheddingActive: false,
       deps: {
+        structuredLog: testLogger,
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),

@@ -65,6 +65,7 @@ import { getHomeModeCatalogForTest, configureHomeModeCatalog, createAppContextMo
 import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { PlanRebuildRequestOptions, PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
+import { testLogger } from '../utils/testLogger';
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 
@@ -1582,7 +1583,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   it('warns once on the homes logger per transition into sub-homes under the flow source', async () => {
     const homesLogger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     vi.spyOn(rig.ctx, 'getStructuredLogger').mockImplementation((component) => (
-      (component === 'homes' ? homesLogger : undefined) as ReturnType<AppContext['getStructuredLogger']>
+      (component === 'homes' ? homesLogger : testLogger) as ReturnType<AppContext['getStructuredLogger']>
     ));
     const flowWarnings = () => homesLogger.warn.mock.calls.filter(([payload]) => (
       payload.event === 'sub_homes_configured_under_flow_power_source'

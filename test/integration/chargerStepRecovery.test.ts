@@ -8,6 +8,7 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { buildPlanCycle } from '../utils/planContextPowerFixture';
 import { applyRestorePlanForSpec, steppedPlanDevice } from '../utils/planTestUtils';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
+import { testLogger } from '../utils/testLogger';
 
 const charger = (overrides: Parameters<typeof steppedPlanDevice>[0] = {}) => steppedPlanDevice({
   id: 'charger',
@@ -44,6 +45,7 @@ const plan = (
     state,
     sheddingActive: false,
     deps: {
+      structuredLog: testLogger,
       powerTracker: partialDouble<PowerTrackerState>({ lastTimestamp: Date.now() }),
       temperatureSetpoints: new Map(),
       getShedBehavior: () => ({ action: 'turn_off' }),

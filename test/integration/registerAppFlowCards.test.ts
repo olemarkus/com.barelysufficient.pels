@@ -15,6 +15,7 @@ import type { HeadroomForDeviceDecision } from '../../lib/plan/planHeadroomDevic
 import type { HomeModeCatalog } from '../../lib/home/homeModeCatalog';
 import { partialDouble } from '../helpers/partialDouble';
 import type { EnergyTaskDeliveryTracker } from '../../lib/objectives/deferredObjectives/energyDelivery';
+import { testLogger } from '../utils/testLogger';
 
 describe('registerAppFlowCards', () => {
   const homeModeCatalog = partialDouble<HomeModeCatalog>({
@@ -71,7 +72,7 @@ describe('registerAppFlowCards', () => {
       updateDailyBudgetState: vi.fn(),
       getTimeZone: vi.fn(() => 'Europe/Oslo'),
       getNow: vi.fn(() => now),
-      getStructuredLogger: vi.fn(() => undefined),
+      getStructuredLogger: vi.fn(() => testLogger),
       log: vi.fn(),
       error: vi.fn(),
       timers: params.timers ?? new TimerRegistry(),
@@ -108,7 +109,7 @@ describe('registerAppFlowCards', () => {
       updateDailyBudgetState: vi.fn(),
       getTimeZone: vi.fn(() => 'Europe/Oslo'),
       getNow: vi.fn(() => new Date('2026-04-16T00:00:00.000Z')),
-      getStructuredLogger: vi.fn(() => undefined),
+      getStructuredLogger: vi.fn(() => testLogger),
       log: vi.fn(),
       error: vi.fn(),
       timers: new TimerRegistry(),
@@ -240,7 +241,7 @@ describe('registerAppFlowCards', () => {
       updateDailyBudgetState,
       getTimeZone: vi.fn(() => 'Europe/Oslo'),
       getNow: vi.fn(() => new Date('2026-04-16T00:00:00.000Z')),
-      getStructuredLogger: vi.fn(() => undefined),
+      getStructuredLogger: vi.fn(() => testLogger),
       log: vi.fn(),
       error: vi.fn(),
       timers: new TimerRegistry(),

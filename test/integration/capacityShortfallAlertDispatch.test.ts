@@ -16,6 +16,7 @@ import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames';
 import { partialDouble } from '../helpers/partialDouble';
 import { planVerdictSummaryFixture } from '../helpers/createTestCapacityGuard';
+import { testLogger } from '../utils/testLogger';
 
 // The guard no longer resolves the hard-cap budget itself; callers pass it in.
 const TEST_SHORTFALL_THRESHOLD_KW = 6;
@@ -139,7 +140,7 @@ describe('capacity shortfall alert dispatch', () => {
         getLatestPlanSnapshot: () => null,
         getLatestPublishedPlan: () => null,
       },
-      getStructuredLogger: () => undefined,
+      getStructuredLogger: () => testLogger,
     } as unknown as AppContext;
     // The four members the guard reads off a home's scope, bound the way
     // `buildMainHomeScope` binds them.

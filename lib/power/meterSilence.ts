@@ -17,7 +17,7 @@ export type MeterSilenceMonitorDeps = {
    */
   getPowerTracker: () => PowerTrackerState;
   nowMs: () => number;
-  structuredLog: () => MeterSilenceLogger | undefined;
+  structuredLog: () => MeterSilenceLogger;
 };
 
 /**
@@ -140,7 +140,7 @@ export class MeterSilenceMonitor {
     const blocked = isSameSilence(this.shedPassDoneFor, silence);
     if (blocked && !this.blockLogged) {
       this.blockLogged = true;
-      this.deps.structuredLog()?.warn({ event: 'meter_silence_block_engaged', homeId: this.deps.homeId, ...silence });
+      this.deps.structuredLog().warn({ event: 'meter_silence_block_engaged', homeId: this.deps.homeId, ...silence });
     }
     return blocked;
   }
@@ -163,7 +163,7 @@ export class MeterSilenceMonitor {
    */
   noteShedPassCompleted(silence: MeterSilence): void {
     this.shedPassDoneFor = silence;
-    this.deps.structuredLog()?.warn({
+    this.deps.structuredLog().warn({
       event: 'meter_silence_shed_pass_completed', homeId: this.deps.homeId, ...silence,
     });
   }
@@ -171,7 +171,7 @@ export class MeterSilenceMonitor {
   private logBlockCleared(): void {
     if (!this.blockLogged) return;
     this.blockLogged = false;
-    this.deps.structuredLog()?.info({ event: 'meter_silence_block_cleared', homeId: this.deps.homeId });
+    this.deps.structuredLog().info({ event: 'meter_silence_block_cleared', homeId: this.deps.homeId });
   }
 
   /** The silence under way when the evidence stamp is older than the timeout, else `null`. */

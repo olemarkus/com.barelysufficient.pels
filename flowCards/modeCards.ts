@@ -53,7 +53,7 @@ export function registerCapacityAndModeCards(deps: FlowCardDeps): void {
     // The settings write is the whole action: `handleCapacityLimitChange`
     // reloads the capacity scalars and rebuilds off the change listener.
     deps.homey.settings.set(CAPACITY_LIMIT_KW, limit);
-    deps.getStructuredLogger('capacity')?.info({
+    deps.getStructuredLogger('capacity').info({
       event: 'capacity_limit_set',
       limitKw: limit,
       previousLimitKw: typeof previous === 'number' ? previous : null,
@@ -83,7 +83,7 @@ export function registerCapacityAndModeCards(deps: FlowCardDeps): void {
     const unchangedBudget = typeof previousBudget === 'number' && previousBudget === raw;
     const unchangedEnabled = previousEnabled === nextEnabled;
     if (unchangedBudget && unchangedEnabled) {
-      deps.getStructuredLogger('daily_budget')?.info({
+      deps.getStructuredLogger('daily_budget').info({
         event: 'daily_budget_flow_updated',
         budgetKwh: raw,
         enabled: previousEnabled,
@@ -94,7 +94,7 @@ export function registerCapacityAndModeCards(deps: FlowCardDeps): void {
 
     deps.homey.settings.set(DAILY_BUDGET_KWH, raw);
     deps.homey.settings.set(DAILY_BUDGET_ENABLED, nextEnabled);
-    deps.getStructuredLogger('daily_budget')?.info({
+    deps.getStructuredLogger('daily_budget').info({
       event: 'daily_budget_flow_updated',
       budgetKwh: raw,
       enabled: nextEnabled,

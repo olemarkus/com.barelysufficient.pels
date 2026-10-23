@@ -83,6 +83,7 @@ import {
   setMockZones,
 } from '../mocks/homey';
 import type { Logger } from '../../lib/utils/types';
+import { testLogger } from '../utils/testLogger';
 
 const homeyApp = mockHomeyInstance as unknown as Homey.App;
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
@@ -170,7 +171,7 @@ const makeStaticService = (params: {
   assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
   getZoneTree: params.getZoneTree,
   getDevices: () => params.devices,
-  getLogger: () => params.logger,
+  getLogger: () => params.logger ?? testLogger,
   getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
   // Most pre-existing scenarios model the formerly enabled feature. Upgrade
   // hold cases opt out explicitly below.
@@ -281,7 +282,7 @@ describe('post-refresh recompute through the transport seam', () => {
         deviceId: snapshotDevice.id,
         zoneId: snapshotDevice.zoneId ?? null,
       })),
-      getLogger: () => logger,
+      getLogger: () => logger ?? testLogger,
     });
     return { transport, service: wiring.service, teardown: wiring.teardown };
   };
@@ -349,7 +350,7 @@ describe('post-refresh recompute through the transport seam', () => {
       homey: homeyLike,
       deviceManager: transport,
       timers: new TimerRegistry(),
-      getStructuredLogger: () => undefined,
+      getStructuredLogger: () => testLogger,
       getPlanInputSnapshot(): never {
         throw new Error('membership recompute must not read plan inputs');
       },
@@ -586,7 +587,7 @@ describe('settings-change recompute triggers', () => {
       assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
       getZoneTree: () => ZONES,
       getDevices: () => devices,
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
       getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
       legacyMultiHomeEnabled: true,
       onMembershipChanged,
@@ -699,7 +700,7 @@ describe('last-known zone retention', () => {
     assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
     getZoneTree: () => ZONES,
     getDevices: params.getDevices,
-    getLogger: () => params.logger,
+    getLogger: () => params.logger ?? testLogger,
     getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
     legacyMultiHomeEnabled: true,
   });
@@ -2057,7 +2058,7 @@ describe('legacy multi-home activation compatibility', () => {
       setOnDeviceZoneChanged: noop,
       getZoneTree: () => ZONES,
       getDevices: () => [],
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
     });
 
     expect(createHomesStore(homeyLike.settings).read()).toEqual({
@@ -2082,7 +2083,7 @@ describe('legacy multi-home activation compatibility', () => {
       setOnDeviceZoneChanged: noop,
       getZoneTree: () => ZONES,
       getDevices: () => [{ deviceId: 'dev1', zoneId: 'z2' }],
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
     });
 
     // The settings view must retain the saved config + its diagnostic join so
@@ -2116,7 +2117,7 @@ describe('legacy multi-home activation compatibility', () => {
       setOnDeviceZoneChanged: noop,
       getZoneTree: () => ZONES,
       getDevices: () => [],
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
       onRuntimeActiveChanged,
     });
     expect(service.isRuntimeActive()).toBe(false);
@@ -2215,7 +2216,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
       assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
       getZoneTree: () => ZONES,
       getDevices: () => [],
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
       getMainMeterSelection: () => selection,
       legacyMultiHomeEnabled: false,
     });
@@ -2256,7 +2257,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
       assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
       getZoneTree: () => ZONES,
       getDevices: () => [],
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
       getMainMeterSelection: () => selection,
       onMainAuthorityUnresolved,
       legacyMultiHomeEnabled: false,
@@ -2551,7 +2552,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
             assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
             getZoneTree: () => ZONES,
             getDevices: () => [],
-            getLogger: () => undefined,
+            getLogger: () => testLogger,
             getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
             legacyMultiHomeEnabled: true,
             onMainAuthorityReopened,
@@ -2619,7 +2620,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
         assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
         getZoneTree: () => ZONES,
         getDevices: () => [],
-        getLogger: () => undefined,
+        getLogger: () => testLogger,
         getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
         legacyMultiHomeEnabled: true,
       });
@@ -2656,7 +2657,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
           getZoneTree: () => ZONES,
           getDevices: () => [],
           getLogger: () => (overrides.warn === undefined
-            ? undefined
+            ? testLogger
             : ({
               warn: overrides.warn, info: vi.fn(), debug: vi.fn(), error: vi.fn(),
             }) as never),
@@ -2978,7 +2979,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
             assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
             getZoneTree: () => ZONES,
             getDevices: () => [],
-            getLogger: () => undefined,
+            getLogger: () => testLogger,
             getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
             legacyMultiHomeEnabled: true,
             onMainAuthorityReopened,
@@ -3051,7 +3052,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
       assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
       getZoneTree: () => ZONES,
       getDevices: () => [],
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
       getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: mainMeterDeviceId }),
       legacyMultiHomeEnabled: true,
     });
@@ -3079,7 +3080,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
       assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
       getZoneTree: () => ZONES,
       getDevices: () => [],
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
       getMainMeterSelection: () => selection,
       legacyMultiHomeEnabled: true,
       onMainAuthorityUnresolved,
@@ -3111,7 +3112,7 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
       assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
       getZoneTree: () => ZONES,
       getDevices: () => [{ deviceId: 'd-main', zoneId: 'z1' }],
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
       getMainMeterSelection: () => selection,
       legacyMultiHomeEnabled: true,
     });
@@ -3149,7 +3150,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       assignmentsStore,
       getZoneTree: () => ZONES,
       getDevices: () => [{ deviceId: 'd-moving', zoneId: 'z2' }],
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
       getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
       legacyMultiHomeEnabled: true,
     });
@@ -3233,7 +3234,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       assignmentsStore: unwrittenAssignments,
       getZoneTree: () => ZONES,
       getDevices: () => [{ deviceId: 'd-sub', zoneId: 'z2' }],
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
       getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
       legacyMultiHomeEnabled: true,
       onZoneTreeCommitReady: onOwnershipReady,
@@ -3276,7 +3277,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       // Zone-only resolution says Main; the durable pin moves it behind the
       // sub-home meter once the assignments store becomes trustworthy.
       getDevices: () => [{ deviceId: 'd-pinned', zoneId: 'z1' }],
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
       getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
       legacyMultiHomeEnabled: true,
       onZoneTreeCommitReady: onOwnershipReady,
@@ -3313,7 +3314,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       assignmentsStore: unwrittenAssignments,
       getZoneTree: () => zoneTree,
       getDevices: () => [{ deviceId: 'd-sub', zoneId: 'z2' }],
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
       getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
       legacyMultiHomeEnabled: true,
       onZoneTreeCommitReady: onOwnershipReady,
@@ -3338,7 +3339,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       assignmentsStore: unwrittenAssignments,
       getZoneTree: () => null,
       getDevices: () => [{ deviceId: 'd-main', zoneId: null }],
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
       getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
       legacyMultiHomeEnabled: true,
     });
@@ -3432,7 +3433,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       },
       planService: { rebuildPlanFromCache },
       powerTracker: {},
-      getStructuredLogger: () => undefined,
+      getStructuredLogger: () => testLogger,
     } as unknown as AppContext;
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
@@ -3502,7 +3503,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       // A real app always carries a tracker; empty = no sample restored across
       // a restart, so the sampled clause has no unattributed watts to fence.
       powerTracker: {},
-      getStructuredLogger: () => undefined,
+      getStructuredLogger: () => testLogger,
     } as unknown as AppContext;
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
@@ -3560,7 +3561,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       // A real app always carries a tracker; empty = no sample restored across
       // a restart, so the sampled clause has no unattributed watts to fence.
       powerTracker: {},
-      getStructuredLogger: () => undefined,
+      getStructuredLogger: () => testLogger,
     } as unknown as AppContext;
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
@@ -3621,7 +3622,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       },
       planService: { rebuildPlanFromCache },
       powerTracker: {},
-      getStructuredLogger: () => undefined,
+      getStructuredLogger: () => testLogger,
     } as unknown as AppContext;
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
@@ -3684,7 +3685,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       // A real app always carries a tracker; empty = no sample restored across
       // a restart, so the sampled clause has no unattributed watts to fence.
       powerTracker: {},
-      getStructuredLogger: () => undefined,
+      getStructuredLogger: () => testLogger,
     } as unknown as AppContext;
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
@@ -3766,7 +3767,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       // A real app always carries a tracker; empty = no sample restored across
       // a restart, so the sampled clause has no unattributed watts to fence.
       powerTracker: {},
-      getStructuredLogger: () => undefined,
+      getStructuredLogger: () => testLogger,
     } as unknown as AppContext;
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
@@ -3834,7 +3835,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       // A real app always carries a tracker; empty = no sample restored across
       // a restart, so the sampled clause has no unattributed watts to fence.
       powerTracker: {},
-      getStructuredLogger: () => undefined,
+      getStructuredLogger: () => testLogger,
     } as unknown as AppContext;
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
@@ -3918,7 +3919,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       // A real app always carries a tracker; empty = no sample restored across
       // a restart, so the sampled clause has no unattributed watts to fence.
       powerTracker: {},
-      getStructuredLogger: () => undefined,
+      getStructuredLogger: () => testLogger,
     } as unknown as AppContext;
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
@@ -4014,7 +4015,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       // A real app always carries a tracker; empty = no sample restored across
       // a restart, so the sampled clause has no unattributed watts to fence.
       powerTracker: {},
-      getStructuredLogger: () => undefined,
+      getStructuredLogger: () => testLogger,
     } as unknown as AppContext;
     // The sanctioned device read, bound to this stub's own transport. The
     // prohibition this stub exists for — the decorated snapshot getter — still
@@ -4079,7 +4080,7 @@ describe('HomeMembershipService — zone-tree-commit readiness edge', () => {
     assignmentsStore: unwrittenStore,
     getZoneTree: params.getZoneTree,
     getDevices: () => [],
-    getLogger: () => undefined,
+    getLogger: () => testLogger,
     getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
     legacyMultiHomeEnabled: true,
     onZoneTreeCommitReady: params.onZoneTreeCommitReady,

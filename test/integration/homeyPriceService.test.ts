@@ -35,8 +35,10 @@ import type { HomeyEnergyApi, HomeyEnergyPriceInterval } from '../../lib/utils/h
 import { PriceLevel } from '../../lib/price/priceLevels';
 import { captureLogger } from '../utils/loggerCapture';
 import type Homey from 'homey';
+import { testLogger } from '../utils/testLogger';
 
 const sinks = (overrides: Partial<PriceServiceLoggingSinks> = {}): PriceServiceLoggingSinks => ({
+  structuredLog: testLogger,
   debugStructured: () => {},
   ...overrides,
 });

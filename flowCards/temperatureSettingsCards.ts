@@ -196,7 +196,7 @@ function logSettingSaved(
   device: DeviceDescriptorRead,
   change: { setting: string; outcome: 'written' | 'unchanged' } & Record<string, unknown>,
 ): void {
-  deps.getStructuredLogger('devices')?.info({
+  deps.getStructuredLogger('devices').info({
     event: 'flow_device_setting_saved',
     deviceId: device.id,
     deviceName: device.name,

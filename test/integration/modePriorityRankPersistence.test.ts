@@ -9,6 +9,7 @@ import type { HomeMembershipPort } from '../../lib/home/membership';
 import type { SettingsPort } from '../../lib/ports/homeyRuntime';
 import type { HomeBatteryDevicesRead } from '../../lib/ports/homeBatteryDevices';
 import { CAPACITY_PRIORITIES, MAIN_HOME_ID, homeScopedSettingsKey } from '../../lib/utils/settingsKeys';
+import { testLogger } from '../utils/testLogger';
 
 const createSettings = (initial: Record<string, unknown>): SettingsPort & { writes: string[] } => {
   const store = new Map(Object.entries(initial));
@@ -41,7 +42,7 @@ const createMainCatalog = (
   () => { throw new Error('Main reads no other home'); },
   () => managed,
   () => membership,
-  () => undefined,
+  () => testLogger,
   readHomeBatteries,
 );
 
@@ -121,7 +122,7 @@ describe('persisting ranks for unranked managed devices', () => {
     const ownership: { membership?: HomeMembershipPort } = {};
     const catalog = createHomeModeCatalog(
       MAIN_HOME_ID, settings, () => { throw new Error('unused'); },
-      () => ({ heater: true, charger: true }), () => ownership.membership, () => undefined,
+      () => ({ heater: true, charger: true }), () => ownership.membership, () => testLogger,
       NO_BATTERIES,
     );
     expect(settings.writes).toEqual([]);
@@ -164,7 +165,7 @@ describe('persisting ranks for unranked managed devices', () => {
     const catalog = createHomeModeCatalog(
       area, settings, main.getSnapshot,
       () => ({ heater: true, sauna: true, kitchen: true }),
-      () => settledMembership({ heater: area, sauna: area }), () => undefined,
+      () => settledMembership({ heater: area, sauna: area }), () => testLogger,
       NO_BATTERIES,
     );
     catalog.reload();

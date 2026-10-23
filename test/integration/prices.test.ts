@@ -35,6 +35,7 @@ import { getHourStartInTimeZone } from '../../lib/utils/hourBuckets';
 import { noHomeyWebApi, unknownHubMarket } from '../helpers/homeyWebApiStub';
 import { DEFAULT_SURPLUS_LIFT_C } from '../../packages/shared-domain/src/settings/priceOptimization';
 import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
+import { testLogger } from '../utils/testLogger';
 
 // Mock the https module
 vi.mock('https', () => ({
@@ -1367,6 +1368,7 @@ describe('Price optimization', () => {
   let priceCache = createInMemoryPriceCache();
 
   const createPriceCoordinatorForTest = (overrides: Partial<ConstructorParameters<typeof PriceCoordinator>[0]> = {}): PriceCoordinator => new PriceCoordinator({
+    structuredLog: testLogger,
     homey: mockHomeyInstance as never,
     priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance.settings),
     priceDataStore: createPriceDataStore(mockHomeyInstance.settings, priceCache),

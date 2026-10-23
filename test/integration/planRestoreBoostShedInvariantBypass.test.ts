@@ -22,6 +22,7 @@ import {
   applyRestorePlanForSpec,
 } from '../utils/planTestUtils';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
+import { testLogger } from '../utils/testLogger';
 
 const buildContextFields = (overrides: PlanCycleSpec = {}): PlanCycle => buildPlanCycleObject({
   devices: [],
@@ -87,6 +88,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
       state,
       sheddingActive: false,
       deps: {
+        structuredLog: testLogger,
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
@@ -137,6 +139,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
       state,
       sheddingActive: false,
       deps: {
+        structuredLog: testLogger,
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
@@ -176,6 +179,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
       state,
       sheddingActive: false,
       deps: {
+        structuredLog: testLogger,
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),

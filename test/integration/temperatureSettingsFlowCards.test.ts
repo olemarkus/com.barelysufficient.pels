@@ -16,6 +16,7 @@ import type { DeviceDescriptorRead } from '../../packages/contracts/src/types';
 import type { SmartTaskInProgressRead } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import { partialDouble } from '../helpers/partialDouble';
 import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
+import { testLogger } from '../utils/testLogger';
 
 const settings = mockHomeyInstance.settings;
 
@@ -41,7 +42,7 @@ const register = (smartTask: SmartTaskInProgressRead = 'none') => {
     () => { throw new Error('Main reads its own catalog'); },
     () => ({ heater: true }),
     () => undefined,
-    () => undefined,
+    () => testLogger,
     () => ({ status: 'resolved', deviceIds: new Set() }),
   );
   const info = vi.fn();

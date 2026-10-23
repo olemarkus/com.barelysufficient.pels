@@ -223,7 +223,7 @@ export function emitSteppedLoadReportReceivedLog(
   reportedStepId: string | null,
   rawPowerInput: string | number | null,
 ): void {
-  deps.getStructuredLogger('devices')?.info({
+  deps.getStructuredLogger('devices').info({
     event: 'stepped_load_report_received',
     sourceCardId,
     deviceId,
@@ -242,7 +242,7 @@ export function emitSteppedLoadReportResolvedLog(
   outcome: 'accepted' | 'unchanged',
   parsedPowerW: number | undefined,
 ): void {
-  deps.getStructuredLogger('devices')?.info(buildReportResolvedPayload(
+  deps.getStructuredLogger('devices').info(buildReportResolvedPayload(
     sourceCardId, deviceId, deviceName, resolvedStepId, parsedPowerW ?? null, outcome, null,
   ));
 }
@@ -255,7 +255,7 @@ export function emitSteppedLoadReportNativeIgnoredLog(
   deviceName: string,
   reportedStepId: string | null,
 ): void {
-  deps.getStructuredLogger('devices')?.info(buildReportResolvedPayload(
+  deps.getStructuredLogger('devices').info(buildReportResolvedPayload(
     sourceCardId, deviceId, deviceName, reportedStepId, null, 'unchanged', 'native_wiring_enabled',
   ));
 }
@@ -294,7 +294,7 @@ export function emitSteppedLoadReportRejectedLog(
   const reasonCode = error instanceof SteppedLoadReportError
     ? error.code
     : 'unexpected_error';
-  deps.getStructuredLogger('devices')?.warn({
+  deps.getStructuredLogger('devices').warn({
     event: 'stepped_load_report_rejected',
     sourceCardId,
     deviceId,

@@ -47,7 +47,7 @@ const OVERSHOOT_TOP_CONTRIBUTOR_LIMIT = 3;
 // callers — including tests — may swap `structuredLog` after the tracker is
 // built, exactly as the former `this.deps.structuredLog` reads did.
 export type OvershootTrackerDeps = {
-  structuredLog?: PinoLogger;
+  structuredLog: PinoLogger;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   pendingBinaryCommandStore: PendingBinaryCommandStore;
 };
@@ -115,7 +115,7 @@ export class OvershootTracker {
         this.lastPlan,
         trackedPlanDevicesById,
       );
-      this.deps.structuredLog?.info({
+      this.deps.structuredLog.info({
         event: 'overshoot_entered',
         reasonCode: 'active_overshoot',
         headroomKw: power.headroomKw,
@@ -147,7 +147,7 @@ export class OvershootTracker {
       // shedding pass, so clearing it there would strip the anchor off the very
       // first shed of every incident.
       this.state.clearShedPlanLatch();
-      this.deps.structuredLog?.info({
+      this.deps.structuredLog.info({
         event: 'overshoot_cleared',
         reasonCode: 'overshoot_cleared',
         durationMs,
@@ -200,7 +200,7 @@ export class OvershootTracker {
       if (deviceName.length > 0) {
         logEntry.deviceName = deviceName;
       }
-      this.deps.structuredLog?.info(logEntry);
+      this.deps.structuredLog.info(logEntry);
       if (this.deps.deviceDiagnostics) {
         this.deps.deviceDiagnostics.recordActivationTransition(result.transition, { name: deviceName });
       }

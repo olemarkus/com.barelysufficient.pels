@@ -89,7 +89,7 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
     candidate: DeferredObjectivePlanPreviewCandidate,
   ): NewSmartTaskWriteResult;
   cancelDeferredObjective(deviceId: string): CancelDeferredObjectiveOutcome;
-  getApiStructuredLogger(): PinoLogger | undefined;
+  getApiStructuredLogger(): PinoLogger;
 };
 
 /**

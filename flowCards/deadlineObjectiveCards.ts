@@ -278,7 +278,7 @@ function registerDeadlineStatusChangedTrigger(deps: FlowCardDeps): void {
       if (previousStatus === flowStatus) return;
       tokens = buildSmartTaskStatusTokens(event, flowStatus);
     } catch (err) {
-      deps.getStructuredLogger('flow')?.error({
+      deps.getStructuredLogger('flow').error({
         event: 'deadline_status_changed_tokens_build_failed',
         deviceId: event.deviceId,
         err: normalizeError(err),
@@ -286,7 +286,7 @@ function registerDeadlineStatusChangedTrigger(deps: FlowCardDeps): void {
       return;
     }
     void card.trigger?.(tokens, { deviceId: event.deviceId })
-      .catch((err: Error) => deps.getStructuredLogger('flow')?.error({
+      .catch((err: Error) => deps.getStructuredLogger('flow').error({
         event: 'deadline_status_changed_trigger_failed',
         deviceId: event.deviceId,
         err: normalizeError(err),
@@ -314,7 +314,7 @@ function registerDeadlineEndedTrigger(deps: FlowCardDeps): void {
     } catch (err) {
       // Swallow listener-side errors so a malformed event cannot unwind back
       // into the plan-history finalization that published it.
-      deps.getStructuredLogger('flow')?.error({
+      deps.getStructuredLogger('flow').error({
         event: 'deadline_ended_tokens_build_failed',
         deviceId: event.deviceId,
         err: normalizeError(err),
@@ -322,7 +322,7 @@ function registerDeadlineEndedTrigger(deps: FlowCardDeps): void {
       return;
     }
     void card.trigger?.(tokens, { deviceId: event.deviceId })
-      .catch((err: Error) => deps.getStructuredLogger('flow')?.error({
+      .catch((err: Error) => deps.getStructuredLogger('flow').error({
         event: 'deadline_ended_trigger_failed',
         deviceId: event.deviceId,
         err: normalizeError(err),
@@ -352,7 +352,7 @@ function registerDeadlinePlanChangedTrigger(deps: FlowCardDeps): void {
     } catch (err) {
       // Swallow listener-side errors so a malformed event cannot unwind back
       // into the plan-engine cycle that published it.
-      deps.getStructuredLogger('flow')?.error({
+      deps.getStructuredLogger('flow').error({
         event: 'deadline_plan_changed_tokens_build_failed',
         deviceId: event.deviceId,
         err: normalizeError(err),
@@ -360,7 +360,7 @@ function registerDeadlinePlanChangedTrigger(deps: FlowCardDeps): void {
       return;
     }
     void card.trigger?.(tokens, { deviceId: event.deviceId })
-      .catch((err: Error) => deps.getStructuredLogger('flow')?.error({
+      .catch((err: Error) => deps.getStructuredLogger('flow').error({
         event: 'deadline_plan_changed_trigger_failed',
         deviceId: event.deviceId,
         err: normalizeError(err),
@@ -410,7 +410,7 @@ function registerSmartTaskHoursRemainingTrigger(deps: FlowCardDeps): void {
     try {
       tokens = buildSmartTaskHoursRemainingTokens(event);
     } catch (err) {
-      deps.getStructuredLogger('flow')?.error({
+      deps.getStructuredLogger('flow').error({
         event: 'smart_task_hours_remaining_tokens_build_failed',
         deviceId: event.deviceId,
         err: normalizeError(err),
@@ -421,7 +421,7 @@ function registerSmartTaskHoursRemainingTrigger(deps: FlowCardDeps): void {
       deviceId: event.deviceId,
       hoursRemaining: event.hoursRemaining,
       previousHoursRemaining: event.previousHoursRemaining,
-    }).catch((triggerErr: Error) => deps.getStructuredLogger('flow')?.error({
+    }).catch((triggerErr: Error) => deps.getStructuredLogger('flow').error({
       event: 'smart_task_hours_remaining_trigger_failed',
       deviceId: event.deviceId,
       err: normalizeError(triggerErr),

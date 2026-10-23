@@ -201,7 +201,7 @@ const applyAuthorityPlansUnderFence = async (params: {
     const outcome = await planService.rebuildPlanFromCache('home_ownership_ready');
     if (isStopped()) return { state: 'stopped' };
     if (outcome.failed) {
-      ctx.getStructuredLogger('homes')?.warn({
+      ctx.getStructuredLogger('homes').warn({
         event: 'home_ownership_ready_rebuild_failed',
       });
       schedule();
@@ -430,7 +430,7 @@ const createMainOwnershipRecovery = (
         ctx.timers.clear(MAIN_OWNERSHIP_RECOVERY_TIMER);
       }
     } catch (error: unknown) {
-      ctx.getStructuredLogger('homes')?.error({
+      ctx.getStructuredLogger('homes').error({
         event: 'home_ownership_ready_apply_failed',
         err: normalizeError(error),
       });
@@ -549,13 +549,13 @@ export const wireHomeMembership = (
         // regression (membership changed before the plan wiring exists) — the
         // committed plan, if any, keeps governing until the next rebuild
         // trigger. Warn so the regression is diagnosable from logs.
-        ctx.getStructuredLogger('homes')?.warn({
+        ctx.getStructuredLogger('homes').warn({
           event: 'home_membership_rebuild_skipped_unwired',
         });
         return;
       }
       void planService.rebuildPlanFromCache('home_membership_changed')
-        .catch((error: unknown) => ctx.getStructuredLogger('homes')?.error({
+        .catch((error: unknown) => ctx.getStructuredLogger('homes').error({
           event: 'home_membership_plan_rebuild_failed',
           err: normalizeError(error),
         }));

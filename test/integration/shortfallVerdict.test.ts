@@ -8,6 +8,7 @@ import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinar
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { buildMeasuredPower, buildPlanContextFixture } from '../utils/planContextPowerFixture';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
+import { testLogger } from '../utils/testLogger';
 
 const guardDouble = () => ({
   recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
@@ -43,6 +44,7 @@ describe('reportShortfallToGuard', () => {
       state,
       heldSelection('missing'),
       {
+        structuredLog: testLogger,
         capacityGuard,
         shortfallThresholdKw: 0,
         powerTracker: {},
@@ -67,6 +69,7 @@ describe('reportShortfallToGuard', () => {
       state,
       heldSelection('missing'),
       {
+        structuredLog: testLogger,
         capacityGuard,
         shortfallThresholdKw: 5,
         powerTracker: {},
@@ -93,6 +96,7 @@ describe('reportShortfallToGuard', () => {
       state,
       heldSelection('heater'),
       {
+        structuredLog: testLogger,
         capacityGuard,
         shortfallThresholdKw: 5,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
@@ -120,6 +124,7 @@ describe('reportShortfallToGuard', () => {
       state,
       heldSelection('heater'),
       {
+        structuredLog: testLogger,
         capacityGuard,
         shortfallThresholdKw: 5,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
@@ -148,6 +153,7 @@ describe('reportShortfallToGuard', () => {
       // The heater's own meter reads it off; the main meter still carries its 2 kW.
       { ...heldSelection('heater'), pendingReliefKw: 2 },
       {
+        structuredLog: testLogger,
         capacityGuard,
         shortfallThresholdKw: 5,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,

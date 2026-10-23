@@ -113,7 +113,7 @@ async function handleEvSocCardRun(deps: FlowCardDeps, args: unknown): Promise<bo
   }
 
   const updatedCharger = await getBestEffortEvChargerSnapshot(deps, chargerDeviceId);
-  deps.getStructuredLogger('devices')?.info(buildEvSocLogPayload(charger, updatedCharger, percent, observedAtMs));
+  deps.getStructuredLogger('devices').info(buildEvSocLogPayload(charger, updatedCharger, percent, observedAtMs));
 
   return true;
 }

@@ -167,9 +167,9 @@ export const beginTrackerFreshnessReset = (
 export const resetDormantTrackerFreshness = (
   store: TrackerStore,
   homeId: HomeId,
-  getLogger: () => PinoLogger | undefined,
+  getLogger: () => PinoLogger,
 ): boolean => beginTrackerFreshnessReset(store, homeId, undefined, (failure) => {
-  getLogger()?.error({
+  getLogger().error({
     event: 'home_dormant_tracker_freshness_reset_failed',
     homeId,
     phase: failure.phase,

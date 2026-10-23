@@ -32,7 +32,7 @@ export function resolvePlannedDesiredStepToPreserve(
 }
 
 export function emitSteppedFeedbackLog(
-  log: PinoLogger | undefined,
+  log: PinoLogger,
   observation: FlowSteppedLoadObservation,
   deviceName: string,
   previousReportedStepId: string | undefined,
@@ -47,7 +47,7 @@ export function emitSteppedFeedbackLog(
   } else if (plannedDesiredStepId && plannedDesiredStepId !== stepId) {
     logMismatch(log, deviceId, deviceName, stepId, plannedDesiredStepId);
   } else if (previousReportedStepId && previousReportedStepId !== stepId) {
-    log?.info({
+    log.info({
       event: 'stepped_feedback_external_change',
       deviceId,
       deviceName,
@@ -60,7 +60,7 @@ export function emitSteppedFeedbackLog(
   } else if (previousDesired?.stepId && previousDesired.stepId !== stepId) {
     logMismatch(log, deviceId, deviceName, stepId, previousDesired.stepId);
   } else {
-    log?.info({
+    log.info({
       event: 'stepped_feedback_reported',
       deviceId,
       deviceName,
@@ -71,10 +71,10 @@ export function emitSteppedFeedbackLog(
 }
 
 function logConfirmed(
-  log: PinoLogger | undefined, deviceId: string, deviceName: string, stepId: string,
+  log: PinoLogger, deviceId: string, deviceName: string, stepId: string,
   desiredStepId: string, previousDesired: SteppedLoadDesiredRuntimeState | undefined,
 ): void {
-  log?.info({
+  log.info({
     event: 'stepped_feedback_confirmed',
     deviceId: deviceId,
     deviceName: deviceName,
@@ -88,9 +88,9 @@ function logConfirmed(
 }
 
 function logMismatch(
-  log: PinoLogger | undefined, deviceId: string, deviceName: string, stepId: string, desiredStepId: string,
+  log: PinoLogger, deviceId: string, deviceName: string, stepId: string, desiredStepId: string,
 ): void {
-  log?.info({
+  log.info({
     event: 'stepped_feedback_mismatch',
     deviceId: deviceId,
     deviceName: deviceName,

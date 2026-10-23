@@ -8,11 +8,10 @@ import type {
 import type { DeviceDiagnosticsStarvationPauseReason } from '../../packages/contracts/src/deviceDiagnosticsTypes';
 import type { StarvationTarget } from '../../packages/contracts/src/starvationRescue';
 import type { Logger as PinoLogger } from '../logging/logger';
-import { getDebugEmitter, getLogger } from '../logging/logger';
+import { getDebugEmitter } from '../logging/logger';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
 const debug = getDebugEmitter('diagnostics', 'diagnostics');
-const moduleLogger = getLogger('diagnostics/device');
 
 const DEVICE_DIAGNOSTICS_STARVATION_ENTRY_MS = 15 * 60 * 1000;
 const DEVICE_DIAGNOSTICS_STARVATION_CLEAR_MS = 10 * 60 * 1000;
@@ -100,7 +99,7 @@ const evaluateStarvationObservation = (
 
 type StarvationTrackerDeps = {
   getLiveDeviceState: (deviceId: string) => LiveDeviceDiagnostics;
-  structuredLog?: Pick<PinoLogger, 'info'>;
+  structuredLog: Pick<PinoLogger, 'info'>;
 };
 
 // Owns the per-device starvation episode state machine. Kept as a class so the
@@ -214,7 +213,7 @@ export class StarvationTracker {
       starvationCause: observation.countingCause,
       starvationPauseReason: null,
     };
-    (this.deps.structuredLog ?? moduleLogger).info({
+    this.deps.structuredLog.info({
       event: 'device_starvation_started',
       deviceId,
       deviceName: live.name,
@@ -243,7 +242,7 @@ export class StarvationTracker {
     // `applyStarvationAccumulationProgress` refreshes it from each observation.
     live.starvation.starvationPauseReason = null;
     if (endTs < clearAt) return;
-    (this.deps.structuredLog ?? moduleLogger).info({
+    this.deps.structuredLog.info({
       event: 'device_starvation_cleared',
       deviceId,
       deviceName: live.name,
@@ -261,7 +260,7 @@ export class StarvationTracker {
   ): void {
     const live = this.deps.getLiveDeviceState(deviceId);
     if (!isFiniteNumber(live.starvation.starvationLastResumedAt)) {
-      (this.deps.structuredLog ?? moduleLogger).info({
+      this.deps.structuredLog.info({
         event: 'device_starvation_resumed',
         deviceId,
         deviceName: live.name,
@@ -288,7 +287,7 @@ export class StarvationTracker {
   ): void {
     const live = this.deps.getLiveDeviceState(deviceId);
     if (isFiniteNumber(live.starvation.starvationLastResumedAt)) {
-      (this.deps.structuredLog ?? moduleLogger).info({
+      this.deps.structuredLog.info({
         event: 'device_starvation_paused',
         deviceId,
         deviceName: live.name,
@@ -320,7 +319,7 @@ export class StarvationTracker {
     ) {
       return;
     }
-    (this.deps.structuredLog ?? moduleLogger).info({
+    this.deps.structuredLog.info({
       event: 'device_starvation_hard_reset',
       deviceId,
       deviceName: live.name,

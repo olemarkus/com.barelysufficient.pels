@@ -37,7 +37,7 @@ export type MeterSilenceEscalationDeps = {
   homeId: HomeId;
   timers: TimerRegistry;
   timerKey: string;
-  logger: () => PinoLogger | undefined;
+  logger: () => PinoLogger;
   /** One rebuild of this home's plan, which both plans and actuates. */
   rebuild: () => Promise<MeterSilenceShedPassOutcome>;
   /**
@@ -127,11 +127,11 @@ export class MeterSilenceEscalation {
     // (a boot-time SDK failure leaves an empty snapshot until the 5-minute poll),
     // or the write seam is fenced (every write would answer `requested: false`).
     if (!isSnapshotWarm()) {
-      logger()?.warn({ event: 'home_freshness_heartbeat_snapshot_cold', homeId });
+      logger().warn({ event: 'home_freshness_heartbeat_snapshot_cold', homeId });
       return;
     }
     if (isActuationFenced()) {
-      logger()?.warn({ event: 'home_freshness_heartbeat_actuation_fenced', homeId });
+      logger().warn({ event: 'home_freshness_heartbeat_actuation_fenced', homeId });
       return;
     }
     this.inFlight = true;
@@ -143,7 +143,7 @@ export class MeterSilenceEscalation {
         // gate. In either case the shed did NOT take effect, so latching would
         // suppress the retry the next tick owes.
         if (outcome.failed) {
-          logger()?.warn({ event: 'home_freshness_heartbeat_rebuild_failed', homeId });
+          logger().warn({ event: 'home_freshness_heartbeat_rebuild_failed', homeId });
           return;
         }
         if (outcome.isDryRun) {
@@ -159,7 +159,7 @@ export class MeterSilenceEscalation {
           // per-device by the executor): the fail-closed shed did not fully
           // take effect, so the pass stays owed and the next tick retries —
           // latching here would engage the block with load still running.
-          logger()?.warn({
+          logger().warn({
             event: 'home_freshness_heartbeat_apply_failed',
             homeId,
             deviceApplyFailureCount: outcome.deviceApplyFailureCount,
@@ -173,7 +173,7 @@ export class MeterSilenceEscalation {
         // running. A fence that closed and reopened inside one rebuild is the
         // residual this cannot see; the executor does not report fenced writes.
         if (!isSnapshotWarm() || isActuationFenced()) {
-          logger()?.warn({ event: 'home_freshness_heartbeat_precondition_lost', homeId });
+          logger().warn({ event: 'home_freshness_heartbeat_precondition_lost', homeId });
           return;
         }
         // Latch the pass against the silence it was taken for, which engages
@@ -183,7 +183,7 @@ export class MeterSilenceEscalation {
         meterSilence.noteShedPassCompleted(passFor);
       })
       .catch((error: unknown) => {
-        logger()?.error({ event: 'home_freshness_heartbeat_rebuild_failed', homeId, err: normalizeError(error) });
+        logger().error({ event: 'home_freshness_heartbeat_rebuild_failed', homeId, err: normalizeError(error) });
       })
       .finally(() => { this.inFlight = false; });
   }

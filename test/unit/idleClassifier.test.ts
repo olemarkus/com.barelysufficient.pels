@@ -6,6 +6,7 @@ import {
   IDLE_HOLD_MIN_DURATION_MS,
   IDLE_UNRESPONSIVE_MIN_DURATION_MS,
 } from '../../lib/observer/idleDetector';
+import { testLogger } from '../utils/testLogger';
 
 let capture: LoggerCapture;
 beforeEach(() => { capture = captureLogger('info', ['plan']); });
@@ -45,7 +46,7 @@ describe('createIdleClassifier', () => {
   // atomic temperature cluster. These pin the producer end of it.
   describe('getStallEvidence', () => {
     it('carries the setpoint the verdict was measured against', () => {
-      const classifier = createIdleClassifier();
+      const classifier = createIdleClassifier(testLogger);
       const t0 = 1_000_000;
       // Park the heater at its setpoint long enough to classify.
       classifier.classifyAll([heaterAt({ temperature: { currentTemperature: 64.5, currentTarget: 65 } })], t0);
@@ -66,7 +67,7 @@ describe('createIdleClassifier', () => {
     // no evidence to hand out — the producer withholds it rather than emitting
     // a null setpoint for consumers to hedge on.
     it('withholds evidence for a device with no temperature cluster', () => {
-      const classifier = createIdleClassifier();
+      const classifier = createIdleClassifier(testLogger);
       const t0 = 1_000_000;
       classifier.classifyAll([heaterAt({ temperature: undefined })], t0);
       classifier.classifyAll([heaterAt({ temperature: undefined })], t0 + IDLE_UNRESPONSIVE_MIN_DURATION_MS);
@@ -76,7 +77,7 @@ describe('createIdleClassifier', () => {
     });
 
     it('withholds evidence for a device the classifier has never seen', () => {
-      expect(createIdleClassifier().getStallEvidence('unknown-device')).toBeUndefined();
+      expect(createIdleClassifier(testLogger).getStallEvidence('unknown-device')).toBeUndefined();
     });
 
     // PR #2192 review (chatgpt-codex-connector, P1). `capped_idle` is derived
@@ -88,7 +89,7 @@ describe('createIdleClassifier', () => {
     // mark the task satisfied at 40 °C. The evidence belongs to the setpoint it
     // was gathered under.
     it('discards the cycling window when the setpoint moves, so a setback cannot certify a raised target', () => {
-      const classifier = createIdleClassifier();
+      const classifier = createIdleClassifier(testLogger);
       const tickMs = 30_000;
       let cursor = 0;
       let drawing = true;
@@ -115,7 +116,7 @@ describe('createIdleClassifier', () => {
 
   describe('live completion evidence', () => {
     const parkedClassifier = () => {
-      const classifier = createIdleClassifier();
+      const classifier = createIdleClassifier(testLogger);
       classifier.classifyAll([heaterAt()], 1_000_000);
       classifier.classifyAll([heaterAt()], 1_000_000 + IDLE_HOLD_MIN_DURATION_MS);
       return classifier;
@@ -269,7 +270,7 @@ describe('createIdleClassifier', () => {
   });
 
   it('does not classify a PELS-shed device', () => {
-    const classifier = createIdleClassifier();
+    const classifier = createIdleClassifier(testLogger);
     const t0 = 1_000_000;
     const shed = heaterAt({ plannedState: 'shed' });
     classifier.classifyAll([shed], t0);
@@ -364,7 +365,7 @@ describe('createIdleClassifier', () => {
     });
 
     it('logs a resumed edge when the device starts drawing again', () => {
-      const classifier = createIdleClassifier();
+      const classifier = createIdleClassifier(testLogger);
       const t0 = 1_000_000;
       classifier.classifyAll([heaterAt({ currentDrawKw: 0 })], t0); // seed: idle
       classifier.classifyAll([heaterAt({ currentDrawKw: 1.5 })], t0 + 10_000); // edge: resumed
@@ -372,14 +373,14 @@ describe('createIdleClassifier', () => {
     });
 
     it('does not log an edge on the first observation (seeds only)', () => {
-      const classifier = createIdleClassifier();
+      const classifier = createIdleClassifier(testLogger);
       classifier.classifyAll([heaterAt({ currentDrawKw: 0 })], 1_000_000);
       expect(capture.eventNames()).not.toContain('device_power_draw_stopped');
       expect(capture.eventNames()).not.toContain('device_power_draw_resumed');
     });
 
     it('does not log a power edge while PELS is shedding the device', () => {
-      const classifier = createIdleClassifier();
+      const classifier = createIdleClassifier(testLogger);
       const t0 = 1_000_000;
       classifier.classifyAll([heaterAt({ currentDrawKw: 1.5, plannedState: 'shed' })], t0);
       classifier.classifyAll([heaterAt({ currentDrawKw: 0, plannedState: 'shed' })], t0 + 10_000);
@@ -388,7 +389,7 @@ describe('createIdleClassifier', () => {
 
 
     it('drops the streak when the device goes off, so it does not fire a spurious resume on return', () => {
-      const classifier = createIdleClassifier();
+      const classifier = createIdleClassifier(testLogger);
       const t0 = 1_000_000;
       classifier.classifyAll([heaterAt({ currentDrawKw: 1.5 })], t0); // on + drawing (seed)
       classifier.classifyAll([heaterAt({ currentState: 'off', currentDrawKw: 0 })], t0 + 10_000); // off — streak dropped

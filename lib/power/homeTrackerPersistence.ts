@@ -195,7 +195,7 @@ export type HomeTrackerPersistenceDeps = {
   getStore: () => TrackerStore;
   timers: TimerRegistry;
   /** Structured logger; absent before structured logging is wired. */
-  getLogger: () => PinoLogger | undefined;
+  getLogger: () => PinoLogger;
   reportError: (message: string, error: Error) => void;
   getTimeZone: () => string;
   /** Teardown fence: a late pipeline continuation must not re-arm persistence. */
@@ -284,7 +284,7 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
       // The in-memory state stands; the read is owed again before the first
       // persist, and nothing is written until it succeeds.
       this.hydrationOwed = true;
-      deps.getLogger()?.error({
+      deps.getLogger().error({
         event: 'home_power_tracker_hydrate_failed',
         homeId,
         err: normalizeError(error),
@@ -375,7 +375,7 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
       this.state = this.stamp(withLateHydratedEvidence(this.state, withHeldReadingAfterRestart(stored)));
     }
     deps.observeExportEvidence(this.state);
-    deps.getLogger()?.info({ event: 'home_power_tracker_hydrated_late', homeId, stored: stored !== null });
+    deps.getLogger().info({ event: 'home_power_tracker_hydrated_late', homeId, stored: stored !== null });
     return true;
   }
 
@@ -399,7 +399,7 @@ class HomeTrackerPersistenceController implements HomeTrackerPersistence {
       deps.onPersisted();
       return true;
     } catch (error) {
-      deps.getLogger()?.error({
+      deps.getLogger().error({
         event: 'home_power_tracker_persist_failed',
         homeId,
         reason,

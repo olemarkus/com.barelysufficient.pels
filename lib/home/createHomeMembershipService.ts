@@ -24,7 +24,7 @@ export const createHomeMembershipService = (
   const { settings, ...serviceDeps } = params;
   const migration = migrateLegacyMultiHomeActivation(settings);
   if (migration === 'applied') {
-    params.getLogger()?.info({
+    params.getLogger().info({
       event: 'boot_migration_applied',
       migration: 'mark legacy-enabled homes_config active for multi-home GA',
     });

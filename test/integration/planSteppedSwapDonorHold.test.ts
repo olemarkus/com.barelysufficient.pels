@@ -7,6 +7,7 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { steppedPlanDevice, applyRestorePlanForSpec } from '../utils/planTestUtils';
 import { hasReservation, swappedOutFor } from '../utils/swapLedgerFixture';
+import { testLogger } from '../utils/testLogger';
 
 /**
  * A stepped device paused to fund a swap stays paused until the swap's target
@@ -41,6 +42,7 @@ afterEach(() => {
 const T0 = Date.UTC(2026, 8, 25, 14, 4, 15);
 
 const deps = (measurementTs: number) => ({
+  structuredLog: testLogger,
   powerTracker: { lastTimestamp: measurementTs } as PowerTrackerState,
   temperatureSetpoints: new Map(),
   getShedBehavior: () => ({ action: 'turn_off' as const }),

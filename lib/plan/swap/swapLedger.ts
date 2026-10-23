@@ -163,7 +163,7 @@ export class SwapLedger {
     deviceMap: ReadonlyMap<string, DevicePlanDevice>,
     nowMs: number,
     laneServes: (target: DevicePlanDevice) => boolean,
-    structuredLog: PinoLogger | undefined,
+    structuredLog: PinoLogger,
   ): void {
     // Iterating the live map is safe: `set` on an existing key preserves
     // insertion order, and deleting the current or an unvisited key is defined
@@ -190,12 +190,12 @@ export class SwapLedger {
     reservation: SwapReservation,
     wait: SwapWait,
     nowMs: number,
-    structuredLog: PinoLogger | undefined,
+    structuredLog: PinoLogger,
   ): boolean {
     const servedOut = wait.kind === 'serving' && nowMs > wait.sinceMs + SWAP_TIMEOUT_MS;
     const lapsed = nowMs > reservation.openedAtMs + SWAP_RESERVATION_MAX_MS;
     if (!servedOut && !lapsed) return false;
-    structuredLog?.info({
+    structuredLog.info({
       event: 'swap_stale_cleared',
       deviceId: reservation.targetId,
       ageMs: nowMs - reservation.openedAtMs,

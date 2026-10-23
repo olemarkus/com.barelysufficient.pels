@@ -52,7 +52,7 @@ export type PlanBuilderDeps = {
   // single source of truth for that map (observer/transport split).
   pendingBinaryCommandStore: PendingBinaryCommandStore;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
-  structuredLog?: PinoLogger;
+  structuredLog: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
   // Smart-task (deferred-objective) decoration seam. The smart-task controller
   // (lib/objectives) evaluates objectives, commits active plans synchronously,

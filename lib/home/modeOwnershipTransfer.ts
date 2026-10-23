@@ -35,7 +35,7 @@ export type ModeTargetOwnershipStore = {
 
 export type ModeOwnershipTransferDeps = {
   store: ModeTargetOwnershipStore;
-  getLogger: () => PinoLogger | undefined;
+  getLogger: () => PinoLogger;
   /** Absent until membership is wired; the reconcile is a no-op until then. */
   getMembership: () => HomeMembershipPort | undefined;
   getDeviceSurfaces: () => DeviceSurfaces[];
@@ -71,7 +71,7 @@ export class ModeOwnershipTransfer {
     const result = this.deps.transferModeTargets(moves);
     const persisted = this.persistCompletedChanges(current, discoveries, result.completedDeviceIds);
     if (result.failedDeviceIds.length > 0) {
-      this.deps.getLogger()?.warn({
+      this.deps.getLogger().warn({
         event: 'home_mode_target_transfer_deferred',
         deviceIds: result.failedDeviceIds,
       });
@@ -164,7 +164,7 @@ export class ModeOwnershipTransfer {
   }
 
   private warnUnavailable(operation: 'read' | 'write'): void {
-    this.deps.getLogger()?.warn({
+    this.deps.getLogger().warn({
       event: 'home_mode_target_ownership_store_unavailable',
       operation,
     });

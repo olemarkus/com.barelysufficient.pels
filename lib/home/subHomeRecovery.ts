@@ -49,7 +49,7 @@ export type SubHomeRecoveryDeps = {
   runtime: SubHomeRuntime;
   timers: TimerRegistry;
   timerKey: (suffix: string) => string;
-  getLogger: () => PinoLogger | undefined;
+  getLogger: () => PinoLogger;
   planService: SubHomePlanRebuild;
   pipeline: SubHomeSampleLedger;
   /** Arm the prepared-reconcile fence for `sampleRevision`; the returned callback disarms it. */
