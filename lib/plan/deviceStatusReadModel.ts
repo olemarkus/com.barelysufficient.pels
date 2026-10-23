@@ -16,7 +16,10 @@ import {
 import { formatDeviceReasonUserFacing, PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { resolveSteppedStatusLine, resolveSteppedLevelFact,
   resolveSteppedTemperatureText } from './planSteppedCardText';
-import { resolveSteppedEvExceptionLabel } from '../../packages/shared-domain/src/evChargingStateLabel';
+import {
+  EV_CHARGING_STATE_LABELS,
+  resolveSteppedEvExceptionLabel,
+} from '../../packages/shared-domain/src/evChargingStateLabel';
 import {
   resolveTemperatureLine, resolveTemperatureReasonLine, resolveBinarySurplusReasonLine,
 } from './planTemperatureCardText';
@@ -175,12 +178,21 @@ function resolveRail(device: DeviceStatusInput): DeviceStatus['rail'] {
 }
 
 // A charger's plug or car exception ("Unplugged", "Paused by the car") is a fact
-// about the device, shown beside its level whatever PELS decided or holds.
-function resolveFactText(device: DeviceStatusInput, stateWordNamesLevel: boolean): string | null {
+// about the device, shown beside its level whatever PELS decided or holds. The
+// one exception is the plain idle "Not charging" under the state word `Off`,
+// which only restates it; under `Manual` it is the one line naming the plug
+// state, so it stays there.
+function resolveFactText(
+  device: DeviceStatusInput,
+  kind: DeviceStatus['kind'],
+  stateWordNamesLevel: boolean,
+): string | null {
   if (!device.steppedLoad) return resolveTemperatureLine(device);
   const temperature = resolveSteppedTemperatureText(device);
   if (temperature !== null) return temperature;
-  const parts = [resolveSteppedEvExceptionLabel(device), resolveSteppedLevelFact(device, stateWordNamesLevel)]
+  const exception = resolveSteppedEvExceptionLabel(device);
+  const echoesOff = kind === 'off' && exception === EV_CHARGING_STATE_LABELS.plugged_in;
+  const parts = [echoesOff ? null : exception, resolveSteppedLevelFact(device, stateWordNamesLevel)]
     .filter((part): part is string => part !== null);
   return parts.length > 0 ? parts.join(' · ') : null;
 }
@@ -227,7 +239,7 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
   return {
     cardKind: resolveCardKind(device), kind, tone: displayStateTone(kind), label,
     ...resolvePower(device, limited),
-    factText: resolveFactText(device, kind === 'held' && resolvePhysicalStepId(device) !== null),
+    factText: resolveFactText(device, kind, kind === 'held' && resolvePhysicalStepId(device) !== null),
     reading: resolveReading(device),
     reason: buildReason(device, dryRun, nowMs), rail: resolveRail(device),
     limited, wouldLimit: dryRun && limited,

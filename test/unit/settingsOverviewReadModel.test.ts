@@ -367,6 +367,23 @@ describe('settingsOverviewReadModel', () => {
     expect(wire.status.reason?.text ?? null).toBe(reasonText);
   });
 
+  it.each([
+    // `Off` already says it; the idle "Not charging" would only restate it.
+    ['an off charger', {}, 'off', null],
+    // Under `Manual` nothing else names the plug state, so the fact stays.
+    ['a manual charger', { controllable: false }, 'manual', 'Not charging'],
+  ])('words a plugged-in, idle %s', (_case, overrides, kind, factText) => {
+    // Switched off and nothing will start it: the plan does not resume it.
+    const device = steppedPlanDevice({ id: 'ev-1', isEvCharger: true, currentState: 'off',
+      plannedState: 'inactive', reportedStepId: 'off', selectedStepId: 'off', desiredStepId: 'off', ...overrides });
+    const wire = buildDeviceCard(device, {
+      ...absentTemperature,
+      getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in' } as const),
+    });
+    expect(wire.status.kind).toBe(kind);
+    expect(wire.status.factText).toBe(factText);
+  });
+
   it('keeps the cooldown ring when the reported-load line replaces the timed reason', () => {
     const device = buildPlanDevice({ id: 'heater', currentState: 'on', plannedState: 'shed', currentDrawKw: 1.2,
       reason: { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: 30, countdownStartedAtMs: 0,
