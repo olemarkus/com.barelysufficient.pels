@@ -16,6 +16,7 @@ import {
   DEVICE_EXPECTED_POWER_OVERRIDES,
   DEVICE_HOME_ASSIGNMENTS,
   DEVICE_DRIVER_OVERRIDES,
+  DEVICE_START_POLICIES,
   DEVICE_TARGET_POWER_CONFIGS,
   GRID_IMPORT_ENABLED,
   GRID_IMPORT_LIMIT_KW,
@@ -24,6 +25,7 @@ import {
   MANAGED_DEVICES,
   OVERSHOOT_BEHAVIORS,
   PRICE_OPTIMIZATION_SETTINGS,
+  RESPECT_EXTERNAL_OFF_DEVICES,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
   WEATHER_ADVISOR_SETTINGS,
 } from '../../lib/utils/settingsKeys';
@@ -178,6 +180,37 @@ describe('createSettingsHandler', () => {
       DEVICE_EXPECTED_POWER_OVERRIDES,
     );
     expect(rebuildAllHomeRuntimePlansForDeviceControlChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('fans a "leave off" opt-in change out to sub-home plans, after releasing de-opted holds', async () => {
+    // The hold store is shared by every home, so a held device in a meter area
+    // is replanned only by that area's runtime.
+    const calls: string[] = [];
+    const deps = buildDeps({
+      releaseDeOptedExternalOffHolds: vi.fn(() => { calls.push('release'); }),
+      rebuildPlanFromCache: vi.fn(async () => { calls.push('main'); }),
+      rebuildAllHomeRuntimePlansForDeviceControlChange: vi.fn(() => { calls.push('areas'); }),
+    });
+    const handler = createSettingsHandler(deps);
+
+    await handler(RESPECT_EXTERNAL_OFF_DEVICES);
+
+    expect(calls).toEqual(['release', 'main', 'areas']);
+    expect(deps.refreshTargetDevicesSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('fans a start-policy change out to sub-home plans, after re-reading it', async () => {
+    const calls: string[] = [];
+    const deps = buildDeps({
+      loadCapacitySettings: vi.fn(() => { calls.push('load'); }),
+      rebuildPlanFromCache: vi.fn(async () => { calls.push('main'); }),
+      rebuildAllHomeRuntimePlansForDeviceControlChange: vi.fn(() => { calls.push('areas'); }),
+    });
+    const handler = createSettingsHandler(deps);
+
+    await handler(DEVICE_START_POLICIES);
+
+    expect(calls).toEqual(['load', 'main', 'areas']);
   });
 
   it('publishes the setpoint command fence before a parked settings queue drains', async () => {
