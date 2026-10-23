@@ -9,6 +9,7 @@ Use this file for project-wide rules. Read a nested `AGENTS.md` when doing subst
 - Work in a dedicated git worktree and keep the primary checkout clean. Match the process to the requested outcome: use `$pr-lifecycle-manager` for end-to-end PR work or an existing PR, and make scoped local changes directly in the task worktree.
 - Handle contained work directly. Use specialist skills or agents only for relevant expertise, and parallel agents only for substantial independent work or when requested.
 - Review feedback is a hypothesis. Trace a claimed failure through production producers and reachable inputs before changing contracts. Fix the owning layer, and use a focused regression check when behavior changed.
+- Land several ready PRs (a train) as one stack, not one at a time. `main` requires a branch to be up to date, so merging PRs in turn costs a rebase and a full CI round for each. Rebuild each branch as the branch below it plus its own commits, run the pre-push hook on the top branch (it holds the whole change), push the lower layers with `--no-verify` (each is a subset of the top), and link them with `gh stack link <bottom> … <top>` (`$gh-stack`). When every layer is green, run `gh stack merge <top PR> --yes --rebase`: it merges the whole stack atomically. Start at the top, because merging the bottom PR alone leaves every other layer behind. Each layer's CI picks its suites from its own diff, and the push to `main` then runs them all.
 
 ## Architecture
 
