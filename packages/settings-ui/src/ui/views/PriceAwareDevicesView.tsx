@@ -3,14 +3,16 @@ import type { PriceOptDevice } from '../priceConfigTypes.ts';
 import { MdIconButton, MdOutlinedButton, MdSwitch } from './materialWebJSX.tsx';
 import { AppBar } from './AppBar.tsx';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
-import { MAX_PRICE_ADJUSTMENT_C } from '../../../../shared-domain/src/settings/priceOptimization.ts';
+import {
+  MAX_PRICE_ADJUSTMENT_C,
+  type PriceAdjustmentKind,
+} from '../../../../shared-domain/src/settings/priceOptimization.ts';
 import type { PriceSetupStatus } from '../priceSetupStatus.ts';
 
 /** The page's callbacks into its controller (`priceConfig.ts`), one per control. */
 export type PriceAwareDevicesHandlers = {
   onOptimizationToggle: (enabled: boolean) => void;
-  onDeviceCheapDeltaChange: (id: string, val: number) => void;
-  onDeviceExpensiveDeltaChange: (id: string, val: number) => void;
+  onDevicePriceAdjustmentChange: (id: string, kind: PriceAdjustmentKind, sizeC: number) => void;
 };
 
 export type PriceAwareDevicesViewProps = {
@@ -199,7 +201,7 @@ const DeviceRow = ({ device, handlers }: { device: PriceOptDevice; handlers: Pri
           unit="°C"
           increaseLabel={`Increase cheap-hour boost for ${displayName}`}
           decreaseLabel={`Decrease cheap-hour boost for ${displayName}`}
-          onChange={(val) => handlers.onDeviceCheapDeltaChange(device.id, val)}
+          onChange={(val) => handlers.onDevicePriceAdjustmentChange(device.id, 'cheap_hour_boost', val)}
         />
       </div>
       <div class="price-aware-grid__cell">
@@ -216,7 +218,7 @@ const DeviceRow = ({ device, handlers }: { device: PriceOptDevice; handlers: Pri
           unit="°C"
           increaseLabel={`Increase expensive-hour reduction for ${displayName}`}
           decreaseLabel={`Decrease expensive-hour reduction for ${displayName}`}
-          onChange={(val) => handlers.onDeviceExpensiveDeltaChange(device.id, -val)}
+          onChange={(val) => handlers.onDevicePriceAdjustmentChange(device.id, 'expensive_hour_reduction', val)}
         />
       </div>
     </div>
