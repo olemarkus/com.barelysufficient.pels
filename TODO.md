@@ -212,18 +212,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       a UI test. *Hypothesis:* an owner whose rental-unit meter drops out sees its devices held with
       no explanation and reads it as PELS being broken. *Persona:* the multi-home owner. [P2]
 
-- [ ] **"Leave off until turned on again": sub-home plan paths are not driven by hold changes.**
-      One remaining gap, multi-home-only: the hold store is shared across homes but the plan
-      paths are not, so a sub-home keeps a stale `inactive/external_off_hold` plan until an
-      unrelated sample or rebuild reaches it (which in flow mode can be a long wait). The
-      `respect_external_off_devices` settings handler (`lib/utils/settingsHandlers.ts`) rebuilds
-      only main after `releaseDeOptedHolds()`, ignoring the returned device ids. Fix: use the
-      released ids to rebuild each owning home, the way `TEMPERATURE_CONTROL_DISABLED_DEVICES`
-      fans out. (Realtime settlement now routes to the owning bundle in
-      `setup/appObservedControlStateRuntime.ts`, and observations no longer trigger rebuilds, so
-      the two gaps once listed beside this one are gone.) Single-home installs — the overwhelming
-      majority — are unaffected. [P2]
-
 - [ ] **Area rules refuse on save instead of guiding in the editor — and a one-meter home can cycle
       between two of those refusals with no diagnosis.** The name-length cap, the reserved "Main
       home" name, the eight-area cap, and the whole-home-meter requirement are enforced at the

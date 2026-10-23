@@ -420,6 +420,10 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       // `externalOffHoldActive` is re-resolved from the cached snapshot by the
       // rebuild below.
       await rebuildPlanFromSettings(deps, RESPECT_EXTERNAL_OFF_DEVICES);
+      // The opt-in and the hold store are global and keyed on device, so a held
+      // device in a meter area is replanned by that area's runtime, not by the
+      // rebuild above.
+      deps.rebuildAllHomeRuntimePlansForDeviceControlChange();
     },
     [BATTERY_CONTROL_DEVICES]: async () => {
       // This is the battery's Managed toggle. The owner applies it first: it
@@ -438,8 +442,10 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       // No snapshot refresh though: the policy changes neither which devices are
       // fetched nor how they parse. It is read at `toPlanDevice`, so the rebuild
       // is the whole propagation — a device just opted in gets its standing OFF
-      // intent on that build, and one just opted out loses it.
+      // intent on that build, and one just opted out loses it. The map is keyed
+      // on device, so a meter area's device gets it from its own area's rebuild.
       await rebuildPlanFromSettings(deps, DEVICE_START_POLICIES);
+      deps.rebuildAllHomeRuntimePlansForDeviceControlChange();
     },
     [DEVICE_EXPECTED_POWER_OVERRIDES]: async () => {
       // Reload FIRST: expected power is resolved during the device parse
