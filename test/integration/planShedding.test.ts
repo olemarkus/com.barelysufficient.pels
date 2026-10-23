@@ -3974,6 +3974,54 @@ describe('buildSheddingPlan', () => {
     }));
   });
 
+  it('turns off a turn_off device whose profile has no off step when no rung releases power', async () => {
+    const state = createPlanEngineState();
+
+    const result = await buildSheddingPlanForSpec(
+      ...cycleArgs({
+        devices: [
+          // A hand-configured ladder with no zero-power step: the descent bottoms
+          // out at `low`, which still draws. The stale meter prices `medium` and
+          // `low` at zero, but the on/off control frees what the meter shows.
+          buildDevice({
+            id: 'heater',
+            name: 'Connected 300',
+            controllable: true,
+            controlModel: 'stepped_load',
+            selectedStepId: 'max',
+            desiredStepId: 'max',
+            currentDrawKw: 1.193,
+            stepPowerCalibration: { low: 1.193, medium: 1.671, max: 3 },
+            steppedLoadProfile: {
+              steps: [
+                { id: 'low', planningPowerW: 1250 },
+                { id: 'medium', planningPowerW: 1750 },
+                { id: 'max', planningPowerW: 3000 },
+              ],
+            },
+          }),
+        ],
+        total: 5.566,
+        softLimit: 4.727,
+        capacitySoftLimit: 4.727,
+        headroomRaw: -0.839,
+        headroom: -0.839,
+        softLimitSource: 'capacity',
+      }),
+      state,
+      {
+        ...sheddingWiring(state),
+        capacityGuard: capacityGuardSpy(),
+        shortfallThresholdKw: 5.04,
+        powerTracker: { lastTimestamp: 2002, lastPowerW: 5_566 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' }),
+      },
+    );
+
+    expect([...result.shedSet]).toEqual(['heater']);
+    expect(capture.findEvents('plan_shed_candidates_skipped')).toEqual([]);
+  });
+
   it('sheds a set_step device at a deeper rung when its adjacent rung prices at zero', async () => {
     const state = createPlanEngineState();
 

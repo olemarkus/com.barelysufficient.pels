@@ -73,21 +73,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Shed and restore control
 
-- [ ] **A `turn_off` stepped device whose profile has no zero-power step can never be fully turned
-      off.** `getSteppedLoadOffStep` returns null for such a profile and
-      `getSteppedLoadLowestStep` then answers the lowest ACTIVE step, so both the shed ladder
-      (`buildSteppedShedDescentTargets`) and materialization
-      (`resolveSteppedLoadDirectShedStepId`) bottom out at a step that still draws. If a stale
-      measurement makes every active-step delta price at zero, the device is skipped entirely even
-      though it exposes a writable `onoff` and turning it off would release its measured draw.
-      Pre-existing — the pre-descent code reached the same outcome — and NOT fixed by routing to
-      `buildPreparedSteppedBinaryOffCandidate`, whose precondition
-      (`targetStep?.id === device.selectedStepId`) cannot hold while the device sits above its
-      lowest step. The real fix is a binary-off terminal on the ladder for a `turn_off` device
-      whose profile lacks an off step. Narrow: every profile PELS generates (native Høiax wiring,
-      EV target-power) carries an explicit `off` step, so this needs a hand-configured profile.
-      Source: Codex review of PR #1996, 2026-08-06. [P2]
-
 - [ ] **Bound the startup reservation on time spent HOLDING, not wall-clock since first sighting.**
       `resolveCycleHeadroomReserves` runs at the top of `applyRestorePlan` (`lib/plan/restore/index.ts`),
       so `HEADROOM_RESERVE_MAX_MS` burns during every window in which the reserve enforces nothing:
