@@ -35,6 +35,7 @@ import {
   setSmartTaskEditTarget,
   submitSmartTaskUpdate,
   type SmartTaskEditContext,
+  type SmartTaskEditSnapshot,
 } from './smartTaskEdit.ts';
 import {
   renderDeadlinePlan,
@@ -325,19 +326,36 @@ const buildSmartTaskEditContext = (m: ActiveMount): SmartTaskEditContext | undef
   };
 };
 
+// Whether an open editor still belongs to the device's live task. A Flow, the
+// widget or another window can replace the task on the same device while the
+// editor sits open; its draft and baselines describe the old task, and a save
+// would write them over the new one. Kind, target and ready-by identify the
+// task (entries carry no run id). Permissions are left out on purpose: a Flow
+// granting one mid-edit must not close the editor (the save keeps it anyway).
+// The owner's own save is exempt, so a refresh landing before its response
+// doesn't close the editor ahead of the success that closes it.
+export const snapshotMatchesTask = (snapshot: SmartTaskEditSnapshot, context: SmartTaskEditContext): boolean => (
+  snapshot.context.deviceId === context.deviceId
+  && (snapshot.busy === 'saving' || (
+    snapshot.context.kind === context.kind
+    && snapshot.context.baselineTarget === context.baselineTarget
+    && snapshot.context.baselineDeadlineAtMs === context.baselineDeadlineAtMs
+  ))
+);
+
 const buildSmartTaskEditProps = (
   m: ActiveMount,
   mode: SmartTaskEditProps['mode'],
 ): SmartTaskEditProps | undefined => {
   const context = buildSmartTaskEditContext(m);
   if (!context) return undefined;
-  const { deviceId } = context;
   const snapshot = getSmartTaskEditSnapshot();
   return {
     mode,
-    // An open editor for a DIFFERENT device (SPA navigation between tasks)
-    // must not leak into this page — it renders as closed here.
-    snapshot: snapshot !== null && snapshot.context.deviceId === deviceId ? snapshot : null,
+    // An open editor for a DIFFERENT device (SPA navigation between tasks), or
+    // for a task since replaced on this one, must not leak into this page — it
+    // renders as closed here, and the next open replaces it.
+    snapshot: snapshot !== null && snapshotMatchesTask(snapshot, context) ? snapshot : null,
     onOpen: () => openSmartTaskEditor(context),
     onClose: closeSmartTaskEditor,
     onReadyByInput: setSmartTaskEditReadyBy,
