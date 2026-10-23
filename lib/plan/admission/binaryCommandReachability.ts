@@ -12,7 +12,6 @@ const RETRY_DELAYS_MS = [15, 30, 60].map((minutes) => minutes * 60 * 1000);
 type ReachabilityState = {
   failures: number;
   retryAtMs?: number;
-  scheduledKind?: 'confirmation' | 'retry';
   sawUnavailable?: boolean;
 };
 
@@ -65,7 +64,7 @@ export function createBinaryCommandReachability(
     const failures = Math.min((current?.failures ?? 0) + 1, RETRY_DELAYS_MS.length);
     const retryDelayMs = RETRY_DELAYS_MS[failures - 1] ?? RETRY_DELAYS_MS.at(-1) ?? 0;
     const retryAtMs = Date.now() + retryDelayMs;
-    stateByDevice.set(event.deviceId, { failures, retryAtMs, scheduledKind: 'retry' });
+    stateByDevice.set(event.deviceId, { failures, retryAtMs });
     scheduleRebuild(event.deviceId, retryAtMs);
     // The arming is the fact worth logging, and it is logged HERE rather than at
     // either call site so both lanes report it identically. The sweep lane asks
@@ -97,7 +96,6 @@ export function createBinaryCommandReachability(
         stateByDevice.set(event.deviceId, {
           failures: current?.failures ?? 0,
           retryAtMs: current?.retryAtMs,
-          scheduledKind: 'confirmation',
         });
         scheduleRebuild(event.deviceId, dueAtMs);
       },
@@ -149,8 +147,14 @@ export function createBinaryCommandReachability(
       // cancelling that timer — for any device that flaps unavailable and back
       // inside the window; and the `scheduleRebuild` above REPLACES it, because
       // both share the timer key `binaryCommandReachability:<homeId>:<deviceId>`
-      // and the registry clears the old handle on register (that last one is
-      // tracked in `TODO.md`).
+      // and the registry clears the old handle on register. That replacement
+      // loses at most the deadline's own rebuild: a command times out only once
+      // its age reaches `CONTROL_COMMAND_CONFIRMATION_MS`, when that deadline is
+      // due, so a sweep that gets there first (the observation lane's, say) has
+      // already recorded the failure the rebuild was for, and what is deferred is
+      // the cosmetic part below. The reverse order needs PELS to dispatch a
+      // turn-on during the backoff, which it does not: `project` keeps the device
+      // uncommandable until `retryAtMs`.
       //
       // What IS deferred is cosmetic: the committed plan snapshot and the settings
       // UI keep showing the device commandable until the next rebuild. The retry
