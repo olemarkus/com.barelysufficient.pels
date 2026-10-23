@@ -1,8 +1,9 @@
 import { eslintCacheArgs, tscCacheArgs, tscCheck } from './lib/local-check-cache.mjs';
 import { runParallel } from './lib/run-parallel.mjs';
 
+// The runtime project is checked by `tsc:unused` below: same files and options
+// plus noUnused*, so a separate `tsc:runtime` pass would only repeat it.
 await runParallel([
-  tscCheck('tsc:runtime'),
   tscCheck('tsc:settings-ui', ['-p', 'packages/settings-ui/tsconfig.json']),
   tscCheck('tsc:settings-ui-tests', ['-p', 'packages/settings-ui/tsconfig.tests.json']),
   tscCheck('tsc:widgets', ['-p', 'tsconfig.widgets.json']),

@@ -1,3 +1,5 @@
+export type ValidationLane = 'test' | 'checks';
+
 export type ValidationLockOptions = {
   readonly label: string;
   readonly command: string;
@@ -7,8 +9,9 @@ export type ValidationLockOptions = {
   readonly timeoutSeconds?: number;
   readonly lockPath?: string;
   readonly tmpRoot?: string;
+  readonly lane?: ValidationLane;
 };
 
 export function validationTmpRoot(env?: NodeJS.ProcessEnv): string;
-export function validationLockPath(): string;
+export function validationLockPath(lane?: ValidationLane): string;
 export function runWithValidationLock(options: ValidationLockOptions): Promise<number>;
