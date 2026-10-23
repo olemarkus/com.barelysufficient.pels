@@ -6,7 +6,8 @@
 // own place in the priority order (what each battery is offered, and what the
 // devices ranked below it are left). Pure over (state, params) — `nowTs` is
 // passed explicitly, so no clock is faked.
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { captureDebugTopic } from '../utils/loggerCapture';
 import {
   SURPLUS_ABSORB_MIN_DWELL_MS,
   SURPLUS_ABSORB_SETTLE_MS,
@@ -42,7 +43,6 @@ const resolve = (params: {
   inferredSurplusKw: number;
   nowTs: number;
   devices?: PlanInputDevice[];
-  debugStructured?: (payload: Record<string, unknown>) => void;
   storage?: StorageSurplus;
 }): ReadonlyMap<string, StorageSurplusOffer> => (
   resolveSurplusEligibilityForSpec({
@@ -53,10 +53,15 @@ const resolve = (params: {
     storage: params.storage ?? NO_STORAGE_SURPLUS,
     excludeIds: new Set(),
     getConfig: () => surplusConfig,
-    debugStructured: params.debugStructured,
     nowTs: params.nowTs,
   })
 );
+
+/** The `surplus_pool` records the plan debug topic writes from here on. */
+const capturePoolRecords = (): (() => Record<string, number | string>[]) => {
+  const planDebug = captureDebugTopic('plan');
+  return () => planDebug.findEvents('surplus_pool') as Record<string, number | string>[];
+};
 
 const eligible = (state: PlanEngineState, id: string = DEVICE_ID): boolean => (
   state.surplusEligibilityByDevice[id]?.eligible === true
@@ -115,10 +120,10 @@ describe('resolveSurplusEligibility — inferred-term pool composition', () => {
 
   it('emits one surplus_pool record per pass carrying the full composition identity', () => {
     const state = createPlanEngineState();
-    const debugStructured = vi.fn();
-    resolve({ state, signedNetKw: -0.4, inferredSurplusKw: 1.2, nowTs: 0, debugStructured });
-    expect(debugStructured).toHaveBeenCalledTimes(1);
-    const payload = debugStructured.mock.calls[0]![0] as Record<string, number | string>;
+    const poolRecords = capturePoolRecords();
+    resolve({ state, signedNetKw: -0.4, inferredSurplusKw: 1.2, nowTs: 0 });
+    expect(poolRecords()).toHaveLength(1);
+    const payload = poolRecords()[0]!;
     expect(payload).toMatchObject({
       event: 'surplus_pool',
       measuredExportKw: 0.4,
@@ -135,9 +140,9 @@ describe('resolveSurplusEligibility — inferred-term pool composition', () => {
     // reach it. What still matters is the identity: the three components sum to
     // poolKw when the inferred term contributes nothing.
     const state = createPlanEngineState();
-    const debugStructured = vi.fn();
-    resolve({ state, signedNetKw: -0.4, inferredSurplusKw: 0, nowTs: 0, debugStructured });
-    const payload = debugStructured.mock.calls[0]![0] as Record<string, number>;
+    const poolRecords = capturePoolRecords();
+    resolve({ state, signedNetKw: -0.4, inferredSurplusKw: 0, nowTs: 0 });
+    const payload = poolRecords()[0] as Record<string, number>;
     expect(payload.inferredSurplusKw).toBe(0);
     expect(payload.measuredExportKw + payload.addBackKw + payload.inferredSurplusKw)
       .toBeCloseTo(payload.poolKw, 6);
@@ -232,13 +237,13 @@ describe('resolveSurplusEligibility — a home battery at its place in the prior
     });
 
     it('offers the devices the battery\'s charge, so a battery storing solar never hides it from them', () => {
-      const debugStructured = vi.fn();
+      const poolRecords = capturePoolRecords();
       // The battery's own mode soaks up all 2 kW of export: the meter reads 0.
       const offers = resolve({
         state: createPlanEngineState(), signedNetKw: 0, inferredSurplusKw: 0, nowTs: 0,
-        devices: [tank(0)], storage: storing(2000), debugStructured,
+        devices: [tank(0)], storage: storing(2000),
       });
-      expect(debugStructured.mock.calls[0]![0]).toMatchObject({
+      expect(poolRecords()[0]).toMatchObject({
         event: 'surplus_pool', storageChargeKw: 2, storageDischargeKw: 0, poolKw: 2,
       });
       expect(offerOf(offers)).toEqual({ availableW: 1000, demandAbove: 'waiting', belowW: 0, addedBackW: 2000 });
@@ -254,19 +259,19 @@ describe('resolveSurplusEligibility — a home battery at its place in the prior
     });
 
     it('composes the pool with no willing device, and records it only when a battery charges into it', () => {
-      const debugStructured = vi.fn();
+      const poolRecords = capturePoolRecords();
       const quiet = resolve({
         state: createPlanEngineState(), signedNetKw: -0.5, inferredSurplusKw: 0, nowTs: 0,
-        devices: [], storage: storing(0), debugStructured,
+        devices: [], storage: storing(0),
       });
       expect(offerOf(quiet)).toEqual({ availableW: 500, demandAbove: 'none', belowW: 0, addedBackW: 0 });
-      expect(debugStructured).not.toHaveBeenCalled();
+      expect(poolRecords()).toHaveLength(0);
 
       resolve({
         state: createPlanEngineState(), signedNetKw: -0.5, inferredSurplusKw: 0, nowTs: 0,
-        devices: [], storage: storing(1000), debugStructured,
+        devices: [], storage: storing(1000),
       });
-      expect(debugStructured).toHaveBeenCalledTimes(1);
+      expect(poolRecords()).toHaveLength(1);
     });
 
     it('comes after a device sharing its priority', () => {

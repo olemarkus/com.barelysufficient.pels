@@ -412,7 +412,6 @@ export class PlanBuilder {
       this.deps.getInferredSurplusKw(),
       storage,
       nowTs,
-      this.deps.debugStructured,
     ));
   }
 

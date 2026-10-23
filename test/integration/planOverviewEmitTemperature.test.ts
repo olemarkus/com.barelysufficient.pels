@@ -53,11 +53,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
         value: { currentTarget: 16, currentTemperature: 20.8 } }),
     };
     const snapshot = buildSettingsOverviewReadModel(plan, deps)!;
-    const changed = new DeviceOverviewTransitions().capture(snapshot, {
-      isOverviewDebugEnabled: () => false,
-      overviewDebugStructured: vi.fn(),
-      deviceOverviewLogRecorder: recorder,
-    }, describeNoDecision);
+    const changed = new DeviceOverviewTransitions().capture(snapshot, recorder, describeNoDecision);
 
     expect(changed).toBe(true);
     const captured = recorder.getUiPayload().entries;
@@ -126,12 +122,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
     };
     const recorder = createTestDeviceActivityRecorder();
 
-    new DeviceOverviewTransitions().capture(buildSettingsOverviewReadModel(stalePlan, deps)!, {
-      ...deps,
-      isOverviewDebugEnabled: () => false,
-      overviewDebugStructured: vi.fn(),
-      deviceOverviewLogRecorder: recorder,
-    }, describeNoDecision);
+    new DeviceOverviewTransitions().capture(buildSettingsOverviewReadModel(stalePlan, deps)!, recorder, describeNoDecision);
 
     expect(buildOverviewDeviceCard(updatedDevice, deps).status.kind).toBe('idle');
     expect(recorder.getUiPayload().entries[0]).toMatchObject({ deviceId: 'thermostat', stateKind: 'idle' });

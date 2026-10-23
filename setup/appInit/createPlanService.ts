@@ -1,4 +1,3 @@
-import { getDebugEmitter } from '../../lib/logging/logger';
 import { requireDeviceManager, requireSnapshotWarmupGate } from './contextGuards';
 import { buildSteppedSettleSnapshot } from '../../lib/observer/steppedSettleSnapshot';
 import { readHomeBatteryCard } from '../../lib/observer/observedDeviceStateProjection';
@@ -89,7 +88,6 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     readSimulationSetting: scope.readSimulationSetting,
     loggers: {
       structuredLog: ctx.getStructuredLogger('plan'),
-      debugStructured: getDebugEmitter('plan', 'plan'),
     },
     // Policy closure from the scope (main: the live ctx read; sub-home bundles:
     // constant UNKNOWN — capacity-only status, no price level driving plan
@@ -97,12 +95,9 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     getCurrentHourPriceLevel: scope.getCurrentHourPriceLevel,
     getLastPowerUpdate: () => requireDisplayedPowerUpdateMs(scope.getPowerTracker()),
     schedulePostActuationRefresh: () => ctx.snapshotHelpers.schedulePostActuationRefresh(),
-    overviewDebugStructured: getDebugEmitter('overview', 'overview'),
-    isOverviewDebugEnabled: () => ctx.debugLoggingTopics.has('overview'),
     deviceOverviewLogRecorder: new DeviceOverviewLogRecorder(
       createDeviceActivityStore(ctx.getUserdataDatabase(), scope.homeId),
     ),
-    isPlanDebugEnabled: () => ctx.debugLoggingTopics.has('plan'),
     // Scope-owned so a sub-home never drives MAIN's shared UI surfaces: main
     // binds the app recorder + emits the realtime `plan_updated` stream; a
     // sub-home binds undefined (no diagnostics pollution) and false (no clobber

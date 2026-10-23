@@ -1,5 +1,5 @@
 import { TARGET_WAITING_LOG_REPEAT_MS } from './planConstants';
-import type { StructuredDebugEmitter } from '../logging/logger';
+import { getDebugEmitter, type StructuredDebugEmitter } from '../logging/logger';
 import type { PendingTargetCommandState, PlanEngineState } from './planState';
 import type {
   DevicePlan,
@@ -10,6 +10,8 @@ import type {
 } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { getPrimaryTargetCapability } from '../../packages/shared-domain/src/targetCapabilities';
+
+const emitPlanDebug = getDebugEmitter('plan', 'plan');
 
 /**
  * Whether the plan still wants the target a pending command is writing: a
@@ -31,7 +33,6 @@ export function planStillWantsPendingTarget(
 export function prunePendingTargetCommandsForPlan(
   state: PlanEngineState,
   plan: DevicePlan,
-  debugStructured?: StructuredDebugEmitter,
 ): boolean {
   const planById = new Map<string, DevicePlan['devices'][number]>();
   for (const device of plan.devices) planById.set(device.id, device);
@@ -41,7 +42,7 @@ export function prunePendingTargetCommandsForPlan(
     if (device !== undefined && planStillWantsPendingTarget(device, pending)) continue;
     delete state.pendingTargetCommands[deviceId];
     changed = true;
-    debugStructured?.({
+    emitPlanDebug({
       event: 'pending_target_command_cleared',
       reason: 'plan_no_longer_wants',
       deviceId,
@@ -58,7 +59,6 @@ export function syncPendingTargetCommands(
   liveDevices: PlanInputDevice[],
   source: PendingTargetObservationSource,
   structuredInfo: StructuredDebugEmitter,
-  debugStructured: StructuredDebugEmitter | undefined,
 ): boolean {
   const liveById = new Map<string, PlanInputDevice>();
   for (const device of liveDevices) liveById.set(device.id, device);
@@ -67,7 +67,7 @@ export function syncPendingTargetCommands(
   for (const [deviceId, pending] of Object.entries(state.pendingTargetCommands)) {
     const liveDevice = liveById.get(deviceId);
     if (!liveDevice) {
-      if (clearPendingTargetCommandForMissingDevice(state, deviceId, source, debugStructured)) {
+      if (clearPendingTargetCommandForMissingDevice(state, deviceId, source)) {
         changed = true;
       }
       continue;
@@ -75,14 +75,14 @@ export function syncPendingTargetCommands(
     const observedValue = getObservedTargetValue(liveDevice);
 
     if (handleConfirmedPendingTargetObservation(
-      state, liveDevice, pending, observedValue, source, debugStructured,
+      state, liveDevice, pending, observedValue, source,
     )) {
       changed = true;
       continue;
     }
 
     if (handleTemporaryUnavailablePendingTargetObservation(
-      liveDevice, pending, observedValue, source, debugStructured,
+      liveDevice, pending, observedValue, source,
     )) {
       changed = true;
       continue;
@@ -98,7 +98,7 @@ export function syncPendingTargetCommands(
 
     changed = true;
     updatePendingTargetWaitingObservation(
-      liveDevice, pending, observedValue, source, structuredInfo, debugStructured,
+      liveDevice, pending, observedValue, source, structuredInfo,
     );
   }
 
@@ -147,12 +147,11 @@ function clearPendingTargetCommandForMissingDevice(
   state: PlanEngineState,
   deviceId: string,
   source: PendingTargetObservationSource,
-  debugStructured: StructuredDebugEmitter | undefined,
 ): boolean {
   const shouldClearMissingPending = source === 'snapshot_refresh' || source === 'rebuild';
   if (!shouldClearMissingPending) return false;
   delete state.pendingTargetCommands[deviceId];
-  debugStructured?.({
+  emitPlanDebug({
     event: 'pending_target_command_cleared',
     reason: 'device_missing',
     deviceId,
@@ -175,11 +174,10 @@ function handleConfirmedPendingTargetObservation(
   pending: PendingTargetCommandState,
   observedValue: unknown,
   source: PendingTargetObservationSource,
-  debugStructured: StructuredDebugEmitter | undefined,
 ): boolean {
   if (!Object.is(observedValue, pending.desired)) return false;
   delete state.pendingTargetCommands[liveDevice.id];
-  debugStructured?.({
+  emitPlanDebug({
     event: 'pending_target_command_confirmed',
     deviceId: liveDevice.id,
     deviceName: liveDevice.name,
@@ -196,7 +194,6 @@ function handleTemporaryUnavailablePendingTargetObservation(
   pending: PendingTargetCommandState,
   observedValue: unknown,
   source: PendingTargetObservationSource,
-  debugStructured: StructuredDebugEmitter | undefined,
 ): boolean {
   if (pending.status !== 'temporary_unavailable') return false;
   if (
@@ -209,7 +206,7 @@ function handleTemporaryUnavailablePendingTargetObservation(
   pending.lastObservedSource = source;
   pending.lastObservedAtMs = Date.now();
   const remainingSec = Math.max(1, Math.ceil((pending.nextRetryAtMs - Date.now()) / 1000));
-  debugStructured?.({
+  emitPlanDebug({
     event: 'pending_target_command_unavailable',
     deviceId: liveDevice.id,
     deviceName: liveDevice.name,
@@ -227,15 +224,14 @@ function updatePendingTargetWaitingObservation(
   pending: PendingTargetCommandState,
   observedValue: unknown,
   source: PendingTargetObservationSource,
-  structuredInfo: StructuredDebugEmitter | undefined,
-  debugStructured: StructuredDebugEmitter | undefined,
+  structuredInfo: StructuredDebugEmitter,
 ): void {
   const previousObservedValue = pending.lastObservedValue;
   const previousObservedSource = pending.lastObservedSource;
   pending.lastObservedValue = observedValue;
   pending.lastObservedSource = source;
   pending.lastObservedAtMs = Date.now();
-  debugStructured?.({
+  emitPlanDebug({
     event: 'pending_target_command_waiting',
     deviceId: liveDevice.id,
     deviceName: liveDevice.name,
@@ -247,7 +243,7 @@ function updatePendingTargetWaitingObservation(
     previousObservedSource !== undefined
     && Object.is(previousObservedValue, observedValue)
   );
-  if (structuredInfo && observedValueChanged) {
+  if (observedValueChanged) {
     pending.lastWaitingLogAtMs = Date.now();
     structuredInfo({
       event: 'target_waiting_for_confirmation',
@@ -270,9 +266,8 @@ function maybeEmitRepeatedPendingConfirmation(
   pending: PendingTargetCommandState,
   observedValue: unknown,
   source: PendingTargetObservationSource,
-  structuredInfo: StructuredDebugEmitter | undefined,
+  structuredInfo: StructuredDebugEmitter,
 ): void {
-  if (!structuredInfo) return;
   const nowMs = Date.now();
   if (
     typeof pending.lastWaitingLogAtMs === 'number'

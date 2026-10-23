@@ -1,4 +1,3 @@
-import { getDebugEmitter } from '../../lib/logging/logger';
 import { buildDeviceActuator } from './buildDeviceActuator';
 import { requireDeviceManager } from './contextGuards';
 import { isExternalOffHeldForObservedDevice } from '../../lib/planInput/externalOffHoldProjection';
@@ -110,7 +109,6 @@ export function createPlanEngineComposition(
   // a sub-home resolves undefined so its plans never pollute main's per-boot epoch.
   const deviceDiagnostics = scope.getDeviceDiagnostics();
   const structuredLog = ctx.getStructuredLogger('plan');
-  const debugStructured = getDebugEmitter('plan', 'plan');
   const getShedBehavior = (deviceId: string) => ctx.getShedBehavior(deviceId);
   // Policy closures from the scope: the main home binds the live ctx reads; a
   // sub-home capacity bundle binds disabled constants for the PRICE/BUDGET
@@ -133,7 +131,6 @@ export function createPlanEngineComposition(
     getShedBehavior,
     deviceDiagnostics,
     structuredLog,
-    debugStructured,
     // Smart-task decoration seam, owned by the scope (`buildMainHomeScope`
     // constructs the DeferredObjectiveDecorationController; a sub-home bundle
     // binds `decorateWithoutDeferredObjectives`, the identity bundle in the
@@ -190,7 +187,6 @@ export function createPlanEngineComposition(
       builder,
       executor,
       deviceDiagnostics,
-      debugStructured,
       structuredLog,
     }),
     lifecycleFallbackPort: executor.getLifecycleFallbackPort(),

@@ -8,14 +8,10 @@ import {
   type OverviewDecisionFacts,
 } from './deviceOverviewLog';
 import type { DeviceOverviewLogRecorder } from '../diagnostics/deviceActivityRecorder';
-import type { StructuredDebugEmitter } from '../logging/logger';
+import { getDebugEmitter, isDebugTopicEnabled } from '../logging/logger';
 import type { SettingsUiPlanDevice, SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
 
-export type OverviewEmitDeps = {
-  isOverviewDebugEnabled: () => boolean;
-  overviewDebugStructured: StructuredDebugEmitter;
-  deviceOverviewLogRecorder: DeviceOverviewLogRecorder;
-};
+const emitOverviewDebug = getDebugEmitter('overview', 'overview');
 
 /**
  * What each device last presented to the UI, and what its activity log last
@@ -29,10 +25,10 @@ export class DeviceOverviewTransitions {
   /** Records log transitions; returns whether any presentation changed for the UI. */
   capture(
     snapshot: SettingsUiPlanSnapshot,
-    deps: OverviewEmitDeps,
+    logRecorder: DeviceOverviewLogRecorder,
     describeDecision: (deviceId: string) => OverviewDecisionFacts,
   ): boolean {
-    const debugEnabled = deps.isOverviewDebugEnabled();
+    const debugEnabled = isDebugTopicEnabled('overview');
     const events: Record<string, unknown>[] = [];
     const retained = new Set<string>();
     let presentationChanged = false;
@@ -42,13 +38,13 @@ export class DeviceOverviewTransitions {
       if (change === 'unchanged') continue;
       presentationChanged = true;
       if (change !== 'state_changed') continue;
-      deps.deviceOverviewLogRecorder.record(device, buildDeviceLogEntry(device));
+      logRecorder.record(device, buildDeviceLogEntry(device));
       if (debugEnabled) events.push(buildOverviewEventForDevice(device, describeDecision(device.id)));
     }
     this.forgetDevicesNotIn(retained);
-    deps.deviceOverviewLogRecorder.flush();
-    if (events.length === 1 && events[0]) deps.overviewDebugStructured(events[0]);
-    else if (events.length > 1) deps.overviewDebugStructured(buildOverviewBatchEvent(events));
+    logRecorder.flush();
+    if (events.length === 1 && events[0]) emitOverviewDebug(events[0]);
+    else if (events.length > 1) emitOverviewDebug(buildOverviewBatchEvent(events));
     return presentationChanged;
   }
 

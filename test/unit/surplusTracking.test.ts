@@ -6,6 +6,7 @@ import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinar
 // stop decision, and the remainder a fixed claimant would have discarded.
 // Pure over (state, params) — `nowTs` is passed explicitly, so no clock is faked.
 import { describe, expect, it } from 'vitest';
+import { captureLogger } from '../utils/loggerCapture';
 import {
   resolveSurplusTrackingPosture,
 } from '../../lib/plan/planSurplusAbsorb';
@@ -53,7 +54,6 @@ const resolve = (params: {
   signedNetKw: number;
   nowTs: number;
   devices: PlanInputDevice[];
-  debugStructured?: (payload: Record<string, unknown>) => void;
 }): void => {
   resolveSurplusEligibilityForSpec({
     devices: params.devices,
@@ -63,7 +63,6 @@ const resolve = (params: {
     storage: NO_STORAGE_SURPLUS,
     excludeIds: new Set(),
     getConfig: () => ({ enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusLiftC: 2 }),
-    debugStructured: params.debugStructured,
     nowTs: params.nowTs,
   });
 };
@@ -75,9 +74,13 @@ const poolRecord = (params: {
   nowTs: number;
   devices: PlanInputDevice[];
 }): Record<string, unknown> => {
-  const records: Record<string, unknown>[] = [];
-  resolve({ ...params, debugStructured: (payload) => records.push(payload) });
-  const pool = records.find((record) => record.event === 'surplus_pool');
+  const capture = captureLogger('debug', ['plan']);
+  try {
+    resolve(params);
+  } finally {
+    capture.restore();
+  }
+  const pool = capture.findEvent('surplus_pool');
   if (!pool) throw new Error('no surplus_pool record emitted');
   return pool;
 };

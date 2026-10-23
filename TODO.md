@@ -922,9 +922,9 @@ Design-of-record: `notes/web-app.md`.
       `emitRestoreDebugEventOnChange` and `emitSwapDebug` resolved their own emitters, every
       forward above them was dead and came out, `RestoreDeps.debugStructured` included — ten
       declarations for two terminal readers.
-      `lib/plan/shedding/**` and `lib/device/**` are done too.
-      Fix, one cluster per PR, leaf-first — the `lib/plan` builder plus `planTargetControl.ts`,
-      `lib/objectives/**`, then `lib/dailyBudget`, and last
+      `lib/plan/shedding/**`, `lib/device/**` and the `lib/plan` builder with
+      `planTargetControl.ts` are done too.
+      Fix, one cluster per PR, leaf-first — `lib/objectives/**`, then `lib/dailyBudget`, and last
       `setup/**` + `flowCards/**` with the `Loggers` type: replace the parameter with a module-scope
       `getDebugEmitter(...)`, delete the field from that file's parameter types and from every
       intermediate that only forwarded it, and delete the fallbacks of the form
@@ -940,15 +940,9 @@ Design-of-record: `notes/web-app.md`.
       Two invariants every cluster must hold. **`component` and `topic` stay separate arguments**:
       `devices` events are emitted under `devices`, `reconcile`, and `snapshot`, and Flow-card
       settings events are `component: 'flow'` on topic `settings`. And **a gate must name the same
-      topic as the sink it guards** — `planChangeTracker.ts` still reads
-      `Boolean(this.deps.debugStructured) && (this.deps.isPlanDebugEnabled?.() ?? true)`, where the
-      presence half is always true and so the real gate is the `?? true` default; move it onto
-      `isDebugTopicEnabled('plan')` in the same change rather than merely dropping its `?`, or
-      `buildPlanDebugSummaryEvent` starts running with the topic off. `planDebugDedupe.ts` had that
-      exact defect and is fixed.
+      topic as the sink it guards**, through `isDebugTopicEnabled(topic)`.
       The threaded predicates that shadow the topic set go with the parameter:
-      `isPlanDebugEnabled` and `isOverviewDebugEnabled` (`setup/appInit/createPlanService.ts`),
-      and `isDebugTopicEnabled`
+      `isDebugTopicEnabled`
       (`setup/appInit/createDailyBudgetService.ts`, plus the two closures in `app.ts` feeding
       `SchedulerTelemetryObserver` and `createBackgroundTasks`). Each is a second spelling of
       `isDebugTopicEnabled`, which reads the one published set.
