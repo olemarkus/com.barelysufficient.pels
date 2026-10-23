@@ -42,13 +42,4 @@ test.describe('Deadline plan screenshots', () => {
       fullPage: true,
     });
   });
-
-  test('captures the temperature variant at 320px', async ({ page }) => {
-    await page.setViewportSize({ width: 320, height: 900 });
-    await openDeadlinePlan(page);
-    await page.screenshot({
-      path: path.join(SCREENSHOT_DIR, '320.png'),
-      fullPage: true,
-    });
-  });
 });

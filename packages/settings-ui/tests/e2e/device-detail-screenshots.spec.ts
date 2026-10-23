@@ -1,5 +1,5 @@
 /**
- * Captures device detail panel screenshots for visual / UX review.
+ * Captures the device detail screenshots the docs use (docs/solar.md).
  * Skipped in CI — run locally with:
  *   npx playwright test device-detail-screenshots.spec.ts --project=chromium-mobile-width
  */
@@ -37,63 +37,6 @@ const openDeviceDetail = async (page: Page, deviceId: string) => {
   await expect(page.locator('#device-detail-overlay')).toBeVisible();
   await prepPage(page);
 };
-
-const captureFullPanel = async (page: Page, name: string) => {
-  const panel = page.locator('#device-detail-panel');
-  await panel.screenshot({ path: `${OUT}/${name}.png` });
-};
-
-test('header and modes (thermostat)', async ({ page }) => {
-  await openDeviceDetail(page, 'dev_heatpump');
-  await page.waitForTimeout(300);
-  await captureFullPanel(page, 'thermostat-top');
-});
-
-test('shedding section with conditional row', async ({ page }) => {
-  await openDeviceDetail(page, 'dev_heatpump');
-  await page.locator('#device-detail-shedding-section').scrollIntoViewIfNeeded();
-  const segmented = page.locator('#device-detail-overshoot-segmented');
-  await segmented.locator('.segmented__option', { hasText: 'Set temperature' }).click();
-  await page.waitForTimeout(200);
-  await page.locator('#device-detail-shedding-section').screenshot({
-    path: `${OUT}/shedding-with-temperature.png`,
-  });
-});
-
-test('stepped load (zaptec)', async ({ page }) => {
-  await openDeviceDetail(page, 'dev_zaptec');
-  const section = page.locator('#device-detail-stepped-section');
-  await section.scrollIntoViewIfNeeded();
-  // The step-profile section is taller than the viewport, and an element
-  // screenshot stitches scrolled tiles — the tiles outside the slide panel's
-  // clip picked up the devices list beneath. Grow the viewport to fit the
-  // section so the whole element sits inside the panel before shooting.
-  const sectionHeight = await section.evaluate((el) => el.scrollHeight + 120);
-  await page.setViewportSize({ width: 480, height: Math.min(4000, Math.max(900, sectionHeight)) });
-  await section.scrollIntoViewIfNeeded();
-  await page.waitForTimeout(200);
-  await section.screenshot({ path: `${OUT}/stepped-zaptec.png` });
-});
-
-test('setup section', async ({ page }) => {
-  await openDeviceDetail(page, 'dev_heatpump');
-  const setup = page.locator('#device-detail-setup-section');
-  await setup.locator('summary').click();
-  await setup.scrollIntoViewIfNeeded();
-  await page.waitForTimeout(200);
-  await setup.screenshot({ path: `${OUT}/setup-expanded.png` });
-});
-
-test('diagnostics disclosure open', async ({ page }) => {
-  await openDeviceDetail(page, 'dev_heatpump');
-  const diag = page.locator('#device-detail-diagnostics-disclosure');
-  await diag.locator('summary').click();
-  await diag.scrollIntoViewIfNeeded();
-  await page.waitForTimeout(400);
-  await page.locator('#device-detail-diagnostics-section').screenshot({
-    path: `${OUT}/diagnostics-open.png`,
-  });
-});
 
 test('solar surplus control and boost', async ({ page }) => {
   // The fixture home has a tracked solar/PV device, so the "Use solar surplus"

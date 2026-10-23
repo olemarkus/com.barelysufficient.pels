@@ -733,22 +733,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       still holds the prior devices. Source: runtime review of the actuation-record state layer,
       2026-09-08.
 
-- [ ] **`TemperatureObservation` carries no timestamp, so the objectives seam reaches for the
-      device-level one.** `TemperatureObservation` (`packages/contracts/src/types.ts`) is
-      `{ currentTemperature, target }` — a measurement with no record of when it was measured —
-      while a known state-of-charge level carries its own stamp inside the `known` arm. The
-      asymmetry surfaces in `resolveObjectiveObservedQuantity`
-      (`packages/shared-domain/src/objectiveObservedQuantity.ts`), which takes a
-      `deviceObservedAtMs: number | undefined` parameter that exists solely to feed the temperature
-      branch, and whose `undefined` arm is the last nullable on that seam: a device with a
-      temperature but no device-level stamp yields no sample and learns nothing. Change: give
-      `TemperatureObservation` an `observedAtMs`, set at the two producer seams that admit and
-      update the facet (`resolveTemperatureObservation` and `updateTemperatureMeasurement`,
-      `lib/device/transport/temperatureObservation.ts`), then drop the
-      `deviceObservedAtMs` parameter. Done when `resolveObjectiveObservedQuantity` takes the device
-      and nothing else, and both branches read a stamp that belongs to the reading rather than to
-      the device.
-
 - [ ] **The zone tree is refetched on every snapshot refresh — 538 Homey round-trips per 12 h for
       an answer that changed zero times — and the obvious fix (a refresh interval) is unsafe as
       written.** `refreshZoneTreeCache` (`lib/device/transport/snapshotRefresh.ts`) fetches
@@ -1248,14 +1232,6 @@ Design-of-record: `notes/web-app.md`.
       at level `debug`, so this adds CI minutes rather than swapping them. Source: 2026-08-07
       build-size audit, adversarial pass on PR #2006. [P2]
 
-- [ ] **`runtimePackaging` contract-import detector false-positives on prose.** The regex in
-      `test/integration/runtimePackaging.test.ts` is not line-anchored, so the bare word "import"
-      inside a docblock matches and `[\s\S]*?` runs on into the next real declaration — flagging a
-      pure `import type` as a value import. Hit while adding `lib/device/evCarLinkWiring.ts`
-      (2026-07-26); worked around by rewording the comment. Anchor the pattern to a line start so
-      the guard stops depending on comment wording. Left out of that PR to avoid loosening a
-      packaging guard in the same change that needed it to pass. [P2]
-
 - [ ] **The topic-gated debug emitter is still threaded through parameter objects that never use
       it.** `getDebugEmitter(component, topic)` (`lib/logging/logger.ts`) is the ambient way to
       reach the channel, and `getStructuredDebugEmitter` is now the same emitter under the wiring's
@@ -1343,19 +1319,6 @@ Design-of-record: `notes/web-app.md`.
       **Done when:** `PlanLimits` and `MeasuredPower` carry no nullable limit or headroom field,
       the planner reads no `softLimitSource`, and the grep above finds no limit-posture null
       branch in `lib/plan` outside the meta projection. [P2]
-
-## Docs
-
-- [ ] **Eleven device-detail captures are committed but referenced by no docs page.**
-      `docs/public/screenshots/device-detail/` holds fourteen images; only
-      `mw-thermostat-heatpump-full` (`docs/configuration.md`) and the two `solar-surplus-*`
-      (`docs/solar.md`) are used. `held-hero`, `diagnostics-open`, `setup-expanded`,
-      `thermostat-top`, `stepped-zaptec`, `shedding-with-temperature`, and the five remaining
-      `mw-*-full` variants are referenced only by the capture specs that produce them (plus one
-      citation in a `style.css:5418` comment), as is `docs/screenshots/deadline-plan/320.png`.
-      Either wire them into the pages they were shot for or stop capturing them — right now they
-      cost a refresh every time the device page moves and pay nothing back. Source: 2026-08-10
-      docs/screenshot freshness pass. [P2]
 
 ## Closed trains and historical notes
 
