@@ -2,6 +2,7 @@ import type {
   PriceOptimizationConfig,
   PriceOptimizationConfigMapRead,
 } from '../../../contracts/src/priceOptimizationSettings';
+import { isFiniteNumber } from '../numberGuards';
 
 /**
  * Resolve validated Price-choice provenance. Each persistence adapter maps a
@@ -48,10 +49,6 @@ type PriceOptimizationConfigRead =
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
-);
-
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
 );
 
 const classifyEntry = (value: unknown): PriceOptimizationConfigRead => {

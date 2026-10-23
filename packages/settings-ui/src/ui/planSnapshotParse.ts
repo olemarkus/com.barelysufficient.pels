@@ -11,6 +11,7 @@
  */
 import type { PlanDeviceSnapshot, PlanSnapshot } from './planTypes.ts';
 import { isCapacityPeriodMinutes } from '../../../shared-domain/src/settings/capacityPeriod.ts';
+import { isFiniteNumber } from '../../../shared-domain/src/numberGuards.ts';
 
 
 const STATUS_KINDS: ReadonlySet<unknown> = new Set([
@@ -18,12 +19,11 @@ const STATUS_KINDS: ReadonlySet<unknown> = new Set([
 ]);
 const STATUS_TONES: ReadonlySet<unknown> = new Set(['active', 'idle', 'held', 'resuming', 'neutral', 'warning']);
 const isNullableText = (value: unknown): boolean => value === null || typeof value === 'string';
-const isFinite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 const isCountdown = (value: unknown): boolean => {
   if (value === undefined) return true;
   if (!value || typeof value !== 'object') return false;
   const timer = value as Record<string, unknown>;
-  if (!isFinite(timer.endsAtMs) || !isFinite(timer.totalSec) || timer.totalSec < 0) return false;
+  if (!isFiniteNumber(timer.endsAtMs) || !isFiniteNumber(timer.totalSec) || timer.totalSec < 0) return false;
   if (timer.kind === 'beside_text') return true;
   return timer.kind === 'in_text' && typeof timer.prefix === 'string' && typeof timer.suffix === 'string';
 };
@@ -43,7 +43,7 @@ const isStatusRail = (value: unknown): boolean => {
   if (!value || typeof value !== 'object') return false;
   const rail = value as Record<string, unknown>;
   if (!Array.isArray(rail.labels) || !rail.labels.every((label: unknown) => typeof label === 'string')) return false;
-  return rail.activeIndex === null || (isFinite(rail.activeIndex) && Number.isInteger(rail.activeIndex)
+  return rail.activeIndex === null || (isFiniteNumber(rail.activeIndex) && Number.isInteger(rail.activeIndex)
     && rail.activeIndex >= 0 && rail.activeIndex < rail.labels.length);
 };
 
@@ -51,8 +51,8 @@ const isStatusReading = (value: unknown): boolean => {
   if (value === null) return true;
   if (!value || typeof value !== 'object') return false;
   const reading = value as Record<string, unknown>;
-  if (reading.kind === 'battery') return isFinite(reading.percent);
-  return reading.kind === 'temperature' && isFinite(reading.currentC) && isFinite(reading.targetC);
+  if (reading.kind === 'battery') return isFiniteNumber(reading.percent);
+  return reading.kind === 'temperature' && isFiniteNumber(reading.currentC) && isFiniteNumber(reading.targetC);
 };
 
 const HOLD_CAUSES = new Set<unknown>(['smart_task', 'smart_task_done', 'daily_budget']);
@@ -80,8 +80,6 @@ const isPlanDeviceSnapshot = (value: unknown): value is PlanDeviceSnapshot => (
   && typeof (value as { isEvCharger?: unknown }).isEvCharger === 'boolean'
   && isStatus((value as { status?: unknown }).status)
 );
-
-const isFiniteNumber = isFinite;
 
 // Never forward retired state inputs, even if a producer accidentally spreads them.
 const RETIRED_STATE_KEYS = [

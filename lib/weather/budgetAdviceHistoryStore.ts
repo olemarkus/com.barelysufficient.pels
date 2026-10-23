@@ -2,6 +2,7 @@ import type { BudgetAdviceDecision } from '../../packages/contracts/src/budgetDi
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import { getLogger } from '../logging/logger';
 import { isUnknownRecord } from '../utils/types';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
 const logger = getLogger('weather/budget-advice-history');
 const MAX_DECISIONS = 730;
@@ -21,7 +22,6 @@ const nullableNumericFields = [
 const outcomes = ['applied', 'auto_apply_off', 'would_lower_while_limiting', 'budget_disabled_or_unavailable'];
 const isAlgorithmVersion = (value: unknown): boolean => value === undefined || value === 2;
 const isNullableString = (value: unknown): boolean => value === null || typeof value === 'string';
-const isFinite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 
 /** A damaged journal row never becomes apparently valid prediction evidence. */
 function parseDecision(json: string): BudgetAdviceDecision | null {
@@ -29,8 +29,8 @@ function parseDecision(json: string): BudgetAdviceDecision | null {
   try { raw = JSON.parse(json) as unknown; } catch { return null; }
   if (!isUnknownRecord(raw)) return null;
   if (!isAlgorithmVersion(raw.budgetAlgorithmVersion)) return null;
-  if (!numericFields.every((key) => isFinite(raw[key]))) return null;
-  if (!nullableNumericFields.every((key) => raw[key] === null || isFinite(raw[key]))) return null;
+  if (!numericFields.every((key) => isFiniteNumber(raw[key]))) return null;
+  if (!nullableNumericFields.every((key) => raw[key] === null || isFiniteNumber(raw[key]))) return null;
   if (typeof raw.targetDateKey !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw.targetDateKey)) return null;
   if (!isNullableString(raw.pressureThroughDateKey)) return null;
   if (!isNullableString(raw.meterScopeSignature)) return null;

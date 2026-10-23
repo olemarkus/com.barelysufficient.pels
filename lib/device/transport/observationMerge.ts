@@ -17,6 +17,7 @@ import { preserveNewerReportedStepObservation } from './reportedStepObservation'
 import { preserveNewerHomeBatteryReadings } from './homeBatteryObservation';
 import { recordCapabilityObservation } from './observationRecord';
 import { hasControlFacetBesideTemperature } from './temperatureObservation';
+import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 const emitDeviceDebug = getDebugEmitter('devices', 'devices');
@@ -209,10 +210,6 @@ function retainTemperaturePair(
             countsTowardDeviceFreshness: true,
         });
     }
-}
-
-function isFiniteNumber(value: unknown): value is number {
-    return typeof value === 'number' && Number.isFinite(value);
 }
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */

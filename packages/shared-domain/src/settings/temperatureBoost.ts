@@ -1,8 +1,5 @@
 import type { TargetCapabilitySnapshot, TemperatureBoostSettings } from '../../../contracts/src/types';
-
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
+import { isFiniteNumber } from '../numberGuards';
 
 export const hasTemperatureBoostTarget = (
   targets: readonly TargetCapabilitySnapshot[] | undefined,

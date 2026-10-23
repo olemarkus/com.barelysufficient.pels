@@ -36,6 +36,7 @@
  */
 import { getLogger } from '../logging/logger';
 import type { UserdataDatabase } from '../store/userdataDatabase';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import type { MeterEnergyReading } from './measuredPowerReader';
 
 const storeLogger = getLogger('device/retained-power-store');
@@ -114,7 +115,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> => (
 const isNonNegativeFinite = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value) && value >= 0
 );
-const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 
 /** The persisted row re-entering from disk: validated here, trusted inward. */
 const parseRetainedPowerReading = (json: string): RetainedPowerReading | null => {

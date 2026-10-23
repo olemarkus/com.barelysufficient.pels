@@ -15,6 +15,7 @@ import {
   shiftDateKey,
 } from '../../packages/shared-domain/src/utils/dateUtils';
 import { toStableFingerprint } from '../utils/stableFingerprint';
+import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
 const stripLastFetched = (value: unknown): unknown => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
@@ -124,8 +125,6 @@ export const pruneCombinedPricesV2 = (
   return { ...store, days };
 };
 
-const hasNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
-
 const buildEntry = (
   source: CombinedHourlyPrice,
   thresholds: { low: number; high: number },
@@ -148,24 +147,24 @@ const buildEntry = (
     isExpensive: flags.isExpensive,
   };
   const extra: Partial<CombinedPriceEntry> = {
-    ...(hasNumber(source.exportPrice) ? { exportPrice: source.exportPrice } : {}),
-    ...(hasNumber(source.budgetPrice) ? { budgetPrice: source.budgetPrice } : {}),
-    ...(hasNumber(source.spotPriceExVat) ? { spotPriceExVat: source.spotPriceExVat } : {}),
-    ...(hasNumber(source.gridTariffExVat) ? { gridTariffExVat: source.gridTariffExVat } : {}),
-    ...(hasNumber(source.providerSurchargeExVat)
+    ...(isFiniteNumber(source.exportPrice) ? { exportPrice: source.exportPrice } : {}),
+    ...(isFiniteNumber(source.budgetPrice) ? { budgetPrice: source.budgetPrice } : {}),
+    ...(isFiniteNumber(source.spotPriceExVat) ? { spotPriceExVat: source.spotPriceExVat } : {}),
+    ...(isFiniteNumber(source.gridTariffExVat) ? { gridTariffExVat: source.gridTariffExVat } : {}),
+    ...(isFiniteNumber(source.providerSurchargeExVat)
       ? { providerSurchargeExVat: source.providerSurchargeExVat } : {}),
-    ...(hasNumber(source.consumptionTaxExVat) ? { consumptionTaxExVat: source.consumptionTaxExVat } : {}),
-    ...(hasNumber(source.enovaFeeExVat) ? { enovaFeeExVat: source.enovaFeeExVat } : {}),
-    ...(hasNumber(source.vatMultiplier) ? { vatMultiplier: source.vatMultiplier } : {}),
-    ...(hasNumber(source.vatAmount) ? { vatAmount: source.vatAmount } : {}),
-    ...(hasNumber(source.electricitySupportExVat)
+    ...(isFiniteNumber(source.consumptionTaxExVat) ? { consumptionTaxExVat: source.consumptionTaxExVat } : {}),
+    ...(isFiniteNumber(source.enovaFeeExVat) ? { enovaFeeExVat: source.enovaFeeExVat } : {}),
+    ...(isFiniteNumber(source.vatMultiplier) ? { vatMultiplier: source.vatMultiplier } : {}),
+    ...(isFiniteNumber(source.vatAmount) ? { vatAmount: source.vatAmount } : {}),
+    ...(isFiniteNumber(source.electricitySupportExVat)
       ? { electricitySupportExVat: source.electricitySupportExVat } : {}),
-    ...(hasNumber(source.electricitySupport) ? { electricitySupport: source.electricitySupport } : {}),
-    ...(hasNumber(source.norgesprisAdjustmentExVat)
+    ...(isFiniteNumber(source.electricitySupport) ? { electricitySupport: source.electricitySupport } : {}),
+    ...(isFiniteNumber(source.norgesprisAdjustmentExVat)
       ? { norgesprisAdjustmentExVat: source.norgesprisAdjustmentExVat } : {}),
-    ...(hasNumber(source.norgesprisAdjustment)
+    ...(isFiniteNumber(source.norgesprisAdjustment)
       ? { norgesprisAdjustment: source.norgesprisAdjustment } : {}),
-    ...(hasNumber(source.totalExVat) ? { totalExVat: source.totalExVat } : {}),
+    ...(isFiniteNumber(source.totalExVat) ? { totalExVat: source.totalExVat } : {}),
   };
   return { ...base, ...extra };
 };

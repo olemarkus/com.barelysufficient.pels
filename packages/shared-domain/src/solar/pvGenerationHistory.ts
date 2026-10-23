@@ -16,6 +16,8 @@
 // local hours is a downstream (forecast/blend) concern. Browser-safe: arithmetic
 // only, no SDK, no timezone dependency.
 
+import { isFiniteNumber } from '../numberGuards';
+
 const HOUR_MS = 3_600_000;
 
 /** Samples farther apart than this are treated as a gap (restart / meter outage)
@@ -118,10 +120,6 @@ type IntervalNet = {
   incomingNetW?: number;
 };
 
-const isFinite_ = (value: number | undefined): value is number => (
-  value !== undefined && Number.isFinite(value)
-);
-
 /**
  * Resolve the interval's net evidence once (segments of a split interval share
  * it). Import/net accrual uses the carried value alone (mirrors the kWh carry
@@ -131,12 +129,12 @@ const isFinite_ = (value: number | undefined): value is number => (
 const resolveIntervalNetEvidence = (
   net: IntervalNet,
 ): { hasNet: boolean; importing: boolean; exporting: boolean } => {
-  if (!isFinite_(net.carriedNetW)) return { hasNet: false, importing: false, exporting: false };
+  if (!isFiniteNumber(net.carriedNetW)) return { hasNet: false, importing: false, exporting: false };
   return {
     hasNet: true,
     importing: net.carriedNetW > PV_IMPORT_EVIDENCE_MIN_W,
     exporting: net.carriedNetW < -PV_EXPORT_EVIDENCE_MIN_W
-      && isFinite_(net.incomingNetW) && net.incomingNetW < -PV_EXPORT_EVIDENCE_MIN_W,
+      && isFiniteNumber(net.incomingNetW) && net.incomingNetW < -PV_EXPORT_EVIDENCE_MIN_W,
   };
 };
 
@@ -217,7 +215,7 @@ export const recordPvSample = (
     ...(history.taintedHourStarts === undefined ? {} : { taintedHourStarts: history.taintedHourStarts }),
     lastSampleMs: atMs,
     lastGenerationW: genW,
-    ...(isFinite_(options.netW) ? { lastNetW: options.netW } : {}),
+    ...(isFiniteNumber(options.netW) ? { lastNetW: options.netW } : {}),
   };
   // First sample: just anchor (no prior interval to credit or taint).
   if (lastSampleMs === undefined || lastGenerationW === undefined) {

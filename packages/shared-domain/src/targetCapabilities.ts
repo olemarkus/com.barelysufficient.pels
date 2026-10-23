@@ -1,8 +1,5 @@
 import type { TargetCapabilitySnapshot } from '../../contracts/src/types';
-
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
+import { isFiniteNumber } from './numberGuards';
 
 const getDecimalPlaces = (value: number): number => {
   if (!Number.isFinite(value)) return 0;
