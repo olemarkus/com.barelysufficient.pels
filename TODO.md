@@ -189,16 +189,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       the confirmation deadline, times the command out, and asserts both handles are still
       distinguishable. P2. Source: pels-runtime-reality on PR #2290, 2026-09-03. [P2]
 
-- [ ] **The surplus allocator still decides "willing with a lift" from the raw price-opt entry.**
-      `resolvePriceOptimizationConfig` (`lib/price/priceOptimizer.ts`) resolves a device's entry
-      into required fields, and the setpoint resolver and the planner's lift gate read it. The
-      allocator's candidacy (`willingWithLift` over `SurplusConfig | undefined` in
-      `lib/plan/planSurplusAbsorb.ts`, fed by `getConfig`) still re-derives the same answer from
-      the optional `surplusWilling`/`surplusDelta`. Change: feed the allocator the resolved config
-      and delete `willingWithLift` and `SurplusConfig` for temperature devices. Done when no
-      `lib/plan` code reads `surplusWilling` or `surplusDelta` directly. Source:
-      `pels-layering-guardian` on the setpoint-resolution move, 2026-09-15. [P2]
-
 ## Restore admission
 
 - [ ] **The budget-exempt restore lane can now open inside the shedding hysteresis band.**
@@ -214,18 +204,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       until headroom clears the band. Persona: a home with a small always-permitted device and a
       daily budget tighter than its capacity; hypothesis: that device flaps around the latch
       boundary. Source: adversarial review of the admission-slack removal, 2026-09-15. [P2]
-
-- [ ] **A second restore can be admitted against a reading that never saw the first.**
-      `resolveMeterSettlingReason` (`lib/plan/restore/timing.ts`) holds the lane until a
-      measurement newer than the last restore arrives, but gives up after `RESTORE_COOLDOWN_MS`
-      whether or not one did. Under `power_source = flow` samples follow the owner's Flow and a
-      reading is trusted for ten minutes, so back-to-back restores can both be decided from one
-      stale figure. The flat admission slack used to absorb part of that; it no longer exists.
-      `notes/restore-eagerness/README.md` already lists the missing coverage. Fix: hold the gate on
-      a strictly newer measurement (the 10-minute silent-meter escalation bounds it, and fails
-      closed), or pin the exposure with the integration regression the note asks for. Done when two
-      restores cannot be admitted from the same sample. Source: runtime-reality review of the
-      admission-slack removal, 2026-09-15. [P2]
 
 - [ ] **`restore_admitted` / `restore_rejected` cannot distinguish a wrong admission from a stale
       one.** The payloads carry `availableKw`, `neededKw` and `marginKw` — the third is arithmetic
@@ -333,43 +311,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       the deadline uses — not a silent re-seed, which would move a toggle under the user's finger.
       Files: `packages/settings-ui/src/ui/smartTaskEdit.ts`, `setup/settingsUiSmartTaskApi.ts`.
       Source: pels-runtime-reality on editable smart-task permissions, 2026-08-02. *P2*
-
-- [ ] **The create widget's `preserve` write drops standing permissions it didn't name — and it
-      never offered the third toggle in the first place.**
-      *Persona:* any user who granted a permission by Flow and later re-creates the task from the
-      **New smart task** widget with a different toggle on; Orchestrator setting permissions at
-      creation time.
-      *Hypothesis:* `upsertObjectiveForDevice`'s `preserve` is a WHOLE-OBJECT fallback — it fires
-      only when `entry.rescue === undefined` (`lib/objectives/deferredObjectives/objectiveWrite.ts`)
-      — so a create that grants any ONE permission makes `rescue` defined and silently clears the
-      rest. The settings-UI edit lane no longer has this hole (it merges per key in
-      `buildCandidateRescue` and writes `'replace'`), but the widget lane passes no standing set and
-      still relies on the whole-object fallback. Pre-existing; not introduced by the editable-
-      permissions work, which is why it was not fixed there.
-      *The missing toggle — same widget, one change:* the `pauseLowerPriorityDevices` rescue
-      permission ships with a Flow entry (`allow_smart_task_rescue`) and full runtime behaviour
-      (`lib/plan/admission/headroomReserve.ts` — it reserves power so the task can start sooner), but
-      the create-smart-task widget (`widgets/create_smart_task/src/public/render.ts` + `src/api.ts`)
-      still offers only the budget + limit toggles, so it can't be set at creation time from the
-      widget. Add the third (ungated) toggle for parity, mapping to `'always'` like the others. Copy
-      must not say anything is turned off — see `notes/ui-terminology.md`.
-      *Why it's needed:* one lane keeps the "a permission you didn't mention survives" promise and
-      the other doesn't, from the same helper.
-      *If fixed:* thread the device's standing rescue into `widgets/create_smart_task/src/api.ts`'s
-      `buildValidSmartTaskCandidate` call and write `'replace'`, exactly as the edit lane does; this
-      regenerates the widget bundle. The write and the toggle are the same widget — do them
-      together. Files: `widgets/create_smart_task/src/api.ts`,
-      `widgets/create_smart_task/src/public/render.ts`,
-      `lib/objectives/deferredObjectives/objectiveWrite.ts`. Needs pels-ux-fit + pels-m3-critic + a
-      Playwright screenshot pass (mobile 480 px). Source: pels-layering-guardian on editable
-      smart-task permissions, 2026-08-02; toggle half from the pause-lower-priority feature,
-      2026-07-01.
-      **Absorbed from the merged create-screen item, whose strength rules must survive.** The
-      widget's toggles must reflect the device's standing permissions under these semantics: only an
-      `always` grant suppresses its own toggle; an `at_risk` grant stays visible as an upgrade
-      affordance; limit-lower-priority stays gated on an effective `always` budget permission; and
-      differing modes merge to the stronger value. Without them the read-only/suppressed-toggle
-      design can be reintroduced. The reserve-power toggle the settings UI offers is also missing. *P2*
 
 - [ ] **A rescue on the lowest-priority device can grant nothing and still report success.**
       *Persona:* Optimiser (`notes/personas.md`) who taps `Let it run now` on a held-back device.
@@ -505,20 +446,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Solar and surplus
 
-- [ ] **A dump load de-opted while PELS's OFF command is still unconfirmed is resumed despite
-      "Leave off until turned on again".** `releaseAbandonedSurplusPosture`
-      (`lib/plan/planBuilderSurplus.ts`) asks `leaveOffOnRelease` only for a device observed OFF,
-      and clears the posture stamp either way. When surplus has just collapsed, PELS has commanded
-      the dump load OFF, and the owner switches "Run on solar surplus" off before a slow (cloud,
-      Zigbee, Flow-backed) device confirms, the device still reads ON: it is not asked, its stamp is
-      cleared, and once the OFF lands it is a plain managed device the restore lane starts from the
-      grid. Change: while a binary OFF command for the device is pending
-      (`PlanBuilderDeps.pendingBinaryCommandStore.peek`), keep the stamp instead of clearing it, so
-      the release is re-evaluated on the build that observes the device off. Done when a spec in
-      `test/integration/surplusDumpLoadPlan.test.ts` de-opts a pump with a pending OFF and shows it
-      held, not resumed, once the OFF is observed. *Persona:* prosumer with a cloud-connected dump
-      load and "Leave off until turned on again". [P2]
-
 - [ ] **Solar export price — migrate the smart-task *preview* price reader onto the planning price.**
       The export-price model, the derived `budgetPrice`, its planning consumers (daily-budget
       shaping/allocation, smart-task horizons — all `budgetPrice ?? total`; price levels and the lowest-price Flow cards stay on `total`,
@@ -617,33 +544,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       "Let it run now" and the release still leaves the restore blocked, handing the owner a dead
       lever. Deriving attribution per axis at the rejection site closes both faces. [P2]
 
-- [ ] **A budget-bound "Waiting to increase" step-up hold still speaks the headroom axis.** The
-      `insufficientHeadroom` → `dailyBudget` re-attribution in `normalizeShedReasons` only touches
-      `plannedState === 'shed'` devices, but a stepped device running at a reduced step with a
-      blocked step-up carries the same reason on a `keep` device (`KEEP_REASON_RULES` allows it;
-      `dailyBudget` is not an allowed keep reason today). Under a daily-bound pace its card reads
-      "Waiting to increase — X kW more needed" when the truth is budget pacing. Fix needs a
-      keep+`dailyBudget` validation pair plus a card line for "running at a reduced step because of
-      today's budget". *Persona:* daily-budget user with a stepped water heater/EV mid-hour.
-      *Hypothesis:* rarer than the shed case and the number becomes honest once the shortfall fix
-      lands, so the wrong axis label is the remaining harm. Source: 2026-08-01 budget-hold copy
-      investigation. [P2]
-
-- [ ] **P2 — an off `meter_power`-only device keeps its last interval average as its draw.**
-      A cumulative meter resolves a draw only when it moves, and an app republishes it only on
-      change, so a meter-only device switched off keeps the last interval average it resolved
-      while running (`resolveRetainedMeasuredPower`, `lib/device/transport/managerParseDeviceFields.ts`;
-      `resolveMeterDelta`, `lib/device/measuredPowerResolver.ts`). The plan then counts that draw
-      as managed usage while the device is off; the whole-home meter is unaffected, so the error
-      is in the managed/background split and in anything priced off `currentDrawKw`. Retained
-      across restarts since the retained-power store (`lib/device/retainedPowerStore.ts`).
-      Change: at the SDK boundary, resolve a meter-only device whose binary axis is observed off
-      and whose meter has not moved to a measured `0` (the observation is the off state plus the
-      unmoved meter, not an absent reading), or rule that the retained value stands. Done when a
-      `deviceManager` integration case with a meter-only device switched off resolves the ruled
-      value and the plan's managed usage follows it. Persona: an owner with meter-only relay
-      heaters; hypothesis: "managed usage" on the Usage page stays high after PELS turns them off.
-
 - [ ] **Weather: a location-aware hint when MET can't be reached for lack of geolocation.**
       *Persona:* Orchestrator (`notes/personas.md`) who turned the feature on but never set the
       hub's location, so the forecast silently runs on recent days.
@@ -657,18 +557,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       MET UI-cleanup scope decision, 2026-06-14. [P3]
 
 ## Device observation and transport
-
-- [ ] **A stall-evidence read changes the idle classifier's state.**
-      `getLiveStallEvidence` (`lib/observer/idleClassifier.ts`) deletes `acceptedNearTargetById`,
-      `lastResultById` and the detector state once the near-target hold has ended. It is reached through
-      `PlanService.getStallEvidence` from settings-UI and smart-task preview reads
-      (`setup/appSmartTaskApi.ts`) as well as the lifecycle and recorder, so a UI read can wipe state
-      `classifyAll` owns and the outcome depends on which caller reads first. Change: route
-      between-plan device observations into the classifier through a write path so the read is pure.
-      Done when the two "withdraws…" cases in `test/unit/idleClassifier.test.ts` pass with a
-      side-effect-free read. *Persona:* owner watching a temperature task near its target in the
-      settings UI. *Hypothesis:* opening the task page can change when the task reads as accepted near
-      target. Source: release review of 3.9.3, 2026-10-04. [P2]
 
 - [ ] **P2 — three transport writes of observed fields still never reach the observer projection.**
       Stage 6 made the plan input read every observed field off the projection, so a write that
@@ -801,24 +689,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       sampling. Files: `lib/plan/deviceStatusReadModel.ts` (the reason line),
       `lib/executor/deviceExecutionState.ts` (stepped command facts), `notes/ui-terminology.md`
       (new status copy). [P2]
-
-- [ ] **`loadFlowReportedCapabilities` is the one unclean read on `DevicePersistencePort`.**
-      `lib/device/devicePersistencePort.ts` declares six calls; `loadLearnedPeaks` and
-      `loadExpectedPowerOverrides` answer `resolved | unavailable`, but
-      `loadFlowReportedCapabilities` returns a plain `FlowReportedCapabilitiesByDevice` and
-      collapses "never written", "malformed" and "genuinely empty" into the same empty record.
-      `SettingsRepository.loadFlowReportedCapabilities` is also the only one of the three not
-      wrapped against a throwing `settings.get`, so a thrown read escapes rather than classifying.
-      The cost is visible at the consumer:
-      `FlowBackedDeviceState.loadFlowReportedCapabilities` carries a keep-what-we-hold heuristic for
-      an empty parse, which reads exactly like the redundant hedge root `AGENTS.md` tells reviewers
-      to delete — and deleting it restores a wipe-on-transient-miss bug. Promote the read to a
-      `FlowReportedCapabilitiesRead` discriminated union built from the same key-list evidence the
-      other two use, then delete the heuristic and its
-      `flow_capabilities_load_empty_parse_keeping_existing` warning. Done when the port's three
-      reads all answer a discriminated result, the heuristic is gone, and a spec covers
-      unwritten / malformed / throwing / genuinely-empty as four distinct outcomes. Source:
-      adversarial review of the device lane, 2026-09-01. [P2]
 
 - [ ] **The observed-state label is a closed set returned as `string`, so consumers hedge against
       their own producer.** `lib/observer/observedState.ts` states the set in prose
@@ -963,16 +833,6 @@ Design-of-record: `notes/web-app.md`.
 
 ## Diagnostics, logging and alerts
 
-- [ ] **A device that vanishes mid-overshoot is attributed to background load.**
-      `hasUndiffablePlausibleContributor` (`lib/plan/planBuilderOvershoot.ts`)
-      iterates the CURRENT device map only, so a managed device present in the
-      previous plan and absent from this one cannot block a confident verdict, and
-      its rise lands in `background_load_dominant` rather than
-      `attribution_inputs_incomplete`. Newcomer/baseline cases cover APPEARANCE,
-      not disappearance. Fix: also scan `previousDevicesById` for ids missing from
-      the current map. Source: adversarial review of the measured-draw collapse,
-      2026-08-08. [P2]
-
 - [ ] **The sustained hard-cap card's in-app hint omits the flow-source reporting requirement.**
       With `power_source = flow` and samples arriving less often than once a minute, every
       sustained run ends `evidence_stale` (`lib/power/capacityShortfallAlertDispatch.ts:374`, 60 s
@@ -982,34 +842,7 @@ Design-of-record: `notes/web-app.md`.
       the condition stays evidenced with a fresh-by-flow-standards sample. Source: 2026-08-02
       release review, pels-runtime-reality + budget/alerts adversarial pass. [P2]
 
-- [ ] **Four shed-device reason codes have no starvation classification at all.**
-      *Persona:* owner (`notes/personas.md`) reading device detail on a held-back device.
-      *Hypothesis:* `neutralStartupHold`, `startupStabilization`, `capacityControlOff` and
-      `shedInvariant` appear in neither the counting nor the pausing table in
-      `lib/planContract/planDecisionSemantics.ts`, so a `plannedState: 'shed'` device carrying
-      one falls through to `unknown_suppression_reason` and device detail literally reads
-      "Service reason unknown". The 2026-08-08 ruling (the clock runs whenever PELS turned the
-      device off) argues `neutralStartupHold` and `shedInvariant` should COUNT with their own
-      causes; `capacityControlOff` is the owner's own switch and should pause.
-      *Why it's needed:* "Service reason unknown" is the one string in that view that tells the
-      owner nothing, and it is reachable today. Pre-existing — neither introduced nor worsened
-      by the ruling. Source: starvation-rule change, 2026-08-08.
-      **Check the framing before starting.** Against `planReasonsValidation.ts:26-64`, the four
-      codes do not all arrive the same way: `neutralStartupHold` is shed-legal only,
-      `startupStabilization` is legal on BOTH `keep` and `shed`, and `shedInvariant` and
-      `capacityControlOff` are keep-legal only. So "a `plannedState: 'shed'` device carrying
-      one" holds for two of the four; the other two reach a device through `keep`. Establish
-      which state each code actually arrives in before classifying it, because a code that only
-      ever rides `keep` needs a different classification argument from one that rides `shed`. [P3]
-
 ## Architecture and tooling debt
-
-- [ ] **`npm run bench:settings-ui:boot` fails before it measures anything.**
-      `scripts/benchmark-settings-ui-boot.mjs` stops with "Cannot set property performance of
-      [object Window] which has only a getter" (seen 2026-10-22 on Node 22). **What changes:** set
-      `performance` on the jsdom window with `Object.defineProperty` (or stop overwriting it).
-      **Done when:** `node scripts/benchmark-settings-ui-boot.mjs --iterations 1 --baseline-dir .`
-      prints boot timings. [P2]
 
 - [ ] **The plan-shortfall side-effect gate keeps its deferred transition and retry in `setup/`.**
       `createCapacityShortfallSideEffectGate` (`setup/capacityShortfallSideEffectGate.ts`) holds a
@@ -1169,23 +1002,6 @@ Design-of-record: `notes/web-app.md`.
       before moving them. Done when the seam takes a named argument, all four callbacks are bound at
       construction, and `runPowerSample` builds no closures per sample. Found 2026-09-01. [P2]
 
-- [ ] **Nothing in CI ever inspects the packaged tree that actually ships.** `npm run validate` is
-      `homey app validate && npm run package:check`, and `homey app validate` calls
-      `preprocess({ copyAppProductionDependencies: app instanceof AppPython })` — false for a Node
-      app — so `.homeybuild/` is rebuilt *without* `node_modules`
-      (`/usr/lib/node_modules/homey/lib/App.js:862-894`, `bin/cmds/app/validate.mjs:28-32`;
-      `preprocess` wipes the directory at App.js:874, so an earlier `npm run build` tree does not
-      survive either). Every node_modules-dependent assertion in
-      `scripts/check-homey-packaging.mjs` — the pruned-package loop, the sourcemap/`.d.ts` survivor
-      guard, the 18 MB ceiling — therefore never runs in CI
-      (`.github/workflows/test.yml:61-77`); they now self-report as NOT EVALUATED rather than
-      passing silently. `homey app build` runs the same `preprocess()` with production dependencies
-      and no network or device, so inserting it before `package:check` makes all three enforceable.
-      Done when those three assertions execute in CI instead of reporting NOT EVALUATED. The cost to
-      weigh while doing it: a second full `preprocess` (each re-runs `npm run build`) validating only
-      at level `debug`, so this adds CI minutes rather than swapping them. Source: 2026-08-07
-      build-size audit, adversarial pass on PR #2006. [P2]
-
 - [ ] **The topic-gated debug emitter is still threaded through parameter objects that never use
       it.** `getDebugEmitter(component, topic)` (`lib/logging/logger.ts`) is the ambient way to
       reach the channel, and `getStructuredDebugEmitter` is now the same emitter under the wiring's
@@ -1228,20 +1044,6 @@ Design-of-record: `notes/web-app.md`.
       Done when `grep -rn 'debugStructured?:' app.ts lib setup flowCards drivers` returns nothing,
       those predicates are gone with it, and the distinct `(component, debugTopic)` pairs in a
       production log are unchanged before and after. [P2]
-- [ ] **`plan_rebuild_completed` is absent from production for the case it was added to explain.**
-      `planServiceRebuild.ts` emits it through a computed level,
-      `(host.deps.loggers?.structuredLog ?? logger)[rebuildLogLevel](...)`, and
-      `getPlanRebuildLogLevel` (`lib/plan/planRebuildMetrics.ts`) returns `'debug'` for the
-      actionChanged-only rebuild — a plan whose decisions changed but issued no commands. That is a
-      pino child of the `info` root, so the line is dropped: every `plan_rebuild_completed` in a
-      production log carries an info-forced `reasonCode` (`initial`, `settings:*`,
-      `startup_snapshot_bootstrap`) and none carries `appliedActions:false` from the debug branch.
-      The comment at that branch calls it "plan debug topic", which it is not — it is not gated,
-      it is discarded. Fix: emit the actionChanged-only case through
-      `getDebugEmitter('plan', 'plan')` and keep the `info` cases on the module logger, so the
-      level is readable at the call site. Done when an actionChanged-only rebuild produces a
-      `plan_rebuild_completed` line with `debugTopic: 'plan'` and the file leaves the allowlist. [P2]
-
 - [ ] **Each power limit is a loose nullable, and readers re-derive which nulls mean "off".**
       The capacity, grid and daily axes and the binding limit travel as separate `number | null`
       fields: `PlanLimits` (`softLimit`, `softLimitSource`, `capacitySoftLimit`,
