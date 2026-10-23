@@ -32,6 +32,25 @@ type DeviceLogEntryRowProps = {
   formatTimestamp: (atMs: number) => string;
 };
 
+/** `Limited and Running`, `Limited, Resuming and Running`. */
+const joinStateLabels = (labels: readonly string[]): string => (
+  labels.length <= 2 ? labels.join(' and ') : `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}`
+);
+
+const formatRunCaption = (item: CollapsedLogEntry, formatTimestamp: (atMs: number) => string): string => {
+  if (item.kind === 'burst') {
+    // The count before the states: a state label can carry its own detail
+    // (`Limited · Off`), and a count or time after it would read as part of it.
+    const times = `${item.switchCount} times between ${joinStateLabels(item.stateMsgs)}`;
+    return item.truncated
+      ? `Switched ${times}. The log keeps only recent changes, so this may have started earlier.`
+      : `Since ${formatTimestamp(item.firstAtMs)}, switched ${times}`;
+  }
+  return item.truncated
+    ? `Seen ${item.occurrenceCount} times — the log keeps only recent changes, so the run may have started earlier`
+    : `Seen ${item.occurrenceCount} times since ${formatTimestamp(item.firstAtMs)}`;
+};
+
 const DeviceLogEntryRow = ({ item, formatTimestamp, showDeviceNames }: DeviceLogEntryRowProps) => {
   const { entry } = item;
   return (
@@ -56,11 +75,7 @@ const DeviceLogEntryRow = ({ item, formatTimestamp, showDeviceNames }: DeviceLog
         <p class="pels-text-body device-log__line">{entry.statusMsg}</p>
       ) : null}
       {item.occurrenceCount > 1 ? (
-        <p class="pels-text-caption muted device-log__line">
-          {item.truncated
-            ? `Seen ${item.occurrenceCount} times — the log keeps only recent changes, so the run may have started earlier`
-            : `Seen ${item.occurrenceCount} times since ${formatTimestamp(item.firstAtMs)}`}
-        </p>
+        <p class="pels-text-caption muted device-log__line">{formatRunCaption(item, formatTimestamp)}</p>
       ) : null}
     </li>
   );
