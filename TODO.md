@@ -460,16 +460,6 @@ Design-of-record: `notes/web-app.md`.
       exempt per-call locals. **Done when:** the guard fails on a new reassigned closure `let` in a
       `setup/` factory and the allowlist names each existing one. [P2]
 
-- [ ] **No end-to-end cover for the start policy's actuation claim.** The feature's core
-      assertion is that nothing new actuates — the executor's existing convergence writes a
-      device whose observation disagrees with its plan, so an unplanned start is ordinary drift.
-      `test/integration/startPolicyPlanBuild.test.ts` stops at `plannedState`/`reason` and never
-      reaches a device write. **What changes:** an e2e driven through the Homey SDK boundary,
-      modelled on `test/e2e/externalOffHold.e2e.test.ts` (the precedent for a standing hold):
-      opt a binary device in, turn it on through the mock SDK, advance to the next meter
-      reading, assert the off write. **Done when:** the spec fails if the hold stops producing
-      an executable off intent. [P2]
-
 - [ ] **P1 — the remaining history keys still ride `homey.settings`, and every write of any key
       pays for all of them.** The SDK's `ManagerSettings.set` ships the ENTIRE settings object to
       core on every write of any key (`notes/settings-key-ownership.md` § "Which store"), so each
