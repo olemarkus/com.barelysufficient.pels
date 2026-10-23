@@ -71,7 +71,9 @@ Every runtime file is clean, so the guard allows no site at all. `api.ts`'s pre-
   process-wide root and gates on the topic set the owner toggles, published by
   `setDebugTopics(...)` from `updateDebugLoggingEnabled`. Use it in place of a threaded
   `debugStructured` parameter: it is the same emitter, so a file that drops the parameter changes
-  nothing about what it emits.
+  nothing about what it emits. Inject an emitter only where one caller must stay silent: the daily
+  budget's Budget Adjust candidate is the case. Specs read a topic with
+  `captureDebugTopic(topic)` (`test/utils/loggerCapture.ts`).
   `component` and `topic` are separate arguments and stay that way: `devices` events are emitted
   under `devices`, `reconcile`, and `snapshot`, and Flow-card settings events are
   `component: 'flow'` on topic `settings`.

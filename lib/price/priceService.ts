@@ -30,7 +30,7 @@ import {
   type PriceSourceLabel,
 } from './priceServiceFlowHelpers';
 import { toHourlyPrices } from './hourlyPriceProjection';
-import type { PriceServiceLoggingSinks } from './priceServiceLoggingSinks';
+import { emitPriceDebug, type PriceServiceLoggingSinks } from './priceServiceLoggingSinks';
 import type { FlowPricePayload } from '../../packages/shared-domain/src/price/flowPriceUtils';
 import {
   buildCombinedPricePayload,
@@ -58,7 +58,7 @@ import {
   type PriceLevelChangesRead,
   type PriceLevelLookahead,
 } from './priceLevelUtils';
-import { PriceLevel } from './priceLevels';
+import type { PriceLevel } from './priceLevels';
 import { PriceSchemeResolver, type PriceSourceSwitch } from './priceSchemeResolution';
 import type { CombinedHourlyPrice, CombinedPriceFields, CombinedPricePeriod, PriceScheme } from './priceTypes';
 import {
@@ -178,22 +178,22 @@ export default class PriceService {
       now: today,
     });
     if (cacheDecision.areaChanged) {
-      this.sinks.debugStructured({ event: 'spot_price_area_changed', fromArea: cachedArea, toArea: priceArea });
+      emitPriceDebug({ event: 'spot_price_area_changed', fromArea: cachedArea, toArea: priceArea });
     }
     if (cacheDecision.useCache) {
-      this.sinks.debugStructured({ event: 'spot_price_cache_used', entryCount: existingPrices?.length ?? 0 });
+      emitPriceDebug({ event: 'spot_price_cache_used', entryCount: existingPrices?.length ?? 0 });
       this.updateCombinedPrices();
       return true;
     }
     if (cacheDecision.shouldFetchTomorrow) {
-      this.sinks.debugStructured({ event: 'spot_price_refresh_for_tomorrow' });
+      emitPriceDebug({ event: 'spot_price_refresh_for_tomorrow' });
     }
     return false;
   }
   async refreshSpotPrices(forceRefresh = false): Promise<void> {
     const scheme = this.getPriceScheme();
     if (scheme === 'flow') {
-      this.sinks.debugStructured({ event: 'spot_price_refresh_skipped', reason: 'flow_scheme_active' });
+      emitPriceDebug({ event: 'spot_price_refresh_skipped', reason: 'flow_scheme_active' });
       return;
     }
     if (scheme === 'homey') {
@@ -222,13 +222,11 @@ export default class PriceService {
     const todayPrices = await fetchSpotPricesForDate({
       date: today,
       priceArea,
-      debugStructured: this.sinks.debugStructured,
       errorLog: this.sinks.errorLog,
     });
     const tomorrowPrices = await fetchSpotPricesForDate({
       date: addDays(today, 1),
       priceArea,
-      debugStructured: this.sinks.debugStructured,
       errorLog: this.sinks.errorLog,
     });
     const allPrices = [...todayPrices, ...tomorrowPrices];
@@ -243,7 +241,7 @@ export default class PriceService {
   }
   async refreshGridTariffData(forceRefresh = false): Promise<void> {
     if (this.getPriceScheme() !== 'norway') {
-      this.sinks.debugStructured({ event: 'grid_tariff_refresh_skipped', reason: 'non_norway_scheme' });
+      emitPriceDebug({ event: 'grid_tariff_refresh_skipped', reason: 'non_norway_scheme' });
       return;
     }
     const settings = this.norwaySchemeSettings;
@@ -304,7 +302,7 @@ export default class PriceService {
       const nextLastFetched = getCombinedPayloadLastFetched(payload);
       const previousLastFetched = getCombinedPayloadLastFetched(existingPayload);
       const shouldUpdateLastFetched = Boolean(nextLastFetched && nextLastFetched !== previousLastFetched);
-      this.sinks.debugStructured({ event: 'combined_prices_unchanged', lastFetchedUpdated: shouldUpdateLastFetched });
+      emitPriceDebug({ event: 'combined_prices_unchanged', lastFetchedUpdated: shouldUpdateLastFetched });
       if (shouldUpdateLastFetched) this.priceDataStore.writeCombined(payload);
       this.emitRealtime('prices_updated', payload);
       return;
@@ -447,7 +445,7 @@ export default class PriceService {
       tomorrowPayload: getFlowPricePayload(this.priceDataStore.readFlowPayload(tomorrowSettingKey)),
     });
     purge.changes.forEach((change: FlowSlotChange) => {
-      this.sinks.debugStructured({
+      emitPriceDebug({
         event: 'flow_price_slot_rotated', priceSource: label,
         slot: change.slot, action: change.action, from: change.from,
       });
@@ -486,7 +484,6 @@ export default class PriceService {
       timeZone,
       todayPayload,
       tomorrowPayload,
-      debugStructured: this.sinks.debugStructured,
       label,
     });
   }
@@ -500,7 +497,6 @@ export default class PriceService {
       kind,
       raw,
       timeZone: this.getTimeZone(),
-      debugStructured: this.sinks.debugStructured,
       writeFlowPayload: (key, payload) => this.priceDataStore.writeFlowPayload(key, payload),
       updateCombinedPrices: () => this.updateCombinedPrices(),
     });
@@ -589,13 +585,13 @@ export default class PriceService {
     );
     this.powerhourSourceStatus = mirror.status;
     if (mirror.level === 'info') this.sinks.structuredLog.info(mirror.record);
-    else this.sinks.debugStructured(mirror.record);
+    else emitPriceDebug(mirror.record);
     if (mirror.changed) this.updateCombinedPrices();
   }
 
   private async refreshHomeyEnergyPrices(forceRefresh: boolean): Promise<void> {
     if (this.getPriceScheme() !== 'homey') {
-      this.sinks.debugStructured({ event: 'homey_energy_refresh_skipped', reason: 'non_homey_scheme' });
+      emitPriceDebug({ event: 'homey_energy_refresh_skipped', reason: 'non_homey_scheme' });
       return;
     }
     // Before the cache check, because the cached path still rebuilds the
@@ -609,16 +605,15 @@ export default class PriceService {
       info,
       forceRefresh,
       readCachedPayload: (key) => this.priceDataStore.readFlowPayload(key),
-      debugStructured: this.sinks.debugStructured,
       updateCombinedPrices: () => this.updateCombinedPrices(),
     })) {
       return;
     }
 
-    const results = await fetchHomeyEnergyResults(this.homeyEnergyApi, info, this.sinks.debugStructured);
+    const results = await fetchHomeyEnergyResults(this.homeyEnergyApi, info);
     if (!results) return;
 
-    logHomeyEnergyPayloadStatus(info, results, this.sinks.debugStructured);
+    logHomeyEnergyPayloadStatus(info, results);
 
     updateHomeyEnergyCurrency(results, (unit) => this.priceDataStore.writeHomeyPricesCurrency(unit));
     const stored = storeHomeyEnergyPayloads({

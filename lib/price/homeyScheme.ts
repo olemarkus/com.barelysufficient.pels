@@ -9,6 +9,7 @@
  * instead of the pieces it is made of.
  */
 
+import { getDebugEmitter } from '../logging/logger';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import {
   EXPORT_PRICE_ENABLED, EXPORT_PRICE_SOURCE, HOMEY_PRICE_FORMULA,
@@ -33,6 +34,8 @@ import {
 import { readExportPriceConfig, EXPORT_PRICE_DISABLED, type ExportPriceConfig } from './exportPrice';
 
 import { dropsPersistedPrices } from './homeyPriceFormula';
+
+const emitPriceDebug = getDebugEmitter('price', 'price');
 
 export type { HomeyPriceResolution } from './homeyPriceFormula';
 
@@ -146,7 +149,7 @@ export const keepsPersistedPrices = (
   rebuildLostEntries: () => boolean,
 ): boolean => {
   if (homeyPrices?.verdict === 'undecided') {
-    sinks.debugStructured({
+    emitPriceDebug({
       event: 'combined_prices_rebuild_kept_cache',
       reasonCode: homeyPrices.reasonCode,
     });
@@ -154,7 +157,7 @@ export const keepsPersistedPrices = (
   }
   if (homeyPrices && dropsPersistedPrices(homeyPrices, sinks)) return false;
   if (!rebuildLostEntries()) return false;
-  sinks.debugStructured({ event: 'combined_prices_rebuild_kept_cache', reasonCode: 'lost_actionable_entries' });
+  emitPriceDebug({ event: 'combined_prices_rebuild_kept_cache', reasonCode: 'lost_actionable_entries' });
   return true;
 };
 

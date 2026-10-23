@@ -1377,7 +1377,6 @@ describe('Price optimization', () => {
     homeyWebApiGet: noHomeyWebApi,
     readHubMarket: unknownHubMarket,
     readHubLocation: async () => ({ kind: 'unavailable' }),
-    debugStructured: () => undefined,
     error: () => undefined,
     ...overrides,
   });

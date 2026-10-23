@@ -1,7 +1,9 @@
+import { getDebugEmitter } from '../../logging/logger';
 import type { PowerSource } from '../powerSource';
 import type { TimerRegistry } from '../../utils/timerRegistry';
-import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { HomeMeterRequest, LiveMeterReadings } from '../../ports/homeMeterReadings';
+
+const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
 const HOMEY_ENERGY_POLL_INTERVAL_MS = 10_000;
 const HOMEY_ENERGY_RESTART_RETRY_TIMER = 'homeyEnergyPollRestartRetry';
@@ -38,7 +40,6 @@ export class HomeyEnergyPollSource {
     requestHomeMeters: () => HomeMeterRequest;
     /** One live read of those meters; null when the read failed or nothing can read yet. */
     readMeters: (meterDeviceIds: readonly string[]) => Promise<LiveMeterReadings | null>;
-    debugStructured: StructuredDebugEmitter;
     error: (...args: unknown[]) => void;
   }) {}
 
@@ -119,7 +120,7 @@ export class HomeyEnergyPollSource {
     const request = this.deps.requestHomeMeters();
     const readings = await this.deps.readMeters(request.meterDeviceIds);
     if (generation !== this.pollGeneration) {
-      this.deps.debugStructured({ event: 'homey_energy_poll_discarded_stale' });
+      emitDeviceDebug({ event: 'homey_energy_poll_discarded_stale' });
       return;
     }
     if (this.deps.getPowerSource() !== 'homey_energy') return;
@@ -129,6 +130,6 @@ export class HomeyEnergyPollSource {
       return;
     }
 
-    this.deps.debugStructured({ event: 'homey_energy_poll_no_reading' });
+    emitDeviceDebug({ event: 'homey_energy_poll_no_reading' });
   }
 }

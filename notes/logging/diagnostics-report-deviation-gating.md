@@ -76,8 +76,8 @@ state). Dedupe maps prune via `shouldEmitOnChange` (160 MB RSS ceiling).
 1. **Idle de-flood** (`lib/observer/idleClassifier.ts`). The classifier was already
    transition-gated; the flood was genuine thermostat flap. `near_target_idle` is the
    **benign** duty-cycle classification (at setpoint, drawing ~0), so its started/cleared
-   transitions are demoted to the debug tier (`debugStructured`, wired from
-   `planService`). `unresponsive` (commanded on but not reacting) and `capped_idle` (held
+   transitions are demoted to the debug tier (`getDebugEmitter('observer', 'plan')` in the
+   classifier). `unresponsive` (commanded on but not reacting) and `capped_idle` (held
    below target by the cap) stay on the info sink with a `reasonCode`. This removes the
    dominant non-command flood from the default report without dropping the signals.
 

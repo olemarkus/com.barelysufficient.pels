@@ -58,8 +58,9 @@ import {
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { getNextLocalDayStartUtcMs } from '../../packages/shared-domain/src/utils/dateUtils';
 import { normalizeError } from '../utils/errorUtils';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter, getLogger, type Logger as PinoLogger } from '../logging/logger';
+
+const emitPriceDebug = getDebugEmitter('price', 'price');
 
 const NO_POWERHOUR: PriceSetupSuggestion['powerhour'] = { kind: 'none' };
 
@@ -92,7 +93,6 @@ export type PriceCoordinatorDeps = {
   readHubMarket: () => Promise<SettingsUiHubMarketRead>;
   /** Where the hub is on the map, for the Norway settings suggested from it. */
   readHubLocation: () => Promise<HubLocationRead>;
-  debugStructured: StructuredDebugEmitter;
   error: (...args: unknown[]) => void;
   structuredLog: PinoLogger;
   onCombinedPricesUpdated?: (reason: string) => void;
@@ -151,7 +151,6 @@ export class PriceCoordinator {
     this.priceService = new PriceService(
       deps.homey,
       {
-        debugStructured: deps.debugStructured,
         errorLog: deps.error,
         structuredLog: deps.structuredLog,
       },
@@ -392,12 +391,12 @@ export class PriceCoordinator {
     // A persisted V1 shape must run through the combined-prices reader's
     // migration first; rebuilding it here would clobber that path. Leave it.
     if (isCombinedPricesV1(existingPayload)) {
-      this.deps.debugStructured({ event: 'combined_prices_catchup_deferred', reason: 'legacy_v1_payload' });
+      emitPriceDebug({ event: 'combined_prices_catchup_deferred', reason: 'legacy_v1_payload' });
       return;
     }
     const timeZone = this.deps.getTimeZone();
     if (!shouldCatchUpCombinedPricesRotation(existingPayload, new Date(), timeZone)) return;
-    this.deps.debugStructured({ event: 'combined_prices_catchup_rotating', reason: 'payload_predates_today' });
+    emitPriceDebug({ event: 'combined_prices_catchup_rotating', reason: 'payload_predates_today' });
     // Boot must not abort if rotation throws; mirror the midnight timer's guard.
     try {
       this.updateCombinedPrices();

@@ -11,6 +11,7 @@
  * first minutes planning against bare wholesale spot.
  */
 
+import { getDebugEmitter } from '../logging/logger';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import type { CombinedPricePeriod } from './priceTypes';
 import type { HomeyWebApiGet } from './homeyWebApiPort';
@@ -18,6 +19,8 @@ import { HOMEY_PRICE_FORMULA } from '../utils/settingsKeys';
 import { resolveHomeyHttpStatusCode } from '../utils/homeyHttpStatusError';
 import { compilePriceFormula, type CompiledPriceFormula } from './priceFormula';
 import type { PriceServiceLoggingSinks } from './priceServiceLoggingSinks';
+
+const emitPriceDebug = getDebugEmitter('price', 'price');
 
 /**
  * What Homey's user-costs route said:
@@ -312,7 +315,7 @@ export const syncHomeyPriceFormula = async (
     return changed;
   }
   if (!changed) {
-    sinks.debugStructured({ event: 'homey_price_formula_unchanged', kind: read.kind });
+    emitPriceDebug({ event: 'homey_price_formula_unchanged', kind: read.kind });
     return false;
   }
   sinks.structuredLog.info({

@@ -9,7 +9,9 @@ import { HOMEY_PRICES_TODAY, HOMEY_PRICES_TOMORROW } from '../utils/settingsKeys
 import { formatHomeyEnergyError, type HomeyEnergyApi } from '../utils/homeyEnergy';
 import { fetchHomeyEnergyPricesForDate } from './homeyEnergyPriceFetch';
 import { getFlowPricePayload, type FlowPricePayload } from '../../packages/shared-domain/src/price/flowPriceUtils';
-import { getLogger, type StructuredDebugEmitter } from '../logging/logger';
+import { getDebugEmitter, getLogger } from '../logging/logger';
+
+const emitPriceDebug = getDebugEmitter('price', 'price');
 
 const priceLogger = getLogger('price');
 
@@ -47,15 +49,14 @@ export const shouldUseHomeyEnergyCache = (params: {
   info: HomeyEnergyDateInfo;
   forceRefresh: boolean;
   readCachedPayload: (key: PricePayloadKey) => unknown;
-  debugStructured: StructuredDebugEmitter;
   updateCombinedPrices: () => void;
 }): boolean => {
-  const { info, forceRefresh, readCachedPayload, debugStructured, updateCombinedPrices } = params;
+  const { info, forceRefresh, readCachedPayload, updateCombinedPrices } = params;
   if (forceRefresh) return false;
   const cachedToday = getFlowPricePayload(readCachedPayload(HOMEY_PRICES_TODAY));
   const cachedTomorrow = getFlowPricePayload(readCachedPayload(HOMEY_PRICES_TOMORROW));
   if (cachedToday?.dateKey === info.todayKey && cachedTomorrow?.dateKey === info.tomorrowKey) {
-    debugStructured({ event: 'homey_energy_cache_used' });
+    emitPriceDebug({ event: 'homey_energy_cache_used' });
     updateCombinedPrices();
     return true;
   }
@@ -65,7 +66,6 @@ export const shouldUseHomeyEnergyCache = (params: {
 export const fetchHomeyEnergyResults = async (
   energyApi: HomeyEnergyApi,
   info: HomeyEnergyDateInfo,
-  debugStructured: StructuredDebugEmitter,
 ): Promise<HomeyEnergyResults | null> => {
   const [todayOutcome, tomorrowOutcome] = await Promise.allSettled([
     fetchHomeyEnergyPricesForDate({
@@ -89,7 +89,7 @@ export const fetchHomeyEnergyResults = async (
   // state until the day-ahead auction is published. It is judged with a missing
   // payload in `logHomeyEnergyPayloadStatus`: pending before 13:00, an error after.
   if (tomorrowOutcome.status === 'rejected') {
-    debugStructured({
+    emitPriceDebug({
       event: 'homey_prices_tomorrow_fetch_rejected',
       date: info.tomorrowKey,
       ...formatHomeyEnergyError(tomorrowOutcome.reason),
@@ -107,7 +107,6 @@ export const fetchHomeyEnergyResults = async (
 export const logHomeyEnergyPayloadStatus = (
   info: HomeyEnergyDateInfo,
   results: HomeyEnergyResults,
-  debugStructured: StructuredDebugEmitter,
 ): void => {
   if (!results.todayResult.payload) {
     priceLogger.error({
@@ -125,7 +124,7 @@ export const logHomeyEnergyPayloadStatus = (
     };
     const localHour = getZonedParts(new Date(), info.timeZone).hour;
     if (localHour < 13) {
-      debugStructured({ event: 'homey_energy_tomorrow_pending', ...details });
+      emitPriceDebug({ event: 'homey_energy_tomorrow_pending', ...details });
     } else {
       priceLogger.error({ event: 'homey_prices_missing_tomorrow', ...details });
     }

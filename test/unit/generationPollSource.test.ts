@@ -20,7 +20,6 @@ const buildSource = (overrides: {
     readGenerationW,
     setGenerationW,
     now: () => 1_000,
-    debugStructured: vi.fn(),
     error: vi.fn(),
   });
   return { source, readGenerationW, setGenerationW, timers };
@@ -136,7 +135,6 @@ describe('GenerationPollSource', () => {
       },
       setGenerationW,
       now: () => 1_000,
-      debugStructured: vi.fn(),
       error: vi.fn(),
     });
     await source.pollNow();

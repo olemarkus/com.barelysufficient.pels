@@ -59,7 +59,7 @@ export const refreshGridTariff = async (
   const today = getDateKeyInTimeZone(todayDate, timeZone);
   const existingData = store.readNettleie() as
     Array<{ dateKey?: string; datoId?: string; source?: unknown }> | null;
-  if (!forceRefresh && shouldUseGridTariffCache(existingData, today, sinks.debugStructured)) return 'rebuild';
+  if (!forceRefresh && shouldUseGridTariffCache(existingData, today)) return 'rebuild';
 
   const { data, attempts, logContext } = await fetchGridTariffWithDateFallback({
     settings: request,

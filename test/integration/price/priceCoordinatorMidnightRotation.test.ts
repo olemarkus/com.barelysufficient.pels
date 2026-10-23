@@ -23,7 +23,6 @@ const createCoordinator = () => new PriceCoordinator({
   homeyWebApiGet: noHomeyWebApi,
   readHubMarket: unknownHubMarket,
   readHubLocation: async () => ({ kind: 'unavailable' }),
-  debugStructured: () => undefined,
   error: () => undefined,
 });
 
@@ -91,7 +90,6 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
       homeyWebApiGet: noHomeyWebApi,
       readHubMarket: unknownHubMarket,
       readHubLocation: async () => ({ kind: 'unavailable' }),
-      debugStructured: () => undefined,
       error: () => undefined,
       structuredLog: structuredLog as never,
     });
@@ -298,7 +296,6 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
       homeyWebApiGet: noHomeyWebApi,
       readHubMarket: unknownHubMarket,
       readHubLocation: async () => ({ kind: 'unavailable' }),
-      debugStructured: () => undefined,
       error: () => undefined,
       structuredLog: structuredLog as never,
     });

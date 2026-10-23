@@ -1,3 +1,4 @@
+import { captureDebugTopic } from '../utils/loggerCapture';
 import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
 import { createHomeyEnergyPollSource } from '../../setup/appInit/createHomeyEnergyPollSource';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
@@ -37,13 +38,12 @@ describe('HomeyEnergyPollSource', () => {
   it('starts polling only when Homey Energy is the configured power source', async () => {
     const readMeters = vi.fn().mockResolvedValue(mainReading(2100));
     const recordPowerSample = vi.fn().mockResolvedValue(undefined);
-    const debugStructured = vi.fn();
+    const deviceDebug = captureDebugTopic('devices');
     const source = new HomeyEnergyPollSource({
       getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
       readMeters,
       requestHomeMeters: mainMeterRequests(recordPowerSample),
-      debugStructured,
       error: vi.fn(),
     });
 
@@ -62,7 +62,7 @@ describe('HomeyEnergyPollSource', () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(readMeters).toHaveBeenCalledTimes(2);
     expect(recordPowerSample).toHaveBeenCalledTimes(2);
-    expect(debugStructured).not.toHaveBeenCalled();
+    expect(deviceDebug.events().filter((line) => String(line.event).startsWith('homey_energy_poll'))).toHaveLength(0);
 
     source.stop();
     expect(vi.getTimerCount()).toBe(0);
@@ -77,7 +77,6 @@ describe('HomeyEnergyPollSource', () => {
       timers: new TimerRegistry(),
       readMeters,
       requestHomeMeters: mainMeterRequests(vi.fn().mockResolvedValue(undefined)),
-      debugStructured: vi.fn(),
       error: vi.fn(),
     });
 
@@ -107,7 +106,6 @@ describe('HomeyEnergyPollSource', () => {
       timers: new TimerRegistry(),
       readMeters,
       requestHomeMeters: mainMeterRequests(recordPowerSample),
-      debugStructured: vi.fn(),
       error,
     });
 
@@ -146,7 +144,6 @@ describe('HomeyEnergyPollSource', () => {
       timers: new TimerRegistry(),
       readMeters,
       requestHomeMeters: mainMeterRequests(recordPowerSample),
-      debugStructured: vi.fn(),
       error,
     });
 
@@ -172,7 +169,6 @@ describe('HomeyEnergyPollSource', () => {
       timers: new TimerRegistry(),
       readMeters,
       requestHomeMeters: mainMeterRequests(vi.fn().mockResolvedValue(undefined)),
-      debugStructured: vi.fn(),
       error: vi.fn(),
     });
 
@@ -195,13 +191,12 @@ describe('HomeyEnergyPollSource', () => {
       pollResolvers.push(resolve);
     }));
     const recordPowerSample = vi.fn().mockResolvedValue(undefined);
-    const debugStructured = vi.fn();
+    const deviceDebug = captureDebugTopic('devices');
     const source = new HomeyEnergyPollSource({
       getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
       readMeters,
       requestHomeMeters: mainMeterRequests(recordPowerSample),
-      debugStructured,
       error: vi.fn(),
     });
 
@@ -215,7 +210,7 @@ describe('HomeyEnergyPollSource', () => {
     pollResolvers[0](mainReading(9999));
     await Promise.resolve();
     expect(recordPowerSample).not.toHaveBeenCalled();
-    expect(debugStructured).toHaveBeenCalledWith({ event: 'homey_energy_poll_discarded_stale' });
+    expect(deviceDebug.events()).toContainEqual(expect.objectContaining({ event: 'homey_energy_poll_discarded_stale' }));
 
     // The post-restart poll still records normally.
     pollResolvers[1](mainReading(2100));
@@ -230,13 +225,12 @@ describe('HomeyEnergyPollSource', () => {
       resolvePoll = resolve;
     }));
     const recordPowerSample = vi.fn().mockResolvedValue(undefined);
-    const debugStructured = vi.fn();
+    const deviceDebug = captureDebugTopic('devices');
     const source = new HomeyEnergyPollSource({
       getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
       readMeters,
       requestHomeMeters: mainMeterRequests(recordPowerSample),
-      debugStructured,
       error: vi.fn(),
     });
 
@@ -246,7 +240,7 @@ describe('HomeyEnergyPollSource', () => {
     await Promise.resolve();
 
     expect(recordPowerSample).not.toHaveBeenCalled();
-    expect(debugStructured).toHaveBeenCalledWith({ event: 'homey_energy_poll_discarded_stale' });
+    expect(deviceDebug.events()).toContainEqual(expect.objectContaining({ event: 'homey_energy_poll_discarded_stale' }));
   });
 
   it('routes no home\'s reading, sub-home included, from a poll superseded by a restart', async () => {
@@ -267,7 +261,6 @@ describe('HomeyEnergyPollSource', () => {
         meterDeviceIds: ['meter-main', 'm-a'],
         record: async (readings) => { routeMeterReadings(readings.meterPowerW); },
       }),
-      debugStructured: vi.fn(),
       error: vi.fn(),
     });
 
@@ -295,7 +288,6 @@ describe('HomeyEnergyPollSource', () => {
       timers: new TimerRegistry(),
       readMeters,
       requestHomeMeters: mainMeterRequests(recordPowerSample),
-      debugStructured: vi.fn(),
       error: vi.fn(),
     });
 

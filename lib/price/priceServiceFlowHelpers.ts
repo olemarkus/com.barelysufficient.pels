@@ -1,5 +1,5 @@
+import { getDebugEmitter } from '../logging/logger';
 import type { PricePayloadKey } from './priceCacheStore';
-import type { StructuredDebugEmitter } from '../logging/logger';
 import {
   getDateKeyInTimeZone,
   shiftDateKey,
@@ -14,6 +14,8 @@ import {
   type FlowPricePeriod,
 } from '../../packages/shared-domain/src/price/flowPriceUtils';
 
+const emitPriceDebug = getDebugEmitter('price', 'price');
+
 /**
  * Which source the line is about, for the debug record only — the helpers
  * themselves are source-agnostic and read every payload the same way.
@@ -25,7 +27,6 @@ type CombinedPayloadParams = {
   timeZone: string;
   todayPayload: FlowPricePayload | null;
   tomorrowPayload: FlowPricePayload | null;
-  debugStructured: StructuredDebugEmitter;
   label: PriceSourceLabel;
 };
 
@@ -38,7 +39,7 @@ type CombinedPayloadParams = {
  * yields one 60-minute period per hour, as before.
  */
 export const buildCombinedPricePeriodsFromPayloads = (params: CombinedPayloadParams): FlowPricePeriod[] => {
-  const { now, timeZone, todayPayload, tomorrowPayload, debugStructured, label } = params;
+  const { now, timeZone, todayPayload, tomorrowPayload, label } = params;
   const todayKey = getDateKeyInTimeZone(now, timeZone);
   // Compare payloads by local calendar day instead of adding 24h to the current instant.
   const tomorrowKey = shiftDateKey(todayKey, 1);
@@ -56,7 +57,7 @@ export const buildCombinedPricePeriodsFromPayloads = (params: CombinedPayloadPar
     ? buildFlowEntries(tomorrowPayload, timeZone)
     : todayResult.entries;
   if (useTomorrowAsToday && tomorrowPayload) {
-    debugStructured({ event: 'price_tomorrow_used_as_today', priceSource: label, date: todayKey });
+    emitPriceDebug({ event: 'price_tomorrow_used_as_today', priceSource: label, date: todayKey });
   }
 
   const tomorrowEntries = useTomorrowAsToday
@@ -136,7 +137,6 @@ type StoreFlowPriceParams = {
   kind: 'today' | 'tomorrow';
   raw: unknown;
   timeZone: string;
-  debugStructured: StructuredDebugEmitter;
   writeFlowPayload: (key: PricePayloadKey, payload: FlowPricePayload | null) => void;
   updateCombinedPrices: () => void;
 };
@@ -146,7 +146,7 @@ export const storeFlowPriceData = (params: StoreFlowPriceParams): {
   storedCount: number;
   missingHours: number[];
 } => {
-  const { kind, raw, timeZone, debugStructured, writeFlowPayload, updateCombinedPrices } = params;
+  const { kind, raw, timeZone, writeFlowPayload, updateCombinedPrices } = params;
   const todayKey = getDateKeyInTimeZone(new Date(), timeZone);
   const dateKey = kind === 'tomorrow' ? shiftDateKey(todayKey, 1) : todayKey;
   const parsed = parseFlowPricePayloadInput(raw, { dateKey, timeZone });
@@ -164,7 +164,7 @@ export const storeFlowPriceData = (params: StoreFlowPriceParams): {
 
   const missingHours = getMissingFlowHours(pricesByHour, getExpectedFlowHours(dateKey, timeZone));
   if (missingHours.length > 0) {
-    debugStructured({
+    emitPriceDebug({
       event: 'flow_prices_missing_hours',
       date: dateKey,
       missingHourCount: missingHours.length,

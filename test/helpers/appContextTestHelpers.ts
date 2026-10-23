@@ -223,7 +223,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     timers,
     requestHomeMeters: () => ({ meterDeviceIds: [], record: async () => undefined }),
     readMeters: async () => null,
-    debugStructured: vi.fn(),
     error: vi.fn(),
   });
   const generationPollSource = new GenerationPollSource({
@@ -234,7 +233,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     readGenerationW: async () => ({ state: 'none' as const }),
     setGenerationW: vi.fn(),
     now: () => Date.now(),
-    debugStructured: vi.fn(),
     error: vi.fn(),
   });
   const steppedStores = steppedStoresForTest();

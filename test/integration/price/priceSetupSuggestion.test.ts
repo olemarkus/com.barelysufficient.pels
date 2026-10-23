@@ -32,7 +32,6 @@ const createCoordinator = (country = 'NL') => {
     homeyWebApiGet: homeyWebApiServing({}).get,
     readHubMarket: hubMarketIn(country),
     readHubLocation,
-    debugStructured: () => undefined,
     error: () => undefined,
   });
   return { coordinator, readHubLocation };
