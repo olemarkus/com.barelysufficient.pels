@@ -105,31 +105,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `resolveReserveForDevice`. Allow re-arm after a cool-off, or key the lapse to the planned
       bucket. Done when both the bound and the re-arm are covered. *P2*
 
-- [ ] **The reachability confirmation timer and the retry timer share one key, so whichever is
-      armed second silently cancels the first.** `createBinaryCommandReachability`
-      (`lib/plan/admission/binaryCommandReachability.ts`) arms two different timers through the same
-      `scheduleRebuild` dep: `onDispatchAccepted` schedules the confirmation deadline at
-      `startedAtMs + CONTROL_COMMAND_CONFIRMATION_MS`, and `recordFailure` schedules the 15/30/60-minute
-      retry. Both wiring implementations build the handle as
-      `binaryCommandReachability:<homeId>:<deviceId>` (`setup/homeRuntime/homeScope.ts` and
-      `setup/homeRuntime/createHomeCapacityBundle.ts`), and `TimerRegistry.register`
-      (`lib/utils/timerRegistry.ts`) clears the existing handle before registering — so the retry
-      REPLACES the deadline. The two are different events about the same device and should not
-      contend for one slot.
-      Change: give the dep a purpose (`scheduleRebuild(deviceId, dueAtMs, kind)` where `kind` is the
-      `'confirmation' | 'retry'` the state machine already tracks as `scheduledKind`), key the timer
-      `…:confirmation:` / `…:retry:`, and make `clearScheduledRebuild` clear both. It is not the
-      one-liner it looks like: the dep signature is shared by two wiring implementations and the
-      `clear` path is what `project`/`prune`/`dispose` all funnel through, so all four call sites
-      move together.
-      Not urgent, and deliberately not a blocker: the observation-lane fix (2026-09-03) rests on the
-      sweep-before-device-read ordering in `buildPlanForRebuild`, which is now pinned by a test, and
-      NOT on either timer — the comment in `binaryCommandReachability.ts` says so explicitly. The
-      collision costs a delayed un-block, never a missed escalation. Done when the two timers can be
-      armed for one device simultaneously without cancelling each other, pinned by a test that arms
-      the confirmation deadline, times the command out, and asserts both handles are still
-      distinguishable. P2. Source: pels-runtime-reality on PR #2290, 2026-09-03. [P2]
-
 ## Restore admission
 
 - [ ] **`restore_admitted` / `restore_rejected` cannot distinguish a wrong admission from a stale
