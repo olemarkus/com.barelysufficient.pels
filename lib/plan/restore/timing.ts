@@ -108,23 +108,18 @@ export const shouldPlanRestores = (
  * hysteresis band, so binding headroom may hover at/above zero while the lane
  * must keep running; and when the source is `capacity` the capacity axis IS
  * the binding axis, where running the lane would defeat the latch's flap
- * protection. `capacityHeadroomKw > 0` (strict) is the measured axis; the
- * exhausted hour is its own explicit term (a silent meter never reaches this
- * lane — the silent-meter pass plans no restores at all).
+ * protection. The measured capacity and grid axes must each clear the same
+ * band the latch releases on (`resolveSheddingClearThresholdKw`); the exhausted
+ * hour is its own explicit term (a silent meter never reaches this lane — the
+ * silent-meter pass plans no restores at all).
  *
- * Known accepted corner: `softLimitSource` is instantaneous while
- * `sheddingActive` is a latch, so a capacity-latched shed whose binding source
- * flips to `daily` mid-latch opens the lane while capacity headroom sits in
- * the hysteresis band. It USED to be bounded by the flat admission floor, which
- * put the smallest admissible candidate at 0.7 kW — above the 0.4 kW band, so
- * the corner provably could not fire. That floor is gone (2026-09-15), and the
- * bar is now the device's own need, which floors at 0.2 kW via
- * `computeRestoreBufferKw`. So a budget-exempt candidate drawing ~0.2 kW or
- * less is admissible with capacity headroom inside the band.
- *
- * What is left bounding it: the shed/restore cooldowns, and the recent-shed
- * inflation for the first five minutes after the shed that latched. Narrow, but
- * no longer provably inert — recording the latch cause would close it properly.
+ * The capacity band matters because `softLimitSource` is instantaneous while
+ * `sheddingActive` is a latch: a capacity-latched shed whose binding source
+ * flips to `daily` mid-latch would otherwise open the lane while capacity
+ * headroom sits inside the hysteresis band, and since the flat admission floor
+ * went (2026-09-15) a budget-exempt candidate needing ~0.2 kW
+ * (`computeRestoreBufferKw`) fits there — flapping at the very boundary the
+ * latch exists to protect.
  */
 export const shouldPlanBudgetExemptRestores = (
   context: PlanContext,
@@ -135,7 +130,9 @@ export const shouldPlanBudgetExemptRestores = (
 ): boolean => (
   sheddingActive
   && context.softLimitSource === 'daily'
-  && (power.capacityHeadroomKw === null || power.capacityHeadroomKw > 0)
+  && (power.capacityHeadroomKw === null || (
+    power.capacityHeadroomKw > 0 && power.capacityHeadroomKw >= resolveSheddingClearThresholdKw(context)
+  ))
   && (power.gridHeadroomKw === null || power.gridHeadroomKw >= resolveSheddingClearThresholdKw(context))
   && !state.capacityPeriodSpentFor(context)
   && !timing.inCooldown
