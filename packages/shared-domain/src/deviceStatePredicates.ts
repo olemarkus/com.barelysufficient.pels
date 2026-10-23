@@ -1,9 +1,6 @@
 /**
- * Device-state predicates shared by the runtime overview generator
- * (`deviceOverview.ts`) and the Settings UI's plan-legacy / device-utils
- * rendering. Centralizing them avoids the drift we had between the two copies
- * (e.g. one normalized case, the other did not; one treated `'disappeared'`
- * as on-like, the other did not).
+ * Device-state predicates shared by the runtime card text and the Settings
+ * UI's device rendering, so the two cannot drift.
  *
  * The predicates accept the lowest-common-denominator shape — a string state
  * or a tiny structural type — so both `DeviceOverviewSnapshot` and
@@ -15,8 +12,7 @@ export const normalizeDeviceState = (value: string | undefined): string => (
   (value || '').trim().toLowerCase()
 );
 
-const NON_ON_LIKE_STATES = ['off', 'unknown', 'not_applicable', 'disappeared'] as const;
-const GRAY_CURRENT_STATES = ['unknown', 'disappeared'] as const;
+const NON_ON_LIKE_STATES = ['off', 'unknown', 'not_applicable'] as const;
 
 export const isOnLikeState = (value: string | undefined): boolean => {
   const normalized = normalizeDeviceState(value);
@@ -32,5 +28,5 @@ export type GrayStateDeviceInput = {
 export const isGrayStateDevice = (device: GrayStateDeviceInput | null | undefined): boolean => {
   if (!device) return false;
   if (device.available === false) return true;
-  return (GRAY_CURRENT_STATES as readonly string[]).includes(normalizeDeviceState(device.currentState));
+  return normalizeDeviceState(device.currentState) === 'unknown';
 };
