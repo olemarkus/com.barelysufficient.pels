@@ -1,3 +1,8 @@
+import type {
+  PriceOptimizationConfig,
+  PriceOptimizationConfigMapRead,
+} from '../../../contracts/src/priceOptimizationSettings';
+
 /**
  * Resolve validated Price-choice provenance. Each persistence adapter maps a
  * legacy missing field to `true` before calling; only a newly persisted literal
@@ -35,4 +40,58 @@ export const encodePriceAdjustment = (
   return kind === 'cheap_hour_boost'
     ? { field: 'cheapDelta', value: sizeC }
     : { field: 'expensiveDelta', value: sizeC === 0 ? 0 : -sizeC };
+};
+
+type PriceOptimizationConfigRead =
+  | { state: 'resolved'; config: PriceOptimizationConfig }
+  | { state: 'unavailable' };
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+);
+
+const isFiniteNumber = (value: unknown): value is number => (
+  typeof value === 'number' && Number.isFinite(value)
+);
+
+const classifyEntry = (value: unknown): PriceOptimizationConfigRead => {
+  if (!isRecord(value)
+    || typeof value.enabled !== 'boolean'
+    || !isFiniteNumber(value.cheapDelta)
+    || !isFiniteNumber(value.expensiveDelta)) return { state: 'unavailable' };
+  if (value.priceConfigured !== undefined && typeof value.priceConfigured !== 'boolean') {
+    return { state: 'unavailable' };
+  }
+  if (value.surplusWilling !== undefined && typeof value.surplusWilling !== 'boolean') {
+    return { state: 'unavailable' };
+  }
+  if (value.surplusDelta !== undefined && !isFiniteNumber(value.surplusDelta)) {
+    return { state: 'unavailable' };
+  }
+  const storedPriceConfigured = typeof value.priceConfigured === 'boolean'
+    ? value.priceConfigured
+    : true;
+  return {
+    state: 'resolved',
+    config: {
+      enabled: value.enabled,
+      cheapDelta: value.cheapDelta,
+      expensiveDelta: value.expensiveDelta,
+      priceConfigured: resolvePriceConfigured(value.enabled, storedPriceConfigured),
+      surplusWilling: value.surplusWilling === true,
+      surplusDelta: typeof value.surplusDelta === 'number' ? value.surplusDelta : DEFAULT_SURPLUS_LIFT_C,
+    },
+  };
+};
+
+/** Classify and fully resolve the persisted settings map at the Homey settings boundary. */
+export const classifyPriceOptimizationConfigMap = (value: unknown): PriceOptimizationConfigMapRead => {
+  if (!isRecord(value)) return { state: 'unavailable' };
+  const settings = new Map<string, PriceOptimizationConfig>();
+  for (const [deviceId, rawEntry] of Object.entries(value)) {
+    const read = classifyEntry(rawEntry);
+    if (read.state === 'unavailable') return read;
+    settings.set(deviceId, read.config);
+  }
+  return { state: 'resolved', settings: Object.fromEntries(settings) };
 };

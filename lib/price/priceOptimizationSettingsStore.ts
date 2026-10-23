@@ -5,28 +5,18 @@ import {
   PRICE_OPTIMIZATION_SETTINGS,
   PRICE_THRESHOLD_PERCENT,
 } from '../utils/settingsKeys';
-import type { PriceOptimizationSetupRead } from '../../packages/contracts/src/priceOptimizationSettings';
+import type {
+  PriceOptimizationConfig,
+  PriceOptimizationConfigMapRead,
+  PriceOptimizationSetupRead,
+} from '../../packages/contracts/src/priceOptimizationSettings';
 import {
-  DEFAULT_SURPLUS_LIFT_C,
+  classifyPriceOptimizationConfigMap,
   encodePriceAdjustment,
-  resolvePriceConfigured,
   type PriceAdjustmentKind,
 } from '../../packages/shared-domain/src/settings/priceOptimization';
-import type { PriceOptimizationSettings } from './priceOptimizer';
 
-export type PriceOptimizationDeviceSetting = PriceOptimizationSettings & {
-  priceConfigured: boolean;
-};
-
-export type PriceOptimizationDeviceSettings = Record<string, PriceOptimizationDeviceSetting>;
-
-export type PriceOptimizationDeviceSettingsRead =
-  | { state: 'resolved'; settings: PriceOptimizationDeviceSettings }
-  | { state: 'unavailable' };
-
-type PriceOptimizationDeviceSettingRead =
-  | { state: 'resolved'; setting: PriceOptimizationDeviceSetting }
-  | { state: 'unavailable' };
+export type PriceOptimizationDeviceSettings = Record<string, PriceOptimizationConfig>;
 
 /**
  * Domain-owned read boundary for the price-optimization *configuration* keys:
@@ -43,7 +33,7 @@ type PriceOptimizationDeviceSettingRead =
  */
 export type PriceOptimizationSettingsStore = {
   isEnabled(): boolean;
-  readDeviceSettings(): PriceOptimizationDeviceSettingsRead;
+  readDeviceSettings(): PriceOptimizationConfigMapRead;
   readSetup(): PriceOptimizationSetupRead;
   /**
    * Whether any device follows prices: Respond to prices on and Price on for
@@ -62,50 +52,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
 );
 
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
-
-const classifyDeviceSetting = (value: unknown): PriceOptimizationDeviceSettingRead => {
-  if (!isRecord(value)
-    || typeof value.enabled !== 'boolean'
-    || !isFiniteNumber(value.cheapDelta)
-    || !isFiniteNumber(value.expensiveDelta)) return { state: 'unavailable' };
-  if (value.priceConfigured !== undefined && typeof value.priceConfigured !== 'boolean') {
-    return { state: 'unavailable' };
-  }
-  if (value.surplusWilling !== undefined && typeof value.surplusWilling !== 'boolean') {
-    return { state: 'unavailable' };
-  }
-  if (value.surplusDelta !== undefined && !isFiniteNumber(value.surplusDelta)) {
-    return { state: 'unavailable' };
-  }
-  const storedPriceConfigured = typeof value.priceConfigured === 'boolean'
-    ? value.priceConfigured
-    : true;
-  return {
-    state: 'resolved',
-    setting: {
-      enabled: value.enabled,
-      cheapDelta: value.cheapDelta,
-      expensiveDelta: value.expensiveDelta,
-      priceConfigured: resolvePriceConfigured(value.enabled, storedPriceConfigured),
-      surplusWilling: value.surplusWilling === true,
-      surplusDelta: typeof value.surplusDelta === 'number' ? value.surplusDelta : DEFAULT_SURPLUS_LIFT_C,
-    },
-  };
-};
-
-const classifyDeviceSettings = (value: unknown): PriceOptimizationDeviceSettingsRead => {
-  if (!isRecord(value)) return { state: 'unavailable' };
-  return Object.entries(value).reduce<PriceOptimizationDeviceSettingsRead>((result, [deviceId, rawConfig]) => {
-    if (result.state === 'unavailable') return result;
-    const entryRead = classifyDeviceSetting(rawConfig);
-    if (entryRead.state === 'unavailable') return entryRead;
-    return { state: 'resolved', settings: { ...result.settings, [deviceId]: entryRead.setting } };
-  }, { state: 'resolved', settings: {} });
-};
-
 const readNumberOrDefault = (value: unknown, fallback: number): number => (
   typeof value === 'number' && Number.isFinite(value) ? value : fallback
 );
@@ -123,9 +69,9 @@ export const createPriceOptimizationSettingsStore = (
   isEnabled(): boolean {
     return settings.get(PRICE_OPTIMIZATION_ENABLED) !== false;
   },
-  readDeviceSettings(): PriceOptimizationDeviceSettingsRead {
+  readDeviceSettings(): PriceOptimizationConfigMapRead {
     try {
-      return classifyDeviceSettings(settings.get(PRICE_OPTIMIZATION_SETTINGS));
+      return classifyPriceOptimizationConfigMap(settings.get(PRICE_OPTIMIZATION_SETTINGS));
     } catch {
       return { state: 'unavailable' };
     }
@@ -149,7 +95,7 @@ export const createPriceOptimizationSettingsStore = (
         };
       }
 
-      const deviceSettings = classifyDeviceSettings(settings.get(PRICE_OPTIMIZATION_SETTINGS));
+      const deviceSettings = classifyPriceOptimizationConfigMap(settings.get(PRICE_OPTIMIZATION_SETTINGS));
       if (deviceSettings.state === 'unavailable') return deviceSettings;
       const entries = Object.entries(deviceSettings.settings);
       return {
@@ -177,7 +123,7 @@ export const createPriceOptimizationSettingsStore = (
         // An empty key list is the SDK's transient unreadable-store answer.
         return keys.length === 0 || keys.includes(PRICE_OPTIMIZATION_SETTINGS);
       }
-      const read = classifyDeviceSettings(raw);
+      const read = classifyPriceOptimizationConfigMap(raw);
       return read.state === 'unavailable' || Object.values(read.settings).some((setting) => setting.enabled);
     } catch {
       return true;
@@ -223,7 +169,7 @@ export function writeDevicePriceAdjustment(
   } catch {
     return 'unavailable';
   }
-  const read = classifyDeviceSettings(raw);
+  const read = classifyPriceOptimizationConfigMap(raw);
   if (read.state === 'unavailable' || !isRecord(raw)) return 'unavailable';
   const entry = raw[deviceId];
   if (!Object.hasOwn(read.settings, deviceId) || !isRecord(entry) || !read.settings[deviceId]?.enabled) {

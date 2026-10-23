@@ -1123,20 +1123,12 @@ Design-of-record: `notes/web-app.md`.
       a `setup/` factory. **Done when:** no file under `setup/` holds the deferred shortfall
       transition or schedules its retry, and the guard fails on the old shape. [P2]
 
-- [ ] **The settings UI's two price-adjustment editors encode and parse the stored values themselves.**
-      `price_optimization_settings` has a shared owner for the adjustment range and its stored
-      encoding (`MAX_PRICE_ADJUSTMENT_C`, `encodePriceAdjustment` in
-      `packages/shared-domain/src/settings/priceOptimization.ts`), which the Flow card's writer
-      (`writeDevicePriceAdjustment`) uses. The two UI editors still store the sign on their own:
-      `readPriceOptInputs` (`packages/settings-ui/src/ui/deviceDetail/priceOpt.ts`, `-Math.abs`)
-      and the Prices tab's `onExpensiveChange(-val)`
-      (`packages/settings-ui/src/ui/views/PriceAwareDevicesView.tsx`). The UI also parses the key
-      with its own `priceOptimizationConfig.ts` alongside `classifyDeviceSetting` in
-      `lib/price/priceOptimizationSettingsStore.ts`. **What changes:** route both editors' writes
-      through `encodePriceAdjustment`, then move the per-device read policy into the shared owner
-      and have both sides call it. **Done when:** no file outside the shared owner writes a sign
-      onto `cheapDelta` / `expensiveDelta`, and one parser classifies a stored entry for both
-      sides. [P2]
+- [ ] **The settings UI's price-adjustment editors still encode stored signs themselves.**
+      The shared owner now classifies persisted entries for both runtime and UI.
+      Route `readPriceOptInputs` (`packages/settings-ui/src/ui/deviceDetail/priceOpt.ts`)
+      and the Prices tab editor (`packages/settings-ui/src/ui/views/PriceAwareDevicesView.tsx`)
+      through `encodePriceAdjustment` in `packages/shared-domain/src/settings/priceOptimization.ts`.
+      Done when neither editor assigns a sign to `cheapDelta` / `expensiveDelta` itself. [P2]
 
 - [ ] **The component loggers are optional because the getter that makes them can return
       `undefined`.** `getStructuredLogger` (`setup/appRuntimeApi.ts`) returns

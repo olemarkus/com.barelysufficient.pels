@@ -31,12 +31,10 @@ import type { OverviewDeferredObjectiveActivePlans } from '../../../contracts/sr
 import type { ChargerPhasePresets, SettingsUiBatteryState } from '../../../contracts/src/settingsUiApi.ts';
 import { DEFAULT_MODE_NAME } from '../../../shared-domain/src/modeLabels.ts';
 import type { ConfiguredShedBehavior } from '../../../shared-domain/src/settings/shedBehaviors.ts';
-import {
-  DEFAULT_PRICE_OPTIMIZATION_CONFIG,
-  type PriceOptimizationConfig,
-} from './priceOptimizationConfig.ts';
+import { DEFAULT_PRICE_OPTIMIZATION_CONFIG } from './priceOptimizationConfig.ts';
+import type { PriceOptimizationConfig } from '../../../contracts/src/priceOptimizationSettings.ts';
 
-export type { PriceOptimizationConfig } from './priceOptimizationConfig.ts';
+export type { PriceOptimizationConfig } from '../../../contracts/src/priceOptimizationSettings.ts';
 
 /**
  * Settings-UI device view: the decorated backend snapshot plus the UI's own
