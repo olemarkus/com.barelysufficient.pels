@@ -676,5 +676,8 @@
   },
   "3.21.1": {
     "en": "Links that open a new tab now work in the Homey web app, including Open the web app and the guides for creating an API key.\n\nPELS in a browser now stays fast away from home. Once you have opened PELS settings in the Homey web app away from home, the browser reaches your Homey through its own cloud address instead of a slower shared one. PELS settings also load faster, especially in the browser."
+  },
+  "3.21.2": {
+    "en": "When Homey is slow to list a charger's actions, PELS now retries the charging current change on the next update instead of waiting out a cooldown for a command it never sent.\n\nDevice control is steadier. Each plan update makes its restore and cooldown decisions from one moment in time, and a device command that has passed its confirmation window no longer triggers an extra plan update."
   }
 }
