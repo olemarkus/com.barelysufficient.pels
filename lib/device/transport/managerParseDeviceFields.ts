@@ -79,11 +79,11 @@ export function resolveDeviceCapabilityProfile(
     deps: DeviceTransportParseDeps,
 ): DeviceCapabilityProfile | null {
     const { effectiveDevice } = identity;
-    const { logger, getCapabilityObj, debugStructured } = deps;
+    const { logger, getCapabilityObj } = deps;
     const rawCapabilities = getCapabilities(effectiveDevice);
     const rawCapabilityObj = getCapabilityObj(effectiveDevice);
     const overlay = resolveFlowCapabilityOverlay(identity, rawCapabilities, rawCapabilityObj, deps, logger);
-    const capsStatus = resolveCandidateCapabilities(identity, overlay, debugStructured);
+    const capsStatus = resolveCandidateCapabilities(identity, overlay);
     if (!capsStatus) return null;
     return { overlay, capsStatus };
 }
@@ -211,7 +211,7 @@ export function assembleDeviceSnapshot(params: {
     const { identity, deps, overlay, capsStatus, now, livePowerWByDeviceId,
         previousSnapshot, purpose, managedDecision } = params;
     const { effectiveDevice, deviceId, deviceClassKey, deviceLabel } = identity;
-    const { debugStructured, resolveLatestLocalWriteMs } = deps;
+    const { resolveLatestLocalWriteMs } = deps;
     // Resolved once here and handed to both consumers: the power estimate needs it
     // for the EV rung of its default, and the snapshot control needs it for
     // everything else. It is a pure function of (deviceClassKey, capabilities), so
@@ -232,7 +232,6 @@ export function assembleDeviceSnapshot(params: {
     );
     const candidateTargets = buildTargets({
         targetCaps: capsStatus.targetCaps, capabilityObj: overlay.capabilityObj, deviceId, deviceLabel,
-        debugStructured,
     });
     const temperature = resolveTemperatureObservation(currentTemperature, candidateTargets);
     const thermostatMode = readReportedThermostatMode(overlay);

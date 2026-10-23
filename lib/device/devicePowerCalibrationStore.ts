@@ -41,8 +41,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
-import type { StructuredDebugEmitter } from '../logging/logger';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter, getLogger } from '../logging/logger';
 import { normalizeError } from '../utils/errorUtils';
 
 const moduleLogger = getLogger('device/power-calibration-store');
@@ -298,6 +297,8 @@ function isLowerPowerStep(
  */
 const HOOK_CADENCE_MIN_INTERVAL_MS = 30_000;
 
+const emitCalibrationDebug = getDebugEmitter('power_calibration', 'power_calibration');
+
 /**
  * Build a `DeviceTransport.onSnapshotMutated` callback that forwards each
  * eligible mutation to the calibration store. Emits a single per-sample
@@ -311,7 +312,6 @@ const HOOK_CADENCE_MIN_INTERVAL_MS = 30_000;
  */
 export function createCalibrationSnapshotMutationHook(
   store: PowerCalibrationStore,
-  debugStructured: StructuredDebugEmitter,
 ): (
   snapshot: TargetDeviceSnapshot & MeasuredPowerObservedProbe
     & SteppedLoadDescriptorProbe & ReportedStepObservedProbe,
@@ -364,7 +364,7 @@ export function createCalibrationSnapshotMutationHook(
     // reading for as long as the car trickles, so the skip line is capped the
     // same way, per (device, step, reason), below.
     if (outcome.accepted) {
-      debugStructured({
+      emitCalibrationDebug({
         event: 'power_calibration_sample_accepted',
         deviceId: snapshot.id,
         deviceName: snapshot.name,
@@ -375,7 +375,7 @@ export function createCalibrationSnapshotMutationHook(
       return;
     }
     if (!claimSkipLogSlot(debounceKey, outcome.reason, nowMs)) return;
-    debugStructured({
+    emitCalibrationDebug({
       event: 'power_calibration_sample_skipped',
       deviceId: snapshot.id,
       deviceName: snapshot.name,

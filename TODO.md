@@ -1230,8 +1230,8 @@ Design-of-record: `notes/web-app.md`.
       `emitRestoreDebugEventOnChange` and `emitSwapDebug` resolved their own emitters, every
       forward above them was dead and came out, `RestoreDeps.debugStructured` included — ten
       declarations for two terminal readers.
-      Fix, one cluster per PR, leaf-first — `lib/plan/shedding/**`,
-      the `lib/plan` builder plus `planTargetControl.ts`, `lib/device/transport/**`,
+      `lib/plan/shedding/**` and `lib/device/**` are done too.
+      Fix, one cluster per PR, leaf-first — the `lib/plan` builder plus `planTargetControl.ts`,
       `lib/objectives/**`, then `lib/dailyBudget`, and last
       `setup/**` + `flowCards/**` with the `Loggers` type: replace the parameter with a module-scope
       `getDebugEmitter(...)`, delete the field from that file's parameter types and from every
