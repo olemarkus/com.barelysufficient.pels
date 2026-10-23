@@ -121,12 +121,17 @@ export const refreshWeatherInsightOnBudgetTab = async (): Promise<void> => {
   await maybeCelebrateFirstEstimate();
 };
 
-/** Weather-insight sub-page activation hook: render the master switch, then (when on) the validity lines. */
+/**
+ * Weather-insight sub-page activation hook: render the master switch, then
+ * (when on) the pickers and validity lines.
+ */
 export const refreshWeatherInsightOnWeatherPanel = async (): Promise<void> => {
   // Render unconditionally so the master switch is present even when the feature
   // is off — the sub-page is now the place a disabled feature gets turned on.
   renderSettingsSection();
   if (!currentSettings.enabled) return;
+  // The pickers live on this sub-page only, so their device list loads here.
+  void ensurePickerDevicesLoaded();
   await fetchReadout();
 };
 
@@ -280,7 +285,13 @@ const maybeCelebrateFirstEstimate = async (): Promise<void> => {
 /** Boot hook: prime the flag from the (bootstrap-cached) setting and render the section. */
 export const initWeatherInsight = async (): Promise<void> => {
   await reloadSettings();
-  if (currentSettings.enabled) void ensurePickerDevicesLoaded();
+  // A visit to the sub-page before this read ran its activation against the
+  // default (off) flag; finish that activation now the saved flag is known.
+  if (document.getElementById('weather-panel')?.classList.contains('hidden') === false) {
+    void refreshWeatherInsightOnWeatherPanel()
+      .catch((error: unknown) => logSettingsError('Failed to refresh weather insight', error, 'weatherInsight'));
+    return;
+  }
   renderSettingsSection();
 };
 

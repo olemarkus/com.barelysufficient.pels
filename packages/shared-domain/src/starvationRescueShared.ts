@@ -87,6 +87,15 @@ export const resolveRescuableDeviceFromList = (
   return { ok: true, target };
 };
 
+// The rescuable devices on a starved list: those `resolveRescuableDeviceFromList`
+// accepts, so the gate the Overview chip is drawn from and the check a preview
+// and create run are one rule.
+export const selectRescuableDeviceIds = (devices: StarvationRescueDevice[]): string[] => (
+  devices
+    .filter((device) => resolveRescuableDeviceFromList([device], device.deviceId).ok)
+    .map((device) => device.deviceId)
+);
+
 // Build the rescue candidate: a soft objective aimed at the device's intended
 // normal target (a temperature, or a charger's target battery level), carrying
 // every "Extra permission" the rescue can offer.

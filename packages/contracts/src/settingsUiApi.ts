@@ -223,6 +223,7 @@ export type SettingsUiBootstrapKey =
   | 'ev_charge_target_settings'
   | 'device_expected_power_overrides'
   | 'ev_car_associations'
+  | 'setup_recommendation_dismissals'
   | 'weather_advisor_first_estimate_seen';
 
 export type SettingsUiSettingsPatch = {
@@ -403,6 +404,14 @@ export type SettingsUiPlanSnapshot = {
   generatedAtMs?: number;
   meta?: SettingsUiPlanMetaSnapshot;
   devices?: SettingsUiPlanDeviceSnapshot[];
+  /**
+   * The held-back devices the Overview's "Let it run now" chip may offer the
+   * rescue on: task-free, with a known target. The same gate as
+   * `/ui_starvation_rescue_devices`, carried on the plan so an open Overview
+   * reads nothing extra per plan push. A meter area's plan lists none, since
+   * the rescue lane is the Main home's.
+   */
+  rescuableDeviceIds: string[];
 };
 
 export type SettingsUiPlanPayload = {

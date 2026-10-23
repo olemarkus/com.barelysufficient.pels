@@ -11,7 +11,7 @@ import { buildHomeRuntimeReadPort } from '../../setup/appInit/wireHomeRuntimeReg
 
 const readingFor = (homeId: string): HomeRuntimeReading => ({
   homeId,
-  plan: { generatedAtMs: 1_000, devices: [] },
+  plan: { generatedAtMs: 1_000, devices: [], rescuableDeviceIds: [] },
   planUpdatedAtMs: 1_000,
   powerTracker: { lastPowerW: 2_400 },
   currentMonthCapacityPeakKw: null,

@@ -33,6 +33,7 @@ import { flattenPlanHistoryEntries, resolveMissStreakBadges } from '../../../sha
 import { resolveSmartTaskListStatus } from '../../../shared-domain/src/deadlineLabels.ts';
 import type { OverviewDeferredObjectiveActivePlan } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { PlanSnapshot } from './planTypes.ts';
+import { applyPlanRescueGate } from './starvationRescue.ts';
 import { resolveEvCardStateLines } from './evCardStateLine.ts';
 import type { SetupPathRead } from './setupPathFacts.ts';
 import type { SolarNowInput } from '../../../shared-domain/src/solar/solarNow.ts';
@@ -252,8 +253,8 @@ const commitPlan = (plan: PlanSnapshot | null, scope: OverviewScope) => {
 };
 
 /**
- * MAIN-stream entry point — the realtime `plan_updated` push and the rescue
- * gate's deferred repaint, both of which only ever carry the MAIN home's plan
+ * MAIN-stream entry point — the realtime `plan_updated` push and the Main
+ * plan refresh, both of which only ever carry the MAIN home's plan
  * (`plan_updated` is deliberately never widened to sub-homes).
  *
  * THE bare-URI-prime guard (multi-home): that push also re-seeds the bare
@@ -271,6 +272,12 @@ export const renderPlan = (plan: PlanSnapshot | null) => {
   // an unmeasured cycle draws no hero, so the banner is where the page says
   // why every managed device below reads `Limited`.
   setPlanUnmeasured(plan?.meta?.powerIsMeasured === false);
+  // A committed plan (a `plan_updated` push included) supersedes any refresh
+  // still reading an older one, so that refresh can never paint it, or its
+  // rescue gate, back over this one.
+  planRefreshGeneration += 1;
+  // The rescue chip's gate rides the plan it is drawn with.
+  applyPlanRescueGate(plan?.rescuableDeviceIds ?? []);
   commitPlan(plan, { kind: 'main' });
 };
 
@@ -339,6 +346,25 @@ export const updatePlanPower = (
   doRender();
 };
 
+// The status poll's power read, between the plan refreshes that otherwise
+// carry the hero's "Solar now" triple: every `power_updated` push is
+// status-only, so the tracker arrives through this read. A plan refresh that
+// starts meanwhile is newer and wins.
+export const refreshPlanPower = async (): Promise<void> => {
+  if (getHomeScope().selectedHomeId !== MAIN_HOME_ID) return;
+  const generation = planRefreshGeneration;
+  let payload: SettingsUiPowerPayload | null;
+  try {
+    payload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
+  } catch {
+    // A failed poll keeps the line the last good read drew.
+    return;
+  }
+  if (generation !== planRefreshGeneration || getHomeScope().selectedHomeId !== MAIN_HOME_ID) return;
+  cachedSolarNowInput = payload ? toSolarNowInput(payload.tracker) : null;
+  doRender();
+};
+
 const readPricesForPlanRefresh = async (): Promise<SettingsUiPricesPayload | null> => {
   try {
     return await getPricesReadModel();
@@ -353,8 +379,13 @@ const readPricesForPlanRefresh = async (): Promise<SettingsUiPricesPayload | nul
 // (the same contract the Smart-tasks list uses): nothing invalidates a cached
 // history payload when a run finalizes. Last-wins guarded so an older slow
 // read can't overwrite a fresher one; repaints when the badges land.
+// A streak changes only when a run ends, so the history is read when the
+// Overview opens, when a task's active plan changes, and on the Overview's
+// slow safety-net refresh, not on every plan refresh. Main only: the row is a
+// Main-home surface the area render omits.
 let historyRefreshSequence = 0;
-const refreshPlanHistoryInBackground = (): void => {
+export const refreshPlanHistory = (): void => {
+  if (getHomeScope().selectedHomeId !== MAIN_HOME_ID) return;
   historyRefreshSequence += 1;
   const sequence = historyRefreshSequence;
   void (async () => {
@@ -500,14 +531,11 @@ const refreshAreaPlan = async (homeId: string): Promise<void> => {
 export const refreshPlan = async () => {
   const { selectedHomeId } = getHomeScope();
   if (selectedHomeId !== MAIN_HOME_ID) {
-    // The plan-history fetch feeds the smart-task row's miss-streak variant —
-    // a Main-home surface the area render omits, so skip the fetch too.
     await refreshAreaPlan(selectedHomeId);
     return;
   }
   planRefreshGeneration += 1;
   const generation = planRefreshGeneration;
-  refreshPlanHistoryInBackground();
   const [plan, power, prices] = await Promise.all([
     getPlanSnapshot(),
     readPowerForPlanRefresh(),

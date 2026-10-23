@@ -1180,7 +1180,7 @@ describe('Redesign plan UI', () => {
       state.devicesLoaded = true;
       const { renderPlan } = await import('../src/ui/plan.ts');
 
-      renderPlan({ meta: buildPlanMeta({ totalKw: 2, softLimitKw: 5 }), devices: [] });
+      renderPlan({ meta: buildPlanMeta({ totalKw: 2, softLimitKw: 5 }), devices: [], rescuableDeviceIds: [] });
 
       expect(document.querySelector('#plan-empty')).toBeNull();
       const cards = Array.from(document.querySelectorAll('#plan-cards .plan-card'));
@@ -1282,7 +1282,7 @@ describe('Redesign plan UI', () => {
         deviceClass: 'heater', deviceType: 'onoff' as const, isEvCharger: false,
         binaryControllable: false, isBatteryOrSolar: false,
       }];
-      const plan = { meta: buildPlanMeta({ totalKw: 2, softLimitKw: 5 }), devices: [] };
+      const plan = { meta: buildPlanMeta({ totalKw: 2, softLimitKw: 5 }), devices: [], rescuableDeviceIds: [] };
       const homey = installHomeyMock({
         uiState: { plan },
         apiHandlers: {

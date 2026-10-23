@@ -10,6 +10,7 @@ import {
   invalidateApiCacheForAllHomes,
 } from './homey.ts';
 import { state, type SettingsUiDeviceView } from './state.ts';
+import { anyChargerHasSelectedCar } from './deviceDetail/carAssociation.ts';
 
 export type EvSocFlowReportersRead =
   | { state: 'loading' }
@@ -146,6 +147,20 @@ const runFlowConflictRefresh = async (): Promise<SettingsUiFlowConflictRefreshPa
 export const refreshFlowConflictFacts = (): Promise<SettingsUiFlowConflictRefreshPayload> => (
   runFlowConflictRefresh()
 );
+
+/**
+ * The battery-reporting Flows, read only when a charger has a car selected:
+ * nothing else needs them, and the runtime's own Flow scans (at startup and
+ * every 30 minutes) keep each device's conflict facts current. The scan reads
+ * every Homey Flow, so the settings page's boot leaves it to the Setup &
+ * recommendations page, which runs it on every visit, and to a car selection.
+ * Once read, the reporters stand until such a scan replaces them.
+ */
+export const refreshEvSocReportersIfNeeded = async (): Promise<void> => {
+  if (evSocFlowReportersRead.state === 'resolved') return;
+  if (!anyChargerHasSelectedCar()) return;
+  await runFlowConflictRefresh();
+};
 
 /** A user check starts after any older scan so it observes edits made before the click. */
 export const refreshFlowConflictFactsExplicit = async (): Promise<SettingsUiFlowConflictRefreshPayload> => {

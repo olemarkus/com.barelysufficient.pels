@@ -148,6 +148,10 @@ export type PlanServiceDeps = {
   deviceDiagnostics?: {
     getOverviewStarvation?: (deviceId: string) => SettingsUiPlanDeviceSnapshot['starvation'] | null;
   };
+  // The Overview's rescue gate for the published plan
+  // (`SettingsUiPlanSnapshot.rescuableDeviceIds`): Main reads the live starved
+  // list; a meter area has no rescue lane and binds none.
+  readStarvationRescuableDeviceIds: () => string[];
   // Whether this service drives the shared settings-UI realtime `plan_updated`
   // channel. The settings UI reads ONE `plan_updated` stream (the main home's
   // plan); a sub-home capacity bundle (R7b) must NOT clobber it with its own

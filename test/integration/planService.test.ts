@@ -1207,6 +1207,9 @@ describe('PlanService', () => {
           accumulatedMs: 30 * 60 * 1000,
         })),
       },
+      // The starved heater is task-free with a known target: the rescue gate
+      // rides the published plan.
+      readStarvationRescuableDeviceIds: () => ['dev-1'],
     });
     const runtimePlan = buildPlan(
       18,
@@ -1277,6 +1280,7 @@ describe('PlanService', () => {
           },
         }),
       ],
+      rescuableDeviceIds: ['dev-1'],
     });
   });
 

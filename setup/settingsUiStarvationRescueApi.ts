@@ -10,7 +10,7 @@ import {
   mapAppRescueReason,
   parseRescueRequest,
   RESCUE_DEADLINE_HORIZON_MS,
-  resolveRescuableDeviceFromList,
+  selectRescuableDeviceIds,
 } from '../packages/shared-domain/src/starvationRescueShared';
 import { formatSmartTaskDeadlineLong } from '../packages/shared-domain/src/smartTaskDeadlineFormat';
 import { scheduledHoursIncludeCurrentHour } from '../packages/shared-domain/src/planStarvation';
@@ -46,13 +46,9 @@ const createRescueReject = (
 // live list, so a chip shown from a stale set can still be rejected.
 export const getSettingsUiStarvationRescueDevices = (
   { homey }: RescueApiContext,
-): SettingsUiStarvationRescueDevicesPayload => {
-  const devices = readPelsHost(homey)?.getStarvedRescueDevices() ?? [];
-  const rescuableDeviceIds = devices
-    .filter((device) => resolveRescuableDeviceFromList([device], device.deviceId).ok)
-    .map((device) => device.deviceId);
-  return { rescuableDeviceIds };
-};
+): SettingsUiStarvationRescueDevicesPayload => ({
+  rescuableDeviceIds: selectRescuableDeviceIds(readPelsHost(homey)?.getStarvedRescueDevices() ?? []),
+});
 
 export const previewSettingsUiStarvationRescue = (
   { homey, body }: RescueApiContext & { body?: unknown },

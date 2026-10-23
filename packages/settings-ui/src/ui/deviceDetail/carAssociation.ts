@@ -26,7 +26,13 @@ import {
   deviceDetailCarStatus,
 } from '../dom.ts';
 import {
-  callApi, getHomeyTimezone, getSetting, getSettingFresh, invalidateApiCacheForAllHomes, sleep,
+  callApi,
+  coldStartReadRetryDelays,
+  getHomeyTimezone,
+  getSetting,
+  getSettingFresh,
+  invalidateApiCacheForAllHomes,
+  sleep,
 } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
 import { isEvObserved } from '../../../../shared-domain/src/evObservedState.ts';
@@ -77,7 +83,9 @@ export const loadEvCarAssociations = async (): Promise<void> => {
   const generation = ++associationLoadGeneration;
   try {
     let value = await getSetting(EV_CAR_ASSOCIATIONS);
-    for (const delayMs of ASSOCIATION_READ_RETRY_DELAYS_MS) {
+    // Absence the bootstrap served is the runtime's answer: the key was never
+    // written. Only a WebView read needs the cold-start grace.
+    for (const delayMs of coldStartReadRetryDelays(EV_CAR_ASSOCIATIONS, ASSOCIATION_READ_RETRY_DELAYS_MS)) {
       if (value !== null && value !== undefined) break;
       await sleep(delayMs);
       value = await getSettingFresh(EV_CAR_ASSOCIATIONS);
@@ -115,6 +123,11 @@ export const loadEvCarAssociations = async (): Promise<void> => {
     await logSettingsError('Failed to load car associations', error, 'loadEvCarAssociations');
   }
 };
+
+/** Whether any charger has a car selected: what makes the battery-reporting Flows matter. */
+export const anyChargerHasSelectedCar = (): boolean => (
+  Object.values(state.evCarAssociations).some((association) => association.carIds.length > 0)
+);
 
 export const clearEvCarAssociations = (): void => {
   associationLoadGeneration += 1;

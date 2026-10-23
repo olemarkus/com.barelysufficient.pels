@@ -44,7 +44,8 @@ import type { PlanServiceDeps } from './planServiceDeps';
  */
 export type SettingsOverviewReadModelDeps = Pick<PlanServiceDeps,
   | 'homeId' | 'getObservedEvChargingState' | 'getAssociatedCarChargingState' | 'getObservedStateOfCharge'
-  | 'getObservedTemperature' | 'getThermalDirection' | 'getHomeBatteryCard' | 'getSteppedLoadProfileById'> & {
+  | 'getObservedTemperature' | 'getThermalDirection' | 'getHomeBatteryCard' | 'getSteppedLoadProfileById'
+  | 'readStarvationRescuableDeviceIds'> & {
   getDeviceExecutionState: (deviceId: string) => DeviceExecutionState;
   dryRun: boolean;
   nowMs: number;
@@ -286,5 +287,6 @@ export function buildSettingsOverviewReadModel(
         steppedLoadProfileById.get(device.id),
       )];
     }),
+    rescuableDeviceIds: deps.readStarvationRescuableDeviceIds(),
   };
 }

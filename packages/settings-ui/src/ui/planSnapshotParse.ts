@@ -149,21 +149,31 @@ const isValidPlanMeta = (value: unknown): boolean => {
     && (!meta.powerIsMeasured || MEASURED_META_NUMBERS.every((key) => isFiniteNumber(meta[key])));
 };
 
+const isDeviceIdList = (value: unknown): value is string[] => (
+  Array.isArray(value) && value.every((deviceId) => typeof deviceId === 'string')
+);
+
 export const parsePlanSnapshot = (value: unknown): PlanSnapshot | null => {
   if (!value || typeof value !== 'object') return null;
   const meta = (value as { meta?: unknown }).meta;
   if (meta !== undefined && !isValidPlanMeta(meta)) return null;
+  // The rescue gate is an affordance no figure rests on, so like a device's
+  // optional facets, a missing or malformed list offers no rescue rather than
+  // discarding the plan.
+  const plan: PlanSnapshot = isDeviceIdList((value as { rescuableDeviceIds?: unknown }).rescuableDeviceIds)
+    ? value as PlanSnapshot
+    : { ...(value as PlanSnapshot), rescuableDeviceIds: [] };
   const devices = (value as { devices?: unknown }).devices;
-  if (devices === undefined) return value;
+  if (devices === undefined) return plan;
   if (!Array.isArray(devices) || !devices.every(isPlanDeviceSnapshot)) {
     return null;
   }
   // Identity-preserving on the clean path: consumers (and the byte-identical
   // Main-scope read) rely on an untouched payload passing through as-is; a
   // copy exists only to carry a sanitized device list.
-  if (!devices.some(needsFacetSanitizing)) return value;
+  if (!devices.some(needsFacetSanitizing)) return plan;
   return {
-    ...(value as PlanSnapshot),
+    ...plan,
     devices: devices.map(withValidatedFacets),
   };
 };

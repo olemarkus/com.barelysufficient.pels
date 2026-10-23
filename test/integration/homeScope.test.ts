@@ -116,6 +116,8 @@ describe('buildMainHomeScope', () => {
     // Main emits realtime and carries the shared recorder.
     expect(scope.emitsUiRealtime).toBe(true);
     expect(scope.getDeviceDiagnostics()).toBe(diagnostics);
+    // Main's plan carries the rescue gate from the live starved list (none here).
+    expect(scope.readStarvationRescuableDeviceIds()).toEqual([]);
   });
 
   // R7b P1-3 (regression fix): `buildMainHomeScope` runs in the `AppServiceWiring`

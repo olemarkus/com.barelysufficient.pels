@@ -43,7 +43,9 @@ const failOnlyPowerSource = (readRealSetting: (key: string) => unknown) => (key:
   return readRealSetting(key);
 };
 
-const AREA_PLAN = { generatedAtMs: 42, meta: buildSettingsUiPlanMeta({ totalKw: 1.5 }), devices: [] };
+const AREA_PLAN = {
+  generatedAtMs: 42, meta: buildSettingsUiPlanMeta({ totalKw: 1.5 }), devices: [], rescuableDeviceIds: [],
+};
 // Latched (production `recordPowerSample` stamps `lastPowerW` and
 // `lastTimestamp` together): the served area is a MEASURED home, so its
 // published status classifies as live. The gated-area test clears the latch.

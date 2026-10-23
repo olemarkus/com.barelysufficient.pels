@@ -6,7 +6,7 @@ const device = () => uiDeviceFixture({ currentState: 'off', plannedState: 'shed'
 
 describe('parsePlanSnapshot resolved status boundary', () => {
   it('accepts a clean authoritative presentation without copying or resolving it', () => {
-    const payload = { devices: [device()] };
+    const payload = { devices: [device()], rescuableDeviceIds: [] };
     expect(parsePlanSnapshot(payload)).toBe(payload);
   });
 
@@ -85,14 +85,18 @@ describe('parsePlanSnapshot meta guard', () => {
   };
 
   it('accepts genuine absence of both control axes and a grid-only snapshot', () => {
-    const disabled = { meta: { ...validMeta, softLimitKw: null, capacitySoftLimitKw: null, softLimitSource: null }, devices: [] };
+    const disabled = {
+      meta: { ...validMeta, softLimitKw: null, capacitySoftLimitKw: null, softLimitSource: null },
+      devices: [],
+      rescuableDeviceIds: [],
+    };
     expect(parsePlanSnapshot(disabled)).toBe(disabled);
-    const grid = { meta: { ...validMeta, capacitySoftLimitKw: null, gridImportLimitKw: 3.3, gridImportTargetKw: 3.135, softLimitKw: 3.135, softLimitSource: 'grid' }, devices: [] };
+    const grid = { meta: { ...validMeta, capacitySoftLimitKw: null, gridImportLimitKw: 3.3, gridImportTargetKw: 3.135, softLimitKw: 3.135, softLimitSource: 'grid' }, devices: [], rescuableDeviceIds: [] };
     expect(parsePlanSnapshot(grid)).toBe(grid);
   });
 
   it('passes a complete meta through identity-preserving', () => {
-    const payload = { meta: validMeta, devices: [] };
+    const payload = { meta: validMeta, devices: [], rescuableDeviceIds: [] };
     expect(parsePlanSnapshot(payload)).toBe(payload);
   });
 
@@ -103,6 +107,7 @@ describe('parsePlanSnapshot meta guard', () => {
     const paceNull = {
       meta: { ...validMeta, budgetPaceKw: null, projectedExemptKw: null },
       devices: [],
+      rescuableDeviceIds: [],
     };
     expect(parsePlanSnapshot(paceNull)).toBe(paceNull);
     expect(parsePlanSnapshot({
@@ -142,7 +147,7 @@ describe('parsePlanSnapshot meta guard', () => {
     // The wire meta is a union on `powerIsMeasured`. Unmeasured carries the
     // bare signal — the hero draws nothing from it, so there is no headroom or
     // managed/background split to require. Measured requires all three.
-    const unmeasured = { meta: { ...baseMeta, powerIsMeasured: false }, devices: [] };
+    const unmeasured = { meta: { ...baseMeta, powerIsMeasured: false }, devices: [], rescuableDeviceIds: [] };
     expect(parsePlanSnapshot(unmeasured)).toBe(unmeasured);
     expect(parsePlanSnapshot({ meta: { ...baseMeta, powerIsMeasured: true }, devices: [] })).toBeNull();
     expect(parsePlanSnapshot({ meta: { ...validMeta, uncontrolledKw: undefined }, devices: [] })).toBeNull();
@@ -154,7 +159,24 @@ describe('parsePlanSnapshot meta guard', () => {
   });
 
   it('leaves a payload with no meta alone', () => {
-    const payload = { devices: [] };
+    const payload = { devices: [], rescuableDeviceIds: [] };
     expect(parsePlanSnapshot(payload)).toBe(payload);
+  });
+});
+
+describe('parsePlanSnapshot rescue gate', () => {
+  it('keeps a well-formed list on the identical payload', () => {
+    const payload = { devices: [], rescuableDeviceIds: ['heater-1'] };
+    expect(parsePlanSnapshot(payload)).toBe(payload);
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['not a list', 'heater-1'],
+    ['holding a non-id', ['heater-1', 7]],
+  ])('offers no rescue for a %s list, and keeps the plan', (_label, rescuableDeviceIds) => {
+    const parsed = parsePlanSnapshot({ devices: [device()], rescuableDeviceIds });
+    expect(parsed?.rescuableDeviceIds).toEqual([]);
+    expect(parsed?.devices).toHaveLength(1);
   });
 });

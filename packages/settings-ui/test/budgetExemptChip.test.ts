@@ -12,8 +12,9 @@ import { uiDeviceFixture, type CardFixture } from './helpers/deviceStatusFixture
 // The chip calls the rescue controller, which talks to the API over `callApi`
 // and surfaces toasts. Mock the network/toast seam so the REAL chip → REAL
 // controller path runs against a controllable boundary. `isStarvationRescuable`
-// in the controller reads `state.starvationRescuableDeviceIds`, which the tests
-// set directly — so the gate is exercised for real, not stubbed.
+// in the controller reads the gate the rendered plan carried, which the tests
+// apply through the same seam `renderPlan` uses — so the gate is exercised for
+// real, not stubbed.
 const callApi = vi.fn();
 vi.mock('../src/ui/homey.ts', () => ({
   callApi: (...args: unknown[]) => callApi(...args),
@@ -25,7 +26,7 @@ vi.mock('../src/ui/planRedesign.ts', () => ({ bumpPlanSurface: vi.fn() }));
 
 const { BudgetExemptChip, PlanGenericCard, PlanTemperatureCard } = await import('../src/ui/views/PlanDeviceCards.tsx');
 const { PlanSteppedCard } = await import('../src/ui/views/PlanSteppedCard.tsx');
-const { state } = await import('../src/ui/state.ts');
+const { applyPlanRescueGate } = await import('../src/ui/starvationRescue.ts');
 
 const heldBackStarvation = (
   overrides: Partial<SettingsUiPlanDeviceStarvation> = {},
@@ -48,12 +49,12 @@ const renderChip = (dev: PlanDeviceSnapshot): HTMLDivElement => {
 beforeEach(() => {
   callApi.mockReset();
   // Default: the device IS rescuable (the common case the chip renders for).
-  state.starvationRescuableDeviceIds = new Set(['heater-1', 'heater-2']);
+  applyPlanRescueGate(['heater-1', 'heater-2']);
 });
 
 afterEach(() => {
   while (document.body.firstChild) document.body.removeChild(document.body.firstChild);
-  state.starvationRescuableDeviceIds = new Set();
+  applyPlanRescueGate([]);
 });
 
 describe('BudgetExemptChip', () => {
@@ -103,7 +104,7 @@ describe('BudgetExemptChip', () => {
     // Mirrors getStarvedRescueDevices: a device with its own smart task, or no
     // known target, is held back but NOT rescuable — so it offers no chip, and a
     // create call that the server would reject is not offered in the first place.
-    state.starvationRescuableDeviceIds = new Set(['some-other-device']);
+    applyPlanRescueGate(['some-other-device']);
     expect(renderChip(buildDevice()).querySelector('button')).toBeNull();
   });
 

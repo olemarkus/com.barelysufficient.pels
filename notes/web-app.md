@@ -195,11 +195,26 @@ hub.
 
 ## Load time
 
-Measured on the test Homey: about 40 requests per boot in about 7 sequential
-waves. Through the cloud a small request takes about 0.35 s and `ui_bootstrap`
-0.8 to 1.4 s, so a boot costs roughly 3 to 4 s; on the home network the waves
-cost little. Duplicate reads all fall in
-the same wave as their twin, so sharing in-flight reads saves requests but not
-time, and it weakens the settings UI's "newer refresh wins" guards; it was
-tried and dropped. Fewer waves is the lever, for example `ui_bootstrap`
-carrying the settings the UI reads one by one right after it.
+Through the cloud a small request takes 0.1 to 0.4 s and `ui_bootstrap` 0.4
+to 1.4 s, so a boot that waits on one call after another costs seconds; on the
+home network the waves cost little. Fewer waves is the lever for time:
+`ui_bootstrap` carries every setting the boot reads, and a value it served is
+final, so an absent key gets no cold-start re-reads either. Booting the
+published build against the test Homey through its cloud host (2026-10-24):
+v3.21.0 sent 42 calls, 17 of them setting reads that followed the bootstrap;
+v3.22.0, whose bootstrap carries those settings, sent 27, and its only setting
+reads were the three cold-start reads of the recommendation dismissals.
+
+Requests also count against the cloud's per-Homey rate limit, so boot sends
+each read once. A boot of the browser stub now sends about 15 calls. Readers
+of one read model that miss the cache together share a single request
+(`getApiReadModel`). The share is keyed by the cache's invalidation
+generation, so a read that starts after an invalidation never joins an older
+request, and the "newer refresh wins" guards still hold. A panel activation
+whose roster refresh published a scope change leaves the refresh to the
+panel's scope subscription instead of running it twice. Pages load their own
+lists when opened, such as the Homey device lists for Advanced and the weather
+pickers. An open page follows pushes and settings events: the plan carries the
+rescue chip's gate, and the 30 s status poll re-reads the plan and the
+smart-task history only every fourth time, as a safety net for a push the
+WebView missed.

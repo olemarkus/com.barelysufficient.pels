@@ -451,20 +451,17 @@ describe('recommendation loading', () => {
       if (path === SETTINGS_UI_RECOMMENDATION_CARS_PATH) return resolvedCars();
       return {};
     });
-    refreshFlowConflictsApi
-      .mockResolvedValueOnce({
-        devices: [conflictedDevice],
-        evSocReporters: [],
-      })
-      .mockResolvedValue({
-        devices: [{
-          id: conflictedDevice.id,
-          controlAdapter: { ...conflictedDevice.controlAdapter!, activationEnabled: true },
-        }],
-        evSocReporters: [],
-      });
+    refreshFlowConflictsApi.mockResolvedValue({
+      devices: [{
+        id: conflictedDevice.id,
+        controlAdapter: { ...conflictedDevice.controlAdapter!, activationEnabled: true },
+      }],
+      evSocReporters: [],
+    });
 
     await recommendations.loadRecommendationData();
+    // No charger has a car selected: the boot reads no Flows.
+    expect(refreshFlowConflictsApi).not.toHaveBeenCalled();
     const listeners = vi.spyOn(document, 'addEventListener');
     recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
     try {
@@ -477,9 +474,44 @@ describe('recommendation loading', () => {
 
       await vi.waitFor(() => {
         expect(surface?.textContent).not.toContain('Built-in device control is paused for Connected 300');
+        expect(surface?.textContent).toContain('No setup suggestions right now');
       });
       expect(refreshFlowConflictsApi).toHaveBeenCalledWith('POST', SETTINGS_UI_REFRESH_FLOW_CONFLICTS_PATH, {});
-      expect(surface?.textContent).toContain('No setup suggestions right now');
+    } finally {
+      for (const [type, listener, options] of listeners.mock.calls) {
+        document.removeEventListener(type, listener, options);
+      }
+      listeners.mockRestore();
+    }
+  });
+
+  it('reads the battery-reporting Flows once a car is selected after boot', async () => {
+    const charger = device({ id: 'charger-1', name: 'Easee', deviceClass: 'evcharger', isEvCharger: true });
+    const recommendations = await loadSubject([charger]);
+    const { state } = await import('../src/ui/state.ts');
+    getSetting.mockResolvedValue({});
+    callApi.mockResolvedValue(resolvedCars(SELECTED_CAR));
+    refreshFlowConflictsApi.mockResolvedValue({
+      devices: [{ id: charger.id }],
+      evSocReporters: [{ chargerDeviceId: charger.id, flowName: 'Report car battery' }],
+    });
+    await recommendations.loadRecommendationData();
+    expect(refreshFlowConflictsApi).not.toHaveBeenCalled();
+
+    const listeners = vi.spyOn(document, 'addEventListener');
+    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+    try {
+      state.evCarAssociations = { 'charger-1': { carIds: ['car-1'] } };
+      document.dispatchEvent(new CustomEvent('ev-car-associations-updated'));
+      const surface = document.getElementById('setup-recommendations-root');
+      await vi.waitFor(() => {
+        expect(surface?.textContent).toContain('Remove unused battery reporting for Easee');
+      });
+
+      // Read once; another selection keeps them.
+      document.dispatchEvent(new CustomEvent('ev-car-associations-updated'));
+      await Promise.resolve();
+      expect(refreshFlowConflictsApi).toHaveBeenCalledTimes(1);
     } finally {
       for (const [type, listener, options] of listeners.mock.calls) {
         document.removeEventListener(type, listener, options);
@@ -506,11 +538,22 @@ describe('recommendation loading', () => {
     expect(surface?.textContent).toContain('Remove unused battery reporting for Easee');
     expect(surface?.textContent).toContain('Report car battery');
 
+    // Opening the page scans the Flows again; this scan fails.
     refreshFlowConflictsApi.mockRejectedValue(new Error('Flow API unavailable'));
-    await recommendations.loadRecommendationData();
-
-    expect(surface?.textContent).toContain('Remove unused battery reporting for Easee');
-    expect(surface?.textContent).toContain('Some recommendation checks couldn’t be refreshed right now');
+    const listeners = vi.spyOn(document, 'addEventListener');
+    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+    try {
+      document.dispatchEvent(new CustomEvent('pels:tab-shown', { detail: { tabId: 'recommendations' } }));
+      await vi.waitFor(() => {
+        expect(surface?.textContent).toContain('Some recommendation checks couldn’t be refreshed right now');
+      });
+      expect(surface?.textContent).toContain('Remove unused battery reporting for Easee');
+    } finally {
+      for (const [type, listener, options] of listeners.mock.calls) {
+        document.removeEventListener(type, listener, options);
+      }
+      listeners.mockRestore();
+    }
   });
 
   it('withdraws the unmatched-car warning when the car list fails to refresh', async () => {
@@ -533,8 +576,9 @@ describe('recommendation loading', () => {
     expect(surface?.textContent).toContain('Easee has no battery level');
 
     // "Not matched yet" may no longer hold, so a stale list advises nothing.
+    // A `devices_updated` push re-reads the car list (`realtime.ts`).
     callApi.mockResolvedValue({ state: 'unavailable' });
-    await recommendations.loadRecommendationData();
+    await recommendations.refreshCarInventory();
     expect(surface?.textContent).not.toContain('Easee has no battery level');
     expect(surface?.textContent).not.toContain('Remove unused battery reporting for Easee');
   });
@@ -818,17 +862,15 @@ describe('recommendation loading', () => {
       refreshAttempts += 1;
       return {
         devices: refreshAttempts === 1
-          ? [conflictedDevice]
-          : refreshAttempts === 2
-            ? []
+          ? []
           : [{
             id: conflictedDevice.id,
-            flowConflict: refreshAttempts === 3
+            flowConflict: refreshAttempts === 2
               ? { conflictingCapabilities: 'malformed' }
               : undefined,
-            controlAdapter: refreshAttempts === 4
+            controlAdapter: refreshAttempts === 3
               ? { ...conflictedDevice.controlAdapter!, activationEnabled: 'malformed' }
-              : refreshAttempts === 5
+              : refreshAttempts === 4
                 ? { ...conflictedDevice.controlAdapter!, activationEnabled: true }
                 : conflictedDevice.controlAdapter,
           }],
@@ -837,6 +879,9 @@ describe('recommendation loading', () => {
     });
 
     await recommendations.loadRecommendationData();
+    // No charger has a car selected, so the boot leaves the Flow scan to the
+    // owner's "Check again" and the runtime's own scans.
+    expect(refreshAttempts).toBe(0);
     primeApiCache(SETTINGS_UI_DEVICES_PATH, {
       devices: [conflictedDevice],
       chargerPhasePresets: { state: 'resolved', presets: {} },
@@ -856,7 +901,7 @@ describe('recommendation loading', () => {
 
       clickCheckAgain();
       await vi.waitFor(() => {
-        expect(refreshAttempts).toBe(2);
+        expect(refreshAttempts).toBe(1);
         expect(checkAgainButton()).toBeDefined();
       });
       expect(surface?.textContent).toContain('Built-in device control is paused for Connected 300');
@@ -870,7 +915,7 @@ describe('recommendation loading', () => {
 
       clickCheckAgain();
       await vi.waitFor(() => {
-        expect(refreshAttempts).toBe(3);
+        expect(refreshAttempts).toBe(2);
         expect(checkAgainButton()).toBeDefined();
       });
       expect(surface?.textContent).toContain('Built-in device control is paused for Connected 300');
@@ -879,7 +924,7 @@ describe('recommendation loading', () => {
 
       clickCheckAgain();
       await vi.waitFor(() => {
-        expect(refreshAttempts).toBe(4);
+        expect(refreshAttempts).toBe(3);
         expect(checkAgainButton()).toBeDefined();
       });
       expect(surface?.textContent).toContain('Built-in device control is paused for Connected 300');
@@ -888,12 +933,34 @@ describe('recommendation loading', () => {
       await vi.waitFor(() => {
         expect(surface?.textContent).not.toContain('Built-in device control is paused for Connected 300');
       });
-      expect(refreshAttempts).toBe(5);
+      expect(refreshAttempts).toBe(4);
     } finally {
       for (const [type, listener, options] of listeners.mock.calls) {
         document.removeEventListener(type, listener, options);
       }
       listeners.mockRestore();
+    }
+  });
+
+  it('takes absent dismissals the bootstrap served as none, without cold-start retries', async () => {
+    const recommendations = await loadSubject([device({
+      flowConflict: { conflictingCapabilities: ['max_power_3000'] },
+    })]);
+    // The spec's real `homey.ts` outlives the module reset, so the served key
+    // is dropped again for the specs after this one.
+    const { applyBootstrapSettings, invalidateSettingCache } = await import('../src/ui/homey.ts');
+    applyBootstrapSettings({ setup_recommendation_dismissals: null });
+    try {
+      getSetting.mockResolvedValueOnce(null);
+      callApi.mockResolvedValue(resolvedCars());
+
+      await recommendations.loadRecommendationData();
+
+      expect(getSettingFresh).not.toHaveBeenCalled();
+      expect(document.getElementById('setup-recommendations-root')?.textContent)
+        .toContain('Use built-in device control for Connected 300');
+    } finally {
+      invalidateSettingCache('setup_recommendation_dismissals');
     }
   });
 
@@ -958,18 +1025,19 @@ describe('recommendation loading', () => {
     recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
     const surface = document.getElementById('setup-recommendations-root');
     try {
+      // Each `devices_updated` push re-reads the car list (`realtime.ts`).
       callApi.mockResolvedValue(resolvedCars([{ id: 'car-1', name: 'Polestar' }]));
-      document.dispatchEvent(new Event('devices-updated'));
+      void recommendations.refreshCarInventory();
       await vi.waitFor(() => { expect(surface?.textContent).toContain('Select Polestar on '); });
 
       let resolveOldCars!: (value: ReturnType<typeof resolvedCars>) => void;
       callApi.mockReturnValueOnce(new Promise((resolve) => { resolveOldCars = resolve; }));
       const callsBeforeRefresh = callApi.mock.calls.length;
-      document.dispatchEvent(new Event('devices-updated'));
+      void recommendations.refreshCarInventory();
       // Two more device changes during the read share one follow-up fetch.
       expect(surface?.textContent).not.toContain('Some recommendation checks couldn’t be refreshed');
-      document.dispatchEvent(new Event('devices-updated'));
-      document.dispatchEvent(new Event('devices-updated'));
+      void recommendations.refreshCarInventory();
+      void recommendations.refreshCarInventory();
       callApi.mockResolvedValue(resolvedCars([{ id: 'car-1', name: 'Current car' }]));
       resolveOldCars(resolvedCars([{ id: 'car-1', name: 'Obsolete car' }]));
       await vi.waitFor(() => { expect(surface?.textContent).toContain('Select Current car on '); });
@@ -982,7 +1050,7 @@ describe('recommendation loading', () => {
       expect(surface?.textContent).not.toContain('Polestar');
 
       callApi.mockResolvedValue(resolvedCars());
-      document.dispatchEvent(new Event('devices-updated'));
+      void recommendations.refreshCarInventory();
       await vi.waitFor(() => { expect(surface?.textContent).toContain('No setup suggestions right now'); });
       expect(surface?.textContent).not.toContain('Renamed car');
       expect(getSetting).toHaveBeenCalledOnce();
@@ -1106,6 +1174,34 @@ describe('recommendation loading', () => {
     expect(document.getElementById('setup-recommendations-root')?.textContent).toContain('Dismissed');
   });
 
+  it('leaves a resolved car list alone when the page repaints its device list', async () => {
+    const recommendations = await loadSubject([device({
+      id: 'charger-1',
+      name: 'Easee',
+      deviceClass: 'evcharger',
+      isEvCharger: true,
+    })]);
+    getSetting.mockResolvedValue({});
+    callApi.mockResolvedValue(resolvedCars([{ id: 'car-1', name: 'Polestar 3' }]));
+    await recommendations.loadRecommendationData();
+    expect(callApi).toHaveBeenCalledTimes(1);
+
+    const listeners = vi.spyOn(document, 'addEventListener');
+    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+    try {
+      // A Flow-conflict patch, a car selection or a local edit: nothing that
+      // changes the runtime's device snapshot the car list is read from.
+      document.dispatchEvent(new CustomEvent('devices-updated'));
+      await Promise.resolve();
+      expect(callApi).toHaveBeenCalledTimes(1);
+    } finally {
+      for (const [type, listener, options] of listeners.mock.calls) {
+        document.removeEventListener(type, listener, options);
+      }
+      listeners.mockRestore();
+    }
+  });
+
   it('preserves last-good cars while unavailable and accepts a later resolved empty inventory', async () => {
     const recommendations = await loadSubject([device({
       id: 'charger-1',
@@ -1120,8 +1216,9 @@ describe('recommendation loading', () => {
     expect(document.getElementById('setup-recommendations-root')?.textContent)
       .toContain('Select Polestar 3 on ');
 
+    // A `devices_updated` push re-reads the car list (`realtime.ts`).
     callApi.mockResolvedValue({ state: 'unavailable' });
-    await recommendations.loadRecommendationData();
+    await recommendations.refreshCarInventory();
     expect(callApi).toHaveBeenCalledTimes(4);
     expect(document.getElementById('setup-recommendations-root')?.textContent)
       .toContain('Select Polestar 3 on ');
@@ -1129,7 +1226,7 @@ describe('recommendation loading', () => {
       .toContain('Some recommendation checks couldn’t be refreshed right now');
 
     callApi.mockResolvedValue(resolvedCars());
-    await recommendations.loadRecommendationData();
+    await recommendations.refreshCarInventory();
     expect(document.getElementById('setup-recommendations-root')?.textContent)
       .toContain('No setup suggestions right now');
   });
@@ -1158,8 +1255,9 @@ describe('recommendation loading', () => {
     expect(document.getElementById('setup-recommendations-root')?.textContent)
       .toContain('No setup suggestions right now');
 
+    // A `devices_updated` push re-reads the car list (`realtime.ts`).
     callApi.mockResolvedValue({ state: 'unavailable' });
-    await recommendations.loadRecommendationData();
+    await recommendations.refreshCarInventory();
 
     const text = document.getElementById('setup-recommendations-root')?.textContent;
     expect(text).toContain('Some recommendation checks couldn’t be refreshed right now');

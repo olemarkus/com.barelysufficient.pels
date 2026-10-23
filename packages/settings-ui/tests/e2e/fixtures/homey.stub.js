@@ -1134,12 +1134,20 @@
     })) };
   };
 
+  // The producer's plan always carries the "Let it run now" chip's gate; no
+  // fixture device is rescuable unless a spec's plan says so.
+  const withRescueGate = (plan) => (
+    plan && typeof plan === 'object' && !Object.prototype.hasOwnProperty.call(plan, 'rescuableDeviceIds')
+      ? { ...plan, rescuableDeviceIds: [] }
+      : plan
+  );
+
   const buildPlanPayload = () => {
     // Branch on `hasOwnProperty` so a scenario can force a null plan (used to
     // exercise the "no plan yet" UI state); `?? baseline` would mask that.
     const scenarioPatch = runtimeOverrides.scenarioPatch;
     if (scenarioPatch && Object.prototype.hasOwnProperty.call(scenarioPatch, 'plan')) {
-      return resolveFixturePlan(scenarioPatch.plan);
+      return withRescueGate(resolveFixturePlan(scenarioPatch.plan));
     }
     // Test knob: `settings.plan_snapshot_meta_patch` merges into the sample
     // plan's meta so a spec can make the hero numerically consistent with an
@@ -1147,9 +1155,12 @@
     // `totalKw`) without replicating the whole plan fixture.
     const metaPatch = settings.plan_snapshot_meta_patch;
     if (metaPatch && typeof metaPatch === 'object' && settings.plan_snapshot?.meta) {
-      return resolveFixturePlan({ ...settings.plan_snapshot, meta: { ...settings.plan_snapshot.meta, ...metaPatch } });
+      return withRescueGate(resolveFixturePlan({
+        ...settings.plan_snapshot,
+        meta: { ...settings.plan_snapshot.meta, ...metaPatch },
+      }));
     }
-    return resolveFixturePlan(settings.plan_snapshot);
+    return withRescueGate(resolveFixturePlan(settings.plan_snapshot));
   };
 
   const resolveDailyBudgetPayload = () => {
@@ -2002,9 +2013,8 @@
     'GET /ui_deferred_objective_settings': () => (
       settings.deferred_objectives ?? { version: 1, objectivesByDeviceId: {} }
     ),
-    // The overview boots a rescuable-device fetch (the "Let it run now" chip gate).
-    // Serve an empty set so the call resolves cleanly — no chip in the default e2e
-    // state, and no unhandled-key error noise from the dispatch chokepoint.
+    // The runtime still serves the rescue gate on its own route; the settings
+    // page reads it from the plan (`rescuableDeviceIds`). Empty, like the plan's.
     'GET /ui_starvation_rescue_devices': () => ({ rescuableDeviceIds: [] }),
     'GET /ui_weather_advisor_readout': () => {
       // `inactive` = the feature is off; the producer's structural-absence member.

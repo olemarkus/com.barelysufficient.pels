@@ -96,6 +96,7 @@ import { reloadDeferredObjectiveActivePlans } from './deferredObjectiveActivePla
 import { handleWeatherAdvisorSettingsChanged } from './weatherInsight.ts';
 import { DAILY_BUDGET_REFRESH_KEYS, DAILY_BUDGET_SETTINGS_KEYS } from './realtimeDailyBudgetKeys.ts';
 import {
+  isPanelVisible,
   refreshDailyBudgetIfVisible,
   refreshDevicesForUi,
   refreshHomeBadgesForUi,
@@ -103,6 +104,7 @@ import {
   refreshOverviewPlanIfVisible,
   refreshPriceOptimizationSettings,
   refreshPlanForUi,
+  refreshPlanHistoryIfVisible,
   refreshPowerDataIfVisible,
   refreshPricesIfVisible,
   refreshStaleDataStatus,
@@ -303,6 +305,9 @@ const refreshHomeScopedReadModels = (key: string, context: string) => {
     invalidateApiCacheForScopedHomes(SETTINGS_UI_PLAN_PATH);
     invalidateApiCacheForScopedHomes(SETTINGS_UI_POWER_PATH);
     invalidateApiCacheForScopedHomes(SETTINGS_UI_DEVICES_PATH);
+    // Both writes affect Devices badges, set or cleared; the shared home-scope
+    // refresh separately updates the ownership map the filtered Modes list uses.
+    refreshHomeBadgesForUi(context);
     return;
   }
   if (!key.startsWith(`${CAPACITY_DRY_RUN}:`)) return;
@@ -389,7 +394,11 @@ const reloadObjectivesIfObjectiveKey = (key: string, context: string): void => {
   if (key !== DEFERRED_OBJECTIVES_SETTINGS && !key.startsWith(PER_DEVICE_OBJECTIVE_KEY_PREFIX)) return;
   invalidateSettingCache(DEFERRED_OBJECTIVES_SETTINGS);
   runLoggedTask(loadDeferredObjectiveSettings(), 'Failed to reload deferred objectives', context);
-  runLoggedTask(refreshDeadlinesList(), 'Failed to refresh deadlines list', context);
+  // The list re-reads three payloads, so a hidden Smart tasks panel waits for
+  // its activation hook, which refreshes it on open.
+  if (isPanelVisible('#deadlines-panel')) {
+    runLoggedTask(refreshDeadlinesList(), 'Failed to refresh deadlines list', context);
+  }
 };
 
 // The active-plans recorder persists every replan / session change / updated
@@ -407,6 +416,8 @@ const reloadActivePlansIfActivePlansKey = (key: string, context: string): void =
     'Failed to reload deferred objective active plans',
     context,
   );
+  // A run that ended can extend or break a miss streak on the Overview row.
+  refreshPlanHistoryIfVisible();
 };
 
 // A flag flip / device change must reach an already-open WebView: reload the
@@ -560,11 +571,6 @@ export const createSettingsSetHandler = () => (key: string) => {
   if (key === PRICE_OPTIMIZATION_SETTINGS) refreshPriceOptimizationSettings();
   reloadDeviceSettingIfKey(key);
   refreshDeviceControlSurfaces(key);
-  // Both writes affect Devices badges; the shared home-scope refresh above
-  // separately updates the ownership map used by the filtered Modes list.
-  if (key === HOMES_CONFIG || key === DEVICE_HOME_ASSIGNMENTS) {
-    refreshHomeBadgesForUi('settings.set');
-  }
 
   refreshPriceSettings(key, 'settings.set');
   refreshHomeScopedReadModels(key, 'settings.set');
