@@ -103,7 +103,7 @@ function buildShortfallCapacityStateSummary(
       || selection.pendingReliefKw > 0
       || candidates.some((candidate) => candidate.unconfirmedRelief),
     summarySource: 'plan_input',
-    summarySourceAtMs: Date.now(),
+    summarySourceAtMs: context.nowTs,
   };
 }
 
@@ -125,7 +125,7 @@ function walkShedCandidates(
     // held battery is still priced from its hold.
     ...buildShedCandidateParams(context, power, state, deps, { ...storage, shed: NO_STORAGE_SHED_TERM }),
     deps: { ...deps, debugStructured: undefined },
-  }).candidates;
+  }, context.nowTs).candidates;
 }
 
 /**

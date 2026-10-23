@@ -2989,7 +2989,7 @@ describe('buildSheddingPlan', () => {
     vi.setSystemTime(new Date(Date.now() + 5_000));
 
     const sameSampleResult = await buildSheddingPlanForSpec(
-      context,
+      { ...context, nowTs: Date.now() },
       power,
       state,
       {

@@ -36,8 +36,8 @@ export const buildRestoreTiming = (
   state: PlanEngineState,
   headroomRaw: number | null,
   powerTracker: PowerTrackerState,
+  nowTs: number,
 ): RestoreTiming => {
-  const nowTs = Date.now();
   const measurementTs = powerTracker.lastTimestamp ?? null;
   const cooldownState = resolveRestoreCooldown(state, nowTs);
   const sinceRestore = state.actuation.lastRestoreMs ? nowTs - state.actuation.lastRestoreMs : null;

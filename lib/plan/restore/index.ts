@@ -18,7 +18,7 @@ import {
   shouldPlanRestores,
 } from './timing';
 import { applyBudgetExemptRestorePass } from './exemptRestoreLane';
-import { resolveHeadroomReserves, resolveRestoreDecisionPhase, type HeadroomReserve } from '../admission';
+import { resolveHeadroomReserves, resolveRestoreDecisionPhase } from '../admission';
 import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './headroomLedger';
 import { buildDisabledRestoreBatchState, buildRestoreBatchState } from './batch';
 import {
@@ -53,8 +53,8 @@ export function applyRestorePlan(
   const { sheddingActive, guardInShortfall } = sheddingPlan;
   const deviceMap = new Map(planDevices.map((dev) => [dev.id, dev]));
   const swapLedger = state.swapLedger;
-  const headroomReserves = resolveCycleHeadroomReserves(planDevices, state);
-  const timing = buildRestoreTiming(state, power.headroomKw, deps.powerTracker);
+  const headroomReserves = resolveHeadroomReserves(planDevices, state, context.nowTs);
+  const timing = buildRestoreTiming(state, power.headroomKw, deps.powerTracker, context.nowTs);
   const effectiveTiming = resolveEffectiveTiming(timing, context);
   // Resolved BEFORE the ledger reconcile and reused by the branch below, so the
   // one thing that decides whether restores happen this cycle also decides
@@ -170,16 +170,6 @@ function buildCycleHeadroomLedger(power: MeasuredPower): RestoreHeadroomLedger {
     gridAvailableKw: power.gridHeadroomKw,
     budgetAvailableKw: power.budgetHeadroomKw,
   });
-}
-
-// Startup reservations for this cycle: power a higher-priority device is holding back until it
-// reaches its lowest active step. Resolved once per restore pass (the call also re-stamps the
-// arming clock) and handed to the admission gates, which subtract it per candidate by priority.
-function resolveCycleHeadroomReserves(
-  planDevices: DevicePlanDevice[],
-  state: PlanEngineState,
-): HeadroomReserve[] {
-  return resolveHeadroomReserves(planDevices, state, Date.now());
 }
 
 // The ordinary unrestricted restore pass (the shouldPlanRestores branch of

@@ -149,7 +149,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
         pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
         log: () => undefined,
       },
-    });
+    }, context.nowTs);
     const candidateIds = candidates.map((c) => c.id);
     expect(candidateIds).not.toContain(SOLAR_ID);
     expect(candidateIds).toContain(HEATER_ID); // exclusion isn't vacuous

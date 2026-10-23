@@ -233,7 +233,7 @@ export class SilentMeterPlanBuilder {
       storageLimit: { kind: 'unmeasured' },
       state: this.state,
       deps,
-    });
+    }, context.nowTs);
     const selection = selectShedDevices(
       candidates,
       Number.POSITIVE_INFINITY,

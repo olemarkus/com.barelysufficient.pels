@@ -126,7 +126,7 @@ export function buildInitialPlanDevices(
     const t1 = Date.now();
     const base = buildBasePlanDevice({
       dev,
-      recentlyRestored: isRecentlyRestored(state.actuation.lastDeviceRestoreMs[dev.id]),
+      recentlyRestored: isRecentlyRestored(state.actuation.lastDeviceRestoreMs[dev.id], context.nowTs),
       binaryCommandPending: deps.pendingBinaryCommandStore.hasActiveTurnOn(dev.id),
       plannedTarget,
       shedBehavior,
@@ -181,9 +181,9 @@ function resolvePlannedTarget(
 }
 /* eslint-enable functional/immutable-data, no-param-reassign */
 
-function isRecentlyRestored(lastRestoreMs: number | undefined): boolean {
+function isRecentlyRestored(lastRestoreMs: number | undefined, nowTs: number): boolean {
   if (!lastRestoreMs) return false;
-  return Date.now() - lastRestoreMs < RECENT_RESTORE_SHED_GRACE_MS;
+  return nowTs - lastRestoreMs < RECENT_RESTORE_SHED_GRACE_MS;
 }
 // Mirrors isDroppedUnderspecifiedSetStepShed at plan-build time, minus the
 // !isHeldByRestoreAdmission conjunct: plan reasons aren't computed at this pre-pass.

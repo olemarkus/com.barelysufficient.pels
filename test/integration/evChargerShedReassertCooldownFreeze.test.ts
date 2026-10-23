@@ -363,7 +363,7 @@ describe('EV charger shed re-assert freezing all restores (executor-loop repro)'
     // house reports `cooldown (shedding)` with a countdown that resets instead
     // of expiring, which is exactly the prod freeze.
     const powerTracker = { lastTimestamp: Date.now() } as PowerTrackerState;
-    const timing = buildRestoreTiming(state, 6.5, powerTracker);
+    const timing = buildRestoreTiming(state, 6.5, powerTracker, Date.now());
     expect(timing.inCooldown).toBe(false);
     expect(shouldPlanRestores(false, timing, false)).toBe(true);
   });

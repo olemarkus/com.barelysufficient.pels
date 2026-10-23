@@ -181,6 +181,40 @@ describe('restore cooldown backoff', () => {
     vi.useRealTimers();
   });
 
+  it('keeps restore cooldown decisions on the build frame when ambient time advances', () => {
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.actuation.lastRestoreMs = now - 290_000;
+    const cycle = buildContext({ headroomRaw: 5, headroom: 5 });
+    const device = buildPlanDevice({
+      id: 'waiting-heater',
+      currentState: 'off',
+      // Materialization starts at keep; the previous plan supplies shed posture.
+      plannedState: 'keep',
+      expectedPowerKw: 1,
+      measuredPowerKw: 0,
+    });
+    const deps = restoreDeps(now);
+
+    vi.setSystemTime(now + 20_000);
+    const held = applyRestorePlan({
+      ...cycle, planDevices: [device], state, sheddingActive: false, deps,
+    });
+
+    expect(held.timing.nowTs).toBe(now);
+    expect(held.timing.restoreCooldownRemainingSec).toBe(10);
+    expect(held.planDevices[0]?.plannedState).toBe('shed');
+
+    const resumed = applyRestorePlan({
+      ...buildContext({ headroomRaw: 5, headroom: 5 }),
+      planDevices: [device], state, sheddingActive: false, deps,
+    });
+    expect(resumed.timing.nowTs).toBe(now + 20_000);
+    expect(resumed.timing.inRestoreCooldown).toBe(false);
+    expect(resumed.planDevices[0]?.plannedState).toBe('keep');
+  });
+
   it('backs off restore cooldown from five to ten minutes and caps there', () => {
     const state = createPlanEngineState();
     let now = Date.UTC(2024, 0, 1, 0, 0, 0);

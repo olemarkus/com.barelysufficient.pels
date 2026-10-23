@@ -41,7 +41,6 @@ export async function buildSheddingPlan(
   state: PlanEngineState,
   deps: SheddingDeps,
   overshoot: SheddingOvershootInput,
-  nowTs: number,
   /**
    * This cycle's storage stage (`lib/plan/battery/storageRelief.ts`): what
    * home-battery relief counts against the measured deficit (`shed`), and the
@@ -50,7 +49,8 @@ export async function buildSheddingPlan(
    */
   storage: StorageRelief,
 ): Promise<SheddingPlan> {
-  const selection = planShedding(context, power, state, deps, overshoot, nowTs, storage);
+  const { nowTs } = context;
+  const selection = planShedding(context, power, state, deps, overshoot, storage);
   const {
     shedSet,
     shedReasons,
@@ -109,15 +109,15 @@ function planShedding(
   state: PlanEngineState,
   deps: SheddingDeps,
   overshoot: SheddingOvershootInput,
-  nowTs: number,
   storage: StorageRelief,
 ): PlanSheddingResult {
+  const { nowTs } = context;
   const entry = resolveShedEntry(context, power, state, overshoot, storage.shed);
   if (entry.kind === 'none') return emptySheddingResult(NO_SHEDDING_OUTCOME);
   const { hourlyBudgetExhausted, shedsEverything, leadingStorageOnly } = entry;
 
   const candidateParams = buildShedCandidateParams(context, power, state, deps, storage);
-  const walked = restrictToLeadingStorage(buildSheddingCandidates(candidateParams), leadingStorageOnly);
+  const walked = restrictToLeadingStorage(buildSheddingCandidates(candidateParams, nowTs), leadingStorageOnly);
   // The grace defers every device: with no battery ranked ahead of them there
   // is nothing to decide, exactly as without a battery.
   if (leadingStorageOnly && walked.candidates.length === 0) return emptySheddingResult(NO_SHEDDING_OUTCOME);

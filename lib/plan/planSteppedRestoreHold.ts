@@ -29,9 +29,8 @@ export function applySteppedRestoreAttemptHold(
   const nextStepId = nextStep.id;
   const nextStepPowerKw = nextStep.planningPowerW / 1000;
   const restoreDebugKey = `stepped:${dev.id}`;
-  const nowMs = Date.now();
   const steppedRestoreAttempt = resolveSteppedRestoreAttemptState(
-    dev, nextStepId, nowMs, state.actuation.lastDeviceRestoreMs[dev.id], timing.measurementTs,
+    dev, nextStepId, timing.nowTs, state.actuation.lastDeviceRestoreMs[dev.id], timing.measurementTs,
   );
   const pendingRestoreHold = buildPendingSteppedRestoreHold(steppedRestoreAttempt);
   if (pendingRestoreHold) {
