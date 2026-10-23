@@ -29,6 +29,16 @@ export type RestoreTiming = RestoreCooldownState & {
   nowTs: number;
 };
 
+/**
+ * How old the whole-home reading behind this cycle's restore decisions is, for
+ * a decision's log line. A rebuild no reading triggered (a settings change, a
+ * timer) decides on the last accepted reading, which under the Flow power
+ * source can be minutes old. Without a reading there is no age to state.
+ */
+export const buildRestoreEvidenceLogFields = (timing: RestoreTiming): { powerSampleAgeMs?: number } => (
+  timing.measurementTs === null ? {} : { powerSampleAgeMs: Math.max(0, timing.nowTs - timing.measurementTs) }
+);
+
 const ceilSecondsOrNull = (ms: number | null): number | null =>
   (ms !== null ? Math.ceil(ms / 1000) : null);
 

@@ -38,6 +38,7 @@ import { computeRestoreBufferKw } from './accounting';
 import { canAdmitWithinBatch, canAttemptBatchContinuation, recordBatchAdmission } from './batch';
 import { shouldWaitForOtherRecovery } from './coordination';
 import {
+  buildRestoreEvidenceLogFields,
   inCycleRestoreWait, otherRecoveryWait, resolveCapacityRestoreBlockReason, resolveMeterSettlingReason,
 } from './timing';
 import type { RestoreCycle, RestoreLoopState } from './types';
@@ -65,6 +66,7 @@ export function planStorageHandBack(
       availableKw: availableHeadroom,
       decision: 'rejected',
       rejectionReason,
+      ...buildRestoreEvidenceLogFields(timing),
     });
     return loop;
   };
@@ -103,6 +105,7 @@ export function planStorageHandBack(
     neededKw,
     availableKw: buildReserveAdmittedLogFields(reserved).effectiveHeadroomKw,
     decision: 'admitted',
+    ...buildRestoreEvidenceLogFields(timing),
   });
   cycle.storageHandedBack.add(dev.id);
   recordBatchAdmission(batchState, neededKw);

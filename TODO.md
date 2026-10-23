@@ -105,19 +105,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `resolveReserveForDevice`. Allow re-arm after a cool-off, or key the lapse to the planned
       bucket. Done when both the bound and the re-arm are covered. *P2*
 
-## Restore admission
-
-- [ ] **`restore_admitted` / `restore_rejected` cannot distinguish a wrong admission from a stale
-      one.** The payloads carry `availableKw`, `neededKw` and `marginKw` — the third is arithmetic
-      on the first two — but no sample age and no decomposition of the need, so an operator cannot
-      tell a bar of `1.38 + 0.24` from `1.2 + 0.2 + inflation`, nor whether the reading was fresh.
-      `notes/restore-eagerness/README.md` open question 3 asks exactly this. Both values are already
-      in scope at the call sites (`RestoreTiming` holds `measurementTs` and `nowTs`). Fix: add
-      `powerSampleAgeMs` and `baseNeededKw` in `restore/gating.ts`, `steppedRestoreAdmission.ts`
-      and `restore/swap.ts`. Done when a restore's log line states how old its evidence was.
-      Source: runtime-reality review, 2026-09-15. [P3]
-
-
 ## Smart tasks
 
 

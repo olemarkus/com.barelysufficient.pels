@@ -32,6 +32,12 @@ export function clearRestoreDebugEvent(state: PlanEngineState, key: string): voi
 }
 /* eslint-enable functional/immutable-data */
 
+/**
+ * Fields that move on every cycle while the decision they describe stands, so a
+ * change in them alone must not re-announce it.
+ */
+const UNSIGNED_KEYS: ReadonlySet<string> = new Set(['remainingMs', 'powerSampleAgeMs']);
+
 function normalizeSignatureValue(value: unknown): unknown {
   if (typeof value === 'number') return roundLogValue(value, 2);
   if (typeof value === 'string') return value;
@@ -41,7 +47,7 @@ function normalizeSignatureValue(value: unknown): unknown {
   if (!value || typeof value !== 'object') return value;
 
   const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([key]) => key !== 'remainingMs');
+    .filter(([key]) => !UNSIGNED_KEYS.has(key));
   return Object.fromEntries(
     entries.map(([key, entryValue]) => [key, normalizeSignatureValue(entryValue)]),
   );

@@ -25,6 +25,7 @@ import { attemptSwapRestore } from './swap';
 import type { RestoreCycle, RestoreLane, RestoreLoopState, SteppedRestoreNeed } from './types';
 import type { SteppedRestoreTarget } from './steppedRestoreTarget';
 import { recordBatchAdmission, recordShedPostureRestoreBatchAdmission } from './batch';
+import { buildRestoreEvidenceLogFields } from './timing';
 
 /** The reason a stepped restore climb carries, admitted directly or through a swap. */
 function buildSteppedRestoreNeedReason(
@@ -123,6 +124,7 @@ export function admitSteppedRestore(
     availableKw: admittedLog.effectiveHeadroomKw,
     marginKw: admittedLog.marginKw,
     decision: 'admitted',
+    ...buildRestoreEvidenceLogFields(cycle.timing),
   });
   if (batchState.enabled && target.kind === 'jump') {
     recordBatchAdmission(batchState, needed);
@@ -232,6 +234,7 @@ function rejectSteppedRestoreForInsufficientHeadroom(
     marginKw: admission.marginKw,
     decision: 'rejected',
     rejectionReason: 'insufficient_headroom',
+    ...buildRestoreEvidenceLogFields(cycle.timing),
   });
   return loop;
 }

@@ -76,6 +76,24 @@ describe('planDebugDedupe', () => {
     expect(capture.findEvents('restore_stepped_admitted')).toHaveLength(2);
   });
 
+  it('does not re-announce a standing decision because its reading aged', () => {
+    const state = createPlanEngineState();
+    const admitted = (powerSampleAgeMs: number) => emitRestoreDebugEventOnChange(state, 'binary:dev-1', {
+      event: 'restore_admitted',
+      deviceId: 'dev-1',
+      neededKw: 1.2,
+      availableKw: 3,
+      powerSampleAgeMs,
+    });
+
+    admitted(400);
+    admitted(10_400);
+
+    expect(capture.findEvents('restore_admitted')).toEqual([
+      expect.objectContaining({ powerSampleAgeMs: 400 }),
+    ]);
+  });
+
   it('skips the signature work when the topic is off', () => {
     // The old gate asked whether the caller passed an emitter, which the plan
     // wiring does unconditionally — so it was always open, and this walked and
