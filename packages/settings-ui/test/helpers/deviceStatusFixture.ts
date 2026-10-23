@@ -1,4 +1,4 @@
-import type { DeviceOverviewSnapshot } from '../../../shared-domain/src/deviceOverview.ts';
+import type { DeviceOverviewSnapshot } from '../../../contracts/src/deviceOverview.ts';
 import type { DeviceStatus } from '../../../contracts/src/deviceStatus.ts';
 import type { SettingsUiPlanDeviceSnapshot } from '../../../contracts/src/settingsUiApi.ts';
 import { buildDeviceStatus } from '../../../../lib/plan/deviceStatusReadModel.ts';

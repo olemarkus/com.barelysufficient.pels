@@ -1,5 +1,5 @@
 import type { ThermalDirection } from '../../packages/contracts/src/types';
-import type { OverviewTemperatureState } from '../../packages/shared-domain/src/deviceOverview';
+import type { OverviewTemperatureState } from '../../packages/contracts/src/deviceOverview';
 import type { ObservedTemperatureRead } from '../observer/observedDeviceStateProjection';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { DevicePlan } from './planTypes';

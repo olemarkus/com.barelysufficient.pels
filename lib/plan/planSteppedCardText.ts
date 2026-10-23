@@ -3,7 +3,7 @@ import type {
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
-import type { DeviceOverviewSnapshot } from '../../packages/shared-domain/src/deviceOverview';
+import type { DeviceOverviewSnapshot } from '../../packages/contracts/src/deviceOverview';
 import {
   isHoldReasonCode,
   resolveDisplayStateKind,

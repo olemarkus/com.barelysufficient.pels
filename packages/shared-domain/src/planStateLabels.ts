@@ -1,4 +1,4 @@
-import type { DeviceOverviewSnapshot } from './deviceOverview';
+import type { DeviceOverviewSnapshot } from '../../contracts/src/deviceOverview';
 import { isGrayStateDevice, isOnLikeState, normalizeDeviceState } from './deviceStatePredicates';
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
 

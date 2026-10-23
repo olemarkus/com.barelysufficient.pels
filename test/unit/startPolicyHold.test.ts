@@ -8,7 +8,7 @@ import {
 } from '../../packages/shared-domain/src/planReasonFormatting';
 import { resolveDisplayStateKind } from '../../packages/shared-domain/src/planCardGrammar';
 import { resolvePlanStateKind } from '../../packages/shared-domain/src/planStateLabels';
-import type { DeviceOverviewSnapshot } from '../../packages/shared-domain/src/deviceOverview';
+import type { DeviceOverviewSnapshot } from '../../packages/contracts/src/deviceOverview';
 import { partialDouble } from '../helpers/partialDouble';
 
 /** The flat overview shape the card resolvers read, not the plan device. */
