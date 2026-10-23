@@ -2,7 +2,7 @@ import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import {
   getSteppedLoadLowestActiveStep,
 } from '../../packages/shared-domain/src/deviceControlProfiles';
-import type { Loggers } from '../logging/logger';
+import { getDebugEmitter, type Logger as PinoLogger } from '../logging/logger';
 import type { FlowSteppedLoadAdmission } from '../ports/flowSteppedLoadAdmission';
 import type { MarkSteppedLoadDesiredStepIssuedParams } from '../ports/steppedCommand';
 import { readExecutorDevice, type ExecutorDeviceReadDeps } from './executorDeviceRead';
@@ -13,6 +13,8 @@ import {
   emitSteppedFeedbackLog, resolvePlannedDesiredStepId, resolvePlannedDesiredStepToPreserve,
 } from './steppedFeedback';
 import type { TargetPowerCommandLifecycle } from './targetPowerCommandLifecycle';
+
+const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
 /** Stepped-command lifecycle over owner-resolved configuration and admitted observations. */
 export class SteppedDeviceControl {
@@ -25,7 +27,7 @@ export class SteppedDeviceControl {
       deviceId: string, stepId: string, powerW: number | undefined,
     ) => FlowSteppedLoadAdmission,
     private readonly readPlannedStep: (deviceId: string, profile: SteppedLoadProfile) => string | undefined,
-    private readonly loggers: Loggers,
+    private readonly structuredLog: PinoLogger,
   ) {}
 
   getSteppedLoadProfile(deviceId: string): SteppedLoadProfile | null {
@@ -79,10 +81,10 @@ export class SteppedDeviceControl {
     );
     if (preserved) this.store.preserveDesiredStep(observation, preserved);
     if (changed === 'unchanged') {
-      this.loggers.debugStructured?.({ event: 'stepped_load_feedback_unchanged', deviceId, stepId });
+      emitDeviceDebug({ event: 'stepped_load_feedback_unchanged', deviceId, stepId });
     } else {
       const deviceName = device ? device.name.trim() : `device ${deviceId}`;
-      emitSteppedFeedbackLog(this.loggers.structuredLog, observation, deviceName,
+      emitSteppedFeedbackLog(this.structuredLog, observation, deviceName,
         previousReportedStepId, previousDesired,
         resolvePlannedDesiredStepId(previousDesired, profile, latestPlanDesiredStepId));
     }
@@ -93,7 +95,7 @@ export class SteppedDeviceControl {
     deviceId: string, stepId: string, admission: Exclude<FlowSteppedLoadAdmission, { kind: 'accepted' }>,
   ): ReportSteppedLoadActualStepResult {
     if (admission.kind === 'native_control') this.reportedStore.clear(deviceId);
-    this.loggers.debugStructured?.({ event: 'stepped_load_feedback_ignored', deviceId, stepId,
+    emitDeviceDebug({ event: 'stepped_load_feedback_ignored', deviceId, stepId,
       reason: admission.kind === 'native_control' ? 'native_wiring_enabled' : admission.kind });
     return admission.kind === 'invalid' ? 'invalid' : 'unchanged';
   }

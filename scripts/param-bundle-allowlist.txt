@@ -55,7 +55,6 @@ lib/device/transport/observationMerge.ts 1
 lib/device/transport/observationRecord.ts 4
 lib/device/transport/targetedSnapshotMerge.ts 2
 lib/diagnostics/deviceDiagnosticsModel.ts 1
-lib/diagnostics/perfLogging.ts 1
 lib/diagnostics/periodicStatus.ts 1
 lib/logging/deviationGate.ts 1
 lib/logging/logDedupe.ts 1

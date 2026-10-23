@@ -3,7 +3,6 @@ import { startPerfLogger } from '../lib/diagnostics/perfLogging';
 import { startResourceWarningListeners as startResourceWarnings } from '../lib/diagnostics/resourceWarnings';
 import { installHeapSnapshotHandler } from '../lib/diagnostics/heapSnapshotHandler';
 import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from './appPriceLowestTrigger';
-import { getDebugEmitter } from '../lib/logging/logger';
 import type { AppContext } from '../lib/app/appContext';
 import { requirePriceCoordinator } from './appInit/contextGuards';
 import { startDeferredObjectiveLifecycleClock } from './deferredObjectiveLifecycleClock';
@@ -90,8 +89,6 @@ export class BackgroundTasksController {
 
   startPerfLogging(): void {
     this.restart('perfLog', () => startPerfLogger({
-      isEnabled: () => this.ctx.debugLoggingTopics.has('perf'),
-      logStructured: getDebugEmitter('perf', 'perf'),
       error: (...args: unknown[]) => this.ctx.error(...args),
       intervalMs: 30 * 1000,
     }));
@@ -103,7 +100,6 @@ export class BackgroundTasksController {
       getTimeZone: () => this.ctx.getTimeZone(),
       getCombinedHourlyPrices: () => requirePriceCoordinator(this.ctx).getCombinedHourlyPrices(),
       getTriggerCard: (id) => this.ctx.homey.flow.getTriggerCard(id),
-      debugStructured: getDebugEmitter('price', 'price'),
       error: (message, error) => this.ctx.error(message, error),
     }));
   }

@@ -1,4 +1,3 @@
-import { getDebugEmitter } from '../../lib/logging/logger';
 import {
   requireBatteryControl,
   requireDeviceManager,
@@ -136,6 +135,5 @@ export function registerAppFlowCards(
     getTimeZone: () => ctx.getTimeZone(),
     getNow: () => ctx.getNow(),
     getStructuredLogger: (component) => ctx.getStructuredLogger(component),
-    debugStructured: getDebugEmitter('flow', 'settings'),
   });
 }

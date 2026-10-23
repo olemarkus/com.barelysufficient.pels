@@ -86,9 +86,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     // (the Overview hero reads the same flag). A transient write fence is not a
     // simulation, so cards never read the posture above.
     readSimulationSetting: scope.readSimulationSetting,
-    loggers: {
-      structuredLog: ctx.getStructuredLogger('plan'),
-    },
+    structuredLog: ctx.getStructuredLogger('plan'),
     // Policy closure from the scope (main: the live ctx read; sub-home bundles:
     // constant UNKNOWN — capacity-only status, no price level driving plan
     // behavior and no `price_level_changed` fired against MAIN's level).

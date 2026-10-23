@@ -228,7 +228,7 @@ const buildHarness = (
   const stores = steppedStoresForTest();
   const helpers = createDeviceControlHelpersForTest(
     () => [snapshotHolder.current], stores, () => undefined, () => false,
-    () => {}, () => null, { structuredLog: structuredLogger as never, debugStructured: vi.fn() },
+    () => {}, () => null, structuredLogger as never,
   );
 
   // Decoration only PROJECTS; the command lifecycle advances on the settle

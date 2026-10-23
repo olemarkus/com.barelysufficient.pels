@@ -8,7 +8,7 @@ type PlanServiceWiring = Pick<PlanServiceDeps,
   | 'getObservedRecord'
   | 'getSteppedLoadProfileById'
   | 'schedulePostActuationRefresh'
-  | 'loggers'
+  | 'structuredLog'
   | 'deviceOverviewLogRecorder'
   | 'emitsUiRealtime'
   | 'readStarvationRescuableDeviceIds'
@@ -27,7 +27,7 @@ export const planServiceWiring = (): PlanServiceWiring => ({
   getObservedRecord: () => undefined,
   getSteppedLoadProfileById: () => new Map(),
   schedulePostActuationRefresh: () => undefined,
-  loggers: { structuredLog: testLogger },
+  structuredLog: testLogger,
   deviceOverviewLogRecorder: createTestDeviceActivityRecorder(),
   emitsUiRealtime: true,
   readStarvationRescuableDeviceIds: () => [],

@@ -11,7 +11,6 @@
 // resolver. This boundary projects the home's current planned set to unique
 // relative ranks before either the planner or smart-task clock reads it.
 
-import { getDebugEmitter } from '../../lib/logging/logger';
 import { createPlanInputProjectionSource } from '../appInit/planInputDeviceProjection';
 import { projectPlanInputDevice } from '../../lib/planInput/projectPlanInputDevice';
 import { pruneMissingLearnedPowerPeaks } from '../appInit/devicePowerPeakPrePass';
@@ -77,7 +76,6 @@ const runSnapshotPrePass = (
         observation.binaryAxisObservedAtMs,
       );
     },
-    debugStructured: getDebugEmitter('reconcile', 'devices'),
   });
   // Pruned against Homey's own device list, so a device PELS cannot read or
   // control for a while keeps what was learned about it.

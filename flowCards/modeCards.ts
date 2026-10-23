@@ -5,11 +5,14 @@ import {
 } from '../lib/utils/settingsKeys';
 import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../lib/dailyBudget/dailyBudgetConstants';
 import { hasHeadroomFor } from '../lib/power/lastTotalPower';
+import { getDebugEmitter } from '../lib/logging/logger';
 import {
   readFlowNumberArg,
   readFlowStringArg,
 } from './flowArgParsers';
 import type { FlowCardDeps } from './registerFlowCards';
+
+const emitFlowDebug = getDebugEmitter('flow', 'settings');
 
 export function registerOperatingModeChangedTrigger(deps: FlowCardDeps): void {
   const operatingModeChangedTrigger = deps.homey.flow.getTriggerCard('operating_mode_changed');
@@ -131,7 +134,7 @@ export function registerCapacityAndModeCards(deps: FlowCardDeps): void {
     const activeMode = deps.getCurrentOperatingMode();
     const matches = activeMode.toLowerCase() === chosenMode.toLowerCase();
     if (!matches && chosenModeRaw !== chosenMode) {
-      deps.debugStructured({
+      emitFlowDebug({
         event: 'mode_condition_alias_mismatch',
         requestedAlias: chosenModeRaw,
         resolvedMode: chosenMode,

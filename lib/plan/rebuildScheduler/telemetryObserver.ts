@@ -1,8 +1,7 @@
 import type { Logger as PinoLogger } from 'pino';
 import type { RebuildIntent } from './scheduler';
 import { normalizeError } from '../../utils/errorUtils';
-import { getDebugEmitter } from '../../logging/logger';
-import type { DebugLoggingTopic } from '../../../packages/shared-domain/src/utils/debugLogging';
+import { getDebugEmitter, isDebugTopicEnabled } from '../../logging/logger';
 import type { HomeId } from '../../utils/settingsKeys';
 
 const emitPlanDebug = getDebugEmitter('plan', 'plan');
@@ -18,7 +17,6 @@ export type SchedulerTelemetryObserverDeps = {
    */
   homeId: HomeId;
   getStructuredLogger: () => PinoLogger;
-  isDebugTopicEnabled: (topic: DebugLoggingTopic) => boolean;
   getNowMs: () => number;
   /** The throttle's `cancel`: a cancelled power intent releases the rebuild queued for it. */
   cancelQueuedPowerRebuild: (reason: string) => void;
@@ -86,7 +84,7 @@ export class SchedulerTelemetryObserver {
 
   private emit(key: string, payload: Record<string, unknown>): void {
     // Topic gate first: the disabled path has no use for the rate limit below.
-    if (!this.deps.isDebugTopicEnabled('plan')) return;
+    if (!isDebugTopicEnabled('plan')) return;
     const nowMs = this.deps.getNowMs();
     for (const [storedKey, lastEmittedAtMs] of this.lastEmittedAtMsByKey) {
       if (nowMs - lastEmittedAtMs >= PLAN_REBUILD_SCHEDULER_DEBUG_RATE_LIMIT_MS) {

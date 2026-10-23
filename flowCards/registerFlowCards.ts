@@ -18,7 +18,7 @@ import type { FlowReportedCapabilityId } from '../lib/device/transport/flowRepor
 import type { FlowBackedCapabilityReportOutcome } from '../lib/device/flowBackedCapabilityReport';
 import { startRuntimeSpan } from '../lib/utils/runtimeTrace';
 import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
+import type { Logger as PinoLogger } from '../lib/logging/logger';
 import {
   registerBudgetExemptionCards,
   registerBudgetExemptionCondition,
@@ -170,7 +170,6 @@ export type FlowCardDeps = {
   getTimeZone: () => string;
   getNow: () => Date;
   getStructuredLogger: (component: string) => PinoLogger;
-  debugStructured: StructuredDebugEmitter;
 };
 
 export function registerFlowCards(deps: FlowCardDeps): void {

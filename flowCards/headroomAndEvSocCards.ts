@@ -6,6 +6,7 @@ import type {
 import type { HeadroomForDeviceDecision } from '../lib/plan/planHeadroomDevice';
 import type { HeadroomWithReading } from '../lib/power/lastTotalPower';
 import { normalizeError } from '../lib/utils/errorUtils';
+import { getDebugEmitter } from '../lib/logging/logger';
 import { buildDeviceAutocompleteOptions } from './deviceArgs';
 import {
   readFlowDeviceArg,
@@ -13,6 +14,8 @@ import {
   readFlowRawArg,
 } from './flowArgParsers';
 import type { FlowCardDeps } from './registerFlowCards';
+
+const emitFlowDebug = getDebugEmitter('flow', 'settings');
 
 const EV_SOC_CARD_ID = 'report_evcharger_battery_level';
 
@@ -60,20 +63,19 @@ async function checkHeadroomForDevice(
     headroom,
     requiredKw,
   });
-  logHeadroomCheck(deps, deviceSnap, requiredKw, headroom, decision);
+  logHeadroomCheck(deviceSnap, requiredKw, headroom, decision);
 
   return decision.allowed;
 }
 
 function logHeadroomCheck(
-  deps: FlowCardDeps,
   deviceSnap: TargetDeviceSnapshot,
   requiredKw: number,
   /** The reading the decision was made on; the line logs its figures, not a second read. */
   headroom: HeadroomWithReading,
   decision: HeadroomForDeviceDecision,
 ): void {
-  deps.debugStructured({
+  emitFlowDebug({
     event: 'headroom_for_device_checked',
     deviceId: deviceSnap.id,
     deviceName: deviceSnap.name,
@@ -126,7 +128,7 @@ async function getBestEffortEvChargerSnapshot(
     return await getDeviceSnapshotById(deps, chargerDeviceId);
   } catch (error: unknown) {
     const normalizedError = normalizeError(error);
-    deps.debugStructured({
+    emitFlowDebug({
       event: 'ev_charger_snapshot_reload_failed',
       deviceId: chargerDeviceId,
       error: normalizedError.message,

@@ -39,7 +39,7 @@
  */
 
 import type { ExternalOffHoldPolicy } from '../lib/observer/externalOffHold';
-import type { StructuredDebugEmitter } from '../lib/logging/logger';
+import { getDebugEmitter } from '../lib/logging/logger';
 import { isEvDevice, isEvSessionInactive, type EvDeviceIdentity } from '../packages/shared-domain/src/evPlugState';
 import {
   isBinaryObservedOn,
@@ -49,6 +49,8 @@ import type {
   EvObservedProbe,
   ObservedDeviceState,
 } from '../packages/contracts/src/types';
+
+const emitReconcileDebug = getDebugEmitter('reconcile', 'devices');
 
 /**
  * `started` — a hold was created; the caller must suppress this reconcile (it
@@ -115,7 +117,6 @@ export type ExternalOffHoldSyncDeps = {
    */
   hasPendingBinaryCommand: (deviceId: string) => boolean;
   clearRecentBinaryOffCommand: (deviceId: string) => void;
-  debugStructured?: StructuredDebugEmitter;
 };
 
 /**
@@ -224,7 +225,7 @@ export function syncExternalOffHoldForDevice(params: {
     }
     if (!policy.isHeld(deviceId)) return 'none';
     policy.clearHold(deviceId);
-    deps.debugStructured?.({
+    emitReconcileDebug({
       event: 'external_off_hold_cleared', deviceId, capabilityId, cause: 'observed_on',
     });
     return 'cleared';
@@ -243,7 +244,7 @@ export function syncExternalOffHoldForDevice(params: {
   })) return 'none';
   if (!policy.startHold(deviceId)) return 'none';
 
-  deps.debugStructured?.({ event: 'external_off_hold_started', deviceId, capabilityId });
+  emitReconcileDebug({ event: 'external_off_hold_started', deviceId, capabilityId });
   return 'started';
 }
 
@@ -299,10 +300,9 @@ export function releaseExternalOffHoldsForObservedOn(params: {
   deviceIds: readonly string[];
   isObservedOn: (deviceId: string) => boolean;
   onObservedOn?: (deviceId: string) => void;
-  debugStructured?: StructuredDebugEmitter;
 }): string[] {
   const {
-    policy, deviceIds, isObservedOn, onObservedOn, debugStructured,
+    policy, deviceIds, isObservedOn, onObservedOn,
   } = params;
   if (!policy) return [];
   const observedOn = Array.from(new Set([...policy.heldDeviceIds(), ...deviceIds]))
@@ -310,7 +310,7 @@ export function releaseExternalOffHoldsForObservedOn(params: {
   for (const deviceId of observedOn) onObservedOn?.(deviceId);
   const released = observedOn.filter((deviceId) => policy.clearHold(deviceId));
   for (const deviceId of released) {
-    debugStructured?.({ event: 'external_off_hold_cleared', deviceId, cause: 'observed_on_sweep' });
+    emitReconcileDebug({ event: 'external_off_hold_cleared', deviceId, cause: 'observed_on_sweep' });
   }
   return released;
 }

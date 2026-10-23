@@ -41,7 +41,6 @@ const buildRuntime = (overrides: { homeId?: 'main' | 'h_annex'; rebuild?: () => 
     () => partialDouble<CapacityGuard>({ isInShortfall: () => false, recordReading: async () => undefined }),
     () => partialDouble<PlanService>({ rebuildPlanFromCache }),
     () => partialDouble<Logger>({ child: child as unknown as Logger['child'] }),
-    () => true,
   );
   return { ...runtime, timers };
 };

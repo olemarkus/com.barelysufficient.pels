@@ -42,7 +42,6 @@ import type { DailyBudgetUiRead } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { createPlanStatusRegistry } from '../../lib/plan/planStatusRegistry';
 import { SnapshotWarmupGate } from '../../lib/plan/snapshotWarmupGate';
 import type { PriceOptimizationSettings } from '../../lib/price/priceOptimizer';
-import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
 import type { PriceCoordinator } from '../../lib/price/priceCoordinator';
 import { observedDeviceReadsDouble } from './observedDeviceReadsDouble';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
@@ -190,7 +189,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
   let powerTracker: PowerTrackerState = {};
   let capacitySettings: import('../../packages/contracts/src/capacitySettings').PowerLimitSettings = { capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, periodMinutes: 60 as const };
   let capacityDryRun = false;
-  let debugLoggingTopics = new Set<DebugLoggingTopic>();
   const lastKnownPowerKw: LearnedPeaksByDeviceId = {};
   let lastNotifiedOperatingMode = 'Home';
   const planRebuildThrottle = createInertPlanRebuildThrottle();
@@ -243,7 +241,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
   const deviceControlHelpers = deviceControlHelpersOverride ?? createDeviceControlHelpersForTest(
     () => latestTargetSnapshot, steppedStores,
     (deviceId) => context.deviceControlSettings.getDeviceTargetPowerConfig(deviceId),
-    () => false, () => {}, () => null, { structuredLog: testLogger, debugStructured: vi.fn() },
+    () => false, () => {}, () => null, testLogger,
   );
 
   // The real inventory reads over the fixture go through production projections.
@@ -418,8 +416,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     get capacityDryRun() { return capacityDryRun; },
     set capacityDryRun(value) { capacityDryRun = value; },
     deviceControlSettings: deviceControlSettingsFixture(),
-    get debugLoggingTopics() { return debugLoggingTopics; },
-    set debugLoggingTopics(value) { debugLoggingTopics = value; },
     get lastKnownPowerKw() { return lastKnownPowerKw; },
     get expectedPowerKwOverrides() { return {}; },
     get lastNotifiedOperatingMode() { return lastNotifiedOperatingMode; },

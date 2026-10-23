@@ -3,7 +3,7 @@ import { DeviceTargetPowerReachabilityOwner } from '../lib/device/deviceTargetPo
 import { SteppedDeviceControl } from '../lib/executor/steppedDeviceControl';
 import { TargetPowerCommandLifecycle } from '../lib/executor/targetPowerCommandLifecycle';
 import { DeviceControlProjection } from '../lib/planInput/deviceControlProjection';
-import { getDebugEmitter, getLogger } from '../lib/logging/logger';
+import { getLogger } from '../lib/logging/logger';
 import { requireDeviceManager, requirePlanService } from './appInit/contextGuards';
 
 /** Bind owner reads, executor lifecycle and pure runtime projection. */
@@ -12,20 +12,20 @@ export const createDeviceControlHelpers = (
   updateReachability: DeviceTargetPowerReachabilityOwner['update'],
   scheduleSettlement: (dueAtMs: number) => void,
 ) => {
-  const loggers = { structuredLog: getLogger('devices'), debugStructured: getDebugEmitter('devices', 'devices') };
+  const structuredLog = getLogger('devices');
   const reachabilityOwner = new DeviceTargetPowerReachabilityOwner(
     (deviceId) => ctx.deviceControlSettings.getDeviceTargetPowerConfig(deviceId),
     (deviceId) => ctx.deviceConfiguration.get(deviceId), updateReachability,
   );
   const targetPower = new TargetPowerCommandLifecycle(ctx.steppedCommandStore, reachabilityOwner,
-    scheduleSettlement, loggers);
+    scheduleSettlement, structuredLog);
   const control = new SteppedDeviceControl(ctx.steppedCommandStore, ctx.steppedReportedStore, {
     getDeviceConfiguration: (deviceId) => ctx.deviceConfiguration.get(deviceId),
     getDeviceConfigurations: () => ctx.deviceConfiguration.getAll(),
     getObservedState: (deviceId) => ctx.observer.getObservedRecord(deviceId),
   }, targetPower,
   (deviceId, stepId, powerW) => requireDeviceManager(ctx).reportSteppedLoadActualStep(deviceId, stepId, powerW),
-  (deviceId, profile) => requirePlanService(ctx).getLatestPlannedStepId(deviceId, profile), loggers);
+  (deviceId, profile) => requirePlanService(ctx).getLatestPlannedStepId(deviceId, profile), structuredLog);
   const projection = new DeviceControlProjection(ctx.steppedCommandStore, ctx.deviceConfiguration,
     (deviceId) => ctx.observer.getObservedRecord(deviceId),
     (deviceId) => ctx.isTemperatureControlDisabled(deviceId),

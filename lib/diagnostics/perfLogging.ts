@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { getDebugEmitter, isDebugTopicEnabled } from '../logging/logger';
 import { getPerfSnapshotAndResetWindow, type PerfSnapshot } from '../utils/perfCounters';
 import { startCpuSpikeMonitor } from '../utils/cpuSpikeMonitor';
 import { resolveMemoryMb } from '../diagnostics/resourceWarnings';
@@ -217,9 +218,12 @@ const buildPerfSummary = (delta: PerfDelta): PerfSummary => {
   };
 };
 
+const emitPerfDebug = getDebugEmitter('perf', 'perf');
+// The `perf` topic gates the counters AND the observers behind them: the GC
+// observer and the CPU spike monitor only run while the owner has it on.
+const isPerfEnabled = (): boolean => isDebugTopicEnabled('perf');
+
 export const startPerfLogger = (params: {
-  isEnabled: () => boolean;
-  logStructured: (payload: Record<string, unknown>) => void;
   error?: (...args: unknown[]) => void;
   intervalMs?: number;
 }): (() => void) => {
@@ -228,12 +232,12 @@ export const startPerfLogger = (params: {
   let stopCpuMonitor: (() => void) | undefined;
   let stopGcObserver: (() => void) | undefined;
   const syncObservers = (): void => {
-    const enabled = params.isEnabled();
+    const enabled = isPerfEnabled();
     if (enabled) {
       if (!stopGcObserver) stopGcObserver = startGcObserver();
       if (!stopCpuMonitor) {
         stopCpuMonitor = startCpuSpikeMonitor({
-          isEnabled: params.isEnabled,
+          isEnabled: isPerfEnabled,
         });
       }
       return;
@@ -250,7 +254,7 @@ export const startPerfLogger = (params: {
   };
   const logCounters = () => {
     syncObservers();
-    if (!params.isEnabled()) return;
+    if (!isPerfEnabled()) return;
     const snapshot = getPerfSnapshotAndResetWindow();
     const delta = buildPerfDelta(snapshot, lastSnapshot);
     lastSnapshot = snapshot;
@@ -270,7 +274,7 @@ export const startPerfLogger = (params: {
         durations: buildLoggedDurations(filteredDeltaDurations),
       },
     };
-    params.logStructured({
+    emitPerfDebug({
       ...payload,
       event: 'perf_counters',
     });

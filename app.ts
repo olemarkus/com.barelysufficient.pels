@@ -276,7 +276,6 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     () => this.capacityGuard,
     () => this.planService,
     () => this.getStructuredLogger('plan'),
-    (topic) => this.debugLoggingTopics.has(topic),
   );
   protected readonly planRebuildScheduler: PlanRebuildScheduler = this.rebuildRuntime.scheduler;
   public readonly planRebuildThrottle: PlanRebuildThrottle = this.rebuildRuntime.throttle;
