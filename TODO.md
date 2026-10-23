@@ -374,14 +374,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Settings UI surfaces and copy
 
-- [ ] **Activity log: collapse resume/turn-off alternation bursts.**
-      *Persona:* owner reading the log after a windy evening.
-      *Hypothesis:* consecutive-identical entries now collapse, but an A/B/A/B resume-vs-turn-off
-      alternation within minutes still renders as 2N cards that read as malfunction; a paired
-      collapse ("Tried to resume 5× in 4 min — not enough power") would tell the story in one row.
-      Source: 2026-08-08 walk, pels-ux-fit finding 11 (remainder). Files:
-      `packages/settings-ui/src/ui/views/DeviceLogView.tsx`. [P2]
-
 - [ ] **A price-adjusted target gets no reason line on the hero or card.**
       *Persona:* owner seeing hero "target 25 °C" above a Home-mode row saying 21 °C during a
       cheap hour.
