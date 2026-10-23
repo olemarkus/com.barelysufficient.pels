@@ -70,7 +70,7 @@ export function buildMeterSettlingReason(
 export function buildRestoreHeadroomReason(
   neededKw: number,
   availableKw: number,
-  marginKw: number,
+  admissionMarginKw: number,
   /** The activation-penalty share of `neededKw`; `null` for a need priced without one. */
   penaltyExtraKw: number | null,
   /** The swap path's reserve and effective headroom; `null` unless a swap was priced. */
@@ -81,7 +81,7 @@ export function buildRestoreHeadroomReason(
     code: PLAN_REASON_CODES.insufficientHeadroom,
     needKw: neededKw,
     availableKw,
-    marginKw,
+    admissionMarginKw,
     penaltyExtraKw,
     swapReserveKw,
     effectiveAvailableKw,

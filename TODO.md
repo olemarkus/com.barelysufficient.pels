@@ -237,11 +237,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       and `restore/swap.ts`. Done when a restore's log line states how old its evidence was.
       Source: runtime-reality review, 2026-09-15. [P3]
 
-- [ ] **`DeviceReason.marginKw` collides with the capacity safety margin of the same name.**
-      `capacitySettings.marginKw` is `safetyMarginKw` (`lib/power/capacityModel.ts`) and is read
-      across the settings UI; the admission margin introduced on the shared reason contract
-      2026-09-15 is an unrelated quantity. Fix: rename the reason field to `admissionMarginKw`.
-      Done when the two are not spelled alike. Source: adversarial review, 2026-09-15. [P3]
 
 ## Smart tasks
 

@@ -1,4 +1,3 @@
-import { PLAN_REASON_CODES } from '../../../shared-domain/src/planReasonSemantics.ts';
 import type { DeviceReason } from '../../../shared-domain/src/planReasonSemantics.ts';
 import { buildFixturePlanReason } from '../../../../test/utils/planReasonFixtureParser.ts';
 
@@ -14,20 +13,3 @@ import { buildFixturePlanReason } from '../../../../test/utils/planReasonFixture
 export const fixtureDeviceReason = (reason: string | undefined): DeviceReason => (
   buildFixturePlanReason(reason)
 );
-
-// `insufficient_headroom` has no prose form — its text does not fully specify
-// the object. Mirrors `insufficientHeadroomFixtureReason` in
-// `test/utils/deviceReasonTestUtils.ts`; admission figures follow
-// `buildRestoreAdmissionMetrics` (`lib/plan/admission/reserve.ts`).
-export const insufficientHeadroomFixtureReason = (params: {
-  needKw: number;
-  availableKw: number;
-}): DeviceReason => ({
-  code: PLAN_REASON_CODES.insufficientHeadroom,
-  needKw: params.needKw,
-  availableKw: params.availableKw,
-  marginKw: Number((params.availableKw - params.needKw).toFixed(3)),
-  penaltyExtraKw: null,
-  swapReserveKw: null,
-  effectiveAvailableKw: null,
-});

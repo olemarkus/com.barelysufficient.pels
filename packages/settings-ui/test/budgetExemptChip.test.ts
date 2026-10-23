@@ -375,7 +375,7 @@ describe('PlanTemperatureCard reason line states what the device needs', () => {
       code: PLAN_REASON_CODES.insufficientHeadroom,
       needKw: 2,
       availableKw: 0,
-      marginKw: -2,
+      admissionMarginKw: -2,
     },
     starvation: heldBackStarvation(),
     ...overrides,
@@ -445,7 +445,7 @@ describe('PlanSteppedCard status line states what the device needs', () => {
       code: PLAN_REASON_CODES.insufficientHeadroom,
       needKw: 2,
       availableKw: 0,
-      marginKw: -2,
+      admissionMarginKw: -2,
     },
     starvation: heldBackStarvation(),
     steppedLoad: {
