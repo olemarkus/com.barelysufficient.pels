@@ -55,6 +55,18 @@ const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'deferred_objectives',
   'weather_advisor_settings',
   'web_app_cloud_host',
+  'export_price_source',
+  'pv_forecast_source',
+  'power_source',
+  'battery_control_devices',
+  'mode_catalog_initialized',
+  'homes_config',
+  'homes_config_initialized',
+  'ev_boost_settings',
+  'ev_charge_target_settings',
+  'device_expected_power_overrides',
+  'ev_car_associations',
+  'weather_advisor_first_estimate_seen',
 ];
 
 module.exports = {

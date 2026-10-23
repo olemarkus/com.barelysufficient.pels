@@ -59,6 +59,18 @@ const BOOTSTRAP_KEYS: Record<SettingsUiBootstrapKey, true> = {
   deferred_objectives: true,
   weather_advisor_settings: true,
   web_app_cloud_host: true,
+  export_price_source: true,
+  pv_forecast_source: true,
+  power_source: true,
+  battery_control_devices: true,
+  mode_catalog_initialized: true,
+  homes_config: true,
+  homes_config_initialized: true,
+  ev_boost_settings: true,
+  ev_charge_target_settings: true,
+  device_expected_power_overrides: true,
+  ev_car_associations: true,
+  weather_advisor_first_estimate_seen: true,
 };
 
 export const SETTINGS_UI_BOOTSTRAP_KEYS = Object.keys(BOOTSTRAP_KEYS) as SettingsUiBootstrapKey[];

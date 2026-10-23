@@ -197,6 +197,51 @@ describe('settings script', () => {
     expect(fetchedKeys).not.toContain('capacity_dry_run');
   });
 
+  // Each setting read at boot is a round trip, about 0.35 s through the cloud
+  // for the web app, so the bootstrap carries what boot reads.
+  it('reads none of the settings the bootstrap carries again while booting', async () => {
+    const primed = {
+      export_price_source: 'spot',
+      pv_forecast_source: 'none',
+      power_source: 'homey_energy',
+      battery_control_devices: [],
+      mode_catalog_initialized: true,
+      homes_config: { homes: [] },
+      homes_config_initialized: true,
+      ev_boost_settings: {},
+      ev_charge_target_settings: {},
+      device_expected_power_overrides: {},
+      ev_car_associations: {},
+      weather_advisor_first_estimate_seen: true,
+    };
+    const homey = installHomeyMock({
+      settings: buildSettingsHomeyState(primed),
+      apiHandlers: {
+        'GET /ui_bootstrap': async () => ({
+          settings: primed,
+          dailyBudget: null,
+          plan: null,
+          power: { tracker: {}, status: { state: 'unavailable', reason: 'no_status_recorded' }, readings: { state: 'never' } },
+          prices: {
+            combinedPrices: null,
+            priceArea: null,
+            flowToday: null,
+            flowTomorrow: null,
+            homeyCurrency: null,
+            homeyToday: null,
+            homeyTomorrow: null,
+          },
+        }),
+      },
+    });
+
+    await loadSettingsScript();
+    await flushPromises();
+
+    const fetchedKeys = homey.get.mock.calls.map(([key]) => key);
+    for (const key of Object.keys(primed)) expect(fetchedKeys).not.toContain(key);
+  });
+
   it('falls back to existing load paths when bootstrap fails', async () => {
     installHomeyMock({
       settings: buildSettingsHomeyState({

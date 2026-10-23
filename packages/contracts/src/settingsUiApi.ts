@@ -155,9 +155,11 @@ export const SETTINGS_UI_SMART_TASK_CANCEL_PATH = '/ui_smart_task_cancel';
 export const SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX = 'PELS_APP_NOT_READY:';
 
 /**
- * The settings keys the `/ui_bootstrap` payload carries. The runtime's list,
- * `lib/utils/settingsUiBootstrapKeys.ts`, is keyed by this union, so the two
- * cannot drift.
+ * The settings keys the `/ui_bootstrap` payload carries: every setting the
+ * settings UI reads while it boots, so the boot does not wait on a read per key
+ * (each costs a round trip, about 0.35 s through the cloud for the web app).
+ * The runtime's list, `lib/utils/settingsUiBootstrapKeys.ts`, is keyed by this
+ * union, so the two cannot drift.
  */
 export type SettingsUiBootstrapKey =
   | 'capacity_enabled'
@@ -209,7 +211,19 @@ export type SettingsUiBootstrapKey =
   | 'debug_logging_enabled'
   | 'deferred_objectives'
   | 'weather_advisor_settings'
-  | 'web_app_cloud_host';
+  | 'web_app_cloud_host'
+  | 'export_price_source'
+  | 'pv_forecast_source'
+  | 'power_source'
+  | 'battery_control_devices'
+  | 'mode_catalog_initialized'
+  | 'homes_config'
+  | 'homes_config_initialized'
+  | 'ev_boost_settings'
+  | 'ev_charge_target_settings'
+  | 'device_expected_power_overrides'
+  | 'ev_car_associations'
+  | 'weather_advisor_first_estimate_seen';
 
 export type SettingsUiSettingsPatch = {
   settings: Partial<Record<SettingsUiBootstrapKey, unknown>>;
