@@ -54,6 +54,7 @@ const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'debug_logging_enabled',
   'deferred_objectives',
   'weather_advisor_settings',
+  'web_app_cloud_host',
 ];
 
 module.exports = {

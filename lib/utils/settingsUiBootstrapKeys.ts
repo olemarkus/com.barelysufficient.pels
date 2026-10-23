@@ -58,6 +58,7 @@ const BOOTSTRAP_KEYS: Record<SettingsUiBootstrapKey, true> = {
   debug_logging_enabled: true,
   deferred_objectives: true,
   weather_advisor_settings: true,
+  web_app_cloud_host: true,
 };
 
 export const SETTINGS_UI_BOOTSTRAP_KEYS = Object.keys(BOOTSTRAP_KEYS) as SettingsUiBootstrapKey[];

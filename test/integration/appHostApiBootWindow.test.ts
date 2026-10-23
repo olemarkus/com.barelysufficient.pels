@@ -120,6 +120,7 @@ describe('web app version API', () => {
   it('answers the manifest version, timezone and Homey id without a running app', async () => {
     const homey = partialDouble<Homey.App['homey']>({
       manifest: { version: '3.20.0' },
+      settings: partialDouble<Homey.App['homey']['settings']>({ get: () => undefined }),
       clock: partialDouble<Homey.App['homey']['clock']>({ getTimezone: () => 'Europe/Oslo' }),
       cloud: partialDouble<Homey.App['homey']['cloud']>({
         getHomeyId: async () => '65687b03c6bcab0c0a4464c3',
@@ -131,12 +132,14 @@ describe('web app version API', () => {
       timeZone: 'Europe/Oslo',
       homeyId: '65687b03c6bcab0c0a4464c3',
       localAddress: '192.168.1.50:80',
+      cloudHost: null,
     });
   });
 
   it('still answers when Homey cannot say its home-network address', async () => {
     const homey = partialDouble<Homey.App['homey']>({
       manifest: { version: '3.20.0' },
+      settings: partialDouble<Homey.App['homey']['settings']>({ get: () => undefined }),
       clock: partialDouble<Homey.App['homey']['clock']>({ getTimezone: () => 'Europe/Oslo' }),
       cloud: partialDouble<Homey.App['homey']['cloud']>({
         getHomeyId: async () => '65687b03c6bcab0c0a4464c3',
@@ -146,5 +149,38 @@ describe('web app version API', () => {
       }),
     });
     await expect(api.ui_version({ homey })).resolves.toMatchObject({ localAddress: null });
+  });
+
+  // Homey cannot say its cloud cluster, so the settings page saves the host it
+  // was served from and PELS hands it to the web app.
+  describe('the cloud host', () => {
+    const HOMEY_ID = '65687b03c6bcab0c0a4464c3';
+    const CLOUD_HOST = `https://${HOMEY_ID}.homey.athom-prod-euwest1-001.homeypro.net`;
+    const homeyWithSaved = (saved: unknown) => partialDouble<Homey.App['homey']>({
+      manifest: { version: '3.21.1' },
+      settings: partialDouble<Homey.App['homey']['settings']>({
+        get: (key: string) => (key === 'web_app_cloud_host' ? saved : undefined),
+      }),
+      clock: partialDouble<Homey.App['homey']['clock']>({ getTimezone: () => 'Europe/Oslo' }),
+      cloud: partialDouble<Homey.App['homey']['cloud']>({
+        getHomeyId: async () => HOMEY_ID,
+        getLocalAddress: async () => '192.168.1.50:80',
+      }),
+    });
+
+    it('answers the host the settings page saved', async () => {
+      await expect(api.ui_version({ homey: homeyWithSaved(CLOUD_HOST) }))
+        .resolves.toMatchObject({ cloudHost: CLOUD_HOST });
+    });
+
+    it.each([
+      ['nothing saved', undefined],
+      ['another Homey\'s cloud host', CLOUD_HOST.replace(HOMEY_ID, '6a1d4fbe841154c744299b7c')],
+      ['the relay', `https://${HOMEY_ID}.connect.athom.com`],
+      ['another site', 'https://example.com'],
+      ['junk', 42],
+    ])('answers none for %s', async (_label, saved) => {
+      await expect(api.ui_version({ homey: homeyWithSaved(saved) })).resolves.toMatchObject({ cloudHost: null });
+    });
   });
 });

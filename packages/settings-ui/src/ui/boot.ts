@@ -123,7 +123,7 @@ import {
   resetSettingsUiPerf,
 } from './perf.ts';
 import { initTooltips } from './tooltips.ts';
-import { initWebAppAddressCopy } from './webAppLink.ts';
+import { initWebAppAddressCopy, saveCloudHost } from './webAppLink.ts';
 import { initExternalLinks } from './externalLinks.ts';
 import { initDebouncedSaveFlush } from './utils.ts';
 import { handleResetStats } from './resetStats.ts';
@@ -606,6 +606,8 @@ export const boot = async () => {
     initializeBootHandlers();
     await loadInitialData(bootstrap);
     openInitialRoute();
+    // After the first data, off the page's critical path.
+    void saveCloudHost();
     startStaleDataRefreshInterval();
     markBootComplete();
     startDailyBudgetRefreshInterval();

@@ -1,14 +1,18 @@
 const callApi = vi.fn();
+const getSetting = vi.fn();
+const setSetting = vi.fn();
 const logSettingsWarn = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../src/ui/homey.ts', () => ({
   callApi: (...args: unknown[]) => callApi(...args),
+  getSetting: (...args: unknown[]) => getSetting(...args),
+  setSetting: (...args: unknown[]) => setSetting(...args),
 }));
 vi.mock('../src/ui/logging.ts', () => ({
   logSettingsWarn: (...args: unknown[]) => logSettingsWarn(...args),
 }));
 
-const { WEB_APP_URL, initWebAppAddressCopy, refreshWebAppLink } = await import('../src/ui/webAppLink.ts');
+const { WEB_APP_URL, initWebAppAddressCopy, refreshWebAppLink, saveCloudHost } = await import('../src/ui/webAppLink.ts');
 
 const link = () => document.getElementById('web-app-open-link');
 
@@ -45,6 +49,51 @@ describe('Open in a browser link', () => {
       expect(link()?.getAttribute('href'))
         .toBe(`${WEB_APP_URL}?open=65687b03c6bcab0c0a4464c3&via=${encodeURIComponent(cloud)}`);
       expect((document.getElementById('web-app-homey-address') as HTMLElement & { value: string }).value).toBe(cloud);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  // Served from the home network, the page shows the cloud host PELS learned.
+  it('shows and links the cloud host PELS learned when the page comes from the home network', async () => {
+    const cloud = 'https://65687b03c6bcab0c0a4464c3.homey.athom-prod-euwest1-001.homeypro.net';
+    vi.stubGlobal('location', { ...window.location, origin: 'https://192-168-89-241.homey.homeylocal.com' });
+    try {
+      callApi.mockResolvedValue({
+        version: '3.21.1', timeZone: 'Europe/Oslo', homeyId: '65687b03c6bcab0c0a4464c3', cloudHost: cloud,
+      });
+
+      await refreshWebAppLink();
+
+      expect(link()?.getAttribute('href'))
+        .toBe(`${WEB_APP_URL}?open=65687b03c6bcab0c0a4464c3&via=${encodeURIComponent(cloud)}`);
+      expect((document.getElementById('web-app-homey-address') as HTMLElement & { value: string }).value).toBe(cloud);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('saves the page\'s origin only when Homey serves it from a cloud host it does not hold yet', async () => {
+    const cloud = 'https://65687b03c6bcab0c0a4464c3.homey.athom-prod-euwest1-001.homeypro.net';
+    const servedFrom = (origin: string) => vi.stubGlobal('location', { ...window.location, origin });
+    getSetting.mockReset().mockResolvedValue(undefined);
+    setSetting.mockReset().mockResolvedValue(undefined);
+    try {
+      servedFrom(cloud);
+      await saveCloudHost();
+      expect(getSetting).toHaveBeenCalledWith('web_app_cloud_host');
+      expect(setSetting).toHaveBeenCalledWith('web_app_cloud_host', cloud);
+
+      // Already saved: the bootstrap-primed read answers, and nothing is written.
+      setSetting.mockClear();
+      getSetting.mockResolvedValue(cloud);
+      await saveCloudHost();
+
+      servedFrom('https://192-168-89-241.homey.homeylocal.com');
+      await saveCloudHost();
+      servedFrom('https://pels.barelysufficient.org');
+      await saveCloudHost();
+      expect(setSetting).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
     }

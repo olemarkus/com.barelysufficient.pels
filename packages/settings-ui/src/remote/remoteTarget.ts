@@ -1,5 +1,5 @@
-import { pingHomeyId } from './homeyAddress.ts';
-import type { RemoteConnection, StoredHomey } from './remoteConnection.ts';
+import { cloudAnswers, pingHomeyId } from './homeyAddress.ts';
+import { learnCloudUrl, type RemoteConnection, type StoredHomey } from './remoteConnection.ts';
 
 // Where one page's calls to a Homey go. At home the Homey answers on the home
 // network, which is quicker than the cloud and counts against no cloud limit;
@@ -19,6 +19,25 @@ export const chooseAddress = async (homey: StoredHomey, fetchImpl: FetchLike): P
   if (homey.localUrl === null) return 'cloud';
   const answering = await pingHomeyId(homey.localUrl, fetchImpl, LOCAL_PROBE_TIMEOUT_MS);
   return answering === homey.homeyId ? 'local' : 'cloud';
+};
+
+// The cloud answers a ping within a second; a host that does not is not
+// worth holding an open up for.
+const CLOUD_CHECK_TIMEOUT_MS = 3_000;
+
+// A cloud host for this Homey, reported by PELS (`ui_version`) or linked from
+// its settings page (`via`), replaces the address the web app has once it
+// answers: it takes far more calls than the relay a bare id leads to, and
+// PELS may have learned it after the Homey was added here. The stored record
+// stands when the host does not answer or the browser refuses the write.
+export const adoptCloudHost = async (
+  storage: Storage | null,
+  homey: StoredHomey,
+  cloudHost: string,
+  fetchImpl: FetchLike,
+): Promise<StoredHomey> => {
+  if (cloudHost === homey.baseUrl || !await cloudAnswers(cloudHost, fetchImpl, CLOUD_CHECK_TIMEOUT_MS)) return homey;
+  return learnCloudUrl(storage, homey.homeyId, cloudHost) ?? homey;
 };
 
 // The launcher hands the address it just checked to the build it opens, so

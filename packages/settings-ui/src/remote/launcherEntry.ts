@@ -5,7 +5,6 @@ import '@material/web/button/text-button.js';
 import {
   HOMEY_ID_PATTERN,
   cloudAddressFor,
-  cloudAnswers,
   parseHomeyAddress,
   pingHomeyId,
   relayUrl,
@@ -14,7 +13,6 @@ import {
 import {
   findStoredHomey,
   isHomeyApiKey,
-  learnCloudUrl,
   learnLocalUrl,
   loadStoredHomeys,
   markLastHomey,
@@ -42,6 +40,7 @@ import {
 import { drawPairingCodes } from './pairingCodes.ts';
 import { readPairing, type PairingRead } from './phonePairing.ts';
 import {
+  adoptCloudHost,
   chooseAddress,
   createRemoteTarget,
   handOverAddress,
@@ -88,8 +87,7 @@ const importTitle = byId<HTMLElement>('webapp-import-title');
 const importCancel = byId<HTMLElement>('webapp-import-cancel');
 const importAdd = byId<HTMLElement>('webapp-import-add');
 
-// A Homey added by its home-network address names itself on a ping, and a
-// linked cloud address must answer before it is kept.
+// A Homey added by its home-network address names itself on a ping.
 const ADDRESS_CHECK_TIMEOUT_MS = 10_000;
 const BUSY = 'Homey\'s cloud connection is busy. Trying again…';
 const UNREACHABLE = 'This Homey could not be reached. Check that it is online, then check again.';
@@ -114,16 +112,21 @@ const loadPublishedVersions = async (): Promise<string[] | null> => {
 };
 
 // One check of a listed Homey, with the address it answered on and what it
-// taught about itself (the home-network address it reports).
+// taught about itself (the home-network address and cloud host it reports).
 type HomeyCheck = { homey: StoredHomey; address: AddressChoice; status: RowStatus };
 
 const checkHomey = async (homey: StoredHomey, onBusy: (busy: boolean) => void): Promise<HomeyCheck> => {
   const readVersion = async () => {
     const target = createRemoteTarget(homey, await chooseAddress(homey, fetchImpl));
-    return { target, read: await readHomeyVersion(createRemoteRequest(target, fetchImpl, onBusy)) };
+    return { target, read: await readHomeyVersion(createRemoteRequest(target, fetchImpl, onBusy), homey.homeyId) };
   };
   const [published, { target, read }] = await Promise.all([loadPublishedVersions(), readVersion()]);
-  const learned = (read.state === 'version' ? learnLocalUrl(storage, homey.homeyId, read.localUrl) : null) ?? homey;
+  const reported = read.state === 'version' ? read : null;
+  const withLocal = (reported ? learnLocalUrl(storage, homey.homeyId, reported.localUrl) : null) ?? homey;
+  // On the cloud, the host PELS reports serves this open already; at home it
+  // is kept for later without holding the open up.
+  const adopting = reported?.cloudHost ? adoptCloudHost(storage, withLocal, reported.cloudHost, fetchImpl) : null;
+  const learned = adopting && target.address() === 'cloud' ? await adopting : withLocal;
   return {
     homey: learned,
     // A home-network address the Homey has just reported is tried before
@@ -510,10 +513,7 @@ const learnLinkedCloudAddress = async () => {
   const homeyId = params.get('open');
   const listed = homeyId ? findStoredHomey(storage, homeyId) : null;
   const cloudUrl = listed ? cloudAddressFor(params.get('via') ?? '', listed.homeyId) : null;
-  if (!listed || !cloudUrl || cloudUrl === listed.baseUrl) return;
-  if (await cloudAnswers(cloudUrl, fetchImpl, ADDRESS_CHECK_TIMEOUT_MS)) {
-    learnCloudUrl(storage, listed.homeyId, cloudUrl);
-  }
+  if (listed && cloudUrl) await adoptCloudHost(storage, listed, cloudUrl, fetchImpl);
 };
 
 // The installed app starts here and goes straight to a Homey: the one a build

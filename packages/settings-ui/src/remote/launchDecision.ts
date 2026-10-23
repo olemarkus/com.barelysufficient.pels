@@ -1,4 +1,5 @@
 import { SETTINGS_UI_VERSION_PATH, type SettingsUiVersionRead } from '../../../contracts/src/settingsUiApi.ts';
+import { readWebAppCloudHost } from '../../../shared-domain/src/settings/webAppCloudHost.ts';
 import { localUrlFromAddress } from './homeyAddress.ts';
 import { PELS_APP_ID } from './remoteConnection.ts';
 import {
@@ -19,14 +20,17 @@ type HomeyVersionProblem =
   | { state: 'unreachable'; detail: string };
 
 export type HomeyVersionRead =
-  // `localUrl` is null when the Homey did not report a usable home-network
-  // address; a PELS from before the web app knew it does not report one.
-  | { state: 'version'; version: string; timeZone: string; localUrl: string | null }
+  // `localUrl` and `cloudHost` are null when the Homey offered no usable
+  // home-network address or cloud host (`SettingsUiVersionRead`).
+  | { state: 'version'; version: string; timeZone: string; localUrl: string | null; cloudHost: string | null }
   | HomeyVersionProblem;
 
-// Every PELS with the route sends the version and zone; `localAddress` came
-// later and is read on its own.
-type VersionAnswer = Pick<SettingsUiVersionRead, 'version' | 'timeZone'> & { localAddress?: unknown };
+// The launcher talks to every PELS version that has the route, so only the
+// version and zone are required and each address is read on its own.
+type VersionAnswer = Pick<SettingsUiVersionRead, 'version' | 'timeZone'> & {
+  localAddress?: unknown;
+  cloudHost?: unknown;
+};
 
 const isVersionRead = (value: unknown): value is VersionAnswer => (
   typeof value === 'object' && value !== null
@@ -34,7 +38,8 @@ const isVersionRead = (value: unknown): value is VersionAnswer => (
   && typeof (value as Partial<Record<keyof SettingsUiVersionRead, unknown>>).timeZone === 'string'
 );
 
-export const readHomeyVersion = async (request: RemoteRequest): Promise<HomeyVersionRead> => {
+// A cloud host is taken only when it is this Homey's own, as everywhere else.
+export const readHomeyVersion = async (request: RemoteRequest, homeyId: string): Promise<HomeyVersionRead> => {
   try {
     const read = await request('GET', `/api/app/${PELS_APP_ID}${SETTINGS_UI_VERSION_PATH}`);
     return isVersionRead(read)
@@ -43,6 +48,7 @@ export const readHomeyVersion = async (request: RemoteRequest): Promise<HomeyVer
         version: read.version,
         timeZone: read.timeZone,
         localUrl: localUrlFromAddress(read.localAddress),
+        cloudHost: readWebAppCloudHost(read.cloudHost, homeyId),
       }
       : { state: 'unreachable', detail: 'unexpected version answer' };
   } catch (error) {

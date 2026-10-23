@@ -5,15 +5,14 @@
 // the home network. The PELS settings page uses this too, without the web
 // app's storage.
 
+import { cloudHostHomeyId } from '../../../shared-domain/src/homeyCloudHost.ts';
+
 export const HOMEY_ID_PATTERN = /^[a-f0-9]{24}$/i;
 // Athom's relay for any Homey. It limits each Homey to a few dozen calls in a
-// burst, so it is only the address of last resort.
+// burst, so it is only the address of last resort. The Homey's own cloud host
+// has no such limit; its rule is shared with PELS, which learns it
+// (`shared-domain/src/homeyCloudHost.ts`).
 const RELAY_HOST = /^([a-f0-9]{24})\.connect\.athom\.com$/i;
-// The Homey's own cloud host, which Homey's web app uses and which has no such
-// limit: `<homeyId>.homey.<cluster>.homeypro.net` for a Homey Pro and
-// `.homeyshs.net` for a Self-Hosted Server. The cluster cannot be derived from
-// the id, so this address is learned from the PELS settings page or pasted.
-const CLOUD_HOST = /^([a-f0-9]{24})\.homey\.[a-z0-9-]+\.(homeypro|homeyshs)\.net$/i;
 // Homey's certificate on the home network names this host, which resolves to
 // the dashed IP. HTTPS is on 443 for a Homey Pro and 4860 for a Self-Hosted
 // Server.
@@ -40,9 +39,8 @@ const isPrivateIpv4 = (octets: readonly string[]): boolean => (
 // The Homey a cloud address leads to, from its host name; null for any other
 // address. Both hosts are Athom's, so the id in the name is the Homey reached.
 const cloudHomeyId = (url: URL): string | null => {
-  if (url.protocol !== 'https:') return null;
-  const match = RELAY_HOST.exec(url.hostname) ?? CLOUD_HOST.exec(url.hostname);
-  return match?.[1]?.toLowerCase() ?? null;
+  if (url.protocol !== 'https:' || url.port !== '') return null;
+  return RELAY_HOST.exec(url.hostname)?.[1]?.toLowerCase() ?? cloudHostHomeyId(url.hostname);
 };
 
 export const relayUrl = (homeyId: string): string => `https://${homeyId.toLowerCase()}.connect.athom.com`;
