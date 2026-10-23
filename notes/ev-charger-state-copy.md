@@ -137,7 +137,9 @@ and is not card copy today.
 
 1. **Never name a cause PELS cannot observe.** A charger commanded off is
    `Not charging` and nothing more — whatever PELS intended, and whatever the
-   car reports.
+   car reports. On a card whose state word is already `Off`, the fact line
+   leaves it out, because it would only restate that word; under `Manual` it
+   stays.
 2. **Signal 2 answers "is anything on offer", and it is the gate for every
    car-holdout claim.** PELS's own intent (signal 1) answers nothing here: it is
    not a command, and for an unmanaged device it is not even PELS's to have.

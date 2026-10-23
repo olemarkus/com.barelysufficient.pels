@@ -339,7 +339,7 @@ fact (connected, not charging), never a cause:
 | Label | Used when |
 |---|---|
 | `Waiting for car` | The charger has been told to charge and still no current flows — the car (scheduled departure charging, full battery) is the holdout. |
-| `Not charging` | The charger is switched off. Nothing is on offer, so nothing is waiting on the car; blaming it here is false. |
+| `Not charging` | The charger is switched off. Nothing is on offer, so nothing is waiting on the car; blaming it here is false. A card whose state word is already `Off` leaves it out of the fact line, where it would only restate the state word; under `Manual` it stays, as the one line naming the plug state. |
 
 The claim turns on the charger's command, not on what PELS wants — PELS's
 commanded step is not a command at all when the device's Power-limit control is
