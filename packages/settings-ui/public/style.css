@@ -5041,8 +5041,7 @@ details[open] > summary .disclosure-chevron {
    stretched card's rows to the top, scoped to the grid that causes the
    stretch (the card's own base rule stays retired — cardPrimitiveRebind
    guard); the list already packs its own rows (`.detail-diagnostics-list`
-   below). First proven by the populated held-back capture
-   (mw-onoff-waterheater-full.png). */
+   below). */
 .detail-diagnostics-grid > .detail-diagnostics-card {
   align-content: start;
 }
