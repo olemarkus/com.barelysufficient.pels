@@ -90,6 +90,7 @@ import {
 import { initWeatherInsight } from './weatherInsight.ts';
 import {
   initDeviceDetailHandlers,
+  closeDeviceDetail,
   openDeviceDetailAt,
   loadDeviceExpectedPowerOverrides,
   loadEvBoostSettings,
@@ -123,6 +124,7 @@ import {
 import { initTooltips } from './tooltips.ts';
 import { initWebAppAddressCopy, saveCloudHost } from './webAppLink.ts';
 import { initExternalLinks } from './externalLinks.ts';
+import { initSupportReportNavigation } from './supportReport.ts';
 import { initDebouncedSaveFlush } from './utils.ts';
 import { handleResetStats } from './resetStats.ts';
 import { createSwitchField } from './components.ts';
@@ -513,6 +515,7 @@ const initializeBootHandlers = () => {
   initHomeScope();
   initCurrentModes();
   initDeviceDetailHandlers();
+  initSupportReportNavigation(showTab, closeDeviceDetail);
   initModeHandlers();
   initLimitsAndSimulationHandlers();
   initDailyBudgetHandlers();

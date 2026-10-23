@@ -1,5 +1,6 @@
 import { refreshActivityHistory } from './activityHistory.ts';
 import { refreshAdvancedDeviceLogger } from './advanced.ts';
+import { refreshSupportReport } from './supportReport.ts';
 import { panels, tabListEntries, tabs, type MdTabElement } from './dom.ts';
 import { SETTINGS_UI_POWER_PATH } from '../../../contracts/src/settingsUiApi.ts';
 import { loadCapacitySettings } from './capacity.ts';
@@ -90,6 +91,7 @@ const refreshHomeSettingsPanel = (tabId: string): void => {
 const SINGLE_REFRESH_PANELS: Record<string, { refresh: () => Promise<void>; failure: string }> = {
   activity: { refresh: refreshActivityHistory, failure: 'Failed to refresh activity history' },
   advanced: { refresh: refreshAdvancedDeviceLogger, failure: 'Failed to load Homey devices' },
+  'report-problem': { refresh: refreshSupportReport, failure: 'Failed to load report form' },
   deadlines: { refresh: refreshDeadlinesList, failure: 'Failed to load deadlines list' },
   weather: { refresh: refreshWeatherInsightOnWeatherPanel, failure: 'Failed to refresh weather insight' },
   'web-app': { refresh: refreshWebAppLink, failure: 'Failed to prepare the web app link' },
@@ -326,7 +328,10 @@ export const initShellRouter = () => {
   window.addEventListener('popstate', () => {
     if (isDeadlinePlanRoute(window.location.search) || isDeadlinePlanShown()) return;
     const routeId = panelFromSearch(window.location.search) ?? 'overview';
-    if (routeId === currentRouteId) return;
+    if (routeId === currentRouteId) {
+      if (routeId === 'report-problem') runTabActivationSideEffects(routeId);
+      return;
+    }
     renderPanel(routeId);
   });
 };

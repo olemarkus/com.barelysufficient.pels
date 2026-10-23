@@ -8967,3 +8967,88 @@ md-switch {
   margin-bottom: var(--spacing-3);
   max-width: 100%;
 }
+
+/* Manual problem reports */
+.support-report,
+.support-report__form,
+.support-report__preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  min-width: 0;
+}
+
+#report-problem-panel .support-report md-filled-text-field,
+#report-problem-panel .support-report md-filled-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.support-report p,
+.support-report h3 {
+  margin: 0;
+}
+
+.support-report__preview {
+  border-top: 1px solid var(--color-border-default);
+  padding-top: var(--spacing-6);
+}
+
+.support-report__summary {
+  display: grid;
+  gap: var(--spacing-1);
+  margin: 0;
+}
+
+.support-report__summary dd {
+  margin: 0 0 var(--spacing-2);
+}
+
+.support-report__description,
+.support-report__text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.support-report__detail,
+.support-report__text {
+  padding: var(--spacing-3);
+}
+
+.support-report__text {
+  max-height: 24rem;
+  overflow: auto;
+  -webkit-user-select: text;
+  user-select: text;
+  font-size: var(--pels-text-supporting-font-size);
+  background: var(--pels-surface-container-low);
+  border-radius: var(--radius-md);
+}
+
+.support-report__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+}
+
+.support-report__send {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+#report-problem-panel .support-report__send md-filled-button {
+  width: 100%;
+}
+
+#report-problem-panel .support-report md-outlined-button {
+  padding-inline: var(--spacing-4);
+}
+
+.support-report__reference {
+  overflow-wrap: anywhere;
+}
+
+.support-report__notice:empty {
+  display: none;
+}
