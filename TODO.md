@@ -191,20 +191,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Restore admission
 
-- [ ] **The budget-exempt restore lane can now open inside the shedding hysteresis band.**
-      `shouldPlanBudgetExemptRestores` (`lib/plan/restore/timing.ts`) gates on
-      `capacityHeadroomKw > 0`, and its own comment recorded the resulting corner as bounded by the
-      flat admission floor: the smallest admissible candidate was 0.7 kW, above the 0.4 kW
-      `SHEDDING_CLEAR_THRESHOLD_KW` band, so it could not fire. That floor was removed 2026-09-15
-      and the bar is now the device's own need, flooring at 0.2 kW. A budget-exempt candidate
-      drawing ~0.2 kW or less is admissible while capacity headroom sits inside the band the latch
-      exists to protect. Fix: gate the lane on `capacityHeadroomKw > SHEDDING_CLEAR_THRESHOLD_KW`,
-      or record the latch cause so the lane can ask whether the latch was capacity-driven at all.
-      Done when a capacity-latched shed whose source flipped to `daily` admits no exempt restore
-      until headroom clears the band. Persona: a home with a small always-permitted device and a
-      daily budget tighter than its capacity; hypothesis: that device flaps around the latch
-      boundary. Source: adversarial review of the admission-slack removal, 2026-09-15. [P2]
-
 - [ ] **`restore_admitted` / `restore_rejected` cannot distinguish a wrong admission from a stale
       one.** The payloads carry `availableKw`, `neededKw` and `marginKw` — the third is arithmetic
       on the first two — but no sample age and no decomposition of the need, so an operator cannot

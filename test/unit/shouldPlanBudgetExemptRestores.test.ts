@@ -62,6 +62,13 @@ describe('shouldPlanBudgetExemptRestores', () => {
     expect(canRestore({ ...base, softLimitSource: 'capacity' })).toBe(false);
   });
 
+  it('stays closed while capacity headroom sits inside the clear band', () => {
+    // A capacity-latched shed whose binding source flipped to daily: the lane
+    // must not admit a small exempt device at the band the latch protects.
+    expect(canRestore({ ...base, gridTargetKw: null, capacityHeadroomKw: 0.39 })).toBe(false);
+    expect(canRestore({ ...base, gridTargetKw: null, capacityHeadroomKw: 0.4 })).toBe(true);
+  });
+
   it('stays closed at zero capacity headroom', () => {
     expect(canRestore({ ...base, capacityHeadroomKw: 0 })).toBe(false);
   });
