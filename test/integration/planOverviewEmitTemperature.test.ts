@@ -4,6 +4,7 @@ import type { DevicePlan } from '../../lib/plan/planTypes';
 import { buildPlanDevice, buildPlanMeta } from '../utils/planTestUtils';
 import { executionStateFixture } from '../utils/deviceStatusFixture';
 import { buildOverviewDeviceCard, overviewReadModelWiring } from '../utils/settingsOverviewFixture';
+import { createTestDeviceActivityRecorder } from '../helpers/deviceActivityRecorder';
 
 // The overview log and live-card seams share one atomic temperature resolver.
 // Pin that integration here: the shared-domain classifier reads the trio as one
@@ -39,7 +40,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
   });
 
   it('classifies a satisfied target-only device as idle (the facet reaches the classifier)', () => {
-    const captured: { deviceId: string; entry: Record<string, unknown> }[] = [];
+    const recorder = createTestDeviceActivityRecorder();
     const plan = satisfiedTemperaturePlan();
     const deps = {
       ...overviewReadModelWiring(),
@@ -55,16 +56,15 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
     const changed = new DeviceOverviewTransitions().capture(snapshot, {
       isOverviewDebugEnabled: () => false,
       overviewDebugStructured: vi.fn(),
-      deviceOverviewLogRecorder: { record: (deviceId: string, entry: Record<string, unknown>) => {
-        captured.push({ deviceId, entry });
-      } } as never,
+      deviceOverviewLogRecorder: recorder,
     }, describeNoDecision);
 
     expect(changed).toBe(true);
+    const captured = recorder.getUiPayload().entries;
     expect(captured).toHaveLength(1);
     // Not `active`: with the facet absent from the seam's shape the classifier
     // cannot see the satisfied pair and falls back to the running inference.
-    expect(captured[0]?.entry.stateKind).toBe('idle');
+    expect(captured[0]).toMatchObject({ deviceId: 'thermostat', stateKind: 'idle' });
   });
 
   it('reads a satisfied thermostat that reports on as Idle on its card, not Running at 0 kW', () => {
@@ -124,18 +124,16 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
       }),
       getObservationStale: () => false,
     };
-    const captured: Record<string, unknown>[] = [];
+    const recorder = createTestDeviceActivityRecorder();
 
     new DeviceOverviewTransitions().capture(buildSettingsOverviewReadModel(stalePlan, deps)!, {
       ...deps,
       isOverviewDebugEnabled: () => false,
       overviewDebugStructured: vi.fn(),
-      deviceOverviewLogRecorder: {
-        record: (_deviceId: string, entry: Record<string, unknown>) => captured.push(entry),
-      } as never,
+      deviceOverviewLogRecorder: recorder,
     }, describeNoDecision);
 
     expect(buildOverviewDeviceCard(updatedDevice, deps).status.kind).toBe('idle');
-    expect(captured[0]?.stateKind).toBe('idle');
+    expect(recorder.getUiPayload().entries[0]).toMatchObject({ deviceId: 'thermostat', stateKind: 'idle' });
   });
 });
