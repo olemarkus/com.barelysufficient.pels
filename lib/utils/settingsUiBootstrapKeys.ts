@@ -6,8 +6,6 @@ import type { SettingsUiBootstrapKey } from '../../packages/contracts/src/settin
 // key is missing or extra, so the runtime list cannot drift from the contract.
 // The list has to live on this side: `packages/contracts` is types-only at
 // runtime, so it cannot export a value for the bootstrap handler to read.
-// `scripts/lib/settingsUiBootstrapKeys.cjs` keeps a JS copy for Node scripts,
-// pinned to this list by `test/unit/settingsUiScripts.test.ts`.
 const BOOTSTRAP_KEYS: Record<SettingsUiBootstrapKey, true> = {
   capacity_enabled: true,
   grid_import_enabled: true,
