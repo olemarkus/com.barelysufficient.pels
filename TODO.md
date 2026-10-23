@@ -411,16 +411,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       nothing, and the only escape (delete an area) is not something the message suggests. Source:
       multi-home finishing train, area-config invariants PR review. [P3]
 
-- [ ] **Usage footer promises a Main-only reset under area scope.** "Reset usage history lives under
-      Settings → Advanced" resets Main's tracker; a per-home reset through the bundle's persistence
-      API is not built. Either scope the footer copy per home or build the per-home reset (route it
-      through the bundle's persistence API, never a raw suffixed settings write — it collides with
-      `HomeTrackerPersistenceController`'s echo-suppression latch). Persona: meter-area owner
-      wanting a clean slate for one rental unit. *Hypothesis:* the owner follows the footer, resets
-      the wrong home's history, and loses Main's data without clearing the area's. Files:
-      `packages/settings-ui/public/index.html:406` (footer), `setup/homeRuntime/` (persistence API).
-      Source: multi-home finishing train, per-home Usage PR. [P3]
-
 ## Solar and surplus
 
 - [ ] **Solar export price — migrate the smart-task *preview* price reader onto the planning price.**

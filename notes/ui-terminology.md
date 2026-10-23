@@ -1793,6 +1793,13 @@ live in their own card that steps aside in area scope, replaced by
 Main home's own hard-cap hint stops saying "**Your** grid tariff step" once areas
 exist and names the Main home instead: with the house split, the Main branch has
 to be as explicit about its scope as the area branch already is.
+The usage reset is Main-only for the same reason: once areas exist the Usage
+footer on the Main home reads `Reset the Main home’s usage history under Settings →
+Advanced → Data management.`, an area's footer reads `Resetting usage history
+covers the Main home only.` (never a pointer to a reset that would erase another
+home's history), and the Advanced description names the Main home and says meter
+areas keep theirs. Source: `resolveUsageFooterText` and the reset constants in
+`homeScopeCopy.ts`.
 
 `Showing` is deliberately a plain statement of what is on screen rather than a
 settings-field label, so the bar reads the same on a page you are only looking

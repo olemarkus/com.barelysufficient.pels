@@ -10,6 +10,7 @@
  * Browser-only copy shared by the settings UI surfaces.
  */
 
+import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { HOME_LIMITS_CONTROL_LABEL } from './homeLimitsCopy';
 
 /** Lead word before the selected home's name: "Showing [Main home ▾]". */
@@ -82,6 +83,31 @@ export const HOME_SCOPE_OVERVIEW_UNAVAILABLE_BODY = 'PELS couldn’t read the cu
  */
 export const HOME_SCOPE_BUDGET_MAIN_ONLY_LINE = 'Your daily budget covers the Main home. '
   + 'Each meter area runs on its own cap and isn’t counted here.';
+
+/**
+ * Usage footer and the Advanced reset copy. The usage reset clears the Main
+ * home's tracker only (`resetSettingsUiPowerStats`), so once meter areas exist
+ * both name the Main home, and an area's Usage page says the reset is not its
+ * own instead of pointing at a reset that would erase another home's history.
+ */
+export const USAGE_RETENTION_LINE = 'Hourly data kept for 30 days, daily totals for 1 year.';
+export const USAGE_RESET_POINTER = 'Reset usage history lives under Settings → Advanced → Data management.';
+export const USAGE_RESET_POINTER_MAIN_HOME = 'Reset the Main home’s usage history under '
+  + 'Settings → Advanced → Data management.';
+export const USAGE_RESET_AREA_LINE = 'Resetting usage history covers the Main home only.';
+export const RESET_USAGE_HISTORY_DESCRIPTION = 'Reset all usage history: hourly samples, daily totals, and '
+  + 'weekday/weekend averages. PELS will start collecting fresh history after the reset.';
+export const RESET_USAGE_HISTORY_DESCRIPTION_MAIN_HOME = 'Reset the Main home’s usage history: hourly samples, '
+  + 'daily totals, and weekday/weekend averages. Meter areas keep theirs. PELS will start collecting fresh '
+  + 'history after the reset.';
+
+/** The Usage footer for the home on screen. */
+export const resolveUsageFooterText = (selectedHomeId: string, meterAreasInUse: boolean): string => {
+  if (!meterAreasInUse) return `${USAGE_RETENTION_LINE} ${USAGE_RESET_POINTER}`;
+  return selectedHomeId === MAIN_HOME_ID
+    ? `${USAGE_RETENTION_LINE} ${USAGE_RESET_POINTER_MAIN_HOME}`
+    : `${USAGE_RETENTION_LINE} ${USAGE_RESET_AREA_LINE}`;
+};
 
 /**
  * Smart tasks list notice (locked decision 4): smart tasks are refused on a
