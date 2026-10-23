@@ -185,7 +185,7 @@ describe('start policy through a whole plan build', () => {
     // device the policy has already taken OFF is exactly the device a task has to
     // be able to start. While `getInactiveReason` read the owner's raw policy it
     // pinned this device `inactive` every cycle, and no start intent is ever built
-    // for an inactive device — so "It runs when a Smart task needs it to" was
+    // for an inactive device — so "It runs when a smart task needs it to" was
     // false for every device the hold was working on.
     const plan = await buildBuilder({
       decorateDeferredObjectives: decorateWithDecision('charger', plannedDecision),

@@ -808,10 +808,10 @@ its sentence with `When no smart task is running, `, because the task decides th
 Nothing is stated until the settings the rule reads have loaded.
 
 The toggle's hint says what happens: *"If this device is started in Homey, on the
-device, or by another Flow, PELS turns it off again. It runs when a Smart task
+device, or by another Flow, PELS turns it off again. It runs when a smart task
 needs it to, and not otherwise."* A second hint appears when the device has no
 smart task, because that is the case where the setting means the device never
-runs at all: *"This device has no Smart task, so nothing will start it while this
+runs at all: *"This device has no smart task, so nothing will start it while this
 is on."*
 
 **The card has no copy for this policy, by ruling (2026-09-10).** The device reads

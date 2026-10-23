@@ -853,18 +853,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Settings UI surfaces and copy
 
-- [ ] **"Smart task" is capitalised mid-sentence in the two start-policy hints.**
-      `packages/settings-ui/public/index.html` — the dominant convention in body copy is
-      lowercase (`notes/ui-terminology.md`, and the two adjacent hints in the same panel), with
-      the capitalised form reserved for the tab and appbar titles. Two sibling hints already
-      deviate, so the drift predates this. **What changes:** lowercase it in the new hints and
-      the two siblings, or register the capitalised convention in `notes/ui-terminology.md` and
-      fix the lowercase uses. **Done when:** one convention holds across `index.html` body copy.
-      *Persona:* owner reading device detail (`notes/personas.md`). *Hypothesis:* inconsistent
-      capitalisation of a product noun reads as carelessness on the screen where the owner is
-      deciding whether to trust the feature. *Why it's needed:* it is the one vocabulary rule
-      this feature's copy breaks. [P3]
-
 - [ ] **Activity log: collapse resume/turn-off alternation bursts.**
       *Persona:* owner reading the log after a windy evening.
       *Hypothesis:* consecutive-identical entries now collapse, but an A/B/A/B resume-vs-turn-off
@@ -927,14 +915,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       convergence. Persona: contributor velocity + Set-and-forget owner (visual coherence);
       hypothesis: three segmented impls / two device rows / per-file chip vocab is where per-page
       drift keeps re-entering. [P2]
-
-- [ ] **Car card opens with an instruction there is nothing to act on.**
-      *Persona:* EV-charger owner with no car app installed.
-      *Hypothesis:* "Tick the cars that charge here…" renders directly above "No cars found" —
-      a dead imperative; suppressing the intro (or ordering the empty-state line first) when the
-      list is empty lets the empty state carry the card. Files:
-      `deviceDetail/carAssociation.ts`. Source: 2026-08-09 post-merge review, pels-ux-fit +
-      pels-m3-critic. [P3]
 
 - [ ] **Device-detail diagnostics hardcodes 12 status strings that duplicate or contradict
       shared-domain.**
