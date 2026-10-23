@@ -15,6 +15,7 @@ import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSe
 import { fixtureControlPosture, fixtureResidualKw, resolveFixtureCurrentOn } from '../utils/planTestUtils';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
+import { withCapacityPace } from '../helpers/capacityPaceFixture';
 
 // Drives the REAL PlanBuilder to prove the startup reservation: a device flagged
 // `reservesStartupPower` holds its lowest-active-step power back from LOWER-PRIORITY devices'
@@ -61,23 +62,28 @@ const makeBuilder = (params: {
   // The tracker is the single power latch, so the builder's whole-home total is
   // driven by writing the sample here rather than reporting it to the guard.
   let lastPowerW = params.totalKw * 1000;
-  // The dynamic soft limit is what the daily-budget lane already moves at runtime, so driving it
-  // here is the honest way to put the home under pressure and then take it away again — the
-  // capacity guard's own hour-average projection is not steerable from a single power report.
+  // The capacity pace is what moves at runtime as the hour fills, so shaping the hour's used
+  // energy (`withCapacityPace`) is how this harness puts the home under pressure and takes it
+  // away again; `null` leaves the real, roomy pace.
   let softLimitKw = params.softLimitKw ?? null;
+  const capacitySettings = {
+    capacityEnabled: true, gridImportLimitKw: null, limitKw: params.limitKw, marginKw: 0.2, periodMinutes: 60,
+  } as const;
   const builder = new PlanBuilder({
     ...planBuilderWiring(),
     capacityGuard: capacityGuard,
-    getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: params.limitKw, marginKw: 0.2, periodMinutes: 60 }),
+    getCapacitySettings: () => capacitySettings,
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
       getShedBehavior: (deviceId: string) => params.shedBehaviors?.[deviceId]
         ?? { action: 'turn_off' },
     }),
-    getPowerTracker: () => ({ buckets: {}, lastTimestamp: Date.now(), lastPowerW }),
+    getPowerTracker: () => {
+      const tracker = { buckets: {}, lastTimestamp: Date.now(), lastPowerW };
+      return softLimitKw === null ? tracker : withCapacityPace(tracker, capacitySettings, softLimitKw);
+    },
     // heater is priority 1 (top); everything else lower (higher number sheds first).
     getShedBehavior: (deviceId: string) => params.shedBehaviors?.[deviceId]
       ?? { action: 'turn_off' },
-    getDynamicSoftLimitOverride: () => softLimitKw,
   }, createPlanEngineState());
   return {
     builder,

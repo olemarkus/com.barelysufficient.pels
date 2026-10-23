@@ -1,5 +1,6 @@
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { steerCapacityPace } from '../helpers/capacityPaceFixture';
 
 describe('Headroom for device condition', () => {
   beforeEach(() => {
@@ -22,7 +23,7 @@ describe('Headroom for device condition', () => {
 
     const app = createApp();
     await app.onInit();
-    app.computeDynamicSoftLimit = () => 0.4; // kW
+    steerCapacityPace(app, 0.4); // kW
     app.powerTracker = { ...app.powerTracker, lastPowerW: 0 };
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.has_headroom_for_device;
@@ -46,7 +47,7 @@ describe('Headroom for device condition', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 0.4;
+    steerCapacityPace(app, 0.4);
     app.powerTracker = { ...app.powerTracker, lastPowerW: 0 };
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.has_headroom_for_device;
@@ -71,7 +72,7 @@ describe('Headroom for device condition', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 0.4;
+    steerCapacityPace(app, 0.4);
     app.powerTracker = { ...app.powerTracker, lastPowerW: 0 };
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.has_headroom_for_device;
@@ -99,7 +100,7 @@ describe('Headroom for device condition', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 1.35;
+    steerCapacityPace(app, 1.35);
     app.powerTracker = { ...app.powerTracker, lastPowerW: 0 };
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.has_headroom_for_device;
@@ -158,7 +159,7 @@ describe('Headroom for device condition', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 2.28;
+    steerCapacityPace(app, 2.28);
     app.powerTracker = { ...app.powerTracker, lastPowerW: 0 };
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.has_headroom_for_device;
@@ -201,7 +202,7 @@ describe('Headroom for device condition', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 4.5;
+    steerCapacityPace(app, 4.5);
     const setPowerKw = (kw: number) => {
       app.powerTracker = { ...app.powerTracker, lastPowerW: kw * 1000 };
     };
@@ -252,7 +253,7 @@ describe('Headroom for device condition', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 0.4;
+    steerCapacityPace(app, 0.4);
     app.powerTracker = { ...app.powerTracker, lastPowerW: 0 };
 
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.has_headroom_for_device;

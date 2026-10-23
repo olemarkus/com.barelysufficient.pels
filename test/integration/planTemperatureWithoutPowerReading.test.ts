@@ -6,6 +6,7 @@ import type { DevicePlan } from '../../lib/plan/planTypes';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
+import { withCapacityPace } from '../helpers/capacityPaceFixture';
 
 /**
  * A temperature device with no power reading goes through the temperature logic
@@ -44,10 +45,9 @@ describe('temperature device without a power reading', () => {
       getModeDeviceTargets: () => MODE_TARGETS,
       getShedBehavior: () => shedBehavior,
     }),
-    getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: 5400 }),
+    getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now(), lastPowerW: 5400 }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0, periodMinutes: 60 }), 1.84),
     // Far under what the house draws: a real deficit, so the power-limiting
     // logic runs and chooses what to limit.
-    getDynamicSoftLimitOverride: () => 1.84,
     getShedBehavior: () => shedBehavior,
   }, createPlanEngineState());
 

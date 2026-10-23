@@ -4,7 +4,7 @@
 // (`api.get('manager/energy/live')` — the SDK seam), drives the real capacity guard +
 // planner + executor, and the only thing asserted is what PELS writes back through the
 // SDK (`api.put` device-capability commands). No plan/target snapshot reads, no
-// `computeDynamicSoftLimit` override.
+// capacity-pace override.
 //
 // Counterpart to test/integration/heatpumpDevices.integration.test.ts, which keeps the
 // power-estimation classification cases (no externally observable effect).

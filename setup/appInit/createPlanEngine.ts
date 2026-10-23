@@ -131,7 +131,6 @@ export function createPlanEngineComposition(
     getPowerTracker: scope.getPowerTracker,
     getDailyBudgetSnapshot: scope.getDailyBudgetSnapshot,
     getShedBehavior,
-    getDynamicSoftLimitOverride: scope.getDynamicSoftLimitOverride,
     deviceDiagnostics,
     structuredLog,
     debugStructured,

@@ -4,7 +4,7 @@
 // real Homey Web API (`api.get` — the SDK seam): the device list on its path, and the
 // `cumulative` energy total on `manager/energy/live`. The only assertions are on what
 // PELS writes back through the SDK (`api.put` device-capability commands). No
-// plan/target snapshot reads, no `computeDynamicSoftLimit` override.
+// plan/target snapshot reads, no capacity-pace override.
 //
 // Counterpart to test/integration/airtreatmentDevices.integration.test.ts, which keeps
 // the power-estimation / overshoot-normalisation classification cases.

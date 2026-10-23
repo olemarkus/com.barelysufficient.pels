@@ -90,16 +90,6 @@ abstract class AppRuntimeApi extends Base {
     return this.runtime.structuredLogger?.child({ component });
   }
   public getApiStructuredLogger(): PinoLogger | undefined { return this.getStructuredLogger('api'); }
-  public getDynamicSoftLimitOverride(): number | null {
-    if (
-      !this.context.defaultComputeDynamicSoftLimit
-      || this.computeDynamicSoftLimit === this.context.defaultComputeDynamicSoftLimit
-    ) {
-      return null;
-    }
-    const value = this.computeDynamicSoftLimit();
-    return Number.isFinite(value) ? value : null;
-  }
   public get priceOptimizationSettings() {
     return temperaturePolicyPriceSettings(
       requirePriceCoordinator(this.context).getPriceOptimizationSettings(),

@@ -224,11 +224,6 @@ export class AppServiceWiring {
     ctx.startupBootstrap = startupBootstrap;
     await runStartupStep('initCapacityGuard', () => this.initCapacityGuard(), logStartupStepFailure);
     await this.runPlanStackStartupSteps(logStartupStepFailure);
-    await runStartupStep(
-      'captureDefaultDynamicSoftLimit',
-      () => this.captureDefaultDynamicSoftLimit(),
-      logStartupStepFailure,
-    );
     await runStartupStep('initSettingsHandler', () => this.initSettingsHandler(), logStartupStepFailure);
     await runStartupStep('initHomeRuntimeRegistry', () => this.initHomeRuntimeRegistry(), logStartupStepFailure);
     ctx.lastNotifiedOperatingMode = this.deps.getHomeOperatingMode();
@@ -553,11 +548,6 @@ export class AppServiceWiring {
   // hold it is routed alongside.
   invalidateRebuildSuppression(deviceId: string): void {
     invalidateOwningHomeRebuildSuppression(this.deps.ctx, deviceId, this.deps.handles.homeRuntimeRegistry);
-  }
-
-  captureDefaultDynamicSoftLimit(): void {
-    const { ctx } = this.deps;
-    ctx.defaultComputeDynamicSoftLimit = ctx.computeDynamicSoftLimit;
   }
 
   initSettingsHandler(): void {

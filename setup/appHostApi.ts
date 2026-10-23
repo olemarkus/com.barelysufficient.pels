@@ -334,7 +334,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     () => this.readGoverningModeTargetC(deviceId),
   );
 
-  public computeDynamicSoftLimit = (): number | null => requirePlanService(this.context).computePhysicalPowerLimit();
+  public computePhysicalPowerLimit = (): number | null => requirePlanService(this.context).computePhysicalPowerLimit();
 
   public getDeviceDiagnosticsUiPayload(): SettingsUiDeviceDiagnosticsPayload {
     return requireDeviceDiagnosticsService(this.context).getUiPayload();

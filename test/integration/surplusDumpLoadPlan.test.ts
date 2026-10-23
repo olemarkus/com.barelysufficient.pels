@@ -51,6 +51,7 @@ import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixt
 import type { ReleaseHoldOutcome } from '../../lib/observer/externalOffHold';
 import { noStorageTransport } from '../helpers/storageTransportStub';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
+import { withCapacityPace } from '../helpers/capacityPaceFixture';
 
 const PUMP = 'pool-pump';
 const PUMP_DRAW_KW = 1;
@@ -101,7 +102,8 @@ type Harness = {
 const makeHarness = (params: {
   limitKw?: number;
   totalKw: number;
-  softLimitOverride?: number | null;
+  /** A capacity pace below the roomy default, reached through the real tracker (`withCapacityPace`). */
+  capacityPaceKw?: number;
   priceOptSettings?: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number;
     surplusWilling: boolean; surplusDelta: number; }>;
   powerSampleAgeMs?: number;
@@ -110,6 +112,9 @@ const makeHarness = (params: {
   leaveOffOnRelease?: (deviceId: string) => ReleaseHoldOutcome;
 }): Harness => {
   const limitKw = params.limitKw ?? 10;
+  const capacitySettings = {
+    capacityEnabled: true, gridImportLimitKw: null, limitKw, marginKw: 0.2, periodMinutes: 60,
+  } as const;
   const guard = createTestCapacityGuard({ homeId: 'main' });
   let lastPowerW = params.totalKw * 1000;
   const state = createPlanEngineState();
@@ -119,16 +124,15 @@ const makeHarness = (params: {
       pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       leaveOffOnRelease: params.leaveOffOnRelease ?? ((): ReleaseHoldOutcome => 'released'),
     capacityGuard: guard,
-    getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw, marginKw: 0.2, periodMinutes: 60 }),
+    getCapacitySettings: () => capacitySettings,
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
       getPriceOptimizationSettings: () => params.priceOptSettings ?? {},
     }),
     getPriceOptimizationSettings: () => params.priceOptSettings ?? {},
-    getPowerTracker: () => ({ buckets: {}, lastTimestamp: Date.now() - (params.powerSampleAgeMs ?? 0), lastPowerW }),
-    // An explicit `null` is this harness asking for no override; `undefined` takes the 10 kW default.
-    getDynamicSoftLimitOverride: () => (
-      params.softLimitOverride === null ? null : params.softLimitOverride ?? 10
-    ),
+    getPowerTracker: () => {
+      const tracker = { buckets: {}, lastTimestamp: Date.now() - (params.powerSampleAgeMs ?? 0), lastPowerW };
+      return params.capacityPaceKw === undefined ? tracker : withCapacityPace(tracker, capacitySettings, params.capacityPaceKw);
+    },
     decorateDeferredObjectives: decorate
       ? (input) => decorate(input.devices)
       : decorateWithoutDeferredObjectives,
@@ -534,7 +538,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
   it('lets a fresh capacity shed decision win the reason while the pump is eligible and running', async () => {
     // A tight dynamic soft limit (1 kW) so the post-collapse 11 kW total is a
     // deep, immediately-actionable overshoot.
-    const h = makeHarness({ totalKw: -2, softLimitOverride: 1 });
+    const h = makeHarness({ totalKw: -2, capacityPaceKw: 1 });
     await engagePump(h, () => [buildPump({ on: false })]);
     // The home swings to heavy import while the pump runs: capacity shedding
     // selects the pump (the only load). Eligibility has not released yet (dwell),

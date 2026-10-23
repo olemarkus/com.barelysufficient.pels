@@ -46,7 +46,6 @@ export type PlanBuilderDeps = {
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
   getShedBehavior: (deviceId: string) => ShedBehavior;
-  getDynamicSoftLimitOverride: () => number | null;
   // Observer-owned pending-binary-command store. Plan-side reads consult
   // `peek(id)` (raw read) through this facade rather than touching
   // `state.pendingBinaryCommands[id]` directly, so the store stays the

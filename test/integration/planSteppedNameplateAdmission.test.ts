@@ -7,6 +7,7 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { steppedInputDevice } from '../utils/planTestUtils';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
+import { withCapacityPace } from '../helpers/capacityPaceFixture';
 
 // Drives the REAL PlanBuilder from the plan INPUT, which is where a learned step
 // power arrives (`PlanInputDevice.stepPowerCalibration`).
@@ -37,12 +38,11 @@ const buildPlanner = (availableKw: number): PlanBuilder => new PlanBuilder({
   ...planBuilderWiring(),
   capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
   getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
-  getPowerTracker: () => ({
+  getPowerTracker: () => withCapacityPace(({
     buckets: {},
     lastTimestamp: Date.now(),
     lastPowerW: (SOFT_LIMIT_KW - availableKw) * 1000,
-  }),
-  getDynamicSoftLimitOverride: () => SOFT_LIMIT_KW,
+  }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }), SOFT_LIMIT_KW),
 }, createPlanEngineState());
 
 // Off, drawing nothing, and carrying the learned figure the store had for `6a`.

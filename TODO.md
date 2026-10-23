@@ -1344,22 +1344,6 @@ Design-of-record: `notes/web-app.md`.
       the planner reads no `softLimitSource`, and the grep above finds no limit-posture null
       branch in `lib/plan` outside the meta projection. [P2]
 
-- [ ] **`AppContext.computeDynamicSoftLimit` is the physical limit in production and a capacity
-      pace in specs.** As wired (`setup/appHostApi.ts`) it returns
-      `PlanService.computePhysicalPowerLimit`, and the Flow headroom cards read it as the physical
-      limit (`setup/appInit/registerAppFlowCards.ts`). A spec that assigns it is detected by
-      function identity (`getDynamicSoftLimitOverride`, `setup/appRuntimeApi.ts`, against
-      `defaultComputeDynamicSoftLimit` captured in `setup/appServiceWiring.ts`), and the main
-      home's planner then takes the value as its capacity pace (`PlanBuilder.resolveCapacityPace`),
-      so one member name carries both quantities (`lib/app/appContext.ts`).
-      **What changes:** rename the production member to `computePhysicalPowerLimit`, and give
-      specs an explicit capacity-pace override (a settable override value the planner deps read)
-      in place of reassigning the member; migrate the assigning specs
-      (`test/integration/app.test.ts`).
-      **Done when:** `AppContext` has neither `computeDynamicSoftLimit` nor
-      `defaultComputeDynamicSoftLimit`, `getDynamicSoftLimitOverride` compares no function
-      identity, and no spec assigns a member of the app to steer the capacity pace. [P2]
-
 ## Docs
 
 - [ ] **Eleven device-detail captures are committed but referenced by no docs page.**

@@ -27,6 +27,8 @@ import {
 import { cleanupApps, createApp, getTransportSnapshotForTests } from '../utils/appTestUtils';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
+import { steerCapacityPace } from '../helpers/capacityPaceFixture';
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 
 type EaseeChargingState =
   | 'plugged_in_charging'
@@ -53,7 +55,7 @@ type InternalApp = {
     lastTimestamp?: number;
     lastPowerW?: number;
   };
-  computeDynamicSoftLimit: () => number;
+  readonly capacitySettings: PowerLimitSettings;
 };
 
 type CommandEntry = {
@@ -260,7 +262,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     expect(app.planEngine.state.actuation.lastDeviceShedMs[charger.idValue]).toEqual(expect.any(Number));
 
     currentTimeMs += 61_000;
-    app.computeDynamicSoftLimit = () => 10.0;
+    steerCapacityPace(app, 10.0);
     app.powerTracker.lastPowerW = 400;
     // Deactivate the guard after restoring headroom so shedding hysteresis allows it.
     app.planEngine.state.sheddingActive = false;
@@ -531,7 +533,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     });
 
     const appState = app as InternalApp & { powerTracker: { lastTimestamp?: number } };
-    appState.computeDynamicSoftLimit = () => 10.0;
+    steerCapacityPace(appState, 10.0);
     appState.powerTracker.lastPowerW = 400;
     appState.powerTracker.lastTimestamp = currentTimeMs - 10 * 60 * 1000;
     // The stamp is past the silence timeout with no pass completed, so the
@@ -673,7 +675,9 @@ async function createEvApp(
 
   mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
   mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
-  mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0.2);
+  // No margin: the whole 10 kW is the hour's allowance, so every pace these specs ask for is one
+  // the real computation reaches (`steerCapacityPace`).
+  mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
   mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
   const controllableMap = Object.fromEntries(devices.map((device) => [device.idValue, true]));
   if (options?.controllableOverrides) {
@@ -844,10 +848,10 @@ async function rebuildPlan(
   options: { totalPowerKw: number; softLimitKw: number },
 ): Promise<{ devices: PlanDeviceEntry[] }> {
   const appState = app as InternalApp & {
-    computeDynamicSoftLimit: () => number;
+    readonly capacitySettings: PowerLimitSettings;
     powerTracker: { lastTimestamp?: number; lastPowerW?: number };
   };
-  appState.computeDynamicSoftLimit = () => options.softLimitKw;
+  steerCapacityPace(appState, options.softLimitKw);
   appState.powerTracker.lastPowerW = options.totalPowerKw * 1000;
   appState.powerTracker.lastTimestamp = currentTimeMs;
   await appState.planService.rebuildPlanFromCache('ev_integration_test');

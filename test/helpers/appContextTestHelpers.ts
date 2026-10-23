@@ -190,7 +190,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
   let capacitySettings: import('../../packages/contracts/src/capacitySettings').PowerLimitSettings = { capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, periodMinutes: 60 as const };
   let capacityDryRun = false;
   let debugLoggingTopics = new Set<DebugLoggingTopic>();
-  let defaultComputeDynamicSoftLimit: (() => number) | undefined;
   const lastKnownPowerKw: LearnedPeaksByDeviceId = {};
   let lastNotifiedOperatingMode = 'Home';
   const planRebuildThrottle = createInertPlanRebuildThrottle();
@@ -400,8 +399,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     isTemperatureControlDisabled: vi.fn(() => false),
     getShedBehavior: vi.fn((): ReturnType<AppContext['getShedBehavior']> => ({ action: 'turn_off' })),
     getShedLimitTemperaturesC: vi.fn((): readonly number[] => []),
-    computeDynamicSoftLimit: vi.fn(() => 0),
-    getDynamicSoftLimitOverride: vi.fn(() => null),
+    computePhysicalPowerLimit: vi.fn(() => 0),
     evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
     getDailyBudgetUiPayload: vi.fn((): DailyBudgetUiRead => ({ kind: 'unavailable' })),
     getLatestPlanSnapshotForUi: vi.fn((): SettingsUiPlanSnapshot | null => null),
@@ -423,8 +421,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     deviceControlSettings: deviceControlSettingsFixture(),
     get debugLoggingTopics() { return debugLoggingTopics; },
     set debugLoggingTopics(value) { debugLoggingTopics = value; },
-    get defaultComputeDynamicSoftLimit() { return defaultComputeDynamicSoftLimit; },
-    set defaultComputeDynamicSoftLimit(value) { defaultComputeDynamicSoftLimit = value; },
     get lastKnownPowerKw() { return lastKnownPowerKw; },
     get expectedPowerKwOverrides() { return {}; },
     get lastNotifiedOperatingMode() { return lastNotifiedOperatingMode; },

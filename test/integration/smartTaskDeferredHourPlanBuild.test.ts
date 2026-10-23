@@ -24,6 +24,7 @@ import { inputDevice, steppedProfile } from '../utils/planConvergenceFixtures';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
+import { withCapacityPace } from '../helpers/capacityPaceFixture';
 
 /**
  * During an active smart task the task decides whether the device runs, also with
@@ -77,7 +78,6 @@ const buildBuilderDeps = (
   getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: 500 }),
   // The owner's limiting floor is a rung, which is what the hold must NOT stop at.
   getShedBehavior: () => ({ action: 'set_step' }),
-  getDynamicSoftLimitOverride: () => 50,
   decorateDeferredObjectives: decorateWithDecision('charger', decision),
 });
 
@@ -213,8 +213,7 @@ describe('a smart task’s deferred hour on a power-limited device', () => {
     const builder = new PlanBuilder({
       ...buildBuilderDeps(idleDecision),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
-      getDynamicSoftLimitOverride: () => 5,
-      getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: powerW }),
+      getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now(), lastPowerW: powerW }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }), 5),
     }, createPlanEngineState());
 
     // The task's deferred hour begins: the running charger is held off, with room to spare.
@@ -235,8 +234,7 @@ describe('a smart task’s deferred hour on a power-limited device', () => {
     const tight = new PlanBuilder({
       ...buildBuilderDeps(idleDecision),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 1, marginKw: 0.2, periodMinutes: 60 }),
-      getDynamicSoftLimitOverride: () => 0.8,
-      getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: 4500 }),
+      getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now(), lastPowerW: 4500 }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 1, marginKw: 0.2, periodMinutes: 60 }), 0.8),
     }, createPlanEngineState());
     const plan = await tight.buildDevicePlanSnapshot([steppedCharger()]);
 

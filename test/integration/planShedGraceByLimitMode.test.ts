@@ -31,6 +31,7 @@ import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySe
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
+import { withCapacityPace } from '../helpers/capacityPaceFixture';
 
 const HOUR_MS = 60 * 60 * 1000;
 const START_MS = Date.UTC(2026, 9, 5, 12, 10, 0);
@@ -107,9 +108,10 @@ const buildHarness = (scenario: Scenario) => {
       getShedBehavior: () => ({ action: 'turn_off' }),
     }),
     getPriceOptimizationSettings: () => ({}),
-    getPowerTracker: () => tracker,
+    getPowerTracker: () => (scenario.capacityPaceKw === null
+      ? tracker
+      : withCapacityPace(tracker, scenario.settings, scenario.capacityPaceKw)),
     getDailyBudgetSnapshot: () => (scenario.dailyBudget ? dailyBudgetSnapshot() : null),
-    getDynamicSoftLimitOverride: () => scenario.capacityPaceKw,
     getShedBehavior: () => ({ action: 'turn_off' }),
     log: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore({}),

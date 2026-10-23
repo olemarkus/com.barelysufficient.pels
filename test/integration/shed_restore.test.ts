@@ -4,15 +4,21 @@ import { partialDouble } from '../helpers/partialDouble';
 import { MockDevice, MockDriver, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
+import { steerCapacityPace } from '../helpers/capacityPaceFixture';
 
 describe('Shed vs Restore Logic', () => {
     beforeEach(() => {
         resetMockHomey();
         vi.clearAllTimers();
+        // Mid-hour, so the hour has room for the 10 kW pace the specs steer to
+        // (above the 9.8 kW sustainable rate, which an hour's first minute cannot give).
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date(Date.UTC(2025, 0, 15, 12, 30, 0)));
     });
 
     afterEach(async () => {
         await cleanupApps();
+        vi.useRealTimers();
     });
 
     test('Shedding uses measured power (gain), ignoring expected power', async () => {
@@ -30,7 +36,7 @@ describe('Shed vs Restore Logic', () => {
         app.powerTracker.lastTimestamp = Date.now();
         app.powerTracker.lastPowerW = 12000;
         // Force soft limit to 10 for controllable shedding test
-        app.computeDynamicSoftLimit = () => 10;
+        steerCapacityPace(app, 10);
 
         // Mock Snapshots directly to control measured/expected separation
         // Scenario:
@@ -80,7 +86,7 @@ describe('Shed vs Restore Logic', () => {
         await app.onInit();
         app.powerTracker.lastTimestamp = Date.now();
         app.powerTracker.lastPowerW = 10400;
-        app.computeDynamicSoftLimit = () => 10;
+        steerCapacityPace(app, 10);
 
         // Device C: Expected 5kW, Measured 0kW (Maybe checking in but idle?)
         const targetDevices = [
@@ -115,7 +121,7 @@ describe('Shed vs Restore Logic', () => {
         await app.onInit();
         app.powerTracker.lastTimestamp = Date.now();
         app.powerTracker.lastPowerW = 8000;
-        app.computeDynamicSoftLimit = () => 10;
+        steerCapacityPace(app, 10);
 
         // Device E: Expected 3.0kW, Measured 0.0kW (Currently OFF)
         const targetDevices = [

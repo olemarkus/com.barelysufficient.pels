@@ -54,6 +54,7 @@ import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+import { steerCapacityPace } from '../helpers/capacityPaceFixture';
 
 const flushPromises = () => new Promise<void>((resolve) => {
   if (typeof setImmediate === 'function') {
@@ -140,7 +141,6 @@ const initApp = async (app: MyApp) => {
   wiring.initCapacityGuard();
   wiring.initPlanRuntime();
   wiring.subscribePlanObservedState();
-  wiring.captureDefaultDynamicSoftLimit();
   wiring.initSettingsHandler();
   app['registerFlowCards']();
   await app.refreshTargetDevicesSnapshot();
@@ -1594,8 +1594,7 @@ describe('MyApp initialization', () => {
       )).length;
       expect(targetWritesBeforeShedding).toBe(0);
 
-      app.computeDynamicSoftLimit = () => 0.1;
-      app.computeDynamicSoftLimit = () => 0.1;
+      steerCapacityPace(app, 0.1);
 
       await app['powerSamplePipeline'].recordPowerSample(1000);
       await waitFor(() => setCapabilitySpy.mock.calls.filter(([path, body]) => (
@@ -2384,8 +2383,7 @@ describe('MyApp initialization', () => {
 
       // --- Phase 1: trigger overshoot and shed the device ---
       nowSpy.mockReturnValue(baseNow);
-      app.computeDynamicSoftLimit = () => 2;
-      app.computeDynamicSoftLimit = () => 2;
+      steerCapacityPace(app, 2);
       await app['powerSamplePipeline'].recordPowerSample(3000, baseNow);
       await waitFor(() => (
         getPlanDeviceState(getLatestPlanSnapshotForTests(), 'dev-1') === 'shed'
@@ -2399,8 +2397,7 @@ describe('MyApp initialization', () => {
       vi.advanceTimersByTime(afterLongOvershoot - baseNow);
 
       // --- Phase 3: power drops, system recovers ---
-      app.computeDynamicSoftLimit = () => 5;
-      app.computeDynamicSoftLimit = () => 5;
+      steerCapacityPace(app, 5);
       await heater.setCapabilityValue('measure_power', 0);
       await app.refreshTargetDevicesSnapshot();
       await app['powerSamplePipeline'].recordPowerSample(500, afterLongOvershoot);
@@ -2432,7 +2429,7 @@ describe('MyApp initialization', () => {
   });
 });
 
-describe('computeDynamicSoftLimit', () => {
+describe('computePhysicalPowerLimit', () => {
   beforeEach(() => {
     resetMockHomey();
     vi.clearAllTimers();
@@ -2474,8 +2471,7 @@ describe('computeDynamicSoftLimit', () => {
       buckets: { [hourStart.toISOString()]: 0.5 },
     };
 
-    // Call computeDynamicSoftLimit
-    const softLimit = app.computeDynamicSoftLimit();
+    const softLimit = app.computePhysicalPowerLimit();
 
     // With 5 kWh budget, 0.5 used, 4.5 remaining, 5 minutes left:
     // - burstRate = 27 kW (remaining time floored to 10 min)
@@ -2517,7 +2513,7 @@ describe('computeDynamicSoftLimit', () => {
     const bucketKey = getHourBucketKey(nowMs);
     (app.powerTracker.buckets ??= {})[bucketKey] = 4.9;
 
-    const softLimit = app.computeDynamicSoftLimit();
+    const softLimit = app.computePhysicalPowerLimit();
 
     // With 5 kWh budget, 4.9 used, only 0.1 kWh remaining
     // The burst rate will be low (0.1 / remaining hours)
@@ -2552,7 +2548,7 @@ describe('computeDynamicSoftLimit', () => {
       buckets: {},
     };
 
-    const softLimit = app.computeDynamicSoftLimit();
+    const softLimit = app.computePhysicalPowerLimit();
 
     // At start of hour with full budget:
     // burstRate = 5 kWh / 1 hour = 5 kW
@@ -2592,7 +2588,7 @@ describe('computeDynamicSoftLimit', () => {
       buckets: { [hourStart.toISOString()]: 1.5 },
     };
 
-    const softLimit = app.computeDynamicSoftLimit();
+    const softLimit = app.computePhysicalPowerLimit();
 
     // With 6.7 kWh budget, 1.5 used, 5.2 remaining, 0.5 hours left:
     // burstRate = 5.2 / 0.5 = 10.4 kW
@@ -2632,7 +2628,7 @@ describe('computeDynamicSoftLimit', () => {
       buckets: { [hourStart.toISOString()]: 3 },
     };
 
-    const softLimit = app.computeDynamicSoftLimit();
+    const softLimit = app.computePhysicalPowerLimit();
 
     // With 6.7 kWh budget, 3 used, 3.7 remaining, remaining time floored to 10 min:
     // burstRate = 3.7 / (10/60) = 22.2 kW.
@@ -2672,7 +2668,7 @@ describe('computeDynamicSoftLimit', () => {
       buckets: { [hourStart.toISOString()]: 2 },
     };
 
-    const softLimit = app.computeDynamicSoftLimit();
+    const softLimit = app.computePhysicalPowerLimit();
 
     // With 6.7 kWh budget, 2 used, 4.7 remaining, remaining time floored to 10 min:
     // burstRate = 4.7 / (10/60) = 28.2 kW.

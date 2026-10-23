@@ -178,21 +178,11 @@ export type AppContext = {
   /** Every setpoint a limit may write to this device, either direction (`resolveTemperaturePolicyShedLimitsC`). */
   getShedLimitTemperaturesC: (deviceId: string) => readonly number[];
   /**
-   * One member with two meanings, decided by who assigned it:
-   * - As wired (`setup/appHostApi.ts`), the planner's live physical limit
-   *   (`PlanService.computePhysicalPowerLimit`): the lower of the capacity pace
-   *   and the grid import target, `null` with both off. The Flow headroom cards
-   *   read it as that (`setup/appInit/registerAppFlowCards.ts`).
-   * - Assigned by a spec, a capacity PACE. `getDynamicSoftLimitOverride` sees
-   *   the member differ from the captured `defaultComputeDynamicSoftLimit`, and
-   *   the main home's planner takes the value as its capacity pace while
-   *   Capacity limit is on, still bounding it by the grid import target. The
-   *   Flow headroom cards in that spec read the same value as the physical
-   *   limit, grid target not applied.
-   * The name is the capacity pace's older one.
+   * The planner's live physical limit (`PlanService.computePhysicalPowerLimit`):
+   * the lower of the capacity pace and the grid import target, `null` with both
+   * off. The Flow headroom cards read it (`setup/appInit/registerAppFlowCards.ts`).
    */
-  computeDynamicSoftLimit: () => number | null;
-  getDynamicSoftLimitOverride: () => number | null;
+  computePhysicalPowerLimit: () => number | null;
   syncLivePlanStateAfterTargetActuation: (source: PendingTargetObservationSource) => boolean | void;
   evaluateHeadroomForDevice: (
     params: Parameters<PlanService['evaluateHeadroomForDevice']>[0],
@@ -216,8 +206,6 @@ export type AppContext = {
   readonly observedTemperatureModeUpdates: ObservedTemperatureModeUpdates;
   get debugLoggingTopics(): Set<DebugLoggingTopic>;
   set debugLoggingTopics(value: Set<DebugLoggingTopic>);
-  get defaultComputeDynamicSoftLimit(): (() => number | null) | undefined;
-  set defaultComputeDynamicSoftLimit(value: (() => number | null) | undefined);
   get lastKnownPowerKw(): LearnedPeaksByDeviceId;
   get expectedPowerKwOverrides(): DeviceExpectedPowerOverrides;
   get lastNotifiedOperatingMode(): string;

@@ -19,6 +19,7 @@ import type {
 import { inputDevice, steppedProfile } from '../utils/planConvergenceFixtures';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
+import { withCapacityPace } from '../helpers/capacityPaceFixture';
 
 /**
  * The "Only PELS starts this device" policy, driven through a WHOLE plan build.
@@ -74,6 +75,11 @@ const idleDecision: DeferredAdmissionDecision = { kind: 'idle', budgetExempt: fa
 /** Not governing the device at all, so the hold stays (owner ruling, 2026-09-10). */
 const inactiveDecision: DeferredAdmissionDecision = { kind: 'inactive', budgetExempt: false };
 
+/** 0.8 kW usable: a 1 kW charger does not fit. */
+const TIGHT_CAPACITY = {
+  capacityEnabled: true, gridImportLimitKw: null, limitKw: 1, marginKw: 0.2, periodMinutes: 60,
+} as const;
+
 const buildBuilder = (
   overrides: Partial<ConstructorParameters<typeof PlanBuilder>[0]> = {},
 ): PlanBuilder => new PlanBuilder({
@@ -83,7 +89,6 @@ const buildBuilder = (
   // put a device in the shed set is the posture under test.
   getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 50, marginKw: 0.2, periodMinutes: 60 }),
   getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: 500 }),
-  getDynamicSoftLimitOverride: () => 50,
   // Default: no smart tasks, so the policy acts on its own. The cases that need
   // one override this with `decorateWithDecision`, which drives real admission.
   decorateDeferredObjectives: decorateWithoutDeferredObjectives,
@@ -246,8 +251,8 @@ describe('start policy through a whole plan build', () => {
     // capacity now, not for the start policy, and the resume request does not
     // override that.
     const plan = await buildBuilder({
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 1, marginKw: 0.2, periodMinutes: 60 }),
-      getDynamicSoftLimitOverride: () => 0.8,
+      getCapacitySettings: () => TIGHT_CAPACITY,
+      getPowerTracker: () => withCapacityPace({ lastTimestamp: Date.now(), lastPowerW: 500 }, TIGHT_CAPACITY, 0.8),
       decorateDeferredObjectives: decorateWithDecision('charger', plannedDecision),
     }).buildDevicePlanSnapshot([charger('pels_only', { on: false })]);
 
@@ -263,8 +268,8 @@ describe('start policy through a whole plan build', () => {
     // admission. Every other off device is a start, one plan later just as on
     // the first plan: 1 kW does not fit in 0.3 kW of room.
     const tightBuilder = (decide?: () => DeferredAdmissionDecision) => buildBuilder({
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 1, marginKw: 0.2, periodMinutes: 60 }),
-      getDynamicSoftLimitOverride: () => 0.8,
+      getCapacitySettings: () => TIGHT_CAPACITY,
+      getPowerTracker: () => withCapacityPace({ lastTimestamp: Date.now(), lastPowerW: 500 }, TIGHT_CAPACITY, 0.8),
       ...(decide ? { decorateDeferredObjectives: (input: { devices: PlanInputDevice[] }) => (
         decorateWithDecision('charger', decide())(input)
       ) } : {}),
@@ -366,8 +371,8 @@ describe('start policy through a whole plan build', () => {
 
     it('keeps it off for capacity, not the policy, when there is no room', async () => {
       const plan = await buildBuilder({
-        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 1, marginKw: 0.2, periodMinutes: 60 }),
-        getDynamicSoftLimitOverride: () => 0.8,
+        getCapacitySettings: () => TIGHT_CAPACITY,
+        getPowerTracker: () => withCapacityPace({ lastTimestamp: Date.now(), lastPowerW: 500 }, TIGHT_CAPACITY, 0.8),
       }).buildDevicePlanSnapshot([limitedCharger(false)]);
 
       const device = plan.devices.find((entry) => entry.id === 'charger');
@@ -452,8 +457,7 @@ describe('start policy through a whole plan build', () => {
     let powerW = 4000;
     const builder = buildBuilder({
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
-      getDynamicSoftLimitOverride: () => 5,
-      getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: powerW }),
+      getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now(), lastPowerW: powerW }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }), 5),
       getShedBehavior: (deviceId: string) => (
         deviceId === 'heater' ? { action: 'set_step' } : { action: 'turn_off' }
       ),
@@ -517,7 +521,6 @@ describe('start policy through a whole plan build', () => {
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 50, marginKw: 0.2, periodMinutes: 60 }),
       getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: 500 }),
-      getDynamicSoftLimitOverride: () => 50,
       decorateDeferredObjectives: decorateWithDecision('heater', { ...idleDecision, deadlineFloorTargetC: 65 }),
       getShedBehavior: () => setback,
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({ getShedBehavior: () => setback }),

@@ -26,6 +26,7 @@ import {
   settleReservationsKeepingWatermarks,
   swappedOutFor,
 } from '../utils/swapLedgerFixture';
+import { steerCapacityPace } from '../helpers/capacityPaceFixture';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
@@ -177,8 +178,7 @@ describe('Device plan snapshot', () => {
     vi.spyOn(app.priceCoordinator, 'getCurrentHourPriceLevel').mockReturnValue(PriceLevel.CHEAP);
 
     // Deterministic soft limit for the test.
-    app.computeDynamicSoftLimit = () => 9;
-    app.computeDynamicSoftLimit = () => 9;
+    steerCapacityPace(app, 9);
 
     // Report 12 kW total; over the 9 kW soft limit
     await app['powerSamplePipeline'].recordPowerSample(12000);
@@ -213,8 +213,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Deterministic soft limit for the test.
-    app.computeDynamicSoftLimit = () => 9;
-    app.computeDynamicSoftLimit = () => 9;
+    steerCapacityPace(app, 9);
 
     // Report 12 kW total; over the 9 kW soft limit
     await app['powerSamplePipeline'].recordPowerSample(12000);
@@ -247,8 +246,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Force overshoot
-    app.computeDynamicSoftLimit = () => 1;
-    app.computeDynamicSoftLimit = () => 1;
+    steerCapacityPace(app, 1);
 
     await app['powerSamplePipeline'].recordPowerSample(5000);
 
@@ -280,8 +278,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 1;
-    app.computeDynamicSoftLimit = () => 1;
+    steerCapacityPace(app, 1);
 
     await app['powerSamplePipeline'].recordPowerSample(5000);
 
@@ -312,8 +309,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 2;
-    app.computeDynamicSoftLimit = () => 2;
+    steerCapacityPace(app, 2);
 
     // First cycle: overshoot enters
     await app['powerSamplePipeline'].recordPowerSample(5000);
@@ -360,8 +356,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 4;
-    app.computeDynamicSoftLimit = () => 4;
+    steerCapacityPace(app, 4);
 
     const structuredEvents = capturePlanBuilderStructuredLog(app);
 
@@ -447,8 +442,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 4;
-    app.computeDynamicSoftLimit = () => 4;
+    steerCapacityPace(app, 4);
 
     const structuredEvents = capturePlanBuilderStructuredLog(app);
 
@@ -483,8 +477,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 1;
-    app.computeDynamicSoftLimit = () => 1;
+    steerCapacityPace(app, 1);
 
     const structuredEvents = capturePlanBuilderStructuredLog(app);
 
@@ -524,8 +517,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 4;
-    app.computeDynamicSoftLimit = () => 4;
+    steerCapacityPace(app, 4);
 
     const structuredEvents = capturePlanBuilderStructuredLog(app);
 
@@ -571,8 +563,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 1;
-    app.computeDynamicSoftLimit = () => 1;
+    steerCapacityPace(app, 1);
 
     const structuredEvents = capturePlanBuilderStructuredLog(app);
 
@@ -619,8 +610,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 1;
-    app.computeDynamicSoftLimit = () => 1;
+    steerCapacityPace(app, 1);
 
     await app['powerSamplePipeline'].recordPowerSample(5000);
 
@@ -643,18 +633,26 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.settings.set('overshoot_behaviors', { 'dev-1': { action: 'set_temperature', temperature: 16 } });
     mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-    const app = createApp();
-    await app.onInit();
+    // Late in the hour, so 1 kW against a 0.5 kW pace overshoots the pace but not
+    // the hard cap: what is left of the hour is too short for the excess to use
+    // up the margin. Earlier in the hour the same reading is a shortfall.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date', 'performance'] });
+    vi.setSystemTime(new Date(Date.UTC(2025, 0, 15, 12, 50, 0)));
+    try {
+      const app = createApp();
+      await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 0.5;
-    app.computeDynamicSoftLimit = () => 0.5;
+      steerCapacityPace(app, 0.5);
 
-    await app['powerSamplePipeline'].recordPowerSample(1000); // force overshoot (will try to shed but already at min temp)
+      await app['powerSamplePipeline'].recordPowerSample(1000); // force overshoot (will try to shed but already at min temp)
 
-    const plan = getLatestPlanSnapshotForTests();
-    const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
-    expect(devPlan?.plannedState).toBe('shed');
-    expect(reasonText(devPlan?.reason)).toContain('shed due to capacity');
+      const plan = getLatestPlanSnapshotForTests();
+      const devPlan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
+      expect(devPlan?.plannedState).toBe('shed');
+      expect(reasonText(devPlan?.reason)).toContain('shed due to capacity');
+    } finally {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
+    }
   });
 
   it('uses the same shed reason for minimum-temperature shedding and turn-off shedding', async () => {
@@ -678,8 +676,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 0.5;
-    app.computeDynamicSoftLimit = () => 0.5;
+    steerCapacityPace(app, 0.5);
 
     await app['powerSamplePipeline'].recordPowerSample(1800); // total 1.8 kW -> shed both
 
@@ -716,8 +713,7 @@ describe('Device plan snapshot', () => {
     // Force shortfall state and an overshoot so shedding occurs.
     app.capacityGuard.isInShortfall = () => true;
     app.planEngine.state.inShortfall = true;
-    app.computeDynamicSoftLimit = () => 0.5;
-    app.computeDynamicSoftLimit = () => 0.5;
+    steerCapacityPace(app, 0.5);
     await app['powerSamplePipeline'].recordPowerSample(1200);
 
     const plan = getLatestPlanSnapshotForTests();
@@ -745,8 +741,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Trigger an initial shed to set lastDeviceShedMs.
-    app.computeDynamicSoftLimit = () => 0.5;
-    app.computeDynamicSoftLimit = () => 0.5;
+    steerCapacityPace(app, 0.5);
     await app['powerSamplePipeline'].recordPowerSample(1200);
 
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(16);
@@ -758,8 +753,7 @@ describe('Device plan snapshot', () => {
     // Now plan with ample headroom but still within cooldown. The plan is still
     // converging on the shed it sent, so the reading rebuilds once the min
     // interval has passed.
-    app.computeDynamicSoftLimit = () => 5;
-    app.computeDynamicSoftLimit = () => 5;
+    steerCapacityPace(app, 5);
     vi.advanceTimersByTime(2_000);
     await app['powerSamplePipeline'].recordPowerSample(500);
 
@@ -788,8 +782,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Trigger shed to set min-temp.
-    app.computeDynamicSoftLimit = () => 0.5;
-    app.computeDynamicSoftLimit = () => 0.5;
+    steerCapacityPace(app, 0.5);
     await app['powerSamplePipeline'].recordPowerSample(5000);
 
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(16);
@@ -798,8 +791,7 @@ describe('Device plan snapshot', () => {
     await app.planService.rebuildPlanFromCache('unknown');
 
     // Rebuild plan to reflect current snapshot.
-    app.computeDynamicSoftLimit = () => 5;
-    app.computeDynamicSoftLimit = () => 5;
+    steerCapacityPace(app, 5);
     await app['powerSamplePipeline'].recordPowerSample(500);
 
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(16);
@@ -826,14 +818,12 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Initial overshoot to start shedding and record timestamps.
-    app.computeDynamicSoftLimit = () => 0.5;
-    app.computeDynamicSoftLimit = () => 0.5;
+    steerCapacityPace(app, 0.5);
     await app['powerSamplePipeline'].recordPowerSample(1200);
 
     // Force cooldown window and rebuild plan with available headroom.
     app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now();
-    app.computeDynamicSoftLimit = () => 5;
-    app.computeDynamicSoftLimit = () => 5;
+    steerCapacityPace(app, 5);
 
     // The shed-everything plan is unactionable, so the next rebuild rides the
     // max-interval escape — let that interval pass.
@@ -979,15 +969,13 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Initial overshoot to shed.
-    app.computeDynamicSoftLimit = () => 0.5;
-    app.computeDynamicSoftLimit = () => 0.5;
+    steerCapacityPace(app, 0.5);
     await app['powerSamplePipeline'].recordPowerSample(1200);
 
     // Move past cooldown and provide ample headroom so device should restore.
     app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now() - 180000; // cooldown expired
     app.planEngine.state.restoreBackoff.lastRecoveryMs = Date.now() - 180000;
-    app.computeDynamicSoftLimit = () => 5;
-    app.computeDynamicSoftLimit = () => 5;
+    steerCapacityPace(app, 5);
     // Deactivate the guard after restoring headroom so shedding hysteresis allows it.
     app.planEngine.state.sheddingActive = false;
 
@@ -1018,8 +1006,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 10;
-    app.computeDynamicSoftLimit = () => 10;
+    steerCapacityPace(app, 9);
 
     await app['powerSamplePipeline'].recordPowerSample(2000);
     await flushPromises();
@@ -1055,8 +1042,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Plenty of headroom but still in cooldown due to a recent shed
-    app.computeDynamicSoftLimit = () => 5;
-    app.computeDynamicSoftLimit = () => 5;
+    steerCapacityPace(app, 5);
     app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now(); // force cooldown window
     app.planEngine.state.actuation.lastDeviceShedMs['dev-1'] = Date.now();
 
@@ -1086,8 +1072,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 0.5;
-    app.computeDynamicSoftLimit = () => 0.5;
+    steerCapacityPace(app, 0.5);
 
     await app['powerSamplePipeline'].recordPowerSample(600); // 0.6 kW total, overshoot of 0.1 kW
 
@@ -1134,8 +1119,7 @@ describe('Device plan snapshot', () => {
     seedPreviouslyShedDevice(app, 'dev-high');
 
     // Soft limit 1.3 kW, current total 1.0 kW -> headroom 0.3 kW (not enough for ~1 kW restore)
-    app.computeDynamicSoftLimit = () => 1.3;
-    app.computeDynamicSoftLimit = () => 1.3;
+    steerCapacityPace(app, 1.3);
     await app['powerSamplePipeline'].recordPowerSample(1000);
 
     const plan = getLatestPlanSnapshotForTests();
@@ -1163,8 +1147,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Force soft limit low and total high to trigger shedding.
-    app.computeDynamicSoftLimit = () => 1;
-    app.computeDynamicSoftLimit = () => 1;
+    steerCapacityPace(app, 1);
     await app['powerSamplePipeline'].recordPowerSample(5000); // 5 kW total, over limit
 
     const plan = getLatestPlanSnapshotForTests();
@@ -1243,8 +1226,7 @@ describe('Device plan snapshot', () => {
 
     // Step 1: Overshoot - device should be shed
     // Set soft limit low enough to trigger shedding
-    app.computeDynamicSoftLimit = () => 0.5; // 500W limit
-    app.computeDynamicSoftLimit = () => 0.5;
+    steerCapacityPace(app, 0.5); // 500W limit
 
     await app['powerSamplePipeline'].recordPowerSample(1000); // 1kW total, 500W limit => -500W headroom
     let plan = getLatestPlanSnapshotForTests();
@@ -1264,8 +1246,7 @@ describe('Device plan snapshot', () => {
     // Now set headroom to small positive (0.1 kW) - below device power (1kW) + margin (0.2kW)
     // With device off, power drops. Say power is now 0.5kW (other loads).
     // Soft limit 0.7 => headroom = 0.2kW. Device needs 1kW + 0.2kW margin = 1.2kW. Not enough.
-    app.computeDynamicSoftLimit = () => 0.7;
-    app.computeDynamicSoftLimit = () => 0.7;
+    steerCapacityPace(app, 0.7);
 
     await app['powerSamplePipeline'].recordPowerSample(500); // 500W with device off
     plan = getLatestPlanSnapshotForTests();
@@ -1280,8 +1261,7 @@ describe('Device plan snapshot', () => {
     // Set soft limit high enough for restoration:
     // with recent-shed backoff (1.15×) → needed≈1.38kW, plus 0.25kW reserve + 0.25kW floor.
     // Power 500W, soft limit 2.5kW => headroomRaw 2.0kW. That clears the stricter restore gate.
-    app.computeDynamicSoftLimit = () => 2.5;
-    app.computeDynamicSoftLimit = () => 2.5;
+    steerCapacityPace(app, 2.5);
 
     // Soft-limit changes alone no longer trigger an immediate rebuild: let the
     // max interval pass so the restore check rides the periodic refresh.
@@ -1348,8 +1328,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Force soft limit to 2 kW and total to 2.1 kW -> shed.
-    app.computeDynamicSoftLimit = () => 2;
-    app.computeDynamicSoftLimit = () => 2;
+    steerCapacityPace(app, 2);
     await app['powerSamplePipeline'].recordPowerSample(2100);
     let plan = getLatestPlanSnapshotForTests();
     expect(plan.devices.find((d: { id: string }) => d.id === 'dev-1')?.plannedState).toBe('shed');
@@ -1389,7 +1368,7 @@ describe('Device plan snapshot', () => {
     // timestamp, resolving to the deleted stale-hold — is unreachable now:
     // ingest stamps both together and the resolver refuses the half-state.)
     app.powerTracker = { ...app.powerTracker, lastPowerW: 5_000, lastTimestamp: Date.now() };
-    app.computeDynamicSoftLimit = () => 5.0;
+    steerCapacityPace(app, 5.0);
     seedPreviouslyShedDevice(app, 'dev-1');
 
     const plan = await app.planService.buildDevicePlanSnapshot([
@@ -1424,8 +1403,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Force soft limit to 1 kW so 2 kW total is an overshoot.
-    app.computeDynamicSoftLimit = () => 1;
-    app.computeDynamicSoftLimit = () => 1;
+    steerCapacityPace(app, 1);
 
     await app['powerSamplePipeline'].recordPowerSample(2000);
 
@@ -1455,8 +1433,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Force soft limit to about 3.1 kW so total 5.63 kW is an overshoot of ~2.53 kW.
-    app.computeDynamicSoftLimit = () => 3.1;
-    app.computeDynamicSoftLimit = () => 3.1;
+    steerCapacityPace(app, 3.1);
 
     await app['powerSamplePipeline'].recordPowerSample(5630); // 5.63 kW total
 
@@ -1475,30 +1452,38 @@ describe('Device plan snapshot', () => {
     setManagedControllableDevices({ 'dev-1': true, 'dev-2': true });
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1, 'dev-2': 10 } });
 
-    const app = createApp();
-    await app.onInit();
+    // Mid-hour, so shedding Heater B alone meets the 1 kW pace. From about minute
+    // 50 a 1 kW pace leaves so little of the hour's energy that the first plan
+    // sheds both heaters, and the skip under test is never reached.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date', 'performance'] });
+    vi.setSystemTime(new Date(Date.UTC(2025, 0, 15, 12, 30, 0)));
+    try {
+      const app = createApp();
+      await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 1;
-    app.computeDynamicSoftLimit = () => 1;
+      steerCapacityPace(app, 1);
 
-    // Anchored to now, not epoch+1s: a sample stamped in 1970 reads as long
-    // stale, and these cases would then be exercising the fail-closed shed
-    // rather than the same-sample skip they are named for.
-    await app['powerSamplePipeline'].recordPowerSample(2000, Date.now());
+      // Anchored to now, not epoch+1s: a sample stamped in 1970 reads as long
+      // stale, and these cases would then be exercising the fail-closed shed
+      // rather than the same-sample skip they are named for.
+      await app['powerSamplePipeline'].recordPowerSample(2000, Date.now());
 
-    let plan = getLatestPlanSnapshotForTests();
-    const initialShed = plan.devices.filter((d: { plannedState: string }) => d.plannedState === 'shed').map((d: { id: string }) => d.id);
-    expect(initialShed).toEqual(['dev-2']);
+      let plan = getLatestPlanSnapshotForTests();
+      const initialShed = plan.devices.filter((d: { plannedState: string }) => d.plannedState === 'shed').map((d: { id: string }) => d.id);
+      expect(initialShed).toEqual(['dev-2']);
 
-    // Simulate the shed device turning off, but no new measurement arrives.
-    await heaterB.setCapabilityValue('onoff', false);
-    await reportDevicePower(app, [[heaterB, 0]]);
+      // Simulate the shed device turning off, but no new measurement arrives.
+      await heaterB.setCapabilityValue('onoff', false);
+      await reportDevicePower(app, [[heaterB, 0]]);
 
-    app.planEngine.state.actuation.lastRestoreMs = Date.now() - 60000;
-    await app.planService.rebuildPlanFromCache('unknown');
-    plan = getLatestPlanSnapshotForTests();
-    const dev1Plan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
-    expect(dev1Plan?.plannedState).toBe('keep');
+      app.planEngine.state.actuation.lastRestoreMs = Date.now() - 60000;
+      await app.planService.rebuildPlanFromCache('unknown');
+      plan = getLatestPlanSnapshotForTests();
+      const dev1Plan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
+      expect(dev1Plan?.plannedState).toBe('keep');
+    } finally {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
+    }
   });
 
   it('throttles repeated shedding commands for the same device', async () => {
@@ -1573,8 +1558,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 5;
-    app.computeDynamicSoftLimit = () => 5;
+    steerCapacityPace(app, 5);
 
     await app['powerSamplePipeline'].recordPowerSample(250);
     const plan = getLatestPlanSnapshotForTests();
@@ -1602,8 +1586,7 @@ describe('Device plan snapshot', () => {
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     // Force a low soft limit so the device must be shed.
-    app.computeDynamicSoftLimit = () => 1;
-    app.computeDynamicSoftLimit = () => 1;
+    steerCapacityPace(app, 1);
 
     const rebuildSpy = vi.spyOn(app.planService, 'rebuildPlanFromCache');
 
@@ -1669,8 +1652,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Soft limit 3 kW, total 6.3 kW -> need ~3.3 kW. Off device should not be counted as shed.
-    app.computeDynamicSoftLimit = () => 3;
-    app.computeDynamicSoftLimit = () => 3;
+    steerCapacityPace(app, 3);
 
     await app['powerSamplePipeline'].recordPowerSample(6300);
 
@@ -1747,8 +1729,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Soft limit 3.2 kW, total 5.6 kW -> need 2.4 kW, controllables can cover ~2.7 kW so no shortfall.
-    app.computeDynamicSoftLimit = () => 3.2;
-    app.computeDynamicSoftLimit = () => 3.2;
+    steerCapacityPace(app, 3.2);
 
     await app['powerSamplePipeline'].recordPowerSample(5600);
     expect(triggerSpy).not.toHaveBeenCalled();
@@ -2012,8 +1993,7 @@ describe('Device plan snapshot', () => {
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     // Force very low soft limit
-    app.computeDynamicSoftLimit = () => 1;
-    app.computeDynamicSoftLimit = () => 1;
+    steerCapacityPace(app, 1);
 
     // Report high power - should trigger shedding
     await app['powerSamplePipeline'].recordPowerSample(5000);
@@ -2093,8 +2073,7 @@ describe('Device plan snapshot', () => {
     // Shedding low-pri (1.2 kW) gives 2.7 kW potential headroom.
     // After the swap reserve (0.3) that leaves 2.4 kW, enough even with
     // recent-shed backoff plus the final admission reserve.
-    app.computeDynamicSoftLimit = () => 4.5;
-    app.computeDynamicSoftLimit = () => 4.5;
+    steerCapacityPace(app, 4.5);
 
     // Clear any shedding/overshoot timestamps to avoid cooldown
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
@@ -2143,8 +2122,7 @@ describe('Device plan snapshot', () => {
     seedPreviouslyShedDevice(app, 'dev-high');
 
     // Headroom 0.5 kW, not enough for dev-high (1.5 kW + margin)
-    app.computeDynamicSoftLimit = () => 3;
-    app.computeDynamicSoftLimit = () => 3;
+    steerCapacityPace(app, 3);
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
 
@@ -2188,8 +2166,7 @@ describe('Device plan snapshot', () => {
     // High-pri needs 2 + 0.2 margin = 2.2 kW
     // Even with shedding low-pri (0.3 kW), we'd only get 0.5 + 0.3 = 0.8 kW
     // 0.8 < 2.2, so swap should NOT happen
-    app.computeDynamicSoftLimit = () => 3.5;
-    app.computeDynamicSoftLimit = () => 3.5;
+    steerCapacityPace(app, 3.5);
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
@@ -2240,8 +2217,7 @@ describe('Device plan snapshot', () => {
     // Shedding both low-priority devices yields 2.8 kW potential headroom.
     // After the swap reserve (0.3) that leaves 2.0 kW, enough for the 1.75 kW need,
     // while one low-priority device alone is still insufficient.
-    app.computeDynamicSoftLimit = () => 4.3;
-    app.computeDynamicSoftLimit = () => 4.3;
+    steerCapacityPace(app, 4.3);
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
@@ -2304,8 +2280,7 @@ describe('Device plan snapshot', () => {
     // But with NO on devices, swap target can restore normally with 1.4 kW needed
     // To test the blocking, we need to seed a reservation on the swap ledger
 
-    app.computeDynamicSoftLimit = () => 2;
-    app.computeDynamicSoftLimit = () => 2;
+    steerCapacityPace(app, 2);
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
@@ -2358,8 +2333,7 @@ describe('Device plan snapshot', () => {
     const app = createApp({ withoutPowerMeasurement: true });
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 1.4;
-    app.computeDynamicSoftLimit = () => 1.4;
+    steerCapacityPace(app, 1.4);
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
@@ -2407,8 +2381,7 @@ describe('Device plan snapshot', () => {
 
     // Setup: not enough headroom for swap target (needs 2kW + 0.4 = 2.4kW)
     // but enough for swapped-out device (needs 0.5kW + 0.4 = 0.9kW)
-    app.computeDynamicSoftLimit = () => 3;
-    app.computeDynamicSoftLimit = () => 3;
+    steerCapacityPace(app, 3);
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
@@ -2514,8 +2487,7 @@ describe('Device plan snapshot', () => {
     seedPreviouslyShedDevice(app, 'dev-high');
 
     // Set up conditions for swap
-    app.computeDynamicSoftLimit = () => 4.3;
-    app.computeDynamicSoftLimit = () => 4.3;
+    steerCapacityPace(app, 4.3);
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
     app.planEngine.state.actuation.lastDeviceShedMs = {};
@@ -2574,8 +2546,7 @@ describe('Device plan snapshot', () => {
     seedPreviouslyShedDevice(app, 'dev-high');
 
     // Set up conditions for swap
-    app.computeDynamicSoftLimit = () => 4.5;
-    app.computeDynamicSoftLimit = () => 4.5;
+    steerCapacityPace(app, 4.5);
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
     app.planEngine.state.actuation.lastDeviceShedMs = {};
@@ -2642,8 +2613,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
     seedPreviouslyShedDevice(app, 'dev-high');
 
-    app.computeDynamicSoftLimit = () => 4.5;
-    app.computeDynamicSoftLimit = () => 4.5;
+    steerCapacityPace(app, 4.5);
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
     app.planEngine.state.actuation.lastDeviceShedMs = {};
@@ -2691,8 +2661,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
     seedPreviouslyShedDevice(app, 'dev-high');
 
-    app.computeDynamicSoftLimit = () => 4.3;
-    app.computeDynamicSoftLimit = () => 4.3;
+    steerCapacityPace(app, 4.3);
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
     app.planEngine.state.actuation.lastDeviceShedMs = {};
@@ -2814,8 +2783,7 @@ describe('Dry run mode', () => {
     });
 
     // Set a low soft limit to trigger shedding
-    app.computeDynamicSoftLimit = () => 2;
-    app.computeDynamicSoftLimit = () => 2;
+    steerCapacityPace(app, 2);
 
     // Record power sample that triggers overshoot and plan rebuild
     await app['powerSamplePipeline'].recordPowerSample(4000); // Will cause overshoot with soft limit of 2
@@ -3055,8 +3023,7 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
     vi.spyOn(app.priceCoordinator, 'getCurrentHourPriceLevel').mockReturnValue(PriceLevel.CHEAP);
-    app.computeDynamicSoftLimit = () => 3;
-    app.computeDynamicSoftLimit = () => 3;
+    steerCapacityPace(app, 3);
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
     app.planEngine.state.actuation.lastDeviceShedMs = {};
@@ -3155,8 +3122,7 @@ describe('Dry run mode', () => {
     const preShedDevice = preShedPlan.devices.find((d: { id: string }) => d.id === 'dev-1');
     expect(preShedDevice.plannedTarget).toBe(65);
 
-    app.computeDynamicSoftLimit = () => 1;
-    app.computeDynamicSoftLimit = () => 1;
+    steerCapacityPace(app, 1);
 
     await app['powerSamplePipeline'].recordPowerSample(4000);
 
@@ -3185,8 +3151,7 @@ describe('Dry run mode', () => {
     await app.onInit();
 
     // Set a generous soft limit with plenty of headroom.
-    app.computeDynamicSoftLimit = () => 8;
-    app.computeDynamicSoftLimit = () => 8;
+    steerCapacityPace(app, 8);
 
     // Simulate being in shortfall state.
     if (app.capacityGuard) {
@@ -3235,8 +3200,7 @@ describe('Dry run mode', () => {
     await app.onInit();
 
     // Set a soft limit of 6.5 kW
-    app.computeDynamicSoftLimit = () => 6.5;
-    app.computeDynamicSoftLimit = () => 6.5;
+    steerCapacityPace(app, 6.5);
 
     // Ensure not in shortfall or shedding
     if (app.capacityGuard) {
@@ -3292,8 +3256,7 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    app.computeDynamicSoftLimit = () => 2.8;
-    app.computeDynamicSoftLimit = () => 2.8;
+    steerCapacityPace(app, 2.8);
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
@@ -3345,8 +3308,7 @@ describe('Dry run mode', () => {
 
     // 2. Trigger Overshoot to shed dev-1
     // Set Limit to 1.5kW. Total 2kW. Need to shed 0.5kW.
-    app.computeDynamicSoftLimit = () => 1.5;
-    app.computeDynamicSoftLimit = () => 1.5;
+    steerCapacityPace(app, 1.5);
     await app['powerSamplePipeline'].recordPowerSample(2000);
 
     // Identify the shed device (could be dev-1 or dev-2 depending on ordering).
@@ -3367,8 +3329,7 @@ describe('Dry run mode', () => {
     // 3. Trigger another overshoot.
     // Total power still 2kW (heater might still run at lower temp).
     // Limit drops to 0.5kW. Need to shed another 1.5kW.
-    app.computeDynamicSoftLimit = () => 0.5;
-    app.computeDynamicSoftLimit = () => 0.5;
+    steerCapacityPace(app, 0.5);
 
     // Ensure we don't skip shedding due to same-measurement throttling.
     app.planEngine.state.lastShedPlanMeasurementTs = null;
@@ -3415,8 +3376,7 @@ describe('Dry run mode', () => {
     await app.onInit();
 
     // 1. Set Soft Limit to 1.1 kW.
-    app.computeDynamicSoftLimit = () => 1.1;
-    app.computeDynamicSoftLimit = () => 1.1;
+    steerCapacityPace(app, 1.1);
 
     // 2. Report Power 1.0 kW.
     // Headroom = 1.1 - 1.0 = 0.1 kW.
@@ -3479,8 +3439,7 @@ describe('Dry run mode', () => {
 
       // 1. Trigger Overshoot to shed both devices
       // Limit = 0.5 kW. Usage = 2.0 kW. Overshoot.
-      app.computeDynamicSoftLimit = () => 0.5;
-      app.computeDynamicSoftLimit = () => 0.5;
+      steerCapacityPace(app, 0.5);
       await app['powerSamplePipeline'].recordPowerSample(2000);
 
       // Verify both are shed to 10C
@@ -3495,8 +3454,7 @@ describe('Dry run mode', () => {
       // 2. Restore Capacity
       // Limit = 5.0 kW. Usage = 2.0 kW (still pulling power at lower temp? or less. say 2.0 for simplicity).
       // Headroom = 3.0 kW. Enough to restore both.
-      app.computeDynamicSoftLimit = () => 5.0;
-      app.computeDynamicSoftLimit = () => 5.0;
+      steerCapacityPace(app, 5.0);
 
       // Let five minutes pass without running the timers: firing them would let
       // the rebuilds they request restore one device per cycle across the gap,
@@ -3776,8 +3734,7 @@ describe('Dry run mode', () => {
       expectedPowerSource: 'load-setting',
     });
 
-    app.computeDynamicSoftLimit = () => 0.4; // 0.4kW limit
-    app.computeDynamicSoftLimit = () => 0.4;
+    steerCapacityPace(app, 0.4); // 0.4kW limit
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
@@ -3836,8 +3793,7 @@ describe('Dry run mode', () => {
       expectedPowerSource: 'load-setting',
     });
 
-    app.computeDynamicSoftLimit = () => 0.4;
-    app.computeDynamicSoftLimit = () => 0.4;
+    steerCapacityPace(app, 0.4);
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;

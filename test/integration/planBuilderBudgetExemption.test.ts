@@ -11,6 +11,8 @@ import {
 } from '../../lib/plan/planTypes';
 import { fixtureControlPosture, resolveFixtureCurrentOn, withFixtureResidualKw, expectMeasuredMeta } from '../utils/planTestUtils';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
+import { capacitySettingsForPace } from '../helpers/capacityPaceFixture';
+import type { PowerTrackerState } from '../../lib/power/tracker';
 
 // `binaryControl` moved off the `PlanInputDevice` base onto the binary cluster.
 // Route a loose fixture (with `binaryCapabilityId` so the device stays binary)
@@ -79,6 +81,10 @@ const buildDailyBudgetSnapshot = (params: {
   },
 });
 
+const ROOMY_CAPACITY = {
+  capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60,
+} as const;
+
 describe('PlanBuilder budget exemption handling', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -125,11 +131,7 @@ describe('PlanBuilder budget exemption handling', () => {
       }),
     ];
 
-    const builder = new PlanBuilder({
-      ...planBuilderWiring(),
-      capacityGuard: capacityGuard,
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
-      getPowerTracker: () => ({
+    const tracker = (): PowerTrackerState => ({
         buckets: {
           [currentHourIso]: 3,
         },
@@ -138,9 +140,13 @@ describe('PlanBuilder budget exemption handling', () => {
         },
         lastTimestamp: Date.now(),
         lastPowerW,
-      }),
+      });
+    const builder = new PlanBuilder({
+      ...planBuilderWiring(),
+      capacityGuard: capacityGuard,
+      getCapacitySettings: () => capacitySettingsForPace(tracker(), ROOMY_CAPACITY, dynamicSoftLimitKw),
+      getPowerTracker: tracker,
       getDailyBudgetSnapshot: () => dailyBudgetSnapshot,
-      getDynamicSoftLimitOverride: () => dynamicSoftLimitKw,
     }, createPlanEngineState());
 
     let plan = await builder.buildDevicePlanSnapshot(devices);
@@ -201,7 +207,6 @@ describe('PlanBuilder budget exemption handling', () => {
         lastTimestamp: Date.now(),
         lastPowerW,
       }),
-      getDynamicSoftLimitOverride: () => 10,
     }, createPlanEngineState());
 
     const plan = await builder.buildDevicePlanSnapshot([]);
@@ -237,7 +242,6 @@ describe('PlanBuilder budget exemption handling', () => {
         lastTimestamp: new Date(lastSampleHourIso).getTime(),
         lastPowerW,
       }),
-      getDynamicSoftLimitOverride: () => 10,
     }, createPlanEngineState());
 
     const plan = await builder.buildDevicePlanSnapshot([]);

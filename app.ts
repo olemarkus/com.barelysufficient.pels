@@ -241,7 +241,6 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     () => this.canContributeCurtailmentSurplus?.() === true,
   );
   public isSurplusPoolReachable = (): boolean => this.surplusPoolReachability.isReachable();
-  public defaultComputeDynamicSoftLimit: (() => number | null) | undefined = undefined;
   public lastKnownPowerKw: LearnedPeaksByDeviceId = {};
   public expectedPowerKwOverrides: DeviceExpectedPowerOverrides = {};
   protected overheadToken?: Homey.FlowToken;
