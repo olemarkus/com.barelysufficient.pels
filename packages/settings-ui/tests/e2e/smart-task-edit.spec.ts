@@ -160,9 +160,10 @@ test.describe('Smart task edit', () => {
 
   // Issue #2: the Extra permissions were only settable from a Flow card, so a
   // user who had granted one had no way to take it back. The editor now sets
-  // all three, and the request it sends is what makes a revoke actionable
-  // server-side — it must name every permission, not only the ones switched on.
-  test('sets the extra permissions and sends all three on save', async ({ page }) => {
+  // all three. The request names the permissions the owner changed and leaves
+  // the rest out, so the server keeps whatever they hold (a Flow's grant made
+  // while the editor was open included); an unchecked one is an explicit false.
+  test('sets the extra permissions and sends only the changed one on save', async ({ page }) => {
     await page.addInitScript(() => {
       const stubWindow = window as typeof window & {
         __PELS_HOMEY_STUB__?: Record<string, unknown>;
@@ -217,13 +218,9 @@ test.describe('Smart task edit', () => {
       (window as typeof window & { __LAST_SMART_TASK_UPDATE__?: Record<string, unknown> })
         .__LAST_SMART_TASK_UPDATE__
     ));
-    expect(body).toMatchObject({
-      // Sent explicitly even though they are off, so an unchecked toggle can
-      // actually revoke instead of reading as "unchanged".
-      exemptFromBudget: false,
-      limitLowerPriorityDevices: true,
-      pauseLowerPriorityDevices: false,
-    });
+    expect(body).toMatchObject({ limitLowerPriorityDevices: true });
+    expect(body).not.toHaveProperty('exemptFromBudget');
+    expect(body).not.toHaveProperty('pauseLowerPriorityDevices');
   });
 
   test('a permission-only save does not claim the run moved to Past tasks', async ({ page }) => {

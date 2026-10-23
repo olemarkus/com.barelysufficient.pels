@@ -170,25 +170,34 @@ const cancelPendingPreview = (): void => {
   }
 };
 
-const buildRequestBody = (s: SmartTaskEditSnapshot): SmartTaskCandidateRequest => {
+// Only the permissions the owner changed in this editor. On the wire an ABSENT
+// permission means "keep whatever it holds NOW", so an untouched toggle leaves
+// alone what a Flow granted or revoked while the editor sat open, and an
+// unchecked toggle still sends the explicit `false` that revokes. Sent on the
+// preview lane too, so the estimate is priced under the same permissions the
+// save will write (preview ≡ persist).
+const changedPermissions = (s: SmartTaskEditSnapshot): Partial<SmartTaskEditPermissions> => {
   const { permissions } = s.draft;
+  const baseline = s.context.baselinePermissions;
   return {
-    deviceId: s.context.deviceId,
-    kind: s.context.kind,
-    // Callers gate on `isValidDraft`, so the NaN fallback is unreachable; if it
-    // ever leaked, the server's shape guard rejects it as invalid_request.
-    target: parseTarget(s.draft.target) ?? Number.NaN,
-    readyByLocalTime: s.draft.readyBy,
-    // ALL THREE, always. On the wire an ABSENT permission means "keep whatever
-    // it holds", so only an explicit `false` revokes — naming every one is what
-    // lets an unchecked toggle actually take a permission away. Sent on the
-    // preview lane too, so the estimate is priced under the same permissions the
-    // save will write (preview ≡ persist).
-    exemptFromBudget: permissions.exemptFromBudget,
-    limitLowerPriorityDevices: permissions.limitLowerPriorityDevices,
-    pauseLowerPriorityDevices: permissions.pauseLowerPriorityDevices,
+    ...(permissions.exemptFromBudget !== baseline.exemptFromBudget
+      ? { exemptFromBudget: permissions.exemptFromBudget } : {}),
+    ...(permissions.limitLowerPriorityDevices !== baseline.limitLowerPriorityDevices
+      ? { limitLowerPriorityDevices: permissions.limitLowerPriorityDevices } : {}),
+    ...(permissions.pauseLowerPriorityDevices !== baseline.pauseLowerPriorityDevices
+      ? { pauseLowerPriorityDevices: permissions.pauseLowerPriorityDevices } : {}),
   };
 };
+
+const buildRequestBody = (s: SmartTaskEditSnapshot): SmartTaskCandidateRequest => ({
+  deviceId: s.context.deviceId,
+  kind: s.context.kind,
+  // Callers gate on `isValidDraft`, so the NaN fallback is unreachable; if it
+  // ever leaked, the server's shape guard rejects it as invalid_request.
+  target: parseTarget(s.draft.target) ?? Number.NaN,
+  readyByLocalTime: s.draft.readyBy,
+  ...changedPermissions(s),
+});
 
 const toPreviewView = (
   response: Extract<SettingsUiSmartTaskPreviewResponse, { ok: true }>,

@@ -293,25 +293,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Absorbed from the merged reason-clause item: an in-window, affordable hour that simply was not
       needed still has no stated why, which the same producer-resolved clause would answer. [P2]
 
-- [ ] **A Flow granting a permission mid-edit is silently reverted on Save.**
-      *Persona:* Orchestrator following the documented pattern in `docs/smart-tasks.md` — pair
-      "Smart task time is running low" with "status is At risk" so a Flow grants the permission late —
-      who happens to have the task page open when it fires.
-      *Hypothesis:* `baselinePermissions` is captured once at open time
-      (`buildSmartTaskEditProps` → `openSmartTaskEditor`) and later boot refreshes rebuild the
-      context without re-seeding the open draft, by design so a background refresh can't overwrite
-      what the user is typing. The save then states the complete desired set, so it reverts the
-      Flow's grant with no conflict detection. The deadline got an echo-and-revalidate guard
-      (`baselineDeadlineAtMs` → `resolveSmartTaskWriteDeadline` → `deadline_passed`); permissions
-      got none. Narrow — it needs the Flow to fire inside an open editor session — but the docs
-      actively recommend the Flow pattern that triggers it.
-      *Why it's needed:* last-write-wins on a permission the user never saw contradicts the rule the
-      rest of this lane keeps (the editor only changes what it showed you).
-      *If fixed:* echo the baseline permissions on the write and reject on mismatch, the same shape
-      the deadline uses — not a silent re-seed, which would move a toggle under the user's finger.
-      Files: `packages/settings-ui/src/ui/smartTaskEdit.ts`, `setup/settingsUiSmartTaskApi.ts`.
-      Source: pels-runtime-reality on editable smart-task permissions, 2026-08-02. *P2*
-
 - [ ] **A rescue on the lowest-priority device can grant nothing and still report success.**
       *Persona:* Optimiser (`notes/personas.md`) who taps `Let it run now` on a held-back device.
       *Hypothesis:* now that the rescue is offered on both axes, a device that is capacity-held AND
