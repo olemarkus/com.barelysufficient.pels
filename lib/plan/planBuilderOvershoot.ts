@@ -383,11 +383,14 @@ function areAttributionInputsComplete(
 // at/below the attribution epsilon (off / ~0 W) cannot have caused a positive rise, so
 // its undiffability is harmless and does not block a confident verdict — this covers
 // the zero-current newcomer. Controllable AND uncontrolled tracked devices count: an
-// undiffable uncontrolled device is just as capable of being the real cause.
+// undiffable uncontrolled device is just as capable of being the real cause. A device
+// tracked in the previous build and gone from this one is undiffable too: its draw
+// still reaches the meter, so its rise would otherwise land in background load.
 function hasUndiffablePlausibleContributor(
   currentDevicesById: Record<string, OvershootTrackedPlanDevice>,
   previousDevicesById: Record<string, OvershootTrackedPlanDevice>,
 ): boolean {
+  if (Object.keys(previousDevicesById).some((id) => !(id in currentDevicesById))) return true;
   return Object.values(currentDevicesById).some((device) => {
     const currentKw = resolveOvershootDevicePower(device).kw;
     // A device reading at/below the epsilon (off or ~0 W) could not have caused the

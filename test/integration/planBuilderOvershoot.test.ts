@@ -608,6 +608,45 @@ describe('PlanBuilder overshoot diagnostics', () => {
     }
   });
 
+  // A tracked device that leaves the plan mid-overshoot still draws through the
+  // meter, so its rise cannot be blamed on background load.
+  it('reports attribution_inputs_incomplete when a tracked device vanished since the previous build', async () => {
+    let lastPowerW = 0;
+    vi.useFakeTimers();
+    try {
+      const state = createPlanEngineState();
+      vi.setSystemTime(new Date('2026-04-15T11:04:01.000Z').getTime());
+
+      const structuredLog = { info: vi.fn() };
+      const builder = new PlanBuilder({
+        ...planBuilderWiring(),
+        capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
+        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now() , lastPowerW }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }), 0.7),
+        structuredLog: partialDouble<PinoLogger>(structuredLog),
+      }, state);
+
+      lastPowerW = 0.6 * 1000;
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({ id: 'anchor', name: 'Anchor', currentDrawKw: 0.5 }),
+        buildDevice({ id: 'vanishing', name: 'Vanishing', currentDrawKw: 0.1 }),
+      ]);
+
+      structuredLog.info.mockClear();
+      lastPowerW = 0.9 * 1000;
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({ id: 'anchor', name: 'Anchor', currentDrawKw: 0.5 }),
+      ]);
+
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_entered',
+        overshootAttributionReason: 'attribution_inputs_incomplete',
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('attributes overshoot when the restored device is a positive contributor', async () => {
     let lastPowerW = 0;
     vi.useFakeTimers();
