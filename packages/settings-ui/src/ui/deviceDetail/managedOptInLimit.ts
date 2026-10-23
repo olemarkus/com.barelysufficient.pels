@@ -24,13 +24,13 @@ import {
  * `true` anyway.
  *
  * An explicit `false` does NOT stop it, though it looks like an owner's opt-out.
- * The map cannot tell one from the other: when a device loses the capability
- * Limit needs, the runtime writes `false` over the owner's `true`
- * (`applyFalseOverrides`, `setup/appDeviceSupport.ts` — and only ever over a
- * `true`). Honouring that `false` later would leave precisely the owner who HAD
- * Limit on stuck with Managed-but-unlimitable once the device came back. So
- * managing a device always starts it limitable; the Limit toggle, in the same
- * row and already showing the result, is the opt-out.
+ * The map cannot tell one from the other: until 2026-09-23, when a device lost
+ * the capability Limit needs, the runtime wrote `false` over the owner's `true`
+ * (`applyFalseOverrides`, since removed, and only ever over a `true`), and a map
+ * stored then still holds those. Honouring that `false` would leave precisely
+ * the owner who HAD Limit on stuck with Managed-but-unlimitable. So managing a
+ * device always starts it limitable; the Limit toggle, in the same row and
+ * already showing the result, is the opt-out.
  */
 export type ManagedOptInLimit = 'enable' | 'leave';
 

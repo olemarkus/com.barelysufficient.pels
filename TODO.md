@@ -95,34 +95,20 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 
 - [ ] **Latch `currentHourClaim` for the hour instead of recomputing it through the whole `:58`
-      window.** `isPastHourSettleMark` is true from `:58:00` to `:59:59`, so the fresh allocator —
-      and with it the claim — runs on every cycle in that window (~12 in `homey_energy` mode, more
-      and irregular under `power_source = flow`). The two-clock design says a control decision moves
-      only at the settle; this is the one seam where it can move repeatedly within one. The
-      asymmetry is what makes it worth closing: `released` fires a lifecycle release with no
-      cooldown gate, while `claimed` can only re-admit through the 60-300 s restore cooldown, so
-      an alternation is not symmetric churn. Resolve the claim once on the first fresh pass at/after
-      the mark and reuse it for the rest of the window, the way `cheaperHourAhead` is stamped once
-      at the booking revision. Also covers the no-commitment case, where no frozen fallback exists
-      and the fresh path runs every cycle for the whole hour. Source: pels-runtime-reality on
-      PR #2059. [P2]
-
-- [ ] **Smart-task diagnostics: distinguish an active meter source from a missing device before its deadline.**
-      *Persona:* owner who selects a device with an existing smart task as an electricity meter.
-      *Hypothesis:* the source-filtered lifecycle device set omits the meter, so the still-enabled task
-      reports `objective_missing_device` until deadline handling safely disarms it without a command.
-      The reason-bearing durable-exclusion seam this asked for now exists —
-      `ResolveObjectiveDeviceExclusion` (`lib/objectives/deferredObjectives/deviceExclusion.ts`), resolved
-      by `resolveSmartTaskDeviceExclusion` (`setup/appInit/smartTaskHomeScope.ts`) and already carrying
-      `sub_home` and `unmanaged`. What remains: add a `meter_source` arm with its own diagnostic code and
-      copy, and answer it from that resolver, so status/history explain the task's real scope before it
-      ends. Source: runtime-reality review of PR #1873, 2026-07-23.
-      **Two new arms are required, not one.** A meter-source exclusion and an automatic
-      power-capability demotion are independently observable states, so `ObjectiveDeviceExclusion`
-      (today `'sub_home' | 'unmanaged'`) needs a member for each, with its own reason code and copy;
-      otherwise the resolver cannot tell which explanation to show. The demoted case is
-      `applyFalseOverrides` (`setup/appDeviceSupport.ts:92`) pointing the owner at a disabled Managed
-      toggle. Done when both arms and both mappings exist. [P2]
+      window.** `isPastHourSettleMark` is true from `:58:00` to `:59:59`, so the fresh allocator,
+      and with it the claim, runs on every cycle in that window
+      (`taskEvaluationCoordinator.ts`; ~12 cycles under `homey_energy`, more and irregular under
+      `power_source = flow`). The recorder writes the hour's plan at most once
+      (`activePlanRecorder.ts`), so for those two minutes the plan it saved and the claim the
+      device follows can differ. Neither direction is damped: a lifecycle release starts no restore
+      back-off (`currentHourClaim.ts`, `shedReleaseActuation.ts`). Mid-hour price deferral moving
+      the claim every cycle is by design (`trajectoryMilestone.ts`) and stays. **What changes:** the
+      recorder takes the hour's slot on its first fresh pass at or after the mark, whether or not it
+      writes, and exposes it through `TaskEvaluationSource`; the rest of the window follows that
+      slot instead of `isPastHourSettleMark(nowMs)`. This reverses the recorder comment that
+      recomputes through the window, and a change that lands late in the window waits for the next
+      `:58`. **Done when** a claim resolved at `:58:00` is the one served at `:59:50`, pinned in
+      `test/e2e/smartTaskHourBoundarySdkE2E.test.ts`. Source: pels-runtime-reality on PR #2059. [P2]
 
 - [ ] **Smart-task preview keeps a missing committed task reserved after the live grace expires.**
       *Persona:* owner previewing a lower-priority task after a higher task's device has stayed
@@ -136,19 +122,23 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       then add a post-grace preview-parity regression. Source: pels-runtime-reality review of
       the relative-priority PR, 2026-08-08. [P2]
 
-- [ ] **A rescue on the lowest-priority device can grant nothing and still report success.**
+- [ ] **"Power on the way" after a rescue ignores whether the house is at its power limit.**
       *Persona:* Optimiser (`notes/personas.md`) who taps `Let it run now` on a held-back device.
-      *Hypothesis:* now that the rescue is offered on both axes, a device that is capacity-held AND
-      bottom-priority AND binary can end up with an empty effective grant:
-      `gateCandidateExtraPermissions` (`setup/appSmartTaskApi.ts`) drops `limitLowerPriorityDevices`
-      for binary devices, `pauseLowerPriorityDevices` has nothing below it to pause, and
-      `exemptFromBudget` is inert when the budget is not what binds. The user confirms, gets the
-      `Power on the way` flash, nothing changes — and the device is now un-rescuable because it has a
-      smart task.
-      *Why it's needed:* a money-action confirm that provably cannot help is the one thing the rescue
-      confirm sheet exists to prevent. Fix direction: compute the effective grant set server-side
-      before the confirm and surface an honest "this will not free power for this device" state, or
-      fall through to `rescueDoneQueued` framing. Source: adversarial review, 2026-08-04. [P3]
+      *Hypothesis:* the confirmation picks "Power on the way" from whether the current hour is
+      scheduled alone (`setup/settingsUiStarvationRescueApi.ts`,
+      `widgets/starvation_rescue/src/api.ts`), and ignores `estimate.atPowerLimitNow`, which the
+      preview already resolves (`planPreview.ts`). A device the rescue cannot start right now
+      because the house is at its limit is promised power that does not come. The settings-UI
+      confirm (`PlanDeviceCards.tsx`) also lacks the at-limit note the widget shows
+      (`widgets/starvation_rescue/src/render.ts`). The grant itself is not empty: the budget
+      exemption still matters if the budget binds during the three-hour window, and the gate lives in
+      `lib/objectives/deferredObjectives/limitGrantGate.ts`. **What changes:** one shared-domain
+      helper decides "runs now" as current hour scheduled AND not at the power limit, and both
+      surfaces read it; at the limit they say "Running as soon as there's room", and the settings-UI
+      confirm shows the at-limit note. **Done when** a rescue preview at the power limit flashes the
+      waiting line on both surfaces, pinned in `test/integration/settingsUiStarvationRescueApi.test.ts`
+      and `starvationRescueWidgetApi.test.ts`. Do it after PR #2911, which reworks the settings UI's
+      rescue gate. Source: adversarial review, 2026-08-04. [P3]
 
 - [ ] **Move the settings-UI edit lane and the create_smart_task widget onto lib-owned request lanes.**
       *Persona:* contributor changing how a smart task is previewed or saved.
@@ -262,19 +252,29 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Device observation and transport
 
-- [ ] **P2 — the one persisted actuation clock sits outside the abandon-grace regime.**
-      `DEVICE_LAST_CONTROLLED_MS` is hydrated by `setup/appServiceWiring.ts` and
-      `setup/homeRuntime/createHomeCapacityBundle.ts` as `isNumberMap(stored) ? { ...stored } : {}` and
-      written back bare by `setup/homeRuntime/homeSignalWriters.ts`, so one transient SDK miss at
-      boot lands as `{}` and the first shed or restore afterwards persists a one-device map over the
-      stored history. The map gates the startup-window hold (`planReasonsHoldDecisions.ts`
-      distinguishes "never controlled" from "controlled before") and the restore stabilization reads.
-      Change: route the key through the written-before-marker/grace wrapper
-      `notes/persisted-settings-state.md` prescribes for persisted history, with the hydration
-      landing on `ActuationRecord.loadLastControlled`. Done when a spec whose boot `settings.get`
-      answers `undefined` once with the marker set, followed by a shed, asserts the persisted map
-      still holds the prior devices. Source: runtime review of the actuation-record state layer,
-      2026-09-08.
+- [ ] **P2 — rule on where `device_last_controlled_ms` lives: one transient boot read can wipe it.**
+      The map is hydrated by `setup/homeRuntime/createHomePlanRuntime.ts` through
+      `ActuationRecord` (`lib/executor/actuationRecord.ts`) as `isNumberMap(stored) ? … : {}`, and
+      written back whole by `planExecutor.ts` through `homeSignalWriters.ts` on every actuation
+      batch (~19 writes an hour on production, 2026-09-26). One transient SDK miss at boot lands as
+      `{}`, and the first shed or restore afterwards persists a one-device map over the stored
+      history. What a lost map costs is small: the reason text on off devices between boot and the
+      first fresh reading (`restore/devices.ts`, `restore/helpers.ts`, `planReasonsHoldDecisions.ts`
+      tell "never controlled" from "controlled before"); planned state is the same either way.
+      **Rule on one of these:**
+      (a) *Move it to the userdata store* (~250-400 lines, the shape of
+      `lib/device/learnedPowerPeakStore.ts`: a repository, a one-time import of the bare key and
+      each `:<homeId>` key, the two files above rewired). A userdata read does not transiently
+      fail, so the wipe goes, and so do ~19 whole-settings-object writes an hour. It is actuation
+      history, which the 2026-09-07 ruling sends to userdata, though this entry's sibling lists it
+      as a live latch that stays in settings.
+      (b) *Keep it in settings behind the written-before marker and grace*
+      (`notes/persisted-settings-state.md`; ~400-500 lines per store, machinery deleted everywhere
+      else).
+      (c) *Accept the reason-text gap* and close this entry.
+      **Done when** the chosen option lands, with a spec whose boot read misses once followed by a
+      shed asserting the prior devices survive (a, b), or the entry is gone (c). Source: runtime
+      review of the actuation-record state layer, 2026-09-08.
 
 - [ ] **The zone tree is refetched on every snapshot refresh — 538 Homey round-trips per 12 h for
       an answer that changed zero times — and the obvious fix (a refresh interval) is unsafe as
@@ -283,36 +283,38 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       sampled production window every one of the 538 answers was `zonesTotal: 29,
       droppedEntries: 0`.
 
-      An interval alone reintroduces a correctness window, which is why the one added in PR #2252
-      was taken back out. Once ANY tree has committed, the multi-home actuation fence is open, and
-      `zoneAncestryPath` treats a zoneId missing from the cached tree the same as a broken parent
-      chain: `resolveDeviceHome` answers `{ homeId: MAIN_HOME_ID, source: 'fallback' }`
-      (`lib/home/membership.ts`, pinned by `test/unit/homeMembership.test.ts` "an unknown device
-      zone resolves to main"). So a device moved into a zone the stale tree has never seen is
-      planned and actuated by Main against the wrong meter for the length of the interval. Homey
-      publishes no zone event to correct it — the SDK ships no zones manager, and the realtime
-      feed subscribes only `homey:manager:devices` — so nothing shortens that window on its own.
+      **First, with no ruling needed:** skip the fetch while no meter area exists. Membership needs
+      no tree then (`homeMembershipService.ts`) and every device resolves to Main either way; the
+      homes editor fetches its own tree when it opens (`setup/settingsUiHomesApi.ts`), and until a
+      tree commits the multi-home actuation fence stays closed. That covers single-home installs,
+      the overwhelming majority.
 
-      **Where:** `refreshZoneTreeCache` in `lib/device/transport/snapshotRefresh.ts`,
-      `ZoneTreeCache` in `lib/device/transport/zoneTreeCache.ts`, and the fallback arm of
-      `resolveDeviceHome` in `lib/home/membership.ts`.
+      For a home WITH meter areas, an interval alone reintroduces a correctness window, which is
+      why the one added in PR #2252 was taken back out. Once ANY tree has committed, the
+      multi-home actuation fence is open, and `zoneAncestryPath` treats a zoneId missing from the
+      cached tree the same as a broken parent chain: `resolveDeviceHome` answers
+      `{ homeId: MAIN_HOME_ID, source: 'fallback' }` (`lib/home/membership.ts`, pinned by
+      `test/unit/homeMembership.test.ts` "an unknown device zone resolves to main"). So a device
+      moved into a zone the stale tree has never seen is planned and actuated by Main against the
+      wrong meter for the length of the interval. Homey publishes no zone event to correct it — the
+      SDK ships no zones manager, and the realtime feed subscribes only `homey:manager:devices`.
 
-      **What changes — rule on one of these:**
-      (a) *Make staleness self-correcting, then add the interval.* Mark the cache due when a
-      `device.update` reports a zoneId absent from the tree. `notifyDeviceZoneChangeContained`
-      (`lib/device/transport/deviceUpdateHandling.ts`) already computes the zone delta and holds
-      `ctx.zoneTreeCache`, so this needs no new plumbing and no `lib/device` → `lib/home` edge.
-      Covers a device moving into a new zone; does NOT cover a zone reparented with no device
-      moving, because no device's `zoneId` changes then.
+      **Rule on one of these for meter areas:**
+      (a) *Make staleness self-correcting, then add the interval.* Mark the tree due when a
+      `device.update` reports a zoneId absent from it. `notifyDeviceZoneChangeContained`
+      (`lib/device/transport/deviceUpdateHandling.ts`) already sees the zone delta; the cache lives
+      in `snapshotRefreshState.ts`, so the flag goes on `SnapshotRefreshState`, with no
+      `lib/device` → `lib/home` edge. Does NOT cover a zone reparented with no device moving.
       (b) *Make staleness harmless, then add the interval.* Hold an unknown-zone device out of
       actuation instead of falling back to Main. Removes the wrong-meter window by construction,
-      at the cost of not actuating a device whose zone cannot be resolved — which is the posture
-      already taken before the first commit, extended to a zone the tree does not know.
-      (c) *Accept the cost.* Keep the fetch on every refresh and close this entry.
+      at the cost of not actuating a device whose zone cannot be resolved — the posture already
+      taken before the first commit, extended to a zone the tree does not know.
+      (c) *Accept the cost* for meter-area homes and keep the fetch on every refresh there.
 
-      **When it is done:** zone fetches per 12 h are down by at least an order of magnitude, and a
-      test drives a device into a zone the cached tree has never seen and asserts it is never
-      planned by the wrong home. Source: Codex P1 on PR #2252, 2026-08-31. [P2]
+      **When it is done:** a single-home install fetches no zone tree on a snapshot refresh, and
+      for meter areas the chosen option lands with a test that drives a device into a zone the
+      cached tree has never seen and asserts it is never planned by the wrong home. Source: Codex
+      P1 on PR #2252, 2026-08-31. [P2]
 
 - [ ] **Surface "your step flow is not answering" on the device detail.** *Persona:* flow-backed stepped-device
       owner (EV charger) whose `desired_stepped_load_changed` flow is missing, mistargeted, or not reporting back.
@@ -367,11 +369,11 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       P2) → device-detail overlay slice-by-slice (Power-limiting slice first: rehome the hidden
       `md-filled-select` state store in `deviceDetail/shedBehavior.ts` + `index.html`, deleting
       `segmentedControl.ts`, segmented impl 3/3) → Modes (Sortable.js needs an imperative island) →
-      Advanced. Plus a boot.ts quick win: replace the `budget-adjust`/`budget-weather` virtual-
-      target if-chains with a declarative map. One surface/primitive per PR, screenshot-gated on
-      convergence. Persona: contributor velocity + Set-and-forget owner (visual coherence);
-      hypothesis: three segmented impls / two device rows / per-file chip vocab is where per-page
-      drift keeps re-entering. [P2]
+      Advanced. One surface/primitive per PR, screenshot-gated on convergence. Done when
+      `views/chipModifier.ts`, `segmentedControl.ts`, `createToggleGroup` and
+      `buildRedesignDeviceRow` are deleted and the `ok` chip tone alias is gone. Persona:
+      contributor velocity + Set-and-forget owner (visual coherence); hypothesis: three segmented
+      impls / two device rows / per-file chip vocab is where per-page drift keeps re-entering. [P2]
 
 ## Standalone web app
 
@@ -438,56 +440,24 @@ Design-of-record: `notes/web-app.md`.
       leaves about 16 kB of configuration and live latches. Count writes by diffing successive reads of that endpoint, not with
       the `settings_set.*` perf counter, which covers only `capacity_in_shortfall`.
 
-- [ ] **Three setup files still hold runtime state, above the boundaries `arch:check` enforces.**
+- [ ] **Two setup files still hold runtime state, above the boundaries `arch:check` enforces.**
       `setup/` constructs and connects and holds nothing (`setup/AGENTS.md` § "No state"), enforced
-      by `scripts/check-setup-stateless.mjs`. Three files predate the rule and sit in
-      `scripts/setup-stateless-allowlist.txt`, which budgets each a declaration count (10
-      declarations; 21 files / 104 at the guard's introduction). **Two of the three files will never
-      move** — `powerSamplePipeline.ts` and `appSnapshotHelpers.ts` are orchestrators whose imports
-      close every domain destination. Their STATE can still move, so this entry's done-condition
-      stands: `powerSamplePipeline.ts`'s state move is tracked as `` `schedulePlanRebuild` is still
-      rebuilt per sample, because it closes over the request ``, and `appSnapshotHelpers.ts`'s state
-      move is part of this umbrella and is not tracked separately anywhere. Each is a component in
-      the wrong directory, and each migration is the same shape: move the state **and the rules that
-      read it** into the domain module that owns the concept, as a leaf that takes flat injected getters for anything outside
-      its own module (the `no-weather-to-peer` pattern — "a leaf collector fed flat getters from
-      setup wiring"); setup keeps only the construction that binds them. The peer DAG is the
-      constraint that decides each destination: `lib/home` is a declared pure leaf. The home
-      membership service now takes a narrowed device snapshot and setup-owned event subscription;
-      it has no device or observer imports. Lanes, in the order they should land:
-      (a) power — DONE except `powerSamplePipeline.ts`, whose file stays in `setup/` but whose
-      state does not (see `` `schedulePlanRebuild` is still rebuilt per sample, because it closes
-      over the request ``);
-      (b) solar — DONE;
-      (c) device — `targetPowerProbeScheduler.ts` and `appFlowBacked.ts` are DONE (`lib/device/`).
-      `appDeviceSupport.ts` is DONE: its module-level `Set` was the mode-target fill's record of
-      what it filled, which now lives on the one `ModeDeviceTargetFill` the app builds
-      (`lib/home/modeDeviceTargetFill.ts`). `appNativeWiring.ts` is DONE, as
-      `lib/device/builtInControlFlowConflicts.ts`. `appSnapshotHelpers.ts` has no entry of its own:
-      its state move is part of this umbrella and is not tracked separately;
-      (d) home — `homeSampledMeterIdentity.ts` is DONE, as `lib/power/sampledMeterIdentity.ts`:
-      the fact it holds is about the sample the TRACKER serves, and it imports nothing but the
-      freshness constant its expiry derives from. Main-meter authority now lives in
-      `lib/home/homeMainMeterAuthority.ts`, with its power-owned sampled identity supplied through
-      `lib/ports/sampledMeterIdentity.ts`.
-      `homeRuntime/homeModeOwnershipTransfer.ts` is DONE, as
-      `lib/home/modeOwnershipTransfer.ts`. `HomeMembershipService`, its settings stores and
-      activation reads, and Main-meter authority now live in `lib/home/`; device membership arrives
-      as a narrowed snapshot and sampled-meter identity through a neutral port. The registry's
-      state is DONE too, as `lib/home/homeRuntimeRegistry.ts`, with bundle construction and the
-      power-source epoch fence injected as ports, so the home lane holds no setup state;
-      (e) composition root and leftovers — DONE. `appServiceWiring.ts`'s late-bound service handles
-      are `PelsApp` fields reached through getter/setter pairs, its
-      membership teardown is a `TeardownRegistry` key, and the prepared-reconcile fence is
-      created by the sample ingest queue in `lib/power`, which owns the revision it reads. The background teardown handles are an injected
-      `TeardownRegistry` (`lib/utils/`), the dump counter is `lib/diagnostics/deviceDumpId.ts`, and
-      the scheduler telemetry observer moved to `lib/plan/rebuildScheduler/` rather than
-      `lib/logging/` as this entry used to say — it names `RebuildIntent` and
-      `PowerSampleRebuildState`, so putting it in `lib/logging` would have made a foundation module
-      depend on `lib/plan`. Each lane is behaviour-preserving: a move plus an injection change, with
-      `npm run arch:check` as the gate on the destination. Done when
+      by `scripts/check-setup-stateless.mjs`, whose allowlist
+      (`scripts/setup-stateless-allowlist.txt`) still budgets two files and three declarations:
+      - `setup/appSnapshotHelpers.ts` (2): the refresh stop latch and the single-flight refresh
+        loop, with the device-poll, status-log, stuck-confirmation and post-actuation timers that
+        read them. They move to a `lib/device` refresh scheduler built the way
+        `lib/device/targetPowerProbeScheduler.ts` is, taking the refresh cycle as an injected
+        function; the cycle itself fans out across plan, power and home and stays in `setup/`.
+      - `setup/powerSamplePipeline.ts` (1): `this.queue = deps.createIngestQueue(...)`. The queue's
+        state is already `lib/power/sampleIngestQueue.ts`'s; the guard counts the construction.
+        Moving that one call up into `createHomePowerPipeline.ts` would only hide it from the guard,
+        so the real change is the pipeline taking the queue it is handed, with the run callback the
+        queue needs bound at construction.
+      Each is behaviour-preserving, with `npm run arch:check` as the gate. **Done when**
       `scripts/setup-stateless-allowlist.txt` no longer exists and `npm run setup:stateless` passes
-      without it. Found 2026-08-29. [P2]
+      without it. Land it before the closure-`let` guard above, so that guard's seed is the new
+      residual. Found 2026-08-29. [P2]
 
 - [ ] **Each power limit is a loose nullable, and readers re-derive which nulls mean "off".**
       The capacity, grid and daily axes and the binding limit travel as separate `number | null`
