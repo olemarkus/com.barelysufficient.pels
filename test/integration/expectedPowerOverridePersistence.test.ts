@@ -4,7 +4,8 @@ import type { FlowBackedDeviceState } from '../../lib/device/flowBackedDeviceSta
 import { createFlowBackedDeviceState } from '../../setup/flowBackedCardAccess';
 import { SettingsRepository } from '../../setup/settingsRepository';
 import { DEVICE_EXPECTED_POWER_OVERRIDES } from '../../lib/utils/settingsKeys';
-import { TimerRegistry } from '../../lib/utils/timerRegistry';
+import { createLearnedPowerPeakRepository } from '../../lib/device/learnedPowerPeakStore';
+import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import type { DeviceExpectedPowerOverrides } from '../../packages/contracts/src/types';
 import { testLogger } from '../utils/testLogger';
 
@@ -17,7 +18,6 @@ const NOW = Date.UTC(2026, 7, 9, 12, 0, 0);
  */
 describe('expected power override persistence', () => {
   let overrides: DeviceExpectedPowerOverrides;
-  let timers: TimerRegistry;
 
   const buildFlowBacked = (
     homey: Homey.App['homey'] = mockHomeyInstance as unknown as Homey.App['homey'],
@@ -32,7 +32,7 @@ describe('expected power override persistence', () => {
     getSteppedLoadProfile: () => undefined,
     getExpectedPowerKwOverrides: () => overrides,
     getLearnedPowerPeaks: () => ({}),
-    timers,
+    getLearnedPowerPeakRepository: () => createLearnedPowerPeakRepository(openUserdataDatabase(IN_MEMORY_DATABASE)),
     syncHeadroomUsageObservation: () => {},
   });
 
@@ -41,12 +41,10 @@ describe('expected power override persistence', () => {
     vi.setSystemTime(NOW);
     resetMockHomey();
     mockHomeyInstance.settings.set('unrelated_key', true);
-    timers = new TimerRegistry();
     overrides = {};
   });
 
   afterEach(() => {
-    timers.clearAll();
     vi.useRealTimers();
   });
 

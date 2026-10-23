@@ -3,11 +3,7 @@ import type { FlowReportedCapabilitiesByDevice } from '../lib/device/transport/f
 import { readFlowReportedCapabilitiesSetting } from '../lib/device/flowReportedCapabilitiesSetting';
 import {
   classifyExpectedPowerOverridesSetting,
-  classifyLearnedPeaksSetting,
-  pruneExpiredLearnedPeaks,
   type ExpectedPowerOverridesRead,
-  type LearnedPeaksByDeviceId,
-  type LearnedPeaksRead,
   type PersistedRecordReadEvidence,
 } from '../lib/device/devicePowerPeak';
 import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSelection';
@@ -15,7 +11,6 @@ import type { DeviceExpectedPowerOverrides } from '../packages/contracts/src/typ
 import { readMainMeterSelection } from './mainMeterSettings';
 import {
   DEVICE_EXPECTED_POWER_OVERRIDES,
-  DEVICE_POWER_PEAKS,
   FLOW_REPORTED_DEVICE_CAPABILITIES,
 } from '../lib/utils/settingsKeys';
 
@@ -63,33 +58,11 @@ export class SettingsRepository {
   }
 
   /**
-   * The learned measured peaks, entry-validated and classified.
-   *
-   * `resolved` with an empty record is a real answer (nothing learned yet, or
-   * everything aged out); `unavailable` means the key could not be read, and the
-   * caller must neither adopt it nor write over it. These used to be the same
-   * `{}`, which on a cold boot let the first write replace weeks of learning
-   * with nothing.
-   */
-  loadLearnedPeaks(): LearnedPeaksRead {
-    const evidence = this.readPersistedRecordEvidence(DEVICE_POWER_PEAKS);
-    return evidence ? classifyLearnedPeaksSetting(evidence) : { state: 'unavailable' };
-  }
-
-  /**
-   * Persist the learned peaks, pruning entries whose window has closed so the
-   * record does not accumulate devices that left the home years ago. Pruning on
-   * WRITE and not on read keeps the read path free of mutation.
-   */
-  saveLearnedPeaks(peaks: LearnedPeaksByDeviceId, nowMs: number): void {
-    this.homey.settings.set(DEVICE_POWER_PEAKS, pruneExpiredLearnedPeaks(peaks, nowMs));
-  }
-
-  /**
-   * The owner's manual expected-power figures, entry-validated and classified on
-   * the same resolved/unavailable contract as {@link loadLearnedPeaks} — and for
-   * a sharper reason: these are figures a person typed, so overwriting them from
-   * an unreadable boot would lose something no observation can recover.
+   * The owner's manual expected-power figures, entry-validated and classified:
+   * `resolved` with an empty record is a real answer, and `unavailable` means the
+   * key could not be read, so the caller must neither adopt it nor write over it.
+   * These are figures a person typed, so overwriting them from an unreadable boot
+   * would lose something no observation can recover.
    */
   loadExpectedPowerOverrides(): ExpectedPowerOverridesRead {
     const evidence = this.readPersistedRecordEvidence(DEVICE_EXPECTED_POWER_OVERRIDES);

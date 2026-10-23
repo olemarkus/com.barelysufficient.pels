@@ -15,6 +15,11 @@ import {
   importLegacyPowerCalibration,
   PowerCalibrationStore,
 } from '../lib/device/devicePowerCalibrationStore';
+import {
+  createLearnedPowerPeakRepository,
+  importLegacyLearnedPowerPeaks,
+  type LearnedPowerPeakRepository,
+} from '../lib/device/learnedPowerPeakStore';
 import { emitSettingsUiPowerUpdatedForApp } from './settingsUiAppRuntime';
 import { addPerfDuration } from '../lib/utils/perfCounters';
 import type { DailyBudgetUpdateStateOptions } from '../lib/dailyBudget/dailyBudgetTypes';
@@ -51,6 +56,18 @@ export const createPowerCalibrationStoreForApp = (ctx: AppContext): PowerCalibra
   const repository = createPowerCalibrationRepository(ctx.getUserdataDatabase());
   importLegacyPowerCalibration(ctx.homey.settings, repository);
   return new PowerCalibrationStore(repository);
+};
+
+/**
+ * The learned measured peaks on the app's userdata database, with the one-shot
+ * import of the legacy `device_power_peaks` blob run before anything reads it.
+ * Built beside the calibration store: both are what the device layer learns
+ * from measured power.
+ */
+export const createLearnedPowerPeakRepositoryForApp = (ctx: AppContext): LearnedPowerPeakRepository => {
+  const repository = createLearnedPowerPeakRepository(ctx.getUserdataDatabase());
+  importLegacyLearnedPowerPeaks(ctx.homey.settings, repository);
+  return repository;
 };
 
 /**

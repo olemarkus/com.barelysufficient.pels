@@ -661,10 +661,6 @@ export class AppServiceWiring {
     // Persist any unflushed deferred-objective plan-history entries before shutting down.
     flushDeferredObjectiveRecorders(ctx);
     flushDailyBudgetStateOnUninit(ctx);
-    // The learned peaks are rate-limited to one write a minute: the peak
-    // observed in the last minute of a run is precisely the one a restart would
-    // drop, and the trailing flush timer is already gone by now.
-    ctx.flowBacked.flushLearnedPeaks();
     // Mark how far we've observed; back-fill on next startup picks up from here. Skipped if
     // the recorder is still dirty (save failed), so the next start re-scans the missed window.
     persistDeferredObjectiveObservationWatermark(ctx, ctx.deferredObjectivePlanHistoryRecorder);

@@ -44,7 +44,7 @@ export const REALTIME_CAPABILITY_EVENT_WINDOW_MS = 2 * 1000;
  * The learned-peak write-back hangs off this rather than the snapshot-mutation
  * seam, which fires on a CHANGED calibration input: a reading equal to the
  * standing peak changes none of them while still re-anchoring `observedAtMs`, so
- * the window of the steadiest devices would expire in settings while memory said
+ * the window of the steadiest devices would expire in the store while memory said
  * it was fresh.
  */
 type LearnedPeakChangedListener = { onLearnedPeakChanged: () => void };

@@ -1,4 +1,5 @@
 import type { LearnedPeaksByDeviceId } from './devicePowerPeak';
+import type { LearnedPowerPeakRepository } from './learnedPowerPeakStore';
 import {
   createLearnedPowerPeakState,
   type LearnedPowerPeakState,
@@ -26,7 +27,6 @@ import {
 } from './transport/stateOfCharge';
 import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
 import { normalizeError } from '../utils/errorUtils';
-import type { TimerRegistry } from '../utils/timerRegistry';
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { DeviceTransport } from './deviceTransport';
 import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
@@ -95,8 +95,8 @@ export type FlowBackedDeviceStateDeps = {
   getSteppedLoadProfile: (deviceId: string) => unknown;
   getExpectedPowerKwOverrides: () => DeviceExpectedPowerOverrides;
   getLearnedPowerPeaks: () => LearnedPeaksByDeviceId;
-  /** Owns the learned-peak trailing flush registered by `learnedPowerPeakState`. */
-  timers: TimerRegistry;
+  /** The learned peaks' store; reached once the userdata database is open. */
+  getLearnedPowerPeakRepository: () => LearnedPowerPeakRepository;
   syncHeadroomUsageObservation: (deviceId: string, usageKw: number) => void;
 }
 
@@ -119,9 +119,8 @@ export class FlowBackedDeviceState {
 
   constructor(private readonly deps: FlowBackedDeviceStateDeps) {
     this.learnedPowerPeakState = createLearnedPowerPeakState({
-      persistence: deps.persistence,
+      getRepository: () => deps.getLearnedPowerPeakRepository(),
       getPeaks: () => deps.getLearnedPowerPeaks(),
-      timers: deps.timers,
       getStructuredLogger: () => deps.getStructuredLogger('devices'),
     });
   }
@@ -136,14 +135,9 @@ export class FlowBackedDeviceState {
     return getFlowReportedDeviceIds(this.deps.getFlowReportedCapabilities());
   }
 
-  /** Rate-limited, change-gated write of the learned measured peaks. */
+  /** Write-through of the learned measured peaks. */
   persistLearnedPeaks(): void {
     this.learnedPowerPeakState.persist();
-  }
-
-  /** Shutdown flush for a learned peak the rate limit is still holding. */
-  flushLearnedPeaks(): void {
-    this.learnedPowerPeakState.flush();
   }
 
   setExpectedOverride(deviceId: string, kw: number): boolean {

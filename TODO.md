@@ -733,11 +733,13 @@ Design-of-record: `notes/web-app.md`.
       (`lib/diagnostics/deviceDiagnosticsStateStore.ts`), the price caches
       (`lib/price/priceCacheStore.ts`), the daily budget's plan and learned profiles
       (`lib/dailyBudget/dailyBudgetStateStore.ts`), the per-step power calibration
-      (`lib/device/devicePowerCalibrationStore.ts`) and the EV car-link probe
-      (`lib/device/evCarLinkStore.ts`) moved to the userdata store
-      (`lib/store/userdataDatabase.ts`). These have not, and are ~1 kB of the ~17 kB object:
-      `device_power_peaks` (1 kB, `lib/device/learnedPowerPeakState.ts`) and
-      `deferred_objective_active_plans` (`setup/appInit/deferredRecorders.ts`). The size is what
+      (`lib/device/devicePowerCalibrationStore.ts`), the EV car-link probe
+      (`lib/device/evCarLinkStore.ts`) and the learned power peaks
+      (`lib/device/learnedPowerPeakStore.ts`) moved to the userdata store
+      (`lib/store/userdataDatabase.ts`). These have not: `deferred_objective_active_plans`
+      (`setup/appInit/deferredRecorders.ts`; the settings UI reads it live through a settings
+      event, so its move replaces that with an `api.realtime` push) and `pv_forecast_state`
+      (up to 90 days of generation history, `setup/pvForecastStateAdapter.ts`). The size is what
       matters, because the small live latches stay in settings by ruling and keep writing:
       measured on production on 2026-09-26, `device_last_controlled_ms` writes ~19 times an hour
       (every executor actuation batch, `setup/homeRuntime/homeSignalWriters.ts`) and
