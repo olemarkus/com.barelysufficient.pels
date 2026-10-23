@@ -1,3 +1,5 @@
+import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
+import { SteppedLoadTransportError } from '../../lib/ports/steppedLoadWrite';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import type { ActuatorTransport } from '../../lib/actuator/deviceCommand';
 
@@ -21,7 +23,7 @@ describe('createDeviceActuator — intent → transport mapping', () => {
     });
     expect(outcome).toEqual({
       requested: true,
-      kind: 'binary',
+      kind: 'binary', acknowledged: true,
     });
     expect(transport.requestBinaryControl).toHaveBeenCalledWith('ev1', false);
   });
@@ -44,7 +46,7 @@ describe('createDeviceActuator — intent → transport mapping', () => {
   });
 
   it('passes a step command through and surfaces the stepped result', async () => {
-    const requestSteppedLoadStep = vi.fn(async () => ({ requested: true as const, transport: 'native_capability' as const }));
+    const requestSteppedLoadStep = vi.fn(async () => ({ requested: true as const, acknowledged: true as const, transport: 'native_capability' as const }));
     const transport = buildTransport({ requestSteppedLoadStep });
     const actuator = createDeviceActuator(transport);
     const outcome = await actuator.apply({
@@ -54,7 +56,7 @@ describe('createDeviceActuator — intent → transport mapping', () => {
     expect(outcome).toEqual({
       requested: true,
       kind: 'step',
-      steppedResult: { requested: true, transport: 'native_capability' },
+      acknowledged: true, transport: 'native_capability',
     });
   });
 
@@ -73,15 +75,16 @@ describe('createDeviceActuator — intent → transport mapping', () => {
     // trigger from a device it cannot command at all.
     const actuator = createDeviceActuator(buildTransport({
       requestSteppedLoadStep: vi.fn(async () => ({
-        requested: false as const,
-        reason: 'flow_trigger_timeout' as const,
+        requested: true as const, acknowledged: false as const, transport: 'flow' as const, reasonCode: 'flow_trigger_timeout' as const,
       })),
     }));
     const outcome = await actuator.apply({
       kind: 'step', deviceId: 's1', profile: { steps: [{ id: 'low', planningPowerW: 1000 }] },
       desiredStepId: 'low', planningPowerW: 1000, planningCurrentA: 0,
     });
-    expect(outcome).toEqual({ requested: false, reason: 'flow_trigger_timeout' });
+    expect(outcome).toEqual({
+      kind: 'step', requested: true, acknowledged: false, transport: 'flow', reasonCode: 'flow_trigger_timeout',
+    });
   });
 
   it('passes a battery setpoint to transport and surfaces the watts it sent', async () => {
@@ -107,4 +110,44 @@ describe('createDeviceActuator — intent → transport mapping', () => {
     expect(releaseStorageControl).toHaveBeenCalledWith(command);
     expect(outcome).toEqual({ requested: true, kind: 'storage_release' });
   });
+});
+
+const stepCommand = {
+  kind: 'step' as const, deviceId: 's1', profile: { steps: [{ id: 'low', planningPowerW: 1000 }] },
+  desiredStepId: 'low', planningPowerW: 1000, planningCurrentA: 0,
+};
+
+it.each(['native_capability', 'homey_action'] as const)('resolves a %s write timeout at the actuator', async (transport) => {
+  const timeout = new HomeyRequestTimeoutError('PUT', '/write');
+  const failure = transport === 'homey_action' ? new SteppedLoadTransportError(transport, timeout) : timeout;
+  const actuator = createDeviceActuator(buildTransport({
+    requestSteppedLoadStep: vi.fn().mockRejectedValue(failure),
+  }));
+  await expect(actuator.apply(stepCommand)).resolves.toEqual({
+    kind: 'step', requested: true, acknowledged: false, transport,
+    reasonCode: 'command_request_timed_out', err: timeout,
+  });
+});
+
+it('resolves binary timeouts without changing target or storage failures', async () => {
+  const timeout = new HomeyRequestTimeoutError('PUT', '/write');
+  const actuator = createDeviceActuator(buildTransport({
+    requestBinaryControl: vi.fn().mockRejectedValue(timeout),
+    requestTemperatureTarget: vi.fn().mockRejectedValue(timeout),
+    requestStoragePower: vi.fn().mockRejectedValue(timeout),
+  }));
+  await expect(actuator.apply({ kind: 'binary', deviceId: 's1', desired: true })).resolves.toEqual({
+    kind: 'binary', requested: true, acknowledged: false, err: timeout,
+  });
+  await expect(actuator.apply({ kind: 'target', deviceId: 's1', target: 'temperature', value: 20 }))
+    .rejects.toBe(timeout);
+  await expect(actuator.apply({ kind: 'storage_power', deviceId: 's1', setpointW: 1000 })).rejects.toBe(timeout);
+});
+
+it.each(['metadata', 'action'] as const)('preserves definite %s failures without recursive cause guessing', async (kind) => {
+  const failure = kind === 'metadata'
+    ? new Error('Metadata unavailable', { cause: new HomeyRequestTimeoutError('GET', '/metadata') })
+    : new SteppedLoadTransportError('homey_action', new Error('Rejected'));
+  const actuator = createDeviceActuator(buildTransport({ requestSteppedLoadStep: vi.fn().mockRejectedValue(failure) }));
+  await expect(actuator.apply(stepCommand)).rejects.toBe(failure);
 });

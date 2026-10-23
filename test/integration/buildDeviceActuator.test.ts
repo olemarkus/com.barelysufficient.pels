@@ -15,7 +15,7 @@ describe('buildDeviceActuator', () => {
   it('returns an actuator whose step command routes to deviceManager.requestSteppedLoadStep', async () => {
     type StepParams = Parameters<NonNullable<ActuatorTransport['requestSteppedLoadStep']>>[0];
     const requestSteppedLoadStep = vi.fn(async (_params: StepParams) => (
-      { requested: true as const, transport: 'flow' as const }
+      { requested: true as const, acknowledged: true as const, transport: 'flow' as const }
     ));
     const ctx = {
       deviceManager: {
@@ -46,7 +46,7 @@ describe('buildDeviceActuator', () => {
     expect(outcome).toEqual({
       requested: true,
       kind: 'step',
-      steppedResult: { requested: true, transport: 'flow' },
+      acknowledged: true, transport: 'flow',
     });
     expect(requestSteppedLoadStep).toHaveBeenCalledTimes(1);
     expect(requestSteppedLoadStep).toHaveBeenCalledWith(expect.objectContaining({

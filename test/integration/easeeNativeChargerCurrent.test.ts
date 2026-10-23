@@ -236,7 +236,7 @@ describe('Easee native charger current', () => {
         desiredStepId: '1000w',
         planningPowerW: 1_000,
         planningCurrentA: 0,
-      })).resolves.toEqual({ requested: true, transport: 'flow' });
+      })).resolves.toEqual({ requested: true, acknowledged: true as const, transport: 'flow' });
       expect(put).not.toHaveBeenCalled();
     } finally {
       restoreMockRestClient();
@@ -321,7 +321,7 @@ describe('Easee native charger current', () => {
         desiredStepId: '6a',
         planningPowerW: 1_380,
         planningCurrentA: 6,
-      })).resolves.toEqual({ requested: true, transport: 'native_capability' });
+      })).resolves.toEqual({ requested: true, acknowledged: true as const, transport: 'native_capability' });
 
       expect(put).toHaveBeenCalledWith(
         `manager/devices/device/${EASEE_ID}/capability/target_charger_current`,
@@ -348,7 +348,7 @@ describe('Easee native charger current', () => {
       logCapture = captureLogger('info', []);
       await expect(transport.requestSteppedLoadStep({
         deviceId: EASEE_ID, profile: presetProfile, desiredStepId: '6a', planningPowerW: 1380, planningCurrentA: 6,
-      })).resolves.toEqual({ requested: true, transport: 'native_capability' });
+      })).resolves.toEqual({ requested: true, acknowledged: true as const, transport: 'native_capability' });
       expect(transport.getSnapshotByDeviceId(EASEE_ID)?.reportedStepId).toBe('6a');
 
       await emitCapability(EASEE_ID, 'target_charger_current', 8);

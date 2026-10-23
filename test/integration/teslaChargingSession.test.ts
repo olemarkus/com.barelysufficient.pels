@@ -486,7 +486,7 @@ test('a Flow setting the current holds the built-in route back for step requests
     const put = vi.fn().mockResolvedValue(undefined);
     setRestClient({ get: vi.fn().mockResolvedValue({}), put });
 
-    await expect(transport.requestSteppedLoadStep(step)).resolves.toEqual({ requested: true, transport: 'flow' });
+    await expect(transport.requestSteppedLoadStep(step)).resolves.toEqual({ requested: true, acknowledged: true as const, transport: 'flow' });
     expect(trigger).toHaveBeenCalledExactlyOnceWith({
       step_id: '6a', planning_power_w: 4140, planning_current_a: 6, previous_step_id: '',
     }, { deviceId: 'battery' });
@@ -497,7 +497,7 @@ test('a Flow setting the current holds the built-in route back for step requests
     await seedTransportDevices(transport, initial);
     setRestClient({ get: vi.fn().mockResolvedValue({}), put });
     await expect(transport.requestSteppedLoadStep(step))
-      .resolves.toEqual({ requested: true, transport: 'native_capability' });
+      .resolves.toEqual({ requested: true, acknowledged: true as const, transport: 'native_capability' });
     expect(put).toHaveBeenCalledOnce();
     expect(put.mock.calls[0]![0]).toContain('measure_charge_current_max');
     expect(put.mock.calls[0]![1]).toEqual({ value: 6 });

@@ -6,7 +6,6 @@ import {
 import { decideBinaryControl } from '../plan/planBinaryControl';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import type { Actuator } from '../actuator/deviceActuator';
-import { isHomeyRequestTimeout } from '../utils/errorUtils';
 import { getLogger } from '../logging/logger';
 
 /**
@@ -118,9 +117,8 @@ export async function dispatchBinaryControlDecision(params: {
     decision,
   });
   try {
-    const outcome = await dispatchBinaryCommand({
-      decision,
-      transport,
+    const outcome = await transport.actuator.apply({
+      kind: 'binary', deviceId: decision.deviceId, desired: decision.desired,
     });
     if (!outcome.requested) {
       transport.pendingBinaryCommandStore.clear(decision.deviceId);
@@ -134,37 +132,10 @@ export async function dispatchBinaryControlDecision(params: {
       return { ok: false, reason: 'not_requested' };
     }
     transport.pendingBinaryCommandStore.recordDispatchAccepted(decision.deviceId, decision);
-    emitBinaryCommandSuccess({
-      decision,
-    });
+    if (outcome.acknowledged) emitBinaryCommandSuccess({ decision });
+    else emitBinaryCommandOutcomeUnknown({ decision, err: outcome.err });
     return { ok: true };
   } catch (caughtError) {
-    // A timed-out write is UNKNOWN, not failed: the socket was abandoned at our
-    // end, but the command may still be on its way to the device. Clearing the
-    // pending entry here would assert "nothing is in flight" and hand the next
-    // cycle a duplicate re-issue — and a re-issued binary activation resets the
-    // device-side step limit (`lib/executor/AGENTS.md`). So resolve it exactly
-    // like a slow success and let the settle window decide: telemetry confirms
-    // it, or the window expires and `onTimedOut` earns the same reachability
-    // backoff `onDispatchFailed` would have. The 90 s window comfortably
-    // outlasts the transport's own timeout.
-    if (isHomeyRequestTimeout(caughtError)) {
-      // Authority first, exactly as the success path does above. A lifecycle
-      // fallback abandoned mid-write is superseded: the command that replaced
-      // it owns the pending entry now, so accepting ours here would flip a
-      // record we no longer own and fire its deferred confirm against a stale
-      // desired value. Losing authority outranks not knowing the outcome.
-      if (!transport.isAuthorityCurrent()) {
-        transport.pendingBinaryCommandStore.clear(decision.deviceId);
-        return { ok: false, reason: 'not_requested' };
-      }
-      transport.pendingBinaryCommandStore.recordDispatchAccepted(decision.deviceId, decision);
-      emitBinaryCommandOutcomeUnknown({
-        decision,
-        err: caughtError,
-      });
-      return { ok: true };
-    }
     // Everything else is a definite answer from the transport — a rejection, a
     // 4xx/5xx, an actuator that declined. Nothing is in flight, so the entry
     // goes and the next cycle may retry without tripping its own guard.
@@ -189,19 +160,6 @@ function recordPendingForDispatch(params: {
     logContext: decision.logContext,
     ...(decision.lifecycleRelease ? { lifecycleRelease: true } : {}),
   });
-}
-
-async function dispatchBinaryCommand(params: {
-  decision: BinaryControlDecision;
-  transport: BinaryControlTransport;
-}): ReturnType<Actuator['apply']> {
-  const { decision, transport } = params;
-  const outcome = await transport.actuator.apply({
-    kind: 'binary',
-    deviceId: decision.deviceId,
-    desired: decision.desired,
-  });
-  return outcome;
 }
 
 function emitBinaryCommandSuccess(params: {

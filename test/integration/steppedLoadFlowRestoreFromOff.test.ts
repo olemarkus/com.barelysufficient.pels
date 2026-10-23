@@ -273,7 +273,7 @@ const buildHarness = (
         previous_step_id: params.previousStepId ?? '',
       }, { deviceId: params.deviceId });
       void Promise.resolve(triggerPromise);
-      return { requested: true, transport: 'flow' as const };
+      return { requested: true, acknowledged: true as const, transport: 'flow' as const };
     }),
   });
 

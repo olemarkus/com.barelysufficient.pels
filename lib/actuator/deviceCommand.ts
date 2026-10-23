@@ -1,5 +1,5 @@
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
-import type { SteppedLoadStepRequestResult } from '../ports/steppedLoadWrite';
+import type { SteppedLoadStepRequestResult, SteppedLoadStepRequestTransport } from '../ports/steppedLoadWrite';
 import type { SteppedLoadWrite } from '../ports/steppedLoadWrite';
 import type {
   StorageClaimRejected,
@@ -78,14 +78,6 @@ export type ActuatorTransport = {
 export type ActuatorOutcome =
   | {
     requested: false;
-    /**
-     * Why nothing was issued, when the transport can distinguish it. Absent
-     * means the plain case: there was no surface to command. `flow_trigger_timeout`
-     * means the opposite — a trigger DID go out and was never acknowledged, which
-     * callers must treat as an unknown outcome rather than an ordinary skip. The
-     * transport is the only layer that can tell these apart, so it says which.
-     */
-    reason?: 'flow_trigger_timeout';
   }
   | {
     requested: false;
@@ -99,6 +91,13 @@ export type ActuatorOutcome =
   | {
     requested: true;
     kind: 'binary';
+    acknowledged: true;
+  }
+  | {
+    requested: true;
+    kind: 'binary';
+    acknowledged: false;
+    err: unknown;
   }
   | {
     requested: true;
@@ -106,11 +105,13 @@ export type ActuatorOutcome =
     /** Transport-resolved value actually sent for a normalized target command. */
     requestedTargetValue: number;
   }
-  | {
+  | ({ kind: 'step' } & (Extract<SteppedLoadStepRequestResult, { requested: true }> | {
     requested: true;
-    kind: 'step';
-    steppedResult: SteppedLoadStepRequestResult;
-  }
+    acknowledged: false;
+    transport: SteppedLoadStepRequestTransport;
+    reasonCode: 'command_request_timed_out';
+    err: unknown;
+  }))
   | {
     requested: true;
     kind: 'storage_power';

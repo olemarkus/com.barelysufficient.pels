@@ -1,3 +1,6 @@
+import { ChargingCurrentControl } from '../../lib/device/chargingCurrentControl';
+import { createChargingFlowWritesStore } from '../../lib/flowApi/acceptedFlowConflictStore';
+import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import Homey from 'homey';
 import {
   createTestDeviceTransport,
@@ -24,7 +27,7 @@ import { createTestExecutorCommandContext, PRIOR_STEP_COMMAND_SESSION } from '..
 import { noStorageTransport } from '../helpers/storageTransportStub';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
-import { SteppedLoadRequestTimeoutError } from '../../lib/ports/steppedLoadWrite';
+import { SteppedLoadTransportError } from '../../lib/ports/steppedLoadWrite';
 import { buildExecutableObservedDeviceState } from '../../lib/executor/executablePlanProjection';
 import {
   buildExecutableSteppedLoadDevice,
@@ -714,7 +717,7 @@ describe('native stepped-load wiring', () => {
         desiredStepId: '8a',
         planningPowerW: 1840,
         planningCurrentA: 8,
-      })).resolves.toEqual({ requested: true, transport: 'native_capability' });
+      })).resolves.toEqual({ requested: true, acknowledged: true as const, transport: 'native_capability' });
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/target-power-1/capability/target_power',
@@ -863,7 +866,7 @@ describe('native stepped-load wiring', () => {
   });
 
   it('writes native capability instead of triggering the stepped-load flow when enabled', async () => {
-    const requestSteppedLoadStep = vi.fn(async () => ({ requested: true, transport: 'native_capability' as const }));
+    const requestSteppedLoadStep = vi.fn(async () => ({ requested: true, acknowledged: true as const, transport: 'native_capability' as const }));
     const trigger = vi.fn(async () => undefined);
     const ctx = steppedCommandContext(requestSteppedLoadStep);
 
@@ -896,6 +899,7 @@ describe('native stepped-load wiring', () => {
 
     expect(wrote).toBe(true);
     expect(requestSteppedLoadStep).toHaveBeenCalledWith({
+      kind: 'step',
       deviceId: 'hoiax-1',
       profile: steppedProfile,
       desiredStepId: 'medium',
@@ -913,11 +917,69 @@ describe('native stepped-load wiring', () => {
     }));
   });
 
+  it('does not record an issued step or cooldown when charging action metadata times out', async () => {
+    const device: HomeyDeviceLike = {
+      id: 'charger', name: 'Zaptec', class: 'evcharger', driverId: 'homey:app:com.zaptec:go2',
+      data: { id: 'zaptec-id', installationId: 'installation' },
+      capabilities: ['available_installation_current'],
+      capabilitiesObj: { available_installation_current: { value: 16, setable: false } },
+    };
+    const values = new Map<string, unknown>();
+    const settings = {
+      get: (key: string) => values.get(key), getKeys: () => [...values.keys()],
+      set: (key: string, value: unknown) => { values.set(key, value); },
+      unset: (key: string) => { values.delete(key); },
+    };
+    const get = vi.fn(async (): Promise<unknown> => ({}));
+    setRestClient({ get, put: vi.fn() });
+    const control = new ChargingCurrentControl({ settings,
+      api: { getLocalUrl: async () => 'http://homey.local' }, cloud: { getHomeyId: async () => 'test' },
+    }, createLogger(), () => [device], () => ({ connected: true, revision: 0 }),
+    createChargingFlowWritesStore(openUserdataDatabase(IN_MEMORY_DATABASE)));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200,
+      headers: { get: () => 'test' }, json: async () => ({ intersectedScopes: ['homey.flow'] }),
+    }));
+    try {
+      await control.access.save({ key: 'private-key' });
+      await control.save('charger', { method: 'built_in', confirmation: 'single_charger' });
+      const timeout = new HomeyRequestTimeoutError('GET', '/api/manager/flow/flowcardaction');
+      get.mockRejectedValue(timeout);
+      const actionWrite = vi.spyOn(control.access, 'runCurrentAction');
+      const capabilityWrite = vi.fn();
+      let metadataFailure: unknown;
+      const ctx = steppedCommandContext(async () => {
+        const transport = await control.writeCurrent(device, 10, capabilityWrite).catch((error: unknown) => {
+          metadataFailure = error;
+          throw error;
+        });
+        return { requested: true, acknowledged: true, transport };
+      });
+      const action = buildSteppedAction({
+        id: 'charger', name: 'Zaptec', binaryControl: { on: true }, currentState: 'on', plannedState: 'shed',
+        controlModel: 'stepped_load', steppedLoadProfile: steppedProfile, selectedStepId: 'max',
+        desiredStepId: 'medium', plannedShedStepId: 'medium', reason: { code: 'capacity' },
+      });
+      expect(action).not.toBeNull();
+      await expect(applySteppedLoadCommand(ctx, action!)).resolves.toBe(false);
+      expect(get).toHaveBeenCalledWith('manager/flow/flowcardaction');
+      expect(actionWrite).not.toHaveBeenCalled();
+      expect(capabilityWrite).not.toHaveBeenCalled();
+      expect(ctx.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
+      expect(ctx.recordShedActuation).not.toHaveBeenCalled();
+      expect(ctx.recordRestoreActuation).not.toHaveBeenCalled();
+      expect(logCapture.events).not.toContainEqual(expect.objectContaining({ event: 'stepped_load_command_outcome_unknown' }));
+      expect(metadataFailure).toBeInstanceOf(Error);
+      expect(metadataFailure).toMatchObject({ cause: timeout });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it.each(['native_capability', 'homey_action'] as const)(
     'treats a timed-out %s stepped write as issued-awaiting-confirmation with the actual route', async (transport) => {
     const timeout = new HomeyRequestTimeoutError('PUT', '/api/manager/devices/device/hoiax-1/capability/max_power_3000');
     const requestSteppedLoadStep = vi.fn(async () => {
-      throw transport === 'homey_action' ? new SteppedLoadRequestTimeoutError(transport, timeout) : timeout;
+      throw transport === 'homey_action' ? new SteppedLoadTransportError(transport, timeout) : timeout;
     });
     const markSteppedLoadDesiredStepIssued = vi.fn();
     const recordShedActuation = vi.fn();
@@ -979,8 +1041,7 @@ describe('native stepped-load wiring', () => {
 
   it('treats an unacknowledged flow trigger as the same unknown outcome as a native timeout', async () => {
     const requestSteppedLoadStep = vi.fn(async () => ({
-      requested: false as const,
-      reason: 'flow_trigger_timeout' as const,
+      requested: true as const, acknowledged: false as const, transport: 'flow' as const, reasonCode: 'flow_trigger_timeout' as const,
     }));
     const markSteppedLoadDesiredStepIssued = vi.fn();
     const ctx = steppedCommandContext(requestSteppedLoadStep, {
@@ -1134,7 +1195,7 @@ describe('native stepped-load wiring', () => {
   it('does not apply a stale stepped command while an outside-off hold is active', async () => {
     const requestSteppedLoadStep = vi.fn(async () => ({
       requested: true,
-      transport: 'native_capability' as const,
+      acknowledged: true as const, transport: 'native_capability' as const,
     }));
     const ctx = steppedCommandContext(requestSteppedLoadStep, {}, (deviceId: string) => deviceId === 'hoiax-1');
     const action = buildSteppedAction({
@@ -1171,7 +1232,7 @@ describe('native stepped-load wiring', () => {
       }, {
         deviceId: params.deviceId,
       });
-      return { requested: true, transport: 'flow' as const };
+      return { requested: true, acknowledged: true as const, transport: 'flow' as const };
     });
     const ctx = steppedCommandContext(requestSteppedLoadStep);
 
@@ -1200,6 +1261,7 @@ describe('native stepped-load wiring', () => {
 
     expect(wrote).toBe(true);
     expect(requestSteppedLoadStep).toHaveBeenCalledWith({
+      kind: 'step',
       deviceId: 'synthetic-target-power-1',
       profile: action!.intent.steppedLoadProfile,
       desiredStepId: '6a',
@@ -1240,7 +1302,7 @@ describe('native stepped-load wiring', () => {
       }, {
         deviceId: params.deviceId,
       });
-      return { requested: true, transport: 'flow' as const };
+      return { requested: true, acknowledged: true as const, transport: 'flow' as const };
     });
     const ctx = steppedCommandContext(requestSteppedLoadStep);
 
@@ -1277,6 +1339,7 @@ describe('native stepped-load wiring', () => {
 
     expect(wrote).toBe(true);
     expect(requestSteppedLoadStep).toHaveBeenCalledWith({
+      kind: 'step',
       deviceId: 'zaptec-go-1',
       profile: action!.intent.steppedLoadProfile,
       desiredStepId: '6a',
@@ -1336,7 +1399,7 @@ describe('native stepped-load wiring', () => {
         planningPowerW: 1750,
         planningCurrentA: 0,
       }))
-        .resolves.toEqual({ requested: true, transport: 'native_capability' });
+        .resolves.toEqual({ requested: true, acknowledged: true as const, transport: 'native_capability' });
 
       expect(get).toHaveBeenCalledTimes(refreshGetCalls);
       expect(put).toHaveBeenCalledWith(
@@ -1378,7 +1441,7 @@ describe('native stepped-load wiring', () => {
         planningPowerW: 1750,
         planningCurrentA: 0,
       }))
-        .resolves.toEqual({ requested: true, transport: 'native_capability' });
+        .resolves.toEqual({ requested: true, acknowledged: true as const, transport: 'native_capability' });
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
@@ -1425,7 +1488,7 @@ describe('native stepped-load wiring', () => {
         planningPowerW: 1750,
         planningCurrentA: 0,
       }))
-        .resolves.toEqual({ requested: true, transport: 'native_capability' });
+        .resolves.toEqual({ requested: true, acknowledged: true as const, transport: 'native_capability' });
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
@@ -1527,7 +1590,7 @@ describe('native stepped-load wiring', () => {
       planningCurrentA: 0,
       previousStepId: '8a',
     }))
-      .resolves.toEqual({ requested: true, transport: 'flow' });
+      .resolves.toEqual({ requested: true, acknowledged: true as const, transport: 'flow' });
 
     expect(mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed).toEqual([{
       tokens: {
@@ -1569,7 +1632,7 @@ describe('native stepped-load wiring', () => {
         planningCurrentA: 0,
         previousStepId: 'low',
       }))
-        .resolves.toEqual({ requested: true, transport: 'flow' });
+        .resolves.toEqual({ requested: true, acknowledged: true as const, transport: 'flow' });
 
       expect(put).not.toHaveBeenCalled();
       expect(mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed).toEqual([{
@@ -1661,8 +1724,7 @@ describe('native stepped-load wiring', () => {
       await vi.advanceTimersByTimeAsync(10_000);
 
       await expect(request).resolves.toEqual({
-        requested: false,
-        reason: 'flow_trigger_timeout',
+        requested: true, acknowledged: false, transport: 'flow', reasonCode: 'flow_trigger_timeout',
       });
       // Unacknowledged, not failed — the executor waits for telemetry rather
       // than treating this as a definite rejection.
@@ -1716,7 +1778,7 @@ describe('native stepped-load wiring', () => {
         planningPowerW: 1750,
         planningCurrentA: 0,
       }))
-        .resolves.toEqual({ requested: true, transport: 'native_capability' });
+        .resolves.toEqual({ requested: true, acknowledged: true as const, transport: 'native_capability' });
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
@@ -1776,7 +1838,7 @@ describe('native stepped-load wiring', () => {
         desiredStepId: 'max',
         planningPowerW: 1750,
         planningCurrentA: 0,
-      })).resolves.toEqual({ requested: true, transport: 'native_capability' });
+      })).resolves.toEqual({ requested: true, acknowledged: true as const, transport: 'native_capability' });
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
         { value: '3' },
@@ -1877,7 +1939,7 @@ describe('native stepped-load wiring', () => {
         planningPowerW: 1750,
         planningCurrentA: 0,
       }))
-        .resolves.toEqual({ requested: true, transport: 'native_capability' });
+        .resolves.toEqual({ requested: true, acknowledged: true as const, transport: 'native_capability' });
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-mock/capability/max_power_3000',

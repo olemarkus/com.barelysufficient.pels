@@ -212,7 +212,7 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
     getSnapshot: vi.fn(() => [getSnapshot()]),
     setCapability,
     requestSteppedLoadStep: vi.fn(async (_params: unknown) => (
-      { requested: true, transport: 'native_capability' as const }
+      { requested: true, acknowledged: true as const, transport: 'native_capability' as const }
     )),
   });
 
