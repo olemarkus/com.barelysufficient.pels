@@ -45,13 +45,12 @@ const temperatureDevice = (overrides: TemperatureDeviceOverrides = {}): TargetDe
 
 describe('objective profile outdoor-temperature covariate', () => {
   it('stamps outdoorTemperatureC on the recorded observation when provided', () => {
-    const initial = updateDeviceObjectiveProfile(undefined, sampleAt(startMs, 50), 'dev', 'Device', () => undefined, undefined);
+    const initial = updateDeviceObjectiveProfile(undefined, sampleAt(startMs, 50), 'dev', 'Device', undefined);
     const updated = updateDeviceObjectiveProfile(
       initial,
       sampleAt(startMs + HALF_HOUR_MS, 51),
       'dev',
       'Device',
-      () => undefined,
       -5.5,
     );
     expect(updated.samples).toHaveLength(1);
@@ -63,13 +62,12 @@ describe('objective profile outdoor-temperature covariate', () => {
   });
 
   it('omits the field entirely when no outdoor temperature is available', () => {
-    const initial = updateDeviceObjectiveProfile(undefined, sampleAt(startMs, 50), 'dev', 'Device', () => undefined, undefined);
+    const initial = updateDeviceObjectiveProfile(undefined, sampleAt(startMs, 50), 'dev', 'Device', undefined);
     const updated = updateDeviceObjectiveProfile(
       initial,
       sampleAt(startMs + HALF_HOUR_MS, 51),
       'dev',
       'Device',
-      () => undefined,
       undefined,
     );
     expect(updated.samples).toHaveLength(1);
@@ -78,12 +76,11 @@ describe('objective profile outdoor-temperature covariate', () => {
 
   it('threads the covariate through the snapshot-level update', () => {
     let state: PowerTrackerState = {};
-    state = updateObjectiveProfilesFromSnapshot(state, [temperatureDevice()], startMs, () => undefined, undefined);
+    state = updateObjectiveProfilesFromSnapshot(state, [temperatureDevice()], startMs, undefined);
     state = updateObjectiveProfilesFromSnapshot(
       state,
       [temperatureDevice({ currentTemperature: 51, lastFreshDataMs: startMs + HALF_HOUR_MS })],
       startMs + HALF_HOUR_MS,
-      () => undefined,
       -8,
     );
     expect(state.objectiveProfiles?.['heater-1']?.samples?.[0]?.outdoorTemperatureC).toBe(-8);

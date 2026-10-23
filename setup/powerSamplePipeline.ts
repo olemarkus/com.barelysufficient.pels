@@ -20,7 +20,6 @@ import type {
   SampleIngestQueueDeps,
   StableSampleRevision,
 } from '../lib/power/sampleIngestQueue';
-import { getDebugEmitter } from '../lib/logging/logger';
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
 import type { DeviceSurfaces } from '../packages/contracts/src/deviceSurfaces';
 import type { PowerSampleAdmission } from '../lib/app/appContext';
@@ -221,7 +220,6 @@ export class PowerSamplePipeline {
         (deviceId) => this.deps.getThermalDirection(deviceId),
       ),
       params.nowMs,
-      getDebugEmitter('objective_profiles', 'objective_profiles'),
       this.deps.getOutdoorTemperatureC?.(),
     )
   );

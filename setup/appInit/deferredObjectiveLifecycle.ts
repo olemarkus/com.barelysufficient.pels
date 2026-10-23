@@ -1,4 +1,3 @@
-import { getDebugEmitter } from '../../lib/logging/logger';
 import type { AppContext } from '../../lib/app/appContext';
 import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
 import {
@@ -192,9 +191,6 @@ export function createDeferredObjectiveLifecycleEmitter(
     },
     getDevices: () => requirePlanService(ctx).getPlanDevices(),
     getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,
-    getDeferredObjectiveDebugStructured: () => (
-      getDebugEmitter('deferred_objectives', 'deferred_objectives')
-    ),
     deferredObjectiveStatusBus: ctx.deferredObjectiveStatusBus,
     deferredObjectiveHoursRemainingBus: ctx.deferredObjectiveHoursRemainingBus,
     deferredObjectiveHoursRemainingTracker: ctx.deferredObjectiveHoursRemainingTracker,

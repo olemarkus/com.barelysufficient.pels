@@ -46,19 +46,18 @@ export const createInertEnergyDelivery = (): EnergyTaskDeliveryTracker => (
 
 /**
  * The plan-history recorder's live collaborators, answered inertly: no ended-run
- * listener, no price data, debug output discarded, no device parked at its
+ * listener, no price data, no device parked at its
  * target. Spread under a spec's own `load`/`save`.
  */
 export const inertPlanHistoryDeps = (): Pick<
   PlanHistoryPersistDeps,
-  'endedBus' | 'resolveHourPrice' | 'debugStructured' | 'getStallClassification' | 'getDeliveryControl' | 'isLiveMeasuredDraw' | 'getDeviceConstraint'
+  'endedBus' | 'resolveHourPrice' | 'getStallClassification' | 'getDeliveryControl' | 'isLiveMeasuredDraw' | 'getDeviceConstraint'
 > => ({
   getDeviceConstraint: () => ({ kind: 'none' }),
   getDeliveryControl: () => ({ kind: 'permitted' }),
   isLiveMeasuredDraw: everyReadingLive,
   endedBus: createDeferredObjectiveEndedBus(),
   resolveHourPrice: () => null,
-  debugStructured: () => undefined,
   getStallClassification: noStallEvidence,
 });
 

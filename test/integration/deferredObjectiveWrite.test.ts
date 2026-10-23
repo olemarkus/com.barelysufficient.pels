@@ -1,3 +1,4 @@
+import { captureDebugTopic } from '../utils/loggerCapture';
 import { inactiveTaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
 import { createCurrentTaskEvaluationReader } from '../../lib/objectives/deferredObjectives/currentTaskEvaluation';
 import { resolveObjectiveTargetValue } from '../../packages/shared-domain/src/deferredObjectiveValues';
@@ -67,7 +68,6 @@ describe('device-scoped objective ops (per-device-key)', () => {
       finalizeElapsedDeadline: vi.fn(),
       flushIfDirty: vi.fn(),
     } as unknown as DeferredObjectivePlanHistoryRecorder;
-    const debugStructured = vi.fn();
     const deps: DeferredObjectiveDeviceWriteDeps = {
       store,
       activePlanRecorder,
@@ -76,9 +76,8 @@ describe('device-scoped objective ops (per-device-key)', () => {
       readCurrentTaskEvaluation: (deviceId, objective) => inactiveTaskEvaluation(
         deviceId, objective.deadlineAtMs, resolveObjectiveTargetValue(objective),
       ),
-      debugStructured,
     };
-    return { deps, activePlanRecorder, planHistoryRecorder, debugStructured };
+    return { deps, activePlanRecorder, planHistoryRecorder };
   };
 
   it('upsert writes the device key and runs notify→flush for a fresh create', () => {
@@ -249,13 +248,14 @@ describe('device-scoped objective ops (per-device-key)', () => {
   // ── Create: never over an open task ─────────────────────────────────────────
 
   it('create REFUSES (no write, no notify) a device with an open task', () => {
+    const objectiveDebug = captureDebugTopic('deferred_objectives');
     const store = buildStore({ 'ev-1': { ...evEntry, targetPercent: 50 } });
     const h = buildDeviceDeps(store);
     const outcome = createObjectiveForDevice(h.deps, 'ev-1', 'Driveway', evEntry, 'replace');
     expect(outcome).toEqual({ persisted: false, reason: 'open_task_exists' });
     expect(readObjectiveForDevice(store, 'ev-1')).toEqual({ ...evEntry, targetPercent: 50 });
     expect(h.activePlanRecorder.markPending).not.toHaveBeenCalled();
-    expect(h.debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(objectiveDebug.events()).toContainEqual(expect.objectContaining({
       event: 'objective_write_refused', reason: 'open_task_exists',
     }));
   });
@@ -309,28 +309,31 @@ describe('device-scoped objective ops (per-device-key)', () => {
   // user-facing card error.
 
   it('upsert emits objective_write_refused on an untrusted-absence refusal', () => {
+    const objectiveDebug = captureDebugTopic('deferred_objectives');
     const store = buildStore();
     store.raw.set(keyFor('ev-1'), undefined); // flaky read of an existing key
     const h = buildDeviceDeps(store);
     upsertObjectiveForDevice(h.deps, 'ev-1', 'Driveway', evEntry);
-    expect(h.debugStructured).toHaveBeenCalledWith({
+    expect(objectiveDebug.events()).toContainEqual(expect.objectContaining({
       event: 'objective_write_refused', op: 'upsert', deviceId: 'ev-1', reason: 'untrusted_absence',
-    });
+    }));
   });
 
   it('clear emits objective_write_refused on a migration-deferred refusal', () => {
+    const objectiveDebug = captureDebugTopic('deferred_objectives');
     const store = buildStore({ 'ev-1': evEntry });
     const h = buildDeviceDeps({ ...store, getKeys: () => [] });
     clearObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway' });
-    expect(h.debugStructured).toHaveBeenCalledWith({
+    expect(objectiveDebug.events()).toContainEqual(expect.objectContaining({
       event: 'objective_write_refused', op: 'clear', deviceId: 'ev-1', reason: 'migration_deferred',
-    });
+    }));
   });
 
   it('does NOT emit objective_write_refused on a successful write', () => {
+    const objectiveDebug = captureDebugTopic('deferred_objectives');
     const store = buildStore();
     const h = buildDeviceDeps(store);
     upsertObjectiveForDevice(h.deps, 'ev-1', 'Driveway', evEntry);
-    expect(h.debugStructured).not.toHaveBeenCalled();
+    expect(objectiveDebug.findEvents('objective_write_refused')).toHaveLength(0);
   });
 });

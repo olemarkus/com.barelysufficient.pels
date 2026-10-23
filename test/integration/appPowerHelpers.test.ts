@@ -1,3 +1,4 @@
+import { captureDebugTopic } from '../utils/loggerCapture';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import {
@@ -509,7 +510,7 @@ describe('recordPowerSampleForApp', () => {
 
   it('updates objective profiles from compact device samples during power ingestion', async () => {
     let tracker: PowerTrackerState = {};
-    const debugStructured = vi.fn();
+    const profileDebug = captureDebugTopic('objective_profiles');
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
     let currentTemperature = 50;
     let observedAtMs = start;
@@ -544,7 +545,6 @@ describe('recordPowerSampleForApp', () => {
             : [{ ...withHeadroomCurrentOn(device), observedQuantity, thermalDirection: 'heating' as const }];
         }),
         params.nowMs,
-        debugStructured,
         undefined,
       )
     );
@@ -586,7 +586,7 @@ describe('recordPowerSampleForApp', () => {
     const profile = tracker.objectiveProfiles?.['heater-objective'];
     expect(profile?.kwhPerUnit?.mean).toBeCloseTo(1, 3);
     expect(profile?.unitPerHour?.mean).toBeCloseTo(2, 3);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(profileDebug.events()).toContainEqual(expect.objectContaining({
       event: 'objective_profile_sample_recorded',
       deviceId: 'heater-objective',
     }));

@@ -1,3 +1,4 @@
+import { captureDebugTopic } from '../utils/loggerCapture';
 import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { resolveTaskCompletion } from '../../lib/objectives/deferredObjectives/taskCompletion';
 import { inactiveTaskEvaluation, type TaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
@@ -2564,12 +2565,9 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     };
 
     it('records each hour\'s booking at its start, so the planned total survives hourly re-plans', () => {
-      const events: Record<string, unknown>[] = [];
+      const objectiveDebug = captureDebugTopic('deferred_objectives');
       const persisted = buildPersistDeps();
-      const recorder = new DeferredObjectivePlanHistoryRecorder({
-        ...persisted.deps,
-        debugStructured: (payload) => { events.push(payload); },
-      });
+      const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
       const deadlineAtMs = H0 + 4 * HOUR_MS;
       const plans = (original: DeferredObjectiveActivePlanRevisionV1 | null, latest: typeof original) => (
         plansFor(deadlineAtMs, original, latest)
@@ -2624,7 +2622,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       ]);
       const resolvedEntry = toResolvedPlanHistoryEntry(entry, { name: 'Water Heater', objectiveKind: 'temperature' });
       expect(resolveDeferredPlanHistoryMissAttribution(resolvedEntry).plannedKWh).toBeCloseTo(10.3);
-      const finalized = events.find((event) => event.event === 'deferred_objective_history_finalized');
+      const finalized = objectiveDebug.findEvents('deferred_objective_history_finalized')[0];
       expect(finalized?.plannedKWh).toBeCloseTo(10.3);
       // The sum includes energy re-booked after a short hour: telemetry, never
       // compared with delivery.
@@ -3579,10 +3577,10 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     });
 
     it('emits a finalized attribution event with the resolved miss cause', () => {
-      const events: Record<string, unknown>[] = [];
+      const objectiveDebug = captureDebugTopic('deferred_objectives');
       const { deps } = buildPersistDeps();
       driveMissedRun(
-        { ...deps, debugStructured: (payload) => { events.push(payload); } },
+        deps,
         buildProvenancedPlans({
           deviceId: 'dev',
           deadlineAtMs: 6 * HOUR_MS,
@@ -3590,7 +3588,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           acceptedSamples: 3,
         }),
       );
-      const finalized = events.find((e) => e.event === 'deferred_objective_history_finalized');
+      const finalized = objectiveDebug.findEvents('deferred_objective_history_finalized')[0];
       // The device sat at 50 °C and never progressed before the deadline sweep,
       // so it delivered essentially nothing — `no_delivery` is the concrete
       // cause and wins over the cold-start "still learning" fallback (which now
@@ -3619,11 +3617,10 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // (mean 3.0 + k·SE 2.0), delivered 3.2 kWh — buffered comparison
       // would call this `capacity_shortfall`; the mean-aware comparison
       // should resolve `energy_underestimate`.
-      const events: Record<string, unknown>[] = [];
+      const objectiveDebug = captureDebugTopic('deferred_objectives');
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder({
         ...deps,
-        debugStructured: (payload) => { events.push(payload); },
         // Delivery reaches the record the only way production produces it:
         // the observe loop's hour rollover, priced by this resolver.
         resolveHourPrice: () => ({ priceValue: 1.0, tone: 'normal', costDisplay: { unit: 'kr', divisor: 100 } }),
@@ -3736,7 +3733,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(uiAttribution.cause).toBe('delivery_unfulfilled');
 
       // 3. Runtime structured log resolves the same cause.
-      const finalized = events.find((e) => e.event === 'deferred_objective_history_finalized');
+      const finalized = objectiveDebug.findEvents('deferred_objective_history_finalized')[0];
       expect(finalized).toMatchObject({
         outcome: 'missed',
         missCause: 'delivery_unfulfilled',

@@ -85,7 +85,6 @@ type PlanHistoryRuntimeModule = {
     save: (history: DeferredObjectivePlanHistoryV6) => boolean;
     endedBus: { publish: (event: unknown) => void; onEnded: (listener: unknown) => () => void };
     resolveHourPrice: (hourStartMs: number) => null;
-    debugStructured: (payload: Record<string, unknown>) => void;
     getStallClassification: (deviceId: string) => undefined;
     getDeviceConstraint: (deviceId: string) => { kind: 'none' };
     getDeliveryControl: (deviceId: string) => { kind: 'permitted' };
@@ -187,7 +186,6 @@ const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV6> => {
     save: (history) => { saved = history; return true; },
     endedBus: { publish: () => undefined, onEnded: () => () => undefined },
     resolveHourPrice: () => null,
-    debugStructured: () => undefined,
     getStallClassification: () => undefined,
     getDeviceConstraint: () => ({ kind: 'none' }),
     getDeliveryControl: () => ({ kind: 'permitted' }),

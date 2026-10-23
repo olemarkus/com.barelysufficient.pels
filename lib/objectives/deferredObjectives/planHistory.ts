@@ -19,7 +19,7 @@ import type {
   DeferredObjectivePlanHistoryV6,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
-import type { StructuredDebugEmitter } from '../../logging/logger';
+import { getDebugEmitter } from '../../logging/logger';
 import { DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION } from './planHistorySettings';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import type { DeferredObjectiveStallClassificationReader } from './diagnosticTypes';
@@ -52,6 +52,14 @@ import type { PersistedMeteredDeliveryState } from './planHistoryMeteredState';
 import { captureHourStartBooking } from './planHistoryHourStartBookings';
 import { mergeSavedRun, toPersistedMeteredDeliveryState } from './planHistoryMeteredRun';
 import { isBudgetOnlyMiss } from './budgetOnlyMiss';
+
+// The recorder's debug events, on the `deferred_objectives` topic. One
+// `deferred_objective_history_finalized` event per observation entry as it
+// finalizes carries the resolved miss attribution (cause + the raw plan-time
+// confidence / committed-floor / delivery inputs it rested on). This is the
+// telemetry that lets us count how many `missed` runs were genuine capacity
+// misses versus shaky-estimate / conservative-planning false alarms.
+const emitObjectiveDebug = getDebugEmitter('deferred_objectives', 'deferred_objectives');
 
 // Cap the rolling buffer. One deferred objective produces at most one entry per deadline run
 // (per-day for HH:mm objectives), so 30 entries covers ~one month of history per device for a
@@ -128,14 +136,6 @@ export type PlanHistoryPersistDeps = {
   // published horizon) causes that hour's contribution to be skipped
   // rather than fabricated.
   resolveHourPrice: HourPriceResolver;
-  // Structured-debug emitter. The recorder emits one
-  // `deferred_objective_history_finalized` event per observation entry as it
-  // finalizes, carrying the resolved miss attribution (cause + the raw plan-time
-  // confidence / committed-floor / delivery inputs it rested on). This is the
-  // telemetry that lets us count how many `missed` runs were genuine capacity
-  // misses versus shaky-estimate / conservative-planning false alarms. Gated on
-  // the `deferred_objectives` debug topic by the wiring in `setup/appInit.ts`.
-  debugStructured: StructuredDebugEmitter;
   // Observer evidence for the operational completion verdict.
   getStallClassification: DeferredObjectiveStallClassificationReader;
   getDeviceConstraint: (deviceId: string) => TaskDeviceConstraint;
@@ -236,7 +236,7 @@ export class DeferredObjectivePlanHistoryRecorder {
         // own hold, so its changes are logged beside the blocker's.
         if (activeDeliveryCause(record.deliveryEvidence) !== activeDeliveryCause(deliveryEvidence)
           || record.deliveryEvidence.nonDelivery.kind !== deliveryEvidence.nonDelivery.kind) {
-          this.deps.debugStructured({ event: 'smart_task_delivery_blocker_changed', deviceId: diag.deviceId,
+          emitObjectiveDebug({ event: 'smart_task_delivery_blocker_changed', deviceId: diag.deviceId,
             deadlineAtMs: diag.deadlineAtMs, before: activeDeliveryCause(record.deliveryEvidence),
             after: activeDeliveryCause(deliveryEvidence), nonDelivery: deliveryEvidence.nonDelivery.kind, facts });
         }
@@ -249,7 +249,7 @@ export class DeferredObjectivePlanHistoryRecorder {
     previous: InProgressRecord, current: InProgressRecord, evaluation: TaskEvaluation,
   ): void {
     if (previous.satisfied === current.satisfied) return;
-    this.deps.debugStructured({
+    emitObjectiveDebug({
       event: current.satisfied ? 'smart_task_completion_accepted' : 'smart_task_completion_reopened',
       deviceId: evaluation.deviceId,
       currentValue: evaluation.progress.kind === 'known' ? evaluation.progress.value : null,
@@ -541,7 +541,7 @@ export class DeferredObjectivePlanHistoryRecorder {
   // resolve the same cause by construction.
   private emitFinalizedAttribution(entry: ResolvedDeferredObjectivePlanHistoryEntry): void {
     if (entry.discoveredFrom !== 'observation') return;
-    this.deps.debugStructured(buildFinalizedAttributionEvent(entry));
+    emitObjectiveDebug(buildFinalizedAttributionEvent(entry));
   }
 
   private trimEntries(): void {

@@ -11,10 +11,11 @@
 // The flag re-arms on next process start, which is the right cadence for
 // "there is still no measured draw".
 import type { DeviceObjectiveProfileSample } from './types';
+import { getDebugEmitter } from '../logging/logger';
 
 export const OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD = 20;
 
-export type NoPowerSourceDiagnosticEmitter = (payload: Record<string, unknown>) => void;
+const emitProfileDebug = getDebugEmitter('objective_profiles', 'objective_profiles');
 
 type DeviceState = {
   unresolvedCount: number;
@@ -38,7 +39,6 @@ export function emitObjectiveProfileNoPowerSourceIfNeeded(
   deviceName: string,
   acceptedSamples: number,
   sample: DeviceObjectiveProfileSample,
-  debugStructured: NoPowerSourceDiagnosticEmitter,
 ): void {
   const hasCrediblePower = typeof sample.crediblePowerW === 'number'
     && Number.isFinite(sample.crediblePowerW)
@@ -48,7 +48,7 @@ export function emitObjectiveProfileNoPowerSourceIfNeeded(
     hasCrediblePower,
   });
   if (!shouldEmit) return;
-  debugStructured({
+  emitProfileDebug({
     event: 'objective_profile_no_power_source',
     deviceId,
     ...(deviceName ? { deviceName } : {}),

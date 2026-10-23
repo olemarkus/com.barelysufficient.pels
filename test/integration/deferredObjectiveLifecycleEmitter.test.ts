@@ -1,3 +1,4 @@
+import { captureDebugTopic } from '../utils/loggerCapture';
 import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { noDeliveryEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
@@ -312,7 +313,7 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
     const published: DeferredObjectiveStatusSnapshot[] = [];
     statusBus.onTransition((snapshot) => published.push(snapshot));
     const onDeadlineReached = vi.fn();
-    const debugStructured = vi.fn();
+    const objectiveDebug = captureDebugTopic('deferred_objectives');
 
     const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
       // Deadline an hour in the past → the device cannot meet it, and the
@@ -321,7 +322,6 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
       getDevices: () => [buildEvDevice()],
       getPriceOptimizationEnabled: () => true,
       deferredObjectiveStatusBus: statusBus,
-      getDeferredObjectiveDebugStructured: () => debugStructured,
       onDeadlineReached,
     }));
 
@@ -334,7 +334,7 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
 
     expect(published).toEqual([]);
     expect(statusBus.getCurrent('ev-1')).toBeNull();
-    expect(debugStructured).not.toHaveBeenCalled();
+    expect(objectiveDebug.events()).toHaveLength(0);
   });
 
   it('forgets the live status at expiry while retrying terminal fallback on later ticks', () => {
@@ -343,20 +343,19 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
     const published: DeferredObjectiveStatusSnapshot[] = [];
     statusBus.onTransition((snapshot) => published.push(snapshot));
     const onDeadlineReached = vi.fn();
-    const debugStructured = vi.fn();
+    const objectiveDebug = captureDebugTopic('deferred_objectives');
     const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
       getDeferredObjectiveSettings: () => buildEvSettings(deadlineAtMs),
       getDevices: () => [buildEvDevice()],
       getPriceOptimizationEnabled: () => true,
       deferredObjectiveStatusBus: statusBus,
-      getDeferredObjectiveDebugStructured: () => debugStructured,
       onDeadlineReached,
     }));
 
     emitter.tick(NOW_MS);
     expect(statusBus.getCurrent('ev-1')).not.toBeNull();
     const livePublishCount = published.length;
-    debugStructured.mockClear();
+    objectiveDebug.clear();
 
     emitter.tick(deadlineAtMs);
     emitter.tick(deadlineAtMs + 30_000);
@@ -364,7 +363,7 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
     expect(onDeadlineReached).toHaveBeenCalledTimes(2);
     expect(statusBus.getCurrent('ev-1')).toBeNull();
     expect(published).toHaveLength(livePublishCount);
-    expect(debugStructured).not.toHaveBeenCalled();
+    expect(objectiveDebug.events()).toHaveLength(0);
   });
 
   it('fires deadline ending', () => {

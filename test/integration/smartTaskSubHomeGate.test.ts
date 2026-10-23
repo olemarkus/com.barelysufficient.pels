@@ -1,3 +1,4 @@
+import { captureDebugTopic } from '../utils/loggerCapture';
 import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { inactiveTaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
 import { observedDeviceReadsDouble } from '../helpers/observedDeviceReadsDouble';
@@ -110,7 +111,6 @@ const buildDeviceDeps = (
     finalizeElapsedDeadline: vi.fn(),
     flushIfDirty: vi.fn(),
   } as unknown as DeferredObjectivePlanHistoryRecorder;
-  const debugStructured = vi.fn();
   const deps: DeferredObjectiveDeviceWriteDeps = {
     store,
     activePlanRecorder,
@@ -120,13 +120,13 @@ const buildDeviceDeps = (
       deviceId, objective.deadlineAtMs, resolveObjectiveTargetValue(objective),
     ),
     ...(resolveDeviceHomeScope ? { resolveDeviceHomeScope } : {}),
-    debugStructured,
   };
-  return { deps, activePlanRecorder, planHistoryRecorder, debugStructured };
+  return { deps, activePlanRecorder, planHistoryRecorder };
 };
 
 describe('device-scoped write op: sub-home gate', () => {
   it('upsert refuses a sub-home device with the typed reason — no write, no notify/rebuild', () => {
+    const objectiveDebug = captureDebugTopic('deferred_objectives');
     const store = buildStore();
     const h = buildDeviceDeps(store, (deviceId) => (
       deviceId === 'heater-sub' ? 'sub_home' : 'main'
@@ -137,12 +137,12 @@ describe('device-scoped write op: sub-home gate', () => {
     expect(h.activePlanRecorder.markPending).not.toHaveBeenCalled();
     expect(h.activePlanRecorder.flushIfDirty).not.toHaveBeenCalled();
     // The refusal leaves a topic-gated debug breadcrumb like the transient ones.
-    expect(h.debugStructured).toHaveBeenCalledWith({
+    expect(objectiveDebug.events()).toContainEqual(expect.objectContaining({
       event: 'objective_write_refused',
       op: 'upsert',
       deviceId: 'heater-sub',
       reason: 'device_in_sub_home',
-    });
+    }));
   });
 
   it('upsert persists unchanged for a main-home device and when the dep is absent (single-home identity)', () => {
@@ -166,33 +166,35 @@ describe('device-scoped write op: sub-home gate', () => {
   });
 
   it('upsert refuses provisional authority as retryable ownership_unavailable', () => {
+    const objectiveDebug = captureDebugTopic('deferred_objectives');
     const store = buildStore();
     const h = buildDeviceDeps(store, () => 'unavailable');
     const outcome = upsertObjectiveForDevice(h.deps, 'heater-main', 'Hall heater', heaterEntry);
     expect(outcome).toEqual({ persisted: false, reason: 'ownership_unavailable' });
     expect(readObjectiveForDevice(store, 'heater-main')).toBeUndefined();
     expect(h.activePlanRecorder.flushIfDirty).not.toHaveBeenCalled();
-    expect(h.debugStructured).toHaveBeenCalledWith({
+    expect(objectiveDebug.events()).toContainEqual(expect.objectContaining({
       event: 'objective_write_refused',
       op: 'upsert',
       deviceId: 'heater-main',
       reason: 'ownership_unavailable',
-    });
+    }));
   });
 
   it('upsert durably refuses an active meter source as device_not_planned', () => {
+    const objectiveDebug = captureDebugTopic('deferred_objectives');
     const store = buildStore();
     const h = buildDeviceDeps(store, () => 'source_device');
     const outcome = upsertObjectiveForDevice(h.deps, 'meter-main', 'Whole-home meter', heaterEntry);
     expect(outcome).toEqual({ persisted: false, reason: 'device_not_planned' });
     expect(readObjectiveForDevice(store, 'meter-main')).toBeUndefined();
     expect(h.activePlanRecorder.flushIfDirty).not.toHaveBeenCalled();
-    expect(h.debugStructured).toHaveBeenCalledWith({
+    expect(objectiveDebug.events()).toContainEqual(expect.objectContaining({
       event: 'objective_write_refused',
       op: 'upsert',
       deviceId: 'meter-main',
       reason: 'device_not_planned',
-    });
+    }));
   });
 });
 

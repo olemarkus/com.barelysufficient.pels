@@ -1,4 +1,3 @@
-import { getDebugEmitter } from '../../lib/logging/logger';
 import { createCurrentTaskEvaluationReader } from '../../lib/objectives/deferredObjectives/currentTaskEvaluation';
 import { flattenAllHours } from '../../lib/price/priceStore';
 import {
@@ -166,7 +165,6 @@ export function createDeferredObjectivePlanHistoryRecorder(
     // Missing entries / unloaded payload return `null` so the postmortem
     // skips that hour rather than fabricating a contribution.
     resolveHourPrice: (hourStartMs) => resolveHourPriceFromContext(ctx, hourStartMs),
-    debugStructured: getDebugEmitter('deferred_objectives', 'deferred_objectives'),
     // Read lazily on the lifecycle clock, after the plan service exists.
     getStallClassification: (deviceId) => requirePlanService(ctx).getStallEvidence(deviceId),
     getDeviceConstraint: (deviceId) => requireDeviceManager(ctx).getTaskDeliveryConstraint(deviceId),
@@ -448,7 +446,6 @@ export const buildDeferredObjectiveDeviceWriteDeps = (
     // is the retryable `ownership_unavailable` lane. Every write surface builds
     // its deps here, so no caller can accidentally collapse the two states.
     resolveDeviceHomeScope: (deviceId) => resolveSmartTaskHomeScope(ctx, deviceId),
-    debugStructured: getDebugEmitter('deferred_objectives', 'deferred_objectives'),
   };
 };
 

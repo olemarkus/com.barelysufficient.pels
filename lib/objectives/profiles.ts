@@ -15,6 +15,7 @@ import { applyBandedConfidence, resolveProfileConfidence, updateProfileStat } fr
 import { appendSampleToBuffer, fitBandsFromSamples, resolveKwhPerUnitStat } from './bands';
 import { buildObjectiveProfileSample } from './samples';
 import { emitObjectiveProfileNoPowerSourceIfNeeded } from './noPowerSourceDiagnostic';
+import { getDebugEmitter } from '../logging/logger';
 import {
   CLEARED_ENERGY_ACCUMULATOR,
   calculateWindowEnergyKwh,
@@ -39,7 +40,7 @@ export const OBJECTIVE_PROFILE_MAX_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const MIN_VALUE_PROGRESS = 0.2;
 const MAX_UNIT_PER_HOUR = 100;
 
-export type ObjectiveProfileDebugEmitter = (payload: Record<string, unknown>) => void;
+const emitProfileDebug = getDebugEmitter('objective_profiles', 'objective_profiles');
 
 /**
  * What a refusal does to the open baseline→sample window.
@@ -84,7 +85,6 @@ export function updateObjectiveProfilesFromSnapshot(
   state: PowerTrackerState,
   devices: ObjectiveSampleDevice[],
   nowMs: number,
-  debugStructured: ObjectiveProfileDebugEmitter,
   outdoorTemperatureC: number | undefined,
 ): PowerTrackerState {
   const previousProfiles = state.objectiveProfiles ?? {};
@@ -108,7 +108,6 @@ export function updateObjectiveProfilesFromSnapshot(
       sample,
       device.id,
       device.name,
-      debugStructured,
       outdoorTemperatureC,
     );
     if (next !== previous) {
@@ -125,7 +124,7 @@ export function updateObjectiveProfilesFromSnapshot(
     if (pruned !== nextProfiles) {
       nextProfiles = pruned;
       changed = true;
-      debugStructured({
+      emitProfileDebug({
         event: 'objective_profile_pruned',
         retainedDeviceCount: Object.keys(nextProfiles).length,
       });
@@ -141,7 +140,6 @@ export function updateDeviceObjectiveProfile(
   sample: DeviceObjectiveProfileSample,
   deviceId: string,
   deviceName: string,
-  debugStructured: ObjectiveProfileDebugEmitter,
   outdoorTemperatureC: number | undefined,
 ): DeviceObjectiveProfile {
   if (!previous) return buildInitialProfile(sample);
@@ -178,7 +176,7 @@ export function updateDeviceObjectiveProfile(
   // re-anchors a later, mid-step moment instead.
   if (previous.baselineMidStep === true && intervalMs > 0) {
     const rejection: ProfileSampleRejection = { reason: 'objective_profile_baseline_mid_step', openWindow: 'void' };
-    emitRejectedProfileSample(deviceId, deviceName, debugStructured, intervalMs, valueDelta, rejection);
+    emitRejectedProfileSample(deviceId, deviceName, intervalMs, valueDelta, rejection);
     return buildRejectedProfileSample(previous, sample, rejection);
   }
 
@@ -187,7 +185,7 @@ export function updateDeviceObjectiveProfile(
   // must never reach the value or energy verdicts, let alone reset the baseline.
   const intervalRejection = resolveProfileIntervalRejection(previousSample, sample, intervalMs);
   if (intervalRejection) {
-    emitRejectedProfileSample(deviceId, deviceName, debugStructured, intervalMs, valueDelta, intervalRejection);
+    emitRejectedProfileSample(deviceId, deviceName, intervalMs, valueDelta, intervalRejection);
     return buildRejectedProfileSample(previous, sample, intervalRejection);
   }
 
@@ -212,16 +210,16 @@ export function updateDeviceObjectiveProfile(
   // progress step integrates the true
   // per-step power profile.
   if (rejection?.reason === 'objective_profile_progress_too_small') {
-    emitRejectedProfileSample(deviceId, deviceName, debugStructured, intervalMs, valueDelta, rejection);
+    emitRejectedProfileSample(deviceId, deviceName, intervalMs, valueDelta, rejection);
     return { ...accrueSubInterval({ previous, sample }), rejectedSamples: previous.rejectedSamples + 1 };
   }
   if (rejection) {
-    emitRejectedProfileSample(deviceId, deviceName, debugStructured, intervalMs, valueDelta, rejection);
+    emitRejectedProfileSample(deviceId, deviceName, intervalMs, valueDelta, rejection);
     return buildRejectedProfileSample(previous, sample, rejection);
   }
 
   return buildAcceptedProfileSample(
-    previous, sample, deviceId, deviceName, debugStructured, windowEnergyKwh, outdoorTemperatureC,
+    previous, sample, deviceId, deviceName, windowEnergyKwh, outdoorTemperatureC,
   );
 }
 
@@ -268,7 +266,6 @@ function buildAcceptedProfileSample(
   sample: DeviceObjectiveProfileSample,
   deviceId: string,
   deviceName: string,
-  debugStructured: ObjectiveProfileDebugEmitter,
   windowEnergyKwh: number | undefined,
   outdoorTemperatureC: number | undefined,
 ): DeviceObjectiveProfile {
@@ -317,7 +314,7 @@ function buildAcceptedProfileSample(
   // `energyConfidence` reflects banded data when bands have fit (best-available
   // signal); `globalEnergyConfidence` always carries the raw-CV value so
   // old/new log dumps stay directly comparable across the Step-2 cutover.
-  debugStructured({
+  emitProfileDebug({
     event: 'objective_profile_sample_recorded',
     deviceId,
     ...(deviceName ? { deviceName } : {}),
@@ -335,7 +332,7 @@ function buildAcceptedProfileSample(
     bufferedSamples: nextProfile.samples?.length ?? 0,
     bandsCount: nextProfile.bands?.length ?? 0,
   });
-  emitObjectiveProfileNoPowerSourceIfNeeded(deviceId, deviceName, nextProfile.acceptedSamples, sample, debugStructured);
+  emitObjectiveProfileNoPowerSourceIfNeeded(deviceId, deviceName, nextProfile.acceptedSamples, sample);
   return nextProfile;
 }
 /* eslint-enable functional/immutable-data */
@@ -367,14 +364,13 @@ function buildRejectedProfileSample(
 function emitRejectedProfileSample(
   deviceId: string,
   deviceName: string,
-  debugStructured: ObjectiveProfileDebugEmitter,
   intervalMs: number,
   valueDelta: number,
   rejection: ProfileSampleRejection,
 ): void {
   const rejectionReason = rejection.reason;
   if (!shouldEmitRejectedProfileSample({ deviceId, rejectionReason })) return;
-  debugStructured({
+  emitProfileDebug({
     event: 'objective_profile_sample_rejected',
     reasonCode: rejectionReason,
     deviceId,
