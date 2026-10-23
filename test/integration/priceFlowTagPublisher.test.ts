@@ -48,7 +48,6 @@ const newPublisher = () => new PriceFlowTagPublisher({
   homey: homeyLike,
   getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
   combinedPricesReader: createCombinedPricesReader(createPriceDataStore(mockHomeyInstance.settings, priceCache), () => {}),
-  debugStructured: () => {},
 });
 
 describe('PriceFlowTagPublisher', () => {
@@ -178,7 +177,6 @@ describe('PriceFlowTagPublisher', () => {
       } as unknown as Homey.App['homey'],
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
       combinedPricesReader: createCombinedPricesReader(createPriceDataStore(mockHomeyInstance.settings, priceCache), () => {}),
-      debugStructured: () => {},
     });
     await publisher.init();
     await publisher.publish('first');
@@ -203,7 +201,6 @@ describe('PriceFlowTagPublisher', () => {
       } as unknown as Homey.App['homey'],
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
       combinedPricesReader: createCombinedPricesReader(createPriceDataStore(mockHomeyInstance.settings, priceCache), () => {}),
-      debugStructured: () => {},
     });
     await publisher.init();
     expect(createCalls).toBe(1);
@@ -229,7 +226,6 @@ describe('PriceFlowTagPublisher', () => {
       } as unknown as Homey.App['homey'],
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
       combinedPricesReader: createCombinedPricesReader(createPriceDataStore(mockHomeyInstance.settings, priceCache), () => {}),
-      debugStructured: () => {},
     });
     await publisher.init();
     await publisher.publish('tag-broken');
@@ -254,7 +250,6 @@ describe('PriceFlowTagPublisher', () => {
       } as unknown as Homey.App['homey'],
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
       combinedPricesReader: createCombinedPricesReader(createPriceDataStore(mockHomeyInstance.settings, priceCache), () => {}),
-      debugStructured: () => {},
     });
     await publisher.init();
     await publisher.publish('no-token');
@@ -285,7 +280,6 @@ describe('PriceFlowTagPublisher', () => {
       } as unknown as Homey.App['homey'],
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
       combinedPricesReader: createCombinedPricesReader(createPriceDataStore(mockHomeyInstance.settings, priceCache), () => {}),
-      debugStructured: () => {},
     });
     await publisher.init();
     await publisher.publish('first');

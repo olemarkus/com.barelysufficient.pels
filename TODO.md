@@ -913,20 +913,6 @@ Design-of-record: `notes/web-app.md`.
       before moving them. Done when the seam takes a named argument, all four callbacks are bound at
       construction, and `runPowerSample` builds no closures per sample. Found 2026-09-01. [P2]
 
-- [ ] **The price and power sources still thread the debug emitter as a required parameter.**
-      Every other cluster now resolves `getDebugEmitter(component, topic)` at its terminal reader
-      (`lib/logging/logger.ts`), and specs read a topic through `captureDebugTopic(topic)`
-      (`test/utils/loggerCapture.ts`). What remains is `lib/price` on `('price', 'price')`, wired
-      by `setup/appInit/priceServices.ts` through `priceServiceLoggingSinks.ts`,
-      `priceCoordinator.ts`, `priceFlowTags.ts`, `spotPriceFetch.ts`, `homeyEnergyRefresh.ts`,
-      `gridTariffUtils.ts` and `priceServiceFlowHelpers.ts`; `lib/power/sampleIngest.ts` on
-      `('perf', 'perf')` (wired by `homeTrackerPersistence.ts`); and the two meter polls
-      `lib/power/sources/generationPoll.ts` and `homeyEnergyPoll.ts` on `('devices', 'devices')`.
-      The fields are required, so `grep 'debugStructured?:'` no longer finds them.
-      **What changes:** resolve the emitter at each terminal reader and delete the field from every
-      type that only forwarded it, keeping each (component, topic) pair unchanged.
-      **Done when:** `git grep debugStructured -- lib/price lib/power setup/appInit` finds no
-      parameter or field. [P2]
 - [ ] **Each power limit is a loose nullable, and readers re-derive which nulls mean "off".**
       The capacity, grid and daily axes and the binding limit travel as separate `number | null`
       fields: `PlanLimits` (`softLimit`, `softLimitSource`, `capacitySoftLimit`,

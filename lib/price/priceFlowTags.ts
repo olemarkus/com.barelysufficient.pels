@@ -3,8 +3,9 @@ import { buildPriceExport, priceExportFingerprint } from './priceExportBuilder';
 import type { CombinedPricesReader } from './combinedPricesReader';
 import { normalizeError } from '../utils/errorUtils';
 import type { PriceExportV1 } from '../../packages/contracts/src/priceExport';
-import type { StructuredDebugEmitter } from '../logging/logger';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter, getLogger } from '../logging/logger';
+
+const emitPriceDebug = getDebugEmitter('price', 'price');
 
 const moduleLogger = getLogger('price/flowTags');
 
@@ -15,7 +16,6 @@ export type PriceFlowTagPublisherDeps = {
   homey: { flow: FlowPort };
   getTimeZone: () => string;
   combinedPricesReader: CombinedPricesReader;
-  debugStructured: StructuredDebugEmitter;
 };
 
 export class PriceFlowTagPublisher {
@@ -56,7 +56,7 @@ export class PriceFlowTagPublisher {
     if (!exportValue) return;
     const fingerprint = priceExportFingerprint(exportValue);
     if (fingerprint === this.lastFingerprint) {
-      this.deps.debugStructured({
+      emitPriceDebug({
         event: 'price_flow_tag_publish_skipped',
         reason,
         cause: 'unchanged_fingerprint',
@@ -79,7 +79,7 @@ export class PriceFlowTagPublisher {
         moduleLogger.error({ event: 'price_flow_tag_write_failed', err: normalizeError(error), reason });
       }
     } else {
-      this.deps.debugStructured({
+      emitPriceDebug({
         event: 'price_flow_tag_publish_trigger_only',
         reason,
         cause: 'tag_not_initialized',
@@ -128,6 +128,6 @@ export class PriceFlowTagPublisher {
     }
     const card = flow.getTriggerCard(PRICE_LIST_UPDATED_TRIGGER_ID);
     await card.trigger({ prices_json: json });
-    this.deps.debugStructured({ event: 'price_list_updated_fired', reason });
+    emitPriceDebug({ event: 'price_list_updated_fired', reason });
   }
 }

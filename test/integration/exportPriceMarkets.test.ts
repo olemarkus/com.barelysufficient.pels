@@ -43,7 +43,7 @@ let priceCache = createInMemoryPriceCache();
 
 const createService = (energyApi?: HomeyEnergyApi): PriceService => new PriceService(
   mockHomeyInstance as unknown as Homey.App['homey'],
-  { structuredLog: testLogger, debugStructured: () => {} },
+  { structuredLog: testLogger },
   () => TZ,
   energyApi ?? noHomeyEnergyPrices,
   createPriceDataStore(mockHomeyInstance.settings, priceCache),

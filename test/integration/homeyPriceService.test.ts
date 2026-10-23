@@ -1,3 +1,4 @@
+import { captureDebugTopic } from '../utils/loggerCapture';
 import PriceService from '../../lib/price/priceService';
 import type { PriceServiceLoggingSinks } from '../../lib/price/priceServiceLoggingSinks';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
@@ -39,7 +40,6 @@ import { testLogger } from '../utils/testLogger';
 
 const sinks = (overrides: Partial<PriceServiceLoggingSinks> = {}): PriceServiceLoggingSinks => ({
   structuredLog: testLogger,
-  debugStructured: () => {},
   ...overrides,
 });
 
@@ -127,10 +127,10 @@ describe('Homey price service', () => {
       fetchDynamicElectricityPrices: vi.fn().mockResolvedValue([]),
     };
 
-    const debugStructured = vi.fn();
+    const priceDebug = captureDebugTopic('price');
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      sinks({ debugStructured }),
+      sinks(),
       () => timeZone,
       energyApi,
       createPriceDataStore(mockHomeyInstance.settings, priceCache),
@@ -141,7 +141,7 @@ describe('Homey price service', () => {
     await service.refreshSpotPrices(false);
 
     expect(energyApi.fetchDynamicElectricityPrices).not.toHaveBeenCalled();
-    expect(debugStructured).toHaveBeenCalledWith(
+    expect(priceDebug.events()).toContainEqual(
       expect.objectContaining({ event: 'homey_energy_cache_used' }),
     );
   });
@@ -225,11 +225,10 @@ describe('Homey price service', () => {
     };
 
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
-    const debugStructured = vi.fn();
     const structuredLog = { info: vi.fn() };
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      sinks({ debugStructured, structuredLog: structuredLog as unknown as PriceServiceLoggingSinks['structuredLog'] }),
+      sinks({ structuredLog: structuredLog as unknown as PriceServiceLoggingSinks['structuredLog'] }),
       () => timeZone,
       energyApi,
       createPriceDataStore(mockHomeyInstance.settings, priceCache),
@@ -284,10 +283,10 @@ describe('Homey price service', () => {
       updatedAt: new Date().toISOString(),
     });
 
-    const debugStructured = vi.fn();
+    const priceDebug = captureDebugTopic('price');
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      sinks({ debugStructured }),
+      sinks(),
       () => timeZone,
       noHomeyEnergyPrices,
       createPriceDataStore(mockHomeyInstance.settings, priceCache),
@@ -298,7 +297,7 @@ describe('Homey price service', () => {
     const prices = service.getCombinedHourlyPrices();
 
     expect(prices).toEqual([]);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(priceDebug.events()).toContainEqual(expect.objectContaining({
       event: 'flow_price_slot_rotated',
       priceSource: 'Homey prices',
       slot: 'today',
@@ -321,10 +320,10 @@ describe('Homey price service', () => {
     };
     priceCache.write(FLOW_PRICES_TOMORROW, stalePayload);
 
-    const debugStructured = vi.fn();
+    const priceDebug = captureDebugTopic('price');
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      sinks({ debugStructured }),
+      sinks(),
       () => timeZone,
       noHomeyEnergyPrices,
       createPriceDataStore(mockHomeyInstance.settings, priceCache),
@@ -337,7 +336,7 @@ describe('Homey price service', () => {
     expect(prices.length).toBeGreaterThan(0);
     expect(priceCache.read(FLOW_PRICES_TODAY)).toEqual(stalePayload);
     expect(priceCache.read(FLOW_PRICES_TOMORROW)).toBeNull();
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(priceDebug.events()).toContainEqual(expect.objectContaining({
       event: 'flow_price_slot_rotated',
       priceSource: 'Flow prices',
       action: 'promoted_to_today',
@@ -372,10 +371,10 @@ describe('Homey price service', () => {
     // stored prices are the prices.
     mirrorNoHomeyPriceFormula(mockHomeyInstance.settings);
 
-    const debugStructured = vi.fn();
+    const priceDebug = captureDebugTopic('price');
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      sinks({ debugStructured }),
+      sinks(),
       () => timeZone,
       noHomeyEnergyPrices,
       createPriceDataStore(mockHomeyInstance.settings, priceCache),
@@ -388,7 +387,7 @@ describe('Homey price service', () => {
     expect(prices.length).toBeGreaterThan(0);
     expect(priceCache.read(HOMEY_PRICES_TODAY)).toEqual(stalePayload);
     expect(priceCache.read(HOMEY_PRICES_TOMORROW)).toBeNull();
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(priceDebug.events()).toContainEqual(expect.objectContaining({
       event: 'flow_price_slot_rotated',
       priceSource: 'Homey prices',
       action: 'promoted_to_today',

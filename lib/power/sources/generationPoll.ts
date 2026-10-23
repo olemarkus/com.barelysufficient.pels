@@ -1,6 +1,8 @@
+import { getDebugEmitter } from '../../logging/logger';
 import type { PowerSource } from '../powerSource';
 import type { TimerRegistry } from '../../utils/timerRegistry';
-import type { StructuredDebugEmitter } from '../../logging/logger';
+
+const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
 /**
  * Producer-resolved outcome of one generation read: a measured value, `none`
@@ -97,7 +99,6 @@ export class GenerationPollSource {
     /** Publishes the reading to observer state, stamped with its read time. */
     setGenerationW: (generationW: number | null, observedAtMs: number) => void;
     now: () => number;
-    debugStructured: StructuredDebugEmitter;
     error: (...args: unknown[]) => void;
   }) {}
 
@@ -185,23 +186,23 @@ export class GenerationPollSource {
     // poll superseded mid-flight (power source flipped, app restarting) cannot
     // leave its reading behind in observer state for the flow ingest to pick up.
     if (generation !== this.pollGeneration) {
-      this.deps.debugStructured({ event: 'generation_poll_discarded_stale' });
+      emitDeviceDebug({ event: 'generation_poll_discarded_stale' });
       return;
     }
     if (this.deps.getPowerSource() !== 'flow') return;
     if (sequence <= this.settledReadSequence) {
-      this.deps.debugStructured({ event: 'generation_poll_discarded_overtaken' });
+      emitDeviceDebug({ event: 'generation_poll_discarded_overtaken' });
       return;
     }
     this.settledReadSequence = sequence;
     if (read.state === 'unavailable') {
-      this.deps.debugStructured({ event: 'generation_poll_unavailable' });
+      emitDeviceDebug({ event: 'generation_poll_unavailable' });
       return;
     }
     // "No generator" is itself an observation, which the holder records as
     // `null` against the read time.
     const generationW = read.state === 'measured' ? read.watts : null;
     this.deps.setGenerationW(generationW, readAtMs);
-    this.deps.debugStructured({ event: 'generation_poll', generationW });
+    emitDeviceDebug({ event: 'generation_poll', generationW });
   }
 }

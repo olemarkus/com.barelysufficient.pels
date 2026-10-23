@@ -39,7 +39,7 @@ let priceCache = createInMemoryPriceCache();
 
 const createService = (): PriceService => new PriceService(
   mockHomeyInstance as unknown as Homey.App['homey'],
-  { structuredLog: testLogger, debugStructured: () => {} },
+  { structuredLog: testLogger },
   () => mockHomeyInstance.clock.getTimezone(),
   noHomeyEnergyPrices,
   createPriceDataStore(mockHomeyInstance.settings, priceCache),

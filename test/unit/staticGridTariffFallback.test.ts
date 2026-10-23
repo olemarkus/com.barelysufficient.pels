@@ -170,16 +170,14 @@ describe('isGridTariffFallbackData', () => {
 });
 
 describe('shouldUseGridTariffCache with fallback data', () => {
-  const noop = (): void => {};
-
   it('never short-circuits NVE retries when the cache is fallback-sourced', () => {
     const fallback = [{ dateKey: '2026-01-05T00:00:00', source: GRID_TARIFF_SOURCE_FALLBACK }];
-    expect(shouldUseGridTariffCache(fallback, '2026-01-05', noop)).toBe(false);
+    expect(shouldUseGridTariffCache(fallback, '2026-01-05')).toBe(false);
   });
 
   it('still uses a real cache for today and rejects stale real data', () => {
     const real = [{ dateKey: '2026-01-05T00:00:00' }];
-    expect(shouldUseGridTariffCache(real, '2026-01-05', noop)).toBe(true);
-    expect(shouldUseGridTariffCache(real, '2026-01-06', noop)).toBe(false);
+    expect(shouldUseGridTariffCache(real, '2026-01-05')).toBe(true);
+    expect(shouldUseGridTariffCache(real, '2026-01-06')).toBe(false);
   });
 });

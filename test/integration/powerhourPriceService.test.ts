@@ -24,7 +24,6 @@ import { testLogger } from '../utils/testLogger';
 
 const sinks = (overrides: Partial<PriceServiceLoggingSinks> = {}): PriceServiceLoggingSinks => ({
   structuredLog: testLogger,
-  debugStructured: () => {},
   ...overrides,
 });
 

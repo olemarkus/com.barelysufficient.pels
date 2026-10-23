@@ -1,3 +1,4 @@
+import { captureDebugTopic } from '../utils/loggerCapture';
 import {
   buildCombinedPricePeriodsFromPayloads,
   purgeStaleFlowPriceSlots,
@@ -6,7 +7,7 @@ import {
 
 describe('priceServiceFlowHelpers DST date keys', () => {
   it('keeps tomorrow payload on the spring-forward eve boundary', () => {
-    const debugStructured = vi.fn();
+    const priceDebug = captureDebugTopic('price');
     const result = buildCombinedPricePeriodsFromPayloads({
       now: new Date('2024-03-30T22:30:00.000Z'),
       timeZone: 'Europe/Oslo',
@@ -20,12 +21,11 @@ describe('priceServiceFlowHelpers DST date keys', () => {
         pricesByHour: { '0': 2, '1': 3, '3': 4 },
         updatedAt: new Date('2024-03-30T20:00:00.000Z').toISOString(),
       },
-      debugStructured,
       label: 'Flow prices',
     });
 
     expect(result.some((entry) => entry.totalPrice === 4)).toBe(true);
-    expect(debugStructured).not.toHaveBeenCalledWith(
+    expect(priceDebug.events()).not.toContainEqual(
       expect.objectContaining({ event: 'price_tomorrow_used_as_today' }),
     );
   });
@@ -41,7 +41,6 @@ describe('priceServiceFlowHelpers DST date keys', () => {
         kind: 'tomorrow',
         raw: [1, 2, 4],
         timeZone: 'Europe/Oslo',
-        debugStructured: vi.fn(),
         writeFlowPayload,
         updateCombinedPrices,
       });

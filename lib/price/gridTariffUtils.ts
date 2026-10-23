@@ -1,4 +1,6 @@
-import type { StructuredDebugEmitter } from '../logging/logger';
+import { getDebugEmitter, type StructuredDebugEmitter } from '../logging/logger';
+
+const emitPriceDebug = getDebugEmitter('price', 'price');
 
 export type GridTariffSettings = {
   countyCode: string;
@@ -32,7 +34,6 @@ export const isGridTariffFallbackData = (
 export const shouldUseGridTariffCache = (
   existingData: Array<{ dateKey?: string; datoId?: string; source?: unknown }> | null,
   today: string,
-  debugStructured: StructuredDebugEmitter,
 ): boolean => {
   // Fallback data serves prices but must not suppress NVE retries — keep trying
   // the API every cycle until a real tariff comes back.
@@ -41,7 +42,7 @@ export const shouldUseGridTariffCache = (
     const firstEntry = existingData[0];
     const dateKey = typeof firstEntry?.dateKey === 'string' ? firstEntry.dateKey : firstEntry?.datoId;
     if (dateKey?.startsWith(today)) {
-      debugStructured({ event: 'grid_tariff_cache_used', date: today, entryCount: existingData.length });
+      emitPriceDebug({ event: 'grid_tariff_cache_used', date: today, entryCount: existingData.length });
       return true;
     }
   }

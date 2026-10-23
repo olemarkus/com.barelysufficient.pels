@@ -325,7 +325,6 @@ const buildDeps = (overrides: {
     getStructuredLogger: () => (
       overrides.structuredError ? { error: overrides.structuredError } : undefined
     ),
-    debugStructured: () => {},
     // Production always wires these; a case that does not override them gets a
     // main-home device, and the authority check follows membership.
     isDeviceInMainHome: overrides.isDeviceInMainHome ?? (() => true),

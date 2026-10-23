@@ -1,7 +1,7 @@
+import { getDebugEmitter } from '../logging/logger';
 import type { PowerTrackerState } from './tracker';
 import type { GenerationSegment, ManagedLoadDraw } from './trackerTypes';
 import { resolveManagedLoadKey } from './heldReading';
-import type { StructuredDebugEmitter } from '../logging/logger';
 import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from './tracker';
 import { resolveUsableCapacityKw } from './capacityModel';
 import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
@@ -17,6 +17,8 @@ import {
   sumControlledUsageKw,
   type UsageDevice,
 } from './usageAttribution';
+
+const emitPerfDebug = getDebugEmitter('perf', 'perf');
 
 /**
  * Whole-home power sample ingest pipeline.
@@ -350,14 +352,13 @@ export async function recordPowerSampleForApp(params: {
 
 export function prunePowerTrackerHistoryForApp(params: {
   powerTracker: PowerTrackerState;
-  debugStructured: StructuredDebugEmitter;
   error: (msg: string, err: Error) => void;
   // Homey's time zone: dailyTotals/hourlyAverages are aggregated by the Homey-local
   // calendar day. (UTC keys put samples straddling local midnight on the wrong day.)
   timeZone: string;
 }): PowerTrackerState {
-  const { powerTracker, debugStructured, error, timeZone } = params;
-  debugStructured({ event: 'power_tracker_history_pruned' });
+  const { powerTracker, error, timeZone } = params;
+  emitPerfDebug({ event: 'power_tracker_history_pruned' });
   const pruneStart = Date.now();
   try {
     const pruned = aggregateAndPruneHistory(powerTracker, timeZone);

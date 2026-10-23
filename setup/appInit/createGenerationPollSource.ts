@@ -3,7 +3,6 @@ import type { DeviceReads } from '../../lib/device/deviceReads';
 import type { ObservedHomePower } from '../../lib/observer/observedHomePower';
 import type { PowerSource } from '../../lib/power/powerSource';
 import { GenerationPollSource } from '../../lib/power/sources/generationPoll';
-import { getDebugEmitter } from '../../lib/logging/logger';
 import type { TimerRegistry } from '../../lib/utils/timerRegistry';
 
 /**
@@ -60,7 +59,6 @@ export const createGenerationPollSource = (
   setGenerationW: (generationW, observedAtMs) => observedHomePower
     .setGenerationW(generationW, observedAtMs),
   now: () => Date.now(),
-  debugStructured: getDebugEmitter('devices', 'devices'),
   error: (...args) => host.error(...args),
   });
 };

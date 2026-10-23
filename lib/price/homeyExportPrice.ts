@@ -24,6 +24,7 @@
  * (`packages/shared-domain/src/settings/exportPriceSource.ts`).
  */
 
+import { getDebugEmitter } from '../logging/logger';
 import { resolveHomeyHttpStatusCode } from '../utils/homeyHttpStatusError';
 import {
   HOMEY_EXPORT_PRICE_TERMS,
@@ -32,6 +33,8 @@ import type { SettingsPort } from '../ports/homeyRuntime';
 import type { PriceServiceLoggingSinks } from './priceServiceLoggingSinks';
 import { compilePriceFormula } from './priceFormula';
 import type { HomeyWebApiGet } from './homeyWebApiPort';
+
+const emitPriceDebug = getDebugEmitter('price', 'price');
 
 export const EXPORT_TYPE_API_PATH = 'manager/energy/price/electricity/exported/type';
 export const EXPORT_FIXED_OPTION_API_PATH = 'manager/energy/option/electricityPriceExportedFixed';
@@ -226,7 +229,7 @@ export const syncHomeyExportTerms = async (
   }
   const changed = persistHomeyExportTerms(settings, terms);
   if (!changed) {
-    sinks.debugStructured({ event: 'homey_export_terms_unchanged', kind: terms.kind });
+    emitPriceDebug({ event: 'homey_export_terms_unchanged', kind: terms.kind });
     return false;
   }
   sinks.structuredLog.info({

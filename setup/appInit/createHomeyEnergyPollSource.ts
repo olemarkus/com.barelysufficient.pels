@@ -1,7 +1,6 @@
 import type { PowerSource } from '../../lib/power/powerSource';
 import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
 import type { PowerSamplePipeline } from '../powerSamplePipeline';
-import { getDebugEmitter } from '../../lib/logging/logger';
 import type { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { HomeMeters, type SubHomeMeters } from '../../lib/home/homeMeters';
 
@@ -51,7 +50,6 @@ export const createHomeyEnergyPollSource = (
     timers: host.timers,
     requestHomeMeters: () => homeMeters.request(),
     readMeters: async (meterDeviceIds) => (await host.deviceManager?.readMeters(meterDeviceIds)) ?? null,
-    debugStructured: getDebugEmitter('devices', 'devices'),
     error: (...args) => host.error(...args),
   });
 };

@@ -1,5 +1,7 @@
+import { getDebugEmitter } from '../logging/logger';
 import { httpsGetJson } from '../utils/httpClient';
-import type { StructuredDebugEmitter } from '../logging/logger';
+
+const emitPriceDebug = getDebugEmitter('price', 'price');
 
 export type SpotPriceEntry = {
   startsAt: string;
@@ -10,17 +12,16 @@ export type SpotPriceEntry = {
 export const fetchSpotPricesForDate = async (params: {
   date: Date;
   priceArea: string;
-  debugStructured: StructuredDebugEmitter;
   errorLog?: (...args: unknown[]) => void;
 }): Promise<SpotPriceEntry[]> => {
-  const { date, priceArea, debugStructured, errorLog } = params;
+  const { date, priceArea, errorLog } = params;
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
 
   const url = `https://www.hvakosterstrommen.no/api/v1/prices/${year}/${month}-${day}_${priceArea}.json`;
 
-  debugStructured({ event: 'spot_price_fetch_started', url, priceArea });
+  emitPriceDebug({ event: 'spot_price_fetch_started', url, priceArea });
 
   try {
     const data = await httpsGetJson(url);
@@ -37,7 +38,7 @@ export const fetchSpotPricesForDate = async (params: {
     }));
   } catch (error: unknown) {
     if ((error as { statusCode?: number })?.statusCode === 404) {
-      debugStructured({ event: 'spot_price_fetch_no_data', date: `${year}-${month}-${day}` });
+      emitPriceDebug({ event: 'spot_price_fetch_no_data', date: `${year}-${month}-${day}` });
       return [];
     }
     errorLog?.(`Spot prices: Failed to fetch prices for ${year}-${month}-${day}`, error);
