@@ -25,13 +25,8 @@ import type { PlanService } from '../../lib/plan/planService';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import { createCapacityShortfallAlertDispatch } from '../../lib/power/capacityShortfallAlertDispatch';
-import {
-  createCapacityShortfallSideEffectGate,
-  type CapacityShortfallSideEffectGate,
-} from '../capacityShortfallSideEffectGate';
+import { CapacityShortfallSideEffectGate } from '../../lib/power/capacityShortfallSideEffectGate';
 import type { HomeScope } from './homeScope';
-
-const SHORTFALL_SIDE_EFFECT_RETRY_MS = 1_000;
 
 export type HomeCapacityGuardRuntime = {
   guard: CapacityGuard;
@@ -84,28 +79,19 @@ export const createHomeCapacityGuard = (
   isPreparedReconcileActive: () => boolean,
 ): HomeCapacityGuardRuntime => {
   const isTemporarilyFenced = (): boolean => isPreparedReconcileActive() || isAuthorityClosed();
-  const retryTimerKey = timerKey('shortfallSideEffectRetry');
-  const scheduleShortfallRetry = (): void => {
-    if (isDiscarded() || ctx.timers.has(retryTimerKey)) return;
-    ctx.timers.registerTimeout(retryTimerKey, setTimeout(() => {
-      ctx.timers.clear(retryTimerKey);
-      void shortfallSideEffectGate.flush().catch((error: unknown) => {
-        ctx.getStructuredLogger('capacity').warn({
-          event: 'home_shortfall_side_effect_retry_failed',
-          homeId: scope.homeId,
-          err: normalizeError(error),
-        });
-      });
-    }, SHORTFALL_SIDE_EFFECT_RETRY_MS));
-  };
-  const shortfallSideEffectGate = createCapacityShortfallSideEffectGate({
+  const shortfallSideEffectGate = new CapacityShortfallSideEffectGate(
+    ctx.timers,
+    timerKey('shortfallSideEffectRetry'),
     isDiscarded,
     isTemporarilyFenced,
-    shouldHoldDeferredForPreparedApply: isPreparedReconcileActive,
-    scheduleRetry: scheduleShortfallRetry,
-    applyShortfall: (deficitKw) => getPlanService().handleShortfall(deficitKw),
-    applyClear: () => getPlanService().handleShortfallCleared(),
-  });
+    isPreparedReconcileActive,
+    getPlanService,
+    (error) => ctx.getStructuredLogger('capacity').warn({
+      event: 'home_shortfall_side_effect_retry_failed',
+      homeId: scope.homeId,
+      err: normalizeError(error),
+    }),
+  );
   const shortfallAlertDispatch = createCapacityShortfallAlertDispatch({
     homeId: scope.homeId,
     timers: ctx.timers,

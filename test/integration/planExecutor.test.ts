@@ -1,3 +1,4 @@
+import { onTestFinished } from 'vitest';
 import { steppedPlanDevice } from '../utils/planTestUtils';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsServiceTypes';
@@ -48,7 +49,11 @@ import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { withDeviceConfiguration } from '../utils/planTestUtils';
-import { createCapacityShortfallSideEffectGate } from '../../setup/capacityShortfallSideEffectGate';
+import {
+  CapacityShortfallSideEffectGate,
+  type ShortfallSideEffects,
+} from '../../lib/power/capacityShortfallSideEffectGate';
+import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { normalizeTargetCapabilityValue } from '../../packages/shared-domain/src/targetCapabilities';
 import { isSteppedLoadDevice as isSteppedLoadDeviceFixture } from '../../lib/plan/planSteppedLoad';
 import {
@@ -352,6 +357,23 @@ let logCapture: LoggerCapture;
 beforeEach(() => { logCapture = captureLogger(); });
 afterEach(() => { logCapture.restore(); });
 
+
+const SHORTFALL_RETRY_TIMER = 'shortfallSideEffectRetry';
+let shortfallGateTimers = new TimerRegistry();
+
+/** The gate as a home builds it, over a spec's own fence and side effects. */
+const buildShortfallGate = (
+  isTemporarilyFenced: () => boolean,
+  sideEffects: ShortfallSideEffects,
+): CapacityShortfallSideEffectGate => {
+  shortfallGateTimers = new TimerRegistry();
+  const timers = shortfallGateTimers;
+  onTestFinished(() => timers.clearAll());
+  return new CapacityShortfallSideEffectGate(
+    timers, SHORTFALL_RETRY_TIMER, () => false, isTemporarilyFenced, () => false, () => sideEffects, () => {},
+  );
+};
+
 describe('PlanExecutor shortfall side-effect retry', () => {
   it('keeps enter and clear retryable when the durable writer fails once', async () => {
     const state = createPlanEngineState();
@@ -364,12 +386,7 @@ describe('PlanExecutor shortfall side-effect retry', () => {
     const { executor } = buildExecutor(state, undefined, {
       setCapacityInShortfall,
     });
-    const gate = createCapacityShortfallSideEffectGate({
-      isDiscarded: () => false,
-      isTemporarilyFenced: () => false,
-      applyShortfall: (deficitKw) => executor.handleShortfall(deficitKw),
-      applyClear: () => executor.handleShortfallCleared(),
-    });
+    const gate = buildShortfallGate(() => false, executor);
 
     await expect(gate.onShortfall(2)).rejects.toThrow('settings unavailable');
     expect(state.inShortfall).toBe(false);
@@ -393,12 +410,7 @@ describe('PlanExecutor shortfall side-effect retry', () => {
     const { executor } = buildExecutor(state, undefined, {
       setCapacityInShortfall,
     });
-    const gate = createCapacityShortfallSideEffectGate({
-      isDiscarded: () => false,
-      isTemporarilyFenced: () => false,
-      applyShortfall: (deficitKw) => executor.handleShortfall(deficitKw),
-      applyClear: () => executor.handleShortfallCleared(),
-    });
+    const gate = buildShortfallGate(() => false, executor);
 
     // Builder already persisted/synchronized the guard state while the
     // immediate state callback was fenced. Executor must still apply it.
@@ -417,13 +429,9 @@ describe('PlanExecutor shortfall side-effect retry', () => {
   it('holds a pre-existing deferred transition until a superseding sample settles', async () => {
     let authorityFenced = true;
     const applyShortfall = vi.fn().mockResolvedValue(undefined);
-    const scheduleRetry = vi.fn();
-    const gate = createCapacityShortfallSideEffectGate({
-      isDiscarded: () => false,
-      isTemporarilyFenced: () => authorityFenced,
-      scheduleRetry,
-      applyShortfall,
-      applyClear: vi.fn().mockResolvedValue(undefined),
+    const gate = buildShortfallGate(() => authorityFenced, {
+      handleShortfall: applyShortfall,
+      handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
     });
 
     // The transition predates recovery, so it was initially deferred by
@@ -442,7 +450,8 @@ describe('PlanExecutor shortfall side-effect retry', () => {
 
     await expect(gate.flushAfterPreparedApply()).resolves.toBe(true);
     expect(applyShortfall).toHaveBeenCalledExactlyOnceWith(2);
-    expect(scheduleRetry).toHaveBeenCalled();
+    // Each refused flush armed the bounded retry.
+    expect(shortfallGateTimers.has(SHORTFALL_RETRY_TIMER)).toBe(true);
   });
 });
 

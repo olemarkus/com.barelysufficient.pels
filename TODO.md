@@ -673,17 +673,16 @@ Design-of-record: `notes/web-app.md`.
 
 ## Architecture and tooling debt
 
-- [ ] **The plan-shortfall side-effect gate keeps its deferred transition and retry in `setup/`.**
-      `createCapacityShortfallSideEffectGate` (`setup/capacityShortfallSideEffectGate.ts`) holds a
-      mutable `deferred` transition in a closure, and `createHomeCapacityGuard`
-      (`setup/homeRuntime/createHomeCapacityGuard.ts`) arms its bounded retry timer; together they
-      decide when `PlanService.handleShortfall` and the clear run under the authority and
-      prepared-apply fences. `setup/AGENTS.md` keeps runtime state and decisions with their `lib/`
-      owner, and `npm run setup:stateless` does not catch a closure-held `let`. **What changes:**
-      move the gate and its retry arming to the `lib/` owner of the prepared-apply fence, leaving
-      `setup/` to construct it, and teach the stateless guard to flag a reassigned closure `let` in
-      a `setup/` factory. **Done when:** no file under `setup/` holds the deferred shortfall
-      transition or schedules its retry, and the guard fails on the old shape. [P2]
+- [ ] **`npm run setup:stateless` does not catch state held in a `setup/` factory's closure.**
+      `scripts/check-setup-stateless.mjs` counts module-level and class declarations, so a factory
+      that reassigns a closure `let` holds runtime state the guard cannot see — the plan-shortfall
+      gate did exactly that until it moved to `lib/power/capacityShortfallSideEffectGate.ts`. A scan
+      on 2026-10-23 found 15 reassigned closure `let`s in 10 `setup/` files (at least one,
+      `setup/homeRuntime/wireHomeMembership.ts`, is per-call state, not factory state). **What
+      changes:** teach the guard to flag a closure `let` that a nested function reassigns inside a
+      `setup/` factory, seed the current sites into `scripts/setup-stateless-allowlist.txt`, and
+      exempt per-call locals. **Done when:** the guard fails on a new reassigned closure `let` in a
+      `setup/` factory and the allowlist names each existing one. [P2]
 
 - [ ] **No end-to-end cover for the start policy's actuation claim.** The feature's core
       assertion is that nothing new actuates — the executor's existing convergence writes a
@@ -694,19 +693,6 @@ Design-of-record: `notes/web-app.md`.
       opt a binary device in, turn it on through the mock SDK, advance to the next meter
       reading, assert the off write. **Done when:** the spec fails if the hold stops producing
       an executable off intent. [P2]
-
-- [ ] **P2 — the owned sub-states of `PlanEngineState` keep their fields public, so their
-      invariants hold by convention.** `ActuationRecord`, `RestoreBackoff` and `OvershootIncident`
-      (`lib/plan/*.ts`) each expose public mutable fields beside the mutators that are the only
-      runtime writers. The `functional/immutable-data` rule ignores class fields, so it cannot stop
-      a direct write here; an invariant like the restore back-off's "one instability bumps the cooldown once"
-      (`commitCooldown` being the sole writer) is unenforced. `ActuationRecord`'s in-flight sets are
-      already private and show the shape. Change: make each record's fields private with getters,
-      leaving the mutators as the write path. Done when the three records expose no assignable
-      field and the ~70 spec sites that assign one go through a mutator — note the startup block
-      needs a test-reachable way to set an arbitrary deadline, since `beginStartupBlock` fixes the
-      window at `STARTUP_RESTORE_BLOCK_MS`. Source: layering review of the restore-back-off state
-      layer, 2026-09-08.
 
 - [ ] **P2 — three `setup/` files compose peers the guard's seed banked as permanent budget.**
       `npm run setup:boundaries` seeds its ratchet from the tree it merges against, so the counts it
