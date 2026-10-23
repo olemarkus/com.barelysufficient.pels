@@ -63,9 +63,13 @@ export type SettingsUiVersionRead = {
   timeZone: string;
   homeyId: string;
   // Homey's own `ip:port` on the home network, as `ManagerCloud.getLocalAddress`
-  // reports it; null when Homey could not say. Older PELS versions do not
-  // send it.
+  // reports it; null when Homey could not say. The web app still reads it
+  // defensively, as it does every answer.
   localAddress: string | null;
+  // The Homey's own Athom cloud host (`https://<id>.homey.<cluster>.homeypro.net`),
+  // which the settings page saves (`web_app_cloud_host`); null before the page
+  // has been served from that host. The web app then keeps the address it has.
+  cloudHost: string | null;
 };
 
 export const SETTINGS_UI_HUB_MARKET_PATH = '/ui_hub_market';
@@ -204,7 +208,8 @@ export type SettingsUiBootstrapKey =
   | 'debug_logging_topics'
   | 'debug_logging_enabled'
   | 'deferred_objectives'
-  | 'weather_advisor_settings';
+  | 'weather_advisor_settings'
+  | 'web_app_cloud_host';
 
 export type SettingsUiSettingsPatch = {
   settings: Partial<Record<SettingsUiBootstrapKey, unknown>>;

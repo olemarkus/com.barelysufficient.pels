@@ -21,6 +21,7 @@ import { connectRemoteRealtime } from './remoteRealtime.ts';
 import { createSettingsResync } from './remoteSettingsResync.ts';
 import { readHomeyVersion } from './launchDecision.ts';
 import {
+  adoptCloudHost,
   chooseAddress,
   createRemoteTarget,
   takeHandedAddress,
@@ -97,7 +98,7 @@ const start = async () => {
   // still opens, to the UI's own connection errors and retries; anything else
   // (PELS updated since, removed, stopped, or the key deleted) goes back to the
   // launcher, which keeps this Homey selected.
-  const read = await readHomeyVersion(request);
+  const read = await readHomeyVersion(request, homey.homeyId);
   if (read.state === 'key-refused') {
     window.location.replace(`${LAUNCHER}?reauth=${encodeURIComponent(homey.homeyId)}`);
     return;
@@ -108,7 +109,11 @@ const start = async () => {
     window.location.replace(`${LAUNCHER}?open=${encodeURIComponent(homey.homeyId)}`);
     return;
   }
-  if (read.state === 'version') learnLocalUrl(storage, homey.homeyId, read.localUrl);
+  if (read.state === 'version') {
+    learnLocalUrl(storage, homey.homeyId, read.localUrl);
+    // For the next start: this page stays on the address it checked.
+    if (read.cloudHost) void adoptCloudHost(storage, homey, read.cloudHost, fetchImpl);
+  }
   markLastHomey(storage, homey.homeyId);
   rememberTabHomey(homey.homeyId);
   // The settings hub's "Open in a browser" leads here; inside the web app it

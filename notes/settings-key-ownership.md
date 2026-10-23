@@ -76,7 +76,7 @@ from outside PELS.
 
 Keys with owners so far: `mode_aliases`, `mode_device_targets`, `pv_forecast_source`,
 `ev_charge_target_settings`,
-`homey_price_formula`, `price_scheme` + `powerhour_device_id`.
+`homey_price_formula`, `price_scheme` + `powerhour_device_id`, `web_app_cloud_host`.
 `price_optimization_settings` is only partly owned: the price adjustment range, its
 stored sign and the lift for an entry that stores none (`DEFAULT_SURPLUS_LIFT_C`)
 live in `packages/shared-domain/src/settings/priceOptimization.ts`,
@@ -187,6 +187,14 @@ it is one short string, rewritten perhaps once a year, so the write cost the
 out: the raw slot payloads of every payload-fed source (Flow, Homey Energy and
 Power by the Hour, with their currencies and Power by the Hour's device marker)
 and the `combined_prices` built from them live in the price cache.
+
+`web_app_cloud_host` is the same call made the same way: the Homey's own Athom
+cloud host, learned from the settings page for the web app
+(`packages/shared-domain/src/settings/webAppCloudHost.ts`). It is regenerable,
+but it is one short string that changes only if Athom moves the Homey, and in
+settings the page writes it with an ordinary `Homey.set` and the bootstrap
+carries it, where the userdata store would need an API route of its own
+(owner, 2026-10-23: route changes hold up certification and cost calls).
 
 - **`homey.settings`** — configuration and mission-critical state: managed and
   controllable devices, priorities, mode targets and the mode-target ownership

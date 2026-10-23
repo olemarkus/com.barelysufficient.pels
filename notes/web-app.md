@@ -54,8 +54,13 @@ A Homey has three addresses the web app can use, in this order of preference:
 2. **The Homey's own cloud host**, `<homeyId>.homey.<cluster>.homeypro.net`
    (`.homeyshs.net` for a Self-Hosted Server). Homey's web app serves the
    settings page and all its calls from it. The cluster cannot be derived from
-   the id, and the Athom account API that lists it needs an Athom login, so the
-   web app learns it from the PELS settings page (below) or a pasted address.
+   the id, the Athom account API that lists it needs an Athom login, and
+   Homey reports it nowhere (not in `manager/system`, not in
+   `manager/cloud/state`, not on the relay; checked 2026-10-23). So PELS learns
+   it (below) and `ui_version` hands it out as `cloudHost`; the launcher and
+   each build switch a listed Homey to it once it answers a ping, so a phone
+   that opens PELS at home once keeps the cloud host for when it leaves. A
+   pasted cloud address works too.
 3. **The relay**, `<homeyId>.connect.athom.com`, the only address a bare id
    gives. It limits each Homey: in a burst of 200 calls it let 37 through and
    answered the rest with 429 for about a minute, unauthenticated pings
@@ -169,9 +174,19 @@ The web app lives at `https://pels.barelysufficient.org/app/`, next to the docs.
 Settings → Open in a browser walks through adding the Homey on a computer and
 then the phone, shows this Homey's address to copy and links to
 `/app/?open=<homeyId>`, which opens that Homey once the
-owner has added it. When Homey's web app serves the page from the Homey's own
-cloud host, that host is the address shown and the link carries it
-(`&via=<host>`); otherwise the address is the bare id from `ui_version`. The
+owner has added it. Homey's web app serves the page from the Homey's own
+cloud host when it reaches the Homey through the cloud, and from the
+home-network address when the browser can reach the Homey directly (the usual
+case at home). Every boot from the cloud host saves it in the
+`web_app_cloud_host` setting when it changed
+(`shared-domain/src/settings/webAppCloudHost.ts`); the bootstrap carries the
+setting, so an unchanged host costs no call. A setting rather than the
+userdata store because it then needs no API route of its own: a change to the
+app's routes holds up certification, and every extra call counts against the
+cloud's limit (owner, 2026-10-23). `ui_version` hands the host out only when it
+is an Athom host named for this Homey (`shared-domain/src/homeyCloudHost.ts`). The
+address shown is the page's own cloud host, else the one PELS learned, else
+the bare id, and the link carries a known host (`&via=<host>`). The
 web app takes `via` only for a Homey it already lists, only an Athom host
 named for that Homey, and only once that host answers a ping. It never fills in the add form from a link: where an API
 key is sent must come from the owner, or a crafted link naming someone else's

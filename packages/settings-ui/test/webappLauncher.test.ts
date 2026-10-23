@@ -180,6 +180,52 @@ describe('web app launcher', () => {
       expect(stored().homeys[0]?.baseUrl).toBe(`https://${HOMEY_ID}.connect.athom.com`);
     });
 
+    // A Homey added by its bare id at home learns the cloud host PELS kept, so
+    // it is not left on the relay when the phone leaves home.
+    it('switches to the cloud host PELS reports once it answers, and opens there', async () => {
+      listHouse(null);
+      const path = await openWith('', (pathname, url) => {
+        if (pathname === '/api/manager/system/ping') return response(url.origin === CLOUD ? 200 : 502, '');
+        return response(200, JSON.stringify({
+          version: '3.20.0', timeZone: 'Europe/Oslo', homeyId: HOMEY_ID, localAddress: null, cloudHost: CLOUD,
+        }));
+      });
+
+      expect(stored().homeys[0]?.baseUrl).toBe(CLOUD);
+      expect(path).toBe(`v3.20.0/#homey=${HOMEY_ID} cloud`);
+      expect(JSON.parse(window.sessionStorage.getItem('pels.webapp.addressChoice') ?? 'null'))
+        .toEqual({ homeyId: HOMEY_ID, baseUrl: CLOUD });
+    });
+
+    it('opens on the home network at once, and keeps the cloud host PELS reports for later', async () => {
+      listHouse(LOCAL);
+      const path = await openWith('', (pathname, url) => {
+        if (pathname === '/api/manager/system/ping') {
+          return url.origin === LOCAL
+            ? new Response('', { status: 200, headers: { 'X-Homey-ID': HOMEY_ID } })
+            : response(200, '');
+        }
+        return response(200, JSON.stringify({
+          version: '3.20.0', timeZone: 'Europe/Oslo', homeyId: HOMEY_ID, localAddress: '192.168.1.50:80', cloudHost: CLOUD,
+        }));
+      });
+
+      expect(path).toBe(`v3.20.0/#homey=${HOMEY_ID} local`);
+      await vi.waitFor(() => expect(stored().homeys[0]?.baseUrl).toBe(CLOUD));
+    });
+
+    it('keeps the relay when the cloud host PELS reports does not answer', async () => {
+      listHouse(null);
+      await openWith('', (pathname, url) => {
+        if (url.origin === CLOUD) return response(502, '');
+        return response(200, JSON.stringify({
+          version: '3.20.0', timeZone: 'Europe/Oslo', homeyId: HOMEY_ID, localAddress: null, cloudHost: CLOUD,
+        }));
+      });
+
+      expect(stored().homeys[0]?.baseUrl).toBe(`https://${HOMEY_ID}.connect.athom.com`);
+    });
+
     it('keeps the home-network address the Homey reports, and tries it before opening', async () => {
       listHouse(null);
       const path = await openWith('', (pathname) => (pathname === '/api/manager/system/ping'
