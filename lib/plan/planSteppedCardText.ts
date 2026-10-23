@@ -39,12 +39,12 @@ const capitalize = (s: string): string => (
   s.length === 0 ? s : `${s.charAt(0).toUpperCase()}${s.slice(1)}`
 );
 
-// Treats empty / `'off'` / `'unknown'` / `'disappeared'` as off-for-display so
+// Treats empty / `'off'` / `'unknown'` as off-for-display so
 // the stepped card renders the shared `Off` state word when the device has no
 // fresh observation. Display-only.
 const isSteppedCardOffLikeState = (state: string | undefined): boolean => {
   const n = (state ?? '').trim().toLowerCase();
-  return n === '' || n === 'off' || n === 'unknown' || n === 'disappeared';
+  return n === '' || n === 'off' || n === 'unknown';
 };
 
 type SteppedLoadCardState = {

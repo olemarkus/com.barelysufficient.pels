@@ -825,13 +825,9 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       (`on` / `off` / `unknown` / `not_applicable`) while every resolver's signature says `string`,
       and downstream code defends accordingly: `normalizeDeviceState`
       (`packages/shared-domain/src/deviceStatePredicates.ts`) trims and lowercases a value the
-      producer emits as a bare literal (the two `deviceOverview.ts` re-default sites left with the
-      dead `formatDeviceOverview` family), and three
-      separate production tables carry a `'disappeared'` member no producer ever emits —
-      `deviceStatePredicates.ts`, `planStateLabels.ts` (a duplicated `isOnLike`/`isGray` pair), and
-      `planSteppedCardText.ts` (`isSteppedCardOffLikeState`, whose comment declares it deliberately
-      un-unified). That inverts the clean/trusted rule in root `AGENTS.md` — the producer resolves,
-      the consumer reads.
+      producer emits as a bare literal, and `planSteppedCardText.ts`
+      (`isSteppedCardOffLikeState`) repeats that normalization. That inverts the clean/trusted rule
+      in root `AGENTS.md` — the producer resolves, the consumer reads.
       Settle one thing first, because it changes the type: `resolveObservedCurrentState` can never
       return `'unknown'`. Its stepped branch is guarded by `if (steppedState !== 'unknown')`, so the
       one case its own docblock names as the sole source of `'unknown'` is exactly the case that
@@ -849,8 +845,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       WebView is an untrusted transport seam, where root `AGENTS.md` requires validation, so the
       settings-UI hedging is legitimate and must survive. The shape to land is: accurate unions at
       the producer, tightened inward, with exactly ONE validating adapter at the WebView seam.
-      `'disappeared'` is a separate ruling inside the same work — either a producer emits it or it
-      leaves all three tables; it must not stay as an unowned member in any of them.
       Done when each resolver returns its own accurate union rather than `string`, no `lib/**` or
       `setup/**` consumer calls `normalizeDeviceState` on a producer-resolved label, and the sole
       surviving normalization site is the WebView-seam adapter. P2 — it is a maintainability ratchet

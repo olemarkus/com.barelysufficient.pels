@@ -2,10 +2,9 @@ import type { SettingsUiDeviceListItem } from '../src/ui/deviceUtils.ts';
 import { isGrayStateDevice, requiresNativeWiringForActivation } from '../src/ui/deviceUtils.ts';
 
 describe('isGrayStateDevice', () => {
-  it('flags unavailable and disappeared devices as gray', () => {
+  it('flags unavailable and unknown-state devices as gray', () => {
     expect(isGrayStateDevice({ available: false })).toBe(true);
     expect(isGrayStateDevice({ currentState: 'unknown' })).toBe(true);
-    expect(isGrayStateDevice({ currentState: 'disappeared' })).toBe(true);
   });
 
   it('keeps active devices out of the gray state', () => {

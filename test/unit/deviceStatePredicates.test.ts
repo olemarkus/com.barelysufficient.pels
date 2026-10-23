@@ -21,13 +21,10 @@ describe('device state predicates', () => {
       expect(isOnLikeState('active')).toBe(true);
     });
 
-    it('does not treat off / unknown / not_applicable / disappeared as on-like', () => {
+    it('does not treat off / unknown / not_applicable as on-like', () => {
       expect(isOnLikeState('off')).toBe(false);
       expect(isOnLikeState('unknown')).toBe(false);
       expect(isOnLikeState('not_applicable')).toBe(false);
-      // Previously planLegacy treated `disappeared` as on-like — this pins the
-      // unified semantic.
-      expect(isOnLikeState('disappeared')).toBe(false);
     });
 
     it('returns false for empty / undefined', () => {
@@ -41,9 +38,8 @@ describe('device state predicates', () => {
       expect(isGrayStateDevice({ available: false })).toBe(true);
     });
 
-    it('treats unknown / disappeared current state as gray', () => {
+    it('treats an unknown current state as gray', () => {
       expect(isGrayStateDevice({ currentState: 'unknown' })).toBe(true);
-      expect(isGrayStateDevice({ currentState: 'disappeared' })).toBe(true);
     });
 
     it('does not treat fresh on devices as gray', () => {
