@@ -594,7 +594,7 @@ export class HomeRuntimeRegistry<THooks> implements HomeRuntimeReadPort {
     // ignore that echo without recursively reconciling or logging it as unknown.
     if (bundle?.isTornDown()) return;
     if (!bundle) {
-      logHomeScopedSettingForUnknownHome(this.getLogger(), homeId, baseKey);
+      logHomeScopedSettingForUnknownHome(homeId, baseKey);
       return;
     }
     // Reload the owning area's coherent catalog before its plan rebuild.

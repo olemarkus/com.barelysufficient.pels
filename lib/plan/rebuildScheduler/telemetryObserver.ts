@@ -1,8 +1,11 @@
 import type { Logger as PinoLogger } from 'pino';
 import type { RebuildIntent } from './scheduler';
 import { normalizeError } from '../../utils/errorUtils';
+import { getDebugEmitter } from '../../logging/logger';
 import type { DebugLoggingTopic } from '../../../packages/shared-domain/src/utils/debugLogging';
 import type { HomeId } from '../../utils/settingsKeys';
+
+const emitPlanDebug = getDebugEmitter('plan', 'plan');
 
 const PLAN_REBUILD_SCHEDULER_DEBUG_RATE_LIMIT_MS = 60 * 1000;
 
@@ -82,11 +85,8 @@ export class SchedulerTelemetryObserver {
   };
 
   private emit(key: string, payload: Record<string, unknown>): void {
-    // Topic gate first: `getStructuredLogger` allocates a pino child per call
-    // for both homes, and the disabled path has no use for one.
+    // Topic gate first: the disabled path has no use for the rate limit below.
     if (!this.deps.isDebugTopicEnabled('plan')) return;
-    const logger = this.deps.getStructuredLogger();
-    if (!logger) return;
     const nowMs = this.deps.getNowMs();
     for (const [storedKey, lastEmittedAtMs] of this.lastEmittedAtMsByKey) {
       if (nowMs - lastEmittedAtMs >= PLAN_REBUILD_SCHEDULER_DEBUG_RATE_LIMIT_MS) {
@@ -101,9 +101,6 @@ export class SchedulerTelemetryObserver {
       return;
     }
     this.lastEmittedAtMsByKey.set(key, nowMs);
-    logger.child({ component: 'plan' }, { level: 'debug' }).debug({
-      ...payload,
-      debugTopic: 'plan',
-    });
+    emitPlanDebug(payload);
   }
 }

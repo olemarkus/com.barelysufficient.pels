@@ -27,6 +27,7 @@ import {
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
   WEATHER_ADVISOR_SETTINGS,
 } from '../../lib/utils/settingsKeys';
+import { captureLogger } from '../utils/loggerCapture';
 
 const {
   settingsLoggerDebug, settingsLoggerInfo, settingsLoggerWarn, settingsLoggerError,
@@ -848,6 +849,8 @@ describe('createSettingsHandler', () => {
   });
 
   it('debug-logs a scopable base with a malformed home suffix before exact dispatch', async () => {
+    const capture = captureLogger('info', ['settings']);
+    const malformed = () => capture.findEvents('home_scoped_settings_key_malformed');
     const onHomeScopedSettingChanged = vi.fn();
     const deps = buildDeps({ onHomeScopedSettingChanged });
     const handler = createSettingsHandler(deps);
@@ -857,22 +860,18 @@ describe('createSettingsHandler', () => {
     await handler(`${CAPACITY_LIMIT_KW}:`);
     await handler(`${CAPACITY_LIMIT_KW}:main`);
 
-    expect(settingsLoggerDebug).toHaveBeenCalledTimes(2);
-    expect(settingsLoggerDebug).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      event: 'home_scoped_settings_key_malformed',
-      settingKey: `${CAPACITY_LIMIT_KW}:`,
-    }));
-    expect(settingsLoggerDebug).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      event: 'home_scoped_settings_key_malformed',
-      settingKey: `${CAPACITY_LIMIT_KW}:main`,
-    }));
+    expect(malformed()).toEqual([
+      expect.objectContaining({ component: 'settings', settingKey: `${CAPACITY_LIMIT_KW}:` }),
+      expect.objectContaining({ component: 'settings', settingKey: `${CAPACITY_LIMIT_KW}:main` }),
+    ]);
     expect(onHomeScopedSettingChanged).not.toHaveBeenCalled();
     expect(deps.loadCapacitySettings).not.toHaveBeenCalled();
 
     // Non-scopable colon keys and plain unsuffixed keys stay silent.
-    settingsLoggerDebug.mockClear();
+    capture.events.splice(0);
     await handler('foo:bar');
     await handler(MANAGED_DEVICES);
-    expect(settingsLoggerDebug).not.toHaveBeenCalled();
+    expect(malformed()).toHaveLength(0);
+    capture.restore();
   });
 });

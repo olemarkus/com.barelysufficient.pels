@@ -31,7 +31,6 @@ export function createDailyBudgetService(ctx: AppContext): DailyBudgetService {
   const priceCoordinator = requirePriceCoordinator(ctx);
   return new DailyBudgetService({
     getTimeZone: () => ctx.getTimeZone(),
-    log: (...args: unknown[]) => ctx.log(...args),
     isDebugTopicEnabled: (topic) => ctx.debugLoggingTopics.has(topic),
     getPowerTracker: () => ctx.powerTracker,
     getPriceOptimizationEnabled: () => priceCoordinator.getPriceOptimizationEnabled(),

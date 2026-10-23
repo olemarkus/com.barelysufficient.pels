@@ -51,7 +51,7 @@ import {
   hasPriceHorizonAdvanced,
   resolveReplanReason,
 } from './replanReason';
-import { getLogger } from '../../logging/logger';
+import { getDebugEmitter } from '../../logging/logger';
 import { buildActivePlanLifecycleFields } from './activePlanLifecycleFields';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import {
@@ -93,7 +93,7 @@ import {
 export type { ActivePlanFlowCardSeed, ActivePlanPersistDeps } from './activePlanRevisionBuild';
 import type { ActivePlanFlowCardSeed, ActivePlanPersistDeps } from './activePlanRevisionBuild';
 
-const logger = getLogger('plan/deferred-active');
+const emitDeferredDebug = getDebugEmitter('deferred_objectives', 'deferred_objectives');
 
 // Mirror `planHistory.ts` ABANDON_GRACE_MS. Homey settings reads can transiently
 // return empty/malformed data; if a plan cycle ever produces an empty
@@ -736,10 +736,6 @@ export class DeferredObjectiveActivePlanRecorder {
   }
 
   private emit(payload: Record<string, unknown>): void {
-    if (this.deps.debugStructured) {
-      this.deps.debugStructured(payload);
-    } else {
-      logger.debug(payload);
-    }
+    emitDeferredDebug(payload);
   }
 }

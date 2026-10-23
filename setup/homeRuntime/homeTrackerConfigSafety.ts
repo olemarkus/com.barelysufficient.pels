@@ -1,4 +1,4 @@
-import type { Logger as PinoLogger } from '../../lib/logging/logger';
+import { getLogger, type Logger as PinoLogger } from '../../lib/logging/logger';
 import {
   HOMES_CONFIG,
 } from '../../lib/utils/settingsKeys';
@@ -44,13 +44,9 @@ export const resolveApiLoggerProvider = (value: unknown): ApiLoggerProvider | nu
     : null;
 };
 
-const reportToConsole = (...args: unknown[]): void => {
-  try {
-    console.error(...args);
-  } catch {
-    // Logging is diagnostic only; it must never alter persistence safety.
-  }
-};
+// Used when the API logger is unwired or itself throws: the module logger is
+// late-bound to the root and always exists.
+const fallbackLogger = getLogger('settings-ui/homes-config');
 
 /** What a failure names: the config key for a config phase, the home for a tracker phase. */
 const failureScope = (failure: HomeTrackerConfigSafetyFailure): { settingKey: string } | { homeId: string } => {
@@ -83,10 +79,10 @@ const reportHomeTrackerConfigSafetyFailure = (params: {
       return;
     }
   } catch (loggingError) {
-    reportToConsole('settings UI homes config logger failed', fields, loggingError);
+    fallbackLogger.error({ ...fields, loggerErrorMessage: normalizeError(loggingError).message });
     return;
   }
-  reportToConsole('settings UI homes config commit failed', fields);
+  fallbackLogger.error(fields);
 };
 
 /** Compose the one homes-config value written for an owner-authored intent op. */

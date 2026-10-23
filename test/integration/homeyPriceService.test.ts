@@ -37,7 +37,6 @@ import { captureLogger } from '../utils/loggerCapture';
 import type Homey from 'homey';
 
 const sinks = (overrides: Partial<PriceServiceLoggingSinks> = {}): PriceServiceLoggingSinks => ({
-  log: () => {},
   debugStructured: () => {},
   ...overrides,
 });

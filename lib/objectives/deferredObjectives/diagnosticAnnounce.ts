@@ -35,13 +35,10 @@
  * rebuilt from each tick's diagnostics, so it cannot retain a dead objective.
  */
 import { buildDeferredObjectiveDebugPayload } from './diagnosticDebugPayload';
-import { getLogger } from '../../logging/logger';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { resolvedTrajectoryStatus } from './diagnosticTypes';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 import type { DeferredObjectiveHorizonPlan } from './types';
-
-const logger = getLogger('plan/deferred-diag-announce');
 
 // A stuck cause has nothing to trace, so it only needs to prove it is still
 // stuck. A live trajectory carries progress values the signature deliberately
@@ -191,9 +188,8 @@ export const emitDeferredObjectiveDiagnostics = (
   diagnostics: DeferredObjectiveDiagnostic[],
   nowMs: number,
   announced: ReadonlyMap<string, DeferredObjectiveAnnounce>,
-  debugStructured?: StructuredDebugEmitter,
+  emit: StructuredDebugEmitter,
 ): ReadonlyMap<string, DeferredObjectiveAnnounce> => {
-  const emit = debugStructured ?? ((payload: Record<string, unknown>) => { logger.debug(payload); });
   const nextAnnounced = new Map<string, DeferredObjectiveAnnounce>();
   for (const diagnostic of diagnostics) {
     const { trajectory } = diagnostic;

@@ -366,7 +366,7 @@ export class AppSnapshotHelpers {
     });
     await this.deps.getPlanService()?.syncLivePlanState('snapshot_refresh');
     this.deps.getPlanService()?.syncHeadroomCardState(enforcedSnapshot);
-    this.deps.getStructuredLogger('devices')?.debug({
+    getDebugEmitter('devices', 'devices')({
       event: 'target_devices_refreshed',
       reasonCode: options.targeted === true ? 'targeted_refresh' : 'snapshot_refresh',
       deviceCount: snapshot.length,

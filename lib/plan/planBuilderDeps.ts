@@ -69,5 +69,4 @@ export type PlanBuilderDeps = {
   // shift, deadline floor, surplus lift and the device's heating/cooling
   // direction never reach it (`lib/thermostat/temperatureSetpoints.ts`).
   resolveTemperatureSetpoints: ResolveTemperatureSetpoints;
-  log: (...args: unknown[]) => void;
 };

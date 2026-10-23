@@ -404,7 +404,6 @@ export function createDeferredObjectiveActivePlanRecorder(
         });
       }
     },
-    debugStructured: getDebugEmitter('deferred_objectives', 'deferred_objectives'),
     onRevisionWritten: (event) => ctx.deferredObjectivePlanRevisionBus.publish(event),
   });
 }

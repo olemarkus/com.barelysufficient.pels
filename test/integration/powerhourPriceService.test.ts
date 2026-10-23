@@ -22,7 +22,6 @@ import { noHomeyEnergyPrices, noHomeyWebApi } from '../helpers/homeyWebApiStub';
 import type Homey from 'homey';
 
 const sinks = (overrides: Partial<PriceServiceLoggingSinks> = {}): PriceServiceLoggingSinks => ({
-  log: () => {},
   debugStructured: () => {},
   ...overrides,
 });

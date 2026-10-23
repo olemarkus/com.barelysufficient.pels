@@ -1,4 +1,5 @@
 import https from 'https';
+import { getLogger } from '../logging/logger';
 
 // Pinned CA bundle, retained only as a *fallback* trust anchor for hosts whose
 // chain Homey's (historically incomplete) default CA bundle cannot build.
@@ -66,9 +67,10 @@ wOz5QAZ+2n1q4TlApJzBfwFrCDg=
 // Combined CA bundle for pinned hosts
 export const PINNED_CA_BUNDLE = `${COMODO_AAA_ROOT_CA}\n${SSL_COM_TRANSIT_CA}`;
 
+const httpLogger = getLogger('utils/http');
+
 export type HttpsJsonOptions = {
   allowInsecureFallback?: boolean;
-  log?: (...args: unknown[]) => void;
   pinnedHosts?: string[];
   timeoutMs?: number;
 };
@@ -115,7 +117,6 @@ function buildTlsStrategies(isPinnedHost: boolean, allowInsecureFallback: boolea
 export function httpsGetJson(url: string, options: HttpsJsonOptions = {}): Promise<unknown> {
   const {
     allowInsecureFallback = true,
-    log,
     pinnedHosts = ['hvakosterstrommen.no'],
     timeoutMs = 10000,
   } = options;
@@ -166,9 +167,13 @@ export function httpsGetJson(url: string, options: HttpsJsonOptions = {}): Promi
         if (next && isSslError(err)) {
           const reason = err.code ?? 'certificate error';
           // Log host only (not the full URL) — httpsGetJson is generic and a URL may carry query secrets.
-          log?.(
-            `SSL verification failed for ${urlObj.host} via ${strategy.name} (${reason}); retrying with ${next.name}`,
-          );
+          httpLogger.warn({
+            event: 'https_tls_verification_fallback',
+            host: urlObj.host,
+            strategy: strategy.name,
+            nextStrategy: next.name,
+            reason,
+          });
           attempt(index + 1);
           return;
         }

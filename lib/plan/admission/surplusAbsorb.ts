@@ -1,8 +1,8 @@
 import type { PlanEngineState, SurplusEligibilityState } from '../planState';
-import { getLogger } from '../../logging/logger';
+import { getDebugEmitter } from '../../logging/logger';
 import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
 
-const logger = getLogger('plan/surplus-absorb');
+const emitSurplusAbsorbDebug = getDebugEmitter('plan', 'plan');
 
 /**
  * Surplus-absorb eligibility gate — "reverse admission".
@@ -204,7 +204,7 @@ const emitReleaseLog = (
   nowTs: number,
 ): void => {
   if (releaseCause === null) return;
-  logger.debug({
+  emitSurplusAbsorbDebug({
     event: 'surplus_absorb_released',
     deviceId,
     releaseCause,

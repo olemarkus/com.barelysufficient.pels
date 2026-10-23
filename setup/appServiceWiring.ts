@@ -280,7 +280,7 @@ export class AppServiceWiring {
   installStructuredLogger(): PinoLogger {
     const { ctx } = this.deps;
     const logger = createRootLogger(
-      createHomeyDestination({ log: (...a) => ctx.log(...a), error: (...a) => ctx.error(...a) }),
+      createHomeyDestination(ctx),
     );
     setRootLogger(logger);
     this.deps.handles.structuredLogger = logger;

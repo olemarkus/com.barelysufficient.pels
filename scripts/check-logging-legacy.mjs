@@ -52,15 +52,9 @@
 //     same emitter under a threaded name; retiring the threading is a separate,
 //     tracked migration and is not what this guard is about.
 //   - `api.ts`'s pre-logger boot `console.error` fallback, which runs before a
-//     root logger exists. It is on the allowlist by name.
+//     root logger exists. It is exempted by name (`EXEMPT_SITES`).
 //
-// THE ALLOWLIST (`scripts/logging-legacy-allowlist.txt`) carries the files that
-// predate this rule, each with a BUDGET — how many legacy sites it still has.
-// Both drift directions fail: a count that goes UP means new legacy logging
-// landed in a file that is supposed to be shedding it, and a count that is too
-// HIGH after a migration means the line was not lowered. So the list can only
-// shrink deliberately, and cannot rot into a permanent exemption. When the last
-// line goes, DELETE THE FILE — the guard then requires its absence.
+// Every other site fails: the files that predated the rule have all migrated.
 //
 // Runs in `ci:checks` (the pre-push hook and the CI checks job).
 
@@ -73,8 +67,6 @@ const require = createRequire(import.meta.url);
 const ts = require('typescript');
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const allowlistFile = path.join(rootDir, 'scripts/logging-legacy-allowlist.txt');
-
 /** Runtime roots. Test code logs however it likes; the owner never reads it. */
 const SCAN = ['app.ts', 'api.ts', 'lib', 'setup', 'flowCards', 'drivers'];
 
@@ -85,9 +77,7 @@ const EXEMPT_DIRS = [path.join('lib', 'logging')];
  * Deliberate sites, as `<path>:<kind>` → how many are allowed.
  *
  * `api.ts` runs one `console.error` before a root logger exists, so console is
- * genuinely the only channel available there. It is exempted here rather than
- * budgeted in the allowlist so that list can reach zero and be deleted — a
- * permanent budget line would have made its own done-condition unreachable.
+ * genuinely the only channel available there.
  *
  * The COUNT is what keeps this from becoming a file-wide licence: a second
  * console call in `api.ts` is over the exemption and fails, so an API handler
@@ -232,23 +222,6 @@ function findingsFor(sourceFile, relativePath, exemptBudget) {
   });
 }
 
-async function readAllowlist() {
-  const raw = await fs.readFile(allowlistFile, 'utf8').catch(() => null);
-  if (raw === null) return null;
-  const budgets = new Map();
-  for (const rawLine of raw.split('\n')) {
-    const line = rawLine.trim();
-    if (line === '' || line.startsWith('#')) continue;
-    const match = /^(\S+)\s+(\d+)$/.exec(line);
-    if (match === null) {
-      console.error(`logging:no-legacy: malformed allowlist line: ${rawLine}`);
-      process.exit(2);
-    }
-    budgets.set(match[1], Number(match[2]));
-  }
-  return budgets;
-}
-
 const files = (await Promise.all(SCAN.map(collectFiles))).flat();
 const exemptBudget = new Map(EXEMPT_SITES);
 const actual = new Map();
@@ -260,45 +233,13 @@ for (const file of files) {
   if (findings.length > 0) actual.set(relativePath, findings);
 }
 
-const budgets = await readAllowlist();
-if (budgets === null) {
-  if (actual.size === 0) {
-    console.log(`logging:no-legacy OK — no legacy logging (${files.length} files scanned)`);
-    process.exit(0);
-  }
-  console.error('logging:no-legacy: the allowlist is gone but legacy logging remains:');
-  for (const [file, findings] of actual) console.error(`  ${file}: ${findings.length}`);
-  process.exit(1);
+if (actual.size === 0) {
+  console.log(`logging:no-legacy OK — no legacy logging (${files.length} files scanned)`);
+  process.exit(0);
 }
-
-const problems = [];
+console.error('logging:no-legacy FAILED\n');
 for (const [file, findings] of actual) {
-  const budget = budgets.get(file);
-  if (budget === undefined) {
-    problems.push(`${file}: ${findings.length} legacy logging site(s), and the file is not on the allowlist.\n`
-      + findings.map((f) => `    ${file}:${f.line}  [${f.kind}] ${f.detail}`).join('\n'));
-  } else if (findings.length > budget) {
-    problems.push(`${file}: ${findings.length} legacy logging site(s), above its budget of ${budget}. `
-      + 'Lower the budget by removing one, do not raise it.\n'
-      + findings.map((f) => `    ${file}:${f.line}  [${f.kind}] ${f.detail}`).join('\n'));
-  } else if (findings.length < budget) {
-    problems.push(`${file}: ${findings.length} legacy logging site(s), below its budget of ${budget}. `
-      + `Lower the allowlist line to ${findings.length}.`);
-  }
+  for (const f of findings) console.error(`  ${file}:${f.line}  [${f.kind}] ${f.detail}`);
 }
-for (const [file, budget] of budgets) {
-  if (!actual.has(file)) {
-    problems.push(`${file}: allowlisted with a budget of ${budget} but has no legacy logging left. Remove the line.`);
-  }
-}
-
-if (problems.length > 0) {
-  console.error('logging:no-legacy FAILED\n');
-  for (const problem of problems) console.error(`  ${problem}\n`);
-  console.error('  Rules: notes/logging/README.md § "Legacy logging is banned".');
-  process.exit(1);
-}
-
-const total = [...actual.values()].reduce((sum, findings) => sum + findings.length, 0);
-console.log(`logging:no-legacy OK — ${files.length} files scanned, `
-  + `${actual.size} files / ${total} sites awaiting migration`);
+console.error('\n  Rules: notes/logging/README.md § "Legacy logging is banned".');
+process.exit(1);

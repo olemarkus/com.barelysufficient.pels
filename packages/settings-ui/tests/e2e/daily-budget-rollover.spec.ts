@@ -79,9 +79,7 @@ const buildRolloverPayloads = async () => {
     getDateKeyInTimeZone,
     getDateKeyStartMs,
   } = await loadDailyBudgetRuntimeModule();
-  const manager = new DailyBudgetManager({
-    log: () => undefined,
-  });
+  const manager = new DailyBudgetManager({});
   const settings = buildSettings();
   const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 10)), TZ);
   const dayStart = getDateKeyStartMs(dateKey, TZ);

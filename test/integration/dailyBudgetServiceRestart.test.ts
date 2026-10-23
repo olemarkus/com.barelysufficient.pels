@@ -52,7 +52,6 @@ function buildService(
 ): DailyBudgetService {
   return new DailyBudgetService({
     getTimeZone: () => TZ,
-    log: () => undefined,
     getPowerTracker: getTracker,
     getPriceOptimizationEnabled: () => false,
     getCapacitySettings: () => capacityOnlyPowerLimits(15, 1),

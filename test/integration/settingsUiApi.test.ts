@@ -31,6 +31,7 @@ import { buildSettingsOverviewReadModel } from '../../lib/plan/settingsOverviewR
 import { buildPlanDevice, buildPlanMeta } from '../utils/planTestUtils';
 import { executionStateFixture } from '../utils/deviceStatusFixture';
 import { overviewReadModelWiring } from '../utils/settingsOverviewFixture';
+import { captureLogger } from '../utils/loggerCapture';
 
 describe('settingsUiApi', () => {
   const overviewFixture = (
@@ -1258,8 +1259,9 @@ describe('settingsUiApi', () => {
     );
   });
 
-  it('routes UI log entries to the correct app logger', () => {
+  it('logs UI entries as structured events at their own level', () => {
     const homey = createHomey();
+    const capture = captureLogger('info', []);
 
     logSettingsUiMessage({
       homey: homey as never,
@@ -1270,7 +1272,10 @@ describe('settingsUiApi', () => {
       body: { level: 'error', message: 'Boom', detail: 'Stack', timestamp: Date.now() },
     });
 
-    expect(homey.log).toHaveBeenCalledWith('Warning: Settings UI (boot): Something odd');
-    expect(homey.error).toHaveBeenCalledWith('Settings UI: Boom - Stack', expect.any(Error));
+    expect(capture.findEvents('settings_ui_log')).toEqual([
+      expect.objectContaining({ module: 'settings-ui', level: 40, message: 'Something odd', context: 'boot' }),
+      expect.objectContaining({ module: 'settings-ui', level: 50, message: 'Boom', detail: 'Stack' }),
+    ]);
+    capture.restore();
   });
 });

@@ -12,7 +12,6 @@ import type {
 import { OBSERVED_HOURLY_STATS_FIELDS } from './observedHourlyStats';
 
 export type DailyBudgetManagerDeps = {
-  log: (...args: unknown[]) => void;
   isDebugTopicEnabled?: (topic: 'daily_budget') => boolean;
   structuredDebug?: (payload: Record<string, unknown>) => void;
   // Topic-gated (`daily_budget`) structured debug for discrete lifecycle events

@@ -30,7 +30,7 @@ let priceCache = createInMemoryPriceCache();
 
 const createService = (): PriceService => new PriceService(
   mockHomeyInstance as unknown as Homey.App['homey'],
-  { log: () => {}, debugStructured: () => {} },
+  { debugStructured: () => {} },
   () => TZ,
   noHomeyEnergyPrices,
   createPriceDataStore(mockHomeyInstance.settings, priceCache),

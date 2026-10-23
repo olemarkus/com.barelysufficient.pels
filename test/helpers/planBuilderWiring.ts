@@ -30,5 +30,4 @@ export const planBuilderWiring = (): PlanBuilderWiring => ({
   pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
   decorateDeferredObjectives: decorateWithoutDeferredObjectives,
   resolveTemperatureSetpoints: fixtureTemperatureSetpoints(),
-  log: vi.fn(),
 });

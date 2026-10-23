@@ -48,7 +48,6 @@ describe('reportShortfallToGuard', () => {
         powerTracker: {},
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off' }),
-        log: vi.fn(),
       },
       NO_STORAGE_RELIEF,
     );
@@ -73,7 +72,6 @@ describe('reportShortfallToGuard', () => {
         powerTracker: {},
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off' }),
-        log: vi.fn(),
       },
       NO_STORAGE_RELIEF,
     );
@@ -100,7 +98,6 @@ describe('reportShortfallToGuard', () => {
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off' }),
-        log: vi.fn(),
       },
       NO_STORAGE_RELIEF,
     );
@@ -128,7 +125,6 @@ describe('reportShortfallToGuard', () => {
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off' }),
-        log: vi.fn(),
       },
       NO_STORAGE_RELIEF,
     );
@@ -157,7 +153,6 @@ describe('reportShortfallToGuard', () => {
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off' }),
-        log: vi.fn(),
       },
       NO_STORAGE_RELIEF,
     );

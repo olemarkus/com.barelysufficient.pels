@@ -25,7 +25,6 @@ const createCoordinator = (readHubMarket: () => Promise<SettingsUiHubMarketRead>
     homeyWebApiGet: webApi.get,
     readHubMarket,
     readHubLocation: async () => ({ kind: 'unavailable' as const }),
-    log: () => undefined,
     debugStructured: () => undefined,
     error: () => undefined,
     structuredLog: { info, warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as never,

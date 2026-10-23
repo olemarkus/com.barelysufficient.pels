@@ -126,16 +126,14 @@ describe('startPerfLogger', () => {
     stop();
   });
 
-  it('starts and stops cpu spike monitor when configured', () => {
+  it('starts and stops the cpu spike monitor with perf logging', () => {
     const logStructured = vi.fn();
-    const logCpuSpike = vi.fn();
     const stopCpuMonitor = vi.fn();
     startCpuSpikeMonitorMock.mockReturnValueOnce(stopCpuMonitor);
 
     const stop = startPerfLogger({
       isEnabled: () => true,
       logStructured,
-      logCpuSpike,
       intervalMs: 1000,
     });
 
@@ -149,23 +147,8 @@ describe('startPerfLogger', () => {
     expect(stopCpuMonitor).toHaveBeenCalledTimes(1);
   });
 
-  it('does not start cpu spike monitor when not configured', () => {
-    const logStructured = vi.fn();
-
-    const stop = startPerfLogger({
-      isEnabled: () => true,
-      logStructured,
-      intervalMs: 1000,
-    });
-
-    expect(startCpuSpikeMonitorMock).not.toHaveBeenCalled();
-
-    stop();
-  });
-
   it('starts cpu spike monitor only after perf logging becomes enabled', () => {
     const logStructured = vi.fn();
-    const logCpuSpike = vi.fn();
     const stopCpuMonitor = vi.fn();
     let enabled = false;
     startCpuSpikeMonitorMock.mockReturnValueOnce(stopCpuMonitor);
@@ -173,7 +156,6 @@ describe('startPerfLogger', () => {
     const stop = startPerfLogger({
       isEnabled: () => enabled,
       logStructured,
-      logCpuSpike,
       intervalMs: 1000,
     });
 

@@ -50,7 +50,6 @@ const discardDebug = (): void => undefined;
 type DailyBudgetServiceDeps = {
   dailyBudgetStateStore: DailyBudgetStateStore;
   getTimeZone: () => string;
-  log: (...args: unknown[]) => void;
   isDebugTopicEnabled?: (topic: 'daily_budget') => boolean;
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
@@ -95,7 +94,6 @@ export class DailyBudgetService {
 
   constructor(private deps: DailyBudgetServiceDeps) {
     this.manager = new DailyBudgetManager({
-      log: (...args: unknown[]) => this.deps.log(...args),
       isDebugTopicEnabled: (topic) => this.deps.isDebugTopicEnabled?.(topic) ?? true,
       structuredDebug: (payload: Record<string, unknown>) => this.emitStructuredDailyBudgetDebug(payload),
       debugStructured: this.deps.debugStructured,
@@ -124,7 +122,6 @@ export class DailyBudgetService {
    */
   private createCandidateManager(): DailyBudgetManager {
     const manager = new DailyBudgetManager({
-      log: (...args: unknown[]) => this.deps.log(...args),
       isDebugTopicEnabled: () => false,
       structuredDebug: discardDebug,
       debugStructured: discardDebug,

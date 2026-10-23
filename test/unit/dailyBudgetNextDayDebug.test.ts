@@ -32,7 +32,6 @@ const INPUTS: DailyBudgetPlanInputs = {
 const buildManager = (isDebugTopicEnabled = true) => {
   const debugStructured = vi.fn<StructuredDebugEmitter>();
   const manager = new DailyBudgetManager({
-    log: () => undefined,
     isDebugTopicEnabled: () => isDebugTopicEnabled,
     debugStructured,
   });
