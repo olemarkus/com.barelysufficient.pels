@@ -73,65 +73,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Shed and restore control
 
-- [ ] **A shed device waiting out a restore gate can carry no gate reason, so it defaults to
-      `capacity` — and a reserve-blocked hold is attributed to the wrong counting cause the same
-      way.**
-      *Persona:* owner (`notes/personas.md`) opening device detail on a device that is held back, to
-      find out what is holding it.
-
-      `buildBaseReason` (`lib/plan/planReasons.ts` ~42) ends with `?? { code: capacity }` for a
-      device that is planned `shed`, was not shed THIS cycle, and whose own reason normalized away.
-      That default is required — `SHED_REASON_RULES` (`lib/plan/planReasonsValidation.ts`) is an
-      allow-list of limit-shaped codes and a shed device must carry one — but it fires in windows
-      where no limit is binding at all. Prod 2026-07-25: a charger shed during a 10 s overshoot read
-      `capacity` on 5 cycles while the house sat at 1.4 kW against a 5.4 kW pace; it was really
-      waiting out `cooldown_shedding` → `meter_settling` → `restore_need`, all of which DO set their
-      own reasons on the cycles they cover. So the real defect is the gap: the restore path does not
-      always attach a gate reason, and the default then speaks for it. Fix is to close that gap
-      (audit which restore-gate paths leave the reason unset), NOT to loosen the default to `none`
-      — an attempt to return `none` when nothing binds broke 6 integration tests precisely because
-      it violated the allow-list.
-
-      *The startup-reservation hold is the same gap with a second, named honest answer.* Both routes
-      into it now COUNT toward the held-back clock — the 2026-08-08 ruling is that the clock runs
-      whenever PELS turned the device off, and a reservation is PELS holding it for a
-      higher-priority device. What still differs is the attributed cause. When the restore/hold lane
-      evaluated the device it sets the `reservedForStart` code and the cause reads
-      `reserved_for_start` ("Waiting so X can start"). When it did not (fresh shed, over-pace,
-      cooldown), `finalizeCeilingReason` leaves the ceiling code in place and the cause reads
-      `capacity` / `insufficient_headroom` ("Waiting for available power") — which tells the owner
-      to free power for a hold no amount of freed power lifts.
-
-      *Card versus diagnostics.* The card no longer *says* "Limited by the hard cap" for the unknown
-      case (the held fallback was split off from `PLAN_STATE_CAPACITY_STATUS` in the same PR), and
-      the card copy for both reservation routes was unified 2026-08-07 (the holder's name rides
-      along as a display field), so the CARD is honest either way. Device-detail diagnostics still
-      are not — and that is where an owner goes when the card is not enough. A genuine `capacity`
-      reason on a device no limit is holding is still wrong there. (Softened 2026-08-02:
-      `finalizeCeilingReason` now attaches the per-cycle admission gap to that default — when
-      nothing binds, admission passes and the card shows the bare waiting line rather than a phantom
-      number — but the wrong CODE still reaches diagnostics/starvation classification.)
-
-      *Why the reservation half was not fixed with the copy — the guard any fix must respect:* the
-      honest code, `reservedForStart`, is in `RESTORE_ADMISSION_HOLD_REASON_CODES` and builds no
-      actuation intent. Minting it at reason normalization would cancel an in-flight shed command's
-      retry while the device keeps drawing inside the reserved block —
-      `test/integration/planHeadroomReserve.test.ts` § "keeps asserting the floor while the shed has
-      not materialized" is the guard.
-
-      *Fix direction:* thread an `observedAtShedFloor`-equivalent into `finalizeCeilingReason` (the
-      setpoint lane grew one in `planReasonsHoldDecisions.ts` § `isObservedAtShedFloor` on
-      2026-08-08, so binary and stepped devices still need theirs) and apply the same guarded
-      rewrite the restore lane already does.
-
-      *Scope note:* `HEADROOM_RESERVE_MAX_MS` is 15 minutes and the held-back entry delay is also 15
-      minutes, so a maximally long reservation now sits exactly on the boundary — worth confirming
-      against prod telemetry before tuning either constant.
-
-      Source: prod investigation + test suite, 2026-07-25; bare "Waiting to resume" path audit,
-      2026-08-07; rewritten 2026-08-08 after the held-back clock ruling falsified the original
-      premise (both lanes paused/counted differently; now both count). [P2]
-
 - [ ] **A `turn_off` stepped device whose profile has no zero-power step can never be fully turned
       off.** `getSteppedLoadOffStep` returns null for such a profile and
       `getSteppedLoadLowestStep` then answers the lowest ACTIVE step, so both the shed ladder
@@ -206,19 +147,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 
 
-- [ ] **A genuine learned-rate gap mid-commitment still strips a committed task to `unknown`.**
-      Same shape as the fixed step-ladder gap one short-circuit earlier: in
-      `buildDiagnosticWithPolicyHorizon`, a `profileEnergy.reasonCode` (e.g. a real
-      `objective_missing_charge_rate` from a lost/unconfident learned rate) returns `unknown`
-      before the frozen fallback is consulted, so a committed task would lose its budget
-      exemption/boost/floor exactly like the 2026-08-01 incident — via the rate lane instead of
-      the step lane. Not yet observed in prod (the 2026-08-01 rate never degraded). Serving frozen
-      here needs `energyNeededKWh` handling in `buildFrozenHorizonPlan` (shortfall display and the
-      legacy milestone fallback consume it); the unit-milestone comparison itself is rate-free, so
-      commitments with stamped `plannedUnitMilestone` could be served with a degraded/absent
-      energy estimate. Do it as its own change with its own SDK-boundary e2e. Source: 2026-08-02
-      task-6 fix review. [P2]
-
 - [ ] **Latch `currentHourClaim` for the hour instead of recomputing it through the whole `:58`
       window.** `isPastHourSettleMark` is true from `:58:00` to `:59:59`, so the fresh allocator —
       and with it the claim — runs on every cycle in that window (~12 in `homey_energy` mode, more
@@ -261,18 +189,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       then add a post-grace preview-parity regression. Source: pels-runtime-reality review of
       the relative-priority PR, 2026-08-08. [P2]
 
-- [ ] **Disambiguate the smart-task schedule chart's two kinds of dimmed bar.** With the
-      one-hue-two-states encoding, a bar is dimmed both when it is outside the task's allowed
-      window (e.g. the in-progress "Now" bar, before the 15:00 start) and when it is inside the
-      window but too expensive to pick — same styling, two meanings. Either distinguish "outside
-      window / not yet allowed" from "available but too expensive", or exclude the pre-start Now
-      bar from the pickable set so "not picked" only ever means too-expensive. Persona: Optimiser
-      reading a dimmed cheapest Now bar. Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`
-      (schedule bar item styling), `packages/settings-ui/src/ui/deadlinePlanTimeline.ts`. Source:
-      pels-m3-critic + pels-ux-fit on the data-viz palette PR, 2026-07-02.
-      Absorbed from the merged reason-clause item: an in-window, affordable hour that simply was not
-      needed still has no stated why, which the same producer-resolved clause would answer. [P2]
-
 - [ ] **A rescue on the lowest-priority device can grant nothing and still report success.**
       *Persona:* Optimiser (`notes/personas.md`) who taps `Let it run now` on a held-back device.
       *Hypothesis:* now that the rescue is offered on both axes, a device that is capacity-held AND
@@ -307,38 +223,19 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Multi-home and meter areas
 
-- [ ] **A silent meter AREA has no staleness indication — the no-readings banner speaks only for
-      Main — and an area that never had a reading at all has no surface either.** The banner
-      (`packages/shared-domain/src/powerReadingsBanner.ts`, fed by the deliberately Main-only
-      `getPowerReadModel` in `packages/settings-ui/src/ui/power.ts`) is the one staleness surface
-      after the freshness chip's removal, and before that removal a silent area still surfaced
-      through the scoped hero's chip. Decide whose scope the global banner speaks for: either feed it
-      from the ACTIVE home scope's tracker timestamp (scoped read carries it), or add a per-area arm
-      to the banner copy. Done when silencing an area's meter for >60 s shows a user-visible
-      indication while Main stays fresh, pinned by a UI test. Sharper since 2026-09-02: past the shed
-      timeout the scoped hero renders NOTHING for an unmeasured cycle (`PlanHero.tsx`, owner ruling
-      — no computed figure is drawn), so a silent area now shows only `Limited` cards under no
-      banner and no hero; the banner arm is the only surface left to carry that state.
-
-      **A second arm is required, not a variant: a sub-home meter area under `power_source = flow`
-      renders nothing, forever.** `routeMeterReadings`
-      (`lib/home/homeRuntimeRegistry.ts`) drops every reading unless the source is
-      `homey_energy`, and a sub-home pipeline has no other sample entry — so its tracker never
-      latches a sample, `hasPowerMeasurement` stays false, `PowerMeasurementGate` never opens, and no
-      plan (and therefore no status) is ever published for that area. Its state is
-      "never had a reading", not "the reading went stale": the area tracker never latches, so there
-      is no timestamp for a staleness arm to read — and the cause is the power source, which the
-      copy must name. Actuation is already correctly withheld (`resolveEffectiveDryRun` forces
-      dry-run when the source is unauthorized), so nothing unsafe happens; the gap is that the
-      per-home Limits/Overview surface has nothing to render and says nothing about why. Note this
-      contradicts the intent recorded at `setup/homeRuntime/homeCapacityBundleApi.ts` ("the
-      ready-edge is DECOUPLED from sample arrival ... so it works in flow mode") — correct that
-      comment with the fix. Per the 2026-08-16 ruling a meterless home is unmanageable and correctly
-      gets no plan, and that ruling stands: the fix is a surface that SAYS so, not a fabricated plan.
-      Done when a meter area on a home running `power_source = flow` renders a line naming the power
-      source as the reason it has no readings, instead of a permanently blank card.
-      *Hypothesis:* an owner who adds a meter area while on the flow source sees a permanently blank
-      card and reads it as PELS being broken. *Persona:* the multi-home owner mid-setup. [P2]
+- [ ] **A silent meter AREA has no staleness indication: the no-readings banner speaks only for
+      Main.** The banner (`packages/shared-domain/src/powerReadingsBanner.ts`, fed by the
+      deliberately Main-only `getPowerReadModel` in `packages/settings-ui/src/ui/power.ts`) is the
+      one staleness surface after the freshness chip's removal, and before that removal a silent
+      area still surfaced through the scoped hero's chip. Past the shed timeout the scoped hero
+      renders NOTHING for an unmeasured cycle (`PlanHero.tsx`, owner ruling: no computed figure is
+      drawn), so a silent area shows only `Limited` cards under no banner and no hero. The per-area
+      power read already carries that area's readings fact (`setup/settingsUiApi.ts`, read in
+      `usagePowerRead.ts`). **What changes:** while an area is the active home scope, the banner
+      reads that area's readings fact and names the area in its hint. **Done when** silencing an
+      area's meter for >60 s shows the banner on that area's scope while Main stays fresh, pinned by
+      a UI test. *Hypothesis:* an owner whose rental-unit meter drops out sees its devices held with
+      no explanation and reads it as PELS being broken. *Persona:* the multi-home owner. [P2]
 
 - [ ] **"Leave off until turned on again": sub-home plan paths are not driven by hold changes.**
       One remaining gap, multi-home-only: the hold store is shared across homes but the plan
@@ -391,27 +288,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       nothing, and the only escape (delete an area) is not something the message suggests. Source:
       multi-home finishing train, area-config invariants PR review. [P3]
 
-## Solar and surplus
-
-- [ ] **A smart task and "match solar surplus" cannot combine on one device — the task wins outright.**
-      `runSurplusPass` (`lib/plan/planBuilderSurplus.ts:74-79`) drops every device in
-      `admittedDeviceIds` from BOTH the allocator and the hold, so a charger with a soft deadline
-      stops tracking surplus entirely for the whole life of the task — including the sunny hours
-      long before the deadline bites, which is exactly when the owner wanted solar-only charging.
-      The settings UI mirrors it by disabling the toggle outright. What changes: let a device whose
-      deferred objective is `enforcement: 'soft'` and whose deadline is not yet pressing keep its
-      surplus ceiling, and hand the task priority only once its own admission says it must charge
-      to make the deadline (the horizon planner already computes that boundary). Options if that
-      proves too fine-grained: a per-task "prefer solar" flag, or leaving the current all-or-nothing
-      and saying so in the toggle copy instead. Done when a charger with a soft deadline tomorrow
-      morning charges only on surplus through a sunny afternoon, then takes grid power overnight to
-      make the deadline. *Persona:* prosumer with PV + EV (`notes/personas.md` — the Smart tasks row
-      names this as the remaining gap). *Hypothesis:* the two features were built independently and
-      the exclusion is a precedence shortcut, not a considered product ruling; combining them is the
-      shape owners actually ask for ("leave it plugged in, use the sun, but be full by 07:00").
-      *Why:* without it "charge on solar surplus" and "be charged by X" are mutually exclusive, and
-      an owner who wants both must pick one. *(From the surplus-tracking train, 2026-08-26.)* [P2]
-
 ## Prices
 
 - [ ] **The Power by the Hour source drops the export price it is handed.** The app's
@@ -428,20 +304,20 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Done when a home on this source with export pricing on shows the app's own feed-in price on
       the Budget tab's "Export price now", and the planning price follows it. [P2]
 
-- [ ] **A price-level change is only published when a reading rebuilds the plan.** The
-      `price_level` Flow trigger and the `pels_insights` level capability are both written by
-      `PlanStatusWriter.update`, i.e. during a plan rebuild, and nothing rebuilds on a price-period
-      boundary any more (the boundary rebuild ran against a daily-budget snapshot still pointing at
-      the hour just ended). Under `power_source = homey_energy` a reading every 10 s hides this;
-      under `power_source = flow`, where readings arrive on the owner's Flow, a level change can go
-      unpublished for as long as the Flow is quiet — and on a 15-minute zone the level changes up to
-      four times an hour. Change: give the level its own publication path on the price-period clock
-      that does not go through a plan rebuild — a rebuild re-decides shedding, and an extra one
-      purely to publish a level changed shed depth in
-      `test/e2e/temperatureControlDisabledSteppedShedSdkE2E.test.ts` when tried. Done when a level
-      change reaches the trigger and the insights capability on a flow-fed home without a reading
-      in between, and that e2e's shed ladder is unchanged. *(Codex review on #2434, 2026-09-17;
-      widened to every home when the price-period rebuild was removed.)* [P2]
+- [ ] **Under `power_source = flow`, a price-level change waits for the next meter reading.** The
+      `price_level` Flow trigger and the `pels_insights` level capability are written by
+      `PlanStatusWriter.update`, which runs only on a plan rebuild. The first reading in each new
+      planning period always rebuilds (`lib/plan/rebuildScheduler/policy.ts`), so under
+      `homey_energy` the level publishes within one poll. Under `power_source = flow` readings
+      arrive on the owner's Flow, so a level change waits for its next report, and a quiet Flow can
+      delay it past a 15-minute period or skip that period's trigger altogether (the comments in
+      `planStatusWriter.ts` and `lib/price/priceLevelUtils.ts` say so). **What changes:** give the
+      level its own publication on the price-period clock that does not go through a plan rebuild;
+      an extra rebuild purely to publish a level changed shed depth in
+      `test/e2e/temperatureControlDisabledSteppedShedSdkE2E.test.ts` when tried. **Done when** a
+      level change reaches the trigger and the insights capability on a flow-fed home without a
+      reading in between, and that e2e's shed ladder is unchanged. *(Codex review on #2434,
+      2026-09-17.)* [P2]
 
 ## Daily budget and weather
 
@@ -477,26 +353,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       MET UI-cleanup scope decision, 2026-06-14. [P3]
 
 ## Device observation and transport
-
-- [ ] **P2 — a repeated identical binary report re-stamps the transport's observation but never
-      reaches the observer projection.** A repeated identical binary boolean re-stamps
-      `binaryControlObservation` (`observedAtMs`, `source`) and the unchanged-fold path in
-      `lib/device/transport/realtimeCapabilityHandling.ts` returns without dispatching; the reader is
-      `setup/externalOffHoldDetection.ts`, whose `binaryAxisObservedAtMs` then lags and is handed to
-      `clearRecentBinaryOffCommand` by `setup/homeRuntime/planDevicePrePass.ts` — a stamp that fails
-      to postdate a recently confirmed PELS-off command leaves the provenance in place, so a later
-      manual OFF is attributed to PELS and the "leave off until turned on again" hold never starts.
-      Trigger: a charger re-reporting `evcharger_charging: true` every poll with the fold unchanged.
-      This is NOT a bare dispatch: an equal report while PELS's own write is in flight is
-      deliberately kept quiet (`deviceManager.test.ts`, "keeps equal realtime control truth quiet
-      after an accepted write"), so the fix must separate "re-stamped an observation" from "echoed a
-      command we have not settled". **What changes:** dispatch the re-stamp once that question is
-      answered, the way the `measure_power` freshness path already does. **Done when:** a
-      transport-boundary spec asserts the projection matches the transport after a repeated
-      identical report, in the shape of "advances the measured-power observation stamp on a
-      REPEATED identical reading" (`test/integration/observedDeviceStateProjection.test.ts`), and
-      the in-flight echo spec still passes. Source: adversarial + runtime-reality review of the
-      stage-6 PR.
 
 - [ ] **P2 — the one persisted actuation clock sits outside the abandon-grace regime.**
       `DEVICE_LAST_CONTROLLED_MS` is hydrated by `setup/appServiceWiring.ts` and
@@ -679,22 +535,6 @@ Design-of-record: `notes/web-app.md`.
       reading, assert the off write. **Done when:** the spec fails if the hold stops producing
       an executable off intent. [P2]
 
-- [ ] **P2 — three `setup/` files compose peers the guard's seed banked as permanent budget.**
-      `npm run setup:boundaries` seeds its ratchet from the tree it merges against, so the counts it
-      now enforces (55 cross-peer, 33 SDK) include files no one has named: `setup/settingsUiHomesApi.ts`
-      gained a second peer (`home` + `power`) and `setup/settingsUiApi.ts` went 3 → 4 (added
-      `objectives`) while the rule was written but unmerged against `4d5a6488f`, and
-      `setup/appRuntimeApi.ts` composes four (`dailyBudget`, `device`, `plan`, `power`) — `weather`
-      went with the weather-history repository and `observer` when its reads became a port. None is a rule violation the
-      guard let through — it was not running — but each is a concept nobody has named, and seeding
-      froze them as permanent budget. Change: give each its name. The two settings-UI handler files
-      are read-model composition and want a projection module in a neutral contract package rather
-      than another peer import in the wiring layer; `appRuntimeApi.ts` is the inherited runtime
-      façade, and each of its peer-touching method groups belongs with the module that owns the
-      concept, reached through the ports the façade already hands over. Done when
-      `scripts/setup-peer-allowlist.txt` records 52 or fewer cross-peer files and none of these three
-      appears in it. Source: re-seeding this guard at merge, 2026-09-07.
-
 - [ ] **P1 — the remaining history keys still ride `homey.settings`, and every write of any key
       pays for all of them.** The SDK's `ManagerSettings.set` ships the ENTIRE settings object to
       core on every write of any key (`notes/settings-key-ownership.md` § "Which store"), so each
@@ -723,20 +563,6 @@ Design-of-record: `notes/web-app.md`.
       `GET /api/manager/apps/app/com.barelysufficient.pels/setting` on the production Homey, which
       leaves about 16 kB of configuration and live latches. Count writes by diffing successive reads of that endpoint, not with
       the `settings_set.*` perf counter, which covers only `capacity_in_shortfall`.
-
-- [ ] **The tracker store has no schema version, and the objective profiles ride it as one JSON
-      scalar.** `lib/power/trackerStore.ts` writes `objectiveProfiles` — every device's learned
-      energy-rate profile, sample buffer included — as a single `value_json` row, rewritten whole
-      whenever any profile changes (the row-per-bucket layout the other families get is what makes
-      their persists cheap). And the five tables carry no version: a future layout change has no
-      way to tell an older file from a newer one, and would have to guess from the rows. Change:
-      a `power_tracker_device_profiles (home_id, device_id, profile_json)` table so a learned
-      profile costs one row per device on write, and a `schema_version` row in the database's
-      `meta` table (`lib/store/userdataDatabase.ts` creates it, nothing reads it yet) checked at
-      open — with a mismatch quarantining the file the way a damaged one is, since everything in it
-      is regenerable by ruling. No migration code: the store shipped unreleased, so the only rows
-      the change would re-learn are the owner's. Done when a profile persist touches one row and
-      `meta` names the layout. Found in the store design audit, 2026-09-07. [P2]
 
 - [ ] **Three setup files still hold runtime state, above the boundaries `arch:check` enforces.**
       `setup/` constructs and connects and holds nothing (`setup/AGENTS.md` § "No state"), enforced
@@ -788,21 +614,6 @@ Design-of-record: `notes/web-app.md`.
       `npm run arch:check` as the gate on the destination. Done when
       `scripts/setup-stateless-allowlist.txt` no longer exists and `npm run setup:stateless` passes
       without it. Found 2026-08-29. [P2]
-
-- [ ] **`schedulePlanRebuild` is still rebuilt per sample, because it closes over the request.**
-      The other three seams `recordPowerSampleForApp` reaches back through are now bound once
-      (`PowerSamplePipeline`'s readonly arrow properties). The fourth cannot be, as it stands: its
-      body calls `publishResolvedHomeMeter(request)` — the sampled-meter ownership fence — so a
-      boot-bound closure would have no identity to publish. Give it a typed argument carrying the
-      watts and the meter identity the ingest just admitted, so the identity, the watts and their
-      timestamp still move as ONE admitted operation and a superseded request drops its identity
-      claim with its watts. Two things to get right: the argument is a named domain value, not the
-      whole request spread through the seam; and `planConvergenceActive`, `planUnactionable` and
-      `skipWhileShortfallUnrecoverable` currently resolve BEFORE the ingest and would move to call
-      time, which is the anti-storm throttle — the one a persistent zero-allowance shortfall once
-      drove until the cpuwarn watchdog killed the app. Pin the current read-ordering with a test
-      before moving them. Done when the seam takes a named argument, all four callbacks are bound at
-      construction, and `runPowerSample` builds no closures per sample. Found 2026-09-01. [P2]
 
 - [ ] **Each power limit is a loose nullable, and readers re-derive which nulls mean "off".**
       The capacity, grid and daily axes and the binding limit travel as separate `number | null`
@@ -875,13 +686,3 @@ commuter (`notes/personas.md`).*
 
 *Demoted from P2 (2026-06-03 scrutiny pass) — real product / future-capability work with a
 persona but no current support-cost pressure; reframed to the P3 bar.*
-
-## Post-release docs update
-
-- [ ] Update `docs/configuration.md` and `docs/technical.md` for the **When the
-  temperature changes outside PELS** selector: Return to mode target, Keep the new
-  temperature, and Save as current mode target. The observation opt-in saves the
-  chosen temperature literally; price/solar offsets and temperature limiting are
-  unavailable, while modes still apply saved targets and other power controls
-  remain usable. Existing disable settings retain their meaning. See
-  `notes/temperature-ownership.md`.
