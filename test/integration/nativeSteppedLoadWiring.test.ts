@@ -866,7 +866,7 @@ describe('native stepped-load wiring', () => {
   });
 
   it('writes native capability instead of triggering the stepped-load flow when enabled', async () => {
-    const requestSteppedLoadStep = vi.fn(async () => ({ requested: true, acknowledged: true as const, transport: 'native_capability' as const }));
+    const requestSteppedLoadStep = vi.fn(async () => ({ requested: true, acknowledged: true, transport: 'native_capability' } as const));
     const trigger = vi.fn(async () => undefined);
     const ctx = steppedCommandContext(requestSteppedLoadStep);
 
@@ -1195,8 +1195,8 @@ describe('native stepped-load wiring', () => {
   it('does not apply a stale stepped command while an outside-off hold is active', async () => {
     const requestSteppedLoadStep = vi.fn(async () => ({
       requested: true,
-      acknowledged: true as const, transport: 'native_capability' as const,
-    }));
+      acknowledged: true, transport: 'native_capability',
+    } as const));
     const ctx = steppedCommandContext(requestSteppedLoadStep, {}, (deviceId: string) => deviceId === 'hoiax-1');
     const action = buildSteppedAction({
       id: 'hoiax-1',
@@ -1232,7 +1232,7 @@ describe('native stepped-load wiring', () => {
       }, {
         deviceId: params.deviceId,
       });
-      return { requested: true, acknowledged: true as const, transport: 'flow' as const };
+      return { requested: true, acknowledged: true, transport: 'flow' } as const;
     });
     const ctx = steppedCommandContext(requestSteppedLoadStep);
 
@@ -1302,7 +1302,7 @@ describe('native stepped-load wiring', () => {
       }, {
         deviceId: params.deviceId,
       });
-      return { requested: true, acknowledged: true as const, transport: 'flow' as const };
+      return { requested: true, acknowledged: true, transport: 'flow' } as const;
     });
     const ctx = steppedCommandContext(requestSteppedLoadStep);
 
