@@ -19,6 +19,11 @@ const withTestLock = (label, command, args) => [
   ['scripts/with-validation-lock.mjs', label, '--', command, ...args],
 ];
 
+const withChecksLock = (label, command, args) => [
+  'node',
+  ['scripts/with-validation-lock.mjs', '--checks', label, '--', command, ...args],
+];
+
 const run = (command, args) => {
   console.log(`pre-commit-extra: running ${command} ${args.join(' ')}`);
   const result = spawnSync(command, args, { stdio: 'inherit', env: process.env });
@@ -38,7 +43,11 @@ if (hasStagedFile(stagedFiles, ['.husky/pre-commit', 'scripts/pre-commit-extra-c
 }
 
 if (hasStagedFile(stagedFiles, ['.husky/pre-commit', 'scripts/pre-commit-extra-checks.mjs', 'scripts/pre-commit-typecheck.mjs'])) {
-  commands.push(['node', ['scripts/pre-commit-typecheck.mjs', 'test/integration/prePushChecks.test.ts']]);
+  commands.push(withChecksLock(
+    'pre-commit:typecheck:routing',
+    'node',
+    ['scripts/pre-commit-typecheck.mjs', 'test/integration/prePushChecks.test.ts'],
+  ));
 }
 
 if (commands.length === 0) {

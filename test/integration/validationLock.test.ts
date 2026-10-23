@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { runWithValidationLock } from '../../scripts/with-validation-lock.mjs';
+import { runWithValidationLock, validationLockPath } from '../../scripts/with-validation-lock.mjs';
 
 const tempDirs: string[] = [];
 
@@ -29,7 +29,7 @@ describe('machine-wide validation lock', () => {
     }
   });
 
-  it('is reserved for test entrypoints and test-only hook phases', () => {
+  it('reserves the test lane for test entrypoints and the checks lane for static checks', () => {
     const packagePaths = [
       path.resolve(__dirname, '../../package.json'),
       path.resolve(__dirname, '../../packages/settings-ui/package.json'),
@@ -44,8 +44,12 @@ describe('machine-wide validation lock', () => {
         .filter(([, command]) => command.includes('with-validation-lock.mjs'));
 
       expect(lockedScripts.length).toBeGreaterThan(0);
-      for (const [name] of lockedScripts) {
-        expect(name).toMatch(/(?:^|:)test(?::|$)/u);
+      for (const [name, command] of lockedScripts) {
+        if (command.includes('with-validation-lock.mjs --checks ')) {
+          expect(name).toBe('ci:checks');
+        } else {
+          expect(name).toMatch(/(?:^|:)test(?::|$)/u);
+        }
       }
 
       for (const commands of Object.values(packageJson['lint-staged'] ?? {})) {
@@ -58,6 +62,104 @@ describe('machine-wide validation lock', () => {
       const hookScript = fs.readFileSync(path.resolve(__dirname, `../../.husky/${hook}`), 'utf8');
       expect(hookScript).not.toContain('with-validation-lock.mjs');
     }
+
+    // The commit hook's lint and typecheck share the static-check lane only.
+    const preCommit = fs.readFileSync(path.resolve(__dirname, '../../scripts/pre-commit-checks.mjs'), 'utf8');
+    expect(preCommit).toMatch(/'scripts\/with-validation-lock\.mjs',\s*'--checks',\s*'pre-commit:lint-staged'/u);
+  });
+
+  it('keeps static checks and test runs on separate lock files', () => {
+    expect(validationLockPath('checks')).not.toBe(validationLockPath('test'));
+    expect(validationLockPath()).toBe(validationLockPath('test'));
+  });
+
+  it('parses the --checks flag on the command line', () => {
+    const scriptPath = path.resolve(__dirname, '../../scripts/with-validation-lock.mjs');
+    // The held marker skips the machine-wide checks lock, so this never queues
+    // behind a real ci:checks run. A misparsed flag would fail with usage (2).
+    const env = { PATH: process.env.PATH ?? '', CI: '1', PELS_CHECKS_LOCK_HELD: '1' };
+
+    const ran = spawnSync(process.execPath, [
+      scriptPath, '--checks', 'cli', '--', process.execPath, '-e', 'process.stdout.write(process.argv[1])', 'ran',
+    ], { env, encoding: 'utf8' });
+    expect(ran.stderr).toBe('');
+    expect(ran.status).toBe(0);
+    expect(ran.stdout).toBe('ran');
+
+    const missingLabel = spawnSync(process.execPath, [
+      scriptPath, '--checks', '--', process.execPath, '-e', 'process.exit(0)',
+    ], { env, encoding: 'utf8' });
+    expect(missingLabel.status).toBe(2);
+  });
+
+  it('does not let a held checks lock skip the test lock', async () => {
+    const dir = makeTempDir();
+    const lockPath = path.join(dir, 'validation.lock');
+    const eventPath = path.join(dir, 'events.log');
+    const childScript = `
+      const fs = require('node:fs');
+      const [eventPath, label, delay] = process.argv.slice(1);
+      fs.appendFileSync(eventPath, label + ':start\\n');
+      setTimeout(() => fs.appendFileSync(eventPath, label + ':end\\n'), Number(delay));
+    `;
+    const env = { PATH: process.env.PATH ?? '', CI: '1' };
+
+    const first = runWithValidationLock({
+      label: 'test-run',
+      command: process.execPath,
+      args: ['-e', childScript, eventPath, 'test-run', '120'],
+      env,
+      lockPath,
+      tmpRoot: path.join(makeTempDir(), 'tmp-root'),
+    });
+    await waitForFileContent(eventPath, 'test-run:start');
+    const second = runWithValidationLock({
+      label: 'test-inside-checks',
+      command: process.execPath,
+      args: ['-e', childScript, eventPath, 'test-inside-checks', '0'],
+      env: { ...env, PELS_CHECKS_LOCK_HELD: '1' },
+      lockPath,
+      tmpRoot: path.join(makeTempDir(), 'tmp-root'),
+    });
+
+    await expect(Promise.all([first, second])).resolves.toEqual([0, 0]);
+    expect(fs.readFileSync(eventPath, 'utf8').trim().split('\n')).toEqual([
+      'test-run:start',
+      'test-run:end',
+      'test-inside-checks:start',
+      'test-inside-checks:end',
+    ]);
+  });
+
+  it('lets static checks nested under the checks lock reuse it', async () => {
+    const dir = makeTempDir();
+    const lockPath = path.join(dir, 'checks.lock');
+    const moduleUrl = pathToFileURL(path.resolve(__dirname, '../../scripts/with-validation-lock.mjs')).href;
+    // The command run under the lock starts its own checks-lane run on the same
+    // lock file with the environment it inherited. Unless the held marker
+    // reaches it, it waits on its parent and times out after a second with 75.
+    const nestedScript = `
+      const { runWithValidationLock } = await import(${JSON.stringify(moduleUrl)});
+      process.exit(await runWithValidationLock({
+        label: 'nested',
+        command: process.execPath,
+        args: ['-e', 'process.exit(0)'],
+        lockPath: ${JSON.stringify(lockPath)},
+        lane: 'checks',
+        timeoutSeconds: 1,
+        tmpRoot: ${JSON.stringify(path.join(makeTempDir(), 'tmp-root'))},
+      }));
+    `;
+
+    await expect(runWithValidationLock({
+      label: 'owner',
+      command: process.execPath,
+      args: ['--input-type=module', '-e', nestedScript],
+      env: { PATH: process.env.PATH ?? '', CI: '1' },
+      lockPath,
+      lane: 'checks',
+      tmpRoot: path.join(makeTempDir(), 'tmp-root'),
+    })).resolves.toBe(0);
   });
 
   it('serializes contenders that share a lock file', async () => {

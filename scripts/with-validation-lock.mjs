@@ -10,12 +10,21 @@ import {
   spawnManagedChild,
 } from './lib/managed-child.mjs';
 
-const LOCK_HELD_ENV = 'PELS_VALIDATION_LOCK_HELD';
+// Two independent lanes, one lock file each. Test runs share the `test` lane.
+// Static checks (tsc, ESLint, the architecture scans) share the `checks` lane,
+// so concurrent pushes and commits from several worktrees typecheck one at a
+// time without queueing behind a test run. Each lane has its own held marker:
+// holding the checks lock never lets a nested test run skip the test lock.
+const LANES = {
+  test: { lockName: 'pels-validation', heldEnv: 'PELS_VALIDATION_LOCK_HELD', slot: 'validation' },
+  checks: { lockName: 'pels-checks', heldEnv: 'PELS_CHECKS_LOCK_HELD', slot: 'static-check' },
+};
+const CHECKS_FLAG = '--checks';
 const LOCK_TIMEOUT_SECONDS = 30 * 60;
 const LOCK_TIMEOUT_EXIT_CODE = 75;
 
 const usage = () => {
-  console.error('usage: node scripts/with-validation-lock.mjs <label> -- <command> [args...]');
+  console.error(`usage: node scripts/with-validation-lock.mjs [${CHECKS_FLAG}] <label> -- <command> [args...]`);
 };
 
 const run = (command, args, env) => new Promise((resolve) => {
@@ -82,10 +91,11 @@ const withRunTmpDir = async (tmpRoot, env, runCommand) => {
 };
 
 // On a desktop host the run gets a systemd user scope: above MemoryHigh the
-// kernel reclaims and throttles the test run instead of swapping out the
+// kernel reclaims and throttles the locked run instead of swapping out the
 // browser or editor, MemoryMax OOM-kills the run rather than something else,
 // and the low CPU weight keeps the desktop responsive while it runs. The
-// heaviest lane (Playwright, two browser workers) peaks around 1.7 GB. A run
+// heaviest lane (Playwright, two browser workers) peaks around 1.7 GB, and
+// `ci:checks` (two tasks at a time) around 1 GB. A run
 // killed at MemoryMax fails like any crash; `journalctl --user` names the OOM.
 const VALIDATION_SCOPE_PROPERTIES = [
   'MemoryHigh=3G',
@@ -101,12 +111,12 @@ const canRunInUserScope = (env) => {
   return probe.status === 0;
 };
 
-export const validationLockPath = () => {
+export const validationLockPath = (lane = 'test') => {
   const uid = process.getuid?.();
   if (uid === undefined) {
     throw new Error('validation lock requires a Linux user id');
   }
-  return `/tmp/pels-validation-${uid}.lock`;
+  return `/tmp/${LANES[lane].lockName}-${uid}.lock`;
 };
 
 export const runWithValidationLock = async ({
@@ -118,8 +128,10 @@ export const runWithValidationLock = async ({
   timeoutSeconds = LOCK_TIMEOUT_SECONDS,
   lockPath: requestedLockPath,
   tmpRoot = validationTmpRoot(env),
+  lane = 'test',
 }) => {
-  if (env[LOCK_HELD_ENV] === '1') {
+  const { heldEnv, slot } = LANES[lane];
+  if (env[heldEnv] === '1') {
     return run(command, args, env);
   }
 
@@ -129,8 +141,8 @@ export const runWithValidationLock = async ({
       return run(command, args, runEnv);
     }
 
-    const lockPath = requestedLockPath ?? validationLockPath();
-    console.log(`validation lock: ${label} waiting for the shared PELS validation slot`);
+    const lockPath = requestedLockPath ?? validationLockPath(lane);
+    console.log(`validation lock: ${label} waiting for the shared PELS ${slot} slot`);
     const startedAt = Date.now();
     const flockArgs = [
       '--no-fork',
@@ -143,7 +155,7 @@ export const runWithValidationLock = async ({
       command,
       ...args,
     ];
-    const lockedEnv = { ...runEnv, [LOCK_HELD_ENV]: '1' };
+    const lockedEnv = { ...runEnv, [heldEnv]: '1' };
     // systemd-run --scope execs in place, so signals still reach the process group.
     const code = canRunInUserScope(runEnv)
       ? await run('systemd-run', [
@@ -169,15 +181,17 @@ export const runWithValidationLock = async ({
 const isEntry = process.argv[1] !== undefined
   && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isEntry) {
-  const separatorIndex = process.argv.indexOf('--', 2);
-  if (separatorIndex !== 3 || process.argv.length < 5) {
+  const lane = process.argv[2] === CHECKS_FLAG ? 'checks' : 'test';
+  const labelIndex = lane === 'checks' ? 3 : 2;
+  const separatorIndex = process.argv.indexOf('--', labelIndex);
+  if (separatorIndex !== labelIndex + 1 || process.argv.length < labelIndex + 3) {
     usage();
     process.exit(2);
   }
 
-  const label = process.argv[2];
-  const command = process.argv[4];
-  const args = process.argv.slice(5);
-  const code = await runWithValidationLock({ label, command, args });
+  const label = process.argv[labelIndex];
+  const command = process.argv[labelIndex + 2];
+  const args = process.argv.slice(labelIndex + 3);
+  const code = await runWithValidationLock({ label, command, args, lane });
   process.exit(code);
 }
