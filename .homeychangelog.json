@@ -670,5 +670,8 @@
   },
   "3.20.0": {
     "en": "When a charger is plugged in but PELS has no battery level for the car, New smart task, the device page and the Create smart task widget now offer a task for an amount of energy instead, with 10 to 40 kWh as one-tap choices in the widget. The task plans from the charger's own power, so it no longer waits all night for a car app that never reports the level.\n\nOutside Norway, PELS now takes prices from Power by the Hour when that app can price your home and you have not chosen a price source, so the markups you set there apply. Once devices follow prices, PELS no longer switches source by itself, and Electricity prices offers Use Power by the Hour instead.\n\nSetup outside Norway is clearer. The price suggestion says PELS already has your prices and goes straight to choosing devices. In Sweden, the Limits step asks whether your grid company charges for peak use. Limits & safety shows the hard cap PELS uses until you set one, with a button to keep it."
+  },
+  "3.21.0": {
+    "en": "PELS now also runs in a browser, on a computer or from your phone's home screen. Settings, Open in a browser shows how to create an API key on your Homey and add it at pels.barelysufficient.org/app. You can add several Homeys and switch between them, and move them to your phone by scanning a code the computer shows. At home the browser talks to Homey on your own network; away from home it goes through Homey's cloud.\n\nEvery page in PELS settings now has its own address, so Back returns to the page you came from and a reload stays on the same page."
   }
 }
