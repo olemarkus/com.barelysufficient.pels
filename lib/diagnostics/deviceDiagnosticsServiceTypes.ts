@@ -5,7 +5,7 @@ import type {
 } from '../../packages/contracts/src/deviceDiagnosticsTypes';
 import type { DeviceDiagnosticsStateStore } from './deviceDiagnosticsStateStore';
 import type { StarvationTarget, StarvationUnmeasuredReason } from '../../packages/contracts/src/starvationRescue';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
+import type { Logger as PinoLogger } from '../logging/logger';
 
 export type DeviceDiagnosticsBlockCause = 'not_blocked' | 'headroom' | 'cooldown_backoff';
 export type DeviceDiagnosticsStarvationSuppressionState = 'counting' | 'paused' | 'none';
@@ -230,7 +230,5 @@ export type LiveDeviceDiagnostics = {
 export type DeviceDiagnosticsServiceDeps = {
   diagnosticsStateStore: DeviceDiagnosticsStateStore;
   getTimeZone: () => string;
-  isDebugEnabled?: () => boolean;
   structuredLog?: Pick<PinoLogger, 'info' | 'error'>;
-  debugStructured?: StructuredDebugEmitter;
 };

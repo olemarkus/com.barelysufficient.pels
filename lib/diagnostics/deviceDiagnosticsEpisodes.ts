@@ -7,10 +7,11 @@ import type {
 } from './deviceDiagnosticsServiceTypes';
 import type { DeviceDiagnosticsStarvationPauseReason } from '../../packages/contracts/src/deviceDiagnosticsTypes';
 import type { StarvationTarget } from '../../packages/contracts/src/starvationRescue';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
-import { getLogger } from '../logging/logger';
+import type { Logger as PinoLogger } from '../logging/logger';
+import { getDebugEmitter, getLogger } from '../logging/logger';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
+const debug = getDebugEmitter('diagnostics', 'diagnostics');
 const moduleLogger = getLogger('diagnostics/device');
 
 const DEVICE_DIAGNOSTICS_STARVATION_ENTRY_MS = 15 * 60 * 1000;
@@ -100,7 +101,6 @@ const evaluateStarvationObservation = (
 type StarvationTrackerDeps = {
   getLiveDeviceState: (deviceId: string) => LiveDeviceDiagnostics;
   structuredLog?: Pick<PinoLogger, 'info'>;
-  emitDebug: StructuredDebugEmitter;
 };
 
 // Owns the per-device starvation episode state machine. Kept as a class so the
@@ -157,7 +157,7 @@ export class StarvationTracker {
       live.starvation.clearQualifiedStartedAt = undefined;
       live.starvation.starvationCause = null;
       live.starvation.starvationPauseReason = null;
-      this.deps.emitDebug({
+      debug({
         event: 'diagnostics_starvation_pending_reset',
         deviceId,
         deviceName: live.name,
@@ -167,7 +167,7 @@ export class StarvationTracker {
       return;
     }
     live.starvation.clearQualifiedStartedAt = undefined;
-    this.deps.emitDebug({
+    debug({
       event: 'diagnostics_starvation_thresholds_refreshed',
       deviceId,
       deviceName: live.name,

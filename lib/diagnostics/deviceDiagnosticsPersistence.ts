@@ -22,15 +22,12 @@ import type {
   DeviceDiagnosticsServiceDeps,
   LiveDemandObservation,
 } from './deviceDiagnosticsServiceTypes';
-import type { StructuredDebugEmitter } from '../logging/logger';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter, getLogger, isDebugTopicEnabled } from '../logging/logger';
 import { normalizeError } from '../utils/errorUtils';
 import { clampPenaltyLevel } from './deviceDiagnosticsNumbers';
 
 const moduleLogger = getLogger('diagnostics/device');
-// Hoisted once so `emitDebug` allocates no per-call closure on the (test-only;
-// production always wires `debugStructured`) fallback path.
-const debugFallbackEmit: StructuredDebugEmitter = (payload) => moduleLogger.debug(payload);
+const debug = getDebugEmitter('diagnostics', 'diagnostics');
 const MS_PER_HOUR = 60 * 60 * 1000;
 
 export const DEVICE_DIAGNOSTICS_STATE_KEY = 'device_diagnostics_v1';
@@ -38,11 +35,6 @@ export const DEVICE_DIAGNOSTICS_WINDOW_DAYS = 21;
 export const DEVICE_DIAGNOSTICS_PERSIST_VERSION = 2;
 
 const DEVICE_DIAGNOSTICS_FLUSH_THROTTLE_MS = 5 * 60 * 1000;
-
-type DeviceDiagnosticsPersistenceDeps = Pick<
-  DeviceDiagnosticsServiceDeps,
-  'diagnosticsStateStore' | 'getTimeZone' | 'isDebugEnabled' | 'structuredLog' | 'debugStructured'
->;
 
 // Owns the persisted per-device day aggregates plus the flush lifecycle
 // (dirty-tracking, throttling, day rollover, pruning). Kept as a class so the
@@ -59,16 +51,8 @@ export class DeviceDiagnosticsPersistence {
   private lastSkippedFlushLogMs = 0;
   private lastSeenDateKey: string | null = null;
 
-  constructor(private deps: DeviceDiagnosticsPersistenceDeps) {
+  constructor(private deps: DeviceDiagnosticsServiceDeps) {
     this.loadFromSettings();
-  }
-
-  private emitDebug(payload: Record<string, unknown>): void {
-    (this.deps.debugStructured ?? debugFallbackEmit)(payload);
-  }
-
-  private isDiagnosticsDebugEnabled(): boolean {
-    return this.deps.isDebugEnabled?.() ?? true;
   }
 
   private loadFromSettings(): void {
@@ -78,7 +62,7 @@ export class DeviceDiagnosticsPersistence {
     this.lastSeenDateKey = getDateKeyInTimeZone(new Date(), this.deps.getTimeZone());
 
     if (sanitized.resetReason) {
-      this.emitDebug({ event: 'diagnostics_persisted_payload_reset', reason: sanitized.resetReason });
+      debug({ event: 'diagnostics_persisted_payload_reset', reason: sanitized.resetReason });
       this.dirty = true;
       this.flush('startup_repair', { force: true });
       return;
@@ -89,14 +73,14 @@ export class DeviceDiagnosticsPersistence {
       this.flush('startup_repair', { force: true });
     }
 
-    this.emitDebug({
+    debug({
       event: 'diagnostics_persisted_payload_loaded',
       version: this.persistedState.version,
       devices: countPersistedDevices(this.persistedState),
       days: countPersistedDays(this.persistedState),
     });
     if (prunedDayCount > 0) {
-      this.emitDebug({ event: 'diagnostics_pruned_expired_days', count: prunedDayCount });
+      debug({ event: 'diagnostics_pruned_expired_days', count: prunedDayCount });
     }
   }
 
@@ -346,7 +330,7 @@ export class DeviceDiagnosticsPersistence {
     this.flush('day_rollover', { force: true });
     const pruned = this.pruneExpiredDays(nowTs);
     if (pruned > 0) {
-      this.emitDebug({ event: 'diagnostics_pruned_expired_days', count: pruned });
+      debug({ event: 'diagnostics_pruned_expired_days', count: pruned });
     }
     this.lastSeenDateKey = currentDateKey;
   }
@@ -373,7 +357,7 @@ export class DeviceDiagnosticsPersistence {
   private logSkippedFlush(nowTs: number, detail: string): void {
     if (nowTs - this.lastSkippedFlushLogMs < DEVICE_DIAGNOSTICS_FLUSH_THROTTLE_MS) return;
     this.lastSkippedFlushLogMs = nowTs;
-    this.emitDebug({ event: 'diagnostics_flush_skipped', detail });
+    debug({ event: 'diagnostics_flush_skipped', detail });
   }
 
   private flush(reason: 'startup_repair' | 'throttle' | 'day_rollover' | 'shutdown', options: {
@@ -396,11 +380,11 @@ export class DeviceDiagnosticsPersistence {
       this.dirty = false;
       const dirtyDeviceCount = this.dirtyDeviceIds.size;
       const dayCount = countPersistedDays(this.persistedState);
-      const bytes = this.isDiagnosticsDebugEnabled()
+      const bytes = isDebugTopicEnabled('diagnostics')
         ? Buffer.byteLength(JSON.stringify(this.persistedState), 'utf8')
         : undefined;
       this.dirtyDeviceIds.clear();
-      this.emitDebug({
+      debug({
         event: 'diagnostics_flushed',
         reason,
         dirtyDevices: dirtyDeviceCount,

@@ -1361,7 +1361,6 @@ describe('daily-bound headroom starvation flows through to the overview budget b
     const service = new DeviceDiagnosticsService({
       diagnosticsStateStore: createInMemoryDeviceDiagnosticsStateStore(),
       getTimeZone: () => 'Europe/Oslo',
-      isDebugEnabled: () => false,
     });
 
     // Feed the REAL producer's output across many rebuild cycles. The restore
@@ -1430,7 +1429,6 @@ describe('daily-bound headroom starvation flows through to the overview budget b
     const service = new DeviceDiagnosticsService({
       diagnosticsStateStore: createInMemoryDeviceDiagnosticsStateStore(),
       getTimeZone: () => 'Europe/Oslo',
-      isDebugEnabled: () => false,
     });
 
     // Alternate the two budget-family reasons across rebuilds. The granular
@@ -1477,7 +1475,6 @@ describe('a device held under a restore cooldown accumulates held-back time', ()
     return new DeviceDiagnosticsService({
       diagnosticsStateStore: createInMemoryDeviceDiagnosticsStateStore(),
       getTimeZone: () => 'Europe/Oslo',
-      isDebugEnabled: () => false,
     });
   };
 
@@ -1572,9 +1569,7 @@ describe('turn_off shed reaches the persisted demand counters', () => {
     return new DeviceDiagnosticsService({
       diagnosticsStateStore: createInMemoryDeviceDiagnosticsStateStore(),
       getTimeZone: () => TZ,
-      isDebugEnabled: () => false,
       structuredLog: { info: () => {}, error: () => {} } as never,
-      debugStructured: () => {},
     });
   };
 

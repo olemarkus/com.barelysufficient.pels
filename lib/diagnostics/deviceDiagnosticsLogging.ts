@@ -2,7 +2,9 @@ import type {
   DeviceDiagnosticsControlEvent,
   LiveDemandObservation,
 } from './deviceDiagnosticsServiceTypes';
-import type { StructuredDebugEmitter } from '../logging/logger';
+import { getDebugEmitter } from '../logging/logger';
+
+const debug = getDebugEmitter('diagnostics', 'diagnostics');
 
 type DemandTransition = {
   deviceId: string;
@@ -14,7 +16,6 @@ type DemandTransition = {
 };
 
 export const logObservationTransition = (
-  emit: StructuredDebugEmitter,
   deviceId: string,
   name: string,
   previous: LiveDemandObservation | undefined,
@@ -30,11 +31,11 @@ export const logObservationTransition = (
     previousUnmet,
     nextUnmet,
   };
-  logDemandBoundary(emit, transition);
-  logBlockCauseChange(emit, transition);
+  logDemandBoundary(transition);
+  logBlockCauseChange(transition);
 };
 
-const logDemandBoundary = (emit: StructuredDebugEmitter, transition: DemandTransition): void => {
+const logDemandBoundary = (transition: DemandTransition): void => {
   const {
     deviceId,
     name,
@@ -44,7 +45,7 @@ const logDemandBoundary = (emit: StructuredDebugEmitter, transition: DemandTrans
     nextUnmet,
   } = transition;
   if (!previousUnmet && nextUnmet) {
-    emit({
+    debug({
       event: 'diagnostics_unmet_demand_started',
       deviceId,
       deviceName: name,
@@ -55,7 +56,7 @@ const logDemandBoundary = (emit: StructuredDebugEmitter, transition: DemandTrans
     return;
   }
   if (!previousUnmet || nextUnmet) return;
-  emit({
+  debug({
     event: 'diagnostics_unmet_demand_ended',
     deviceId,
     deviceName: name,
@@ -64,7 +65,7 @@ const logDemandBoundary = (emit: StructuredDebugEmitter, transition: DemandTrans
   });
 };
 
-const logBlockCauseChange = (emit: StructuredDebugEmitter, transition: DemandTransition): void => {
+const logBlockCauseChange = (transition: DemandTransition): void => {
   const {
     deviceId,
     name,
@@ -76,7 +77,7 @@ const logBlockCauseChange = (emit: StructuredDebugEmitter, transition: DemandTra
   const previousCause = previousUnmet ? previous?.blockCause : 'not_blocked';
   const nextCause = nextUnmet ? next.blockCause : 'not_blocked';
   if (!(previousUnmet || nextUnmet) || previousCause === nextCause) return;
-  emit({
+  debug({
     event: 'diagnostics_block_cause_changed',
     deviceId,
     deviceName: name,
@@ -88,12 +89,11 @@ const logBlockCauseChange = (emit: StructuredDebugEmitter, transition: DemandTra
 };
 
 export const logTrackedUsageEvent = (
-  emit: StructuredDebugEmitter,
   direction: 'rise' | 'drop',
   event: Extract<DeviceDiagnosticsControlEvent, { kind: 'tracked_usage_rise' | 'tracked_usage_drop' }>,
   deviceName: string,
 ): void => {
-  emit({
+  debug({
     event: 'diagnostics_tracked_usage',
     direction,
     deviceId: event.deviceId,
