@@ -38,6 +38,8 @@ export type HomeySettingsClient = {
     cb?: HomeyCallback<unknown>,
   ) => void;
   on?: (event: string, cb: (...args: unknown[]) => void) => void;
+  // Opens a link outside the settings page; only Homey's own host has it.
+  openURL?: (url: string) => void;
   clock?: {
     getTimezone?: () => string;
   };
