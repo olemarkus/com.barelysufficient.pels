@@ -136,8 +136,6 @@ export type PlanServiceDeps = {
   /** The tracker's sample stamp — gated consumers only, so it always exists. */
   getLastPowerUpdate: () => number;
   schedulePostActuationRefresh: () => void;
-  // `getStructuredLogger` can answer undefined, so `structuredLog` stays
-  // optional; the debug emitter always exists.
   loggers: Loggers & { debugStructured: StructuredDebugEmitter };
   overviewDebugStructured: StructuredDebugEmitter;
   isOverviewDebugEnabled: () => boolean;

@@ -6,8 +6,10 @@ import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { noHomeyWebApi, unknownHubMarket } from '../helpers/homeyWebApiStub';
+import { testLogger } from '../utils/testLogger';
 
 const createCoordinator = (): PriceCoordinator => new PriceCoordinator({
+  structuredLog: testLogger,
   homey: mockHomeyInstance as never,
   priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance.settings),
   priceDataStore: createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache()),

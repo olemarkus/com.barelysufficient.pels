@@ -47,7 +47,7 @@ export const createHomeRebuildRuntime = (
   timerKey: (suffix: string) => string,
   getCapacityGuard: () => CapacityGuard,
   getPlanService: () => PlanService,
-  getStructuredLogger: () => PinoLogger | undefined,
+  getStructuredLogger: () => PinoLogger,
   isDebugTopicEnabled: (topic: DebugLoggingTopic) => boolean,
 ): HomeRebuildRuntime => {
   // One monotonic clock for the scheduler, the throttle and the telemetry

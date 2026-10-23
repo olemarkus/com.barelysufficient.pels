@@ -347,7 +347,7 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
     private readonly getMainSnapshot: () => HomeModeCatalogSnapshot,
     private readonly getManagedDevices: () => Readonly<Record<string, boolean>>,
     private readonly getMembership: () => HomeMembershipPort | undefined,
-    private readonly getLogger: () => PinoLogger | undefined,
+    private readonly getLogger: () => PinoLogger,
     /**
      * The home batteries, whose unplaced rank is after every other unplaced
      * device. `unavailable` before the device layer has told them apart.
@@ -537,7 +537,7 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
     try {
       this.settings.set(homeScopedSettingsKey(CAPACITY_PRIORITIES, this.homeId), next);
     } catch (error) {
-      this.getLogger()?.warn({ event: 'mode_priority_ranks_persist_failed', homeId: this.homeId, err: error });
+      this.getLogger().warn({ event: 'mode_priority_ranks_persist_failed', homeId: this.homeId, err: error });
       return;
     }
     const modePriorityCatalog = new ModePriorityCatalog(next);
@@ -546,13 +546,13 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
       modePriorityCatalog,
       priorities: modePriorityCatalog.resolveConfiguration({}, targets, operatingMode),
     };
-    this.getLogger()?.info({ event: 'mode_priority_ranks_persisted', homeId: this.homeId, modes: Object.keys(next) });
+    this.getLogger().info({ event: 'mode_priority_ranks_persisted', homeId: this.homeId, modes: Object.keys(next) });
   }
 
   private logFailure(error?: unknown): void {
     if (this.unavailable) return;
     this.unavailable = true;
-    this.getLogger()?.warn({
+    this.getLogger().warn({
       event: 'home_mode_catalog_unavailable',
       homeId: this.homeId,
       err: error,
@@ -563,7 +563,7 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
     // Main mode changes use the global settings path; this edge event records
     // transitions between independently controlled per-home catalogs only.
     if (this.homeId === MAIN_HOME_ID || this.lastGood.operatingMode === this.lastLoggedMode) return;
-    this.getLogger()?.info({
+    this.getLogger().info({
       event: 'home_operating_mode_changed',
       homeId: this.homeId,
       mode: this.lastGood.operatingMode,
@@ -580,7 +580,7 @@ export const createHomeModeCatalog = (
   getMainSnapshot: () => HomeModeCatalogSnapshot,
   getManagedDevices: () => Readonly<Record<string, boolean>>,
   getMembership: () => HomeMembershipPort | undefined,
-  getLogger: () => PinoLogger | undefined,
+  getLogger: () => PinoLogger,
   readHomeBatteries: () => HomeBatteryDevicesRead,
 ): HomeModeCatalog => {
   const catalog = new HomeModeCatalogOwner(

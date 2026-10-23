@@ -18,6 +18,7 @@ import { buildPlanCycleObject, cycleArgsFor, type PlanCycle, type PlanCycleSpec 
 import { steppedInputDevice, steppedPlanDevice, sheddingPlanFixture, buildInitialPlanDevicesForSpec, applyRestorePlanForSpec } from '../utils/planTestUtils';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { capacityGuardSpy } from '../helpers/sheddingWiring';
+import { testLogger } from '../utils/testLogger';
 
 const chargerProfile = {
   steps: [
@@ -95,6 +96,7 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
     const getShedBehavior = () => ({ action: 'turn_off' as const });
 
     const sheddingPlan = await buildSheddingPlanForSpec(context, context, state, {
+      structuredLog: testLogger,
       capacityGuard,
       shortfallThresholdKw: 10,
       powerTracker: { lastTimestamp: 900, lastPowerW: 8_770 } as PowerTrackerState,
@@ -164,6 +166,7 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
       state,
       sheddingActive: false,
       deps: {
+        structuredLog: testLogger,
         powerTracker: { lastTimestamp: 900 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),

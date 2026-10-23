@@ -4,6 +4,7 @@ import { createPlanRebuildOutcome } from '../../lib/plan/planRebuildMetrics';
 import type { Logger } from '../../lib/logging/logger';
 import { requireInitializedAppContext, type AppContext } from '../../lib/app/appContext';
 import { getHomeModeCatalogForTest, createInitializedAppContextMock } from '../helpers/appContextTestHelpers';
+import { testLogger } from '../utils/testLogger';
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -32,8 +33,8 @@ const buildContext = () => {
   const timers = new TimerRegistry();
   const ctx = createInitializedAppContextMock({
     timers,
-    getStructuredLogger: (component: string): Logger | undefined =>
-      component === 'startup' ? (startupLogger as unknown as Logger) : undefined,
+    getStructuredLogger: (component: string): Logger =>
+      component === 'startup' ? (startupLogger as unknown as Logger) : testLogger,
   });
   const hydratePowerTracker = vi.mocked(ctx.hydratePowerTracker);
   const loadPriceOptimizationSettings = vi.mocked(ctx.priceCoordinator!.loadPriceOptimizationSettings);

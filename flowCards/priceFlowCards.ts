@@ -81,7 +81,7 @@ function createPriceCardRunListener(kind: 'today' | 'tomorrow', deps: FlowCardDe
         throw new Error('Price data is required.');
       }
       const result = deps.storeFlowPriceData(kind, raw);
-      deps.getStructuredLogger('price')?.info({
+      deps.getStructuredLogger('price').info({
         event: 'flow_prices_stored',
         priceKind: kind,
         dateKey: result.dateKey,
@@ -90,7 +90,7 @@ function createPriceCardRunListener(kind: 'today' | 'tomorrow', deps: FlowCardDe
       return true;
     } catch (error) {
       const normalizedError = normalizeError(error);
-      deps.getStructuredLogger('price')?.error({
+      deps.getStructuredLogger('price').error({
         event: 'flow_prices_store_failed',
         priceKind: kind,
         error: normalizedError.message,

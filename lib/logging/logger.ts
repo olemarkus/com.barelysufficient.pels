@@ -20,13 +20,12 @@ export type StructuredDebugEmitter = (payload: Record<string, unknown>) => void;
  * on the domain context for the concern they instrument, not on the
  * cross-cutting bundle.
  *
- * Both inner fields are optional so test harnesses can omit logging
- * entirely. The production contract is established by `createPlanService`
- * (setup/appInit.ts) which always supplies both emitters — a unit test
- * passing `{}` is not evidence the call site is safe.
+ * `structuredLog` always exists (`getStructuredLogger` hands out a late-bound
+ * component logger). The debug emitter is optional only until its threading is
+ * retired.
  */
 export type Loggers = {
-  structuredLog?: PinoLogger;
+  structuredLog: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
 };
 
@@ -155,23 +154,29 @@ const liveChild = (module: string): PinoLogger => {
  * `context.Context` for request-scoped values, with ALS providing the
  * implicit-propagation mechanism.
  */
+/**
+ * A logger that re-resolves `resolveLive()` on every method call and property
+ * access, so it follows the root {@link setRootLogger} installs later.
+ */
+const lateBound = (resolveLive: () => PinoLogger): PinoLogger => new Proxy({} as PinoLogger, {
+  get(_target, prop) {
+    const live = resolveLive();
+    const value = Reflect.get(live, prop, live) as unknown;
+    return typeof value === 'function'
+      ? (value as (...args: unknown[]) => unknown).bind(live)
+      : value;
+  },
+  set(_target, prop, value) {
+    const live = resolveLive();
+    return Reflect.set(live, prop, value, live);
+  },
+});
+
 export const getLogger = (module: string): PinoLogger => {
   const cached = moduleLoggerCache.get(module);
   if (cached) return cached;
 
-  const proxy = new Proxy({} as PinoLogger, {
-    get(_target, prop) {
-      const live = liveChild(module);
-      const value = Reflect.get(live, prop, live) as unknown;
-      return typeof value === 'function'
-        ? (value as (...args: unknown[]) => unknown).bind(live)
-        : value;
-    },
-    set(_target, prop, value) {
-      const live = liveChild(module);
-      return Reflect.set(live, prop, value, live);
-    },
-  });
+  const proxy = lateBound(() => liveChild(module));
   moduleLoggerCache.set(module, proxy);
 
   // Emit a single warning when the cache outgrows the soft cap. Allocation is
@@ -191,6 +196,37 @@ export const getLogger = (module: string): PinoLogger => {
     );
   }
 
+  return proxy;
+};
+
+const componentLoggerCache = new Map<string, PinoLogger>();
+const componentChildByRoot = new WeakMap<PinoLogger, Map<string, PinoLogger>>();
+
+const liveComponentChild = (component: string): PinoLogger => {
+  let perRoot = componentChildByRoot.get(rootLogger);
+  if (!perRoot) {
+    perRoot = new Map();
+    componentChildByRoot.set(rootLogger, perRoot);
+  }
+  let child = perRoot.get(component);
+  if (!child) {
+    child = rootLogger.child({ component });
+    perRoot.set(component, child);
+  }
+  return child;
+};
+
+/**
+ * The `{ component }`-bound logger the app hands its services
+ * (`getStructuredLogger`). Late-bound like {@link getLogger}, so it exists
+ * before the root is installed and writes to whichever root is live; callers
+ * never need to ask whether it is there.
+ */
+export const getComponentLogger = (component: string): PinoLogger => {
+  const cached = componentLoggerCache.get(component);
+  if (cached) return cached;
+  const proxy = lateBound(() => liveComponentChild(component));
+  componentLoggerCache.set(component, proxy);
   return proxy;
 };
 

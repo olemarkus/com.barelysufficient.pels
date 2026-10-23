@@ -4,6 +4,7 @@ import { SubHomeSourceRecovery } from '../../lib/home/subHomeSourceRecovery';
 import { SubHomeRuntime } from '../../lib/home/subHomeRuntime';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import type { PlanRebuildRequestOptions, PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
+import { testLogger } from '../utils/testLogger';
 
 const RETRY_TIMER_KEY = 'home:h_a:sourceActuationRetry';
 const timerKey = (suffix: string): string => `home:h_a:${suffix}`;
@@ -37,7 +38,7 @@ describe('sub-home source-authority actuation recovery', () => {
       runtime: new SubHomeRuntime(home, () => true, () => sourceAuthorized, () => false),
       timers,
       timerKey,
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
       planService: { rebuildPlanFromCache },
       pipeline: { getStableSampleRevision: () => sample },
       beginPreparedReconcile,
@@ -83,7 +84,7 @@ describe('sub-home source-authority actuation recovery', () => {
       runtime: new SubHomeRuntime(home, () => true, () => true, () => false),
       timers,
       timerKey,
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
       planService: { rebuildPlanFromCache },
       pipeline: { getStableSampleRevision: () => ({ state: 'stable', revision: 7 }) },
       beginPreparedReconcile: () => () => undefined,

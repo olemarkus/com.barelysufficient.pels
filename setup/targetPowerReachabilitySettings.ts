@@ -103,7 +103,7 @@ export const writeTargetPowerReachabilityForApp = (
     });
     return { applied, persistence };
   } catch (error) {
-    ctx.getStructuredLogger('devices')?.error({
+    ctx.getStructuredLogger('devices').error({
       event: 'target_power_reachability_write_failed',
       deviceId,
       err: error,

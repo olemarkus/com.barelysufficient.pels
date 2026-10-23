@@ -60,6 +60,7 @@ import {
 import { createTestDeviceActivityRecorder } from '../helpers/deviceActivityRecorder';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { planServiceWiring } from '../helpers/planServiceWiring';
+import { testLogger } from '../utils/testLogger';
 
 type PlanServiceDeps = ConstructorParameters<typeof PlanService>[0];
 
@@ -234,6 +235,7 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
     getPlanDevices: () => [],
     getSettleDevices: () => [],
     loggers: {
+      structuredLog: testLogger,
       debugStructured: vi.fn(),
       ...loggerOverrides,
     },
@@ -838,7 +840,7 @@ describe('PlanService', () => {
           .mockResolvedValueOnce(summaryPlan)
           .mockResolvedValueOnce(summaryPlan),
       }),
-      loggers: { debugStructured },
+      loggers: { structuredLog: testLogger, debugStructured },
     });
 
     await service.rebuildPlanFromCache('power_delta');

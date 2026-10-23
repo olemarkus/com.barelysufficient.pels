@@ -26,6 +26,7 @@ import type { RestorePlanResult } from '../../lib/plan/restore';
 import type { MeteredPlanInputDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { buildPlanInputDevice, restoreTimingFixture, NO_STORAGE_SURPLUS, buildInitialPlanDevicesForSpec, resolveSurplusEligibilityForSpec } from '../utils/planTestUtils';
+import { testLogger } from '../utils/testLogger';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -142,6 +143,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       storageLimit: { kind: 'measured' as const, drawKw: 5, levers: {} },
       state: createPlanEngineState(),
       deps: {
+        structuredLog: testLogger,
         capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
         shortfallThresholdKw: Number.POSITIVE_INFINITY,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,

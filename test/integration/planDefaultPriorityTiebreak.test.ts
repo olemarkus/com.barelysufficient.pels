@@ -9,6 +9,7 @@ import { getRestoreCandidates, getOffDevices } from '../../lib/plan/restore/devi
 import { ShedDecisions } from '../../lib/plan/shedDecisions';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
+import { testLogger } from '../utils/testLogger';
 
 // Two managed devices that were never assigned a stored priority, drawing the
 // SAME effective power. Without a deterministic final tiebreak their relative
@@ -52,6 +53,7 @@ const buildShedParams = (devices: PlanInputDevice[]): ShedCandidateParams => ({
   temperatureSetpoints: new Map(),
   state: createPlanEngineState(),
   deps: {
+    structuredLog: testLogger,
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
     shortfallThresholdKw: Number.POSITIVE_INFINITY,
     powerTracker: { lastTimestamp: 100 } as PowerTrackerState,

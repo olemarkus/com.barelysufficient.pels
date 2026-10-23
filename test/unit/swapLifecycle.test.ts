@@ -14,6 +14,7 @@ import {
   type TemperatureDiscriminantProbe,
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
+import { testLogger } from '../utils/testLogger';
 
 // Local wrappers that route a `binaryControl` override through the binary
 // discriminant regrouper — the field moved off the `DevicePlanDevice` base onto
@@ -80,7 +81,7 @@ const holdsReservation = (ledger: SwapLedger): boolean => (
  */
 const completes = (target: DevicePlanDevice, promise: SwapPromise): boolean => {
   const ledger = openLedger({ promise });
-  ledger.reconcile(new Map([['target', target]]), 1_000, LANE_OPEN, undefined);
+  ledger.reconcile(new Map([['target', target]]), 1_000, LANE_OPEN, testLogger);
   return !holdsReservation(ledger);
 };
 
@@ -154,7 +155,7 @@ describe('swap reservation completion', () => {
 
   it('drops a reservation whose target left the plan', () => {
     const ledger = openLedger({ promise: BINARY_PROMISE, donorIds: ['lower'] });
-    ledger.reconcile(new Map(), 1_000, LANE_OPEN, undefined);
+    ledger.reconcile(new Map(), 1_000, LANE_OPEN, testLogger);
     expect(holdsReservation(ledger)).toBe(false);
     expect(ledger.isDonor('lower')).toBe(false);
   });
@@ -224,7 +225,7 @@ describe('swap reservation blocking', () => {
       ['lower', offDevice('lower', 9)],
     ]);
     expect(ledger.blockingTarget(deviceMap.get('lower')!, deviceMap)?.id).toBe('target');
-    ledger.reconcile(deviceMap, 1_000, LANE_OPEN, undefined);
+    ledger.reconcile(deviceMap, 1_000, LANE_OPEN, testLogger);
     expect(holdsReservation(ledger)).toBe(true);
     expect(ledger.isDonor('lower')).toBe(true);
   });
@@ -270,9 +271,9 @@ describe('swap reservation expiry', () => {
     ]);
 
     // Two cycles: the first starts the served window, the second spends it.
-    ledger.reconcile(deviceMap, 1, LANE_OPEN, undefined);
+    ledger.reconcile(deviceMap, 1, LANE_OPEN, testLogger);
     expect(holdsReservation(ledger)).toBe(true);
-    ledger.reconcile(deviceMap, SWAP_TIMEOUT_MS + 2, LANE_OPEN, undefined);
+    ledger.reconcile(deviceMap, SWAP_TIMEOUT_MS + 2, LANE_OPEN, testLogger);
 
     expect(holdsReservation(ledger)).toBe(false);
     expect(ledger.isDonor('lower')).toBe(false);
@@ -295,12 +296,12 @@ describe('swap reservation expiry', () => {
     ]);
 
     // One reconcile, well past the timeout, and it is the FIRST one.
-    ledger.reconcile(deviceMap, SWAP_TIMEOUT_MS + 1, LANE_OPEN, undefined);
+    ledger.reconcile(deviceMap, SWAP_TIMEOUT_MS + 1, LANE_OPEN, testLogger);
     expect(holdsReservation(ledger)).toBe(true);
     expect(ledger.isDonor('lower')).toBe(true);
 
     // It now has a served window running from that cycle, and spends it.
-    ledger.reconcile(deviceMap, SWAP_TIMEOUT_MS * 2 + 2, LANE_OPEN, undefined);
+    ledger.reconcile(deviceMap, SWAP_TIMEOUT_MS * 2 + 2, LANE_OPEN, testLogger);
     expect(holdsReservation(ledger)).toBe(false);
   });
 
@@ -315,9 +316,9 @@ describe('swap reservation expiry', () => {
     ]);
     const exemptLaneOnly = (target: DevicePlanDevice): boolean => target.budgetExempt === true;
 
-    ledger.reconcile(deviceMap, SWAP_TIMEOUT_MS + 1, exemptLaneOnly, undefined);
+    ledger.reconcile(deviceMap, SWAP_TIMEOUT_MS + 1, exemptLaneOnly, testLogger);
     expect(holdsReservation(ledger)).toBe(true);
-    ledger.reconcile(deviceMap, SWAP_TIMEOUT_MS * 3, exemptLaneOnly, undefined);
+    ledger.reconcile(deviceMap, SWAP_TIMEOUT_MS * 3, exemptLaneOnly, testLogger);
     expect(holdsReservation(ledger)).toBe(true);
   });
 
@@ -330,16 +331,16 @@ describe('swap reservation expiry', () => {
 
     // Far past the timeout, but no restore could have been admitted — the
     // reservation has had no serviceable cycle, so it is not charged for one.
-    ledger.reconcile(deviceMap, SWAP_TIMEOUT_MS * 5, LANE_SHUT, undefined);
+    ledger.reconcile(deviceMap, SWAP_TIMEOUT_MS * 5, LANE_SHUT, testLogger);
     expect(holdsReservation(ledger)).toBe(true);
     expect(ledger.isDonor('lower')).toBe(true);
 
     // The clock restarts from the cycle the lane reopened, so it gets a full
     // window of real opportunity rather than none.
-    ledger.reconcile(deviceMap, SWAP_TIMEOUT_MS * 5, LANE_OPEN, undefined);
+    ledger.reconcile(deviceMap, SWAP_TIMEOUT_MS * 5, LANE_OPEN, testLogger);
     expect(holdsReservation(ledger)).toBe(true);
 
-    ledger.reconcile(deviceMap, SWAP_TIMEOUT_MS * 6 + 1, LANE_OPEN, undefined);
+    ledger.reconcile(deviceMap, SWAP_TIMEOUT_MS * 6 + 1, LANE_OPEN, testLogger);
     expect(holdsReservation(ledger)).toBe(false);
   });
 
@@ -355,10 +356,10 @@ describe('swap reservation expiry', () => {
       ['lower', buildPlanDevice({ id: 'lower', currentState: 'off', binaryControl: { on: false } })],
     ]);
 
-    ledger.reconcile(deviceMap, SWAP_RESERVATION_MAX_MS - 1, LANE_SHUT, undefined);
+    ledger.reconcile(deviceMap, SWAP_RESERVATION_MAX_MS - 1, LANE_SHUT, testLogger);
     expect(holdsReservation(ledger)).toBe(true);
 
-    ledger.reconcile(deviceMap, SWAP_RESERVATION_MAX_MS + 1, LANE_SHUT, undefined);
+    ledger.reconcile(deviceMap, SWAP_RESERVATION_MAX_MS + 1, LANE_SHUT, testLogger);
     expect(holdsReservation(ledger)).toBe(false);
     expect(ledger.isDonor('lower')).toBe(false);
   });
@@ -415,7 +416,7 @@ describe('swap reservation expiry', () => {
     const logged: Record<string, unknown>[] = [];
     // The served window opens at t=5 and is spent SWAP_TIMEOUT_MS + 7 later,
     // so `ageMs` and `servedMs` differ — which is the point of carrying both.
-    ledger.reconcile(deviceMap, 5, LANE_OPEN, undefined);
+    ledger.reconcile(deviceMap, 5, LANE_OPEN, testLogger);
     ledger.reconcile(deviceMap, SWAP_TIMEOUT_MS + 12, LANE_OPEN, partialDouble<PinoLogger>({
       info: (payload: unknown) => { logged.push(payload as Record<string, unknown>); },
     }));
@@ -448,7 +449,7 @@ describe('swap measurement gating', () => {
     const arrived = new Map([
       ['target', buildPlanDevice({ id: 'target', currentState: 'on', binaryControl: { on: true } })],
     ]);
-    ledger.reconcile(arrived, 1_000, LANE_OPEN, undefined);
+    ledger.reconcile(arrived, 1_000, LANE_OPEN, testLogger);
     expect(ledger.keepsPending('target', null)).toBe(false);
   });
 
@@ -461,7 +462,7 @@ describe('swap measurement gating', () => {
     const arrived = new Map([
       ['target', buildPlanDevice({ id: 'target', currentState: 'on', binaryControl: { on: true } })],
     ]);
-    ledger.reconcile(arrived, 1_000, LANE_OPEN, undefined);
+    ledger.reconcile(arrived, 1_000, LANE_OPEN, testLogger);
     expect(ledger.defersForMeasurement('target', null)).toBe(true);
     expect(ledger.defersForMeasurement('target', 100)).toBe(true);
     expect(ledger.defersForMeasurement('target', 101)).toBe(false);

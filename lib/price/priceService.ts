@@ -233,12 +233,12 @@ export default class PriceService {
     });
     const allPrices = [...todayPrices, ...tomorrowPrices];
     if (allPrices.length === 0) {
-      this.sinks.structuredLog?.info({ event: 'spot_prices_no_data' });
+      this.sinks.structuredLog.info({ event: 'spot_prices_no_data' });
       return;
     }
     this.priceDataStore.writeSpotPrices(allPrices);
     this.priceDataStore.writeSpotPriceArea(priceArea);
-    this.sinks.structuredLog?.info({ event: 'spot_prices_stored', priceCount: allPrices.length, priceArea });
+    this.sinks.structuredLog.info({ event: 'spot_prices_stored', priceCount: allPrices.length, priceArea });
     this.updateCombinedPrices();
   }
   async refreshGridTariffData(forceRefresh = false): Promise<void> {
@@ -265,7 +265,7 @@ export default class PriceService {
 
   /** No grid company, no grid tariff (see `dropClearedGridCompanyTariff`). */
   private skipGridTariffWithoutCompany(): void {
-    this.sinks.structuredLog?.info({ event: 'grid_tariff_skipped', reason: 'no_organization_number' });
+    this.sinks.structuredLog.info({ event: 'grid_tariff_skipped', reason: 'no_organization_number' });
     const stored = this.getSettingValue(NORWAY_SETTING_KEYS.organizationNumber);
     if (dropClearedGridCompanyTariff(stored, this.priceDataStore)) this.updateCombinedPrices();
   }
@@ -588,7 +588,7 @@ export default class PriceService {
       }),
     );
     this.powerhourSourceStatus = mirror.status;
-    if (mirror.level === 'info') this.sinks.structuredLog?.info(mirror.record);
+    if (mirror.level === 'info') this.sinks.structuredLog.info(mirror.record);
     else this.sinks.debugStructured(mirror.record);
     if (mirror.changed) this.updateCombinedPrices();
   }
@@ -626,10 +626,10 @@ export default class PriceService {
       writeFlowPayload: (key, payload) => this.priceDataStore.writeFlowPayload(key, payload),
     });
     if (stored === 0) {
-      this.sinks.structuredLog?.info({ event: 'homey_prices_no_data' });
+      this.sinks.structuredLog.info({ event: 'homey_prices_no_data' });
       return;
     }
-    this.sinks.structuredLog?.info({ event: 'homey_prices_stored', dayCount: stored });
+    this.sinks.structuredLog.info({ event: 'homey_prices_stored', dayCount: stored });
     this.updateCombinedPrices();
   }
 }

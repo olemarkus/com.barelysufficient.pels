@@ -8,11 +8,13 @@ import {
   COMBINED_PRICES, FLOW_PRICES_TODAY, POWERHOUR_PRICES_TODAY, PRICE_SCHEME,
 } from '../../../lib/utils/settingsKeys';
 import { noHomeyWebApi, unknownHubMarket } from '../../helpers/homeyWebApiStub';
+import { testLogger } from '../../utils/testLogger';
 
 // The price cache the service under test reads; each test starts on an empty one.
 let priceCache = createInMemoryPriceCache();
 
 const createCoordinator = () => new PriceCoordinator({
+  structuredLog: testLogger,
   homey: mockHomeyInstance as never,
   priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance.settings),
   priceDataStore: createPriceDataStore(mockHomeyInstance.settings, priceCache),

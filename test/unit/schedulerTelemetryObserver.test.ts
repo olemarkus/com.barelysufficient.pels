@@ -4,6 +4,7 @@ import type { RebuildIntent } from '../../lib/plan/rebuildScheduler/scheduler';
 import { SchedulerTelemetryObserver } from '../../lib/plan/rebuildScheduler/telemetryObserver';
 import { partialDouble } from '../helpers/partialDouble';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
+import { testLogger } from '../utils/testLogger';
 
 /**
  * The observer's own emit path: the per-key debug rate limiter, its pruning,
@@ -110,7 +111,7 @@ describe('SchedulerTelemetryObserver', () => {
     const cancelQueuedPowerRebuild = vi.fn();
     const observer = new SchedulerTelemetryObserver({
       homeId: 'main',
-      getStructuredLogger: () => undefined,
+      getStructuredLogger: () => testLogger,
       isDebugTopicEnabled: () => false,
       getNowMs: () => 0,
       cancelQueuedPowerRebuild,

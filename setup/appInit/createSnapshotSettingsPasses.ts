@@ -30,5 +30,5 @@ export const createModeDeviceTargetFill = (ctx: AppContext): ModeDeviceTargetFil
     )),
   ),
   (deviceId) => resolveHomeIdForModeCatalogSeed(ctx, deviceId),
-  (event) => ctx.getStructuredLogger('devices')?.info(event),
+  (event) => ctx.getStructuredLogger('devices').info(event),
 );

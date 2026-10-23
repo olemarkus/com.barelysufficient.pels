@@ -153,7 +153,7 @@ export class SilentMeterPlanBuilder {
     this.state.shedDecisions.recordPlannedShed(
       decidedDevices, decoration, this.deps.pendingBinaryCommandStore, !this.deps.getCapacityDryRun(),
     );
-    this.deps.structuredLog?.info({
+    this.deps.structuredLog.info({
       event: 'plan_silent_meter_pass',
       shedDeviceCount: sheddingPlan.shedSet.size,
       // Counted as the candidate walk counts: commandable AND with a power reading.

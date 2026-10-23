@@ -347,7 +347,7 @@ const logHomesSaveRefusal = (
 ): void => {
   if (response.ok) return;
   try {
-    resolveApiLoggerProvider(homey.app)?.getApiStructuredLogger()?.info({
+    resolveApiLoggerProvider(homey.app)?.getApiStructuredLogger().info({
       event: 'homes_save_refused', op, reason: response.reason,
     });
   } catch {

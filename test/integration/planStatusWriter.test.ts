@@ -4,6 +4,7 @@ import type { DevicePlan, StatusPlanChanges } from '../../lib/plan/planTypes';
 import type { FlowPort, FlowToken, FlowTriggerCard } from '../../lib/ports/homeyRuntime';
 import { buildPlanMeta, buildUnmeasuredPlanMeta } from '../utils/planTestUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
+import { testLogger } from '../utils/testLogger';
 
 /* -------------------------------------------------------------------------- *
  * PlanStatusWriter persist cadence. Pins the per-home posture-flip guarantee:
@@ -69,6 +70,7 @@ const makeWriter = (initialDryRun: boolean): Harness => {
   const fired: TriggerRecord[] = [];
   const computeSpy = vi.fn(() => lastPowerUpdate);
   const writer = new PlanStatusWriter({
+    structuredLog: testLogger,
     homey: { flow: recordingFlow(fired) },
     publishPelsStatus: writeSpy,
     getCurrentHourPriceLevel: () => priceLevel,

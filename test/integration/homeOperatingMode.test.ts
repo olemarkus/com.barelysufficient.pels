@@ -70,6 +70,7 @@ import { drainPending } from '../utils/asyncDrain';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { getHomeModeCatalogForTest, configureHomeModeCatalog, createAppContextMock } from '../helpers/appContextTestHelpers';
 import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
+import { testLogger } from '../utils/testLogger';
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 
@@ -238,7 +239,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     catalog.reload();
 
     expect(catalog.getSnapshot().targets).toEqual({ Home: { 'dev-1': 22 } });
-    expect(logs.findEvent('home_mode_catalog_unavailable')).toMatchObject({ homeId: 'h_a' });
+    expect(logs.findEvents('home_mode_catalog_unavailable')).toContainEqual(expect.objectContaining({ homeId: 'h_a' }));
     keyList.mockRestore();
   });
 
@@ -413,7 +414,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
 
       expect(catalog.getSnapshot().operatingMode).toBe('Cooler');
       expect(mockHomeyInstance.settings.set).toHaveBeenCalledTimes(writeCount);
-      expect(logs.findEvent('home_mode_catalog_unavailable')).toMatchObject({ homeId: 'h_a' });
+      expect(logs.findEvents('home_mode_catalog_unavailable')).toContainEqual(expect.objectContaining({ homeId: 'h_a' }));
     },
   );
 
@@ -713,13 +714,13 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     // The persisted pin truth is unknown: hold the LAST-KNOWN effective mode
     // (never a flip to the global fallback), with its own surfaced fault.
     expect(diagnosticsFor(rig.registry, 'h_a').operatingMode).toBe('Cooler');
-    expect(logs.findEvent('home_mode_catalog_unavailable')).toMatchObject({ homeId: 'h_a' });
+    expect(logs.findEvents('home_mode_catalog_unavailable')).toContainEqual(expect.objectContaining({ homeId: 'h_a' }));
 
     // Edge-triggered: repeated failing resolves surface ONE fault, and holding
     // the last-known mode is never logged as a mode transition.
     rig.registry.onHomeScopedSettingChanged(OPERATING_MODE_SETTING, 'h_a');
     await drainPending();
-    expect(logs.findEvents('home_mode_catalog_unavailable')).toHaveLength(1);
+    expect(logs.findEvents('home_mode_catalog_unavailable').filter((event) => event.homeId === 'h_a')).toHaveLength(1);
     expect(logs.findEvents('home_operating_mode_changed')
       .filter((event) => event.homeId === 'h_a')).toHaveLength(transitionsBefore);
 
@@ -760,7 +761,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     expect(diagnosticsFor(rig.registry, 'h_a').operatingMode).toBe('Cooler');
     expect(logs.findEvents('home_operating_mode_changed')
       .filter((event) => event.homeId === 'h_a')).toHaveLength(transitionsBefore);
-    expect(logs.findEvent('home_mode_catalog_unavailable')).toMatchObject({ homeId: 'h_a' });
+    expect(logs.findEvents('home_mode_catalog_unavailable')).toContainEqual(expect.objectContaining({ homeId: 'h_a' }));
 
     getSpy.mockRestore();
     getKeysSpy.mockRestore();
@@ -787,7 +788,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     await drainPending();
 
     expect(diagnosticsFor(rig.registry, 'h_a').operatingMode).toBe('Cooler');
-    expect(logs.findEvent('home_mode_catalog_unavailable')).toMatchObject({ homeId: 'h_a' });
+    expect(logs.findEvents('home_mode_catalog_unavailable')).toContainEqual(expect.objectContaining({ homeId: 'h_a' }));
     getSpy.mockRestore();
   });
 
@@ -850,7 +851,7 @@ describe('per-home operating mode (device-scoped mode target)', () => {
       assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
       getZoneTree,
       getDevices: () => [{ deviceId: 'vt-1', zoneId: 'z2' }],
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
       getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
       getConfiguredPowerSource: () => ({ state: 'resolved', value: 'homey_energy' }),
       legacyMultiHomeEnabled: true,

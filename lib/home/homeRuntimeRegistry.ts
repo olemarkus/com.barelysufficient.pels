@@ -216,7 +216,7 @@ export class HomeRuntimeRegistry<THooks> implements HomeRuntimeReadPort {
     // (`powerSourceEpochFence.ts`).
     private readonly sourceEpoch: MeterSourceEpoch,
     private readonly timers: TimerRegistry,
-    private readonly getLogger: () => PinoLogger | undefined,
+    private readonly getLogger: () => PinoLogger,
   ) {
     this.handledRuntimeActive = membership.isRuntimeActive();
   }

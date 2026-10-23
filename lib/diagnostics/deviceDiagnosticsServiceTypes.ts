@@ -230,5 +230,5 @@ export type LiveDeviceDiagnostics = {
 export type DeviceDiagnosticsServiceDeps = {
   diagnosticsStateStore: DeviceDiagnosticsStateStore;
   getTimeZone: () => string;
-  structuredLog?: Pick<PinoLogger, 'info' | 'error'>;
+  structuredLog: Pick<PinoLogger, 'info' | 'error'>;
 };

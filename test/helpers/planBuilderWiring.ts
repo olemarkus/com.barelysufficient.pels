@@ -3,13 +3,13 @@ import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinar
 import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import type { PlanBuilderDeps } from '../../lib/plan/planBuilderDeps';
 import { fixtureTemperatureSetpoints } from './temperatureSetpointsFixture';
+import { testLogger } from '../utils/testLogger';
 
 type PlanBuilderWiring = Omit<PlanBuilderDeps,
   | 'capacityGuard'
   | 'getCapacitySettings'
   | 'getPowerTracker'
   | 'deviceDiagnostics'
-  | 'structuredLog'
   | 'debugStructured'>;
 
 /**
@@ -30,4 +30,5 @@ export const planBuilderWiring = (): PlanBuilderWiring => ({
   pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
   decorateDeferredObjectives: decorateWithoutDeferredObjectives,
   resolveTemperatureSetpoints: fixtureTemperatureSetpoints(),
+  structuredLog: testLogger,
 });

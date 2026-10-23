@@ -15,7 +15,7 @@ export type RestoreDeps = {
    * the swap lane reads whether limiting a device still releases demand from it. */
   temperatureSetpoints: TemperatureSetpointsByDevice;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
-  structuredLog?: PinoLogger;
+  structuredLog: PinoLogger;
 };
 
 export type RestoreBatchState = {

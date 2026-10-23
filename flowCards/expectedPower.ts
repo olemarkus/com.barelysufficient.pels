@@ -54,7 +54,7 @@ export function registerExpectedPowerCard(deps: FlowCardDeps): void {
       return true;
     }
     const deviceName = device?.name ?? null;
-    deps.getStructuredLogger('devices')?.info({
+    deps.getStructuredLogger('devices').info({
       event: 'flow_expected_power_set',
       deviceId,
       deviceName,

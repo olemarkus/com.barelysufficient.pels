@@ -28,6 +28,7 @@ import {
   resolveFixtureCurrentOn,
 } from '../utils/planTestUtils';
 import { capacityGuardSpy, sheddingWiring } from '../helpers/sheddingWiring';
+import { testLogger } from '../utils/testLogger';
 
 let capture: LoggerCapture;
 beforeEach(() => { capture = captureLogger('info', ['plan']); });
@@ -2827,7 +2828,7 @@ describe('buildSheddingPlan', () => {
         softLimitSource: 'capacity',
       }),
       state,
-      { ...baseDeps, powerTracker: { lastTimestamp: Date.now(), lastPowerW: 4_500 } as PowerTrackerState },
+      { structuredLog: testLogger, ...baseDeps, powerTracker: { lastTimestamp: Date.now(), lastPowerW: 4_500 } as PowerTrackerState },
     );
 
     expect(result1.shedSet.has('stepped-a')).toBe(true);
@@ -2859,7 +2860,7 @@ describe('buildSheddingPlan', () => {
         softLimitSource: 'capacity',
       }),
       state,
-      { ...baseDeps, powerTracker: { lastTimestamp: Date.now(), lastPowerW: 3_800 } as PowerTrackerState },
+      { structuredLog: testLogger, ...baseDeps, powerTracker: { lastTimestamp: Date.now(), lastPowerW: 3_800 } as PowerTrackerState },
     );
 
     expect(result2.shedSet.has('stepped-b')).toBe(true);
@@ -2885,7 +2886,7 @@ describe('buildSheddingPlan', () => {
         softLimitSource: 'capacity',
       }),
       state,
-      { ...baseDeps, powerTracker: { lastTimestamp: Date.now(), lastPowerW: 4_000 } as PowerTrackerState },
+      { structuredLog: testLogger, ...baseDeps, powerTracker: { lastTimestamp: Date.now(), lastPowerW: 4_000 } as PowerTrackerState },
     );
 
     // Binary device should now shed (highest priority among non-preemptive candidates).
@@ -2943,6 +2944,7 @@ describe('buildSheddingPlan', () => {
     const capacityGuard = capacityGuardSpy();
 
     const deps: Omit<SheddingDeps, 'powerTracker' | 'pendingBinaryCommandStore'> = {
+      structuredLog: testLogger,
       capacityGuard,
       shortfallThresholdKw: 6,
       getShedBehavior: () => ({ action: 'turn_off' }),
@@ -3070,6 +3072,7 @@ describe('buildSheddingPlan', () => {
     });
 
     const incidentDeps = (): Omit<SheddingDeps, 'powerTracker' | 'pendingBinaryCommandStore'> => ({
+      structuredLog: testLogger,
       shortfallThresholdKw: 6,
       capacityGuard: {
         recordPlanVerdict: vi.fn().mockResolvedValue(undefined),
@@ -4485,6 +4488,7 @@ describe('buildSheddingPlan', () => {
       }),
       state,
       {
+        structuredLog: testLogger,
         capacityGuard: guard,
         shortfallThresholdKw: Number.POSITIVE_INFINITY,
         powerTracker: { lastTimestamp: 800, lastPowerW: 3_650 } as PowerTrackerState,
@@ -4514,6 +4518,7 @@ describe('buildSheddingPlan', () => {
       }),
       state,
       {
+        structuredLog: testLogger,
         capacityGuard,
         shortfallThresholdKw: 5,
         powerTracker: { lastTimestamp: 800, lastPowerW: 4_790 } as PowerTrackerState,
@@ -4545,6 +4550,7 @@ describe('buildSheddingPlan', () => {
       }),
       state,
       {
+        structuredLog: testLogger,
         capacityGuard: guard,
         shortfallThresholdKw: Number.POSITIVE_INFINITY,
         powerTracker: { lastTimestamp: 800, lastPowerW: 3_650 } as PowerTrackerState,
@@ -4574,6 +4580,7 @@ describe('buildSheddingPlan', () => {
       }),
       state,
       {
+        structuredLog: testLogger,
         capacityGuard: guard,
         shortfallThresholdKw: Number.POSITIVE_INFINITY,
         powerTracker: { lastTimestamp: 801, lastPowerW: 3_590 } as PowerTrackerState,

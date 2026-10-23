@@ -35,7 +35,7 @@ export class SubHomeOwnershipGeneration {
       const outcome = await planService.rebuildPlanFromCache('home_membership_changed');
       return !outcome.failed && !runtime.isTornDown();
     } catch (error: unknown) {
-      this.deps.getLogger()?.error({
+      this.deps.getLogger().error({
         event: 'home_membership_bundle_rebuild_failed',
         homeId: runtime.homeId,
         err: normalizeError(error),

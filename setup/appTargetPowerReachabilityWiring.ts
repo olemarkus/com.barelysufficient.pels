@@ -60,7 +60,7 @@ export const createTargetPowerReachabilityAppWiring = (
     if (result.applied) {
       ctx.snapshotHelpers.scheduleTargetPowerProbe();
       void rebuildOwningHomePlanForDevice(deviceId, 'target_power_reachability_updated')
-        .catch((error: unknown) => ctx.getStructuredLogger('devices')?.error({
+        .catch((error: unknown) => ctx.getStructuredLogger('devices').error({
           event: 'target_power_reachability_rebuild_failed',
           deviceId,
           err: normalizeError(error),

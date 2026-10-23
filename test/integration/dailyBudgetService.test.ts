@@ -12,6 +12,7 @@ import { capacityOnlyPowerLimits, powerLimits } from '../helpers/powerLimitSetti
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { Logger } from '../../lib/logging/logger';
 import type { PowerTrackerState } from '../../lib/power/tracker';
+import { testLogger } from '../utils/testLogger';
 
 type AppHomey = Homey.App['homey'];
 
@@ -126,6 +127,7 @@ function buildService(): DailyBudgetService {
     clock: partialDouble<AppHomey['clock']>({ getTimezone: () => TZ }),
   });
   const service = new DailyBudgetService({
+    structuredLog: testLogger,
     getTimeZone: () => TZ,
     getPowerTracker: () => ({ buckets: {} }),
     getPriceOptimizationEnabled: () => false,
@@ -246,6 +248,7 @@ describe('DailyBudgetService', () => {
       clock: partialDouble<AppHomey['clock']>({ getTimezone: () => TZ }),
     });
     const service = new DailyBudgetService({
+      structuredLog: testLogger,
       getTimeZone: () => TZ,
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
@@ -743,6 +746,7 @@ describe('DailyBudgetService', () => {
   // 17 kW grid import limit must stop being paced near 4.8 kW.
   const planningCeilingForUpdate = (settings: PowerLimitSettings): unknown => {
     const service = new DailyBudgetService({
+      structuredLog: testLogger,
       dailyBudgetStateStore: { read: () => null, write: vi.fn() },
       getTimeZone: () => TZ,
       getPowerTracker: () => ({ buckets: {} }),

@@ -4,8 +4,9 @@ import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinar
 import type { PlanEngineState } from '../../lib/plan/planState';
 import type { SheddingDeps } from '../../lib/plan/shedding/types';
 import { partialDouble } from './partialDouble';
+import { testLogger } from '../utils/testLogger';
 
-type SheddingWiring = Pick<SheddingDeps, 'pendingBinaryCommandStore' | 'getShedBehavior'>;
+type SheddingWiring = Pick<SheddingDeps, 'pendingBinaryCommandStore' | 'getShedBehavior' | 'structuredLog'>;
 
 /**
  * The `buildSheddingPlan` deps a spec is not about: the pending commands are
@@ -16,6 +17,7 @@ type SheddingWiring = Pick<SheddingDeps, 'pendingBinaryCommandStore' | 'getShedB
 export const sheddingWiring = (state: PlanEngineState): SheddingWiring => ({
   pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
   getShedBehavior: () => ({ action: 'turn_off' }),
+  structuredLog: testLogger,
 });
 
 /** A capacity guard whose writes are spies and which is never in shortfall. */

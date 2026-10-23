@@ -172,7 +172,7 @@ export class PlanMaterializationStages {
     return trackPlanStage('plan_finalize_ms', () => finalizePlanDevices(
       planDevices, temperatureSetpoints, this.state.shedDecisions.lastPlannedShedIds, {
       onInvalidReasonPair: (issue) => {
-        this.deps.structuredLog?.warn({
+        this.deps.structuredLog.warn({
           event: 'plan_reason_pair_invalid',
           deviceId: issue.deviceId,
           deviceName: issue.deviceName,

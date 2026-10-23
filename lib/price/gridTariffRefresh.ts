@@ -36,7 +36,7 @@ const storeGridTariff = (
   // the right one.
   if (readCurrentCompany() !== request.organizationNumber) return 'unchanged';
   store.writeNettleie(data);
-  sinks.structuredLog?.info({ event: 'grid_tariff_stored', entryCount: data.length, context: logContext });
+  sinks.structuredLog.info({ event: 'grid_tariff_stored', entryCount: data.length, context: logContext });
   return 'rebuild';
 };
 
@@ -65,7 +65,7 @@ export const refreshGridTariff = async (
     settings: request,
     todayDate,
     timeZone,
-    structuredInfo: (payload) => sinks.structuredLog?.info(payload),
+    structuredInfo: (payload) => sinks.structuredLog.info(payload),
     errorLog: sinks.errorLog,
   });
   if (data) return storeGridTariff(data, logContext, request, readCurrentCompany, store, sinks);

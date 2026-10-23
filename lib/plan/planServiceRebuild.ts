@@ -15,7 +15,7 @@ import { incPerfCounter } from '../utils/perfCounters';
 import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { normalizeError } from '../utils/errorUtils';
-import { getDebugEmitter, getLogger, isDebugTopicEnabled, withRebuildContext } from '../logging/logger';
+import { getDebugEmitter, isDebugTopicEnabled, withRebuildContext } from '../logging/logger';
 import { buildPlanDetailSignature, buildPublishedPlanCapacityStateSummary } from './planLogging';
 import type { PublishedPlan } from './publishedPlan';
 import { hasShedding } from './planServiceInternals';
@@ -36,7 +36,6 @@ import type {
 import type { PlanRebuildOutcome } from '../planContract/planActuationResult';
 import type { PendingBinaryLiveDevice } from '../ports/controlCommandConfirmation';
 
-const logger = getLogger('plan/service');
 const emitPlanDebug = getDebugEmitter('plan', 'plan');
 
 // State + collaborator seam onto `PlanService`. Built once in the service
@@ -109,7 +108,7 @@ export async function performPlanRebuild(
           ...buildPlanHeadroomLogFields(host.getLatestPlanSnapshot()),
           ...buildPublishedPlanCapacityStateSummary(host.getLatestPublishedPlan()),
         };
-        if (logAtInfo) (host.deps.loggers.structuredLog ?? logger).info(event);
+        if (logAtInfo) host.deps.loggers.structuredLog.info(event);
         else emitPlanDebug(event);
       }
     }
@@ -137,7 +136,7 @@ async function executePlanRebuild(
   const hadShedding = hasShedding(stampedPlan);
 
   if (isDryRun && hadShedding) {
-    (host.deps.loggers.structuredLog ?? logger).info({
+    host.deps.loggers.structuredLog.info({
       event: 'shedding_dry_run_skipped',
       message: 'Dry run: shedding planned but not executed',
     });
@@ -306,7 +305,7 @@ async function maybeApplyPlanChanges(
     }
     refreshLatestPlanSnapshotPendingState(host);
   } catch (error) {
-    (host.deps.loggers.structuredLog ?? logger).error({
+    host.deps.loggers.structuredLog.error({
       event: 'plan_actions_apply_failed',
       error: normalizeError(error),
     });

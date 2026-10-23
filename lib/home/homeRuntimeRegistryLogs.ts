@@ -5,10 +5,8 @@
  * conditions in one place (the same reason `lib/plan/planLogging.ts` exists).
  *
  * Every emitter but the topic-gated debug one takes the registry's `homes`
- * logger and is a no-op when it is unavailable, exactly as the optional-chained
- * call sites were. Event names
- * and payload shapes are byte-for-byte what the registry emitted inline — log
- * audits keyed on them keep matching.
+ * logger. Event names and payload shapes are byte-for-byte what the registry
+ * emitted inline — log audits keyed on them keep matching.
  */
 import { getDebugEmitter, type Logger as PinoLogger } from '../logging/logger';
 import type { PowerSource } from '../ports/configuredPowerSource';
@@ -23,8 +21,8 @@ const emitHomesSettingsDebug = getDebugEmitter('homes', 'settings');
  * The caller edge-triggers this so it logs once per transition into the
  * misconfigured state, not on every reconcile.
  */
-export function logSubHomesUnderFlowSource(logger: PinoLogger | undefined, subHomeCount: number): void {
-  logger?.warn({
+export function logSubHomesUnderFlowSource(logger: PinoLogger, subHomeCount: number): void {
+  logger.warn({
     event: 'sub_homes_configured_under_flow_power_source',
     subHomeCount,
     detail: 'sub-home meters are only sampled by the Homey Energy poll; under '
@@ -43,8 +41,8 @@ export function logHomeScopedSettingForUnknownHome(homeId: string, baseKey: stri
 }
 
 /** A meter-identity replacement could not clear the old meter's durable freshness. */
-export function logIncompleteIdentityTransition(logger: PinoLogger | undefined, home: SubHomeConfig): void {
-  logger?.warn({
+export function logIncompleteIdentityTransition(logger: PinoLogger, home: SubHomeConfig): void {
+  logger.warn({
     event: 'home_meter_identity_transition_incomplete',
     homeId: home.homeId,
     meterDeviceId: home.meterDeviceId,
@@ -53,8 +51,8 @@ export function logIncompleteIdentityTransition(logger: PinoLogger | undefined, 
 }
 
 /** A per-home UI read threw; the caller is told `unavailable` rather than failing. */
-export function logHomeReadFailed(logger: PinoLogger | undefined, homeId: string, error: unknown): void {
-  logger?.warn({
+export function logHomeReadFailed(logger: PinoLogger, homeId: string, error: unknown): void {
+  logger.warn({
     event: 'home_runtime_read_failed',
     homeId,
     detail: 'already-committed read threw; reported unavailable',
@@ -64,11 +62,11 @@ export function logHomeReadFailed(logger: PinoLogger | undefined, homeId: string
 
 /** Constructing the replacement bundle threw; the old runtime stays fenced. */
 export function logBundleReplacementFailure(
-  logger: PinoLogger | undefined,
+  logger: PinoLogger,
   home: SubHomeConfig,
   error: unknown,
 ): void {
-  logger?.error({
+  logger.error({
     event: 'home_meter_identity_transition_incomplete',
     homeId: home.homeId,
     meterDeviceId: home.meterDeviceId,
@@ -88,10 +86,9 @@ export type PowerSourceTransitionFailure =
   | { generation: number; powerSource: PowerSource; cause: 'bundle_replacement'; error: unknown };
 
 export function logPowerSourceTransitionIncomplete(
-  logger: PinoLogger | undefined,
+  logger: PinoLogger,
   params: PowerSourceTransitionFailure,
 ): void {
-  if (!logger) return;
   const base = {
     event: 'home_power_source_transition_incomplete',
     generation: params.generation,

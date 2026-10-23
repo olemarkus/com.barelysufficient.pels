@@ -115,7 +115,7 @@ export class AppSnapshotHelpers {
     getPlanInputSnapshot: () => PlanInputSnapshotDevice[];
     resolveManagedState: (deviceId: string) => boolean;
     isCapacityControlEnabled: (deviceId: string) => boolean;
-    getStructuredLogger: (component: string) => PinoLogger | undefined;
+    getStructuredLogger: (component: string) => PinoLogger;
     getNow: () => Date;
     logPeriodicStatus: (options?: { includeDeviceHealth?: boolean }) => void;
     persistFilledModeTargets: () => void;
@@ -182,7 +182,7 @@ export class AppSnapshotHelpers {
       'targetConfirmationPoll',
       setInterval(() => {
         this.pollStuckTargetConfirmations()
-          .catch((error) => this.deps.getStructuredLogger('snapshot')?.error({
+          .catch((error) => this.deps.getStructuredLogger('snapshot').error({
             event: 'stuck_target_confirmation_poll_failed',
             err: normalizeError(error),
           }));
@@ -228,7 +228,7 @@ export class AppSnapshotHelpers {
         try {
           await this.refreshTargetDevicesSnapshot({ targeted: true });
         } catch (error) {
-          this.deps.getStructuredLogger('snapshot')?.error({
+          this.deps.getStructuredLogger('snapshot').error({
             event: 'device_poll_failed',
             err: normalizeError(error),
           });
@@ -301,7 +301,7 @@ export class AppSnapshotHelpers {
         try {
           await this.refreshTargetDevicesSnapshot({ targeted: true, recordHomeyEnergySample: false });
         } catch (error) {
-          this.deps.getStructuredLogger('snapshot')?.error({
+          this.deps.getStructuredLogger('snapshot').error({
             event: 'post_actuation_snapshot_refresh_failed',
             err: normalizeError(error),
           });

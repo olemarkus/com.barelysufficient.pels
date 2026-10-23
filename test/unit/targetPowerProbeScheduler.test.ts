@@ -1,5 +1,6 @@
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { TargetPowerProbeScheduler } from '../../lib/device/targetPowerProbeScheduler';
+import { testLogger } from '../utils/testLogger';
 
 describe('TargetPowerProbeScheduler', () => {
   afterEach(() => {
@@ -17,7 +18,7 @@ describe('TargetPowerProbeScheduler', () => {
       hasPendingProbe: () => false,
       rebuildForDueProbe,
       refreshForSettlement: vi.fn(async () => {}),
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
     });
 
     scheduler.start();
@@ -44,7 +45,7 @@ describe('TargetPowerProbeScheduler', () => {
       hasPendingProbe: () => pending,
       rebuildForDueProbe,
       refreshForSettlement: vi.fn(async () => {}),
-      getLogger: () => undefined,
+      getLogger: () => testLogger,
     });
 
     scheduler.start();

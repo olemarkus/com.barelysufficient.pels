@@ -5,6 +5,7 @@ import { SettingsRepository } from '../../setup/settingsRepository';
 import { FLOW_REPORTED_DEVICE_CAPABILITIES } from '../../lib/utils/settingsKeys';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import type { FlowReportedCapabilitiesByDevice } from '../../lib/device/transport/flowReportedCapabilities';
+import { testLogger } from '../utils/testLogger';
 
 const savedReports: FlowReportedCapabilitiesByDevice = {
   heater: { onoff: { value: true, reportedAt: 1_700_000_000_000, source: 'flow' } },
@@ -18,7 +19,7 @@ describe('Flow capability persistence reads', () => {
   const buildFlowBacked = () => createFlowBackedDeviceState(
     mockHomeyInstance as unknown as Homey.App['homey'], {
       persistence: repository,
-      getStructuredLogger: () => undefined,
+      getStructuredLogger: () => testLogger,
       getFlowReportedCapabilities: () => reports,
       setFlowReportedCapabilities: (state) => { reports = state; },
       getDeviceManager: () => undefined,

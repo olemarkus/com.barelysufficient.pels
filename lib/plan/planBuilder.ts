@@ -522,7 +522,7 @@ export class PlanBuilder {
   ): void {
     const { netCreditKw } = relief.shed;
     if (power.headroomKw !== null && netCreditKw !== 0 && (power.headroomKw < 0 || netCreditKw < 0)) {
-      this.deps.structuredLog?.info({
+      this.deps.structuredLog.info({
         event: 'storage_relief_shed_term',
         netCreditKw,
         measuredDeficitKw: Math.max(0, -power.headroomKw),
@@ -544,7 +544,7 @@ export class PlanBuilder {
     });
     if (stateKey === this.lastStorageStateKey) return;
     this.lastStorageStateKey = stateKey;
-    this.deps.structuredLog?.info({
+    this.deps.structuredLog.info({
       event: 'storage_relief_state',
       batteries: relief.batteries,
       // The holds this cycle decided, not what restore withholds

@@ -62,7 +62,7 @@ export class SubHomeMembershipReadyEdge {
       })
       .catch((error: unknown) => {
         this.rearm();
-        this.deps.getLogger()?.error({
+        this.deps.getLogger().error({
           event: 'home_membership_ready_apply_failed', homeId: runtime.homeId, err: normalizeError(error),
         });
       });
@@ -80,7 +80,7 @@ export class SubHomeMembershipReadyEdge {
     timers.registerTimeout(key, setTimeout(() => {
       timers.clear(key);
       if (runtime.isTornDown() || runtime.isMembershipReady()) return;
-      this.deps.getLogger()?.warn({
+      this.deps.getLogger().warn({
         event: 'home_bundle_gated_no_zone_tree_commit',
         homeId: runtime.homeId,
         detail: 'no committed zone tree after boot grace; bundle stays dry-run gated — '
@@ -149,7 +149,7 @@ export class SubHomeMembershipReadyEdge {
       });
       if (runtime.isTornDown()) return 'stopped';
       if (outcome.failed) {
-        this.deps.getLogger()?.warn({
+        this.deps.getLogger().warn({
           event: 'home_membership_ready_rebuild_failed',
           homeId: runtime.homeId,
         });

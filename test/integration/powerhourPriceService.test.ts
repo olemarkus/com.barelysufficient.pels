@@ -20,8 +20,10 @@ import {
 } from '../../packages/shared-domain/src/utils/dateUtils';
 import { noHomeyEnergyPrices, noHomeyWebApi } from '../helpers/homeyWebApiStub';
 import type Homey from 'homey';
+import { testLogger } from '../utils/testLogger';
 
 const sinks = (overrides: Partial<PriceServiceLoggingSinks> = {}): PriceServiceLoggingSinks => ({
+  structuredLog: testLogger,
   debugStructured: () => {},
   ...overrides,
 });

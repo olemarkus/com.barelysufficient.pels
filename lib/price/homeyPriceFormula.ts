@@ -302,7 +302,7 @@ export const syncHomeyPriceFormula = async (
   // saying so at warn is the only account the owner's log will carry. `failed`
   // reads are ordinary and stay at debug unless they leave us unable to price.
   if (stored.kind === 'unknown' || stored.kind === 'unsupported') {
-    sinks.structuredLog?.warn({
+    sinks.structuredLog.warn({
       event: 'homey_price_formula_unpriceable',
       reasonCode: stored.kind === 'unknown' ? 'never_read' : 'cannot_evaluate',
       readKind: read.kind,
@@ -315,7 +315,7 @@ export const syncHomeyPriceFormula = async (
     sinks.debugStructured({ event: 'homey_price_formula_unchanged', kind: read.kind });
     return false;
   }
-  sinks.structuredLog?.info({
+  sinks.structuredLog.info({
     event: 'homey_price_formula_changed',
     kind: read.kind,
     expression: read.kind === 'configured' ? read.expression : null,
@@ -338,7 +338,7 @@ export const dropsPersistedPrices = (
   sinks: PriceServiceLoggingSinks,
 ): boolean => {
   if (resolution.verdict !== 'unpriceable') return false;
-  sinks.structuredLog?.warn({
+  sinks.structuredLog.warn({
     event: 'combined_prices_dropped_unpriceable',
     reasonCode: resolution.reasonCode,
   });

@@ -7,7 +7,7 @@ import type Homey from 'homey';
 import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
 import type { ChargingCurrentRead } from '../packages/contracts/src/chargingControl';
 import type { DebugLoggingTopic } from '../packages/shared-domain/src/utils/debugLogging';
-import { getDebugTopics, setDebugTopics } from '../lib/logging/logger';
+import { getComponentLogger, getDebugTopics, setDebugTopics } from '../lib/logging/logger';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
 import type { PendingTargetObservationSource } from '../lib/plan/planTypes';
 import type { PlanService } from '../lib/plan/planService';
@@ -86,10 +86,8 @@ abstract class AppRuntimeApi extends Base {
     return this.builtInControlFlowConflicts.readChargingCurrent();
   }
   public async onUninit(): Promise<void> { await this.serviceWiring.runUninit(); }
-  public getStructuredLogger(component: string): PinoLogger | undefined {
-    return this.runtime.structuredLogger?.child({ component });
-  }
-  public getApiStructuredLogger(): PinoLogger | undefined { return this.getStructuredLogger('api'); }
+  public getStructuredLogger(component: string): PinoLogger { return getComponentLogger(component); }
+  public getApiStructuredLogger(): PinoLogger { return this.getStructuredLogger('api'); }
   public get priceOptimizationSettings() {
     return temperaturePolicyPriceSettings(
       requirePriceCoordinator(this.context).getPriceOptimizationSettings(),
@@ -121,7 +119,7 @@ abstract class AppRuntimeApi extends Base {
     const card = this.homey.flow?.getTriggerCard?.('operating_mode_changed');
     if (card && typeof card.trigger === 'function') {
       card.trigger({}, { mode: trimmed }).catch((err: Error) => this.getStructuredLogger('flow')
-        ?.error({ event: 'operating_mode_changed_trigger_failed', err: normalizeError(err) }));
+        .error({ event: 'operating_mode_changed_trigger_failed', err: normalizeError(err) }));
     }
     this.context.lastNotifiedOperatingMode = trimmed;
   }
@@ -185,7 +183,7 @@ abstract class AppRuntimeApi extends Base {
       }
       await this.overheadToken.setValue(overhead ?? 0);
     } catch (error) {
-      this.getStructuredLogger('flow')?.error({
+      this.getStructuredLogger('flow').error({
         event: 'capacity_overhead_token_update_failed', err: normalizeError(error),
       });
     }
@@ -222,7 +220,7 @@ abstract class AppRuntimeApi extends Base {
   protected logPeriodicStatus(options: { includeDeviceHealth?: boolean } = {}): void {
     if (!this.context.capacityGuard) throw new Error('CapacityGuard must be initialized');
     if (!this.context.planEngine) throw new Error('PlanEngine must be initialized');
-    this.getStructuredLogger('status')?.info(buildPeriodicStatusLogFields({
+    this.getStructuredLogger('status').info(buildPeriodicStatusLogFields({
       capacityGuard: this.context.capacityGuard,
       powerTracker: this.context.powerTracker,
       capacitySettings: this.context.capacitySettings,
@@ -235,11 +233,11 @@ abstract class AppRuntimeApi extends Base {
     if (options.includeDeviceHealth === true) {
       const deviceStatus = requireDeviceManager(this.context).getPeriodicStatusMetrics();
       if (deviceStatus) {
-        this.getStructuredLogger('devices')?.info({ event: 'periodic_device_health_summary', ...deviceStatus });
+        this.getStructuredLogger('devices').info({ event: 'periodic_device_health_summary', ...deviceStatus });
       }
     }
     const dailyBudgetStatus = requireDailyBudgetService(this.context).getPeriodicStatusFields();
-    if (dailyBudgetStatus) this.getStructuredLogger('daily_budget')?.info(dailyBudgetStatus);
+    if (dailyBudgetStatus) this.getStructuredLogger('daily_budget').info(dailyBudgetStatus);
   }
 }
 

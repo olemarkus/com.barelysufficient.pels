@@ -55,6 +55,7 @@ import {
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
 import { fixtureLimitedSetpoints, fixtureTemperatureSetpointsEntry } from '../helpers/temperatureSetpointsFixture';
+import { testLogger } from '../utils/testLogger';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -115,6 +116,7 @@ const buildContext = (overrides: PlanCycleSpec = {}): { context: PlanContext; po
 // The restore deps a case is not about: no temperature setpoints, and every
 // device sheds by turning off. A case states when the power tracker last read.
 const restoreDeps = (lastTimestamp: number): RestoreDeps => ({
+  structuredLog: testLogger,
   powerTracker: partialDouble<PowerTrackerState>({ lastTimestamp }),
   temperatureSetpoints: new Map(),
   getShedBehavior: () => ({ action: 'turn_off' }),
@@ -654,6 +656,7 @@ describe('restore cooldown backoff', () => {
       state,
       sheddingActive: false,
       deps: {
+        structuredLog: testLogger,
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map([['dev-temp', fixtureTemperatureSetpointsEntry()]]),
         getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 16 }),
@@ -1394,6 +1397,7 @@ describe('restore cooldown backoff', () => {
       state,
       sheddingActive: false,
       deps: {
+        structuredLog: testLogger,
         // Stale whole-home sample (no fresh measurement past lastRestoreMs) → meter settling.
         powerTracker: { lastTimestamp: null } as unknown as PowerTrackerState,
         temperatureSetpoints: new Map(),
@@ -1545,6 +1549,7 @@ describe('restore cooldown backoff', () => {
       state,
       sheddingActive: false,
       deps: {
+        structuredLog: testLogger,
         // Stale whole-home sample (no fresh measurement past lastRestoreMs) → meter settling.
         powerTracker: { lastTimestamp: null } as unknown as PowerTrackerState,
         temperatureSetpoints: new Map(),
@@ -1583,6 +1588,7 @@ describe('restore cooldown backoff', () => {
       reason: { code: PLAN_REASON_CODES.keep, detail: null },
     }));
     const deps = {
+      structuredLog: testLogger,
       powerTracker: partialDouble<PowerTrackerState>({ lastTimestamp: now }),
       // At their limit already: limiting them again releases nothing.
       temperatureSetpoints: fixtureLimitedSetpoints({ 'off-heater': 16, peer: 16 }),
@@ -1651,6 +1657,7 @@ describe('restore cooldown backoff', () => {
     }));
     const { context, power } = buildContext({ headroomRaw: 5, headroom: 5 });
     const deps = {
+      structuredLog: testLogger,
       powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
       // At their limit already: limiting them again releases nothing.
       temperatureSetpoints: fixtureLimitedSetpoints({ 'first-temp': 16, 'second-temp': 16 }),
@@ -1716,6 +1723,7 @@ describe('restore cooldown backoff', () => {
       state,
       sheddingActive: false,
       deps: {
+        structuredLog: testLogger,
         powerTracker: { lastTimestamp: now - elapsedMs } as PowerTrackerState,
         temperatureSetpoints: new Map([['temp', fixtureTemperatureSetpointsEntry()]]),
         getShedBehavior,
@@ -1765,6 +1773,7 @@ describe('restore cooldown backoff', () => {
       reason: { code: PLAN_REASON_CODES.capacity },
     })];
     const deps = {
+      structuredLog: testLogger,
       powerTracker: { lastTimestamp: state.actuation.lastRestoreMs + 1 } as PowerTrackerState,
       // At their limit already: limiting them again releases nothing.
       temperatureSetpoints: fixtureLimitedSetpoints({ 'dev-temp': 16 }),
@@ -1821,6 +1830,7 @@ describe('restore cooldown backoff', () => {
       state,
       sheddingActive: false,
       deps: {
+        structuredLog: testLogger,
         powerTracker: { lastTimestamp: null } as unknown as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'turn_off' as const }),
@@ -2289,6 +2299,7 @@ describe('restore cooldown backoff', () => {
       state,
       sheddingActive: false,
       deps: {
+        structuredLog: testLogger,
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'set_temperature' as const, temperature: 15 }),
@@ -3264,6 +3275,7 @@ describe('restore admission — headroom and penalty gates', () => {
       sheddingActive: false,
       guardInShortfall: true,
       deps: {
+        structuredLog: testLogger,
         powerTracker: { lastTimestamp: now - 1_000 } as PowerTrackerState,
         temperatureSetpoints: new Map(),
         getShedBehavior: () => ({ action: 'set_step' as const }),

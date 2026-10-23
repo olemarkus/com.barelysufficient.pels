@@ -38,18 +38,6 @@ describe('emitGated', () => {
     expect(debugEmitter).not.toHaveBeenCalled();
   });
 
-  it('falls back to the debug emitter (with reasonCode) when a surprise has no logger', () => {
-    const debugEmitter = vi.fn();
-    emitGated({
-      logger: undefined,
-      debugEmitter,
-      event: 'clamp',
-      fields: { deviceId: 'd1' },
-      surprise: { level: 'warn', reasonCode: 'too_big' },
-    });
-    expect(debugEmitter).toHaveBeenCalledWith({ event: 'clamp', deviceId: 'd1', reasonCode: 'too_big' });
-  });
-
   it('routes an info-level surprise to logger.info', () => {
     const logger = makeLogger();
     emitGated({

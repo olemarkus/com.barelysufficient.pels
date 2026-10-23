@@ -124,7 +124,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
         try {
           this.homey.settings.set(DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH, latch);
         } catch (error) {
-          this.getStructuredLogger('deferred_objectives')?.error({
+          this.getStructuredLogger('deferred_objectives').error({
             event: 'deferred_objective_hours_remaining_latch_persist_failed', err: normalizeError(error),
           });
         }

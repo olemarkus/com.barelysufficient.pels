@@ -218,7 +218,7 @@ export const syncHomeyExportTerms = async (
 ): Promise<boolean> => {
   const terms = await fetchHomeyExportTerms(webApiGet);
   if (terms.kind === 'failed') {
-    sinks.structuredLog?.warn({
+    sinks.structuredLog.warn({
       event: 'homey_export_terms_read_failed',
       reasonCode: terms.reasonCode,
     });
@@ -229,7 +229,7 @@ export const syncHomeyExportTerms = async (
     sinks.debugStructured({ event: 'homey_export_terms_unchanged', kind: terms.kind });
     return false;
   }
-  sinks.structuredLog?.info({
+  sinks.structuredLog.info({
     event: 'homey_export_terms_changed',
     kind: terms.kind,
     amount: terms.kind === 'fixed' ? terms.amount : null,

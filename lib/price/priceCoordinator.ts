@@ -94,7 +94,7 @@ export type PriceCoordinatorDeps = {
   readHubLocation: () => Promise<HubLocationRead>;
   debugStructured: StructuredDebugEmitter;
   error: (...args: unknown[]) => void;
-  structuredLog?: PinoLogger;
+  structuredLog: PinoLogger;
   onCombinedPricesUpdated?: (reason: string) => void;
 };
 
@@ -213,7 +213,7 @@ export class PriceCoordinator {
   updatePriceOptimizationEnabled(logChange = false): void {
     this.priceOptimizationEnabled = this.deps.priceOptimizationSettingsStore.isEnabled();
     if (logChange) {
-      this.deps.structuredLog?.info({
+      this.deps.structuredLog.info({
         event: 'price_optimization_enabled_changed',
         enabled: this.priceOptimizationEnabled,
       });
@@ -276,7 +276,7 @@ export class PriceCoordinator {
       try {
         this.updateCombinedPrices();
       } catch (error) {
-        (this.deps.structuredLog ?? moduleLogger).error({
+        this.deps.structuredLog.error({
           event: 'midnight_price_rotation_failed',
           err: normalizeError(error),
         });
@@ -336,7 +336,7 @@ export class PriceCoordinator {
 
   /** Answers whether PELS switched source, the cue to fetch prices from the new one. */
   private refreshPriceSource(market: SettingsUiHubMarketRead, powerhour: PowerhourPresence): boolean {
-    const logger = this.deps.structuredLog ?? moduleLogger;
+    const logger = this.deps.structuredLog;
     let sourceSwitch: PriceSourceSwitch;
     try {
       sourceSwitch = this.priceService.refreshPriceSource(
@@ -402,7 +402,7 @@ export class PriceCoordinator {
     try {
       this.updateCombinedPrices();
     } catch (error) {
-      (this.deps.structuredLog ?? moduleLogger).error({
+      this.deps.structuredLog.error({
         event: 'combined_prices_catchup_rotation_failed',
         err: normalizeError(error),
       });
@@ -525,7 +525,7 @@ export class PriceCoordinator {
 
   private reportPriceFetchFailure(priceSource: 'spot' | 'grid_tariff', error: unknown): Error {
     const err = error instanceof Error ? error : new Error(String(error));
-    (this.deps.structuredLog ?? moduleLogger).error({
+    this.deps.structuredLog.error({
       event: 'price_fetch_failed',
       priceSource,
       reasonCode: resolveErrorReasonCode(err),

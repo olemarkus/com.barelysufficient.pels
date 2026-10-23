@@ -47,7 +47,7 @@ type PlanStatusWriterDeps = {
    * "the dry-run, for status purposes".
    */
   getCapacityDryRun: () => boolean;
-  structuredLog?: PinoLogger;
+  structuredLog: PinoLogger;
 };
 
 export class PlanStatusWriter {
@@ -245,7 +245,7 @@ export class PlanStatusWriter {
     if (card) {
       card
         .trigger({ level: priceLevel }, { priceLevel })
-        .catch((err: Error) => this.deps.structuredLog?.error({
+        .catch((err: Error) => this.deps.structuredLog.error({
           event: 'price_level_trigger_failed',
           error: err.message,
           stack: err.stack,

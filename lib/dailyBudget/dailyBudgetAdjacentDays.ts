@@ -7,13 +7,11 @@ import {
 } from '../../packages/shared-domain/src/utils/dateUtils';
 import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger } from '../logging/logger';
-import { getLogger } from '../logging/logger';
 import type { DailyBudgetManager } from './dailyBudgetManager';
 import type { DailyBudgetPlanInputs } from './dailyBudgetManagerTypes';
 import type { DailyBudgetPreview } from './dailyBudgetPreview';
 import type { DailyBudgetDayPayload, DailyBudgetSettings } from './dailyBudgetTypes';
 
-const moduleLogger = getLogger('dailyBudget/service');
 
 /**
  * Collaborators the adjacent-day (tomorrow preview / yesterday history) builders need from
@@ -25,7 +23,7 @@ const moduleLogger = getLogger('dailyBudget/service');
 export type DailyBudgetAdjacentDayDeps = {
   resolveTimeZone: () => string;
   getPowerTracker: () => PowerTrackerState;
-  structuredLog?: PinoLogger;
+  structuredLog: PinoLogger;
 };
 
 export const buildTomorrowPreview = (
@@ -42,7 +40,7 @@ export const buildTomorrowPreview = (
     const tomorrowStartUtcMs = getNextLocalDayStartUtcMs(todayStartUtcMs, timeZone);
     return manager.buildPreview(tomorrowStartUtcMs, timeZone, settings, inputs);
   } catch (error) {
-    (deps.structuredLog ?? moduleLogger).error({
+    deps.structuredLog.error({
       event: 'daily_budget_tomorrow_preview_failed',
       err: normalizeError(error),
     });
@@ -61,7 +59,7 @@ const resolveYesterdayContext = (
     const yesterdayStartUtcMs = getDateKeyStartMs(yesterdayKey, timeZone);
     return { timeZone, yesterdayStartUtcMs };
   } catch (error) {
-    (deps.structuredLog ?? moduleLogger).error({
+    deps.structuredLog.error({
       event: 'daily_budget_yesterday_date_resolve_failed',
       err: normalizeError(error),
     });
@@ -82,7 +80,7 @@ export const buildYesterdayHistory = (
   try {
     return manager.buildHistory(yesterdayStartUtcMs, timeZone, deps.getPowerTracker(), settings, inputs);
   } catch (error) {
-    (deps.structuredLog ?? moduleLogger).error({
+    deps.structuredLog.error({
       event: 'daily_budget_yesterday_history_failed',
       err: normalizeError(error),
     });

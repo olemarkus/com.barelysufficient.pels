@@ -2,6 +2,7 @@ import { vi } from 'vitest';
 import { createTestDeviceActivityRecorder } from './deviceActivityRecorder';
 import type { PlanServiceDeps } from '../../lib/plan/planServiceDeps';
 import { SnapshotWarmupGate } from '../../lib/plan/snapshotWarmupGate';
+import { testLogger } from '../utils/testLogger';
 
 type PlanServiceWiring = Pick<PlanServiceDeps,
   | 'getAssociatedCarChargingState'
@@ -28,7 +29,7 @@ export const planServiceWiring = (): PlanServiceWiring => ({
   getObservedRecord: () => undefined,
   getSteppedLoadProfileById: () => new Map(),
   schedulePostActuationRefresh: () => undefined,
-  loggers: { debugStructured: vi.fn() },
+  loggers: { structuredLog: testLogger, debugStructured: vi.fn() },
   overviewDebugStructured: vi.fn(),
   isOverviewDebugEnabled: () => false,
   deviceOverviewLogRecorder: createTestDeviceActivityRecorder(),

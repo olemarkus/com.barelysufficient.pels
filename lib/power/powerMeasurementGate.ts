@@ -36,7 +36,7 @@ import type { ConfiguredPowerSourceRead } from './powerSource';
 export type PowerMeasurementGateOptions = {
   homeId: HomeId;
   getPowerTracker: () => PowerTrackerState;
-  logger: () => Pick<PinoLogger, 'info' | 'warn'> | undefined;
+  logger: () => Pick<PinoLogger, 'info' | 'warn'>;
   /**
    * How long a home may sit gated before it is worth telling the operator. A
    * Homey Energy home opens the gate within a poll (10 s); a home on the flow
@@ -105,7 +105,7 @@ export class PowerMeasurementGate {
     const waitedMs = this.gatedSinceMs === null ? 0 : nowMs - this.gatedSinceMs;
     this.gatedSinceMs = null;
     this.warned = false;
-    this.options.logger()?.info({
+    this.options.logger().info({
       event: 'home_power_measurement_first_sample',
       homeId: this.options.homeId,
       waitedMs,
@@ -129,7 +129,7 @@ export class PowerMeasurementGate {
     this.warned = true;
     const read = this.options.getPowerSource();
     const powerSource = read.state === 'resolved' ? read.value : null;
-    this.options.logger()?.warn({
+    this.options.logger().warn({
       event: 'home_bundle_gated_no_power_sample',
       homeId: this.options.homeId,
       gatedForMs: nowMs - this.gatedSinceMs,

@@ -1,5 +1,6 @@
 import type Homey from 'homey';
 import { partialDouble } from '../helpers/partialDouble';
+import { testLogger } from '../utils/testLogger';
 
 type AppHomey = Homey.App['homey'];
 // Regression: when the daily-budget hot path runs many times before tomorrow's
@@ -96,6 +97,7 @@ const buildService = (initialSettings: SettingsStore): {
     clock: partialDouble<AppHomey['clock']>({ getTimezone: () => TZ }),
   });
   const service = new DailyBudgetService({
+    structuredLog: testLogger,
     getTimeZone: () => TZ,
     getPowerTracker: () => ({ buckets: {} }),
     getPriceOptimizationEnabled: () => true,

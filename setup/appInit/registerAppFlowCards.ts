@@ -47,7 +47,7 @@ export function registerAppFlowCards(
     recordPowerSample: async (powerW) => {
       const source = readConfiguredPowerSource(ctx.homey.settings);
       if (source.state === 'suspect') {
-        ctx.getStructuredLogger('power')?.error({
+        ctx.getStructuredLogger('power').error({
           event: 'flow_power_sample_source_read_failed',
           reason: source.reason,
           err: normalizeError(source.error),

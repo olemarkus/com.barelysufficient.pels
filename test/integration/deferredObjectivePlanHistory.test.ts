@@ -32,6 +32,7 @@ import { formatPlanHistoryObservedCoverage } from '../../packages/shared-domain/
 import type {
   PersistedMeteredDeliveryState,
 } from '../../lib/objectives/deferredObjectives/planHistoryMeteredState';
+import { testLogger } from '../utils/testLogger';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -3437,7 +3438,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const { createIdleClassifier } = await import('../../lib/observer/idleClassifier.js');
       const { CAPPED_IDLE_MIN_WINDOW_MS } = await import('../../lib/observer/idleDetector.js');
 
-      const classifier = createIdleClassifier();
+      const classifier = createIdleClassifier(testLogger);
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder({
         ...deps,

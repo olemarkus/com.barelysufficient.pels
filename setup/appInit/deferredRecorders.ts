@@ -102,7 +102,7 @@ export const writeWatermark = (ctx: AppContext, ms: number): void => {
   try {
     ctx.homey.settings.set(DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK, ms);
   } catch (error) {
-    ctx.getStructuredLogger('deferred_objectives')?.error({
+    ctx.getStructuredLogger('deferred_objectives').error({
       event: 'deferred_objective_observation_watermark_persist_failed',
       err: normalizeError(error),
     });
@@ -127,7 +127,7 @@ export function createDeferredObjectivePlanHistoryRecorder(
       } catch (error) {
         if (!loadUnavailable) {
           loadUnavailable = true;
-          ctx.getStructuredLogger('deferred_objectives')?.warn({
+          ctx.getStructuredLogger('deferred_objectives').warn({
             event: 'deferred_objective_plan_history_load_unavailable', err: normalizeError(error),
           });
         }
@@ -139,7 +139,7 @@ export function createDeferredObjectivePlanHistoryRecorder(
       }
       if (loadUnavailable) {
         loadUnavailable = false;
-        ctx.getStructuredLogger('deferred_objectives')?.info({
+        ctx.getStructuredLogger('deferred_objectives').info({
           event: 'deferred_objective_plan_history_load_recovered',
         });
       }
@@ -151,7 +151,7 @@ export function createDeferredObjectivePlanHistoryRecorder(
         store.writeMeteredDelivery(meteredDeliveryStates);
         return true;
       } catch (error) {
-        ctx.getStructuredLogger('deferred_objectives')?.error({
+        ctx.getStructuredLogger('deferred_objectives').error({
           event: 'deferred_objective_plan_history_persist_failed',
           err: normalizeError(error),
         });
@@ -257,7 +257,7 @@ function attemptDeferredObjectiveBackfill(
   const log = ctx.getStructuredLogger('deferred_objectives');
   if (!ctx.homey.settings.get(DEFERRED_OBJECTIVES_PERKEY_MIGRATED)) {
     setBackfillPending(ctx, true);
-    log?.info({ event: 'deferred_objective_backfill_deferred', reason: 'migration_pending' });
+    log.info({ event: 'deferred_objective_backfill_deferred', reason: 'migration_pending' });
     return 'deferred';
   }
   // The marker is set, but `readAllObjectives` runs an INDEPENDENT `getKeys()` that can flake
@@ -272,7 +272,7 @@ function attemptDeferredObjectiveBackfill(
   // grace, which already refuses to clear the latch on an untrustworthy read.
   if (!objectiveKeyListIsTrustworthy(ctx.homey.settings)) {
     setBackfillPending(ctx, true);
-    log?.info({ event: 'deferred_objective_backfill_deferred', reason: 'key_list_untrustworthy' });
+    log.info({ event: 'deferred_objective_backfill_deferred', reason: 'key_list_untrustworthy' });
     return 'deferred';
   }
   const settings = readAllObjectives(ctx.homey.settings);
@@ -289,7 +289,7 @@ function attemptDeferredObjectiveBackfill(
     // PR-description and would need per-objective enable timestamps to fix.
     writeWatermark(ctx, nowMs);
     setBackfillPending(ctx, false);
-    log?.info({
+    log.info({
       event: 'deferred_objective_backfill_watermark_advanced',
       reason: 'no_enabled_objectives',
       windowStartMs: watermark,
@@ -305,13 +305,13 @@ function attemptDeferredObjectiveBackfill(
     // watermark in place means the next attempt re-runs the scan idempotently. Keep the
     // latch set so the next tick retries the persistence instead of advancing the watermark.
     if (!recorder.flushIfDirty()) {
-      log?.info({ event: 'deferred_objective_backfill_deferred', reason: 'persist_failed' });
+      log.info({ event: 'deferred_objective_backfill_deferred', reason: 'persist_failed' });
       return 'deferred';
     }
   }
   writeWatermark(ctx, nowMs);
   setBackfillPending(ctx, false);
-  log?.info({
+  log.info({
     event: 'deferred_objective_backfill_completed',
     addedEntryCount: Math.max(0, recorder.getHistorySnapshot().entries.length - entriesBefore),
     windowStartMs: watermark,
@@ -398,7 +398,7 @@ export function createDeferredObjectiveActivePlanRecorder(
       try {
         ctx.homey.settings.set(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING, next);
       } catch (error) {
-        ctx.getStructuredLogger('deferred_objectives')?.error({
+        ctx.getStructuredLogger('deferred_objectives').error({
           event: 'deferred_objective_active_plans_persist_failed',
           err: normalizeError(error),
         });

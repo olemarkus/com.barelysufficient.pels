@@ -62,7 +62,7 @@ export class SubHomeSourceRecovery {
       }
       this.retryAttempt = 0;
     } catch (error: unknown) {
-      this.deps.getLogger()?.warn({
+      this.deps.getLogger().warn({
         event: 'home_source_authority_actuation_retry_failed',
         homeId: runtime.homeId,
         err: normalizeError(error),

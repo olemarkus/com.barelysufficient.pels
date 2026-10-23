@@ -25,6 +25,7 @@ import {
 import { PriceLevel } from '../../lib/price/priceLevels';
 import type { ThermalDirection } from '../../packages/contracts/src/types';
 import type { TemperatureIntentReads } from '../../lib/thermostat/temperatureSetpoints';
+import { testLogger } from '../utils/testLogger';
 
 const r = (reason: string) => fixtureDeviceReason(reason)!;
 
@@ -1359,6 +1360,7 @@ describe('daily-bound headroom starvation flows through to the overview budget b
 
   it('resolves to a stable budget bucket that offers a rescue (no cycle-to-cycle flip)', () => {
     const service = new DeviceDiagnosticsService({
+      structuredLog: testLogger,
       diagnosticsStateStore: createInMemoryDeviceDiagnosticsStateStore(),
       getTimeZone: () => 'Europe/Oslo',
     });
@@ -1427,6 +1429,7 @@ describe('daily-bound headroom starvation flows through to the overview budget b
 
   it('holds a stable counting cause while the plan reason oscillates dailyBudget <-> insufficient_headroom', () => {
     const service = new DeviceDiagnosticsService({
+      structuredLog: testLogger,
       diagnosticsStateStore: createInMemoryDeviceDiagnosticsStateStore(),
       getTimeZone: () => 'Europe/Oslo',
     });
@@ -1473,6 +1476,7 @@ describe('a device held under a restore cooldown accumulates held-back time', ()
 
   const createService = () => {
     return new DeviceDiagnosticsService({
+      structuredLog: testLogger,
       diagnosticsStateStore: createInMemoryDeviceDiagnosticsStateStore(),
       getTimeZone: () => 'Europe/Oslo',
     });

@@ -7,6 +7,7 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { buildSheddingPlanForSpec } from '../helpers/sheddingPlanForSpec';
 import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { testLogger } from '../utils/testLogger';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -49,7 +50,7 @@ const buildDeps = (state: ReturnType<typeof createPlanEngineState>, capacityGuar
   pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
   getShedBehavior: () => ({ action: 'turn_off' as const }),
   // Cap-less device sorts first (higher number sheds first).
-  log: vi.fn(),
+  structuredLog: testLogger,
 });
 
 const buildCapacityGuard = (): CapacityGuard => ({

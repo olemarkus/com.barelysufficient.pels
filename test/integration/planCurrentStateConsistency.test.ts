@@ -15,6 +15,7 @@ import type {
 } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import { buildPlanMeta, withFixtureResidualKw } from '../utils/planTestUtils';
+import { testLogger } from '../utils/testLogger';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -103,6 +104,7 @@ describe('planner current-state consistency', () => {
       cycle,
       state,
       {
+        structuredLog: testLogger,
         capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
         shortfallThresholdKw: Number.POSITIVE_INFINITY,
         powerTracker: { lastTimestamp: 100, lastPowerW: cycle.drawKw * 1000 } as PowerTrackerState,

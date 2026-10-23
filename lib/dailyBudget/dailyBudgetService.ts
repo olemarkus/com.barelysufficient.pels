@@ -40,11 +40,9 @@ import { recordOpDuration, safeRss } from '../utils/opRssTracker';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
-import { getLogger } from '../logging/logger';
 import { resolvePlanningPowerCeiling } from '../power/capacityModel';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 
-const moduleLogger = getLogger('dailyBudget/service');
 const discardDebug = (): void => undefined;
 
 type DailyBudgetServiceDeps = {
@@ -56,7 +54,7 @@ type DailyBudgetServiceDeps = {
   getCapacitySettings: () => PowerLimitSettings;
   combinedPricesReader: CombinedPricesReader;
   dailyBudgetSettingsStore: DailyBudgetSettingsStore;
-  structuredLog?: PinoLogger;
+  structuredLog: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
 };
 
@@ -233,7 +231,7 @@ export class DailyBudgetService {
       this.setDaySnapshot(update.snapshot, nowMs, inputs, forced);
       const snap = update.snapshot;
       if (params.emitStructuredEvent !== false && this.shouldEmitBudgetRecomputed(snap)) {
-        (this.deps.structuredLog ?? moduleLogger).info({
+        this.deps.structuredLog.info({
           event: 'budget_recomputed',
           newBudgetKWh: snap.budget.dailyBudgetKWh,
           actualKWh: snap.state.usedNowKWh,
@@ -243,7 +241,7 @@ export class DailyBudgetService {
       }
       if (update.persistReason) this.maybePersistState(update.persistReason, nowMs);
     } catch (error) {
-      (this.deps.structuredLog ?? moduleLogger).error({
+      this.deps.structuredLog.error({
         event: 'daily_budget_state_update_failed',
         err: normalizeError(error),
       });
@@ -328,7 +326,7 @@ export class DailyBudgetService {
 
   private emitStructuredDailyBudgetDebug(payload: Record<string, unknown>): void {
     if (!this.shouldIncludeConfidenceBootstrapDebug()) return;
-    (this.deps.structuredLog ?? moduleLogger).info({
+    this.deps.structuredLog.info({
       ...payload,
       debugTopic: 'daily_budget',
     });
@@ -560,7 +558,7 @@ export class DailyBudgetService {
     try {
       this.manager.logNextDayPlan(preview, this.settings, inputs);
     } catch (error) {
-      (this.deps.structuredLog ?? moduleLogger).error({
+      this.deps.structuredLog.error({
         event: 'daily_budget_next_day_plan_log_failed',
         err: normalizeError(error),
       });

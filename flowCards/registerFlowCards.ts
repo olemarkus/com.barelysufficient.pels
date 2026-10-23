@@ -74,7 +74,7 @@ export type ClearDeferredObjectiveForDevice = (params: {
 export type FlowCardDeps = {
   homey: FlowHomeyLike;
   areFlowBackedCardsAvailable: () => boolean;
-  structuredLog?: {
+  structuredLog: {
     info: (payload: Record<string, unknown>) => void;
   };
   resolveModeName: (mode: string) => string;
@@ -171,7 +171,7 @@ export type FlowCardDeps = {
   getCombinedHourlyPrices: () => CombinedHourlyPrice[];
   getTimeZone: () => string;
   getNow: () => Date;
-  getStructuredLogger: (component: string) => PinoLogger | undefined;
+  getStructuredLogger: (component: string) => PinoLogger;
   debugStructured: StructuredDebugEmitter;
 };
 

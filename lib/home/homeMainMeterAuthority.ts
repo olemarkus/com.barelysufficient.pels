@@ -47,7 +47,7 @@ import type { ConfiguredPowerSourceRead } from '../ports/configuredPowerSource';
 export type MainMeterAuthorityState = 'ready' | 'retry' | 'blocked';
 
 export type MainMeterAuthorityDeps = {
-  getLogger: () => PinoLogger | undefined;
+  getLogger: () => PinoLogger;
   getMainMeterSelection: () => MainMeterSelection;
   /**
    * The active power source, classified at the settings boundary. Required:
@@ -299,7 +299,7 @@ export class MainMeterAuthority {
     }
     const configured = findMainMeterCollision(selection.meterDeviceId, ctx.subHomes);
     if (configured !== null && !this.mainMeterCollisionLogged) {
-      this.deps.getLogger()?.warn({
+      this.deps.getLogger().warn({
         event: 'main_home_meter_ownership_conflict',
         meterDeviceId: selection.meterDeviceId,
         subHomeId: configured.homeId,
@@ -367,7 +367,7 @@ export class MainMeterAuthority {
       return;
     }
     if (fence.reason !== this.loggedSampledFenceReason) {
-      this.deps.getLogger()?.warn(fence.reason === 'meter_area_collision'
+      this.deps.getLogger().warn(fence.reason === 'meter_area_collision'
         ? {
           event: 'main_home_sampled_meter_ownership_conflict',
           meterDeviceId: fence.meterDeviceId,
@@ -419,7 +419,7 @@ export class MainMeterAuthority {
     const read = this.deps.getConfiguredPowerSource();
     if (read.state === 'suspect') {
       if (!this.powerSourceUnavailableLogged) {
-        this.deps.getLogger()?.warn({
+        this.deps.getLogger().warn({
           event: 'meter_source_power_source_unavailable',
           detail: 'fencing control until the active power source is authoritative',
         });
@@ -445,7 +445,7 @@ export class MainMeterAuthority {
       // payload — the no-state rule budgets this file and a second boolean
       // would only say the same thing twice.
       if (!this.mainMeterUnavailableLogged) {
-        this.deps.getLogger()?.warn({
+        this.deps.getLogger().warn({
           event: 'main_home_meter_authority_unavailable',
           reason: selection.state,
           detail: selection.state === 'unconfigured'

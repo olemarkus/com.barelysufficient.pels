@@ -106,12 +106,12 @@ export class TargetPowerCommandLifecycle {
     this.owner.update(device.id, transition.reachability);
     if (transition.kind === 'confirmed') {
       this.store.confirmDesired(device.id, desired);
-      this.loggers.structuredLog?.info({ event: 'target_power_reachability_raised', deviceId: device.id,
+      this.loggers.structuredLog.info({ event: 'target_power_reachability_raised', deviceId: device.id,
         deviceName: device.name, requestedPowerW: desired.planningPowerW,
         maxReachedPowerW: transition.reachability.maxReachedPowerW });
     } else {
       this.store.deleteDesired(device.id);
-      this.loggers.structuredLog?.warn({ event: 'target_power_step_settled_below_request', deviceId: device.id,
+      this.loggers.structuredLog.warn({ event: 'target_power_step_settled_below_request', deviceId: device.id,
         deviceName: device.name, requestedStepId: desired.stepId, requestedPowerW: desired.planningPowerW,
         observedPowerW: transition.observedPowerW ?? null, ...transition.reachability });
     }

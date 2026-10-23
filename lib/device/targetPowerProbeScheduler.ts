@@ -23,7 +23,7 @@ export class TargetPowerProbeScheduler {
     hasPendingProbe: () => boolean;
     rebuildForDueProbe: (deviceId: string) => Promise<void>;
     refreshForSettlement: () => Promise<void>;
-    getLogger: () => Logger | undefined;
+    getLogger: () => Logger;
   }) {}
 
   start(): void {
@@ -59,7 +59,7 @@ export class TargetPowerProbeScheduler {
       try {
         await this.deps.rebuildForDueProbe(dueProbe.deviceId);
       } catch (error) {
-        this.deps.getLogger()?.error({
+        this.deps.getLogger().error({
           event: 'target_power_probe_rebuild_failed',
           err: normalizeError(error),
         });
@@ -86,7 +86,7 @@ export class TargetPowerProbeScheduler {
       try {
         await this.deps.refreshForSettlement();
       } catch (error) {
-        this.deps.getLogger()?.error({
+        this.deps.getLogger().error({
           event: 'target_power_probe_settlement_refresh_failed',
           err: normalizeError(error),
         });

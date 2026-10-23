@@ -20,6 +20,7 @@ import {
   NORGESPRIS_TARGET_EX_VAT,
 } from '../../lib/price/norwayPriceDefaults';
 import { noHomeyEnergyPrices, noHomeyWebApi } from '../helpers/homeyWebApiStub';
+import { testLogger } from '../utils/testLogger';
 
 const SPOT_PRICE_EX_VAT = 160;
 const GRID_TARIFF_EX_VAT = 28;
@@ -38,7 +39,7 @@ let priceCache = createInMemoryPriceCache();
 
 const createService = (): PriceService => new PriceService(
   mockHomeyInstance as unknown as Homey.App['homey'],
-  { debugStructured: () => {} },
+  { structuredLog: testLogger, debugStructured: () => {} },
   () => mockHomeyInstance.clock.getTimezone(),
   noHomeyEnergyPrices,
   createPriceDataStore(mockHomeyInstance.settings, priceCache),

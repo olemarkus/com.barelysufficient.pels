@@ -40,7 +40,7 @@ export function createLearnedPowerPeakState(params: {
   persistence: DevicePersistencePort;
   getPeaks: () => LearnedPeaksByDeviceId;
   timers: TimerRegistry;
-  getStructuredLogger?: () => PinoLogger | undefined;
+  getStructuredLogger: () => PinoLogger;
 }): LearnedPowerPeakState {
   const { persistence, getPeaks, timers, getStructuredLogger } = params;
   let lastPersistMs = 0;
@@ -94,7 +94,7 @@ export function createLearnedPowerPeakState(params: {
       // is what used to strand the peak for good: the signature check would then
       // skip every later identical attempt, so the one write that failed was
       // also the last one ever tried.
-      getStructuredLogger?.()?.error({
+      getStructuredLogger().error({
         event: 'learned_peaks_write_failed',
         err: normalizeError(error),
       });
@@ -165,7 +165,7 @@ export function createLearnedPowerPeakState(params: {
       scheduleLoadRetry();
       if (loadUnavailableWarned) return;
       loadUnavailableWarned = true;
-      getStructuredLogger?.()?.warn({
+      getStructuredLogger().warn({
         event: 'learned_peaks_load_unavailable',
         reasonCode: 'settings_read_unavailable',
       });

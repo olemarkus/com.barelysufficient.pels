@@ -42,7 +42,7 @@ export function registerEvChargingPhaseCard(deps: FlowCardDeps): void {
       });
       throw new Error('PELS could not save the EV charging phase. Try again shortly.');
     }
-    (deps.structuredLog ?? moduleLogger).info({
+    deps.structuredLog.info({
       event: 'ev_charging_phase_set_from_flow',
       sourceCardId: CARD_ID,
       deviceId,

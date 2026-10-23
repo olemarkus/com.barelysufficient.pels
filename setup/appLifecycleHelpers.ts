@@ -24,7 +24,7 @@ export function flushDailyBudgetStateOnUninit(ctx: AppContext): void {
   try {
     ctx.dailyBudgetService?.persistState('runtime', Date.now());
   } catch (error) {
-    ctx.getStructuredLogger('daily_budget')?.error({
+    ctx.getStructuredLogger('daily_budget').error({
       event: 'daily_budget_state_shutdown_flush_failed',
       err: normalizeError(error),
     });
@@ -113,16 +113,14 @@ export async function startAppServices(ctx: InitializedAppContext): Promise<void
     runSnapshotPlanBootstrapInBackground = true,
     runPriceBootstrapInBackground = true,
   } = {
-    logStartupStepFailure: ctx.getStructuredLogger('startup')
-      ? (label: string, error: Error) => {
-        ctx.getStructuredLogger('startup')?.error({
-          event: 'startup_background_task_failed',
-          reasonCode: 'startup_background_task_failed',
-          taskLabel: label,
-          err: normalizeError(error),
-        });
-      }
-      : undefined,
+    logStartupStepFailure: (label: string, error: Error) => {
+      ctx.getStructuredLogger('startup').error({
+        event: 'startup_background_task_failed',
+        reasonCode: 'startup_background_task_failed',
+        taskLabel: label,
+        err: normalizeError(error),
+      });
+    },
     ...appContext.startupBootstrap,
   };
   await runStep('hydratePowerTracker', async () => appContext.hydratePowerTracker());

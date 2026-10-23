@@ -6,6 +6,7 @@ import { SettingsRepository } from '../../setup/settingsRepository';
 import { DEVICE_EXPECTED_POWER_OVERRIDES } from '../../lib/utils/settingsKeys';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import type { DeviceExpectedPowerOverrides } from '../../packages/contracts/src/types';
+import { testLogger } from '../utils/testLogger';
 
 const NOW = Date.UTC(2026, 7, 9, 12, 0, 0);
 
@@ -22,7 +23,7 @@ describe('expected power override persistence', () => {
     homey: Homey.App['homey'] = mockHomeyInstance as unknown as Homey.App['homey'],
   ): FlowBackedDeviceState => createFlowBackedDeviceState(homey, {
     persistence: new SettingsRepository(homey),
-    getStructuredLogger: () => undefined,
+    getStructuredLogger: () => testLogger,
     getFlowReportedCapabilities: () => ({}),
     setFlowReportedCapabilities: () => {},
     getDeviceManager: () => undefined,
