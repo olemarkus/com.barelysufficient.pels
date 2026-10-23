@@ -64,7 +64,7 @@ export function updateLastKnownPower(params: {
    * snapshot-mutation seam, because that seam fires on a CHANGED calibration
    * input and a reading equal to the standing peak changes none while still
    * re-anchoring `observedAtMs`: the window a steady device is keeping alive
-   * would otherwise expire in settings while memory said it was fresh.
+   * would otherwise expire in the store while memory said it was fresh.
    */
   onPeakChanged?: () => void;
 }): void {

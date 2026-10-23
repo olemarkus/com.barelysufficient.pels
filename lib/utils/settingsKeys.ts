@@ -162,7 +162,10 @@ export const EXTERNAL_OFF_HOLDS_PERKEY_MIGRATED = 'external_off_holds_perkey_mig
 // to. Owned by `lib/battery/batteryClaimStore.ts`, which says why it is a
 // settings key and not a `/userdata` row.
 export const PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX = 'battery_control_claim.';
-/** Learned measured peaks, `{ kw, observedAtMs }` per device (`lib/device/devicePowerPeak.ts`). */
+/**
+ * Legacy: the learned measured peaks, `{ kw, observedAtMs }` per device. Read only
+ * by the one-shot import into the userdata store (`lib/device/learnedPowerPeakStore.ts`).
+ */
 export const DEVICE_POWER_PEAKS = 'device_power_peaks';
 // Marker set once the blob → per-device-key migration has run. Per-device
 // objectives live under `deferred_objective.<deviceId>` keys (see

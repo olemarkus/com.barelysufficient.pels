@@ -1,14 +1,12 @@
 import type { DeviceExpectedPowerOverrides } from '../../packages/contracts/src/types';
-import type {
-  ExpectedPowerOverridesRead,
-  LearnedPeaksByDeviceId,
-  LearnedPeaksRead,
-} from './devicePowerPeak';
+import type { ExpectedPowerOverridesRead } from './devicePowerPeak';
 import type { FlowReportedCapabilitiesByDevice } from './transport/flowReportedCapabilities';
 import type { FlowReportedCapabilitiesRead } from './flowReportedCapabilitiesSetting';
 
 /**
- * The persisted device state this layer owns, as the six calls that touch it.
+ * The settings-persisted device state this layer owns, as the four calls that
+ * touch it. The learned peaks live in the userdata store instead
+ * (`lib/device/learnedPowerPeakStore.ts`).
  *
  * `SettingsRepository` (`setup/settingsRepository.ts`) implements this on top
  * of `homey.settings` and structurally satisfies it; the port is declared here
@@ -21,8 +19,6 @@ import type { FlowReportedCapabilitiesRead } from './flowReportedCapabilitiesSet
 export type DevicePersistencePort = {
   loadFlowReportedCapabilities(): FlowReportedCapabilitiesRead;
   saveFlowReportedCapabilities(state: FlowReportedCapabilitiesByDevice): void;
-  loadLearnedPeaks(): LearnedPeaksRead;
-  saveLearnedPeaks(peaks: LearnedPeaksByDeviceId, nowMs: number): void;
   loadExpectedPowerOverrides(): ExpectedPowerOverridesRead;
   saveExpectedPowerOverrides(overrides: DeviceExpectedPowerOverrides): void;
 };

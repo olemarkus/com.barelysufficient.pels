@@ -3,7 +3,6 @@ import {
   PEAK_WINDOW_MS,
   adoptPersistedLearnedPeaks,
   classifyExpectedPowerOverridesSetting,
-  classifyLearnedPeaksSetting,
   nextLearnedPeak,
   parseExpectedPowerOverrides,
   parseLearnedPeaks,
@@ -125,68 +124,6 @@ describe('parseExpectedPowerOverrides', () => {
   });
 });
 
-describe('classifyLearnedPeaksSetting', () => {
-  const absent = { keyPresent: false, keyListEmpty: false };
-
-  it('resolves an EMPTY record when a healthy key list confirms the key was never written', () => {
-    // The distinction the whole fix turns on: nothing learned yet is a real
-    // answer, and folding it into `unavailable` would fence the write-back off
-    // for the life of an install that has simply never observed a peak.
-    expect(classifyLearnedPeaksSetting({ raw: null, ...absent }))
-      .toEqual({ state: 'resolved', peaks: {} });
-    expect(classifyLearnedPeaksSetting({ raw: undefined, ...absent }))
-      .toEqual({ state: 'resolved', peaks: {} });
-  });
-
-  it('resolves a stored record, still rejecting entry-wise', () => {
-    expect(classifyLearnedPeaksSetting({
-      raw: { good: withinWindow, bad: { kw: 'x' } },
-      ...absent,
-    })).toEqual({ state: 'resolved', peaks: { good: withinWindow } });
-  });
-
-  it('is unavailable when the key list vouches for a key that reads empty', () => {
-    expect(classifyLearnedPeaksSetting({
-      raw: null,
-      keyPresent: true,
-      keyListEmpty: false,
-    })).toEqual({ state: 'unavailable' });
-  });
-
-  it('is unavailable when the key list itself reads empty', () => {
-    // An empty key list is the SDK saying nothing at all, not "this home has no
-    // settings".
-    expect(classifyLearnedPeaksSetting({
-      raw: null,
-      keyPresent: false,
-      keyListEmpty: true,
-    })).toEqual({ state: 'unavailable' });
-  });
-
-  it('is unavailable for a value that is not a record', () => {
-    // Not absence, so answering "no peaks" would license overwriting it.
-    expect(classifyLearnedPeaksSetting({ raw: 'nonsense', ...absent })).toEqual({ state: 'unavailable' });
-    expect(classifyLearnedPeaksSetting({ raw: [withinWindow], ...absent })).toEqual({ state: 'unavailable' });
-  });
-
-  it('resolves a record stored with no entries at all, because that is a real clear', () => {
-    // `{}` is what reaches disk when the last peak is dropped. It has to stay
-    // observable, or a home in that state could never write back again.
-    expect(classifyLearnedPeaksSetting({ raw: {}, ...absent }))
-      .toEqual({ state: 'resolved', peaks: {} });
-  });
-
-  it('is unavailable for a record whose entries ALL fail validation', () => {
-    // Keys were stored and not one survived: that is a value PELS did not
-    // write, so it gets the same refusal as a string or an array — not the
-    // "resolved, nothing here" that would license overwriting it.
-    expect(classifyLearnedPeaksSetting({
-      raw: { a: 'nonsense', b: { kw: -1, observedAtMs: NOW } },
-      ...absent,
-    })).toEqual({ state: 'unavailable' });
-  });
-});
-
 describe('classifyExpectedPowerOverridesSetting', () => {
   const absent = { keyPresent: false, keyListEmpty: false };
 
@@ -201,6 +138,23 @@ describe('classifyExpectedPowerOverridesSetting', () => {
       keyPresent: true,
       keyListEmpty: false,
     })).toEqual({ state: 'unavailable' });
+  });
+
+  it('is unavailable when the key list itself reads empty', () => {
+    // An empty key list is the SDK saying nothing at all, not "this home has no
+    // settings".
+    expect(classifyExpectedPowerOverridesSetting({
+      raw: null,
+      keyPresent: false,
+      keyListEmpty: true,
+    })).toEqual({ state: 'unavailable' });
+  });
+
+  it('is unavailable for a value that is not a record', () => {
+    // Not absence, so answering "no figures" would license overwriting it.
+    expect(classifyExpectedPowerOverridesSetting({ raw: 'nonsense', ...absent })).toEqual({ state: 'unavailable' });
+    expect(classifyExpectedPowerOverridesSetting({ raw: [{ kw: 2.4, ts: NOW }], ...absent }))
+      .toEqual({ state: 'unavailable' });
   });
 
   it('resolves a record stored with no entries at all, because that is a real clear', () => {

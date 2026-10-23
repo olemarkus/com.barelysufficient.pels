@@ -3,7 +3,8 @@ import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { createFlowBackedDeviceState } from '../../setup/flowBackedCardAccess';
 import { SettingsRepository } from '../../setup/settingsRepository';
 import { FLOW_REPORTED_DEVICE_CAPABILITIES } from '../../lib/utils/settingsKeys';
-import { TimerRegistry } from '../../lib/utils/timerRegistry';
+import { createLearnedPowerPeakRepository } from '../../lib/device/learnedPowerPeakStore';
+import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import type { FlowReportedCapabilitiesByDevice } from '../../lib/device/transport/flowReportedCapabilities';
 import { testLogger } from '../utils/testLogger';
 
@@ -13,7 +14,6 @@ const savedReports: FlowReportedCapabilitiesByDevice = {
 
 describe('Flow capability persistence reads', () => {
   let reports: FlowReportedCapabilitiesByDevice;
-  let timers: TimerRegistry;
   let repository: SettingsRepository;
 
   const buildFlowBacked = () => createFlowBackedDeviceState(
@@ -28,7 +28,7 @@ describe('Flow capability persistence reads', () => {
       getSteppedLoadProfile: () => undefined,
       getExpectedPowerKwOverrides: () => ({}),
       getLearnedPowerPeaks: () => ({}),
-      timers,
+      getLearnedPowerPeakRepository: () => createLearnedPowerPeakRepository(openUserdataDatabase(IN_MEMORY_DATABASE)),
       syncHeadroomUsageObservation: () => {},
     },
   );
@@ -37,12 +37,10 @@ describe('Flow capability persistence reads', () => {
     resetMockHomey();
     mockHomeyInstance.settings.set('unrelated_key', true);
     reports = {};
-    timers = new TimerRegistry();
     repository = new SettingsRepository(mockHomeyInstance as unknown as Homey.App['homey']);
   });
 
   afterEach(() => {
-    timers.clearAll();
     vi.restoreAllMocks();
   });
 

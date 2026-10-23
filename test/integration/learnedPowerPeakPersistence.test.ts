@@ -1,53 +1,59 @@
-import type Homey from 'homey';
-import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
-import { SettingsRepository } from '../../setup/settingsRepository';
 import { createLearnedPowerPeakState } from '../../lib/device/learnedPowerPeakState';
+import {
+  createLearnedPowerPeakRepository,
+  importLegacyLearnedPowerPeaks,
+  type LearnedPowerPeakRepository,
+} from '../../lib/device/learnedPowerPeakStore';
+import { IN_MEMORY_DATABASE, openUserdataDatabase, type UserdataDatabase } from '../../lib/store/userdataDatabase';
 import { DEVICE_POWER_PEAKS } from '../../lib/utils/settingsKeys';
-import { TimerRegistry } from '../../lib/utils/timerRegistry';
-import { PEAK_REANCHOR_INTERVAL_MS, type LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
+import {
+  PEAK_WINDOW_MS,
+  PEAK_REANCHOR_INTERVAL_MS,
+  type LearnedPeaksByDeviceId,
+} from '../../lib/device/devicePowerPeak';
+import { MockSettings } from '../mocks/homey';
 import { testLogger } from '../utils/testLogger';
 
 const NOW = Date.UTC(2026, 7, 9, 12, 0, 0);
-const PERSIST_MIN_INTERVAL_MS = 60_000;
-const LOAD_RETRY_MS = 60_000;
+
+const rowCount = (db: UserdataDatabase): number => (
+  (db.prepare('SELECT COUNT(*) AS n FROM device_power_peaks').get() as { n: number }).n
+);
 
 /**
- * The write-back layer for the learned peaks, over the real `SettingsRepository`
- * and the mock Homey settings store — the layer's only outward seam. The peak
- * POLICY is unit-tested in `devicePowerPeak.test.ts`; what is under test here is
- * when a peak reaches settings, and when it must not.
+ * The write-through layer for the learned peaks, over the real repository on an
+ * in-memory userdata database. The peak POLICY is unit-tested in
+ * `devicePowerPeak.test.ts`; what is under test here is when a peak reaches the
+ * store, and when it must not.
  */
 describe('learned power peak persistence', () => {
-  let timers: TimerRegistry;
+  let db: UserdataDatabase;
+  let repository: LearnedPowerPeakRepository;
   let peaks: LearnedPeaksByDeviceId;
 
-  const buildState = (homey: Homey.App['homey'] = mockHomeyInstance as unknown as Homey.App['homey']) => (
+  const buildState = (getRepository: () => LearnedPowerPeakRepository = () => repository) => (
     createLearnedPowerPeakState({
       getStructuredLogger: () => testLogger,
-      persistence: new SettingsRepository(homey),
+      getRepository,
       getPeaks: () => peaks,
-      timers,
     })
   );
 
   beforeEach(() => {
-    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(NOW);
-    resetMockHomey();
-    // A non-empty key list is the healthy case: PELS always has other settings
-    // by the time this loads (the boot migrations write their marker first).
-    mockHomeyInstance.settings.set('unrelated_key', true);
-    timers = new TimerRegistry();
+    db = openUserdataDatabase(IN_MEMORY_DATABASE);
+    repository = createLearnedPowerPeakRepository(db);
     peaks = {};
   });
 
   afterEach(() => {
-    timers.clearAll();
+    db.close();
     vi.useRealTimers();
   });
 
-  it('adopts the persisted record at boot', () => {
-    mockHomeyInstance.settings.set(DEVICE_POWER_PEAKS, { heater: { kw: 2, observedAtMs: NOW - 1000 } });
+  it('adopts the stored peaks at boot', () => {
+    repository.write({ heater: { kw: 2, observedAtMs: NOW - 1000 } });
     const state = buildState();
 
     state.load();
@@ -55,51 +61,25 @@ describe('learned power peak persistence', () => {
     expect(peaks).toEqual({ heater: { kw: 2, observedAtMs: NOW - 1000 } });
   });
 
-  it('refuses to write over a record the boot read could not see', () => {
-    // The cold-boot data-loss shape: the in-memory record is empty too, so
-    // "did the parse look empty?" cannot tell this from a home with no learning.
-    // Only the typed read can, and an unreadable key must fence the write.
-    mockHomeyInstance.settings.set(DEVICE_POWER_PEAKS, { heater: { kw: 2, observedAtMs: NOW - 1000 } });
-    const throwingHomey = {
-      settings: {
-        get: vi.fn(() => { throw new Error('transient read failure'); }),
-        getKeys: () => mockHomeyInstance.settings.getKeys(),
-        set: vi.fn(),
+  it('writes nothing over a store the boot read could not see, and merges once a read lands', () => {
+    // The cold-boot data-loss shape: the in-memory record is empty too, so a
+    // write would make the store hold exactly that and delete every stored row.
+    repository.write({ heater: { kw: 2, observedAtMs: NOW - 1000 } });
+    let readable = false;
+    const flaky: LearnedPowerPeakRepository = {
+      ...repository,
+      read: () => {
+        if (!readable) throw new Error('transient read failure');
+        return repository.read();
       },
-    } as unknown as Homey.App['homey'];
-    const state = buildState(throwingHomey);
+    };
+    const state = buildState(() => flaky);
 
     state.load();
     expect(peaks).toEqual({});
-
     peaks.charger = { kw: 7, observedAtMs: NOW };
     state.persist();
-
-    expect(throwingHomey.settings.set).not.toHaveBeenCalled();
-    expect(mockHomeyInstance.settings.get(DEVICE_POWER_PEAKS))
-      .toEqual({ heater: { kw: 2, observedAtMs: NOW - 1000 } });
-  });
-
-  it('lifts the latch on a later successful read, merging what the run learned', () => {
-    mockHomeyInstance.settings.set(DEVICE_POWER_PEAKS, { heater: { kw: 2, observedAtMs: NOW - 1000 } });
-    let readable = false;
-    const flakyHomey = {
-      settings: {
-        get: (key: string) => {
-          if (!readable) throw new Error('transient read failure');
-          return mockHomeyInstance.settings.get(key);
-        },
-        getKeys: () => mockHomeyInstance.settings.getKeys(),
-        set: (key: string, value: unknown) => mockHomeyInstance.settings.set(key, value),
-      },
-    } as unknown as Homey.App['homey'];
-    const state = buildState(flakyHomey);
-
-    state.load();
-    peaks.charger = { kw: 7, observedAtMs: NOW };
-    state.persist();
-    expect(mockHomeyInstance.settings.get(DEVICE_POWER_PEAKS))
-      .toEqual({ heater: { kw: 2, observedAtMs: NOW - 1000 } });
+    expect(repository.read()).toEqual({ heater: { kw: 2, observedAtMs: NOW - 1000 } });
 
     readable = true;
     peaks.charger = { kw: 7.5, observedAtMs: NOW };
@@ -107,116 +87,26 @@ describe('learned power peak persistence', () => {
 
     // Neither side is discarded: the heater was never observed this run, the
     // charger was only observed this run.
-    expect(mockHomeyInstance.settings.get(DEVICE_POWER_PEAKS)).toEqual({
+    expect(repository.read()).toEqual({
       heater: { kw: 2, observedAtMs: NOW - 1000 },
       charger: { kw: 7.5, observedAtMs: NOW },
     });
   });
 
-  it('retries a failed boot read on its own clock, with no new peak to prompt it', () => {
-    // Devices steady at their peaks move nothing on the ingest path, so without
-    // this an off charger's persisted peak stays out of the expected-power ladder
-    // until something in the home changes.
-    mockHomeyInstance.settings.set(DEVICE_POWER_PEAKS, { charger: { kw: 7.4, observedAtMs: NOW - 1000 } });
-    let readable = false;
-    const flakyHomey = {
-      settings: {
-        get: (key: string) => {
-          if (!readable) throw new Error('transient read failure');
-          return mockHomeyInstance.settings.get(key);
-        },
-        getKeys: () => mockHomeyInstance.settings.getKeys(),
-        set: (key: string, value: unknown) => mockHomeyInstance.settings.set(key, value),
-      },
-    } as unknown as Homey.App['homey'];
-    const state = buildState(flakyHomey);
-
-    state.load();
-    vi.advanceTimersByTime(LOAD_RETRY_MS);
-    expect(peaks).toEqual({});
-
-    readable = true;
-    vi.advanceTimersByTime(LOAD_RETRY_MS);
-    expect(peaks).toEqual({ charger: { kw: 7.4, observedAtMs: NOW - 1000 } });
-  });
-
-  it('writes a resolved-empty boot read like any other answer', () => {
-    // A home that has never learned a peak must still be able to store its first.
+  it('writes every change through, with nothing held back for a restart to lose', () => {
     const state = buildState();
     state.load();
 
     peaks.heater = { kw: 2, observedAtMs: NOW };
     state.persist();
+    expect(repository.read()).toEqual({ heater: { kw: 2, observedAtMs: NOW } });
 
-    expect(mockHomeyInstance.settings.get(DEVICE_POWER_PEAKS)).toEqual({ heater: { kw: 2, observedAtMs: NOW } });
-  });
-
-  it('flushes a peak learned inside the rate-limit window on a trailing timer', () => {
-    const state = buildState();
-    state.load();
-
-    peaks.heater = { kw: 2, observedAtMs: NOW };
-    state.persist();
-
-    // Second reading lands inside the one-minute floor. Without a trailing
-    // flush it is simply dropped — nothing re-offers it.
-    vi.advanceTimersByTime(10_000);
     peaks.heater = { kw: 3, observedAtMs: NOW + 10_000 };
     state.persist();
-    expect(mockHomeyInstance.settings.get(DEVICE_POWER_PEAKS)).toEqual({ heater: { kw: 2, observedAtMs: NOW } });
-
-    vi.advanceTimersByTime(PERSIST_MIN_INTERVAL_MS);
-    expect(mockHomeyInstance.settings.get(DEVICE_POWER_PEAKS))
-      .toEqual({ heater: { kw: 3, observedAtMs: NOW + 10_000 } });
+    expect(repository.read()).toEqual({ heater: { kw: 3, observedAtMs: NOW + 10_000 } });
   });
 
-  it('flushes a held peak at shutdown, bypassing the rate limit', () => {
-    const state = buildState();
-    state.load();
-
-    peaks.heater = { kw: 2, observedAtMs: NOW };
-    state.persist();
-    vi.advanceTimersByTime(5_000);
-    peaks.heater = { kw: 3, observedAtMs: NOW + 5_000 };
-    state.persist();
-
-    state.flush();
-
-    expect(mockHomeyInstance.settings.get(DEVICE_POWER_PEAKS))
-      .toEqual({ heater: { kw: 3, observedAtMs: NOW + 5_000 } });
-  });
-
-  it('retries a peak whose write threw instead of recording it as done', () => {
-    // Advancing the signature before the write is what used to strand a peak
-    // for good: every later identical attempt matched it and returned early.
-    let failWrite = true;
-    const flakyHomey = {
-      settings: {
-        get: (key: string) => mockHomeyInstance.settings.get(key),
-        getKeys: () => mockHomeyInstance.settings.getKeys(),
-        set: (key: string, value: unknown) => {
-          if (failWrite) throw new Error('transient write failure');
-          mockHomeyInstance.settings.set(key, value);
-        },
-      },
-    } as unknown as Homey.App['homey'];
-    const state = buildState(flakyHomey);
-    state.load();
-
-    peaks.heater = { kw: 2, observedAtMs: NOW };
-    state.persist();
-    expect(mockHomeyInstance.settings.get(DEVICE_POWER_PEAKS)).toBeNull();
-
-    failWrite = false;
-    state.flush();
-
-    expect(mockHomeyInstance.settings.get(DEVICE_POWER_PEAKS)).toEqual({ heater: { kw: 2, observedAtMs: NOW } });
-  });
-
-  it('re-anchors a steady device in settings, not only in memory', () => {
-    // A reading equal to the standing peak changes no calibration input, so the
-    // seam this used to hang off never fired — and the window of the steadiest
-    // devices expired in settings while memory said it was fresh.
+  it('re-anchors a steady device in the store, not only in memory', () => {
     // The policy moves a matched anchor at most once per re-anchor interval, so
     // that is the step replayed here.
     const state = buildState();
@@ -224,11 +114,123 @@ describe('learned power peak persistence', () => {
     peaks.heater = { kw: 2, observedAtMs: NOW };
     state.persist();
 
-    vi.advanceTimersByTime(PEAK_REANCHOR_INTERVAL_MS);
+    vi.setSystemTime(NOW + PEAK_REANCHOR_INTERVAL_MS);
     peaks.heater = { kw: 2, observedAtMs: NOW + PEAK_REANCHOR_INTERVAL_MS };
     state.persist();
 
-    expect(mockHomeyInstance.settings.get(DEVICE_POWER_PEAKS))
-      .toEqual({ heater: { kw: 2, observedAtMs: NOW + PEAK_REANCHOR_INTERVAL_MS } });
+    expect(repository.read()).toEqual({ heater: { kw: 2, observedAtMs: NOW + PEAK_REANCHOR_INTERVAL_MS } });
+  });
+
+  it('carries a peak whose write threw into the next write', () => {
+    let failWrite = true;
+    const flaky: LearnedPowerPeakRepository = {
+      ...repository,
+      write: (next) => {
+        if (failWrite) throw new Error('transient write failure');
+        repository.write(next);
+      },
+    };
+    const state = buildState(() => flaky);
+    state.load();
+
+    peaks.heater = { kw: 2, observedAtMs: NOW };
+    state.persist();
+    expect(repository.read()).toEqual({});
+
+    failWrite = false;
+    peaks.charger = { kw: 7, observedAtMs: NOW };
+    state.persist();
+
+    expect(repository.read()).toEqual({
+      heater: { kw: 2, observedAtMs: NOW },
+      charger: { kw: 7, observedAtMs: NOW },
+    });
+  });
+
+  it('drops a peak whose window has closed from the store on the way out', () => {
+    const state = buildState();
+    state.load();
+    peaks.stale = { kw: 1, observedAtMs: NOW - PEAK_WINDOW_MS - 1 };
+    peaks.heater = { kw: 2, observedAtMs: NOW };
+
+    state.persist();
+
+    expect(repository.read()).toEqual({ heater: { kw: 2, observedAtMs: NOW } });
+  });
+
+  it('rewrites only the device whose peak moved', () => {
+    const state = buildState();
+    state.load();
+    peaks.heater = { kw: 2, observedAtMs: NOW };
+    peaks.charger = { kw: 7, observedAtMs: NOW };
+    state.persist();
+    const changesBefore = (db.prepare('SELECT total_changes() AS n').get() as { n: number }).n;
+
+    peaks.heater = { kw: 2.5, observedAtMs: NOW + 1000 };
+    state.persist();
+
+    expect((db.prepare('SELECT total_changes() AS n').get() as { n: number }).n - changesBefore).toBe(1);
+    expect(rowCount(db)).toBe(2);
+  });
+});
+
+describe('importLegacyLearnedPowerPeaks', () => {
+  const rig = () => {
+    const settings = new MockSettings();
+    // A real install never has an empty key list here: the boot migrations set
+    // their markers first.
+    settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
+    const db = openUserdataDatabase(IN_MEMORY_DATABASE);
+    return { settings, db, repository: createLearnedPowerPeakRepository(db) };
+  };
+
+  it('imports the blob into an empty store and retires the key; a second boot has nothing to do', () => {
+    const { settings, repository } = rig();
+    settings.set(DEVICE_POWER_PEAKS, { heater: { kw: 2, observedAtMs: NOW - 1000 }, bad: { kw: 'x' } });
+
+    importLegacyLearnedPowerPeaks(settings, repository);
+
+    expect(repository.read()).toEqual({ heater: { kw: 2, observedAtMs: NOW - 1000 } });
+    expect(settings.get(DEVICE_POWER_PEAKS)).toBeNull();
+    const get = vi.spyOn(settings, 'get');
+    importLegacyLearnedPowerPeaks(settings, repository);
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it('merges the blob under what the store already learned', () => {
+    // A deferred import still lets the store fill from an empty boot.
+    const { settings, repository } = rig();
+    repository.write({ heater: { kw: 3, observedAtMs: NOW } });
+    settings.set(DEVICE_POWER_PEAKS, {
+      heater: { kw: 2, observedAtMs: NOW - 1000 },
+      charger: { kw: 7, observedAtMs: NOW - 1000 },
+    });
+
+    importLegacyLearnedPowerPeaks(settings, repository);
+
+    expect(repository.read()).toEqual({
+      heater: { kw: 3, observedAtMs: NOW },
+      charger: { kw: 7, observedAtMs: NOW - 1000 },
+    });
+  });
+
+  it('keeps a blob it can read nothing from for the next boot', () => {
+    const { settings, repository } = rig();
+    settings.set(DEVICE_POWER_PEAKS, { heater: { kw: 'x' } });
+
+    importLegacyLearnedPowerPeaks(settings, repository);
+
+    expect(settings.get(DEVICE_POWER_PEAKS)).toEqual({ heater: { kw: 'x' } });
+    expect(repository.hasImportedLegacy()).toBe(false);
+  });
+
+  it('imports an empty record as nothing, since everything aging out is a real answer', () => {
+    const { settings, repository } = rig();
+    settings.set(DEVICE_POWER_PEAKS, {});
+
+    importLegacyLearnedPowerPeaks(settings, repository);
+
+    expect(settings.get(DEVICE_POWER_PEAKS)).toBeNull();
+    expect(repository.hasImportedLegacy()).toBe(true);
   });
 });

@@ -102,8 +102,8 @@ export function buildDeviceTransport(
     // mutation, NOT the snapshot-mutation seam above. That seam fires on a changed
     // calibration input, and a reading equal to the standing peak changes none of
     // them while still re-anchoring the window, so the peak of the steadiest
-    // devices would have expired in settings while memory said it was fresh. The
-    // persist is itself rate-limited and change-gated.
+    // devices would have expired in the store while memory said it was fresh. The
+    // persist writes only the rows that changed.
     flowBacked: ctx.flowBacked,
     batteryManaged: ctx.batteryManaged,
   });

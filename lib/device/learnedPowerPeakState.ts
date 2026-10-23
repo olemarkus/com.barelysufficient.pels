@@ -1,201 +1,87 @@
 import {
   adoptPersistedLearnedPeaks,
+  pruneExpiredLearnedPeaks,
   type LearnedPeaksByDeviceId,
 } from './devicePowerPeak';
 import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger } from '../logging/logger';
-import type { TimerRegistry } from '../utils/timerRegistry';
-import type { DevicePersistencePort } from './devicePersistencePort';
-
-/** Floor between learned-peak settings writes. See {@link createLearnedPowerPeakState}. */
-const PEAK_PERSIST_MIN_INTERVAL_MS = 60_000;
-
-/** Registry name for the single trailing flush. */
-const PEAK_TRAILING_FLUSH_TIMER = 'learnedPeakTrailingFlush';
-
-/** How often a boot read that came back unavailable is retried. */
-const PEAK_LOAD_RETRY_MS = 60_000;
-
-/** Registry name for the failed boot read's retry. */
-const PEAK_LOAD_RETRY_TIMER = 'learnedPeakLoadRetry';
+import type { LearnedPowerPeakRepository } from './learnedPowerPeakStore';
 
 export type LearnedPowerPeakState = {
   /** Restore the learned peaks at boot. */
   load: () => void;
-  /** Rate-limited, change-gated write of the learned peaks. */
+  /** Write the learned peaks through to the store. */
   persist: () => void;
-  /** Shutdown flush: writes a peak the rate limit is still holding. */
-  flush: () => void;
 };
 
 /**
- * Boot-load and write-back for the learned measured peaks.
+ * Boot-load and write-through for the learned measured peaks.
  *
  * The store itself is a plain record owned by `PelsApp` and shared with
  * `DeviceTransport`, which mutates it on the ingest path; this owns only when it
- * is read from and written to settings. The max/expiry policy lives in
+ * is read from and written to the userdata store. The max/expiry policy lives in
  * `lib/device/devicePowerPeak.ts`.
+ *
+ * Every change is written as it happens: the store diffs one row per device, so
+ * a write costs what changed and nothing is buffered for a restart to lose.
  */
 export function createLearnedPowerPeakState(params: {
-  persistence: DevicePersistencePort;
+  getRepository: () => LearnedPowerPeakRepository;
   getPeaks: () => LearnedPeaksByDeviceId;
-  timers: TimerRegistry;
   getStructuredLogger: () => PinoLogger;
 }): LearnedPowerPeakState {
-  const { persistence, getPeaks, timers, getStructuredLogger } = params;
-  let lastPersistMs = 0;
-  let lastPersistedSignature = '';
+  const { getRepository, getPeaks, getStructuredLogger } = params;
   /**
-   * True until a read has told us what is already stored. A write while this
-   * stands would replace a record nobody has managed to look at — which on a
-   * cold boot is the whole persisted record, because the in-memory store is
-   * empty too and there is nothing for a "did it look empty?" heuristic to
-   * notice. Lifted only by a resolved read.
+   * False until a read has told us what is stored. A write before it would make
+   * the store hold exactly the in-memory record, deleting every row this run has
+   * not seen draw power yet — on a cold boot, all of them.
    */
-  let writeBackSuppressed = true;
-  /** The in-memory record may differ from what last reached settings. */
-  let dirty = false;
-  let loadUnavailableWarned = false;
+  let read = false;
+  /** One error line per run: an unopened store fails every read the same way. */
+  let loadFailureLogged = false;
 
-  /**
-   * Read settings into the shared store. Answers whether the read RESOLVED —
-   * resolved-and-empty is a real answer here (nothing learned yet) and lifts the
-   * suppression exactly like a populated one.
-   */
   /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
   const readIntoStore = (): boolean => {
-    const read = persistence.loadLearnedPeaks();
-    if (read.state === 'unavailable') return false;
+    let persisted: LearnedPeaksByDeviceId;
+    try {
+      persisted = getRepository().read();
+    } catch (error) {
+      if (!loadFailureLogged) {
+        loadFailureLogged = true;
+        getStructuredLogger().error({ event: 'learned_peaks_load_failed', err: normalizeError(error) });
+      }
+      return false;
+    }
     const peaks = getPeaks();
-    // Merged rather than replaced: this can run long after boot (see the retry
-    // in `attemptWrite`), by which point the ingest path holds peaks of its own.
-    const adopted = adoptPersistedLearnedPeaks(read.peaks, peaks);
+    // Merged rather than replaced: a failed boot read is retried from the first
+    // write, by which point the ingest path holds peaks of its own.
+    const adopted = adoptPersistedLearnedPeaks(persisted, peaks);
     // In-place: the record is shared by reference with `DeviceTransport`, which
     // took it at construction. Replacing it would leave the transport writing
     // into the old object and this one reading an orphan.
     for (const key of Object.keys(peaks)) delete peaks[key];
     Object.assign(peaks, adopted);
-    writeBackSuppressed = false;
+    read = true;
     return true;
   };
   /* eslint-enable functional/immutable-data */
 
-  const write = (nowMs: number): void => {
-    const peaks = getPeaks();
-    const signature = JSON.stringify(peaks);
-    if (signature === lastPersistedSignature) {
-      dirty = false;
-      return;
-    }
-    try {
-      persistence.saveLearnedPeaks(peaks, nowMs);
-    } catch (error) {
-      // Bookkeeping deliberately NOT advanced. Marking the attempt as done here
-      // is what used to strand the peak for good: the signature check would then
-      // skip every later identical attempt, so the one write that failed was
-      // also the last one ever tried.
-      getStructuredLogger().error({
-        event: 'learned_peaks_write_failed',
-        err: normalizeError(error),
-      });
-      return;
-    }
-    lastPersistMs = nowMs;
-    lastPersistedSignature = signature;
-    dirty = false;
-  };
-
-  const attemptWrite = (nowMs: number): void => {
-    // The boot read may have failed; a learned peak retries it here as well as on
-    // the load-retry timer, so its write never waits for the timer. Still
-    // unreadable means still no write.
-    if (writeBackSuppressed && !readIntoStore()) return;
-    write(nowMs);
-  };
-
-  /**
-   * Retry a boot read that came back unavailable on its own clock. A learned
-   * peak retries it too (`attemptWrite`), but a home whose running devices sit
-   * steady at their peaks learns nothing new for hours, and until the read lands
-   * the persisted peaks of the devices that are off are missing from the
-   * expected-power ladder.
-   */
-  const scheduleLoadRetry = (): void => {
-    if (timers.has(PEAK_LOAD_RETRY_TIMER)) return;
-    const handle = setTimeout(() => {
-      timers.clear(PEAK_LOAD_RETRY_TIMER);
-      if (!writeBackSuppressed) return;
-      if (!readIntoStore()) {
-        scheduleLoadRetry();
-        return;
-      }
-      if (dirty) attemptWrite(Date.now());
-    }, PEAK_LOAD_RETRY_MS);
-    (handle as { unref?: () => void }).unref?.();
-    timers.registerTimeout(PEAK_LOAD_RETRY_TIMER, handle);
-  };
-
-  /**
-   * One trailing flush for the remainder of the rate-limit window. Without it a
-   * peak learned inside the window is simply dropped — nothing re-offers it, so
-   * a device that reaches its peak once and then holds steady would never have
-   * that peak reach settings.
-   */
-  const scheduleTrailingFlush = (delayMs: number): void => {
-    if (timers.has(PEAK_TRAILING_FLUSH_TIMER)) return;
-    const handle = setTimeout(() => {
-      timers.clear(PEAK_TRAILING_FLUSH_TIMER);
-      if (!dirty) return;
-      attemptWrite(Date.now());
-    }, Math.max(0, delayMs));
-    (handle as { unref?: () => void }).unref?.();
-    timers.registerTimeout(PEAK_TRAILING_FLUSH_TIMER, handle);
-  };
-
   return {
-    /**
-     * Nothing is written back here — the store is written by the ingest path,
-     * which prunes on save. An `unavailable` read leaves the in-memory record
-     * untouched AND latches the write-back off: skipping only the adoption would
-     * still let the next `persist()` clobber the record this read could not see.
-     */
-    load: () => {
-      if (readIntoStore()) return;
-      writeBackSuppressed = true;
-      scheduleLoadRetry();
-      if (loadUnavailableWarned) return;
-      loadUnavailableWarned = true;
-      getStructuredLogger().warn({
-        event: 'learned_peaks_load_unavailable',
-        reasonCode: 'settings_read_unavailable',
-      });
-    },
+    load: () => { readIntoStore(); },
 
     /**
-     * Driven off the learned-peak mutation itself, and gated twice: not more than
-     * once a minute, and only when the record actually differs from what was
-     * written. The in-memory record is authoritative within a run, so the write
-     * only has to survive the process.
+     * Prunes entries whose window has closed on the way out, so the store does
+     * not accumulate devices that left the home years ago.
      */
     persist: () => {
-      dirty = true;
-      const nowMs = Date.now();
-      const elapsedMs = nowMs - lastPersistMs;
-      if (elapsedMs < PEAK_PERSIST_MIN_INTERVAL_MS) {
-        scheduleTrailingFlush(PEAK_PERSIST_MIN_INTERVAL_MS - elapsedMs);
-        return;
+      if (!read && !readIntoStore()) return;
+      try {
+        getRepository().write(pruneExpiredLearnedPeaks(getPeaks(), Date.now()));
+      } catch (error) {
+        // The record stays in memory, and the next write carries it too: the diff
+        // base is what the database last committed.
+        getStructuredLogger().error({ event: 'learned_peaks_write_failed', err: normalizeError(error) });
       }
-      attemptWrite(nowMs);
-    },
-
-    /**
-     * Bypasses the rate limit, for shutdown. A peak learned in the last minute of
-     * a run is exactly the one a restart would otherwise lose.
-     */
-    flush: () => {
-      timers.clear(PEAK_TRAILING_FLUSH_TIMER);
-      if (!dirty) return;
-      attemptWrite(Date.now());
     },
   };
 }

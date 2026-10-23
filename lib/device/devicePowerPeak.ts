@@ -4,10 +4,9 @@
  *
  * Pure policy, no I/O. `lib/device/managerRuntime.updateLastKnownPower` and
  * `pruneMissingLearnedPeaks` own mutation; `lib/device/devicePowerEstimate`
- * reads it as one rung of the expected-power ladder. Persistence is a
- * settings-boundary concern and lives
- * on `setup/settingsRepository.ts`, which uses the parsers at the bottom of this
- * file to validate what it loads.
+ * reads it as one rung of the expected-power ladder. Persistence lives in the
+ * userdata store (`lib/device/learnedPowerPeakStore.ts`), which validates each
+ * row it loads with `parseLearnedPeaks` below.
  *
  * WHY A WINDOW. The peak used to be a monotonic max held only in memory, which
  * made a one-off spike survive until the next restart and no longer. Persisting
@@ -39,11 +38,11 @@ export const PEAK_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
  * How old the standing anchor must be before a reading that merely MATCHES the
  * peak moves it. Against a 30-day window, moving the anchor by less than a day
  * buys nothing: the peak still expires 29 to 30 days after it was last matched.
- * Every move changes the record, though, and a changed record is a settings
- * write that ships the whole settings object to Homey. A device sitting at its
- * rated power matches its peak on every reading, so moving the anchor on each
- * match made the peaks record the busiest settings writer in production (about
- * 38 writes an hour on 2026-09-26, the kW figures never changing).
+ * Every move changes the record, though, and a changed record is a write. A
+ * device sitting at its rated power matches its peak on every reading, so moving
+ * the anchor on each match made the peaks record the busiest settings writer in
+ * production while it lived there (about 38 writes an hour on 2026-09-26, the
+ * kW figures never changing).
  */
 export const PEAK_REANCHOR_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
@@ -157,7 +156,8 @@ const asRecord = (value: unknown): Record<string, unknown> | null => (
 );
 
 /**
- * Validate a persisted learned-peak record at the settings boundary.
+ * Validate a persisted learned-peak record at the store boundary (and the legacy
+ * settings blob it was imported from).
  *
  * Entry-wise, not all-or-nothing: one corrupt device must not discard the
  * learning for every other device. A rejected entry is simply absent, and the
@@ -222,28 +222,22 @@ export type PersistedRecordReadEvidence = {
 };
 
 /**
- * The learned peaks as a settings read can honestly report them.
+ * The owner's manual figures as a settings read can honestly report them.
  *
- * A RESOLVED EMPTY record is a real answer — a home that has never observed a
- * peak, or one whose entries all aged out — and it must NOT be folded into
- * `unavailable`, or such an install would have its write-back suppressed for
- * good. `unavailable` says the opposite: nothing is known, so the caller may
- * neither adopt it nor write over it.
+ * A RESOLVED EMPTY record is a real answer — no figure set, or the owner cleared
+ * the last one — and it must NOT be folded into `unavailable`, or such an install
+ * would have its write-back suppressed for good. `unavailable` says the
+ * opposite: nothing is known, so the caller may neither adopt it nor write over
+ * it.
  *
- * Collapsing the two is what made this a data-loss bug rather than a nuisance.
- * `undefined`, `null`, a malformed value and a thrown read all used to arrive as
- * `{}`; on a cold boot the in-memory record is empty too, so the "empty parse
- * while non-empty state is held" guard could not fire, and the next write
- * replaced a perfectly good persisted record with nothing.
+ * Collapsing the two is a data-loss bug rather than a nuisance: `undefined`,
+ * `null`, a malformed value and a thrown read all arriving as `{}` let the next
+ * write replace a perfectly good persisted record with nothing (the learned
+ * peaks lost weeks of learning this way while they lived in settings).
  *
  * The one empty parse that is NOT a real answer is a record that carried keys
  * and lost every one to validation — see `isWhollyUnparsableRecord`.
  */
-export type LearnedPeaksRead =
-  | { state: 'resolved'; peaks: LearnedPeaksByDeviceId }
-  | { state: 'unavailable' };
-
-/** The owner's manual figures, on the same resolved/unavailable contract. */
 export type ExpectedPowerOverridesRead =
   | { state: 'resolved'; overrides: DeviceExpectedPowerOverrides }
   | { state: 'unavailable' };
@@ -280,24 +274,6 @@ const isWhollyUnparsableRecord = (
   raw: Record<string, unknown>,
   parsed: Record<string, unknown>,
 ): boolean => Object.keys(raw).length > 0 && Object.keys(parsed).length === 0;
-
-export const classifyLearnedPeaksSetting = (
-  evidence: PersistedRecordReadEvidence,
-): LearnedPeaksRead => {
-  const record = asRecord(evidence.raw);
-  if (record) {
-    const peaks = parseLearnedPeaks(record);
-    return isWhollyUnparsableRecord(record, peaks)
-      ? { state: 'unavailable' }
-      : { state: 'resolved', peaks };
-  }
-  if (isAbsentRead(evidence.raw)) {
-    return isConfirmedAbsence(evidence) ? { state: 'resolved', peaks: {} } : { state: 'unavailable' };
-  }
-  // A string, number or array under this key is not a record PELS wrote. It is
-  // not absence either, so answering "no peaks" would license overwriting it.
-  return { state: 'unavailable' };
-};
 
 export const classifyExpectedPowerOverridesSetting = (
   evidence: PersistedRecordReadEvidence,
