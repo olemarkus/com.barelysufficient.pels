@@ -18,7 +18,7 @@
 # permanent exemption. When the last line goes, DELETE THIS FILE — the guard
 # then requires its absence.
 #
-# Counts were 63 files / 122 sites at the guard's introduction; 29 files / 38 sites now.
+# Counts were 63 files / 122 sites at the guard's introduction; 23 files / 30 sites now.
 # The executor lane is gone: its debug events were the four *_command_skipped that
 # production never showed, and they now resolve their own emitter.
 # The device / transport lane is gone too. Most of it was the INJECTED SDK
@@ -57,8 +57,6 @@ lib/plan/rebuildScheduler/telemetryObserver.ts 1
 # --- Remaining domain modules -----------------------------------------------
 lib/dailyBudget/dailyBudgetManager.ts 1
 lib/dailyBudget/dailyBudgetService.ts 2
-lib/diagnostics/deviceDiagnosticsPersistence.ts 1
-lib/diagnostics/deviceDiagnosticsService.ts 1
 lib/home/homeRuntimeRegistryLogs.ts 1
 lib/objectives/deferredObjectives/activePlanRecorder.ts 1
 lib/objectives/deferredObjectives/diagnosticAnnounce.ts 1

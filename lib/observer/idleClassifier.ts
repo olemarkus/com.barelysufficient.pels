@@ -26,7 +26,7 @@ import {
   type IdleDetectorResult,
   type IdleDetectorState,
 } from './idleDetector';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
+import { getDebugEmitter, type Logger as PinoLogger } from '../logging/logger';
 import { emitGated, type DeviationSurprise } from '../logging/deviationGate';
 import type { PlannedDeviceState } from '../../packages/contracts/src/types';
 import {
@@ -82,10 +82,7 @@ export type IdleClassifier = {
   getLiveStallEvidence: (device: IdleClassifierDeviceInput) => StallEvidence | undefined;
 };
 
-export type IdleClassifierDeps = {
-  structuredLog?: PinoLogger;
-  debugStructured?: StructuredDebugEmitter;
-};
+const debugLog = getDebugEmitter('observer', 'plan');
 
 const toDetectorInput = (
   device: IdleClassifierDeviceInput,
@@ -134,15 +131,11 @@ const surpriseFor = (classification: ReportableClassification): DeviationSurpris
     : { level: 'info', reasonCode: classification }
 );
 
-const emitTransitionLog = (params: {
-  device: IdleClassifierDeviceInput;
-  result: IdleDetectorResult;
-  logger?: PinoLogger;
-  debugLog: StructuredDebugEmitter;
-}): void => {
-  const {
-    device, result, logger, debugLog,
-  } = params;
+const emitTransitionLog = (
+  device: IdleClassifierDeviceInput,
+  result: IdleDetectorResult,
+  logger: PinoLogger | undefined,
+): void => {
   const { classification, previousClassification, idleDurationMs, temperatureGapC } = result;
 
   if (classification === previousClassification) return;
@@ -206,12 +199,10 @@ const POWER_DRAW_RESUMED_EVENT = 'device_power_draw_resumed';
  * are skipped: a 0 W there is PELS's own doing or untrusted, not the device's
  * control. Edges route to the topic-gated debug emitter (diagnostic detail).
  */
-const emitPowerEdge = (params: {
-  device: IdleClassifierDeviceInput;
-  lastDrawingById: Map<string, boolean>;
-  debugLog: StructuredDebugEmitter;
-}): void => {
-  const { device, lastDrawingById, debugLog } = params;
+const emitPowerEdge = (
+  device: IdleClassifierDeviceInput,
+  lastDrawingById: Map<string, boolean>,
+): void => {
   if (
     device.currentState !== 'on'
     || device.plannedState === 'shed'
@@ -253,14 +244,13 @@ const liveNearTargetEvidence = (
     temperatureGapC: evidence.classifiedAgainstTargetValue - device.temperature.currentTemperature };
 };
 
-export function createIdleClassifier(deps: IdleClassifierDeps = {}): IdleClassifier {
+export function createIdleClassifier(logger?: PinoLogger): IdleClassifier {
   const state: IdleDetectorState = new Map();
   const lastResultById = new Map<string, IdleDetectorResult>();
   // Current classification follows the latest plan posture; accepted warmth has
   // its original basis until an actual draw or temperature exit withdraws it.
   const acceptedNearTargetById = new Map<string, StallEvidence>();
   const lastDrawingById = new Map<string, boolean>();
-  const debugLog: StructuredDebugEmitter = deps.debugStructured ?? (() => {});
 
   const classifyAll = (
     devices: readonly IdleClassifierDeviceInput[],
@@ -279,8 +269,8 @@ export function createIdleClassifier(deps: IdleClassifierDeps = {}): IdleClassif
     for (const device of devices) {
       const retained = liveNearTargetEvidence(device, acceptedNearTargetById.get(device.id));
       const result = classifyIdleState(toDetectorInput(device, now), state);
-      emitTransitionLog({ device, result, logger: deps.structuredLog, debugLog });
-      emitPowerEdge({ device, lastDrawingById, debugLog });
+      emitTransitionLog(device, result, logger);
+      emitPowerEdge(device, lastDrawingById);
       lastResultById.set(device.id, result);
       const fresh = getStallEvidence(device.id);
       // A lower setback cannot erase acceptance against the original setpoint.

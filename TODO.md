@@ -1267,17 +1267,19 @@ Design-of-record: `notes/web-app.md`.
       declarations for two terminal readers.
       Fix, one cluster per PR, leaf-first — `lib/plan/shedding/**`,
       the `lib/plan` builder plus `planTargetControl.ts`, `lib/device/transport/**`,
-      `lib/objectives/**`, then `lib/dailyBudget` + `lib/diagnostics` + `lib/observer`, and last
+      `lib/objectives/**`, then `lib/dailyBudget`, and last
       `setup/**` + `flowCards/**` with the `Loggers` type: replace the parameter with a module-scope
       `getDebugEmitter(...)`, delete the field from that file's parameter types and from every
       intermediate that only forwarded it, and delete the fallbacks of the form
       `debugStructured ?? (p) => moduleLogger.debug(p)` — those emit nothing in production, because
-      the pino root runs at `info`, and they are what make the optional parameter look free. Three
-      of them hide behind a named `debugFallbackEmit` const (`dailyBudgetManager.ts`,
-      `deviceDiagnosticsService.ts`, `deviceDiagnosticsPersistence.ts`) and two more use a local
+      the pino root runs at `info`, and they are what make the optional parameter look free. One
+      remains behind a named `debugFallbackEmit` const (`dailyBudgetManager.ts`) and two more use a local
       `logger` rather than `moduleLogger`, so grep the `??` rather than the literal. In specs, the
       second argument of `captureLogger(level, topics)` (`test/utils/loggerCapture.ts`) replaces the
       `debugStructured` spy.
+      Diagnostics and idle classification now resolve their emitters at the leaves. Daily-budget
+      previews deliberately inject silent logging; preserve that preview behavior when migrating
+      `DailyBudgetService` and its managers.
       Two invariants every cluster must hold. **`component` and `topic` stay separate arguments**:
       `devices` events are emitted under `devices`, `reconcile`, and `snapshot`, and Flow-card
       settings events are `component: 'flow'` on topic `settings`. And **a gate must name the same
@@ -1289,7 +1291,7 @@ Design-of-record: `notes/web-app.md`.
       exact defect and is fixed.
       The threaded predicates that shadow the topic set go with the parameter:
       `isPlanDebugEnabled` and `isOverviewDebugEnabled` (`setup/appInit/createPlanService.ts`),
-      `isDebugEnabled` (`setup/appInit/deviceDiagnosticsService.ts`), and `isDebugTopicEnabled`
+      and `isDebugTopicEnabled`
       (`setup/appInit/createDailyBudgetService.ts`, plus the two closures in `app.ts` feeding
       `SchedulerTelemetryObserver` and `createBackgroundTasks`). Each is a second spelling of
       `isDebugTopicEnabled`, which reads the one published set.

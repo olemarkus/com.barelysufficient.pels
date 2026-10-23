@@ -161,10 +161,7 @@ export class PlanService {
   private buildDevices: readonly PlanInputDevice[] | null = null;
 
   constructor(private deps: PlanServiceDeps) {
-    this.idleClassifier = createIdleClassifier({
-      structuredLog: deps.loggers.structuredLog,
-      debugStructured: deps.loggers.debugStructured,
-    });
+    this.idleClassifier = createIdleClassifier(deps.loggers.structuredLog);
     this.planStatusWriter = new PlanStatusWriter({
       homey: deps.homey,
       publishPelsStatus: deps.publishPelsStatus,

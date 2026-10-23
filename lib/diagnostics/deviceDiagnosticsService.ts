@@ -9,8 +9,7 @@ import type {
   DeviceDiagnosticsServiceDeps,
   LiveDeviceDiagnostics,
 } from './deviceDiagnosticsServiceTypes';
-import type { StructuredDebugEmitter } from '../logging/logger';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter } from '../logging/logger';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import { clampPenaltyLevel } from './deviceDiagnosticsNumbers';
 import { DeviceDiagnosticsPersistence } from './deviceDiagnosticsPersistence';
@@ -40,10 +39,7 @@ export type {
 } from './deviceDiagnosticsServiceTypes';
 export type { DeviceDiagnosticsStarvationCountingCause } from '../../packages/contracts/src/deviceDiagnosticsTypes';
 
-const moduleLogger = getLogger('diagnostics/device');
-// Hoisted once so `emitDebug` allocates no per-call closure on the (test-only;
-// production always wires `debugStructured`) fallback path.
-const debugFallbackEmit: StructuredDebugEmitter = (payload) => moduleLogger.debug(payload);
+const debug = getDebugEmitter('diagnostics', 'diagnostics');
 
 const DEVICE_DIAGNOSTICS_MAX_SAMPLE_GAP_MS = 10 * 60 * 1000;
 
@@ -52,32 +48,15 @@ const UNKNOWN_DEVICE_NAME = 'unknown device';
 export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
   private liveByDeviceId: Record<string, LiveDeviceDiagnostics> = {};
   private latestObservationBatchId = 0;
-  // Stable bound emitter so the demand-transition logging helpers receive a
-  // single closure instead of allocating one per observation cycle.
-  private readonly emit: StructuredDebugEmitter = (payload) => this.emitDebug(payload);
   private readonly persistence: DeviceDiagnosticsPersistence;
   private readonly starvation: StarvationTracker;
 
   constructor(private deps: DeviceDiagnosticsServiceDeps) {
-    this.persistence = new DeviceDiagnosticsPersistence({
-      diagnosticsStateStore: deps.diagnosticsStateStore,
-      getTimeZone: deps.getTimeZone,
-      isDebugEnabled: deps.isDebugEnabled,
-      structuredLog: deps.structuredLog,
-      debugStructured: deps.debugStructured,
-    });
+    this.persistence = new DeviceDiagnosticsPersistence(deps);
     this.starvation = new StarvationTracker({
       getLiveDeviceState: (deviceId) => this.getLiveDeviceState(deviceId),
       structuredLog: deps.structuredLog,
-      emitDebug: this.emit,
     });
-  }
-
-  // Topic-gated (`diagnostics`) structured debug emit. Mirrors the
-  // `structuredLog ?? moduleLogger` fallback used for info events so events
-  // still surface at debug level when no wired emitter is present (e.g. tests).
-  private emitDebug(payload: Record<string, unknown>): void {
-    (this.deps.debugStructured ?? debugFallbackEmit)(payload);
   }
 
   observePlanSample(params: {
@@ -111,10 +90,10 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
         this.persistence.scheduleFlush(nowTs);
         break;
       case 'tracked_usage_rise':
-        logTrackedUsageEvent(this.emit, 'rise', event, live.name);
+        logTrackedUsageEvent('rise', event, live.name);
         break;
       case 'tracked_usage_drop':
-        logTrackedUsageEvent(this.emit, 'drop', event, live.name);
+        logTrackedUsageEvent('drop', event, live.name);
         break;
       default: {
         const exhaustiveCheck: never = event;
@@ -136,7 +115,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     switch (transition.kind) {
       case 'attempt_started':
         live.currentPenaltyLevel = clampPenaltyLevel(transition.penaltyLevel);
-        this.emitDebug({
+        debug({
           event: 'diagnostics_activation_transition',
           kind: 'attempt_started',
           deviceId: transition.deviceId,
@@ -149,7 +128,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
         this.persistence.addCount(transition.deviceId, transition.nowTs, 'penaltyBumpCount', 1);
         this.persistence.updatePenaltyMaxSeen(transition.deviceId, transition.nowTs, transition.penaltyLevel);
         live.currentPenaltyLevel = clampPenaltyLevel(transition.penaltyLevel);
-        this.emitDebug({
+        debug({
           event: 'diagnostics_activation_transition',
           kind: 'setback_failed',
           deviceId: transition.deviceId,
@@ -161,7 +140,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
         break;
       case 'attempt_closed_inactive':
         live.currentPenaltyLevel = clampPenaltyLevel(transition.penaltyLevel);
-        this.emitDebug({
+        debug({
           event: 'diagnostics_activation_transition',
           kind: 'attempt_closed_inactive',
           deviceId: transition.deviceId,
@@ -172,7 +151,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
         break;
       case 'attempt_closed_by_shed':
         live.currentPenaltyLevel = clampPenaltyLevel(transition.penaltyLevel);
-        this.emitDebug({
+        debug({
           event: 'diagnostics_activation_transition',
           kind: 'attempt_closed_by_shed',
           deviceId: transition.deviceId,
@@ -184,7 +163,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       case 'attempt_closed_by_admission':
         this.persistence.addCount(transition.deviceId, transition.nowTs, 'stableActivationCount', 1);
         live.currentPenaltyLevel = 0;
-        this.emitDebug({
+        debug({
           event: 'diagnostics_activation_transition',
           kind: 'attempt_closed_by_admission',
           deviceId: transition.deviceId,
@@ -249,7 +228,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     if (isFiniteNumber(live.lastObservedTs) && live.lastObservation) {
       const gapMs = Math.max(0, nowTs - live.lastObservedTs);
       if (gapMs > DEVICE_DIAGNOSTICS_MAX_SAMPLE_GAP_MS) {
-        this.emitDebug({
+        debug({
           event: 'diagnostics_sample_gap_skipped',
           deviceId: observation.deviceId,
           deviceName: live.name,
@@ -273,7 +252,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       this.persistence.recordBudgetDemandRecovery(observation.deviceId, nowTs);
     }
 
-    logObservationTransition(this.emit, observation.deviceId, live.name, live.lastObservation, nextObservation);
+    logObservationTransition(observation.deviceId, live.name, live.lastObservation, nextObservation);
     if (starvationTargetChanged(live.lastStarvationObservation, nextStarvationObservation)) {
       this.starvation.handleTargetChange(observation.deviceId, nowTs);
     }
@@ -295,7 +274,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       const durationMs = Math.max(0, nowTs - live.openRestoreTs);
       this.persistence.addRestoreToSetback(deviceId, nowTs, durationMs);
       live.openRestoreTs = undefined;
-      this.emitDebug({
+      debug({
         event: 'diagnostics_restore_to_setback_completed',
         deviceId,
         deviceName: live.name,
@@ -303,7 +282,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       });
     }
     live.openShedTs = nowTs;
-    this.emitDebug({ event: 'diagnostics_shed_recorded', deviceId, deviceName: live.name });
+    debug({ event: 'diagnostics_shed_recorded', deviceId, deviceName: live.name });
   }
 
   private recordPelsRestoreEvent(deviceId: string, nowTs: number): void {
@@ -313,7 +292,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       const durationMs = Math.max(0, nowTs - live.openShedTs);
       this.persistence.addShedToRestore(deviceId, nowTs, durationMs);
       live.openShedTs = undefined;
-      this.emitDebug({
+      debug({
         event: 'diagnostics_shed_to_restore_completed',
         deviceId,
         deviceName: live.name,
@@ -321,7 +300,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       });
     }
     live.openRestoreTs = nowTs;
-    this.emitDebug({ event: 'diagnostics_restore_recorded', deviceId, deviceName: live.name });
+    debug({ event: 'diagnostics_restore_recorded', deviceId, deviceName: live.name });
   }
 
   private getLiveDeviceState(deviceId: string): LiveDeviceDiagnostics {
