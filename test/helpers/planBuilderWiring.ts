@@ -9,13 +9,12 @@ type PlanBuilderWiring = Omit<PlanBuilderDeps,
   | 'capacityGuard'
   | 'getCapacitySettings'
   | 'getPowerTracker'
-  | 'deviceDiagnostics'
-  | 'debugStructured'>;
+  | 'deviceDiagnostics'>;
 
 /**
  * The `PlanBuilder` deps a spec is not about: not in shortfall, no dry run, no
  * surplus inferred, a release leaves the device free, no price optimization, no
- * daily budget, shed by turning off, no soft-limit override, no binary command
+ * daily budget, shed by turning off, no binary command
  * in flight, no smart tasks, and the ordinary setpoint reads. A spec supplies
  * the guard, capacity settings and power tracker, and overrides the rest.
  */

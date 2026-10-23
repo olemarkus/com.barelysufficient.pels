@@ -20,6 +20,7 @@ import { resolvePriceOptimizationConfig } from '../../lib/price/priceOptimizer';
 // gone past the min dwell; (4) a non-willing device never lifts.
 import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerFixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { captureDebugTopic } from '../utils/loggerCapture';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
 import type { StorageSurplus } from '../../lib/plan/planSurplusAbsorb';
 import { type PlanEngineState } from '../../lib/plan/planState';
@@ -351,11 +352,10 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
       state: PlanEngineState,
       signedNetKw: number,
       inferredSurplusKw: number,
-      options: { debugStructured?: (payload: Record<string, unknown>) => void } = {},
     ): number | undefined => {
       const context = buildContext(signedNetKw);
       // Mirror the PR-7 hoist: the builder resolves surplus eligibility (with the
-      // producer-injected inferred term + debug seam) BEFORE materialization;
+      // producer-injected inferred term) BEFORE materialization;
       // `buildInitialPlanDevices` only reads the resulting state.
       resolveSurplusEligibilityForSpec({
         devices: context.devices,
@@ -365,7 +365,6 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
         storage: NO_STORAGE_SURPLUS,
         excludeIds: new Set(),
         getConfig: (deviceId) => resolvePriceOptimizationConfig(deps(true).getPriceOptimizationSettings(), deviceId),
-        debugStructured: options.debugStructured,
         nowTs: Date.now(),
       });
       const device = buildInitialPlanDevicesForSpec({
@@ -403,13 +402,15 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
         .toBeLessThan(SURPLUS_ABSORB_SETTLE_MS + SURPLUS_ABSORB_MIN_DWELL_MS);
     });
 
-    it('emits the surplus_pool composition record through the plan debug seam', () => {
+    it('emits the surplus_pool composition record on the plan debug topic', () => {
       const state = createPlanEngineState();
-      const records: Array<Record<string, unknown>> = [];
-      cycleInferred(state, -0.5, 1.2, { debugStructured: (payload) => { records.push(payload); } });
-      const pool = records.filter((r) => r.event === 'surplus_pool');
+      const planDebug = captureDebugTopic('plan');
+      cycleInferred(state, -0.5, 1.2);
+      const pool = planDebug.findEvents('surplus_pool');
       expect(pool).toHaveLength(1);
       expect(pool[0]).toMatchObject({
+        component: 'plan',
+        debugTopic: 'plan',
         measuredExportKw: 0.5,
         addBackKw: 0,
         inferredSurplusKw: 1.2,

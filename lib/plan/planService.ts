@@ -169,10 +169,7 @@ export class PlanService {
       getCapacityDryRun: deps.getCapacityDryRun,
       structuredLog: deps.loggers.structuredLog,
     });
-    this.changeTracker = new PlanChangeTracker({
-      debugStructured: deps.loggers.debugStructured,
-      isPlanDebugEnabled: deps.isPlanDebugEnabled,
-    });
+    this.changeTracker = new PlanChangeTracker();
     this.rebuildHost = {
       deps,
       getLatestPlanSnapshot: () => this.getLatestPlanSnapshot(),
@@ -612,7 +609,9 @@ export class PlanService {
 
   // Returns whether presentation changed, independently of logging being enabled.
   private emitOverviewTransitions(publication: OverviewPublication): boolean {
-    return this.overviewTransitions.capture(publication.snapshot, this.deps, describeOverviewDecision(publication));
+    return this.overviewTransitions.capture(
+      publication.snapshot, this.deps.deviceOverviewLogRecorder, describeOverviewDecision(publication),
+    );
   }
 
   updatePelsStatus(plan: DevicePlan, changes?: StatusPlanChanges): number {

@@ -6,7 +6,7 @@ import type { SteppedReportedStepStore } from '../../lib/observer/steppedReporte
 import { hasPlanExecutionDriftAgainstIntent } from '../../lib/executor/executorConvergence';
 import type { PlanExecutor } from '../../lib/executor/planExecutor';
 import type { PlanActuationResult } from '../../lib/planContract/planActuationResult';
-import { type Logger as PinoLogger, type StructuredDebugEmitter } from '../../lib/logging/logger';
+import type { Logger as PinoLogger } from '../../lib/logging/logger';
 import {
   syncPendingBinaryCommands,
   type PendingBinaryCommandStore,
@@ -52,7 +52,6 @@ export type PlanEngineComposition = {
     | 'getObservationRevision'
     | 'syncStorageCommands'>;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
-  debugStructured?: StructuredDebugEmitter;
   structuredLog: PinoLogger;
 };
 
@@ -68,7 +67,6 @@ export class ComposedPlanEngine implements PlanEngine {
   private readonly builder: PlanBuilder;
   private readonly executor: PlanEngineComposition['executor'];
   private readonly deviceDiagnostics?: DeviceDiagnosticsRecorder;
-  private readonly debugStructuredFn?: StructuredDebugEmitter;
   private readonly structuredLog: PinoLogger;
 
   public constructor(composition: PlanEngineComposition) {
@@ -79,7 +77,6 @@ export class ComposedPlanEngine implements PlanEngine {
     this.builder = composition.builder;
     this.executor = composition.executor;
     this.deviceDiagnostics = composition.deviceDiagnostics;
-    this.debugStructuredFn = composition.debugStructured;
     this.structuredLog = composition.structuredLog;
   }
 
@@ -142,12 +139,12 @@ export class ComposedPlanEngine implements PlanEngine {
     source: PendingTargetObservationSource,
   ): boolean {
     return syncPendingTargetCommands(
-      this.state, devices, source, (payload) => this.structuredLog.info(payload), this.debugStructuredFn,
+      this.state, devices, source, (payload) => this.structuredLog.info(payload),
     );
   }
 
   public prunePendingTargetCommands(plan: DevicePlan): boolean {
-    return prunePendingTargetCommandsForPlan(this.state, plan, this.debugStructuredFn);
+    return prunePendingTargetCommandsForPlan(this.state, plan);
   }
 
   public syncSteppedCommands(getDevices: () => readonly SteppedSettleDevice[]): boolean {

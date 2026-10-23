@@ -1,6 +1,6 @@
 import type { SettingsPort, FlowPort, ApiPort } from '../ports/homeyRuntime';
 import type { SteppedSettleDevice } from '../observer/steppedSettleSnapshot';
-import type { Loggers, StructuredDebugEmitter } from '../logging/logger';
+import type { Loggers } from '../logging/logger';
 import type { SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import type { ThermalDirection } from '../../packages/contracts/src/types';
 import type { DeviceOverviewLogRecorder } from '../diagnostics/deviceActivityRecorder';
@@ -136,15 +136,12 @@ export type PlanServiceDeps = {
   /** The tracker's sample stamp — gated consumers only, so it always exists. */
   getLastPowerUpdate: () => number;
   schedulePostActuationRefresh: () => void;
-  loggers: Loggers & { debugStructured: StructuredDebugEmitter };
-  overviewDebugStructured: StructuredDebugEmitter;
-  isOverviewDebugEnabled: () => boolean;
+  loggers: Loggers;
   // In-memory recorder for the settings-UI device-log view. Captures the SAME
   // overview-transition change boundary the debug log uses, but is NOT gated
   // on the debug topic, so the view has data without the user enabling debug
   // logging first.
   deviceOverviewLogRecorder: DeviceOverviewLogRecorder;
-  isPlanDebugEnabled: () => boolean;
   deviceDiagnostics?: {
     getOverviewStarvation?: (deviceId: string) => SettingsUiPlanDeviceSnapshot['starvation'] | null;
   };

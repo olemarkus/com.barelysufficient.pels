@@ -3,7 +3,7 @@ import type { ResolvedPriceOptimizationConfig } from '../price/priceOptimizer';
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import type { MeteredPlanInputDevice, PlanInputDevice } from './planTypes';
 import { isMeteredPlanDevice } from './planMeteredDevice';
-import type { StructuredDebugEmitter } from '../logging/logger';
+import { getDebugEmitter } from '../logging/logger';
 import type {
   ObservedDeviceState,
   SteppedLoadDescriptorProbe,
@@ -31,6 +31,8 @@ import {
 } from './planSteppedLoad';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import { IDLE_MEASURED_POWER_THRESHOLD_KW } from '../observer/idleDetector';
+
+const emitPlanDebug = getDebugEmitter('plan', 'plan');
 
 // A surplus LIFT is a setpoint raise, so it only means anything on a device with
 // a temperature target to raise. This is the one place the question is asked;
@@ -215,7 +217,6 @@ function composeSurplusPool(
   signedNetKw: number,
   storage: StorageSurplus,
   inferredSurplusKw: number,
-  debugStructured: StructuredDebugEmitter | undefined,
 ): SurplusPool {
   let deviceAddBackKw = 0;
   const addedBackIds = new Set<string>();
@@ -234,7 +235,7 @@ function composeSurplusPool(
   // Only when there is something to allocate it to: a willing device, or a
   // battery whose charge is in it.
   if (willing.length > 0 || storageChargeW > 0) {
-    debugStructured?.({
+    emitPlanDebug({
       event: 'surplus_pool',
       measuredExportKw,
       addBackKw: deviceAddBackKw,
@@ -728,11 +729,10 @@ export function resolveSurplusEligibility(
   // One timestamp for the whole admission pass, so a single plan build cannot
   // flip devices on different milliseconds at the settle/dwell threshold.
   nowTs: number,
-  debugStructured?: StructuredDebugEmitter,
 ): ReadonlyMap<string, StorageSurplusOffer> {
   const hardOff = isHardOffCondition(signedNetKw, storage.dischargeW / 1000);
 
-  const pool = composeSurplusPool(willing, state, signedNetKw, storage, inferredSurplusKw, debugStructured);
+  const pool = composeSurplusPool(willing, state, signedNetKw, storage, inferredSurplusKw);
   let { poolKw } = pool;
   // A battery's share starts without the devices' own add-back: a running
   // device's measured draw is already out of the export.

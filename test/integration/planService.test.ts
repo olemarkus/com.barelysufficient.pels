@@ -1,4 +1,4 @@
-import { captureLogger } from '../utils/loggerCapture';
+import { captureDebugTopic, captureLogger } from '../utils/loggerCapture';
 import { PassThrough } from 'node:stream';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { ObservedDeviceStateProjection } from '../../lib/observer/observedDeviceStateProjection';
@@ -236,10 +236,8 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
     getSettleDevices: () => [],
     loggers: {
       structuredLog: testLogger,
-      debugStructured: vi.fn(),
       ...loggerOverrides,
     },
-    isOverviewDebugEnabled: () => true,
     ...rest,
   };
 
@@ -483,14 +481,13 @@ describe('PlanService', () => {
     const engine = { ...createMockPlanEngine(),
       getDeviceExecutionStates: vi.fn(() => new Map([[device.id, { ...executionStateFixture(device),
         stepProgress: 'pending' as const }]])) };
-    const overviewDebugStructured = vi.fn();
-    const { service } = createPlanService({ planEngine: engine, overviewDebugStructured,
-      isOverviewDebugEnabled: () => true });
+    const overviewDebug = captureDebugTopic('overview');
+    const { service } = createPlanService({ planEngine: engine });
     service['rebuildHost'].publishPlan(plan, 456);
 
     await service.syncLivePlanState('realtime_capability');
 
-    expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(overviewDebug.events()).toContainEqual(expect.objectContaining({
       event: 'device_overview_changed', deviceId: 'ev-1', reasonCode: device.reason.code, plannedState: 'keep',
       observedStepId: 'low', desiredStepId: 'max', stepProgress: 'pending',
     }));
@@ -694,7 +691,7 @@ describe('PlanService', () => {
   it('ignores shortfall reason jitter when computing comparable detail changes', async () => {
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
-    const overviewDebugStructured = vi.fn();
+    const overviewDebug = captureDebugTopic('overview');
     const planEngine = {
       ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi
@@ -720,14 +717,12 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
-            overviewDebugStructured,
-      isOverviewDebugEnabled: () => true,
     });
 
     await service.rebuildPlanFromCache('power_delta');
     settingsSet.mockClear();
     realtime.mockClear();
-    overviewDebugStructured.mockClear();
+    overviewDebug.clear();
 
     await service.rebuildPlanFromCache('power_delta');
 
@@ -737,7 +732,7 @@ describe('PlanService', () => {
 
     const planUpdatedCalls = realtime.mock.calls.filter((call: unknown[]) => call[0] === 'plan_updated');
     expect(planUpdatedCalls).toHaveLength(0);
-    expect(overviewDebugStructured).not.toHaveBeenCalled();
+    expect(overviewDebug.events()).toHaveLength(0);
   });
 
   it('emits grouped structured plan debug summaries only when the summary changes', async () => {
@@ -831,7 +826,7 @@ describe('PlanService', () => {
       ],
       storageReleases: [],
     };
-    const debugStructured = vi.fn();
+    const planDebug = captureDebugTopic('plan');
     const { service } = createPlanService({
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
@@ -840,14 +835,16 @@ describe('PlanService', () => {
           .mockResolvedValueOnce(summaryPlan)
           .mockResolvedValueOnce(summaryPlan),
       }),
-      loggers: { structuredLog: testLogger, debugStructured },
     });
 
     await service.rebuildPlanFromCache('power_delta');
     await service.rebuildPlanFromCache('power_delta');
 
-    expect(debugStructured).toHaveBeenCalledTimes(1);
-    expect(debugStructured).toHaveBeenCalledWith({
+    const summaries = planDebug.findEvents('plan_debug_summary');
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]).toMatchObject({
+      component: 'plan',
+      debugTopic: 'plan',
       event: 'plan_debug_summary',
       totalKw: 3.97,
       softLimitKw: 3,
@@ -863,7 +860,7 @@ describe('PlanService', () => {
   });
 
   it('logs overview changes on rebuild using the shared formatter output', async () => {
-    const overviewDebugStructured = vi.fn();
+    const overviewDebug = captureDebugTopic('overview');
     const { service } = createPlanService({
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
@@ -876,13 +873,12 @@ describe('PlanService', () => {
         })),
         applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
       }),
-      overviewDebugStructured,
     });
 
     await service.rebuildPlanFromCache('power_delta');
 
     const overview = buildDeviceLogEntry(service.getLatestPlanSnapshotForUi()!.devices![0]);
-    expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(overviewDebug.events()).toContainEqual(expect.objectContaining({
       component: 'overview',
       event: 'device_overview_changed',
       deviceId: 'dev-1',
@@ -894,7 +890,7 @@ describe('PlanService', () => {
 
   it('captures device-log entries even when the overview debug log is disabled', async () => {
     const recorder = createTestDeviceActivityRecorder();
-    const overviewDebugStructured = vi.fn();
+    const overviewDebug = captureDebugTopic('overview', { enabled: false });
     const { service } = createPlanService({
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
@@ -907,15 +903,13 @@ describe('PlanService', () => {
         })),
         applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
       }),
-      overviewDebugStructured,
-      isOverviewDebugEnabled: () => false,
       deviceOverviewLogRecorder: recorder,
     });
 
     await service.rebuildPlanFromCache('power_delta');
 
     // Debug log is gated off, but the recorder still captured the entry.
-    expect(overviewDebugStructured).not.toHaveBeenCalled();
+    expect(overviewDebug.events()).toHaveLength(0);
     const overview = buildDeviceLogEntry(service.getLatestPlanSnapshotForUi()!.devices![0]);
     const payload = service.getDeviceLogUiPayload();
     expect(payload.entries.filter((entry) => entry.deviceId === 'dev-1')).toEqual([
@@ -928,7 +922,7 @@ describe('PlanService', () => {
   });
 
   it('batches multiple overview changes from the same rebuild', async () => {
-    const overviewDebugStructured = vi.fn();
+    const overviewDebug = captureDebugTopic('overview');
     const plan = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       plannedState: 'keep',
@@ -955,13 +949,12 @@ describe('PlanService', () => {
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(plan),
         applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
       }),
-      overviewDebugStructured,
     });
 
     await service.rebuildPlanFromCache('power_delta');
 
-    expect(overviewDebugStructured).toHaveBeenCalledTimes(1);
-    expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(overviewDebug.events()).toHaveLength(1);
+    expect(overviewDebug.events()).toContainEqual(expect.objectContaining({
       component: 'overview',
       event: 'device_overview_changes',
       changedDeviceCount: 2,
@@ -983,7 +976,7 @@ describe('PlanService', () => {
   });
 
   it('logs the confirmed reported step in overview events', async () => {
-    const overviewDebugStructured = vi.fn();
+    const overviewDebug = captureDebugTopic('overview');
     const { service } = createPlanService({
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
@@ -1000,19 +993,18 @@ describe('PlanService', () => {
         })),
         applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
       }),
-      overviewDebugStructured,
     });
 
     await service.rebuildPlanFromCache('power_delta');
 
-    expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(overviewDebug.events()).toContainEqual(expect.objectContaining({
       event: 'device_overview_changed',
       usageMsg: 'Level Max',
     }));
   });
 
   it('does not log repeated identical overview snapshots', async () => {
-    const overviewDebugStructured = vi.fn();
+    const overviewDebug = captureDebugTopic('overview');
     const samePlan = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       plannedState: 'keep',
@@ -1026,17 +1018,16 @@ describe('PlanService', () => {
         buildDevicePlanSnapshot: vi.fn().mockResolvedValueOnce(samePlan).mockResolvedValueOnce(samePlan),
         applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
       }),
-      overviewDebugStructured,
     });
 
     await service.rebuildPlanFromCache('power_delta');
     await service.rebuildPlanFromCache('power_delta');
 
-    expect(overviewDebugStructured).toHaveBeenCalledTimes(1);
+    expect(overviewDebug.events()).toHaveLength(1);
   });
 
   it('logs on usage-only overview changes during rebuilds', async () => {
-    const overviewDebugStructured = vi.fn();
+    const overviewDebug = captureDebugTopic('overview');
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
     const { service } = createPlanService({
@@ -1060,17 +1051,16 @@ describe('PlanService', () => {
           })),
         applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
       }),
-      overviewDebugStructured,
     });
 
     await service.rebuildPlanFromCache('power_delta');
-    overviewDebugStructured.mockClear();
+    overviewDebug.clear();
     settingsSet.mockClear();
     realtime.mockClear();
 
     await service.rebuildPlanFromCache('power_delta');
-    expect(overviewDebugStructured).toHaveBeenCalledTimes(1);
-    expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(overviewDebug.events()).toHaveLength(1);
+    expect(overviewDebug.events()).toContainEqual(expect.objectContaining({
       event: 'device_overview_changed',
       powerMsg: '0.3 kW',
       currentDrawKw: 0.25,
@@ -1083,7 +1073,7 @@ describe('PlanService', () => {
   });
 
   it('suppresses countdown-only cooldown changes for overview logs, snapshots, and plan updates', async () => {
-    const overviewDebugStructured = vi.fn();
+    const overviewDebug = captureDebugTopic('overview');
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
     const cooldownPlan = buildPlan(20, 'meter settling (30s remaining)', {}, {
@@ -1106,23 +1096,22 @@ describe('PlanService', () => {
           .mockResolvedValueOnce(cooldownTickPlan),
         applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
       }),
-      overviewDebugStructured,
     });
 
     await service.rebuildPlanFromCache('power_delta');
-    overviewDebugStructured.mockClear();
+    overviewDebug.clear();
     settingsSet.mockClear();
     realtime.mockClear();
 
     vi.advanceTimersByTime(6_000);
     await service.rebuildPlanFromCache('power_delta');
 
-    expect(overviewDebugStructured).not.toHaveBeenCalled();
+    expect(overviewDebug.events()).toHaveLength(0);
     expect(settingsSet.mock.calls.filter((call: unknown[]) => call[0] === LEGACY_PLAN_SNAPSHOT_SETTING)).toHaveLength(0);
     expect(realtime.mock.calls.filter((call: unknown[]) => call[0] === 'plan_updated')).toHaveLength(0);
   });
 
-  it('retains publication signatures even when debug logging is unavailable', async () => {
+  it('retains publication signatures with the overview debug topic off', async () => {
     const samePlan = buildPlan(20, 'keep', {}, {
       currentState: 'on',
       plannedState: 'keep',
@@ -1136,8 +1125,6 @@ describe('PlanService', () => {
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(samePlan),
         applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
       }),
-      overviewDebugStructured: undefined,
-      isOverviewDebugEnabled: () => true,
     });
 
     await service.rebuildPlanFromCache('power_delta');
@@ -1146,7 +1133,7 @@ describe('PlanService', () => {
   });
 
   it('logs overview changes during live sync when a visible field changes', async () => {
-    const overviewDebugStructured = vi.fn();
+    const overviewDebug = captureDebugTopic('overview');
     const realtime = vi.fn().mockResolvedValue(undefined);
     let liveOn = false;
     const liveFixtureDevices: () => PlanInputDevice[] = () => [liveHeaterInput({
@@ -1161,8 +1148,6 @@ describe('PlanService', () => {
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
-            overviewDebugStructured,
-      isOverviewDebugEnabled: () => true,
     });
 
     const publishedPlan = buildPlan(20, 'keep', {}, {
@@ -1174,13 +1159,13 @@ describe('PlanService', () => {
     });
     service['rebuildHost'].publishPlan(publishedPlan, Date.now());
     service['emitPlanUpdated'](publishedPlan);
-    overviewDebugStructured.mockClear();
+    overviewDebug.clear();
     // The device turns on after the plan was published.
     liveOn = true;
 
     await expect(service.syncLivePlanState('snapshot_refresh')).resolves.toBe(true);
-    expect(overviewDebugStructured).toHaveBeenCalledTimes(1);
-    expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(overviewDebug.events()).toHaveLength(1);
+    expect(overviewDebug.events()).toContainEqual(expect.objectContaining({
       event: 'device_overview_changed',
       stateMsg: 'Running',
       powerMsg: '0.3 kW',
@@ -1286,7 +1271,7 @@ describe('PlanService', () => {
 
   it('logs the post-actuation overview transition when the device observation arrives', async () => {
     let currentOn = false;
-    const overviewDebugStructured = vi.fn();
+    const overviewDebug = captureDebugTopic('overview');
     const liveFixtureDevices: () => PlanInputDevice[] = () => [liveHeaterInput({
       on: currentOn, currentDrawKw: 0, expectedPowerKw: 1, currentTemperature: 21, setpointC: 20,
     })];
@@ -1310,8 +1295,6 @@ describe('PlanService', () => {
       }),
       getPlanDevices: liveFixtureDevices,
       getSettleDevices: () => unavailableBinaryConfirmations(liveFixtureDevices()),
-            overviewDebugStructured,
-      isOverviewDebugEnabled: () => true,
     });
 
     await service.rebuildPlanFromCache('power_delta');
@@ -1319,12 +1302,12 @@ describe('PlanService', () => {
     // production routes into the live sync.
     await service.syncLivePlanState('device_update');
 
-    expect(overviewDebugStructured).toHaveBeenCalledTimes(2);
-    expect(overviewDebugStructured.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+    expect(overviewDebug.events()).toHaveLength(2);
+    expect(overviewDebug.events()[0]).toEqual(expect.objectContaining({
       event: 'device_overview_changed',
       stateMsg: 'Resuming',
     }));
-    expect(overviewDebugStructured.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
+    expect(overviewDebug.events()[1]).toEqual(expect.objectContaining({
       event: 'device_overview_changed',
       stateMsg: 'Running',
     }));
@@ -1378,7 +1361,7 @@ describe('PlanService', () => {
       }),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog), debugStructured: vi.fn() },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
           });
 
     await service.rebuildPlanFromCache('power_delta');
@@ -2388,7 +2371,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog), debugStructured: vi.fn() },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
           });
 
     const beforePerf = getPerfSnapshot();
@@ -2416,7 +2399,7 @@ describe('PlanService', () => {
   it('suppresses structured rebuild logs for unchanged no-op rebuilds', async () => {
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog), debugStructured: vi.fn() },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
     });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
@@ -2430,7 +2413,7 @@ describe('PlanService', () => {
   it('emits structured rebuild logs for initial rebuild reasons even without action changes', async () => {
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog), debugStructured: vi.fn() },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
     });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
@@ -2527,7 +2510,7 @@ describe('PlanService', () => {
   it('emits structured rebuild logs for slow rebuilds even without action changes', async () => {
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog), debugStructured: vi.fn() },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
     });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
@@ -2584,7 +2567,7 @@ describe('PlanService', () => {
   it('emits plan_rebuild_completed with concrete deviceWriteCount when actuation wrote to devices', async () => {
     const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog), debugStructured: vi.fn() },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi
@@ -2617,7 +2600,7 @@ describe('PlanService', () => {
     const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const schedulePostActuationRefresh = vi.fn();
     const { service, deps } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog), debugStructured: vi.fn() },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
       schedulePostActuationRefresh,
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
@@ -2660,7 +2643,7 @@ describe('PlanService', () => {
   it('emits structured rebuild logs for failed rebuilds', async () => {
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog), debugStructured: vi.fn() },
+      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
     });
     (deps.planEngine.buildDevicePlanSnapshot as Mock).mockImplementation(async () => {
       vi.advanceTimersByTime(17);

@@ -44,7 +44,6 @@ import {
   type StorageSurplus,
   type StorageSurplusOffer,
 } from '../../lib/plan/planSurplusAbsorb';
-import type { StructuredDebugEmitter } from '../../lib/logging/logger';
 import type {
   DeviceDescriptorRead,
   DeviceStateOfChargeSnapshot,
@@ -1543,7 +1542,6 @@ export const resolveSurplusEligibilityForSpec = (spec: {
   storage: StorageSurplus;
   getConfig: Parameters<typeof selectSurplusCandidates>[2];
   excludeIds: ReadonlySet<string>;
-  debugStructured?: StructuredDebugEmitter;
   nowTs: number;
 }): ReadonlyMap<string, StorageSurplusOffer> => resolveSurplusEligibility(
   selectSurplusCandidates(spec.devices, spec.state, spec.getConfig, spec.excludeIds),
@@ -1552,7 +1550,6 @@ export const resolveSurplusEligibilityForSpec = (spec: {
   spec.inferredSurplusKw,
   spec.storage,
   spec.nowTs,
-  spec.debugStructured,
 );
 
 /**

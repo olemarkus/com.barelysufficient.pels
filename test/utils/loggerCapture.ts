@@ -26,6 +26,7 @@
  * capture owns the destination and the reset together.
  */
 import { PassThrough } from 'node:stream';
+import { onTestFinished } from 'vitest';
 import { createRootLogger, setDebugTopics, setRootLogger } from '../../lib/logging/logger';
 import {
   ALL_DEBUG_LOGGING_TOPICS,
@@ -76,5 +77,25 @@ export const captureLogger = (
       setRootLogger(createRootLogger(new PassThrough(), 'silent'));
       setDebugTopics(new Set());
     },
+  };
+};
+
+/**
+ * The events one debug topic writes for the rest of the current spec, read at
+ * the log destination with only that topic switched on — what the owner sees
+ * with the topic enabled. Restores itself when the spec finishes. `enabled`
+ * false leaves the topic off, so a spec can assert the gate closes.
+ */
+export const captureDebugTopic = (
+  topic: DebugLoggingTopic,
+  { enabled = true }: { enabled?: boolean } = {},
+): { events: () => CapturedLogLine[]; findEvents: (event: string) => CapturedLogLine[]; clear: () => void } => {
+  const capture = captureLogger('debug', enabled ? [topic] : []);
+  onTestFinished(() => capture.restore());
+  const events = (): CapturedLogLine[] => capture.events.filter((line) => line.debugTopic === topic);
+  return {
+    events,
+    findEvents: (event) => events().filter((line) => line.event === event),
+    clear: () => { capture.events.length = 0; },
   };
 };

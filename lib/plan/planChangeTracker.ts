@@ -7,7 +7,7 @@
  * `PlanService.trackPlanChanges` / `resolveDebugSummaryState` methods.
  */
 import { incPerfCounter } from '../utils/perfCounters';
-import type { StructuredDebugEmitter } from '../logging/logger';
+import { getDebugEmitter, isDebugTopicEnabled } from '../logging/logger';
 import {
   buildPlanDebugSummaryEvent,
   buildPlanDebugSummarySignatureFromEvent,
@@ -16,10 +16,7 @@ import {
 } from './planLogging';
 import type { DevicePlan, PlanChangeSet } from './planTypes';
 
-type PlanChangeTrackerDeps = {
-  debugStructured: StructuredDebugEmitter;
-  isPlanDebugEnabled: () => boolean;
-};
+const emitPlanDebug = getDebugEmitter('plan', 'plan');
 
 type DebugSummaryState = {
   event: ReturnType<typeof buildPlanDebugSummaryEvent> | null;
@@ -33,8 +30,6 @@ export class PlanChangeTracker {
   private lastDetailPlanSignature = '';
   private lastPlanMetaSignature = '';
   private lastPlanDebugSummarySignature = '';
-
-  constructor(private deps: PlanChangeTrackerDeps) {}
 
   track(plan: DevicePlan, metaSignature: string): PlanChangeSet {
     const actionSignature = buildPlanSignature(plan);
@@ -59,7 +54,7 @@ export class PlanChangeTracker {
     }
 
     if (debugSummaryState.changed && debugSummaryState.event) {
-      this.deps.debugStructured(debugSummaryState.event);
+      emitPlanDebug(debugSummaryState.event);
     }
 
     this.lastActionPlanSignature = actionSignature;
@@ -80,7 +75,8 @@ export class PlanChangeTracker {
   }
 
   private resolveDebugSummaryState(plan: DevicePlan, anySignatureChanged: boolean): DebugSummaryState {
-    const shouldCheck = anySignatureChanged && this.deps.isPlanDebugEnabled();
+    // Building the summary is the cost: skip it unless the topic is on.
+    const shouldCheck = anySignatureChanged && isDebugTopicEnabled('plan');
     if (!shouldCheck) {
       return { event: null, signature: null, changed: false, emitted: false };
     }

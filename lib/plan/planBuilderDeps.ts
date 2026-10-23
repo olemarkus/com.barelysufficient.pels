@@ -11,7 +11,7 @@ import type { ShedBehavior } from './planTypes';
 import type { PriceOptDeviceConfig } from './planBuilderSurplus';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
+import type { Logger as PinoLogger } from '../logging/logger';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import type {
   DeferredDecorationBundle,
@@ -53,7 +53,6 @@ export type PlanBuilderDeps = {
   pendingBinaryCommandStore: PendingBinaryCommandStore;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog: PinoLogger;
-  debugStructured?: StructuredDebugEmitter;
   // Smart-task (deferred-objective) decoration seam. The smart-task controller
   // (lib/objectives) evaluates objectives, commits active plans synchronously,
   // and applies admission / target-overrides / release-intents, returning a
