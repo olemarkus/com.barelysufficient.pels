@@ -980,7 +980,7 @@ describe('executor drift through PlanExecutor.driftObservationDeps', () => {
         resolveTemperatureTarget: (_deviceId, desired) => desired,
         requestBinaryControl: vi.fn(async () => undefined),
         requestTemperatureTarget: async (_deviceId, desired) => desired,
-        requestSteppedLoadStep: vi.fn(async () => ({ requested: true, acknowledged: true as const, transport: 'native_capability' as const })),
+        requestSteppedLoadStep: vi.fn(async () => ({ requested: true, acknowledged: true, transport: 'native_capability' } as const)),
         ...noStorageTransport,
       }),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
