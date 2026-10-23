@@ -126,7 +126,7 @@ describe('buildOverviewSteppedLoad', () => {
 describe('buildOverviewEventForDevice — cardReasonText', () => {
   it('logs the card line for a held device', () => {
     const event = buildOverviewEventForDevice(overviewLogDevice({
-      id: 'dev', plannedState: 'shed', currentState: 'off',
+      id: 'dev', plannedState: 'shed', currentState: 'off' as const,
       reason: { code: 'daily_budget', shortfallKw: 0.9 },
     }), decision);
     expect(event['cardReasonText']).toBe('Waiting to resume — 0.9 kW more needed');
@@ -139,7 +139,7 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
   // the line.
   it('logs the reservation holder for a reserve-blocked device', () => {
     const event = buildOverviewEventForDevice(overviewLogDevice({
-      id: 'dev', plannedState: 'shed', currentState: 'off',
+      id: 'dev', plannedState: 'shed', currentState: 'off' as const,
       reason: { code: 'capacity', reserveHolderName: 'Water heater' },
     }), decision);
     expect(event['cardReasonText']).toBe('Waiting so Water heater can start');
@@ -159,7 +159,7 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
   ])('logs the action-specific line for an active stepped device in the %s', (_label, reason, copy) => {
     const event = buildOverviewEventForDevice(asOverviewLogDevice(steppedPlanDevice({
       id: 'charger',
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'keep',
       reportedStepId: 'low',
       selectedStepId: 'medium',
@@ -177,8 +177,8 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
   // `test/unit/observedState.test.ts` (`resolveObservedCurrentState`).
 
   it.each([
-    ['a running device', { plannedState: 'keep' as const, currentState: 'on' }],
-    ['an idle device', { plannedState: 'inactive' as const, currentState: 'on' }],
+    ['a running device', { plannedState: 'keep' as const, currentState: 'on' as const }],
+    ['an idle device', { plannedState: 'inactive' as const, currentState: 'on' as const }],
   ])('logs null for %s, which renders no reason line', (_label, state) => {
     const event = buildOverviewEventForDevice(overviewLogDevice({
       id: 'dev', ...state, reason: { code: 'keep', detail: null },

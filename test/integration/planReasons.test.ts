@@ -979,7 +979,7 @@ describe('applyShedTemperatureHold', () => {
         planDevices: [withBinaryOn(buildPlanDevice({
           id: 'dev-temp',
           name: 'Water Heater',
-          currentState: 'keep',
+          currentState: 'on',
           plannedState: 'shed',
           budgetExempt,
           expectedPowerKw: 1.2,
@@ -1019,7 +1019,7 @@ describe('applyShedTemperatureHold', () => {
       state.shedDecisions.lastPlannedShedIds = new Set(['dev-temp']);
       // `moved` sat at its limit and was just planned off it.
       state.actuation.lastDeviceRestoreMs.moved = now - 1_000;
-      const limited = { currentState: 'keep' as const, expectedPowerKw: 1, shedAction: 'set_temperature' as const, shedTemperature: 16 };
+      const limited = { currentState: 'on' as const, expectedPowerKw: 1, shedAction: 'set_temperature' as const, shedTemperature: 16 };
       return applyShedTemperatureHoldForSpec({
         temperatureSetpoints: new Map([
           ['moved', fixtureTemperatureSetpointsEntry({ shed: fixtureSetpointLimit(16, false), keepAddsDemand: movedAddsDemand })],
@@ -1063,7 +1063,7 @@ describe('applyShedTemperatureHold', () => {
     const planned = withBinaryOn(buildPlanDevice({
       id: 'dev-temp',
       name: 'Thermostat',
-      currentState: 'keep',
+      currentState: 'on',
       plannedState: 'shed',
       currentTarget: 21,
       currentTemperature: 21,
@@ -1098,7 +1098,7 @@ describe('applyShedTemperatureHold', () => {
       planDevices: [withBinaryOn(buildPlanDevice({
         id: 'dev-temp',
         name: 'Thermostat',
-        currentState: 'keep',
+        currentState: 'on',
         plannedState: 'shed',
         currentTarget: 16,
         currentTemperature: 16,
@@ -1166,7 +1166,7 @@ describe('applyShedTemperatureHold', () => {
       planDevices: [withBinaryOn(buildPlanDevice({
         id: 'dev-temp',
         name: 'Thermostat',
-        currentState: 'keep',
+        currentState: 'on',
         plannedState: 'keep',
         currentTarget: 16,
         currentTemperature: 16,
@@ -1233,7 +1233,7 @@ describe('applyShedTemperatureHold', () => {
         planDevices: [withBinaryOn(buildPlanDevice({
           id: 'dev-temp',
           name: 'Thermostat',
-          currentState: 'keep',
+          currentState: 'on',
           plannedState: 'shed',
           currentTarget: params.currentTarget ?? 16,
           currentTemperature: params.currentTarget ?? 16,

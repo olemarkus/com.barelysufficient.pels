@@ -74,14 +74,12 @@ const steppedLoad = (
 
 describe('resolveSteppedLevelFact', () => {
   it('returns null when the device is off (the bold state word covers off)', () => {
-    expect(resolveSteppedLevelFact({ ...baseDevice, currentState: 'off' })).toBeNull();
-    expect(resolveSteppedLevelFact({ ...baseDevice, currentState: 'unknown' })).toBeNull();
-    expect(resolveSteppedLevelFact({ isEvCharger: false })).toBeNull();
+    expect(resolveSteppedLevelFact({ ...baseDevice, currentState: 'off' as const })).toBeNull();
   });
 
   it('names the level when at a powered step', () => {
     expect(resolveSteppedLevelFact({
-      ...baseDevice, currentState: 'on', steppedLoad: steppedLoad({ reportedStepId: 'low' }),
+      ...baseDevice, currentState: 'on' as const, steppedLoad: steppedLoad({ reportedStepId: 'low' }),
     })).toBe('Level Low');
   });
 
@@ -95,11 +93,11 @@ describe('resolveSteppedLevelFact', () => {
     };
     // A zero-power rung is off whatever it is called; the bold state word says so.
     expect(resolveSteppedLevelFact({
-      ...baseDevice, currentState: 'on', steppedLoad: steppedLoad({ profile: ladder, reportedStepId: 'OFF' }),
+      ...baseDevice, currentState: 'on' as const, steppedLoad: steppedLoad({ profile: ladder, reportedStepId: 'OFF' }),
     })).toBeNull();
     // A powered rung the owner named `Off` runs, so its level is a fact worth stating.
     expect(resolveSteppedLevelFact({
-      ...baseDevice, currentState: 'on', steppedLoad: steppedLoad({ profile: ladder, reportedStepId: 'Off' }),
+      ...baseDevice, currentState: 'on' as const, steppedLoad: steppedLoad({ profile: ladder, reportedStepId: 'Off' }),
     })).toBe('Level Off');
   });
 
@@ -107,20 +105,20 @@ describe('resolveSteppedLevelFact', () => {
     // Only the typed `steppedLoad.reportedStepId` is observed UI truth; a device
     // with no reported step must not infer a level from any other field.
     expect(resolveSteppedLevelFact({
-      ...baseDevice, currentState: 'on',
+      ...baseDevice, currentState: 'on' as const,
     })).toBe('Level unknown');
   });
 
   it('renders ampere step ids in SI form ("6 A", not "6a")', () => {
     expect(resolveSteppedLevelFact({
-      ...baseDevice, currentState: 'on', steppedLoad: steppedLoad({ reportedStepId: '6a' }),
+      ...baseDevice, currentState: 'on' as const, steppedLoad: steppedLoad({ reportedStepId: '6a' }),
     })).toBe('Level 6 A');
   });
 
   it('folds a routinely-charging EV into "Charging · level N A"', () => {
     expect(resolveSteppedLevelFact({
       ...baseDevice,
-      currentState: 'on',
+      currentState: 'on' as const,
       isEvCharger: true,
       evChargingState: 'plugged_in_charging',
       steppedLoad: steppedLoad({ reportedStepId: '16a' }),
@@ -130,9 +128,10 @@ describe('resolveSteppedLevelFact', () => {
 
 describe('resolveSteppedEvExceptionLabel', () => {
   it('is null for non-EV devices and for routine charging', () => {
-    expect(resolveSteppedEvExceptionLabel({ isEvCharger: false })).toBeNull();
+    expect(resolveSteppedEvExceptionLabel({ isEvCharger: false, currentState: 'off' })).toBeNull();
     expect(resolveSteppedEvExceptionLabel({
       isEvCharger: true,
+      currentState: 'off',
       evChargingState: 'plugged_in_charging',
     })).toBeNull();
   });
@@ -140,10 +139,12 @@ describe('resolveSteppedEvExceptionLabel', () => {
   it('surfaces the exceptional EV states for the reason slot', () => {
     expect(resolveSteppedEvExceptionLabel({
       isEvCharger: true,
+      currentState: 'off',
       evChargingState: 'plugged_out',
     })).toBe('Unplugged');
     expect(resolveSteppedEvExceptionLabel({
       isEvCharger: true,
+      currentState: 'off',
       evChargingState: 'plugged_in_paused',
     })).toBe('Paused');
   });
@@ -154,12 +155,7 @@ describe('resolveSteppedEvExceptionLabel', () => {
     expect(resolveSteppedEvExceptionLabel({
       isEvCharger: true,
       evChargingState: 'plugged_in',
-      currentState: 'off',
-    })).toBe('Not charging');
-    // No read-back at all is not evidence of a charge command either.
-    expect(resolveSteppedEvExceptionLabel({
-      isEvCharger: true,
-      evChargingState: 'plugged_in',
+      currentState: 'off' as const,
     })).toBe('Not charging');
   });
 
@@ -167,7 +163,7 @@ describe('resolveSteppedEvExceptionLabel', () => {
     expect(resolveSteppedEvExceptionLabel({
       isEvCharger: true,
       evChargingState: 'plugged_in',
-      currentState: 'on',
+      currentState: 'on' as const,
     })).toBe('Waiting for car');
   });
 
@@ -177,7 +173,7 @@ describe('resolveSteppedEvExceptionLabel', () => {
     expect(resolveSteppedEvExceptionLabel({
       isEvCharger: true,
       evChargingState: 'plugged_in',
-      currentState: 'on',
+      currentState: 'on' as const,
     })).toBe('Waiting for car');
   });
 });
@@ -229,7 +225,7 @@ describe('resolveSteppedStatusLine', () => {
   describe('stable — no status line', () => {
     it('returns null when on track with no target (quiet state, no filler line)', () => {
       expect(resolveSteppedStatusLine(
-        { ...baseDevice, currentState: 'on', steppedLoad: steppedLoad({ reportedStepId: 'low' }) },
+        { ...baseDevice, currentState: 'on' as const, steppedLoad: steppedLoad({ reportedStepId: 'low' }) },
         profile,
         NOW_MS,
       )).toBeNull();
@@ -239,7 +235,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'low' }),
         },
         profile,
@@ -249,7 +245,7 @@ describe('resolveSteppedStatusLine', () => {
 
     it('returns null when off and no target', () => {
       expect(resolveSteppedStatusLine(
-        { ...baseDevice, currentState: 'off' },
+        { ...baseDevice, currentState: 'off' as const },
         profile,
         NOW_MS,
       )).toBeNull();
@@ -259,7 +255,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'off',
+          currentState: 'off' as const,
           reason: { code: 'external_off_hold' },
         },
         profile,
@@ -271,7 +267,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'off',
+          currentState: 'off' as const,
           stateKind: 'unavailable',
           reason: { code: 'external_off_hold' },
         },
@@ -286,7 +282,7 @@ describe('resolveSteppedStatusLine', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'low' }),
           reason: { code: 'cooldown_restore', remainingSec: 20, countdownStartedAtMs: NOW_MS - 7_000 },
         },
@@ -300,7 +296,7 @@ describe('resolveSteppedStatusLine', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'low' }),
           reason: { code: 'cooldown_shedding', remainingSec: 15 },
         },
@@ -314,7 +310,7 @@ describe('resolveSteppedStatusLine', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'low' }),
           reason: { code: 'meter_settling', remainingSec: 8 },
         },
@@ -328,7 +324,7 @@ describe('resolveSteppedStatusLine', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'medium', targetStepId: 'medium' }),
           reason: { code: 'meter_settling', remainingSec: 14 },
         },
@@ -344,7 +340,7 @@ describe('resolveSteppedStatusLine', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'low' }),
           reason: { code: 'cooldown_shedding', remainingSec: 22 },
         },
@@ -358,7 +354,7 @@ describe('resolveSteppedStatusLine', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'medium', targetStepId: 'medium' }),
           reason: { code: 'cooldown_restore', remainingSec: 18, countdownStartedAtMs: NOW_MS - 4_000 },
         },
@@ -372,7 +368,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'off',
+          currentState: 'off' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'off', targetStepId: 'off' }),
           reason: { code: 'cooldown_restore', remainingSec: 12 },
         },
@@ -385,7 +381,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'medium' }),
           reason: { code: 'waiting_for_other_devices' },
         },
@@ -398,7 +394,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'off',
+          currentState: 'off' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'off', targetStepId: 'off' }),
           reason: { code: 'waiting_for_other_devices' },
         },
@@ -418,7 +414,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'not_applicable',
+          currentState: 'not_applicable' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'step_0', targetStepId: 'step_0' }),
           reason: { code: 'waiting_for_other_devices' },
         },
@@ -431,7 +427,7 @@ describe('resolveSteppedStatusLine', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'low' }),
           reason: { code: 'activation_backoff', remainingSec: 12 },
         },
@@ -445,7 +441,7 @@ describe('resolveSteppedStatusLine', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'off',
+          currentState: 'off' as const,
           steppedLoad: steppedLoad({ targetStepId: 'low' }),
           reason: { code: 'restore_pending', remainingSec: 9 },
         },
@@ -459,7 +455,7 @@ describe('resolveSteppedStatusLine', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'low' }),
           reason: { code: 'neutral_startup_hold' },
         },
@@ -473,7 +469,7 @@ describe('resolveSteppedStatusLine', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'low' }),
           reason: { code: 'startup_stabilization' },
         },
@@ -489,7 +485,7 @@ describe('resolveSteppedStatusLine', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'off',
+          currentState: 'off' as const,
           steppedLoad: steppedLoad({ targetStepId: 'low' }),
           reason: {
             code: 'insufficient_headroom',
@@ -511,7 +507,7 @@ describe('resolveSteppedStatusLine', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'medium' }),
           reason: {
             code: 'insufficient_headroom',
@@ -536,7 +532,7 @@ describe('resolveSteppedStatusLine', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'medium' }),
           reason: { code: 'swapped_out', targetName: 'Water heater', shortfallKw: 0.7 },
         },
@@ -552,7 +548,7 @@ describe('resolveSteppedStatusLine', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'medium' }),
           reason: { code: 'hourly_budget' },
         },
@@ -570,7 +566,7 @@ describe('resolveSteppedStatusLine', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'off',
+          currentState: 'off' as const,
           steppedLoad: steppedLoad({ targetStepId: 'low' }),
           reason: {
             code: 'insufficient_headroom',
@@ -592,7 +588,7 @@ describe('resolveSteppedStatusLine', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'off',
+          currentState: 'off' as const,
           steppedLoad: steppedLoad({ targetStepId: 'low' }),
           reason: { code: 'shortfall', shortfallKw: 0.3 },
         },
@@ -609,7 +605,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'off',
+          currentState: 'off' as const,
           steppedLoad: steppedLoad({ targetStepId: 'low' }),
           reason: { code: 'capacity' },
         },
@@ -624,7 +620,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'off',
+          currentState: 'off' as const,
           steppedLoad: steppedLoad({ targetStepId: 'low' }),
           reason: { code: 'capacity', shortfallKw: 0.9 },
         },
@@ -639,7 +635,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'off',
+          currentState: 'off' as const,
           steppedLoad: steppedLoad({ targetStepId: 'low' }),
           reason: { code: 'hourly_budget' },
         },
@@ -652,7 +648,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'off',
+          currentState: 'off' as const,
           steppedLoad: steppedLoad({ targetStepId: 'low' }),
           reason: { code: 'daily_budget', shortfallKw: 0.6 },
         },
@@ -665,7 +661,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'off',
+          currentState: 'off' as const,
           steppedLoad: steppedLoad({ targetStepId: 'low' }),
           reason: { code: 'deferred_objective_avoid' },
         },
@@ -682,7 +678,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'medium' }),
           reason: { code: 'shed_invariant', fromStep: 'medium', toStep: 'high', shedDeviceCount: 1, maxStep: 'low' },
         },
@@ -695,7 +691,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'low' }),
           reason: { code: 'shed_invariant', fromStep: 'low', toStep: 'medium', shedDeviceCount: 3, maxStep: 'low' },
         },
@@ -708,7 +704,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'max', targetStepId: 'low' }),
           reason: { code: 'keep', detail: null },
         },
@@ -723,7 +719,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'off',
+          currentState: 'off' as const,
           steppedLoad: steppedLoad({ targetStepId: 'low', commandPending: true }),
         },
         profile,
@@ -735,7 +731,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'medium', commandPending: true }),
         },
         profile,
@@ -757,7 +753,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'Off', commandPending: true }),
         },
         ownerNamedOff,
@@ -769,7 +765,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'max', targetStepId: 'low', commandPending: true }),
         },
         profile,
@@ -781,7 +777,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'on',
+          currentState: 'on' as const,
           steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'off', commandPending: true }),
         },
         profileWithOff,
@@ -793,7 +789,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
-          currentState: 'off',
+          currentState: 'off' as const,
           steppedLoad: steppedLoad({ targetStepId: 'low', commandPending: true }),
         },
         profileWithOff,
@@ -836,7 +832,7 @@ describe('resolveSteppedStatusLine — held-back hold vs active recovery', () =>
     const result = resolveSteppedStatusLine(
       {
         ...baseDevice,
-        currentState: 'off',
+        currentState: 'off' as const,
         steppedLoad: steppedLoad({ reportedStepId: 'off', commandPending: false }),
         starvation: heldBack,
       },
@@ -851,7 +847,7 @@ describe('resolveSteppedStatusLine — held-back hold vs active recovery', () =>
     const result = resolveSteppedStatusLine(
       {
         ...baseDevice,
-        currentState: 'off',
+        currentState: 'off' as const,
         reason: { code: 'daily_budget', shortfallKw: 0.6 },
         steppedLoad: steppedLoad({ reportedStepId: 'off', commandPending: false }),
         starvation: { ...heldBack, accumulatedMs: 90 * 60_000 },
@@ -869,7 +865,7 @@ describe('resolveSteppedStatusLine — held-back hold vs active recovery', () =>
     // the transit state, not the stale hold.
     const transiting = {
       ...baseDevice,
-      currentState: 'on',
+      currentState: 'on' as const,
       steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'max', commandPending: true }),
       starvation: heldBack,
     };
@@ -885,7 +881,7 @@ describe('resolveSteppedStatusLine — held-back hold vs active recovery', () =>
     const result = resolveSteppedStatusLine(
       {
         ...baseDevice,
-        currentState: 'on',
+        currentState: 'on' as const,
         steppedLoad: steppedLoad({ reportedStepId: 'medium', targetStepId: 'medium' }),
         reason: { code: 'meter_settling', remainingSec: 14 },
         starvation: heldBack,
@@ -899,7 +895,7 @@ describe('resolveSteppedStatusLine — held-back hold vs active recovery', () =>
 
 describe('battery level on the EV charger fact line', () => {
   const evCard = (overrides: Record<string, unknown> = {}) => ({
-    currentState: 'on',
+    currentState: 'on' as const,
     isEvCharger: true,
     steppedLoad: steppedLoad({ reportedStepId: '16a', targetStepId: '16a' }),
     ...overrides,
@@ -955,7 +951,7 @@ describe('battery level on the EV charger fact line', () => {
 
   it('says nothing at all when the charger is off', () => {
     expect(resolveSteppedLevelFact(evCard({
-      currentState: 'off',
+      currentState: 'off' as const,
       stateOfCharge: { level: { kind: 'known', percent: 64 } },
     }))).toBeNull();
   });

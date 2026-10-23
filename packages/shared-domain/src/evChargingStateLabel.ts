@@ -1,5 +1,4 @@
-import type { EvChargingState } from '../../contracts/src/types';
-import { isOnLikeState } from './deviceStatePredicates';
+import type { EvChargingState, ObservedCurrentState } from '../../contracts/src/types';
 
 /**
  * EV plug-state vocabulary: the raw Homey plug states read once, here, and turned
@@ -51,9 +50,7 @@ export const isRoutineEvChargingState = (state: string | undefined): boolean => 
 );
 
 
-const isChargerCommandedOn = (currentState: string | undefined): boolean => (
-  isOnLikeState(currentState)
-);
+const isChargerCommandedOn = (currentState: ObservedCurrentState): boolean => currentState === 'on';
 
 // Exceptional EV states for the fact line — null for the routine charging
 // state (carried by the fact line) and for non-EV devices. The idle state
@@ -67,7 +64,7 @@ const isChargerCommandedOn = (currentState: string | undefined): boolean => (
 // leaves factual device states alone by design.
 export const resolveSteppedEvExceptionLabel = (device: {
   /** Observer-resolved "is current on offer": `off` when commanded off OR at a 0 W step. */
-  currentState?: string;
+  currentState: ObservedCurrentState;
   evChargingState?: EvChargingState;
   /** The associated car's own plug state; absent when no car is associated. */
   carChargingState?: EvChargingState;

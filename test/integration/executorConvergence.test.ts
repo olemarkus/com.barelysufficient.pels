@@ -61,7 +61,7 @@ describe('executorConvergence stepped device drift', () => {
   describe('hasPlanExecutionDriftForDevice', () => {
     it('treats a keep device that is still observed off as drift even if the stored snapshot is stale', () => {
       const plan = buildPlan([buildBinaryDevice({
-        currentState: 'off',
+        currentState: 'off' as const,
         plannedState: 'keep',
       })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
@@ -78,7 +78,7 @@ describe('executorConvergence stepped device drift', () => {
 
     it('does not treat target-only keep devices as binary drift', () => {
       const plan = buildPlan([buildBinaryDevice({
-        currentState: 'not_applicable',
+        currentState: 'not_applicable' as const,
         plannedState: 'keep',
         binaryCapabilityId: undefined,
         currentTarget: 21,
@@ -98,7 +98,7 @@ describe('executorConvergence stepped device drift', () => {
     it('still detects target drift for target-only keep devices', () => {
       const plan = buildPlan([buildBinaryDevice({
         deviceType: 'temperature',
-        currentState: 'not_applicable',
+        currentState: 'not_applicable' as const,
         plannedState: 'keep',
         binaryCapabilityId: undefined,
         currentTarget: 21,
@@ -122,7 +122,7 @@ describe('executorConvergence stepped device drift', () => {
       // bypassed pending-target retry suppression; that bypass died with the
       // mode, so the two now agree rather than one covering for the other.)
       const plan = buildPlan([buildBinaryDevice({
-        currentState: 'not_applicable',
+        currentState: 'not_applicable' as const,
         plannedState: 'keep',
         binaryCapabilityId: undefined,
         currentTarget: 21,
@@ -148,7 +148,7 @@ describe('executorConvergence stepped device drift', () => {
     it('treats a mismatched pending target command as drift', () => {
       const plan = buildPlan([buildBinaryDevice({
         deviceType: 'temperature',
-        currentState: 'not_applicable',
+        currentState: 'not_applicable' as const,
         plannedState: 'keep',
         binaryCapabilityId: undefined,
         currentTarget: 21,
@@ -174,7 +174,7 @@ describe('executorConvergence stepped device drift', () => {
 
     it('does not treat a keep device as drift while a matching binary command is still pending', () => {
       const plan = buildPlan([buildBinaryDevice({
-        currentState: 'off',
+        currentState: 'off' as const,
         plannedState: 'keep',
       })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
@@ -192,7 +192,7 @@ describe('executorConvergence stepped device drift', () => {
 
     it('treats a mismatched pending binary command as drift', () => {
       const plan = buildPlan([buildBinaryDevice({
-        currentState: 'off',
+        currentState: 'off' as const,
         plannedState: 'keep',
       })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
@@ -211,7 +211,7 @@ describe('executorConvergence stepped device drift', () => {
 
     it('treats fresh off binary state as keep-plan drift', () => {
       const plan = buildPlan([buildBinaryDevice({
-        currentState: 'on',
+        currentState: 'on' as const,
         plannedState: 'keep',
       })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
@@ -306,7 +306,7 @@ describe('executorConvergence stepped device drift', () => {
 
     it('does not treat capacity-control-off keep state as drift without executor restore context', () => {
       const plan = buildPlan([buildBinaryDevice({
-        currentState: 'off',
+        currentState: 'off' as const,
         plannedState: 'keep',
         controllable: false,
       })]);
@@ -329,7 +329,7 @@ describe('executorConvergence stepped device drift', () => {
       // divergence. Re-actuating against the drift is idempotent, so the worst
       // case is a redundant command.
       const plan = buildPlan([buildBinaryDevice({
-        currentState: 'on',
+        currentState: 'on' as const,
         plannedState: 'keep',
       })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
@@ -347,7 +347,7 @@ describe('executorConvergence stepped device drift', () => {
     });
 
     it('detects binary drift for a stepped device via live input', () => {
-      const plan = buildPlan([buildSteppedDevice({ currentState: 'on', selectedStepId: 'low' })]);
+      const plan = buildPlan([buildSteppedDevice({ currentState: 'on' as const, selectedStepId: 'low' })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
         id: 'dev-1',
         name: 'Tank',
@@ -363,7 +363,7 @@ describe('executorConvergence stepped device drift', () => {
     });
 
     it('detects step drift for a stepped device via live input', () => {
-      const plan = buildPlan([buildSteppedDevice({ currentState: 'on', selectedStepId: 'low' })]);
+      const plan = buildPlan([buildSteppedDevice({ currentState: 'on' as const, selectedStepId: 'low' })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
         id: 'dev-1',
         name: 'Tank',
@@ -378,7 +378,7 @@ describe('executorConvergence stepped device drift', () => {
     });
 
     it('reports no drift when stepped device state matches', () => {
-      const plan = buildPlan([buildSteppedDevice({ currentState: 'on', selectedStepId: 'low' })]);
+      const plan = buildPlan([buildSteppedDevice({ currentState: 'on' as const, selectedStepId: 'low' })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
         id: 'dev-1',
         name: 'Tank',
@@ -394,7 +394,7 @@ describe('executorConvergence stepped device drift', () => {
 
     it('does not treat restore preparation at low with pending confirmation as binary drift', () => {
       const plan = buildPlan([buildSteppedDevice({
-        currentState: 'off',
+        currentState: 'off' as const,
         plannedState: 'keep',
         selectedStepId: 'off',
         desiredStepId: 'low',
@@ -419,7 +419,7 @@ describe('executorConvergence stepped device drift', () => {
 
     it('does not treat full-shed step preparation as binary drift before low is confirmed', () => {
       const plan = buildPlan([buildSteppedDevice({
-        currentState: 'on',
+        currentState: 'on' as const,
         plannedState: 'shed',
         shedAction: 'turn_off',
         selectedStepId: 'max',
@@ -455,7 +455,7 @@ describe('executorConvergence stepped device drift', () => {
     // reporting a non-off rung — which the case below covers.
     it('folds an armed binary axis at the off rung to off, matching the shed intent', () => {
       const plan = buildPlan([buildSteppedDevice({
-        currentState: 'off',
+        currentState: 'off' as const,
         plannedState: 'shed',
         shedAction: 'turn_off',
         selectedStepId: 'off',
@@ -478,7 +478,7 @@ describe('executorConvergence stepped device drift', () => {
 
     it('reports drift when the device attests a rung above the shed target', () => {
       const plan = buildPlan([buildSteppedDevice({
-        currentState: 'off',
+        currentState: 'off' as const,
         plannedState: 'shed',
         shedAction: 'turn_off',
         selectedStepId: 'off',
@@ -503,7 +503,7 @@ describe('executorConvergence stepped device drift', () => {
 
     it('treats restore preparation as drift when the pending step jumps to an unexpected value', () => {
       const plan = buildPlan([buildSteppedDevice({
-        currentState: 'off',
+        currentState: 'off' as const,
         plannedState: 'keep',
         selectedStepId: 'off',
         desiredStepId: 'low',
@@ -527,7 +527,7 @@ describe('executorConvergence stepped device drift', () => {
 
     it('does not force stepped set_step shedding to look binary-off when the device is correctly on at the shed step', () => {
       const plan = buildPlan([buildSteppedDevice({
-        currentState: 'on',
+        currentState: 'on' as const,
         plannedState: 'shed',
         shedAction: 'set_step',
         selectedStepId: 'low',
@@ -548,7 +548,7 @@ describe('executorConvergence stepped device drift', () => {
 
     it('ignores target drift for stepped set_step shedding but still checks binary state', () => {
       const plan = buildPlan([buildSteppedDevice({
-        currentState: 'on',
+        currentState: 'on' as const,
         plannedState: 'shed',
         shedAction: 'set_step',
         selectedStepId: 'low',
@@ -578,7 +578,7 @@ describe('executorConvergence stepped device drift', () => {
 
     it('does not treat stepped set_step shedding as drift when the stored snapshot is stale off but the live device is on at the shed step', () => {
       const plan = buildPlan([buildSteppedDevice({
-        currentState: 'off',
+        currentState: 'off' as const,
         plannedState: 'shed',
         shedAction: 'set_step',
         selectedStepId: 'low',
@@ -599,7 +599,7 @@ describe('executorConvergence stepped device drift', () => {
 
     it('does not treat fresh off binary state as drift for shed-off intent', () => {
       const plan = buildPlan([buildBinaryDevice({
-        currentState: 'on',
+        currentState: 'on' as const,
         plannedState: 'shed',
         shedAction: 'turn_off',
       })]);
@@ -635,7 +635,7 @@ describe('executorConvergence stepped device drift', () => {
         plannedState: 'shed',
         shedAction: 'set_step',
         // What the rebuild produces: current = the live step, desired = the shed target.
-        currentState: 'on',
+        currentState: 'on' as const,
         selectedStepId: 'max',
         desiredStepId: 'low',
       })]);
@@ -656,7 +656,7 @@ describe('executorConvergence stepped device drift', () => {
       const plan = buildPlan([buildSteppedDevice({
         plannedState: 'shed',
         shedAction: 'set_step',
-        currentState: 'on',
+        currentState: 'on' as const,
         selectedStepId: 'low',
         desiredStepId: 'low',
       })]);
@@ -675,7 +675,7 @@ describe('executorConvergence stepped device drift', () => {
 
     it('does not treat a power-only change as drift', () => {
       const plan = buildPlan([buildBinaryDevice({
-        currentState: 'on',
+        currentState: 'on' as const,
         plannedState: 'keep',
         currentTarget: 20,
         currentTemperature: 20,
@@ -702,7 +702,7 @@ describe('executorConvergence stepped device drift', () => {
       // A `turn_off` shed settles on the binary axis alone. The setpoint the device
       // reports while off is irrelevant, so a target change must not re-fire the shed.
       const plan = buildPlan([buildBinaryDevice({
-        currentState: 'off',
+        currentState: 'off' as const,
         plannedState: 'shed',
         shedAction: 'turn_off',
         currentTarget: 20,
@@ -737,7 +737,7 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
     const merged = {
       id: 'dev-1',
       name: 'Tank',
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'shed' as const,
       controllable: true,
       binaryCapabilityId: 'onoff' as const,
@@ -756,7 +756,7 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
     const merged = {
       id: 'dev-1',
       name: 'Tank',
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep' as const,
       controllable: true,
       binaryCapabilityId: 'onoff' as const,
@@ -814,7 +814,7 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
   // Test 4.2: stepped keep (turn_on intent) → expected binary state is always 'on'.
   // Detected as drift when live state is 'off'; no drift when live state is 'on'.
   it('expectedBinaryState is on for stepped keep (turn_on intent), detected via drift', () => {
-    const plan = buildPlanWith(buildKeepDevice({ currentState: 'off', selectedStepId: 'low' }));
+    const plan = buildPlanWith(buildKeepDevice({ currentState: 'off' as const, selectedStepId: 'low' }));
 
     // Live currentOn=false → current state is 'off' → differs from expected 'on' → drift
     expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ binaryControl: { on: false }, selectedStepId: 'low' })], 'dev-1'))
@@ -1002,7 +1002,7 @@ describe('executor drift through PlanExecutor.driftObservationDeps', () => {
   const restorePlanFor = (device: { id: string; name: string; binaryCapabilityId: string; isEvCharger: boolean }) => (
     buildPlan([buildBinaryDevice({
       ...device,
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       plannedTarget: undefined,
       deferredReleaseIntent: 'binary_restore',

@@ -39,14 +39,6 @@ const capitalize = (s: string): string => (
   s.length === 0 ? s : `${s.charAt(0).toUpperCase()}${s.slice(1)}`
 );
 
-// Treats empty / `'off'` / `'unknown'` as off-for-display so
-// the stepped card renders the shared `Off` state word when the device has no
-// fresh observation. Display-only.
-const isSteppedCardOffLikeState = (state: string | undefined): boolean => {
-  const n = (state ?? '').trim().toLowerCase();
-  return n === '' || n === 'off' || n === 'unknown';
-};
-
 type SteppedLoadCardState = {
   reportedStepId: string | null;
   targetStepId: string | null;
@@ -160,7 +152,7 @@ const resolveTransitStatusLine = (device: SteppedDevice, profile: SteppedLoadPro
   const targetId = resolveTargetStepId(device);
   if (!isPoweredStep(profile, targetId)) return 'Turning off to stay below limit';
   const label = findStepLabel(profile, targetId);
-  if (isSteppedCardOffLikeState(device.currentState)) {
+  if (device.currentState === 'off') {
     return label ? `Turning on to ${label}` : 'Turning on';
   }
   const currentId = resolveCurrentStepId(device);
@@ -174,7 +166,7 @@ const resolveTransitStatusLine = (device: SteppedDevice, profile: SteppedLoadPro
 const resolveBlockedStatusLine = (device: SteppedDevice, profile: SteppedLoadProfile): string | null => {
   const targetId = resolveTargetStepId(device);
   if (!targetId || !isPoweredStep(profile, targetId)) return null;
-  if (isSteppedCardOffLikeState(device.currentState)) {
+  if (device.currentState === 'off') {
     const gap = resolveRestoreShortfallKw(device.reason);
     return gap !== null ? formatShortfallLine(gap, 'resume', device.starvation) : null;
   }
@@ -249,7 +241,7 @@ export const resolveSteppedStatusLine = (
   }
   const blocked = resolveBlockedStatusLine(device, profile);
   if (blocked !== null) return blocked;
-  if (isSteppedCardOffLikeState(device.currentState)) {
+  if (device.currentState === 'off') {
     const displayKind = resolveDisplayStateKind({
       kind: resolveRawPlanStateKind(device),
       reasonCode: device.reason.code,
@@ -294,7 +286,7 @@ export const resolveSteppedLevelFact = (
   >,
   stateWordNamesLevel = false,
 ): string | null => {
-  if (isSteppedCardOffLikeState(device.currentState)) return null;
+  if (device.currentState === 'off') return null;
   const { steppedLoad } = device;
   const stepId = steppedLoad?.reportedStepId ?? null;
   if (!steppedLoad || !stepId) return 'Level unknown';

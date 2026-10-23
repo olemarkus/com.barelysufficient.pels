@@ -106,9 +106,6 @@ describe('resolveDisplayStateKind — observed off is distinct from idle', () =>
     expect(resolveDisplayStateKind({
       kind: 'idle', dryRun: false, currentState: 'off', reasonCode: 'none', starved: false,
     })).toBe('off');
-    expect(resolveDisplayStateKind({
-      kind: 'idle', dryRun: false, currentState: '  OFF ', reasonCode: 'none', starved: false,
-    })).toBe('off');
   });
 
   it('keeps higher-priority intent states above observed Off', () => {
@@ -119,10 +116,7 @@ describe('resolveDisplayStateKind — observed off is distinct from idle', () =>
     }
   });
 
-  it('does not infer Off from unknown or target-only state', () => {
-    expect(resolveDisplayStateKind({
-      kind: 'idle', dryRun: false, currentState: 'unknown', reasonCode: 'none', starved: false,
-    })).toBe('idle');
+  it('does not infer Off from a target-only state', () => {
     expect(resolveDisplayStateKind({
       kind: 'idle', dryRun: false, currentState: 'not_applicable', reasonCode: 'none', starved: false,
     })).toBe('idle');

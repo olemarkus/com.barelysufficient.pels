@@ -58,7 +58,7 @@ describe('buildPlanInputDevice', () => {
       // session" for every device, and only an EV charger can lack one. A
       // non-EV fixture is never session-inactive.
       objectiveSessionInactive: false, waitingForCarAssociation: false,
-      // The producer's resolved on/off truth and four-valued label. The RAW
+      // The producer's resolved on/off truth and three-valued label. The RAW
       // `binaryControl` is stripped, exactly as `toPlanDevice` strips it.
       currentOn: true,
       currentState: 'on',

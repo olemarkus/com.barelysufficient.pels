@@ -46,6 +46,7 @@ import {
 } from '../../lib/plan/planSurplusAbsorb';
 import type {
   DeviceDescriptorRead,
+  ObservedCurrentState,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
   EvChargingState,
@@ -102,7 +103,7 @@ export const NO_STORAGE_SURPLUS: StorageSurplus = { claimants: [], dischargeW: 0
  * Mirror the production producer: a binary fixture's `currentOn` is the resolved
  * on/off truth. Prefer an explicit override; then the structural resolution
  * (binary axis AND stepped-off fold via `resolveCurrentOn`) when the fixture
- * carries those signals; then the four-valued `currentState` label as a last
+ * carries those signals; then the three-valued `currentState` label as a last
  * resort. Keeps fixtures' on/off truth consistent with the runtime stamping so
  * consumers reading `currentOn` behave identically to production.
  */
@@ -127,7 +128,7 @@ export const resolveFixtureCurrentOn = (device: {
 
 /**
  * Mirror the production producer (`toPlanDevice` → `resolveObservedCurrentState`):
- * the four-valued `currentState` label is resolved ONCE from the raw observed
+ * the three-valued `currentState` label is resolved ONCE from the raw observed
  * signals and carried on the plan device, so plan consumers
  * (`buildBasePlanDevice`) can trust it without re-resolving from the raw
  * binary axis. An explicit fixture `currentState` wins;
@@ -137,15 +138,15 @@ export const resolveFixtureCurrentOn = (device: {
  * matches what production would stamp for the same observed signals.
  */
 export const resolveFixtureCurrentState = (device: {
-  currentState?: string;
+  currentState?: ObservedCurrentState;
   currentOn?: boolean;
   binaryControl?: { on: boolean };
   binaryControllable?: boolean;
   binaryCapabilityId?: string;
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
-}): string => {
-  if (typeof device.currentState === 'string') return device.currentState;
+}): ObservedCurrentState => {
+  if (device.currentState !== undefined) return device.currentState;
   const binaryControl = device.binaryControl
     ?? (device.binaryControllable === true || device.binaryCapabilityId !== undefined || device.currentOn !== undefined
       ? { on: resolveFixtureCurrentOn(device) }
@@ -662,7 +663,7 @@ export const fixtureResidualKw = (
     // fixture spells — the same resolution `resolveFixtureCurrentState` performs.
     // The producer's restore adapter re-derives `currentState` from this axis
     // (`resolveObservedCurrentState`), so a fixture that expresses "off at a
-    // higher step" only as the four-valued LABEL must hand the adapter the axis
+    // higher step" only as the LABEL must hand the adapter the axis
     // that label came from, or the adapter reads the device as on.
     binaryControl: fixtureBinaryAxisDisabled(device)
       ? undefined
@@ -742,7 +743,7 @@ export const withFixtureResidualKw = <T extends object>(
   startPolicy: DeviceStartPolicy;
   startPolicyInForce: DeviceStartPolicy;
   chargeTargetHold: ChargeTargetHold;
-  currentState: string;
+  currentState: ObservedCurrentState;
   budgetExempt: boolean;
 } => {
   const priority = (fields as { priority?: number }).priority ?? 1;
@@ -862,7 +863,7 @@ export function buildPlanDevice(overrides: PlanDeviceFixtureOverrides = {}): Dev
     measuredPowerKw: _measuredPowerKw, currentDrawKw: _currentDrawKw, unmetered: _unmetered, ...rest
   } = overrides;
   const o = overrides as {
-    currentOn?: boolean; currentState?: string; binaryControl?: { on: boolean };
+    currentOn?: boolean; currentState?: ObservedCurrentState; binaryControl?: { on: boolean };
     binaryControllable?: boolean;
     binaryCapabilityId?: string;
     steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string;
@@ -1114,7 +1115,7 @@ export function buildPlanInputDevice(overrides: PlanInputDeviceFixtureOverrides 
     measuredPowerKw: _measuredPowerKw, currentDrawKw: _currentDrawKw, unmetered: _unmetered, ...rest
   } = overrides;
   const o = overrides as {
-    currentOn?: boolean; currentState?: string; binaryControl?: { on: boolean };
+    currentOn?: boolean; currentState?: ObservedCurrentState; binaryControl?: { on: boolean };
     binaryControllable?: boolean;
     binaryCapabilityId?: string;
     steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string;

@@ -252,22 +252,22 @@ describe('P1 bug proofs', () => {
   });
 
   // Behaviour change (resolved-control refactor): binary/stepped devices have no
-  // 'unknown' on/off state — 'unknown' is only a label. With no off-evidence the
-  // device resolves to `currentOn: true`, so the stepped device at an active step
+  // 'unknown' on/off state. With no off-evidence the device resolves to
+  // `currentOn: true` and the label `on`, so the stepped device at an active step
   // below its top is an eligible step-up restore candidate.
-  it('treats unknown-label stepped devices as on (no unknown state) for restore eligibility', () => {
+  it('treats stepped devices with no off-evidence as on for restore eligibility', () => {
     const devices = [
       buildPlanDevice({
         id: 'binary',
         name: 'Binary heater',
-        currentState: 'unknown',
+        currentState: 'on',
         plannedState: 'keep',
         boostActive: false,
       }),
       steppedPlanDevice({
         id: 'stepped',
         name: 'Tank',
-        currentState: 'unknown',
+        currentState: 'on',
         plannedState: 'keep',
         boostActive: false,
         steppedLoadProfile: {

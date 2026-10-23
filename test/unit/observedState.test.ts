@@ -49,7 +49,7 @@ describe('resolveCurrentOn — stepped + binary devices (step-off folds in)', ()
   });
 });
 
-describe('resolveObservedCurrentState — four-valued label (separate from the on/off truth)', () => {
+describe('resolveObservedCurrentState — three-valued label (separate from the on/off truth)', () => {
   it('resolves a binary device to its latched on/off label, never "unknown" from staleness', () => {
     // The producer no longer emits 'unknown' from staleness; a binary device
     // resolves to its latched bit (here off).

@@ -1,3 +1,5 @@
+import type { ObservedCurrentState } from '../../packages/contracts/src/types';
+
 /**
  * Executor-owned convergence facts: what the device is observed doing against
  * what PELS committed to and has in flight. The executor produces them
@@ -8,7 +10,7 @@
 export type AxisProgress = 'settled' | 'pending' | 'unmet' | 'unobserved' | 'undriven';
 export type DeviceExecutionState = {
   available: boolean;
-  physicalState: 'on' | 'off' | 'not_applicable';
+  physicalState: ObservedCurrentState;
   observedStepId: string | null;
   currentDrawKw?: number;
   desiredBinary: 'on' | 'off' | null;

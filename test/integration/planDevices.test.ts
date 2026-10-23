@@ -681,18 +681,18 @@ describe('buildInitialPlanDevices', () => {
     expect(planDevice.binaryCommandPending).toBe(false);
   });
 
-  it('carries the producer-resolved unknown label for a stale binary device', () => {
-    // Staleness is folded into the observer's four-valued label at the producer
-    // (`toPlanDevice` → `resolveObservedCurrentState`), so a stale binary device
-    // arrives with `currentState: 'unknown'`. The planner TRUSTS that label
-    // (`buildBasePlanDevice` copies it) — it does not re-derive off/unknown from
-    // staleness, which the plan device no longer carries.
+  it('carries the producer-resolved label for a stale binary device unchanged', () => {
+    // A stale binary device keeps its latched label: the producer
+    // (`toPlanDevice` → `resolveObservedCurrentState`) applies no staleness gate,
+    // and the planner TRUSTS the label it receives (`buildBasePlanDevice` copies
+    // it) rather than re-deriving one from staleness, which the plan device no
+    // longer carries.
     const device = inputDevice({
       id: 'dev-1',
       name: 'Heater',
       binaryControl: { on: false },
       binaryCapabilityId: 'onoff',
-      currentState: 'unknown',
+      currentState: 'off',
     });
 
     const [planDevice] = buildInitialPlanDevicesForSpec({
@@ -705,7 +705,7 @@ describe('buildInitialPlanDevices', () => {
       },
     });
 
-    expect(planDevice.currentState).toBe('unknown');
+    expect(planDevice.currentState).toBe('off');
   });
 
   it('detects shed drift for off stepped devices and drives them to the off-step during shortfall', () => {

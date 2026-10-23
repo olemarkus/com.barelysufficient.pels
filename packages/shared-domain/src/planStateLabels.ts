@@ -1,5 +1,4 @@
 import type { DeviceOverviewSnapshot } from '../../contracts/src/deviceOverview';
-import { isGrayStateDevice, isOnLikeState, normalizeDeviceState } from './deviceStatePredicates';
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
 
 export type PlanStateKind =
@@ -8,8 +7,7 @@ export type PlanStateKind =
   | 'held'
   | 'resuming'
   | 'manual'
-  | 'unavailable'
-  | 'unknown';
+  | 'unavailable';
 
 export type PlanStateTone =
   | 'active'
@@ -20,8 +18,7 @@ export type PlanStateTone =
   | 'warning';
 
 // The status vocabulary has no "Unknown" (notes/ui-terminology.md): a device
-// whose state PELS cannot read is unavailable to it. The `unknown` kind stays a
-// planner classification and never renders a word of its own.
+// whose state PELS cannot read is unavailable to it.
 export const PLAN_STATE_LABEL: Record<PlanStateKind, string> = {
   active: 'Running',
   idle: 'Idle',
@@ -29,7 +26,6 @@ export const PLAN_STATE_LABEL: Record<PlanStateKind, string> = {
   resuming: 'Resuming',
   manual: 'Manual',
   unavailable: 'Unavailable',
-  unknown: 'Unavailable',
 };
 
 export const PLAN_STATE_TONE: Record<PlanStateKind, PlanStateTone> = {
@@ -39,7 +35,6 @@ export const PLAN_STATE_TONE: Record<PlanStateKind, PlanStateTone> = {
   resuming: 'resuming',
   manual: 'neutral',
   unavailable: 'warning',
-  unknown: 'neutral',
 };
 
 // Fallback status line for plan-card / stepped-load devices in the `held`
@@ -188,11 +183,6 @@ export const PLAN_STATE_RESERVED_FOR_START_STATUS = 'Waiting for a scheduled dev
 // `planCardGrammar.ts`. Registered in `notes/ui-terminology.md`.
 export const PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS = 'Turned off elsewhere — turn it on to resume';
 
-const isOffLike = (value: string | undefined): boolean => {
-  const normalized = normalizeDeviceState(value);
-  return normalized === 'off' || normalized === 'unknown';
-};
-
 // Both ids come off the stepped cluster, which gates stepped-ness by its own
 // presence — no setting to consult.
 //
@@ -204,14 +194,14 @@ const isOffLike = (value: string | undefined): boolean => {
 // cannot see land must not be presented as pending. The two now answer the same
 // question from the same field.
 const hasSteppedRestorePending = (device: DeviceOverviewSnapshot): boolean => (
-  isOffLike(device.currentState)
+  device.currentState === 'off'
   && device.steppedLoad !== undefined
   && device.steppedLoad.targetStepId !== null
   && device.steppedLoad.selectedStepId !== device.steppedLoad.targetStepId
 );
 
 const isActiveState = (device: DeviceOverviewSnapshot): boolean => (
-  device.currentState === 'not_applicable' || isOnLikeState(device.currentState)
+  device.currentState === 'not_applicable' || device.currentState === 'on'
 );
 
 // A temperature device that is active (on, or target-only with no on/off axis),
@@ -280,13 +270,12 @@ export const isSatisfiedTemperatureDevice = (device: DeviceOverviewSnapshot): bo
 
 export const resolvePlanStateKind = (device: DeviceOverviewSnapshot): PlanStateKind => {
   if (device.controllable === false) return 'manual';
-  if (isGrayStateDevice(device)) return device.available === false ? 'unavailable' : 'unknown';
+  if (device.available === false) return 'unavailable';
   if (device.plannedState === 'inactive') return 'idle';
   if (device.plannedState === 'shed') return 'held';
-  if (device.binaryCommandPending && isOffLike(device.currentState)) return 'resuming';
+  if (device.binaryCommandPending && device.currentState === 'off') return 'resuming';
   if (hasSteppedRestorePending(device)) return 'resuming';
   if (isSatisfiedTemperatureDevice(device)) return 'idle';
   if (isActiveState(device)) return 'active';
-  if (!normalizeDeviceState(device.currentState)) return 'unknown';
   return 'idle';
 };

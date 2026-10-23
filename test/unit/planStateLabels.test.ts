@@ -1,8 +1,5 @@
 import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
-import {
-  resolvePlanStateKind,
-  PLAN_STATE_TONE,
-} from '../../packages/shared-domain/src/planStateLabels';
+import { resolvePlanStateKind } from '../../packages/shared-domain/src/planStateLabels';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { steppedProfile } from '../utils/planTestUtils';
 
@@ -20,6 +17,7 @@ const baseDevice = {
   // binary load with an on/off axis, not a charger.
   binaryControllable: true,
   isEvCharger: false,
+  currentState: 'on' as const,
   plannedState: 'keep',
   // The producer resolves an unmetered device to 0 kW, so that is the base case
   // here too — `currentDrawKw` is required on `DeviceOverviewSnapshot` and there
@@ -28,26 +26,17 @@ const baseDevice = {
 };
 
 describe('planStateLabels', () => {
-  it('keeps explicit shed plans held when current state is missing', () => {
+  it('keeps explicit shed plans held', () => {
     expect(resolvePlanStateKind({
       ...baseDevice,
       plannedState: 'shed',
     })).toBe('held');
   });
 
-  it('classifies missing or empty current state as unknown after explicit plan states', () => {
-    expect(resolvePlanStateKind(baseDevice)).toBe('unknown');
-    expect(resolvePlanStateKind({
-      ...baseDevice,
-      currentState: '   ',
-    })).toBe('unknown');
-    expect(PLAN_STATE_TONE[resolvePlanStateKind(baseDevice)]).toBe('neutral');
-  });
-
   it('uses idle as the default for enabled off devices', () => {
     expect(resolvePlanStateKind({
       ...baseDevice,
-      currentState: 'off',
+      currentState: 'off' as const,
     })).toBe('idle');
   });
 
@@ -59,7 +48,7 @@ describe('planStateLabels', () => {
     const targetOnly = {
       ...baseDevice,
       deviceType: 'temperature' as const,
-      currentState: 'not_applicable',
+      currentState: 'not_applicable' as const,
     };
 
     it('resolves idle when at/above target and drawing nothing', () => {
@@ -155,7 +144,7 @@ describe('planStateLabels', () => {
   // The same lie with a narrower trigger: a thermostat with an on/off axis that
   // reports `on` while satisfied and drawing nothing read "Running · 0.0 kW".
   describe('satisfied on temperature devices', () => {
-    const onThermostat = { ...baseDevice, deviceType: 'temperature' as const, currentState: 'on' };
+    const onThermostat = { ...baseDevice, deviceType: 'temperature' as const, currentState: 'on' as const };
 
     it('resolves idle when on, at/above target and drawing nothing', () => {
       expect(resolvePlanStateKind({
@@ -212,7 +201,7 @@ describe('planStateLabels', () => {
   it('keeps explicit restore-pending states resuming', () => {
     expect(resolvePlanStateKind({
       ...baseDevice,
-      currentState: 'off',
+      currentState: 'off' as const,
       binaryCommandPending: true,
     })).toBe('resuming');
     expect(resolvePlanStateKind({
@@ -225,7 +214,7 @@ describe('planStateLabels', () => {
         planningPowerKw: 1,
         commandPending: false,
       },
-      currentState: 'off',
+      currentState: 'off' as const,
     })).toBe('resuming');
   });
 
@@ -236,6 +225,6 @@ describe('planStateLabels', () => {
     // for every device it logs, and the read model does the same, so all four
     // callers pass the cluster. A stepped device arriving without it is a
     // producer bug, not a state to detect step ids for.
-    expect(resolvePlanStateKind({ ...baseDevice, currentState: 'off' })).not.toBe('resuming');
+    expect(resolvePlanStateKind({ ...baseDevice, currentState: 'off' as const })).not.toBe('resuming');
   });
 });

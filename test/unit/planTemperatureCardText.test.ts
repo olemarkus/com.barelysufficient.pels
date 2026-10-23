@@ -25,6 +25,7 @@ const baseDevice = {
   // setpoint-driven thermostat with no on/off axis, not a charger.
   binaryControllable: false,
   isEvCharger: false,
+  currentState: 'not_applicable' as const,
 };
 
 describe('resolveTemperatureLine', () => {
@@ -65,7 +66,7 @@ describe('resolveTemperatureReasonLine', () => {
   it('shows the admission-accurate gap', () => {
     expect(resolveTemperatureReasonLine({
       ...baseDevice,
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'shed',
       temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
       reason: {
@@ -83,7 +84,7 @@ describe('resolveTemperatureReasonLine', () => {
   it('does not show idle as a reason line', () => {
     expect(resolveTemperatureReasonLine({
       ...baseDevice,
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'inactive',
       temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
       reason: { code: 'keep', detail: null },
@@ -93,7 +94,7 @@ describe('resolveTemperatureReasonLine', () => {
   it('explains an external off hold even when temperature evidence is unavailable', () => {
     expect(resolveTemperatureReasonLine({
       ...baseDevice,
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'inactive',
       reason: { code: 'external_off_hold' },
     })).toBe(PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS);
@@ -102,7 +103,7 @@ describe('resolveTemperatureReasonLine', () => {
   it('suppresses stale external-off guidance when the device is unavailable', () => {
     expect(resolveTemperatureReasonLine({
       ...baseDevice,
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'inactive',
       stateKind: 'unavailable',
       reason: { code: 'external_off_hold' },
@@ -116,7 +117,7 @@ describe('resolveTemperatureReasonLine', () => {
   it('states the shortfall, not the ceiling, for a daily-budget hold', () => {
     expect(resolveTemperatureReasonLine({
       ...baseDevice,
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'shed',
       temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
       reason: { code: 'daily_budget', shortfallKw: 0.8 },
@@ -126,7 +127,7 @@ describe('resolveTemperatureReasonLine', () => {
   it('falls back to the bare waiting line when a budget hold carries no shortfall', () => {
     expect(resolveTemperatureReasonLine({
       ...baseDevice,
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'shed',
       temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
       reason: { code: 'daily_budget' },
@@ -148,7 +149,7 @@ describe('resolveTemperatureReasonLine', () => {
       { code: 'daily_budget', shortfallKw: 0.5 },
     ] as const).map((reason) => resolveTemperatureReasonLine({
       ...baseDevice,
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'shed',
       temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
       reason,
@@ -169,7 +170,7 @@ describe('resolveTemperatureReasonLine', () => {
   it('renders the deferred-objective avoid status for smart-task waiting', () => {
     expect(resolveTemperatureReasonLine({
       ...baseDevice,
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'shed',
       temperature: { currentTemperature: 20.2, currentTarget: 21, plannedTarget: 21, thermalDirection: 'heating' },
       reason: { code: 'deferred_objective_avoid' },
@@ -183,10 +184,10 @@ describe('resolveTemperatureReasonLine', () => {
   // because "waiting" claims no action.
   it('says only that the device is waiting when no constraint is attributed', () => {
     const unattributed = {
-      currentState: 'on',
+      ...baseDevice,
+      currentState: 'on' as const,
       plannedState: 'shed' as const,
       temperature: { currentTemperature: 22.8, currentTarget: 20, plannedTarget: 20, thermalDirection: 'heating' as const },
-      ...baseDevice,
       reason: { code: 'keep' as const, detail: null },
     };
     expect(resolveTemperatureReasonLine(unattributed)).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
@@ -199,7 +200,7 @@ describe('resolveTemperatureReasonLine', () => {
   it('states the shortfall on a binary-commanded card without a planned target', () => {
     expect(resolveTemperatureReasonLine({
       ...baseDevice,
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'shed',
       temperature: { currentTemperature: 20.3, currentTarget: 22, plannedTarget: 22, thermalDirection: 'heating' },
       shedAction: 'turn_off',
@@ -210,7 +211,7 @@ describe('resolveTemperatureReasonLine', () => {
   it('never claims PELS turned the device off', () => {
     expect(resolveTemperatureReasonLine({
       ...baseDevice,
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'shed',
       temperature: { currentTemperature: 20.3, currentTarget: 22, plannedTarget: 22, thermalDirection: 'heating' },
       shedAction: 'turn_off',
