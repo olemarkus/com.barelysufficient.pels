@@ -1791,13 +1791,21 @@ describe('budget-attributed unresolved heater demand', () => {
     service.destroy();
   });
   it('retains unresolved evidence across a restart without pricing the unobserved gap', () => {
-    const { service, stateStore } = createDeps();
-    accrue(service);
-    service.destroy();
-    const restarted = createDeps({ initialState: stateStore.read().state }).service;
-    restarted.observePlanSample({ nowTs: start + 60 * MIN, observations: [denied] });
-    expect(restarted.getDaySuppressionTotals(dateKey)?.budgetUnservedKwh).toBeCloseTo(1);
-    restarted.destroy();
+    // A restore prunes days past the 21-day window against the wall clock, so
+    // the restart happens on the test's own day rather than whenever it runs.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(start + 60 * MIN);
+    try {
+      const { service, stateStore } = createDeps();
+      accrue(service);
+      service.destroy();
+      const restarted = createDeps({ initialState: stateStore.read().state }).service;
+      restarted.observePlanSample({ nowTs: start + 60 * MIN, observations: [denied] });
+      expect(restarted.getDaySuppressionTotals(dateKey)?.budgetUnservedKwh).toBeCloseTo(1);
+      restarted.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it('does not erase a closed day when physical recovery occurs the following day', () => {
     const { service } = createDeps();
