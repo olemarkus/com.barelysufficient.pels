@@ -117,7 +117,7 @@ describe('device-detail honest states for a meter-area device', () => {
       .not.toBe(HOME_SCOPE_DIAGNOSTICS_NOT_MEASURED);
   });
 
-  it('renders "not recorded yet" activity for an area device and skips the Main-home fetch', async () => {
+  it('explains that meter-area history is not available here for an area device and skips the Main-home fetch', async () => {
     buildDeviceDetailDom();
     const homey = createHomeyMock({ uiState: { homes: HOMES_PAYLOAD } });
     await primeMembership(homey);

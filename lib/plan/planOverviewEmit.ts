@@ -5,9 +5,9 @@ import {
   buildOverviewEventForDevice,
   buildOverviewSignatureForDevice,
   buildPresentationSignatureForDevice,
-  type DeviceOverviewLogRecorder,
   type OverviewDecisionFacts,
 } from './deviceOverviewLog';
+import type { DeviceOverviewLogRecorder } from '../diagnostics/deviceActivityRecorder';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import type { SettingsUiPlanDevice, SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
 
@@ -42,10 +42,11 @@ export class DeviceOverviewTransitions {
       if (change === 'unchanged') continue;
       presentationChanged = true;
       if (change !== 'state_changed') continue;
-      deps.deviceOverviewLogRecorder.record(device.id, buildDeviceLogEntry(device));
+      deps.deviceOverviewLogRecorder.record(device, buildDeviceLogEntry(device));
       if (debugEnabled) events.push(buildOverviewEventForDevice(device, describeDecision(device.id)));
     }
     this.forgetDevicesNotIn(retained);
+    deps.deviceOverviewLogRecorder.flush();
     if (events.length === 1 && events[0]) deps.overviewDebugStructured(events[0]);
     else if (events.length > 1) deps.overviewDebugStructured(buildOverviewBatchEvent(events));
     return presentationChanged;

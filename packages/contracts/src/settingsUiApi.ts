@@ -564,11 +564,22 @@ export type SettingsUiDeviceLogEntry = DeviceOverviewStrings & {
   stateTone: string;
 };
 
+/** A historical observation, including the recording session it belongs to. */
+export type SettingsUiDeviceActivityEntry = SettingsUiDeviceLogEntry & {
+  id: string;
+  deviceId: string;
+  deviceName: string;
+  recordingStartedAtMs: number;
+};
+
 export type SettingsUiDeviceLogPayload = {
-  version: 1;
-  // Most-recent-first per device. Bounded ring buffer on the runtime side; the
-  // UI never assumes a full history.
-  entriesByDeviceId: Record<string, SettingsUiDeviceLogEntry[]>;
+  version: 2;
+  // Newest first. Retention is bounded by age and count, never a complete audit trail.
+  entries: SettingsUiDeviceActivityEntry[];
+  retentionDays: number;
+  maxEntriesPerDevice: number;
+  maxEntries: number;
+  persistence: 'stored' | 'pending';
 };
 
 export type SettingsUiPowerStatus = {

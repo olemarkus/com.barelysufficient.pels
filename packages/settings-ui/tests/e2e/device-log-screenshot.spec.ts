@@ -13,9 +13,8 @@ const seedDeviceLog = async (page: Page) => {
     const now = Date.now();
     const minute = 60_000;
     const payload = {
-      version: 1,
-      entriesByDeviceId: {
-        [deviceId]: [
+      version: 2, retentionDays: 7, maxEntriesPerDevice: 100, maxEntries: 1000, persistence: 'stored',
+      entries: [
               {
                 atMs: now - 2 * minute,
                 powerMsg: 'off → on',
@@ -43,8 +42,7 @@ const seedDeviceLog = async (page: Page) => {
             stateKind: 'active',
             stateTone: 'active',
           },
-        ],
-      },
+      ].map((entry, index) => ({ ...entry, id: `entry-${index}`, deviceId: deviceId, deviceName: 'Water heater', recordingStartedAtMs: now - 24 * 60 * minute })),
     };
     const existing = (window as { __PELS_HOMEY_STUB__?: Record<string, unknown> }).__PELS_HOMEY_STUB__ ?? {};
     const apiHandlers = (existing.apiHandlers as Record<string, unknown>) ?? {};

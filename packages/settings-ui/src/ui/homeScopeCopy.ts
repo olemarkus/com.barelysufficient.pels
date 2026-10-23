@@ -93,16 +93,15 @@ export const HOME_SCOPE_SMART_TASKS_MAIN_ONLY_NOTICE = 'Smart tasks run on Main 
 
 /**
  * Device-detail honest states for a device that belongs to a meter area
- * (locked decision 5): the diagnostics recorder and the activity log are the
- * Main home's, so for an area device both sections would serve an empty
- * payload that reads as healthy ("No diagnostics recorded yet"). Say what is
- * actually true — not measured yet — and that normal control is unaffected.
+ * (locked decision 5): these API reads serve the Main home. An empty area
+ * payload would read as healthy, so explain the scope and that normal control
+ * is unaffected. Activity is persisted per home but its UI read is Main-only.
  */
 export const HOME_SCOPE_DIAGNOSTICS_NOT_MEASURED = 'Not measured for meter areas yet. '
   + 'PELS limits and resumes this device normally, but doesn’t record diagnostics for it yet.';
 
-export const HOME_SCOPE_ACTIVITY_NOT_RECORDED = 'Not recorded for meter areas yet. '
-  + 'PELS limits and resumes this device normally, but doesn’t keep an activity log for it yet.';
+export const HOME_SCOPE_ACTIVITY_NOT_RECORDED = 'Activity history for meter areas isn’t available here yet. '
+  + 'PELS limits and resumes this device normally.';
 
 /**
  * Simulation-mode settings page scope note. The page carries only the Main

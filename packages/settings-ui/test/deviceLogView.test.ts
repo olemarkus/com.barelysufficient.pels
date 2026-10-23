@@ -1,9 +1,10 @@
 import { render } from 'preact';
 import { afterEach, describe, expect, it } from 'vitest';
 import { renderDeviceLogView } from '../src/ui/views/DeviceLogView.tsx';
-import type { SettingsUiDeviceLogEntry } from '../../contracts/src/settingsUiApi';
+import type { SettingsUiDeviceActivityEntry } from '../../contracts/src/settingsUiApi';
 
-const entry = (overrides: Partial<SettingsUiDeviceLogEntry> = {}): SettingsUiDeviceLogEntry => ({
+const entry = (overrides: Partial<SettingsUiDeviceActivityEntry> = {}): SettingsUiDeviceActivityEntry => ({
+  id: 'event-1', deviceId: 'dev-1', deviceName: 'Heater', recordingStartedAtMs: 0,
   atMs: 1700000000000,
   powerMsg: 'on → off',
   stateMsg: 'Limited',
@@ -36,13 +37,13 @@ describe('DeviceLogView', () => {
   });
 
   it('shows an explanatory empty state when no entries are recorded', () => {
-    const mount = mountWith({ status: 'ready', entries: [] });
+    const mount = mountWith({ status: 'ready', persistence: 'stored', entries: [] });
     expect(mount.textContent).toContain('No activity recorded yet');
   });
 
   it('renders entries with the shared formatter wording and a tone chip', () => {
     const mount = mountWith({
-      status: 'ready',
+      status: 'ready', persistence: 'stored',
       entries: [entry({ stateMsg: 'Running', statusMsg: 'On track', stateTone: 'active' })],
     });
     const chip = mount.querySelector('.plan-chip');
@@ -58,7 +59,7 @@ describe('DeviceLogView', () => {
 
   it('omits the power line when the formatter produced none', () => {
     const mount = mountWith({
-      status: 'ready',
+      status: 'ready', persistence: 'stored',
       entries: [entry({ powerMsg: null })],
     });
     expect(mount.textContent).not.toContain('on → off');
@@ -66,7 +67,7 @@ describe('DeviceLogView', () => {
   });
 
   it('maps the held tone to the limited chip modifier', () => {
-    const mount = mountWith({ status: 'ready', entries: [entry({ stateTone: 'held' })] });
+    const mount = mountWith({ status: 'ready', persistence: 'stored', entries: [entry({ stateTone: 'held' })] });
     expect(mount.querySelector('.plan-chip')?.classList.contains('plan-chip--limited')).toBe(true);
   });
 });

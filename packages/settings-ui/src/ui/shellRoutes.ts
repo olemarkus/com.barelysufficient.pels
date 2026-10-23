@@ -28,6 +28,7 @@ export const SETTINGS_SUB_PANELS = [
   'homes',
   'simulation',
   'web-app',
+  'activity',
   'advanced',
 ] as const;
 

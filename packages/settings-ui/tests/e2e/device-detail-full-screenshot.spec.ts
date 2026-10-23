@@ -33,9 +33,8 @@ const seedPopulatedStates = async (page: Page) => {
     // 9.5 h ago, resumed 9 h ago (= starvationLastResumedAt below), then
     // ordinary thermostat cycling up to the present draw. Newest-first.
     const logPayload = {
-      version: 1,
-      entriesByDeviceId: {
-        dev_waterheater: [
+      version: 2, retentionDays: 7, maxEntriesPerDevice: 100, maxEntries: 1000, persistence: 'stored',
+      entries: [
           {
             atMs: now - 22 * minute,
             powerMsg: 'off → on',
@@ -78,8 +77,7 @@ const seedPopulatedStates = async (page: Page) => {
             stateKind: 'held',
             stateTone: 'held',
           },
-        ],
-      },
+      ].map((entry, index) => ({ ...entry, id: `entry-${index}`, deviceId: 'dev_waterheater', deviceName: 'Water heater', recordingStartedAtMs: now - 24 * 60 * minute })),
     };
     const calmWindow = {
       unmetDemandMs: 0,

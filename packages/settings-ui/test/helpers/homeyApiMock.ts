@@ -420,7 +420,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('GET', SETTINGS_UI_PRICES_PATH)]: (homey) => async () => buildUiPrices(homey),
   [buildRouteKey('GET', SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH)]: (homey) => async () => buildUiDiagnostics(homey),
   [buildRouteKey('GET', SETTINGS_UI_DEVICE_LOG_PATH)]: (homey) => async () => (
-    getUiOverride(homey, 'deviceLog') ?? { version: 1, entriesByDeviceId: {} }
+    getUiOverride(homey, 'deviceLog') ?? { version: 2, entries: [], retentionDays: 7, maxEntriesPerDevice: 100, maxEntries: 1000, persistence: 'stored' }
   ),
   [buildRouteKey('GET', SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH)]: (homey) => async () => (
     getUiOverride(homey, 'deferredObjectiveHistory') ?? { version: 1, entriesByDeviceId: {} }

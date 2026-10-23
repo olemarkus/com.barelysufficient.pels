@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
+import { createTestDeviceActivityRecorder } from './deviceActivityRecorder';
 import type { PlanServiceDeps } from '../../lib/plan/planServiceDeps';
 import { SnapshotWarmupGate } from '../../lib/plan/snapshotWarmupGate';
 
@@ -29,7 +29,7 @@ export const planServiceWiring = (): PlanServiceWiring => ({
   loggers: { debugStructured: vi.fn() },
   overviewDebugStructured: vi.fn(),
   isOverviewDebugEnabled: () => false,
-  deviceOverviewLogRecorder: new DeviceOverviewLogRecorder(),
+  deviceOverviewLogRecorder: createTestDeviceActivityRecorder(),
   isPlanDebugEnabled: () => true,
   emitsUiRealtime: true,
   snapshotWarmupGate: new SnapshotWarmupGate({ timeoutMs: 0 }),

@@ -498,8 +498,14 @@ held-back device.
 
 The backend resolves one `DeviceStatus.reason` for the Overview card,
 device-detail hero, runtime overview event, and device **activity log**
-(`lib/plan/deviceOverviewLog.ts` → the `ui_device_log` list inside device detail).
-Logs do not select a separate ceiling/swap sentence from the planner reason.
+(`lib/plan/deviceOverviewLog.ts` → `ui_device_log`, shown in device detail and Settings → Activity).
+Logs do not select a separate ceiling/swap sentence from the planner reason. The Activity page
+shows recorded device states and reasons for the Main home, newest first. History
+survives app restarts, with up to seven days, 100 entries per device and 1,000 per
+home. Recording-session labels distinguish observations across restarts; a first
+observation is not evidence of a change while PELS was stopped. Power fluctuations
+and countdown ticks do not create entries. A failed read says “Activity log
+unavailable”; unsaved observations say they are waiting to be saved.
 `Limited — this hour is near the hard cap` is retired EVERYWHERE: it
 misdescribed the trigger (the period's kWh being spent, not cap proximity).
 The `hourlyBudget` reason renders
@@ -1951,7 +1957,7 @@ the one registered constant:
 | Budget tab (scope line under the header) | `Your daily budget covers the Main home. Each meter area runs on its own cap and isn’t counted here.` |
 | Smart tasks list (info notice under the hero) | `Smart tasks run on Main home devices. A device in a meter area can’t have a smart task yet.` |
 | Device-detail diagnostics, area device | `Not measured for meter areas yet. PELS limits and resumes this device normally, but doesn’t record diagnostics for it yet.` |
-| Device-detail activity log, area device | `Not recorded for meter areas yet. PELS limits and resumes this device normally, but doesn’t keep an activity log for it yet.` |
+| Device-detail activity log, area device | `Activity history for meter areas isn’t available here yet. PELS limits and resumes this device normally.` |
 | Simulation-mode settings page (note under the switch) | `This switch covers the Main home. Each meter area has its own “Control devices in this area” switch, under Limits & safety.` |
 
 Rules pinned by these lines:

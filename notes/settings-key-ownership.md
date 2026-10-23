@@ -216,7 +216,9 @@ carries it, where the userdata store would need an API route of its own
   (`lib/power/trackerStore.ts`, one row per bucket, diffed writes), the
   weather history second (`lib/weather/weatherHistoryStore.ts`, one row per
   day), the smart-task plan history (`lib/objectives/deferredObjectives/planHistoryStore.ts`,
-  one row per run) and the device diagnostics
+  one row per run), the device activity history
+  (`lib/diagnostics/deviceActivityStore.ts`, one row per observation, up to seven
+  days / 100 per device / 1,000 per home), and the device diagnostics
   (`lib/diagnostics/deviceDiagnosticsStateStore.ts`, one row per device-day)
   after them, and the device transport's retained power readings and meter
   anchors (`lib/device/retainedPowerStore.ts`, one row per device, diffed and

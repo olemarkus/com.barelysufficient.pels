@@ -57,7 +57,7 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     previewDailyBudgetModel: notWired('previewDailyBudgetModel'),
     applyDailyBudgetModel: notWired('applyDailyBudgetModel'),
     getDeviceDiagnosticsUiPayload: () => ({ generatedAt: 0, windowDays: 21, diagnosticsByDeviceId: {} }),
-    getDeviceLogUiPayload: () => ({ version: 1, entriesByDeviceId: {} }),
+    getDeviceLogUiPayload: () => ({ version: 2, entries: [], retentionDays: 7, maxEntriesPerDevice: 100, maxEntries: 1000, persistence: 'stored' }),
     getWeatherAdvisorReadout: async () => ({ kind: 'inactive' }),
     createDeferredObjective: notWired('createDeferredObjective'),
     createNewDeferredObjective: notWired('createNewDeferredObjective'),
