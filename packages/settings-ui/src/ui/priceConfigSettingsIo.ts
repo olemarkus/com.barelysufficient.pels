@@ -18,7 +18,7 @@ import {
 import { normalizePvForecastSourceSetting } from '../../../shared-domain/src/settings/pvForecastSource.ts';
 import { readPowerhourDeviceIdSetting } from '../../../shared-domain/src/settings/priceScheme.ts';
 import type { PriceConfigSettingsPatch, PriceSettingsSaveInput } from './priceConfigTypes.ts';
-import { classifyPriceOptimizationConfigMap } from './priceOptimizationConfig.ts';
+import { classifyPriceOptimizationConfigMap } from '../../../shared-domain/src/settings/priceOptimization.ts';
 import { getPricesReadModel } from './prices.ts';
 import { resolveDisplayedPriceScheme } from './priceSetupRead.ts';
 

@@ -36,7 +36,7 @@ import { normalizeEvCarAssociations } from '../../../shared-domain/src/settings/
 import type { EvCarAssociations } from '../../../contracts/src/types.ts';
 import { assertWritableModeDeviceTargets, readModeDeviceTargetsSetting } from './modeCatalogMaps.ts';
 import { isShedBehaviorsSetting, readShedBehaviors } from '../../../shared-domain/src/settings/shedBehaviors.ts';
-import { classifyPriceOptimizationConfigMap } from './priceOptimizationConfig.ts';
+import { classifyPriceOptimizationConfigMap } from '../../../shared-domain/src/settings/priceOptimization.ts';
 import { readStrictBooleanSettingMap } from './modeSettingsRead.ts';
 
 /**

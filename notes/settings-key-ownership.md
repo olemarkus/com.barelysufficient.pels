@@ -77,10 +77,10 @@ from outside PELS.
 Keys with owners so far: `mode_aliases`, `mode_device_targets`, `pv_forecast_source`,
 `ev_charge_target_settings`,
 `homey_price_formula`, `price_scheme` + `powerhour_device_id`, `web_app_cloud_host`.
-`price_optimization_settings` is only partly owned: the price adjustment range, its
-stored sign and the lift for an entry that stores none (`DEFAULT_SURPLUS_LIFT_C`)
-live in `packages/shared-domain/src/settings/priceOptimization.ts`,
-while the runtime and the settings UI still parse a device's entry separately.
+`price_optimization_settings` has one shared parser for device entries, legacy defaults,
+and provenance in `packages/shared-domain/src/settings/priceOptimization.ts`.
+The same owner defines the adjustment range and stored sign. The runtime and settings
+UI retain their accepted map when that parser reports an unavailable read.
 `capacity_priorities` belongs to `packages/shared-domain/src/settings/modePriorities.ts`.
 Its reader rejects an invalid catalog and retains the last good preferences.
 `ModePriorityCatalog` keeps those preferences private and publishes complete orders
