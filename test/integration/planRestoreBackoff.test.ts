@@ -1153,6 +1153,35 @@ describe('restore cooldown backoff', () => {
     expect(reasonText(binaryDevice?.reason)).toBe('cooldown (restore, 295s remaining)');
   });
 
+  it('states how old the reading behind a restore admission is', () => {
+    // A rebuild no reading triggered decides on the last accepted one; the
+    // admission line says how old it was, so a wrong admission can be told from
+    // a stale one.
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-off',
+          name: 'Heater',
+          currentState: 'off',
+          measuredPowerKw: 0, expectedPowerKw: 2,
+        }),
+      ],
+      ...buildContext({ headroomRaw: 5, headroom: 5 }),
+      state,
+      sheddingActive: false,
+      deps: restoreDeps(now - 45_000),
+    });
+
+    expect(result.planDevices.find((device) => device.id === 'dev-off')?.plannedState).toBe('keep');
+    expect(restoreEventsFor('restore_admitted', 'dev-off')).toEqual([
+      expect.objectContaining({ decision: 'admitted', powerSampleAgeMs: 45_000 }),
+    ]);
+  });
+
   it('holds every off candidate on the restore cooldown; who is next is ranked on the finished plan', () => {
     // The restore pass decides nothing while the global restore cooldown runs, so
     // every candidate carries the same countdown. Ranking the cohort into one

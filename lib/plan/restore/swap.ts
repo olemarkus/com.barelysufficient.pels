@@ -16,6 +16,7 @@ import { buildRestoreAdmissionMetrics } from '../admission';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDebugDedupe';
 import type { RestoreCycle } from './types';
+import { buildRestoreEvidenceLogFields } from './timing';
 
 /**
  * What a swap attempt did with the device.
@@ -206,7 +207,7 @@ function rejectSwapRestoreWithCandidates(
   restoreDebugKey: string,
   rejectedDeviceUpdate: Partial<DevicePlanDevice>,
 ): SwapRestoreOutcome {
-  const { deviceMap, state, phase } = cycle;
+  const { deviceMap, state, phase, timing } = cycle;
   setDevice(deviceMap, dev.id, buildRejectedSwapUpdate(
     availableHeadroom, restoreNeed, rejectedDeviceUpdate, swap,
   ));
@@ -231,6 +232,7 @@ function rejectSwapRestoreWithCandidates(
     rejectionReason: 'insufficient_headroom',
     penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
     penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+    ...buildRestoreEvidenceLogFields(timing),
   });
   return { kind: 'decided', availableHeadroom, restoredOneThisCycle: false };
 }
@@ -241,7 +243,7 @@ function emitSwapApprovedDebug(
   restoreNeed: RestoreNeed,
   swap: ReturnType<typeof buildSwapCandidates>,
 ): void {
-  const { phase } = cycle;
+  const { phase, timing } = cycle;
   emitSwapDebug({
     event: 'restore_swap_approved',
     restoreType: 'swap',
@@ -259,6 +261,7 @@ function emitSwapApprovedDebug(
     decision: 'admitted',
     penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
     penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+    ...buildRestoreEvidenceLogFields(timing),
   });
 }
 

@@ -9,6 +9,7 @@ import {
   shouldWaitForOtherRecovery,
 } from './coordination';
 import {
+  buildRestoreEvidenceLogFields,
   inCycleRestoreWait,
   otherRecoveryWait,
   resolveCapacityRestoreBlockReason,
@@ -119,6 +120,7 @@ export function planRestoreForDevice(
       marginKw: admittedLog.marginKw,
       decision: 'admitted',
       ...penaltyFields,
+      ...buildRestoreEvidenceLogFields(timing),
     });
     restoredThisCycle.add(dev.id);
     recordBatchAdmission(batchState, restoreNeed.needed);
@@ -181,7 +183,7 @@ function rejectBinaryRestoreForInsufficientHeadroom(
   restoreNeed: ReturnType<typeof getRestoreNeed>,
   reserved: ReserveInsufficient,
 ): RestoreLoopState {
-  const { state, deviceMap, phase } = cycle;
+  const { state, deviceMap, phase, timing } = cycle;
   const { admission, availableKw: availableHeadroom } = reserved;
   const powerSource = resolveRestorePowerSource(dev);
   const restoreDebugKey = `binary:${dev.id}`;
@@ -194,12 +196,17 @@ function rejectBinaryRestoreForInsufficientHeadroom(
     deviceId: dev.id,
     deviceName: dev.name,
     phase,
+    estimatedPowerKw: restoreNeed.devPower,
     powerSource,
     neededKw: restoreNeed.needed,
     availableKw: availableHeadroom,
     marginKw: admission.marginKw,
     decision: 'rejected',
     rejectionReason: 'insufficient_headroom',
+    ...(restoreNeed.penaltyLevel > 0
+      ? { penaltyLevel: restoreNeed.penaltyLevel, penaltyExtraKw: restoreNeed.penaltyExtraKw }
+      : {}),
+    ...buildRestoreEvidenceLogFields(timing),
   });
   return loop;
 }

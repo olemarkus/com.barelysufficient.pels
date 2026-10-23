@@ -19,7 +19,7 @@ import { buildRestoreHeadroomReason, type PlanReasonDecision } from './planReaso
 import {
   resolveRestoreDecisionPhase,
 } from './admission';
-import { resolveMeterSettlingReason } from './restore/timing';
+import { buildRestoreEvidenceLogFields, resolveMeterSettlingReason } from './restore/timing';
 import { emitRestoreDebugEventOnChange } from './planDebugDedupe';
 import type { HoldLoopState, HoldPass } from './planReasonsShared';
 
@@ -120,6 +120,7 @@ export function resolveInsufficientHeadroomHold(
       decision: 'rejected',
       penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
       penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+      ...buildRestoreEvidenceLogFields(pass.restoreResult.timing),
     });
   return { type: 'hold', reason };
 }
@@ -222,6 +223,7 @@ export function resolveRestoreDecision(
     decision: 'admitted',
     penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
     penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+    ...buildRestoreEvidenceLogFields(timing),
   });
   return {
     type: 'restore',
