@@ -1123,13 +1123,6 @@ Design-of-record: `notes/web-app.md`.
       a `setup/` factory. **Done when:** no file under `setup/` holds the deferred shortfall
       transition or schedules its retry, and the guard fails on the old shape. [P2]
 
-- [ ] **The settings UI's price-adjustment editors still encode stored signs themselves.**
-      The shared owner now classifies persisted entries for both runtime and UI.
-      Route `readPriceOptInputs` (`packages/settings-ui/src/ui/deviceDetail/priceOpt.ts`)
-      and the Prices tab editor (`packages/settings-ui/src/ui/views/PriceAwareDevicesView.tsx`)
-      through `encodePriceAdjustment` in `packages/shared-domain/src/settings/priceOptimization.ts`.
-      Done when neither editor assigns a sign to `cheapDelta` / `expensiveDelta` itself. [P2]
-
 - [ ] **The component loggers are optional because the getter that makes them can return
       `undefined`.** `getStructuredLogger` (`setup/appRuntimeApi.ts`) returns
       `this.structuredLogger?.child(...)`, so every dep it feeds declares `structuredLog?:` and its

@@ -14,23 +14,21 @@ import {
 import { renderPriceOptimization } from '../priceOptimization.ts';
 import { resolveManagedState, state, defaultPriceOptimizationConfig } from '../state.ts';
 import { savePriceOptimizationPatch } from './priceOptimizationPatch.ts';
-import { MAX_PRICE_ADJUSTMENT_C } from '../../../../shared-domain/src/settings/priceOptimization.ts';
+import {
+  encodePriceAdjustment,
+  type PriceAdjustmentKind,
+} from '../../../../shared-domain/src/settings/priceOptimization.ts';
 
-const parsePriceDeltaInput = (value: string | undefined, fallback: number): number => {
-  const parsed = Number.parseFloat(value || '');
-  if (!Number.isFinite(parsed)) return fallback;
-  if (Math.abs(parsed) > MAX_PRICE_ADJUSTMENT_C) return fallback;
-  return parsed;
-};
+const readPriceAdjustment = (kind: PriceAdjustmentKind, value: string | undefined): number => (
+  encodePriceAdjustment(kind, Math.abs(Number.parseFloat(value || '')))?.value
+    ?? (kind === 'cheap_hour_boost' ? 5 : -5)
+);
 
 const readPriceOptInputs = (): { enabled: boolean; cheapDelta: number; expensiveDelta: number } => ({
   enabled: deviceDetailPriceOpt?.selected || false,
-  // Both fields are magnitudes — the labels say "boost" and "reduction", and the
-  // Prices tab's editor of the same two settings cannot express a negative
-  // (`DELTA_MIN = 0`). This one could, which left one stored field with two
-  // conventions; the stored sign is normalized here so it has one.
-  cheapDelta: Math.abs(parsePriceDeltaInput(deviceDetailCheapDelta?.value, 5)),
-  expensiveDelta: -Math.abs(parsePriceDeltaInput(deviceDetailExpensiveDelta?.value, 5)),
+  // Both editors display magnitudes; the shared owner encodes the stored sign.
+  cheapDelta: readPriceAdjustment('cheap_hour_boost', deviceDetailCheapDelta?.value),
+  expensiveDelta: readPriceAdjustment('expensive_hour_reduction', deviceDetailExpensiveDelta?.value),
 });
 
 export const setDeviceDetailDeltaValues = (deviceId: string) => {
