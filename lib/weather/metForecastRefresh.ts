@@ -156,6 +156,8 @@ export type MetRefreshPort = {
   storeCache: (cache: WeatherMetForecastCache) => void;
   logRefreshed: (cache: WeatherMetForecastCache) => void;
   warnUnavailable: (outcome: 'failed' | 'no_location') => void;
+  /** Whether the hub has no location, from every answer that says either way. */
+  setLocationMissing: (missing: boolean) => void;
 };
 
 /**
@@ -183,6 +185,8 @@ export async function runMetForecastRefresh(port: MetRefreshPort): Promise<void>
   const conditional = coversNeededDays(cached, todayKey, tomorrowKey) ? cached?.lastModified : undefined;
   const result = await port.fetchForecast(conditional !== undefined ? { ifModifiedSince: conditional } : {});
   if (!port.isStillCurrent()) return;
+  // A failed fetch says nothing about the location; every other answer does.
+  if (result.outcome !== 'failed') port.setLocationMissing(result.outcome === 'no_location');
   const action = decideMetRefreshAction(result, cached, port.getNowMs());
   if (action.kind === 'store') {
     port.storeCache(action.cache);

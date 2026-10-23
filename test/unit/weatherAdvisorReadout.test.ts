@@ -76,6 +76,7 @@ const baseInput = (overrides: Partial<WeatherAdvisorReadoutInput> = {}): Weather
   backfillRunning: false,
   // No power limit unless a case enables one: nothing caps the suggestion.
   powerLimitSettings: powerLimits({ enabled: false, limitKw: 10, marginKw: 0 }, null),
+  metLocationMissing: false,
   nowMs: NOW_MS,
   timeZone: 'UTC',
   ...overrides,
@@ -161,6 +162,20 @@ describe('buildWeatherAdvisorReadout', () => {
       metForecast: { byDay: { [TOMORROW]: metDay(TOMORROW) }, fetchedAtMs: NOW_MS },
     }));
     expect(full?.forecastStatus).toBe('forecast');
+  });
+
+  it('names a missing hub location as the cause of a recent-days fallback, and only then', () => {
+    expect(payloadFor(withState({ records: recentDays(5) }, { metLocationMissing: true }))?.forecastStatus)
+      .toBe('no_location');
+    // Before any outdoor device too: the source line renders on the setup card.
+    expect(payloadFor(withState({ records: [] }, {
+      settings: { enabled: true }, metLocationMissing: true,
+    }))?.forecastStatus).toBe('no_location');
+    // A cached forecast covering tomorrow is still a forecast.
+    expect(payloadFor(withState({
+      records: recentDays(5),
+      metForecast: { byDay: { [TOMORROW]: metDay(TOMORROW) }, fetchedAtMs: NOW_MS },
+    }, { metLocationMissing: true }))?.forecastStatus).toBe('forecast');
   });
 
   it('counts usable days for the learning state and skips quality-flagged days', () => {

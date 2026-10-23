@@ -42,6 +42,7 @@ export async function assembleWeatherAdvisorReadout(
     settings,
     state: collector.getHistoryStateSnapshot(),
     backfillRunning: collector.isBackfillRunning(),
+    metLocationMissing: collector.isMetLocationMissing(),
     ...(outdoor.name !== undefined ? { outdoorDeviceName: outdoor.name } : {}),
     ...(outdoor.temperatureC !== undefined ? { currentOutdoorTempC: outdoor.temperatureC } : {}),
     ...(currentDailyBudgetKwh !== undefined ? { currentDailyBudgetKwh } : {}),

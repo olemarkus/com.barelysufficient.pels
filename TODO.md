@@ -275,18 +275,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       "Let it run now" and the release still leaves the restore blocked, handing the owner a dead
       lever. Deriving attribution per axis at the rejection site closes both faces. [P2]
 
-- [ ] **Weather: a location-aware hint when MET can't be reached for lack of geolocation.**
-      *Persona:* Orchestrator (`notes/personas.md`) who turned the feature on but never set the
-      hub's location, so the forecast silently runs on recent days.
-      *Hypothesis:* the no-geolocation case is currently folded into the generic `recent_days` copy
-      (`Forecast unavailable — showing what recent weather suggests.`), which doesn't name the one
-      fix the owner controls — setting the Homey hub location — so a fixable miss reads as an
-      unexplained fallback.
-      *Why it's needed:* a no-location-specific source line (e.g. naming the Homey location setting)
-      would turn a permanent silent fallback into a one-tap fix. Out of scope for the picker-removal
-      PR (would need a producer-resolved no-geolocation `forecastStatus` arm + copy). Source: PR 2
-      MET UI-cleanup scope decision, 2026-06-14. [P3]
-
 ## Device observation and transport
 
 - [ ] **P2 — the one persisted actuation clock sits outside the abandon-grace regime.**
