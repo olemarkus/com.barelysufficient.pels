@@ -230,7 +230,7 @@ describe('smartTaskEdit controller', () => {
 
   // ─── Extra permissions ────────────────────────────────────────────────────
 
-  it('sends all three permissions on every request so the server may act on a revoke', async () => {
+  it('sends only the permissions the owner changed, so an open editor keeps a Flow grant', async () => {
     const calls: ApiCall[] = [];
     await installHomey((call) => {
       calls.push(call);
@@ -247,15 +247,22 @@ describe('smartTaskEdit controller', () => {
         pauseLowerPriorityDevices: true,
       },
     });
-    // A goal-only edit still names every permission — that is what makes the
-    // request authoritative, and the unchanged ones must round-trip as-is.
+    // A goal-only edit names no permission: the server keeps whatever each one
+    // holds when the request lands, including a grant a Flow made meanwhile.
     controller.setSmartTaskEditTarget('70');
     await vi.advanceTimersByTimeAsync(500);
-    expect(calls[calls.length - 1]!.body).toMatchObject({
-      exemptFromBudget: true,
-      limitLowerPriorityDevices: false,
-      pauseLowerPriorityDevices: true,
-    });
+    const goalOnly = calls[calls.length - 1]!.body as Record<string, unknown>;
+    expect(goalOnly).not.toHaveProperty('exemptFromBudget');
+    expect(goalOnly).not.toHaveProperty('limitLowerPriorityDevices');
+    expect(goalOnly).not.toHaveProperty('pauseLowerPriorityDevices');
+
+    // An unchecked toggle still sends the explicit `false` that revokes, and only it.
+    controller.setSmartTaskEditPermission('pauseLowerPriorityDevices', false);
+    await vi.advanceTimersByTimeAsync(500);
+    const revoke = calls[calls.length - 1]!.body as Record<string, unknown>;
+    expect(revoke).toMatchObject({ pauseLowerPriorityDevices: false });
+    expect(revoke).not.toHaveProperty('exemptFromBudget');
+    expect(revoke).not.toHaveProperty('limitLowerPriorityDevices');
   });
 
   it('a permission-only change arms Save and re-previews under the new permissions', async () => {
@@ -347,11 +354,11 @@ describe('smartTaskEdit controller', () => {
     });
     controller.setSmartTaskEditTarget('70');
     await vi.advanceTimersByTimeAsync(500);
-    // The draft is seeded from the baseline and the goal edit doesn't touch it,
-    // so an unrelated save can't revoke a grant the user left alone. (The view
-    // still renders this toggle — eligibility blocks turning a NEW grant on, not
-    // seeing or clearing a standing one.)
-    expect(calls[calls.length - 1]!.body).toMatchObject({ limitLowerPriorityDevices: true });
+    // The goal edit doesn't touch the grant, so the request leaves it out and the
+    // server keeps it: an unrelated save can't revoke a grant the user left
+    // alone. (The view still renders this toggle — eligibility blocks turning a
+    // NEW grant on, not seeing or clearing a standing one.)
+    expect(calls[calls.length - 1]!.body).not.toHaveProperty('limitLowerPriorityDevices');
   });
 
   it('a rejected save keeps the editor open with the reason inline', async () => {
