@@ -305,6 +305,8 @@ function buildSteppedStepDownCandidate(
     return buildSteppedNoRungFallbackCandidate(params, shedAction, targetStep);
   }
   if (ladder.kind === 'no_relief') {
+    const offTerminal = buildSteppedOffTerminalCandidate(params, device, shedAction);
+    if (offTerminal) return offTerminal;
     recorder?.record(device, 'zero_step_relief', ladder.rungsTried);
     return null;
   }
@@ -401,7 +403,6 @@ function buildPreparedSteppedBinaryOffCandidate(
   targetStep: ReturnType<typeof getSteppedLoadShedTargetStep>,
   shedAction: 'turn_off' | 'set_step',
 ): LoadShedCandidate | null {
-  const { priority, recentlyRestored, pendingBinaryCommandStore } = params;
   const steppedProfile = device.steppedLoadProfile;
   if (
     shedAction !== 'turn_off'
@@ -412,6 +413,35 @@ function buildPreparedSteppedBinaryOffCandidate(
   }
   const selectedStep = getSteppedLoadStep(steppedProfile, device.selectedStepId);
   if (!selectedStep || isSteppedLoadOffStep(steppedProfile, selectedStep.id)) return null;
+  // No ladder: this device is already parked at its shed target, and the whole
+  // relief is the binary off that follows.
+  return buildSteppedBinaryOffCandidate(params, device, selectedStep.id);
+}
+
+/**
+ * A `turn_off` device whose profile has no off step bottoms its ladder out at
+ * a rung that still draws, so a stale reading at or below that rung's power
+ * prices every step down at zero relief while the meter shows the device
+ * running. Its on/off control still frees everything it draws, so the shed
+ * goes there instead of skipping the device.
+ */
+function buildSteppedOffTerminalCandidate(
+  params: SteppedCandidateParams,
+  device: SteppedPlanInputDevice & MeteredPlanInputKind,
+  shedAction: 'turn_off' | 'set_step',
+): LoadShedCandidate | null {
+  if (shedAction !== 'turn_off' || !isBinaryPlanDevice(device)) return null;
+  if (getSteppedLoadOffStep(device.steppedLoadProfile) !== null) return null;
+  return buildSteppedBinaryOffCandidate(params, device, device.selectedStepId);
+}
+
+/** A whole-device binary off, worth everything the device draws. */
+function buildSteppedBinaryOffCandidate(
+  params: SteppedCandidateParams,
+  device: SteppedPlanInputDevice & MeteredPlanInputKind,
+  fromStepId: string,
+): LoadShedCandidate | null {
+  const { priority, recentlyRestored, pendingBinaryCommandStore } = params;
   const effectivePower = device.currentDrawKw;
   if (effectivePower <= 0) return null;
   return {
@@ -422,11 +452,10 @@ function buildPreparedSteppedBinaryOffCandidate(
     // See `candidateBuilders`: an unconfirmed turn-OFF, answered by the store.
     unconfirmedRelief: pendingBinaryCommandStore.hasActiveTurnOff(device.id),
     effectivePower,
-    fromStepId: selectedStep.id,
-    // No ladder: this device is already parked at its shed target, and the whole
-    // relief is the binary off that follows. There is no rung for selection to
-    // size, and naming its current step as the shed destination would cancel the
-    // off that the relief was priced on.
+    fromStepId,
+    // There is no rung for selection to size, and naming a step as the shed
+    // destination would cancel the off that the relief was priced on: a no-rung
+    // `turn_off` is routed to the on/off control (`resolveShedBehaviorFloorStepId`).
     rungs: [],
     preemptiveStepDown: false,
   };
