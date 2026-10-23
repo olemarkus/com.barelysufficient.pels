@@ -1,3 +1,4 @@
+import { refreshActivityHistory } from './activityHistory.ts';
 import { panels, tabListEntries, tabs, type MdTabElement } from './dom.ts';
 import { SETTINGS_UI_POWER_PATH } from '../../../contracts/src/settingsUiApi.ts';
 import { loadCapacitySettings } from './capacity.ts';
@@ -80,6 +81,7 @@ const refreshHomeSettingsPanel = (tabId: string): void => {
 // picker's validity lines (a no-op while its flag is off); the web app page
 // fills in this Homey's link.
 const SINGLE_REFRESH_PANELS: Record<string, { refresh: () => Promise<void>; failure: string }> = {
+  activity: { refresh: refreshActivityHistory, failure: 'Failed to refresh activity history' },
   deadlines: { refresh: refreshDeadlinesList, failure: 'Failed to load deadlines list' },
   weather: { refresh: refreshWeatherInsightOnWeatherPanel, failure: 'Failed to refresh weather insight' },
   'web-app': { refresh: refreshWebAppLink, failure: 'Failed to prepare the web app link' },

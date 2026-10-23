@@ -1,15 +1,11 @@
 /** Exclude countdown decay: identical states must not create a log every second. */
 import type {
   SettingsUiDeviceLogEntry,
-  SettingsUiDeviceLogPayload,
   SettingsUiPlanDeviceSnapshot,
 } from '../../packages/contracts/src/settingsUiApi';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
 import type { DevicePlanDevice } from './planTypes';
 
-export const DEVICE_OVERVIEW_LOG_MAX_ENTRIES_PER_DEVICE = 50;
-export const DEVICE_OVERVIEW_LOG_MAX_DEVICES = 64;
-export type DeviceOverviewLogRecord = SettingsUiDeviceLogEntry;
 export type OverviewLogDevice = SettingsUiPlanDeviceSnapshot;
 
 /**
@@ -102,44 +98,4 @@ export function buildOverviewEventForDevice(
 
 export function buildOverviewBatchEvent(devices: Record<string, unknown>[]): Record<string, unknown> {
   return { component: 'overview', event: 'device_overview_changes', changedDeviceCount: devices.length, devices };
-}
-
-/** Bounded session history of the same presentation delivered to the UI. */
-export class DeviceOverviewLogRecorder {
-  private entriesByDeviceId = new Map<string, DeviceOverviewLogRecord[]>();
-
-  record(deviceId: string, entry: DeviceOverviewLogRecord): void {
-    const existing = this.entriesByDeviceId.get(deviceId) ?? [];
-    // Most-recent-first; trim the oldest tail entries beyond the cap.
-    const next = [entry, ...existing].slice(0, DEVICE_OVERVIEW_LOG_MAX_ENTRIES_PER_DEVICE);
-    this.entriesByDeviceId.set(deviceId, next);
-    this.enforceDeviceCap(deviceId);
-  }
-
-  getUiPayload(): SettingsUiDeviceLogPayload {
-    const entriesByDeviceId: Record<string, DeviceOverviewLogRecord[]> = {};
-    for (const [deviceId, entries] of this.entriesByDeviceId.entries()) {
-      // Defensive copy so a consumer can't mutate the retained buffer.
-      entriesByDeviceId[deviceId] = entries.slice();
-    }
-    return { version: 1, entriesByDeviceId };
-  }
-
-  // When a brand-new device pushes the count past the cap, evict the device
-  // whose newest entry is the oldest (least-recently-active), never the device
-  // just written to.
-  private enforceDeviceCap(justWrittenDeviceId: string): void {
-    if (this.entriesByDeviceId.size <= DEVICE_OVERVIEW_LOG_MAX_DEVICES) return;
-    let evictId: string | null = null;
-    let evictNewestAtMs = Number.POSITIVE_INFINITY;
-    for (const [deviceId, entries] of this.entriesByDeviceId.entries()) {
-      if (deviceId === justWrittenDeviceId) continue;
-      const newestAtMs = entries[0]?.atMs ?? 0;
-      if (newestAtMs < evictNewestAtMs) {
-        evictNewestAtMs = newestAtMs;
-        evictId = deviceId;
-      }
-    }
-    if (evictId !== null) this.entriesByDeviceId.delete(evictId);
-  }
 }

@@ -4,7 +4,8 @@ import { buildSteppedSettleSnapshot } from '../../lib/observer/steppedSettleSnap
 import { readHomeBatteryCard } from '../../lib/observer/observedDeviceStateProjection';
 import { requireDisplayedPowerUpdateMs } from '../../lib/power/lastTotalPower';
 import { PlanService } from '../../lib/plan/planService';
-import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
+import { DeviceOverviewLogRecorder } from '../../lib/diagnostics/deviceActivityRecorder';
+import { createDeviceActivityStore } from '../../lib/diagnostics/deviceActivityStore';
 import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { AppContext } from '../../lib/app/appContext';
 import type {
@@ -97,7 +98,9 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     schedulePostActuationRefresh: () => ctx.snapshotHelpers.schedulePostActuationRefresh(),
     overviewDebugStructured: getDebugEmitter('overview', 'overview'),
     isOverviewDebugEnabled: () => ctx.debugLoggingTopics.has('overview'),
-    deviceOverviewLogRecorder: new DeviceOverviewLogRecorder(),
+    deviceOverviewLogRecorder: new DeviceOverviewLogRecorder(
+      createDeviceActivityStore(ctx.getUserdataDatabase(), scope.homeId),
+    ),
     isPlanDebugEnabled: () => ctx.debugLoggingTopics.has('plan'),
     // Scope-owned so a sub-home never drives MAIN's shared UI surfaces: main
     // binds the app recorder + emits the realtime `plan_updated` stream; a

@@ -74,7 +74,7 @@ const IMMEDIATE_GET_RESPONSES: Record<string, unknown> = {
     hasManagedSolarDevice: false,
     hasExhibitedExport: false,
   },
-  '/ui_device_log': { version: 1, entriesByDeviceId: {} },
+  '/ui_device_log': { version: 2, entries: [], retentionDays: 7, maxEntriesPerDevice: 100, maxEntries: 1000, persistence: 'stored' },
   '/ui_deferred_objective_settings': { version: 1, objectivesByDeviceId: {} },
   '/starvation_rescue_devices': { rescuableDeviceIds: [] },
   '/homey_devices': [],

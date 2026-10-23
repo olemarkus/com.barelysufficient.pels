@@ -206,20 +206,26 @@ describe('settingsUiApi', () => {
       },
     });
     const getDeviceLogUiPayload = vi.fn().mockReturnValue({
-      version: 1,
-      entriesByDeviceId: {
-        'dev-1': [
-          {
-            atMs: 1700000000000,
-            powerMsg: 'on → off',
-            stateMsg: 'Limited',
-            usageMsg: 'Measured: 0.00 kW',
-            statusMsg: 'Limiting to stay within budget',
-            stateKind: 'held',
-            stateTone: 'held',
-          },
-        ],
-      },
+      version: 2,
+      entries: [
+        {
+          id: 'session-1:1',
+          deviceId: 'dev-1',
+          deviceName: 'Heater',
+          recordingStartedAtMs: 1699999999000,
+          atMs: 1700000000000,
+          powerMsg: 'on → off',
+          stateMsg: 'Limited',
+          usageMsg: 'Measured: 0.00 kW',
+          statusMsg: 'Limiting to stay within budget',
+          stateKind: 'held',
+          stateTone: 'held',
+        },
+      ],
+      retentionDays: 7,
+      maxEntriesPerDevice: 100,
+      maxEntries: 1000,
+      persistence: 'stored',
     });
     const settingsUiDeviceReads = new SettingsUiDeviceReads();
     settingsUiDeviceReads.connect({
@@ -1135,23 +1141,27 @@ describe('settingsUiApi', () => {
     const homey = createHomey();
 
     expect(getSettingsUiDeviceLogPayload({ homey: homey as never })).toEqual({
-      version: 1,
-      entriesByDeviceId: {
-        'dev-1': [
-          expect.objectContaining({ stateMsg: 'Limited', statusMsg: 'Limiting to stay within budget' }),
-        ],
-      },
+      version: 2,
+      entries: [
+        expect.objectContaining({
+          deviceId: 'dev-1',
+          stateMsg: 'Limited',
+          statusMsg: 'Limiting to stay within budget',
+        }),
+      ],
+      retentionDays: 7,
+      maxEntriesPerDevice: 100,
+      maxEntries: 1000,
+      persistence: 'stored',
     });
   });
 
-  it('returns an empty device-log payload while the app is not wired', () => {
+  it('reports device-log history as unavailable while the app is not wired', () => {
     const homey = createHomey();
     homey.app = undefined as never;
 
-    expect(getSettingsUiDeviceLogPayload({ homey: homey as never })).toEqual({
-      version: 1,
-      entriesByDeviceId: {},
-    });
+    expect(() => getSettingsUiDeviceLogPayload({ homey: homey as never }))
+      .toThrow('Device activity history is not ready');
   });
 
   it('rethrows device-log API failures so the api wrapper can log them', () => {

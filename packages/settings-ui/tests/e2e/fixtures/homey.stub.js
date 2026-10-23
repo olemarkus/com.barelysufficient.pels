@@ -1269,7 +1269,7 @@
   const resolveDeviceLogPayload = () => {
     const scenarioDeviceLog = runtimeOverrides.scenarioPatch?.deviceLog;
     if (scenarioDeviceLog !== undefined) return scenarioDeviceLog;
-    return { version: 1, entriesByDeviceId: {} };
+    return { version: 2, entries: [], retentionDays: 7, maxEntriesPerDevice: 100, maxEntries: 1000, persistence: 'stored' };
   };
 
   // Build a candidate payload that visibly reflects the requested model

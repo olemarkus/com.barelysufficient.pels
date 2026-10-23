@@ -2,18 +2,19 @@
 // row with a repeat caption, and a chip-only entry renders without an empty
 // body paragraph.
 
-import type { SettingsUiDeviceLogEntry } from '../src/../../contracts/src/settingsUiApi';
-import { collapseRepeatedLogEntries } from '../../shared-domain/src/deviceLogCollapse';
+import type { SettingsUiDeviceActivityEntry } from '../src/../../contracts/src/settingsUiApi';
+import { collapseRepeatedLogEntries } from '../src/ui/deviceLogCollapse';
 import { renderDeviceLogView } from '../src/ui/views/DeviceLogView';
 
-const entry = (overrides: Partial<SettingsUiDeviceLogEntry>): SettingsUiDeviceLogEntry => ({
+const entry = (overrides: Partial<SettingsUiDeviceActivityEntry>): SettingsUiDeviceActivityEntry => ({
+  id: 'event-1', deviceId: 'dev-1', deviceName: 'Heater', recordingStartedAtMs: 0,
   atMs: 0,
   stateMsg: 'Idle',
-  stateTone: 'muted',
+  stateTone: 'muted', stateKind: 'idle', powerMsg: null,
   usageMsg: 'Measured: 0.00 kW',
   statusMsg: '',
   ...overrides,
-} as SettingsUiDeviceLogEntry);
+});
 
 describe('collapseRepeatedLogEntries', () => {
   it('collapses a run of identical entries and keeps the run boundaries', () => {
@@ -49,7 +50,7 @@ describe('renderDeviceLogView', () => {
     const surface = document.createElement('div');
     renderDeviceLogView(surface, {
       state: {
-        status: 'ready',
+        status: 'ready', persistence: 'stored',
         entries: [
           entry({ atMs: 3000 }),
           entry({ atMs: 2000 }),

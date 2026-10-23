@@ -657,7 +657,7 @@ export const getSettingsUiDeviceDiagnosticsPayload = ({ homey }: ApiContext): Se
 
 export const getSettingsUiDeviceLogPayload = ({ homey }: ApiContext): SettingsUiDeviceLogPayload => {
   const host = readPelsHost(homey);
-  if (!host) return { version: 1, entriesByDeviceId: {} };
+  if (!host) throw new Error('Device activity history is not ready');
   // No try/catch: let exceptions bubble to the api.ts wrapper so the client
   // sees the real failure and the cause lands in `/tmp/pels` via app.error.
   return host.getDeviceLogUiPayload();

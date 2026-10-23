@@ -5084,6 +5084,7 @@ details[open] > summary .disclosure-chevron {
 }
 
 .device-log__entry {
+  overflow-wrap: anywhere;
   display: grid;
   gap: var(--spacing-1);
   padding: var(--spacing-3);
@@ -5094,6 +5095,7 @@ details[open] > summary .disclosure-chevron {
 
 .device-log__entry-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-2);
@@ -5109,6 +5111,33 @@ details[open] > summary .disclosure-chevron {
 
 .device-log__empty {
   margin: 0;
+}
+
+.activity-history__content {
+  display: grid;
+  gap: var(--spacing-4);
+  min-width: 0;
+}
+
+.activity-history__content md-filled-select {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Restore Material's button padding after Homey's host reset. */
+.activity-history__actions md-outlined-button,
+.activity-history__content > md-outlined-button {
+  padding-inline: var(--spacing-6);
+}
+
+.activity-history__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--spacing-3);
+}
+
+.device-log__session {
+  padding-block: var(--spacing-2);
 }
 
 .detail-stepped-actions {

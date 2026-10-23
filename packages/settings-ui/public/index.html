@@ -527,6 +527,12 @@
           <span slot="supporting-text" class="settings-nav-card__description">Use PELS from your phone's home screen or a computer</span>
           <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
         </md-list-item>
+        <md-list-item type="button" class="settings-nav-card" data-settings-target="activity">
+          <svg slot="start" class="settings-nav-card__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          <span slot="headline" class="settings-nav-card__title pels-text-card-title">Activity</span>
+          <span slot="supporting-text" class="settings-nav-card__description">Recent device states and reasons</span>
+          <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
+        </md-list-item>
         <md-list-item type="button" class="settings-nav-card settings-nav-card--quiet" data-settings-target="advanced">
           <svg slot="start" class="settings-nav-card__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1M18.7 18.7l-2.1-2.1M7.4 7.4 5.3 5.3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
           <span slot="headline" class="settings-nav-card__title pels-text-card-title">Advanced</span>
@@ -534,6 +540,10 @@
           <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
         </md-list-item>
       </md-list>
+    </section>
+
+    <section class="card panel hidden settings-detail-panel" id="activity-panel" data-panel="activity" aria-label="Activity">
+      <div id="activity-history-root"></div>
     </section>
 
     <section class="card panel hidden settings-detail-panel" id="recommendations-panel" data-panel="recommendations" aria-label="Setup and recommendations">

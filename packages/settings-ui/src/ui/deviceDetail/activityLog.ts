@@ -1,39 +1,17 @@
-import type { SettingsUiDeviceLogPayload } from '../../../../contracts/src/settingsUiApi.ts';
+import { parseDeviceActivityPayload } from '../activityHistoryPayload.ts';
+import { formatActivityTimestamp } from '../activityTimestamp.ts';
+import type { DeviceLogViewState } from '../views/DeviceLogView.tsx';
 import { SETTINGS_UI_DEVICE_LOG_PATH } from '../../../../contracts/src/settingsUiApi.ts';
 import {
   deviceDetailActivityLogBody,
   deviceDetailActivityLogDisclosure,
 } from '../dom.ts';
 import { isDeviceInMeterArea } from '../homeBadges.ts';
-import { getApiReadModel, getHomeyTimezone } from '../homey.ts';
+import { getApiReadModel } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
 import { renderDeviceLogView } from '../views/DeviceLogView.tsx';
 
 let activityLogRequestSeq = 0;
-
-const getDateTimePart = (partsByType: Record<string, string>, type: string): string => partsByType[type] ?? '00';
-
-// Local-clock timestamp in the Homey's timezone, matching the device-detail
-// diagnostics formatting so the two advanced sections read consistently.
-const formatActivityTimestamp = (atMs: number): string => {
-  if (!Number.isFinite(atMs)) return '';
-  const partsByType = Object.fromEntries(
-    new Intl.DateTimeFormat('en-CA', {
-      // `getHomeyTimezone()` can return null; coerce to undefined so the
-      // formatter falls back to the runtime default instead of throwing
-      // RangeError on a null `timeZone`.
-      timeZone: getHomeyTimezone() ?? undefined,
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-    }).formatToParts(new Date(atMs)).map((part) => [part.type, part.value]),
-  );
-  const date = [getDateTimePart(partsByType, 'month'), getDateTimePart(partsByType, 'day')].join('-');
-  const time = [getDateTimePart(partsByType, 'hour'), getDateTimePart(partsByType, 'minute')].join(':');
-  return `${date} ${time}`;
-};
 
 export const isDeviceDetailActivityLogExpanded = (): boolean => (
   deviceDetailActivityLogDisclosure?.open === true
@@ -50,13 +28,7 @@ export const resetDeviceDetailActivityLogView = (): void => {
   renderState({ status: 'loading' });
 };
 
-type ActivityLogState =
-  | { status: 'loading' }
-  | { status: 'error' }
-  | { status: 'notRecorded' }
-  | { status: 'ready'; entries: SettingsUiDeviceLogPayload['entriesByDeviceId'][string] };
-
-const renderState = (state: ActivityLogState): void => {
+const renderState = (state: DeviceLogViewState): void => {
   if (!deviceDetailActivityLogBody) return;
   renderDeviceLogView(deviceDetailActivityLogBody, {
     state,
@@ -76,7 +48,7 @@ export const refreshDeviceDetailActivityLog = async (params: {
   const requestSeq = activityLogRequestSeq + 1;
   activityLogRequestSeq = requestSeq;
   // Honest not-supported state (multi-home locked decision 5): the payload is
-  // the MAIN home's log, which never records a meter-area device — so for one,
+  // the Main home's history, which cannot answer for a meter-area device. So
   // "No activity recorded yet" would read as a quiet, healthy device. Say the
   // truth instead, and skip the fetch the answer cannot come from.
   if (isDeviceInMeterArea(params.deviceId)) {
@@ -87,12 +59,10 @@ export const refreshDeviceDetailActivityLog = async (params: {
     showDeviceDetailActivityLogLoading();
   }
   try {
-    const payload = await getApiReadModel<SettingsUiDeviceLogPayload>(SETTINGS_UI_DEVICE_LOG_PATH);
+    const payload = parseDeviceActivityPayload(await getApiReadModel<unknown>(SETTINGS_UI_DEVICE_LOG_PATH));
     if (!params.isCurrentDevice() || activityLogRequestSeq !== requestSeq) return;
-    // Guard a nullish payload / missing map so a malformed response renders an
-    // empty log rather than throwing a TypeError.
-    const entries = (payload?.entriesByDeviceId ?? {})[params.deviceId] ?? [];
-    renderState({ status: 'ready', entries });
+    const entries = payload.entries.filter((entry) => entry.deviceId === params.deviceId);
+    renderState({ status: 'ready', entries, persistence: payload.persistence });
   } catch (error) {
     if (!params.isCurrentDevice() || activityLogRequestSeq !== requestSeq) return;
     renderState({ status: 'error' });

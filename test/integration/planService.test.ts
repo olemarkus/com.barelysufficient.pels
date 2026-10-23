@@ -53,7 +53,7 @@ import {
   withFixtureResidualKw,
   type PlanMetaOverrides,
 } from '../utils/planTestUtils';
-import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
+import { createTestDeviceActivityRecorder } from '../helpers/deviceActivityRecorder';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { planServiceWiring } from '../helpers/planServiceWiring';
 
@@ -259,7 +259,7 @@ describe('PlanService', () => {
     const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device], storageReleases: [] };
     let live = { ...executionStateFixture(device), desiredBinary: 'off' as const, desiredStepId: null };
     const engine = { ...createMockPlanEngine(), getDeviceExecutionStates: vi.fn(() => new Map([[device.id, live]])) };
-    const recorder = new DeviceOverviewLogRecorder();
+    const recorder = createTestDeviceActivityRecorder();
     const realtime = vi.fn().mockResolvedValue(undefined);
     const { service, deps } = createPlanService({ homeId, emitsUiRealtime: homeId === 'main', planEngine: engine,
       deviceOverviewLogRecorder: recorder, homey: stubDepsHomey({ realtime }) });
@@ -278,7 +278,7 @@ describe('PlanService', () => {
       homeId === 'main' ? wire : { homeId },
     );
     expect(deps.publishPelsStatus).not.toHaveBeenCalled();
-    expect(recorder.getUiPayload().entriesByDeviceId[device.id][0]).toMatchObject({
+    expect(recorder.getUiPayload().entries.find((entry) => entry.deviceId === device.id)).toMatchObject({
       stateMsg: status.label, statusMsg: status.reason!.text, stateKind: status.kind });
     expect(service.getLatestPlanSnapshot()).toBe(plan);
     expect(service.getLatestPlanSnapshotUpdatedAtMs()).toBe(456);
@@ -375,7 +375,7 @@ describe('PlanService', () => {
     const engine = { ...createMockPlanEngine(),
       getDeviceExecutionStates: vi.fn(() => new Map([[device.id, executionStateFixture(device)]])) };
     let percent = 64;
-    const recorder = new DeviceOverviewLogRecorder();
+    const recorder = createTestDeviceActivityRecorder();
     const realtime = vi.fn().mockResolvedValue(undefined);
     const { service } = createPlanService({ planEngine: engine, deviceOverviewLogRecorder: recorder,
       homey: stubDepsHomey({ realtime }),
@@ -385,14 +385,14 @@ describe('PlanService', () => {
     service['rebuildHost'].publishPlan(plan, 456);
     await service.syncLivePlanState('realtime_capability');
     realtime.mockClear();
-    const loggedBefore = recorder.getUiPayload().entriesByDeviceId[device.id]?.length ?? 0;
+    const loggedBefore = recorder.getUiPayload().entries.filter((entry) => entry.deviceId === device.id).length;
 
     percent = 65;
     expect(await service.syncLivePlanState('realtime_capability')).toBe(true);
 
     expect(service.getLatestPlanSnapshotForUi()!.devices![0].status.factText).toBe('Charging · 65 % · level Low');
     expect(realtime).toHaveBeenCalledTimes(1);
-    expect(recorder.getUiPayload().entriesByDeviceId[device.id]?.length ?? 0).toBe(loggedBefore);
+    expect(recorder.getUiPayload().entries.filter((entry) => entry.deviceId === device.id).length).toBe(loggedBefore);
   });
 
   it('pushes live power to the open card without logging each reading', async () => {
@@ -403,14 +403,14 @@ describe('PlanService', () => {
     const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device], storageReleases: [] };
     let live = executionStateFixture(device);
     const engine = { ...createMockPlanEngine(), getDeviceExecutionStates: vi.fn(() => new Map([[device.id, live]])) };
-    const recorder = new DeviceOverviewLogRecorder();
+    const recorder = createTestDeviceActivityRecorder();
     const realtime = vi.fn().mockResolvedValue(undefined);
     const { service } = createPlanService({ planEngine: engine, deviceOverviewLogRecorder: recorder,
       homey: stubDepsHomey({ realtime }) });
     service['rebuildHost'].publishPlan(plan, 456);
     await service.syncLivePlanState('realtime_capability');
     realtime.mockClear();
-    const loggedBefore = recorder.getUiPayload().entriesByDeviceId[device.id]?.length ?? 0;
+    const loggedBefore = recorder.getUiPayload().entries.filter((entry) => entry.deviceId === device.id).length;
 
     for (const drawKw of [1.46, 1.44, 1.46]) {
       live = { ...live, currentDrawKw: drawKw };
@@ -419,7 +419,7 @@ describe('PlanService', () => {
 
     expect(service.getLatestPlanSnapshotForUi()!.devices![0].status.powerText).toBe('1.5 kW');
     expect(realtime).toHaveBeenCalledTimes(3);
-    expect(recorder.getUiPayload().entriesByDeviceId[device.id]?.length ?? 0).toBe(loggedBefore);
+    expect(recorder.getUiPayload().entries.filter((entry) => entry.deviceId === device.id).length).toBe(loggedBefore);
   });
 
   it('classifies idleness from the plan device, not from executor convergence state', () => {
@@ -765,7 +765,7 @@ describe('PlanService', () => {
   });
 
   it('captures device-log entries even when the overview debug log is disabled', async () => {
-    const recorder = new DeviceOverviewLogRecorder();
+    const recorder = createTestDeviceActivityRecorder();
     const overviewDebugStructured = vi.fn();
     const { service } = createPlanService({
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
@@ -790,7 +790,7 @@ describe('PlanService', () => {
     expect(overviewDebugStructured).not.toHaveBeenCalled();
     const overview = buildDeviceLogEntry(service.getLatestPlanSnapshotForUi()!.devices![0]);
     const payload = service.getDeviceLogUiPayload();
-    expect(payload.entriesByDeviceId['dev-1']).toEqual([
+    expect(payload.entries.filter((entry) => entry.deviceId === 'dev-1')).toEqual([
       expect.objectContaining({
         stateMsg: overview.stateMsg,
         statusMsg: overview.statusMsg,
