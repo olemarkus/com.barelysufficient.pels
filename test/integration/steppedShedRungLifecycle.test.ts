@@ -100,7 +100,6 @@ describe('a turn_off stepped shed parked at an intermediate rung', () => {
       powerTracker: { lastTimestamp: 900, lastPowerW: 8_770 } as PowerTrackerState,
       pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       getShedBehavior,
-      log: vi.fn(),
     });
 
     expect(sheddingPlan.shedStepTargets.get('charger')).toBe('10a');

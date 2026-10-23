@@ -1591,7 +1591,6 @@ describe('buildSheddingPlan', () => {
         shortfallThresholdKw: 10,
         powerTracker: { lastTimestamp: 700, lastPowerW: 4_000 } as PowerTrackerState,
         // Binary device has higher priority (10 > 1) so would normally shed first
-        log: vi.fn(),
       },
     );
 
@@ -1735,7 +1734,6 @@ describe('buildSheddingPlan', () => {
         // The heater is ranked to be limited first, and neither candidate can
         // answer the opening deficit with a step reduction, so both follow
         // ordinary priority ordering.
-        log: vi.fn(),
       },
     );
 
@@ -2948,7 +2946,6 @@ describe('buildSheddingPlan', () => {
       capacityGuard,
       shortfallThresholdKw: 6,
       getShedBehavior: () => ({ action: 'turn_off' }),
-      log: vi.fn(),
     };
 
     const { context, power } = buildContext({
@@ -3082,7 +3079,6 @@ describe('buildSheddingPlan', () => {
         getCurrentIncidentId: vi.fn().mockReturnValue('inc-1'),
       } as unknown as CapacityGuard,
       getShedBehavior: () => ({ action: 'turn_off' }),
-      log: vi.fn(),
     });
 
     // Cycle 1 of the incident: the sub-cap overshoot sheds the lowest-priority
@@ -4494,7 +4490,6 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 800, lastPowerW: 3_650 } as PowerTrackerState,
         pendingBinaryCommandStore: emptyPendingStore,
         getShedBehavior: () => ({ action: 'turn_off' }),
-        log: vi.fn(),
       },
     );
 
@@ -4524,7 +4519,6 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 800, lastPowerW: 4_790 } as PowerTrackerState,
         pendingBinaryCommandStore: emptyPendingStore,
         getShedBehavior: () => ({ action: 'turn_off' }),
-        log: vi.fn(),
       },
     );
 
@@ -4556,7 +4550,6 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 800, lastPowerW: 3_650 } as PowerTrackerState,
         pendingBinaryCommandStore: emptyPendingStore,
         getShedBehavior: () => ({ action: 'turn_off' }),
-        log: vi.fn(),
       },
     );
 
@@ -4586,7 +4579,6 @@ describe('buildSheddingPlan', () => {
         powerTracker: { lastTimestamp: 801, lastPowerW: 3_590 } as PowerTrackerState,
         pendingBinaryCommandStore: emptyPendingStore,
         getShedBehavior: () => ({ action: 'turn_off' }),
-        log: vi.fn(),
       },
     );
 

@@ -58,7 +58,6 @@ const buildShedParams = (devices: PlanInputDevice[]): ShedCandidateParams => ({
     getShedBehavior: () => ({ action: 'turn_off' }),
     // No stored priority for any device → caller-side default for the whole bucket.
     pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
-    log: () => {},
   },
 });
 

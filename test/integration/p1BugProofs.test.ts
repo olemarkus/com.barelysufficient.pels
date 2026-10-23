@@ -234,7 +234,6 @@ describe('P1 bug proofs', () => {
           hasActiveCommand: (deviceId: string) => deviceId === 'shed',
           hasActiveTurnOff: () => false,
         }),
-        log: vi.fn(),
       },
       NO_STORAGE_RELIEF,
     );

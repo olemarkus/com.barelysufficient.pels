@@ -93,7 +93,6 @@ export class BackgroundTasksController {
       isEnabled: () => this.ctx.debugLoggingTopics.has('perf'),
       logStructured: getDebugEmitter('perf', 'perf'),
       error: (...args: unknown[]) => this.ctx.error(...args),
-      logCpuSpike: (...args: unknown[]) => this.ctx.log(...args),
       intervalMs: 30 * 1000,
     }));
   }

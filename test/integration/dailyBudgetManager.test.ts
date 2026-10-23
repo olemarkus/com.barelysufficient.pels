@@ -19,7 +19,6 @@ import { buildDayContext } from '../../lib/dailyBudget/dailyBudgetState';
 const TZ = 'Europe/Oslo';
 
 const buildManager = (overrides: Partial<ConstructorParameters<typeof DailyBudgetManager>[0]> = {}) => new DailyBudgetManager({
-  log: () => undefined,
   ...overrides,
 });
 

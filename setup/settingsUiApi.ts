@@ -6,6 +6,7 @@ import type {
 } from '../packages/contracts/src/dailyBudgetTypes';
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
 import { hasMaterialExhibitedExport } from '../packages/shared-domain/src/solar/exhibitedExport';
+import { getLogger } from '../lib/logging/logger';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys';
 import { DEFERRED_OBJECTIVES_SETTINGS, MAIN_HOME_ID } from '../lib/utils/settingsKeys';
 import {
@@ -112,11 +113,7 @@ const pickSettings = (
   keys.map((key) => [key, homey.settings.get(key) as unknown]),
 );
 
-const formatSettingsUiMessage = (entry: SettingsUiLogRequest) => {
-  const context = entry.context ? ` (${entry.context})` : '';
-  const detail = entry.detail ? ` - ${entry.detail}` : '';
-  return `Settings UI${context}: ${entry.message}${detail}`;
-};
+const settingsUiLogger = getLogger('settings-ui');
 
 const isValidLogRequest = (value: unknown): value is SettingsUiLogRequest => {
   if (!value || typeof value !== 'object') return false;
@@ -751,14 +748,15 @@ export const logSettingsUiMessage = ({ homey, body }: ApiContext & { body?: unkn
     return { ok: false };
   }
 
-  const message = formatSettingsUiMessage(body);
-  if (body.level === 'error') {
-    host?.error(message, new Error(body.detail || body.message));
-  } else if (body.level === 'warn') {
-    host?.log(`Warning: ${message}`);
-  } else {
-    host?.log(message);
-  }
+  const fields = {
+    event: 'settings_ui_log',
+    message: body.message,
+    ...(body.context ? { context: body.context } : {}),
+    ...(body.detail ? { detail: body.detail } : {}),
+  };
+  if (body.level === 'error') settingsUiLogger.error(fields);
+  else if (body.level === 'warn') settingsUiLogger.warn(fields);
+  else settingsUiLogger.info(fields);
 
   return { ok: true };
 };

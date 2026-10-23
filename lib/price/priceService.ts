@@ -222,14 +222,12 @@ export default class PriceService {
     const todayPrices = await fetchSpotPricesForDate({
       date: today,
       priceArea,
-      log: this.sinks.log,
       debugStructured: this.sinks.debugStructured,
       errorLog: this.sinks.errorLog,
     });
     const tomorrowPrices = await fetchSpotPricesForDate({
       date: addDays(today, 1),
       priceArea,
-      log: this.sinks.log,
       debugStructured: this.sinks.debugStructured,
       errorLog: this.sinks.errorLog,
     });

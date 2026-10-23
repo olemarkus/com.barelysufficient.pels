@@ -4,15 +4,18 @@
  * to keep the event names + `detail` wording of the registry's five reportable
  * conditions in one place (the same reason `lib/plan/planLogging.ts` exists).
  *
- * Every emitter takes the registry's `homes` logger and is a no-op when it is
- * unavailable, exactly as the optional-chained call sites were. Event names
+ * Every emitter but the topic-gated debug one takes the registry's `homes`
+ * logger and is a no-op when it is unavailable, exactly as the optional-chained
+ * call sites were. Event names
  * and payload shapes are byte-for-byte what the registry emitted inline — log
  * audits keyed on them keep matching.
  */
-import type { Logger as PinoLogger } from '../logging/logger';
+import { getDebugEmitter, type Logger as PinoLogger } from '../logging/logger';
 import type { PowerSource } from '../ports/configuredPowerSource';
 import { normalizeError } from '../utils/errorUtils';
 import type { SubHomeConfig } from './homeConfig';
+
+const emitHomesSettingsDebug = getDebugEmitter('homes', 'settings');
 
 /**
  * Sub-home bundles are driven ONLY by the per-meter fan-out of the
@@ -30,12 +33,8 @@ export function logSubHomesUnderFlowSource(logger: PinoLogger | undefined, subHo
 }
 
 /** A suffixed write arrived for a homeId with no live bundle (transient). */
-export function logHomeScopedSettingForUnknownHome(
-  logger: PinoLogger | undefined,
-  homeId: string,
-  baseKey: string,
-): void {
-  logger?.debug({
+export function logHomeScopedSettingForUnknownHome(homeId: string, baseKey: string): void {
+  emitHomesSettingsDebug({
     event: 'home_scoped_setting_for_unknown_home',
     homeId,
     baseKey,

@@ -1,6 +1,7 @@
 import type { Mock } from 'vitest';
 import https from 'https';
 import { httpsGetJson, PINNED_CA_BUNDLE } from '../../lib/utils/httpClient';
+import { captureLogger } from '../utils/loggerCapture';
 
 // Mock the https outward seam (same shape as prices.test.ts).
 vi.mock('https', () => ({
@@ -81,13 +82,13 @@ describe('httpsGetJson TLS strategy escalation', () => {
   });
 
   it('falls back to the pinned CA bundle when the default store fails TLS', async () => {
-    const log = vi.fn();
+    const capture = captureLogger('info', []);
     const calls = installOutcomes([
       { ok: false, code: SSL_CODE },
       { ok: true, body: [{ ok: 1 }] },
     ]);
 
-    const result = await httpsGetJson(PINNED_URL, { log });
+    const result = await httpsGetJson(PINNED_URL);
 
     expect(calls).toHaveLength(2);
     expect(calls[0].options.ca).toBeUndefined();
@@ -97,7 +98,10 @@ describe('httpsGetJson TLS strategy escalation', () => {
     // One TLS fallback occurred → exactly one diagnostic emitted. Assert the
     // structural fact, not the log wording (the call-option asserts above
     // already prove the default → pinned escalation).
-    expect(log).toHaveBeenCalledTimes(1);
+    expect(capture.findEvents('https_tls_verification_fallback')).toEqual([
+      expect.objectContaining({ strategy: 'default-ca', nextStrategy: 'pinned-ca' }),
+    ]);
+    capture.restore();
   });
 
   it('falls back to insecure only after both default and pinned fail TLS', async () => {

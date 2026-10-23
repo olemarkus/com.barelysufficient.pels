@@ -5,7 +5,7 @@ import {
   PLAN_REASON_CODES,
   type DeviceReason,
 } from '../../../packages/shared-domain/src/planReasonSemantics';
-import { getLogger } from '../../logging/logger';
+import { getDebugEmitter } from '../../logging/logger';
 import { MIN_ACTIVE_MEASURED_POWER_KW } from '../../observer/observedPower';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
@@ -47,7 +47,7 @@ import { buildRestoreAdmissionMetrics, isRestoreAdmitted, type RestoreAdmissionM
  * stepped shed invariant, and boost.
  */
 
-const logger = getLogger('plan/headroom-reserve');
+const emitReserveDebug = getDebugEmitter('plan', 'plan');
 
 
 // Fallback release test for devices with no step axis: a device counts as running once its
@@ -100,7 +100,7 @@ export function resolveHeadroomReserves(
     const decision = resolveReserveForDevice(device, previousArmedMs[device.id] ?? null, nowTs);
     if (decision.armedMs !== null) nextArmedMs[device.id] = decision.armedMs;
     if (decision.reserve) reserves.push(decision.reserve);
-    logger.debug({
+    emitReserveDebug({
       event: 'headroom_reserve_decision',
       deviceId: device.id,
       deviceName: device.name,

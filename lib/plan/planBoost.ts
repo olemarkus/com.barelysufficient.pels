@@ -1,5 +1,5 @@
 import type { PlanInputDevice } from './planTypes';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter } from '../logging/logger';
 
 /**
  * The planner's whole boost vocabulary: one question, one answer, no device
@@ -38,7 +38,7 @@ export function resolveBoostActive(dev: PlanInputDevice): boolean {
   return dev.forceBoostActive === true && dev.boostSupported;
 }
 
-const logger = getLogger('plan/boost');
+const emitBoostDebug = getDebugEmitter('plan', 'plan');
 
 /**
  * One transition event for every device that boosts, whatever it boosts on.
@@ -50,7 +50,7 @@ const logger = getLogger('plan/boost');
  */
 export function emitBoostStateChange(dev: PlanInputDevice, previousActive: boolean, active: boolean): void {
   if (previousActive === active) return;
-  logger.debug({
+  emitBoostDebug({
     event: 'boost_state_changed',
     deviceId: dev.id,
     deviceName: dev.name,

@@ -16,7 +16,6 @@ const createCoordinator = (): PriceCoordinator => new PriceCoordinator({
   homeyWebApiGet: noHomeyWebApi,
   readHubMarket: unknownHubMarket,
   readHubLocation: async () => ({ kind: 'unavailable' }),
-  log: () => undefined,
   debugStructured: () => undefined,
   error: () => undefined,
 });

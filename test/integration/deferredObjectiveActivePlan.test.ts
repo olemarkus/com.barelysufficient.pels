@@ -32,6 +32,7 @@ import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/sr
 import { partialDouble } from '../helpers/partialDouble';
 import { capacityOnlyPowerLimits, powerLimits } from '../helpers/powerLimitSettings';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
+import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 
 // A device's committed plan as the recorder's own readers see it: the snapshot
 // the settings UI, the Flow tokens, and persistence are served from.
@@ -4618,14 +4619,12 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     // `deferred_objective_horizon_planned`. The recorder already holds these
     // values on the persisted plan — this just threads them onto the debug
     // event so log analysis is self-contained.
+    let capture: LoggerCapture;
+    beforeEach(() => { capture = captureLogger('info', ['deferred_objectives']); });
+    afterEach(() => { capture.restore(); });
     const captureEvents = () => {
-      const events: Record<string, unknown>[] = [];
       const inner = buildPersistDeps();
-      return {
-        deps: { ...inner.deps, debugStructured: (e: Record<string, unknown>) => { events.push(e); } },
-        events,
-        saved: inner.saved,
-      };
+      return { deps: inner.deps, events: capture.events, saved: inner.saved };
     };
 
     it('writes startedAtMs, deadlineAtMs, objectiveKind, and target on active_plan_revision_written (first revision)', () => {

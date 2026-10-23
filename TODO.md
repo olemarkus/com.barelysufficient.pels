@@ -1257,19 +1257,6 @@ Design-of-record: `notes/web-app.md`.
       level is readable at the call site. Done when an actionChanged-only rebuild produces a
       `plan_rebuild_completed` line with `debugTopic: 'plan'` and the file leaves the allowlist. [P2]
 
-- [ ] **38 runtime sites still log a way that is invisible or unfilterable.**
-      `npm run logging:no-legacy` bans four shapes — any `.debug()` outside `lib/logging/` (dark on
-      a pino module logger, topic-gated prose on the injected SDK `Logger`, hand-rolled on a
-      `.child(..., {level:'debug'})`, and the call site cannot say which), prose via `logDebug` /
-      `this.log`, a computed log level, and `console.*` — and freezes the pre-existing ones in
-      `scripts/logging-legacy-allowlist.txt` with per-file budgets that may only shrink. Lanes,
-      largest first: entry points and wiring (16), `lib/plan` + `lib/observer` (11), and the
-      remaining domain modules (11). The executor and device lanes are done. Fix per file: replace the call with a module-scope
-      `getDebugEmitter(component, topic)`, or with `getLogger(module).info(...)` where the event
-      deserves to be visible by default, and lower the budget. Done when the allowlist file is
-      deleted and the guard requires its absence — `api.ts`'s pre-logger `console.error` is
-      exempted by name in the guard rather than budgeted, so zero is reachable. [P2]
-
 - [ ] **Each power limit is a loose nullable, and readers re-derive which nulls mean "off".**
       The capacity, grid and daily axes and the binding limit travel as separate `number | null`
       fields: `PlanLimits` (`softLimit`, `softLimitSource`, `capacitySoftLimit`,

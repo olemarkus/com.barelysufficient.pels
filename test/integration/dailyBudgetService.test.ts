@@ -127,7 +127,6 @@ function buildService(): DailyBudgetService {
   });
   const service = new DailyBudgetService({
     getTimeZone: () => TZ,
-    log: () => undefined,
     getPowerTracker: () => ({ buckets: {} }),
     getPriceOptimizationEnabled: () => false,
     getCapacitySettings: () => capacityOnlyPowerLimits(0), combinedPricesReader: { readStore: () => null },
@@ -248,7 +247,6 @@ describe('DailyBudgetService', () => {
     });
     const service = new DailyBudgetService({
       getTimeZone: () => TZ,
-      log: () => undefined,
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => powerLimitSettings,
@@ -585,7 +583,6 @@ describe('DailyBudgetService', () => {
     const service = new DailyBudgetService({
       dailyBudgetStateStore: { read: () => null, write: vi.fn() },
       getTimeZone: () => TZ,
-      log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => capacityOnlyPowerLimits(0), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
@@ -608,7 +605,6 @@ describe('DailyBudgetService', () => {
     const service = new DailyBudgetService({
       dailyBudgetStateStore: { read: () => null, write: vi.fn() },
       getTimeZone: () => TZ,
-      log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => capacityOnlyPowerLimits(0), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
@@ -645,7 +641,6 @@ describe('DailyBudgetService', () => {
     const service = new DailyBudgetService({
       dailyBudgetStateStore: { read: () => null, write: vi.fn() },
       getTimeZone: () => TZ,
-      log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => capacityOnlyPowerLimits(0), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
@@ -676,7 +671,6 @@ describe('DailyBudgetService', () => {
     const service = new DailyBudgetService({
       dailyBudgetStateStore: { read: () => null, write: vi.fn() },
       getTimeZone: () => TZ,
-      log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => capacityOnlyPowerLimits(0), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
@@ -702,7 +696,6 @@ describe('DailyBudgetService', () => {
     const service = new DailyBudgetService({
       dailyBudgetStateStore: { read: () => null, write: vi.fn() },
       getTimeZone: () => TZ,
-      log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => capacityOnlyPowerLimits(0), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
@@ -752,7 +745,6 @@ describe('DailyBudgetService', () => {
     const service = new DailyBudgetService({
       dailyBudgetStateStore: { read: () => null, write: vi.fn() },
       getTimeZone: () => TZ,
-      log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => settings,

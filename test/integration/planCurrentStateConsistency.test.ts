@@ -108,7 +108,6 @@ describe('planner current-state consistency', () => {
         powerTracker: { lastTimestamp: 100, lastPowerW: cycle.drawKw * 1000 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' }),
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-        log: vi.fn(),
       },
       { actionable: true, shedActionable: true },
     );

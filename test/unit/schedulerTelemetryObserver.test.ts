@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Logger } from '../../lib/logging/logger';
 import type { RebuildIntent } from '../../lib/plan/rebuildScheduler/scheduler';
 import { SchedulerTelemetryObserver } from '../../lib/plan/rebuildScheduler/telemetryObserver';
 import { partialDouble } from '../helpers/partialDouble';
+import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 
 /**
  * The observer's own emit path: the per-key debug rate limiter, its pruning,
@@ -27,34 +28,41 @@ const buildRig = (overrides: { getNowMs?: () => number } = {}) => {
 const SIGNAL: RebuildIntent = { kind: 'signal', reason: 'power_delta' };
 const HARD_CAP: RebuildIntent = { kind: 'hardCap', reason: 'shortfall' };
 
+let capture: LoggerCapture;
+beforeEach(() => { capture = captureLogger('info', ['plan']); });
+afterEach(() => { capture.restore(); });
+const schedulerEvents = () => capture.events
+  .filter((line) => String(line.event).startsWith('plan_rebuild_scheduler_'))
+  .map(({ level: _level, time: _time, ...rest }) => rest);
+
 describe('SchedulerTelemetryObserver', () => {
   it('emits rate-limited structured plan rebuild scheduler replacement events', () => {
-    const { observer, child, childLogger } = buildRig();
+    const { observer } = buildRig();
 
     observer.onPendingIntentReplaced(SIGNAL, HARD_CAP);
     observer.onPendingIntentReplaced(SIGNAL, HARD_CAP);
 
-    expect(child).toHaveBeenCalledWith({ component: 'plan' }, { level: 'debug' });
-    expect(childLogger.debug).toHaveBeenCalledTimes(1);
-    expect(childLogger.debug).toHaveBeenCalledWith({
+    expect(schedulerEvents()).toHaveLength(1);
+    expect(schedulerEvents()).toContainEqual({
       event: 'plan_rebuild_scheduler_intent_replaced',
       homeId: 'main',
       previousKind: 'signal',
       previousReason: 'power_delta',
       nextKind: 'hardCap',
       nextReason: 'shortfall',
+      component: 'plan',
       debugTopic: 'plan',
     });
   });
 
   it('does not rate-limit distinct plan rebuild scheduler replacement keys', () => {
-    const { observer, childLogger } = buildRig();
+    const { observer } = buildRig();
 
     observer.onPendingIntentReplaced(SIGNAL, HARD_CAP);
     observer.onPendingIntentReplaced({ kind: 'signal', reason: 'headroom_tight' }, HARD_CAP);
 
-    expect(childLogger.debug).toHaveBeenCalledTimes(2);
-    expect(childLogger.debug).toHaveBeenLastCalledWith(expect.objectContaining({
+    expect(schedulerEvents()).toHaveLength(2);
+    expect(schedulerEvents().at(-1)).toEqual(expect.objectContaining({
       event: 'plan_rebuild_scheduler_intent_replaced',
       previousKind: 'signal',
       previousReason: 'headroom_tight',
@@ -65,26 +73,27 @@ describe('SchedulerTelemetryObserver', () => {
   });
 
   it('emits rate-limited structured plan rebuild scheduler dropped events', () => {
-    const { observer, childLogger } = buildRig();
+    const { observer } = buildRig();
 
     observer.onIntentDropped(SIGNAL, HARD_CAP);
     observer.onIntentDropped(SIGNAL, HARD_CAP);
 
-    expect(childLogger.debug).toHaveBeenCalledTimes(1);
-    expect(childLogger.debug).toHaveBeenCalledWith({
+    expect(schedulerEvents()).toHaveLength(1);
+    expect(schedulerEvents()).toContainEqual({
       event: 'plan_rebuild_scheduler_intent_dropped',
       homeId: 'main',
       droppedKind: 'signal',
       droppedReason: 'power_delta',
       keptKind: 'hardCap',
       keptReason: 'shortfall',
+      component: 'plan',
       debugTopic: 'plan',
     });
   });
 
   it('prunes stale plan rebuild scheduler rate-limit keys', () => {
     const getNowMs = vi.fn<() => number>().mockReturnValueOnce(0).mockReturnValueOnce(60_000);
-    const { observer, childLogger } = buildRig({ getNowMs });
+    const { observer } = buildRig({ getNowMs });
     const map = observer['lastEmittedAtMsByKey'];
 
     observer.onIntentDropped(SIGNAL, HARD_CAP);
@@ -92,7 +101,7 @@ describe('SchedulerTelemetryObserver', () => {
 
     observer.onIntentDropped(SIGNAL, HARD_CAP);
 
-    expect(childLogger.debug).toHaveBeenCalledTimes(2);
+    expect(schedulerEvents()).toHaveLength(2);
     expect(map.size).toBe(1);
     expect(map.get('dropped:signal:power_delta:hardCap:shortfall')).toBe(60_000);
   });

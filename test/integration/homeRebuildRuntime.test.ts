@@ -7,6 +7,7 @@ import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { partialDouble } from '../helpers/partialDouble';
 import { unchangedRebuildOutcome } from '../helpers/powerRebuildScheduler';
 import type { RebuildOutcome } from '../../lib/plan/rebuildScheduler/policy';
+import { captureLogger } from '../utils/loggerCapture';
 
 /**
  * The composition, not the components: that the scheduler this factory returns
@@ -30,8 +31,7 @@ const buildRuntime = (overrides: { homeId?: 'main' | 'h_annex'; rebuild?: () => 
   // The throttle reads only the `RebuildOutcome` slice of the service's outcome.
   const rebuildPlanFromCache = (overrides.rebuild ?? (async () => unchangedRebuildOutcome())) as unknown as
     PlanService['rebuildPlanFromCache'];
-  const debug = vi.fn();
-  const child = vi.fn().mockReturnValue({ debug, error: vi.fn() });
+  const child = vi.fn().mockReturnValue({ error: vi.fn() });
   const timers = new TimerRegistry();
   armedRegistries.push(timers);
   const runtime = createHomeRebuildRuntime(
@@ -43,7 +43,7 @@ const buildRuntime = (overrides: { homeId?: 'main' | 'h_annex'; rebuild?: () => 
     () => partialDouble<Logger>({ child: child as unknown as Logger['child'] }),
     () => true,
   );
-  return { ...runtime, debug, timers };
+  return { ...runtime, timers };
 };
 
 const CALM_POSTURE = { planConvergenceActive: false, unactionable: false, shortfallUnrecoverable: false };
@@ -63,18 +63,20 @@ describe('createHomeRebuildRuntime', () => {
     // The first rebuild never finishes, so the next two readings queue behind it
     // and the breach replaces the tight signal: the one path that reaches the
     // replacement record.
-    const { throttle, debug } = buildRuntime({ homeId: 'h_annex', rebuild: () => new Promise(() => undefined) });
+    const capture = captureLogger('info', ['plan']);
+    const { throttle } = buildRuntime({ homeId: 'h_annex', rebuild: () => new Promise(() => undefined) });
 
     void throttle.onSample(reading(5_000), CALM_POSTURE);
     void throttle.onSample(reading(9_500), CALM_POSTURE);
     void throttle.onSample(reading(9_600, 9.2), CALM_POSTURE);
 
-    expect(debug).toHaveBeenCalledWith(expect.objectContaining({
+    expect(capture.events).toContainEqual(expect.objectContaining({
       event: 'plan_rebuild_scheduler_intent_replaced',
       homeId: 'h_annex',
       previousKind: 'signal',
       nextKind: 'hardCap',
     }));
+    capture.restore();
   });
 
   it('arms the scheduler timer under this home key, so its teardown can clear it', async () => {

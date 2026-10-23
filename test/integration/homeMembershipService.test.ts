@@ -1679,7 +1679,7 @@ describe('ui_homes payload', () => {
     const apiLogger = makeLoggerSpy();
     apiLogger.error.mockImplementation(() => { throw new Error('logger unavailable'); });
     homeyWired.app.getApiStructuredLogger = () => apiLogger.logger;
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(noop);
+    const capture = captureLogger('info', []);
     const saveSpy = vi.spyOn(trackerStore, 'save');
     const originalSet = mockHomeyInstance.settings.set.bind(mockHomeyInstance.settings);
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set').mockImplementation((key, value) => {
@@ -1710,11 +1710,13 @@ describe('ui_homes payload', () => {
       event: 'home_tracker_config_commit_failed',
       phase: 'config_compensation',
     }));
-    expect(consoleError).toHaveBeenCalledWith(
-      'settings UI homes config logger failed',
-      expect.objectContaining({ phase: 'config_write' }),
-      expect.any(Error),
-    );
+    expect(capture.events).toContainEqual(expect.objectContaining({
+      event: 'home_tracker_config_commit_failed',
+      module: 'settings-ui/homes-config',
+      phase: 'config_write',
+      loggerErrorMessage: 'logger unavailable',
+    }));
+    capture.restore();
   });
 
   it('leaves tracker state untouched when its reset mutates the store before throwing', () => {

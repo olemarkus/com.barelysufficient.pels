@@ -90,7 +90,6 @@ export function buildSheddingDeps(deps: PlanBuilderDeps, shortfallThresholdKw: n
     powerTracker: deps.getPowerTracker(),
     getShedBehavior: (deviceId) => deps.getShedBehavior(deviceId),
     pendingBinaryCommandStore: deps.pendingBinaryCommandStore,
-    log: (...args: unknown[]) => deps.log(...args),
     structuredLog: deps.structuredLog,
   };
 }

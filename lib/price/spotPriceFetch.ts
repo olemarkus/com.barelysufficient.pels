@@ -10,11 +10,10 @@ export type SpotPriceEntry = {
 export const fetchSpotPricesForDate = async (params: {
   date: Date;
   priceArea: string;
-  log: (...args: unknown[]) => void;
   debugStructured: StructuredDebugEmitter;
   errorLog?: (...args: unknown[]) => void;
 }): Promise<SpotPriceEntry[]> => {
-  const { date, priceArea, log, debugStructured, errorLog } = params;
+  const { date, priceArea, debugStructured, errorLog } = params;
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
@@ -24,7 +23,7 @@ export const fetchSpotPricesForDate = async (params: {
   debugStructured({ event: 'spot_price_fetch_started', url, priceArea });
 
   try {
-    const data = await httpsGetJson(url, { log });
+    const data = await httpsGetJson(url);
 
     if (!Array.isArray(data)) {
       errorLog?.('Spot prices: Unexpected response format');

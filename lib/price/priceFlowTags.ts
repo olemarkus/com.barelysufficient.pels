@@ -15,7 +15,6 @@ export type PriceFlowTagPublisherDeps = {
   homey: { flow: FlowPort };
   getTimeZone: () => string;
   combinedPricesReader: CombinedPricesReader;
-  log: (...args: unknown[]) => void;
   debugStructured: StructuredDebugEmitter;
 };
 

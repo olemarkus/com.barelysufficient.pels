@@ -1,8 +1,9 @@
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter, getLogger } from '../logging/logger';
 import { normalizeError } from '../utils/errorUtils';
 import type { TimerRegistry } from '../utils/timerRegistry';
 
 const adoptionLogger = getLogger('power/sole-meter-adoption');
+const emitAdoptionDebug = getDebugEmitter('power', 'devices');
 
 const TIMER_NAME = 'soleMeterAdoption';
 /**
@@ -298,7 +299,7 @@ export class SoleMeterAdoption {
       return;
     }
     if (step.result === 'propose' || step.result === 'hold') {
-      adoptionLogger.debug({
+      emitAdoptionDebug({
         event: 'sole_meter_adoption_confirmation_pending',
         meterDeviceId: step.meterDeviceId,
         attempt: this.attempt,
@@ -308,7 +309,7 @@ export class SoleMeterAdoption {
       this.scheduleOrGiveUp(step.result === 'hold' ? 'listed_null_grace' : 'confirmation_pending');
       return;
     }
-    adoptionLogger.debug({
+    emitAdoptionDebug({
       event: 'sole_meter_adoption_retry_scheduled',
       reasonCode: step.reasonCode,
       attempt: this.attempt,

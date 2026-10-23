@@ -220,7 +220,6 @@ const buildPerfSummary = (delta: PerfDelta): PerfSummary => {
 export const startPerfLogger = (params: {
   isEnabled: () => boolean;
   logStructured: (payload: Record<string, unknown>) => void;
-  logCpuSpike?: (...args: unknown[]) => void;
   error?: (...args: unknown[]) => void;
   intervalMs?: number;
 }): (() => void) => {
@@ -232,7 +231,7 @@ export const startPerfLogger = (params: {
     const enabled = params.isEnabled();
     if (enabled) {
       if (!stopGcObserver) stopGcObserver = startGcObserver();
-      if (typeof params.logCpuSpike === 'function' && !stopCpuMonitor) {
+      if (!stopCpuMonitor) {
         stopCpuMonitor = startCpuSpikeMonitor({
           isEnabled: params.isEnabled,
         });

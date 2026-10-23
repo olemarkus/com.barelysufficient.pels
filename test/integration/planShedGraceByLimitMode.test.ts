@@ -113,7 +113,6 @@ const buildHarness = (scenario: Scenario) => {
       : withCapacityPace(tracker, scenario.settings, scenario.capacityPaceKw)),
     getDailyBudgetSnapshot: () => (scenario.dailyBudget ? dailyBudgetSnapshot() : null),
     getShedBehavior: () => ({ action: 'turn_off' }),
-    log: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
     decorateDeferredObjectives: decorateWithoutDeferredObjectives,
   }, state);

@@ -52,14 +52,13 @@ import {
   resolveConfidence,
 } from './dailyBudgetConfidenceCache';
 import { resolveDailyBudgetPersistReason } from './dailyBudgetStatePersistence';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter } from '../logging/logger';
 import { resolveStoredPlanBreakdown, type StoredPlanBreakdown } from './dailyBudgetStoredPlanBreakdown';
 
 const DEFAULT_PROFILE = buildDefaultProfile();
-const moduleLogger = getLogger('daily_budget');
-// Hoisted once so `emitDebug` allocates no per-call closure on the (test-only;
-// production always wires `debugStructured`) fallback path.
-const debugFallbackEmit = (payload: Record<string, unknown>): void => moduleLogger.debug(payload);
+// The (test-only; production always wires `debugStructured`) fallback: the same
+// topic-gated channel production wires.
+const debugFallbackEmit = getDebugEmitter('daily_budget', 'daily_budget');
 
 export class DailyBudgetManager {
   private state: DailyBudgetState = {};
@@ -93,7 +92,7 @@ export class DailyBudgetManager {
   constructor(private deps: DailyBudgetManagerDeps) { }
 
   // Topic-gated (`daily_budget`) structured debug for lifecycle events. Falls
-  // back to the module logger at debug level when no emitter is wired (tests).
+  // back to the module's own topic emitter when none is wired (tests).
   private emitDebug(payload: Record<string, unknown>): void {
     (this.deps.debugStructured ?? debugFallbackEmit)(payload);
   }

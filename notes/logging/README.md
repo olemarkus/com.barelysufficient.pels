@@ -48,9 +48,8 @@ shipped: PR #2252 moved `fetchZoneTree` and silently lost `zone_tree_fetch_faile
 `getDebugEmitter('devices', 'devices')`, which keeps them on the topic the owner enables and makes
 them JSON with an `event` field, and its own comment says why it is not a module logger.
 
-`scripts/logging-legacy-allowlist.txt` carries the files that predate the ban, each with a budget
-that may only shrink. `api.ts`'s pre-logger boot `console.error` is exempted by name in the guard
-rather than budgeted, so the list can reach zero and be deleted.
+Every runtime file is clean, so the guard allows no site at all. `api.ts`'s pre-logger boot
+`console.error` is the one exemption, by name in the guard.
 
 ## Current Model
 
@@ -167,9 +166,8 @@ rather than budgeted, so the list can reach zero and be deleted.
   `stepped_load_command_failed`) and the two `*_outcome_unknown` at `warn`. UI snapshot writes,
   startup step/background-task failures, and the main price/overshoot boundary transitions are
   structured and emit. The device/transport lane is done too: its fetch, zone, EV-command,
-  live-feed and power-estimate events emit as JSON on the `devices` topic. What remains is a long
-  tail of entry-point, plan/observer and domain-module sites — see
-  `scripts/logging-legacy-allowlist.txt`.
+  live-feed and power-estimate events emit as JSON on the `devices` topic, and the entry-point,
+  plan/observer and domain-module sites that followed them have migrated as well.
 - Correlation coverage is narrow. Rebuild context exists, but there are no automatic helpers yet
   for `incidentId`, `snapshotId`, `priceRefreshId`, or broader flow-scoped correlation.
 - Event payloads are still stringly typed. There is no central event schema, but the current
@@ -190,8 +188,6 @@ rather than budgeted, so the list can reach zero and be deleted.
   `info`/`warn`/`error`, and `const emitDebug = getDebugEmitter('<component>', '<topic>')` for
   debug payloads. `logger.debug(...)` is banned — it emits nothing. Do not add `structuredLog?` /
   `debugStructured?` to deps types.
-- Drain `scripts/logging-legacy-allowlist.txt`. The executor and device/transport lanes are done;
-  what remains is the entry-point/wiring, plan/observer and domain-module tail.
 
 ## Contributor Guidance
 

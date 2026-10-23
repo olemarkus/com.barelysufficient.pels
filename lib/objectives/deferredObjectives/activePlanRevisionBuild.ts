@@ -30,7 +30,6 @@ import {
   resolveHorizonPriceWatermark,
   resolvePersistedPricesUpTo,
 } from './replanReason';
-import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import type {
   DeferredObjectivePlanRevisionEvent,
@@ -60,7 +59,6 @@ export const reportedPlanStatus = (
 export type ActivePlanPersistDeps = {
   load: () => DeferredObjectiveActivePlansV1 | null;
   save: (plans: DeferredObjectiveActivePlansV1) => void;
-  debugStructured?: StructuredDebugEmitter;
   onRevisionWritten?: (event: DeferredObjectivePlanRevisionEvent) => void;
 };
 

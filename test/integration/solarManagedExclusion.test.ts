@@ -147,7 +147,6 @@ describe('solar device as managed observe-only — control-path exclusion lock',
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' }),
         pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
-        log: () => undefined,
       },
     }, context.nowTs);
     const candidateIds = candidates.map((c) => c.id);

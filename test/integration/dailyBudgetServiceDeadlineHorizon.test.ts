@@ -97,7 +97,6 @@ const buildService = (initialSettings: SettingsStore): {
   });
   const service = new DailyBudgetService({
     getTimeZone: () => TZ,
-    log: () => undefined,
     getPowerTracker: () => ({ buckets: {} }),
     getPriceOptimizationEnabled: () => true,
     getCapacitySettings: () => capacityOnlyPowerLimits(10, 2),

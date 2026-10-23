@@ -14,6 +14,7 @@ import {
   logPowerSourceTransitionIncomplete,
   logSubHomesUnderFlowSource,
 } from '../../lib/home/homeRuntimeRegistryLogs';
+import { captureLogger } from '../utils/loggerCapture';
 
 const createLogger = () => ({
   debug: vi.fn(),
@@ -38,14 +39,19 @@ describe('homeRuntimeRegistryLogs', () => {
   });
 
   it('debug-logs an unknown home id as transient, never as an error', () => {
-    const logger = createLogger();
-    logHomeScopedSettingForUnknownHome(asLogger(logger), 'cabin', 'power_tracker_state');
-    expect(logger.error).not.toHaveBeenCalled();
-    expect(logger.debug.mock.calls[0][0]).toMatchObject({
-      event: 'home_scoped_setting_for_unknown_home',
-      homeId: 'cabin',
-      baseKey: 'power_tracker_state',
-    });
+    const capture = captureLogger('info', ['settings']);
+    try {
+      logHomeScopedSettingForUnknownHome('cabin', 'power_tracker_state');
+      expect(capture.events).toEqual([expect.objectContaining({
+        event: 'home_scoped_setting_for_unknown_home',
+        component: 'homes',
+        debugTopic: 'settings',
+        homeId: 'cabin',
+        baseKey: 'power_tracker_state',
+      })]);
+    } finally {
+      capture.restore();
+    }
   });
 
   it('warns — never errors — when a per-home UI read is classified as unavailable', () => {
@@ -104,7 +110,6 @@ describe('homeRuntimeRegistryLogs', () => {
   it('is a no-op when the homes logger is unavailable', () => {
     expect(() => {
       logSubHomesUnderFlowSource(undefined, 1);
-      logHomeScopedSettingForUnknownHome(undefined, 'cabin', 'capacity_limit_kw');
       logIncompleteIdentityTransition(undefined, home);
       logBundleReplacementFailure(undefined, home, new Error('boom'));
       logPowerSourceTransitionIncomplete(undefined, { generation: 1, powerSource: 'flow', cause: 'freshness_reset' });

@@ -141,7 +141,6 @@ export function createPlanEngineComposition(
     decorateDeferredObjectives: scope.decorateDeferredObjectives,
     resolveTemperatureSetpoints: bindTemperatureSetpoints(scope, ctx),
     pendingBinaryCommandStore,
-    log: (...args: unknown[]) => ctx.log(...args),
   }, state);
   const executor = new PlanExecutor({
     getHomeDisplayName: scope.getHomeDisplayName,

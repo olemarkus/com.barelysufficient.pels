@@ -55,7 +55,7 @@ import {
   WEATHER_ADVISOR_SETTINGS,
 } from './settingsKeys';
 import { incPerfCounters } from './perfCounters';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter, getLogger } from '../logging/logger';
 import { normalizeError } from './errorUtils';
 import {
   createDebouncedSyncScheduler,
@@ -65,6 +65,7 @@ import { createSettingsWriteDedupe } from './settingsWriteDedupe';
 import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 
 const settingsLogger = getLogger('settings');
+const emitSettingsDebug = getDebugEmitter('settings', 'settings');
 export type PriceServiceLike = {
   refreshGridTariffData: (forceRefresh?: boolean) => Promise<void>;
   refreshSpotPrices: (forceRefresh?: boolean) => Promise<void>;
@@ -251,7 +252,7 @@ const buildDailyBudgetSettingsHandlers = (
 const logMalformedHomeSuffix = (key: string): void => {
   const separatorIndex = key.indexOf(':');
   if (separatorIndex === -1 || !isHomeScopableBaseKey(key.slice(0, separatorIndex))) return;
-  settingsLogger.debug({ event: 'home_scoped_settings_key_malformed', settingKey: key });
+  emitSettingsDebug({ event: 'home_scoped_settings_key_malformed', settingKey: key });
 };
 
 export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandler {

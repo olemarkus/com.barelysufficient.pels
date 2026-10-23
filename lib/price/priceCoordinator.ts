@@ -92,7 +92,6 @@ export type PriceCoordinatorDeps = {
   readHubMarket: () => Promise<SettingsUiHubMarketRead>;
   /** Where the hub is on the map, for the Norway settings suggested from it. */
   readHubLocation: () => Promise<HubLocationRead>;
-  log: (...args: unknown[]) => void;
   debugStructured: StructuredDebugEmitter;
   error: (...args: unknown[]) => void;
   structuredLog?: PinoLogger;
@@ -152,7 +151,6 @@ export class PriceCoordinator {
     this.priceService = new PriceService(
       deps.homey,
       {
-        log: deps.log,
         debugStructured: deps.debugStructured,
         errorLog: deps.error,
         structuredLog: deps.structuredLog,

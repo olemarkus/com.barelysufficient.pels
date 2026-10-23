@@ -22,7 +22,6 @@ export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
     homeyWebApiGet: createHomeyWebApiGet(),
     readHubMarket: createHubMarketRead(),
     readHubLocation: readHubCoordinates,
-    log: (...args: unknown[]) => ctx.log(...args),
     debugStructured: getDebugEmitter('price', 'price'),
     error: (...args: unknown[]) => ctx.error(...args),
     structuredLog: ctx.getStructuredLogger('price'),
@@ -57,7 +56,6 @@ export function createPriceFlowTagPublisher(ctx: AppContext): PriceFlowTagPublis
     homey: ctx.homey,
     getTimeZone: () => ctx.getTimeZone(),
     combinedPricesReader: requirePriceCoordinator(ctx).combinedPricesReader,
-    log: (...args: unknown[]) => ctx.log(...args),
     debugStructured: getDebugEmitter('price', 'price'),
   });
 }

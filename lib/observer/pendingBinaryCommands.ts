@@ -30,13 +30,13 @@ import {
   isPendingBinaryCommandActive,
 } from './pendingBinaryCommandTypes';
 import { CONTROL_COMMAND_CONFIRMATION_MS, type PendingBinaryLiveDevice } from '../ports/controlCommandConfirmation';
-import { getLogger } from '../logging/logger';
+import { getDebugEmitter } from '../logging/logger';
 
 export type {
   PendingBinaryCommand,
 } from './pendingBinaryCommandTypes';
 
-const logger = getLogger('observer/pending-binary-commands');
+const emitPendingCommandDebug = getDebugEmitter('observer', 'devices');
 export const RECENT_CONFIRMED_BINARY_OFF_MS = 5 * 60 * 1000;
 
 export type BinaryCommandLifecycleEvent = {
@@ -252,7 +252,7 @@ export class PendingBinaryCommandStore {
     if (isPendingBinaryCommandActive({ pending: entry, nowMs })) return entry;
     delete this.backing[deviceId];
     this.lifecycleTimedOut(deviceId, entry);
-    logger.debug({
+    emitPendingCommandDebug({
       event: 'pending_binary_command_cleared',
       reason: 'stale_age',
       deviceId,
@@ -383,7 +383,7 @@ function reconcilePendingEntry(
   })) {
     store.clear(deviceId);
     store.lifecycleTimedOut(deviceId, pending);
-    logger.debug({
+    emitPendingCommandDebug({
       event: 'pending_binary_command_timed_out',
       deviceId,
       deviceName: liveDevice ? liveDevice.name : undefined,
@@ -430,7 +430,7 @@ function reconcilePendingEntry(
   pending.lastObservedSource = source;
   pending.lastObservedAtMs = observation.observedAtMs;
   /* eslint-enable functional/immutable-data, no-param-reassign */
-  logger.debug({
+  emitPendingCommandDebug({
     event: 'pending_binary_command_waiting',
     deviceId,
     deviceName: liveDevice.name,
@@ -460,7 +460,7 @@ function confirmPendingBinaryCommand(
   });
   store.lifecycleConfirmed(deviceId, pending, observation);
   store.clear(deviceId);
-  logger.debug({
+  emitPendingCommandDebug({
     event: 'pending_binary_command_confirmed',
     deviceId,
     deviceName: liveDevice.name,

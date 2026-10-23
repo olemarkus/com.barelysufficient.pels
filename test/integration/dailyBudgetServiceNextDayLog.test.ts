@@ -101,7 +101,6 @@ const buildHarness = (combinedPricesReader?: CombinedPricesReader) => {
   const debugStructured = vi.fn<StructuredDebugEmitter>();
   const service = new DailyBudgetService({
     getTimeZone: () => TZ,
-    log: () => undefined,
     isDebugTopicEnabled: () => true,
     getPowerTracker: () => tracker.state,
     getPriceOptimizationEnabled: () => true,
