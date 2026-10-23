@@ -88,6 +88,8 @@ describe('isPlanActivelyConverging', () => {
     };
     const summary = {
       ...buildEmptyCapacityStateSummary(),
+      summarySource: 'plan_input' as const,
+      summarySourceAtMs: Date.now(),
       remainingActionableControlledLoad: false,
       remainingReducibleControlledLoad: false,
     };
