@@ -15,6 +15,7 @@ describe('device live feed subscriptions', () => {
   let sockets: ReturnType<typeof createLiveFeedSocketHarness>;
   let feed: DeviceLiveFeed;
   const onCapabilityUpdate = vi.fn();
+  const onDeviceUpdate = vi.fn();
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -23,15 +24,29 @@ describe('device live feed subscriptions', () => {
     feed = createDeviceLiveFeed({
       homey: new Homey.App(),
       logger: { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('live-feed-test') },
-      callbacks: { onDeviceUpdate: vi.fn(), onCapabilityUpdate },
+      callbacks: { onDeviceUpdate, onCapabilityUpdate },
     });
     await feed.start();
   });
 
   afterEach(async () => {
     await feed.stop();
+    onDeviceUpdate.mockClear();
     vi.clearAllTimers();
     vi.useRealTimers();
+  });
+
+  it('passes a device added after boot through the update path', async () => {
+    // Periodic refreshes re-read only known ids, so a car app installed later is
+    // seen first by its creation frame.
+    await settle();
+    const car = { id: 'car-2', name: 'Polestar', class: 'car', capabilities: [], capabilitiesObj: {} };
+
+    sockets.namespace.deliver('homey:manager:devices', 'device.create', car);
+    sockets.namespace.deliver('homey:manager:devices', 'device.delete', car);
+
+    expect(onDeviceUpdate).toHaveBeenCalledTimes(1);
+    expect(onDeviceUpdate).toHaveBeenCalledWith(expect.objectContaining({ id: 'car-2' }));
   });
 
   it('subscribes once when tracked-device updates overlap before acknowledgement', async () => {

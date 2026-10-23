@@ -341,22 +341,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       test drives a device into a zone the cached tree has never seen and asserts it is never
       planned by the wrong home. Source: Codex P1 on PR #2252, 2026-08-31. [P2]
 
-- [ ] **Three EV car-link membership gaps that keep the probe blind to a car.** All three leave a
-      car unobserved rather than mis-observed, so they cap what the probe can measure without
-      corrupting anything. (a) *Cars initially missing a readable plug state are never retained.* A class `car` device
-      whose `ev_charging_state` is absent/malformed on the first authoritative fetch is not tracked
-      at all, so it gets no realtime subscription and no place in targeted reads, and
-      `noteCapabilityUpdate` only accepts already-tracked cars — a later valid value cannot recover
-      it until a full refresh or restart. (b) *Targeted misses ignore `failedIds`.* A by-id read
-      failure is classified separately by the fetch layer but that never reaches the probe's miss
-      counter, so three flaky reads (post-actuation and stuck-command refreshes come in bursts)
-      permanently forget a still-present car; it should use the same count-plus-wall-clock grace as
-      `mergeTargetedRefreshSnapshot`. (c) *Cars created after startup are undiscoverable.* Periodic
-      refreshes are targeted and the live-feed handler ignores `device.create`, so a car app
-      installed later is invisible until a full refresh or restart. Persona: anyone installing a car
-      app after PELS; hypothesis: "the probe logged nothing" reads as "detection failed" rather than
-      "it never saw the device". Source: Codex round 9 on PR #1895. [P2]
-
 - [ ] **Surface "your step flow is not answering" on the device detail.** *Persona:* flow-backed stepped-device
       owner (EV charger) whose `desired_stepped_load_changed` flow is missing, mistargeted, or not reporting back.
       *Hypothesis:* when a flow step command goes stale repeatedly (`stepCommandStatus:'stale'`,

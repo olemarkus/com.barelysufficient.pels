@@ -39,6 +39,22 @@ export const TARGETED_DEVICE_MISS_GRACE_MS = SNAPSHOT_ABANDON_GRACE_MS;
 /** Per-device transient-miss tracking for targeted refreshes. */
 export type TargetedMissState = { misses: number; firstMissMs: number };
 
+/**
+ * One more consecutive targeted miss for a device, and whether it has now been
+ * missing for both enough reads AND long enough to be a genuine removal.
+ */
+export const advanceTargetedMiss = (
+    prior: TargetedMissState | undefined,
+    nowMs: number,
+): { state: TargetedMissState; graceExceeded: boolean } => {
+    const state = { misses: (prior?.misses ?? 0) + 1, firstMissMs: prior?.firstMissMs ?? nowMs };
+    return {
+        state,
+        graceExceeded: state.misses >= TARGETED_DEVICE_MISS_GRACE_READS
+            && (nowMs - state.firstMissMs) >= TARGETED_DEVICE_MISS_GRACE_MS,
+    };
+};
+
 export type TargetedRefreshMergeResult = {
     /** The committed snapshot: present (updated) + within-grace retained. */
     snapshot: TransportDeviceSnapshot[];
@@ -99,11 +115,7 @@ export function mergeTargetedRefreshSnapshot(params: {
             continue;
         }
         // Network miss this cycle: advance the consecutive-miss state.
-        const prior = missByDeviceId.get(previous.id);
-        const misses = (prior?.misses ?? 0) + 1;
-        const firstMissMs = prior?.firstMissMs ?? nowMs;
-        const graceExceeded = misses >= TARGETED_DEVICE_MISS_GRACE_READS
-            && (nowMs - firstMissMs) >= TARGETED_DEVICE_MISS_GRACE_MS;
+        const { state, graceExceeded } = advanceTargetedMiss(missByDeviceId.get(previous.id), nowMs);
         if (graceExceeded) {
             // Genuine removal: drop from the snapshot (the caller prunes the
             // projection to match) and clear the counter as it leaves.
@@ -112,7 +124,7 @@ export function mergeTargetedRefreshSnapshot(params: {
             continue;
         }
         // Within grace: retain the prior entry, keep advancing the counter.
-        missByDeviceId.set(previous.id, { misses, firstMissMs });
+        missByDeviceId.set(previous.id, state);
         snapshot.push(previous);
     }
     return { snapshot, graceExceededIds };

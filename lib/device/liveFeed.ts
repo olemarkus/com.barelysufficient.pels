@@ -43,6 +43,14 @@ import { getDebugEmitter } from '../logging/logger';
 
 const DEVICES_URI = 'homey:manager:devices';
 const DEVICE_UPDATE_EVENT = 'device.update';
+/**
+ * A device added to Homey after boot. Its payload is a full device like an
+ * update's, and it takes the update path: periodic refreshes re-read only known
+ * ids, so without it a car app installed later stayed invisible to the car-link
+ * probe until a full refresh or a restart. A device outside the snapshot is
+ * already the common case on that path, since the feed carries every device.
+ */
+const DEVICE_CREATE_EVENT = 'device.create';
 const DEVICE_CAPABILITY_EVENT = 'capability';
 const DEVICE_URI_PREFIX = 'homey:device:';
 const HANDSHAKE_TIMEOUT_MS = 15_000;
@@ -388,7 +396,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
       this.health.lastLiveEventMs = Date.now();
       this.quietEmittedAt = null;
       // Cheapest discriminator first.
-      if (eventName !== DEVICE_UPDATE_EVENT) {
+      if (eventName !== DEVICE_UPDATE_EVENT && eventName !== DEVICE_CREATE_EVENT) {
         this.health.ignoredLiveEventCount += 1;
         // `devices`-topic DEBUG, not info. The feed emits a `capability.create`/`capability.delete`
         // pair per refresh by design — 548 of each in a 12 h window — so this is
