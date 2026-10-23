@@ -137,6 +137,34 @@ describe('savePowerSourceSetting', () => {
     expect(showToast).toHaveBeenCalledWith('Power source saved.', 'ok');
   });
 
+  it('saves Flow chosen on a fresh install, where nothing was set yet', async () => {
+    // The select opens on "Not set" rather than a preselected Flow card, so
+    // choosing Flow is a real change, and it is persisted rather than implied.
+    const { capacity, select, callApi } = await loadCapacityModule({
+      persistedSource: undefined,
+      saveResult: async () => ({ ok: true }),
+    });
+    select.value = 'flow';
+
+    await capacity.savePowerSourceSetting();
+
+    expect(callApi).toHaveBeenCalledWith(
+      'POST', '/ui_homes_save', { op: 'set_power_source', source: 'flow' },
+    );
+  });
+
+  it('never posts the "Not set" placeholder', async () => {
+    const { capacity, select, callApi } = await loadCapacityModule({
+      persistedSource: undefined,
+      saveResult: async () => ({ ok: true }),
+    });
+    select.value = capacity.POWER_SOURCE_NOT_SET_VALUE;
+
+    await capacity.savePowerSourceSetting();
+
+    expect(callApi).not.toHaveBeenCalledWith('POST', '/ui_homes_save', expect.anything());
+  });
+
   it('rejects a malformed truthy save response instead of reporting success', async () => {
     const {
       capacity, select, applySettingsPatch, showToast, showToastError,

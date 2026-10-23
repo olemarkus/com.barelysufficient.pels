@@ -36,6 +36,14 @@ import { ERROR_DURATION_MS, showToast, showToastError } from './toast.ts';
 // source (same discipline as the Whole-home meter picker).
 let powerSourceWriteInFlight = false;
 
+/**
+ * The select's placeholder while no source has been chosen (`index.html`).
+ * Unset runs as Flow, but showing "Flow card" there made the choice look made,
+ * and picking the option already on screen fired no change, so Flow could not
+ * be saved. A persisted source paints over it; it is never posted.
+ */
+export const POWER_SOURCE_NOT_SET_VALUE = '__pels_power_source_unset__';
+
 const rollbackPowerSourceSelect = (source: PowerSource): void => {
   if (settingsPowerSourceSelect) settingsPowerSourceSelect.value = source;
   syncHomeyEnergyMeterVisibility(source);
@@ -154,7 +162,7 @@ const settleRefusedPowerSourceSave = async (
  */
 export const savePowerSourceSetting = async (): Promise<void> => {
   const select = settingsPowerSourceSelect;
-  if (!select || powerSourceWriteInFlight) return;
+  if (!select || powerSourceWriteInFlight || select.value === POWER_SOURCE_NOT_SET_VALUE) return;
   const next = normalizePowerSource(select.value);
   // Homey Energy persists atomically WITH the meter it will read. With no
   // meter chosen yet, the switch stays a DRAFT: reveal the picker and say
