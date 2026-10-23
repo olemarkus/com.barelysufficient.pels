@@ -594,7 +594,6 @@ export type ObservedDeviceState = {
      */
     available: boolean;
     lastFreshDataMs?: number;
-    lastLocalWriteMs?: number;
     lastUpdated?: number;
 };
 

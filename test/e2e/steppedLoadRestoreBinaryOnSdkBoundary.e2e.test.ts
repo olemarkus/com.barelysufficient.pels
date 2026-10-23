@@ -73,7 +73,6 @@ const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
   isPowerCapable: isDevicePowerCapable,
   // No restart in these specs: nothing was restored.
   getRestoredPowerReading: () => undefined,
-  resolveLatestLocalWriteMs: () => undefined,
 });
 
 // `absent`        → the onoff capability value is missing (a should-never-happen

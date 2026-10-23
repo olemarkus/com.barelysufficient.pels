@@ -94,7 +94,6 @@ export type DeviceTransportParseDeps = {
     ) => boolean;
     /** The reading the retained-power store restored for a device (`retainedPowerPersistence.ts`). */
     getRestoredPowerReading: (deviceId: string) => RetainedPowerReading | undefined;
-    resolveLatestLocalWriteMs: (deviceId: string) => number | undefined;
 };
 
 /**

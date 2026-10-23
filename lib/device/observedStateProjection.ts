@@ -80,7 +80,6 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Project
         };
     }
     if (snapshot.lastFreshDataMs !== undefined) projected.lastFreshDataMs = snapshot.lastFreshDataMs;
-    if (snapshot.lastLocalWriteMs !== undefined) projected.lastLocalWriteMs = snapshot.lastLocalWriteMs;
     if (snapshot.lastUpdated !== undefined) projected.lastUpdated = snapshot.lastUpdated;
     return projected;
 }

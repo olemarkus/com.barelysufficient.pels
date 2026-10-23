@@ -156,22 +156,13 @@ export function recordCapabilityObservation(params: {
     }
     const resolvedSnapshot = snapshot ?? latestSnapshot.find((entry) => entry.id === deviceId);
     if (!resolvedSnapshot) return;
-    if (source === 'local_write') {
-        updateLocalWriteTimestamps(state, latestSnapshot, deviceId, observedAt, resolvedSnapshot);
-        return;
-    }
+    // PELS's own write is not news about the device: it moves no freshness stamp.
+    if (source === 'local_write') return;
     if (!countsTowardDeviceFreshness) return;
     resolvedSnapshot.lastFreshDataMs = Math.max(resolvedSnapshot.lastFreshDataMs ?? 0, observedAt);
     resolvedSnapshot.lastUpdated = resolvedSnapshot.lastFreshDataMs;
 }
 /* eslint-enable functional/immutable-data */
-
-export function resolveLatestLocalWriteMs(
-    state: DeviceTransportObservationState,
-    deviceId: string,
-): number | undefined {
-    return state.latestLocalWriteMsByDeviceId.get(deviceId);
-}
 
 function recordSnapshotControlObservation(options: RecordSnapshotObservationOptions): boolean {
     const {
@@ -275,23 +266,3 @@ function recordSnapshotScalarObservation(
     return true;
 }
 
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-function updateLocalWriteTimestamps(
-    state: DeviceTransportObservationState,
-    latestSnapshot: TransportDeviceSnapshot[],
-    deviceId: string,
-    observedAt: number,
-    snapshot?: TransportDeviceSnapshot,
-): void {
-    const resolvedSnapshot = snapshot ?? latestSnapshot.find((entry) => entry.id === deviceId);
-    if (resolvedSnapshot) {
-        resolvedSnapshot.lastLocalWriteMs = (
-            Math.max(resolvedSnapshot.lastLocalWriteMs ?? 0, observedAt) || undefined
-        );
-    }
-    state.latestLocalWriteMsByDeviceId.set(
-        deviceId,
-        Math.max(state.latestLocalWriteMsByDeviceId.get(deviceId) ?? 0, observedAt),
-    );
-}
-/* eslint-enable functional/immutable-data */

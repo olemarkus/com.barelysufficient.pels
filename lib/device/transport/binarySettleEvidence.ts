@@ -76,12 +76,13 @@ export class BinarySettleEvidenceService {
     if (snapshot) delete snapshot.binaryControlObservation;
     return removed;
 }
+    /** Whether it discarded an observation, which the observer projection must then lose too. */
     clearInvalidControlPayload(
         deviceId: string,
         capabilityId: string,
-    ): void {
+    ): boolean {
     const existing = this.observationState.getBinarySettleEvidence(deviceId);
-    if (!existing || existing.capabilityId !== capabilityId) return;
+    if (!existing || existing.capabilityId !== capabilityId) return false;
     this.clearBinarySettleEvidence(deviceId);
     this.logger.structuredLog.error({
         event: 'binary_settle_evidence_cleared',
@@ -90,6 +91,7 @@ export class BinarySettleEvidenceService {
         capabilityId,
         source: 'realtime_capability',
     });
+    return true;
 }
 
     private upsertBinarySettleEvidence(

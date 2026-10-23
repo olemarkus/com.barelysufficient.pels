@@ -193,10 +193,6 @@ function mergeSnapshotObservationsForDevice(
     snapshot: TransportDeviceSnapshot,
     sourceDevice: HomeyDeviceLike,
 ): void {
-    snapshot.lastLocalWriteMs = Math.max(
-        snapshot.lastLocalWriteMs ?? 0,
-        previous.lastLocalWriteMs ?? 0,
-    ) || undefined;
     snapshot.lastFreshDataMs = Math.max(
         snapshot.lastFreshDataMs ?? 0,
         previous.lastFreshDataMs ?? 0,

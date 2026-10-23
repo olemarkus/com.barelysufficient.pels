@@ -612,7 +612,6 @@ export type PlanInputDeviceBase = {
   budgetExempt: boolean;
   /** Producer-resolved device reachability; absence is not a planner state. */
   available: boolean;
-  lastLocalWriteMs?: number;
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;
   // No binary pending-command pair. Every consumer that decides on in-flight
@@ -894,7 +893,7 @@ export type PlanDeviceCarriedKey =
   | 'controllable' | 'desiredStepId'
   | 'evCharging' | 'evChargingObservedAtMs' | 'evChargingStateObservedAtMs'
   | 'expectedPowerKw' | 'expectedPowerSource'
-  | 'id' | 'lastFreshDataMs' | 'lastLocalWriteMs' | 'lastStepCommandIssuedAt'
+  | 'id' | 'lastFreshDataMs' | 'lastStepCommandIssuedAt'
   | 'lastUpdated' | 'managed' | 'measuredPowerObservedAtMs' | 'name'
   | 'nextStepCommandRetryAtMs' | 'planningPowerKw' | 'powerCapable'
   | 'previousStepId' | 'priority' | 'reportedStepId' | 'reportedStepObservedAtMs'

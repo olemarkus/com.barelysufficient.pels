@@ -101,8 +101,7 @@ helpers. The observer was created but never handed the observation contract.
    the cluster through the `ReportedStepObservedProbe` widening; stepped-observed
    slice of the discriminated-types refactor),
    `binaryControlObservation`, `available`,
-   `lastFreshDataMs`/`lastLocalWriteMs`/
-   `lastUpdated`, plus the observed `targets` value. This is the consolidated truth
+   `lastFreshDataMs`/`lastUpdated`, plus the observed `targets` value. This is the consolidated truth
    plan/executor decide on.
 2. **`DeviceDescriptor` → a descriptor read (NOT observer)** (static-ish): identity +
    config + capabilities — `controlModel`, semantic binary-control availability, `controlAdapter`,
@@ -354,7 +353,7 @@ store, because:
    did. `handleRealtimeDeviceUpdateEvent` now dispatches for the device when the commit
    flipped `available` and nothing else was emitted, so the executor no longer keeps
    writing to a device Homey marked unreachable (or skips one that came back) for up to
-   a poll interval. (The executor reads none of `lastFreshDataMs`, `lastLocalWriteMs`,
+   a poll interval. (The executor reads none of `lastFreshDataMs`,
    `binaryControlObservation` or the `*ObservedAtMs` stamps, so their dispatch behaviour
    is not load-bearing here.) The descriptor half is the transport's
    own truth, so it has no faithfulness question — but it had a LEAK question, found
