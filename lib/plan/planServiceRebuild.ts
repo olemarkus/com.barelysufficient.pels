@@ -108,7 +108,7 @@ export async function performPlanRebuild(
           ...buildPlanHeadroomLogFields(host.getLatestPlanSnapshot()),
           ...buildPublishedPlanCapacityStateSummary(host.getLatestPublishedPlan()),
         };
-        if (logAtInfo) host.deps.loggers.structuredLog.info(event);
+        if (logAtInfo) host.deps.structuredLog.info(event);
         else emitPlanDebug(event);
       }
     }
@@ -136,7 +136,7 @@ async function executePlanRebuild(
   const hadShedding = hasShedding(stampedPlan);
 
   if (isDryRun && hadShedding) {
-    host.deps.loggers.structuredLog.info({
+    host.deps.structuredLog.info({
       event: 'shedding_dry_run_skipped',
       message: 'Dry run: shedding planned but not executed',
     });
@@ -305,7 +305,7 @@ async function maybeApplyPlanChanges(
     }
     refreshLatestPlanSnapshotPendingState(host);
   } catch (error) {
-    host.deps.loggers.structuredLog.error({
+    host.deps.structuredLog.error({
       event: 'plan_actions_apply_failed',
       error: normalizeError(error),
     });

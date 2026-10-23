@@ -913,40 +913,20 @@ Design-of-record: `notes/web-app.md`.
       before moving them. Done when the seam takes a named argument, all four callbacks are bound at
       construction, and `runPowerSample` builds no closures per sample. Found 2026-09-01. [P2]
 
-- [ ] **The topic-gated debug emitter is still threaded through parameter objects that never use
-      it.** `getDebugEmitter(component, topic)` (`lib/logging/logger.ts`) is the ambient way to
-      reach the channel, and `getStructuredDebugEmitter` is now the same emitter under the wiring's
-      name — so dropping a threaded `debugStructured` parameter changes nothing about what a file
-      emits. What remains is the deletion. Most declarations belong to files that only forward the
-      emitter to a callee. `lib/plan/restore/**` is done and is the worked example: once
-      `emitRestoreDebugEventOnChange` and `emitSwapDebug` resolved their own emitters, every
-      forward above them was dead and came out, `RestoreDeps.debugStructured` included — ten
-      declarations for two terminal readers.
-      `lib/plan/shedding/**`, `lib/device/**`, `lib/objectives/**`, `lib/dailyBudget` and the
-      `lib/plan` builder with `planTargetControl.ts` are done too. The daily-budget manager keeps
-      its emitter and gate as required injected deps, because the Budget Adjust candidate it also
-      runs must stay silent.
-      Fix, one cluster per PR, leaf-first — last
-      `setup/**` + `flowCards/**` with the `Loggers` type: replace the parameter with a module-scope
-      `getDebugEmitter(...)`, delete the field from that file's parameter types and from every
-      intermediate that only forwarded it, and delete the fallbacks of the form
-      `debugStructured ?? (p) => moduleLogger.debug(p)` — those emit nothing in production, because
-      the pino root runs at `info`, and they are what make the optional parameter look free. Some
-      use a local `logger` rather than `moduleLogger`, so grep the `??` rather than the literal. In specs, the
-      `captureDebugTopic(topic)` (`test/utils/loggerCapture.ts`) replaces the `debugStructured` spy.
-      Diagnostics and idle classification now resolve their emitters at the leaves.
-      Two invariants every cluster must hold. **`component` and `topic` stay separate arguments**:
-      `devices` events are emitted under `devices`, `reconcile`, and `snapshot`, and Flow-card
-      settings events are `component: 'flow'` on topic `settings`. And **a gate must name the same
-      topic as the sink it guards**, through `isDebugTopicEnabled(topic)`.
-      The threaded predicates that shadow the topic set go with the parameter: the closures in
-      `app.ts` and `setup/homeRuntime/createHomeCapacityBundle.ts` feeding
-      `SchedulerTelemetryObserver`, and the one in `setup/backgroundTasksController.ts` feeding
-      `perfLogging`. Each is a second spelling of
-      `isDebugTopicEnabled`, which reads the one published set.
-      Done when `grep -rn 'debugStructured?:' app.ts lib setup flowCards drivers` returns nothing,
-      those predicates are gone with it, and the distinct `(component, debugTopic)` pairs in a
-      production log are unchanged before and after. [P2]
+- [ ] **The price and power sources still thread the debug emitter as a required parameter.**
+      Every other cluster now resolves `getDebugEmitter(component, topic)` at its terminal reader
+      (`lib/logging/logger.ts`), and specs read a topic through `captureDebugTopic(topic)`
+      (`test/utils/loggerCapture.ts`). What remains is `lib/price` on `('price', 'price')`, wired
+      by `setup/appInit/priceServices.ts` through `priceServiceLoggingSinks.ts`,
+      `priceCoordinator.ts`, `priceFlowTags.ts`, `spotPriceFetch.ts`, `homeyEnergyRefresh.ts`,
+      `gridTariffUtils.ts` and `priceServiceFlowHelpers.ts`; `lib/power/sampleIngest.ts` on
+      `('perf', 'perf')` (wired by `homeTrackerPersistence.ts`); and the two meter polls
+      `lib/power/sources/generationPoll.ts` and `homeyEnergyPoll.ts` on `('devices', 'devices')`.
+      The fields are required, so `grep 'debugStructured?:'` no longer finds them.
+      **What changes:** resolve the emitter at each terminal reader and delete the field from every
+      type that only forwarded it, keeping each (component, topic) pair unchanged.
+      **Done when:** `git grep debugStructured -- lib/price lib/power setup/appInit` finds no
+      parameter or field. [P2]
 - [ ] **Each power limit is a loose nullable, and readers re-derive which nulls mean "off".**
       The capacity, grid and daily axes and the binding limit travel as separate `number | null`
       fields: `PlanLimits` (`softLimit`, `softLimitSource`, `capacitySoftLimit`,

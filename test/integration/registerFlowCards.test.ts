@@ -1,3 +1,4 @@
+import { captureDebugTopic } from '../utils/loggerCapture';
 import { registerFlowCards, type FlowCardDeps } from '../../flowCards/registerFlowCards';
 import { readAllObjectives } from '../../lib/objectives/deferredObjectives/objectiveStore';
 import {
@@ -147,7 +148,6 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
       (): ReturnType<FlowCardDeps['getStructuredLogger']> =>
         ({ info: structuredInfo, warn: structuredWarn, error: structuredError }) as unknown as ReturnType<FlowCardDeps['getStructuredLogger']>,
     ),
-    debugStructured: vi.fn(),
     upsertDeferredObjectiveForDevice: vi.fn(() => ({ persisted: true }) as const),
     clearDeferredObjectiveForDevice: vi.fn(() => ({ persisted: true }) as const),
     deferredObjectiveStatusBus: createDeferredObjectiveStatusBus(),
@@ -553,6 +553,7 @@ describe('registerFlowCards', () => {
     ])('has_headroom_for_device logs the reading it decided on (%o)', async (headroom, powerLimitKw, currentPowerKw) => {
       // The limit and the total come off the one headroom read, so the line
       // cannot pair the decision with a later reading.
+      const flowDebug = captureDebugTopic('settings');
       const getHeadroom = vi.fn(() => headroom);
       const { deps, actionListeners } = buildDeps({
         getHeadroom,
@@ -564,7 +565,7 @@ describe('registerFlowCards', () => {
 
       await actionListeners.has_headroom_for_device({ device: { id: 'dev-1' }, required_kw: 1 });
       expect(getHeadroom).toHaveBeenCalledTimes(1);
-      expect(deps.debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      expect(flowDebug.events()).toContainEqual(expect.objectContaining({
         event: 'headroom_for_device_checked',
         powerLimitKw,
         currentPowerKw,
@@ -1040,6 +1041,7 @@ describe('registerFlowCards', () => {
   });
 
   it('accepts EV charger battery reports when the post-report snapshot lookup fails', async () => {
+    const flowDebug = captureDebugTopic('settings');
     const { deps, actionListeners, structuredInfo } = buildDeps({
       getSnapshot: vi.fn()
         .mockResolvedValueOnce([
@@ -1065,7 +1067,7 @@ describe('registerFlowCards', () => {
       // level — the report itself may have succeeded.
       batteryLevel: null,
     }));
-    expect(deps.debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(flowDebug.events()).toContainEqual(expect.objectContaining({
       event: 'ev_charger_snapshot_reload_failed',
       deviceId: 'ev-1',
     }));

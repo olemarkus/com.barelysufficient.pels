@@ -64,7 +64,7 @@ describe('resolved device control composition and command lifecycle', () => {
       steppedLoadProfile: resolveEvTargetPowerConfirmedProfile(config, 1380) });
     const stores = steppedStoresForTest();
     const helpers = createDeviceControlHelpersForTest(() => [snapshot], stores, () => config,
-      () => true, () => {}, () => null, { structuredLog: testLogger });
+      () => true, () => {}, () => null, testLogger);
     helpers.markSteppedLoadDesiredStepIssued({ deviceId: snapshot.id, desiredStepId: '8a',
       previousStepId: '6a', issuedAtMs: 1000 });
     expect(stores.store.getDesired(snapshot.id)?.targetPowerProbeConfirmedMaxPowerW).toBe(1380);
@@ -91,7 +91,7 @@ describe('resolved device control composition and command lifecycle', () => {
     const stores = steppedStoresForTest();
     const update = vi.fn(() => true);
     const helpers = createDeviceControlHelpersForTest(() => [snapshot], stores, () => config,
-      update, () => {}, () => null, { structuredLog: testLogger });
+      update, () => {}, () => null, testLogger);
     helpers.markSteppedLoadDesiredStepIssued({ deviceId: snapshot.id, desiredStepId: '8a',
       previousStepId: '6a', issuedAtMs: 1000 });
     expect(stores.store.getDesired(snapshot.id)?.planningPowerW).toBe(1840);
@@ -138,7 +138,7 @@ describe('resolved device control composition and command lifecycle', () => {
         config = { ...config, reachability };
         return true;
       }, () => {}, () => null,
-      { structuredLog: { info: vi.fn(), warn: vi.fn() } as never, debugStructured: vi.fn() },
+      { info: vi.fn(), warn: vi.fn() } as never,
     );
     helpers.markSteppedLoadDesiredStepIssued({
       deviceId: 'dev-1',
@@ -194,7 +194,7 @@ describe('resolved device control composition and command lifecycle', () => {
         config = { ...config, reachability };
         return true;
       }, () => {}, () => null,
-      { structuredLog: { info: vi.fn(), warn: vi.fn() } as never, debugStructured: vi.fn() },
+      { info: vi.fn(), warn: vi.fn() } as never,
     );
     helpers.markSteppedLoadDesiredStepIssued({
       deviceId: 'dev-1',
@@ -247,7 +247,7 @@ describe('resolved device control composition and command lifecycle', () => {
         config = { ...config, reachability };
         return true;
       }, () => {}, () => null,
-      { structuredLog: { info: vi.fn(), warn: vi.fn() } as never, debugStructured: vi.fn() },
+      { info: vi.fn(), warn: vi.fn() } as never,
     );
     helpers.markSteppedLoadDesiredStepIssued({
       deviceId: 'dev-1',
@@ -301,7 +301,7 @@ describe('resolved device control composition and command lifecycle', () => {
     const helpers = createDeviceControlHelpersForTest(
       () => [snapshot], stores, () => config,
       () => false, () => {}, () => null,
-      { structuredLog: { info: vi.fn(), warn: vi.fn() } as never, debugStructured: vi.fn() },
+      { info: vi.fn(), warn: vi.fn() } as never,
     );
     helpers.markSteppedLoadDesiredStepIssued({
       deviceId: 'dev-1',
@@ -342,7 +342,7 @@ describe('resolved device control composition and command lifecycle', () => {
     const helpers = createDeviceControlHelpersForTest(
       () => [snapshot], stores, () => config,
       () => false, () => {}, () => null,
-      { structuredLog: { info: vi.fn(), warn: vi.fn() } as never, debugStructured: vi.fn() },
+      { info: vi.fn(), warn: vi.fn() } as never,
     );
 
     helpers.markSteppedLoadDesiredStepIssued({
@@ -388,7 +388,7 @@ describe('resolved device control composition and command lifecycle', () => {
         config = { ...config, reachability };
         return true;
       }, () => {}, () => null,
-      { structuredLog: { info: vi.fn(), warn: vi.fn() } as never, debugStructured: vi.fn() },
+      { info: vi.fn(), warn: vi.fn() } as never,
     );
 
     helpers.markSteppedLoadDesiredStepIssued({
@@ -433,7 +433,7 @@ describe('resolved device control composition and command lifecycle', () => {
     const helpers = createDeviceControlHelpersForTest(
       () => [snapshot], stores, () => config,
       vi.fn(() => false), () => {}, () => null,
-      { structuredLog: { info: vi.fn(), warn: vi.fn() } as never, debugStructured: vi.fn() },
+      { info: vi.fn(), warn: vi.fn() } as never,
     );
 
     helpers.markSteppedLoadDesiredStepIssued({
@@ -474,7 +474,7 @@ describe('resolved device control composition and command lifecycle', () => {
         config = { ...config, reachability };
         return true;
       }, scheduleTargetPowerProbeSettlement, () => null,
-      { structuredLog: { info: vi.fn(), warn: vi.fn() } as never, debugStructured: vi.fn() },
+      { info: vi.fn(), warn: vi.fn() } as never,
     );
 
     helpers.markSteppedLoadDesiredStepIssued({
@@ -512,7 +512,7 @@ describe('resolved device control composition and command lifecycle', () => {
       steppedLoadProfile: resolveEvTargetPowerConfirmedProfile(config, 1_380) });
     const stores = steppedStoresForTest();
     const helpers = createDeviceControlHelpersForTest(() => [snapshot], stores, () => config,
-      () => true, () => {}, () => null, { structuredLog: testLogger });
+      () => true, () => {}, () => null, testLogger);
     helpers.markSteppedLoadDesiredStepIssued({ deviceId: snapshot.id, desiredStepId: '8a',
       previousStepId: '6a', issuedAtMs: 1_000, unacknowledged: true });
     helpers.reconcileTargetPowerReachability([snapshot], 1_100);
@@ -553,7 +553,7 @@ describe('resolved device control composition and command lifecycle', () => {
         config = { ...config, reachability };
         return true;
       }, scheduleTargetPowerProbeSettlement, () => null,
-      { structuredLog: { info: vi.fn(), warn: vi.fn() } as never, debugStructured: vi.fn() },
+      { info: vi.fn(), warn: vi.fn() } as never,
     );
 
     helpers.markSteppedLoadDesiredStepIssued({
@@ -611,7 +611,7 @@ describe('resolved device control composition and command lifecycle', () => {
         config = { ...config, reachability };
         return true;
       }, () => {}, () => null,
-      { structuredLog: { info: vi.fn(), warn: vi.fn() } as never, debugStructured: vi.fn() },
+      { info: vi.fn(), warn: vi.fn() } as never,
     );
     const dateNow = vi.spyOn(Date, 'now').mockReturnValue(2_000);
 
@@ -644,7 +644,7 @@ describe('resolved device control composition and command lifecycle', () => {
     const stores = steppedStoresForTest();
     const helpers = createDeviceControlHelpersForTest(
       () => [snapshot], stores, () => config, () => true, () => {}, () => null,
-      { structuredLog: { info: vi.fn(), warn: vi.fn() } as never, debugStructured: vi.fn() },
+      { info: vi.fn(), warn: vi.fn() } as never,
     );
     helpers.markSteppedLoadDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: stepId, issuedAtMs: 1_000 });
     const dateNow = vi.spyOn(Date, 'now').mockReturnValue(2_000);
@@ -671,7 +671,7 @@ describe('resolved device control composition and command lifecycle', () => {
     });
     const stores = steppedStoresForTest();
     const helpers = createDeviceControlHelpersForTest(
-      () => [snapshot], stores, () => config, () => true, () => {}, () => null, { structuredLog: testLogger, debugStructured: vi.fn() },
+      () => [snapshot], stores, () => config, () => true, () => {}, () => null, testLogger,
     );
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', '16a', 3_000)).toBe('invalid');
@@ -690,7 +690,7 @@ describe('resolved device control composition and command lifecycle', () => {
           desiredStepId: 'low',
         }],
       } as never),
-      { structuredLog: structuredLogger as never, debugStructured: vi.fn() },
+      structuredLogger as never,
     );
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
@@ -733,7 +733,7 @@ describe('resolved device control composition and command lifecycle', () => {
     const helpers = createDeviceControlHelpersForTest(
       () => snapshots, stores, () => undefined,
       () => false, () => {}, () => ({ devices: [] } as never),
-      { structuredLog: structuredLogger as never, debugStructured: vi.fn() },
+      structuredLogger as never,
     );
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
@@ -753,7 +753,7 @@ describe('resolved device control composition and command lifecycle', () => {
     const helpers = createDeviceControlHelpersForTest(
       () => snapshots, stores, () => undefined,
       () => false, () => {}, () => null,
-      { structuredLog: testLogger, debugStructured: vi.fn() },
+      testLogger,
     );
 
     expect(helpers.getSteppedLoadProfile('dev-1')).toBe(steppedProfiles['dev-1']);
@@ -774,7 +774,7 @@ describe('resolved device control composition and command lifecycle', () => {
     const helpers = createDeviceControlHelpersForTest(
       () => snapshots, stores, () => undefined,
       () => false, () => {}, () => null,
-      { structuredLog: testLogger, debugStructured: vi.fn() },
+      testLogger,
     );
 
     expect(helpers.getSteppedLoadProfile('dev-1')).toBeNull();
@@ -796,7 +796,7 @@ describe('resolved device control composition and command lifecycle', () => {
           desiredStepId: 'low',
         }],
       } as never),
-      { structuredLog: structuredLogger as never, debugStructured: vi.fn() },
+      structuredLogger as never,
     );
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
@@ -828,7 +828,7 @@ describe('resolved device control composition and command lifecycle', () => {
           desiredStepId: 'low',
         }],
       } as never),
-      { structuredLog: structuredLogger as never, debugStructured: vi.fn() },
+      structuredLogger as never,
     );
 
     helpers.markSteppedLoadDesiredStepIssued({
@@ -879,7 +879,7 @@ describe('resolved device control composition and command lifecycle', () => {
           desiredStepId: 'low',
         }],
       } as never),
-      { structuredLog: { info: vi.fn() } as never, debugStructured: vi.fn() },
+      { info: vi.fn() } as never,
     );
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
@@ -912,7 +912,7 @@ describe('resolved device control composition and command lifecycle', () => {
     const helpers = createDeviceControlHelpersForTest(
       () => snapshots, stores, () => undefined,
       () => false, () => {}, () => null,
-      { structuredLog: structuredLogger as never, debugStructured: vi.fn() },
+      structuredLogger as never,
     );
 
     helpers.markSteppedLoadDesiredStepIssued({
@@ -962,7 +962,7 @@ describe('resolved device control composition and command lifecycle', () => {
     const helpers = createDeviceControlHelpersForTest(
       () => [snapshotHolder.current], stores, () => undefined,
       () => false, () => {}, () => null,
-      { structuredLog: { info: vi.fn() } as never, debugStructured: vi.fn() },
+      { info: vi.fn() } as never,
     );
 
     helpers.markSteppedLoadDesiredStepIssued({
@@ -1010,7 +1010,7 @@ describe('resolved device control composition and command lifecycle', () => {
       () => false, () => {}, () => ({
         devices: [{ id: 'dev-1', desiredStepId: 'max' }],
       } as never),
-      { structuredLog: { info: vi.fn() } as never, debugStructured: vi.fn() },
+      { info: vi.fn() } as never,
     );
 
     // An off-step report while off is admitted; plan-target preservation seeds
@@ -1041,7 +1041,7 @@ describe('resolved device control composition and command lifecycle', () => {
     const helpers = createDeviceControlHelpersForTest(
       () => snapshots, stores, () => undefined,
       () => false, () => {}, () => null,
-      { structuredLog: { info: vi.fn() } as never, debugStructured: vi.fn() },
+      { info: vi.fn() } as never,
     );
 
     helpers.markSteppedLoadDesiredStepIssued({
@@ -1078,7 +1078,7 @@ describe('resolved device control composition and command lifecycle', () => {
       () => false, () => {}, () => ({
         devices: [{ id: 'dev-1', desiredStepId: 'max' }],
       } as never),
-      { structuredLog: { info: vi.fn() } as never, debugStructured: vi.fn() },
+      { info: vi.fn() } as never,
     );
 
     helpers.markSteppedLoadDesiredStepIssued({
@@ -1106,7 +1106,7 @@ describe('resolved device control composition and command lifecycle', () => {
     const helpers = createDeviceControlHelpersForTest(
       () => snapshots, stores, () => undefined,
       () => false, () => {}, () => null,
-      { structuredLog: { info: vi.fn() } as never, debugStructured: vi.fn() },
+      { info: vi.fn() } as never,
     );
 
     helpers.markSteppedLoadDesiredStepIssued({
@@ -1146,7 +1146,7 @@ describe('resolved device control composition and command lifecycle', () => {
       () => false, () => {}, () => ({
         devices: [{ id: 'dev-1', desiredStepId: 'low' }],
       } as never),
-      { structuredLog: { info: vi.fn() } as never, debugStructured: vi.fn() },
+      { info: vi.fn() } as never,
     );
 
     helpers.markSteppedLoadDesiredStepIssued({
@@ -1179,7 +1179,7 @@ describe('resolved device control composition and command lifecycle', () => {
     const helpers = createDeviceControlHelpersForTest(
       () => snapshots, stores, () => undefined,
       () => false, () => {}, () => null,
-      { structuredLog: { info: vi.fn() } as never, debugStructured: vi.fn() },
+      { info: vi.fn() } as never,
     );
 
     helpers.markSteppedLoadDesiredStepIssued({
@@ -1210,7 +1210,7 @@ describe('resolved device control composition and command lifecycle', () => {
     const helpers = createDeviceControlHelpersForTest(
       () => snapshots, stores, () => undefined,
       () => false, () => {}, () => null,
-      { structuredLog: { info: vi.fn() } as never, debugStructured: vi.fn() },
+      { info: vi.fn() } as never,
     );
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'missing')).toBe('invalid');

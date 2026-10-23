@@ -46,7 +46,6 @@ import type { HomeBatteryDevicesRead } from '../ports/homeBatteryDevices';
 import type { PriceCoordinator } from '../price/priceCoordinator';
 import type { PriceFlowTagPublisher } from '../price/priceFlowTags';
 import type { PriceOptimizationSettings } from '../price/priceOptimizer';
-import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
 import type { CreateSmartTaskCandidateDevicesRead } from '../../packages/contracts/src/widgetHostApi';
 import type {
   DecoratedDeviceSnapshot,
@@ -203,8 +202,6 @@ export type AppContext = {
   /** The owner's per-device control configuration (`lib/device/deviceControlSettings.ts`). */
   readonly deviceControlSettings: DeviceControlSettings;
   readonly observedTemperatureModeUpdates: ObservedTemperatureModeUpdates;
-  get debugLoggingTopics(): Set<DebugLoggingTopic>;
-  set debugLoggingTopics(value: Set<DebugLoggingTopic>);
   get lastKnownPowerKw(): LearnedPeaksByDeviceId;
   get expectedPowerKwOverrides(): DeviceExpectedPowerOverrides;
   get lastNotifiedOperatingMode(): string;

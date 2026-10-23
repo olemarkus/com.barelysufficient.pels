@@ -160,14 +160,14 @@ export class PlanService {
   private readonly queuedLiveSyncs = new Map<PendingTargetObservationSource, Promise<boolean>>();
 
   constructor(private deps: PlanServiceDeps) {
-    this.idleClassifier = createIdleClassifier(deps.loggers.structuredLog);
+    this.idleClassifier = createIdleClassifier(deps.structuredLog);
     this.planStatusWriter = new PlanStatusWriter({
       homey: deps.homey,
       publishPelsStatus: deps.publishPelsStatus,
       getCurrentHourPriceLevel: deps.getCurrentHourPriceLevel,
       getLastPowerUpdate: deps.getLastPowerUpdate,
       getCapacityDryRun: deps.getCapacityDryRun,
-      structuredLog: deps.loggers.structuredLog,
+      structuredLog: deps.structuredLog,
     });
     this.changeTracker = new PlanChangeTracker();
     this.rebuildHost = {
@@ -506,7 +506,7 @@ export class PlanService {
       })
       .catch((error) => {
         this.withHomeLogContext(() => {
-          this.deps.loggers.structuredLog.error({
+          this.deps.structuredLog.error({
             event: 'plan_operation_failed',
             message: errorMessage,
             error: normalizeError(error),
@@ -590,7 +590,7 @@ export class PlanService {
     const realtime = api?.realtime;
     if (typeof realtime === 'function') {
       realtime.call(api, event, payload)
-        .catch((err: unknown) => this.deps.loggers.structuredLog.error({
+        .catch((err: unknown) => this.deps.structuredLog.error({
           event: 'plan_updated_emit_failed',
           realtimeEvent: event,
           error: normalizeError(err),

@@ -175,7 +175,6 @@ describe('app init plan service wiring', () => {
       ]),
       resolveManagedState: () => true,
       isCapacityControlEnabled: () => true,
-      debugLoggingTopics: new Set(),
     });
     serviceCtx.deviceManager = {
       getAssociatedCar: () => undefined,

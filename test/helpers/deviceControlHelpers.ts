@@ -8,7 +8,7 @@ import { SteppedDeviceControl } from '../../lib/executor/steppedDeviceControl';
 import { TargetPowerCommandLifecycle } from '../../lib/executor/targetPowerCommandLifecycle';
 import { DeviceControlProjection } from '../../lib/planInput/deviceControlProjection';
 import { resolveLatestPlanDesiredStepId } from '../../lib/plan/plannedSteppedCommand';
-import type { Loggers } from '../../lib/logging/logger';
+import type { Logger as PinoLogger } from '../../lib/logging/logger';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import type { TargetPowerConfigWithReachability } from '../../lib/device/targetPowerReachability';
 import type { TargetPowerReachabilityState } from '../../packages/contracts/src/types';
@@ -22,7 +22,7 @@ export function createDeviceControlHelpersForTest(
   updateReachability: (deviceId: string, state: TargetPowerReachabilityState) => boolean,
   scheduleSettlement: (dueAtMs: number) => void,
   readPlan: () => DevicePlan | null,
-  loggers: Loggers,
+  structuredLog: PinoLogger,
 ) {
   const configuration = new DeviceConfigurationStore();
   const snapshotStore = new TransportSnapshotStore();
@@ -43,7 +43,7 @@ export function createDeviceControlHelpersForTest(
   const targetPowerOwner = new DeviceTargetPowerReachabilityOwner(
     readTargetPowerConfig, readConfiguration, updateReachability,
   );
-  const targetPower = new TargetPowerCommandLifecycle(stores.store, targetPowerOwner, scheduleSettlement, loggers);
+  const targetPower = new TargetPowerCommandLifecycle(stores.store, targetPowerOwner, scheduleSettlement, structuredLog);
   const control = new SteppedDeviceControl(stores.store, stores.reportedStore, {
     getDeviceConfiguration: readConfiguration,
     getDeviceConfigurations: () => { refresh(); return configuration.getAll(); },
@@ -51,7 +51,7 @@ export function createDeviceControlHelpersForTest(
   }, targetPower, (deviceId, stepId, powerW) => {
     refresh();
     return admitFlowSteppedLoadReport(snapshotStore, configuration, () => {}, () => {}, deviceId, stepId, powerW);
-  }, (deviceId, profile) => resolveLatestPlanDesiredStepId(readPlan(), deviceId, profile), loggers);
+  }, (deviceId, profile) => resolveLatestPlanDesiredStepId(readPlan(), deviceId, profile), structuredLog);
   const projection = new DeviceControlProjection(stores.store, {
     get: readConfiguration,
     getAll: () => { refresh(); return configuration.getAll(); },

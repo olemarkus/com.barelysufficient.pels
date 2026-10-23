@@ -6,8 +6,7 @@ import type { FlowConflictRefreshResult } from '../lib/flowApi/flowConflictRefre
 import type Homey from 'homey';
 import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
 import type { ChargingCurrentRead } from '../packages/contracts/src/chargingControl';
-import type { DebugLoggingTopic } from '../packages/shared-domain/src/utils/debugLogging';
-import { getComponentLogger, getDebugTopics, setDebugTopics } from '../lib/logging/logger';
+import { getComponentLogger, setDebugTopics } from '../lib/logging/logger';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
 import type { PendingTargetObservationSource } from '../lib/plan/planTypes';
 import type { PlanService } from '../lib/plan/planService';
@@ -92,23 +91,10 @@ abstract class AppRuntimeApi extends Base {
         .bind(this.context.observedTemperatureModeUpdates),
     );
   }
-  /**
-   * The enabled debug topics, delegating to the process-wide set rather than
-   * holding a second copy of it. The debug emitters gate on that set, and
-   * several consumers close over `debugLoggingTopics.has(topic)` to decide
-   * whether to BUILD a debug payload — the scheduler telemetry observer,
-   * background tasks, and the plan/overview/diagnostics/daily-budget
-   * predicates. A second copy would let those readers say yes while the
-   * emitter's gate said no: the payload built, the line dropped.
-   */
-  public get debugLoggingTopics(): Set<DebugLoggingTopic> { return getDebugTopics(); }
-
-  public set debugLoggingTopics(value: Set<DebugLoggingTopic>) { setDebugTopics(value); }
-
   public updateDebugLoggingEnabled = (logChange = false): void => {
-    // One write: the context accessor publishes process-wide, so the emitters
-    // and every `debugLoggingTopics.has(...)` closure read the same set.
-    this.context.debugLoggingTopics = buildDebugLoggingTopics({ settings: this.homey.settings, logChange });
+    // Published process-wide: every debug emitter and every
+    // `isDebugTopicEnabled` read sees the same set, with no copy to drift.
+    setDebugTopics(buildDebugLoggingTopics({ settings: this.homey.settings, logChange }));
   };
   public notifyOperatingModeChanged(mode: string): void {
     const trimmed = mode.trim();

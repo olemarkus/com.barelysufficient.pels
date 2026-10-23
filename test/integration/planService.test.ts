@@ -223,7 +223,6 @@ const planServiceDeps = (): ReturnType<typeof planServiceWiring> & Pick<PlanServ
 });
 
 const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanService>[0]> = {}) => {
-  const { loggers: loggerOverrides, ...rest } = overrides;
   const deps = {
     ...planServiceDeps(),
     homey: stubDepsHomey({ set: vi.fn(), realtime: vi.fn().mockResolvedValue(undefined) }),
@@ -234,11 +233,8 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
     }),
     getPlanDevices: () => [],
     getSettleDevices: () => [],
-    loggers: {
-      structuredLog: testLogger,
-      ...loggerOverrides,
-    },
-    ...rest,
+    structuredLog: testLogger,
+    ...overrides,
   };
 
   return { service: new PlanService(deps as ConstructorParameters<typeof PlanService>[0]), deps };
@@ -1361,7 +1357,7 @@ describe('PlanService', () => {
       }),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
+      structuredLog: partialDouble<Logger>(structuredLog),
           });
 
     await service.rebuildPlanFromCache('power_delta');
@@ -2371,7 +2367,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => [],
       getSettleDevices: () => [],
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
+      structuredLog: partialDouble<Logger>(structuredLog),
           });
 
     const beforePerf = getPerfSnapshot();
@@ -2399,7 +2395,7 @@ describe('PlanService', () => {
   it('suppresses structured rebuild logs for unchanged no-op rebuilds', async () => {
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
+      structuredLog: partialDouble<Logger>(structuredLog),
     });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
@@ -2413,7 +2409,7 @@ describe('PlanService', () => {
   it('emits structured rebuild logs for initial rebuild reasons even without action changes', async () => {
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
+      structuredLog: partialDouble<Logger>(structuredLog),
     });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
@@ -2510,7 +2506,7 @@ describe('PlanService', () => {
   it('emits structured rebuild logs for slow rebuilds even without action changes', async () => {
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
+      structuredLog: partialDouble<Logger>(structuredLog),
     });
 
     await service.rebuildPlanFromCache('power_delta', { detail: 'seed' });
@@ -2567,7 +2563,7 @@ describe('PlanService', () => {
   it('emits plan_rebuild_completed with concrete deviceWriteCount when actuation wrote to devices', async () => {
     const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
+      structuredLog: partialDouble<Logger>(structuredLog),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi
@@ -2600,7 +2596,7 @@ describe('PlanService', () => {
     const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const schedulePostActuationRefresh = vi.fn();
     const { service, deps } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
+      structuredLog: partialDouble<Logger>(structuredLog),
       schedulePostActuationRefresh,
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
@@ -2643,7 +2639,7 @@ describe('PlanService', () => {
   it('emits structured rebuild logs for failed rebuilds', async () => {
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
-      loggers: { structuredLog: partialDouble<Logger>(structuredLog) },
+      structuredLog: partialDouble<Logger>(structuredLog),
     });
     (deps.planEngine.buildDevicePlanSnapshot as Mock).mockImplementation(async () => {
       vi.advanceTimersByTime(17);

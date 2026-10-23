@@ -12,7 +12,6 @@
  * it the home's collaborators and nothing else.
  */
 import type CapacityGuard from '../../power/capacityGuard';
-import type { DebugLoggingTopic } from '../../../packages/shared-domain/src/utils/debugLogging';
 import type { Logger as PinoLogger } from 'pino';
 import type { HomeId } from '../../utils/settingsKeys';
 import type { TimerRegistry } from '../../utils/timerRegistry';
@@ -48,7 +47,6 @@ export const createHomeRebuildRuntime = (
   getCapacityGuard: () => CapacityGuard,
   getPlanService: () => PlanService,
   getStructuredLogger: () => PinoLogger,
-  isDebugTopicEnabled: (topic: DebugLoggingTopic) => boolean,
 ): HomeRebuildRuntime => {
   // One monotonic clock for the scheduler, the throttle and the telemetry
   // rate-limiter, so an NTP correction cannot make a queued rebuild due early or
@@ -66,7 +64,6 @@ export const createHomeRebuildRuntime = (
   const telemetry = new SchedulerTelemetryObserver({
     homeId,
     getStructuredLogger,
-    isDebugTopicEnabled,
     getNowMs: nowMs,
     // The observer's `onIntentCancelled` IS the throttle release: a cancelled
     // power intent must let go of the rebuild queued for it, or a sample waits

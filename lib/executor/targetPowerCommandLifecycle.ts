@@ -1,5 +1,5 @@
 import type { ReportedStepObservedProbe } from '../../packages/contracts/src/types';
-import type { Loggers } from '../logging/logger';
+import type { Logger as PinoLogger } from '../logging/logger';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
 import type {
   TargetPowerProbeConfiguration, TargetPowerReachabilityOwner,
@@ -32,7 +32,7 @@ export class TargetPowerCommandLifecycle {
     private readonly store: SteppedCommandStore,
     private readonly owner: TargetPowerReachabilityOwner,
     private readonly scheduleSettlement: (dueAtMs: number) => void,
-    private readonly loggers: Loggers,
+    private readonly structuredLog: PinoLogger,
   ) {}
 
   markDesiredStepIssued(command: MarkSteppedLoadDesiredStepIssuedParams): void {
@@ -106,12 +106,12 @@ export class TargetPowerCommandLifecycle {
     this.owner.update(device.id, transition.reachability);
     if (transition.kind === 'confirmed') {
       this.store.confirmDesired(device.id, desired);
-      this.loggers.structuredLog.info({ event: 'target_power_reachability_raised', deviceId: device.id,
+      this.structuredLog.info({ event: 'target_power_reachability_raised', deviceId: device.id,
         deviceName: device.name, requestedPowerW: desired.planningPowerW,
         maxReachedPowerW: transition.reachability.maxReachedPowerW });
     } else {
       this.store.deleteDesired(device.id);
-      this.loggers.structuredLog.warn({ event: 'target_power_step_settled_below_request', deviceId: device.id,
+      this.structuredLog.warn({ event: 'target_power_step_settled_below_request', deviceId: device.id,
         deviceName: device.name, requestedStepId: desired.stepId, requestedPowerW: desired.planningPowerW,
         observedPowerW: transition.observedPowerW ?? null, ...transition.reachability });
     }

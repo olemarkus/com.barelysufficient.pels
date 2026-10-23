@@ -19,7 +19,6 @@ const buildRig = (overrides: { getNowMs?: () => number } = {}) => {
   const observer = new SchedulerTelemetryObserver({
     homeId: 'main',
     getStructuredLogger: () => partialDouble<Logger>({ child: child as unknown as Logger['child'] }),
-    isDebugTopicEnabled: (topic) => topic === 'plan',
     getNowMs: overrides.getNowMs ?? (() => 0),
     cancelQueuedPowerRebuild: vi.fn(),
   });
@@ -112,7 +111,6 @@ describe('SchedulerTelemetryObserver', () => {
     const observer = new SchedulerTelemetryObserver({
       homeId: 'main',
       getStructuredLogger: () => testLogger,
-      isDebugTopicEnabled: () => false,
       getNowMs: () => 0,
       cancelQueuedPowerRebuild,
     });

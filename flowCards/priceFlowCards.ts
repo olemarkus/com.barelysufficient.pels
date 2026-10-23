@@ -1,5 +1,6 @@
 import { PriceLevel, PRICE_LEVEL_OPTIONS, PriceLevelOption } from '../lib/price/priceLevels';
 import { normalizeError } from '../lib/utils/errorUtils';
+import { getDebugEmitter } from '../lib/logging/logger';
 import { evaluateLowestPriceCard, type LowestPriceCardId } from '../lib/price/priceLowestFlowEvaluator';
 import {
   readFlowNumberArg,
@@ -7,6 +8,8 @@ import {
   readFlowStringArg,
 } from './flowArgParsers';
 import type { FlowCardDeps } from './registerFlowCards';
+
+const emitFlowDebug = getDebugEmitter('flow', 'settings');
 
 const HOUR_MS = 60 * 60 * 1000;
 // Matches the `hours` arg's min and max in `price_level_changes_within.json`.
@@ -49,7 +52,7 @@ export function registerPriceLevelCards(deps: FlowCardDeps): void {
     });
     if (read.state === 'unavailable') throw new Error('PELS has no price for the current period.');
     const matches = read.levels.includes(chosenLevel);
-    deps.debugStructured({
+    emitFlowDebug({
       event: 'price_level_lookahead_evaluated',
       level: chosenLevel,
       hours,
@@ -141,7 +144,7 @@ function evaluateLowestPriceFlowCard(
     currentPriceOverride,
   });
 
-  deps.debugStructured({
+  emitFlowDebug({
     event: 'price_lowest_card_evaluated',
     source,
     cardId,

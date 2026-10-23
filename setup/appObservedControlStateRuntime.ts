@@ -10,7 +10,6 @@ import type {
 } from '../lib/ports/observedStateEvents';
 import type { HomeId } from '../lib/utils/settingsKeys';
 import type { OwningHomeHooks } from './homeRuntime/createHomeCapacityBundle';
-import { getDebugEmitter, type StructuredDebugEmitter } from '../lib/logging/logger';
 import { requirePlanService } from './appInit/contextGuards';
 
 /**
@@ -56,11 +55,10 @@ export function syncExternalOffHoldForObservation(
 ): void {
   if (!ctx.externalOffHold) return;
   const subHomeHooks = router?.getOwningHomeRouteForDevice(event.deviceId)?.hooks;
-  const debugStructured = getDebugEmitter('reconcile', 'devices');
   syncExternalOffHoldForDevice({
     deps: {
       policy: ctx.externalOffHold,
-      ...buildExternalOffHoldHooks(ctx, subHomeHooks, debugStructured),
+      ...buildExternalOffHoldHooks(ctx, subHomeHooks),
     },
     deviceId: event.deviceId,
     observedDevice: toExternalOffHoldObservedDevice(
@@ -75,8 +73,7 @@ export function syncExternalOffHoldForObservation(
 function buildExternalOffHoldHooks(
   ctx: AppContext,
   subHomeHooks: Pick<OwningHomeHooks, 'hasPendingBinaryCommand' | 'clearRecentBinaryOffCommand'> | undefined,
-  debugStructured: StructuredDebugEmitter | undefined,
-): Pick<ExternalOffHoldSyncDeps, 'hasPendingBinaryCommand' | 'clearRecentBinaryOffCommand' | 'debugStructured'> {
+): Pick<ExternalOffHoldSyncDeps, 'hasPendingBinaryCommand' | 'clearRecentBinaryOffCommand'> {
   return {
     hasPendingBinaryCommand: subHomeHooks?.hasPendingBinaryCommand
       ?? ((deviceId) => (
@@ -86,7 +83,6 @@ function buildExternalOffHoldHooks(
       ?? ((deviceId) => {
         ctx.planEngine?.clearRecentBinaryOffCommand(deviceId);
       }),
-    debugStructured,
   };
 }
 

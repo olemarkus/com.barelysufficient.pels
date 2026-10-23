@@ -9,26 +9,6 @@ import { HomeyLogDestination } from './homeyDestination';
 export type { Logger } from 'pino';
 export type StructuredDebugEmitter = (payload: Record<string, unknown>) => void;
 
-/**
- * Cross-cutting logger bundle every consumer takes. Structured-only:
- * the legacy prose loggers (`log`/`logDebug`/`error`) are being removed
- * per consumer as part of the Phase 4 RuntimeContext narrowing. New code
- * must emit through `structuredLog` (info/error/etc. via JSON payloads)
- * or `debugStructured` (topic-gated JSON debug events).
- *
- * Topic-specific `*DebugStructured` emitters stay separate — those belong
- * on the domain context for the concern they instrument, not on the
- * cross-cutting bundle.
- *
- * `structuredLog` always exists (`getStructuredLogger` hands out a late-bound
- * component logger). The debug emitter is optional only until its threading is
- * retired.
- */
-export type Loggers = {
-  structuredLog: PinoLogger;
-  debugStructured?: StructuredDebugEmitter;
-};
-
 const withoutTransportLevel = (record: Record<string, unknown>): Record<string, unknown> => {
   if (!('level' in record)) return record;
   const { level: _level, ...forwarded } = record;
@@ -257,20 +237,6 @@ let enabledDebugTopics: Set<DebugLoggingTopic> = new Set();
 export const setDebugTopics = (topics: ReadonlySet<DebugLoggingTopic>): void => {
   enabledDebugTopics = new Set(topics);
 };
-
-/**
- * The published set, for the app's `debugLoggingTopics` accessor to expose.
- *
- * This exists so the topic set has ONE owner. Several consumers still read
- * `ctx.debugLoggingTopics` and close over `.has(topic)` — the scheduler
- * telemetry observer, background tasks, the plan/overview/diagnostics/daily-
- * budget debug predicates — and if that field were a second copy, a caller
- * that set it would enable their expensive payload building while the
- * emitter's gate stayed shut: cost paid, nothing emitted. Reading it from here
- * keeps the two answers the same one. New callers should ask
- * {@link isDebugTopicEnabled} instead.
- */
-export const getDebugTopics = (): Set<DebugLoggingTopic> => enabledDebugTopics;
 
 /**
  * Whether `topic` is switched on. Use this to skip work that only exists to

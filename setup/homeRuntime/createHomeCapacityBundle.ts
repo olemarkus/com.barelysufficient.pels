@@ -258,7 +258,6 @@ function createBundleSamplePipeline(
     () => guard,
     () => planService,
     () => ctx.getStructuredLogger('plan'),
-    (topic) => ctx.debugLoggingTopics.has(topic),
   );
   const pipeline = createHomePowerPipeline({
     ctx,
