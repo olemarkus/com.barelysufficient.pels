@@ -30,7 +30,7 @@ import {
   type SettingsUiBootstrap,
 } from '../../../contracts/src/settingsUiApi.ts';
 import {
-  applySettingsPatch,
+  applyBootstrapSettings,
   callApi,
   getSetting,
   primeApiCache,
@@ -104,13 +104,11 @@ import {
   refreshRecommendationSurfaces,
 } from './recommendations.ts';
 import { loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
-import { loadStarvationRescuableDevices } from './starvationRescue.ts';
 import { coerceDeferredObjectiveActivePlans } from './deferredObjectiveActivePlans.ts';
 import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
 import {
   initAdvancedDeviceCleanupHandlers,
   initAdvancedDeviceLoggerHandlers,
-  refreshAdvancedDeviceLogger,
 } from './advanced.ts';
 import { state } from './state.ts';
 import { notifySetupPathChange } from './setupPathFacts.ts';
@@ -406,7 +404,7 @@ const loadBootstrapData = async (): Promise<SettingsUiBootstrap | null> => {
       return null;
     }
     if (bootstrap?.settings && typeof bootstrap.settings === 'object') {
-      applySettingsPatch(bootstrap.settings);
+      applyBootstrapSettings(bootstrap.settings);
     }
     primeApiCache(SETTINGS_UI_PLAN_PATH, { plan: bootstrap.plan ?? null });
     primeApiCache(SETTINGS_UI_POWER_PATH, bootstrap.power);
@@ -448,7 +446,6 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
     loadDeviceExpectedPowerOverrides(),
     loadEvCarAssociations(),
     loadDeferredObjectiveSettings(),
-    loadStarvationRescuableDevices(),
     loadAdvancedSettings(),
     initWeatherInsight(),
   ]);
@@ -480,8 +477,6 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
   // it.
   await refreshPowerData();
   renderModeOptions();
-  // The support-only device picker must not delay enabling device settings.
-  void refreshAdvancedDeviceLogger();
 
   // Phase 4: Mark initial load complete - enables save operations
   state.initialLoadComplete = true;

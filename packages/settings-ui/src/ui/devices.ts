@@ -45,7 +45,7 @@ import {
   type DeviceGroup,
 } from './deviceListPresentation.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
-import { appendHomeBadge, refreshHomeBadges } from './homeBadges.ts';
+import { appendHomeBadge, hasResolvedHomeBadges, refreshHomeBadges } from './homeBadges.ts';
 import { applyManagedOptInControlMode } from './deviceDetail/targetPowerConfig.ts';
 import {
   applyChargerPhasePresetsRead,
@@ -61,7 +61,7 @@ import {
   CONTROLLABLE_DEVICES,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
 
-const refreshHomeBadgesAndRepaint = (): void => {
+export const refreshHomeBadgesAndRepaint = (): void => {
   void refreshHomeBadges().then(() => {
     if (!state.devicesLoaded) return;
     renderDevices(state.latestDevices);
@@ -114,7 +114,12 @@ export const getTargetDevices = async (): Promise<SettingsUiDeviceListItem[]> =>
   // price-device pickers, and Advanced after /ui_devices already resolved.
   const payload = await getApiReadModel<SettingsUiDevicesPayload>(SETTINGS_UI_DEVICES_PATH);
   const devices = parseDeviceList(payload?.devices);
-  refreshHomeBadgesAndRepaint();
+  // Membership changes arrive as `homes_config` / `device_home_assignments`
+  // settings events, which refresh the badges themselves
+  // (`refreshHomeBadgesForUi`), and with the runtime's `devices_updated` push,
+  // which follows a Homey zone move (`realtime.ts`). Any other device read only
+  // fills an index that has not resolved yet.
+  if (!hasResolvedHomeBadges()) refreshHomeBadgesAndRepaint();
   state.hasManagedSolarDevice = payload?.hasManagedSolarDevice === true;
   state.hasExhibitedExport = payload?.hasExhibitedExport === true;
   state.surplusPoolReachable = payload?.surplusPoolReachable === true;

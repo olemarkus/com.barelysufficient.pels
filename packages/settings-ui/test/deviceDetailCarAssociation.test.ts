@@ -12,11 +12,13 @@ const getSetting = vi.fn();
 const getSettingFresh = vi.fn();
 const setSetting = vi.fn();
 const sleep = vi.fn().mockResolvedValue(undefined);
+const coldStartReadRetryDelays = vi.fn();
 
 vi.mock('../src/ui/homey.ts', () => ({
   callApi: (...args: unknown[]) => callApi(...args),
   getSetting: (...args: unknown[]) => getSetting(...args),
   getSettingFresh: (...args: unknown[]) => getSettingFresh(...args),
+  coldStartReadRetryDelays: (...args: unknown[]) => coldStartReadRetryDelays(...args),
   sleep: (...args: unknown[]) => sleep(...args),
   setSetting: (...args: unknown[]) => setSetting(...args),
   invalidateApiCache: vi.fn(),
@@ -80,6 +82,7 @@ beforeEach(() => {
   getSetting.mockResolvedValue({});
   getSettingFresh.mockResolvedValue(undefined);
   setSetting.mockResolvedValue(undefined);
+  coldStartReadRetryDelays.mockImplementation((_key: string, delaysMs: readonly number[]) => delaysMs);
 });
 
 describe('charger car picker', () => {
@@ -304,6 +307,20 @@ describe('charger car picker', () => {
     await loadEvCarAssociations();
 
     expect(getSettingFresh).toHaveBeenCalledTimes(2);
+    expect(state.evCarAssociations).toEqual({});
+    expect(state.evCarAssociationsLoaded).toBe(true);
+  });
+
+  it('takes absence the bootstrap served as never written, without cold-start retries', async () => {
+    const { loadEvCarAssociations } = await import('../src/ui/deviceDetail/carAssociation.ts');
+    const { state } = await import('../src/ui/state.ts');
+    coldStartReadRetryDelays.mockReturnValue([]);
+    getSetting.mockResolvedValueOnce(null);
+
+    await loadEvCarAssociations();
+
+    expect(coldStartReadRetryDelays).toHaveBeenCalledWith('ev_car_associations', expect.any(Array));
+    expect(getSettingFresh).not.toHaveBeenCalled();
     expect(state.evCarAssociations).toEqual({});
     expect(state.evCarAssociationsLoaded).toBe(true);
   });

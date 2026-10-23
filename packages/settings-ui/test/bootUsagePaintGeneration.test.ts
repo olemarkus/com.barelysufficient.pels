@@ -254,7 +254,7 @@ describe('bootstrap Usage paint vs a mid-boot scope pick', () => {
     expect(scopeReadState()).toBe('served');
   });
 
-  it('enables device settings while the advanced device logger is still loading', async () => {
+  it('loads the advanced device logger list when Advanced opens, not at boot', async () => {
     document.body.insertAdjacentHTML('beforeend', `
       <md-filled-select id="advanced-api-device-select"></md-filled-select>
       <md-outlined-button id="advanced-api-device-refresh"></md-outlined-button>
@@ -264,14 +264,16 @@ describe('bootstrap Usage paint vs a mid-boot scope pick', () => {
     const client = await installBootClient([uri]);
     const { boot } = await import('../src/ui/boot.ts');
     const { state } = await import('../src/ui/state.ts');
-    const bootPromise = boot();
+    const { showTab } = await import('../src/ui/tabNavigation.ts');
+    await boot();
     try {
-      await vi.waitFor(() => expect(client.pendingCount(uri)).toBeGreaterThan(0), { timeout: 5000 });
-      await vi.waitFor(() => expect(state.initialLoadComplete).toBe(true));
-      expect(client.pendingCount(uri)).toBeGreaterThan(0);
+      expect(state.initialLoadComplete).toBe(true);
+      expect(client.pendingCount(uri)).toBe(0);
+
+      showTab('advanced');
+      await vi.waitFor(() => expect(client.pendingCount(uri)).toBe(1));
     } finally {
       while (client.pendingCount(uri) > 0) client.respond(uri, null, []);
-      await bootPromise;
     }
   });
 });

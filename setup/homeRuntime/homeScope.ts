@@ -54,6 +54,8 @@ import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import { createHomeCommandReachability } from './createHomeCommandReachability';
 import { createHomeSignalWriters } from './homeSignalWriters';
+import { buildStarvedRescueDevices } from '../appInit/smartTaskHomeScope';
+import { selectRescuableDeviceIds } from '../../packages/shared-domain/src/starvationRescueShared';
 import type { ShutdownLatch } from '../../lib/utils/shutdownLatch';
 
 /**
@@ -161,6 +163,12 @@ export type HomeScope = {
    * which runs AFTER diagnostics init, so the getter resolves the real recorder.
    */
   getDeviceDiagnostics: () => DeviceDiagnosticsService | undefined;
+  /**
+   * The Overview's rescue gate for this home's published plan. Main reads the
+   * live starved list; a meter area binds none, since the rescue lane (a
+   * budget-exempt smart task) is the Main home's.
+   */
+  readStarvationRescuableDeviceIds: () => string[];
   /**
    * Smart-task decoration seam. A capacity-only home binds
    * `decorateWithoutDeferredObjectives` (the identity bundle in the seam's own
@@ -292,5 +300,6 @@ export function buildMainHomeScope(
     // hardwired. Byte-identical for the main home.
     emitsUiRealtime: true,
     getDeviceDiagnostics: () => ctx.deviceDiagnosticsService,
+    readStarvationRescuableDeviceIds: () => selectRescuableDeviceIds(buildStarvedRescueDevices(ctx)),
   };
 }

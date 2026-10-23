@@ -282,7 +282,7 @@ const buildPressurePlanSnapshot = (): SettingsUiPlanSnapshot => {
       shedAction: 'turn_off',
     },
   ];
-  return { meta, devices: devices.map((device) => uiDeviceFixture(device)) };
+  return { meta, devices: devices.map((device) => uiDeviceFixture(device)), rescuableDeviceIds: [] };
 };
 
 const buildOverBudgetDailyBudget = (): DailyBudgetUiPayload => {
@@ -348,7 +348,7 @@ const buildDenseDevicePlan = (): SettingsUiPlanSnapshot => {
       shedTemperature: 15,
     }));
   }
-  return { meta, devices };
+  return { meta, devices, rescuableDeviceIds: [] };
 };
 
 const buildSampleHistoryEntry = (
@@ -459,6 +459,7 @@ const SCENARIO_FACTORIES: Record<AuditScenarioName, () => BootstrapAuditScenario
           shedAction: 'turn_off',
         }),
       ],
+      rescuableDeviceIds: [],
     },
   }),
   'over-budget': () => ({

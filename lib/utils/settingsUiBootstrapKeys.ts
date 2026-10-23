@@ -68,6 +68,7 @@ const BOOTSTRAP_KEYS: Record<SettingsUiBootstrapKey, true> = {
   ev_charge_target_settings: true,
   device_expected_power_overrides: true,
   ev_car_associations: true,
+  setup_recommendation_dismissals: true,
   weather_advisor_first_estimate_seen: true,
 };
 

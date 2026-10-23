@@ -734,17 +734,13 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 Design-of-record: `notes/web-app.md`.
 
-- [ ] **Boot reads ~15 settings one by one after `ui_bootstrap`.**
-      `buildSettingsUiBootstrap` in `setup/settingsUiApi.ts` and `packages/settings-ui/src/ui/boot.ts`.
-      A boot is about 40 requests in 7 sequential waves (`notes/web-app.md`); over the cloud each
-      wave costs ~0.35 s. **What changes:** the bootstrap payload carries the settings the
-      boot reads right after it (`export_price_source`, `pv_forecast_source`,
-      `battery_control_devices`, `mode_catalog_initialized`, `homes_config`,
-      `homes_config_initialized`, `ev_boost_settings`, `ev_charge_target_settings`,
-      `device_expected_power_overrides`, `ev_car_associations`,
-      `weather_advisor_first_estimate_seen`, `power_source`) and boot primes them with
-      `applySettingsPatch`. **Done when:** a boot against the test Homey issues no setting GET for
-      those keys (browser resource timings) and needs fewer than 7 sequential waves. [P2]
+- [ ] **`/ui_starvation_rescue_devices` has no caller.** `api.ts`, `.homeycompose/app.json`,
+      `setup/settingsUiStarvationRescueApi.ts`, `SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH` in
+      `packages/contracts/src/settingsUiApi.ts`. The Overview's rescue gate rides the plan
+      (`rescuableDeviceIds`), and the rescue widget reads the app directly. Kept so the release that
+      moved the gate changed no route. **What changes:** the next release that changes `app.json`
+      anyway removes the route, its handler, the path constant and the mocks' handlers.
+      **Done when:** nothing in the repository names the route. [P2]
 
 ## Diagnostics, logging and alerts
 

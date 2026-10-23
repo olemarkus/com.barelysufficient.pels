@@ -3,13 +3,13 @@ import { emitHomeyEvent, installHomeyMock, type MockHomeyClient } from './helper
 import { setHomeyClient } from '../src/ui/homey.ts';
 import { initRealtimeListeners } from '../src/ui/realtime.ts';
 import { refreshPlan } from '../src/ui/planRedesign.ts';
-import { refreshOverviewPlanWithRescueGate } from '../src/ui/overviewRescueGate.ts';
+import { refreshOverviewPlan } from '../src/ui/uiRefreshTasks.ts';
 import { buildPlanMeta } from './helpers/planMetaFixture.ts';
 
 // Regression pin for the status-only `power_updated` stomp: every runtime
 // power push is status-only (`emitSettingsUiPowerUpdatedForApp` sends
 // `tracker: null`), and the old cache patch wrote that null over the cached
-// full tracker — so the next Overview open (`refreshOverviewPlanWithRescueGate`
+// full tracker — so the next Overview open (`refreshOverviewPlan`
 // → `refreshPlan` → /ui_power read model) resolved no solar input and the
 // "Solar now" subline vanished until the 30 s periodic refetch healed it.
 // The patch must preserve the cached tracker; only status/heartbeat move.
@@ -83,7 +83,7 @@ describe('Overview "Solar now" across status-only power pushes', () => {
 
     // …and the Overview-open path (which re-reads the /ui_power read model)
     // must still resolve the solar input from the preserved cached tracker.
-    await refreshOverviewPlanWithRescueGate();
+    await refreshOverviewPlan();
     await flushAsync();
     expect(solarSubline()?.textContent).toBe('Solar now 3.2\u00A0kW — 1.1\u00A0kW at home, 2.1\u00A0kW exported');
   });

@@ -15,14 +15,16 @@ type PlanServiceWiring = Pick<PlanServiceDeps,
   | 'deviceOverviewLogRecorder'
   | 'isPlanDebugEnabled'
   | 'emitsUiRealtime'
+  | 'readStarvationRescuableDeviceIds'
   | 'snapshotWarmupGate'>;
 
 /**
  * The plan-service deps `createPlanService` always wires, for a spec that is
  * not about them: no associated car, no stepped profiles, no structured logger,
  * the overview debug topic off (the plan topic on, so plan debug summaries
- * reach `loggers.debugStructured`), the Main home's realtime channel, and a
- * warmup gate that has already released. A spec about one of them overrides it.
+ * reach `loggers.debugStructured`), the Main home's realtime channel, no
+ * rescuable device, and a warmup gate that has already released. A spec about
+ * one of them overrides it.
  */
 export const planServiceWiring = (): PlanServiceWiring => ({
   getAssociatedCarChargingState: () => undefined,
@@ -35,5 +37,6 @@ export const planServiceWiring = (): PlanServiceWiring => ({
   deviceOverviewLogRecorder: createTestDeviceActivityRecorder(),
   isPlanDebugEnabled: () => true,
   emitsUiRealtime: true,
+  readStarvationRescuableDeviceIds: () => [],
   snapshotWarmupGate: new SnapshotWarmupGate({ timeoutMs: 0 }),
 });

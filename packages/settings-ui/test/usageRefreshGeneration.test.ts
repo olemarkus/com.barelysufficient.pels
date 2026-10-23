@@ -273,6 +273,11 @@ describe('Usage refresh generation guard', () => {
     expect(heroText()).toBe('-- kWh today');
     expect(client.pendingCount(PRICES_URI)).toBe(1);
 
+    // Fresh prices land mid-run (`prices_updated` drops the cached prices), so
+    // run 2 below reads them anew instead of sharing run 1's request.
+    const { invalidateApiCache } = await import('../src/ui/homey.ts');
+    invalidateApiCache(PRICES_URI);
+
     // The user picks the area mid-solar-await. Run 2 reads, reaches its own
     // solar await (a second held prices read), and its release paints the
     // area's hero.
@@ -314,6 +319,11 @@ describe('Usage refresh generation guard', () => {
     client.respond('/ui_power', null, mainSolarPowerPayload());
     await settle();
     expect(client.pendingCount(PRICES_URI)).toBe(1);
+
+    // Fresh prices land mid-run (`prices_updated` drops the cached prices), so
+    // run 2 below reads them anew instead of sharing run 1's request.
+    const { invalidateApiCache } = await import('../src/ui/homey.ts');
+    invalidateApiCache(PRICES_URI);
 
     // The user picks the area mid-solar-await; run 2 paints the area's card.
     selectHomeScope(AREA);

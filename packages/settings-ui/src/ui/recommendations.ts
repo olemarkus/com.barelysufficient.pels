@@ -4,8 +4,10 @@ import { CHARGING_ACCESS_PATH, CHARGING_CURRENT_PATH } from '../../../contracts/
 import {
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
   SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
+  type SettingsUiRecommendationCar,
+  type SettingsUiDeferredObjectivePlanHistoryPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
-import { callApi, getSetting, getSettingFresh, sleep } from './homey.ts';
+import { callApi, coldStartReadRetryDelays, getSetting, getSettingFresh, sleep } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import {
   groupSetupRecommendations,
@@ -14,10 +16,6 @@ import {
   type RecommendationDismissals,
   type SetupRecommendation,
 } from './recommendationsModel.ts';
-import type {
-  SettingsUiRecommendationCar,
-  SettingsUiDeferredObjectivePlanHistoryPayload,
-} from '../../../contracts/src/settingsUiApi.ts';
 import { parseCarAssociationCandidatesRead } from './carAssociationCandidates.ts';
 import { state } from './state.ts';
 import { recordSmartTaskHistoryDevices } from './smartTaskUsage.ts';
@@ -32,7 +30,7 @@ import { resolveAfterSetupRecommendations } from './afterSetupRecommendations.ts
 import { loadHubMarket } from './hubMarket.ts';
 import { loadSetupPrices } from './setupPricesLoad.ts';
 import { formatSetupProgress } from './setupPathModel.ts';
-import { loadEvCarAssociations } from './deviceDetail/carAssociation.ts';
+import { anyChargerHasSelectedCar, loadEvCarAssociations } from './deviceDetail/carAssociation.ts';
 import {
   createSerializedAsyncRunner,
   readRecordSetting,
@@ -48,6 +46,7 @@ import {
   readEvSocFlowReporters,
   refreshFlowConflictFacts,
   refreshFlowConflictFactsExplicit,
+  refreshEvSocReportersIfNeeded,
 } from './flowConflictRefresh.ts';
 import { showToast, showToastError } from './toast.ts';
 import { keepPriceSchemeInForce } from './priceSettingsPersistence.ts';
@@ -59,7 +58,8 @@ export type RecommendationNavigation = {
   openDevice: (deviceId: string, focus: 'top' | 'start-policy' | 'shed-limit') => void;
 };
 
-// Browser-owned acknowledgement state. The runtime never reads this key.
+// Browser-owned acknowledgement state. The runtime acts on none of it; it only
+// serves the key in the settings bootstrap.
 export const SETUP_RECOMMENDATION_DISMISSALS = 'setup_recommendation_dismissals';
 
 type DismissalReadState =
@@ -143,8 +143,7 @@ const hasLoadedDismissals = (read: DismissalReadState): read is LoadedDismissalR
 
 const resolveRecommendationReadiness = (afterSetupRead: AfterSetupFactsRead): RecommendationReadiness => {
   if (!state.devicesLoaded) return 'loading';
-  const needsFlowReporterCheck = Object.values(state.evCarAssociations)
-    .some((association) => association.carIds.length > 0);
+  const needsFlowReporterCheck = anyChargerHasSelectedCar();
   const flowReporterRead = readEvSocFlowReporters();
   return state.evCarAssociationsLoaded
     && carInventory.state === 'resolved'
@@ -203,7 +202,10 @@ const isDismissalRecord = (value: unknown): value is Record<string, unknown> => 
 
 const loadDismissalSetting = async (): Promise<unknown> => {
   let [read] = await Promise.allSettled([getSetting(SETUP_RECOMMENDATION_DISMISSALS)]);
-  for (const delayMs of RECOMMENDATION_READ_RETRY_DELAYS_MS) {
+  // Absence the bootstrap served is the runtime's answer: nothing was ever
+  // dismissed. Only a WebView read needs the cold-start grace.
+  const retryDelaysMs = coldStartReadRetryDelays(SETUP_RECOMMENDATION_DISMISSALS, RECOMMENDATION_READ_RETRY_DELAYS_MS);
+  for (const delayMs of retryDelaysMs) {
     if (read.status === 'fulfilled' && isDismissalRecord(read.value)) break;
     await sleep(delayMs);
     [read] = await Promise.allSettled([getSettingFresh(SETUP_RECOMMENDATION_DISMISSALS)]);
@@ -222,11 +224,14 @@ const loadRecommendationCars = async (): Promise<unknown> => {
   return value;
 };
 
+// A failed or unusable read keeps the last-good state, marked stale.
+const staleDismissalRead = (): DismissalReadState => (hasLoadedDismissals(dismissalRead)
+  ? { state: 'stale', dismissals: dismissalRead.dismissals }
+  : { state: 'unavailable' });
+
 const applyDismissalRead = async (result: PromiseSettledResult<unknown>): Promise<void> => {
   if (result.status === 'rejected') {
-    dismissalRead = dismissalRead.state === 'resolved' || dismissalRead.state === 'stale'
-      ? { state: 'stale', dismissals: dismissalRead.dismissals }
-      : { state: 'unavailable' };
+    dismissalRead = staleDismissalRead();
     await logSettingsError(
       'Failed to load recommendation acknowledgements',
       result.reason,
@@ -246,9 +251,7 @@ const applyDismissalRead = async (result: PromiseSettledResult<unknown>): Promis
     dismissalRead = { state: 'resolved', dismissals: {} };
     return;
   }
-  dismissalRead = dismissalRead.state === 'resolved' || dismissalRead.state === 'stale'
-    ? { state: 'stale', dismissals: dismissalRead.dismissals }
-    : { state: 'unavailable' };
+  dismissalRead = staleDismissalRead();
   await logSettingsError(
     'Ignoring unavailable recommendation acknowledgements',
     new TypeError('Invalid recommendation acknowledgement setting.'),
@@ -256,11 +259,13 @@ const applyDismissalRead = async (result: PromiseSettledResult<unknown>): Promis
   );
 };
 
+const staleCarInventory = (): CarInventoryState => (carInventory.state === 'resolved' || carInventory.state === 'stale'
+  ? { state: 'stale', cars: carInventory.cars }
+  : { state: 'unavailable' });
+
 const applyCarInventoryRead = async (result: PromiseSettledResult<unknown>): Promise<void> => {
   if (result.status === 'rejected') {
-    carInventory = carInventory.state === 'resolved' || carInventory.state === 'stale'
-      ? { state: 'stale', cars: carInventory.cars }
-      : { state: 'unavailable' };
+    carInventory = staleCarInventory();
     await logSettingsError('Failed to load cars for recommendations', result.reason, 'setup recommendations');
     return;
   }
@@ -269,9 +274,7 @@ const applyCarInventoryRead = async (result: PromiseSettledResult<unknown>): Pro
     carInventory = { state: 'resolved', cars: parsed.cars };
     return;
   }
-  carInventory = carInventory.state === 'resolved' || carInventory.state === 'stale'
-    ? { state: 'stale', cars: carInventory.cars }
-    : { state: 'unavailable' };
+  carInventory = staleCarInventory();
 };
 
 const runRecommendationAction = (recommendation: SetupRecommendation): void => {
@@ -398,8 +401,7 @@ export const refreshRecommendationSurfaces = (): void => {
       dismissalStatus: hasLoadedDismissals(dismissalRead) ? 'available' : dismissalRead.state,
       retryAvailable: dismissalRead.state === 'unavailable'
         || smartTaskUsageRead === 'unavailable'
-        || (Object.values(state.evCarAssociations).some((association) => association.carIds.length > 0)
-          && ['stale', 'unavailable'].includes(readEvSocFlowReporters().state)),
+        || (anyChargerHasSelectedCar() && ['stale', 'unavailable'].includes(readEvSocFlowReporters().state)),
       busyRecommendationId,
       onAction: runRecommendationAction,
       onDismiss: (recommendation) => {
@@ -446,15 +448,24 @@ const readLatestCarInventory = async (): Promise<void> => {
   refreshRecommendationSurfaces();
 };
 
-const refreshCarInventory = (): Promise<void> => {
+export const refreshCarInventory = (): Promise<void> => {
   carInventoryGeneration += 1;
   refreshRecommendationSurfaces();
   carInventoryRefresh ??= readLatestCarInventory().finally(() => { carInventoryRefresh = undefined; });
   return carInventoryRefresh;
 };
 
+// The car list is first read when a device load lands (`devices-updated`), and
+// no recommendation resolves before the devices have loaded. So the initial
+// data load and later device repaints join that read, or leave it to the device
+// load still to come, rather than sending a second request for the same list.
+const ensureCarInventory = (): Promise<void> => {
+  if (carInventory.state === 'resolved' || (!carInventoryRefresh && !state.devicesLoaded)) return Promise.resolve();
+  return carInventoryRefresh ?? refreshCarInventory();
+};
+
 const loadRecommendationFlowFacts = async (
-  refresh: typeof refreshFlowConflictFacts = refreshFlowConflictFacts,
+  refresh: () => Promise<unknown> = refreshFlowConflictFacts,
 ): Promise<void> => {
   try {
     await refresh();
@@ -464,14 +475,17 @@ const loadRecommendationFlowFacts = async (
   refreshRecommendationSurfaces();
 };
 
+// Boot and a car selection read the battery-reporting Flows only when they matter.
+const loadEvSocReportersIfNeeded = (): Promise<void> => loadRecommendationFlowFacts(refreshEvSocReportersIfNeeded);
+
 export const loadRecommendationData = async (): Promise<void> => {
   await Promise.all([
     loadRecommendationDismissals(),
     loadChargingRecommendations(),
-    refreshCarInventory(),
+    ensureCarInventory(),
     loadSmartTaskUsage(),
     loadAfterSetupFacts().then(refreshRecommendationSurfaces),
-    loadRecommendationFlowFacts(),
+    loadEvSocReportersIfNeeded(),
     // Both publish to the setup path, which redraws these surfaces on a change.
     loadHubMarket(),
     loadSetupPrices(),
@@ -511,12 +525,16 @@ export const initRecommendationSurfaces = (nextNavigation: RecommendationNavigat
   // Recommendation applicability depends on the identities of Main-home
   // devices, not only on the setup path's aggregate counts.
   subscribeToHomeScope(refreshRecommendationSurfaces);
+  // The device list is an input to every recommendation, so its repaints redraw
+  // these surfaces. The car list changes with the runtime's device snapshot,
+  // whose `devices_updated` push re-reads it (`realtime.ts`); a repaint only
+  // makes sure it has loaded.
   document.addEventListener('devices-updated', () => {
-    void refreshCarInventory();
+    void ensureCarInventory().then(refreshRecommendationSurfaces);
     void loadChargingRecommendations();
   });
   document.addEventListener('charging-control-changed', () => { void loadChargingRecommendations(true); });
-  document.addEventListener('ev-car-associations-updated', refreshRecommendationSurfaces);
+  document.addEventListener('ev-car-associations-updated', loadEvSocReportersIfNeeded);
   onSetupPathChange(refreshRecommendationSurfaces);
   // The device list is one of the path's facts, and it lands without any of the
   // path's publishers being involved. Gated inside: a tick that leaves the path

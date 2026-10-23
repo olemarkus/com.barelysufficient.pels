@@ -109,6 +109,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     // of the single settings-UI plan channel with its partitioned plan).
     deviceDiagnostics: scope.getDeviceDiagnostics(),
     emitsUiRealtime: scope.emitsUiRealtime,
+    readStarvationRescuableDeviceIds: scope.readStarvationRescuableDeviceIds,
     snapshotWarmupGate: requireSnapshotWarmupGate(ctx),
     // Scope-owned, so each home gates on ITS OWN meter: a sub-home whose area
     // meter has never reported must not ride the main home's first sample.

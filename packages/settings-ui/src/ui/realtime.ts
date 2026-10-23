@@ -29,9 +29,10 @@ import {
   updatePlanPrices,
 } from './plan.ts';
 import { state } from './state.ts';
-import { refreshAfterSetupRecommendations } from './recommendations.ts';
+import { refreshHomeBadgesAndRepaint } from './devices.ts';
+import { refreshAfterSetupRecommendations, refreshCarInventory } from './recommendations.ts';
 import { logSettingsWarn } from './logging.ts';
-import { repaintOverviewWithRescueGate } from './overviewRescueGate.ts';
+import { applyPlanRescueGate } from './starvationRescue.ts';
 import {
   createSettingsSetHandler,
   createSettingsUnsetHandler,
@@ -43,7 +44,7 @@ import {
   loadDevicesOnce,
   loadDevicesForOverview,
   refreshDevicesForUi,
-  refreshPlanForUi,
+  refreshOverviewOnStatusPoll,
   refreshDailyBudgetIfVisible,
   refreshPowerDataIfVisible,
   refreshPricesIfVisible,
@@ -90,23 +91,13 @@ const handlePlanUpdated = (plan: unknown) => {
   // cached payload and the open activity-log view never picks up new entries.
   invalidateApiCache(SETTINGS_UI_DEVICE_LOG_PATH);
   document.dispatchEvent(new CustomEvent('plan-updated', { detail: { plan: parsedPlan } }));
+  // The plan carries the "Let it run now" chip's gate (`rescuableDeviceIds`),
+  // so the chip tracks the live starvation state with each push and needs no
+  // read of its own. Applied while the Overview is hidden too: a rescue created
+  // from it stays hidden only until a plan stops listing the device, and that
+  // plan may arrive while the owner is elsewhere.
+  applyPlanRescueGate(parsedPlan?.rescuableDeviceIds ?? []);
   if (!isPanelVisible('#overview-panel')) return;
-  // Refresh the rescuable-device set so the "Let it run now" chip's gate tracks
-  // the live starvation state (a device that just entered / left
-  // starvation, gained / lost a smart task, or learned its target). Overview-only
-  // so it never fetches while the user is on another tab. The guarded repaint
-  // follows the fetch so the chip appears / disappears once it loads, but only if
-  // this plan is still current (`overviewRescueGate` sequence-guards it so a slow
-  // older fetch can't roll the Overview back over a newer plan). The synchronous
-  // `renderPlan` below always paints the freshest plan immediately.
-  runLoggedTask(
-    repaintOverviewWithRescueGate(
-      parsedPlan,
-      () => isPanelVisible('#overview-panel'),
-    ),
-    'Failed to refresh rescuable devices',
-    'plan_updated',
-  );
   renderPlan(parsedPlan);
 };
 
@@ -137,6 +128,11 @@ const handlePricesUpdated = () => {
 
 const handleDevicesUpdated = () => {
   refreshDevicesForUi();
+  // The runtime's device snapshot changed. The setup suggestions' car list (and
+  // each car's charger matches) is read from it, and meter-area membership can
+  // have moved with a Homey zone change, which writes no setting.
+  runLoggedTask(refreshCarInventory(), 'Failed to refresh cars for setup suggestions', 'realtime devices_updated');
+  refreshHomeBadgesAndRepaint();
   // The power payload carries the home-level `hasManagedSolarDevice` gate for
   // the Usage Solar card, so a device-list change (PV added/removed) must
   // refetch it — otherwise the card's gathering state waits for the next
@@ -164,8 +160,8 @@ const handlePowerUpdated = (power: unknown) => {
     // tracker (and hasManagedSolarDevice). Every runtime `power_updated` push
     // is status-only (`emitSettingsUiPowerUpdatedForApp` sends tracker:null),
     // so stomping the tracker here left the Overview's "Solar now" subline
-    // reading a null tracker on most opens (`refreshOverviewPlanWithRescueGate`
-    // reads this cache) until the 30 s periodic refetch healed it. Consumers
+    // reading a null tracker on most opens (`refreshOverviewPlan` reads this
+    // cache) until the 30 s periodic refetch healed it. Consumers
     // that need a FRESH tracker already invalidate before refetching (see
     // refreshPowerDataIfVisible and the usage-tab activation hook).
     const pushedReadings = classifyPowerReadingsFact(payload?.readings);
@@ -234,12 +230,12 @@ export const startStaleDataRefreshInterval = () => {
   setInterval(() => {
     invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
     refreshStaleDataStatus('staleDataInterval');
+    // Shares the status read above rather than sending its own.
+    refreshOverviewOnStatusPoll('periodicRefresh');
     if (isPanelVisible('#overview-panel')) {
-      refreshPlanForUi('periodicRefresh');
-      // The Overview's cards are device rows, so the device payload is on this
-      // surface's critical path and shares its cadence. `/ui_devices` resolves
-      // observed state per read, so this is what makes a card's draw and
-      // availability current rather than whatever the last device poll parsed.
+      // The Overview's cards are device rows. A device load that failed is
+      // retried on this cadence; a loaded list is kept current by the
+      // `devices_updated` push, and a card's draw comes from the plan.
       loadDevicesForOverview();
     }
   }, 30 * 1000);

@@ -1,21 +1,18 @@
 import {
   SETTINGS_UI_STARVATION_RESCUE_CREATE_PATH,
-  SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH,
   SETTINGS_UI_STARVATION_RESCUE_PREVIEW_PATH,
 } from '../../../contracts/src/settingsUiApi.ts';
 import type {
   SettingsUiStarvationRescueCreateResponse,
-  SettingsUiStarvationRescueDevicesPayload,
   SettingsUiStarvationRescuePreviewResponse,
 } from '../../../contracts/src/starvationRescue.ts';
 import {
   resolveStarvationRescueRejectCopy,
   STARVATION_RESCUE_WIDGET_COPY,
 } from '../../../shared-domain/src/planStarvation.ts';
-import { callApi, invalidateApiCache } from './homey.ts';
+import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { showToast } from './toast.ts';
-import { state } from './state.ts';
 import { refreshPlanSurface } from './planSurfaceRefresh.ts';
 
 // Controller for the overview device-card budget-exempt rescue (the bounded
@@ -24,35 +21,24 @@ import { refreshPlanSurface } from './planSurfaceRefresh.ts';
 // renders the returned state. Kept out of the view layer so the view has no
 // network/fetch logic (views/AGENTS.md).
 
-// Refresh the set of device IDs the rescue chip may offer the action on — the
-// same gate the widget uses (task-free + a known target),
-// resolved server-side. Stored on `state` so the card view can gate the chip on
-// membership; a fetch failure leaves the prior set untouched (no chip flicker on
-// a transient read miss).
-//
-// Loads overlap (two `plan_updated` pushes while Overview is visible, or a push
-// racing an Overview open), and their responses can land out of order. The same
-// monotonic-token idiom as `overviewRescueGate`'s repaint guard lets only the
-// latest load commit, so an older response can never overwrite a newer set.
-let rescuableLoadGeneration = 0;
+// The device IDs the rescue chip may offer the action on: the same gate the
+// widget uses (task-free + a known target), resolved server-side and carried on
+// the Main plan (`rescuableDeviceIds`), so every plan the Overview renders
+// brings its own gate and an older plan can never pair with a newer gate.
+let rescuableDeviceIds: ReadonlySet<string> = new Set();
+// Devices this WebView just created a rescue for. A plan built before the create
+// landed still lists them, so they stay hidden until a plan stops listing them.
+const rescuedDeviceIds = new Set<string>();
 
-export const loadStarvationRescuableDevices = async (): Promise<void> => {
-  const token = ++rescuableLoadGeneration;
-  try {
-    const payload = await callApi<SettingsUiStarvationRescueDevicesPayload>(
-      'GET',
-      SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH,
-    );
-    if (token !== rescuableLoadGeneration) return;
-    const ids = Array.isArray(payload?.rescuableDeviceIds) ? payload.rescuableDeviceIds : [];
-    state.starvationRescuableDeviceIds = new Set(ids);
-  } catch (error) {
-    await logSettingsError('Failed to load rescuable devices', error, 'loadStarvationRescuableDevices');
-  }
+export const applyPlanRescueGate = (deviceIds: readonly string[]): void => {
+  rescuableDeviceIds = new Set(deviceIds);
+  rescuedDeviceIds.forEach((deviceId) => {
+    if (!rescuableDeviceIds.has(deviceId)) rescuedDeviceIds.delete(deviceId);
+  });
 };
 
 export const isStarvationRescuable = (deviceId: string): boolean => (
-  state.starvationRescuableDeviceIds.has(deviceId)
+  rescuableDeviceIds.has(deviceId) && !rescuedDeviceIds.has(deviceId)
 );
 
 // The preview resolves the bounded window AND the gated permission set the card
@@ -114,13 +100,9 @@ export const createStarvationRescue = async (
       await showToast(resolveStarvationRescueRejectCopy(reason), 'warn');
       return { ok: false };
     }
-    // The device is now task-having → no longer rescuable. Drop it locally and
-    // re-fetch so the chip's gate matches the server immediately. The local drop
-    // is newer than any gate load still in flight, so bump the token: a response
-    // fetched before the create landed must not re-add the device.
-    rescuableLoadGeneration += 1;
-    state.starvationRescuableDeviceIds.delete(deviceId);
-    invalidateApiCache(SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH);
+    // The device is now task-having → no longer rescuable. Hide its chip now;
+    // the next plan carries the server's gate.
+    rescuedDeviceIds.add(deviceId);
     refreshPlanSurface();
     await showToast(
       response.runsCurrentHour

@@ -10,10 +10,14 @@ import { refreshHomeBadges } from './homeBadges.ts';
 import { refreshHomeScopeAndNotify, subscribeToHomeScope } from './homeScope.ts';
 import { invalidateApiCache, invalidateApiCacheForAllHomes } from './homey.ts';
 import { loadModeAndPriorities, renderPriorities } from './modes.ts';
-import { refreshOverviewPlanWithRescueGate } from './overviewRescueGate.ts';
 import { refreshPriceConfigView, renderPriceConfigDevices } from './priceConfig.ts';
 import { refreshDailyBudgetPlan } from './dailyBudget.ts';
-import { refreshPlan, resetPlanSurfaceForScopeChange } from './plan.ts';
+import {
+  refreshPlan,
+  refreshPlanHistory,
+  refreshPlanPower,
+  resetPlanSurfaceForScopeChange,
+} from './plan.ts';
 import { refreshAdvancedDeviceCleanup } from './advanced.ts';
 import {
   getPowerUsageFromRead,
@@ -62,18 +66,51 @@ export const isPanelVisible = (selector: string): boolean => {
   return Boolean(panel && !panel.classList.contains('hidden'));
 };
 
+// The plan and the smart-task history reach an open Overview through their own
+// pushes and settings events; a re-read every few status polls only heals one
+// the WebView missed (a dropped realtime socket). The polls in between feed the
+// hero's power from the status read they already make.
+const OVERVIEW_SAFETY_NET_POLLS = 4;
+let pollsSinceOverviewRead = 0;
+
+// Opening the Overview, or picking a home while it is open, reads the plan anew:
+// a device can have become held back (or gained a smart task) while the panel
+// was hidden, and the plan carries the rescue chip's gate. The smart-task
+// history its row's miss streaks come from is read alongside.
+export const refreshOverviewPlan = (): Promise<void> => {
+  // A full read: the safety net counts from here.
+  pollsSinceOverviewRead = 0;
+  invalidateApiCacheForAllHomes(SETTINGS_UI_PLAN_PATH);
+  refreshPlanHistory();
+  return refreshPlan();
+};
+
+// A hidden Overview reads the plan again when it opens.
 export const refreshPlanForUi = (context: string) => {
   invalidateApiCacheForAllHomes(SETTINGS_UI_PLAN_PATH);
-  runLoggedTask(refreshPlan(), 'Failed to refresh plan', context);
+  refreshOverviewPlanIfVisible(context);
+};
+
+export const refreshOverviewOnStatusPoll = (context: string) => {
+  if (!isPanelVisible('#overview-panel')) return;
+  pollsSinceOverviewRead += 1;
+  if (pollsSinceOverviewRead < OVERVIEW_SAFETY_NET_POLLS) {
+    runLoggedTask(refreshPlanPower(), 'Failed to refresh overview power', context);
+    return;
+  }
+  runLoggedTask(refreshOverviewPlan(), 'Failed to refresh plan', context);
+};
+
+export const refreshPlanHistoryIfVisible = () => {
+  if (isPanelVisible('#overview-panel')) refreshPlanHistory();
 };
 
 // A selected meter area's own freshness path (multi-home): its
 // `plan_status_published` push and its suffixed `capacity_dry_run:<id>` write
 // repaint an OPEN Overview from the area's scoped reads (the caller already
-// invalidated the scoped cache entries). Visible-only, unlike
-// `refreshPlanForUi`: the push fires on every area plan commit, and repainting
-// a hidden panel is pure cost — the Overview activation hook refetches on open
-// anyway.
+// invalidated the scoped cache entries). Visible-only: the push fires on every
+// area plan commit, and repainting a hidden panel is pure cost — the Overview
+// activation hook refetches on open anyway.
 export const refreshOverviewPlanIfVisible = (context: string) => {
   if (!isPanelVisible('#overview-panel')) return;
   runLoggedTask(refreshPlan(), 'Failed to refresh plan', context);
@@ -150,7 +187,7 @@ subscribeToHomeScope(() => {
 subscribeToHomeScope(() => {
   if (!isPanelVisible('#overview-panel')) return;
   resetPlanSurfaceForScopeChange();
-  runLoggedTask(refreshOverviewPlanWithRescueGate(), 'Failed to refresh plan', 'homeScope');
+  runLoggedTask(refreshOverviewPlan(), 'Failed to refresh plan', 'homeScope');
 });
 
 subscribeToHomeScope(() => {

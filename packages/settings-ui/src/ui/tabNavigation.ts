@@ -1,4 +1,5 @@
 import { refreshActivityHistory } from './activityHistory.ts';
+import { refreshAdvancedDeviceLogger } from './advanced.ts';
 import { panels, tabListEntries, tabs, type MdTabElement } from './dom.ts';
 import { SETTINGS_UI_POWER_PATH } from '../../../contracts/src/settingsUiApi.ts';
 import { loadCapacitySettings } from './capacity.ts';
@@ -18,7 +19,6 @@ import {
 import { showToast } from './toast.ts';
 import { state } from './state.ts';
 import { refreshDeadlinesList } from './deadlinesList.ts';
-import { refreshOverviewPlanWithRescueGate } from './overviewRescueGate.ts';
 import { paintOverviewIfOwed, resetPlanSurfaceIfScopeChanged } from './plan.ts';
 import { refreshHomesOnHomesPanel } from './homesSettings.ts';
 import { clearUsageReturnLink } from './usageReturnLink.ts';
@@ -30,6 +30,7 @@ import {
   ensureDevicePanelsPainted,
   loadDevicesForOverview,
   loadDevicesOnce,
+  refreshOverviewPlan,
   refreshPowerData,
   runLoggedTask,
 } from './uiRefreshTasks.ts';
@@ -69,7 +70,12 @@ const refreshHomeSettingsPanel = (tabId: string): void => {
     return;
   }
   runLoggedTask(
-    refreshHomeScope().then(() => loadModeAndPriorities()).then(() => {
+    refreshHomeScope().then(async (published) => {
+      // A published scope change already reloaded this visible panel through
+      // its scope subscription (`uiRefreshTasks.ts`); a second reload here
+      // would only repeat the same reads. Same rule for Overview and Usage.
+      if (published) return;
+      await loadModeAndPriorities();
       if (state.devicesLoaded) renderPriorities(state.latestDevices);
     }),
     'Failed to load modes for the selected home',
@@ -79,9 +85,11 @@ const refreshHomeSettingsPanel = (tabId: string): void => {
 
 // Panels whose activation is one logged refresh. Weather refreshes the insight
 // picker's validity lines (a no-op while its flag is off); the web app page
-// fills in this Homey's link.
+// fills in this Homey's link; Advanced loads its Homey device picker, a full
+// device list no other page needs, on the first visit instead of every boot.
 const SINGLE_REFRESH_PANELS: Record<string, { refresh: () => Promise<void>; failure: string }> = {
   activity: { refresh: refreshActivityHistory, failure: 'Failed to refresh activity history' },
+  advanced: { refresh: refreshAdvancedDeviceLogger, failure: 'Failed to load Homey devices' },
   deadlines: { refresh: refreshDeadlinesList, failure: 'Failed to load deadlines list' },
   weather: { refresh: refreshWeatherInsightOnWeatherPanel, failure: 'Failed to refresh weather insight' },
   'web-app': { refresh: refreshWebAppLink, failure: 'Failed to prepare the web app link' },
@@ -104,7 +112,9 @@ const runTabActivationSideEffects = (tabId: string) => {
     // pick — BEFORE resolving which home's plan to read. A roster-refresh
     // failure keeps the last-good scope (abandon-grace) and the refresh runs.
     runLoggedTask(
-      refreshHomeScope().then(() => {
+      refreshHomeScope().then((published) => {
+        // The Overview's scope subscription has reset and refreshed it already.
+        if (published) return undefined;
         // The scope may have moved while the Overview was HIDDEN (the
         // visible-panel subscription in `uiRefreshTasks.ts` never fired for
         // it): blank the stale home's committed render before the scoped
@@ -113,7 +123,7 @@ const runTabActivationSideEffects = (tabId: string) => {
         // reconcile itself can move the selection (persisted pick, deleted
         // area), and the check must compare against the scope in force.
         resetPlanSurfaceIfScopeChanged();
-        return refreshOverviewPlanWithRescueGate();
+        return refreshOverviewPlan();
       }),
       'Failed to refresh plan',
       'showTab',
@@ -133,7 +143,7 @@ const runTabActivationSideEffects = (tabId: string) => {
     // Usage surface resolves which home to read. A roster-refresh failure
     // keeps the last-good scope (abandon-grace) and the read still runs.
     runLoggedTask(
-      refreshHomeScope().then(() => refreshPowerData()),
+      refreshHomeScope().then((published) => (published ? undefined : refreshPowerData())),
       'Failed to refresh power data',
       'showTab',
     );

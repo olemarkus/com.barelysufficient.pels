@@ -396,7 +396,15 @@ const resolveRosterPayload = (payload: unknown): RosterRead => {
   };
 };
 
-export const refreshHomeScope = async (): Promise<void> => {
+/**
+ * Re-read the roster and publish a changed scope to the subscribers. Resolves
+ * whether the subscribers heard a publication while it ran, from this refresh
+ * or another: a panel activation that refreshes the roster first then has
+ * nothing left to do for a visible panel, whose own subscription already ran
+ * that panel's refresh.
+ */
+export const refreshHomeScope = async (): Promise<boolean> => {
+  const publicationRevisionAtStart = listenerPublicationRevision;
   rosterGeneration += 1;
   const generation = rosterGeneration;
   let read: RosterRead = { status: 'unavailable' };
@@ -410,7 +418,7 @@ export const refreshHomeScope = async (): Promise<void> => {
   }
   // A newer refresh started while this one was in flight; its answer wins and
   // will paint. Applying this stale one could resurrect a just-deleted area.
-  if (generation !== rosterGeneration) return;
+  if (generation !== rosterGeneration) return listenerPublicationRevision !== publicationRevisionAtStart;
   const previousState = rosterState;
   const previousAreas = areas;
   const previousRuntimeActive = homeScopeMembership.runtimeActive;
@@ -439,16 +447,15 @@ export const refreshHomeScope = async (): Promise<void> => {
     || !sameAreas(previousAreas, areas)
     || !sameMembership(previousMembership, homeScopeMembership.membershipByDeviceId);
   if (scopeChanged) notifyListeners();
+  return listenerPublicationRevision !== publicationRevisionAtStart;
 };
 
 /** Refresh ownership and then publish the settled last-good scope to consumers. */
 export const refreshHomeScopeAndNotify = async (): Promise<void> => {
-  const previousPublicationRevision = listenerPublicationRevision;
-  await refreshHomeScope();
   // Explicit refresh callers also use the notification as their completion
   // signal when the settled scope is unchanged or the adapter kept last-good
   // state after an unavailable read.
-  if (listenerPublicationRevision === previousPublicationRevision) notifyListeners();
+  if (!(await refreshHomeScope())) notifyListeners();
 };
 
 /**

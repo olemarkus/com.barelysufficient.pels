@@ -230,6 +230,71 @@ describe('callApi', () => {
     expect(api).not.toHaveBeenCalled();
   });
 
+  it('skips the cold-start read grace only while the bootstrap-served value stands', async () => {
+    const { applyBootstrapSettings, coldStartReadRetryDelays, invalidateSettingCache, setHomeyClient } = await import(
+      '../src/ui/homey.ts'
+    );
+    setHomeyClient(createClient());
+    const delaysMs = [250, 750];
+
+    applyBootstrapSettings({ ev_car_associations: null });
+    expect(coldStartReadRetryDelays('ev_car_associations', delaysMs)).toEqual([]);
+    expect(coldStartReadRetryDelays('setup_recommendation_dismissals', delaysMs)).toBe(delaysMs);
+
+    // A settings event drops the served value; the next read goes through the WebView.
+    invalidateSettingCache('ev_car_associations');
+    expect(coldStartReadRetryDelays('ev_car_associations', delaysMs)).toBe(delaysMs);
+  });
+
+  it('sends one request for readers that miss the read-model cache together', async () => {
+    const callbacks: HomeyCallback<unknown>[] = [];
+    const api = vi.fn((
+      _method: string,
+      _uri: string,
+      bodyOrCallback: unknown,
+      callback?: HomeyCallback<unknown>,
+    ) => {
+      const cb = typeof bodyOrCallback === 'function' ? bodyOrCallback as HomeyCallback<unknown> : callback;
+      if (cb) callbacks.push(cb);
+    });
+    const { getApiReadModel, setHomeyClient } = await import('../src/ui/homey.ts');
+    setHomeyClient(createClient({ api }));
+
+    const first = getApiReadModel('/ui_power');
+    const second = getApiReadModel('/ui_power');
+    callbacks[0]?.(null, { status: 'served' });
+
+    await expect(Promise.all([first, second])).resolves.toEqual([{ status: 'served' }, { status: 'served' }]);
+    expect(api).toHaveBeenCalledTimes(1);
+  });
+
+  it('never shares a read-model request sent before an invalidation', async () => {
+    const callbacks: HomeyCallback<unknown>[] = [];
+    const api = vi.fn((
+      _method: string,
+      _uri: string,
+      bodyOrCallback: unknown,
+      callback?: HomeyCallback<unknown>,
+    ) => {
+      const cb = typeof bodyOrCallback === 'function' ? bodyOrCallback as HomeyCallback<unknown> : callback;
+      if (cb) callbacks.push(cb);
+    });
+    const { getApiReadModel, invalidateApiCache, setHomeyClient } = await import('../src/ui/homey.ts');
+    setHomeyClient(createClient({ api }));
+
+    const older = getApiReadModel('/ui_plan');
+    invalidateApiCache('/ui_plan');
+    const newer = getApiReadModel('/ui_plan');
+    expect(api).toHaveBeenCalledTimes(2);
+
+    // The pre-invalidation answer lands last, and its reader takes the newer one.
+    callbacks[1]?.(null, { plan: 'after' });
+    callbacks[0]?.(null, { plan: 'before' });
+    await expect(newer).resolves.toEqual({ plan: 'after' });
+    await expect(older).resolves.toEqual({ plan: 'after' });
+    expect(api).toHaveBeenCalledTimes(2);
+  });
+
   it('rejects with endpoint context when the API function is missing', async () => {
     vi.useFakeTimers();
     const { callApi, setHomeyClient } = await import('../src/ui/homey.ts');

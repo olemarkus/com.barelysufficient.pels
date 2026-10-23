@@ -366,20 +366,28 @@ describe('devices list home badges', () => {
   });
 
   it('badges every row after fetching membership independently of the device payload', async () => {
-    const homey = await primeBadges(buildHomesPayload());
+    const homey = createHomeyMock({ uiState: { homes: buildHomesPayload(), devices: THREE_DEVICES } });
+    const homeyModule = await import('../src/ui/homey.ts');
+    homeyModule.setHomeyClient(homey);
     const { getTargetDevices, renderDevices } = await import('../src/ui/devices.ts');
     const { state } = await import('../src/ui/state.ts');
     state.initialLoadComplete = true;
     state.budgetExemptMap = {};
 
-    (homey.api as ReturnType<typeof vi.fn>).mockClear();
     await getTargetDevices();
     await flushPromises();
     // Membership starts with the device read, but remains independent so it
     // cannot hold the device payload hostage.
-    const homesCalls = (homey.api as ReturnType<typeof vi.fn>).mock.calls
+    const homesCalls = () => (homey.api as ReturnType<typeof vi.fn>).mock.calls
       .filter((call) => call[0] === 'GET' && call[1] === '/ui_homes');
-    expect(homesCalls).toHaveLength(1);
+    expect(homesCalls()).toHaveLength(1);
+
+    // Once resolved, membership changes arrive as settings events, so later
+    // device reads do not read the meter areas again.
+    homeyModule.invalidateApiCache('/ui_devices');
+    await getTargetDevices();
+    await flushPromises();
+    expect(homesCalls()).toHaveLength(1);
 
     renderDevices(THREE_DEVICES);
 
@@ -393,6 +401,7 @@ describe('devices list home badges', () => {
   it('returns devices when the optional badge request never settles', async () => {
     vi.doMock('../src/ui/homeBadges.ts', () => ({
       appendHomeBadge: vi.fn(),
+      hasResolvedHomeBadges: () => false,
       refreshHomeBadges: vi.fn(() => new Promise<void>(() => {})),
     }));
     const homey = createHomeyMock({ uiState: { devices: THREE_DEVICES } });

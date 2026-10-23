@@ -150,13 +150,6 @@ export type UiState = {
   // payload; only reporting chargers are keys. Read once, when the owner turns
   // Managed on, to pick a starting control mode (`applyManagedOptInControlMode`).
   chargerPhasePresets: ChargerPhasePresets;
-  // Device IDs the overview "Let it run now" rescue chip may offer the action on,
-  // resolved server-side (task-free + a known target). The card view gates the
-  // chip on membership, which keeps stale affordances rare — but this is a
-  // SNAPSHOT: a device can recover, gain a smart task, lose its target, or change
-  // home scope between the fetch and the tap, and the create path re-checks live
-  // state and may still reject. Empty until the first rescuable-devices fetch.
-  starvationRescuableDeviceIds: Set<string>;
   // One entry per ACTIVE meter area (maintained by capacity.ts's roster+flag
   // refresh). `simulating` is the area's resolved `capacity_dry_run:<homeId>`
   // flag; `null` = no resolved value this session — a transient read miss or a
@@ -231,7 +224,6 @@ export const state: UiState = {
   hasExhibitedExport: false,
   surplusPoolReachable: false,
   chargerPhasePresets: {},
-  starvationRescuableDeviceIds: new Set<string>(),
   meterAreaSimulation: [],
 };
 

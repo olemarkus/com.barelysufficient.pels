@@ -69,6 +69,7 @@ const buildPlan = (params: { totalKw: number; deviceId: string; deviceName: stri
       ? { code: 'capacity' }
       : { code: 'keep', detail: null },
   })],
+  rescuableDeviceIds: [],
 });
 
 const MAIN_PLAN = buildPlan({ totalKw: 5.2, deviceId: 'dev_main_heater', deviceName: 'Main Heater' });
@@ -321,7 +322,7 @@ describe('Overview device ownership without plan decisions', () => {
     state.devicesLoaded = true;
     const { renderPlan, bumpPlanSurface } = await import('../src/ui/planRedesign.ts');
 
-    renderPlan({ meta: buildPlanMeta({ totalKw: 2, softLimitKw: 5 }), devices: [] });
+    renderPlan({ meta: buildPlanMeta({ totalKw: 2, softLimitKw: 5 }), devices: [], rescuableDeviceIds: [] });
 
     expect(document.querySelector('#plan-cards')?.textContent).toContain('Main heater');
     expect(document.querySelector('#plan-cards')?.textContent).not.toContain('Rental heater');
@@ -350,7 +351,7 @@ describe('Overview device ownership without plan decisions', () => {
     state.devicesLoaded = true;
     const { renderPlan, bumpPlanSurface } = await import('../src/ui/planRedesign.ts');
     const { refreshHomeScope } = await import('../src/ui/homeScope.ts');
-    renderPlan({ meta: buildPlanMeta({ totalKw: 2, softLimitKw: 5 }), devices: [] });
+    renderPlan({ meta: buildPlanMeta({ totalKw: 2, softLimitKw: 5 }), devices: [], rescuableDeviceIds: [] });
 
     expect(document.querySelector('#plan-empty')).toBeNull();
     expect(document.querySelectorAll('#plan-cards .plan-card')).toHaveLength(0);
@@ -736,6 +737,46 @@ describe('overlapping same-area refreshes', () => {
   });
 });
 
+describe('a Main plan push during a Main refresh', () => {
+  it('supersedes the refresh still reading an older plan, and its rescue gate', async () => {
+    // Refresh A has read the plan and waits on power when a `plan_updated` push
+    // commits a newer plan with its own rescue gate. A must never paint its
+    // plan, or bring back its gate, over the push.
+    const { heldCalls, emit } = await installClient({
+      api: {
+        '/ui_homes': ROSTER_PAYLOAD,
+        '/ui_plan': { plan: { ...MAIN_PLAN, rescuableDeviceIds: ['dev_main_heater'] } },
+        '/ui_power': { tracker: {}, status: { state: 'unavailable', reason: 'no_status_recorded' }, readings: { state: 'received', lastPowerUpdateMs: 1_700_000_000_000 } },
+        '/ui_prices': null,
+        '/ui_deferred_objective_history': { version: 1, entriesByDeviceId: {} },
+        '/settings_ui_log': { ok: true },
+      },
+      holdUris: ['/ui_power'],
+    });
+    const { refreshHomeScope } = await import('../src/ui/homeScope.ts');
+    await refreshHomeScope();
+    const { initRealtimeListeners } = await import('../src/ui/realtime.ts');
+    initRealtimeListeners();
+    const { refreshPlan } = await import('../src/ui/plan.ts');
+    const { isStarvationRescuable } = await import('../src/ui/starvationRescue.ts');
+
+    const older = refreshPlan();
+    await flushAsync();
+    emit('plan_updated', {
+      ...buildPlan({ totalKw: 6.4, deviceId: 'dev_main_heater', deviceName: 'Main Heater' }),
+      rescuableDeviceIds: [],
+    });
+    await flushAsync();
+    expect(heroPowerValue()).toBe('6.4');
+
+    heldCalls.filter((call) => call.uri === '/ui_power').forEach((call) => call.respond());
+    await older;
+    await flushAsync();
+    expect(heroPowerValue()).toBe('6.4');
+    expect(isStarvationRescuable('dev_main_heater')).toBe(false);
+  });
+});
+
 describe('overlapping Main refreshes across a scope round trip', () => {
   it('an older Main refresh can never overwrite the newer Main commit', async () => {
     // Main refresh A is still awaiting its plan read when the user rounds
@@ -768,8 +809,13 @@ describe('overlapping Main refreshes across a scope round trip', () => {
     await refreshPlan();
     expect(heroPowerValue()).toBe('0.7');
 
-    // … and back to Main, where refresh B settles with the current plan.
+    // … and back to Main, where refresh B settles with the current plan. The
+    // Overview's scope subscription drops the cached plan before that refresh
+    // (`refreshOverviewPlanWithRescueGate`), so B sends its own read rather
+    // than sharing A's.
     selectHomeScope('main');
+    const { invalidateApiCacheForAllHomes } = await import('../src/ui/homey.ts');
+    invalidateApiCacheForAllHomes('/ui_plan');
     const newerMain = refreshPlan();
     await flushAsync();
     const heldMainReads = heldCalls.filter((call) => call.uri === '/ui_plan');

@@ -229,6 +229,7 @@ function buildSubHomeScope(
     // recorder (a sub-home plan pollutes main's per-boot epoch).
     emitsUiRealtime: false,
     getDeviceDiagnostics: () => undefined,
+    readStarvationRescuableDeviceIds: () => [],
     // THIS home's post-actuation live-state sync — syncing main's service
     // (the ctx delegator) would touch the wrong plan.
     syncLivePlanStateAfterTargetActuation: (source) => (

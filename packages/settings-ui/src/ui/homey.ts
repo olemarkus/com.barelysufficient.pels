@@ -59,14 +59,31 @@ type WindowWithHomey = Window & {
 
 let homeyClient: HomeySettingsClient | null = null;
 const settingsCache = new Map<string, unknown>();
+// Keys whose cached value the `/ui_bootstrap` read served, until invalidated.
+// The runtime reads its own settings store, where an absent key was never
+// written; only a WebView `get` can catch the cold-start gap in which a written
+// key reads as absent.
+const bootstrapServedSettingKeys = new Set<string>();
 const apiCache = new Map<string, unknown>();
+/**
+ * The read-model GETs on the wire, by URI, with the invalidation generation
+ * each was sent under (see `apiCachePathGenerations`). Readers that miss the
+ * cache together, such as a panel refresh and the status poll on one tick,
+ * share one request instead of each sending their own: every call counts
+ * against the Homey cloud's per-Homey rate limit when the page is opened
+ * remotely. A read that starts after an invalidation carries a newer
+ * generation, so it never joins a request that predates the change.
+ */
+const apiReadsInFlight = new Map<string, { generation: number; read: Promise<unknown> }>();
 
 export const getHomeyClient = () => homeyClient;
 
 export const setHomeyClient = (client: HomeySettingsClient | null) => {
   if (homeyClient !== client) {
     settingsCache.clear();
+    bootstrapServedSettingKeys.clear();
     apiCache.clear();
+    apiReadsInFlight.clear();
   }
   homeyClient = client;
 };
@@ -77,8 +94,23 @@ export const applySettingsPatch = (settings: Record<string, unknown>) => {
   });
 };
 
+export const applyBootstrapSettings = (settings: Record<string, unknown>) => {
+  applySettingsPatch(settings);
+  Object.keys(settings).forEach((key) => bootstrapServedSettingKeys.add(key));
+};
+
+/**
+ * The cold-start grace for re-reading `key` through the WebView: `delaysMs`, or
+ * none while `getSetting(key)` answers with the value the bootstrap served, in
+ * which an absent value means the key was never written.
+ */
+export const coldStartReadRetryDelays = (key: string, delaysMs: readonly number[]): readonly number[] => (
+  bootstrapServedSettingKeys.has(key) ? [] : delaysMs
+);
+
 export const invalidateSettingCache = (key: string) => {
   settingsCache.delete(key);
+  bootstrapServedSettingKeys.delete(key);
 };
 
 // Whether a key is currently in the settings cache, WITHOUT falling through to a
@@ -361,6 +393,30 @@ export const callApi = async <T>(
   }
 };
 
+// One GET of a read model, caching its answer under the generation it was sent
+// with. The cache write belongs to the shared request, before it leaves
+// `apiReadsInFlight`: a reader that wakes up later then finds the answer
+// cached, or the newer request still in flight, and never sends a third.
+const readApiModel = async (uri: string, generation: number): Promise<unknown> => {
+  const value = await callApi<unknown>('GET', uri);
+  // An invalidation means this response predates a completed write or refresh.
+  // A scoped refusal is never cached at all (see `isUnavailableScopedPayload`).
+  if (isApiCacheWriteStillValid(uri, generation) && !isUnavailableScopedPayload(value)) {
+    apiCache.set(uri, value);
+  }
+  return value;
+};
+
+const fetchApiReadModel = (uri: string, generation: number): Promise<unknown> => {
+  const inFlight = apiReadsInFlight.get(uri);
+  if (inFlight?.generation === generation) return inFlight.read;
+  const read: Promise<unknown> = readApiModel(uri, generation).finally(() => {
+    if (apiReadsInFlight.get(uri)?.read === read) apiReadsInFlight.delete(uri);
+  });
+  apiReadsInFlight.set(uri, { generation, read });
+  return read;
+};
+
 export const getApiReadModel = async <T>(uri: string): Promise<T> => {
   while (true) {
     if (apiCache.has(uri)) {
@@ -368,14 +424,12 @@ export const getApiReadModel = async <T>(uri: string): Promise<T> => {
       return apiCache.get(uri) as T;
     }
     const generationAtFetch = apiCachePathGenerations.get(apiCachePathOf(uri)) ?? 0;
-    const value = await callApi<T>('GET', uri);
-    // An invalidation means this response predates a completed write or refresh.
-    // Retry here so consumers receive a current read model and can trust it when
-    // committing UI state; merely refusing to cache the old response still let
-    // a late cold-boot request overwrite newer facts in that state.
+    const value = await fetchApiReadModel(uri, generationAtFetch) as T;
+    // Retry an answer an invalidation overtook, so consumers receive a current
+    // read model and can trust it when committing UI state; merely refusing to
+    // cache the old response still let a late cold-boot request overwrite
+    // newer facts in that state.
     if (!isApiCacheWriteStillValid(uri, generationAtFetch)) continue;
-    // A scoped refusal is never cached at all (see `isUnavailableScopedPayload`).
-    if (!isUnavailableScopedPayload(value)) apiCache.set(uri, value);
     return value;
   }
 };

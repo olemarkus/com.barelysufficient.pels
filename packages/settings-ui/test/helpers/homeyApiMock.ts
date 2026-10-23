@@ -113,10 +113,12 @@ export type MockHomeyUiState = {
   power?: unknown;
   prices?: unknown;
   weatherAdvisorReadout?: unknown;
-  // Overview "Let it run now" rescue endpoints. The set of device IDs the chip
-  // may offer the rescue on, plus the preview/create responses. Defaults mirror
-  // production's "nothing rescuable yet" steady state (empty set, unavailable
-  // preview/create); tests seed these to exercise the chip's arm/commit path.
+  // Overview "Let it run now" rescue. The set of device IDs the chip may offer
+  // the rescue on, which the served plan carries as `rescuableDeviceIds` (as
+  // the producer's does) and the rescue route also serves, plus the
+  // preview/create responses. Defaults mirror production's "nothing rescuable
+  // yet" steady state (empty set, unavailable preview/create); tests seed these
+  // to exercise the chip's arm/commit path.
   starvationRescuableDeviceIds?: string[];
   starvationRescuePreview?: unknown;
   starvationRescueCreate?: unknown;
@@ -270,8 +272,11 @@ export const normalizeUiTestPlanSnapshot = (plan: unknown): unknown => {
 
 const buildUiPlan = async (homey: MockHomeyClient) => {
   const override = getUiOverride(homey, 'plan');
-  if (override !== undefined) return normalizeUiTestPlanSnapshot(override);
-  return null;
+  if (override === undefined) return null;
+  const plan = normalizeUiTestPlanSnapshot(override);
+  // The producer's plan always carries the rescue chip's gate.
+  if (!plan || typeof plan !== 'object' || 'rescuableDeviceIds' in plan) return plan;
+  return { ...plan, rescuableDeviceIds: getUiOverride(homey, 'starvationRescuableDeviceIds') ?? [] };
 };
 
 // Mirrors the real read-boundary classification (`classifyMainPowerStatus`,

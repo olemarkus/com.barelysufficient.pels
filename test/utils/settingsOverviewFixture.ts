@@ -13,12 +13,14 @@ type OverviewReadModelWiring = Pick<SettingsOverviewReadModelDeps,
   | 'getOverviewStarvation'
   | 'getIdleClassification'
   | 'getAssociatedCarChargingState'
-  | 'getSteppedLoadProfileById'>;
+  | 'getSteppedLoadProfileById'
+  | 'readStarvationRescuableDeviceIds'>;
 
 /**
  * The read-model deps the plan service always wires, for a spec that is not
  * about them: the main home, no starvation, no idle classification, no
- * associated car, no stepped profiles. A spec about one of them overrides it.
+ * associated car, no stepped profiles, no rescuable device. A spec about one of
+ * them overrides it.
  */
 export const overviewReadModelWiring = (): OverviewReadModelWiring => ({
   homeId: MAIN_HOME_ID,
@@ -26,6 +28,7 @@ export const overviewReadModelWiring = (): OverviewReadModelWiring => ({
   getIdleClassification: () => undefined,
   getAssociatedCarChargingState: () => undefined,
   getSteppedLoadProfileById: () => new Map(),
+  readStarvationRescuableDeviceIds: () => [],
 });
 
 /**
