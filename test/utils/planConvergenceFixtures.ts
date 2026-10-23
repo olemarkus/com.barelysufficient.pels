@@ -156,7 +156,7 @@ export const buildSteppedDevice = (
   const merged = {
     id: 'dev-1',
     name: 'Tank',
-    currentState: 'on',
+    currentState: 'on' as const,
     plannedState: 'keep' as const,
     controllable: true,
     binaryCapabilityId: 'onoff' as const,
@@ -174,7 +174,7 @@ export const buildBinaryDevice = (
   const merged = {
     id: 'dev-2',
     name: 'Heater',
-    currentState: 'on',
+    currentState: 'on' as const,
     plannedState: 'keep' as const,
     currentTarget: 21,
     currentTemperature: 21,

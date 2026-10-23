@@ -3701,10 +3701,6 @@ md-filled-button.is-busy {
   opacity: 0.78;
 }
 
-.plan-card[data-state-kind="unknown"] {
-  opacity: 0.6;
-}
-
 .plan-card--dim {
   opacity: 0.74;
 }

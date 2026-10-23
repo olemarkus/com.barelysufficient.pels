@@ -10,8 +10,7 @@ import {
 } from '../../packages/shared-domain/src/planStateLabels';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemanticsCore';
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
-import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
-import { isOnLikeState } from '../../packages/shared-domain/src/deviceStatePredicates';
+import type { ObservedCurrentState, SteppedLoadProfile } from '../../packages/contracts/src/types';
 
 // The ONE reason line a held device card may show — shared by all three card
 // variants (temperature, stepped, generic), which until 2026-08-02 each
@@ -168,9 +167,9 @@ export const resolveHeldCardStepView = (device: {
 });
 
 export const resolveHeldCardReasonVerb = (device: HeldCardStepView & {
-  currentState?: string;
+  currentState: ObservedCurrentState;
 }): HeldCardReasonVerb => (
-  device.steppedLoadProfile !== null && isOnLikeState(device.currentState)
+  device.steppedLoadProfile !== null && device.currentState === 'on'
     ? 'increase'
     : 'resume'
 );

@@ -1,4 +1,5 @@
 import type {
+  ObservedCurrentState,
   ObservedStateOfCharge,
   EvChargingState,
   SteppedLoadProfile,
@@ -54,7 +55,7 @@ export type DeviceOverviewSteppedLoad = {
 };
 
 export type DeviceOverviewSnapshot = {
-  currentState?: string;
+  currentState: ObservedCurrentState;
   plannedState?: string;
   /**
    * Present iff this device is stepped-controlled — the discriminant, and the

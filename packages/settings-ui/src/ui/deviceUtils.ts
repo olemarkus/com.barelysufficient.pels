@@ -11,7 +11,20 @@ import type {
 import type { SettingsUiBatteryState } from '../../../contracts/src/settingsUiApi.ts';
 import { state } from './state.ts';
 
-export { isGrayStateDevice } from '../../../shared-domain/src/deviceStatePredicates.ts';
+/**
+ * Whether the device list greys a device out as unavailable. The list reaches
+ * the WebView over the Homey API bridge from whichever PELS version serves it
+ * (the standalone web app talks to several), and an older one can still send a
+ * `currentState` of `'unknown'` on the row, so the word is normalized and read
+ * here rather than trusted; the runtime never emits it.
+ */
+export const isGrayStateDevice = (
+  device: { available?: boolean; currentState?: string } | null | undefined,
+): boolean => {
+  if (!device) return false;
+  if (device.available === false) return true;
+  return (device.currentState ?? '').trim().toLowerCase() === 'unknown';
+};
 
 // The device fields the settings-UI device LIST surface reads — the decomposed
 // snapshot halves (observed truth + the descriptor config the list shows), NOT

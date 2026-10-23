@@ -228,10 +228,8 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
   const grammar = { kind: resolveBaseKind(device), reasonCode: device.reason.code,
     starved: device.starvation?.isStarved === true };
   const intentKind = resolveIntentStateKind(grammar);
-  const displayKind = resolveDisplayStateKind({ ...grammar, dryRun, currentState: device.currentState,
+  const kind = resolveDisplayStateKind({ ...grammar, dryRun, currentState: device.currentState,
     satisfiedTemperature: reportsSatisfiedTemperature(device) });
-  // `resolveBaseKind` never yields `unknown`; this narrows the display kind to the wire's vocabulary.
-  const kind = displayKind === 'unknown' ? 'unavailable' : displayKind;
   const limited = intentKind === 'held';
   const physicalFact = kind === 'held' ? resolvePhysicalFact(device) : null;
   const label = [displayStateLabel(kind), physicalFact].filter(Boolean).join(' · ');

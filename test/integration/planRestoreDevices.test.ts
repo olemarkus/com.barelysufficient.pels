@@ -1,3 +1,4 @@
+import type { ObservedCurrentState } from '../../packages/contracts/src/types';
 import {
   isOffBinaryRestoreHoldCandidate,
   getInactiveReason,
@@ -41,7 +42,7 @@ const makeDevice = (
   const device = buildPlanDevice({
     // `makeDevice` defaults `currentState` to `'off'`; `buildPlanDevice` defaults
     // to `'on'`, so set it explicitly before the spread can override it.
-    currentState: 'off',
+    currentState: 'off' as const,
     binaryCapabilityId: 'onoff',
     ...rest,
   });
@@ -52,14 +53,14 @@ const makeDevice = (
 describe('plan restore device helpers', () => {
   it('filters restore candidates and swap-out devices by priority and shed behavior', () => {
     const devices = [
-      makeDevice({ id: 'low', priority: 1, currentState: 'off' }),
-      makeDevice({ id: 'high', priority: 5, currentState: 'off' }),
-      makeDevice({ id: 'on', priority: 10, currentState: 'on' }),
-      makeDevice({ id: 'na', priority: 7, currentState: 'not_applicable' }),
+      makeDevice({ id: 'low', priority: 1, currentState: 'off' as const }),
+      makeDevice({ id: 'high', priority: 5, currentState: 'off' as const }),
+      makeDevice({ id: 'on', priority: 10, currentState: 'on' as const }),
+      makeDevice({ id: 'na', priority: 7, currentState: 'not_applicable' as const }),
       makeDevice({
-        id: 'temp-blocked', priority: 8, currentState: 'on', currentTarget: 21, currentTemperature: 21, plannedTarget: 21,
+        id: 'temp-blocked', priority: 8, currentState: 'on' as const, currentTarget: 21, currentTemperature: 21, plannedTarget: 21,
       }),
-      makeDevice({ id: 'shed', currentState: 'off', plannedState: 'shed' }),
+      makeDevice({ id: 'shed', currentState: 'off' as const, plannedState: 'shed' }),
     ];
 
     expect(getOffDevices(devices).map((device) => device.id)).toEqual(['low', 'high']);
@@ -71,12 +72,12 @@ describe('plan restore device helpers', () => {
     ), new Map([['temp-blocked', fixtureTemperatureSetpointsEntry({ shed: fixtureSetpointLimit(21, false) })]]))
       .map((device) => device.id)).toEqual(['on', 'na']);
     expect(getOnDevices(
-      [makeDevice({ id: 'temp', currentState: 'on', currentTarget: 23, currentTemperature: 23, plannedTarget: 23 })],
+      [makeDevice({ id: 'temp', currentState: 'on' as const, currentTarget: 23, currentTemperature: 23, plannedTarget: 23 })],
       () => ({ action: 'set_temperature', temperature: 20 }),
       new Map([['temp', fixtureTemperatureSetpointsEntry({ shed: fixtureSetpointLimit(20, true) })]]),
     ).map((device) => device.id)).toEqual(['temp']);
     expect(getOnDevices(
-      [makeDevice({ id: 'temp', currentState: 'on', currentTarget: 20, currentTemperature: 20, plannedTarget: 20 })],
+      [makeDevice({ id: 'temp', currentState: 'on' as const, currentTarget: 20, currentTemperature: 20, plannedTarget: 20 })],
       () => ({ action: 'set_temperature', temperature: 20 }),
       new Map([['temp', fixtureTemperatureSetpointsEntry({ shed: fixtureSetpointLimit(20, false) })]]),
     )).toEqual([]);
@@ -84,11 +85,11 @@ describe('plan restore device helpers', () => {
 
   it('orders mixed binary and stepped restore candidates by priority', () => {
     const devices = [
-      makeDevice({ id: 'binary-lower-priority', priority: 5, currentState: 'off' }),
+      makeDevice({ id: 'binary-lower-priority', priority: 5, currentState: 'off' as const }),
       makeDevice({
         id: 'stepped-higher-priority',
         priority: 1,
-        currentState: 'off',
+        currentState: 'off' as const,
         steppedLoadProfile: {
           steps: [
             { id: 'off', planningPowerW: 0 },
@@ -101,7 +102,7 @@ describe('plan restore device helpers', () => {
       makeDevice({
         id: 'stepped-lower-priority',
         priority: 8,
-        currentState: 'on',
+        currentState: 'on' as const,
         steppedLoadProfile: {
           steps: [
             { id: 'off', planningPowerW: 0 },
@@ -111,7 +112,7 @@ describe('plan restore device helpers', () => {
         },
         selectedStepId: 'low',
       }),
-      makeDevice({ id: 'binary-higher-priority', priority: 2, currentState: 'off' }),
+      makeDevice({ id: 'binary-higher-priority', priority: 2, currentState: 'off' as const }),
     ];
 
     const lastPlannedShedIds = new Set([
@@ -128,7 +129,7 @@ describe('plan restore device helpers', () => {
   });
 
   it('admits devices absent from the previous plan from the shed posture', () => {
-    const device = makeDevice({ id: 'new-device', currentState: 'off' });
+    const device = makeDevice({ id: 'new-device', currentState: 'off' as const });
     const history = new ShedDecisions();
     history.lastPlannedDeviceIds = new Set(['existing-device']);
 
@@ -137,8 +138,8 @@ describe('plan restore device helpers', () => {
   });
 
   it('uses the cold-start activation gate until a non-empty plan exists', () => {
-    const offDevice = makeDevice({ id: 'off-at-start', currentState: 'off' });
-    const onDevice = makeDevice({ id: 'already-on-at-start', currentState: 'on' });
+    const offDevice = makeDevice({ id: 'off-at-start', currentState: 'off' as const });
+    const onDevice = makeDevice({ id: 'already-on-at-start', currentState: 'on' as const });
     const history = new ShedDecisions();
     history.recordPlannedShed([], buildIdentityDecorationBundle([]), createPendingBinaryCommandStore({}), true);
 
@@ -151,12 +152,12 @@ describe('plan restore device helpers', () => {
   // stale devices are classified by their last value rather than excluded.
   it('trusts stale observations (last value) when selecting restore and swap candidates', () => {
     const devices = [
-      makeDevice({ id: 'fresh-off', priority: 1, currentState: 'off' }),
-      makeDevice({ id: 'stale-off', priority: 2, currentState: 'off' }),
+      makeDevice({ id: 'fresh-off', priority: 1, currentState: 'off' as const }),
+      makeDevice({ id: 'stale-off', priority: 2, currentState: 'off' as const }),
       makeDevice({
         id: 'fresh-step',
         priority: 3,
-        currentState: 'on',
+        currentState: 'on' as const,
         steppedLoadProfile: {
           steps: [
             { id: 'off', planningPowerW: 0 },
@@ -169,7 +170,7 @@ describe('plan restore device helpers', () => {
       makeDevice({
         id: 'stale-step',
         priority: 4,
-        currentState: 'on',
+        currentState: 'on' as const,
         steppedLoadProfile: {
           steps: [
             { id: 'off', planningPowerW: 0 },
@@ -182,7 +183,7 @@ describe('plan restore device helpers', () => {
       makeDevice({
         id: 'unknown-step-off',
         priority: 2,
-        currentState: 'off',
+        currentState: 'off' as const,
         steppedLoadProfile: {
           steps: [
             { id: 'off', planningPowerW: 0 },
@@ -195,7 +196,7 @@ describe('plan restore device helpers', () => {
       makeDevice({
         id: 'high-step-off',
         priority: 5,
-        currentState: 'off',
+        currentState: 'off' as const,
         steppedLoadProfile: {
           steps: [
             { id: 'off', planningPowerW: 0 },
@@ -208,7 +209,7 @@ describe('plan restore device helpers', () => {
       makeDevice({
         id: 'no-binary-step',
         priority: 7,
-        currentState: 'on',
+        currentState: 'on' as const,
         binaryCapabilityId: undefined,
         steppedLoadProfile: {
           steps: [
@@ -219,8 +220,8 @@ describe('plan restore device helpers', () => {
         },
         selectedStepId: 'low',
       }),
-      makeDevice({ id: 'fresh-on', priority: 5, currentState: 'on' }),
-      makeDevice({ id: 'stale-on', priority: 6, currentState: 'on' }),
+      makeDevice({ id: 'fresh-on', priority: 5, currentState: 'on' as const }),
+      makeDevice({ id: 'stale-on', priority: 6, currentState: 'on' as const }),
     ];
 
     expect(getOffDevices(devices).map((device) => device.id)).toEqual(['fresh-off', 'stale-off']);
@@ -252,7 +253,7 @@ describe('plan restore device helpers', () => {
         { id: 'max', planningPowerW: 3000 },
       ],
     };
-    const stepOnly = (selectedStepId: string, currentState: string): DevicePlanDevice =>
+    const stepOnly = (selectedStepId: string, currentState: ObservedCurrentState): DevicePlanDevice =>
       makeDevice({
         id: `step-only-${selectedStepId}`,
         priority: 1,
@@ -342,14 +343,14 @@ describe('plan restore device helpers', () => {
   });
 
   it('shares the same live eligibility gate across restore candidate paths', () => {
-    const eligible = makeDevice({ id: 'eligible', currentState: 'off' });
-    const stale = makeDevice({ id: 'stale', currentState: 'off' });
-    const shed = makeDevice({ id: 'shed', currentState: 'off', plannedState: 'shed' });
+    const eligible = makeDevice({ id: 'eligible', currentState: 'off' as const });
+    const stale = makeDevice({ id: 'stale', currentState: 'off' as const });
+    const shed = makeDevice({ id: 'shed', currentState: 'off' as const, plannedState: 'shed' });
     const inactiveSteppedEv = makeDevice({
       id: 'inactive-stepped-ev',
       isEvCharger: true,
       binaryCapabilityId: 'evcharger_charging',
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'inactive',
       evChargingState: 'plugged_out',
       steppedLoadProfile: {
@@ -380,7 +381,7 @@ describe('plan restore device helpers', () => {
     // on the snapshot is not authoritative for "is this device off".
     const targetOnlyOff = makeDevice({
       id: 'target-only-off',
-      currentState: 'not_applicable',
+      currentState: 'not_applicable' as const,
       binaryCapabilityId: undefined,
     });
 
@@ -393,7 +394,7 @@ describe('plan restore device helpers', () => {
   it('leaves setpoint restores to the target lane', () => {
     const setpointShed = makeDevice({
       id: 'setpoint-shed',
-      currentState: 'off',
+      currentState: 'off' as const,
       binaryControl: { on: false },
       shedAction: 'set_temperature',
     });

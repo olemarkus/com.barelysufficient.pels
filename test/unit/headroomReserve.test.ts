@@ -212,7 +212,7 @@ describe('resolveHeadroomReserves — release, and the step-1 boundary', () => {
       reservesStartupPower: true,
       deviceType: 'temperature',
       binaryCapabilityId: undefined,
-      currentState: 'unknown',
+      currentState: 'not_applicable',
       currentTarget: 21,
       currentTemperature: 21,
       expectedPowerKw: 1.0,

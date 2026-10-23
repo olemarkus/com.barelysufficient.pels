@@ -30,7 +30,7 @@ import {
   isSteppedLoadOffStep,
 } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
-import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type { ObservedCurrentState, SteppedLoadProfile } from '../../packages/contracts/src/types';
 
 export type ObservedCurrentStateInput = {
   // Present iff binary control; absence is the old fabricated `currentOn: true`.
@@ -87,9 +87,9 @@ function stepIsAtOff(
  * no staleness gate — a stale observation keeps its last value (Homey reports
  * capabilities only on change, so stale-off stays off).
  *
- * The four-valued `currentState` string (`resolveObservedCurrentState`) is a
- * SEPARATE producer concern for reason/UI rendering; it carries 'unknown' /
- * 'not_applicable' for labelling and MUST NOT be consulted as the on/off truth.
+ * The three-valued `currentState` label (`resolveObservedCurrentState`) is a
+ * SEPARATE producer concern for reason/UI rendering; it carries 'not_applicable'
+ * for a device with no on/off axis and MUST NOT be consulted as the on/off truth.
  *
  * Precondition: the device has binary control. Non-binary devices have no on/off
  * truth and never carry `currentOn` — consumers narrow through `isBinaryPlanDevice`
@@ -111,7 +111,7 @@ export function resolveCurrentOn(
  */
 export function resolveObservedSteppedLoadCurrentState(
   device: ObservedCurrentStateInput,
-): string {
+): 'on' | 'off' | 'unknown' {
   const profile = isSteppedLoadSnapshot(device) ? device.steppedLoadProfile : null;
   if (!profile) {
     return (device.binaryControl?.on ?? true) ? 'on' : 'off';
@@ -128,7 +128,7 @@ export function resolveObservedSteppedLoadCurrentState(
 
 export function resolveObservedCurrentState(
   device: ObservedCurrentStateInput,
-): string {
+): ObservedCurrentState {
   // The producer resolves the CONCRETE latched label — it never emits 'unknown'
   // from staleness (the plan has no right to distrust observer data, and a stale
   // binary read is still the latched bit: Homey reports capabilities on change).

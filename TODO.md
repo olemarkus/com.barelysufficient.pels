@@ -232,12 +232,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       and the fresh path runs every cycle for the whole hour. Source: pels-runtime-reality on
       PR #2059. [P2]
 
-- [ ] **Smart-task permission presentation: the read-only granted-permissions row sits in "What
-      PELS has learned".** On the task detail, the granted-permissions row renders inside the
-      learned-inputs card; a permission is a setting, not something learned — move it beside the
-      task inputs. Source: 2026-08-02 release review, pels-ux-fit. [P2]
-
-
 - [ ] **Smart-task diagnostics: distinguish an active meter source from a missing device before its deadline.**
       *Persona:* owner who selects a device with an existing smart task as an electricity meter.
       *Hypothesis:* the source-filtered lifecycle device set omits the meter, so the still-enabled task
@@ -602,37 +596,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `lib/executor/deviceExecutionState.ts` (stepped command facts), `notes/ui-terminology.md`
       (new status copy). [P2]
 
-- [ ] **The observed-state label is a closed set returned as `string`, so consumers hedge against
-      their own producer.** `lib/observer/observedState.ts` states the set in prose
-      (`on` / `off` / `unknown` / `not_applicable`) while every resolver's signature says `string`,
-      and downstream code defends accordingly: `normalizeDeviceState`
-      (`packages/shared-domain/src/deviceStatePredicates.ts`) trims and lowercases a value the
-      producer emits as a bare literal, and `planSteppedCardText.ts`
-      (`isSteppedCardOffLikeState`) repeats that normalization. That inverts the clean/trusted rule
-      in root `AGENTS.md` — the producer resolves, the consumer reads.
-      Settle one thing first, because it changes the type: `resolveObservedCurrentState` can never
-      return `'unknown'`. Its stepped branch is guarded by `if (steppedState !== 'unknown')`, so the
-      one case its own docblock names as the sole source of `'unknown'` is exactly the case that
-      falls through to `not_applicable` / `on` / `off`. That function is THREE-valued; only
-      `resolveObservedSteppedLoadCurrentState` is four-valued. So do not declare one shared union
-      across the resolvers — that would bake the inaccuracy into the type. Either give each resolver
-      its own accurate union, or fix the guard if the fall-through is the bug; the docblock and the
-      inline comment both currently assert the four-value set and are wrong about this function.
-      Change: declare the accurate union per resolver, return it, then tighten inward one layer per
-      PR; 27 non-test sites declare `currentState` as `string` (18 of them in `lib/**` + `setup/**`,
-      `lib/plan/planSteppedLoad.ts` holding 5), across 45 non-test source files that read it (125
-      including specs). This is a ratchet, not an edit, and it belongs with the existing
-      strict-typing ratchet work.
-      IMPORTANT — the target is not "delete all normalization". The Homey API bridge into the
-      WebView is an untrusted transport seam, where root `AGENTS.md` requires validation, so the
-      settings-UI hedging is legitimate and must survive. The shape to land is: accurate unions at
-      the producer, tightened inward, with exactly ONE validating adapter at the WebView seam.
-      Done when each resolver returns its own accurate union rather than `string`, no `lib/**` or
-      `setup/**` consumer calls `normalizeDeviceState` on a producer-resolved label, and the sole
-      surviving normalization site is the WebView-seam adapter. P2 — it is a maintainability ratchet
-      with no current misbehaviour, but every new consumer copies the hedge, so the cost compounds.
-      Source: observer cleanup sweep, 2026-09-03. [P2]
-
 ## Settings UI surfaces and copy
 
 - [ ] **Activity log: collapse resume/turn-off alternation bursts.**
@@ -684,22 +647,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       convergence. Persona: contributor velocity + Set-and-forget owner (visual coherence);
       hypothesis: three segmented impls / two device rows / per-file chip vocab is where per-page
       drift keeps re-entering. [P2]
-
-- [ ] **Device-detail diagnostics hardcodes 12 status strings that duplicate or contradict
-      shared-domain.**
-      *Persona:* owner (`notes/personas.md`) comparing a device card against that device's
-      detail view.
-      *Hypothesis:* `packages/settings-ui/src/ui/deviceDetail/diagnostics.ts` inlines its own
-      `STARVATION_REASON_LABELS` copy rather than importing the shared-domain vocabulary. Some
-      entries are verbatim duplicates; others actively disagree for the same reason code —
-      `'Waiting before retrying'` vs shared-domain's `'Waiting to resume — Ns'`,
-      `'Daily budget is limiting service'` vs `'Limited by today's daily budget'`,
-      `'Waiting for higher-priority device'` vs `'Making room for higher-priority device'`.
-      Three entries render the planner-jargon phrase "No active service block".
-      *Why it's needed:* the card and the detail view describe the same state in different
-      words, and `notes/ui-terminology.md` makes shared-domain the single home for user-visible
-      copy so runtime logs and UI cannot drift. Pre-existing since May 2026. Source: starvation
-      classification work, 2026-08-08. [P3]
 
 ## Standalone web app
 

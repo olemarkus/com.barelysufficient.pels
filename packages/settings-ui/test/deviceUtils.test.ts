@@ -4,12 +4,19 @@ import { isGrayStateDevice, requiresNativeWiringForActivation } from '../src/ui/
 describe('isGrayStateDevice', () => {
   it('flags unavailable and unknown-state devices as gray', () => {
     expect(isGrayStateDevice({ available: false })).toBe(true);
+    // An older PELS behind the standalone web app can still send the word.
     expect(isGrayStateDevice({ currentState: 'unknown' })).toBe(true);
+    expect(isGrayStateDevice({ currentState: '  UNKNOWN ' })).toBe(true);
   });
 
   it('keeps active devices out of the gray state', () => {
     expect(isGrayStateDevice({ available: true, currentState: 'on' })).toBe(false);
     expect(isGrayStateDevice({ available: true, currentState: 'off' })).toBe(false);
+  });
+
+  it('returns false for null / undefined', () => {
+    expect(isGrayStateDevice(null)).toBe(false);
+    expect(isGrayStateDevice(undefined)).toBe(false);
   });
 });
 

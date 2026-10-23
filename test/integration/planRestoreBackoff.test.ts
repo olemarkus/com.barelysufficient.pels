@@ -1644,7 +1644,7 @@ describe('restore cooldown backoff', () => {
       id,
       name: id,
       priority: index + 1,
-      currentState: 'keep',
+      currentState: 'on',
       plannedState: 'shed',
       boostActive: false,
       currentTarget: 16,
@@ -1761,7 +1761,7 @@ describe('restore cooldown backoff', () => {
     const planDevices = [buildPlanDevice({
       id: 'dev-temp',
       name: 'Thermostat',
-      currentState: 'keep',
+      currentState: 'on',
       plannedState: 'shed',
       boostActive: false,
       currentTarget: 16,
@@ -3142,7 +3142,7 @@ describe('restore admission — headroom and penalty gates', () => {
         buildBinaryPlanDevice({
           id: 'dev-temp',
           name: 'Nordic S4 REL',
-          currentState: 'keep',
+          currentState: 'on',
           plannedState: 'keep',
           boostActive: false,
           currentTarget: 18,
@@ -3184,7 +3184,7 @@ describe('restore admission — headroom and penalty gates', () => {
         buildBinaryPlanDevice({
           id: 'dev-temp',
           name: 'Nordic S4 REL',
-          currentState: 'keep',
+          currentState: 'on',
           plannedState: 'keep',
           boostActive: false,
           currentTarget: 18,
@@ -3362,7 +3362,7 @@ describe('restore admission — the device need is the whole bar', () => {
       planDevices: [buildBinaryPlanDevice({
         id: 'dev-temp',
         name: 'Thermostat',
-        currentState: 'keep',
+        currentState: 'on',
         plannedState: 'keep',
         boostActive: false,
         currentTarget: 16,

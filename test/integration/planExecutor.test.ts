@@ -152,7 +152,7 @@ const buildPlan = (): DevicePlan => ({
       isEvCharger: false,
       isBatteryOrSolar: false,
       storageHold: { kind: 'none' as const },
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep' as const,
       boostActive: false,
       currentTarget: 21,
@@ -190,7 +190,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
       isEvCharger: false,
       isBatteryOrSolar: false,
       storageHold: { kind: 'none' as const },
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'keep' as const,
       boostActive: false,
       currentTarget,
@@ -476,7 +476,7 @@ describe('PlanExecutor declined actuator requests', () => {
       devices: [pd({
         id: 'dev-1',
         name: 'Heater',
-        currentState: 'on',
+        currentState: 'on' as const,
         plannedState: 'shed',
         boostActive: false,
         currentTarget: 21,
@@ -581,7 +581,7 @@ describe('PlanExecutor restore logging', () => {
         pd({
           id: 'bad-step',
           name: 'Bad stepped load',
-          currentState: 'on',
+          currentState: 'on' as const,
           plannedState: 'keep',
           boostActive: false,
           controllable: true,
@@ -597,7 +597,7 @@ describe('PlanExecutor restore logging', () => {
         pd({
           id: 'dev-1',
           name: 'Heater',
-          currentState: 'on',
+          currentState: 'on' as const,
           plannedState: 'shed',
           boostActive: false,
           currentTarget: 21,
@@ -648,7 +648,7 @@ describe('PlanExecutor restore logging', () => {
         pd({
           id: 'dev-1',
           name: 'Heater',
-          currentState: 'off',
+          currentState: 'off' as const,
           plannedState: 'shed',
           boostActive: false,
           currentTarget: 21,
@@ -686,7 +686,7 @@ describe('PlanExecutor restore logging', () => {
         pd({
           id: 'dev-1',
           name: 'Heater',
-          currentState: 'off',
+          currentState: 'off' as const,
           plannedState: 'shed',
           boostActive: false,
           currentTarget: 21,
@@ -726,7 +726,7 @@ describe('PlanExecutor restore logging', () => {
         pd({
           id: 'dev-1',
           name: 'Heater',
-          currentState: 'on',
+          currentState: 'on' as const,
           plannedState: 'shed',
           boostActive: false,
           currentTarget: 21,
@@ -755,7 +755,7 @@ describe('PlanExecutor restore logging', () => {
         pd({
           id: 'dev-1',
           name: 'Heater',
-          currentState: 'off',
+          currentState: 'off' as const,
           plannedState: 'keep',
           boostActive: false,
           currentTarget: 21,
@@ -792,7 +792,7 @@ describe('PlanExecutor restore logging', () => {
         pd({
           id: 'dev-1',
           name: 'EV Charger',
-          currentState: 'off',
+          currentState: 'off' as const,
           plannedState: 'keep',
           boostActive: false,
           currentTarget: 21,
@@ -832,7 +832,7 @@ describe('PlanExecutor restore logging', () => {
         pd({
           id: 'dev-1',
           name: 'EV Charger',
-          currentState: 'off',
+          currentState: 'off' as const,
           plannedState: 'keep',
           boostActive: false,
           currentTarget: 21,
@@ -861,7 +861,7 @@ describe('PlanExecutor restore logging', () => {
         pd({
           id: 'dev-1',
           name: 'Heater',
-          currentState: 'off',
+          currentState: 'off' as const,
           plannedState: 'keep',
           boostActive: false,
           currentTarget: 21,
@@ -900,7 +900,7 @@ describe('PlanExecutor restore logging', () => {
       devices: [pd({
         id: 'dev-1',
         name: 'Heater',
-        currentState: 'on',
+        currentState: 'on' as const,
         plannedState: 'shed',
         boostActive: false,
         currentTarget: 21,
@@ -1044,7 +1044,7 @@ describe('PlanExecutor restore logging', () => {
       devices: [pd({
         id: 'dev-1',
         name: 'Heater',
-        currentState: 'on',
+        currentState: 'on' as const,
         plannedState: 'shed',
         boostActive: false,
         currentTarget: 21,
@@ -1145,7 +1145,7 @@ describe('PlanExecutor restore logging', () => {
       devices: [pd({
         id: 'dev-1',
         name: 'Heater',
-        currentState: 'on',
+        currentState: 'on' as const,
         plannedState: 'shed',
         boostActive: false,
         currentTarget: 21,
@@ -1440,7 +1440,7 @@ describe('PlanExecutor pending target commands', () => {
           deviceType: 'temperature',
           binaryCapabilityId: 'onoff',
           binaryControl: { on: true },
-          currentState: 'on',
+          currentState: 'on' as const,
           plannedState: 'shed',
           boostActive: false,
           currentTarget: 22,
@@ -1485,7 +1485,7 @@ describe('PlanExecutor pending target commands', () => {
         name: 'Heater',
         binaryCapabilityId: 'onoff',
         binaryControl: { on: true },
-        currentState: 'on',
+        currentState: 'on' as const,
         plannedState: 'shed',
         controllable: true,
         shedAction: 'turn_off',
@@ -1579,7 +1579,7 @@ describe('PlanExecutor pending target commands', () => {
           id: 'dev-1',
           name: 'Heater',
           deviceType: 'temperature',
-          currentState: 'on',
+          currentState: 'on' as const,
           plannedState: 'shed',
           boostActive: false,
           currentTarget: 22,
@@ -1738,7 +1738,7 @@ describe('PlanExecutor pending target commands', () => {
 
 describe('PlanExecutor stepped loads', () => {
   it('queries live off state without touching command stores or issuing a write', () => {
-    const device = steppedPlanDevice({ id: 'connected-300', currentState: 'on', reportedStepId: 'low',
+    const device = steppedPlanDevice({ id: 'connected-300', currentState: 'on' as const, reportedStepId: 'low',
       selectedStepId: 'low', desiredStepId: 'low', plannedState: 'shed',
       plannedShedTargetKind: 'binary_off', shedAction: 'turn_off', reason: { code: 'deferred_objective_avoid' } });
     if (!isSteppedLoadDeviceFixture(device)) throw new Error('expected stepped fixture');
@@ -1760,7 +1760,7 @@ describe('PlanExecutor stepped loads', () => {
     // A settings-UI read asks what is in flight; expiring the command (and firing
     // its timeout lifecycle, which records a reachability failure) is the
     // sweep's decision.
-    const device = steppedPlanDevice({ id: 'connected-300', currentState: 'off', reportedStepId: 'low',
+    const device = steppedPlanDevice({ id: 'connected-300', currentState: 'off' as const, reportedStepId: 'low',
       selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
     if (!isSteppedLoadDeviceFixture(device)) throw new Error('expected stepped fixture');
     const state = createPlanEngineState();
@@ -2309,7 +2309,7 @@ describe('PlanExecutor stepped loads', () => {
 
   it.each(keptDeviceHoldReasons)('does not step a kept device observed off under plan reason $code', async (reason) => {
     const plan = steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       selectedStepId: 'max',
       reportedStepId: 'max',
       desiredStepId: 'low',
@@ -2493,7 +2493,7 @@ describe('PlanExecutor stepped loads', () => {
   // step axis has nothing left to do. So the plan-apply gate never invoked the
   // executor and the binary-on was never issued.
   const preparedRestoreFromOffPlan = (overrides: Record<string, unknown> = {}): DevicePlan => steppedPlan({
-    currentState: 'off',
+    currentState: 'off' as const,
     plannedState: 'keep',
     boostActive: false,
     selectedStepId: 'low',
@@ -2538,7 +2538,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor } = buildExecutor();
 
     expect(executor.hasStablePlanActuation(preparedRestoreFromOffPlan({
-      currentState: 'on',
+      currentState: 'on' as const,
     }))).toBe(false);
   });
 
@@ -2611,7 +2611,7 @@ describe('PlanExecutor stepped loads', () => {
       id: 'ev-1',
       name: 'EV Charger',
       // `currentOn` is derived from `binaryControl` per-case (paused default = off,
-      // charging override = on); a hardcoded `currentState: 'on'` would contradict
+      // charging override = on); a hardcoded `currentState: 'on' as const` would contradict
       // the paused default's off-state now that consumers read `currentOn`.
       plannedState: 'keep',
       boostActive: false,
@@ -2828,7 +2828,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'low',
@@ -2858,7 +2858,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'shed',
       boostActive: false,
       selectedStepId: 'off',
@@ -2887,7 +2887,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'shed',
       boostActive: false,
       selectedStepId: 'off',
@@ -2917,7 +2917,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, desiredSteppedTrigger, deviceManager, deps } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'shed',
       boostActive: false,
       selectedStepId: 'max',
@@ -2948,7 +2948,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, desiredSteppedTrigger, deviceManager, deps } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'shed',
       boostActive: false,
       selectedStepId: 'max',
@@ -2979,7 +2979,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, desiredSteppedTrigger, deviceManager, deps } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'shed',
       boostActive: false,
       selectedStepId: 'max',
@@ -3017,7 +3017,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'shed',
       boostActive: false,
       selectedStepId: 'max',
@@ -3049,7 +3049,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'shed',
       boostActive: false,
       selectedStepId: 'off',
@@ -3081,7 +3081,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'low',
@@ -3105,7 +3105,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       selectedStepId: 'off',
       desiredStepId: 'low',
       reason: fixtureDeviceReason('meter settling (30s remaining)'),
@@ -3127,7 +3127,7 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const noTargets = buildExecutor(undefined, noTargetsSnapshot);
     await noTargets.executor.applyPlanActions(steppedPlan({
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'shed',
       boostActive: false,
       selectedStepId: 'off',
@@ -3158,7 +3158,7 @@ describe('PlanExecutor stepped loads', () => {
     // first half's event still in the capture.
     await missingCapability.executor.applyPlanActions(steppedPlan({
       name: 'Heater',
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'shed',
       boostActive: false,
       selectedStepId: 'off',
@@ -3189,7 +3189,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'off',
@@ -3221,7 +3221,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'max',
@@ -3250,7 +3250,7 @@ describe('PlanExecutor stepped loads', () => {
     deviceManager.requestSteppedLoadStep.mockResolvedValueOnce({ requested: false });
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'max',
@@ -3281,7 +3281,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'max',
@@ -3313,7 +3313,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'max',
@@ -3349,7 +3349,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, deviceManager, state } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'shed',
       boostActive: false,
       selectedStepId: 'off',
@@ -3375,7 +3375,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, desiredSteppedTrigger, deviceManager, state, deps } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'shed',
       boostActive: false,
       shedAction: 'turn_off',
@@ -3430,7 +3430,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(state, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'shed',
       boostActive: false,
       shedAction: 'turn_off',
@@ -3474,7 +3474,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(state, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'shed',
       boostActive: false,
       shedAction: 'set_step',
@@ -3522,7 +3522,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, deps } = buildExecutor(state, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'off',
@@ -3571,7 +3571,7 @@ describe('PlanExecutor stepped loads', () => {
         pd({
           id: 'dev-restore',
           name: 'Restore Heater',
-          currentState: 'off',
+          currentState: 'off' as const,
           plannedState: 'keep',
           boostActive: false,
           currentTarget: 21,
@@ -3582,7 +3582,7 @@ describe('PlanExecutor stepped loads', () => {
         pd({
           id: 'dev-shed',
           name: 'Shed Heater',
-          currentState: 'on',
+          currentState: 'on' as const,
           plannedState: 'shed',
           boostActive: false,
           currentTarget: 21,
@@ -3619,7 +3619,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'shed',
       boostActive: false,
       selectedStepId: 'low',
@@ -3647,7 +3647,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'off',
@@ -3674,7 +3674,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'shed',
       boostActive: false,
       selectedStepId: 'off',
@@ -3706,7 +3706,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     devices: [pd({
       id: 'dev-1',
       name: 'Tank',
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'keep',
       boostActive: false,
       controllable: true,
@@ -3748,7 +3748,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   it('restores a keep device turned off externally', async () => {
     // The plan a rebuild decides from that observation: still keep, now off.
-    const plan = steppedPlan({ currentState: 'off', selectedStepId: 'low', reportedStepId: 'low', desiredStepId: 'low' });
+    const plan = steppedPlan({ currentState: 'off' as const, selectedStepId: 'low', reportedStepId: 'low', desiredStepId: 'low' });
 
     const { executor, deviceManager } = buildExecutor(undefined, buildSnapshot({
       binaryControl: { on: false },
@@ -3762,7 +3762,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   it('restores then reasserts the desired step when live state only has fallback evidence', async () => {
     const plan = steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       // Fallback-only state: no reported step, selectedStepId is the planning
       // fallback.
       selectedStepId: 'low',
@@ -3784,7 +3784,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   });
 
   it('re-issues the step command for a keep device found at its off-step', async () => {
-    const plan = steppedPlan({ currentState: 'off', selectedStepId: 'off', reportedStepId: undefined, desiredStepId: 'low' });
+    const plan = steppedPlan({ currentState: 'off' as const, selectedStepId: 'off', reportedStepId: undefined, desiredStepId: 'low' });
 
     const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ binaryControl: { on: false } }));
     await executor.applyPlanActions(plan);
@@ -3809,7 +3809,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   it('does not count a stepped-load trigger request as a concrete device write', async () => {
     const plan = steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'off',
@@ -3843,7 +3843,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'off',
@@ -3882,7 +3882,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'off',
@@ -3911,7 +3911,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'low',
@@ -3939,7 +3939,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const { executor, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'low',
@@ -3982,7 +3982,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const { executor, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'low',
@@ -4018,7 +4018,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(undefined, []);
 
     const plan = steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'off',
@@ -4046,7 +4046,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'off',
@@ -4074,7 +4074,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'low',
@@ -4098,7 +4098,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'low',
@@ -4123,7 +4123,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'low',
@@ -4145,7 +4145,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'low',
@@ -4172,7 +4172,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'low',
@@ -4189,7 +4189,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   it('re-issues the shed step when an external actor raises the step', async () => {
     const plan = steppedPlan({
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'shed',
       boostActive: false,
       shedAction: 'set_step',
@@ -4221,7 +4221,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   it('issues the shed down-step when no step report backs the selected step', async () => {
     const plan = steppedPlan({
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'shed',
       boostActive: false,
       shedAction: 'set_step',
@@ -4254,7 +4254,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         pd({
           id: 'shed-1',
           name: 'Heater',
-          currentState: 'off',
+          currentState: 'off' as const,
           plannedState: 'shed',
           boostActive: false,
           controllable: true,
@@ -4264,7 +4264,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         pd({
           id: 'dev-1',
           name: 'Tank',
-          currentState: 'off',
+          currentState: 'off' as const,
           plannedState: 'keep',
           boostActive: false,
           controllable: true,
@@ -4300,7 +4300,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         pd({
           id: 'shed-1',
           name: 'Heater',
-          currentState: 'off',
+          currentState: 'off' as const,
           plannedState: 'shed',
           boostActive: false,
           controllable: true,
@@ -4309,7 +4309,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         pd({
           id: 'dev-1',
           name: 'Tank',
-          currentState: 'off',
+          currentState: 'off' as const,
           plannedState: 'keep',
           boostActive: false,
           controllable: true,
@@ -4331,7 +4331,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const snapshot = buildSnapshot({ binaryControl: { on: false } });
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
-    const plan = steppedPlan({ currentState: 'off', selectedStepId: 'off', desiredStepId: 'max' });
+    const plan = steppedPlan({ currentState: 'off' as const, selectedStepId: 'off', desiredStepId: 'max' });
     await executor.applyPlanActions(plan);
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
@@ -4346,11 +4346,11 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
       devices: [
         pd({
-          id: 'shed-1', name: 'Heater', currentState: 'off', plannedState: 'shed',
+          id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed',
           controllable: true, reason: CAPACITY_REASON,
         }),
         pd({
-          id: 'dev-1', name: 'Tank', currentState: 'off', plannedState: 'keep',
+          id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep',
           controllable: true, reason: KEEP_REASON,
           steppedLoadProfile: steppedProfile,
           selectedStepId: 'off',
@@ -4443,11 +4443,11 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
       devices: [
         pd({
-          id: 'shed-1', name: 'Heater', currentState: 'off', plannedState: 'shed',
+          id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed',
           controllable: true, reason: CAPACITY_REASON,
         }),
         pd({
-          id: 'dev-1', name: 'Tank', currentState: 'off', plannedState: 'keep',
+          id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep',
           controllable: true, reason: KEEP_REASON,
           steppedLoadProfile: steppedProfile,
           selectedStepId: 'max',
@@ -4460,7 +4460,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
       devices: [
         pd({
-          id: 'dev-1', name: 'Tank', currentState: 'off', plannedState: 'keep',
+          id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep',
           controllable: true, reason: KEEP_REASON,
           steppedLoadProfile: steppedProfile,
           selectedStepId: 'off',
@@ -4506,7 +4506,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           // buildExecutableSteppedLoadIntent returns null for this device.
           id: 'shed-1',
           name: 'Heater',
-          currentState: 'off',
+          currentState: 'off' as const,
           plannedState: 'shed',
           boostActive: false,
           controllable: true,
@@ -4524,7 +4524,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           // shed set.
           id: 'dev-1',
           name: 'Tank',
-          currentState: 'on',
+          currentState: 'on' as const,
           plannedState: 'keep',
           boostActive: false,
           controllable: true,
@@ -4572,7 +4572,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
       await executor.applyPlanActions(steppedPlan({
-        currentState: 'off',
+        currentState: 'off' as const,
         plannedState: 'keep',
         boostActive: false,
         selectedStepId: 'low',
@@ -4601,7 +4601,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
       await executor.applyPlanActions(steppedPlan({
-        currentState: 'off',
+        currentState: 'off' as const,
         plannedState: 'keep',
         boostActive: false,
         selectedStepId: 'off',
@@ -4624,7 +4624,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
       await executor.applyPlanActions(steppedPlan({
-        currentState: 'off',
+        currentState: 'off' as const,
         plannedState: 'keep',
         boostActive: false,
         selectedStepId: undefined as unknown as string, // unknown
@@ -4648,7 +4648,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
       await executor.applyPlanActions(steppedPlan({
-        currentState: 'off',
+        currentState: 'off' as const,
         plannedState: 'keep',
         boostActive: false,
         selectedStepId: 'low',
@@ -4677,7 +4677,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
       await executor.applyPlanActions(steppedPlan({
-        currentState: 'off',
+        currentState: 'off' as const,
         plannedState: 'keep',
         boostActive: false,
         selectedStepId: undefined as unknown as string,
@@ -4712,7 +4712,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       // Both desiredStepId and selectedStepId are off-step — un-normalized state
       // that planDevices currently produces for a restored device shed to off-step.
       await executor.applyPlanActions(steppedPlan({
-        currentState: 'off',
+        currentState: 'off' as const,
         plannedState: 'keep',
         boostActive: false,
         selectedStepId: 'off',
@@ -4755,7 +4755,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           pd({
             id: 'dev-1',
             name: 'Tank',
-            currentState: 'off',
+            currentState: 'off' as const,
             plannedState: 'shed',
             boostActive: false,
             currentTarget: 21,
@@ -4788,7 +4788,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
       // Device is shed with turn_off at a non-off step; binary is already off.
       await executor.applyPlanActions(steppedPlan({
-        currentState: 'off',  // off because binary is false
+        currentState: 'off' as const,  // off because binary is false
         plannedState: 'shed',
         boostActive: false,
         shedAction: 'turn_off',
@@ -4820,7 +4820,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       // The contract says onoff=false must be sent as part of the turn_off action,
       // not only after the step has already stepped down to the off-step.
       await executor.applyPlanActions(steppedPlan({
-        currentState: 'on',
+        currentState: 'on' as const,
         plannedState: 'shed',
         boostActive: false,
         shedAction: 'turn_off',
@@ -4861,7 +4861,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     }]);
     const chargerShedPlan = () => steppedPlan({
       name: 'Elbillader',
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'shed',
       boostActive: false,
       shedAction: 'turn_off',

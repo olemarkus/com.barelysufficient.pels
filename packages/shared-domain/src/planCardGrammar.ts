@@ -31,7 +31,6 @@
 //   3. Boost (temperature or EV boost active)
 //   4. Budget exempt
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
-import { isOnLikeState } from './deviceStatePredicates';
 import {
   PLAN_STATE_LABEL,
   PLAN_STATE_TONE,
@@ -41,6 +40,7 @@ import {
 } from './planStateLabels';
 import { formatStarvationBadge } from './planStarvation';
 import type { DeviceOverviewSnapshot } from '../../contracts/src/deviceOverview';
+import type { ObservedCurrentState } from '../../contracts/src/types';
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
 
 const isPlanStateKind = (value: string | undefined): value is PlanStateKind => (
@@ -50,7 +50,6 @@ const isPlanStateKind = (value: string | undefined): value is PlanStateKind => (
   || value === 'resuming'
   || value === 'manual'
   || value === 'unavailable'
-  || value === 'unknown'
 );
 
 // `off` is a display fact, not a planner state. The runtime keeps resolving
@@ -142,7 +141,7 @@ export type DisplayStateParams = IntentStateParams & {
   // The device's observed on/off state (canon: "Running" covers on, charging,
   // heating, or otherwise active — regardless of instantaneous draw, except a
   // satisfied temperature device, below).
-  currentState: string | undefined;
+  currentState: ObservedCurrentState;
   // Caller-resolved `reportsSatisfiedTemperature(dev)` — the simulation factual
   // collapse must not resurrect "Running" on a satisfied 0-draw temperature
   // device that real mode reads as Idle.
@@ -159,15 +158,15 @@ export const resolveDisplayStateKind = (params: DisplayStateParams): PlanDisplay
     // target-only device with no on/off axis) counts as active, matching
     // `resolvePlanStateKind`'s active-state rule — including its satisfied
     // carve-out, threaded in as `satisfiedTemperature` by the caller.
-    const factualActive = currentState === 'not_applicable' || isOnLikeState(currentState);
+    const factualActive = currentState === 'not_applicable' || currentState === 'on';
     if (factualActive) return params.satisfiedTemperature === true ? 'idle' : 'active';
-    return currentState?.trim().toLowerCase() === 'off' ? 'off' : 'idle';
+    return currentState === 'off' ? 'off' : 'idle';
   }
   // `Idle` describes a device that remains available/on but has nothing to do.
   // An affirmative observed OFF is more specific. Apply this after the intent
   // upgrades so `Limited`, `Resuming`, `Manual`, and unavailable states keep
   // precedence over the physical output fact.
-  if (intentKind === 'idle' && currentState?.trim().toLowerCase() === 'off') return 'off';
+  if (intentKind === 'idle' && currentState === 'off') return 'off';
   return intentKind;
 };
 

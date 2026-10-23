@@ -158,7 +158,7 @@ const buildPlan = (
         isBatteryOrSolar: false,
         binaryControl: { on: true },
         currentOn: true,
-        currentState: 'on',
+        currentState: 'on' as const,
         plannedState: 'keep' as const,
         boostActive: false,
         currentTarget,
@@ -253,7 +253,7 @@ describe('PlanService', () => {
   it.each(['main', 'h_11111111'] as const)(
     'refreshes canonical off status for %s without pending commands, rebuilds or decision timestamp changes',
     async (homeId) => {
-    const device = steppedPlanDevice({ id: 'connected-300', currentState: 'on', reportedStepId: 'low',
+    const device = steppedPlanDevice({ id: 'connected-300', currentState: 'on' as const, reportedStepId: 'low',
       selectedStepId: 'low', desiredStepId: 'low', plannedState: 'shed',
       plannedShedTargetKind: 'binary_off', shedAction: 'turn_off', reason: { code: 'deferred_objective_avoid' } });
     const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device], storageReleases: [] };
@@ -319,7 +319,7 @@ describe('PlanService', () => {
     async (axis) => {
       const live: LiveHeater = { on: true, currentDrawKw: 0, expectedPowerKw: 2,
         currentTemperature: 61.5, setpointC: 65 };
-      const plan = buildPlan(65, 'keep', {}, { currentDrawKw: 0, currentState: 'on' });
+      const plan = buildPlan(65, 'keep', {}, { currentDrawKw: 0, currentState: 'on' as const });
       let releaseBuild!: (value: DevicePlan) => void;
       const builtPlan = new Promise<DevicePlan>((resolve) => { releaseBuild = resolve; });
       let markBuildEntered!: () => void;
@@ -341,7 +341,7 @@ describe('PlanService', () => {
         } }),
       });
       service['rebuildHost'].publishPlan(plan, 1_000_000);
-      const idle = { id: 'dev-1', name: 'Heater', currentState: 'on', currentDrawKw: 0,
+      const idle = { id: 'dev-1', name: 'Heater', currentState: 'on' as const, currentDrawKw: 0,
         plannedState: 'keep' as const, temperature: { currentTemperature: 61.5, currentTarget: 65 } };
       service['idleClassifier'].classifyAll([idle], 1_000_000);
       service['idleClassifier'].classifyAll([idle], 1_000_000 + IDLE_HOLD_MIN_DURATION_MS);
@@ -381,7 +381,7 @@ describe('PlanService', () => {
       const projection = new ObservedDeviceStateProjection();
       const emitter = new ObservedStateEmitter();
       subscribeObservedStateProjection(emitter, projection);
-      const plan = buildPlan(65, 'keep', {}, { currentDrawKw: 0, currentState: 'on' });
+      const plan = buildPlan(65, 'keep', {}, { currentDrawKw: 0, currentState: 'on' as const });
       const engine = { ...createMockPlanEngine(),
         getDeviceExecutionStates: vi.fn(() => new Map(plan.devices.map((device) => (
           [device.id, executionStateFixture(device)]
@@ -411,7 +411,7 @@ describe('PlanService', () => {
         });
       };
       snapshot(1, false);
-      const idle = { id: 'dev-1', name: 'Heater', currentState: 'on', currentDrawKw: 0,
+      const idle = { id: 'dev-1', name: 'Heater', currentState: 'on' as const, currentDrawKw: 0,
         plannedState: 'keep' as const, temperature: { currentTemperature: 61.5, currentTarget: 65 } };
       service['idleClassifier'].classifyAll([idle], Date.now() - IDLE_HOLD_MIN_DURATION_MS);
       service['idleClassifier'].classifyAll([idle], Date.now());
@@ -438,7 +438,7 @@ describe('PlanService', () => {
   );
 
   it('joins observations queued behind one live sync into a single status build', async () => {
-    const device = steppedPlanDevice({ id: 'heater', currentState: 'on', currentDrawKw: 1.2,
+    const device = steppedPlanDevice({ id: 'heater', currentState: 'on' as const, currentDrawKw: 1.2,
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
     const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device], storageReleases: [] };
     const engine = { ...createMockPlanEngine(),
@@ -456,7 +456,7 @@ describe('PlanService', () => {
   });
 
   it('words cards from the Simulation setting, not the transient write fence', async () => {
-    const device = buildPlanDevice({ id: 'heater', currentState: 'off', plannedState: 'shed',
+    const device = buildPlanDevice({ id: 'heater', currentState: 'off' as const, plannedState: 'shed',
       reason: { code: PLAN_REASON_CODES.capacity } });
     const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device], storageReleases: [] };
     const engine = { ...createMockPlanEngine(),
@@ -471,7 +471,7 @@ describe('PlanService', () => {
   });
 
   it('logs the decision and executor facts behind a presentation change for debugging only', async () => {
-    const device = steppedPlanDevice({ id: 'ev-1', currentState: 'on', plannedState: 'keep',
+    const device = steppedPlanDevice({ id: 'ev-1', currentState: 'on' as const, plannedState: 'keep',
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'max' });
     const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device], storageReleases: [] };
     const engine = { ...createMockPlanEngine(),
@@ -491,7 +491,7 @@ describe('PlanService', () => {
   });
 
   it('pushes a fact-only change to the open card without writing an activity-log entry', async () => {
-    const device = steppedPlanDevice({ id: 'ev-1', isEvCharger: true, currentState: 'on',
+    const device = steppedPlanDevice({ id: 'ev-1', isEvCharger: true, currentState: 'on' as const,
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
     const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device], storageReleases: [] };
     const engine = { ...createMockPlanEngine(),
@@ -520,7 +520,7 @@ describe('PlanService', () => {
   it('pushes live power to the open card without logging each reading', async () => {
     // A running device's draw wobbles across a 0.1 kW display boundary on most
     // reports; logging each one evicts the control events the log exists for.
-    const device = steppedPlanDevice({ id: 'heater', currentState: 'on', currentDrawKw: 1.44,
+    const device = steppedPlanDevice({ id: 'heater', currentState: 'on' as const, currentDrawKw: 1.44,
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
     const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device], storageReleases: [] };
     let live = executionStateFixture(device);
@@ -547,7 +547,7 @@ describe('PlanService', () => {
   it('classifies idleness from the plan device, not from executor convergence state', () => {
     // Stall evidence feeds smart tasks, a decision input: the classifier reads
     // the observation the plan was built from, never the executor's view.
-    const device = steppedPlanDevice({ id: 'heater', currentState: 'on', currentDrawKw: 1.2,
+    const device = steppedPlanDevice({ id: 'heater', currentState: 'on' as const, currentDrawKw: 1.2,
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
     const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device], storageReleases: [] };
     const engine = { ...createMockPlanEngine(), getDeviceExecutionStates: vi.fn(() => new Map([[device.id, {
@@ -558,7 +558,7 @@ describe('PlanService', () => {
     service['tickIdleClassifier'](plan);
 
     expect(classifyAll).toHaveBeenCalledWith([expect.objectContaining({
-      id: 'heater', currentState: 'on', currentDrawKw: 1.2, plannedState: 'keep' })], expect.any(Number));
+      id: 'heater', currentState: 'on' as const, currentDrawKw: 1.2, plannedState: 'keep' })], expect.any(Number));
     expect(engine.getDeviceExecutionStates).not.toHaveBeenCalled();
   });
 
@@ -566,7 +566,7 @@ describe('PlanService', () => {
     // The capped-idle window keeps a bounded sample history sized for the plan
     // cadence. Observations arrive far more often; sampling on each would push
     // the first half of the window out and make capped idle unreachable.
-    const device = steppedPlanDevice({ id: 'heater', currentState: 'on', currentDrawKw: 1.2,
+    const device = steppedPlanDevice({ id: 'heater', currentState: 'on' as const, currentDrawKw: 1.2,
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
     const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [device], storageReleases: [] };
     let live = executionStateFixture(device);
@@ -696,13 +696,13 @@ describe('PlanService', () => {
           20,
           { code: 'shortfall', shortfallKw: 2.5 },
           { totalKw: 3.2, softLimitKw: 2, headroomKw: -1.23 },
-          { currentState: 'off', binaryControl: { on: false }, plannedState: 'shed' },
+          { currentState: 'off' as const, binaryControl: { on: false }, plannedState: 'shed' },
         ))
         .mockResolvedValueOnce(buildPlan(
           20,
           { code: 'shortfall', shortfallKw: 2.5 },
           { totalKw: 3.2, softLimitKw: 2, headroomKw: -1.24 },
-          { currentState: 'off', binaryControl: { on: false }, plannedState: 'shed' },
+          { currentState: 'off' as const, binaryControl: { on: false }, plannedState: 'shed' },
         )),
       applyPlanActions: vi.fn().mockResolvedValue(actuation({ deviceWriteCount: 0 })),
     };
@@ -760,7 +760,7 @@ describe('PlanService', () => {
           binaryCapabilityId: 'onoff' as const,
           binaryControl: { on: false },
           currentOn: false,
-          currentState: 'off',
+          currentState: 'off' as const,
           plannedState: 'shed' as const,
           boostActive: false,
           control: fixtureControlPosture({ controllable: true }),
@@ -786,7 +786,7 @@ describe('PlanService', () => {
           binaryCapabilityId: 'onoff' as const,
           binaryControl: { on: false },
           currentOn: false,
-          currentState: 'off',
+          currentState: 'off' as const,
           plannedState: 'shed' as const,
           boostActive: false,
           control: fixtureControlPosture({ controllable: true }),
@@ -812,7 +812,7 @@ describe('PlanService', () => {
           binaryCapabilityId: 'onoff' as const,
           binaryControl: { on: false },
           currentOn: false,
-          currentState: 'off',
+          currentState: 'off' as const,
           plannedState: 'inactive' as const,
           boostActive: false,
           control: fixtureControlPosture({ controllable: true }),
@@ -861,7 +861,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
-          currentState: 'on',
+          currentState: 'on' as const,
           plannedState: 'keep',
           boostActive: false,
           currentDrawKw: 0,
@@ -891,7 +891,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
-          currentState: 'on',
+          currentState: 'on' as const,
           plannedState: 'keep',
           boostActive: false,
           currentDrawKw: 0,
@@ -920,7 +920,7 @@ describe('PlanService', () => {
   it('batches multiple overview changes from the same rebuild', async () => {
     const overviewDebug = captureDebugTopic('overview');
     const plan = buildPlan(20, 'keep', {}, {
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'keep',
       boostActive: false,
       currentDrawKw: 0,
@@ -930,7 +930,7 @@ describe('PlanService', () => {
       ...plan.devices[0],
       id: 'dev-2',
       name: 'Bedroom',
-      currentState: 'off',
+      currentState: 'off' as const,
       binaryControl: { on: false },
       currentOn: false,
       plannedState: 'shed' as const,
@@ -980,7 +980,7 @@ describe('PlanService', () => {
           // Stepped is the profile-presence capability (the planner no longer reads
           // controlModel); a real stepped device always carries the profile.
           steppedLoadProfile: { steps: [{ id: 'max', planningPowerW: 3000 }] },
-          currentState: 'on',
+          currentState: 'on' as const,
           plannedState: 'keep',
           boostActive: false,
           currentDrawKw: 0,
@@ -1002,7 +1002,7 @@ describe('PlanService', () => {
   it('does not log repeated identical overview snapshots', async () => {
     const overviewDebug = captureDebugTopic('overview');
     const samePlan = buildPlan(20, 'keep', {}, {
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'keep',
       boostActive: false,
       currentDrawKw: 0,
@@ -1032,14 +1032,14 @@ describe('PlanService', () => {
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn()
           .mockResolvedValueOnce(buildPlan(20, 'keep', {}, {
-            currentState: 'on',
+            currentState: 'on' as const,
             plannedState: 'keep',
             boostActive: false,
             currentDrawKw: 0,
             expectedPowerKw: 3,
           }))
           .mockResolvedValueOnce(buildPlan(20, 'keep', {}, {
-            currentState: 'on',
+            currentState: 'on' as const,
             plannedState: 'keep',
             boostActive: false,
             currentDrawKw: 0.25,
@@ -1073,12 +1073,12 @@ describe('PlanService', () => {
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
     const cooldownPlan = buildPlan(20, 'meter settling (30s remaining)', {}, {
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
     });
     const cooldownTickPlan = buildPlan(20, 'meter settling (24s remaining)', {}, {
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
     });
@@ -1109,7 +1109,7 @@ describe('PlanService', () => {
 
   it('retains publication signatures with the overview debug topic off', async () => {
     const samePlan = buildPlan(20, 'keep', {}, {
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'keep',
       boostActive: false,
       currentDrawKw: 0,
@@ -1147,7 +1147,7 @@ describe('PlanService', () => {
     });
 
     const publishedPlan = buildPlan(20, 'keep', {}, {
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       currentDrawKw: 0,
@@ -1277,7 +1277,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine({ getDriftDevices: liveFixtureDevices }),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
-          currentState: 'off',
+          currentState: 'off' as const,
           currentTarget: 20,
           currentTemperature: 20,
           plannedState: 'keep',
@@ -1415,7 +1415,7 @@ describe('PlanService', () => {
           });
 
     service['rebuildHost'].publishPlan(buildPlan(20, 'keep', {}, {
-      currentState: 'on',
+      currentState: 'on' as const,
       currentTarget: 20,
       currentTemperature: 20,
       plannedState: 'keep',
@@ -1435,7 +1435,7 @@ describe('PlanService', () => {
       devices: [
         expect.objectContaining({
           id: 'dev-1',
-          currentState: 'on',
+          currentState: 'on' as const,
           currentTarget: 20,
           plannedState: 'keep',
           boostActive: false,
@@ -1475,7 +1475,7 @@ describe('PlanService', () => {
     });
 
     service['rebuildHost'].publishPlan(buildPlan(20, 'keep', {}, {
-      currentState: 'on',
+      currentState: 'on' as const,
       currentTarget: 20,
       currentTemperature: 20,
       plannedState: 'keep',
@@ -1640,7 +1640,7 @@ describe('PlanService', () => {
 
     const publishedPlan = {
       ...buildPlan(20, 'meter settling (30s remaining)', {}, {
-        currentState: 'on',
+        currentState: 'on' as const,
         plannedState: 'shed',
         boostActive: false,
       }),
@@ -1685,7 +1685,7 @@ describe('PlanService', () => {
           });
 
     const publishedPlan = buildPlan(20, 'cooldown (restore, 30s remaining)', {}, {
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'shed',
       boostActive: false,
       currentTarget: 20,
@@ -1788,7 +1788,7 @@ describe('PlanService', () => {
     // Built after admission: the task lent PELS authority and the plan resumed
     // the device, which the confirmed command has now turned on.
     service['rebuildHost'].publishPlan(buildPlan(20, 'keep', {}, {
-      currentState: 'off',
+      currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       control: { managed: true, commandAuthority: true },
@@ -1823,7 +1823,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine({ getDriftDevices: liveFixtureDevices }),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
-          currentState: 'off',
+          currentState: 'off' as const,
           currentTarget: 20,
           currentTemperature: 20,
           plannedState: 'keep',
@@ -1845,7 +1845,7 @@ describe('PlanService', () => {
       devices: [
         expect.objectContaining({
           id: 'dev-1',
-          currentState: 'off',
+          currentState: 'off' as const,
           plannedState: 'keep',
           plannedTarget: 20,
         }),
@@ -2137,7 +2137,7 @@ describe('PlanService', () => {
         // Seed cycle: the plan is new, so it actuates on changed actions and
         // never consults drift. The world holds still through it.
         .mockResolvedValueOnce(buildPlan(20, 'keep', {}, {
-          currentState: 'on',
+          currentState: 'on' as const,
           plannedState: 'keep',
           boostActive: false,
           plannedTarget: 20,
@@ -2149,7 +2149,7 @@ describe('PlanService', () => {
         .mockImplementationOnce(async () => {
           revision += 1;
           return buildPlan(20, 'keep', {}, {
-            currentState: 'off',
+            currentState: 'off' as const,
             plannedState: 'keep',
             boostActive: false,
             plannedTarget: 20,
@@ -2220,14 +2220,14 @@ describe('PlanService', () => {
       buildDevicePlanSnapshot: vi
         .fn()
         .mockResolvedValueOnce(buildPlan(20, 'keep', {}, {
-          currentState: 'on',
+          currentState: 'on' as const,
           plannedState: 'keep',
           boostActive: false,
           plannedTarget: 20,
           currentTemperature: 20,
         }))
         .mockResolvedValueOnce(buildPlan(20, 'keep', {}, {
-          currentState: 'off',
+          currentState: 'off' as const,
           plannedState: 'keep',
           boostActive: false,
           plannedTarget: 20,
@@ -2262,7 +2262,7 @@ describe('PlanService', () => {
       devices: [
         expect.objectContaining({
           id: 'dev-1',
-          currentState: 'off',
+          currentState: 'off' as const,
           plannedState: 'keep',
           boostActive: false,
           plannedTarget: 20,
@@ -2668,7 +2668,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
-          currentState: 'off',
+          currentState: 'off' as const,
           plannedState: 'keep',
           boostActive: false,
         })),
@@ -2697,7 +2697,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
-          currentState: 'off',
+          currentState: 'off' as const,
           plannedState: 'keep',
           boostActive: false,
         })),
@@ -2715,7 +2715,7 @@ describe('PlanService', () => {
 
   it('retries unchanged stepped-load step-up plans while the reported step is still lower than desired', async () => {
     const steppedPlan = buildPlan(20, 'keep', {}, {
-      currentState: 'on',
+      currentState: 'on' as const,
       plannedState: 'keep',
       boostActive: false,
       steppedLoadProfile: {
@@ -2792,7 +2792,7 @@ describe('PlanService', () => {
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
-          currentState: 'on',
+          currentState: 'on' as const,
           currentTarget: 20,
           currentTemperature: 20,
           plannedState: 'keep',

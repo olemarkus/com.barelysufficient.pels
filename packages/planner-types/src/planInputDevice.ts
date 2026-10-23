@@ -5,6 +5,7 @@ import type {
   DeviceStartPolicy,
   ExpectedPowerSource,
   RestorePowerSource,
+  ObservedCurrentState,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
   TargetCapabilitySnapshot,
@@ -492,9 +493,9 @@ export type PlanInputDeviceBase = {
   // (`lib/plan/planBinaryDevice.ts`), present IFF the device has binary control
   // (the observer resolved `currentOn`) this cycle. Raw observed `binaryControl` is no
   // longer carried — it stays transport/observer-internal. `currentState` (the
-  // four-valued reason/UI label) is producer-resolved at `toPlanDevice`, for
+  // three-valued reason/UI label) is producer-resolved at `toPlanDevice`, for
   // every device (`resolveObservedCurrentState` always answers).
-  currentState: string;
+  currentState: ObservedCurrentState;
   /**
    * What the device draws while running, as the producer resolved it. REQUIRED —
    * never null, never undefined, never absent. The twin of `currentDrawKw` below:

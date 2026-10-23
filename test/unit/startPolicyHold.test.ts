@@ -9,11 +9,12 @@ import {
 import { resolveDisplayStateKind } from '../../packages/shared-domain/src/planCardGrammar';
 import { resolvePlanStateKind } from '../../packages/shared-domain/src/planStateLabels';
 import type { DeviceOverviewSnapshot } from '../../packages/contracts/src/deviceOverview';
+import type { ObservedCurrentState } from '../../packages/contracts/src/types';
 import { partialDouble } from '../helpers/partialDouble';
 
 /** The flat overview shape the card resolvers read, not the plan device. */
 const overviewDevice = (fields: {
-  plannedState: string; currentState: string;
+  plannedState: string; currentState: ObservedCurrentState;
 }): DeviceOverviewSnapshot => (
   partialDouble<DeviceOverviewSnapshot>({
     controllable: true,
@@ -23,7 +24,7 @@ const overviewDevice = (fields: {
 );
 
 /** The card's own two-step: raw kind, then the display downgrade to `Off`. */
-const displayKindFor = (fields: { plannedState: string; currentState: string }) => (
+const displayKindFor = (fields: { plannedState: string; currentState: ObservedCurrentState }) => (
   resolveDisplayStateKind({
     kind: resolvePlanStateKind(overviewDevice(fields)),
     reasonCode: PLAN_REASON_CODES.awaitingPelsStart,
@@ -151,13 +152,13 @@ describe('the start-policy hold has no card copy', () => {
   it('reads Off once the device is actually off', () => {
     // `getInactiveReason` flips the held device to `inactive` the moment it is
     // observed off; that is what turns the card from `Limited` into `Off`.
-    expect(displayKindFor({ plannedState: 'inactive', currentState: 'off' })).toBe('off');
+    expect(displayKindFor({ plannedState: 'inactive', currentState: 'off' as const })).toBe('off');
   });
 
   it('reads Limited only while PELS is still turning it off', () => {
     // The one cycle between the plan deciding and the device obeying. Honest:
     // PELS is acting on the device right now.
-    expect(displayKindFor({ plannedState: 'shed', currentState: 'on' })).toBe('held');
+    expect(displayKindFor({ plannedState: 'shed', currentState: 'on' as const })).toBe('held');
   });
 
   it('still says something in the internal log, which is not card copy', () => {

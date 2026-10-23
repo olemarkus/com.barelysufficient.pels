@@ -51,25 +51,24 @@ const buildPlanInputDevice = (
 
 describe('resolveRemainingSheddableLoadKw — stale observation handling', () => {
 
-  it('credits a still-drawing unknown-state device its measured draw', () => {
-    // A device whose observer label is 'unknown' carries no confirmed-off
-    // `currentOn`, so it must NOT be silently zeroed out of remaining sheddable
-    // load — that would mis-signal "no actionable load left" during shortfall.
+  it('credits a device with no confirmed-off evidence its measured draw', () => {
+    // A device with no off evidence resolves `currentOn: true`, so it must NOT be
+    // silently zeroed out of remaining sheddable load — that would mis-signal
+    // "no actionable load left" during shortfall.
     //
     // "Is it still drawing?" is no longer a guess: the meter answers it. This one
     // reads 1.4 kW, so shedding it frees 1.4 kW. (The spec used to credit the
-    // CONFIGURED demand for an unknown device with a measured 0 — the invented
-    // substitution this change removes. The confirmed-off case is the sibling
-    // spec below.)
-    const unknown = toPlanRemainingSheddableDevice(buildPlanDevice({
-      id: 'unknown-off',
+    // CONFIGURED demand with a measured 0 — the invented substitution this change
+    // removes. The confirmed-off case is the sibling spec below.)
+    const drawing = toPlanRemainingSheddableDevice(buildPlanDevice({
+      id: 'still-drawing',
       controllable: true,
-      binaryControl: { on: false },
-      currentState: 'unknown',
+      binaryControl: { on: true },
+      currentState: 'on',
       measuredPowerKw: 1.4, expectedPowerKw: 1.4,
     }));
     const kw = resolveRemainingSheddableLoadKw({
-      device: unknown,
+      device: drawing,
       alreadyShed: false,
       limitSource: 'capacity',
       breachOverridesExemption: true,

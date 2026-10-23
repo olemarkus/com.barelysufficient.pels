@@ -494,15 +494,6 @@ export type DeviceDescriptor = {
 };
 
 /**
- * The consolidated observed truth for a device — everything with a realtime
- * in-place write path (a Homey capability event can change it). The other
- * surface that decomposes `TargetDeviceSnapshot` (see
- * `notes/state-management/snapshot-decomposition.md`). This is the value
- * plan/executor decide on; in a later slice it moves onto the observer, fed by
- * the dispatcher push. `id`/`name` are duplicated from `DeviceDescriptor` as
- * the join key so observed-state readers can key/log without a descriptor.
- */
-/**
  * Closed set of EV charger plug/charge states, mirroring the Homey
  * `evcharger_charging_state` capability enum. Producers (the capability read in
  * `getEvChargingState`, the native-EV and flow-reported derivations) resolve to
@@ -516,6 +507,23 @@ export type EvChargingState =
     | 'plugged_out'
     | 'plugged_in_discharging';
 
+/**
+ * A device's observed on/off label for reasons and cards: `not_applicable` for a
+ * device with no on/off axis. Producer-resolved (`resolveObservedCurrentState`,
+ * the executor's `physicalState`), so consumers compare literals; it is never
+ * the on/off truth, which binary devices carry as `currentOn`.
+ */
+export type ObservedCurrentState = 'on' | 'off' | 'not_applicable';
+
+/**
+ * The consolidated observed truth for a device — everything with a realtime
+ * in-place write path (a Homey capability event can change it). The other
+ * surface that decomposes `TargetDeviceSnapshot` (see
+ * `notes/state-management/snapshot-decomposition.md`). This is the value
+ * plan/executor decide on; in a later slice it moves onto the observer, fed by
+ * the dispatcher push. `id`/`name` are duplicated from `DeviceDescriptor` as
+ * the join key so observed-state readers can key/log without a descriptor.
+ */
 export type ObservedDeviceState = {
     id: string;
     name: string;
