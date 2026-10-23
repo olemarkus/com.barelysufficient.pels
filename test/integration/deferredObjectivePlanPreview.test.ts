@@ -223,16 +223,24 @@ const buildSnapshot = (params: { prices?: number[] } = {}): DailyBudgetUiPayload
 // allocation horizon (which now reads the price layer directly) sees the same
 // per-hour prices the snapshot carries. UTC fixtures ⇒ each bucket start is
 // already hour-aligned, so the derived hours map one-to-one onto the snapshot.
-const combinedFromSnapshot = (snapshot: DailyBudgetUiPayload | null): CombinedPricesV2 | null => {
+const combinedFromSnapshot = (
+  snapshot: DailyBudgetUiPayload | null,
+  planningPriceScale?: number,
+): CombinedPricesV2 | null => {
   if (!snapshot) return null;
   const days: CombinedPricesV2['days'] = {};
   for (const [dateKey, day] of Object.entries(snapshot.days)) {
-    const hours: CombinedPriceEntry[] = day.buckets.startUtc.map((startsAt, index) => ({
-      startsAt,
-      total: day.buckets.price?.[index] ?? 0,
-      isCheap: false,
-      isExpensive: false,
-    }));
+    const hours: CombinedPriceEntry[] = day.buckets.startUtc.map((startsAt, index) => {
+      const total = day.buckets.price?.[index] ?? 0;
+      return {
+        startsAt,
+        total,
+        // A prosumer's planning price (`budgetPrice`), set apart from the money price.
+        ...(planningPriceScale === undefined ? {} : { budgetPrice: total * planningPriceScale }),
+        isCheap: false,
+        isExpensive: false,
+      };
+    });
     days[dateKey] = { hours };
   }
   return {
@@ -249,8 +257,8 @@ const combinedFromSnapshot = (snapshot: DailyBudgetUiPayload | null): CombinedPr
 // Wrappers inject the price-layer `combinedPrices` derived from the snapshot the
 // test already supplies, so the preview / diagnostic allocation path sees the
 // same prices it used to read off the snapshot's buckets.
-const priceHorizonBuilderFor = (snapshot: DailyBudgetUiPayload | null) => {
-  const combined = combinedFromSnapshot(snapshot);
+const priceHorizonBuilderFor = (snapshot: DailyBudgetUiPayload | null, planningPriceScale?: number) => {
+  const combined = combinedFromSnapshot(snapshot, planningPriceScale);
   return (nowMs: number, deadlineAtMs: number) => buildPriceHorizonFromCombined(combined, nowMs, deadlineAtMs);
 };
 
@@ -323,6 +331,9 @@ type PreviewContext = {
   // to "øre/kWh" (the Norway scheme) so most cases exercise the rate→amount
   // conversion (costUnit must come back "øre").
   priceRateLabel?: string;
+  // Each hour's planning price as a multiple of its money price; absent, the two
+  // are the same.
+  planningPriceScale?: number;
 };
 
 // Capacity limit on and grid import limit off unless the case says otherwise.
@@ -346,7 +357,7 @@ const runPreview = (params: {
     getPriceOptimizationEnabled: () => params.ctx.priceOptimizationEnabled,
     getDeferredObjectiveActivePlans: () => params.ctx.activePlans ?? createEmptyActivePlans(),
     getCapacitySettings: () => previewPowerLimits(params.ctx.capacitySettings),
-    buildPriceHorizon: priceHorizonBuilderFor(params.ctx.dailyBudgetSnapshot),
+    buildPriceHorizon: priceHorizonBuilderFor(params.ctx.dailyBudgetSnapshot, params.ctx.planningPriceScale),
     getPrioritiesForDevices: params.ctx.getPrioritiesForDevices ?? createFixturePriorityQuery(devices),
     resolveDeviceExclusion: noDeviceExclusion,
     getStallClassification: noStallEvidence,
@@ -660,6 +671,33 @@ describe('previewDeferredObjectivePlan', () => {
     const starts = new Set(series.map((point) => point.startsAtMs));
     for (const hour of estimate.scheduledHours) {
       expect(starts.has(hour.startsAtMs)).toBe(true);
+    }
+  });
+
+  it('draws the curve at the planning price and keeps the cost on the money price', () => {
+    // A prosumer self-consuming solar plans on `budgetPrice`, not `total`. The
+    // curve shows the price the allocator ranked on, so halving every planning
+    // price halves the curve and leaves the ranking, and the schedule, unchanged.
+    // The cost is money and must match the saved task's estimate, so it stays.
+    const base: PreviewContext = {
+      device: buildEvDevice(),
+      powerTracker: buildEvPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      capacitySettings: { limitKw: 10, marginKw: 0 },
+    };
+    const moneyPriced = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx: base });
+    const planningPriced = runPreview({
+      deviceId: 'ev-1', candidate: evCandidate(), ctx: { ...base, planningPriceScale: 0.5 },
+    });
+
+    expect(planningPriced.scheduledHours).toEqual(moneyPriced.scheduledHours);
+    expect(moneyPriced.costEstimate).not.toBeNull();
+    expect(planningPriced.costEstimate).toBe(moneyPriced.costEstimate);
+    const moneyByHour = new Map((moneyPriced.priceSeries ?? []).map((point) => [point.startsAtMs, point.price]));
+    expect(planningPriced.priceSeries?.length).toBeGreaterThan(0);
+    for (const point of planningPriced.priceSeries ?? []) {
+      expect(point.price).toBeCloseTo((moneyByHour.get(point.startsAtMs) ?? 0) / 2, 6);
     }
   });
 
@@ -1185,79 +1223,55 @@ describe('previewDeferredObjectivePlan fidelity vs activePlanRecorder', () => {
 });
 
 describe('buildDeferredObjectivePolicyWindowPrices', () => {
-  // A snapshot whose hourly buckets start at an offset past the UTC hour — the
-  // shape a fractional-offset timezone (UTC+5:30/+5:45) produces, where the local
-  // day boundary lands at :30/:45 past a UTC hour.
-  const offsetSnapshot = (params: { offsetMinutes: number; prices?: number[] }): DailyBudgetUiPayload => {
-    const day = buildDay({
-      dateKey: '2026-01-01',
-      startMs: Date.UTC(2026, 0, 1, 0, params.offsetMinutes),
-      currentBucketIndex: 0,
-      prices: params.prices,
-    });
-    return { days: { [day.dateKey]: day }, todayKey: '2026-01-01', tomorrowKey: '' };
-  };
+  // The price layer's horizon: epoch-hour starts with the hour's planning price.
+  const horizon = (fromHour: number, prices: (number | null)[]) => prices.flatMap((price, index) => (
+    price === null ? [] : [{ startMs: Date.UTC(2026, 0, 1, fromHour + index, 0), price }]
+  ));
 
-  it('floors every point to the epoch hour, so a fractional-offset zone still joins with scheduledHours', () => {
-    // Buckets at :30 past the hour (UTC+5:30 day boundary). Raw starts would be
-    // 21:30, 22:30… and never match scheduledHours' epoch-hour-floored starts.
+  it('emits a dense, ascending, epoch-hour series across the window', () => {
     const series = buildDeferredObjectivePolicyWindowPrices(
-      offsetSnapshot({ offsetMinutes: 30 }),
+      horizon(0, [10, 11, 12, 13, 14, 15, 16, 17, 18]),
       Date.UTC(2026, 0, 1, 2, 0),
       Date.UTC(2026, 0, 1, 8, 0),
     );
-    expect(series.length).toBeGreaterThan(0);
-    for (const point of series) {
-      // Epoch-hour aligned (the basis buildHoursFromHorizonPlan uses).
-      expect(point.startMs % HOUR_MS).toBe(0);
-    }
-    // Dense + ascending: one slot per hour, no skipped indices.
-    for (let index = 1; index < series.length; index += 1) {
-      expect(series[index].startMs - series[index - 1].startMs).toBe(HOUR_MS);
-    }
+    expect(series.map((point) => point.startMs)).toEqual(
+      Array.from({ length: 6 }, (_, index) => Date.UTC(2026, 0, 1, 2 + index, 0)),
+    );
+    expect(series.map((point) => point.price)).toEqual([12, 13, 14, 15, 16, 17]);
   });
 
-  it('keys the in-progress straddling bucket by its clipped start, matching scheduledHours', () => {
-    // :30 buckets; now at 02:05 sits inside the 01:30–02:30 bucket. A raw floor
-    // would key that bucket to 01:00 (a spurious pre-now hour the current
-    // scheduled hour never matches); clipping to now keys it to 02:00.
+  it('keeps the in-progress hour, keyed to the hour now falls in, matching scheduledHours', () => {
     const series = buildDeferredObjectivePolicyWindowPrices(
-      offsetSnapshot({ offsetMinutes: 30 }),
+      horizon(0, [10, 11, 12, 13]),
       Date.UTC(2026, 0, 1, 2, 5),
-      Date.UTC(2026, 0, 1, 8, 0),
+      Date.UTC(2026, 0, 1, 4, 0),
     );
-    const starts = series.map((point) => point.startMs);
-    expect(starts).toContain(Date.UTC(2026, 0, 1, 2, 0));
-    expect(starts).not.toContain(Date.UTC(2026, 0, 1, 1, 0));
-    // The 01:30–02:30 (current) and 02:30–03:30 buckets both floor to 02:00;
-    // the current one (default price = its index 1) must win, not the next (2).
-    const currentHour = series.find((point) => point.startMs === Date.UTC(2026, 0, 1, 2, 0));
-    expect(currentHour?.price).toBe(1);
+    expect(series).toEqual([
+      { startMs: Date.UTC(2026, 0, 1, 2, 0), price: 12 },
+      { startMs: Date.UTC(2026, 0, 1, 3, 0), price: 13 },
+    ]);
   });
 
-  it('emits a dense null-price slot for an interior unpriced hour rather than dropping it', () => {
-    // Hour index 4 has a non-finite price → dropped from the bucket source, so it
-    // must surface as a null slot (the chart breaks the line; the x-axis stays true).
-    const prices = Array.from({ length: 24 }, (_, index) => (index === 4 ? Number.NaN : 10 + index));
+  it('emits a dense null-price slot for an interior hour the horizon has no price for', () => {
+    // The price layer drops an unpublished hour, so it must surface as a null
+    // slot (the chart breaks the line; the x-axis stays true).
     const series = buildDeferredObjectivePolicyWindowPrices(
-      offsetSnapshot({ offsetMinutes: 0, prices }),
+      horizon(2, [12, 13, null, 15, 16]),
       Date.UTC(2026, 0, 1, 2, 0),
-      Date.UTC(2026, 0, 1, 8, 0),
+      Date.UTC(2026, 0, 1, 7, 0),
     );
     const gap = series.find((point) => point.startMs === Date.UTC(2026, 0, 1, 4, 0));
     expect(gap).toBeDefined();
     expect(gap?.price).toBeNull();
-    // Still dense around the gap (the slot is present, not skipped).
     for (let index = 1; index < series.length; index += 1) {
       expect(series[index].startMs - series[index - 1].startMs).toBe(HOUR_MS);
     }
   });
 
-  it('returns an empty series when the snapshot is null or has no priced buckets in the window', () => {
-    expect(buildDeferredObjectivePolicyWindowPrices(null, 0, HOUR_MS)).toEqual([]);
-    // Window entirely before the snapshot's buckets → no overlap.
+  it('returns an empty series when no priced hour falls in the window', () => {
+    expect(buildDeferredObjectivePolicyWindowPrices([], 0, HOUR_MS)).toEqual([]);
     const series = buildDeferredObjectivePolicyWindowPrices(
-      offsetSnapshot({ offsetMinutes: 0 }),
+      horizon(0, [10, 11]),
       Date.UTC(2025, 11, 31, 0, 0),
       Date.UTC(2025, 11, 31, 6, 0),
     );
