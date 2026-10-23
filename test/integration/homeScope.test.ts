@@ -96,7 +96,6 @@ describe('buildMainHomeScope', () => {
   it('binds the R7b policy stragglers to live ctx reads (byte-identical main)', () => {
     const priceOpt = { 'device-1': { enabled: true, cheapDelta: 1, expensiveDelta: 2 } as never };
     const ctx = createAppContextMock({ priceOptimizationSettings: priceOpt });
-    ctx.getDynamicSoftLimitOverride = (() => 3.5) as AppContext['getDynamicSoftLimitOverride'];
     const scope = buildMainHomeScopeForTest(ctx, () => false);
 
     configureHomeModeCatalog(ctx, {
@@ -104,7 +103,6 @@ describe('buildMainHomeScope', () => {
     });
 
     expect(scope.getPriceOptimizationSettings()).toBe(priceOpt);
-    expect(scope.getDynamicSoftLimitOverride()).toBe(3.5);
     expect(scope.getOperatingMode()).toBe('away');
     expect(scope.getModeDeviceTargets()).toEqual({ away: { 'device-1': 21 } });
   });

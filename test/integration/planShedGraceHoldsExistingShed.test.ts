@@ -10,6 +10,7 @@ import {
   fixtureControlPosture, fixtureCurrentDrawKw, fixtureResidualKw, resolveFixtureCurrentOn,
 } from '../utils/planTestUtils';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
+import { withCapacityPace } from '../helpers/capacityPaceFixture';
 
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & MeteredDiscriminantProbe = {},
@@ -84,10 +85,9 @@ describe('shed grace', () => {
       ...planBuilderWiring(),
       capacityGuard,
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0, periodMinutes: 60 }),
-      getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: 5.4 * 1000 }),
+      getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now(), lastPowerW: 5.4 * 1000 }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0, periodMinutes: 60 }), 1.84),
       // The binding pace, well under the 6 kW hard cap — the deficit is real and
       // far above the soft-overshoot deadband.
-      getDynamicSoftLimitOverride: () => 1.84,
     }, state);
   }
 

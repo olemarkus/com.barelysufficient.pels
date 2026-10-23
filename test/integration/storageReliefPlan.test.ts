@@ -28,6 +28,7 @@ import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { Logger } from '../../lib/logging/logger';
 import type { StorageLeverState } from '../../lib/plan/planState';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
+import { withCapacityPace } from '../helpers/capacityPaceFixture';
 
 const HOUR_MS = 60 * 60 * 1000;
 const START_MS = Date.UTC(2026, 9, 5, 12, 10, 0);
@@ -215,18 +216,20 @@ const buildHarness = (scenario: Scenario) => {
     lastPowerW: 0,
     ...(scenario.hourUsedKWh !== undefined ? { buckets: { [HOUR_KEY]: scenario.hourUsedKWh } } : {}),
   };
+  const capacitySettings = {
+    capacityEnabled: scenario.capacityEnabled ?? true, gridImportLimitKw: scenario.gridImportLimitKw ?? null,
+    limitKw: scenario.limitKw ?? 10, marginKw: 0, periodMinutes: 60,
+  } as const;
   const builder = new PlanBuilder({
     ...planBuilderWiring(),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-    getCapacitySettings: () => ({
-      capacityEnabled: scenario.capacityEnabled ?? true, gridImportLimitKw: scenario.gridImportLimitKw ?? null,
-      limitKw: scenario.limitKw ?? 10, marginKw: 0, periodMinutes: 60,
-    }),
+    getCapacitySettings: () => capacitySettings,
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({ getPriceOptimizationSettings: () => SURPLUS_SETTINGS }),
     getPriceOptimizationSettings: () => SURPLUS_SETTINGS,
-    getPowerTracker: () => tracker,
+    getPowerTracker: () => (scenario.paceKw === null || capacitySettings.capacityEnabled === false
+      ? tracker
+      : withCapacityPace(tracker, capacitySettings, scenario.paceKw)),
     getDailyBudgetSnapshot: () => (scenario.dailyBudget === true ? dailyBudgetSnapshot() : null),
-    getDynamicSoftLimitOverride: () => scenario.paceKw,
     structuredLog: { info } as unknown as Logger,
   }, state);
   /** One build on a new whole-home reading, `afterMs` after the start. */

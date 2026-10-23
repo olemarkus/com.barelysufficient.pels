@@ -206,7 +206,6 @@ function buildSubHomeScope(
     getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
     getInferredSurplusKw: () => 0,
     getPriceOptimizationSettings: () => ({}),
-    getDynamicSoftLimitOverride: () => null,
     // Mode targets are the RESTORE ANCHOR, not a price/budget policy, so they
     // bind live for every home. Binding them to `{}` made the kept setpoint
     // fall back to the device's live setpoint (`lib/thermostat/temperatureSetpoints.ts`); while

@@ -136,7 +136,7 @@ hard-cap side needs boundary protection. See `docs/daily-budget.md`.
 `test/integration/planBudget.test.ts` (pure math: drain near hour end, no cliff
 at the 10-minute mark, planner ceiling reaches sustainable at the boundary,
 monotone taper over the final minutes, a quarter never above sustainable) and `test/integration/app.test.ts`
-(`computeDynamicSoftLimit` through the app).
+(the physical limit through the app, `computePhysicalPowerLimit`).
 
 `test/e2e/capacityEndOfHourDrain.e2e.test.ts` drives the full SDK-boundary stack
 (energy poll → planner → executor → `api.put`) with the faked clock stepped toward

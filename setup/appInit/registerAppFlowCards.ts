@@ -72,7 +72,7 @@ export function registerAppFlowCards(
     },
     // The power owner projects the accepted meter sample against the planner's
     // enabled capacity/grid ceiling, keeping the Flow condition on that limit.
-    getHeadroom: () => resolveObservedHeadroom(ctx.powerTracker, ctx.computeDynamicSoftLimit()),
+    getHeadroom: () => resolveObservedHeadroom(ctx.powerTracker, ctx.computePhysicalPowerLimit()),
     getSnapshot: () => ctx.getFlowSnapshot(),
     getDeviceDescriptors: () => ctx.getFlowDeviceDescriptors(),
     getControllableDevices: () => ctx.deviceControlSettings.controllableDevices,

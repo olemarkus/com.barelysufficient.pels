@@ -11,6 +11,7 @@ import type { DevicePlanDevice, PlanInputDevice } from '../../lib/plan/planTypes
 import { PriceLevel } from '../../lib/price/priceLevels';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
+import { withCapacityPace } from '../helpers/capacityPaceFixture';
 
 // The tracker is the single power latch; tests drive the whole-home total here.
 let lastPowerW = 0;
@@ -115,8 +116,7 @@ const buildBuilder = (params: {
         enabled: true, cheapDelta: 2, expensiveDelta: -2, surplusWilling: false, surplusDelta: 0,
       }]),
     ),
-    getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
-    getDynamicSoftLimitOverride: () => 10,
+    getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now() , lastPowerW }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }), 10),
     deviceDiagnostics: params.deviceDiagnostics,
   }, createPlanEngineState());
 };

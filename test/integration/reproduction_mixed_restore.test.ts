@@ -10,6 +10,7 @@ import {
 } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { reasonText } from '../utils/deviceReasonTestUtils';
+import { steerCapacityPace } from '../helpers/capacityPaceFixture';
 
 let currentTime = 1000000000000;
 
@@ -98,7 +99,7 @@ describe('Mixed Type Restoration Throttling', () => {
         // Limit 10. Usage 15.
         // Need to shed 1+1=2kW.
 
-        app.computeDynamicSoftLimit = () => 0.5; // Very low limit
+        steerCapacityPace(app, 0.5); // Very low limit
         await app['powerSamplePipeline'].recordPowerSample(5000);
 
         let plan = getLatestPlanSnapshotForTests();
@@ -121,7 +122,7 @@ describe('Mixed Type Restoration Throttling', () => {
         vi.advanceTimersByTime(61000);
 
         // 2. Headroom returns - enough for BOTH
-        app.computeDynamicSoftLimit = () => 10.0;
+        steerCapacityPace(app, 10.0);
         // Deactivate the guard after restoring headroom so shedding hysteresis allows it.
         app.planEngine.state.sheddingActive = false;
         app.planEngine.state.restoreBackoff.lastRecoveryMs = currentTime - 61000;

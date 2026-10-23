@@ -25,6 +25,7 @@ import { createTestExecutorCommandContext } from '../helpers/executorCommandCont
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { noStorageTransport } from '../helpers/storageTransportStub';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
+import { withCapacityPace } from '../helpers/capacityPaceFixture';
 
 /**
  * The shed PELS undoes when it loses its authority, driven through real plan
@@ -50,19 +51,24 @@ type Harness = {
 
 type ShedBehavior = { action: 'turn_off' } | { action: 'set_temperature'; temperature: number };
 
+const CAPACITY = {
+  capacityEnabled: true, gridImportLimitKw: null, limitKw: 50, marginKw: 0.2, periodMinutes: 60,
+} as const;
+
 const makeHarness = (shedBehavior: ShedBehavior = { action: 'turn_off' }): Harness => {
   const state = createPlanEngineState();
   let totalW = 500;
-  let limitKw = 50;
+  // The capacity pace the next build runs on, reached through the real tracker
+  // (`withCapacityPace`) under a roomy 50 kW cap; the default leaves plenty of room.
+  let paceKw = 40;
   let decorate: ((devices: PlanInputDevice[]) => DeferredDecorationBundle) | null = null;
   const builder = new PlanBuilder({
     ...planBuilderWiring(),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-    getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 50, marginKw: 0.2, periodMinutes: 60 }),
+    getCapacitySettings: () => CAPACITY,
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({ getShedBehavior: () => shedBehavior }),
-    getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: totalW }),
+    getPowerTracker: () => withCapacityPace({ lastTimestamp: Date.now(), lastPowerW: totalW }, CAPACITY, paceKw),
     getShedBehavior: () => shedBehavior,
-    getDynamicSoftLimitOverride: () => limitKw,
     // One record of PELS's in-flight writes, as in production: the builder and
     // the executor's release lane read the same one.
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
@@ -75,7 +81,7 @@ const makeHarness = (shedBehavior: ShedBehavior = { action: 'turn_off' }): Harne
     state,
     setMeter: (params) => {
       totalW = params.totalKw * 1000;
-      limitKw = params.limitKw;
+      paceKw = params.limitKw;
     },
     setDecoration: (next) => { decorate = next; },
   };

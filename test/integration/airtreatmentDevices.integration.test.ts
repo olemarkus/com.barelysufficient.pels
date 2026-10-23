@@ -10,6 +10,7 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
 } from '../../lib/utils/settingsKeys';
+import { steerCapacityPace } from '../helpers/capacityPaceFixture';
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 
 // Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
@@ -193,8 +194,7 @@ describe('Airtreatment device integration', () => {
     };
 
     await app.refreshTargetDevicesSnapshot();
-    app.computeDynamicSoftLimit = () => 1;
-    app.computeDynamicSoftLimit = () => 1;
+    steerCapacityPace(app, 1);
     await runCycle();
     expect(reportedTargets['flexit-1']).toBe(16);
     expect(reportedTargets['flexit-2']).toBe(16);
@@ -204,11 +204,14 @@ describe('Airtreatment device integration', () => {
     // refresh, not on a change in the soft limit. The re-decide heartbeats that
     // run meanwhile restore nothing.
     await vi.advanceTimersByTimeAsync(30_000);
+    // The house is no longer over its limit: the owner raised it. Its own
+    // settings rebuild runs first, so the cooldown reset below is what the next
+    // reading is decided on.
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 12);
+    await flushPromises();
     setCapSpy.mockClear();
     app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now() - 180000;
     app.planEngine.state.restoreBackoff.lastRecoveryMs = Date.now() - 180000;
-    app.computeDynamicSoftLimit = () => 10;
-    app.computeDynamicSoftLimit = () => 10;
     app.capacityGuard.isInShortfall = () => false;
     app.planEngine.state.inShortfall = false;
     app.planEngine.state.sheddingActive = false;

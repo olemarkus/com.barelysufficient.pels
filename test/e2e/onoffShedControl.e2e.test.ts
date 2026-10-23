@@ -4,7 +4,7 @@
 // real Homey Energy poll (`getEnergyLiveReport` — the SDK seam), drives the real
 // capacity guard + planner + executor, and the only thing asserted is what PELS
 // writes back through the SDK (`api.put` device-capability commands). No plan/target
-// snapshot reads, no `computeDynamicSoftLimit` override — the control decision is
+// snapshot reads, no capacity-pace override — the control decision is
 // observed purely by its effect on the device.
 //
 // This is the e2e counterpart to test/integration/onoffDevices.integration.test.ts:

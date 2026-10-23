@@ -25,14 +25,11 @@ import { planBuilderWiring } from '../helpers/planBuilderWiring';
 const buildPaceBuilder = (params: {
   state: PlanEngineState;
   getPowerTracker: () => PowerTrackerState;
-  getDynamicSoftLimitOverride?: () => number | null;
 }): PlanBuilder => new PlanBuilder({
   ...planBuilderWiring(),
   capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
   getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0, periodMinutes: 60 }),
   getPowerTracker: params.getPowerTracker,
-  // No override is a value the seam carries, not a member left off.
-  getDynamicSoftLimitOverride: params.getDynamicSoftLimitOverride ?? (() => null),
 }, params.state);
 
 const trackerWithHourUsage = (usedKWh: number): PowerTrackerState => ({
@@ -71,27 +68,6 @@ describe('capacity pace: the build stamps, everyone else reads', () => {
     expect(state.hourlyRemainingKWh).toBe(0);
   });
 
-  it('the read keeps the override precedence the stamp has', async () => {
-    // Only tests install an override, but it is what makes `getCapacityPaceKw`
-    // and the status log agree with the plan under test. Losing it on the read
-    // half would leave those two answering from the real tracker while the plan
-    // ran on the override, and nothing else asserts they are the same number.
-    const state = createPlanEngineState();
-    const builder = buildPaceBuilder({
-      state,
-      getPowerTracker: () => trackerWithHourUsage(6),
-      getDynamicSoftLimitOverride: () => 2.1,
-    });
-
-    expect(builder.computePhysicalPowerLimit()).toBe(2.1);
-    // An override replaces the pace and says nothing about the hour, so the
-    // stamp it would have taken is `false` — and the read takes none at all.
-    expect(state.hourlyBudgetExhausted).toBe(false);
-    expect(state.hourlyRemainingKWh).toBe(0);
-
-    await builder.buildDevicePlanSnapshot([]);
-    expect(state.hourlyBudgetExhausted).toBe(false);
-  });
 
   it('the next build stamps the hour it actually sees', async () => {
     const state = createPlanEngineState();

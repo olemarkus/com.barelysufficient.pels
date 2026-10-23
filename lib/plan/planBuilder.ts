@@ -201,15 +201,7 @@ export class PlanBuilder {
     remainingKWh: number;
     hourlyBudgetExhausted: boolean;
   } {
-    // Computed unconditionally: the selected period's remaining budget is a fact
-    // about that period, not about which pace is in force, so an override replaces the pace
-    // and leaves the budget untouched. Resolving it on both paths keeps
-    // `hourlyRemainingKWh` a plain number for every consumer.
     const result = computeDynamicSoftLimit(settings, this.powerTracker, nowTs);
-    const override = this.deps.getDynamicSoftLimitOverride();
-    if (typeof override === 'number' && Number.isFinite(override)) {
-      return { paceKw: override, remainingKWh: result.remainingKWh, hourlyBudgetExhausted: false };
-    }
     return {
       paceKw: result.allowedKw,
       remainingKWh: result.remainingKWh,
