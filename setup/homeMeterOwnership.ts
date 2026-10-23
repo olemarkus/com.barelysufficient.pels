@@ -97,10 +97,13 @@ export const areaRootsAtForestRoot = (
  * rather than a bare boolean so the settings UI can name the one thing to fix
  * instead of "couldn't save".
  *
- * Meter ownership, the area count and root disjointness are properties of the
- * whole list; the name rules judge `upserted` alone (see
- * `findHomeAreaNameRejection`), so a legacy name the owner cannot see never
- * blocks an unrelated area's edit.
+ * Meter ownership and the area count are properties of the whole list; the
+ * name rules judge `upserted` alone (see `findHomeAreaNameRejection`), so a
+ * legacy name the owner cannot see never blocks an unrelated area's edit.
+ * Root disjointness judges only the pairs `upserted` is part of, for the same
+ * reason: two saved areas can come to nest when a zone moves in the Homey app,
+ * which the runtime tolerates, and that pair must not refuse a third area's
+ * rename.
  */
 export const findComposedHomeInvariantViolation = (
   homey: Homey.App['homey'],
@@ -133,9 +136,11 @@ export const findComposedHomeInvariantViolation = (
       .map(({ name }) => name),
   });
   if (nameRejection !== null) return { ok: false, ...nameRejection };
-  return zoneTree !== null && findNestedSubHomeRoots({ subHomes: [...subHomes] }, zoneTree).length > 0
-    ? { ok: false, reason: 'invalid' }
-    : null;
+  if (zoneTree === null) return null;
+  const upsertedOverlaps = findNestedSubHomeRoots({ subHomes: [...subHomes] }, zoneTree).some(
+    ({ outerHomeId, innerHomeId }) => outerHomeId === upserted.homeId || innerHomeId === upserted.homeId,
+  );
+  return upsertedOverlaps ? { ok: false, reason: 'invalid' } : null;
 };
 
 /**

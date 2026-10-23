@@ -1485,6 +1485,50 @@ describe('ui_homes payload', () => {
     })).toEqual({ ok: false, reason: 'area_limit_reached', maxCount: 8 });
   });
 
+  it('lets an area outside an overlapping pair be edited, and refuses an edit inside it', () => {
+    // A zone moved in the Homey app can nest two saved areas; the runtime
+    // tolerates that, so the pair must not lock every other area's edit.
+    const nestedZones: ZoneTree = {
+      ...ZONES,
+      z2a: { id: 'z2a', name: 'Bedroom', parent: 'z2' },
+    };
+    const bedroom = {
+      homeId: 'h_c', name: 'Bedroom flat', rootZoneId: 'z2a', meterDeviceId: 'm-c',
+    };
+    createHomesStore(homeyLike.settings).write({
+      activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
+      subHomes: [
+        { ...SUB_HOME_A, meterDeviceId: 'm-a' },
+        { ...SUB_HOME_B, meterDeviceId: 'm-b' },
+        bedroom,
+      ],
+    });
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
+    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, MAIN_METER_ID);
+    const service = makeStaticService({ getZoneTree: () => nestedZones, devices: [] });
+    service.recompute();
+    const homeyWired = {
+      app: {
+        homeMembership: service,
+        getApiStructuredLogger: () => silentApiLogger,
+        getTrackerStore: () => trackerStore,
+      },
+      settings: mockHomeyInstance.settings,
+    } as unknown as Homey.App['homey'];
+
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired,
+      body: { op: 'upsert', area: { ...SUB_HOME_B, meterDeviceId: 'm-b', name: 'Garage studio' } },
+    })).toEqual({ ok: true });
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired,
+      body: { op: 'upsert', area: { ...bedroom, name: 'Guest room' } },
+    })).toEqual({ ok: false, reason: 'invalid' });
+    const read = createHomesStore(homeyLike.settings).read();
+    expect(read.state === 'present' && read.value.subHomes.map(({ name }) => name))
+      .toEqual(['Upstairs', 'Garage studio', 'Bedroom flat']);
+  });
+
   it('refuses a later Main-meter selection owned by an area and normalizes accepted ids', async () => {
     createHomesStore(homeyLike.settings).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,

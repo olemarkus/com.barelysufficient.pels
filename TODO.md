@@ -236,21 +236,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       HAN meter who tries to add a rental. Source: multi-home finishing train, area-config invariants
       PR. [P2]
 
-- [ ] **Extend the growth-only principle from the area cap to root disjointness.** The area cap now
-      bounds GROWTH, so a config already over it can still be renamed or re-metered
-      (`setup/homeMeterOwnership.ts`; the rule itself is `lib/home/homeConfig.ts`). The root-overlap rule one line below it still evaluates
-      `findNestedSubHomeRoots` over the WHOLE composed list, so a persisted config containing one
-      overlapping pair refuses every upsert, including a rename of a third, unrelated area. Reachable
-      the same way the over-cap config is: `isPlausibleHomesConfigBlob` validates shapes, unique
-      homeIds and unique meters but NOT zone overlap, so such a blob classifies `'present'` and flows
-      straight into the check. Strictly worse for the user than the cap case was, because it returns
-      bare `invalid`, which renders "Couldn't save changes — try again" and names no remedy. The right
-      axis is not "did the list grow" but "does the UPSERTED entry participate in an overlap", which
-      is why it was left out of the growth-only fix. Persona: owner whose config predates the seam's
-      rules, or was written outside the UI. *Hypothesis:* every save is refused with copy that names
-      nothing, and the only escape (delete an area) is not something the message suggests. Source:
-      multi-home finishing train, area-config invariants PR review. [P3]
-
 ## Prices
 
 - [ ] **The Power by the Hour source drops the export price it is handed.** The app's
