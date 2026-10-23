@@ -26,6 +26,7 @@ export {
   requireDeviceManager, requireHomeMembership, requirePlanService, resolvePlanService,
 } from './appInit/contextGuards';
 export { createDeviceDiagnosticsService } from './appInit/deviceDiagnosticsService';
+export { createSupportReports } from './appInit/createSupportReports';
 export { createDailyBudgetService } from './appInit/createDailyBudgetService';
 export { BATTERY_CONTROL_TEARDOWN_KEY, initMainBatteryControl, mainStorageLane } from './appInit/createBatteryControl';
 export { createPlanEngineComposition } from './appInit/createPlanEngine';

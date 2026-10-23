@@ -23,6 +23,11 @@ const notWired = (member: string) => (): never => {
  */
 export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
   const defaults: PelsHost = {
+    supportReports: {
+      prepare: notWired('supportReports.prepare'),
+      get: notWired('supportReports.get'),
+      send: notWired('supportReports.send'),
+    },
     log: vi.fn(),
     error: vi.fn(),
     planStatuses: createPlanStatusRegistry(),

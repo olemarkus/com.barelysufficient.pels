@@ -25,6 +25,7 @@ import {
   flushDeferredObjectiveRecorders,
   createDailyBudgetService,
   createDeviceDiagnosticsService,
+  createSupportReports,
   BATTERY_CONTROL_TEARDOWN_KEY,
   initMainBatteryControl,
   createPriceCoordinator,
@@ -165,6 +166,10 @@ export class AppServiceWiring {
     ctx.rebuildOwningHomePlanForDevice = (deviceId, trigger) => (
       this.rebuildOwningHomePlanForDevice(deviceId, trigger)
     );
+  }
+
+  createSupportReports() {
+    return createSupportReports(this.deps.homeyApp.homey);
   }
 
   createObservedTemperatureModeUpdates() {
