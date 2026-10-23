@@ -328,6 +328,8 @@ export const openDeviceDetail = (deviceId: string) => {
   // `closeDeviceDetail` when the pane itself closes, drops a device's draft.
   // The draft for B (if any) is loaded via renderSteppedLoadDraft below.
   currentDetailDeviceId = deviceId;
+  const reportButton = document.getElementById('device-detail-report-problem');
+  if (reportButton) reportButton.dataset.reportDeviceId = deviceId;
 
   setDeviceDetailTitle(device.name);
   applyDeviceDetailSectionLayout(device);

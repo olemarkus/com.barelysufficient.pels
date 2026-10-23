@@ -29,13 +29,16 @@ export const SETTINGS_SUB_PANELS = [
   'simulation',
   'web-app',
   'activity',
+  'report-problem',
   'advanced',
 ] as const;
 
 const SETTINGS_PREFIX = 'settings/';
 const PAGE_PARAM = 'page';
 // Parameters that belong to a route and must not leak into the next one.
-const ROUTE_PARAMS = ['deviceId', 'historyId', 'edit', 'date'];
+const ROUTE_PARAMS = [
+  'deviceId', 'historyId', 'edit', 'date', 'reportId', 'reportHomeId', 'reportDeviceId', 'reportAtMs',
+];
 
 const isTopLevel = (id: string): boolean => (TOP_LEVEL_PANELS as readonly string[]).includes(id);
 const isSettingsSub = (id: string): boolean => (SETTINGS_SUB_PANELS as readonly string[]).includes(id);

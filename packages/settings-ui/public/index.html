@@ -533,6 +533,12 @@
           <span slot="supporting-text" class="settings-nav-card__description">Recent device states and reasons</span>
           <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
         </md-list-item>
+        <md-list-item type="button" class="settings-nav-card" data-settings-target="report-problem">
+          <svg slot="start" class="settings-nav-card__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v12H9l-5 4V4zm8 3v4m0 2v1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span slot="headline" class="settings-nav-card__title pels-text-card-title">Report a problem</span>
+          <span slot="supporting-text" class="settings-nav-card__description">Describe an incident and share relevant details</span>
+          <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
+        </md-list-item>
         <md-list-item type="button" class="settings-nav-card settings-nav-card--quiet" data-settings-target="advanced">
           <svg slot="start" class="settings-nav-card__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1M18.7 18.7l-2.1-2.1M7.4 7.4 5.3 5.3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
           <span slot="headline" class="settings-nav-card__title pels-text-card-title">Advanced</span>
@@ -544,6 +550,9 @@
 
     <section class="card panel hidden settings-detail-panel" id="activity-panel" data-panel="activity" aria-label="Activity">
       <div id="activity-history-root"></div>
+    </section>
+    <section class="card panel hidden settings-detail-panel" id="report-problem-panel" data-panel="report-problem" aria-label="Report a problem">
+      <div id="support-report-root"></div>
     </section>
 
     <section class="card panel hidden settings-detail-panel" id="recommendations-panel" data-panel="recommendations" aria-label="Setup and recommendations">
@@ -1517,6 +1526,9 @@
               <div id="device-detail-diagnostics-cards" class="detail-diagnostics-grid"></div>
             </div>
           </details>
+        </section>
+        <section class="detail-section">
+          <md-outlined-button type="button" id="device-detail-report-problem">Report a problem</md-outlined-button>
         </section>
         <section class="detail-section" id="device-detail-activity-log-section">
           <details id="device-detail-activity-log-disclosure" class="settings-collapse detail-collapse">
