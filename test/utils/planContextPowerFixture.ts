@@ -39,6 +39,7 @@ export type PlanContextFixtureOverrides = Partial<PlanContext> & { intent?: Part
  * capacity-bound, an unremarkable hour. A spec overrides what it is about.
  */
 export const buildPlanContextFixture = ({ intent = {}, ...overrides }: PlanContextFixtureOverrides = {}): PlanContext => ({
+  nowTs: Date.now(),
   gridImportLimitKw: null,
   gridImportTargetKw: null,
   devices: [],

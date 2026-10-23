@@ -164,7 +164,7 @@ export function applyShedTemperatureHold(
   let restoredOne = restoreResult.restoredOneThisCycle;
   const nextDevices: DevicePlanDevice[] = [];
   const pendingRestoreDelay = getPendingRestoreDelay(
-    planDevices, state, temperatureSetpoints, normalizedShedFloorCByDevice,
+    planDevices, state, temperatureSetpoints, normalizedShedFloorCByDevice, restoreResult.timing.nowTs,
   );
   const pass: HoldPass = {
     state,
@@ -369,10 +369,10 @@ function getPendingRestoreDelay(
   state: PlanEngineState,
   temperatureSetpoints: TemperatureSetpointsByDevice,
   normalizedShedFloorCByDevice: ReadonlyMap<string, number>,
+  nowMs: number,
 ): PendingRestoreDelay | null {
   let maxRemainingMs = 0;
   let countdownStartedAtMs: number | null = null;
-  const nowMs = Date.now();
   for (const dev of planDevices) {
     if (!isTemperaturePlanDevice(dev) || !isLimitedBySetpointThisBuild(temperatureSetpoints, dev.id)) continue;
     const floorC = shedFloorCFor(normalizedShedFloorCByDevice, dev.id);

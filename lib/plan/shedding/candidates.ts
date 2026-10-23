@@ -119,11 +119,10 @@ export function buildShedCandidateParams(
 }
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-export function buildSheddingCandidates(params: ShedCandidateParams): {
+export function buildSheddingCandidates(params: ShedCandidateParams, nowTs: number): {
   candidates: ShedCandidate[];
   physicalLimitBreached: boolean;
 } {
-  const nowTs = Date.now();
   const candidates: ShedCandidate[] = [];
   // Every exit below either produces a candidate or records why it did not, so a
   // cycle that sheds nothing can say which devices it considered and what stopped

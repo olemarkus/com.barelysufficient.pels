@@ -201,7 +201,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
         pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
         log: () => undefined,
       },
-    });
+    }, context.nowTs);
     const candidateIds = candidates.map((c) => c.id);
     expect(candidateIds).not.toContain(BATTERY_ID);
     // The controllable heater IS a candidate — the exclusion isn't vacuous.

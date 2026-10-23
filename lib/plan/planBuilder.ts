@@ -458,7 +458,7 @@ export class PlanBuilder {
       () => buildSheddingPlan(
         context, power, this.state, buildSheddingDeps(this.deps, shortfallBudgetThresholdKw),
         // Shedding prices a held battery from its hold (`heldStorage.levers`).
-        overshootDecision, nowTs, heldStorage,
+        overshootDecision, heldStorage,
       ),
     );
     this.applySheddingOutcome(sheddingPlan);

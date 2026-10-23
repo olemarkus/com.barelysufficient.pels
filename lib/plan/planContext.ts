@@ -88,6 +88,8 @@ function resolveSoftLimitSource(capacity: number | null, daily: number | null, g
  * (owner ruling 2026-09-02: guard at the seams, never per read).
  */
 export type PlanContext = PlanLimits & {
+  /** Build timestamp for planner-owned timing decisions and the period frame. */
+  readonly nowTs: number;
   devices: PlanInputDevice[];
   /**
    * What each temperature device's outcomes command, resolved once per build
@@ -195,6 +197,7 @@ export function buildPlanContext(
   );
   return {
     ...limits,
+    nowTs: nowMs,
     devices,
     temperatureSetpoints,
     hourBucketKey: hourContext.bucketKey,

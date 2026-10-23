@@ -1148,19 +1148,6 @@ Design-of-record: `notes/web-app.md`.
       variant has no `| null` and `resolveMeasurementPowerW` is gone. Source: layering review of the
       shed-outcome state layer, 2026-09-08.
 
-- [ ] **P2 — one plan build reads three clocks.** `PlanBuilder.buildPlanSnapshotWithTimings`
-      stamps `nowTs` once (`lib/plan/planBuilder.ts`) and hands it to the overshoot tracker that
-      writes `lastSetbackMs`; the restore pass mints its own in `buildRestoreTiming`
-      (`lib/plan/restore/timing.ts`) and `resolveCycleHeadroomReserves` (`lib/plan/restore/index.ts`),
-      and every setback-block, cooldown and reason read in the pass decides from that second stamp.
-      Every comparison is elapsed-monotone, so nothing diverges, but a setback stamped at the
-      builder's clock is read against the restore clock a few ms later in the same build. Change:
-      `applyRestorePlan` takes the build's `nowTs` and `buildRestoreTiming` / the reserve resolver
-      take it as a parameter instead of calling `Date.now()`. Done when `lib/plan/**` outside
-      `planBuilder.ts` contains no `Date.now()` on the plan-build path and `RestoreTiming.nowTs`
-      equals the builder's stamp in `test/integration/planRestoreBackoff.test.ts`. Source: runtime
-      review of the activation-backoff records refactor, 2026-09-08.
-
 - [ ] **P2 — three `setup/` files compose peers the guard's seed banked as permanent budget.**
       `npm run setup:boundaries` seeds its ratchet from the tree it merges against, so the counts it
       now enforces (55 cross-peer, 33 SDK) include files no one has named: `setup/settingsUiHomesApi.ts`
