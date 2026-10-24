@@ -5,6 +5,7 @@ import {
   parseRescueRequest,
   RESCUE_DEADLINE_HORIZON_MS,
   resolveRescuableDeviceFromList,
+  selectRescuableDeviceIds,
 } from '../../packages/shared-domain/src/starvationRescueShared';
 
 // Pure shared logic for the rescue, used by BOTH the starvation_rescue widget
@@ -85,6 +86,15 @@ describe('resolveRescuableDeviceFromList', () => {
 
   it('rejects an unknown device id as not_rescuable', () => {
     expect(resolveRescuableDeviceFromList([heldBack], 'missing')).toEqual({ ok: false, reason: 'not_rescuable' });
+  });
+});
+
+describe('selectRescuableDeviceIds', () => {
+  it('keeps the rows a rescue would accept and drops task-owning and no-target rows', () => {
+    const otherHeldBack = { ...heldBack, deviceId: 'rad-1', deviceName: 'Living room' };
+    const owned = { ...heldBack, deviceId: 'heater-2', hasSmartTask: true };
+    const noTarget = { ...heldBack, deviceId: 'heater-3', intendedTarget: null };
+    expect(selectRescuableDeviceIds([heldBack, otherHeldBack, owned, noTarget])).toEqual(['heater-1', 'rad-1']);
   });
 });
 

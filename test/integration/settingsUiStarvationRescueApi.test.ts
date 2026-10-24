@@ -7,7 +7,6 @@ import type { DeferredObjectivePlanPreviewEstimate } from '../../packages/contra
 import type { StarvationRescueDevice } from '../../packages/contracts/src/starvationRescue';
 import {
   createSettingsUiStarvationRescue,
-  getSettingsUiStarvationRescueDevices,
   previewSettingsUiStarvationRescue,
 } from '../../setup/settingsUiStarvationRescueApi';
 
@@ -25,15 +24,6 @@ const budgetDevice: StarvationRescueDevice = {
   deviceName: 'Hot water',
   accumulatedMs: 42 * 60 * 1000,
   intendedTarget: { kind: 'temperature', targetTemperatureC: 65 },
-  smartTaskHomeScope: 'main',
-  hasSmartTask: false,
-};
-
-const capacityDevice: StarvationRescueDevice = {
-  deviceId: 'rad-1',
-  deviceName: 'Living room',
-  accumulatedMs: 11 * 60 * 1000,
-  intendedTarget: { kind: 'temperature', targetTemperatureC: 21 },
   smartTaskHomeScope: 'main',
   hasSmartTask: false,
 };
@@ -85,23 +75,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
-});
-
-describe('getSettingsUiStarvationRescueDevices', () => {
-  it('returns only the rescuable (task-free, known-target) device IDs', () => {
-    const getStarvedRescueDevices = vi.fn(() => [
-      budgetDevice, capacityDevice, taskOwningBudgetDevice, noTargetBudgetDevice,
-    ]);
-    const payload = getSettingsUiStarvationRescueDevices(buildContext({ getStarvedRescueDevices }));
-    // Both plain held-back rows qualify now; only the task-owning and
-    // no-target rows are filtered out.
-    expect(payload.rescuableDeviceIds).toEqual(['heater-1', 'rad-1']);
-  });
-
-  it('returns an empty set while the app is not wired', () => {
-    const homey = { app: undefined, clock: { getTimezone: () => TIME_ZONE } } as never;
-    expect(getSettingsUiStarvationRescueDevices({ homey }).rescuableDeviceIds).toEqual([]);
-  });
 });
 
 describe('previewSettingsUiStarvationRescue', () => {

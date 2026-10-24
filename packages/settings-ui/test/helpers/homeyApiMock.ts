@@ -39,7 +39,6 @@ import {
   SETTINGS_UI_REFRESH_PRICES_PATH,
   SETTINGS_UI_RESET_POWER_STATS_PATH,
   SETTINGS_UI_WEATHER_ADVISOR_READOUT_PATH,
-  SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH,
   SETTINGS_UI_STARVATION_RESCUE_PREVIEW_PATH,
   SETTINGS_UI_STARVATION_RESCUE_CREATE_PATH,
   SETTINGS_UI_SMART_TASK_PREVIEW_PATH,
@@ -115,7 +114,7 @@ export type MockHomeyUiState = {
   weatherAdvisorReadout?: unknown;
   // Overview "Let it run now" rescue. The set of device IDs the chip may offer
   // the rescue on, which the served plan carries as `rescuableDeviceIds` (as
-  // the producer's does) and the rescue route also serves, plus the
+  // the producer's does), plus the
   // preview/create responses. Defaults mirror production's "nothing rescuable
   // yet" steady state (empty set, unavailable preview/create); tests seed these
   // to exercise the chip's arm/commit path.
@@ -522,12 +521,9 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
     power: await buildUiPower(homey, null),
     dailyBudget: getDailyBudgetRead(homey),
   }),
-  // Overview "Let it run now" rescue. Defaults: an empty rescuable set (so the
-  // chip's membership gate fails closed) and an unavailable preview/create.
-  // Tests seed `uiState.starvationRescuable*` to drive the arm/commit path.
-  [buildRouteKey('GET', SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH)]: (homey) => async () => ({
-    rescuableDeviceIds: (getUiOverride(homey, 'starvationRescuableDeviceIds') as string[] | undefined) ?? [],
-  }),
+  // Overview "Let it run now" rescue. Defaults: an unavailable preview/create
+  // (the plan's rescuable set defaults to empty, so the chip fails closed).
+  // Tests seed `uiState.starvationRescue*` to drive the arm/commit path.
   [buildRouteKey('POST', SETTINGS_UI_STARVATION_RESCUE_PREVIEW_PATH)]: (homey) => async () => (
     getUiOverride(homey, 'starvationRescuePreview') ?? { ok: false, reason: 'unavailable' }
   ),

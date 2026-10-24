@@ -226,18 +226,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       contributor velocity + Set-and-forget owner (visual coherence); hypothesis: three segmented
       impls / two device rows / per-file chip vocab is where per-page drift keeps re-entering. [P2]
 
-## Standalone web app
-
-Design-of-record: `notes/web-app.md`.
-
-- [ ] **`/ui_starvation_rescue_devices` has no caller.** `api.ts`, `.homeycompose/app.json`,
-      `setup/settingsUiStarvationRescueApi.ts`, `SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH` in
-      `packages/contracts/src/settingsUiApi.ts`. The Overview's rescue gate rides the plan
-      (`rescuableDeviceIds`), and the rescue widget reads the app directly. Kept so the release that
-      moved the gate changed no route. **What changes:** the next release that changes `app.json`
-      anyway removes the route, its handler, the path constant and the mocks' handlers.
-      **Done when:** nothing in the repository names the route. [P2]
-
 ## Diagnostics, logging and alerts
 
 - [ ] **The sustained hard-cap card's in-app hint omits the flow-source reporting requirement.**

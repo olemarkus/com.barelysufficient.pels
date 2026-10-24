@@ -51,7 +51,6 @@ import {
 } from './setup/settingsUiHomesApi';
 import {
   createSettingsUiStarvationRescue,
-  getSettingsUiStarvationRescueDevices,
   previewSettingsUiStarvationRescue,
 } from './setup/settingsUiStarvationRescueApi';
 import {
@@ -345,9 +344,6 @@ export = {
   )),
   ui_reset_power_stats: withApiLogging('ui_reset_power_stats', ({ homey }: ApiContext) => (
     resetSettingsUiPowerStats({ homey })
-  )),
-  ui_starvation_rescue_devices: withApiLogging('ui_starvation_rescue_devices', ({ homey }: ApiContext) => (
-    getSettingsUiStarvationRescueDevices({ homey })
   )),
   ui_starvation_rescue_preview: withApiLogging(
     'ui_starvation_rescue_preview',

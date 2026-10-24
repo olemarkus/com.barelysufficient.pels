@@ -127,17 +127,6 @@ export type StarvationRescueRejectReason =
   | 'write_conflict'
   | 'unavailable';
 
-// The device IDs the overview chip may offer the rescue on, resolved server-side
-// from the SAME `getStarvedRescueDevices` list the widget gates on (task-free
-// + a known target). The settings UI reads the same set from the plan it renders
-// (`SettingsUiPlanSnapshot.rescuableDeviceIds`), which keeps a stale affordance
-// rare — but the set is a snapshot, and `resolveRescuableDeviceFromList`
-// re-checks live state on preview AND create, so a shown chip's call can still
-// come back `not_rescuable` / `no_target`.
-export type SettingsUiStarvationRescueDevicesPayload = {
-  rescuableDeviceIds: string[];
-};
-
 // Optional bounded-window readout shown on the confirm step (the rescue reaches
 // the device's normal target BY `deadlineAtMs`). Mirrors the widget's preview.
 export type SettingsUiStarvationRescuePreviewResponse = {
