@@ -3,6 +3,7 @@ import {
   rankActiveDevicePriorities,
   type ModePriorities,
 } from '../modePriorities';
+import { isUnknownRecord } from '../recordGuards';
 
 /**
  * Owner of capacity_priorities on both Homey's runtime and the settings bridge.
@@ -10,7 +11,7 @@ import {
  * device in every mode. Loading and discovery need no owner confirmation.
  */
 const isPriorityRecord = (value: unknown): value is Record<string, unknown> => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (!isUnknownRecord(value)) return false;
   const prototype: unknown = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
 };

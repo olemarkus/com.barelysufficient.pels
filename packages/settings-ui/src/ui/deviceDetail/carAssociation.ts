@@ -94,8 +94,7 @@ export const loadEvCarAssociations = async (): Promise<void> => {
     // A newer reload or an authoritative unset owns the state now. An older SDK
     // read may still resolve, but it must not restore the map that event replaced.
     if (generation !== associationLoadGeneration) return;
-    if (value !== null && value !== undefined
-      && (typeof value !== 'object' || Array.isArray(value))) {
+    if (value !== null && value !== undefined && !isUnknownRecord(value)) {
       await logSettingsError(
         'Ignoring malformed car associations',
         new TypeError('Invalid car association setting.'),

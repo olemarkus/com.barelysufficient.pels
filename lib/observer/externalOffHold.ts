@@ -62,6 +62,7 @@ import {
   PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX,
 } from '../utils/settingsKeys';
 import { readSettingsKeyList } from '../utils/settingsKeyList';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 /**
  * The minimal settings surface this store needs. Structurally matches the
@@ -423,13 +424,13 @@ export const migrateExternalOffHoldsToPerKey = (
  * forever and re-run it on every boot.
  */
 const readLegacyBlobDeviceIds = (raw: unknown): string[] | null => {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  if (!isUnknownRecord(raw)) return null;
   const candidate = raw as { version?: unknown; entriesByDeviceId?: unknown };
   if (candidate.version !== 1) return null;
   const map = candidate.entriesByDeviceId;
-  if (!map || typeof map !== 'object' || Array.isArray(map)) return null;
+  if (!isUnknownRecord(map)) return null;
   const heldSinceIsValid = (entry: unknown): boolean => {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    if (!isUnknownRecord(entry)) return false;
     const { sinceMs } = entry as { sinceMs?: unknown };
     return typeof sinceMs === 'number' && Number.isFinite(sinceMs) && sinceMs > 0;
   };

@@ -4,6 +4,7 @@ import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.
 import { resolveDeviceDetailControlState } from './controlState.ts';
 import { showToast } from '../toast.ts';
 import { supportsTemperatureDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
+import { isUnknownRecord } from '../../../../shared-domain/src/recordGuards.ts';
 
 /**
  * "Leave off until turned on again" — the per-device opt-in that makes an
@@ -55,9 +56,9 @@ const runSerializedRespectExternalOffWrite = createSerializedAsyncRunner();
  * caller falls back to its last-known map rather than persisting a corrupt read.
  */
 const readStrictBooleanMap = (value: unknown): Record<string, boolean> | null => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (!isUnknownRecord(value)) return null;
   const entries = Object.entries(value);
-  if (!entries.every(([, entry]) => typeof entry === 'boolean')) return null;
+  if (!entries.every((entry): entry is [string, boolean] => typeof entry[1] === 'boolean')) return null;
   return Object.fromEntries(entries);
 };
 

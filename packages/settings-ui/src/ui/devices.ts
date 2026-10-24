@@ -60,6 +60,7 @@ import {
   MANAGED_DEVICES,
   CONTROLLABLE_DEVICES,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
+import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 export const refreshHomeBadgesAndRepaint = (): void => {
   void refreshHomeBadges().then(() => {
@@ -71,7 +72,7 @@ export const refreshHomeBadgesAndRepaint = (): void => {
 
 const hasValidFlowConflict = (value: unknown): boolean => {
   if (value === undefined) return true;
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  if (!isUnknownRecord(value)) return false;
   const conflict = value as { conflictingCapabilities?: unknown; flowName?: unknown };
   return Array.isArray(conflict.conflictingCapabilities)
     && conflict.conflictingCapabilities.every((capability) => typeof capability === 'string')

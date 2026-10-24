@@ -1,3 +1,5 @@
+import { isUnknownRecord } from './recordGuards';
+
 // Single source of truth for the TOP-LEVEL shape/version guard of the persisted
 // `deferred_objective_active_plans` setting. Two surfaces normalise this blob:
 //
@@ -48,13 +50,13 @@ export function normalizeDeferredObjectiveActivePlansShape<TPlan, TEmpty>(
   // `typeof [] === 'object'`, so reject arrays explicitly at both levels: an array
   // `plansByDeviceId` would otherwise `Object.entries` into numeric-key ('0','1')
   // pseudo-deviceIds instead of degrading to `empty()`.
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return options.empty();
-  const r = raw as Record<string, unknown>;
+  if (!isUnknownRecord(raw)) return options.empty();
+  const r = raw;
   if (r.version !== DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION) return options.empty();
-  if (!r.plansByDeviceId || typeof r.plansByDeviceId !== 'object' || Array.isArray(r.plansByDeviceId)) {
+  if (!isUnknownRecord(r.plansByDeviceId)) {
     return options.empty();
   }
-  const entries = Object.entries(r.plansByDeviceId as Record<string, unknown>)
+  const entries = Object.entries(r.plansByDeviceId)
     .filter((entry): entry is [string, TPlan] => options.isValidPlan(entry[1]));
   return {
     version: DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION,

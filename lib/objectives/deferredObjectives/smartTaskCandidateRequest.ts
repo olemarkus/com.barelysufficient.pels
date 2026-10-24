@@ -14,6 +14,7 @@ import type {
   DeferredObjectiveRescuePermissions,
   DeferredObjectiveSettingsKind,
 } from '../../../packages/contracts/src/deferredObjectiveSettings';
+import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuards';
 
 /**
  * Shared server-side handling of a UI-composed smart-task candidate request
@@ -43,7 +44,7 @@ const isObjectiveKind = (value: unknown): value is DeferredObjectiveSettingsKind
 // methods (via the shared normalizer + device-kind check), so this only guards
 // against structurally-invalid input reaching them.
 export const parseSmartTaskCandidateRequest = (body: unknown): SmartTaskCandidateRequest | null => {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  if (!isUnknownRecord(body)) return null;
   const candidate = body as Partial<SmartTaskCandidateRequest>;
   const deviceId = typeof candidate.deviceId === 'string' ? candidate.deviceId.trim() : '';
   if (!deviceId) return null;
@@ -89,7 +90,7 @@ export const parseSmartTaskCandidateRequest = (body: unknown): SmartTaskCandidat
 export const parseSmartTaskQuickTargetsRequest = (
   body: unknown,
 ): Pick<SmartTaskCandidateRequest, 'deviceId' | 'kind'> | null => {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  if (!isUnknownRecord(body)) return null;
   const request = body as Partial<SmartTaskCandidateRequest>;
   const deviceId = typeof request.deviceId === 'string' ? request.deviceId.trim() : '';
   if (!deviceId || !isObjectiveKind(request.kind)) return null;

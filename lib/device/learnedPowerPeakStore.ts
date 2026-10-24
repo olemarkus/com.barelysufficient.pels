@@ -31,6 +31,7 @@ import {
   type LearnedPeak,
   type LearnedPeaksByDeviceId,
 } from './devicePowerPeak';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 const moduleLogger = getLogger('device/learned-power-peak-store');
 
@@ -84,7 +85,7 @@ const attemptLegacyImport = (
   importListedLegacySettingsKey(settings, DEVICE_POWER_PEAKS, {
     holds: () => repository.hasImportedLegacy(),
     adopt: (raw) => {
-      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return false;
+      if (!isUnknownRecord(raw)) return false;
       const legacy = parseLearnedPeaks(raw);
       if (Object.keys(raw).length > 0 && Object.keys(legacy).length === 0) return false;
       repository.writeLegacyImport(adoptPersistedLearnedPeaks(legacy, repository.read()));

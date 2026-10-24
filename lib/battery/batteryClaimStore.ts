@@ -34,6 +34,7 @@ import type { HomeBatteryClaimCapabilityId } from '../../packages/contracts/src/
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { readSettingsKeyList } from '../utils/settingsKeyList';
 import { PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../utils/settingsKeys';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 /**
  * What PELS owes a battery it claimed: the claim capability, the value to
@@ -66,8 +67,8 @@ const isClaimCapabilityId = (value: unknown): value is HomeBatteryClaimCapabilit
 );
 
 const parseClaimRecord = (value: unknown): BatteryClaimRecord | null => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const { capabilityId, previousValue, claimedAtMs } = value as Record<string, unknown>;
+  if (!isUnknownRecord(value)) return null;
+  const { capabilityId, previousValue, claimedAtMs } = value;
   if (!isClaimCapabilityId(capabilityId) || typeof previousValue !== 'string' || previousValue.length === 0) {
     return null;
   }

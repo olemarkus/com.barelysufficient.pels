@@ -7,6 +7,7 @@ import { clampPenaltyLevel } from './deviceDiagnosticsNumbers';
 import type {
   DeviceDiagnosticsWindowSummary,
 } from '../../packages/contracts/src/deviceDiagnosticsTypes';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 export type PersistedDayAggregate = {
   unmetDemandMs: number;
@@ -88,10 +89,10 @@ export const createEmptyPersistedState = (params: {
 });
 
 const sanitizeDayAggregate = (raw: unknown): PersistedDayAggregate => {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+  if (!isUnknownRecord(raw)) {
     return createEmptyDayAggregate();
   }
-  const record = raw as Record<string, unknown>;
+  const record = raw;
   return {
     unmetDemandMs: clampDurationMs(record.unmetDemandMs),
     blockedByHeadroomMs: clampDurationMs(record.blockedByHeadroomMs),
@@ -121,11 +122,11 @@ const sanitizeDeviceState = (raw: unknown): {
   deviceState: PersistedDeviceDiagnostics | null;
   repaired: boolean;
 } => {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+  if (!isUnknownRecord(raw)) {
     return { deviceState: null, repaired: true };
   }
-  const daysByDateKey = (raw as Record<string, unknown>).daysByDateKey;
-  if (!daysByDateKey || typeof daysByDateKey !== 'object' || Array.isArray(daysByDateKey)) {
+  const daysByDateKey = raw.daysByDateKey;
+  if (!isUnknownRecord(daysByDateKey)) {
     return { deviceState: null, repaired: true };
   }
 
@@ -158,7 +159,7 @@ export const sanitizePersistedState = (params: {
   if (params.raw === null || params.raw === undefined) {
     return { state: emptyState, repaired: false };
   }
-  if (typeof params.raw !== 'object' || Array.isArray(params.raw)) {
+  if (!isUnknownRecord(params.raw)) {
     return {
       state: emptyState,
       repaired: true,
@@ -166,7 +167,7 @@ export const sanitizePersistedState = (params: {
     };
   }
 
-  const record = params.raw as Record<string, unknown>;
+  const record = params.raw;
   if (record.version !== params.persistVersion) {
     return {
       state: emptyState,
@@ -176,7 +177,7 @@ export const sanitizePersistedState = (params: {
   }
 
   const devicesById = record.devicesById;
-  if (!devicesById || typeof devicesById !== 'object' || Array.isArray(devicesById)) {
+  if (!isUnknownRecord(devicesById)) {
     return {
       state: {
         ...emptyState,

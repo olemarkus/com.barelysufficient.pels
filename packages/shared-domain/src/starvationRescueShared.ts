@@ -7,6 +7,7 @@ import type {
   StarvationTarget,
 } from '../../contracts/src/starvationRescue';
 import { starvationRowIsRescuable } from './planStarvation';
+import { isUnknownRecord } from './recordGuards';
 
 // One home for the BUDGET-EXEMPT RESCUE's server-side resolution shared by the
 // two surfaces that offer it: the standalone `starvation_rescue` dashboard
@@ -44,7 +45,7 @@ export type StarvationRescueRequest = {
 };
 
 export const parseRescueRequest = (body: unknown): StarvationRescueRequest | null => {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  if (!isUnknownRecord(body)) return null;
   const candidate = body as Partial<StarvationRescueRequest>;
   const deviceId = typeof candidate.deviceId === 'string' ? candidate.deviceId.trim() : '';
   if (!deviceId) return null;

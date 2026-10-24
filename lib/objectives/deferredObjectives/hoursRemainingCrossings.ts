@@ -3,6 +3,7 @@ import type {
   DeferredObjectiveHoursRemainingBus,
   DeferredObjectiveHoursRemainingEvent,
 } from './hoursRemainingBus';
+import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuards';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -63,8 +64,8 @@ const computeHoursRemaining = (deadlineAtMs: number, nowMs: number): number => (
 );
 
 const isCrossingLatchEntry = (value: unknown): value is CrossingLatchEntry => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const v = value as Record<string, unknown>;
+  if (!isUnknownRecord(value)) return false;
+  const v = value;
   return typeof v.deadlineAtMs === 'number'
     && Number.isFinite(v.deadlineAtMs)
     && v.deadlineAtMs > 0
@@ -79,12 +80,10 @@ const isCrossingLatchEntry = (value: unknown): value is CrossingLatchEntry => {
 // persisted state" and falls back to first-observation seeding.
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 const parsePersistedLatch = (raw: unknown): PersistedHoursRemainingLatch | null => {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  if (!isUnknownRecord(raw)) return null;
   const candidate = raw as Partial<PersistedHoursRemainingLatch>;
   if (candidate.version !== HOURS_REMAINING_LATCH_VERSION) return null;
-  if (!candidate.entriesByDeviceId
-    || typeof candidate.entriesByDeviceId !== 'object'
-    || Array.isArray(candidate.entriesByDeviceId)) {
+  if (!isUnknownRecord(candidate.entriesByDeviceId)) {
     return null;
   }
   const entries: [string, CrossingLatchEntry][] = [];

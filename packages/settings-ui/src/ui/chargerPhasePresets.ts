@@ -7,6 +7,7 @@ import { isEvTargetPowerPreset } from '../../../shared-domain/src/evTargetPowerC
 import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { state } from './state.ts';
+import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 let trustedRead: ChargerPhasePresetsRead = { state: 'unavailable' };
 
@@ -15,10 +16,9 @@ let trustedRead: ChargerPhasePresetsRead = { state: 'unavailable' };
 // makes the whole transport read unavailable; partially trusting it would
 // erase last-good wiring for the affected charger.
 const parseRead = (value: unknown): ChargerPhasePresetsRead => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return { state: 'unavailable' };
-  const read = value as Record<string, unknown>;
-  if (read.state !== 'resolved' || typeof read.presets !== 'object' || read.presets === null
-    || Array.isArray(read.presets)) return { state: 'unavailable' };
+  if (!isUnknownRecord(value)) return { state: 'unavailable' };
+  const read = value;
+  if (read.state !== 'resolved' || !isUnknownRecord(read.presets)) return { state: 'unavailable' };
   const presets: Record<string, ChargerPhasePresets[string]> = {};
   for (const [deviceId, preset] of Object.entries(read.presets)) {
     if (!isEvTargetPowerPreset(preset)) return { state: 'unavailable' };
@@ -50,8 +50,8 @@ export const ensureChargerPhasePresetsRead = async (): Promise<ChargerPhasePrese
   if (trustedRead.state === 'resolved') return trustedRead;
   try {
     const payload = await callApi<unknown>('GET', SETTINGS_UI_DEVICES_PATH);
-    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return trustedRead;
-    return applyChargerPhasePresetsRead((payload as Record<string, unknown>).chargerPhasePresets);
+    if (!isUnknownRecord(payload)) return trustedRead;
+    return applyChargerPhasePresetsRead(payload.chargerPhasePresets);
   } catch (error) {
     await logSettingsError('Failed to read charger wiring', error, 'device control');
     return trustedRead;

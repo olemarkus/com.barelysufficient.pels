@@ -31,6 +31,7 @@ import {
 } from './deviceUtils.ts';
 import { hasMatchedAnotherCurrentCharger, REMOVED_CAR_LABEL } from './carAssociationCandidates.ts';
 import { flowConflictHandoffStep } from './deviceDetail/nativeWiringCopy.ts';
+import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 export type RecommendationDismissals = Record<string, number>;
 
@@ -86,7 +87,7 @@ const nativeControlRecommendationAction = (
 };
 
 export const normalizeRecommendationDismissals = (value: unknown): RecommendationDismissals => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
+  if (!isUnknownRecord(value)) return {};
   return Object.fromEntries(Object.entries(value).flatMap(([id, version]) => (
     Number.isInteger(version) && (version as number) > 0 ? [[id, version as number]] : []
   )));

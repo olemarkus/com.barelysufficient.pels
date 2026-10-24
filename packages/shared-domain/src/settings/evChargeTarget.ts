@@ -1,4 +1,5 @@
 import type { EvChargeTargetConfig, EvChargeTargetSettings } from '../../../contracts/src/types';
+import { isUnknownRecord } from '../recordGuards';
 
 /**
  * Owner of `ev_charge_target_settings`, read by the runtime (the planner's charge
@@ -35,11 +36,11 @@ export const parseEvChargeTargetPercent = (value: unknown): number | null => {
 };
 
 export const normalizeEvChargeTargetSettings = (value: unknown): EvChargeTargetSettings => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  if (!isUnknownRecord(value)) return {};
   return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).flatMap(([deviceId, entry]) => {
-      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
-      const config = entry as Record<string, unknown>;
+    Object.entries(value).flatMap(([deviceId, entry]) => {
+      if (!isUnknownRecord(entry)) return [];
+      const config = entry;
       const targetPercent = parseEvChargeTargetPercent(config.targetPercent);
       if (targetPercent === null) return [];
       const normalized: EvChargeTargetConfig = {

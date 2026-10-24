@@ -23,6 +23,7 @@ import {
   MAIN_HOME_ID,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { logSettingsError } from './logging.ts';
+import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 export type HomesConfigScopeRead = {
   status: 'resolved';
@@ -39,7 +40,7 @@ export const resolveHasMeterAreas = (read: HomesConfigScopeRead): boolean | null
     const markerAbsent = initializedMarker === null || initializedMarker === undefined;
     return markerAbsent ? false : null;
   }
-  if (typeof config !== 'object' || Array.isArray(config)) return null;
+  if (!isUnknownRecord(config)) return null;
   const subHomes = (config as { subHomes?: unknown }).subHomes;
   return Array.isArray(subHomes) ? subHomes.length > 0 : null;
 };
@@ -88,7 +89,7 @@ const isValidAreaId = (value: string): boolean => (
 const asPlausibleAreaEntry = (
   raw: unknown,
 ): (ActiveMeterArea & { meterDeviceId: string | null }) | null => {
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
+  if (!isUnknownRecord(raw)) return null;
   const { homeId, name, rootZoneId, meterDeviceId } = raw as {
     homeId?: unknown; name?: unknown; rootZoneId?: unknown; meterDeviceId?: unknown;
   };
@@ -169,7 +170,7 @@ export const resolveActiveMeterAreas = (read: HomesConfigScopeRead): ActiveMeter
     const markerAbsent = initializedMarker === null || initializedMarker === undefined;
     return markerAbsent ? { status: 'resolved', areas: [] } : UNAVAILABLE_ROSTER;
   }
-  if (typeof config !== 'object' || Array.isArray(config)) return UNAVAILABLE_ROSTER;
+  if (!isUnknownRecord(config)) return UNAVAILABLE_ROSTER;
   const { activationVersion, subHomes } = config as { activationVersion?: unknown; subHomes?: unknown };
   if (activationVersion !== undefined && activationVersion !== 1) return UNAVAILABLE_ROSTER;
   if (!Array.isArray(subHomes)) return UNAVAILABLE_ROSTER;
