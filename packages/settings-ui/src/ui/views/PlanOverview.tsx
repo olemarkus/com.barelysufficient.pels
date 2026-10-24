@@ -52,6 +52,8 @@ type OverviewProps = {
   // `complete`; Main remains `loading` until every required fact arrives.
   // Resolved in the orchestrator so this view stays props-in.
   setupPath: SetupPathRead;
+  // Whether the home has solar at all, so the setup card offers solar setup.
+  offersSolarSetup: boolean;
   context: HeroContext;
   nowMs: number;
 };
@@ -151,7 +153,7 @@ const ScopeUnavailableNotice = () => (
 
 const PlanOverviewRoot = ({
   devices, plan, planResolved, scopeUnavailable, prices, solarNowInput, smartTaskRow, evStateLines, setupPath,
-  context, nowMs,
+  offersSolarSetup, context, nowMs,
 }: OverviewProps) => {
   if (scopeUnavailable) {
     return <div><ScopeUnavailableNotice /></div>;
@@ -195,7 +197,9 @@ const PlanOverviewRoot = ({
 
   return (
     <div>
-      {setupPath.state === 'open' && <SetupPathCard path={setupPath.path} surface="overview" />}
+      {setupPath.state === 'open' && (
+        <SetupPathCard path={setupPath.path} surface="overview" offersSolarSetup={offersSolarSetup} />
+      )}
       {showHero && (
         <PlanHero
           plan={plan}

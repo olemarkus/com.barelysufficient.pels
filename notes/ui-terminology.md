@@ -2179,8 +2179,17 @@ settings. No tour-completed flag is persisted.
   Norwegian household pays for its measured hourly peaks, so its unchosen step
   is the running default alone.
 - `Use more of your own solar` is an optional entry during setup and remains
-  available under Setup & recommendations before export is observed. Discovery
-  never enables solar-only settings. The existing controls keep their eligibility
+  available under Setup & recommendations before export is observed. It shows
+  only in a home with solar, by the relevance rule above: a solar device,
+  material export, or a reachable surplus pool, whose export latch outlasts a
+  usage-history reset (`resolveSolarSetupOffered`). Before the first
+  surplus, the step header and the review say it is waiting, not broken:
+  `Solar control appears once PELS sees your solar produce more than the home is
+  using.` The device cards then open plain `Device settings`, since the device
+  page has no solar control yet, and repeat no waiting line. The known way
+  surplus stays hidden for good is a Flow that reports import without its sign,
+  so only a Flow home adds `Your Flow must send net import, negative when
+  exporting.` and `Check meter`. Discovery never enables solar-only settings. The existing controls keep their eligibility
   checks and their opted-in escape hatch. Use the device's actual label:
   `Use solar surplus`, `Run on solar surplus`, `Charge on solar surplus`, or
   `Match solar surplus`. Put missing prerequisites beside the action.

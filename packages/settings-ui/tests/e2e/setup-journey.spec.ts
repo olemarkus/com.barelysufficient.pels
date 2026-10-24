@@ -1,7 +1,9 @@
 import { expect, renderTest as test, type Page } from './fixtures/test';
 
-const seed = async (page: Page, market = 'NL', solarAvailable = false) => {
-  await page.addInitScript(({ market, solarAvailable }) => {
+const seed = async (
+  page: Page, market = 'NL', solarAvailable = false, solarDevice = true, powerSource: string | null = null,
+) => {
+  await page.addInitScript(({ market, solarAvailable, solarDevice, powerSource }) => {
     const saved = JSON.parse(sessionStorage.getItem('setup-saved-settings') ?? '{}') as Record<string, unknown>;
     const device = {
       id: 'setup-pump', name: 'Pool pump', zone: 'Garden', available: true,
@@ -18,7 +20,7 @@ const seed = async (page: Page, market = 'NL', solarAvailable = false) => {
     const devices = () => ({
       devices: [{ ...device, managed: (w.Homey.__stub.getSetting('managed_devices') as Record<string, boolean>)?.[device.id] === true }],
       chargerPhasePresets: { state: 'resolved', presets: {} },
-      hasManagedSolarDevice: false, hasExhibitedExport: false, surplusPoolReachable: solarAvailable,
+      hasManagedSolarDevice: solarDevice, hasExhibitedExport: false, surplusPoolReachable: solarAvailable,
     });
     w.__PELS_HOMEY_STUB__ = {
       settings: {
@@ -26,14 +28,15 @@ const seed = async (page: Page, market = 'NL', solarAvailable = false) => {
         price_optimization_settings: {}, capacity_dry_run: true,
         daily_budget_enabled: false,
         ui_hub_market_country: market,
-        ui_devices_has_managed_solar: false, ui_devices_has_exhibited_export: false,
+        ui_devices_has_managed_solar: solarDevice, ui_devices_has_exhibited_export: false,
         ui_devices_surplus_pool_reachable: solarAvailable,
+        ...(powerSource === null ? {} : { power_source: powerSource }),
         ...saved,
       },
       unsetSettings: ['capacity_limit_kw', 'capacity_margin_kw'].filter((key) => !(key in saved)),
       apiHandlers: { 'GET /ui_devices': devices },
     };
-  }, { market, solarAvailable });
+  }, { market, solarAvailable, solarDevice, powerSource });
 };
 
 const stored = (page: Page, key: string) => page.evaluate((key) => (
@@ -62,10 +65,17 @@ test('solar discovery before export keeps eligibility and restores context after
   await page.goto('/');
   await page.locator('#overview-setup-path').getByText('Use more of your own solar', { exact: true }).click();
   await expect(page).toHaveURL(/setup=solar/);
-  await expect(page.locator('#devices-panel')).toContainText('Waiting for usable solar readings');
+  await expect(page.locator('#devices-panel')).toContainText(
+    'Solar control appears once PELS sees your solar produce more than the home is using',
+  );
+  await expect(page.locator('#devices-panel .setup-journey').getByText('Check meter', { exact: true })).toHaveCount(0);
   await expect(page.locator('#device-control-legend')).toBeHidden();
   await choosePump(page);
-  await page.locator('#device-card-list').getByText('Run on solar surplus', { exact: true }).click();
+  // The waiting line is the header's alone, and the card names no control the
+  // device page does not have yet.
+  await expect(page.locator('#device-card-list')).not.toContainText('Solar control appears');
+  await expect(page.locator('#device-card-list').getByText('Run on solar surplus', { exact: true })).toHaveCount(0);
+  await page.locator('#device-card-list').getByText('Device settings', { exact: true }).click();
   await expect(page.locator('#device-detail-overlay')).toBeVisible();
   await expect(page.locator('#device-detail-dump-load-row')).toBeHidden();
   expect(await stored(page, 'price_optimization_settings')).toEqual({});
@@ -79,6 +89,21 @@ test('solar discovery before export keeps eligibility and restores context after
   await expect(page).toHaveURL(/setup=solar/);
   await page.getByRole('tab', { name: 'Overview', exact: true }).click();
   await expect(page).not.toHaveURL(/setup=/);
+});
+
+test('a home without solar is not offered solar setup', async ({ page }) => {
+  await seed(page, 'NL', false, false);
+  await page.goto('/');
+  await expect(page.locator('#overview-setup-path')).toBeVisible();
+  await expect(page.locator('#overview-setup-path').getByText('Use more of your own solar', { exact: true })).toHaveCount(0);
+});
+
+test('a Flow meter home waiting for solar is told how the Flow must report it', async ({ page }) => {
+  await seed(page, 'NL', false, true, 'flow');
+  await page.goto('/?page=settings/devices&setup=solar&setupGoal=solar');
+  const header = page.locator('#devices-panel .setup-journey');
+  await expect(header).toContainText('Your Flow must send net import, negative when exporting.');
+  await expect(header.getByText('Check meter', { exact: true })).toBeVisible();
 });
 
 test('one solar device can be configured without prices and the action reaches its existing control', async ({ page }) => {
@@ -279,7 +304,9 @@ for (const [width, mobile] of [[320, true], [390, false], [480, true]] as const)
       await page.locator('#settings-capacity-enabled').click();
       await expect.poll(() => stored(page, 'capacity_enabled')).toBe(false);
       await page.locator('#limits-panel .setup-journey').getByRole('button', { name: 'Review setup', exact: true }).click();
-      await expect(page.locator('#setup-review-root')).toContainText('Solar control is not configured yet.');
+      await expect(page.locator('#setup-review-root')).toContainText(
+        'Solar control appears once PELS sees your solar produce more than the home is using.',
+      );
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       await page.screenshot({ path: testInfo.outputPath(`review-${width}.png`), scale: 'css' });
     });

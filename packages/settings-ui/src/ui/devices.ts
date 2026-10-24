@@ -22,7 +22,9 @@ import {
   primeApiCache,
 } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
-import { defaultPriceOptimizationConfig, isHomeBatteryDeviceId, state } from './state.ts';
+import {
+  defaultPriceOptimizationConfig, isHomeBatteryDeviceId, resolveSurplusControlAvailable, state,
+} from './state.ts';
 import { writeBatteryManaged } from './batteryManaged.ts';
 import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 import { renderPriorities } from './modes.ts';
@@ -447,16 +449,18 @@ const buildDeviceClassCard = (group: DeviceGroup): HTMLElement => {
 
 const renderSetupDevices = (devices: SettingsUiDeviceListItem[], target: HTMLElement): void => {
   const solar = isSolarSetupJourney();
+  const solarReady = resolveSurplusControlAvailable();
   if (!target.querySelector('.setup-journey__devices')) target.replaceChildren();
   render(SetupDevicePicker({
     choices: readSetupDeviceChoices(devices, solar),
     solar,
+    solarReady,
     onManaged: (id, value) => {
       void trackSetupSave(`managed:${id}`, () => buildManagedToggleHandler(id)(value))
         .catch((error) => showToastError(error, 'Could not save the device.'))
         .finally(() => { renderDevices(state.latestDevices); notifySetupPathChange(); });
     },
-    onOpen: (id) => dispatchOpenDeviceDetail(id, solar ? 'solar' : 'top'),
+    onOpen: (id) => dispatchOpenDeviceDetail(id, solar && solarReady ? 'solar' : 'top'),
     onRetry: () => { void refreshHomeScopeAndNotify(); },
   }), target);
 };

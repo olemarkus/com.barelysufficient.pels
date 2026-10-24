@@ -18,7 +18,7 @@ import {
   type SetupRecommendation,
 } from './recommendationsModel.ts';
 import { parseCarAssociationCandidatesRead } from './carAssociationCandidates.ts';
-import { state } from './state.ts';
+import { resolveSolarSetupOffered, state } from './state.ts';
 import { recordSmartTaskHistoryDevices } from './smartTaskUsage.ts';
 import { resolveDeviceSettingRecommendations } from './deviceSettingRecommendations.ts';
 import { notifySetupPathChange, onSetupPathChange, readSetupPath } from './setupPathFacts.ts';
@@ -349,6 +349,7 @@ export const refreshRecommendationSurfaces = (): void => {
     renderSetupRecommendationsView(page, {
       ...groups,
       setupPath: setupRead,
+      offersSolarSetup: resolveSolarSetupOffered(),
       readiness,
       dismissalStatus: hasLoadedDismissals(dismissalRead) ? 'available' : dismissalRead.state,
       retryAvailable: dismissalRead.state === 'unavailable'
