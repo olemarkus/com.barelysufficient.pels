@@ -60,7 +60,7 @@ test.describe('Charge on solar surplus (tracking toggle)', () => {
     await expect(row).toContainText('Charge on solar surplus');
     // A deadline the owner set must not be silently missed by "use only your
     // own sun", and the toggle says so where they decide.
-    await expect(row).toContainText('A smart task with a deadline on this device decides instead');
+    await expect(row).toContainText('While active, a Smart task decides when this device runs and may use grid electricity.');
   });
 
   test('offers the dump-load toggle instead on a plain binary device', async ({ page }) => {

@@ -499,7 +499,7 @@ describe('recommendation loading', () => {
     expect(refreshFlowConflictsApi).not.toHaveBeenCalled();
 
     const listeners = vi.spyOn(document, 'addEventListener');
-    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn(), useQuarterHour: vi.fn() });
     try {
       state.evCarAssociations = { 'charger-1': { carIds: ['car-1'] } };
       document.dispatchEvent(new CustomEvent('ev-car-associations-updated'));
@@ -541,7 +541,7 @@ describe('recommendation loading', () => {
     // Opening the page scans the Flows again; this scan fails.
     refreshFlowConflictsApi.mockRejectedValue(new Error('Flow API unavailable'));
     const listeners = vi.spyOn(document, 'addEventListener');
-    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn(), useQuarterHour: vi.fn() });
     try {
       document.dispatchEvent(new CustomEvent('pels:tab-shown', { detail: { tabId: 'recommendations' } }));
       await vi.waitFor(() => {
@@ -1187,7 +1187,7 @@ describe('recommendation loading', () => {
     expect(callApi).toHaveBeenCalledTimes(1);
 
     const listeners = vi.spyOn(document, 'addEventListener');
-    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn(), useQuarterHour: vi.fn() });
     try {
       // A Flow-conflict patch, a car selection or a local edit: nothing that
       // changes the runtime's device snapshot the car list is read from.
