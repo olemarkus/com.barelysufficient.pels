@@ -4,6 +4,7 @@ import type { BinaryControlCapabilityId, ExpectedPowerSource } from '../../packa
 import type { HomeyDeviceLike } from '../utils/types';
 import { getDebugEmitter } from '../logging/logger';
 import { resolveSettingsEnergyWatts } from './managerEnergy';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
@@ -148,10 +149,6 @@ function resolveExpectedPower(params: {
   };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
 function toFiniteNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
@@ -162,13 +159,13 @@ function resolveCurrentOnState(device: HomeyDeviceLike): boolean | null {
 }
 
 function resolveEnergyContainer(device: HomeyDeviceLike): Record<string, unknown> | null {
-  if (isRecord(device.energyObj)) return device.energyObj;
-  if (isRecord(device.energy)) return device.energy;
+  if (isUnknownRecord(device.energyObj)) return device.energyObj;
+  if (isUnknownRecord(device.energy)) return device.energy;
   return null;
 }
 
 function resolveApproximationWatts(energy: Record<string, unknown>): number | null {
-  const approx = isRecord(energy.approximation) ? energy.approximation : null;
+  const approx = isUnknownRecord(energy.approximation) ? energy.approximation : null;
   if (!approx) return null;
 
   const usageOnW = toFiniteNumber(approx.usageOn);

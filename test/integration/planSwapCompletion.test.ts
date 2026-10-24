@@ -11,6 +11,7 @@ import { hasReservation, swappedOutFor } from '../utils/swapLedgerFixture';
 import { partialDouble } from '../helpers/partialDouble';
 import type { Logger as PinoLogger } from '../../lib/logging/logger';
 import { reasonText } from '../utils/deviceReasonTestUtils';
+import { asUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 /**
  * A swap reservation's lifetime, across cycles.
@@ -52,13 +53,10 @@ afterEach(() => { capture.restore(); });
 const staleCleared: Record<string, unknown>[] = [];
 const structuredLog = partialDouble<PinoLogger>({
   info: (payload: unknown) => {
-    const record = asRecord(payload);
+    const record = asUnknownRecord(payload);
     if (record !== null && record['event'] === 'swap_stale_cleared') staleCleared.push(record);
   },
 });
-const asRecord = (value: unknown): Record<string, unknown> | null => (
-  typeof value === 'object' && value !== null ? value as Record<string, unknown> : null
-);
 
 const buildDeps = (lastTimestamp: number) => ({
   powerTracker: { lastTimestamp } as PowerTrackerState,

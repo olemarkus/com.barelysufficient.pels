@@ -29,13 +29,13 @@ import {
   asFiniteNumber,
   asString,
   asTimestampString,
-  isRecord,
 } from './appDebugPrimitives';
+import { isUnknownRecord } from '../packages/shared-domain/src/recordGuards';
 
 const resolveEnergyContainer = (device: HomeyDeviceLike): UnknownRecord | null => {
   const record = device as unknown as UnknownRecord;
-  if (isRecord(record.energyObj)) return record.energyObj;
-  if (isRecord(record.energy)) return record.energy;
+  if (isUnknownRecord(record.energyObj)) return record.energyObj;
+  if (isUnknownRecord(record.energy)) return record.energy;
   return null;
 };
 
@@ -45,7 +45,7 @@ const resolveOnOffValue = (device: HomeyDeviceLike): boolean | null => {
 };
 
 const resolveApproximationValues = (energy: UnknownRecord): EnergyApproximationValues => {
-  const approx = isRecord(energy.approximation) ? energy.approximation : null;
+  const approx = isUnknownRecord(energy.approximation) ? energy.approximation : null;
   return {
     usageOnW: approx ? asFiniteNumber(approx.usageOn) : null,
     usageOffW: approx ? asFiniteNumber(approx.usageOff) : null,
@@ -126,8 +126,8 @@ export const buildEnergyDebugPayload = (device: HomeyDeviceLike): EnergyDebugPay
   return {
     onoff,
     containers: {
-      energyObj: isRecord(record.energyObj) ? compactEnergyContainer(record.energyObj) : null,
-      energy: isRecord(record.energy) ? compactEnergyContainer(record.energy) : null,
+      energyObj: isUnknownRecord(record.energyObj) ? compactEnergyContainer(record.energyObj) : null,
+      energy: isUnknownRecord(record.energy) ? compactEnergyContainer(record.energy) : null,
     },
     ...values,
     ...inference,
@@ -146,7 +146,7 @@ export const buildUnavailableSection = <T>(error?: string): DebugSection<T> => (
 });
 
 const compactCapability = (value: unknown): HomeyCapabilitySummary => {
-  if (!isRecord(value)) return {};
+  if (!isUnknownRecord(value)) return {};
   return {
     ...(Object.prototype.hasOwnProperty.call(value, 'value') ? { value: value.value } : {}),
     ...(asString(value.units) ? { units: asString(value.units) } : {}),
@@ -182,7 +182,7 @@ export const compactHomeyDevice = (device: HomeyDeviceLike): HomeyDeviceSummary 
 };
 
 export const filterRelevantSettings = (settings: unknown): Record<string, unknown> | null => {
-  if (!isRecord(settings)) return null;
+  if (!isUnknownRecord(settings)) return null;
   const filtered = Object.fromEntries(
     Object.entries(settings).filter(([key]) => !key.startsWith('zb_')),
   );

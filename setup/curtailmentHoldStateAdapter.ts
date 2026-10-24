@@ -24,16 +24,13 @@ import {
   type CurtailmentHoldStore,
   type CurtailmentPersistedHoldState,
 } from '../lib/solar/curtailmentSurplus';
+import { isUnknownRecord } from '../packages/shared-domain/src/recordGuards';
 
 type SettingsLike = {
   get: (key: string) => unknown;
   getKeys: () => string[];
   set: (key: string, value: unknown) => void;
 };
-
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null
-);
 
 // A nullable epoch-ms field: null = "no active hold/latch", finite number = a
 // deadline (expired values are fine — consumers compare against nowMs). Any
@@ -49,7 +46,7 @@ const readNullableMs = (value: unknown): { ok: boolean; value: number | null } =
 // claims `unreadable` — that arm belongs to the reader (a thrown or
 // key-list-contradicted read), not to the value's shape.
 const normalize = (raw: unknown): CurtailmentHoldReadResolved => {
-  if (!isRecord(raw)) return { state: 'absent' };
+  if (!isUnknownRecord(raw)) return { state: 'absent' };
   const { holdLevel } = raw;
   if (
     typeof holdLevel !== 'number'

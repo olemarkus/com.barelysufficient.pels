@@ -11,6 +11,7 @@ import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { state } from './state.ts';
 import { renderHomeScopeBar, type HomeScopeOption } from './views/HomeScopeBar.tsx';
+import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 /**
  * The shell's global home scope: which part of the home (Main home, or one
@@ -155,7 +156,6 @@ export const readHomeMembership = (): HomeMembershipRead => (
  * doing. Same predicate the home badges resolve (`resolveHomeBadgeRead`).
  */
 export const areMeterAreasInUse = (): boolean => homeScopeMembership.runtimeActive && areas.length > 0;
-
 
 /** Register a consumer of the selected home. There is no unsubscribe: every
  * subscriber is a long-lived shell controller. */
@@ -306,10 +306,6 @@ type RosterRead =
   }
   | { status: 'unavailable' };
 
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null
-);
-
 const asAreaName = (value: unknown): string | null => (
   typeof value === 'string' && value.length > 0 ? value : null
 );
@@ -330,11 +326,11 @@ const resolveRosterMembership = (
   raw: unknown,
   resolvedAreas: readonly HomeScopeArea[],
 ): Record<string, string> | null => {
-  if (raw !== undefined && !isRecord(raw)) return null;
+  if (raw !== undefined && !isUnknownRecord(raw)) return null;
   const validHomeIds = new Set([MAIN_HOME_ID, ...resolvedAreas.map((area) => area.homeId)]);
   const membership: Record<string, string> = {};
   for (const [deviceId, entry] of Object.entries(raw ?? {})) {
-    if (!isRecord(entry) || typeof entry.homeId !== 'string' || !validHomeIds.has(entry.homeId)) {
+    if (!isUnknownRecord(entry) || typeof entry.homeId !== 'string' || !validHomeIds.has(entry.homeId)) {
       return null;
     }
     membership[deviceId] = entry.homeId;
@@ -352,7 +348,7 @@ const resolvePayloadMembership = (
 };
 
 const resolveRosterPayload = (payload: unknown): RosterRead => {
-  if (!isRecord(payload)) return { status: 'unavailable' };
+  if (!isUnknownRecord(payload)) return { status: 'unavailable' };
   // `configDegraded` is the runtime saying it cannot vouch for what it served:
   // the `homes` array may be a stale or empty cache while real meter areas are
   // still persisted. Trusting it would clear the roster, reconcile the user's
@@ -368,7 +364,7 @@ const resolveRosterPayload = (payload: unknown): RosterRead => {
   if (!Array.isArray(payload.homes)) return { status: 'unavailable' };
   const resolved: HomeScopeArea[] = [];
   for (const home of payload.homes) {
-    if (!isRecord(home)) return { status: 'unavailable' };
+    if (!isUnknownRecord(home)) return { status: 'unavailable' };
     const homeId = asAreaName(home.homeId);
     // The NAME is display data, not identity: the runtime legitimately serves
     // areas with empty or whitespace-only names, and the canonical rule

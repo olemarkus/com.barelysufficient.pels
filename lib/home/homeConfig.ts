@@ -16,7 +16,7 @@
  * Boundary rule (root AGENTS.md "Validation belongs at the boundary"): the
  * persisted blobs are untrusted input — shape-guard objects, drop malformed
  * entries, and hand only the typed, resolved config inward. Mirrors the
- * `asRecord`/`toFiniteNumber` style of `lib/device/managerEnergy.ts`.
+ * `asUnknownRecord`/`toFiniteNumber` style of `lib/device/managerEnergy.ts`.
  */
 
 import { randomUUID } from 'node:crypto';
