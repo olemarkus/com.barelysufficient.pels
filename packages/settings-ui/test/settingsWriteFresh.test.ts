@@ -349,3 +349,98 @@ describe('readRecordSettingStrict', () => {
     expect(readRecordSettingStrict<boolean>(true)).toBeNull();
   });
 });
+
+describe('guided setup save barrier', () => {
+  const deferred = <T>() => {
+    let resolve!: (value: T) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+    return { promise, resolve, reject };
+  };
+
+  const policyWrite = {
+    key: 'device_start_policies',
+    context: 'device detail',
+    logMessage: 'Failed to save start policy',
+    toastMessage: 'Failed to save start policy.',
+    fallbackValue: {},
+    mutate: (current: Record<string, string>) => ({ ...current, heater: 'pels_only' }),
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    window.history.replaceState(null, '', '/?setup=devices');
+  });
+
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+    window.history.replaceState(null, '', '/');
+  });
+
+  it('keeps activation waiting through the fresh read and local commit', async () => {
+    const { getSettingFresh, setSetting, writeFreshSetting } = await loadHelper();
+    const saves = await import('../src/ui/setupJourneyState.ts');
+    const fresh = deferred<Record<string, string>>();
+    const commitStarted = deferred<void>();
+    const commitFinished = deferred<void>();
+    getSettingFresh.mockReturnValueOnce(fresh.promise);
+    const write = writeFreshSetting({
+      ...policyWrite,
+      commit: async () => { commitStarted.resolve(); await commitFinished.promise; },
+    });
+    expect(saves.setupSavePending()).toBe(true);
+    let activated = false;
+    const activation = saves.waitForSetupSaves().then(() => { activated = true; });
+    await Promise.resolve();
+    expect(setSetting).not.toHaveBeenCalled();
+    expect(activated).toBe(false);
+    fresh.resolve({});
+    await commitStarted.promise;
+    expect(setSetting).toHaveBeenCalledWith(policyWrite.key, { heater: 'pels_only' });
+    expect(saves.setupSavePending()).toBe(true);
+    expect(activated).toBe(false);
+    commitFinished.resolve();
+    await write;
+    await activation;
+    expect(activated).toBe(true);
+  });
+
+  it('blocks activation after a failed fresh read even when the field handles the error', async () => {
+    const { getSettingFresh, writeFreshSetting, showToastError } = await loadHelper();
+    const saves = await import('../src/ui/setupJourneyState.ts');
+    getSettingFresh.mockRejectedValueOnce(new Error('bridge unavailable'));
+    await expect(writeFreshSetting(policyWrite)).resolves.toBeNull();
+    expect(showToastError).toHaveBeenCalled();
+    await expect(saves.waitForSetupSaves()).rejects.toThrow('could not be saved');
+  });
+
+  it('registers queued edits immediately and waits until the last queued policy is committed', async () => {
+    const { getSettingFresh, setSetting, writeFreshSetting, createSerializedAsyncRunner } = await loadHelper();
+    const saves = await import('../src/ui/setupJourneyState.ts');
+    const run = createSerializedAsyncRunner();
+    const firstFinished = deferred<void>();
+    const secondStarted = deferred<void>();
+    const secondFresh = deferred<Record<string, string>>();
+    const first = run(() => firstFinished.promise);
+    getSettingFresh.mockImplementationOnce(() => {
+      secondStarted.resolve();
+      return secondFresh.promise;
+    });
+    const second = run(() => writeFreshSetting(policyWrite));
+    expect(saves.setupSavePending()).toBe(true);
+    let activated = false;
+    const activation = saves.waitForSetupSaves().then(() => { activated = true; });
+    expect(getSettingFresh).not.toHaveBeenCalled();
+    firstFinished.resolve();
+    await first;
+    await secondStarted.promise;
+    expect(saves.setupSavePending()).toBe(true);
+    expect(activated).toBe(false);
+    secondFresh.resolve({});
+    await second;
+    await activation;
+    expect(setSetting).toHaveBeenCalledWith(policyWrite.key, { heater: 'pels_only' });
+    expect(activated).toBe(true);
+  });
+});
