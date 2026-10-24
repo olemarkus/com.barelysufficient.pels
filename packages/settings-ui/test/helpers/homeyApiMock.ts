@@ -1,5 +1,4 @@
 import type { Mock } from 'vitest';
-import { SUPPORT_REPORT_PATH } from '../../../shared-domain/src/supportReport.ts';
 import { CHARGING_ACCESS_PATH, CHARGING_ACCESS_CHECK_PATH, CHARGING_CURRENT_PATH } from '../../../contracts/src/chargingControl.ts';
 import { fixtureDeviceReason } from './fixtureDeviceReason.ts';
 import type {
@@ -396,9 +395,9 @@ const buildUiBootstrap = async (homey: MockHomeyClient) => ({
 
 const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFactory> = {
   // Report scenarios supply apiHandlers; the default has no prepared report.
-  [buildRouteKey('POST', `${SUPPORT_REPORT_PATH}/prepare`)]: () => async () => ({ ok: false, code: 'capture_failed' }),
-  [buildRouteKey('GET', `${SUPPORT_REPORT_PATH}/:id`)]: () => async () => ({ ok: false, code: 'report_expired' }),
-  [buildRouteKey('POST', `${SUPPORT_REPORT_PATH}/:id/send`)]: () => async () => ({ ok: false, code: 'report_expired' }),
+  [buildRouteKey('POST', '/support-report/prepare')]: () => async () => ({ ok: false, code: 'capture_failed' }),
+  [buildRouteKey('GET', '/support-report/:id')]: () => async () => ({ ok: false, code: 'report_expired' }),
+  [buildRouteKey('POST', '/support-report/:id/send')]: () => async () => ({ ok: false, code: 'report_expired' }),
   [buildRouteKey('POST', SETTINGS_UI_CAR_ASSOCIATION_CONFIRM_PATH)]: () => async () => {
     throw new Error('Configure a car association handler to test confirmation');
   },
