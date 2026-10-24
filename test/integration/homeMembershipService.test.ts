@@ -53,6 +53,7 @@ import {
   createHomesStore,
 } from '../../lib/home/homeRegistryStore';
 import { wireHomeMembershipService } from '../../setup/homeMembershipWiring';
+import { filterDevicesForHome } from '../../lib/home/homeMembershipService';
 import {
   HomeMembershipService,
   type HomeMembershipDeviceInput,
@@ -446,6 +447,39 @@ describe('post-refresh recompute through the transport seam', () => {
     expect(service.getHomeIdForDevice('dev1')).toBe('main');
   });
 
+  it('holds a device moved into a zone the tree has never seen out of every home, and refetches the tree at once', async () => {
+    // Owner ruling 2026-10-24: Main must not control a device whose zone it
+    // cannot place against its own meter. The zone was created after the tree
+    // was read, so the cached tree lacks it until the transport refetches.
+    const device = await addZonedHeater('z3');
+    createHomesStore(homeyLike.settings).write({
+      activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
+      subHomes: [SUB_HOME_A],
+    });
+    const { transport, service } = buildTransportChain();
+    await initWithLiveFeed(transport);
+    await transport.refreshSnapshot({ meterDeviceIds: [] });
+    await settleDetachedZoneFetch();
+    expect(service.getHomeIdForDevice('dev1')).toBe('main');
+
+    // A new room under the upstairs area, and the heater moved into it.
+    setMockZones({ ...ZONES, z2b: { id: 'z2b', name: 'New room', parent: 'z2' } });
+    device.setZone('z2b');
+    emitDeviceUpdate(device.toHomeyApiDevice());
+
+    // Before the refetch lands: no home plans it.
+    expect(service.isDeviceZoneUnknown('dev1')).toBe(true);
+    const planned = [{ id: 'dev1' }];
+    expect(filterDevicesForHome(service, planned, 'main')).toEqual([]);
+    expect(filterDevicesForHome(service, planned, 'h_a')).toEqual([]);
+
+    // The transport fetched the tree on the event itself, with no refresh.
+    await settleDetachedZoneFetch();
+    expect(service.isDeviceZoneUnknown('dev1')).toBe(false);
+    expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
+    expect(filterDevicesForHome(service, planned, 'h_a')).toEqual(planned);
+  });
+
   it('teardown detaches all three triggers: refresh dispatch, tree commit, and realtime zone move', async () => {
     const device = await addZonedHeater('z2');
     createHomesStore(homeyLike.settings).write({
@@ -660,6 +694,73 @@ describe('zone-tree fail-safe and pins', () => {
     service.recompute();
     expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
     expect(service.getDiagnostics().zoneTree).toEqual(ZONES);
+  });
+
+  it('holds an unknown zone out only while meter areas run, and never a pinned device', () => {
+    const devices = [
+      { deviceId: 'dev1', zoneId: 'z-new' },
+      { deviceId: 'dev2', zoneId: 'z-new' },
+    ];
+    createDeviceHomeAssignmentsStore(homeyLike.settings).write({ dev2: 'main' });
+    const singleHome = makeStaticService({ getZoneTree: () => ZONES, devices });
+    singleHome.recompute();
+    expect(singleHome.isDeviceZoneUnknown('dev1')).toBe(false);
+
+    createHomesStore(homeyLike.settings).write({
+      activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
+      subHomes: [SUB_HOME_A],
+    });
+    const areas = makeStaticService({ getZoneTree: () => ZONES, devices });
+    areas.recompute();
+    expect(areas.isDeviceZoneUnknown('dev1')).toBe(true);
+    expect(areas.isDeviceZoneUnknown('dev2')).toBe(false);
+  });
+
+  it('holds out a device whose pin names a home that is gone, since it resolves by zone', () => {
+    createHomesStore(homeyLike.settings).write({
+      activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
+      subHomes: [SUB_HOME_A],
+    });
+    createDeviceHomeAssignmentsStore(homeyLike.settings).write({ dev1: 'h_deleted' });
+    const service = makeStaticService({ getZoneTree: () => ZONES, devices: [{ deviceId: 'dev1', zoneId: 'z-new' }] });
+    service.recompute();
+    expect(service.isDeviceZoneUnknown('dev1')).toBe(true);
+  });
+
+  it('asks Main to re-plan when one of its devices is held out for an unknown zone, and again when released', () => {
+    // A Main device moved into a new zone outside every area goes Main, held
+    // out, Main: its home never changes, but the plan filter's answer does.
+    createHomesStore(homeyLike.settings).write({
+      activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
+      subHomes: [SUB_HOME_A],
+    });
+    const onMembershipChanged = vi.fn();
+    let tree: ZoneTree = ZONES;
+    let devices: readonly HomeMembershipDeviceInput[] = [{ deviceId: 'dev1', zoneId: 'z3' }];
+    const service = new HomeMembershipService({
+      sampledMeterIdentity: createSampledMeterIdentityWithoutRestoredSample(),
+      getConfiguredPowerSource: homeyEnergyPowerSource,
+      homesStore: createHomesStore(homeyLike.settings),
+      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike.settings),
+      getZoneTree: () => tree,
+      getDevices: () => devices,
+      getLogger: () => testLogger,
+      getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
+      legacyMultiHomeEnabled: true,
+      onMembershipChanged,
+    });
+    service.recompute();
+    expect(onMembershipChanged).not.toHaveBeenCalled();
+
+    devices = [{ deviceId: 'dev1', zoneId: 'z-new' }];
+    service.recompute();
+    expect(service.isDeviceZoneUnknown('dev1')).toBe(true);
+    expect(onMembershipChanged).toHaveBeenCalledTimes(1);
+
+    tree = { ...ZONES, 'z-new': { id: 'z-new', name: 'New room', parent: 'z1' } };
+    service.recompute();
+    expect(service.getHomeIdForDevice('dev1')).toBe('main');
+    expect(onMembershipChanged).toHaveBeenCalledTimes(2);
   });
 
   it('honors pins over the zone rule and fail-safes a dangling pin to the zone rule', () => {

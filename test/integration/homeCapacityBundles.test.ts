@@ -2054,6 +2054,7 @@ describe('fail-closed sub-home device path (filterDevicesForHome)', () => {
     const membership = {
       hasSubHomes: () => false,
       getHomeIdForDevice: () => MAIN_HOME_ID,
+      isDeviceZoneUnknown: () => false,
       getConfiguredMeterSources: () => ({
         state: 'resolved' as const,
         deviceIds: new Set<string>(),

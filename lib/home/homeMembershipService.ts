@@ -175,6 +175,9 @@ export class HomeMembershipService implements HomeMembershipPort {
   private pins: DeviceHomeAssignments = {};
   private zoneTree: ZoneTree | null = null;
   private membershipByDeviceId: Record<string, HomeMembership> = {};
+  // Zone-rule devices whose zone the cached tree does not contain. Rebuilt on
+  // every recompute, like the membership map.
+  private unknownZoneDeviceIds: ReadonlySet<string> = new Set();
   // Last-known zoneId per device, from previous COMMITTED snapshots. A
   // fulfilled snapshot whose device entry transiently omits zone must not flap
   // that device to main/'fallback' for one cycle — the previous resolution
@@ -275,6 +278,7 @@ export class HomeMembershipService implements HomeMembershipPort {
         deviceZoneId: device.zoneId,
       }),
     ]));
+    this.unknownZoneDeviceIds = this.resolveUnknownZoneDeviceIds(devices);
     this.lastKnownZoneIdByDeviceId = nextLastKnownZoneIds;
     this.retentionLoggedDeviceIds = nextRetentionLogged;
     const ownershipBecameReady = !mainOwnershipWasReady
@@ -335,6 +339,37 @@ export class HomeMembershipService implements HomeMembershipPort {
     }
     nextLogged.add(deviceId);
     return zoneId;
+  }
+
+  // Only a zone the committed tree lacks counts: before any tree there is no
+  // claim either way (the actuation fence holds then), and a device pinned to a
+  // home that exists has that home regardless of zones. A pin to a home that is
+  // gone resolves by zone (`resolveDeviceHome`), so it counts like no pin.
+  private resolveUnknownZoneDeviceIds(
+    devices: readonly { deviceId: string; zoneId: string | null }[],
+  ): ReadonlySet<string> {
+    const tree = this.zoneTree;
+    if (tree === null) return new Set();
+    const homeExists = (homeId: string): boolean => (
+      homeId === MAIN_HOME_ID || this.subHomes.some((subHome) => subHome.homeId === homeId)
+    );
+    const unknown = devices.filter((device) => (
+      device.zoneId !== null
+      && !(Object.hasOwn(this.pins, device.deviceId) && homeExists(this.pins[device.deviceId]!))
+      && !Object.hasOwn(tree, device.zoneId)
+    ));
+    for (const device of unknown) {
+      if (!this.unknownZoneDeviceIds.has(device.deviceId)) {
+        this.deps.getLogger().info({
+          event: 'home_membership_zone_unknown', deviceId: device.deviceId, zoneId: device.zoneId,
+        });
+      }
+    }
+    return new Set(unknown.map((device) => device.deviceId));
+  }
+
+  isDeviceZoneUnknown(deviceId: string): boolean {
+    return this.runtimeActive && this.subHomes.length > 0 && this.unknownZoneDeviceIds.has(deviceId);
   }
 
   /** Resolved home for a device; an unknown device belongs to the main home. */
@@ -604,15 +639,19 @@ export class HomeMembershipService implements HomeMembershipPort {
   }
 
   // Plan invalidation gate — see the `onMembershipChanged` dep doc. The
-  // fingerprint covers ONLY non-main assignments (the complement the plan
-  // filter consumes), so single-home device churn resolves to the same empty
+  // fingerprint covers ONLY what the plan filter consumes beyond Main's own
+  // devices: non-main assignments, and devices held out of every home for a
+  // zone the tree lacks. Single-home device churn resolves to the same empty
   // fingerprint and stays free. The boot baseline (null → first fingerprint)
   // never fires: the bootstrap builds the initial plan itself, and the plan
   // service may not even exist yet.
   private notifyIfPlanRelevantMembershipChanged(): void {
-    const fingerprint = (this.runtimeActive ? Object.entries(this.membershipByDeviceId) : [])
-      .filter(([, entry]) => entry.homeId !== MAIN_HOME_ID)
-      .map(([deviceId, entry]) => `${deviceId}=${entry.homeId}`)
+    const entries = this.runtimeActive ? Object.entries(this.membershipByDeviceId) : [];
+    const fingerprint = entries
+      .filter(([deviceId, entry]) => entry.homeId !== MAIN_HOME_ID || this.isDeviceZoneUnknown(deviceId))
+      .map(([deviceId, entry]) => (
+        this.isDeviceZoneUnknown(deviceId) ? `${deviceId}=held_out` : `${deviceId}=${entry.homeId}`
+      ))
       .sort((a, b) => a.localeCompare(b))
       .join(',');
     if (fingerprint === this.lastPlanRelevantFingerprint) return;
@@ -625,7 +664,7 @@ export class HomeMembershipService implements HomeMembershipPort {
 /** The narrow control-path slice of {@link HomeMembershipPort} the home-device filter consumes. */
 type HomeMembershipControlView = Pick<
   HomeMembershipPort,
-  'hasSubHomes' | 'getHomeIdForDevice' | 'getConfiguredMeterSources'
+  'hasSubHomes' | 'getHomeIdForDevice' | 'isDeviceZoneUnknown' | 'getConfiguredMeterSources'
 >;
 
 /**
@@ -655,8 +694,9 @@ export function filterDevicesForHome<T extends { id: string }>(
   if (!membership) return homeId === MAIN_HOME_ID ? devices : [];
   let homeDevices: T[];
   if (membership.hasSubHomes()) {
+    // A device in a zone the tree does not know yet is no home's to plan.
     homeDevices = devices.filter(
-      (device) => membership.getHomeIdForDevice(device.id) === homeId,
+      (device) => membership.getHomeIdForDevice(device.id) === homeId && !membership.isDeviceZoneUnknown(device.id),
     );
   } else {
     homeDevices = homeId === MAIN_HOME_ID ? devices : [];

@@ -203,7 +203,12 @@ export class DeviceTransport {
         this.getFlowTriggerCard = options.getFlowTriggerCard;
         // Roles are this transport's own producers, asked only once a parse runs.
         this.sources = createDeviceParseSources(options, this);
-        this.notifications = new TransportNotifications(options.onSnapshotMutated);
+        // Late-bound: the refresh service is built below, and a zone change can
+        // only arrive once the transport is running.
+        this.notifications = new TransportNotifications(
+            options.onSnapshotMutated,
+            (zoneId) => this.refreshService.refreshZoneTreeIfUnknown(zoneId),
+        );
         this.deviceSdk = new DeviceHomeySdk(
             homey,
             this.logger,

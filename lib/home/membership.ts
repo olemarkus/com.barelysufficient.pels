@@ -72,6 +72,14 @@ export type ConfiguredMeterSources = Readonly<{
 export type HomeMembershipPort = {
   /** Resolved home for a device; an unknown device belongs to the main home. */
   getHomeIdForDevice(deviceId: string): HomeId;
+  /**
+   * While meter areas run, a device following the zone rule whose zone the
+   * cached zone tree does not contain yet (it was just moved into a zone
+   * created after the tree was read). Its membership still reads Main, but no
+   * home plans or actuates it until the tree knows the zone: Main would
+   * otherwise control it against the wrong meter (owner ruling 2026-10-24).
+   */
+  isDeviceZoneUnknown(deviceId: string): boolean;
   /** `homeId` per snapshot device — no `source`, by design. */
   getMembershipMap(): Readonly<Record<string, HomeId>>;
   /**

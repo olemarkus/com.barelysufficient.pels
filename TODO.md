@@ -236,44 +236,21 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       review of the actuation-record state layer, 2026-09-08.
 
 - [ ] **The zone tree is refetched on every snapshot refresh — 538 Homey round-trips per 12 h for
-      an answer that changed zero times — and the obvious fix (a refresh interval) is unsafe as
-      written.** `refreshZoneTreeCache` (`lib/device/transport/snapshotRefresh.ts`) fetches
-      `manager/zones/zone` at the tail of every `refreshSnapshot`, roughly every 80 s. In the
+      an answer that changed zero times.** `refreshZoneTreeCache` (`lib/device/transport/snapshotRefresh.ts`)
+      fetches `manager/zones/zone` at the tail of every `refreshSnapshot`, roughly every 80 s. In the
       sampled production window every one of the 538 answers was `zonesTotal: 29,
-      droppedEntries: 0`.
-
-      **First, with no ruling needed:** skip the fetch while no meter area exists. Membership needs
-      no tree then (`homeMembershipService.ts`) and every device resolves to Main either way; the
-      homes editor fetches its own tree when it opens (`setup/settingsUiHomesApi.ts`), and until a
-      tree commits the multi-home actuation fence stays closed. That covers single-home installs,
-      the overwhelming majority.
-
-      For a home WITH meter areas, an interval alone reintroduces a correctness window, which is
-      why the one added in PR #2252 was taken back out. Once ANY tree has committed, the
-      multi-home actuation fence is open, and `zoneAncestryPath` treats a zoneId missing from the
-      cached tree the same as a broken parent chain: `resolveDeviceHome` answers
-      `{ homeId: MAIN_HOME_ID, source: 'fallback' }` (`lib/home/membership.ts`, pinned by
-      `test/unit/homeMembership.test.ts` "an unknown device zone resolves to main"). So a device
-      moved into a zone the stale tree has never seen is planned and actuated by Main against the
-      wrong meter for the length of the interval. Homey publishes no zone event to correct it — the
-      SDK ships no zones manager, and the realtime feed subscribes only `homey:manager:devices`.
-
-      **Rule on one of these for meter areas:**
-      (a) *Make staleness self-correcting, then add the interval.* Mark the tree due when a
-      `device.update` reports a zoneId absent from it. `notifyDeviceZoneChangeContained`
-      (`lib/device/transport/deviceUpdateHandling.ts`) already sees the zone delta; the cache lives
-      in `snapshotRefreshState.ts`, so the flag goes on `SnapshotRefreshState`, with no
-      `lib/device` → `lib/home` edge. Does NOT cover a zone reparented with no device moving.
-      (b) *Make staleness harmless, then add the interval.* Hold an unknown-zone device out of
-      actuation instead of falling back to Main. Removes the wrong-meter window by construction,
-      at the cost of not actuating a device whose zone cannot be resolved — the posture already
-      taken before the first commit, extended to a zone the tree does not know.
-      (c) *Accept the cost* for meter-area homes and keep the fetch on every refresh there.
-
-      **When it is done:** a single-home install fetches no zone tree on a snapshot refresh, and
-      for meter areas the chosen option lands with a test that drives a device into a zone the
-      cached tree has never seen and asserts it is never planned by the wrong home. Source: Codex
-      P1 on PR #2252, 2026-08-31. [P2]
+      droppedEntries: 0`. A stale tree is mostly harmless now: a device that moves into a zone the
+      tree lacks is held out of every home (`isDeviceZoneUnknown`, owner ruling 2026-10-24) and the
+      move itself refetches the tree (`refreshZoneTreeIfUnknown`). Two readers still need a fresh tree
+      before the fetch can move onto an interval: a zone re-parented with no device moving, which
+      only the next fetch shows, and the Multiple meters editor, whose zone picker and save checks
+      read the cached tree (`getDiagnostics().zoneTree` in `setup/settingsUiHomesApi.ts`), so a zone
+      created in Homey just before opening the editor would be missing. **What changes:** fetch on
+      an interval (and at boot) instead of every refresh, have the `ui_homes` read refetch the tree
+      when the editor opens, and skip the fetch entirely while no meter area exists. **Done when**
+      zone fetches per 12 h are down by at least an order of magnitude and a zone created just
+      before opening the editor is offered in its picker. Source: Codex P1 on PR #2252, 2026-08-31.
+      [P2]
 
 - [ ] **Surface "your step flow is not answering" on the device detail.** *Persona:* flow-backed stepped-device
       owner (EV charger) whose `desired_stepped_load_changed` flow is missing, mistargeted, or not reporting back.

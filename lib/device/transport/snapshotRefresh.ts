@@ -468,6 +468,20 @@ export class SnapshotRefreshService {
     return this.runRefresh(options);
   }
 
+  /**
+   * Refetch the zone tree when a device has moved into a zone the cached tree
+   * does not contain, so meter-area membership picks the zone up within one
+   * fetch instead of at the next refresh. Before any tree exists the next
+   * refresh's own fetch covers it; detached like that fetch.
+   */
+  refreshZoneTreeIfUnknown(zoneId: string): void {
+    const tree = this.refreshState.getZoneTree();
+    if (tree === null || Object.hasOwn(tree, zoneId)) return;
+    if (!this.refreshState.claimUnknownZoneRefresh(Date.now())) return;
+    emitDeviceDebug({ event: 'zone_tree_refetch_for_unknown_zone', zoneId });
+    void refreshZoneTreeCache(this);
+  }
+
   private async runRefresh(options: SnapshotRefreshOptions): Promise<LiveMeterReadings | null> {
     const stopSpan = startRuntimeSpan('device_snapshot_refresh');
     const start = Date.now();
