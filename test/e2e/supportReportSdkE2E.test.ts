@@ -45,7 +45,7 @@ describe('manual report through the app API and Homey boundary', () => {
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
 
-    const preview = await api.support_report_prepare({ homey: mockHomeyInstance, body: {
+    const preview = await api.support_report_prepare({ homey: app.homey, body: {
       subject: { kind: 'device', homeId: 'main', deviceId: 'heater' },
       problem: 'Heater stayed limited.', expected: 'Resume.', occurredAtMs: Date.now(), historyWindow: 'incident',
     } });
@@ -56,12 +56,12 @@ describe('manual report through the app API and Homey boundary', () => {
     }
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
     const id = preview.report.document.id;
-    const sent = await api.support_report_send({ homey: mockHomeyInstance, params: { id }, body: { consent: true } });
+    const sent = await api.support_report_send({ homey: app.homey, params: { id }, body: { consent: true } });
     expect(sent.ok && sent.report.submission).toEqual({ state: 'sent', reference: 'homey-report-123' });
     const posts = fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST');
     expect(posts).toHaveLength(1);
     expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({ message: preview.report.message });
-    await api.support_report_send({ homey: mockHomeyInstance, params: { id }, body: { consent: true } });
+    await api.support_report_send({ homey: app.homey, params: { id }, body: { consent: true } });
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
   });
 });
