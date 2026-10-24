@@ -10,43 +10,15 @@ import { TARGET_CONFIRMATION_STUCK_POLL_MS } from '../lib/plan/planConstants';
 import type { PlanService } from '../lib/plan/planService';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSelection';
-import { normalizeError } from '../lib/utils/errorUtils';
-import { runWithoutContext } from '../lib/logging/alsContext';
-import { createSingleFlightLoop } from '../lib/utils/singleFlightLoop';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
 import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
 import {
   TargetPowerProbeScheduler,
   type DueTargetPowerProbe,
 } from '../lib/device/targetPowerProbeScheduler';
+import { SnapshotRefreshScheduler, type SnapshotRefreshOptions } from '../lib/device/snapshotRefreshScheduler';
 
 export { createTargetPowerReachabilityAppWiring } from './appTargetPowerReachabilityWiring';
-
-const PERIODIC_STATUS_MINUTE_INTERVALS = [25, 55];
-const TARGET_CONFIRMATION_POLL_INTERVAL_MS = TARGET_CONFIRMATION_STUCK_POLL_MS;
-const POST_ACTUATION_REFRESH_DELAY_MS = 5_000;
-// The app's device poll. A Homey driver pushes a capability only on value
-// CHANGE, so a device that keeps doing the same thing sends nothing — and the
-// EV car-link probe's correlation pass runs over the FETCHED device list
-// (`observeEvCarLinkAndResubscribe`), which is also where a class-`car` device,
-// dropped at parse, becomes visible at all. Something has to ask.
-//
-// This is a poll, not a verdict about any device. It used to be gated on a
-// 40-minute per-device "stale observation" window, which meant the app polled
-// whenever some device happened to have been quiet for a while — an arbitrary
-// trigger dressed up as a health signal, and one that produced a
-// `stale_device_observation_refresh` log line per window per device for the
-// entire uptime. In production that gate was open continuously, so the app in
-// fact fetched every managed device roughly once a minute. The gate is gone and
-// the cadence is now stated outright, at the slowest value nothing needs faster
-// than: the tightest consumer is the EV car-link probe (a car's `measure_battery`
-// only reaches PELS on a fetch), and a charging session tolerates 5 minutes.
-//
-// This is the app's ONLY device fetch loop. The `:25`/`:55` timer below used to
-// fetch too; it now only writes the periodic status log, because a second
-// fetcher on a coarser schedule adds nothing a 5-minute poll has not already
-// done.
-const DEVICE_POLL_INTERVAL_MS = 5 * 60 * 1000;
 
 const sameMainMeterSelection = (
   left: MainMeterSelection,
@@ -59,52 +31,9 @@ const sameMainMeterSelection = (
   )
 );
 
-/** One pass of the refresh loop: the transport to read, and the intent. */
-type SnapshotRefreshRequest = {
-  deviceManager: DeviceTransportPort;
-  options: RefreshTargetDevicesSnapshotOptions;
-};
-
-export type RefreshTargetDevicesSnapshotOptions = {
-  fast?: boolean;
-  targeted?: boolean;
-  recordHomeyEnergySample?: boolean;
-  emitFlowBackedRefresh?: boolean;
-};
-
 export class AppSnapshotHelpers {
-  private snapshotRefreshStopped = true;
-
-  /**
-   * One refresh at a time, with a single queued re-run. A caller arriving
-   * mid-refresh awaits the loop, so `/ui_refresh_devices` sees the post-refresh
-   * in-memory snapshot rather than returning while the refresh is still
-   * running; a synchronously re-entrant caller queues and returns instead,
-   * because awaiting there would be awaiting its own frame.
-   *
-   * A queued re-run repeats THIS refresh's options rather than adopting the
-   * queued caller's — a queued request means "do that again" — with
-   * `emitFlowBackedRefresh` cleared, so the flow-backed refresh is emitted at
-   * most once per drain.
-   */
-  private readonly snapshotRefreshLoop = createSingleFlightLoop<SnapshotRefreshRequest>({
-    run: (request) => this.runSnapshotRefreshCycle(request.deviceManager, request.options),
-    nextRequest: (_queued, ran) => ({
-      ...ran,
-      options: { ...ran.options, emitFlowBackedRefresh: false },
-    }),
-    mayContinue: () => !this.snapshotRefreshStopped,
-    onRequest: ({ join }) => {
-      if (join === 'started') return;
-      getDebugEmitter('snapshot', 'devices')({
-        event: 'snapshot_refresh_coalesced',
-        mode: join === 'joined' ? 'awaiting_in_flight' : 'queued',
-      });
-    },
-    onRerun: () => {},
-  });
-
   private readonly targetPowerProbeScheduler: TargetPowerProbeScheduler;
+  private readonly refreshScheduler: SnapshotRefreshScheduler;
 
   constructor(private readonly deps: {
     getPowerSource: () => PowerSource;
@@ -160,111 +89,36 @@ export class AppSnapshotHelpers {
       refreshForSettlement: async () => this.refreshTargetDevicesSnapshot({ targeted: true }),
       getLogger: () => deps.getStructuredLogger('snapshot'),
     });
-  }
-
-  /**
-   * Whether a post-actuation refresh is already armed. The timer registry owns
-   * the handle, and "is one pending?" is the only question any caller ever asked
-   * of it — so it answers that, rather than handing out a handle for a caller to
-   * null-check.
-   */
-  hasPendingPostActuationRefresh(): boolean {
-    return this.deps.timers.has('postActuationRefresh');
-  }
-
-  startPeriodicSnapshotRefresh(): void {
-    this.snapshotRefreshStopped = false;
-    this.targetPowerProbeScheduler.start();
-    this.schedulePeriodicStatusLog();
-    this.scheduleNextDevicePoll();
-
-    this.deps.timers.registerInterval(
-      'targetConfirmationPoll',
-      setInterval(() => {
-        this.pollStuckTargetConfirmations()
-          .catch((error) => this.deps.getStructuredLogger('snapshot').error({
-            event: 'stuck_target_confirmation_poll_failed',
-            err: normalizeError(error),
-          }));
-      }, TARGET_CONFIRMATION_POLL_INTERVAL_MS),
-    );
-  }
-
-  stop(): void {
-    this.snapshotRefreshStopped = true;
-    this.targetPowerProbeScheduler.stop();
-    this.deps.timers.clear('periodicStatus');
-    this.deps.timers.clear('devicePoll');
-    this.deps.timers.clear('targetConfirmationPoll');
-    this.deps.timers.clear('postActuationRefresh');
-  }
-
-  async refreshTargetDevicesSnapshot(
-    options: RefreshTargetDevicesSnapshotOptions = {},
-  ): Promise<void> {
-    const deviceManager = this.deps.getDeviceManager();
-    if (!deviceManager) return;
-    await this.snapshotRefreshLoop.request({
-      deviceManager,
-      // Normalized here so the re-run policy above only has to clear it.
-      options: { ...options, emitFlowBackedRefresh: options.emitFlowBackedRefresh !== false },
+    this.refreshScheduler = new SnapshotRefreshScheduler({
+      timers: deps.timers,
+      getNow: deps.getNow,
+      getTransport: deps.getDeviceManager,
+      runCycle: (deviceManager, options) => this.runSnapshotRefreshCycle(deviceManager, options),
+      logPeriodicStatus: deps.logPeriodicStatus,
+      pollStuckTargetConfirmations: () => this.pollStuckTargetConfirmations(),
+      getLogger: () => deps.getStructuredLogger('snapshot'),
     });
   }
 
-  /**
-   * Self-rescheduling rather than an interval so a slow refresh cannot stack
-   * polls on top of itself. `refreshTargetDevicesSnapshot` already coalesces a
-   * concurrent caller, but not queueing in the first place is cheaper.
-   *
-   * The registry owns the handle: `registerTimeout` clears any timer already
-   * under this key, so re-arming needs no local copy to check first.
-   */
-  private scheduleNextDevicePoll(): void {
-    if (this.snapshotRefreshStopped) return;
-    this.deps.timers.registerTimeout(
-      'devicePoll',
-      setTimeout(async () => {
-        this.deps.timers.clear('devicePoll');
-        try {
-          await this.refreshTargetDevicesSnapshot({ targeted: true });
-        } catch (error) {
-          this.deps.getStructuredLogger('snapshot').error({
-            event: 'device_poll_failed',
-            err: normalizeError(error),
-          });
-        } finally {
-          this.scheduleNextDevicePoll();
-        }
-      }, DEVICE_POLL_INTERVAL_MS),
-    );
+  /** Whether a post-actuation refresh is already armed. */
+  hasPendingPostActuationRefresh(): boolean {
+    return this.refreshScheduler.hasPendingPostActuationRefresh();
   }
 
-  /**
-   * The twice-hourly status log. It used to fetch every device first and report
-   * device health only if that fetch succeeded; the device poll owns fetching
-   * now, so this reports on the committed snapshot — which is the device health,
-   * never more than `DEVICE_POLL_INTERVAL_MS` old.
-   */
-  schedulePeriodicStatusLog(): void {
-    const now = this.deps.getNow();
-    const currentMinute = now.getMinutes();
-    const nextMinute = PERIODIC_STATUS_MINUTE_INTERVALS.find((minute) => minute > currentMinute);
+  startPeriodicSnapshotRefresh(): void {
+    this.refreshScheduler.start();
+    this.targetPowerProbeScheduler.start();
+  }
 
-    const next = new Date(now);
-    if (nextMinute !== undefined) {
-      next.setMinutes(nextMinute, 0, 0);
-    } else {
-      next.setHours(now.getHours() + 1, PERIODIC_STATUS_MINUTE_INTERVALS[0], 0, 0);
-    }
+  stop(): void {
+    this.refreshScheduler.stop();
+    this.targetPowerProbeScheduler.stop();
+  }
 
-    this.deps.timers.registerTimeout('periodicStatus', setTimeout(() => {
-      this.deps.timers.clear('periodicStatus');
-      try {
-        this.deps.logPeriodicStatus({ includeDeviceHealth: true });
-      } finally {
-        if (!this.snapshotRefreshStopped) this.schedulePeriodicStatusLog();
-      }
-    }, next.getTime() - now.getTime()));
+  async refreshTargetDevicesSnapshot(
+    options: SnapshotRefreshOptions = {},
+  ): Promise<void> {
+    await this.refreshScheduler.refresh(options);
   }
 
   async pollStuckTargetConfirmations(): Promise<void> {
@@ -276,38 +130,11 @@ export class AppSnapshotHelpers {
       event: 'stuck_target_confirmation_poll',
       thresholdMs: TARGET_CONFIRMATION_STUCK_POLL_MS,
     });
-    await this.refreshTargetDevicesSnapshot({ targeted: true });
+    await this.refreshScheduler.refresh({ targeted: true });
   }
 
   schedulePostActuationRefresh(): void {
-    if (this.deps.timers.has('postActuationRefresh')) {
-      getDebugEmitter('snapshot', 'plan')({
-        event: 'post_actuation_refresh_skipped',
-        reason: 'already_scheduled',
-      });
-      return;
-    }
-
-    getDebugEmitter('snapshot', 'plan')({
-      event: 'post_actuation_refresh_scheduled',
-      delayMs: POST_ACTUATION_REFRESH_DELAY_MS,
-    });
-    runWithoutContext(() => (
-      this.deps.timers.registerTimeout('postActuationRefresh', setTimeout(async () => {
-        this.deps.timers.clear('postActuationRefresh');
-        getDebugEmitter('snapshot', 'plan')({
-          event: 'post_actuation_refresh_running',
-        });
-        try {
-          await this.refreshTargetDevicesSnapshot({ targeted: true, recordHomeyEnergySample: false });
-        } catch (error) {
-          this.deps.getStructuredLogger('snapshot').error({
-            event: 'post_actuation_snapshot_refresh_failed',
-            err: normalizeError(error),
-          });
-        }
-      }, POST_ACTUATION_REFRESH_DELAY_MS))
-    ));
+    this.refreshScheduler.schedulePostActuationRefresh();
   }
 
   scheduleTargetPowerProbeSettlement(dueAtMs: number): void {
@@ -320,7 +147,7 @@ export class AppSnapshotHelpers {
 
   private async runSnapshotRefreshCycle(
     deviceManager: DeviceTransportPort,
-    options: RefreshTargetDevicesSnapshotOptions,
+    options: SnapshotRefreshOptions,
   ): Promise<void> {
     if (options.emitFlowBackedRefresh !== false) {
       await this.deps.emitFlowBackedRefreshRequests(this.deps.getFlowReportedDeviceIds());
@@ -392,7 +219,7 @@ export class AppSnapshotHelpers {
    * read, and that has always surfaced as a failed refresh.
    */
   private classifyImplicitHomeyEnergySample(
-    options: RefreshTargetDevicesSnapshotOptions,
+    options: SnapshotRefreshOptions,
     meterSelectionAtStart: MainMeterSelection,
   ): 'admitted' | 'not_requested' | 'not_homey_energy' | 'selection_unavailable' | 'stale_meter' {
     if (options.recordHomeyEnergySample === false) return 'not_requested';
@@ -412,7 +239,7 @@ export class AppSnapshotHelpers {
   }
 
   private async recordImplicitHomeyEnergySample(
-    options: RefreshTargetDevicesSnapshotOptions,
+    options: SnapshotRefreshOptions,
     sample: HomePowerSample | null, meterSelectionAtStart: MainMeterSelection,
   ): Promise<void> {
     const admission = this.classifyImplicitHomeyEnergySample(options, meterSelectionAtStart);

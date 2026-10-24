@@ -258,8 +258,9 @@ Design-of-record: `notes/web-app.md`.
       on 2026-10-23 found 15 reassigned closure `let`s in 10 `setup/` files (at least one,
       `setup/homeRuntime/wireHomeMembership.ts`, is per-call state, not factory state). **What
       changes:** teach the guard to flag a closure `let` that a nested function reassigns inside a
-      `setup/` factory, seed the current sites into `scripts/setup-stateless-allowlist.txt`, and
-      exempt per-call locals. **Done when:** the guard fails on a new reassigned closure `let` in a
+      `setup/` factory, seed the current sites into `scripts/setup-stateless-allowlist.txt` (gone since
+      the last stateful setup file migrated; the guard reads it again once it exists), and exempt
+      per-call locals. **Done when:** the guard fails on a new reassigned closure `let` in a
       `setup/` factory and the allowlist names each existing one. [P2]
 
 - [ ] **P1 — the remaining history keys still ride `homey.settings`, and every write of any key
@@ -290,25 +291,6 @@ Design-of-record: `notes/web-app.md`.
       `GET /api/manager/apps/app/com.barelysufficient.pels/setting` on the production Homey, which
       leaves about 16 kB of configuration and live latches. Count writes by diffing successive reads of that endpoint, not with
       the `settings_set.*` perf counter, which covers only `capacity_in_shortfall`.
-
-- [ ] **Two setup files still hold runtime state, above the boundaries `arch:check` enforces.**
-      `setup/` constructs and connects and holds nothing (`setup/AGENTS.md` § "No state"), enforced
-      by `scripts/check-setup-stateless.mjs`, whose allowlist
-      (`scripts/setup-stateless-allowlist.txt`) still budgets two files and three declarations:
-      - `setup/appSnapshotHelpers.ts` (2): the refresh stop latch and the single-flight refresh
-        loop, with the device-poll, status-log, stuck-confirmation and post-actuation timers that
-        read them. They move to a `lib/device` refresh scheduler built the way
-        `lib/device/targetPowerProbeScheduler.ts` is, taking the refresh cycle as an injected
-        function; the cycle itself fans out across plan, power and home and stays in `setup/`.
-      - `setup/powerSamplePipeline.ts` (1): `this.queue = deps.createIngestQueue(...)`. The queue's
-        state is already `lib/power/sampleIngestQueue.ts`'s; the guard counts the construction.
-        Moving that one call up into `createHomePowerPipeline.ts` would only hide it from the guard,
-        so the real change is the pipeline taking the queue it is handed, with the run callback the
-        queue needs bound at construction.
-      Each is behaviour-preserving, with `npm run arch:check` as the gate. **Done when**
-      `scripts/setup-stateless-allowlist.txt` no longer exists and `npm run setup:stateless` passes
-      without it. Land it before the closure-`let` guard above, so that guard's seed is the new
-      residual. Found 2026-08-29. [P2]
 
 - [ ] **Each power limit is a loose nullable, and readers re-derive which nulls mean "off".**
       The capacity, grid and daily axes and the binding limit travel as separate `number | null`

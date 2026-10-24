@@ -70,7 +70,7 @@ import {
 } from './appInit/contextGuards';
 import type { AppSmartTaskApi, SmartTaskWriteResult } from './appSmartTaskApi';
 import type { AppSmartTaskPayloads } from './appSmartTaskPayloads';
-import type { RefreshTargetDevicesSnapshotOptions } from './appSnapshotHelpers';
+import type { SnapshotRefreshOptions } from '../lib/device/snapshotRefreshScheduler';
 import type { AppRuntimeHandles } from './appRuntimeHandles';
 import { resolveCurrentMonthQuarterPeakKw } from '../lib/power/capacityPeak';
 import {
@@ -288,7 +288,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     return buildLimitedNotListedDevices(this.context);
   }
 
-  public async refreshTargetDevicesSnapshot(options: RefreshTargetDevicesSnapshotOptions = {}): Promise<void> {
+  public async refreshTargetDevicesSnapshot(options: SnapshotRefreshOptions = {}): Promise<void> {
     await this.context.snapshotHelpers.refreshTargetDevicesSnapshot(options);
   }
 

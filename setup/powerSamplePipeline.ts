@@ -15,11 +15,7 @@ import { resolvePublishedBudgetExemptDeviceIds } from '../lib/plan/publishedPlan
 import { resolvePlanRebuildPosture } from '../lib/plan/planRebuildPosture';
 import { addPerfDuration, incPerfCounter } from '../lib/utils/perfCounters';
 import type { PreparedReconcileFence } from '../lib/power/preparedReconcileFence';
-import type {
-  SampleIngestQueue,
-  SampleIngestQueueDeps,
-  StableSampleRevision,
-} from '../lib/power/sampleIngestQueue';
+import type { SampleIngestQueue, StableSampleRevision } from '../lib/power/sampleIngestQueue';
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
 import type { DeviceSurfaces } from '../packages/contracts/src/deviceSurfaces';
 import type { PowerSampleAdmission } from '../lib/app/appContext';
@@ -30,13 +26,11 @@ import { recordShortfallPeriodAvailability } from '../lib/plan/shedding/shortfal
 
 export type PowerSamplePipelineDeps = {
   /**
-   * Builds the coalescing queue this pipeline runs its samples through. Passed
-   * in rather than constructed here because the wiring layer holds no state,
-   * and the queue is where the revision ledger lives.
+   * The coalescing queue this pipeline runs its samples through, built by the
+   * home's wiring: the queue holds the revision ledger, and this file holds no
+   * state.
    */
-  createIngestQueue: (
-    deps: SampleIngestQueueDeps<PowerSampleRequest>,
-  ) => SampleIngestQueue<PowerSampleRequest>;
+  ingestQueue: SampleIngestQueue<PowerSampleRequest>;
   // Per-home capacity state. Required for every home, main included: two homes
   // never share a tracker, capacity scalars or a guard, so there is no home for
   // which one of these is the obvious default.
@@ -193,13 +187,6 @@ const buildPowerSampleRequest = (
  * member (implemented by `AppRuntimeApi.recordPowerSample`) also routes here.
  */
 export class PowerSamplePipeline {
-  /**
-   * One ingest at a time plus the revision ledger, both owned by
-   * `lib/power/sampleIngestQueue.ts`. Injected rather than constructed here:
-   * this file is wiring, and what the queue holds is a power concept.
-   */
-  private readonly queue: SampleIngestQueue<PowerSampleRequest>;
-
   // The sample path's producer boundary: rate learning reads the device's DRAW,
   // and the raw `measuredPowerKw` does not travel past the producer. Resolving here means `lib/objectives` never
   // sees a raw reading — and because `ObjectiveSampleDevice.currentDrawKw` is
@@ -224,32 +211,30 @@ export class PowerSamplePipeline {
     )
   );
 
-  constructor(private readonly deps: PowerSamplePipelineDeps) {
-    this.queue = deps.createIngestQueue({ run: (request) => this.runPowerSample(request) });
-  }
+  constructor(private readonly deps: PowerSamplePipelineDeps) {}
 
   async recordPowerSample(
     currentPowerW: number,
     nowMs: number = Date.now(),
     options: PowerSampleOptions = {},
   ): Promise<PowerSampleAdmission> {
-    return this.queue.submit((revision) => buildPowerSampleRequest(
+    return this.deps.ingestQueue.submit((revision) => buildPowerSampleRequest(
       currentPowerW,
       nowMs,
       options,
       revision,
       this.deps.getCoSampledGenerationW(nowMs),
       this.deps.getObservedGenerationSegments(nowMs),
-    ));
+    ), (request) => this.runPowerSample(request));
   }
 
   getStableSampleRevision(): StableSampleRevision {
-    return this.queue.getStableRevision();
+    return this.deps.ingestQueue.getStableRevision();
   }
 
   /** The prepared-reconcile fence over that revision, owned by the queue with its ledger. */
   get preparedReconcileFence(): PreparedReconcileFence {
-    return this.queue.preparedReconcileFence;
+    return this.deps.ingestQueue.preparedReconcileFence;
   }
 
   /**

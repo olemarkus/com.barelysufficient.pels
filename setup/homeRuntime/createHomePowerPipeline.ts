@@ -64,7 +64,7 @@ export function createUnobservedHomeProduction(): ObservedHomePower {
 export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSamplePipeline {
   const { ctx, observedHomePower } = deps;
   return new PowerSamplePipeline({
-    createIngestQueue: (queueDeps) => createSampleIngestQueue(queueDeps),
+    ingestQueue: createSampleIngestQueue(),
     getPowerTracker: deps.getPowerTracker,
     getCapacitySettings: deps.getCapacitySettings,
     getTimeZone: ctx.getTimeZone,
