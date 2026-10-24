@@ -1207,7 +1207,7 @@ describe('MyApp initialization', () => {
     expect(clearSpy).toHaveBeenCalledWith(baseTs + 1000);
   });
 
-  it('hydrates persisted last-controlled state before the startup-gated plan rebuild', async () => {
+  it('imports the legacy last-controlled key and hydrates it before the startup-gated plan rebuild', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     await heater.setCapabilityValue('onoff', true);
     await heater.setCapabilityValue('measure_power', 1000);

@@ -12,6 +12,7 @@ import { afterAll } from 'vitest';
 import os from 'node:os';
 import path from 'node:path';
 import { openUserdataDatabase } from '../../lib/store/userdataDatabase';
+import { createLastControlledStore } from '../../lib/plan/lastControlledStore';
 import { createPriceCacheStore, type PriceCacheKey } from '../../lib/price/priceCacheStore';
 import { createDailyBudgetStateStore } from '../../lib/dailyBudget/dailyBudgetStateStore';
 import type { DailyBudgetState } from '../../lib/dailyBudget/dailyBudgetTypes';
@@ -149,6 +150,20 @@ export function getStoredPowerTrackerForTests(homeId: string = 'main'): PowerTra
   const database = openUserdataDatabase(testUserdataDatabase());
   try {
     return createTrackerStore(database).load(homeId);
+  } finally {
+    database.close();
+  }
+}
+
+/**
+ * When the app under test last controlled each device of a home, as its
+ * userdata rows hold it. Empty while nothing has been stored.
+ */
+export function getStoredLastControlledForTests(homeId: string = 'main'): Record<string, number> {
+  if (testUserdataDir === undefined) return {};
+  const database = openUserdataDatabase(testUserdataDatabase());
+  try {
+    return createLastControlledStore(database).read(homeId);
   } finally {
     database.close();
   }

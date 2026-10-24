@@ -1,7 +1,8 @@
 /**
- * One home's signal writers: the two settings keys a `HomeScope` writes as
- * the planner and executor run — the shortfall flag and the last-controlled
- * map — and the status it publishes into the app's in-memory registry.
+ * One home's signal writers: what a `HomeScope` writes as the planner and
+ * executor run — the shortfall flag in settings, the last-controlled map in
+ * the userdata store — and the status it publishes into the app's in-memory
+ * registry.
  *
  * Both the main home and every meter area wrote these the same way and each
  * hand-rolled its own copy, differing only in whether the home can be torn
@@ -10,10 +11,10 @@
 import type { AppContext } from '../../lib/app/appContext';
 import {
   CAPACITY_IN_SHORTFALL,
-  DEVICE_LAST_CONTROLLED_MS,
   type HomeId,
   homeScopedSettingsKey,
 } from '../../lib/utils/settingsKeys';
+import { createLastControlledWriter } from '../../lib/plan/lastControlledStore';
 import type { HomeScope } from './homeScope';
 
 /** The three signals a `HomeScope` writes, for THIS home. */
@@ -23,9 +24,10 @@ export type HomeSignalWriters = Pick<
 >;
 
 /**
- * This home's signal writers — the settings keys on
+ * This home's signal writers — the shortfall key on
  * `homeScopedSettingsKey(base, homeId)` (the bare key for the main home), the
- * status under its `homeId` in the registry. `isTornDown` fences them: an
+ * home's rows in the last-controlled store, the status under its `homeId` in
+ * the registry. `isTornDown` fences them: an
  * in-flight rebuild/reconcile continuation that resolves AFTER a home's
  * teardown must not re-create that home's keys or status, nor clobber a
  * same-`homeId` bundle created after it. Actuation is fenced separately at the
@@ -40,9 +42,14 @@ export function createHomeSignalWriters(
     if (isTornDown()) return;
     ctx.homey.settings.set(homeScopedSettingsKey(baseKey, homeId), value);
   };
+  // The teardown fence stops writes before the userdata database closes.
+  const writeLastControlled = createLastControlledWriter(() => ctx.getUserdataDatabase(), homeId);
   return {
     setCapacityInShortfall: (inShortfall) => write(CAPACITY_IN_SHORTFALL, inShortfall),
-    persistLastControlledMs: (lastControlledMs) => write(DEVICE_LAST_CONTROLLED_MS, lastControlledMs),
+    persistLastControlledMs: (lastControlledMs) => {
+      if (isTornDown()) return;
+      writeLastControlled(lastControlledMs);
+    },
     publishPelsStatus: (status) => {
       if (isTornDown()) return;
       ctx.planStatuses.publish(homeId, status);

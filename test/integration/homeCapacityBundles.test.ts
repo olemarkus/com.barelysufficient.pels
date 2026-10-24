@@ -66,6 +66,7 @@ import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { PlanRebuildRequestOptions, PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
 import { testLogger } from '../utils/testLogger';
+import { createLastControlledStore } from '../../lib/plan/lastControlledStore';
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 
@@ -449,8 +450,8 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('rehydrates the stored tracker + last-controlled state on (re)creation; junk last-controlled resolves empty', async () => {
-    // Pre-seed the store and the suffixed key, then create the bundle — a
-    // simulated restart.
+    // Pre-seed the tracker store and a legacy suffixed last-controlled key,
+    // then create the bundle: a simulated restart onto this build.
     const seededTracker: PowerTrackerState = {
       meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'm-a' },
       lastTimestamp: Date.now() - 60_000,
@@ -463,6 +464,9 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     await drainPending();
 
     expect(diagnosticsFor(rig.registry, 'h_a').lastDeviceControlledMs).toEqual({ 'dev-1': 123_456 });
+    // The legacy key was imported into the userdata store and retired.
+    expect(createLastControlledStore(rig.ctx.getUserdataDatabase()).read('h_a')).toEqual({ 'dev-1': 123_456 });
+    expect(mockHomeyInstance.settings.get(`${DEVICE_LAST_CONTROLLED_MS}:h_a`)).toBeNull();
     // Hydrated tracker survives the next persist round-trip.
     rig.registry.routeMeterReadings({ 'm-a': 800 }, Date.now());
     await drainPending();
@@ -471,8 +475,8 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     expect(storedTrackerFor(rig.ctx, 'h_a').dailyTotals?.['2026-01-14']).toBe(7.5);
 
     // An area the store holds nothing for starts empty and carries its meter
-    // identity in memory until its first persist establishes it. The
-    // non-safety last-controlled blob is junk-tolerant and resolves empty.
+    // identity in memory until its first persist establishes it. A legacy
+    // last-controlled key holding junk imports nothing and resolves empty.
     mockHomeyInstance.settings.set(`${DEVICE_LAST_CONTROLLED_MS}:h_b`, ['not', 'a', 'map']);
     writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
     rig.registry.reconcile();

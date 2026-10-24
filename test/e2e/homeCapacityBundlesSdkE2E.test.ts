@@ -19,7 +19,7 @@
 // 3. Meter safety — stale/external persisted ownership collisions fence Main,
 //    and every configured meter stays source-only even when its zone membership
 //    resolves to Main.
-// 4. Restart rehydration — `device_last_controlled_ms:<id>` survives a
+// 4. Restart rehydration — the area's last-controlled rows survive a
 //    restart: the resume of a shed sub-home device stays backoff-blocked
 //    right after reboot and lands once the cooldown elapses.
 // 5. New-scope admission — a device shed by MAIN and then moved into a new
@@ -39,7 +39,7 @@ import {
   MockDevice,
   MockDriver,
 } from '../mocks/homey';
-import { createApp, cleanupApps, getStoredPowerTrackerForTests } from '../utils/appTestUtils';
+import { createApp, cleanupApps, getStoredLastControlledForTests, getStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import {
   createHomesStore as createRawHomesStore,
   createDeviceHomeAssignmentsStore,
@@ -569,19 +569,17 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     await subDevice.setCapabilityValue('measure_power', 0);
     await vi.advanceTimersByTimeAsync(10_000);
     await drainPending();
-    const lastControlled = mockHomeyInstance.settings.get('device_last_controlled_ms:h_sub') as
-      | Record<string, number>
-      | undefined;
-    expect(lastControlled?.['device-sub']).toBeGreaterThan(0);
+    const lastControlled = getStoredLastControlledForTests('h_sub');
+    expect(lastControlled['device-sub']).toBeGreaterThan(0);
 
     // Restart shortly after the shed. The device reports off + idle now.
     await app.onUninit();
     await drainPending();
     putSpy.mockClear();
-    // Teardown left every suffixed persisted key in place for re-creation
-    // (hydration of the engine's lastDeviceControlledMs from this key is
+    // Teardown left the area's persisted state in place for re-creation
+    // (hydration of the engine's lastDeviceControlledMs from the store is
     // asserted in test/integration/homeCapacityBundles.test.ts).
-    expect(mockHomeyInstance.settings.get('device_last_controlled_ms:h_sub')).toEqual(lastControlled);
+    expect(getStoredLastControlledForTests('h_sub')).toEqual(lastControlled);
     expect(getStoredPowerTrackerForTests('h_sub')).toBeTruthy();
     // Ample headroom for the resume after reboot (persisted BEFORE boot so
     // the recreated bundle reads it at construction).
