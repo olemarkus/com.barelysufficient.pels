@@ -26,12 +26,8 @@ export type SteppedLoadDesiredRuntimeState = {
   changedAtMs: number;
   lastIssuedAtMs?: number;
   retryCount: number;
-  /**
-   * Commands for this step in a row that the device did not confirm within the
-   * confirmation window. Unlike `retryCount`, which also counts a reissue of a
-   * step that never went stale, this counts only the expiries themselves.
-   */
-  unconfirmedCount: number;
+  /** Whether the device has reported anything back since PELS began asking for this step. */
+  answer: SteppedLoadCommandAnswer;
   nextRetryAtMs?: number;
   /** `pending` exactly while the command is in flight; there is no separate flag. */
   status: SteppedLoadCommandStatus;
@@ -42,6 +38,22 @@ export type SteppedLoadDesiredRuntimeState = {
   /** First issue time for this probe; same-rung command retries must not slide settlement. */
   targetPowerProbeStartedAtMs?: number;
 };
+
+/**
+ * `unanswered` counts the commands for the step in a row whose confirmation
+ * window closed with no report of any level from the device. Unlike
+ * `retryCount`, which also counts a reissue of a step that never went stale, it
+ * counts only the expiries themselves. `answered` means the device reported a
+ * level after one of those commands: whatever carries the level back is
+ * working, wherever the device settled (a charger asked for 16 A that clamps to
+ * 10 A reports 10 A), so no later expiry of the same step counts.
+ */
+export type SteppedLoadCommandAnswer =
+  | { kind: 'unanswered'; expiredCount: number }
+  | { kind: 'answered' };
+
+const NOT_YET_ANSWERED: SteppedLoadCommandAnswer = { kind: 'unanswered', expiredCount: 0 };
+const ANSWERED: SteppedLoadCommandAnswer = { kind: 'answered' };
 
 export type DeviceControlRuntimeState = {
   steppedLoadDesiredByDeviceId: Map<string, SteppedLoadDesiredRuntimeState>;
@@ -134,7 +146,7 @@ export const confirmSteppedLoadDesiredStep = (
   runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
     ...settledDesired,
     retryCount: 0,
-    unconfirmedCount: 0,
+    answer: ANSWERED,
     nextRetryAtMs: undefined,
     status: 'success',
   });
@@ -198,7 +210,7 @@ export const markSteppedLoadDesiredStepIssued = (
     changedAtMs: issuedAtMs,
     lastIssuedAtMs: issuedAtMs,
     retryCount,
-    unconfirmedCount: shouldIncrementRetryCount ? previousDesired.unconfirmedCount : 0,
+    answer: shouldIncrementRetryCount ? previousDesired.answer : NOT_YET_ANSWERED,
     nextRetryAtMs: undefined,
     status: 'pending',
     ...buildSteppedLoadPowerMetadata(previousDesired, command, issuedAtMs),
@@ -220,7 +232,7 @@ export const preserveSteppedLoadDesiredStep = (
     previousStepId: observation.stepId,
     changedAtMs: Date.now(),
     retryCount: 0,
-    unconfirmedCount: 0,
+    answer: NOT_YET_ANSWERED,
     nextRetryAtMs: undefined,
     status: desiredStepId === observation.stepId ? 'success' : 'idle',
   });
@@ -235,17 +247,39 @@ export const reportSteppedLoadActualStep = (
   const changed = reportedStore.record({ deviceId, stepId, reportedAtMs: observedAtMs, planningPowerW });
 
   const desired = runtimeState.steppedLoadDesiredByDeviceId.get(deviceId);
-  if (desired?.stepId === stepId) {
-    confirmSteppedLoadDesiredStep(runtimeState, deviceId, desired);
-  } else if (desired?.status === 'success') {
+  if (desired?.status === 'success' && desired.stepId !== stepId) {
     // Fresh trusted telemetry contradicts an earlier confirmation (e.g. the
     // charger current was re-zeroed after the flow confirmed the prepared
     // step). The confirmation must lose to the newer report so a stale
     // 'success' cannot fast-track a restore whose preparation was un-applied.
     runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, { ...desired, status: 'idle' });
   }
+  noteSteppedLoadReportedStep(runtimeState, deviceId, stepId, observedAtMs);
 
   return changed;
+};
+
+/**
+ * The device reported `stepId` at `reportedAtMs`. The commanded step confirms
+ * the tracked command. Any other level reported after the command was issued
+ * still answers it: the report came back, and the device settled elsewhere.
+ * A report from before the command says nothing about whether it was heard.
+ */
+export const noteSteppedLoadReportedStep = (
+  runtimeState: DeviceControlRuntimeState,
+  deviceId: string,
+  stepId: string,
+  reportedAtMs: number,
+): void => {
+  const desired = runtimeState.steppedLoadDesiredByDeviceId.get(deviceId);
+  if (!desired) return;
+  if (desired.stepId === stepId) {
+    confirmSteppedLoadDesiredStep(runtimeState, deviceId, desired);
+    return;
+  }
+  if (desired.answer.kind === 'answered' || desired.lastIssuedAtMs === undefined
+    || reportedAtMs < desired.lastIssuedAtMs) return;
+  runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, { ...desired, answer: ANSWERED });
 };
 
 export const pruneStaleSteppedLoadCommandStates = (
@@ -258,7 +292,9 @@ export const pruneStaleSteppedLoadCommandStates = (
     if (nowMs - desired.lastIssuedAtMs < STEPPED_LOAD_COMMAND_STALE_MS) continue;
     runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
       ...desired,
-      unconfirmedCount: desired.unconfirmedCount + 1,
+      answer: desired.answer.kind === 'unanswered'
+        ? { kind: 'unanswered', expiredCount: desired.answer.expiredCount + 1 }
+        : desired.answer,
       nextRetryAtMs:
         desired.lastIssuedAtMs
         + STEPPED_LOAD_COMMAND_STALE_MS

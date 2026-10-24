@@ -621,7 +621,7 @@ describe('MyApp initialization', () => {
     }
   });
 
-  it('hands the executor every step command that went unconfirmed in a row, until the device reports it', async () => {
+  it('hands the executor every step command that drew no report in a row, until the device reports it', async () => {
     const heater = new MockDevice('dev-1', 'Water heater', ['onoff', 'measure_power']);
     heater.setCapabilityValue('measure_power', 1000);
     heater.setCapabilityValue('onoff', true);
@@ -633,18 +633,47 @@ describe('MyApp initialization', () => {
     await waitForSnapshot();
 
     // The Flow that should report the level back never does: each command for
-    // `max` expires unconfirmed, and the next one carries the count on.
+    // `max` expires unanswered, and the next one carries the count on.
     for (const ageMs of [3 * STEPPED_LOAD_COMMAND_STALE_MS, STEPPED_LOAD_COMMAND_STALE_MS + 1]) {
       app.deviceControlHelpers.markSteppedLoadDesiredStepIssued({
         deviceId: 'dev-1', desiredStepId: 'max', previousStepId: 'low', issuedAtMs: Date.now() - ageMs,
       });
       app.steppedCommandStore.pruneStale();
     }
-    expect(app.deviceControlHelpers.getSteppedLoadCommandSession('dev-1').unconfirmedStepCommands)
-      .toEqual({ kind: 'unconfirmed', stepId: 'max', count: 2 });
+    expect(app.deviceControlHelpers.getSteppedLoadCommandSession('dev-1').unansweredStepCommands)
+      .toEqual({ kind: 'unanswered', stepId: 'max', count: 2 });
 
     app.deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'max');
-    expect(app.deviceControlHelpers.getSteppedLoadCommandSession('dev-1').unconfirmedStepCommands)
+    expect(app.deviceControlHelpers.getSteppedLoadCommandSession('dev-1').unansweredStepCommands)
+      .toEqual({ kind: 'none' });
+  });
+
+  it('counts no step command the Flow answers with another level', async () => {
+    const heater = new MockDevice('dev-1', 'Water heater', ['onoff', 'measure_power']);
+    heater.setCapabilityValue('measure_power', 1000);
+    heater.setCapabilityValue('onoff', true);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+    mockHomeyInstance.settings.set(DEVICE_CONTROL_PROFILES, buildSteppedLoadProfiles('dev-1'));
+
+    const app = createApp();
+    await initApp(app);
+    await waitForSnapshot();
+
+    // Asked for `max`, the device clamps at `low`, and the report-back Flow
+    // says so. The command still expires, but the Flow answered it.
+    const issueMax = (ageMs: number) => app.deviceControlHelpers.markSteppedLoadDesiredStepIssued({
+      deviceId: 'dev-1', desiredStepId: 'max', previousStepId: 'low', issuedAtMs: Date.now() - ageMs,
+    });
+    issueMax(3 * STEPPED_LOAD_COMMAND_STALE_MS);
+    expect(app.deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
+    app.steppedCommandStore.pruneStale();
+    // The reissue changes nothing at the device, so a Flow that reports
+    // changes says nothing more. That is no unanswered command either.
+    issueMax(STEPPED_LOAD_COMMAND_STALE_MS + 1);
+    app.steppedCommandStore.pruneStale();
+
+    expect(app.steppedCommandStore.getDesired('dev-1')).toMatchObject({ stepId: 'max', status: 'stale' });
+    expect(app.deviceControlHelpers.getSteppedLoadCommandSession('dev-1').unansweredStepCommands)
       .toEqual({ kind: 'none' });
   });
 

@@ -21,7 +21,7 @@
  */
 
 import type { FlowSteppedLoadObservation } from '../ports/flowSteppedLoadAdmission';
-import type { UnconfirmedStepCommands } from './executablePlan';
+import type { UnansweredStepCommands } from './executablePlan';
 import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 import {
   getSteppedLoadLowestActiveStep, getSteppedLoadStep,
@@ -31,6 +31,7 @@ import {
   createDeviceControlRuntimeState,
   expireConfirmedDesiredStepOnBinaryOff,
   markSteppedLoadDesiredStepIssued,
+  noteSteppedLoadReportedStep,
   preserveSteppedLoadDesiredStep,
   pruneStaleSteppedLoadCommandStates,
   reportSteppedLoadActualStep,
@@ -122,11 +123,11 @@ export class SteppedCommandStore {
       || this.state.steppedLoadLastBinaryOnByDeviceId.size > 0;
   }
 
-  /** The tracked step, when commands for it in a row went unconfirmed. */
-  getUnconfirmedStepCommands(deviceId: string): UnconfirmedStepCommands {
+  /** The tracked step, when commands for it in a row drew no report of any level. */
+  getUnansweredStepCommands(deviceId: string): UnansweredStepCommands {
     const desired = this.state.steppedLoadDesiredByDeviceId.get(deviceId);
-    return desired !== undefined && desired.unconfirmedCount > 0
-      ? { kind: 'unconfirmed', stepId: desired.stepId, count: desired.unconfirmedCount }
+    return desired?.answer.kind === 'unanswered' && desired.answer.expiredCount > 0
+      ? { kind: 'unanswered', stepId: desired.stepId, count: desired.answer.expiredCount }
       : { kind: 'none' };
   }
 
@@ -165,6 +166,11 @@ export class SteppedCommandStore {
 
   reportActualStep(observation: FlowSteppedLoadObservation): ReportSteppedLoadActualStepResult {
     return reportSteppedLoadActualStep(this.state, this.reportedStore, observation);
+  }
+
+  /** Settle the tracked command against the step the device reports (`noteSteppedLoadReportedStep`). */
+  noteReportedStep(deviceId: string, stepId: string, reportedAtMs: number): void {
+    noteSteppedLoadReportedStep(this.state, deviceId, stepId, reportedAtMs);
   }
 
   /**

@@ -392,11 +392,11 @@ export type ExecutableSteppedLoadCommandSession = {
   reportedStepId?: string;
   /** Commanded-axis: a step command is issued and not yet settled. */
   stepCommandPending: boolean;
-  /** The tracked step command, when the device has let commands for it go unconfirmed. */
-  unconfirmedStepCommands: UnconfirmedStepCommands;
+  /** The tracked step command, when the device has reported nothing back to commands for it. */
+  unansweredStepCommands: UnansweredStepCommands;
 };
 
-/** A step the device was asked for, and how many commands for it in a row it did not confirm. */
-export type UnconfirmedStepCommands =
+/** A step the device was asked for, and how many commands for it in a row drew no report of any level. */
+export type UnansweredStepCommands =
   | { kind: 'none' }
-  | { kind: 'unconfirmed'; stepId: string; count: number };
+  | { kind: 'unanswered'; stepId: string; count: number };

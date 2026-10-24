@@ -164,7 +164,7 @@ const createScenario = (settings: DeferredObjectiveSettingsV1) => {
         } as ExecutorDeviceRead, undefined);
         return resolveTaskDeliveryControl(planDevice, resolveDeviceExecutionState(
           buildExecutableDeviceIntent(planDevice), observed,
-          { binary: { kind: 'none' }, step: { kind: 'none' }, target: null, unconfirmedStepCommands: { kind: 'none' as const } }, false,
+          { binary: { kind: 'none' }, step: { kind: 'none' }, target: null, unansweredStepCommands: { kind: 'none' as const } }, false,
         ));
       },
       // Device-owner semantic port; the car correlation and qualified-limit

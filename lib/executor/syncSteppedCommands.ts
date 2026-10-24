@@ -32,9 +32,11 @@ export type SyncSteppedCommandsParams = {
  *
  * Ordering matters and is the decorator's, preserved: expire the ended
  * on-session first (a device that went off has no live command to confirm),
- * then confirm against the reported rung, then reconcile the initialization
- * latch against the ladder in force. The stale sweep runs once for the whole
- * pass rather than per device, because it is a timeout over the whole store.
+ * then settle against the reported rung (the commanded rung confirms the
+ * command, and any rung reported after it answers it), then reconcile the
+ * initialization latch against the ladder in force. The stale sweep runs once
+ * for the whole pass rather than per device, because it is a timeout over the
+ * whole store.
  *
  * Returns whether anything changed, so the caller can decide whether the plan
  * snapshot is worth refreshing — the same contract `syncPendingBinaryCommands`
@@ -52,10 +54,7 @@ export const syncSteppedCommands = (params: SyncSteppedCommandsParams): boolean 
 
     const confirmation = device.steppedCommandConfirmation;
     if (confirmation.state === 'observed') {
-      const desired = store.getDesired(device.id);
-      if (desired?.stepId === confirmation.observedStepId) {
-        store.confirmDesired(device.id, desired);
-      }
+      store.noteReportedStep(device.id, confirmation.observedStepId, confirmation.observedAtMs);
     }
 
     store.reconcileInitializationLatch(device.id, device.lowestActiveStepId);

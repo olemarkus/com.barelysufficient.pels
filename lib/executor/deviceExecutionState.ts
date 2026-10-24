@@ -2,7 +2,7 @@ import { isBinaryDrivenIntent } from './executableDesiredState';
 import { hasBinaryCommand } from './executablePlan';
 import type { DeviceExecutionState, AxisProgress } from '../planContract/deviceExecutionState';
 import type {
-  ExecutableDeviceIntent, ExecutableObservedDeviceState, UnconfirmedStepCommands,
+  ExecutableDeviceIntent, ExecutableObservedDeviceState, UnansweredStepCommands,
 } from './executablePlan';
 import { hasSteppedCommand, hasTargetCommand, hasReleaseCommand } from './executablePlan';
 import type { DriftCommandRead } from './driftObservedDevice';
@@ -15,8 +15,8 @@ import {
 
 export type ExecutionCommandState = DriftCommandRead & {
   target: { desired: number } | null;
-  /** The tracked step command, when commands for it in a row went unconfirmed. */
-  unconfirmedStepCommands: UnconfirmedStepCommands;
+  /** The tracked step command, when commands for it in a row drew no report of any level. */
+  unansweredStepCommands: UnansweredStepCommands;
 };
 
 /**
@@ -104,12 +104,12 @@ function resolveTargetProgress(
 // Counted for the step the plan still wants, which the device still does not report: a count
 // left over from a step the plan has since moved off says nothing about this one.
 function isStepCommandUnanswered(
-  unconfirmed: UnconfirmedStepCommands,
+  unanswered: UnansweredStepCommands,
   desiredStepId: string | null,
   stepProgress: AxisProgress,
 ): boolean {
-  return unconfirmed.kind === 'unconfirmed' && unconfirmed.stepId === desiredStepId
-    && stepProgress !== 'settled' && unconfirmed.count >= STEP_COMMAND_UNANSWERED_AFTER;
+  return unanswered.kind === 'unanswered' && unanswered.stepId === desiredStepId
+    && stepProgress !== 'settled' && unanswered.count >= STEP_COMMAND_UNANSWERED_AFTER;
 }
 
 export function resolveDeviceExecutionState(
@@ -133,7 +133,7 @@ export function resolveDeviceExecutionState(
     targetProgress: resolveTargetProgress(desiredTarget, observed, command.target),
     resumeExpected: physicalState === 'off' && resolveResumeExpected(intent, desiredBinary, desiredStepId),
     steppedTransitionPending: hasSteppedCommand(intent) && (binaryProgress === 'pending' || stepProgress === 'pending'),
-    stepCommandUnanswered: isStepCommandUnanswered(command.unconfirmedStepCommands, desiredStepId, stepProgress),
+    stepCommandUnanswered: isStepCommandUnanswered(command.unansweredStepCommands, desiredStepId, stepProgress),
     externalOffHeld,
   };
 }

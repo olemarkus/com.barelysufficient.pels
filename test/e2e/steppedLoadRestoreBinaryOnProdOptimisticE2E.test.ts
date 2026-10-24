@@ -240,7 +240,7 @@ const buildExecutor = (initialSnapshot: TargetDeviceSnapshot, device: HomeyDevic
     getSteppedLoadCommandSession: () => ({
       hasPriorStepCommand: false,
       stepCommandPending: false,
-      unconfirmedStepCommands: { kind: 'none' as const },
+      unansweredStepCommands: { kind: 'none' as const },
     }),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
     storageLane: { kind: 'none' },
