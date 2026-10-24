@@ -4,6 +4,7 @@ import type { DeviceExecutionState } from '../planContract/deviceExecutionState'
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
 import type { IdleClassification } from '../../packages/contracts/src/idleClassification';
 import type { DeviceOverviewSnapshot } from '../../packages/contracts/src/deviceOverview';
+import type { PriceTargetShift } from '../../packages/planner-types/src/temperatureSetpoints';
 import {
   displayStateLabel, displayStateTone, isHoldReasonCode, resolveDisplayStateKind, resolveIntentStateKind,
 } from '../../packages/shared-domain/src/planCardGrammar';
@@ -33,6 +34,8 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
   execution: DeviceExecutionState;
   starvation?: SettingsUiPlanDeviceStarvation;
   idleClassification?: IdleClassification;
+  /** The plan device's own fact (`DevicePlanDevice.priceTargetShift`), spread in with it. */
+  priceTargetShift: PriceTargetShift;
 };
 
 function resolveBaseKind(device: DeviceStatusInput): PlanStateKind {

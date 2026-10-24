@@ -11,10 +11,15 @@ import {
 import { resolveHeldCardReasonLine } from './planCardReasonLine';
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
 import type { DeviceOverviewSnapshot } from '../../packages/contracts/src/deviceOverview';
+import type { IdleClassification } from '../../packages/contracts/src/idleClassification';
+import type { PriceTargetShift } from '../../packages/planner-types/src/temperatureSetpoints';
 
 type TemperatureDevice = DeviceOverviewSnapshot & {
   stateKind?: PlanStateKind;
   starvation?: SettingsUiPlanDeviceStarvation;
+  priceTargetShift: PriceTargetShift;
+  /** The observer's diagnosis of a device not drawing, when it has one. */
+  idleClassification?: IdleClassification;
 };
 
 // Shown when a surplus-absorb lift raised this device's setpoint to self-consume solar
@@ -89,6 +94,28 @@ const resolveSurplusAbsorbReason = (device: TemperatureDevice, kind: string): st
     : null
 );
 
+/**
+ * Why the target sits off the mode's own while a price level moves it: the
+ * card shows 25 °C above a mode row saying 21 °C during a cheap hour, and this
+ * is the line that connects them. Running, or idle at that target with its
+ * output on; a held card says what holds it, and an Off card says nothing about
+ * a target. The device's own diagnosis wins: "Not drawing power" or a setpoint
+ * cap is what the owner needs to read in exactly these hours, since a cheap-hour
+ * raise above a heater's own cap is what produces the cap. `raised` and
+ * `lowered` are the target's own number, so a cooling unit on a cheap hour reads
+ * "Lowered while power is cheap".
+ */
+export const resolvePriceTargetReason = (
+  device: Pick<TemperatureDevice, 'priceTargetShift' | 'currentState' | 'idleClassification'>,
+  kind: string,
+): string | null => {
+  const shift = device.priceTargetShift;
+  if (shift.kind !== 'shifted') return null;
+  if (device.idleClassification !== undefined && device.idleClassification !== 'near_target_idle') return null;
+  if (kind !== 'active' && (kind !== 'idle' || device.currentState === 'off')) return null;
+  return `${shift.direction === 'raised' ? 'Raised' : 'Lowered'} while power is ${shift.priceLevel}`;
+};
+
 // Plan-INTENT kind (raw + the idle→held upgrade): a hold/wait reason means
 // the plan is holding the device back even when the planner marked it
 // inactive, so the reason line renders for those cards too. Simulation only
@@ -122,6 +149,8 @@ const resolveTemperaturePlanReasonLine = (device: TemperatureDevice): string | n
 
   const surplusReason = resolveSurplusAbsorbReason(device, kind);
   if (surplusReason !== null) return surplusReason;
+  const priceReason = resolvePriceTargetReason(device, kind);
+  if (priceReason !== null) return priceReason;
 
   if (kind !== 'held' && kind !== 'resuming') return null;
   // The card's bold state word already says "Resuming" (2026-07 card

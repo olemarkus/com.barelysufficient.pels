@@ -19,6 +19,7 @@ const activeDevice = (overrides: Record<string, unknown> = {}): ReasonDevice => 
   controllable: true,
   available: true,
   reason: { code: PLAN_REASON_CODES.keep },
+  priceTargetShift: { kind: 'none' },
   ...overrides,
 } as unknown as ReasonDevice);
 

@@ -785,6 +785,17 @@ THREE per-device surplus controls share the `surplusWilling` opt-in; the label n
 
 Sources: `lib/plan/planTemperatureCardText.ts` (the two card reasons), `PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS` in `planStateLabels.ts`, and `packages/shared-domain/src/solarSurplusTrackingCopy.ts` (every tracking string).
 
+**A target a price level moved.** While the price level is what holds a
+temperature device's planned target off its mode target, the running or idle
+card says so: `Raised while power is cheap` / `Lowered while power is
+expensive`. The verb is the target's own number, so a cooling unit reads
+`Lowered while power is cheap`. The solar line above wins when a lift is what
+the plan commands, a held card keeps the reason that holds it, and an `Off`
+card shows no target line. The device's own idle diagnosis wins too (`Not
+drawing power`, the setpoint-cap line): a cheap-hour raise above a heater's own
+cap is exactly what produces the cap. Source: `resolvePriceTargetReason` in
+`lib/plan/planTemperatureCardText.ts`.
+
 ### Who may start a device
 
 | Concept | Label |

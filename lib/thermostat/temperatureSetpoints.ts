@@ -31,6 +31,7 @@ import type {
 } from '../../packages/planner-types/src/planInputDevice';
 import type { ShedBehavior } from '../../packages/planner-types/src/shedBehavior';
 import type {
+  PriceTargetShift,
   ResolveTemperatureSetpoints,
   ResolvedShedBehavior,
   TemperatureSetpoints,
@@ -123,6 +124,21 @@ function resolveTargetStepC(device: TemperatureInputDevice, intendedC: number): 
   return intendedC < HIGH_TEMPERATURE_FROM_C ? LOW_TEMPERATURE_STEP_C : HIGH_TEMPERATURE_STEP_C;
 }
 
+/**
+ * How the price shift moves the kept setpoint: compared with where the same
+ * floor and capability would put it unshifted, so a shift the floor overrides,
+ * or one the capability rounds away, is no shift at all.
+ */
+function resolveKeepPriceShift(keepC: number, unshiftedKeepC: number, priceLevel: PriceLevel): PriceTargetShift {
+  if (keepC === unshiftedKeepC) return { kind: 'none' };
+  if (priceLevel !== PriceLevel.CHEAP && priceLevel !== PriceLevel.EXPENSIVE) return { kind: 'none' };
+  return {
+    kind: 'shifted',
+    direction: keepC > unshiftedKeepC ? 'raised' : 'lowered',
+    priceLevel: priceLevel === PriceLevel.CHEAP ? 'cheap' : 'expensive',
+  };
+}
+
 /** The setpoint the owner's surplus lift commands, or `desiredC` when the device has none. */
 function resolveSurplusRawC(
   direction: ThermalDirection,
@@ -154,6 +170,9 @@ function resolveDeviceSetpoints(
     typeof floorC === 'number' ? moreDemandingSetpoint(direction, setpointC, floorC) : setpointC
   );
   const keepC = normalizeTargetCapabilityValue({ target, value: withFloor(desiredC) });
+  const keepPriceShift = resolveKeepPriceShift(
+    keepC, normalizeTargetCapabilityValue({ target, value: withFloor(intendedC) }), intent.priceLevel,
+  );
   const surplusC = normalizeTargetCapabilityValue({
     target,
     value: withFloor(resolveSurplusRawC(direction, config.surplusLiftC, intendedC, desiredC)),
@@ -178,6 +197,7 @@ function resolveDeviceSetpoints(
     intendedC,
     desiredC,
     keepC,
+    keepPriceShift,
     surplusC,
     targetStepC,
     shed,

@@ -26,6 +26,7 @@ const baseDevice = {
   binaryControllable: false,
   isEvCharger: false,
   currentState: 'not_applicable' as const,
+  priceTargetShift: { kind: 'none' as const },
 };
 
 describe('resolveTemperatureLine', () => {
@@ -58,6 +59,74 @@ describe('resolveTemperatureLine', () => {
 });
 
 describe('resolveTemperatureReasonLine', () => {
+  describe('a target a price level moved', () => {
+    const raisedOnCheap = { kind: 'shifted' as const, direction: 'raised' as const, priceLevel: 'cheap' as const };
+    const running = {
+      ...baseDevice,
+      stateKind: 'active' as const,
+      plannedState: 'keep' as const,
+      temperature: { currentTemperature: 21, currentTarget: 23, plannedTarget: 23, thermalDirection: 'heating' as const },
+      reason: { code: 'keep' as const, detail: null },
+    };
+
+    it('says why the target sits above the mode while power is cheap', () => {
+      expect(resolveTemperatureReasonLine({ ...running, priceTargetShift: raisedOnCheap }))
+        .toBe('Raised while power is cheap');
+    });
+
+    it('names the target\'s own direction, so a cooling unit reads lowered on a cheap hour', () => {
+      expect(resolveTemperatureReasonLine({
+        ...running,
+        temperature: { ...running.temperature, thermalDirection: 'cooling' as const },
+        priceTargetShift: { kind: 'shifted', direction: 'lowered', priceLevel: 'cheap' },
+      })).toBe('Lowered while power is cheap');
+    });
+
+    it('lets the solar lift speak when that is what the plan commands', () => {
+      expect(resolveTemperatureReasonLine({ ...running, surplusAbsorbActive: true, priceTargetShift: raisedOnCheap }))
+        .toBe('Raised to use your solar power');
+    });
+
+    it('gives way to the device\'s own diagnosis of why it is not drawing', () => {
+      // A cheap-hour raise above a water heater's own cap is what produces the
+      // cap, so the cap is the line the owner needs then.
+      for (const idleClassification of ['capped_idle', 'unresponsive'] as const) {
+        expect(resolveTemperatureReasonLine({ ...running, idleClassification, priceTargetShift: raisedOnCheap }))
+          .toBeNull();
+      }
+      expect(resolveTemperatureReasonLine({
+        ...running, idleClassification: 'near_target_idle', priceTargetShift: raisedOnCheap,
+      })).toBe('Raised while power is cheap');
+    });
+
+    it('says nothing about a target on a card that is off', () => {
+      expect(resolveTemperatureReasonLine({
+        ...running, stateKind: 'idle' as const, currentState: 'off' as const, priceTargetShift: raisedOnCheap,
+      })).toBeNull();
+      expect(resolveTemperatureReasonLine({
+        ...running, stateKind: 'idle' as const, currentState: 'not_applicable' as const, priceTargetShift: raisedOnCheap,
+      })).toBe('Raised while power is cheap');
+    });
+
+    it('keeps a held card on what holds it', () => {
+      expect(resolveTemperatureReasonLine({
+        ...running,
+        stateKind: 'held' as const,
+        plannedState: 'shed' as const,
+        priceTargetShift: raisedOnCheap,
+        reason: {
+          code: 'insufficient_headroom',
+          needKw: 1.25,
+          availableKw: 0.45,
+          effectiveAvailableKw: null,
+          admissionMarginKw: -0.8,
+          penaltyExtraKw: null,
+          swapReserveKw: null,
+        },
+      })).not.toBe('Raised while power is cheap');
+    });
+  });
+
   // The gap is the negated admission margin, which is now exactly
   // `need − available`: nothing is withheld on top of the device's own need. It
   // used to differ, and `need − available` understated the real bar by the flat

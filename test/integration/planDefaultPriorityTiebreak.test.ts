@@ -65,6 +65,7 @@ const buildShedParams = (devices: PlanInputDevice[]): ShedCandidateParams => ({
 
 const buildRestoreDevice = (id: string): DevicePlanDevice => (withFixtureResidualKw({
   recordRestoreOnTargetApply: false,
+  priceTargetShift: { kind: 'none' },
   binaryCommandPending: false,
   id,
   name: id,

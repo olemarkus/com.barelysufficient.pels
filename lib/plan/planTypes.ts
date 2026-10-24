@@ -4,6 +4,7 @@ import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSe
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
 import type { PlannedTemperatureState } from '../../packages/shared-domain/src/plannedTemperatureState';
+import type { PriceTargetShift } from '../../packages/planner-types/src/temperatureSetpoints';
 import type {
   HeldChargeTarget,
   MeteredPlanInputKind,
@@ -671,6 +672,12 @@ type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
   // cycle's planned target (raised the setpoint to self-consume solar, not overridden by a
   // deadline floor). Drives the device card's "Raised to use your solar power" reason line.
   surplusAbsorbActive?: boolean;
+  /**
+   * Producer-resolved: how this hour's price level moved the planned target, when the kept
+   * setpoint is what the plan commands. `none` for every other device and outcome, a surplus
+   * lift included. Drives the card's "Raised while power is cheap" reason line.
+   */
+  priceTargetShift: PriceTargetShift;
   // Forwarded flat from `PlanInputDevice.reservesStartupPower` (see its doc block): this device
   // may hold back its lowest-active-step power from lower-priority devices' admission until it
   // has started. Read only by `lib/plan/admission/headroomReserve.ts`.

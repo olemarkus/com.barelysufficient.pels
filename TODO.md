@@ -292,16 +292,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Settings UI surfaces and copy
 
-- [ ] **A price-adjusted target gets no reason line on the hero or card.**
-      *Persona:* owner seeing hero "target 25 °C" above a Home-mode row saying 21 °C during a
-      cheap hour.
-      *Hypothesis:* the solar lift has its explaining line ("Raised to use your solar power",
-      `planTemperatureCardText.ts`) but the cheap-hour boost / expensive-hour reduction has no
-      sibling, so the owner must reconstruct hero = mode + price delta themselves. A symmetric
-      line ("Raised for cheap hours" / "Lowered for expensive hours"), sourced from the plan's
-      price-adjust fact whenever plannedTarget diverges from the active mode target, closes the
-      gap. Source: 2026-08-09 post-merge review, pels-ux-fit. [P2]
-
 
 - [ ] **Limits & safety: converge the Main-home form onto the native `.pels-input` field language.**
       *Persona:* multi-home owner who switches the shell's home scope bar between the Main home and a meter

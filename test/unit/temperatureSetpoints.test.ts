@@ -51,6 +51,28 @@ describe('temperature setpoints, resolved before the planner', () => {
     expect([cooler.desiredC, cooler.keepC]).toEqual([20, 20]);
   });
 
+  it('says how the price shift moved the kept setpoint, on the setpoint\'s own number', () => {
+    const heater = resolve(device({ currentTarget: 21, currentTemperature: 20 }), {
+      ...modeTarget(21), ...priced(PriceLevel.CHEAP, 2, -2),
+    });
+    const cooler = resolve(device({ currentTarget: 22, currentTemperature: 25 }), {
+      ...modeTarget(22), ...priced(PriceLevel.EXPENSIVE, 2, -2), getThermalDirection: () => 'cooling',
+    });
+    expect(heater.keepPriceShift).toEqual({ kind: 'shifted', direction: 'raised', priceLevel: 'cheap' });
+    expect(cooler.keepPriceShift).toEqual({ kind: 'shifted', direction: 'raised', priceLevel: 'expensive' });
+    // A normal hour shifts nothing.
+    expect(resolve(device({ currentTarget: 21, currentTemperature: 20 }), {
+      ...modeTarget(21), ...priced(PriceLevel.NORMAL, 2, -2),
+    }).keepPriceShift).toEqual({ kind: 'none' });
+  });
+
+  it('reports no price shift when the smart-task floor already puts the setpoint there', () => {
+    // The floor at 24 °C holds the kept setpoint above both the shifted 23 and the unshifted 21.
+    expect(resolve(device({ currentTarget: 21, currentTemperature: 20, deadlineFloorTargetC: 24 }), {
+      ...modeTarget(21), ...priced(PriceLevel.CHEAP, 2, -2),
+    }).keepPriceShift).toEqual({ kind: 'none' });
+  });
+
   it('holds the deadline floor on the demand side of the kept setpoint, per direction', () => {
     // A heater is kept at least as warm as the floor, a cooling unit at least as cold.
     expect(resolve(device({ currentTarget: 20, currentTemperature: 19, deadlineFloorTargetC: 23 }), modeTarget(20)).keepC)

@@ -51,6 +51,7 @@ describe('pels status limit reason', () => {
     devices: [
       withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default', currentDrawKw: 0,
         recordRestoreOnTargetApply: false,
+        priceTargetShift: { kind: 'none' as const },
         binaryCommandPending: false,
         ...baseDevice,
         reason: typeof params.reason === 'string' ? fixtureDeviceReason(params.reason)! : params.reason,
@@ -197,6 +198,7 @@ describe('pels status limit reason', () => {
       devices: [
         withTemperatureDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
           recordRestoreOnTargetApply: false,
+          priceTargetShift: { kind: 'none' as const },
           binaryCommandPending: false,
           id: 'ev-1',
           name: 'EV Charger',

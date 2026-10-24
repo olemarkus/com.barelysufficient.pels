@@ -144,6 +144,7 @@ const buildPlan = (): DevicePlan => ({
   devices: [
     withTemperatureDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
       recordRestoreOnTargetApply: false,
+      priceTargetShift: { kind: 'none' as const },
       binaryCommandPending: false,
       id: 'dev-1',
       name: 'Heater',
@@ -182,6 +183,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
       // What production's `finalizePlanDevices` stamps for this harness's flat
       // 16° floor: observed at the floor and the plan raises it.
       recordRestoreOnTargetApply: currentTarget === 16 && plannedTarget > currentTarget,
+      priceTargetShift: { kind: 'none' as const },
       binaryCommandPending: false,
       id: 'dev-1',
       name: 'Heater',
@@ -1849,6 +1851,7 @@ describe('PlanExecutor stepped loads', () => {
       devices: [
         withTemperatureDiscriminant(withSteppedDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
           recordRestoreOnTargetApply: false,
+          priceTargetShift: { kind: 'none' as const },
           binaryCommandPending: false,
           ...merged,
           control: fixtureControlPosture(merged),
@@ -4391,6 +4394,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
     const shedDevice = withFixtureResidualKw({
       recordRestoreOnTargetApply: false,
+      priceTargetShift: { kind: 'none' as const },
       binaryCommandPending: false,
       id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
       deviceType: 'onoff' as const, isEvCharger: false, isBatteryOrSolar: false, storageHold: { kind: 'none' as const },
@@ -4404,6 +4408,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     });
     const steppedDevice = (desiredStepId: string) => (withFixtureResidualKw({
       recordRestoreOnTargetApply: false,
+      priceTargetShift: { kind: 'none' as const },
       binaryCommandPending: false,
       id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep' as const,
       deviceType: 'onoff' as const, isEvCharger: false, isBatteryOrSolar: false, storageHold: { kind: 'none' as const },

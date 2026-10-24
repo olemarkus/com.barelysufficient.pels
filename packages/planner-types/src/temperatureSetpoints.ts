@@ -41,6 +41,17 @@ export type ResolvedShedBehavior =
     asksLessThanIntended: boolean;
   };
 
+/**
+ * Which way this hour's price shift moves the kept setpoint, and on which price
+ * level: `raised` and `lowered` are the setpoint's own number, so a cooling unit
+ * on a cheap hour reads `lowered`. `none` when no shift applies, and when the
+ * smart-task floor or the capability's range takes the setpoint to where the
+ * unshifted one would be anyway.
+ */
+export type PriceTargetShift =
+  | { kind: 'none' }
+  | { kind: 'shifted'; direction: 'raised' | 'lowered'; priceLevel: 'cheap' | 'expensive' };
+
 export type TemperatureSetpoints = {
   /** The active mode's target for the device, or its own setpoint when the mode has none. */
   intendedC: number;
@@ -51,6 +62,8 @@ export type TemperatureSetpoints = {
    * surplus: `desiredC` held at the smart-task deadline floor when one applies.
    */
   keepC: number;
+  /** How this hour's price shift moves `keepC` from where it would be without it. */
+  keepPriceShift: PriceTargetShift;
   /** `keepC` with the owner's surplus lift applied. Equal to `keepC` for a device with no lift. */
   surplusC: number;
   /** The capability's step, or a default by temperature range. Half of it is the tolerance of the `…AsksLessThanIntended` facts. */

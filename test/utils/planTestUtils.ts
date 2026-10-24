@@ -878,6 +878,7 @@ export function buildPlanDevice(overrides: PlanDeviceFixtureOverrides = {}): Dev
     plannedState: 'keep',
     // Finalize-stamped in production; fixture default mirrors pre-finalize.
     recordRestoreOnTargetApply: false,
+    priceTargetShift: { kind: 'none' },
     reason: fixtureDeviceReason('keep')!,
     ...withFixtureSteppedTriple(withFixtureTemperatureKind({
       ...withMaterializedEvPlugState(rest),

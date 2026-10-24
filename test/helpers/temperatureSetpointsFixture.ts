@@ -46,6 +46,7 @@ export const fixtureTemperatureSetpointsEntry = (
   intendedC: 21,
   desiredC: 21,
   keepC: 21,
+  keepPriceShift: { kind: 'none' },
   surplusC: 21,
   targetStepC: 0.5,
   shed: { action: 'turn_off' },

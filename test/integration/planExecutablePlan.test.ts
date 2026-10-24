@@ -136,6 +136,7 @@ describe('planExecutablePlan', () => {
       // normalized shed floor and the plan raises it. The executor no longer
       // re-derives this from shed config — it copies the plan's fact.
       recordRestoreOnTargetApply: true,
+      priceTargetShift: { kind: 'none' },
     });
     const intent = buildExecutableTargetIntent(thermostat);
     const observed = buildExecutableObservedDeviceState({
@@ -172,6 +173,7 @@ describe('planExecutablePlan', () => {
       currentTemperature: 16,
       plannedTarget: 21,
       recordRestoreOnTargetApply: true,
+      priceTargetShift: { kind: 'none' },
     });
     const intent = buildExecutableTargetIntent(thermostat);
     // Observed moved off the floor (a person nudged it to 17) after the build.
@@ -206,6 +208,7 @@ describe('planExecutablePlan', () => {
       currentTemperature: 16,
       plannedTarget: 21,
       recordRestoreOnTargetApply: true,
+      priceTargetShift: { kind: 'none' },
     });
     const intent = buildExecutableTargetIntent(thermostat);
     const observed = buildExecutableObservedDeviceState({
@@ -238,6 +241,7 @@ describe('planExecutablePlan', () => {
       currentTemperature: 27,
       plannedTarget: 22,
       recordRestoreOnTargetApply: true,
+      priceTargetShift: { kind: 'none' },
     });
     const intent = buildExecutableTargetIntent(coolingUnit);
     const observedAt = (value: number) => buildExecutableObservedDeviceState({
