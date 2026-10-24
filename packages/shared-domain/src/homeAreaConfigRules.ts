@@ -2,8 +2,8 @@
  * Config rules for meter areas: the caps and name rules a SAVED area must
  * satisfy, not merely the ones the editor draft checks.
  *
- * Why a shared module: the runtime save seam (`setup/homeMeterOwnership.ts`)
- * is the enforcement and the settings UI renders the refusal, so both sides
+ * Why a shared module: the runtime save rules (`lib/home/homeAreaSaveRules.ts`)
+ * are the enforcement and the settings UI renders the refusal, so both sides
  * must speak one set of rules and one set of words
  * (`feedback_ui_text_shared_with_logs`). Pure and browser-safe.
  *

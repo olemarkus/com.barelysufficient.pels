@@ -20,7 +20,7 @@ import { readConfiguredPowerSource } from './powerSourceSettings';
  *   bundles and fenced OUT of Main's admitted samples by the sampled-meter
  *   identity work (`setup/powerSamplePipeline.ts` publishes the resolved
  *   identity with the admitted watts, and whenever meter areas run on Homey
- *   Energy, Main must name its own meter — `setup/homeMeterOwnership.ts`).
+ *   Energy, Main must name its own meter — `lib/home/homeAreaSaveRules.ts`).
  *   Editing an area's meter therefore never changes the series behind Main's
  *   retained history, while a roster arm would discard up to two years of
  *   evidence on routine area maintenance;
