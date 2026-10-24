@@ -8,7 +8,7 @@ import { zeroHourProfile } from './hourProfile';
 import { OBSERVED_HOURLY_PEAK_WINDOW_DAYS } from './dailyBudgetConstants';
 import { buildObservedHourlyStatsFromWindow } from './dailyBudgetObservedStats';
 import { normalizeWeights, sumArray } from './dailyBudgetMath';
-import type { DailyBudgetState } from './dailyBudgetTypes';
+import type { DailyBudgetProfile, DailyBudgetState } from './dailyBudgetTypes';
 import type { ObservedHourlyStats } from './observedHourlyStats';
 
 export function buildBucketUsageSplit(params: {
@@ -80,6 +80,8 @@ export function hasUnreliableOverlap(params: {
 
 type LearningSkipResult = { nextState: DailyBudgetState; shouldMarkDirty: boolean; logEvent?: Record<string, unknown> };
 
+type LearningSkipReason = 'incomplete_data' | 'missing_totals' | 'zero_kwh';
+
 type LearningWindow = {
   bucketStartUtcMs: number[];
   windowEndUtcMs: number;
@@ -93,34 +95,33 @@ type LearningTotals = {
   totalKWh: number;
 };
 
-const resolveLearningWindow = (params: {
-  state: DailyBudgetState;
-  timeZone: string;
-  powerTracker: PowerTrackerState;
-  previousDateKey: string;
-  previousDayStartUtcMs: number | null;
-}): LearningWindow | LearningSkipResult => {
-  const {
-    state,
-    timeZone,
-    powerTracker,
-    previousDateKey,
-    previousDayStartUtcMs,
-  } = params;
-  if (previousDayStartUtcMs === null) {
-    return { nextState: state, shouldMarkDirty: false };
-  }
+type HourlyTotals = { hourlyUncontrolled: number[]; hourlyControlled: number[] };
+
+type DayWeights = { dayUncontrolledWeights: number[] | null; dayControlledWeights: number[] | null };
+
+const skipLearning = (
+  state: DailyBudgetState,
+  previousDateKey: string,
+  reason: LearningSkipReason,
+): LearningSkipResult => ({
+  nextState: resetLearningPlanState(state),
+  shouldMarkDirty: true,
+  logEvent: { event: 'daily_budget_learning_skipped', dateKey: previousDateKey, reason },
+});
+
+/** The previous local day's buckets, or null when the tracker marked part of that day unreliable. */
+const resolveLearningWindow = (
+  previousDayStartUtcMs: number,
+  timeZone: string,
+  powerTracker: PowerTrackerState,
+): LearningWindow | null => {
   const previousNextDayStartUtcMs = getNextLocalDayStartUtcMs(previousDayStartUtcMs, timeZone);
   if (hasUnreliableOverlap({
     startUtcMs: previousDayStartUtcMs,
     endUtcMs: previousNextDayStartUtcMs,
     unreliablePeriods: powerTracker.unreliablePeriods,
   })) {
-    return {
-      nextState: resetLearningPlanState(state),
-      shouldMarkDirty: true,
-      logEvent: { event: 'daily_budget_learning_skipped', dateKey: previousDateKey, reason: 'incomplete_data' },
-    };
+    return null;
   }
   const { bucketStartUtcMs } = buildLocalDayBuckets({
     dayStartUtcMs: previousDayStartUtcMs,
@@ -133,39 +134,20 @@ const resolveLearningWindow = (params: {
   };
 };
 
-const resolveLearningTotals = (params: {
-  state: DailyBudgetState;
-  powerTracker: PowerTrackerState;
-  previousDateKey: string;
-  bucketStartUtcMs: number[];
-}): LearningTotals | LearningSkipResult => {
-  const {
-    state,
-    powerTracker,
-    previousDateKey,
-    bucketStartUtcMs,
-  } = params;
+const resolveLearningTotals = (
+  learningWindow: LearningWindow,
+  powerTracker: PowerTrackerState,
+): LearningTotals | Exclude<LearningSkipReason, 'incomplete_data'> => {
+  const { bucketStartUtcMs } = learningWindow;
   const bucketUsage = buildBucketUsageSplit({
     bucketStartUtcMs,
     powerTracker,
   });
-  if (!bucketUsage.hasTotalData) {
-    return {
-      nextState: resetLearningPlanState(state),
-      shouldMarkDirty: true,
-      logEvent: { event: 'daily_budget_learning_skipped', dateKey: previousDateKey, reason: 'missing_totals' },
-    };
-  }
+  if (!bucketUsage.hasTotalData) return 'missing_totals';
   const totalUncontrolledKWh = sumArray(bucketUsage.bucketUsageUncontrolled);
   const totalControlledKWh = sumArray(bucketUsage.bucketUsageControlled);
   const totalKWh = totalUncontrolledKWh + totalControlledKWh;
-  if (totalKWh <= 0) {
-    return {
-      nextState: resetLearningPlanState(state),
-      shouldMarkDirty: true,
-      logEvent: { event: 'daily_budget_learning_skipped', dateKey: previousDateKey, reason: 'zero_kwh' },
-    };
-  }
+  if (totalKWh <= 0) return 'zero_kwh';
   return {
     bucketStartUtcMs,
     bucketUsage,
@@ -176,12 +158,8 @@ const resolveLearningTotals = (params: {
 };
 
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
-const buildHourlyTotals = (params: {
-  bucketStartUtcMs: number[];
-  timeZone: string;
-  bucketUsage: ReturnType<typeof buildBucketUsageSplit>;
-}): { hourlyUncontrolled: number[]; hourlyControlled: number[] } => {
-  const { bucketStartUtcMs, timeZone, bucketUsage } = params;
+const buildHourlyTotals = (totals: LearningTotals, timeZone: string): HourlyTotals => {
+  const { bucketStartUtcMs, bucketUsage } = totals;
   // 24-slot profiles, so the `Hour` a bucket resolves to indexes them checked.
   const hourlyUncontrolled = zeroHourProfile();
   const hourlyControlled = zeroHourProfile();
@@ -196,23 +174,10 @@ const buildHourlyTotals = (params: {
 };
 /* eslint-enable functional/immutable-data */
 
-const buildDayWeights = (params: {
-  hourlyUncontrolled: number[];
-  hourlyControlled: number[];
-  totalUncontrolledKWh: number;
-  totalControlledKWh: number;
-}): { dayUncontrolledWeights: number[] | null; dayControlledWeights: number[] | null } => {
-  const {
-    hourlyUncontrolled,
-    hourlyControlled,
-    totalUncontrolledKWh,
-    totalControlledKWh,
-  } = params;
-  return {
-    dayUncontrolledWeights: totalUncontrolledKWh > 0 ? normalizeWeights(hourlyUncontrolled) : null,
-    dayControlledWeights: totalControlledKWh > 0 ? normalizeWeights(hourlyControlled) : null,
-  };
-};
+const buildDayWeights = (hourlyTotals: HourlyTotals, totals: LearningTotals): DayWeights => ({
+  dayUncontrolledWeights: totals.totalUncontrolledKWh > 0 ? normalizeWeights(hourlyTotals.hourlyUncontrolled) : null,
+  dayControlledWeights: totals.totalControlledKWh > 0 ? normalizeWeights(hourlyTotals.hourlyControlled) : null,
+});
 
 /** How many days the profile has learned from, whichever field of the state carries the count. */
 export const resolveProfileSampleCount = (state: DailyBudgetState): number => Math.max(
@@ -227,68 +192,37 @@ const resolveProfileSplitSampleCount = (state: DailyBudgetState): number => Math
   typeof state.profileSplitSampleCount === 'number' ? state.profileSplitSampleCount : 0,
 );
 
-const resolveNextProfile = (params: {
-  current?: DailyBudgetState['profileControlled'];
-  sampleCount: number;
-  dayWeights: number[] | null;
-  defaultProfile: number[];
-}): DailyBudgetState['profileControlled'] => {
-  const { current, sampleCount, dayWeights, defaultProfile } = params;
-  if (!dayWeights) return current ?? buildProfileFallback(defaultProfile);
-  return buildNextProfile({
-    current,
-    sampleCount,
-    dayWeights,
-    defaultProfile,
-  });
-};
 
-
-const buildNextLearningState = (params: {
-  state: DailyBudgetState;
-  defaultProfile: number[];
-  totalKWh: number;
-  totalControlledKWh: number;
-  bucketUsage: ReturnType<typeof buildBucketUsageSplit>;
-  dayUncontrolledWeights: number[] | null;
-  dayControlledWeights: number[] | null;
-  observedStats: ObservedHourlyStats;
-}): DailyBudgetState => {
-  const {
-    state,
-    defaultProfile,
-    totalKWh,
-    totalControlledKWh,
-    bucketUsage,
-    dayUncontrolledWeights,
-    dayControlledWeights,
-    observedStats,
-  } = params;
+const buildNextLearningState = (
+  state: DailyBudgetState,
+  defaultProfile: number[],
+  totals: LearningTotals,
+  dayWeights: DayWeights,
+  observedStats: ObservedHourlyStats,
+): DailyBudgetState => {
   const previousSampleCount = resolveProfileSampleCount(state);
   const previousSplitSampleCount = resolveProfileSplitSampleCount(state);
   const nextSampleCount = previousSampleCount + 1;
-  const nextSplitSampleCount = bucketUsage.usedControlledData
+  const nextSplitSampleCount = totals.bucketUsage.usedControlledData
     ? previousSplitSampleCount + 1
     : previousSplitSampleCount;
-  const controlledShare = totalControlledKWh / totalKWh;
+  const controlledShare = totals.totalControlledKWh / totals.totalKWh;
   const nextControlledShare = buildNextShare({
     previousShare: typeof state.profileControlledShare === 'number' ? state.profileControlledShare : 0,
     previousCount: previousSampleCount,
     dayShare: controlledShare,
     nextCount: nextSampleCount,
   });
-  const nextUncontrolled = resolveNextProfile({
-    current: state.profileUncontrolled,
-    sampleCount: previousSampleCount,
-    dayWeights: dayUncontrolledWeights,
-    defaultProfile,
-  });
-  const nextControlled = resolveNextProfile({
-    current: state.profileControlled,
-    sampleCount: previousSplitSampleCount,
-    dayWeights: dayControlledWeights,
-    defaultProfile,
-  });
+  const nextUncontrolled = buildNextProfile(
+    state.profileUncontrolled ?? buildProfileFallback(defaultProfile),
+    previousSampleCount,
+    dayWeights.dayUncontrolledWeights,
+  );
+  const nextControlled = buildNextProfile(
+    state.profileControlled ?? buildProfileFallback(defaultProfile),
+    previousSplitSampleCount,
+    dayWeights.dayControlledWeights,
+  );
   return resetLearningPlanState({
     ...state,
     profileUncontrolled: nextUncontrolled,
@@ -319,38 +253,19 @@ export function finalizePreviousDayLearning(params: {
     defaultProfile,
     nowMs,
   } = params;
-  const windowResult = resolveLearningWindow({
-    state,
-    timeZone,
-    powerTracker,
-    previousDateKey,
-    previousDayStartUtcMs,
-  });
-  if (!('bucketStartUtcMs' in windowResult)) {
-    return windowResult;
+  if (previousDayStartUtcMs === null) {
+    return { nextState: state, shouldMarkDirty: false };
   }
-  const totalsResult = resolveLearningTotals({
-    state,
-    powerTracker,
-    previousDateKey,
-    bucketStartUtcMs: windowResult.bucketStartUtcMs,
-  });
-  if (!('totalKWh' in totalsResult)) {
-    return totalsResult;
+  const learningWindow = resolveLearningWindow(previousDayStartUtcMs, timeZone, powerTracker);
+  if (learningWindow === null) {
+    return skipLearning(state, previousDateKey, 'incomplete_data');
   }
-  const { bucketUsage, totalUncontrolledKWh, totalControlledKWh, totalKWh } = totalsResult;
-  const { hourlyUncontrolled, hourlyControlled } = buildHourlyTotals({
-    bucketStartUtcMs: totalsResult.bucketStartUtcMs,
-    timeZone,
-    bucketUsage,
-  });
-  const { dayUncontrolledWeights, dayControlledWeights } = buildDayWeights({
-    hourlyUncontrolled,
-    hourlyControlled,
-    totalUncontrolledKWh,
-    totalControlledKWh,
-  });
-  const observedWindowEndMs = resolveObservedWindowEndMs(nowMs, windowResult.windowEndUtcMs);
+  const totals = resolveLearningTotals(learningWindow, powerTracker);
+  if (typeof totals === 'string') {
+    return skipLearning(state, previousDateKey, totals);
+  }
+  const dayWeights = buildDayWeights(buildHourlyTotals(totals, timeZone), totals);
+  const observedWindowEndMs = resolveObservedWindowEndMs(nowMs, learningWindow.windowEndUtcMs);
   const observedWindowStartMs = observedWindowEndMs - OBSERVED_HOURLY_PEAK_WINDOW_DAYS * 24 * 60 * 60 * 1000;
   const { stats: observedStats, windowBucketCount } = buildObservedHourlyStatsFromWindow({
     powerTracker,
@@ -358,25 +273,16 @@ export function finalizePreviousDayLearning(params: {
     windowStartUtcMs: observedWindowStartMs,
     windowEndUtcMs: observedWindowEndMs,
   });
-  const nextState = buildNextLearningState({
-    state,
-    defaultProfile,
-    totalKWh,
-    totalControlledKWh,
-    bucketUsage,
-    dayUncontrolledWeights,
-    dayControlledWeights,
-    observedStats,
-  });
+  const nextState = buildNextLearningState(state, defaultProfile, totals, dayWeights, observedStats);
 
-  const usageKindLabel = bucketUsage.usedControlledData ? 'split' : 'total';
+  const usageKindLabel = totals.bucketUsage.usedControlledData ? 'split' : 'total';
   return {
     nextState,
     shouldMarkDirty: true,
     logEvent: {
       event: 'daily_budget_learning_finalized',
       dateKey: previousDateKey,
-      totalKWh,
+      totalKWh: totals.totalKWh,
       usageKind: usageKindLabel,
       windowBucketCount,
     },
@@ -390,22 +296,24 @@ function resolveObservedWindowEndMs(nowMs: number | undefined, fallbackEndMs: nu
 }
 
 
-function buildProfileFallback(defaultProfile: number[]) {
+function buildProfileFallback(defaultProfile: number[]): DailyBudgetProfile {
   return {
     weights: [...defaultProfile],
     sampleCount: 0,
   };
 }
 
-function buildNextProfile(params: {
-  current?: DailyBudgetState['profileControlled'];
-  sampleCount: number;
-  dayWeights: number[];
-  defaultProfile: number[];
-}): DailyBudgetState['profileControlled'] {
-  const { current, sampleCount, dayWeights, defaultProfile } = params;
-  const profile = current ?? buildProfileFallback(defaultProfile);
-  if (dayWeights.length !== 24) return current ?? profile;
+/**
+ * Blend one day's weights into a profile learned over `sampleCount` days. A day
+ * with no weights for this split, or not exactly 24 of them, leaves the profile
+ * as it was.
+ */
+function buildNextProfile(
+  profile: DailyBudgetProfile,
+  sampleCount: number,
+  dayWeights: number[] | null,
+): DailyBudgetProfile {
+  if (!dayWeights || dayWeights.length !== 24) return profile;
   const nextCount = sampleCount + 1;
   const nextWeights = profile.weights.map((value, index) => (
     // `dayWeights` is length-checked to 24 above; a stored profile with more
