@@ -4,6 +4,7 @@ import type {
   SupportReportSubject,
 } from '../../../contracts/src/supportReport.ts';
 import {
+  draftFromRequest,
   newReportDraft,
   reportErrorMessage,
   reportIsLocked,
@@ -48,9 +49,10 @@ export class SupportReportController {
       };
     } else {
       const context = newReportDraft(subject, atMs);
-      this.state = { ...this.state, report: null, notice: '', draft: {
-        ...this.state.draft, subject, when: context.when, atMs: context.atMs,
-      } };
+      // An unsent description follows the user to the new context; a sent one does not.
+      const draft = this.state.report?.submission.state === 'sent'
+        ? context : { ...this.state.draft, subject, when: context.when, atMs: context.atMs };
+      this.state = { ...this.state, report: null, notice: '', draft };
     }
     this.show();
   }
@@ -63,17 +65,16 @@ export class SupportReportController {
 
   editDetails(): void {
     if (reportIsLocked(this.state) || !this.state.report) return;
-    const request = this.state.report.document.request;
-    this.edit({
-      ...newReportDraft(request.subject, request.occurredAtMs),
-      problem: request.problem, expected: request.expected, historyWindow: request.historyWindow,
-    });
+    this.edit(draftFromRequest(this.state.report.document.request));
   }
 
   private accept(response: SupportReportResponse): void {
     if (!response.ok) {
+      const { report, draft } = this.state;
+      // An expired preview keeps its incident time, so another preview reads the same activity.
       this.state = { ...this.state, notice: reportErrorMessage(response.code),
-        ...(response.code === 'report_expired' ? { report: null } : {}) };
+        ...(response.code === 'report_expired'
+          ? { report: null, draft: report ? draftFromRequest(report.document.request) : draft } : {}) };
       return;
     }
     this.state = { ...this.state, report: response.report, notice: reportSubmissionMessage(response.report) };
@@ -158,11 +159,7 @@ export class SupportReportController {
       const response = await this.api.get(id);
       if (generation !== this.operationGeneration) return;
       if (response.ok) {
-        const request = response.report.document.request;
-        this.state = { ...this.state, recoveryId: null, draft: {
-          ...newReportDraft(request.subject, request.occurredAtMs),
-          problem: request.problem, expected: request.expected, historyWindow: request.historyWindow,
-        } };
+        this.state = { ...this.state, recoveryId: null, draft: draftFromRequest(response.report.document.request) };
       }
       this.accept(response);
       if (!response.ok && response.code === 'report_expired') {

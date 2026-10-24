@@ -46,6 +46,12 @@ export const newReportDraft = (subject: SupportReportSubject, atMs?: number): Re
   atMs: atMs ?? Date.now(), historyWindow: 'incident',
 });
 
+/** A prepared request as an editable draft, kept at its incident time. */
+export const draftFromRequest = (request: SupportReportRequest): ReportDraft => ({
+  ...newReportDraft(request.subject, request.occurredAtMs),
+  problem: request.problem, expected: request.expected, historyWindow: request.historyWindow,
+});
+
 export const reportRequest = (draft: ReportDraft): SupportReportRequest => ({
   subject: draft.subject,
   problem: draft.problem,
@@ -54,9 +60,10 @@ export const reportRequest = (draft: ReportDraft): SupportReportRequest => ({
   historyWindow: draft.historyWindow,
 });
 
+/** A sent report is finished; only an operation or an unsettled submission holds the form. */
 export const reportIsLocked = (state: SupportReportViewState): boolean => (
   state.operation !== 'idle' || state.recoveryId !== null || (state.report !== null
-    && ['sending', 'unknown', 'sent'].includes(state.report.submission.state))
+    && ['sending', 'unknown'].includes(state.report.submission.state))
 );
 
 const REPORT_ERRORS: Record<SupportReportErrorCode, string> = {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PelsHost } from '../../lib/app/pelsHost';
 import { SupportReportEvidenceSource } from '../../lib/diagnostics/supportReportEvidence';
+import { createSupportReportReads } from '../../setup/appInit/createSupportReports';
 import type { DailyBudgetDayPayload } from '../../packages/contracts/src/dailyBudgetTypes';
 import type { SupportReportEvidence, SupportReportRequest } from '../../packages/contracts/src/supportReport';
 import { pelsHostDouble } from '../helpers/pelsHostDouble';
@@ -44,8 +45,8 @@ const currentHost = (homeId = 'main') => pelsHostDouble({
   getSettingsUiManagedDevices: vi.fn(() => []),
   refreshTargetDevicesSnapshot: vi.fn(async () => undefined),
 });
-const source = (app: PelsHost) => new SupportReportEvidenceSource({
-  app, manifest: { version: '9.8.7-running-build' }, version: '12.4.1-running-homey',
+const source = (app: PelsHost) => new SupportReportEvidenceSource(createSupportReportReads(app), {
+  manifest: { version: '9.8.7-running-build' }, version: '12.4.1-running-homey',
 });
 const values = (report: SupportReportEvidence, title: string) => (
   report.sections.find((section) => section.title === title)?.values
@@ -80,10 +81,13 @@ describe('support report evidence capture', () => {
   });
 
   it('resolves removed devices from retained names and rejects unknown device ids', async () => {
-    const host = pelsHostDouble({ getDeviceLogUiPayload: () => reportHistoryFixture([
-      reportActivityFixture({ deviceName: 'Old heater', atMs: now - 2 * hour }),
-      reportActivityFixture({ deviceName: 'Final heater name', atMs: now - hour }),
-    ]) });
+    const host = pelsHostDouble({
+      deviceManager: partialDouble<NonNullable<PelsHost['deviceManager']>>({ getSnapshotByDeviceId: () => undefined }),
+      getDeviceLogUiPayload: () => reportHistoryFixture([
+        reportActivityFixture({ deviceName: 'Old heater', atMs: now - 2 * hour }),
+        reportActivityFixture({ deviceName: 'Final heater name', atMs: now - hour }),
+      ]),
+    });
     const report = await source(host).capture(request, now);
     expect(report.subjectName).toBe('Final heater name');
     expect(report.activity.state).toBe('available');
@@ -92,6 +96,19 @@ describe('support report evidence capture', () => {
     await expect(source(host).capture({
       ...request, subject: { kind: 'device', homeId: 'main', deviceId: 'unknown' },
     }, now)).rejects.toMatchObject({ code: 'invalid_subject' });
+  });
+
+  it('asks for another try while device transport is not running, and reads it once it is', async () => {
+    const host = pelsHostDouble({ getDeviceLogUiPayload: () => reportHistoryFixture() });
+    const startingSource = source(host);
+    await expect(startingSource.capture(request, now)).rejects.toMatchObject({ code: 'capture_failed' });
+    host.deviceManager = partialDouble<NonNullable<PelsHost['deviceManager']>>({
+      getSnapshotByDeviceId: () => deviceSnapshot(),
+    });
+    host.homeMembership = membership();
+    const report = await startingSource.capture(request, now);
+    expect(report.subjectName).toBe('Hall heater now');
+    expect(values(report, 'Current device observation and configuration')).toMatchObject({ measuredPowerKw: 0.7 });
   });
 
   it('retains the chosen Main incident when a device has moved and omits its other-home state', async () => {
@@ -195,7 +212,7 @@ describe('support report evidence capture', () => {
     host.getDailyBudgetUiPayload = () => ({ kind: 'budget', payload: { todayKey: day.dateKey, days: { [day.dateKey]: day } } });
     const settings = { get: vi.fn(), getKeys: vi.fn(), set: vi.fn() };
     const homey = { app: host, manifest: { version: '3.21.0', apiKey: 'manifest-secret' }, version: '12.0.0', settings };
-    const report = await new SupportReportEvidenceSource(homey).capture(request, now);
+    const report = await new SupportReportEvidenceSource(createSupportReportReads(host), homey).capture(request, now);
     expect(values(report, 'Current app-wide prices')).toMatchObject({ importPrice: 42, level: 'cheap' });
     expect(values(report, 'Current app-wide price source')).toEqual({ scheme: 'norway', selection: 'chosen' });
     expect(values(report, 'Current daily budget')).toMatchObject({ dailyBudgetKWh: 50, usedKWh: 20 });

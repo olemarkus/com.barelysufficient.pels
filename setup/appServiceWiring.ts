@@ -64,6 +64,7 @@ import type { BackgroundTasksController } from './backgroundTasksController';
 import type { AppPowerTracker } from './appPowerTracker';
 
 import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
+import type { SupportReportApp } from './appInit/createSupportReports';
 import { installMainFreshnessEscalation } from './appMainFreshnessEscalation';
 import {
   invalidateOwningHomeRebuildSuppression, syncOwningHomeLivePlanState, syncExternalOffHoldForObservation,
@@ -171,8 +172,8 @@ export class AppServiceWiring {
     );
   }
 
-  createSupportReports() {
-    return createSupportReports(this.deps.homeyApp.homey);
+  createSupportReports(app: SupportReportApp) {
+    return createSupportReports(this.deps.homeyApp.homey, app);
   }
 
   createObservedTemperatureModeUpdates() {

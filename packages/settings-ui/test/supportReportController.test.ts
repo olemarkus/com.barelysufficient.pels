@@ -133,4 +133,33 @@ describe('support report controller', () => {
       historyWindow: 'day',
     }));
   });
+
+  it('keeps the incident time of a preview that expires before it is sent', async () => {
+    const { controller, api, current, report } = setup();
+    await controller.prepare();
+    vi.mocked(api.send).mockResolvedValueOnce({ ok: false, code: 'report_expired' });
+    await controller.send();
+    expect(current().report).toBeNull();
+    expect(current().draft).toMatchObject({
+      when: 'custom', atMs: report.document.request.occurredAtMs, problem: report.document.request.problem,
+    });
+    await controller.prepare();
+    expect(api.prepare).toHaveBeenLastCalledWith(expect.objectContaining({
+      occurredAtMs: report.document.request.occurredAtMs,
+    }));
+  });
+
+  it('starts a new report from another device after a sent one', async () => {
+    const { controller, current } = setup();
+    await controller.prepare();
+    await controller.send();
+    expect(current().report?.submission.state).toBe('sent');
+    controller.selectContext({ kind: 'device', homeId: 'main', deviceId: 'boiler' }, 1700000000456);
+    expect(current().notice).toBe('');
+    expect(current().report).toBeNull();
+    expect(current().draft).toMatchObject({
+      subject: { kind: 'device', homeId: 'main', deviceId: 'boiler' }, when: 'custom', atMs: 1700000000456,
+      problem: '', expected: '',
+    });
+  });
 });

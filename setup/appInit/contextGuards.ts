@@ -10,7 +10,7 @@ import type { FlowHomeyLike } from '../../lib/utils/types';
  * the flow-card registrar.
  */
 
-export function requireDeviceManager(ctx: AppContext) {
+export function requireDeviceManager(ctx: Pick<AppContext, 'deviceManager'>) {
   if (!ctx.deviceManager) {
     throw new Error('DeviceTransport must be initialized before use.');
   }
@@ -23,7 +23,9 @@ export function requireDeviceManager(ctx: AppContext) {
  * `runUninit` clears it as a shutdown kill switch — so this is for a caller
  * whose whole lifetime sits inside membership's, where absence is a wiring bug.
  */
-export function requireHomeMembership(ctx: AppContext): NonNullable<AppContext['homeMembership']> {
+export function requireHomeMembership(
+  ctx: Pick<AppContext, 'homeMembership'>,
+): NonNullable<AppContext['homeMembership']> {
   if (!ctx.homeMembership) {
     throw new Error('HomeMembership must be initialized before use.');
   }
@@ -52,7 +54,7 @@ export function requireSnapshotWarmupGate(ctx: AppContext): NonNullable<AppConte
  * — a synchronous throw out of `void fn()` cannot be caught by the `.catch` the
  * call site appears to have.
  */
-export function requirePlanService(ctx: AppContext): PlanService {
+export function requirePlanService(ctx: Pick<AppContext, 'planService'>): PlanService {
   if (!ctx.planService) {
     throw new Error('PlanService must be initialized before use.');
   }

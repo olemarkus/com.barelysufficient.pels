@@ -16,9 +16,11 @@ describe('Homey diagnostic transport', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
   it('uses the manager endpoint with owner authentication and exactly one message field', async () => {
-    fetchMock.mockResolvedValue(httpResponse({ id: 'diagnostic-123' }));
+    fetchMock.mockResolvedValue(httpResponse('d06900e6-cbeb-43b7-b9bc-4e318ee3cfa1'));
     const sender = new HomeyReportTransport(homey());
-    expect(await sender.send('PELS report\nø')).toEqual({ state: 'accepted', reference: 'diagnostic-123' });
+    expect(await sender.send('PELS report\nø')).toEqual({
+      state: 'accepted', reference: 'd06900e6-cbeb-43b7-b9bc-4e318ee3cfa1',
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, options] = fetchMock.mock.calls[0]!;
     expect(String(url)).toBe('http://homey.test/api/manager/apps/app/com.barelysufficient.pels/crashlog');

@@ -57,13 +57,12 @@ export type SupportReportSubmission =
   | { state: 'draft' }
   | { state: 'sending' }
   | { state: 'sent'; reference: string }
-  | { state: 'failed'; reason: string }
+  | { state: 'failed' }
   | { state: 'unknown' };
 
 export type PreparedSupportReport = {
   document: SupportReportDocument;
   message: string;
-  bytes: number;
   expiresAtMs: number;
   availability: SupportReportAvailability;
   submission: SupportReportSubmission;
