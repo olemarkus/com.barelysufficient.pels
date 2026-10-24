@@ -1,7 +1,6 @@
 import type { SupportReportResponse, SupportReportSubject } from '../../../contracts/src/supportReport.ts';
 import { SETTINGS_UI_DEVICE_LOG_PATH } from '../../../contracts/src/settingsUiApi.ts';
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
-import { SUPPORT_REPORT_PATH } from '../../../shared-domain/src/supportReport.ts';
 import { parseDeviceActivityPayload } from './activityHistoryPayload.ts';
 import { callApi } from './homey.ts';
 import { getTargetDevices } from './devices.ts';
@@ -13,6 +12,7 @@ import { renderSupportReportView } from './views/SupportReportView.tsx';
 import { showToast } from './toast.ts';
 
 export const SUPPORT_REPORT_PANEL = 'report-problem';
+const SUPPORT_REPORT_PATH = '/support-report';
 let refreshSequence = 0;
 let contextInitialized = false;
 
