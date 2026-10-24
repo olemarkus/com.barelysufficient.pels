@@ -13,7 +13,7 @@ const mount = (report = supportReportFixture()) => {
     report, recoveryId: null, operation: 'idle', notice: '',
   };
   const actions: SupportReportActions = {
-    edit: vi.fn(), prepare: vi.fn(), send: vi.fn(), check: vi.fn(), startAnother: vi.fn(), notice: vi.fn(),
+    edit: vi.fn(), editDetails: vi.fn(), prepare: vi.fn(), send: vi.fn(), check: vi.fn(), startAnother: vi.fn(), notice: vi.fn(),
   };
   renderSupportReportView(surface, { state, actions, homeName: 'Main home', backTarget: 'activity' });
   return { surface, actions };
@@ -30,6 +30,13 @@ describe('support report view', () => {
     expect(surface.textContent).toContain('logs, which are separate from this preview');
     expect(surface.querySelectorAll('[data-report-device-id]')).toHaveLength(0);
     expect(surface.querySelector('.pels-appbar__back')?.getAttribute('data-settings-target')).toBe('activity');
+  });
+
+  it('replaces the form with a preview and an explicit edit action', () => {
+    const { surface, actions } = mount();
+    expect(surface.querySelector('[data-report-field="problem"]')).toBeNull();
+    surface.querySelector<HTMLElement>('[data-report-action="edit"]')?.click();
+    expect(actions.editDetails).toHaveBeenCalledTimes(1);
   });
 
   it('offers copying but disables sending on a local installation', () => {
@@ -49,6 +56,10 @@ describe('support report view', () => {
   it('shows the PELS reference when Homey accepts without returning a reference', () => {
     const { surface } = mount({ ...supportReportFixture(), submission: { state: 'sent', reference: '' } });
     expect(surface.textContent).toContain('PELS reference: report-1');
+    expect(surface.querySelector('[data-report-action="done"]')).not.toBeNull();
+    expect(surface.querySelector('[data-report-field="problem"]')).toBeNull();
+    expect(surface.querySelector('[data-report-action="edit"]')).toBeNull();
+    expect(surface.querySelector<HTMLDetailsElement>('[data-report-submitted-details]')?.open).toBe(false);
   });
 
   it('describes an empty incident window without claiming no activity was recorded', () => {
@@ -78,10 +89,11 @@ describe('support report view', () => {
       configurable: true, value: { writeText: vi.fn().mockRejectedValue(new Error('Unavailable')) },
     });
     try {
-      const { surface, actions } = mount();
+      const { surface, actions } = mount({ ...supportReportFixture(), submission: { state: 'sent', reference: '' } });
       surface.querySelector<HTMLElement>('[data-report-action="copy"]')?.click();
       await vi.waitFor(() => expect(actions.notice).toHaveBeenCalledWith('Select and copy the report text below.'));
       expect(surface.querySelector<HTMLDetailsElement>('[data-report-details]')?.open).toBe(true);
+      expect(surface.querySelector<HTMLDetailsElement>('[data-report-submitted-details]')?.open).toBe(true);
       expect(window.getSelection()?.toString()).toBe(supportReportFixture().message);
     } finally {
       if (original) Object.defineProperty(navigator, 'clipboard', original);

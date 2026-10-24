@@ -32,6 +32,20 @@ describe('support report controller', () => {
     expect(api.send).not.toHaveBeenCalled();
   });
 
+  it('returns to editing with the reviewed incident time and requires another preview', async () => {
+    const { controller, api, current, report } = setup();
+    await controller.prepare();
+    controller.editDetails();
+    expect(current().report).toBeNull();
+    expect(current().draft.problem).toBe(report.document.request.problem);
+    expect(current().draft.when).toBe('custom');
+    expect(current().draft.atMs).toBe(report.document.request.occurredAtMs);
+    await controller.send();
+    expect(api.send).not.toHaveBeenCalled();
+    await controller.prepare();
+    expect(api.prepare).toHaveBeenLastCalledWith(report.document.request);
+  });
+
   it('sends only the reviewed identifier and ignores a second click while in flight', async () => {
     const { controller, api, current, report } = setup();
     let finish!: (response: SupportReportResponse) => void;
@@ -40,6 +54,8 @@ describe('support report controller', () => {
     const sending = controller.send();
     await controller.send();
     controller.edit({ ...current().draft, problem: 'Changed while sending' });
+    controller.editDetails();
+    expect(current().report?.submission.state).toBe('sending');
     expect(api.send).toHaveBeenCalledExactlyOnceWith('report-1');
     expect(current().draft.problem).toBe('The heater stayed off.');
     finish({ ok: true, report: { ...report, submission: { state: 'sent', reference: 'homey-1' } } });
