@@ -15,7 +15,9 @@ import {
   SetupJourneyHeader, SetupReview, type SetupReviewDevice, type SetupJourneyHeaderProps,
 } from './views/SetupJourney.tsx';
 import { renderDevices } from './devices.ts';
-import { loadCapacitySettings, saveSimulationModeSettings, saveCapacityPeriodSettings } from './capacity.ts';
+import {
+  loadCapacitySettings, saveSimulationModeSettings, saveCapacityPeriodSettings, saveCapacityOffSettings,
+} from './capacity.ts';
 import { flushDebouncedSettingSaves } from './utils.ts';
 import { resolveSolarSetupAction } from './setupDevices.ts';
 import { getPowerReadModel } from './power.ts';
@@ -168,6 +170,15 @@ const headerDetail = (step: SetupJourneyStep, fact: SetupStep | undefined): stri
   return fact?.detail ?? null;
 };
 
+// Dutch households pay by connection size, so the open Limits step offers the
+// way out its detail explains, in one tap. Geography only offers it: the switch
+// moves when the owner taps, never on its own.
+const offersCapacityOff = (step: SetupJourneyStep, fact: SetupStep | undefined): boolean => {
+  if (step !== 'hardCap' || fact === undefined || fact.status === 'done') return false;
+  const market = readSetupMarket();
+  return market.state === 'resolved' && market.country === 'NL';
+};
+
 const headerProps = (step: SetupJourneyStep, path: SetupPath | null): SetupJourneyHeaderProps => {
   const fact = path?.steps.find((candidate) => candidate.id === (step === 'solar' ? 'devices' : step));
   const market = readSetupMarket();
@@ -186,6 +197,8 @@ const headerProps = (step: SetupJourneyStep, path: SetupPath | null): SetupJourn
     onCheckMeter: () => showTab('limits', 'power'),
     quarterHourAdvice: advice !== null,
     onQuarterHour: () => { void runAction(() => saveCapacityPeriodSettings(15)); },
+    capacityOffAction: offersCapacityOff(step, fact),
+    onCapacityOff: () => { void runAction(saveCapacityOffSettings); },
     onDismissQuarterHour: () => {
       if (advice) void dismissSetupRecommendation(advice).then(paintJourney);
     },

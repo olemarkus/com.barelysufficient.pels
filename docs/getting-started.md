@@ -54,6 +54,7 @@ A dynamic-price contract, battery, daily budget, and Smart task are not required
 Review the choices PELS shows for this home:
 
 - **Capacity limit** applies to measured hourly or 15-minute average grid import. Choose the period, hard cap, and safety margin, or turn it off if it does not apply.
+  Dutch household grid charges depend on connection size, so in the Netherlands setup offers **Turn off Capacity limit** in one tap. Prices and solar keep working.
 - **Grid import limit** is a separate choice for limiting current grid import. Use either limit, both, or neither.
 - **Prices** appears in setup only when an enabled feature uses them.
 
