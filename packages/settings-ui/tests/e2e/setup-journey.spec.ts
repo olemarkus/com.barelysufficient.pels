@@ -115,6 +115,7 @@ test('Flemish period advice changes only the period and respects dismissal', asy
   await page.locator('#devices-panel .setup-journey').getByRole('button', { name: 'Continue', exact: true }).click();
   const header = page.locator('#limits-panel .setup-journey');
   await expect(header.getByText('Use 15-minute average', { exact: true })).toBeVisible();
+  await expect(header.getByText('Turn off Capacity limit', { exact: true })).toHaveCount(0);
   expect(await stored(page, 'capacity_period_minutes')).not.toBe(15);
   await header.getByText('Dismiss', { exact: true }).click();
   await expect(header.getByText('Use 15-minute average', { exact: true })).toHaveCount(0);
@@ -127,6 +128,53 @@ test('Flemish period advice changes only the period and respects dismissal', asy
   await expect.poll(() => stored(page, 'capacity_period_minutes')).toBe(15);
   expect(await stored(page, 'capacity_limit_kw')).toBeUndefined();
   await expect(header.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
+});
+
+test('the Dutch Limits step turns off Capacity limit in one tap without confirming the hard cap', async ({ page }) => {
+  await seed(page, 'NL');
+  await page.goto('/?page=settings/devices&setup=devices');
+  await choosePump(page);
+  await page.locator('#devices-panel .setup-journey').getByRole('button', { name: 'Continue', exact: true }).click();
+  const header = page.locator('#limits-panel .setup-journey');
+  await expect(header).toContainText('Dutch household grid charges depend on connection size');
+  await expect(header.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
+  await header.getByRole('button', { name: 'Turn off Capacity limit', exact: true }).click();
+  await expect.poll(() => stored(page, 'capacity_enabled')).toBe(false);
+  expect(await stored(page, 'capacity_limit_kw')).toBeUndefined();
+  await expect.poll(() => page.locator('#settings-capacity-enabled').evaluate(
+    (element) => (element as HTMLElement & { selected: boolean }).selected,
+  )).toBe(false);
+  await expect(header.getByText('Turn off Capacity limit', { exact: true })).toHaveCount(0);
+  await expect(header.getByRole('button', { name: 'Review setup', exact: true })).toBeEnabled();
+});
+
+test('the Dutch Capacity limit action retries a failed save', async ({ page }) => {
+  await seed(page, 'NL');
+  await page.goto('/?page=settings/devices&setup=devices');
+  await choosePump(page);
+  await page.locator('#devices-panel .setup-journey').getByRole('button', { name: 'Continue', exact: true }).click();
+  const header = page.locator('#limits-panel .setup-journey');
+  const action = header.getByRole('button', { name: 'Turn off Capacity limit', exact: true });
+  await expect(action).toBeVisible();
+  await page.evaluate(() => {
+    const homey = (window as unknown as { Homey: { set: (key: string, value: unknown, cb: (error?: Error) => void) => void } }).Homey;
+    const original = homey.set;
+    let fail = true;
+    homey.set = (key, value, cb) => {
+      if (key === 'capacity_enabled' && fail) { fail = false; cb(new Error('Offline. Try again.')); return; }
+      original(key, value, cb);
+    };
+  });
+  await action.click();
+  await expect(header.getByRole('alert')).toContainText('Offline');
+  expect(await stored(page, 'capacity_enabled')).not.toBe(false);
+  await expect.poll(() => page.locator('#settings-capacity-enabled').evaluate(
+    (element) => (element as HTMLElement & { selected: boolean }).selected,
+  )).toBe(true);
+  await action.click();
+  await expect.poll(() => stored(page, 'capacity_enabled')).toBe(false);
+  await expect(action).toHaveCount(0);
+  expect(await stored(page, 'capacity_limit_kw')).toBeUndefined();
 });
 
 test('the Flemish period action retries a failed save without confirming the hard cap', async ({ page }) => {

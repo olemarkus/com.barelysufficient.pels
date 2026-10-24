@@ -151,7 +151,7 @@ describe('Limits & safety inline validation', () => {
     const choice = document.querySelector('#settings-capacity-choice') as HTMLElement;
     expect(choice.hidden).toBe(false);
     expect(document.querySelector('#settings-capacity-choice-text')?.textContent)
-      .toBe('Not chosen yet. PELS uses 10 kW. Set the level you want to stay under, or keep 10 kW.');
+      .toBe('Not chosen yet. PELS uses 10 kW. Set the level you want to stay under, keep 10 kW, or turn off Capacity limit.');
     expect(document.querySelector('#settings-capacity-keep')?.textContent).toBe('Keep 10 kW');
     expect(dom.limit.value).toBe('10');
 

@@ -121,12 +121,25 @@ describe('setup path', () => {
     expect(detailOf(saved(60), 'hardCap')).toBe('2.5 kW hard cap (hourly average), 0.2 kW safety margin');
   });
 
-  it.each(['BE', 'SE', 'NO'])('asks about measured peaks in %s without choosing a target', (country) => {
+  it.each(['BE', 'SE', 'DE'])('asks about measured peaks in %s without choosing a target', (country) => {
     const facts = { ...freshInstall, managedDeviceCount: 1, limitableDeviceCount: 1,
       market: { state: 'resolved' as const, country } };
     expect(detailOf(facts, 'hardCap')).toContain('Charged for your highest hourly or 15-minute average grid import?');
     expect(detailOf(facts, 'hardCap')).toContain('10 kW hard cap (hourly average) until you set yours');
     expect(statuses(facts)).toContain('hardCap:later');
+  });
+
+  it('names the running default in Norway without asking, since every household pays for measured peaks', () => {
+    const facts: SetupPathFacts = { ...freshInstall, managedDeviceCount: 1, limitableDeviceCount: 1,
+      market: { state: 'resolved', country: 'NO' } };
+    expect(detailOf(facts, 'hardCap')).toBe('10 kW hard cap (hourly average) until you set yours');
+    expect(statuses(facts)).toContain('hardCap:later');
+  });
+
+  it('asks about measured peaks while the market is unknown', () => {
+    const facts: SetupPathFacts = { ...freshInstall, managedDeviceCount: 1, limitableDeviceCount: 1,
+      market: { state: 'unavailable' } };
+    expect(detailOf(facts, 'hardCap')).toContain('Charged for your highest hourly or 15-minute average grid import?');
   });
 
   it('explains the Dutch connection tariff while preserving the explicit limits choice', () => {

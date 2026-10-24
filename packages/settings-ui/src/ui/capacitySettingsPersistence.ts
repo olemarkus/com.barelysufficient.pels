@@ -117,3 +117,12 @@ export const writeCapacityPeriodSetting = async (
 ): Promise<void> => {
   if (current.periodMinutes !== periodMinutes) await setSetting(CAPACITY_PERIOD_MINUTES, periodMinutes);
 };
+
+/**
+ * Turning Capacity limit off writes the switch alone, so the built-in hard cap is
+ * never recorded as the owner's choice. The switch compares against the posture
+ * the page resolved, as `writeLimitsSettings` does.
+ */
+export const writeCapacityOffSetting = async (stored: CapacityScalarSettings): Promise<void> => {
+  if (stored.capacityEnabled) await setSetting(CAPACITY_ENABLED, false);
+};
