@@ -1,6 +1,6 @@
 import { isSteppedLoadSnapshot } from '../packages/shared-domain/src/steppedLoadObservedState';
 import type { ReportSteppedLoadActualStepResult } from '../lib/executor/steppedCommandState';
-import { isBuiltInSteppedLoadControlEnabled } from '../lib/device/nativeSteppedLoadWiring';
+import { isBuiltInSteppedLoadControlEnabled } from '../lib/device/deviceActionProjection';
 import { buildDeviceAutocompleteOptions } from './deviceArgs';
 import {
   readFlowDeviceArg,

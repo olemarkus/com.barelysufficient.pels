@@ -5,6 +5,8 @@ import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/sr
 import type { IdleClassification } from '../../packages/contracts/src/idleClassification';
 import type { DeviceOverviewSnapshot } from '../../packages/contracts/src/deviceOverview';
 import type { PriceTargetShift } from '../../packages/planner-types/src/temperatureSetpoints';
+import type { DeviceControlAdapterSnapshot } from '../../packages/contracts/src/types';
+import { isBuiltInSteppedLoadControlEnabled } from '../device/deviceActionProjection';
 import {
   displayStateLabel, displayStateTone, isHoldReasonCode, resolveDisplayStateKind, resolveIntentStateKind,
 } from '../../packages/shared-domain/src/planCardGrammar';
@@ -36,6 +38,8 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
   idleClassification?: IdleClassification;
   /** The plan device's own fact (`DevicePlanDevice.priceTargetShift`), spread in with it. */
   priceTargetShift: PriceTargetShift;
+  /** The plan device's control adapter, spread in with it; absent on a device that has none. */
+  controlAdapter?: DeviceControlAdapterSnapshot;
 };
 
 function resolveBaseKind(device: DeviceStatusInput): PlanStateKind {
@@ -82,6 +86,17 @@ function resolveBinaryReason(
     ? null : formatDeviceReasonUserFacing(device.reason);
 }
 
+// A step command nothing answers leaves the device where it is however often
+// PELS asks, and the card would otherwise keep saying it is moving. The line
+// names what carries the level back: the owner's Flow, or the device itself
+// under built-in control. Simulation sends no commands, so it has none to say.
+function resolveUnansweredStepLine(device: DeviceStatusInput, dryRun: boolean): string | null {
+  if (dryRun || !device.execution.stepCommandUnanswered) return null;
+  return isBuiltInSteppedLoadControlEnabled(device)
+    ? 'Level change not confirmed by the device'
+    : 'Level change not confirmed — check the Flow that reports the level back';
+}
+
 function resolveReason(device: DeviceStatusInput, dryRun: boolean): string | null {
   const kind = resolveBaseKind(device);
   const held = resolveIntentStateKind({ kind, reasonCode: device.reason.code,
@@ -91,7 +106,8 @@ function resolveReason(device: DeviceStatusInput, dryRun: boolean): string | nul
   const resolved = { ...device, stateKind: kind };
   const stepped = device.steppedLoad;
   if (stepped) {
-    return resolveBinarySurplusReasonLine(device, kind)
+    return resolveUnansweredStepLine(device, dryRun)
+      ?? resolveBinarySurplusReasonLine(device, kind)
       ?? resolveSteppedStatusLine(resolved, stepped.profile, 0, dryRun)
       // Settling at a reduced rung does not end the hold or change its cause.
       ?? (held ? resolveHeldCardReasonLine(

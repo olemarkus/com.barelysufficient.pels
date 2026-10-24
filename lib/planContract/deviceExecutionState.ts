@@ -22,5 +22,11 @@ export type DeviceExecutionState = {
   resumeExpected: boolean;
   /** A pending binary or step command contributes to the stepped transition. */
   steppedTransitionPending: boolean;
+  /**
+   * The device has let several step commands in a row go unconfirmed, and the
+   * step it is asked for is still not the one it reports: whatever carries the
+   * step back (the owner's Flow, or the device itself) is not answering.
+   */
+  stepCommandUnanswered: boolean;
   externalOffHeld: boolean;
 };

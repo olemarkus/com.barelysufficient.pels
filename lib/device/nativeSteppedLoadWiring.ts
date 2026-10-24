@@ -1,5 +1,4 @@
 import { getDeviceAdapter, getCapabilityAdapter } from './deviceAdapterRegistry';
-import { isNativeSteppedLoadControlEnabled } from './deviceAdapter';
 export { isNativeSteppedLoadControlEnabled } from './deviceAdapter';
 export type { CapabilityWrite } from './deviceAdapter';
 import type { CapabilityWrite } from './deviceAdapter';
@@ -334,13 +333,6 @@ export function resolveNativeSteppedLoadCommand(params: {
     capabilityId,
     value: resolveNativeValueForRank(rank),
   };
-}
-
-/** Current commands and their observations are owned by a built-in adapter. */
-export function isBuiltInSteppedLoadControlEnabled(snapshot: {
-  controlAdapter?: DeviceControlAdapterSnapshot;
-}): boolean {
-  return snapshot.controlAdapter?.currentControl === 'built_in' || isNativeSteppedLoadControlEnabled(snapshot);
 }
 
 export function isNativeSteppedLoadControlCapabilityId(params: {

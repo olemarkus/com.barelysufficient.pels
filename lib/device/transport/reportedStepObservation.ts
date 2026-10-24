@@ -1,4 +1,4 @@
-import { isBuiltInSteppedLoadControlEnabled } from '../nativeSteppedLoadWiring';
+import { isBuiltInSteppedLoadControlEnabled } from '../deviceActionProjection';
 import { resolveSteppedLoadCeilingStep } from '../steppedLoadPowerCeiling';
 import { isEvTargetPowerConfig, resolveEvTargetPowerExactStep } from '../targetPowerReachability';
 import { resolveTargetPowerObservationProfile } from '../targetPowerObservationProfile';

@@ -26,6 +26,12 @@ export type SteppedLoadDesiredRuntimeState = {
   changedAtMs: number;
   lastIssuedAtMs?: number;
   retryCount: number;
+  /**
+   * Commands for this step in a row that the device did not confirm within the
+   * confirmation window. Unlike `retryCount`, which also counts a reissue of a
+   * step that never went stale, this counts only the expiries themselves.
+   */
+  unconfirmedCount: number;
   nextRetryAtMs?: number;
   /** `pending` exactly while the command is in flight; there is no separate flag. */
   status: SteppedLoadCommandStatus;
@@ -128,6 +134,7 @@ export const confirmSteppedLoadDesiredStep = (
   runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
     ...settledDesired,
     retryCount: 0,
+    unconfirmedCount: 0,
     nextRetryAtMs: undefined,
     status: 'success',
   });
@@ -191,6 +198,7 @@ export const markSteppedLoadDesiredStepIssued = (
     changedAtMs: issuedAtMs,
     lastIssuedAtMs: issuedAtMs,
     retryCount,
+    unconfirmedCount: shouldIncrementRetryCount ? previousDesired.unconfirmedCount : 0,
     nextRetryAtMs: undefined,
     status: 'pending',
     ...buildSteppedLoadPowerMetadata(previousDesired, command, issuedAtMs),
@@ -212,6 +220,7 @@ export const preserveSteppedLoadDesiredStep = (
     previousStepId: observation.stepId,
     changedAtMs: Date.now(),
     retryCount: 0,
+    unconfirmedCount: 0,
     nextRetryAtMs: undefined,
     status: desiredStepId === observation.stepId ? 'success' : 'idle',
   });
@@ -249,6 +258,7 @@ export const pruneStaleSteppedLoadCommandStates = (
     if (nowMs - desired.lastIssuedAtMs < STEPPED_LOAD_COMMAND_STALE_MS) continue;
     runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
       ...desired,
+      unconfirmedCount: desired.unconfirmedCount + 1,
       nextRetryAtMs:
         desired.lastIssuedAtMs
         + STEPPED_LOAD_COMMAND_STALE_MS

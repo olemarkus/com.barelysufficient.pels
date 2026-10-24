@@ -621,6 +621,33 @@ describe('MyApp initialization', () => {
     }
   });
 
+  it('hands the executor every step command that went unconfirmed in a row, until the device reports it', async () => {
+    const heater = new MockDevice('dev-1', 'Water heater', ['onoff', 'measure_power']);
+    heater.setCapabilityValue('measure_power', 1000);
+    heater.setCapabilityValue('onoff', true);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+    mockHomeyInstance.settings.set(DEVICE_CONTROL_PROFILES, buildSteppedLoadProfiles('dev-1'));
+
+    const app = createApp();
+    await initApp(app);
+    await waitForSnapshot();
+
+    // The Flow that should report the level back never does: each command for
+    // `max` expires unconfirmed, and the next one carries the count on.
+    for (const ageMs of [3 * STEPPED_LOAD_COMMAND_STALE_MS, STEPPED_LOAD_COMMAND_STALE_MS + 1]) {
+      app.deviceControlHelpers.markSteppedLoadDesiredStepIssued({
+        deviceId: 'dev-1', desiredStepId: 'max', previousStepId: 'low', issuedAtMs: Date.now() - ageMs,
+      });
+      app.steppedCommandStore.pruneStale();
+    }
+    expect(app.deviceControlHelpers.getSteppedLoadCommandSession('dev-1').unconfirmedStepCommands)
+      .toEqual({ kind: 'unconfirmed', stepId: 'max', count: 2 });
+
+    app.deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'max');
+    expect(app.deviceControlHelpers.getSteppedLoadCommandSession('dev-1').unconfirmedStepCommands)
+      .toEqual({ kind: 'none' });
+  });
+
   it('emits stepped_feedback_external_change when reported step changes outside PELS', async () => {
     const heater = new MockDevice('dev-1', 'Water heater', ['onoff', 'measure_power']);
     heater.setCapabilityValue('measure_power', 1000);

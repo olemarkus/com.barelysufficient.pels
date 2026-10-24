@@ -336,7 +336,11 @@ const buildExecutor = (
     getShedBehavior: () => ({ action: 'turn_off' as const }),
     markSteppedLoadDesiredStepIssued: vi.fn(),
     syncLivePlanStateAfterTargetActuation: vi.fn(),
-    getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false, stepCommandPending: false }),
+    getSteppedLoadCommandSession: () => ({
+      hasPriorStepCommand: false,
+      stepCommandPending: false,
+      unconfirmedStepCommands: { kind: 'none' as const },
+    }),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
     storageLane: { kind: 'none' },
     ...depsOverrides,
@@ -1931,6 +1935,7 @@ describe('PlanExecutor stepped loads', () => {
           hasPriorStepCommand: false,
           stepCommandPending: false,
           reportedStepId: 'low',
+          unconfirmedStepCommands: { kind: 'none' as const },
         }),
       },
     );
@@ -1960,6 +1965,7 @@ describe('PlanExecutor stepped loads', () => {
           hasPriorStepCommand: false,
           stepCommandPending: false,
           reportedStepId: 'max',
+          unconfirmedStepCommands: { kind: 'none' as const },
         }),
       },
     );
@@ -2021,6 +2027,7 @@ describe('PlanExecutor stepped loads', () => {
           initializationAssumedStepId: 'low',
           hasPriorStepCommand: false,
           stepCommandPending: false,
+          unconfirmedStepCommands: { kind: 'none' as const },
         }),
       },
     );
@@ -2060,6 +2067,7 @@ describe('PlanExecutor stepped loads', () => {
           initializationAssumedStepId: 'low',
           hasPriorStepCommand: false,
           stepCommandPending: false,
+          unconfirmedStepCommands: { kind: 'none' as const },
         }),
       },
     );
@@ -2179,7 +2187,11 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(
       undefined,
       snapshot,
-      { getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: true, stepCommandPending: false }) },
+      { getSteppedLoadCommandSession: () => ({
+        hasPriorStepCommand: true,
+        stepCommandPending: false,
+        unconfirmedStepCommands: { kind: 'none' as const },
+      }) },
     );
     desiredSteppedTrigger.trigger.mockImplementation(async () => {
       Object.assign(snapshot[0], {
@@ -2213,7 +2225,11 @@ describe('PlanExecutor stepped loads', () => {
       binaryControl: { on: true },
       binaryControlObservation: onoffObservation(true),
     }], {
-      getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: true, stepCommandPending: false }),
+      getSteppedLoadCommandSession: () => ({
+        hasPriorStepCommand: true,
+        stepCommandPending: false,
+        unconfirmedStepCommands: { kind: 'none' as const },
+      }),
     });
     nativeSteppedAdapters.observe('dev-1', {
       id: 'dev-1',

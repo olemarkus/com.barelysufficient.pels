@@ -12,6 +12,7 @@ import { createCommandClaim } from '../../lib/executor/commandClaim';
 export const PRIOR_STEP_COMMAND_SESSION: ExecutableSteppedLoadCommandSession = {
   hasPriorStepCommand: true,
   stepCommandPending: false,
+  unconfirmedStepCommands: { kind: 'none' as const },
 };
 
 /**
@@ -38,7 +39,11 @@ export const createTestExecutorCommandContext = (
   getCapacityDryRun: () => false,
   getOperatingMode: () => 'Home',
   getShedBehavior: () => ({ action: 'turn_off' }),
-  getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false, stepCommandPending: false }),
+  getSteppedLoadCommandSession: () => ({
+    hasPriorStepCommand: false,
+    stepCommandPending: false,
+    unconfirmedStepCommands: { kind: 'none' as const },
+  }),
   markSteppedLoadDesiredStepIssued: vi.fn(),
   syncLivePlanStateAfterTargetActuation: vi.fn(),
   binaryCommandClaim: createCommandClaim<boolean>(),

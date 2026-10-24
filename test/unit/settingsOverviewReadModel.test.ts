@@ -260,6 +260,28 @@ describe('settingsOverviewReadModel', () => {
     });
   });
 
+  it('names what carries the level back when step commands keep going unconfirmed', () => {
+    // A Flow that never reports the level back leaves the card saying "Increasing
+    // to Max" for as long as PELS keeps asking. Say what to check instead.
+    const flowBacked = steppedPlanDevice({ currentState: 'on', plannedState: 'keep',
+      reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'max', stepCommandPending: true });
+    const unanswered = (device: DevicePlanDevice, dryRun = false) => buildOverviewDeviceCard(device, {
+      ...overviewReadModelWiring(),
+      ...absentTemperature, dryRun, nowMs: 0,
+      getDeviceExecutionState: () => ({ ...executionStateFixture(device), stepProgress: 'pending',
+        steppedTransitionPending: true, stepCommandUnanswered: true }),
+    }).status.reason?.text;
+    expect(unanswered(flowBacked)).toBe('Level change not confirmed — check the Flow that reports the level back');
+
+    const builtIn = { ...flowBacked, controlAdapter: {
+      kind: 'capability_adapter' as const, activationRequired: false, activationEnabled: false,
+      currentControl: 'built_in' as const,
+    } };
+    expect(unanswered(builtIn)).toBe('Level change not confirmed by the device');
+    // Simulation sends no commands, so there is nothing for it to say.
+    expect(unanswered(flowBacked, true)).not.toContain('Level change not confirmed');
+  });
+
   it('shows binary restore movement even when a stepped device already reports its desired step', () => {
     const device = steppedPlanDevice({ currentState: 'off', reportedStepId: 'low',
       selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });

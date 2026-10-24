@@ -4,7 +4,10 @@ import type { ExecutorDeviceRead } from '../../lib/executor/executorDeviceRead';
 import { steppedPlanDevice, buildPlanDevice } from '../utils/planTestUtils';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 
-const noCommands = { binary: { kind: 'none' as const }, step: { kind: 'none' as const }, target: null };
+const noCommands = {
+  binary: { kind: 'none' as const }, step: { kind: 'none' as const }, target: null,
+  unconfirmedStepCommands: { kind: 'none' as const },
+};
 const offPlan = steppedPlanDevice({
   id: 'connected-300', currentState: 'on', selectedStepId: 'low', reportedStepId: 'low',
   desiredStepId: 'low', plannedState: 'shed',
@@ -104,6 +107,20 @@ describe('resolveDeviceExecutionState', () => {
     expect(resolveDeviceExecutionState(intent, observed, { ...noCommands, target: { desired: 21 } }, false))
       .toMatchObject({ targetProgress: 'pending', physicalState: 'not_applicable' });
     expect(resolveDeviceExecutionState(intent, observed, noCommands, false).targetProgress).toBe('unmet');
+  });
+
+  it('reports a step nothing answers only after two unconfirmed commands, and never once it is reached', () => {
+    const plan = steppedPlanDevice({ currentState: 'on', selectedStepId: 'low', reportedStepId: 'low',
+      desiredStepId: 'max', plannedState: 'keep' });
+    const intent = buildExecutableDeviceIntent(plan);
+    const unanswered = (count: number, reportedStepId: string, stepId = 'max') => resolveDeviceExecutionState(
+      intent, observe(true, reportedStepId), { ...noCommands, unconfirmedStepCommands: { kind: 'unconfirmed', stepId, count } }, false,
+    ).stepCommandUnanswered;
+    expect(unanswered(1, 'low')).toBe(false);
+    expect(unanswered(2, 'low')).toBe(true);
+    expect(unanswered(2, 'max')).toBe(false);
+    // A count left over from a step the plan has moved off says nothing about this one.
+    expect(unanswered(2, 'low', 'medium')).toBe(false);
   });
 
   it('classifies absent observation as unavailable rather than inventing a device state', () => {

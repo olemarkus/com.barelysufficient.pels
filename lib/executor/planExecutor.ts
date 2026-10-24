@@ -304,6 +304,7 @@ export class PlanExecutor {
       const execution = resolveDeviceExecutionState(intents[index]!, observed, {
         ...this.resolveCommandState(device.id, this.deps.pendingBinaryCommandStore.peekActive(device.id)),
         target: this.state.pendingTargetCommands[device.id] ?? null,
+        unconfirmedStepCommands: this.deps.getSteppedLoadCommandSession(device.id).unconfirmedStepCommands,
       }, reads.isExternalOffHeld(device.id));
       return [device.id, {
         ...execution,

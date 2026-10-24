@@ -214,23 +214,7 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       before opening the editor is offered in its picker. Source: Codex P1 on PR #2252, 2026-08-31.
       [P2]
 
-- [ ] **Surface "your step flow is not answering" on the device detail.** *Persona:* flow-backed stepped-device
-      owner (EV charger) whose `desired_stepped_load_changed` flow is missing, mistargeted, or not reporting back.
-      *Hypothesis:* when a flow step command goes stale repeatedly (`stepCommandStatus:'stale'`,
-      `stepCommandRetryCount` climbing), the UI shows only generic "Waiting to increase — Ns" cooldown copy —
-      the prod 2026-07-05 deadlock was only diagnosable from raw logs. A device-detail status row (and/or
-      settings hub chip) like "Step command not confirmed — check the flow that reports the step back" after
-      N consecutive stale commands names the real remedy.
-      *Why:* the failure mode is a *user wiring* gap with an actionable fix; today it presents as PELS
-      mysteriously never resuming. Note the sibling trust cost: a flow that *confirms but lies* (reports the
-      step without applying it) is bounded only by whole-home overshoot detection + the terminal direct
-      `evcharger_charging=false` write, and that window stretches under `power_source = flow`'s irregular
-      sampling. Files: `lib/plan/deviceStatusReadModel.ts` (the reason line),
-      `lib/executor/deviceExecutionState.ts` (stepped command facts), `notes/ui-terminology.md`
-      (new status copy). [P2]
-
 ## Settings UI surfaces and copy
-
 
 - [ ] **Limits & safety: converge the Main-home form onto the native `.pels-input` field language.**
       *Persona:* multi-home owner who switches the shell's home scope bar between the Main home and a meter

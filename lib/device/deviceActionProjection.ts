@@ -16,12 +16,14 @@
  *    narrows automatically via structural compatibility.
  */
 import type {
+  DeviceControlAdapterSnapshot,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
   SteppedLoadProfile,
   TargetCapabilitySnapshot,
   TemperatureBoostConfig,
 } from '../../packages/contracts/src/types';
+import { isNativeSteppedLoadControlEnabled } from './deviceAdapter';
 import {
   getTrustedCurrentTemperatureC,
   getTrustedStateOfCharge,
@@ -421,3 +423,15 @@ export const resolveShedIntent = (input: ShedIntentResolveInput): ShedActionInte
   }
   return { kind: 'turn_off' };
 };
+
+/**
+ * Whether a built-in adapter owns this device's step commands and their
+ * reports, rather than the owner's Flow. Device transport routes the commands
+ * and admits the reports by it; the card says which one to check when a step
+ * goes unconfirmed.
+ */
+export function isBuiltInSteppedLoadControlEnabled(snapshot: {
+  controlAdapter?: DeviceControlAdapterSnapshot;
+}): boolean {
+  return snapshot.controlAdapter?.currentControl === 'built_in' || isNativeSteppedLoadControlEnabled(snapshot);
+}
