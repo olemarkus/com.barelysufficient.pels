@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures/test';
+import { expect, test, type Page } from './fixtures/test';
 
 // Fresh-install recovery paths: both zero-state surfaces must link the user to
 // the page that fixes them instead of dead-ending on a description.
@@ -272,22 +272,39 @@ test.describe('Onboarding links', () => {
     await expect(page.locator('#electricity-prices-panel')).toBeVisible();
   });
 
-  test('a home without usable surplus can discover solar without an automatic solar recommendation', async ({ page }) => {
-    await page.addInitScript(() => {
+  const seedSolarPresence = async (page: Page, solarDevice: boolean, poolReachable = false) => {
+    await page.addInitScript(({ seededSolarDevice, seededPool }) => {
       (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
         settings: {
           price_optimization_settings: {},
           deferred_objectives: { version: 1, objectivesByDeviceId: {} },
-          ui_devices_has_managed_solar: false,
+          ui_devices_has_managed_solar: seededSolarDevice,
           ui_devices_has_exhibited_export: false,
-          ui_devices_surplus_pool_reachable: false,
+          ui_devices_surplus_pool_reachable: seededPool,
         },
       };
-    });
+    }, { seededSolarDevice: solarDevice, seededPool: poolReachable });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('#setup-recommendations-banner-root').getByText('See what').click();
+  };
+
+  test('a solar home without usable surplus can discover solar without an automatic solar recommendation', async ({ page }) => {
+    await seedSolarPresence(page, true);
     await expect(page.locator('#setup-recommendations-root .setup-recommendation-card')).toHaveCount(2);
     await expect(page.locator('#setup-recommendations-root .setup-recommendation-card').filter({ hasText: 'solar' })).toHaveCount(0);
+    await expect(page.locator('#setup-recommendations-root').getByText('Use more of your own solar', { exact: true })).toBeVisible();
+  });
+
+  test('a home without solar is not offered solar setup', async ({ page }) => {
+    await seedSolarPresence(page, false);
+    await expect(page.locator('#setup-recommendations-root .setup-recommendation-card')).toHaveCount(2);
+    await expect(page.locator('#setup-recommendations-root').getByText('Use more of your own solar', { exact: true })).toHaveCount(0);
+  });
+
+  test('a meter-only solar home keeps solar setup once its export total restarts', async ({ page }) => {
+    // Resetting usage history clears the 1 kWh export total, not the export latch
+    // behind a reachable surplus pool, so the solar controls are still on offer.
+    await seedSolarPresence(page, false, true);
     await expect(page.locator('#setup-recommendations-root').getByText('Use more of your own solar', { exact: true })).toBeVisible();
   });
 

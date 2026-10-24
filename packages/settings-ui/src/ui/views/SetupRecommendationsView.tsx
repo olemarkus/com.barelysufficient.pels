@@ -10,6 +10,8 @@ export type SetupRecommendationsViewProps = {
   dismissed: readonly SetupRecommendation[];
   // The first-run setup state: loading, complete, or the open path to render.
   setupPath: SetupPathRead;
+  // Whether the home has solar at all, so the page offers solar setup.
+  offersSolarSetup: boolean;
   readiness: 'loading' | 'partial' | 'resolved';
   dismissalStatus: 'loading' | 'unavailable' | 'available';
   retryAvailable: boolean;
@@ -155,8 +157,10 @@ export const SetupRecommendationsView = (props: SetupRecommendationsViewProps) =
       back={{ label: 'Back to Settings', target: 'settings' }}
       title="Setup & recommendations"
     />
-    {props.setupPath.state === 'open' && <SetupPathCard path={props.setupPath.path} surface="setup" />}
-    {props.setupPath.state === 'complete' && (
+    {props.setupPath.state === 'open' && (
+      <SetupPathCard path={props.setupPath.path} surface="setup" offersSolarSetup={props.offersSolarSetup} />
+    )}
+    {props.setupPath.state === 'complete' && props.offersSolarSetup && (
       <MdTextButton type="button" data-settings-target="devices" data-setup-journey="solar" data-settings-home-scope="main">
         Use more of your own solar
       </MdTextButton>

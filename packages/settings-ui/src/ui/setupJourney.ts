@@ -32,8 +32,10 @@ let actionBusy = false;
 let error: string | null = null;
 let meterLine: string | null = null;
 
+const usesFlowMeter = (): boolean => settingsPowerSourceSelect?.value === 'flow';
+
 const meterSummary = (): string | null => {
-  const name = settingsPowerSourceSelect?.value === 'flow' ? 'Flow' : getChosenWholeHomeMeterName();
+  const name = usesFlowMeter() ? 'Flow' : getChosenWholeHomeMeterName();
   return [name, meterLine].filter(Boolean).join(' · ') || null;
 };
 let statuses = new Map<string, string>();
@@ -120,6 +122,20 @@ const readReviewDevices = (): SetupReviewDevice[] => {
     });
 };
 
+// Before PELS has seen its first surplus, solar control is waiting, not broken:
+// an evening or winter install simply has not had one yet. Worded like the solar
+// suggestion so it holds for a home that curtails instead of exporting.
+const SOLAR_SURPLUS_PENDING = 'Solar control appears once PELS sees your solar produce more than '
+  + 'the home is using.';
+
+// A solar setup that ends with no device on solar: unfinished only once there
+// is surplus to configure; before that the review says it is waiting.
+const resolveReviewSolarNote = (devices: readonly SetupReviewDevice[]): string | null => {
+  if (!isSolarSetupJourney()) return null;
+  if (devices.some((device) => state.priceOptimizationSettings[device.id]?.surplusWilling)) return null;
+  return state.surplusPoolReachable ? 'Solar control is not configured yet.' : SOLAR_SURPLUS_PENDING;
+};
+
 const paintReview = (): void => {
   const root = document.getElementById('setup-review-root');
   if (!root) return;
@@ -131,8 +147,7 @@ const paintReview = (): void => {
     meterSummary: meterSummary(),
     busy: actionBusy || setupSavePending(),
     error,
-    solarPending: isSolarSetupJourney()
-      && !devices.some((device) => state.priceOptimizationSettings[device.id]?.surplusWilling),
+    solarNote: resolveReviewSolarNote(devices),
     onStart: startManaging,
     onContinue: continueSetup,
   }), root);
@@ -158,14 +173,22 @@ const mountHeader = (panelId: string): HTMLElement | null => {
   return mount;
 };
 
+// The known way surplus stays hidden for good is a Flow that reports import
+// without its sign (`resolveSurplusControlAvailable`): the home never shows
+// producing more than it uses. So only a Flow home gets the meter check while
+// solar is still waiting. Worded as the getting-started guide's meter step.
+const FLOW_SIGN_NOTE = 'Your Flow must send net import, negative when exporting.';
+
+const solarPending = (step: SetupJourneyStep): boolean => (
+  step === 'solar' && state.devicesLoaded && !state.surplusPoolReachable
+);
+
 const headerDetail = (step: SetupJourneyStep, fact: SetupStep | undefined): string | null => {
   if (step === 'power') {
     const reading = fact?.status === 'done' ? meterSummary() : null;
     return reading ?? fact?.detail ?? 'Reading meter settings…';
   }
-  if (step === 'solar' && state.devicesLoaded && !state.surplusPoolReachable) {
-    return 'Waiting for usable solar readings. Check the meter and solar devices in Homey.';
-  }
+  if (solarPending(step)) return usesFlowMeter() ? `${SOLAR_SURPLUS_PENDING} ${FLOW_SIGN_NOTE}` : SOLAR_SURPLUS_PENDING;
   if (step === 'devices' || step === 'solar') return null;
   return fact?.detail ?? null;
 };
@@ -190,7 +213,7 @@ const headerProps = (step: SetupJourneyStep, path: SetupPath | null): SetupJourn
     busy: actionBusy || setupSavePending(),
     canContinue: fact?.status === 'done',
     error,
-    meterHelp: step === 'solar' && state.devicesLoaded && !state.surplusPoolReachable,
+    meterHelp: solarPending(step) && usesFlowMeter(),
     fluviusHelp: step === 'power' && fact?.status !== 'done' && market.state === 'resolved' && market.country === 'BE',
     continueLabel: path !== null && path.doneCount === path.steps.length ? 'Review setup' : 'Continue',
     onContinue: continueSetup,

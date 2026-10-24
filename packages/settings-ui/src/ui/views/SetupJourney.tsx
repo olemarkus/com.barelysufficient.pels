@@ -21,6 +21,9 @@ export type SetupDeviceChoices =
 type SetupDevicePickerProps = {
   choices: SetupDeviceChoices;
   solar: boolean;
+  // Whether the solar controls exist yet. Before the first surplus the device
+  // page has none, so the card opens it as plain Device settings.
+  solarReady: boolean;
   onManaged: (id: string, value: boolean) => void;
   onOpen: (id: string) => void;
   onRetry: () => void;
@@ -44,7 +47,7 @@ export const SetupDevicePicker = (props: SetupDevicePickerProps) => (
         </label>
         {device.hint && <p class="pels-card-supporting">{device.hint}</p>}
         <MdTextButton type="button" onClick={() => props.onOpen(device.id)}>
-          {props.solar && device.solar ? device.solar.label : 'Device settings'}
+          {props.solar && props.solarReady && device.solar ? device.solar.label : 'Device settings'}
         </MdTextButton>
         {props.solar && device.solar?.hint && <p class="pels-card-supporting">{device.solar.hint}</p>}
       </section>
@@ -116,7 +119,7 @@ export type SetupReviewProps = {
   devices: readonly SetupReviewDevice[];
   busy: boolean;
   error: string | null;
-  solarPending: boolean;
+  solarNote: string | null;
   onStart: () => void;
   onContinue: () => void;
 };
@@ -141,7 +144,7 @@ export const SetupReview = (props: SetupReviewProps) => {
               {device.status && <p class="pels-card-supporting">{device.status}</p>}
             </div>
           ))}
-          {props.solarPending && <p class="pels-notice-info">Solar control is not configured yet.</p>}
+          {props.solarNote && <p class="pels-notice-info">{props.solarNote}</p>}
           {props.error && <p role="alert" class="pels-notice-warning">{props.error}</p>}
           <div class="setup-recommendation-card__actions">
             {complete && props.path.simulating && (

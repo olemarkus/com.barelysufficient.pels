@@ -22,7 +22,7 @@ import { planNeedsLiveUpdates } from './planLiveData.ts';
 import { buildOverviewDeviceRows } from './overviewDeviceRows.ts';
 import { parsePlanSnapshot } from './planSnapshotParse.ts';
 import { registerPlanSurfaceRenderer } from './planSurfaceRefresh.ts';
-import { state } from './state.ts';
+import { resolveSolarSetupOffered, state } from './state.ts';
 import { onSetupPathChange, readSetupPath } from './setupPathFacts.ts';
 import {
   resolveOverviewSmartTaskRow,
@@ -224,6 +224,7 @@ const doRender = () => {
     // Same Main-only rule as the smart-task row above.
     evStateLines: overviewScope.kind === 'main' ? resolveEvCardStateLines(now) : new Map(),
     setupPath: setup,
+    offersSolarSetup: resolveSolarSetupOffered(),
     context: {
       dryRun: overviewScope.kind === 'main' ? state.dryRun : overviewScope.simulating,
     },
