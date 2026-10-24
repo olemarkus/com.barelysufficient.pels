@@ -687,6 +687,6 @@
     "en": "Internal cleanup of device control, smart task Flow cards, daily budget learning and the settings pages, with no change to how PELS behaves."
   },
   "3.23.0": {
-    "en": "OSO water heaters paired through the OSO inCharge app now work with PELS. PELS limits the heater by lowering its target temperature and leaves its on/off alone, since in the OSO app that switch forces the heater on or off for an hour.\n\nDevices PELS can only limit through their target temperature, such as the OSO heater, now default to Automatic: PELS lowers the target to the lowest temperature the device accepts, and the Limited temperature field shows it. You can save your own limit instead, up to the device's maximum, and Setup & recommendations suggests one when none is saved. In a busy hour, PELS also no longer limits devices more than needed in the last ten minutes."
+    "en": "OSO water heaters paired through the OSO inCharge app now work with PELS. PELS limits the heater by lowering its target temperature and leaves its on/off alone, since in the OSO app that switch forces the heater on or off for an hour.\n\nDevices PELS can only limit through their target temperature, such as the OSO heater, now drop to the lowest temperature the device accepts while limited, and the Limited temperature field shows it. You can save your own limit instead, up to the device's maximum, and Setup & recommendations suggests one when none is saved. In a busy hour, PELS also no longer limits devices more than needed in the last ten minutes."
   }
 }

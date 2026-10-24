@@ -12,7 +12,6 @@ export type MdSwitchElement = HTMLElement & {
 export type MdFilledTextFieldElement = HTMLElement & {
   value: string;
   label: string;
-  placeholder: string;
   readonly validity: ValidityState;
   reportValidity(): boolean;
   disabled: boolean;
@@ -251,8 +250,6 @@ export const deviceDetailShedTemp = document.querySelector(
   '#device-detail-overshoot-temp',
 ) as MdFilledTextFieldElement;
 export const deviceDetailShedTempHint = qs('#device-detail-overshoot-temp-hint');
-export const deviceDetailShedTempLabel = qs('#device-detail-overshoot-temp-label');
-export const deviceDetailShedTempAutomatic = qs('#device-detail-overshoot-temp-automatic');
 export const deviceDetailShedCoolingTempRow = qs('#device-detail-overshoot-cooling-temp-row');
 export const deviceDetailShedCoolingTempHint = qs('#device-detail-overshoot-cooling-temp-hint');
 export const deviceDetailShedCoolingTemp = document.querySelector(

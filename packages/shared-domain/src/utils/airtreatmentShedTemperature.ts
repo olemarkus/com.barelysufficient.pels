@@ -14,7 +14,8 @@ export function normalizeShedTemperature(value: number): number {
 }
 
 /**
- * The device's configured minimum target, also its automatic heating limit.
+ * The device's configured minimum target, also its heating limit when the
+ * owner saved none.
  * Accepted capability metadata already contains finite numbers. When Homey
  * supplies no minimum, retain the class-specific PELS fallback.
  */

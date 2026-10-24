@@ -117,7 +117,7 @@ describe('resolveTemperaturePolicyShedBehavior', () => {
       }
     });
 
-    it('keeps the automatic minimum independent of the live setpoint', () => {
+    it('keeps the device minimum independent of the live setpoint', () => {
       for (const setpointC of [22, 17, 14]) {
         expect(shed(
           { action: 'turn_off' }, setpointOnly(setpointC), true, 'heating',
@@ -139,16 +139,6 @@ describe('resolveTemperaturePolicyShedBehavior', () => {
       )).toEqual({ action: 'set_temperature', temperature: 10 });
       expect(shed({ action: 'turn_off' }, setpointOnly(22, 16), true, 'heating'))
         .toEqual({ action: 'set_temperature', temperature: 16 });
-    });
-
-
-    it('keeps automatic heating and a custom cooling limit independent', () => {
-      const automatic = { action: 'set_temperature' as const, temperature: 'device_minimum' as const, coolingTemperature: 27 };
-      expect(shed(automatic, setpointOnly(70, 45), true, 'heating'))
-        .toEqual({ action: 'set_temperature', temperature: 45 });
-      expect(shed(automatic, setpointOnly(70, 45), true, 'cooling'))
-        .toEqual({ action: 'set_temperature', temperature: 27 });
-      expect(shedLimits(automatic, setpointOnly(70, 45))).toEqual([45, 27]);
     });
 
     it('uses the cooling limit while cooling', () => {

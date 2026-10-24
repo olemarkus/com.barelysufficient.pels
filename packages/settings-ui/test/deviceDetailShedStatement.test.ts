@@ -61,8 +61,6 @@ const loadShedStatementHarness = async () => {
     deviceDetailShedSegmented: segmented,
     deviceDetailShedSegmentedLabel: segmentedLabel,
     deviceDetailShedHint: hint,
-    deviceDetailShedTempAutomatic: null,
-    deviceDetailShedTempLabel: null,
     deviceDetailShedTemp: shedTemp,
     deviceDetailShedTempRow: shedTempRow,
     deviceDetailShedCoolingTemp: shedCoolingTemp,
