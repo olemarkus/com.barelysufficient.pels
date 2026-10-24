@@ -95,6 +95,8 @@ test('one solar device can be configured without prices and the action reaches i
   }).toMatchObject({ surplusWilling: true, enabled: false });
   await page.locator('#device-detail-close').click();
   await page.locator('#devices-panel .setup-journey').getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page.locator('#limits-panel .setup-journey')).toContainText('Dutch household grid charges depend on connection size');
+  await expect(page.locator('#limits-panel .setup-journey')).toContainText('turn off Capacity limit and still use prices and solar');
   await page.locator('#settings-capacity-enabled').click();
   await expect.poll(() => stored(page, 'capacity_enabled')).toBe(false);
   await page.locator('#limits-panel .setup-journey').getByRole('button', { name: 'Review setup', exact: true }).click();

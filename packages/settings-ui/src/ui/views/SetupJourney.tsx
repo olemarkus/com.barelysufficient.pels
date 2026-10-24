@@ -18,13 +18,15 @@ export type SetupDeviceChoices =
   | { state: 'loading' | 'unavailable' }
   | { state: 'ready'; devices: readonly SetupDeviceChoice[] };
 
-export const SetupDevicePicker = (props: {
+type SetupDevicePickerProps = {
   choices: SetupDeviceChoices;
   solar: boolean;
   onManaged: (id: string, value: boolean) => void;
   onOpen: (id: string) => void;
   onRetry: () => void;
-}) => (
+};
+
+export const SetupDevicePicker = (props: SetupDevicePickerProps) => (
   <div class="setup-journey__devices">
     {props.choices.state === 'loading' && <p>Loading devices…</p>}
     {props.choices.state === 'unavailable' && <>

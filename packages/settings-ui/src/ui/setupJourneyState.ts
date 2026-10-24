@@ -10,15 +10,16 @@ export const setupJourneyFromSearch = (search: string): SetupJourneyStep | null 
 export const currentSetupJourney = (): SetupJourneyStep | null => setupJourneyFromSearch(window.location.search);
 
 const pending = new Set<Promise<unknown>>();
-const failures = new Set<string>();
-const latest = new Map<string, Promise<unknown>>();
+type SetupSaveKey = string | symbol;
+const failures = new Set<SetupSaveKey>();
+const latest = new Map<SetupSaveKey, Promise<unknown>>();
 const changed = (): void => { document.dispatchEvent(new Event('pels:setup-save')); };
 
 export const setupSavePending = (): boolean => pending.size > 0;
 
 export const acknowledgeSetupSaveFailures = (): void => { failures.clear(); };
 
-export const trackSetupSave = async <T>(key: string, save: () => Promise<T>): Promise<T> => {
+export const trackSetupSave = async <T>(key: SetupSaveKey, save: () => Promise<T>): Promise<T> => {
   failures.delete(key);
   const operation = Promise.resolve().then(save);
   pending.add(operation);

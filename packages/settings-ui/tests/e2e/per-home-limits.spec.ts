@@ -48,7 +48,7 @@ test('single-home user sees the Main-home form, no scope bar', async ({ page }) 
   // settings card is just part of the page.
   await expect(page.locator('#settings-capacity-limit-hint')).toHaveText(
     'The peak or tariff step you want to protect. PELS keeps each selected period’s average power under this. '
-      + 'No capacity tariff where you live? Turn off Capacity limit.',
+      + 'Not charged for measured peaks? You can turn off Capacity limit.',
   );
   await expect(page.locator('#settings-limits-global')).toBeVisible();
   // Layout identity: the scope bar's mount stays display:none, so it claims no

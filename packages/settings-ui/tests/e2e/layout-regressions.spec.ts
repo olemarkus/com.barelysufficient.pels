@@ -443,7 +443,7 @@ test.describe('settings shell layout regressions', () => {
     await expect(page.locator('#dry-run-banner')).toBeVisible();
   });
 
-  test('turning simulation off from the banner hides it everywhere and flips device-card copy at once', async ({ page }) => {
+  test('reviewing setup from the banner requires explicit activation before device-card copy changes', async ({ page }) => {
     await openApp(page, 480);
     await openTopTab(page, 'Overview');
     await expect(page.locator('#plan-cards .plan-card').first()).toBeVisible();
@@ -451,9 +451,18 @@ test.describe('settings shell layout regressions', () => {
     // Simulation ON: the flagship card + its reason line read hypothetically.
     await expect(cards).toContainText('(simulation)');
     await expect(page.locator('#dry-run-banner')).toBeVisible();
-    // Turn simulation off from the banner's inline action.
+    // The banner opens review; opening it alone must leave simulation on.
     await page.locator('#simulation-disable-button').click();
-    await expect(page.locator('#toast')).toContainText('Simulation mode updated.');
+    const review = page.locator('#setup-review-panel');
+    await expect(review).toBeVisible();
+    await expect(review).toContainText('Simulation mode is on');
+    await expect(cards).toContainText('(simulation)');
+    await expect(page.locator('#toast')).not.toContainText('Simulation mode updated.');
+    await review.getByText('Start managing', { exact: true }).click();
+    await expect(page.locator('#overview-panel')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => (window as unknown as {
+      Homey: { __stub: { getSetting: (key: string) => unknown } };
+    }).Homey.__stub.getSetting('capacity_dry_run'))).toBe(false);
     // Banner + overview flip together — not on the next realtime push.
     await expect(page.locator('#dry-run-banner')).toBeHidden();
     await expect(cards).not.toContainText('(simulation)');
