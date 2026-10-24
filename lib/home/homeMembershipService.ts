@@ -6,10 +6,17 @@ import {
   type DeviceHomeAssignmentsStore,
   type HomeId,
   type HomesStore,
+  type MembershipZoneTree,
   type SubHomeConfig,
   type ZoneTree,
 } from './homeConfig';
-import { resolveDeviceHome, type HomeMembership, type HomeMembershipPort } from './membership';
+import {
+  listHomeMembership,
+  resolveDeviceHome,
+  type HomeMembership,
+  type HomeMembershipListing,
+  type HomeMembershipPort,
+} from './membership';
 import { normalizeError } from '../utils/errorUtils';
 import {
   DEVICE_HOME_ASSIGNMENTS,
@@ -67,8 +74,9 @@ export type HomeMembershipServiceDeps = {
   legacyMultiHomeEnabled: boolean;
   /**
    * Change-gated plan invalidation: fired when a recompute changes the
-   * PLAN-RELEVANT membership — the set of non-main assignments (exactly what
-   * `filterDevicesForHome` consumes) — so the committed plan never keeps
+   * PLAN-RELEVANT membership — the set of non-main assignments and of devices
+   * held out of every home (exactly what `filterDevicesForHome` consumes) —
+   * so the committed plan never keeps
    * governing the old device set until the next incidental rebuild.
    * Deliberately NARROWER than the log fingerprint: in single-home operation
    * every device is main, so device add/remove churn must stay free here
@@ -130,11 +138,13 @@ export type HomeMembershipServiceDeps = {
 /**
  * Diagnostics/UI view of the cached membership state. `source` on each entry
  * is DIAGNOSTICS AND DISPLAY ONLY — control paths consume `homeId` alone and
- * must never branch on how it was decided (`lib/home/membership.ts`).
+ * must never branch on how it was decided (`lib/home/membership.ts`). Each
+ * entry is where the device LISTS, so a device held out of every home appears
+ * under Main as a fallback.
  */
 export type HomeMembershipDiagnostics = {
   subHomes: readonly SubHomeConfig[];
-  membershipByDeviceId: Readonly<Record<string, HomeMembership>>;
+  membershipByDeviceId: Readonly<Record<string, HomeMembershipListing>>;
   zoneTree: ZoneTree | null;
   hasSubHomes: boolean;
   /**
@@ -173,11 +183,8 @@ export type HomeMembershipDiagnostics = {
 export class HomeMembershipService implements HomeMembershipPort {
   private subHomes: readonly SubHomeConfig[] = [];
   private pins: DeviceHomeAssignments = {};
-  private zoneTree: ZoneTree | null = null;
+  private zoneTree: MembershipZoneTree = { kind: 'pending' };
   private membershipByDeviceId: Record<string, HomeMembership> = {};
-  // Zone-rule devices whose zone the cached tree does not contain. Rebuilt on
-  // every recompute, like the membership map.
-  private unknownZoneDeviceIds: ReadonlySet<string> = new Set();
   // Last-known zoneId per device, from previous COMMITTED snapshots. A
   // fulfilled snapshot whose device entry transiently omits zone must not flap
   // that device to main/'fallback' for one cycle — the previous resolution
@@ -252,7 +259,7 @@ export class HomeMembershipService implements HomeMembershipPort {
     // Never cache null over a previously seen tree: the transport retains
     // last-good, but a recreated transport (or a pre-first-fetch read) reports
     // null — keeping the last seen tree avoids a membership flap to main.
-    if (tree !== null) this.zoneTree = tree;
+    if (tree !== null) this.zoneTree = { kind: 'committed', tree };
     const nextRetentionLogged = new Set<string>();
     const devices = this.deps.getDevices().map((device) => ({
       deviceId: device.deviceId,
@@ -268,19 +275,20 @@ export class HomeMembershipService implements HomeMembershipPort {
     // it are pure assignments — they cannot throw and never commit alone.
     // `Object.fromEntries` defines own data properties, so an untrusted device
     // id can never reach Object.prototype machinery here.
+    const previousMembership = this.membershipByDeviceId;
     this.membershipByDeviceId = Object.fromEntries(devices.map((device) => [
       device.deviceId,
       resolveDeviceHome({
-        zones: this.zoneTree ?? {},
+        zones: this.zoneTree,
         subHomes: this.subHomes,
         pins: this.pins,
         deviceId: device.deviceId,
         deviceZoneId: device.zoneId,
       }),
     ]));
-    this.unknownZoneDeviceIds = this.resolveUnknownZoneDeviceIds(devices);
     this.lastKnownZoneIdByDeviceId = nextLastKnownZoneIds;
     this.retentionLoggedDeviceIds = nextRetentionLogged;
+    this.logNewlyHeldOut(previousMembership);
     const ownershipBecameReady = !mainOwnershipWasReady
       && this.isOwnershipReady()
       && !this.hasPendingOwnershipGeneration();
@@ -341,48 +349,31 @@ export class HomeMembershipService implements HomeMembershipPort {
     return zoneId;
   }
 
-  // Only a zone the committed tree lacks counts: before any tree there is no
-  // claim either way (the actuation fence holds then), and a device pinned to a
-  // home that exists has that home regardless of zones. A pin to a home that is
-  // gone resolves by zone (`resolveDeviceHome`), so it counts like no pin.
-  private resolveUnknownZoneDeviceIds(
-    devices: readonly { deviceId: string; zoneId: string | null }[],
-  ): ReadonlySet<string> {
-    const tree = this.zoneTree;
-    if (tree === null) return new Set();
-    const homeExists = (homeId: string): boolean => (
-      homeId === MAIN_HOME_ID || this.subHomes.some((subHome) => subHome.homeId === homeId)
-    );
-    const unknown = devices.filter((device) => (
-      device.zoneId !== null
-      && !(Object.hasOwn(this.pins, device.deviceId) && homeExists(this.pins[device.deviceId]!))
-      && !Object.hasOwn(tree, device.zoneId)
-    ));
-    for (const device of unknown) {
-      if (!this.unknownZoneDeviceIds.has(device.deviceId)) {
-        this.deps.getLogger().info({
-          event: 'home_membership_zone_unknown', deviceId: device.deviceId, zoneId: device.zoneId,
-        });
-      }
+  // Logged once per hold, on entry: the resolver holds a device out only for a
+  // zone the committed tree lacks while meter areas exist (`resolveDeviceHome`).
+  private logNewlyHeldOut(previousMembership: Readonly<Record<string, HomeMembership>>): void {
+    for (const [deviceId, membership] of Object.entries(this.membershipByDeviceId)) {
+      if (membership.state !== 'held_out' || previousMembership[deviceId]?.state === 'held_out') continue;
+      this.deps.getLogger().info({ event: 'home_membership_zone_unknown', deviceId, zoneId: membership.zoneId });
     }
-    return new Set(unknown.map((device) => device.deviceId));
   }
 
   isDeviceZoneUnknown(deviceId: string): boolean {
-    return this.runtimeActive && this.subHomes.length > 0 && this.unknownZoneDeviceIds.has(deviceId);
+    return this.runtimeActive && this.membershipByDeviceId[deviceId]?.state === 'held_out';
   }
 
-  /** Resolved home for a device; an unknown device belongs to the main home. */
+  /** The home a device lists under; an unknown or held-out device lists under the main home. */
   getHomeIdForDevice(deviceId: string): HomeId {
     if (!this.runtimeActive) return MAIN_HOME_ID;
-    return this.membershipByDeviceId[deviceId]?.homeId ?? MAIN_HOME_ID;
+    const membership = this.membershipByDeviceId[deviceId];
+    return membership?.state === 'member' ? membership.homeId : MAIN_HOME_ID;
   }
 
-  /** Control-path view: `homeId` per device, deliberately without `source`. */
+  /** Control-path view: listed `homeId` per device, deliberately without `source`. */
   getMembershipMap(): Readonly<Record<string, HomeId>> {
     if (!this.runtimeActive) return {};
     return Object.fromEntries(
-      Object.entries(this.membershipByDeviceId).map(([deviceId, entry]) => [deviceId, entry.homeId]),
+      Object.keys(this.membershipByDeviceId).map((deviceId) => [deviceId, this.getHomeIdForDevice(deviceId)]),
     );
   }
 
@@ -428,7 +419,7 @@ export class HomeMembershipService implements HomeMembershipPort {
     const storesReady = this.hasSeenNonSuspectReadByStoreKey[HOMES_CONFIG]
       && this.hasSeenNonSuspectReadByStoreKey[DEVICE_HOME_ASSIGNMENTS];
     if (!storesReady) return false;
-    return !this.runtimeActive || this.subHomes.length === 0 || this.zoneTree !== null;
+    return !this.runtimeActive || this.subHomes.length === 0 || this.zoneTree.kind === 'committed';
   }
 
   /**
@@ -521,7 +512,7 @@ export class HomeMembershipService implements HomeMembershipPort {
   isSubHomeExecutionReady(): boolean {
     const storesReady = this.hasSeenNonSuspectReadByStoreKey[HOMES_CONFIG]
       && this.hasSeenNonSuspectReadByStoreKey[DEVICE_HOME_ASSIGNMENTS];
-    return storesReady && this.zoneTree !== null && !this.hasPendingOwnershipGeneration();
+    return storesReady && this.zoneTree.kind === 'committed' && !this.hasPendingOwnershipGeneration();
   }
 
   /** Activation gate for the per-home runtime registry (`lib/home/homeRuntimeRegistry.ts`). */
@@ -543,12 +534,12 @@ export class HomeMembershipService implements HomeMembershipPort {
     // all answered inside the authority owner, so nothing here re-reads a
     // side-effecting settings value the line above already resolved.
     if (this.meterAuthority.resolveForActuation(this.authorityContext()) !== 'ready') return true;
-    return this.runtimeActive && this.subHomes.length > 0 && this.zoneTree === null;
+    return this.runtimeActive && this.subHomes.length > 0 && this.zoneTree.kind === 'pending';
   }
 
   /**
-   * Whether a recompute has adopted a COMMITTED zone tree. `zoneTree` is only
-   * ever assigned from a non-null `getZoneTree()` read inside `recompute()`,
+   * Whether a recompute has adopted a COMMITTED zone tree. `zoneTree` only
+   * leaves `pending` on a non-null `getZoneTree()` read inside `recompute()`,
    * so this is exactly "membership has resolved against real zone data at
    * least once". The per-home capacity bundles (R7b) gate EXECUTION on this
    * signal: until the tree lands, zone-rule devices resolve to main via the
@@ -557,14 +548,17 @@ export class HomeMembershipService implements HomeMembershipPort {
    * false until proven ready.
    */
   hasSeenZoneTreeCommit(): boolean {
-    return this.zoneTree !== null;
+    return this.zoneTree.kind === 'committed';
   }
 
   getDiagnostics(): HomeMembershipDiagnostics {
     return {
       subHomes: this.subHomes,
-      membershipByDeviceId: this.membershipByDeviceId,
-      zoneTree: this.zoneTree,
+      membershipByDeviceId: Object.fromEntries(
+        Object.entries(this.membershipByDeviceId).map(([deviceId, entry]) => [deviceId, listHomeMembership(entry)]),
+      ),
+      // The `ui_homes` payload's own shape: `null` until the first commit.
+      zoneTree: this.zoneTree.kind === 'committed' ? this.zoneTree.tree : null,
       // Diagnostics describe SAVED configuration even while the control port is
       // held all-main for legacy compatibility.
       hasSubHomes: this.subHomes.length > 0,
@@ -622,7 +616,11 @@ export class HomeMembershipService implements HomeMembershipPort {
   // at snapshot-refresh cadence.
   private logIfChanged(): void {
     const fingerprint = Object.entries(this.membershipByDeviceId)
-      .map(([deviceId, entry]) => `${deviceId}=${entry.homeId}:${entry.source}`)
+      .map(([deviceId, entry]) => (
+        entry.state === 'held_out'
+          ? `${deviceId}=held_out:${entry.zoneId}`
+          : `${deviceId}=${entry.homeId}:${entry.source}`
+      ))
       .sort((a, b) => a.localeCompare(b))
       .join(',');
     const diagnosticFingerprint = `${this.runtimeActive ? 'active' : 'held'}|${fingerprint}`;
@@ -634,7 +632,7 @@ export class HomeMembershipService implements HomeMembershipPort {
       devicesTotal: Object.keys(this.membershipByDeviceId).length,
       subHomesTotal: this.subHomes.length,
       pinsTotal: Object.keys(this.pins).length,
-      zoneTreeSeen: this.zoneTree !== null,
+      zoneTreeSeen: this.zoneTree.kind === 'committed',
     });
   }
 
@@ -648,10 +646,10 @@ export class HomeMembershipService implements HomeMembershipPort {
   private notifyIfPlanRelevantMembershipChanged(): void {
     const entries = this.runtimeActive ? Object.entries(this.membershipByDeviceId) : [];
     const fingerprint = entries
-      .filter(([deviceId, entry]) => entry.homeId !== MAIN_HOME_ID || this.isDeviceZoneUnknown(deviceId))
-      .map(([deviceId, entry]) => (
-        this.isDeviceZoneUnknown(deviceId) ? `${deviceId}=held_out` : `${deviceId}=${entry.homeId}`
-      ))
+      .flatMap(([deviceId, entry]) => {
+        if (entry.state === 'held_out') return [`${deviceId}=held_out`];
+        return entry.homeId === MAIN_HOME_ID ? [] : [`${deviceId}=${entry.homeId}`];
+      })
       .sort((a, b) => a.localeCompare(b))
       .join(',');
     if (fingerprint === this.lastPlanRelevantFingerprint) return;

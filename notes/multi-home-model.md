@@ -68,8 +68,15 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
 - An explicit pin in `device_home_assignments: Record<deviceId, homeId>`
   overrides the zone rule; pinning to `'main'` opts a device out of a
   surrounding sub-home. Absence = follow the zone.
-- Degenerate input fails safe to `'main'`: an unknown/missing zone, a zone
-  cycle, or a device with no zone all resolve to the main home. Resolution is
+- While meter areas exist, a device whose zone the committed zone tree does
+  not contain (a zone created after PELS last read the tree) is **held out**
+  of every home: the resolver answers its own `held_out` variant, no home
+  plans or actuates the device until the tree knows the zone, and it lists
+  under Main meanwhile (owner ruling 2026-10-24). A pin to an existing home
+  still wins; a dangling pin resolves by zone, so it can be held out too.
+- Other degenerate input fails safe to `'main'`: a broken parent chain, a zone
+  cycle, a device with no zone, an unknown zone with no meter area, and any
+  zone before the first tree commits all resolve to the main home. Resolution is
   in the **producer** (`lib/home/membership.ts` → `lib/home/homeMembershipService.ts`);
   the planner sees only a resolved `homeId` and never branches on the
   provenance (`source: 'zone' | 'pin' | 'fallback'` exists for the UI badge

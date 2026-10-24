@@ -786,6 +786,7 @@ describe('settingsUiApi', () => {
         getHomeIdForDevice: (deviceId: string) => (deviceId === 'batt-area' ? 'garage' : MAIN_HOME_ID),
         isOwnershipReady: () => true,
         hasPendingOwnershipGeneration: () => false,
+        isDeviceZoneUnknown: () => false,
       },
       batteryControl: {
         readControlCapability: (deviceId: string) => (deviceId.startsWith('batt') ? 'drivable' : 'not_battery'),
@@ -813,6 +814,7 @@ describe('settingsUiApi', () => {
         getHomeIdForDevice: () => MAIN_HOME_ID,
         isOwnershipReady: () => true,
         hasPendingOwnershipGeneration: () => false,
+        isDeviceZoneUnknown: () => false,
       },
       batteryControl: {
         readControlCapability: (deviceId: string) => (
@@ -858,6 +860,7 @@ describe('settingsUiApi', () => {
         getHomeIdForDevice: () => MAIN_HOME_ID,
         isOwnershipReady: () => true,
         hasPendingOwnershipGeneration: () => false,
+        isDeviceZoneUnknown: () => false,
       },
     });
 

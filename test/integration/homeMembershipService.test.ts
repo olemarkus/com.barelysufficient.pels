@@ -54,6 +54,7 @@ import {
 } from '../../lib/home/homeRegistryStore';
 import { wireHomeMembershipService } from '../../setup/homeMembershipWiring';
 import { filterDevicesForHome } from '../../lib/home/homeMembershipService';
+import { isSettledMainHomeMember } from '../../lib/home/wholeHomeDeviceListing';
 import {
   HomeMembershipService,
   type HomeMembershipDeviceInput,
@@ -725,6 +726,45 @@ describe('zone-tree fail-safe and pins', () => {
     const service = makeStaticService({ getZoneTree: () => ZONES, devices: [{ deviceId: 'dev1', zoneId: 'z-new' }] });
     service.recompute();
     expect(service.isDeviceZoneUnknown('dev1')).toBe(true);
+  });
+
+  it('lists a held-out device under Main while refusing it every Main write, then releases it', () => {
+    createHomesStore(homeyLike.settings).write({
+      activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
+      subHomes: [SUB_HOME_A],
+    });
+    const { info, logger } = makeLoggerSpy();
+    let tree: ZoneTree = ZONES;
+    const service = makeStaticService({ getZoneTree: () => tree, devices: [{ deviceId: 'dev1', zoneId: 'z-new' }], logger });
+    const ctx = { homeMembership: service } as unknown as AppContext;
+    service.recompute();
+    service.recompute();
+
+    // Listings and diagnostics keep reading Main, as the fail-safe it is.
+    expect(service.isDeviceZoneUnknown('dev1')).toBe(true);
+    expect(service.getHomeIdForDevice('dev1')).toBe('main');
+    expect(service.getMembershipMap()).toEqual({ dev1: 'main' });
+    expect(service.getDiagnostics().membershipByDeviceId.dev1).toEqual({ homeId: 'main', source: 'fallback' });
+    expect(info.mock.calls.filter(([entry]) => entry.event === 'home_membership_zone_unknown'))
+      .toEqual([[{ event: 'home_membership_zone_unknown', deviceId: 'dev1', zoneId: 'z-new' }]]);
+    // A hold is not relocation: an existing smart task stays intact.
+    expect(isSmartTaskDeviceInMainHome(ctx, 'dev1')).toBe(true);
+    // But nothing Main writes may target it: no new promise or terminal
+    // command, and no battery claim or listing as Main's own.
+    expect(service.isMainHomeActuationFenced()).toBe(false);
+    expect(resolveSmartTaskHomeScope(ctx, 'dev1')).toBe('unavailable');
+    expect(isSettledMainHomeMember(service, 'dev1')).toBe(false);
+
+    tree = { ...ZONES, 'z-new': { id: 'z-new', name: 'New room', parent: 'z2' } };
+    service.recompute();
+    expect(service.isDeviceZoneUnknown('dev1')).toBe(false);
+    expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
+    expect(resolveSmartTaskHomeScope(ctx, 'dev1')).toBe('sub_home');
+
+    tree = { ...ZONES, 'z-new': { id: 'z-new', name: 'New room', parent: 'z3' } };
+    service.recompute();
+    expect(resolveSmartTaskHomeScope(ctx, 'dev1')).toBe('main');
+    expect(isSettledMainHomeMember(service, 'dev1')).toBe(true);
   });
 
   it('asks Main to re-plan when one of its devices is held out for an unknown zone, and again when released', () => {

@@ -333,6 +333,7 @@ const buildTerminalFallbackCtx = (managedDevices: Record<string, boolean>) => {
       isOwnershipReady: () => true,
       hasPendingOwnershipGeneration: () => false,
       isMainHomeActuationFenced: () => false,
+      isDeviceZoneUnknown: () => false,
       getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set<string>() }),
     } as unknown as AppContext['homeMembership'],
     deviceManager: { setCapability, applyDeviceTargets } as unknown as AppContext['deviceManager'],

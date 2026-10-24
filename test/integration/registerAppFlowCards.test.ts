@@ -135,6 +135,7 @@ describe('registerAppFlowCards', () => {
       isOwnershipReady: () => false,
       hasPendingOwnershipGeneration: () => false,
       isMainHomeActuationFenced: () => true,
+      isDeviceZoneUnknown: () => false,
       getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set() }),
     } as unknown as AppContext['homeMembership'];
     ctx.deferredObjectiveActivePlanRecorder = {} as AppContext['deferredObjectiveActivePlanRecorder'];
@@ -185,6 +186,7 @@ describe('registerAppFlowCards', () => {
       isOwnershipReady: () => true,
       hasPendingOwnershipGeneration: () => false,
       isMainHomeActuationFenced: () => true,
+      isDeviceZoneUnknown: () => false,
       getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set() }),
     } as unknown as AppContext['homeMembership'];
 

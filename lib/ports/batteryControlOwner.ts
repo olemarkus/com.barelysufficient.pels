@@ -47,8 +47,9 @@ export type BatteryControlRead =
  * - `control_setting_unreadable` — the opt-out setting has never read cleanly
  *   (fail closed for a claim).
  * - `not_main_home` — the battery is not a Main-home member (v1 is Main only),
- *   or membership is not settled (not resolved yet, or an ownership change
- *   is pending).
+ *   or membership is not settled (not resolved yet, an ownership change is
+ *   pending, or the battery is held out of every home for a zone the zone
+ *   tree does not know yet).
  * - `actuation_fenced` — Main's write fence is closed.
  * - `dry_run` — capacity simulation is on: nothing may be written.
  * - `release_in_flight` — a hand-back of this battery is running.
