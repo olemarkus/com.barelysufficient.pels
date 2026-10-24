@@ -34,5 +34,5 @@ export const SURPLUS_TRACKING_HINTS: Record<SurplusTrackingCopyKind, string> = {
  * an owner who has set one needs to know which of the two is deciding.
  */
 export const SURPLUS_TRACKING_SMART_TASK_NOTE
-  = 'A smart task with a deadline on this device decides instead, while it is running.';
+  = 'While active, a Smart task decides when this device runs and may use grid electricity.';
 

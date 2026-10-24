@@ -1,3 +1,4 @@
+import { trackSetupSave } from '../setupJourneyState.ts';
 import { getSettingFresh, setSetting } from '../homey.ts';
 import { showToast } from '../toast.ts';
 import { logSettingsError } from '../logging.ts';
@@ -121,7 +122,7 @@ export const writeFreshSetting = async <T>(params: FreshSettingWriteParams<T>): 
       ? params.fallbackValue
       : normalised;
     const nextValue = params.mutate(currentValue);
-    await setSetting(params.key, nextValue);
+    await trackSetupSave(params.key, () => setSetting(params.key, nextValue));
     await params.commit?.(nextValue);
     confirmSettingSaved();
     return nextValue;

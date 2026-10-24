@@ -341,19 +341,27 @@ md-text-button {
   --md-sys-color-primary: var(--pels-text-primary);
 }
 
-/* Multiple meters buttons: restore the M3 lead/trail padding on the host
+/* Shared settings surfaces: restore the M3 lead/trail padding on the host
    boxes — Homey's host stylesheet opens with a universal `* { padding: 0 }`
    reset that beats the components' own :host padding, collapsing labels to
    the container edges (same idiom as .dry-run-banner__action /
    .budget-page-header__action). Placed up here with the base button rules so
    stylelint's no-descending-specificity ordering holds against the
    id-scoped button rules further down. */
-.homes-settings md-filled-button {
+.homes-settings md-filled-button,
+.setup-journey md-filled-button {
   padding-inline: var(--spacing-6);
 }
 
-.homes-settings md-text-button {
+.homes-settings md-text-button,
+.setup-journey md-text-button,
+.setup-path md-text-button {
   padding-inline: var(--spacing-3);
+}
+
+.setup-journey__device md-text-button {
+  padding-inline: var(--spacing-3);
+  justify-self: start;
 }
 
 /* M3 destructive text button: foreground (label, ripple, focus, icon) uses
@@ -8970,4 +8978,38 @@ md-switch {
   align-self: flex-start;
   margin-bottom: var(--spacing-3);
   max-width: 100%;
+}
+
+/* Guided setup reuses the normal page controls and shared surface roles. */
+.setup-journey,
+.setup-journey__devices,
+.setup-journey__device,
+.setup-journey__summary {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
+.setup-journey,
+.setup-journey__device {
+  padding: var(--spacing-4);
+}
+
+.setup-journey__summary {
+  margin: 0;
+}
+
+.setup-journey__summary dd {
+  margin: 0;
+  color: var(--pels-text-secondary);
+}
+
+.setup-journey__summary dt {
+  font-weight: var(--font-weight-semibold);
+}
+
+[data-setup-journey-panel] > .pels-appbar,
+[data-setup-journey-panel] .device-control-legend,
+[data-setup-journey-panel="power"] #settings-limits-form,
+[data-setup-journey-panel="hardCap"] #settings-limits-global {
+  display: none;
 }

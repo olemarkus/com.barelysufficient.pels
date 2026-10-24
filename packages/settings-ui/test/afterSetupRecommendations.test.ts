@@ -165,9 +165,8 @@ describe('after-setup suggestions', () => {
       // A real recommendation, and a question: only the owner knows whether
       // Belgium means Flanders, so the body says who may dismiss it.
       expect(first?.category).toBe('recommendation');
-      expect(first?.body).toContain('If you live in Flanders');
-      expect(first?.body).toContain('Elsewhere in Belgium this does not apply');
-      expect(first?.target).toEqual({ kind: 'panel', panelId: 'limits' });
+      expect(first?.body).toBe('In Flanders? Use the 15-minute average for measured peaks.');
+      expect(first?.target).toEqual({ kind: 'quarter-hour' });
     });
 
     it('does not ask when PELS may limit nothing: no cap is in force to be wrong', () => {

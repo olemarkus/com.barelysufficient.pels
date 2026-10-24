@@ -44,6 +44,7 @@ export type RecommendationTarget =
   | { kind: 'ev-soc-flow-conflict-check'; deviceId: string }
   // A settings panel or top-level tab, by its `data-panel` / `data-tab` id.
   | { kind: 'panel'; panelId: string }
+  | { kind: 'quarter-hour' }
   // Save the price source in force as the owner's choice, then open Devices.
   | { kind: 'keep-price-source'; scheme: PriceSchemeSetting };
 
