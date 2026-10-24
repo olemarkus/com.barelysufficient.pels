@@ -37,6 +37,14 @@ const clearReportReference = (): void => {
   window.history.replaceState(window.history.state, '', url);
 };
 
+const focusReportStage = (surface: HTMLElement, previousStage: string | undefined): void => {
+  const stage = surface.querySelector<HTMLElement>('[data-report-stage]');
+  if (previousStage && stage && previousStage !== stage.dataset.reportStage && stage.getClientRects().length > 0) {
+    stage.focus({ preventScroll: true });
+    stage.scrollIntoView({ block: 'start' });
+  }
+};
+
 const controller = new SupportReportController({
   prepare: (request) => callApi<SupportReportResponse>('POST', `${SUPPORT_REPORT_PATH}/prepare`, request),
   get: (id) => callApi<SupportReportResponse>('GET', `${SUPPORT_REPORT_PATH}/${encodeURIComponent(id)}`),
@@ -53,13 +61,16 @@ const controller = new SupportReportController({
   const history: unknown = window.history.state;
   const from = history && typeof history === 'object' && 'pelsFrom' in history ? history.pelsFrom : undefined;
   const backTarget = typeof from === 'string' && from && from !== SUPPORT_REPORT_PANEL ? from : 'settings';
+  const previousStage = surface.querySelector<HTMLElement>('[data-report-stage]')?.dataset.reportStage;
   renderSupportReportView(surface, { state: view, homeName, backTarget, actions: {
     edit: (draft) => { clearReportReference(); controller.edit(draft); },
+    editDetails: () => { clearReportReference(); controller.editDetails(); },
     prepare: () => { clearReportReference(); return controller.prepare(); },
     send: () => controller.send(), check: () => controller.check(),
     startAnother: () => { clearReportReference(); controller.startAnother(); },
     notice: (message) => controller.notice(message),
   } });
+  focusReportStage(surface, previousStage);
 });
 
 export const setSupportReportContext = (subject: SupportReportSubject, atMs?: number): void => {

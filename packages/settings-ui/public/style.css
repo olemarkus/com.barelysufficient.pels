@@ -8971,7 +8971,8 @@ md-switch {
 /* Manual problem reports */
 .support-report,
 .support-report__form,
-.support-report__preview {
+.support-report__preview,
+.support-report__contents {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-4);
@@ -8987,11 +8988,6 @@ md-switch {
 .support-report p,
 .support-report h3 {
   margin: 0;
-}
-
-.support-report__preview {
-  border-top: 1px solid var(--color-border-default);
-  padding-top: var(--spacing-6);
 }
 
 .support-report__summary {

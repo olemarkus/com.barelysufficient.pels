@@ -1,7 +1,7 @@
 import type { PreparedSupportReport, SupportReportRequest } from '../../../contracts/src/supportReport';
 import { supportReportFixture } from '../../test/helpers/supportReportFixture';
 import { expect, test, injectHomeyHostCss, type Page } from './fixtures/test';
-import { readMdValue, setMdValue } from './fixtures/materialWeb';
+import { readMdSelectHeadlineText, readMdValue, setMdValue } from './fixtures/materialWeb';
 
 type ReportStubWindow = Window & {
   __PELS_HOMEY_STUB__?: { apiHandlers: Record<string, (body: unknown) => unknown> };
@@ -56,6 +56,7 @@ test('keeps a draft through Back, requires a fresh preview after editing, and se
   await page.locator('.settings-nav-card[data-settings-target="report-problem"]').click();
   const panel = page.locator('#report-problem-panel');
   await expect(panel).toBeVisible();
+  await expect.poll(() => readMdSelectHeadlineText(page, '[data-report-field="device"]')).toBe('App or several devices');
   await setMdValue(page, '[data-report-field="problem"]', 'The heater stayed off.');
   await setMdValue(page, '[data-report-field="expected"]', 'I expected it to resume.');
   await panel.getByRole('button', { name: 'Back', exact: true }).click();
@@ -65,6 +66,10 @@ test('keeps a draft through Back, requires a fresh preview after editing, and se
   await expect(panel.locator('[data-report-action="send"]')).toHaveCount(0);
   await panel.locator('[data-report-action="preview"]').click();
   await expect(panel.getByRole('region', { name: 'Report preview' })).toBeVisible();
+  await expect(panel.locator('[data-report-field="problem"]')).toHaveCount(0);
+  await expect(panel.locator('[data-report-stage]')).toBeFocused();
+  await expect(panel.getByRole('heading', { name: 'Report preview' })).toBeInViewport();
+  await panel.locator('[data-report-action="edit"]').click();
   await setMdValue(page, '[data-report-field="problem"]', 'The heater resumed late.');
   await expect(panel.getByRole('region', { name: 'Report preview' })).toHaveCount(0);
   await panel.locator('[data-report-action="preview"]').click();
@@ -74,10 +79,15 @@ test('keeps a draft through Back, requires a fresh preview after editing, and se
   expect(await page.evaluate(() => window.getSelection()?.toString())).toContain('The heater resumed late.');
   await panel.locator('[data-report-action="send"]').click();
   await expect(panel).toContainText('homey-receipt-1');
+  await expect(panel.getByRole('heading', { name: 'Report sent to Homey' })).toBeInViewport();
+  await expect(panel.locator('[data-report-submitted-details]')).not.toHaveAttribute('open', '');
+  await expect(panel.locator('[data-report-field="problem"]')).toHaveCount(0);
   expect(await page.evaluate(() => (window as unknown as ReportStubWindow).reportSends)).toEqual([{ consent: true }]);
   expect(page.url()).not.toContain('heater');
   expect(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }))).not.toContain('heater resumed');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await panel.locator('[data-report-action="done"]').click();
+  await expect(page.locator('#settings-panel')).toBeVisible();
 });
 
 test('checks an uncertain send without another submission and restores status after reload', async ({ page }) => {
@@ -138,7 +148,8 @@ test('keeps the latest navigation target when a previous report loads late', asy
   expect(new URL(page.url()).searchParams.get('reportId')).toBe('report-1');
   await panel.getByRole('button', { name: 'Back', exact: true }).click();
   await page.locator('.settings-nav-card[data-settings-target="report-problem"]').click();
-  await expect.poll(() => readMdValue(page, '[data-report-field="device"]')).toBe('heater');
+  await panel.locator('[data-report-action="new"]').click();
+  await expect.poll(() => readMdValue(page, '[data-report-field="device"]')).toBe('device:heater');
 });
 
 test('opens an activity incident at its exact time and renders the preview at narrow widths in both themes', async ({ browser, browserName, baseURL }, testInfo) => {
@@ -157,7 +168,11 @@ test('opens an activity incident at its exact time and renders the preview at na
         const panel = page.locator('#report-problem-panel');
         await expect(panel).toBeVisible();
         await expect(panel).toContainText('Time zone:');
-        await setMdValue(page, '[data-report-field="problem"]', 'The heater stayed off.');
+        await expect.poll(() => readMdSelectHeadlineText(page, '[data-report-field="device"]')).toBe('Hall heater (recorded)');
+        await panel.locator('[data-report-field="problem"] textarea').fill('The heater stayed off.');
+        await panel.locator('[data-report-field="expected"] textarea').fill('I expected the room to warm up.');
+        await panel.getByRole('heading', { name: 'Report a problem', exact: true }).click();
+        await page.screenshot({ path: testInfo.outputPath(`form-${width}-${dark ? 'dark' : 'light'}.png`) });
         await panel.locator('[data-report-action="preview"]').click();
         await expect(panel.getByRole('region', { name: 'Report preview' })).toBeVisible();
         const requests = await page.evaluate(() => (window as unknown as ReportStubWindow).reportRequests);
@@ -166,6 +181,9 @@ test('opens an activity incident at its exact time and renders the preview at na
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
         expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(dark);
         await page.screenshot({ path: testInfo.outputPath(`report-${width}-${dark ? 'dark' : 'light'}.png`) });
+        await panel.locator('[data-report-action="send"]').click();
+        await expect(panel).toContainText('homey-receipt-1');
+        await page.screenshot({ path: testInfo.outputPath(`sent-${width}-${dark ? 'dark' : 'light'}.png`) });
         await panel.getByRole('button', { name: 'Back', exact: true }).click();
         await expect(page.locator('#activity-panel')).toBeVisible();
       } finally {

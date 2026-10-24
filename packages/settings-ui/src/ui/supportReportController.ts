@@ -61,6 +61,15 @@ export class SupportReportController {
     this.show();
   }
 
+  editDetails(): void {
+    if (reportIsLocked(this.state) || !this.state.report) return;
+    const request = this.state.report.document.request;
+    this.edit({
+      ...newReportDraft(request.subject, request.occurredAtMs),
+      problem: request.problem, expected: request.expected, historyWindow: request.historyWindow,
+    });
+  }
+
   private accept(response: SupportReportResponse): void {
     if (!response.ok) {
       this.state = { ...this.state, notice: reportErrorMessage(response.code),

@@ -82,7 +82,7 @@ export const reportSubmissionMessage = (report: PreparedSupportReport): string =
     case 'sent': return 'Homey accepted your report.';
     case 'unknown':
       return 'Submission could not be confirmed. It may have arrived. Check submission before sending another report.';
-    case 'failed': return 'The report was not sent. Your description is kept. Preview again to try another submission.';
+    case 'failed': return 'The report was not sent. Your description is kept. Edit details to prepare a new preview.';
     default: return '';
   }
 };
