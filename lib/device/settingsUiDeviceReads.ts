@@ -9,6 +9,7 @@ import { resolveChargerPhasePresets } from './chargerPhasePreset';
 import type { EvCarLinkProducer } from './evCarLinkProducer';
 import { resolveCarAssociationCandidates } from './evCarLinkObservation';
 import { projectDeviceSurfaces } from './deviceSurfaces';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 export { resolveChargerPhasePresets };
 
@@ -49,18 +50,14 @@ type SettingsUiDeviceReadSourceState =
     | { state: 'unavailable' }
     | { state: 'resolved'; source: SettingsUiDeviceReadSource };
 
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-    typeof value === 'object' && value !== null
-);
-
 const resolveHomeyApp = (homey: unknown): unknown => (
-    isRecord(homey) ? homey.app : undefined
+    isUnknownRecord(homey) ? homey.app : undefined
 );
 
 const hasSettingsUiDeviceReads = (
     value: unknown,
 ): value is { settingsUiDeviceReads: SettingsUiDeviceReads } => (
-    isRecord(value)
+    isUnknownRecord(value)
     && value.settingsUiDeviceReads instanceof SettingsUiDeviceReads
 );
 

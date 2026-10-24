@@ -1,22 +1,17 @@
 import type { HomeyDeviceLike } from '../utils/types';
 import { normalizeStateOfChargePercent } from './transport/stateOfCharge';
+import { asUnknownRecord, type UnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 export type LiveDevicePowerWatts = Record<string, number>;
-
-type UnknownRecord = Record<string, unknown>;
-
-const asRecord = (value: unknown): UnknownRecord | null => (
-  typeof value === 'object' && value !== null ? value as UnknownRecord : null
-);
 
 const toFiniteNumber = (value: unknown): number | null => (
   typeof value === 'number' && Number.isFinite(value) ? value : null
 );
 
 const hasUsableEnergyMetadata = (value: unknown): boolean => {
-  const energy = asRecord(value);
+  const energy = asUnknownRecord(value);
   if (energy === null) return false;
-  const approximation = asRecord(energy.approximation);
+  const approximation = asUnknownRecord(energy.approximation);
   const usageOnW = toFiniteNumber(approximation?.usageOn);
   const usageOffW = toFiniteNumber(approximation?.usageOff);
   const usageConstantW = toFiniteNumber(approximation?.usageConstant);
@@ -34,7 +29,7 @@ const hasUsableEnergyMetadata = (value: unknown): boolean => {
  * when neither describes a draw.
  */
 export const resolveSettingsEnergyWatts = (device: HomeyDeviceLike): number | null => {
-  const settings = asRecord(device.settings);
+  const settings = asUnknownRecord(device.settings);
   if (settings === null) return null;
   const usageOnW = toFiniteNumber(settings.energy_value_on);
   const usageOffW = toFiniteNumber(settings.energy_value_off);
@@ -69,13 +64,13 @@ export const hasPotentialHomeyEnergyEstimate = (device: HomeyDeviceLike): boolea
  * selection with another meter's data.
  */
 export const extractLiveMeterPowerWatts = (liveReport: unknown, deviceId: string): number | null => {
-  const report = asRecord(liveReport);
+  const report = asUnknownRecord(liveReport);
   if (!report || !Array.isArray(report.items)) return null;
   for (const rawItem of report.items) {
-    const item = asRecord(rawItem);
+    const item = asUnknownRecord(rawItem);
     if (!item || (item.type !== 'cumulative' && item.type !== 'device')) continue;
     if (item.id !== deviceId) continue;
-    const values = asRecord(item.values);
+    const values = asUnknownRecord(item.values);
     const watts = toFiniteNumber(values?.W);
     if (watts !== null) return watts;
   }
@@ -99,12 +94,12 @@ export type LiveMeterItem = { id: string; type: LiveMeterItemType };
  */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export const extractLiveMeterItems = (liveReport: unknown): LiveMeterItem[] => {
-  const report = asRecord(liveReport);
+  const report = asUnknownRecord(liveReport);
   if (!report || !Array.isArray(report.items)) return [];
   const seen = new Set<string>();
   const items: LiveMeterItem[] = [];
   for (const rawItem of report.items) {
-    const item = asRecord(rawItem);
+    const item = asUnknownRecord(rawItem);
     if (!item || (item.type !== 'cumulative' && item.type !== 'device')) continue;
     const id = typeof item.id === 'string' && item.id.length > 0 ? item.id : null;
     if (id === null || seen.has(id)) continue;
@@ -125,7 +120,7 @@ export const extractLiveMeterItems = (liveReport: unknown): LiveMeterItem[] => {
 export type LiveEnergyReport = UnknownRecord & { readonly items: readonly unknown[] };
 
 export const asLiveEnergyReport = (value: unknown): LiveEnergyReport | null => {
-  const report = asRecord(value);
+  const report = asUnknownRecord(value);
   return report !== null && Array.isArray(report.items) ? (report as LiveEnergyReport) : null;
 };
 
@@ -156,15 +151,15 @@ export type LiveGeneration =
  * this never feeds the hard-cap import path.
  */
 export const resolveLiveGeneration = (report: LiveEnergyReport): LiveGeneration => {
-  const topLevelW = asRecord(report.totalGenerated)?.W;
+  const topLevelW = asUnknownRecord(report.totalGenerated)?.W;
   const topLevelWatts = toFiniteNumber(topLevelW);
   if (topLevelWatts !== null) return { state: 'measured', watts: Math.max(0, topLevelWatts) };
   let signalPresent = topLevelW !== null && topLevelW !== undefined;
   for (const rawItem of report.items) {
-    const item = asRecord(rawItem);
+    const item = asUnknownRecord(rawItem);
     if (!item || item.type !== 'generator') continue;
     signalPresent = true;
-    const watts = toFiniteNumber(asRecord(item.values)?.W);
+    const watts = toFiniteNumber(asUnknownRecord(item.values)?.W);
     if (watts !== null) return { state: 'measured', watts: Math.max(0, watts) };
   }
   return signalPresent ? { state: 'unavailable' } : { state: 'none' };
@@ -249,8 +244,8 @@ export const isHomeBatteryDevice = (device: HomeyDeviceLike): boolean => (
   // Check `energyObj` and `energy` INDEPENDENTLY: a present-but-incomplete
   // `energyObj` (e.g. `{}`) must not short-circuit away the `energy.homeBattery`
   // signal. Either declaring the canonical role marks a home battery.
-  || asRecord(device.energyObj)?.homeBattery === true
-  || asRecord(device.energy)?.homeBattery === true
+  || asUnknownRecord(device.energyObj)?.homeBattery === true
+  || asUnknownRecord(device.energy)?.homeBattery === true
 );
 
 /**
@@ -281,8 +276,8 @@ export const isSolarPanelDevice = (device: HomeyDeviceLike): boolean => (
 );
 
 const readCapabilityValue = (device: HomeyDeviceLike, capabilityId: string): unknown => {
-  const caps = asRecord(device.capabilitiesObj);
-  const capability = asRecord(caps?.[capabilityId]);
+  const caps = asUnknownRecord(device.capabilitiesObj);
+  const capability = asUnknownRecord(caps?.[capabilityId]);
   if (!capability || !Object.prototype.hasOwnProperty.call(capability, 'value')) return undefined;
   return capability.value;
 };
@@ -399,15 +394,15 @@ export const extractSolarProductionState = (
 };
 
 export const extractLivePowerWattsByDeviceId = (liveReport: unknown): LiveDevicePowerWatts => {
-  const report = asRecord(liveReport);
+  const report = asUnknownRecord(liveReport);
   if (!report || !Array.isArray(report.items)) return {};
   return Object.fromEntries(
     report.items.flatMap((rawItem) => {
-      const item = asRecord(rawItem);
+      const item = asUnknownRecord(rawItem);
       if (!item || item.type !== 'device') return [];
       const deviceId = typeof item.id === 'string' ? item.id : null;
       if (!deviceId) return [];
-      const values = asRecord(item.values);
+      const values = asUnknownRecord(item.values);
       const watts = values?.W;
       if (typeof watts !== 'number' || !Number.isFinite(watts) || watts < 0) return [];
       return [[deviceId, watts] as const];

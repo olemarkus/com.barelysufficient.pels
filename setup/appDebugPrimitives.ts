@@ -1,8 +1,3 @@
-import type { UnknownRecord } from './appDebugTypes';
-
-export const isRecord = (value: unknown): value is UnknownRecord => (
-  typeof value === 'object' && value !== null
-);
 
 export const asFiniteNumber = (value: unknown): number | null => (
   typeof value === 'number' && Number.isFinite(value) ? value : null

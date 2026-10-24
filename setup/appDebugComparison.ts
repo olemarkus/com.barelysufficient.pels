@@ -17,11 +17,12 @@ import type {
   PelsTargetSnapshotSummary,
   UnknownRecord,
 } from './appDebugTypes';
-import { asTimestampString, isRecord } from './appDebugPrimitives';
+import { asTimestampString } from './appDebugPrimitives';
+import { isUnknownRecord } from '../packages/shared-domain/src/recordGuards';
 
 const getCapabilityEntry = (device: HomeyDeviceLike, capabilityId: string): UnknownRecord | null => {
   const entry = device.capabilitiesObj?.[capabilityId];
-  return isRecord(entry) ? entry : null;
+  return isUnknownRecord(entry) ? entry : null;
 };
 
 const asBinaryState = (value: unknown): string | undefined => {

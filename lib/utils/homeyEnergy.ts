@@ -30,19 +30,15 @@ export type HomeyEnergyPricesResponse = HomeyEnergyPriceDocument | HomeyEnergyPr
  * `normalizeHomeyEnergyPrices` has read it, so the port promises nothing about
  * its shape.
  */
+
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 export type HomeyEnergyApi = {
   fetchDynamicElectricityPrices: (opts: { date: string }) => Promise<unknown>;
 };
 
-type RecordLike = Record<string, unknown>;
-
-const isRecord = (value: unknown): value is RecordLike => (
-  typeof value === 'object' && value !== null
-);
-
 /** A Web API rejection carries a status code and the body as its message. */
 export const formatHomeyEnergyError = (error: unknown): { message: string; statusCode?: number } => {
   const message = error instanceof Error ? error.message : String(error);
-  if (!isRecord(error) || typeof error.statusCode !== 'number') return { message };
+  if (!isUnknownRecord(error) || typeof error.statusCode !== 'number') return { message };
   return { message, statusCode: error.statusCode };
 };

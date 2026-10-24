@@ -1,11 +1,6 @@
 import { isCanonicalHomeyDeviceId } from '../utils/homeyDeviceId';
 import type { SoleCumulativeMeterResolution } from '../power/soleMeterAdoption';
-
-type UnknownRecord = Record<string, unknown>;
-
-const asRecord = (value: unknown): UnknownRecord | null => (
-  typeof value === 'object' && value !== null ? value as UnknownRecord : null
-);
+import { asUnknownRecord, type UnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 const toFiniteNumber = (value: unknown): number | null => (
   typeof value === 'number' && Number.isFinite(value) ? value : null
@@ -27,7 +22,7 @@ type CumulativeMeterRow = {
  * finite watts is nothing nameable and nothing measured — skipped.
  */
 const resolveCumulativeMeterRow = (item: UnknownRecord): CumulativeMeterRow | null => {
-  const watts = toFiniteNumber(asRecord(item.values)?.W);
+  const watts = toFiniteNumber(asUnknownRecord(item.values)?.W);
   // Any present id — a malformed string, even a number — is a row for a meter.
   const carriesId = item.id !== undefined && item.id !== null && item.id !== '';
   // The id must satisfy the grammar every other writer of the meter key
@@ -46,7 +41,7 @@ const collectCumulativeMeterRows = (items: readonly unknown[]): CumulativeMeterR
   const byDeviceId = new Map<string, CumulativeMeterRow>();
   const unnamed: CumulativeMeterRow[] = [];
   for (const rawItem of items) {
-    const item = asRecord(rawItem);
+    const item = asUnknownRecord(rawItem);
     if (item === null || item.type !== 'cumulative') continue;
     const row = resolveCumulativeMeterRow(item);
     if (row === null) continue;
@@ -74,7 +69,7 @@ const collectCumulativeMeterRows = (items: readonly unknown[]): CumulativeMeterR
 export const resolveSoleCumulativeMeter = (
   liveReport: unknown,
 ): SoleCumulativeMeterResolution => {
-  const report = asRecord(liveReport);
+  const report = asUnknownRecord(liveReport);
   if (!report || !Array.isArray(report.items)) {
     return { state: 'unresolvable', reason: 'none_found' };
   }
@@ -96,13 +91,13 @@ export const resolveSoleCumulativeMeter = (
  * starting is absent from it but present here.
  */
 export const resolveRegistryMeterCandidates = (rawDevices: unknown): string[] => {
-  const entries = Array.isArray(rawDevices) ? rawDevices : Object.values(asRecord(rawDevices) ?? {});
+  const entries = Array.isArray(rawDevices) ? rawDevices : Object.values(asUnknownRecord(rawDevices) ?? {});
   const ids = new Set<string>();
   for (const raw of entries) {
-    const device = asRecord(raw);
+    const device = asUnknownRecord(raw);
     if (device === null || !isCanonicalHomeyDeviceId(device.id)) continue;
-    const cumulative = asRecord(device.energy)?.cumulative === true
-      || asRecord(device.energyObj)?.cumulative === true;
+    const cumulative = asUnknownRecord(device.energy)?.cumulative === true
+      || asUnknownRecord(device.energyObj)?.cumulative === true;
     const capabilities: unknown[] = Array.isArray(device.capabilities) ? device.capabilities : [];
     const sensorMeter = device.class === 'sensor' && capabilities.includes('measure_power');
     if (cumulative || sensorMeter) ids.add(device.id);

@@ -13,14 +13,11 @@
 
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import type { PvIrradianceProvider, PvIrradianceRead } from './pvForecastService';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 const HOUR_MS = 3_600_000;
 
 export type GeoCoordinates = { latitude: number; longitude: number };
-
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null
-);
 
 /** Open-Meteo forecast URL: hourly shortwave radiation, unix timestamps, yesterday→tomorrow. */
 export function buildOpenMeteoIrradianceUrl(latitude: number, longitude: number): string {
@@ -37,8 +34,8 @@ export function buildOpenMeteoIrradianceUrl(latitude: number, longitude: number)
  * radiation is non-finite or whose radiation is negative.
  */
 export function parseOpenMeteoRadiation(raw: unknown): Record<string, number> {
-  const hourly = isRecord(raw) ? raw.hourly : undefined;
-  if (!isRecord(hourly) || !Array.isArray(hourly.time) || !Array.isArray(hourly.shortwave_radiation)) {
+  const hourly = isUnknownRecord(raw) ? raw.hourly : undefined;
+  if (!isUnknownRecord(hourly) || !Array.isArray(hourly.time) || !Array.isArray(hourly.shortwave_radiation)) {
     return {};
   }
   const times: unknown[] = hourly.time;
