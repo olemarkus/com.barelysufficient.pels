@@ -5,6 +5,7 @@ import {
 import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { publishSetupMarket } from './setupPathFacts.ts';
+import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 /**
  * Asks the runtime where the hub is. The answer crosses the Homey API bridge
@@ -17,7 +18,7 @@ import { publishSetupMarket } from './setupPathFacts.ts';
 const COUNTRY_CODE = /^[A-Z]{2}$/;
 
 export const parseHubMarketRead = (value: unknown): SettingsUiHubMarketRead => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return { state: 'unavailable' };
+  if (!isUnknownRecord(value)) return { state: 'unavailable' };
   const read = value as { state?: unknown; country?: unknown };
   return read.state === 'resolved' && typeof read.country === 'string' && COUNTRY_CODE.test(read.country)
     ? { state: 'resolved', country: read.country }

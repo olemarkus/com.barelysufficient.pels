@@ -1,3 +1,5 @@
+import { isUnknownRecord } from '../recordGuards';
+
 /**
  * The parse of `battery_control_devices`, the owner's Managed choice per home
  * battery, shared by its two readers: the runtime owner
@@ -19,9 +21,11 @@ export type BatteryControlDevices = Readonly<Record<string, boolean>>;
  * never an empty map.
  */
 export const parseBatteryControlDevices = (value: unknown): BatteryControlDevices | null => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (!isUnknownRecord(value)) return null;
   const entries = Object.entries(value);
-  if (!entries.every(([deviceId, enabled]) => deviceId.length > 0 && typeof enabled === 'boolean')) return null;
+  if (!entries.every((entry): entry is [string, boolean] => (
+    entry[0].length > 0 && typeof entry[1] === 'boolean'
+  ))) return null;
   return Object.fromEntries(entries);
 };
 

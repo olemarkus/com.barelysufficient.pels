@@ -14,14 +14,15 @@ import { createJsonRowTable } from '../../store/jsonRowTable';
 import type { UserdataDatabase } from '../../store/userdataDatabase';
 import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
 import type { EnergyDeliveryRun, EnergyDeliveryStore } from './energyDelivery';
+import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuards';
 
 const keyOf = (run: EnergyDeliveryRun): string => (
   `${run.deviceId}|${run.deadlineAtMs}`
 );
 
 const isEnergyDeliveryRun = (value: unknown): value is EnergyDeliveryRun => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const candidate = value as Record<string, unknown>;
+  if (!isUnknownRecord(value)) return false;
+  const candidate = value;
   return typeof candidate.deviceId === 'string'
     && candidate.deviceId.length > 0
     && isFiniteNumber(candidate.deadlineAtMs)

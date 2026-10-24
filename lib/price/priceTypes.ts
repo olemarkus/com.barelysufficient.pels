@@ -1,5 +1,6 @@
 import type { PriceSchemeSetting } from '../../packages/contracts/src/settingsUiApi';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 /**
  * What one priced stretch of time says, whatever its length. Neither a period
@@ -116,14 +117,14 @@ const isDayEntry = (value: unknown): boolean => {
 };
 
 export const isCombinedPricesV2 = (value: unknown): value is CombinedPricesV2 => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const record = value as Record<string, unknown>;
+  if (!isUnknownRecord(value)) return false;
+  const record = value;
   if (record.version !== COMBINED_PRICES_VERSION) return false;
   if (!isFiniteNumber(record.avgPrice)) return false;
   if (!isFiniteNumber(record.lowThreshold) || !isFiniteNumber(record.highThreshold)) return false;
   if (typeof record.priceScheme !== 'string' || typeof record.priceUnit !== 'string') return false;
-  if (!record.days || typeof record.days !== 'object' || Array.isArray(record.days)) return false;
-  return Object.values(record.days as Record<string, unknown>).every(isDayEntry);
+  if (!isUnknownRecord(record.days)) return false;
+  return Object.values(record.days).every(isDayEntry);
 };
 
 /**
@@ -145,8 +146,8 @@ export type CombinedPricesV1 = {
 };
 
 export const isCombinedPricesV1 = (value: unknown): value is CombinedPricesV1 => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const record = value as Record<string, unknown>;
+  if (!isUnknownRecord(value)) return false;
+  const record = value;
   // V1 lacks `version` and has a `prices` array; V2 has `version: 2` and `days`.
   if (record.version !== undefined) return false;
   if (!Array.isArray(record.prices)) return false;

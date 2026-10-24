@@ -14,6 +14,7 @@ import type {
   PvForecastSourceSelectedStatus,
   PvForecastSourceUiStatus,
 } from '../../../contracts/src/settingsUiApi.js';
+import { isUnknownRecord } from '../recordGuards';
 
 /**
  * Resolve an untrusted `pvForecastSource` payload field into the typed status.
@@ -35,8 +36,8 @@ import type {
 export const resolvePvForecastSourceUiStatus = (
   value: unknown,
 ): PvForecastSourceUiStatus => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return { kind: 'unknown' };
-  const record = value as Record<string, unknown>;
+  if (!isUnknownRecord(value)) return { kind: 'unknown' };
+  const record = value;
   const { kind, activeSource, homeyForecastAvailable, learnedForecastAvailable } = record;
   if (kind !== 'selected') return { kind: 'unknown' };
   if (activeSource !== 'homey_energy' && activeSource !== 'learned') return { kind: 'unknown' };

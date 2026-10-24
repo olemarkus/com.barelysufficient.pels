@@ -315,22 +315,16 @@ function joinTargetPowerReachability(
 }
 
 function parseRecordSetting(value: unknown): Record<string, unknown> | undefined {
-  if (isPlainObject(value)) return value as Record<string, unknown>;
+  if (isPlainObjectRecord(value)) return value;
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   if (!trimmed) return undefined;
   try {
     const parsed = JSON.parse(trimmed) as unknown;
-    return isPlainObject(parsed) ? parsed as Record<string, unknown> : undefined;
+    return isPlainObjectRecord(parsed) ? parsed : undefined;
   } catch {
     return undefined;
   }
-}
-
-function isPlainObject(value: unknown): boolean {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const prototype: object | null = Object.getPrototypeOf(value) as object | null;
-  return prototype === Object.prototype || prototype === null;
 }
 
 function normalizeStringMap(value: Record<string, string>): Record<string, string> {

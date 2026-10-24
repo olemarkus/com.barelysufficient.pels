@@ -2,6 +2,7 @@ import type { PowerTrackerState } from './tracker';
 import { CAPACITY_QUARTER_MS } from '../../packages/shared-domain/src/settings/capacityPeriod';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import { isNumberMap, isPlainObjectRecord } from '../utils/appTypeGuards';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 // The parse boundary for a persisted power-tracker state: the plausibility guard
 // the tracker store reads with, and the salvage pass that keeps what is sound in
@@ -45,8 +46,8 @@ function sanitizeSolarRecord(field: unknown): Record<string, unknown> | null {
  * Non-object inputs and clean states pass through untouched (same reference).
  */
 export function sanitizePowerTrackerSolarFields(value: unknown): unknown {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
-  const blob = value as Record<string, unknown>;
+  if (!isUnknownRecord(value)) return value;
+  const blob = value;
   const patches = SOLAR_RECORD_FIELDS.flatMap((field) => {
     const current = blob[field];
     if (current === undefined) return [];

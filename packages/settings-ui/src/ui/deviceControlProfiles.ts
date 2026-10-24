@@ -18,6 +18,7 @@ import { getSetting } from './homey.ts';
 import { state, type SettingsUiDeviceView } from './state.ts';
 import { supportsTemperatureDevice } from './deviceUtils.ts';
 import { logSettingsError } from './logging.ts';
+import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 const DEFAULT_MAX_PLANNING_POWER_W = 1500;
 const roundPowerW = (value: number): number => Math.max(0, Math.round(value / 50) * 50);
@@ -155,9 +156,9 @@ export const applyLocalDeviceControlProfile = (
 };
 
 export const normalizeDeviceTargetPowerConfigs = (value: unknown): DeviceTargetPowerConfigs => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  if (!isUnknownRecord(value)) return {};
   return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).flatMap(([deviceId, entry]) => {
+    Object.entries(value).flatMap(([deviceId, entry]) => {
       const config = normalizeTargetPowerConfig(entry);
       return config ? [[deviceId, config]] : [];
     }),
@@ -165,8 +166,8 @@ export const normalizeDeviceTargetPowerConfigs = (value: unknown): DeviceTargetP
 };
 
 export const normalizeTargetPowerConfig = (value: unknown): TargetPowerSteppedLoadConfig | null => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const record = value as Record<string, unknown>;
+  if (!isUnknownRecord(value)) return null;
+  const record = value;
   const preset = record.preset === 'ev_charger_1_phase' || record.preset === 'ev_charger_3_phase'
     ? record.preset
     : undefined;

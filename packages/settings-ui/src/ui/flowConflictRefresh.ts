@@ -11,6 +11,7 @@ import {
 } from './homey.ts';
 import { state, type SettingsUiDeviceView } from './state.ts';
 import { anyChargerHasSelectedCar } from './deviceDetail/carAssociation.ts';
+import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 export type EvSocFlowReportersRead =
   | { state: 'loading' }
@@ -26,7 +27,7 @@ const hasValidFlowConflict = (
   value: unknown,
 ): value is SettingsUiFlowConflictRefreshDevice['flowConflict'] => {
   if (value === undefined) return true;
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  if (!isUnknownRecord(value)) return false;
   const conflict = value as { conflictingCapabilities?: unknown; flowName?: unknown };
   return Array.isArray(conflict.conflictingCapabilities)
     && conflict.conflictingCapabilities.every((capability) => typeof capability === 'string')
@@ -37,8 +38,8 @@ const hasValidControlAdapter = (
   value: unknown,
 ): value is SettingsUiFlowConflictRefreshDevice['controlAdapter'] => {
   if (value === undefined) return true;
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const adapter = value as Record<string, unknown>;
+  if (!isUnknownRecord(value)) return false;
+  const adapter = value;
   return adapter.kind === 'capability_adapter'
     && typeof adapter.activationRequired === 'boolean'
     && typeof adapter.activationEnabled === 'boolean'
@@ -48,8 +49,8 @@ const hasValidControlAdapter = (
 const hasFlowConflictRefreshShape = (
   value: unknown,
 ): value is SettingsUiFlowConflictRefreshDevice => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const device = value as Record<string, unknown>;
+  if (!isUnknownRecord(value)) return false;
+  const device = value;
   return typeof device.id === 'string'
     && hasValidFlowConflict(device.flowConflict)
     && hasValidControlAdapter(device.controlAdapter);
@@ -66,8 +67,8 @@ const parseRefreshedDevices = (value: unknown): SettingsUiFlowConflictRefreshDev
 };
 
 const hasEvSocFlowReporterShape = (value: unknown): value is SettingsUiEvSocFlowReporter => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const reporter = value as Record<string, unknown>;
+  if (!isUnknownRecord(value)) return false;
+  const reporter = value;
   return typeof reporter.chargerDeviceId === 'string'
     && reporter.chargerDeviceId.length > 0
     && reporter.chargerDeviceId === reporter.chargerDeviceId.trim()
@@ -103,10 +104,10 @@ const refreshFlowConflictDevices = async (): Promise<SettingsUiFlowConflictRefre
     SETTINGS_UI_REFRESH_FLOW_CONFLICTS_PATH,
     {},
   );
-  if (typeof response !== 'object' || response === null || Array.isArray(response)) {
+  if (!isUnknownRecord(response)) {
     throw new TypeError(REFRESH_ERROR_MESSAGE);
   }
-  const payload = response as Record<string, unknown>;
+  const payload = response;
   const refreshedDevices = parseRefreshedDevices(payload.devices);
   const evSocReporters = parseEvSocFlowReporters(payload.evSocReporters);
   const refreshedById = new Map(refreshedDevices.map((device) => [device.id, device]));

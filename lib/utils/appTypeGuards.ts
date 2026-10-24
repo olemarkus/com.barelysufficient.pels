@@ -1,6 +1,7 @@
 import type { DeviceControlProfiles } from '../../packages/contracts/src/types';
 import { normalizeDeviceControlProfiles } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 /**
  * Returns true when the input is a plain object literal (Object.prototype or
@@ -8,7 +9,7 @@ import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
  * Set, etc. — Homey settings persistence only round-trips plain objects.
  */
 export function isPlainObjectRecord(value: unknown): value is Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (!isUnknownRecord(value)) return false;
   const prototype: object | null = Object.getPrototypeOf(value) as object | null;
   return prototype === Object.prototype || prototype === null;
 }

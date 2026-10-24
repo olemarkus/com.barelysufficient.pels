@@ -1,5 +1,6 @@
 import { SETTINGS_PATH, type RemoteRequest } from './remoteHomeyClient.ts';
 import type { RealtimeStatus } from './remoteRealtime.ts';
+import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 // Homey only delivers `settings.set` / `settings.unset` while the socket is
 // up, and the settings UI caches settings until one of those events arrives.
@@ -12,7 +13,7 @@ type SettingsSnapshot = Map<string, string>;
 
 const readSnapshot = async (request: RemoteRequest): Promise<SettingsSnapshot | null> => {
   const settings = await request('GET', SETTINGS_PATH).catch(() => null);
-  if (typeof settings !== 'object' || settings === null || Array.isArray(settings)) return null;
+  if (!isUnknownRecord(settings)) return null;
   return new Map(Object.entries(settings).map(([key, value]) => [key, JSON.stringify(value)]));
 };
 

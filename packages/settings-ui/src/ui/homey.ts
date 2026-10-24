@@ -11,6 +11,7 @@ import {
 } from './homeyTransportErrors.ts';
 import { SETTINGS_UI_HOME_ID_QUERY_PARAM } from '../../../shared-domain/src/settingsUiHomeIdQuery.ts';
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
+import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 // Backoff schedule for transient Homey-API transport failures (e.g. "Network
 // request failed", "socket hang up", or "Homey api ... not available" while
@@ -133,7 +134,7 @@ export const updateApiCache = <T extends Record<string, unknown>>(
   defaults?: Partial<T>,
 ) => {
   const current = apiCache.get(uri);
-  if (!current || typeof current !== 'object' || Array.isArray(current)) {
+  if (!isUnknownRecord(current)) {
     apiCache.set(uri, { ...defaults, ...patch });
     return;
   }

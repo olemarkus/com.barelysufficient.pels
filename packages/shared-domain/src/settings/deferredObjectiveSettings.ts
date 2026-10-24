@@ -8,6 +8,7 @@ import type {
   DeferredObjectiveSettingsV1,
   DeferredObjectiveTemperatureGoal,
 } from '../../../contracts/src/deferredObjectiveSettings';
+import { isUnknownRecord } from '../recordGuards';
 
 const DEFERRED_OBJECTIVES_SETTINGS_VERSION: DeferredObjectiveSettingsV1['version'] = 1;
 
@@ -17,11 +18,11 @@ export const createEmptyDeferredObjectiveSettings = (): DeferredObjectiveSetting
 });
 
 export const normalizeDeferredObjectiveSettings = (raw: unknown): DeferredObjectiveSettingsV1 => {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return createEmptyDeferredObjectiveSettings();
+  if (!isUnknownRecord(raw)) return createEmptyDeferredObjectiveSettings();
   const candidate = raw as Partial<DeferredObjectiveSettingsV1>;
   if (candidate.version !== DEFERRED_OBJECTIVES_SETTINGS_VERSION) return createEmptyDeferredObjectiveSettings();
   const entries = candidate.objectivesByDeviceId;
-  if (!entries || typeof entries !== 'object' || Array.isArray(entries)) return createEmptyDeferredObjectiveSettings();
+  if (!isUnknownRecord(entries)) return createEmptyDeferredObjectiveSettings();
 
   return {
     version: DEFERRED_OBJECTIVES_SETTINGS_VERSION,
@@ -65,8 +66,8 @@ const normalizeGoal = (entry: Record<string, unknown>): DeferredObjectiveGoal | 
 };
 
 const normalizeEntryBase = (raw: unknown): DeferredObjectiveSettingsEntry | null => {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const entry = raw as Record<string, unknown>;
+  if (!isUnknownRecord(raw)) return null;
+  const entry = raw;
   if (typeof entry.enabled !== 'boolean') return null;
   if (!isValidDeadlineAtMs(entry.deadlineAtMs)) return null;
   const goal = normalizeGoal(entry);
@@ -89,7 +90,7 @@ const isRescueMode = (value: unknown): value is DeferredObjectiveRescueMode => (
 const normalizeRescuePermissions = (
   raw: unknown,
 ): DeferredObjectiveRescuePermissions | undefined => {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  if (!isUnknownRecord(raw)) return undefined;
   const value = raw as Partial<Record<keyof DeferredObjectiveRescuePermissions, unknown>>;
   const exemptFromBudget = isRescueMode(value.exemptFromBudget) ? value.exemptFromBudget : undefined;
   const limitLowerPriorityDevices = isRescueMode(value.limitLowerPriorityDevices)

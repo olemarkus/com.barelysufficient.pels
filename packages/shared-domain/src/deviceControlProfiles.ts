@@ -4,6 +4,7 @@ import type {
   SteppedLoadProfile,
   SteppedLoadStep,
 } from '../../contracts/src/types';
+import { isUnknownRecord } from './recordGuards';
 
 // The one owner of the stepped-load ladder: step lookup, ordering, the off rule
 // and the parse boundary for the persisted `device_control_profiles` map. The
@@ -186,7 +187,7 @@ export const normalizeDeviceControlProfile = (value: unknown): DeviceControlProf
 export const normalizeDeviceControlProfiles = (
   value: unknown,
 ): DeviceControlProfiles | null => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (!isUnknownRecord(value)) return null;
   return Object.fromEntries(
     Object.entries(value).flatMap(([deviceId, profileValue]) => {
       if (!deviceId.trim()) return [];

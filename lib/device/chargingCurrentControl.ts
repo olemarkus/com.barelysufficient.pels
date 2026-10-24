@@ -17,6 +17,7 @@ import type { ChargingCurrentBinding } from './deviceAdapter';
 import { ChargingAccess, type ChargingAccessHomey } from './transport/chargingAccess';
 import type { Logger } from '../utils/types';
 import { getRawFromHomeyApi } from './transport/managerHomeyApi';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 const SETTINGS_KEY = 'charging_current_control';
 const DEFAULT_SETUP: ChargingCurrentSetup = { method: 'flow', confirmation: 'none' };
@@ -332,7 +333,7 @@ export class ChargingCurrentControl {
         this.setups.clear();
         return;
       }
-      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return;
+      if (!isUnknownRecord(raw)) return;
       const entries = Object.entries(raw).map(([id, value]) => [id, readSetup(value)] as const);
       if (entries.some(([, value]) => !value)) return;
       this.setups.clear();

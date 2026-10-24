@@ -1,4 +1,5 @@
 import type { SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUiApi';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 /**
  * Which market the hub lives in, read from Homey's own location-derived
@@ -33,7 +34,7 @@ const UNAVAILABLE: SettingsUiHubMarketRead = { state: 'unavailable' };
 
 /** Resolve the system manager's weakly-typed response into a country code. */
 export const classifyHubMarket = (raw: unknown): SettingsUiHubMarketRead => {
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return UNAVAILABLE;
+  if (!isUnknownRecord(raw)) return UNAVAILABLE;
   const { country } = raw as { country?: unknown };
   if (typeof country !== 'string') return UNAVAILABLE;
   const code = country.trim().toUpperCase();

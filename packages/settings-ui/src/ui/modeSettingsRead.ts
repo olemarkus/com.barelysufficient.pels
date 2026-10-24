@@ -22,6 +22,7 @@ import {
   MANAGED_DEVICES,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { getSetting } from './homey.ts';
+import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 export type ModeSettingsRead = {
   mode: unknown;
@@ -49,9 +50,9 @@ export const readStrictBooleanSettingMap = (
   value: unknown,
 ): Record<string, boolean> | null => {
   if (value === undefined || value === null) return {};
-  if (typeof value !== 'object' || Array.isArray(value)) return null;
+  if (!isUnknownRecord(value)) return null;
   const entries = Object.entries(value);
-  if (!entries.every(([, entry]) => typeof entry === 'boolean')) return null;
+  if (!entries.every((entry): entry is [string, boolean] => typeof entry[1] === 'boolean')) return null;
   return Object.fromEntries(entries.filter(([, entry]) => entry === true));
 };
 

@@ -1,15 +1,16 @@
 import type { EvCarAssociations } from '../../../contracts/src/types';
+import { isUnknownRecord } from '../recordGuards';
 
 /**
  * The parse boundary for the persisted `ev_car_associations` setting, read by the
  * runtime and by the settings UI's car picker alike.
  */
 export const normalizeEvCarAssociations = (value: unknown): EvCarAssociations => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  if (!isUnknownRecord(value)) return {};
   return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).flatMap(([chargerId, entry]) => {
-      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
-      const rawCarIds = (entry as Record<string, unknown>).carIds;
+    Object.entries(value).flatMap(([chargerId, entry]) => {
+      if (!isUnknownRecord(entry)) return [];
+      const rawCarIds = entry.carIds;
       if (!Array.isArray(rawCarIds)) return [];
       const carIds = [...new Set(
         rawCarIds.filter((carId): carId is string => typeof carId === 'string' && carId.length > 0),

@@ -49,8 +49,8 @@ const isRecommendationCar = (value: unknown): value is SettingsUiRecommendationC
 
 /** Validate the API envelope; the backend owns car eligibility. */
 export const parseCarAssociationCandidatesRead = (value: unknown): SettingsUiRecommendationCarsRead => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return { state: 'unavailable' };
-  const read = value as Record<string, unknown>;
+  if (!isUnknownRecord(value)) return { state: 'unavailable' };
+  const read = value;
   if (read.state === 'unavailable') return { state: 'unavailable' };
   if (read.state !== 'resolved' || !Array.isArray(read.cars)) return { state: 'unavailable' };
   if (!read.cars.every(isRecommendationCar)) return { state: 'unavailable' };

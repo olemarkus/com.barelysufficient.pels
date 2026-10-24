@@ -16,10 +16,11 @@ import {
 } from '../../packages/shared-domain/src/utils/dateUtils';
 import { toStableFingerprint } from '../utils/stableFingerprint';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 const stripLastFetched = (value: unknown): unknown => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
-  const record = value as Record<string, unknown>;
+  if (!isUnknownRecord(value)) return value;
+  const record = value;
   if (!Object.prototype.hasOwnProperty.call(record, 'lastFetched')) return record;
   return Object.fromEntries(Object.entries(record).filter(([key]) => key !== 'lastFetched'));
 };
@@ -30,7 +31,7 @@ export const toCombinedPayloadFingerprint = (value: unknown): string => (
 );
 
 export const getCombinedPayloadLastFetched = (value: unknown): string | null => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (!isUnknownRecord(value)) return null;
   const lastFetched = (value as { lastFetched?: unknown }).lastFetched;
   return typeof lastFetched === 'string' ? lastFetched : null;
 };
@@ -53,7 +54,7 @@ export const shouldCatchUpCombinedPricesRotation = (
   now: Date,
   timeZone: string,
 ): boolean => {
-  if (!existingPayload || typeof existingPayload !== 'object' || Array.isArray(existingPayload)) {
+  if (!isUnknownRecord(existingPayload)) {
     return false;
   }
   const lastFetched = (existingPayload as { lastFetched?: unknown }).lastFetched;

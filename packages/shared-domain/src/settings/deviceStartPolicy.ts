@@ -36,6 +36,7 @@
  */
 
 import type { DeviceStartPolicy } from '../../../contracts/src/types.js';
+import { isUnknownRecord } from '../recordGuards';
 
 /**
  * `'unrestricted'` — anyone may start it. The default, and what every device did
@@ -70,7 +71,7 @@ const isDeviceStartPolicy = (value: unknown): value is DeviceStartPolicy => (
 export const isDeviceStartPolicyMap = (
   value: unknown,
 ): value is Record<string, DeviceStartPolicy> => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (!isUnknownRecord(value)) return false;
   return Object.values(value).every((entry) => isDeviceStartPolicy(entry));
 };
 
