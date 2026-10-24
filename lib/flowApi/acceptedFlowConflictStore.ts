@@ -24,6 +24,7 @@
 import { createJsonRowTable } from '../store/jsonRowTable';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import type { FlowCapabilityWrites } from './userFlows';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 /** One device's native-wiring conflict, as native wiring applies it. */
 export type NativeFlowConflict = { conflictingCapabilities: readonly string[]; flowName?: string };
@@ -35,15 +36,12 @@ export type AcceptedFlowConflictSlice<T> = {
   write(value: T): void;
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
 const isStringArray = (value: unknown): value is string[] => (
   Array.isArray(value) && value.every((entry) => typeof entry === 'string')
 );
 
 const acceptNativeConflict = (value: unknown): NativeFlowConflict | undefined => {
-  if (!isRecord(value) || !isStringArray(value.conflictingCapabilities)) return undefined;
+  if (!isUnknownRecord(value) || !isStringArray(value.conflictingCapabilities)) return undefined;
   if (value.flowName === undefined) return { conflictingCapabilities: value.conflictingCapabilities };
   return typeof value.flowName === 'string'
     ? { conflictingCapabilities: value.conflictingCapabilities, flowName: value.flowName }
@@ -54,9 +52,9 @@ const acceptNativeConflict = (value: unknown): NativeFlowConflict | undefined =>
 type StoredDeviceWrites = Record<string, Record<string, string>>;
 
 const acceptDeviceWrites = (value: unknown): StoredDeviceWrites | undefined => {
-  if (!isRecord(value)) return undefined;
+  if (!isUnknownRecord(value)) return undefined;
   const flowsValid = Object.values(value).every((flows) => (
-    isRecord(flows) && Object.values(flows).every((name) => typeof name === 'string')
+    isUnknownRecord(flows) && Object.values(flows).every((name) => typeof name === 'string')
   ));
   return flowsValid ? value as StoredDeviceWrites : undefined;
 };

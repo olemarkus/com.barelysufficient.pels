@@ -38,6 +38,7 @@ import { getLogger } from '../logging/logger';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import type { MeterEnergyReading } from './measuredPowerReader';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 const storeLogger = getLogger('device/retained-power-store');
 
@@ -109,9 +110,6 @@ const prepareStatements = (db: UserdataDatabase) => ({
   pruneAnchors: db.prepare('DELETE FROM device_meter_anchor WHERE saved_at_ms < ?'),
 });
 
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
 const isNonNegativeFinite = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value) && value >= 0
 );
@@ -124,7 +122,11 @@ const parseRetainedPowerReading = (json: string): RetainedPowerReading | null =>
   } catch {
     return null;
   }
-  if (!isRecord(raw) || !isNonNegativeFinite(raw.measuredPowerKw) || !isFiniteNumber(raw.observedAtMs)) return null;
+  if (
+    !isUnknownRecord(raw)
+    || !isNonNegativeFinite(raw.measuredPowerKw)
+    || !isFiniteNumber(raw.observedAtMs)
+  ) return null;
   return { measuredPowerKw: raw.measuredPowerKw, observedAtMs: raw.observedAtMs };
 };
 

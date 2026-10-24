@@ -2,7 +2,7 @@ import type {
   BudgetAdviceDecision, BudgetDailyHistory, BudgetDecisionHistory, BudgetHistoryMetadata, BudgetHistoryRange,
 } from '../../packages/contracts/src/budgetDiagnostics';
 import type { WeatherCollectorDeps } from './weatherCollectorDeps';
-import { isUnknownRecord } from '../utils/types';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import { ApiRequestError } from '../utils/apiRequestError';
 import { normalizeWeatherHistoryState } from './weatherHistory';
 import type { WeatherHistoryStore } from './weatherHistoryStore';

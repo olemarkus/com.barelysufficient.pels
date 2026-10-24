@@ -3,6 +3,7 @@ import type {
   PriceOptimizationConfigMapRead,
 } from '../../../contracts/src/priceOptimizationSettings';
 import { isFiniteNumber } from '../numberGuards';
+import { isUnknownRecord } from '../recordGuards';
 
 /**
  * Resolve validated Price-choice provenance. Each persistence adapter maps a
@@ -47,12 +48,8 @@ type PriceOptimizationConfigRead =
   | { state: 'resolved'; config: PriceOptimizationConfig }
   | { state: 'unavailable' };
 
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
-
 const classifyEntry = (value: unknown): PriceOptimizationConfigRead => {
-  if (!isRecord(value)
+  if (!isUnknownRecord(value)
     || typeof value.enabled !== 'boolean'
     || !isFiniteNumber(value.cheapDelta)
     || !isFiniteNumber(value.expensiveDelta)) return { state: 'unavailable' };
@@ -83,7 +80,7 @@ const classifyEntry = (value: unknown): PriceOptimizationConfigRead => {
 
 /** Classify and fully resolve the persisted settings map at the Homey settings boundary. */
 export const classifyPriceOptimizationConfigMap = (value: unknown): PriceOptimizationConfigMapRead => {
-  if (!isRecord(value)) return { state: 'unavailable' };
+  if (!isUnknownRecord(value)) return { state: 'unavailable' };
   const settings = new Map<string, PriceOptimizationConfig>();
   for (const [deviceId, rawEntry] of Object.entries(value)) {
     const read = classifyEntry(rawEntry);

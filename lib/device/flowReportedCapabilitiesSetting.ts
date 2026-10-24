@@ -1,6 +1,6 @@
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { FLOW_REPORTED_DEVICE_CAPABILITIES } from '../utils/settingsKeys';
-import { isUnknownRecord } from '../utils/types';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import {
   parseFlowReportedCapabilities,
   type FlowReportedCapabilitiesByDevice,

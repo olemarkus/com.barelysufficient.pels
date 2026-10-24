@@ -6,7 +6,7 @@ import type {
   WeatherHistoryState,
   WeatherMetForecastCache,
 } from '../../packages/contracts/src/weatherAdvisorTypes';
-import { isUnknownRecord } from '../utils/types';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
 /**

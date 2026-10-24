@@ -7,6 +7,7 @@ import {
 import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { gridCompanies } from './gridCompanies.ts';
+import { asUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 const ORGANIZATION_NUMBER = /^\d{9}$/;
 const COUNTY_CODE = /^\d{2}$/;
@@ -18,12 +19,8 @@ const NO_SUGGESTION: PriceSetupSuggestion = {
   powerhour: { kind: 'none' },
 };
 
-const asRecord = (value: unknown): Record<string, unknown> | null => (
-  typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null
-);
-
 const parseGridCompany = (value: unknown): PriceSetupSuggestion['gridCompany'] => {
-  const company = asRecord(value);
+  const company = asUnknownRecord(value);
   if (
     company?.kind !== 'found'
     || typeof company.organizationNumber !== 'string' || !ORGANIZATION_NUMBER.test(company.organizationNumber)
@@ -41,14 +38,14 @@ const parseGridCompany = (value: unknown): PriceSetupSuggestion['gridCompany'] =
 };
 
 const parsePriceArea = (value: unknown): PriceSetupSuggestion['priceArea'] => {
-  const area = asRecord(value);
+  const area = asUnknownRecord(value);
   return area?.kind === 'from_homey_energy' && typeof area.area === 'string' && PRICE_AREA.test(area.area)
     ? { kind: 'from_homey_energy', area: area.area }
     : { kind: 'none' };
 };
 
 const parsePowerhour = (value: unknown): PriceSetupSuggestion['powerhour'] => {
-  const kind = asRecord(value)?.kind;
+  const kind = asUnknownRecord(value)?.kind;
   return kind === 'has_price_device' || kind === 'no_price_device' ? { kind } : { kind: 'none' };
 };
 
@@ -57,7 +54,7 @@ const parsePowerhour = (value: unknown): PriceSetupSuggestion['powerhour'] => {
  * here, each part on its own: a malformed part is a part with nothing to offer.
  */
 export const parsePriceSetupSuggestion = (value: unknown): PriceSetupSuggestion => {
-  const read = asRecord(value);
+  const read = asUnknownRecord(value);
   return read
     ? {
       gridCompany: parseGridCompany(read.gridCompany),

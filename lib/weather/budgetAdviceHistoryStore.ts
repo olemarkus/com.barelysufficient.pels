@@ -1,7 +1,7 @@
 import type { BudgetAdviceDecision } from '../../packages/contracts/src/budgetDiagnostics';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import { getLogger } from '../logging/logger';
-import { isUnknownRecord } from '../utils/types';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 
 const logger = getLogger('weather/budget-advice-history');

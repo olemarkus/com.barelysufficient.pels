@@ -26,6 +26,7 @@ import {
   parseEvSocReportTarget,
   type UserFlowFacts,
 } from './userFlows';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 export const FLOW_API_PATH = 'manager/flow/flow/';
 export const ADVANCED_FLOW_API_PATH = 'manager/flow/advancedflow/';
@@ -42,17 +43,13 @@ const ADVANCED_FLOW_NON_ACTION_TYPES: ReadonlySet<string> = new Set([
   'trigger', 'condition', 'start', 'delay', 'any', 'all', 'note',
 ]);
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function isTrustedFlatFlowMap(value: Record<string, unknown>): boolean {
   return Object.values(value).every((flow) => {
-    if (!isRecord(flow)) return false;
+    if (!isUnknownRecord(flow)) return false;
     if (flow.enabled === false) return true;
     return Array.isArray(flow.actions)
       && flow.actions.every((action) => (
-        isRecord(action)
+        isUnknownRecord(action)
         && typeof action.id === 'string'
         && parseEvSocReportTarget(action) !== null
       ));
@@ -61,11 +58,11 @@ function isTrustedFlatFlowMap(value: Record<string, unknown>): boolean {
 
 function isTrustedAdvancedFlowMap(value: Record<string, unknown>): boolean {
   return Object.values(value).every((flow) => {
-    if (!isRecord(flow)) return false;
+    if (!isUnknownRecord(flow)) return false;
     if (flow.enabled === false) return true;
-    if (!isRecord(flow.cards)) return false;
+    if (!isUnknownRecord(flow.cards)) return false;
     return Object.values(flow.cards).every((card) => (
-      isRecord(card)
+      isUnknownRecord(card)
       && (card.type === 'action'
         ? typeof card.id === 'string' && parseEvSocReportTarget(card) !== null
         : typeof card.type === 'string' && ADVANCED_FLOW_NON_ACTION_TYPES.has(card.type))
@@ -87,7 +84,7 @@ async function readEndpoint(
   } catch (error) {
     return { ok: false, reason: `read ${path} failed: ${normalizeError(error).message}` };
   }
-  if (!isRecord(raw)) {
+  if (!isUnknownRecord(raw)) {
     return { ok: false, reason: `read ${path} returned a non-object response` };
   }
   if (!isTrustedFlowMap(path, raw)) {

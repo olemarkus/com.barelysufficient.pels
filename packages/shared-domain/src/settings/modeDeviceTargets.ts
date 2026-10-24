@@ -22,12 +22,10 @@
  * Browser-safe: no Homey SDK types, no runtime imports.
  */
 
+import { isUnknownRecord } from '../recordGuards';
+
 /** Mode name → device id → setpoint (°C). */
 export type ModeDeviceTargets = Record<string, Record<string, number>>;
-
-const isPlainObject = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
 
 /**
  * Read policy: SANITIZE AND KEEP.
@@ -49,9 +47,9 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => (
  * reads as unset and gets filled, rather than poisoning its neighbours.
  */
 export const sanitizeModeDeviceTargets = (value: unknown): ModeDeviceTargets | null => {
-  if (!isPlainObject(value)) return null;
+  if (!isUnknownRecord(value)) return null;
   return Object.fromEntries(Object.entries(value).map(([mode, entries]) => {
-    if (!isPlainObject(entries)) return [mode, {}] as const;
+    if (!isUnknownRecord(entries)) return [mode, {}] as const;
     return [mode, Object.fromEntries(
       Object.entries(entries).filter((entry): entry is [string, number] => (
         typeof entry[1] === 'number' && Number.isFinite(entry[1])
@@ -73,9 +71,9 @@ export const sanitizeModeDeviceTargets = (value: unknown): ModeDeviceTargets | n
  * PELS.
  */
 export const isWritableModeDeviceTargets = (value: unknown): value is ModeDeviceTargets => {
-  if (!isPlainObject(value)) return false;
+  if (!isUnknownRecord(value)) return false;
   return Object.values(value).every((entries) => (
-    isPlainObject(entries)
+    isUnknownRecord(entries)
     && Object.values(entries).every((entry) => typeof entry === 'number' && Number.isFinite(entry))
   ));
 };

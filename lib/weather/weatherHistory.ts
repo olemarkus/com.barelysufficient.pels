@@ -5,7 +5,7 @@ import type {
   WeatherDaySuppression,
   WeatherHistoryState,
 } from '../../packages/contracts/src/weatherAdvisorTypes';
-import { isUnknownRecord } from '../utils/types';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import {
   getZonedParts,
   isCalendarDateKey,

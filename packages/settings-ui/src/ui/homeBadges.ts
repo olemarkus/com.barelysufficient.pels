@@ -10,6 +10,7 @@ import { resolveHomeAreaDisplayName } from '../../../shared-domain/src/homeNames
 import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { setTooltip } from './tooltips.ts';
+import { asUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 /**
  * Meter-area home badges for the Devices list and device-detail context.
@@ -49,12 +50,6 @@ export const hasResolvedHomeBadges = (): boolean => indexResolved;
 // view. Same pattern as `rosterGeneration` in `homeScope.ts`.
 let refreshGeneration = 0;
 
-const asRecord = (value: unknown): Record<string, unknown> | null => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null
-);
-
 const asArray = (value: unknown): readonly unknown[] | null => (
   Array.isArray(value) ? value as readonly unknown[] : null
 );
@@ -74,7 +69,7 @@ const asNonEmptyString = (value: unknown): string | null => (
 const resolveAreaNames = (homes: readonly unknown[]): Record<string, string> => {
   const names: Record<string, string> = {};
   homes.forEach((entry) => {
-    const home = asRecord(entry);
+    const home = asUnknownRecord(entry);
     const homeId = asNonEmptyString(home?.homeId);
     const name = home?.name;
     if (homeId !== null && typeof name === 'string') {
@@ -99,7 +94,7 @@ type HomeBadgeRead =
  * membership means for the meter it counts against.
  */
 export const resolveHomeBadgeRead = (payload: unknown): HomeBadgeRead => {
-  const record = asRecord(payload);
+  const record = asUnknownRecord(payload);
   // A degraded snapshot (`configDegraded`) is the runtime saying it cannot
   // vouch for what it served: `homes`/membership may be a stale or empty cache
   // while real meter areas are still persisted. Trusting it would re-badge
@@ -129,7 +124,7 @@ export const resolveHomeBadgeRead = (payload: unknown): HomeBadgeRead => {
   // second would re-badge every device as Main home, both from data the payload
   // never actually carried. Same abandon-grace as the malformed-flag path.
   const homes = asArray(record.homes);
-  const membership = asRecord(record.membershipByDeviceId);
+  const membership = asUnknownRecord(record.membershipByDeviceId);
   if (homes === null || membership === null) return { status: 'unavailable' };
   const areaNameByHomeId = resolveAreaNames(homes);
   // `hasSubHomes` promised at least one area and not one entry survived
@@ -139,7 +134,7 @@ export const resolveHomeBadgeRead = (payload: unknown): HomeBadgeRead => {
   if (Object.keys(areaNameByHomeId).length === 0) return { status: 'unavailable' };
   const areaHomeIdByDeviceId: Record<string, string> = {};
   Object.entries(membership).forEach(([deviceId, entry]) => {
-    const homeId = asNonEmptyString(asRecord(entry)?.homeId);
+    const homeId = asNonEmptyString(asUnknownRecord(entry)?.homeId);
     // Own-key guard: an inherited-property id ('constructor', …) must read as
     // an unlisted home, never resolve Object.prototype machinery.
     if (homeId !== null && Object.hasOwn(areaNameByHomeId, homeId)) {

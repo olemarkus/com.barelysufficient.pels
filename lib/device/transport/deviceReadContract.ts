@@ -40,7 +40,8 @@
  * and a `null` temperature leaves it without its temperature facet. A vendor device an
  * adapter converts or reads more of stays all-or-nothing.
  */
-import { isUnknownRecord, type HomeyDeviceLike } from '../../utils/types';
+import type { HomeyDeviceLike } from '../../utils/types';
+import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuards';
 import { isEvCarDeviceClass } from '../evCarDeviceClass';
 import { getDeviceAdapter } from '../deviceAdapterRegistry';
 import type { DeviceReadRule } from '../deviceAdapter';

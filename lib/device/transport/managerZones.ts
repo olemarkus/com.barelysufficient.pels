@@ -16,7 +16,7 @@
  * refresh rather than a slower cadence of its own: Homey publishes no zone
  * event, so a stale tree has nothing to correct it.
  */
-import { isUnknownRecord } from '../../utils/types';
+import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuards';
 import { normalizeError } from '../../utils/errorUtils';
 import { getDebugEmitter } from '../../logging/logger';
 import { getRawFromHomeyApi } from './managerHomeyApi';

@@ -2,6 +2,7 @@ import type {
   SettingsUiRecommendationCar,
   SettingsUiRecommendationCarsRead,
 } from '../../../contracts/src/settingsUiApi.ts';
+import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 /**
  * How the charger's car picker and Setup name a selected car that is no longer
@@ -24,19 +25,15 @@ export const hasMatchedAnotherCurrentCharger = (
   match.chargerId !== chargerId && currentChargerIds.has(match.chargerId)
 ));
 
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
-
 const isChargerMatch = (value: unknown): boolean => (
-  isRecord(value)
+  isUnknownRecord(value)
   && typeof value.chargerId === 'string'
   && typeof value.lastMatchedAtMs === 'number'
   && Number.isFinite(value.lastMatchedAtMs)
 );
 
 const isMatchHistory = (value: unknown): boolean => (
-  isRecord(value)
+  isUnknownRecord(value)
   && (value.state === 'unavailable'
     || (value.state === 'resolved'
       && Array.isArray(value.chargerMatches)
@@ -44,7 +41,7 @@ const isMatchHistory = (value: unknown): boolean => (
 );
 
 const isRecommendationCar = (value: unknown): value is SettingsUiRecommendationCar => (
-  isRecord(value)
+  isUnknownRecord(value)
   && typeof value.id === 'string'
   && typeof value.name === 'string'
   && isMatchHistory(value.matchHistory)
