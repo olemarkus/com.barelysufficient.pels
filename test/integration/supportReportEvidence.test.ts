@@ -118,14 +118,14 @@ describe('support report evidence capture', () => {
 
   it('uses only the selected area runtime and explicitly reports missing area history and budget', async () => {
     const host = currentHost('cabin');
-    host.homeRuntimeRead = { readHome: vi.fn(() => ({ state: 'resolved', reading: {
-      homeId: 'cabin', plan: { generatedAtMs: now, meta: buildSettingsUiPlanMeta({ totalKw: 2 }) },
+    vi.spyOn(host.homeRuntimeRead, 'readHome').mockReturnValue({ state: 'resolved', reading: {
+      homeId: 'cabin', plan: { generatedAtMs: now, meta: buildSettingsUiPlanMeta({ totalKw: 2 }), rescuableDeviceIds: [] },
       planUpdatedAtMs: now, powerTracker: {}, currentMonthCapacityPeakKw: 3,
       diagnostics: {
         homeId: 'cabin', meterDeviceId: 'cabin-meter', operatingMode: 'Away', dryRunEffective: false,
         lastMeterPowerKw: 2, lastDeviceControlledMs: {}, capacityScalars: { ...capacity, limitKw: 4 },
       },
-    } })) };
+    } });
     const report = await source(host).capture({
       ...request, subject: { kind: 'device', homeId: 'cabin', deviceId: 'heater' },
     }, now);
