@@ -2177,6 +2177,10 @@ Country comes from `GET /ui_hub_market`, never language. It changes emphasis,
 not feature availability or settings. An unavailable market uses neutral copy.
 The UI and getting-started guide remain English-only.
 
+- For Dutch households, an unchosen Capacity limit explains that grid charges
+  depend on connection size, and that turning this limit off preserves prices
+  and solar. Keep the running default visible until the owner makes a choice;
+  geography never disables a limit or replaces a saved target.
 - Dutch solar setup needs no dynamic contract or price configuration. Contract
   context and the end of net metering belong in optional background guidance.
 - Belgian advice stays conditional: `In Flanders? Use the 15-minute average for

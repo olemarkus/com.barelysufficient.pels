@@ -57,6 +57,7 @@ export const readRecordSettingStrict = <T>(value: unknown): Record<string, T> | 
 
 export const createSerializedAsyncRunner = () => {
   let pendingOperation: Promise<void> = Promise.resolve();
+  const setupSaveKey = Symbol('serialized device settings');
 
   return async <T>(operation: () => Promise<T>): Promise<T> => {
     const previousOperation = pendingOperation;
@@ -65,12 +66,16 @@ export const createSerializedAsyncRunner = () => {
       releaseCurrentOperation = resolve;
     });
 
-    await previousOperation;
-    try {
-      return await operation();
-    } finally {
-      releaseCurrentOperation();
-    }
+    // Register at enqueue time: closing device details must not let setup
+    // advance while this operation is still waiting behind an earlier edit.
+    return trackSetupSave(setupSaveKey, async () => {
+      await previousOperation;
+      try {
+        return await operation();
+      } finally {
+        releaseCurrentOperation();
+      }
+    });
   };
 };
 
@@ -108,25 +113,27 @@ export const writeFreshSetting = async <T>(params: FreshSettingWriteParams<T>): 
   ));
 
   try {
-    const freshValue = await getSettingFresh(params.key);
-    // Project memory feedback_homey_sdk_unreliable: a transient SDK blip can
-    // resolve to null/undefined even when persisted state exists. Fall back
-    // to the caller's local snapshot rather than to an empty object so we
-    // never write a partial map that erases unrelated keys. The same path
-    // covers the legitimate first-write case where the key truly has no
-    // value yet — `fallbackValue` is then the caller's empty snapshot,
-    // which is correct.
-    const normalised = (freshValue === null || freshValue === undefined)
-      ? null
-      : readFresh(freshValue, params.fallbackValue);
-    const currentValue = (normalised === null || normalised === undefined)
-      ? params.fallbackValue
-      : normalised;
-    const nextValue = params.mutate(currentValue);
-    await trackSetupSave(params.key, () => setSetting(params.key, nextValue));
-    await params.commit?.(nextValue);
-    confirmSettingSaved();
-    return nextValue;
+    return await trackSetupSave(params.key, async () => {
+      const freshValue = await getSettingFresh(params.key);
+      // Project memory feedback_homey_sdk_unreliable: a transient SDK blip can
+      // resolve to null/undefined even when persisted state exists. Fall back
+      // to the caller's local snapshot rather than to an empty object so we
+      // never write a partial map that erases unrelated keys. The same path
+      // covers the legitimate first-write case where the key truly has no
+      // value yet — `fallbackValue` is then the caller's empty snapshot,
+      // which is correct.
+      const normalised = (freshValue === null || freshValue === undefined)
+        ? null
+        : readFresh(freshValue, params.fallbackValue);
+      const currentValue = (normalised === null || normalised === undefined)
+        ? params.fallbackValue
+        : normalised;
+      const nextValue = params.mutate(currentValue);
+      await setSetting(params.key, nextValue);
+      await params.commit?.(nextValue);
+      confirmSettingSaved();
+      return nextValue;
+    });
   } catch (error) {
     cancelPendingSavedConfirm();
     await logSettingsError(params.logMessage, error, params.context);

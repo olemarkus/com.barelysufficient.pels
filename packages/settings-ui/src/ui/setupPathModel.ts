@@ -178,10 +178,15 @@ export const isBelgianHourlySetup = (market: SettingsUiHubMarketRead, hardCap: S
 const MEASURED_PEAK_QUESTION = 'Charged for your highest hourly or 15-minute average grid import? '
   + 'Set your hard cap, or turn off Capacity limit.';
 
-const resolveHardCapDetail = (hardCap: SetupHardCap): string => {
+const resolveHardCapDetail = (facts: SetupPathFacts): string => {
+  const { hardCap, market } = facts;
   // Only while the step is open: beside a grid import limit the step is done.
   if (hardCap.state === 'unset') {
-    return `${formatCapacityDetail(hardCap)}. ${MEASURED_PEAK_QUESTION}`;
+    const guidance = market.state === 'resolved' && market.country === 'NL'
+      ? 'Dutch household grid charges depend on connection size, not measured peaks. '
+        + 'You can turn off Capacity limit and still use prices and solar.'
+      : MEASURED_PEAK_QUESTION;
+    return `${formatCapacityDetail(hardCap)}. ${guidance}`;
   }
   return formatLimitsSummary(hardCap);
 };
@@ -219,7 +224,7 @@ export const resolveSetupSteps = (facts: SetupPathFacts): SetupPath => {
       id: 'hardCap' as const,
       done: facts.hardCap.state !== 'unset',
       title: 'Limits',
-      detail: resolveHardCapDetail(facts.hardCap),
+      detail: resolveHardCapDetail(facts),
       target: { panel: 'limits' },
     }] : []),
     ...(facts.prices.state === 'used' ? [{
