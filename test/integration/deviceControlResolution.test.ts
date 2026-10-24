@@ -488,6 +488,42 @@ describe('device owner control resolution', () => {
     }
   });
 
+  it('reads an OSO water heater as a setpoint-only heater whose heating flag is not a switch', async () => {
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger);
+    const stamp = '2026-09-30T08:00:00.000Z';
+    const oso: HomeyDeviceLike = {
+      id: 'oso', name: 'OSO', class: 'other', driverId: 'homey:app:no.osoincharge:water-heater',
+      capabilities: ['onoff', 'measure_power', 'measure_temperature', 'target_temperature', 'meter_power',
+        'water_heater_heating', 'water_heater_mode'],
+      capabilitiesObj: {
+        onoff: { value: false, setable: true, lastUpdated: stamp },
+        measure_power: { value: 0, lastUpdated: stamp },
+        measure_temperature: { value: 58, lastUpdated: stamp },
+        target_temperature: { value: 65, setable: true, min: 10, max: 75, units: '°C', lastUpdated: stamp },
+        meter_power: { value: 1234.5, lastUpdated: stamp },
+        water_heater_heating: { value: 'off', lastUpdated: stamp },
+        water_heater_mode: { value: 'auto', lastUpdated: stamp },
+      },
+      available: true, ready: true,
+    };
+    await initWithLiveFeed(transport);
+    const [snapshot] = await seedTransportDevices(transport, [oso]);
+    expect(snapshot).toMatchObject({
+      deviceClass: 'heater', deviceType: 'temperature', binaryCapabilityId: undefined, binaryControl: undefined,
+      powerCapable: true,
+      targets: [{ id: 'target_temperature', value: 65 }],
+    });
+    expect(snapshot?.capabilities).not.toContain('onoff');
+    expect(transport.deviceConfigurationStore.get('oso')).toMatchObject({
+      controlModel: 'temperature_target', binaryControllable: false,
+    });
+
+    // The element starting to heat is draw, not a switch PELS turned on.
+    await emitCapability('oso', 'onoff', true);
+    await emitCapability('oso', 'measure_power', 3000);
+    expect(transport.getSnapshotByDeviceId('oso')).toMatchObject({ binaryControl: undefined, measuredPowerKw: 3 });
+  });
+
   it('admits exact EV feedback through the owner and publishes the extended confirmed ladder before notifications', async () => {
     const notifiedProfiles: SteppedLoadProfile[] = [];
     const transport = createTestDeviceTransport(

@@ -77,6 +77,7 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
       { text: 'Configure a Zaptec EV Charger', link: '/zaptec-ev-charger' },
       { text: 'Configure a Futurehome EV Charger', link: '/futurehome-ev-charger' },
       { text: 'Tesla vehicle charging', link: '/tesla-charging' },
+      { text: 'Configure an OSO Water Heater', link: '/oso-water-heater' },
     ],
   },
   {
