@@ -776,6 +776,116 @@ describe('a Main plan push during a Main refresh', () => {
   });
 });
 
+describe('values a Main refresh read, after a plan push overtook it', () => {
+  // The push supersedes the refresh's plan only. Its prices and power still
+  // land, unless a read that started after them committed first.
+  const HOUR_MS = 3_600_000;
+  const baseHourMs = Math.floor(Date.now() / HOUR_MS) * HOUR_MS;
+  const pricesCheapestAt = (hoursAhead: number) => ({
+    combinedPrices: {
+      prices: [1, 2, 3, 4, 5, 6].map((hour) => ({
+        startsAt: new Date(baseHourMs + hour * HOUR_MS).toISOString(),
+        total: hour === hoursAhead ? 10 : 50,
+      })),
+    },
+  });
+  const clockAt = (hoursAhead: number): string => {
+    const date = new Date(baseHourMs + hoursAhead * HOUR_MS);
+    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  };
+  const powerWithSolar = (generationW: number) => ({
+    tracker: { buckets: {}, lastPowerW: 500, lastGenerationW: generationW, lastTimestamp: Date.now() },
+    status: { state: 'unavailable', reason: 'no_status_recorded' },
+    readings: { state: 'received', lastPowerUpdateMs: Date.now() },
+  });
+  const baseApi = (): Record<string, unknown> => ({
+    '/ui_homes': ROSTER_PAYLOAD,
+    '/ui_plan': { plan: MAIN_PLAN },
+    '/ui_power': powerWithSolar(3200),
+    '/ui_prices': pricesCheapestAt(2),
+    '/ui_deferred_objective_history': { version: 1, entriesByDeviceId: {} },
+    '/settings_ui_log': { ok: true },
+  });
+  const pushPlan = (emit: (event: string, payload?: unknown) => void) => emit('plan_updated', {
+    ...buildPlan({ totalKw: 6.4, deviceId: 'dev_main_heater', deviceName: 'Main Heater' }),
+    rescuableDeviceIds: [],
+  });
+
+  it('keeps the newer prices a prices_updated refetch committed meanwhile', async () => {
+    const api = baseApi();
+    const { heldCalls, emit } = await installClient({ api, holdUris: ['/ui_power'] });
+    const { refreshHomeScope } = await import('../src/ui/homeScope.ts');
+    await refreshHomeScope();
+    const { initRealtimeListeners } = await import('../src/ui/realtime.ts');
+    initRealtimeListeners();
+    const { refreshPlan } = await import('../src/ui/plan.ts');
+
+    // The refresh has its prices (cheapest in 2 h) and waits on power.
+    const older = refreshPlan();
+    await flushAsync();
+    pushPlan(emit);
+    api['/ui_prices'] = pricesCheapestAt(5);
+    emit('prices_updated');
+    await flushAsync();
+    expect(surfaceText()).toContain(`Cheapest hour ahead: ${clockAt(5)}`);
+
+    heldCalls.filter((call) => call.uri === '/ui_power').forEach((call) => call.respond());
+    await older;
+    await flushAsync();
+    expect(heroPowerValue()).toBe('6.4');
+    expect(surfaceText()).toContain(`Cheapest hour ahead: ${clockAt(5)}`);
+  });
+
+  it('keeps the newer solar sample the status poll committed meanwhile', async () => {
+    const api = baseApi();
+    const { heldCalls, emit } = await installClient({ api, holdUris: ['/ui_prices'] });
+    const { refreshHomeScope } = await import('../src/ui/homeScope.ts');
+    await refreshHomeScope();
+    const { initRealtimeListeners } = await import('../src/ui/realtime.ts');
+    initRealtimeListeners();
+    const { refreshPlan, refreshPlanPower } = await import('../src/ui/planRedesign.ts');
+    const { invalidateApiCache } = await import('../src/ui/homey.ts');
+
+    // The refresh has its power (3.2 kW of solar) and waits on prices.
+    const older = refreshPlan();
+    await flushAsync();
+    pushPlan(emit);
+    api['/ui_power'] = powerWithSolar(1500);
+    invalidateApiCache('/ui_power');
+    await refreshPlanPower();
+    await flushAsync();
+    expect(surfaceText()).toContain('Solar now 1.5');
+
+    heldCalls.filter((call) => call.uri === '/ui_prices').forEach((call) => call.respond());
+    await older;
+    await flushAsync();
+    expect(heroPowerValue()).toBe('6.4');
+    expect(surfaceText()).toContain('Solar now 1.5');
+  });
+
+  it('commits the prices and power it read when nothing newer landed', async () => {
+    const { heldCalls, emit } = await installClient({ api: baseApi(), holdUris: ['/ui_power'] });
+    const { refreshHomeScope } = await import('../src/ui/homeScope.ts');
+    await refreshHomeScope();
+    const { initRealtimeListeners } = await import('../src/ui/realtime.ts');
+    initRealtimeListeners();
+    const { refreshPlan } = await import('../src/ui/plan.ts');
+
+    const older = refreshPlan();
+    await flushAsync();
+    pushPlan(emit);
+    await flushAsync();
+    expect(surfaceText()).not.toContain('Solar now');
+
+    heldCalls.filter((call) => call.uri === '/ui_power').forEach((call) => call.respond());
+    await older;
+    await flushAsync();
+    expect(heroPowerValue()).toBe('6.4');
+    expect(surfaceText()).toContain('Solar now 3.2');
+    expect(surfaceText()).toContain(`Cheapest hour ahead: ${clockAt(2)}`);
+  });
+});
+
 describe('overlapping Main refreshes across a scope round trip', () => {
   it('an older Main refresh can never overwrite the newer Main commit', async () => {
     // Main refresh A is still awaiting its plan read when the user rounds

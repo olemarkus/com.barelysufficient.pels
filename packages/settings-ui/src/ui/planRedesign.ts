@@ -43,6 +43,28 @@ import type { SolarNowInput } from '../../../shared-domain/src/solar/solarNow.ts
 // so the line disappears on its own once the sample goes stale.
 let cachedSolarNowInput: SolarNowInput | null = null;
 let cachedPrices: SettingsUiPricesPayload | null = null;
+
+// The newest-started read wins, per cached value. Several paths write the same
+// value (a plan refresh, the status poll, a `prices_updated` refetch, a push),
+// so a read stamps its start and may commit only if no read that started
+// after it has committed already.
+const createLatestReadOrder = () => {
+  let started = 0;
+  let committed = 0;
+  return {
+    start: (): number => {
+      started += 1;
+      return started;
+    },
+    commit: (stamp: number): boolean => {
+      if (stamp < committed) return false;
+      committed = stamp;
+      return true;
+    },
+  };
+};
+const solarNowReads = createLatestReadOrder();
+const priceReads = createLatestReadOrder();
 // Miss-streak badges for the smart-task row, derived once per history fetch
 // (same `/ui_deferred_objective_history` payload the Smart-tasks list reads)
 // and kept null-tolerant: a failed read renders the row without the miss
@@ -272,10 +294,10 @@ export const renderPlan = (plan: PlanSnapshot | null) => {
   // an unmeasured cycle draws no hero, so the banner is where the page says
   // why every managed device below reads `Limited`.
   setPlanUnmeasured(plan?.meta?.powerIsMeasured === false);
-  // A committed plan (a `plan_updated` push included) supersedes any refresh
-  // still reading an older one, so that refresh can never paint it, or its
-  // rescue gate, back over this one.
-  planRefreshGeneration += 1;
+  // A committed plan (a `plan_updated` push included) supersedes the plan of
+  // any refresh still reading an older one, so that refresh can never paint
+  // it, or its rescue gate, back over this one.
+  planCommitGeneration += 1;
   // The rescue chip's gate rides the plan it is drawn with.
   applyPlanRescueGate(plan?.rescuableDeviceIds ?? []);
   commitPlan(plan, { kind: 'main' });
@@ -294,6 +316,7 @@ export const resetPlanSurfaceForScopeChange = (): void => {
     : { kind: 'area', homeId: selectedHomeId, read: 'pending', simulating: false };
   currentPlan = null;
   planPayloadReceived = false;
+  solarNowReads.commit(solarNowReads.start());
   cachedSolarNowInput = null;
   doRender();
 };
@@ -340,7 +363,7 @@ export const updatePlanPower = (
   tracker?: SettingsUiPowerPayload['tracker'],
 ): void => {
   if (getHomeScope().selectedHomeId !== MAIN_HOME_ID) return;
-  if (tracker !== undefined) {
+  if (tracker !== undefined && solarNowReads.commit(solarNowReads.start())) {
     cachedSolarNowInput = toSolarNowInput(tracker);
   }
   doRender();
@@ -348,11 +371,11 @@ export const updatePlanPower = (
 
 // The status poll's power read, between the plan refreshes that otherwise
 // carry the hero's "Solar now" triple: every `power_updated` push is
-// status-only, so the tracker arrives through this read. A plan refresh that
-// starts meanwhile is newer and wins.
+// status-only, so the tracker arrives through this read. A read that starts
+// after it (a plan refresh's or the next poll's) is newer and wins.
 export const refreshPlanPower = async (): Promise<void> => {
   if (getHomeScope().selectedHomeId !== MAIN_HOME_ID) return;
-  const generation = planRefreshGeneration;
+  const stamp = solarNowReads.start();
   let payload: SettingsUiPowerPayload | null;
   try {
     payload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
@@ -360,7 +383,8 @@ export const refreshPlanPower = async (): Promise<void> => {
     // A failed poll keeps the line the last good read drew.
     return;
   }
-  if (generation !== planRefreshGeneration || getHomeScope().selectedHomeId !== MAIN_HOME_ID) return;
+  if (getHomeScope().selectedHomeId !== MAIN_HOME_ID) return;
+  if (!solarNowReads.commit(stamp)) return;
   cachedSolarNowInput = payload ? toSolarNowInput(payload.tracker) : null;
   doRender();
 };
@@ -454,7 +478,10 @@ const resolveSmartTaskRow = (nowMs: number): OverviewSmartTaskRow | null => (
 // The plan snapshot itself is not re-fetched — only the cached prices are
 // refreshed and the surface is re-rendered against the current plan.
 export const updatePlanPrices = async (): Promise<void> => {
-  cachedPrices = await readPricesForPlanRefresh();
+  const stamp = priceReads.start();
+  const prices = await readPricesForPlanRefresh();
+  if (!priceReads.commit(stamp)) return;
+  cachedPrices = prices;
   doRender();
 };
 
@@ -483,6 +510,10 @@ const readScopedPowerForPlanRefresh = async (): Promise<PlanPowerRead> => {
 // counter; only the newest-started refresh may commit (the `rosterGeneration`
 // precedent in `homeScope.ts`).
 let planRefreshGeneration = 0;
+// Counts Main plan commits (`renderPlan`). A push carries the plan alone, so
+// it supersedes an in-flight Main refresh's plan but not the prices and power
+// that refresh read: those follow their own read order above.
+let planCommitGeneration = 0;
 
 // One meter area's Overview refresh: that area's own scoped plan/power reads,
 // discriminated before any flat field, plus its own simulation flag. Prices
@@ -491,6 +522,8 @@ let planRefreshGeneration = 0;
 const refreshAreaPlan = async (homeId: string): Promise<void> => {
   planRefreshGeneration += 1;
   const generation = planRefreshGeneration;
+  const solarNowStamp = solarNowReads.start();
+  const priceStamp = priceReads.start();
   const [planRead, devicesRead, power, prices, simulating] = await Promise.all([
     readOverviewPlan(),
     readOverviewDevices(),
@@ -504,15 +537,16 @@ const refreshAreaPlan = async (homeId: string): Promise<void> => {
   // left (the mirror of `renderPlan`'s Main-stream guard).
   if (generation !== planRefreshGeneration) return;
   if (getHomeScope().selectedHomeId !== homeId) return;
-  cachedPrices = prices;
+  if (priceReads.commit(priceStamp)) cachedPrices = prices;
+  const solarNowCommits = solarNowReads.commit(solarNowStamp);
   if (planRead.state === 'unavailable') {
     // The empty shape carries NO information about this home: render the
     // honest notice, never `plan: null` dressed as "no plan committed yet".
-      cachedSolarNowInput = null;
+    if (solarNowCommits) cachedSolarNowInput = null;
     commitPlan(null, { kind: 'area', homeId, read: 'unavailable', simulating });
     return;
   }
-  cachedSolarNowInput = power.solarNowInput;
+  if (solarNowCommits) cachedSolarNowInput = power.solarNowInput;
   // An `unavailable` device read is a NO-OP, not an empty list. The two
   // channels fail independently, and a transient device-read failure is no
   // evidence about the home's devices — blanking the cards on it would strip a
@@ -536,6 +570,9 @@ export const refreshPlan = async () => {
   }
   planRefreshGeneration += 1;
   const generation = planRefreshGeneration;
+  const committedAtStart = planCommitGeneration;
+  const solarNowStamp = solarNowReads.start();
+  const priceStamp = priceReads.start();
   const [plan, power, prices] = await Promise.all([
     getPlanSnapshot(),
     readPowerForPlanRefresh(),
@@ -550,8 +587,14 @@ export const refreshPlan = async () => {
   // cached for the area's next live-tick repaint.
   if (generation !== planRefreshGeneration) return;
   if (getHomeScope().selectedHomeId !== MAIN_HOME_ID) return;
-  cachedSolarNowInput = power.solarNowInput;
-  cachedPrices = prices;
+  if (solarNowReads.commit(solarNowStamp)) cachedSolarNowInput = power.solarNowInput;
+  if (priceReads.commit(priceStamp)) cachedPrices = prices;
+  // A push committed a newer plan while this refresh read: keep that plan and
+  // repaint it with the prices and power read here.
+  if (committedAtStart !== planCommitGeneration) {
+    doRender();
+    return;
+  }
   renderPlan(plan);
 };
 
