@@ -682,5 +682,8 @@
   },
   "3.22.0": {
     "en": "Device activity now survives restarts. The new Activity page under Settings lists recent device states and the reasons behind them, newest first, with a device filter and up to seven days of history, and device details show the same history.\n\nThe Create smart task and Device insight widgets now also offer May reserve power to start sooner, and creating or editing a smart task keeps the extra permissions a Flow already granted. Energy used by a smart task allowed to go over the daily budget no longer counts against it. After resuming a device, PELS waits for a new power reading before resuming the next. Power source reads Not set until you choose one, so choosing Flow card now saves."
+  },
+  "3.22.1": {
+    "en": "Internal cleanup of device control, smart task Flow cards, daily budget learning and the settings pages, with no change to how PELS behaves."
   }
 }
