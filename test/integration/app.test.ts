@@ -2453,8 +2453,8 @@ describe('computePhysicalPowerLimit', () => {
     await initApp(app);
 
     // Simulate end of hour scenario (last 10 minutes) where burst rate would be high:
-    // 5 minutes left, only 0.5 kWh used, remaining = 4.5 kWh; remaining time is floored
-    // to 10 min so burstRate = 4.5 / (10/60) = 27 kW. The exponential drain ceiling
+    // 5 minutes left, only 0.5 kWh used, remaining = 4.5 kWh;
+    // burstRate = 4.5 / (5/60) = 54 kW. The exponential drain ceiling
     // pulls the allowed pace below that as the hour ends.
 
     // Mock Date.now to be at :55 (5 minutes left - within last 10 minutes)
@@ -2472,13 +2472,13 @@ describe('computePhysicalPowerLimit', () => {
     const softLimit = app.computePhysicalPowerLimit();
 
     // With 5 kWh budget, 0.5 used, 4.5 remaining, 5 minutes left:
-    // - burstRate = 27 kW (remaining time floored to 10 min)
-    // - drain ceiling = 5 * e^(5/4) = 17.45 kW; allowed = min(27, 17.45) = 17.45 kW.
+    // - burstRate = 54 kW (using the actual five minutes remaining)
+    // - drain ceiling = 5 * e^(5/4) = 17.45 kW; allowed = min(54, 17.45) = 17.45 kW.
     // The end-of-hour drain pulls the pace below burst but well above the steady
     // sustainable rate (5 kW) — a smooth taper rather than a cliff to sustainable.
     expect(softLimit).toBeCloseTo(17.45, 1);
     expect(softLimit).toBeGreaterThan(5);
-    expect(softLimit).toBeLessThan(27);
+    expect(softLimit).toBeLessThan(54);
 
     vi.restoreAllMocks();
   });
@@ -2628,11 +2628,11 @@ describe('computePhysicalPowerLimit', () => {
 
     const softLimit = app.computePhysicalPowerLimit();
 
-    // With 6.7 kWh budget, 3 used, 3.7 remaining, remaining time floored to 10 min:
-    // burstRate = 3.7 / (10/60) = 22.2 kW.
-    // drain ceiling = 6.7 * e^(8/4) ≈ 49.5 kW, so burst governs: allowed ≈ 22.2 kW.
+    // With 6.7 kWh budget, 3 used, 3.7 remaining, and 8 minutes left:
+    // burstRate = 3.7 / (8/60) = 27.75 kW.
+    // drain ceiling = 6.7 * e^(8/4) ≈ 49.5 kW, so burst governs: allowed = 27.75 kW.
     // (The legacy hard cliff would have clamped this to 6.7 kW at 8 minutes left.)
-    expect(softLimit).toBeCloseTo(22.2, 1);
+    expect(softLimit).toBeCloseTo(27.75, 2);
     expect(softLimit).toBeGreaterThan(6.7);
 
     vi.restoreAllMocks();
@@ -2668,9 +2668,9 @@ describe('computePhysicalPowerLimit', () => {
 
     const softLimit = app.computePhysicalPowerLimit();
 
-    // With 6.7 kWh budget, 2 used, 4.7 remaining, remaining time floored to 10 min:
-    // burstRate = 4.7 / (10/60) = 28.2 kW.
-    // drain ceiling = 6.7 * e^(1/4) = 8.60 kW; allowed = min(28.2, 8.60) = 8.60 kW —
+    // With 6.7 kWh budget, 2 used, 4.7 remaining, and 1 minute left:
+    // burstRate = 4.7 / (1/60) = 282 kW.
+    // drain ceiling = 6.7 * e^(1/4) = 8.60 kW; allowed = min(282, 8.60) = 8.60 kW —
     // approaching the sustainable rate (6.7 kW) so the next hour starts clean.
     expect(softLimit).toBeCloseTo(8.6, 1);
     expect(softLimit).toBeGreaterThan(6.7);

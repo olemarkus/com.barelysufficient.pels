@@ -296,13 +296,13 @@ describe('planBudget', () => {
         Date.now(),
       );
 
-      // Remaining = 4.5 kWh, remaining time clamps to 10m => burst 27 kW.
-      // Drain ceiling at 5 min = 5 * e^(5/4) = 17.4517 kW; allowed = min(27, 17.4517).
+      // Remaining = 4.5 kWh over 5 minutes => burst 54 kW.
+      // Drain ceiling at 5 min = 5 * e^(5/4) = 17.4517 kW; allowed = min(54, 17.4517).
       // The pace is pulled below the raw burst but stays well above the steady
       // sustainable rate (5 kW) — a smooth taper, not a cliff to sustainable.
       expect(result.allowedKw).toBeCloseTo(17.4517, 3);
       expect(result.allowedKw).toBeGreaterThan(5);
-      expect(result.allowedKw).toBeLessThan(27);
+      expect(result.allowedKw).toBeLessThan(54);
       expect(result.hourlyBudgetExhausted).toBe(false);
     });
 
@@ -349,7 +349,7 @@ describe('planBudget', () => {
         const bucketKey = getHourBucketKey(nowMs);
         return computeDynamicSoftLimit(
           { limitKw: 5, marginKw: 0, periodMinutes: 60 }, // sustainable = 5 kW
-          { buckets: { [bucketKey]: 0.5 } }, // burst stays at 27 kW (floored)
+          { buckets: { [bucketKey]: 0.5 } }, // remaining budget keeps burst above the drain
           Date.now(),
         ).allowedKw;
       };
@@ -365,7 +365,7 @@ describe('planBudget', () => {
       expect(series[series.length - 1]).toBeGreaterThan(5); // never below the sustainable rate
     });
 
-    it('uses 10-minute minimum remaining time near hour end', () => {
+    it('uses the actual time left when the remaining budget binds below the drain', () => {
       const nowMs = Date.UTC(2025, 0, 15, 12, 59, 0);
       vi.useFakeTimers();
       vi.setSystemTime(nowMs);
@@ -373,13 +373,51 @@ describe('planBudget', () => {
       const bucketKey = getHourBucketKey(nowMs);
       const result = computeDynamicSoftLimit(
         { limitKw: 5, marginKw: 0, periodMinutes: 60 },
-        { buckets: { [bucketKey]: 4.8 } },
+        { buckets: { [bucketKey]: 4.95 } },
         Date.now(),
       );
 
-      // Remaining = 0.2 kWh; with 10-minute minimum => 0.2 / (10/60) = 1.2 kW.
-      expect(result.allowedKw).toBeCloseTo(1.2, 6);
+      // 0.05 kWh over the final minute permits 3 kW, below the 6.42 kW drain ceiling.
+      expect(result.allowedKw).toBeCloseTo(3, 6);
       expect(result.hourlyBudgetExhausted).toBe(false);
+    });
+
+    it('uses the remaining allowance in a busy hour before the drain takes over', () => {
+      const hourStartMs = Date.UTC(2025, 0, 15, 12);
+      const bucketKey = getHourBucketKey(hourStartMs);
+      const paces: number[] = [];
+      let usedKWh = 3.5;
+
+      // An 8 kW demand follows the allowed pace, feeding consumption back every
+      // 10 seconds. At :50, 1.3 kWh remains out of the 4.8 kWh allowance.
+      for (let elapsedSeconds = 50 * 60; elapsedSeconds < 60 * 60; elapsedSeconds += 10) {
+        const { allowedKw } = computeDynamicSoftLimit(
+          { limitKw: 5, marginKw: 0.2, periodMinutes: 60 },
+          { buckets: { [bucketKey]: usedKWh } },
+          hourStartMs + elapsedSeconds * 1000,
+        );
+        paces.push(allowedKw);
+        usedKWh += Math.min(8, allowedKw) * (10 / 3600);
+      }
+
+      expect(paces[30]).toBeCloseTo(7.8, 6); // :55: spend remaining energy over actual time left
+      expect(paces[54]).toBeCloseTo(6.1633, 3); // :59: the exponential drain now binds
+      expect(paces.at(-1)).toBeGreaterThanOrEqual(4.8);
+      expect(paces.at(-1)).toBeLessThan(5.1);
+      expect(usedKWh).toBeGreaterThan(4.7);
+      expect(usedKWh).toBeLessThanOrEqual(4.8);
+    });
+
+    it('starts a fresh allowance at the exact hour boundary', () => {
+      const nowMs = Date.UTC(2025, 0, 15, 13);
+      const previousBucketKey = getHourBucketKey(nowMs - 1);
+      const result = computeDynamicSoftLimit(
+        { limitKw: 5, marginKw: 0.2, periodMinutes: 60 },
+        { buckets: { [previousBucketKey]: 4.8 } },
+        nowMs,
+      );
+
+      expect(result).toEqual({ allowedKw: 4.8, hourlyBudgetExhausted: false, remainingKWh: 4.8 });
     });
 
     it('marks hourly budget exhausted when usage exceeds soft budget', () => {

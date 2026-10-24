@@ -26,11 +26,8 @@ import { getCurrentCapacityPeriodContext } from './planHourContext';
 import type { DailySoftLimitBucket } from './planDailyBudgetWindow';
 import type { DailyBudgetUiPayload } from '../../packages/contracts/src/dailyBudgetTypes';
 
-// Floor on the remaining-time divisor for the burst rate, so the rate stays
-// finite as the period ends (avoids remaining/→0 blow-up). Shared by capacity
-// and daily pacing calculations.
-const BURST_RATE_MIN_REMAINING_MIN = 10;
-const BURST_RATE_MIN_REMAINING_HOURS = BURST_RATE_MIN_REMAINING_MIN / 60;
+// Daily pacing retains its divisor floor; it has no period-end drain ceiling.
+const DAILY_BURST_RATE_MIN_REMAINING_HOURS = 10 / 60;
 // A quarter's pace is capped at the sustainable rate, so the cap, not this
 // floor, keeps it finite as the quarter ends. The floor only has to stop a
 // division by zero, and it must not overstate the time left: a one-minute floor
@@ -92,10 +89,11 @@ export function computeDynamicSoftLimit(
   if (!periodContext.coverageComplete) {
     return { allowedKw: 0, hourlyBudgetExhausted: false, remainingKWh: 0 };
   }
-  const minimumRemainingHours = capacitySettings.periodMinutes === 15
-    ? QUARTER_BURST_RATE_MIN_REMAINING_HOURS
-    : BURST_RATE_MIN_REMAINING_HOURS;
-  const remainingHours = Math.max(periodContext.remainingHours, minimumRemainingHours);
+  // Hourly pacing uses the actual time left; the drain bounds the burst rate.
+  // At :00 the context rolls into the next hour, so its divisor stays positive.
+  const remainingHours = capacitySettings.periodMinutes === 15
+    ? Math.max(periodContext.remainingHours, QUARTER_BURST_RATE_MIN_REMAINING_HOURS)
+    : periodContext.remainingHours;
   const usedKWh = periodContext.usedKWh;
   const remainingKWh = Math.max(0, netBudgetKWh - usedKWh);
   const hourlyBudgetExhausted = remainingKWh <= 0;
@@ -144,7 +142,7 @@ export function computeDailyUsageSoftLimit(bucket: DailySoftLimitBucket, nowMs: 
   if (!Number.isFinite(plannedKWh) || plannedKWh <= 0) return 0;
   if (!Number.isFinite(bucketStartMs) || !Number.isFinite(bucketEndMs) || bucketEndMs <= bucketStartMs) return 0;
   const remainingMs = bucketEndMs - Math.max(nowMs, bucketStartMs);
-  const remainingHours = Math.max(remainingMs / 3600000, BURST_RATE_MIN_REMAINING_HOURS);
+  const remainingHours = Math.max(remainingMs / 3600000, DAILY_BURST_RATE_MIN_REMAINING_HOURS);
   const safeUsed = Number.isFinite(usedKWh) ? Math.max(0, usedKWh) : 0;
   const remainingKWh = Math.max(0, plannedKWh - safeUsed);
   const burstRateKw = remainingKWh / remainingHours;
