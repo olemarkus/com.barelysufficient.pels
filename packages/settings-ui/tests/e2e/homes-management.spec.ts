@@ -134,7 +134,7 @@ test('overlap with an existing area blocks save; outside-zone meter only warns',
   await expect(page.locator('.homes-settings__row')).toHaveCount(2);
 });
 
-test('saving an area without a whole-home meter is refused with the remedy', async ({ page }) => {
+test('adding an area without a whole-home meter is blocked with the remedy', async ({ page }) => {
   await installRentalMeterDeviceList(page);
   await gotoApp(page);
   await seedRentalMeterSnapshot(page);
@@ -142,12 +142,11 @@ test('saving an area without a whole-home meter is refused with the remedy', asy
   // install whose owner has not picked one yet).
   await seedStubSetting(page, 'homey_energy_meter_device_id', null);
   await openHomesPanel(page);
-  await page.locator('#homes-add-button').click();
-  await page.selectOption('#homes-meter-select', 'dev_rental_meter');
-  await page.locator('#homes-editor-save').click();
+  // Said before the editor opens, since the save could only refuse.
+  await expect(page.locator('#homes-add-button')).toHaveAttribute('disabled', '');
   // Reason first, then the control named as a setting to change.
-  await expect(page.locator('#toast')).toContainText('so PELS can tell the homes apart');
-  await expect(page.locator('#toast')).toContainText('Set “Whole-home meter” under Limits & safety');
+  await expect(page.locator('#homes-add-blocked')).toContainText('so PELS can tell the homes apart');
+  await expect(page.locator('#homes-add-blocked')).toContainText('Set “Whole-home meter” under Limits & safety');
   await expect(page.locator('.homes-settings__row')).toHaveCount(0);
 });
 

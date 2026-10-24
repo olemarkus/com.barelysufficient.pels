@@ -5,7 +5,9 @@ import {
   type SettingsUiHomesPayload,
 } from '../../contracts/src/settingsUiHomes.ts';
 import {
+  HOMES_ADD_NEEDS_MAIN_METER,
   HOMES_METER_HINT,
+  HOMES_NO_FREE_METER,
   HOMES_NO_METER_DEVICES,
   HOMES_REFRESH_FAILED,
 } from '../src/ui/homesManagementCopy.ts';
@@ -126,6 +128,45 @@ describe('meter picker load states', () => {
     metersFetch.reject(new Error('Homey Energy live report unavailable'));
     await flushAsync();
     expect(meterHint(mount)).toBe(HOMES_METER_HINT);
+  });
+});
+
+describe('adding an area when every meter is taken', () => {
+  it('disables Add and says why once the meter list shows no free meter', async () => {
+    const { refreshHomesOnHomesPanel } = await import('../src/ui/homesSettings.ts');
+    const mount = document.getElementById('homes-settings-mount') as HTMLElement;
+    const addButton = () => mount.querySelector('#homes-add-button') as (HTMLElement & { disabled?: unknown });
+
+    const activation = refreshHomesOnHomesPanel();
+    homesFetch.resolve(payload([{ ...rentalHome, meterDeviceId: 'meter-rental' }]));
+    await activation;
+    // Not answered yet: no claim about meters.
+    expect(addButton().disabled).not.toBe(true);
+
+    metersFetch.resolve([{ id: 'meter-rental', name: 'Rental meter' }]);
+    await flushAsync();
+    expect(addButton().disabled).toBe(true);
+    expect(mount.querySelector('#homes-add-blocked')?.textContent).toBe(HOMES_NO_FREE_METER);
+  });
+});
+
+describe('adding an area before the Main home has a meter', () => {
+  it('disables Add and names the setting, since every save would refuse for it', async () => {
+    const { getSettingFresh } = await import('../src/ui/homey.ts');
+    vi.mocked(getSettingFresh).mockImplementation(async (key: string) => (key === 'power_source' ? 'homey_energy' : null));
+    try {
+      const { refreshHomesOnHomesPanel } = await import('../src/ui/homesSettings.ts');
+      const mount = document.getElementById('homes-settings-mount') as HTMLElement;
+      const activation = refreshHomesOnHomesPanel();
+      homesFetch.resolve(payload([]));
+      await activation;
+      metersFetch.resolve([{ id: 'meter-a', name: 'Meter A' }, { id: 'meter-b', name: 'Meter B' }]);
+      await flushAsync();
+      expect((mount.querySelector('#homes-add-button') as HTMLElement & { disabled?: unknown }).disabled).toBe(true);
+      expect(mount.querySelector('#homes-add-blocked')?.textContent).toBe(HOMES_ADD_NEEDS_MAIN_METER);
+    } finally {
+      vi.mocked(getSettingFresh).mockResolvedValue(null);
+    }
   });
 });
 

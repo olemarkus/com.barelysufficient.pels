@@ -11,6 +11,7 @@
 
 import { resolveHomeAreaDisplayName } from '../../../shared-domain/src/homeNames';
 import type { SubHomeDraftError, SubHomeDraftWarning } from '../../../shared-domain/src/homesManagement';
+import { HOME_AREA_MAX_COUNT } from '../../../shared-domain/src/homeAreaConfigRules';
 
 // The hub nav card + panel title strings ("Multiple meters" / "Parts of your
 // home with their own meter") live in the static `public/index.html` markup,
@@ -176,6 +177,11 @@ export const composeZonePickerOptionLabel = (name: string, depth: number): strin
 
 export const composeDraftErrorLine = (error: SubHomeDraftError): string => {
   if (error.kind === 'name_missing') return 'Give this meter area a name.';
+  if (error.kind === 'name_too_long') return `Shorten the name to ${error.maxLength} characters or fewer.`;
+  if (error.kind === 'name_reserved') {
+    return `“${error.reservedName}” is what PELS calls the rest of your home. `
+      + 'Give this area a different name.';
+  }
   if (error.kind === 'name_duplicate') {
     // `otherName` is another area's raw persisted name, so the blank case is
     // resolved here like every other quoted area name. (A duplicate of a blank
@@ -281,6 +287,47 @@ export const HOMES_REFRESH_FAILED = 'Couldn’t load the latest meter areas, so 
   + 'out of date and can’t be changed. PELS will try again the next time you open this page.';
 /** The zone tree hasn't been fetched yet — adding needs zones to pick from. */
 export const HOMES_ZONES_UNAVAILABLE = 'Homey’s zones aren’t available right now — try again in a moment.';
+/** Why "Add meter area" is off at the cap; the save seam refuses the same growth. */
+export const composeHomesAreaLimitLine = (maxCount: number): string => (
+  `PELS handles up to ${maxCount} meter areas. Remove one to make room.`
+);
+/**
+ * Why "Add meter area" is off when every meter Homey Energy lists already has
+ * an owner: an area needs its own meter, and so does the Main home. A home with
+ * one meter lands here, rather than bouncing between two save refusals.
+ */
+export const HOMES_NO_FREE_METER = 'Every meter Homey Energy lists is already in use. '
+  + 'A meter area needs a meter of its own.';
+
+/**
+ * Why "Add meter area" is off while the Main home has no meter of its own on
+ * the Homey Energy power source: the save would refuse every area for it.
+ */
+export const HOMES_ADD_NEEDS_MAIN_METER = 'Meter areas need the Main home’s own meter so PELS can tell '
+  + 'the homes apart. Set “Whole-home meter” under Limits & safety first.';
+
+/**
+ * Why no area can be added right now, or null. The cap and the Main home's own
+ * meter mirror the save seam's rules; `mainMeterUnchosen` is true only once the
+ * meter setting has been read and holds none on the Homey Energy power source.
+ * A free meter is one no area and not the Main home's chosen meter uses.
+ * `meterIds` is null until the meter list answers, so a slow read never flashes
+ * the line, and an empty list stays silent too, since the editor's meter hint
+ * already names that remedy.
+ */
+export const resolveHomesAddBlockedLine = (
+  areas: readonly { meterDeviceId: string | null }[],
+  meterIds: readonly string[] | null,
+  mainMeterDeviceId: string | null,
+  mainMeterUnchosen: boolean,
+): string | null => {
+  if (areas.length >= HOME_AREA_MAX_COUNT) return composeHomesAreaLimitLine(HOME_AREA_MAX_COUNT);
+  if (mainMeterUnchosen) return HOMES_ADD_NEEDS_MAIN_METER;
+  if (meterIds === null || meterIds.length === 0) return null;
+  const used = new Set(areas.map((area) => area.meterDeviceId));
+  if (mainMeterDeviceId !== null) used.add(mainMeterDeviceId);
+  return meterIds.some((id) => !used.has(id)) ? null : HOMES_NO_FREE_METER;
+};
 export const HOMES_SAVED_TOAST = 'Meter area saved.';
 export const HOMES_REMOVED_TOAST = 'Meter area removed.';
 export const HOMES_SAVE_FAILED_TOAST = 'Couldn’t save changes — try again.';

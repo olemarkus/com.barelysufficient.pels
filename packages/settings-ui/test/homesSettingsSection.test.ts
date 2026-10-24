@@ -17,6 +17,7 @@ import {
   HOMES_MAIN_METER_NOTICE_LINK,
   HOMES_METER_MISSING_OPTION,
   HOMES_NO_METER_DEVICES,
+  HOMES_NO_FREE_METER,
   HOMES_ZONES_UNAVAILABLE,
 } from '../src/ui/homesManagementCopy';
 
@@ -40,6 +41,7 @@ const baseProps = (): HomesSettingsSectionProps => ({
   showFlowSourceNotice: false,
   mainMeterConflictAreaName: null,
   editor: null,
+  addBlockedLine: null,
   confirmingDeleteHomeId: null,
   deleteBusy: false,
   onAddClick: noop,
@@ -192,6 +194,13 @@ describe('progressive disclosure', () => {
     const addButton = surface.querySelector('#homes-add-button') as DisableableElement;
     expect(addButton?.disabled).toBe(true);
     expect(surface.textContent).toContain(HOMES_ZONES_UNAVAILABLE);
+  });
+
+  it('disables Add and says why when no area can be added', () => {
+    const surface = mountWith({ ...baseProps(), homes: [rentalRow], addBlockedLine: HOMES_NO_FREE_METER });
+    const addButton = surface.querySelector('#homes-add-button') as DisableableElement;
+    expect(addButton?.disabled).toBe(true);
+    expect(surface.querySelector('#homes-add-blocked')?.textContent).toBe(HOMES_NO_FREE_METER);
   });
 });
 

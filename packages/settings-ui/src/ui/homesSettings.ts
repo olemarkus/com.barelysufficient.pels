@@ -33,6 +33,7 @@ import {
   HOMES_REMOVED_TOAST,
   HOMES_SAVE_FAILED_TOAST,
   HOMES_SAVED_TOAST,
+  resolveHomesAddBlockedLine,
 } from './homesManagementCopy.ts';
 import {
   composeHomeAreaSaveRefusalLine,
@@ -113,6 +114,8 @@ let mainMeterDeviceId: string | null = null;
 // runtime treats it as Flow, so warn) from the pre-read boot window and a
 // transient read error (unknown → stay silent, no flash / no false alarm).
 let powerSourceResolved = false;
+// Whether the whole-home meter setting answered, so its `null` means "not chosen".
+let mainMeterResolved = false;
 
 const asNonEmptyString = (value: unknown): string | null => (
   typeof value === 'string' && value.trim().length > 0 ? value : null
@@ -147,7 +150,7 @@ const countDevicesInHome = (homeId: string): number => {
 // open covered in alerts; clash errors (duplicate name, meter in use, zone
 // overlap) show live — the user can only fix them by changing the value.
 const LIVE_ERROR_KINDS = new Set<SubHomeDraftError['kind']>([
-  'name_duplicate', 'meter_in_use', 'zone_overlap', 'zone_is_root',
+  'name_too_long', 'name_reserved', 'name_duplicate', 'meter_in_use', 'zone_overlap', 'zone_is_root',
 ]);
 
 const buildEditorView = (state: HomesEditorState): HomesEditorView => {
@@ -194,7 +197,7 @@ const buildEditorView = (state: HomesEditorState): HomesEditorView => {
     meterErrors: errorLinesFor(['meter_missing', 'meter_in_use']),
     zoneErrors: errorLinesFor(['zone_missing', 'zone_overlap', 'zone_is_root']),
     zoneWarnings: validation.warnings.map((warning) => composeDraftWarningLine(warning)),
-    nameErrors: errorLinesFor(['name_missing', 'name_duplicate']),
+    nameErrors: errorLinesFor(['name_missing', 'name_too_long', 'name_reserved', 'name_duplicate']),
     busy: writeBusy,
     onMeterChange: handleMeterChange,
     onZoneChange: handleZoneChange,
@@ -283,6 +286,12 @@ const renderSection = (): void => {
     // nor branches on which selection caused it. Degraded reads serve null.
     mainMeterConflictAreaName: latestPayload?.mainMeterConflictAreaName ?? null,
     editor: editor === null ? null : buildEditorView(editor),
+    addBlockedLine: resolveHomesAddBlockedLine(
+      currentHomes(),
+      meterDevices?.map((meter) => meter.id) ?? null,
+      mainMeterDeviceId,
+      powerSourceResolved && powerSource === 'homey_energy' && mainMeterResolved && mainMeterDeviceId === null,
+    ),
     confirmingDeleteHomeId,
     deleteBusy: writeBusy,
     onAddClick: handleAddClick,
@@ -654,6 +663,7 @@ const refreshMainMeterNoticeInputs = async (activationGeneration: number): Promi
   powerSource = nextPowerSource;
   powerSourceResolved = nextPowerSourceResolved;
   mainMeterDeviceId = nextMainMeterDeviceId;
+  mainMeterResolved = mainMeterRead.status === 'fulfilled';
 };
 
 export const refreshHomesOnHomesPanel = async (): Promise<void> => {
