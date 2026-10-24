@@ -5,6 +5,7 @@ import type {
   HomeBatterySetpointRange,
 } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../utils/types';
+import { asUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import type { DeviceCapabilityMap } from './managerControl';
 
 /**
@@ -78,10 +79,6 @@ const SESSY_TARGET_POWER_DEFAULTS: TargetPowerDefaults = {
 
 type CapabilityEntry = Readonly<Record<string, unknown>>;
 
-const asCapabilityEntry = (value: unknown): CapabilityEntry | undefined => (
-  typeof value === 'object' && value !== null && !Array.isArray(value) ? value as CapabilityEntry : undefined
-);
-
 /**
  * A declared numeric option: the default when the driver leaves it out, the
  * number when it is finite, and `null` for anything else, which is junk.
@@ -117,7 +114,7 @@ const readEnumValueIds = (entry: CapabilityEntry): string[] => {
   const values = entry.values;
   if (!Array.isArray(values)) return [];
   return values.flatMap((value: unknown) => {
-    const id = asCapabilityEntry(value)?.id;
+    const id = asUnknownRecord(value)?.id;
     return typeof id === 'string' && id.length > 0 ? [id] : [];
   });
 };
@@ -180,9 +177,9 @@ export function resolveBatteryControlSurface(
   capabilityObj: DeviceCapabilityMap,
 ): HomeBatteryControlSurface {
   const targetPower = capabilities.includes(HOME_BATTERY_SETPOINT_CAPABILITY_ID)
-    ? asCapabilityEntry(capabilityObj[HOME_BATTERY_SETPOINT_CAPABILITY_ID])
-    : undefined;
-  if (targetPower === undefined) return { kind: 'observe_only', reason: 'no_target_power' };
+    ? asUnknownRecord(capabilityObj[HOME_BATTERY_SETPOINT_CAPABILITY_ID])
+    : null;
+  if (targetPower === null) return { kind: 'observe_only', reason: 'no_target_power' };
   if (targetPower.setable !== true) return { kind: 'observe_only', reason: 'target_power_not_setable' };
   const range = resolveSignedRange(
     targetPower,
@@ -191,8 +188,8 @@ export function resolveBatteryControlSurface(
   if (range === null) return { kind: 'observe_only', reason: 'not_signed_range' };
 
   const candidates = resolveClaimCandidates(device, capabilities).flatMap((candidate) => {
-    const entry = asCapabilityEntry(capabilityObj[candidate.capabilityId]);
-    return entry !== undefined && entry.setable === true ? [{ ...candidate, values: readEnumValueIds(entry) }] : [];
+    const entry = asUnknownRecord(capabilityObj[candidate.capabilityId]);
+    return entry !== null && entry.setable === true ? [{ ...candidate, values: readEnumValueIds(entry) }] : [];
   });
   if (candidates.length === 0) return { kind: 'observe_only', reason: 'no_claim_capability' };
   const claim = candidates.find((candidate) => candidate.values.includes(candidate.homeyValue));

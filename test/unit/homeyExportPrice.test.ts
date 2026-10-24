@@ -34,6 +34,14 @@ describe('sumExportCostComponents', () => {
     expect(sumExportCostComponents({})).toBeNull();
     expect(sumExportCostComponents(null)).toBeNull();
   });
+
+  it('refuses components that arrive as a list rather than by name', () => {
+    // Homey keys each component by its name (`user_fixed_base` above). A list
+    // names none, so it is not Homey's shape, and totalling its entries anyway
+    // would mirror an amount Homey never stated.
+    expect(sumExportCostComponents({ costs: [{ value: 0.2 }, { value: 0.05 }] })).toBeNull();
+    expect(sumExportCostComponents([{ costs: { user_fixed_base: { value: 0.3 } } }])).toBeNull();
+  });
 });
 
 describe('fetchHomeyExportTerms', () => {
@@ -94,6 +102,13 @@ describe('fetchHomeyExportTerms', () => {
 
     expect(await fetchHomeyExportTerms(serve({
       [EXPORT_TYPE_API_PATH]: 'something_new',
+    }))).toEqual({ kind: 'failed', reasonCode: 'unrecognised_body' });
+
+    // A list of components is not Homey's named map, so it prices nothing and
+    // the mirrored terms stand.
+    expect(await fetchHomeyExportTerms(serve({
+      [EXPORT_TYPE_API_PATH]: 'fixed',
+      [EXPORT_FIXED_OPTION_API_PATH]: { value: { costs: [{ value: 0.3 }] } },
     }))).toEqual({ kind: 'failed', reasonCode: 'unrecognised_body' });
   });
 });

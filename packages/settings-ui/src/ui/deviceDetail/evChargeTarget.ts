@@ -1,5 +1,6 @@
 import type { EvChargeTargetConfig, EvChargeTargetSettings } from '../../../../contracts/src/types.ts';
 import { EV_CHARGE_TARGET_SETTINGS } from '../../../../shared-domain/src/settings/settingsKeys.ts';
+import { isUnknownRecord } from '../../../../shared-domain/src/recordGuards.ts';
 import {
   normalizeEvChargeTargetSettings,
   parseEvChargeTargetPercent,
@@ -156,7 +157,7 @@ export const initEvChargeTargetHandlers = (deps: {
         // not erase other chargers' targets.
         fallbackValue: state.evChargeTargetSettings,
         readFresh: (value) => (
-          value && typeof value === 'object' && !Array.isArray(value)
+          isUnknownRecord(value)
             ? normalizeEvChargeTargetSettings(value)
             : null
         ),

@@ -2,6 +2,7 @@ import { getSettingFresh, setSetting } from '../homey.ts';
 import { showToast } from '../toast.ts';
 import { logSettingsError } from '../logging.ts';
 import { showToastError } from '../toast.ts';
+import { isUnknownRecord } from '../../../../shared-domain/src/recordGuards.ts';
 
 type FreshSettingWriteParams<T> = {
   key: string;
@@ -35,7 +36,7 @@ export const readRecordSetting = <T>(
   value: unknown,
   fallbackValue: Record<string, T> = {},
 ): Record<string, T> => (
-  value && typeof value === 'object' && !Array.isArray(value)
+  isUnknownRecord(value)
     ? { ...(value as Record<string, T>) }
     : { ...fallbackValue }
 );
@@ -48,7 +49,7 @@ export const readRecordSetting = <T>(
  * into an empty map.
  */
 export const readRecordSettingStrict = <T>(value: unknown): Record<string, T> | null => (
-  value && typeof value === 'object' && !Array.isArray(value)
+  isUnknownRecord(value)
     ? { ...(value as Record<string, T>) }
     : null
 );
@@ -100,7 +101,7 @@ export const writeFreshSetting = async <T>(params: FreshSettingWriteParams<T>): 
   // readFresh to validate domain shape; the helper still routes a
   // null/undefined return through the snapshot fallback below.
   const readFresh = params.readFresh ?? ((value: unknown) => (
-    value && typeof value === 'object' && !Array.isArray(value)
+    isUnknownRecord(value)
       ? value as T
       : null
   ));

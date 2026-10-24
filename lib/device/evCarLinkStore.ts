@@ -15,6 +15,7 @@
  * is exactly the multi-session evidence the probe exists to gather.
  */
 import type { EvCarLinkSnapshot } from '../../packages/contracts/src/evCarLink';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import { getLogger } from '../logging/logger';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { createJsonRowTable } from '../store/jsonRowTable';
@@ -64,8 +65,8 @@ export type EvCarLinkRepository = {
 export const createEvCarLinkRepository = (db: UserdataDatabase): EvCarLinkRepository => {
     // A family row that is not a record is the store's own damage; one that is
     // has its malformed records dropped by the normaliser on read.
-    const families = createJsonRowTable(db, 'ev_car_link_state', ['family', 'value_json'], (value, key) => (
-        FAMILIES.has(key) && typeof value === 'object' && value !== null && !Array.isArray(value) ? value : undefined
+    const families = createJsonRowTable<object>(db, 'ev_car_link_state', ['family', 'value_json'], (value, key) => (
+        FAMILIES.has(key) && isUnknownRecord(value) ? value : undefined
     ));
     const writeFamilies = (snapshot: EvCarLinkSnapshot): void => families.write(new Map<string, object>([
         ['pairs', snapshot.pairs],

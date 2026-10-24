@@ -4,8 +4,7 @@ import type {
   TargetPowerSteppedLoadPreset,
 } from '../../packages/contracts/src/types';
 import { assessTargetPowerLadderOptions } from '../../packages/shared-domain/src/targetPowerLadder';
-
-type UnknownRecord = Record<string, unknown>;
+import { isUnknownRecord, type UnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 /**
  * The boundary that decides whether a persisted or device-supplied target-power
@@ -137,15 +136,13 @@ export function readDeviceTargetPowerConfigsRecord(
 }
 
 function parseJsonObject(value: unknown): UnknownRecord | undefined {
-  if (value && typeof value === 'object' && !Array.isArray(value)) return value as UnknownRecord;
+  if (isUnknownRecord(value)) return value;
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   if (!trimmed) return undefined;
   try {
     const parsed = JSON.parse(trimmed) as unknown;
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as UnknownRecord
-      : undefined;
+    return isUnknownRecord(parsed) ? parsed : undefined;
   } catch {
     return undefined;
   }

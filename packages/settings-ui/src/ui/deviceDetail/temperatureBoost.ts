@@ -1,5 +1,6 @@
 import type { TemperatureBoostSettings } from '../../../../contracts/src/types.ts';
 import { TEMPERATURE_BOOST_SETTINGS } from '../../../../shared-domain/src/settings/settingsKeys.ts';
+import { isUnknownRecord } from '../../../../shared-domain/src/recordGuards.ts';
 import {
   hasTemperatureBoostTarget,
   normalizeTemperatureBoostSettings,
@@ -72,7 +73,7 @@ export const initTemperatureBoostHandlers = (deps: TemperatureBoostHandlerDeps) 
         // Anything else returns null so `writeFreshSetting` falls back to
         // the snapshot instead of normalising garbage into `{}`.
         readFresh: (value) => (
-          value && typeof value === 'object' && !Array.isArray(value)
+          isUnknownRecord(value)
             ? normalizeTemperatureBoostSettings(value)
             : null
         ),

@@ -34,6 +34,7 @@
  * Browser-safe: no Homey SDK types, no runtime imports.
  */
 import { isFiniteNumber } from '../numberGuards';
+import { isUnknownRecord } from '../recordGuards';
 import { COOLING_SHED_DEFAULT_C } from '../utils/airtreatmentConstants';
 import { clamp } from '../utils/math';
 
@@ -62,15 +63,11 @@ export const COOLING_SHED_LIMIT_RANGE: ShedLimitRange = { minC: 16, maxC: 40 };
 
 const TURN_OFF: ConfiguredShedBehavior = { action: 'turn_off' };
 
-const isObject = (value: unknown): value is Readonly<Record<string, unknown>> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
-
 const clampToRange = (value: number, range: ShedLimitRange): number => clamp(value, range.minC, range.maxC);
 
 /** Whether a read is the map at all. A caller that gets `false` keeps the map it holds. */
 export const isShedBehaviorsSetting = (value: unknown): value is Readonly<Record<string, unknown>> => (
-  isObject(value)
+  isUnknownRecord(value)
 );
 
 const readShedBehaviorEntry = (raw: Readonly<Record<string, unknown>>): ConfiguredShedBehavior => {
@@ -89,7 +86,7 @@ export const readShedBehaviors = (
   setting: Readonly<Record<string, unknown>>,
 ): Record<string, ConfiguredShedBehavior> => Object.fromEntries(
   Object.entries(setting).flatMap(([deviceId, raw]) => (
-    isObject(raw) ? [[deviceId, readShedBehaviorEntry(raw)] as const] : []
+    isUnknownRecord(raw) ? [[deviceId, readShedBehaviorEntry(raw)] as const] : []
   )),
 );
 

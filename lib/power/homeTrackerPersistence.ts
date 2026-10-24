@@ -19,6 +19,7 @@
  * leaves the in-memory state standing.
  */
 import type { Logger as PinoLogger } from '../logging/logger';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import type { TimerRegistry } from '../utils/timerRegistry';
 import type {
   PowerTrackerMeterIdentity,
@@ -49,7 +50,7 @@ export const withHistoryUnder = (current: PowerTrackerState, stored: PowerTracke
   const merged: PowerTrackerState & Record<string, unknown> = { ...stored, ...current };
   for (const [key, storedValue] of Object.entries(stored)) {
     const currentValue: unknown = current[key as keyof PowerTrackerState];
-    if (!isKeyedFamily(storedValue) || !isKeyedFamily(currentValue)) continue;
+    if (!isUnknownRecord(storedValue) || !isUnknownRecord(currentValue)) continue;
     merged[key] = key === 'deviceBuckets'
       ? mergeDeviceBuckets(storedValue as DeviceBuckets, currentValue as DeviceBuckets)
       : Object.assign({}, storedValue, currentValue);
@@ -103,10 +104,6 @@ const withLateHydratedEvidence = (
 };
 
 type DeviceBuckets = Record<string, Record<string, number>>;
-
-const isKeyedFamily = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
 
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 const mergeDeviceBuckets = (stored: DeviceBuckets, current: DeviceBuckets): DeviceBuckets => {

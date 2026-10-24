@@ -2,6 +2,7 @@ import type { EvBoostSettings } from '../../../../contracts/src/types.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { EV_BOOST_SETTINGS } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { normalizeEvBoostSettings } from '../../../../shared-domain/src/settings/evBoost.ts';
+import { isUnknownRecord } from '../../../../shared-domain/src/recordGuards.ts';
 import { resolveEvBoostBlockReason } from '../../../../shared-domain/src/commandableNowReason.ts';
 import { hasSteppedLoadSupport } from '../deviceControlProfiles.ts';
 import { isEvChargerDevice } from '../deviceKind.ts';
@@ -113,7 +114,7 @@ export const initEvBoostHandlers = (deps: EvBoostHandlerDeps) => {
         // Anything else returns null so `writeFreshSetting` falls back to
         // the snapshot instead of normalising garbage into `{}`.
         readFresh: (value) => (
-          value && typeof value === 'object' && !Array.isArray(value)
+          isUnknownRecord(value)
             ? normalizeEvBoostSettings(value)
             : null
         ),

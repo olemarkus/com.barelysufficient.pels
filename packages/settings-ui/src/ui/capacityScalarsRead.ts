@@ -1,10 +1,7 @@
 import type { SettingsUiCapacityScalarsRead } from '../../../contracts/src/settingsUiApi.ts';
 import { resolvePowerLimitSettings } from '../../../shared-domain/src/settings/powerLimits.ts';
 import { isCapacityPeriodMinutes } from '../../../shared-domain/src/settings/capacityPeriod.ts';
-
-const isObject = (value: unknown): value is Readonly<Record<string, unknown>> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
+import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 /**
  * Classify the runtime's capacity block at the browser boundary. The producer
@@ -13,7 +10,7 @@ const isObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
  * the resolved shape is `unavailable`, never partly trusted.
  */
 export const classifyCapacityScalarsRead = (value: unknown): SettingsUiCapacityScalarsRead => {
-  if (!isObject(value) || value.state !== 'resolved' || !isObject(value.scalars)) {
+  if (!isUnknownRecord(value) || value.state !== 'resolved' || !isUnknownRecord(value.scalars)) {
     return { state: 'unavailable' };
   }
   const {

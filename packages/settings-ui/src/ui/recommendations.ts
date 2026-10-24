@@ -9,6 +9,7 @@ import {
 } from '../../../contracts/src/settingsUiApi.ts';
 import { callApi, coldStartReadRetryDelays, getSetting, getSettingFresh, sleep } from './homey.ts';
 import { logSettingsError } from './logging.ts';
+import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 import {
   groupSetupRecommendations,
   normalizeRecommendationDismissals,
@@ -196,17 +197,13 @@ const resolveCurrentRecommendations = (afterSetupRead: AfterSetupFactsRead): Set
   ];
 };
 
-const isDismissalRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
-
 const loadDismissalSetting = async (): Promise<unknown> => {
   let [read] = await Promise.allSettled([getSetting(SETUP_RECOMMENDATION_DISMISSALS)]);
   // Absence the bootstrap served is the runtime's answer: nothing was ever
   // dismissed. Only a WebView read needs the cold-start grace.
   const retryDelaysMs = coldStartReadRetryDelays(SETUP_RECOMMENDATION_DISMISSALS, RECOMMENDATION_READ_RETRY_DELAYS_MS);
   for (const delayMs of retryDelaysMs) {
-    if (read.status === 'fulfilled' && isDismissalRecord(read.value)) break;
+    if (read.status === 'fulfilled' && isUnknownRecord(read.value)) break;
     await sleep(delayMs);
     [read] = await Promise.allSettled([getSettingFresh(SETUP_RECOMMENDATION_DISMISSALS)]);
   }
@@ -240,7 +237,7 @@ const applyDismissalRead = async (result: PromiseSettledResult<unknown>): Promis
     return;
   }
   const rawDismissals = result.value;
-  if (isDismissalRecord(rawDismissals)) {
+  if (isUnknownRecord(rawDismissals)) {
     dismissalRead = { state: 'resolved', dismissals: normalizeRecommendationDismissals(rawDismissals) };
     return;
   }

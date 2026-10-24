@@ -17,6 +17,7 @@
  */
 import { getLogger } from '../logging/logger';
 import type { SettingsPort } from '../ports/homeyRuntime';
+import { asUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import {
   hasLegacyImportMark,
   importLegacySettingsKey,
@@ -167,7 +168,7 @@ const payloadCache = (key: PricePayloadKey): LegacyPriceCache => ({
   settingsKey: key,
   cacheKey: key,
   storeWins: (held) => held !== null,
-  toStored: (raw) => (typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw : null),
+  toStored: asUnknownRecord,
 });
 
 const markerCache = (
@@ -214,7 +215,7 @@ const LEGACY_PRICE_CACHES: readonly LegacyPriceCache[] = [
     settingsKey: COMBINED_PRICES,
     cacheKey: COMBINED_PRICES,
     storeWins: (held) => held !== null,
-    toStored: (raw) => (typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw : null),
+    toStored: asUnknownRecord,
   },
 ];
 

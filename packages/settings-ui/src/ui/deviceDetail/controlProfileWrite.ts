@@ -7,6 +7,7 @@ import {
   normalizeDeviceControlProfiles,
 } from '../../../../shared-domain/src/deviceControlProfiles.ts';
 import { DEVICE_CONTROL_PROFILES } from '../../../../shared-domain/src/settings/settingsKeys.ts';
+import { isUnknownRecord } from '../../../../shared-domain/src/recordGuards.ts';
 import { applyLocalDeviceControlProfile } from '../deviceControlProfiles.ts';
 import { state } from '../state.ts';
 import { showToastError } from '../toast.ts';
@@ -66,7 +67,7 @@ export const persistDeviceControlProfile = async (
       // Anything else returns null so `writeFreshSetting` falls back to
       // the snapshot instead of normalising garbage into `{}`.
       readFresh: (value) => (
-        value && typeof value === 'object' && !Array.isArray(value)
+        isUnknownRecord(value)
           ? normalizeDeviceControlProfiles(value)
           : null
       ),

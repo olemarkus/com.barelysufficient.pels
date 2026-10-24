@@ -14,6 +14,7 @@ import {
   getNextLocalDayStartUtcMs,
   getZonedParts,
 } from '../utils/dateUtils';
+import { isUnknownRecord } from '../recordGuards';
 
 /**
  * One priced period. `durationMinutes` is what the period covers: 60 for an
@@ -104,8 +105,8 @@ const buildHourValueEntries = (input: unknown): FlowHourValueEntry[] => {
   if (Array.isArray(input)) {
     return input.reduce<FlowHourValueEntry[]>((acc, value, hour) => pushHourValue(acc, hour, value), []);
   }
-  if (input && typeof input === 'object') {
-    return Object.entries(input as Record<string, unknown>).reduce<FlowHourValueEntry[]>(
+  if (isUnknownRecord(input)) {
+    return Object.entries(input).reduce<FlowHourValueEntry[]>(
       (acc, [key, value]) => pushHourValue(acc, Number(key), value),
       [],
     );
@@ -267,8 +268,8 @@ export const parseFlowPricePayloadInput = (
 
   const basePricesByHour = buildPricesByHour(parsed);
 
-  const exactSlotPrices = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-    ? Object.entries(parsed as Record<string, unknown>).flatMap(([key, value]) => {
+  const exactSlotPrices = isUnknownRecord(parsed)
+    ? Object.entries(parsed).flatMap(([key, value]) => {
       const totalPrice = normalizeNumeric(value);
       if (totalPrice === null) return [];
       const matchingSlot = daySlots.find((slot) => slot.startsAt === key);

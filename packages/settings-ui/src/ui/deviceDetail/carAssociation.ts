@@ -17,6 +17,7 @@ import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDe
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { EV_CAR_ASSOCIATIONS } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { normalizeEvCarAssociations } from '../../../../shared-domain/src/settings/evCarAssociations.ts';
+import { isUnknownRecord } from '../../../../shared-domain/src/recordGuards.ts';
 import { resolveEvChargingStateLabel } from '../../../../shared-domain/src/evChargingStateLabel.ts';
 import {
   deviceDetailCarFlowNote,
@@ -398,7 +399,7 @@ const writeAssociation = async (deviceId: string, carId: string, ticked: boolean
     // Normalize only a real object; anything else returns null so the helper
     // falls back to the live map rather than treating a transient bad read as
     // "no charger has any cars".
-    readFresh: (value) => (value && typeof value === 'object' && !Array.isArray(value)
+    readFresh: (value) => (isUnknownRecord(value)
       ? normalizeEvCarAssociations(value)
       : null),
     mutate: (current) => {
