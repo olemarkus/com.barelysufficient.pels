@@ -222,11 +222,10 @@ function applyExactTargetPowerObservation(
 
 export function clearCapabilityObservationIfMatched(
     state: DeviceTransportObservationState,
-    deviceId: string,
-    capabilityId: string,
     snapshot: TransportDeviceSnapshot,
+    capabilityId: string,
 ): void {
-    const key = buildCapabilityObservationKey(deviceId, capabilityId);
+    const key = buildCapabilityObservationKey(snapshot.id, capabilityId);
     const observation = state.capabilityObservations.get(key);
     if (!observation) return;
     if (isStateOfChargeCapabilityId(capabilityId)) {
