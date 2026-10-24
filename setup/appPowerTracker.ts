@@ -16,9 +16,9 @@ import {
   PowerCalibrationStore,
 } from '../lib/device/devicePowerCalibrationStore';
 import {
+  createImportingLearnedPowerPeakStore,
   createLearnedPowerPeakRepository,
-  importLegacyLearnedPowerPeaks,
-  type LearnedPowerPeakRepository,
+  type LearnedPowerPeakStore,
 } from '../lib/device/learnedPowerPeakStore';
 import { emitSettingsUiPowerUpdatedForApp } from './settingsUiAppRuntime';
 import { addPerfDuration } from '../lib/utils/perfCounters';
@@ -60,15 +60,13 @@ export const createPowerCalibrationStoreForApp = (ctx: AppContext): PowerCalibra
 
 /**
  * The learned measured peaks on the app's userdata database, with the one-shot
- * import of the legacy `device_power_peaks` blob run before anything reads it.
- * Built beside the calibration store: both are what the device layer learns
- * from measured power.
+ * import of the legacy `device_power_peaks` blob, settled before the boot read
+ * and retried while it is still owed. Built beside the calibration store: both
+ * are what the device layer learns from measured power.
  */
-export const createLearnedPowerPeakRepositoryForApp = (ctx: AppContext): LearnedPowerPeakRepository => {
-  const repository = createLearnedPowerPeakRepository(ctx.getUserdataDatabase());
-  importLegacyLearnedPowerPeaks(ctx.homey.settings, repository);
-  return repository;
-};
+export const createLearnedPowerPeakStoreForApp = (ctx: AppContext): LearnedPowerPeakStore => (
+  createImportingLearnedPowerPeakStore(ctx.homey.settings, createLearnedPowerPeakRepository(ctx.getUserdataDatabase()))
+);
 
 /**
  * Dependencies for {@link AppPowerTracker}. The Main home's tracker is a

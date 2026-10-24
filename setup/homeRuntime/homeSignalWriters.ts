@@ -14,7 +14,6 @@ import {
   type HomeId,
   homeScopedSettingsKey,
 } from '../../lib/utils/settingsKeys';
-import { createLastControlledWriter } from '../../lib/plan/lastControlledStore';
 import type { HomeScope } from './homeScope';
 
 /** The three signals a `HomeScope` writes, for THIS home. */
@@ -42,13 +41,14 @@ export function createHomeSignalWriters(
     if (isTornDown()) return;
     ctx.homey.settings.set(homeScopedSettingsKey(baseKey, homeId), value);
   };
-  // The teardown fence stops writes before the userdata database closes.
-  const writeLastControlled = createLastControlledWriter(() => ctx.getUserdataDatabase(), homeId);
   return {
     setCapacityInShortfall: (inShortfall) => write(CAPACITY_IN_SHORTFALL, inShortfall),
+    // The teardown fence stops writes before the userdata database closes.
+    // The store is looked up at the write: the main home's writers are built
+    // before the database opens.
     persistLastControlledMs: (lastControlledMs) => {
       if (isTornDown()) return;
-      writeLastControlled(lastControlledMs);
+      ctx.getLastControlledStore().write(homeId, lastControlledMs);
     },
     publishPelsStatus: (status) => {
       if (isTornDown()) return;

@@ -12,7 +12,7 @@ import { afterAll } from 'vitest';
 import os from 'node:os';
 import path from 'node:path';
 import { openUserdataDatabase } from '../../lib/store/userdataDatabase';
-import { createLastControlledStore } from '../../lib/plan/lastControlledStore';
+import { createLastControlledRepository } from '../../lib/plan/lastControlledStore';
 import { createPvForecastStateStore } from '../../lib/solar/pvForecastStateStore';
 import type { PvForecastServiceState } from '../../lib/solar/pvForecastService';
 import { createPriceCacheStore, type PriceCacheKey } from '../../lib/price/priceCacheStore';
@@ -165,7 +165,7 @@ export function getStoredLastControlledForTests(homeId: string = 'main'): Record
   if (testUserdataDir === undefined) return {};
   const database = openUserdataDatabase(testUserdataDatabase());
   try {
-    return createLastControlledStore(database).read(homeId);
+    return createLastControlledRepository(database).read(homeId);
   } finally {
     database.close();
   }

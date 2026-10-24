@@ -22,12 +22,15 @@
  * - the store is empty and the value adopts → the key is unset;
  * - a suspect read — a listed key answering empty, a value the family finds
  *   nothing usable in, a throwing SDK, a store that cannot be read or
- *   written, a throwing unset — leaves the key for the next boot. A listed
- *   key reading back malformed is a failed read, not an affirmative absence
+ *   written, a throwing unset — leaves the key for the next boot, and a
+ *   family that retries while its key is owed (`legacyImportStanding`)
+ *   tries the transient ones again during the run. A listed key reading back
+ *   malformed is a failed read, not an affirmative absence
  *   (`notes/persisted-settings-state.md`); one transient must never cost the
  *   history, and a blob that is truly garbage costs its bytes, never the key.
  */
 import type { SettingsPort } from '../ports/homeyRuntime';
+import type { TimerRegistry } from '../utils/timerRegistry';
 import type { UserdataDatabase } from './userdataDatabase';
 
 export type LegacyImportTarget = {
@@ -136,6 +139,71 @@ export const writeLegacyImportMark = (db: UserdataDatabase, key: string): void =
 export const isLegacySettingsKeyListed = (settings: SettingsPort, key: string): boolean | null => {
   const keys = listLegacySettingsKeys(settings, (candidate) => candidate === key);
   return keys === null ? null : keys.length > 0;
+};
+
+/**
+ * An attempt that asks the key list first: the import's own result, or the
+ * list's answer when that ends the attempt. A key the list does not carry has
+ * nothing to import; a list that cannot be read concludes nothing, so the key
+ * stays owed.
+ */
+export type ListedLegacyImportResult =
+  | LegacyImportResult
+  | { outcome: 'not_listed' }
+  | { outcome: 'deferred'; reason: 'key_list_unreadable' };
+
+/** {@link importLegacySettingsKey}, run only while the key list still carries `key`. */
+export const importListedLegacySettingsKey = (
+  settings: SettingsPort,
+  key: string,
+  target: LegacyImportTarget,
+): ListedLegacyImportResult => {
+  const listed = isLegacySettingsKeyListed(settings, key);
+  if (listed === null) return { outcome: 'deferred', reason: 'key_list_unreadable' };
+  if (!listed) return { outcome: 'not_listed' };
+  return importLegacySettingsKey(settings, key, target);
+};
+
+/**
+ * Whether a key is still owed to its store after an attempt: `pending` while a
+ * later attempt in this process may yet import it, `settled` once it is
+ * imported, retired, absent, or holding nothing a retry could change. A family
+ * that retries during the run (the learned solar forecast, the learned power
+ * peaks, the last-controlled map) does so while its key is `pending`, so one
+ * missed read on the upgrade boot does not cost the history for the whole
+ * uptime.
+ */
+export type LegacyImportStanding = 'settled' | 'pending';
+
+// A deferral that a later attempt in this process can settle. `not_a_value`
+// (a blob that vouches for no history) never will, and `unset_threw` comes
+// after the import landed or the store already held it: the mark retires the
+// key on the next boot.
+const RETRYABLE_DEFERRALS: ReadonlySet<string> = new Set([
+  'key_list_unreadable', 'read_threw', 'listed_key_empty', 'store_unreadable', 'store_write_failed',
+]);
+
+/** Where the key stands after `result`. */
+export const legacyImportStanding = (result: ListedLegacyImportResult): LegacyImportStanding => (
+  result.outcome === 'deferred' && RETRYABLE_DEFERRALS.has(result.reason) ? 'pending' : 'settled'
+);
+
+/** How long a family that retries waits between attempts at a `pending` key. */
+const LEGACY_IMPORT_RETRY_MS = 60_000;
+
+/**
+ * Run `retry` a minute from now under `timerName`, unless it is already due.
+ * The app's teardown clears every registered timer before it closes the
+ * userdata database, so a retry never outlives the store it imports into.
+ */
+export const scheduleLegacyImportRetry = (timers: TimerRegistry, timerName: string, retry: () => void): void => {
+  if (timers.has(timerName)) return;
+  const handle = setTimeout(() => {
+    timers.clear(timerName);
+    retry();
+  }, LEGACY_IMPORT_RETRY_MS);
+  (handle as { unref?: () => void }).unref?.();
+  timers.registerTimeout(timerName, handle);
 };
 
 /**

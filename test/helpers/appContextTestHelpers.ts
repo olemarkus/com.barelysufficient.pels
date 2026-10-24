@@ -12,6 +12,7 @@ import { readRuntimeDevices } from '../../lib/planInput/runtimeDeviceRead';
 import { ObservedTemperatureModeUpdates } from '../../lib/home/observedTemperatureModeUpdates';
 import { createTrackerStore } from '../../lib/power/trackerStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
+import { createLastControlledRepository, createLastControlledStore } from '../../lib/plan/lastControlledStore';
 import { NO_PRICE_SOURCE_PAYLOADS } from '../../setup/settingsUiApi';
 import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
 import { steppedStoresForTest } from './steppedStores';
@@ -272,6 +273,9 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
   const trackerStore = createTrackerStore(userdataDatabase);
   const powerCalibrationStore = new PowerCalibrationStore(createPowerCalibrationRepository(userdataDatabase));
   const chargingFlowWritesStore = createChargingFlowWritesStore(userdataDatabase);
+  const lastControlledStore = createLastControlledStore(
+    homey.settings, createLastControlledRepository(userdataDatabase), timers,
+  );
   // The real component over the mock settings, observing this helper's tracker
   // the way the Main tracker component observes every state it adopts.
   const surplusPoolReachability = new SurplusPoolReachability(
@@ -337,6 +341,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getTrackerStore: () => trackerStore,
     getUserdataDatabase: () => userdataDatabase,
     getPowerCalibrationStore: () => powerCalibrationStore,
+    getLastControlledStore: () => lastControlledStore,
     getChargingFlowWritesStore: () => chargingFlowWritesStore,
     builtInControlFlowConflicts: partialDouble<BuiltInControlFlowConflicts>({
       resolveNativeWiringEnabled: () => false,

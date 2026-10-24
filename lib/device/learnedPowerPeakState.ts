@@ -5,7 +5,12 @@ import {
 } from './devicePowerPeak';
 import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger } from '../logging/logger';
-import type { LearnedPowerPeakRepository } from './learnedPowerPeakStore';
+import type { TimerRegistry } from '../utils/timerRegistry';
+import { scheduleLegacyImportRetry } from '../store/legacySettingsImport';
+import type { LearnedPowerPeakStore } from './learnedPowerPeakStore';
+
+/** Registry name for the owed legacy import's retry. */
+const LEGACY_IMPORT_RETRY_TIMER = 'learnedPeakLegacyImportRetry';
 
 export type LearnedPowerPeakState = {
   /** Restore the learned peaks at boot. */
@@ -24,19 +29,28 @@ export type LearnedPowerPeakState = {
  *
  * Every change is written as it happens: the store diffs one row per device, so
  * a write costs what changed and nothing is buffered for a restart to lose.
+ *
+ * A legacy settings import the boot could not finish is retried on every write
+ * and once a minute (`LearnedPowerPeakStore.settleLegacyImport`): a home whose
+ * running devices sit steady at their peaks learns nothing new for hours, and
+ * until the import lands the imported peaks of the devices that are off are
+ * missing from the expected-power ladder.
  */
 export function createLearnedPowerPeakState(params: {
-  getRepository: () => LearnedPowerPeakRepository;
+  getStore: () => LearnedPowerPeakStore;
   getPeaks: () => LearnedPeaksByDeviceId;
+  timers: TimerRegistry;
   getStructuredLogger: () => PinoLogger;
 }): LearnedPowerPeakState {
-  const { getRepository, getPeaks, getStructuredLogger } = params;
+  const { getStore, getPeaks, timers, getStructuredLogger } = params;
   /**
    * False until a read has told us what is stored. A write before it would make
    * the store hold exactly the in-memory record, deleting every row this run has
    * not seen draw power yet — on a cold boot, all of them.
    */
   let read = false;
+  /** True until the store says the legacy import has settled. */
+  let importOwed = true;
   /** One error line per run: an unopened store fails every read the same way. */
   let loadFailureLogged = false;
 
@@ -44,7 +58,7 @@ export function createLearnedPowerPeakState(params: {
   const readIntoStore = (): boolean => {
     let persisted: LearnedPeaksByDeviceId;
     try {
-      persisted = getRepository().read();
+      persisted = getStore().read();
     } catch (error) {
       if (!loadFailureLogged) {
         loadFailureLogged = true;
@@ -54,7 +68,8 @@ export function createLearnedPowerPeakState(params: {
     }
     const peaks = getPeaks();
     // Merged rather than replaced: a failed boot read is retried from the first
-    // write, by which point the ingest path holds peaks of its own.
+    // write, and a late legacy import is read from the minute it lands, by which
+    // point the ingest path holds peaks of its own.
     const adopted = adoptPersistedLearnedPeaks(persisted, peaks);
     // In-place: the record is shared by reference with `DeviceTransport`, which
     // took it at construction. Replacing it would leave the transport writing
@@ -66,17 +81,46 @@ export function createLearnedPowerPeakState(params: {
   };
   /* eslint-enable functional/immutable-data */
 
+  /** One more attempt at an owed legacy import; a store that is not open is the read's to say. */
+  const settleImport = (): void => {
+    if (!importOwed) return;
+    let store: LearnedPowerPeakStore;
+    try {
+      store = getStore();
+    } catch {
+      return;
+    }
+    if (store.settleLegacyImport() === 'pending') {
+      scheduleLegacyImportRetry(timers, LEGACY_IMPORT_RETRY_TIMER, retryImport);
+      return;
+    }
+    importOwed = false;
+    // The import may have written peaks this record has not seen, and a write
+    // makes the store hold exactly the record: read them in before the next one.
+    read = false;
+  };
+
+  const retryImport = (): void => {
+    settleImport();
+    if (!importOwed && !read) readIntoStore();
+  };
+
   return {
-    load: () => { readIntoStore(); },
+    /** The legacy import is settled first, so the read sees what it brought. */
+    load: () => {
+      settleImport();
+      readIntoStore();
+    },
 
     /**
      * Prunes entries whose window has closed on the way out, so the store does
      * not accumulate devices that left the home years ago.
      */
     persist: () => {
+      settleImport();
       if (!read && !readIntoStore()) return;
       try {
-        getRepository().write(pruneExpiredLearnedPeaks(getPeaks(), Date.now()));
+        getStore().write(pruneExpiredLearnedPeaks(getPeaks(), Date.now()));
       } catch (error) {
         // The record stays in memory, and the next write carries it too: the diff
         // base is what the database last committed.

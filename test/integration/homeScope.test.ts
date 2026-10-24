@@ -10,7 +10,7 @@ import {
 import { PriceLevel } from '../../lib/price/priceLevels';
 import { buildMainHomeScopeForTest, configureHomeModeCatalog, createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { AppContext } from '../../lib/app/appContext';
-import { createLastControlledStore } from '../../lib/plan/lastControlledStore';
+import { createLastControlledRepository } from '../../lib/plan/lastControlledStore';
 
 // Identity proof for the main-home scope: the persisted writers must hit the
 // EXACT unsuffixed keys the factories hardwired before the HomeScope refactor
@@ -64,7 +64,7 @@ describe('buildMainHomeScope', () => {
 
     expect(scope.homeId).toBe(MAIN_HOME_ID);
     expect(setSpy).toHaveBeenCalledWith(CAPACITY_IN_SHORTFALL, true);
-    expect(createLastControlledStore(ctx.getUserdataDatabase()).read(MAIN_HOME_ID)).toEqual({ 'device-1': 123 });
+    expect(createLastControlledRepository(ctx.getUserdataDatabase()).read(MAIN_HOME_ID)).toEqual({ 'device-1': 123 });
     expect(setSpy).not.toHaveBeenCalledWith(DEVICE_LAST_CONTROLLED_MS, expect.anything());
     expect(ctx.planStatuses.read(MAIN_HOME_ID)).toEqual({ state: 'resolved', status: minimalStatus });
     expect(setSpy).not.toHaveBeenCalledWith('pels_status', expect.anything());

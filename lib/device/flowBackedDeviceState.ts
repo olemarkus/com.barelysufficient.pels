@@ -1,5 +1,5 @@
 import type { LearnedPeaksByDeviceId } from './devicePowerPeak';
-import type { LearnedPowerPeakRepository } from './learnedPowerPeakStore';
+import type { LearnedPowerPeakStore } from './learnedPowerPeakStore';
 import {
   createLearnedPowerPeakState,
   type LearnedPowerPeakState,
@@ -27,6 +27,7 @@ import {
 } from './transport/stateOfCharge';
 import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
 import { normalizeError } from '../utils/errorUtils';
+import type { TimerRegistry } from '../utils/timerRegistry';
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { DeviceTransport } from './deviceTransport';
 import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
@@ -96,7 +97,9 @@ export type FlowBackedDeviceStateDeps = {
   getExpectedPowerKwOverrides: () => DeviceExpectedPowerOverrides;
   getLearnedPowerPeaks: () => LearnedPeaksByDeviceId;
   /** The learned peaks' store; reached once the userdata database is open. */
-  getLearnedPowerPeakRepository: () => LearnedPowerPeakRepository;
+  getLearnedPowerPeakStore: () => LearnedPowerPeakStore;
+  /** Owns the learned peaks' legacy-import retry registered by `learnedPowerPeakState`. */
+  timers: TimerRegistry;
   syncHeadroomUsageObservation: (deviceId: string, usageKw: number) => void;
 }
 
@@ -119,8 +122,9 @@ export class FlowBackedDeviceState {
 
   constructor(private readonly deps: FlowBackedDeviceStateDeps) {
     this.learnedPowerPeakState = createLearnedPowerPeakState({
-      getRepository: () => deps.getLearnedPowerPeakRepository(),
+      getStore: () => deps.getLearnedPowerPeakStore(),
       getPeaks: () => deps.getLearnedPowerPeaks(),
+      timers: deps.timers,
       getStructuredLogger: () => deps.getStructuredLogger('devices'),
     });
   }

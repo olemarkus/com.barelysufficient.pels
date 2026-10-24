@@ -1,6 +1,7 @@
 /**
  * The learned measured peaks in the userdata database: their repository and
- * the one-shot import of the legacy `device_power_peaks` settings blob.
+ * the one-shot import of the legacy `device_power_peaks` settings blob, retried
+ * during the run while it is still owed.
  *
  * Learned data lives there by ruling (`notes/settings-key-ownership.md`
  * § "Which store a key lives in"): one row per device, diffed, so a learned
@@ -14,8 +15,10 @@ import type { SettingsPort } from '../ports/homeyRuntime';
 import { createJsonRowTable } from '../store/jsonRowTable';
 import {
   hasLegacyImportMark,
-  importLegacySettingsKey,
-  isLegacySettingsKeyListed,
+  importListedLegacySettingsKey,
+  legacyImportStanding,
+  type LegacyImportStanding,
+  type ListedLegacyImportResult,
   type MarkedLegacyImport,
   writeLegacyImportMark,
 } from '../store/legacySettingsImport';
@@ -62,8 +65,8 @@ export const createLearnedPowerPeakRepository = (db: UserdataDatabase): LearnedP
 };
 
 /**
- * The one-shot import of the legacy `device_power_peaks` settings blob into
- * the store, run at boot before the store is read. Rules and their reasons:
+ * One attempt at the one-shot import of the legacy `device_power_peaks`
+ * settings blob into the store. Rules and their reasons:
  * `lib/store/legacySettingsImport.ts`. A peak is written from an empty boot, so
  * "the store holds rows" never retires the key: the blob goes under what the
  * store holds instead, each device decided by the standing-peak policy
@@ -71,14 +74,14 @@ export const createLearnedPowerPeakRepository = (db: UserdataDatabase): LearnedP
  * import whose unset failed must not merge the blob again, which would bring
  * back a device pruned since. A blob that is not a record, or whose every entry
  * is malformed, holds nothing usable and keeps its key; an empty record is a
- * real answer (everything aged out) and imports as nothing.
+ * real answer (everything aged out) and imports as nothing. A key list that
+ * cannot be read concludes nothing, so the blob stays owed.
  */
-export const importLegacyLearnedPowerPeaks = (
+const attemptLegacyImport = (
   settings: SettingsPort,
   repository: LearnedPowerPeakRepository,
-): void => {
-  if (isLegacySettingsKeyListed(settings, DEVICE_POWER_PEAKS) !== true) return;
-  const result = importLegacySettingsKey(settings, DEVICE_POWER_PEAKS, {
+): ListedLegacyImportResult => (
+  importListedLegacySettingsKey(settings, DEVICE_POWER_PEAKS, {
     holds: () => repository.hasImportedLegacy(),
     adopt: (raw) => {
       if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return false;
@@ -87,16 +90,69 @@ export const importLegacyLearnedPowerPeaks = (
       repository.writeLegacyImport(adoptPersistedLearnedPeaks(legacy, repository.read()));
       return true;
     },
-  });
-  if (result.outcome === 'imported') {
+  })
+);
+
+/**
+ * Say what an attempt did. A deferral is said only when it differs from
+ * `said`, the deferral said last, so a key that stays owed is not repeated on
+ * every retry; answers the deferral standing after this attempt.
+ */
+const sayAttempt = (attempt: ListedLegacyImportResult, said: string | null): string | null => {
+  if (attempt.outcome === 'not_listed') return null;
+  if (attempt.outcome === 'imported') {
     moduleLogger.info({ event: 'legacy_learned_power_peaks_imported' });
-  } else if (result.outcome === 'retired') {
-    moduleLogger.info({ event: 'legacy_learned_power_peaks_key_retired', reason: result.reason });
-  } else {
-    moduleLogger.warn({
-      event: 'legacy_learned_power_peaks_import_deferred',
-      reason: result.reason,
-      ...(result.error === undefined ? {} : { err: normalizeError(result.error) }),
-    });
+    return null;
   }
+  if (attempt.outcome === 'retired') {
+    moduleLogger.info({ event: 'legacy_learned_power_peaks_key_retired', reason: attempt.reason });
+    return null;
+  }
+  if (attempt.reason === said) return said;
+  moduleLogger.warn({
+    event: 'legacy_learned_power_peaks_import_deferred',
+    reason: attempt.reason,
+    ...('error' in attempt && attempt.error !== undefined ? { err: normalizeError(attempt.error) } : {}),
+  });
+  return attempt.reason;
+};
+
+/**
+ * The store the learned-peak state persists through
+ * (`lib/device/learnedPowerPeakState.ts`), which settles the legacy import
+ * before its boot read: after the boot migrations, whose markers are what make
+ * an empty key list a flake rather than a fresh install. Reads and writes go
+ * through while the blob is still owed: the import merges the blob under what
+ * the store holds, so a peak written meanwhile is never lost to it.
+ */
+export type LearnedPowerPeakStore = Pick<LearnedPowerPeakRepository, 'read' | 'write'> & {
+  /**
+   * One more import attempt while the legacy blob is still owed, so one missed
+   * read on the upgrade boot (a throwing SDK, a listed key reading empty, a key
+   * list that cannot be read, a store that cannot be written) does not leave
+   * every device that is off without its learned peak for the whole uptime.
+   * `settled` from the attempt that imports, retires or finds nothing to
+   * import, and from then on without touching settings. Never throws.
+   */
+  settleLegacyImport(): LegacyImportStanding;
+};
+
+export const createImportingLearnedPowerPeakStore = (
+  settings: SettingsPort,
+  repository: LearnedPowerPeakRepository,
+): LearnedPowerPeakStore => {
+  let standing: LegacyImportStanding = 'pending';
+  let saidDeferral: string | null = null;
+  const settleLegacyImport = (): LegacyImportStanding => {
+    if (standing === 'settled') return standing;
+    const attempt = attemptLegacyImport(settings, repository);
+    saidDeferral = sayAttempt(attempt, saidDeferral);
+    standing = legacyImportStanding(attempt);
+    return standing;
+  };
+  return {
+    read: () => repository.read(),
+    write: (peaks) => repository.write(peaks),
+    settleLegacyImport,
+  };
 };

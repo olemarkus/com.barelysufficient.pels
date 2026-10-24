@@ -3,7 +3,11 @@ import { createPlanService } from '../appInit/createPlanService';
 import type { AppContext } from '../../lib/app/appContext';
 import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { PlanService } from '../../lib/plan/planService';
-import { createLastControlledStore, importLegacyLastControlled } from '../../lib/plan/lastControlledStore';
+import {
+  createLastControlledRepository,
+  createLastControlledStore,
+  type LastControlledStore,
+} from '../../lib/plan/lastControlledStore';
 import type { HomeScope } from './homeScope';
 
 export type HomePlanRuntime = {
@@ -13,14 +17,24 @@ export type HomePlanRuntime = {
 };
 
 /**
+ * The one last-controlled store every home's plan runtime hydrates from and
+ * its signal writers write through, on the app's userdata database. Opened
+ * with the other userdata stores, by the composition root that closes them.
+ */
+export const createLastControlledStoreForApp = (ctx: AppContext): LastControlledStore => (
+  createLastControlledStore(ctx.homey.settings, createLastControlledRepository(ctx.getUserdataDatabase()), ctx.timers)
+);
+
+/**
  * One home's plan runtime: its engine, the control state that engine resumes
  * from, and the service that drives it.
  *
  * The main home and every meter area assembled this identically and separately
  * — engine, load the persisted last-controlled map, open the startup restore
  * window, then the service over that engine. Identically down to the arguments:
- * the last-controlled store answers per home id (importing that home's legacy
- * settings key first), and both opened the restore window at `Date.now()`.
+ * the app's one last-controlled store answers per home id (importing that
+ * home's legacy settings key first), and both opened the restore window at
+ * `Date.now()`.
  * The only reason there were two was that
  * Main's assembly is spread across boot steps while an area's happens in one
  * call.
@@ -37,9 +51,7 @@ export const createHomePlanRuntime = (
   options: CreatePlanEngineOptions,
 ): HomePlanRuntime => {
   const { planEngine, lifecycleFallbackPort } = createPlanEngineComposition(ctx, scope, options);
-  const lastControlled = createLastControlledStore(ctx.getUserdataDatabase());
-  importLegacyLastControlled(ctx.homey.settings, lastControlled, scope.homeId);
-  planEngine.state.actuation.loadLastControlled(lastControlled.read(scope.homeId));
+  ctx.getLastControlledStore().hydrate(scope.homeId, planEngine.state.actuation);
   // Hold restores until this home's meter proves live; the first fresh sample
   // clears the window through the pipeline.
   planEngine.beginStartupRestoreStabilization(Date.now());

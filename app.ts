@@ -33,7 +33,7 @@ import {
 import { createPlanStatusRegistry, type PlanStatusRegistry } from './lib/plan/planStatusRegistry';
 import { createDeviceControlHelpers } from './setup/appDeviceControlHelpers';
 import { createSteppedStores, type SteppedStores } from './setup/appInit/createSteppedStores';
-import type { LearnedPowerPeakRepository } from './lib/device/learnedPowerPeakStore';
+import type { LearnedPowerPeakStore } from './lib/device/learnedPowerPeakStore';
 import { DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH, MAIN_HOME_ID } from './lib/utils/settingsKeys';
 import type { PlanRebuildThrottle } from './lib/plan/rebuildScheduler/throttle';
 import { createBackgroundTasks, type BackgroundTasks } from './setup/appInit/createBackgroundTasks';
@@ -67,14 +67,16 @@ import {
   type AcceptedFlowConflictSlice, type NativeFlowConflicts,
 } from './lib/flowApi/acceptedFlowConflictStore';
 import type { FlowCapabilityWrites } from './lib/flowApi/userFlows';
+import type { LastControlledStore } from './lib/plan/lastControlledStore';
 import {
   AppServiceWiring,
   createHomeRuntimeRegistryForApp,
+  createLastControlledStoreForApp,
   buildHomeRuntimeReadPort,
 } from './setup/appServiceWiring';
 import type { PowerTrackerState } from './lib/power/trackerTypes';
 import {
-  AppPowerTracker, createLearnedPowerPeakRepositoryForApp, createPowerCalibrationStoreForApp, createTrackerStoreForApp,
+  AppPowerTracker, createLearnedPowerPeakStoreForApp, createPowerCalibrationStoreForApp, createTrackerStoreForApp,
 } from './setup/appPowerTracker';
 import type { TrackerStore } from './lib/power/trackerStore';
 import type { UserdataDatabase } from './lib/store/userdataDatabase';
@@ -375,7 +377,8 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   private userdataDatabase?: UserdataDatabase;
   private trackerStore?: TrackerStore;
   private powerCalibrationStore?: PowerCalibrationStore;
-  private learnedPowerPeakRepository?: LearnedPowerPeakRepository;
+  private learnedPowerPeakStore?: LearnedPowerPeakStore;
+  private lastControlledStore?: LastControlledStore;
   private nativeFlowConflictStore?: AcceptedFlowConflictSlice<NativeFlowConflicts>;
   private chargingFlowWritesStore?: AcceptedFlowConflictSlice<FlowCapabilityWrites>;
   private openUserdata(): void {
@@ -383,7 +386,8 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     this.userdataDatabase = this.openUserdataDatabase();
     this.trackerStore = createTrackerStoreForApp(this.ctx);
     this.powerCalibrationStore = createPowerCalibrationStoreForApp(this.ctx);
-    this.learnedPowerPeakRepository = createLearnedPowerPeakRepositoryForApp(this.ctx);
+    this.learnedPowerPeakStore = createLearnedPowerPeakStoreForApp(this.ctx);
+    this.lastControlledStore = createLastControlledStoreForApp(this.ctx);
     this.nativeFlowConflictStore = createNativeFlowConflictStore(this.userdataDatabase);
     this.chargingFlowWritesStore = createChargingFlowWritesStore(this.userdataDatabase);
     // Before the transport's first parse, so a known conflict holds built-in control back from boot.
@@ -399,8 +403,11 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   public getPowerCalibrationStore(): PowerCalibrationStore {
     return this.opened(this.powerCalibrationStore);
   }
-  private getLearnedPowerPeakRepository(): LearnedPowerPeakRepository {
-    return this.opened(this.learnedPowerPeakRepository);
+  private getLearnedPowerPeakStore(): LearnedPowerPeakStore {
+    return this.opened(this.learnedPowerPeakStore);
+  }
+  public getLastControlledStore(): LastControlledStore {
+    return this.opened(this.lastControlledStore);
   }
   public getChargingFlowWritesStore(): AcceptedFlowConflictSlice<FlowCapabilityWrites> {
     return whileDatabaseOpen(() => this.chargingFlowWritesStore);
@@ -412,7 +419,8 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     this.userdataDatabase?.close();
     this.userdataDatabase = undefined;
     this.trackerStore = undefined;
-    this.learnedPowerPeakRepository = undefined;
+    this.learnedPowerPeakStore = undefined;
+    this.lastControlledStore = undefined;
     this.nativeFlowConflictStore = undefined;
     this.chargingFlowWritesStore = undefined;
   }
@@ -486,7 +494,8 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     getSteppedLoadProfile: (deviceId) => this.deviceControlHelpers.getSteppedLoadProfile(deviceId),
     getExpectedPowerKwOverrides: () => this.expectedPowerKwOverrides,
     getLearnedPowerPeaks: () => this.lastKnownPowerKw,
-    getLearnedPowerPeakRepository: () => this.getLearnedPowerPeakRepository(),
+    getLearnedPowerPeakStore: () => this.getLearnedPowerPeakStore(),
+    timers: this.timers,
     syncHeadroomUsageObservation: (deviceId, kw) => { this.planService.syncHeadroomUsageObservation(deviceId, kw); },
   });
   public readonly builtInControlFlowConflicts = new BuiltInControlFlowConflicts(

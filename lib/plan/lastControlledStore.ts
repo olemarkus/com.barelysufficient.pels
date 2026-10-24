@@ -1,7 +1,9 @@
 /**
  * When PELS last wrote each device, per home, in the userdata database: the
- * repository behind `ActuationRecord.lastDeviceControlledMs`, and the one-shot
- * import of the legacy `device_last_controlled_ms` settings keys.
+ * repository behind `ActuationRecord.lastDeviceControlledMs`, the one store the
+ * app's homes hydrate from and write through, and the one-shot import of the
+ * legacy `device_last_controlled_ms` settings keys, retried during the run
+ * while a home's key is still owed.
  *
  * Actuation history, so it lives in the userdata store by ruling
  * (`notes/settings-key-ownership.md` § "Which store a key lives in"; owner
@@ -15,18 +17,26 @@ import { getLogger } from '../logging/logger';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import {
   hasLegacyImportMark,
-  importLegacySettingsKey,
-  isLegacySettingsKeyListed,
+  importListedLegacySettingsKey,
+  legacyImportStanding,
+  type LegacyImportStanding,
+  type ListedLegacyImportResult,
+  scheduleLegacyImportRetry,
   writeLegacyImportMark,
 } from '../store/legacySettingsImport';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import { isNumberMap } from '../utils/appTypeGuards';
 import { normalizeError } from '../utils/errorUtils';
 import { DEVICE_LAST_CONTROLLED_MS, homeScopedSettingsKey, type HomeId } from '../utils/settingsKeys';
+import type { TimerRegistry } from '../utils/timerRegistry';
+import type { ActuationRecord } from './actuationRecord';
 
 const moduleLogger = getLogger('plan/last-controlled-store');
 
-export type LastControlledStore = {
+/** Registry name for the owed legacy imports' retry, one for every home. */
+const LEGACY_IMPORT_RETRY_TIMER = 'lastControlledLegacyImportRetry';
+
+export type LastControlledRepository = {
   /** This home's map, device id to epoch ms; empty when it holds none. Throws only on I/O. */
   read(homeId: HomeId): Record<string, number>;
   /** Make the store hold exactly `lastControlledMs` for this home, touching only the devices that differ. */
@@ -39,7 +49,7 @@ export type LastControlledStore = {
 
 const legacyKey = (homeId: HomeId): string => homeScopedSettingsKey(DEVICE_LAST_CONTROLLED_MS, homeId);
 
-export const createLastControlledStore = (db: UserdataDatabase): LastControlledStore => {
+export const createLastControlledRepository = (db: UserdataDatabase): LastControlledRepository => {
   db.exec(`CREATE TABLE IF NOT EXISTS device_last_controlled (
   home_id TEXT NOT NULL, device_id TEXT NOT NULL, at_ms REAL NOT NULL,
   PRIMARY KEY (home_id, device_id)
@@ -94,67 +104,126 @@ export const createLastControlledStore = (db: UserdataDatabase): LastControlledS
   };
 };
 
-/**
- * The write one home's signal writers persist the map through, opening the
- * store at the first write: the main home's writers are built before the
- * userdata database opens. The open store is this writer's own state.
- */
-export const createLastControlledWriter = (
-  getDatabase: () => UserdataDatabase,
-  homeId: HomeId,
-): ((lastControlledMs: Readonly<Record<string, number>>) => void) => {
-  let store: LastControlledStore | undefined;
-  return (lastControlledMs) => {
-    store ??= createLastControlledStore(getDatabase());
-    store.write(homeId, lastControlledMs);
-  };
-};
+/** Each device's later stamp of the two maps. */
+const laterStamps = (
+  a: Readonly<Record<string, number>>,
+  b: Readonly<Record<string, number>>,
+): Record<string, number> => ({
+  ...a,
+  ...Object.fromEntries(Object.entries(b).map(([deviceId, atMs]) => [deviceId, Math.max(a[deviceId] ?? atMs, atMs)])),
+});
 
 /**
- * The one-shot import of a home's legacy `device_last_controlled_ms` key (the
- * bare key for the main home, `:<homeId>` for a meter area), run when that home's
- * plan runtime is built, before the store is read. Rules and their reasons:
+ * One attempt at the one-shot import of a home's legacy
+ * `device_last_controlled_ms` key (the bare key for the main home,
+ * `:<homeId>` for a meter area). Rules and their reasons:
  * `lib/store/legacySettingsImport.ts`. The import mark retires the key, so an
  * unset that failed never imports it twice; the blob merges under what the
  * store holds, keeping the later stamp per device. A value that is not a map of
- * finite numbers holds nothing usable and keeps its key.
+ * finite numbers holds nothing usable and keeps its key. `onImported` is handed
+ * the map the import wrote, the moment it is written.
  */
-export const importLegacyLastControlled = (
+const importLegacyLastControlled = (
   settings: SettingsPort,
-  store: LastControlledStore,
+  repository: LastControlledRepository,
   homeId: HomeId,
-): void => {
-  const key = legacyKey(homeId);
-  const listed = isLegacySettingsKeyListed(settings, key);
-  if (listed === null) {
-    // Concludes nothing; the next boot tries again. Said, so a boot that
-    // hydrated an empty map leaves a trace.
-    moduleLogger.warn({ event: 'legacy_last_controlled_import_deferred', homeId, reason: 'key_list_unreadable' });
-    return;
-  }
-  if (!listed) return;
-  const result = importLegacySettingsKey(settings, key, {
-    holds: () => store.hasImportedLegacy(homeId),
-    adopt: (raw) => {
-      if (!isNumberMap(raw)) return false;
-      const stored = store.read(homeId);
-      const imported = Object.entries(raw)
-        .filter(([, atMs]) => Number.isFinite(atMs))
-        .map(([deviceId, atMs]) => [deviceId, Math.max(stored[deviceId] ?? atMs, atMs)] as const);
-      store.writeLegacyImport(homeId, { ...stored, ...Object.fromEntries(imported) });
-      return true;
-    },
-  });
-  if (result.outcome === 'imported') {
+  onImported: (lastControlledMs: Readonly<Record<string, number>>) => void,
+): ListedLegacyImportResult => importListedLegacySettingsKey(settings, legacyKey(homeId), {
+  holds: () => repository.hasImportedLegacy(homeId),
+  adopt: (raw) => {
+    if (!isNumberMap(raw)) return false;
+    const imported = Object.fromEntries(Object.entries(raw).filter(([, atMs]) => Number.isFinite(atMs)));
+    const merged = laterStamps(repository.read(homeId), imported);
+    repository.writeLegacyImport(homeId, merged);
+    onImported(merged);
+    return true;
+  },
+});
+
+/**
+ * Say what a home's attempt did. A deferral is said only when it differs from
+ * `said`, the home's deferral said last, so a key that stays owed is not
+ * repeated on every retry; answers the deferral standing after this attempt.
+ */
+const sayAttempt = (
+  homeId: HomeId,
+  attempt: ListedLegacyImportResult,
+  said: string | undefined,
+): string | undefined => {
+  if (attempt.outcome === 'not_listed') return undefined;
+  if (attempt.outcome === 'imported') {
     moduleLogger.info({ event: 'legacy_last_controlled_imported', homeId });
-  } else if (result.outcome === 'retired') {
-    moduleLogger.info({ event: 'legacy_last_controlled_key_retired', homeId, reason: result.reason });
-  } else {
-    moduleLogger.warn({
-      event: 'legacy_last_controlled_import_deferred',
-      homeId,
-      reason: result.reason,
-      ...(result.error === undefined ? {} : { err: normalizeError(result.error) }),
-    });
+    return undefined;
   }
+  if (attempt.outcome === 'retired') {
+    moduleLogger.info({ event: 'legacy_last_controlled_key_retired', homeId, reason: attempt.reason });
+    return undefined;
+  }
+  if (attempt.reason === said) return said;
+  moduleLogger.warn({
+    event: 'legacy_last_controlled_import_deferred',
+    homeId,
+    reason: attempt.reason,
+    ...('error' in attempt && attempt.error !== undefined ? { err: normalizeError(attempt.error) } : {}),
+  });
+  return attempt.reason;
+};
+
+/**
+ * The one last-controlled store every home of the app hydrates from and writes
+ * through, keyed by home id.
+ */
+export type LastControlledStore = {
+  /**
+   * Import `homeId`'s legacy key, then hand `actuation` what the store holds
+   * for the home. While the import is still owed (one missed read on the
+   * upgrade boot: a key list that cannot be read, a throwing SDK, a listed key
+   * reading empty, a store that cannot be written) it is retried once a minute,
+   * and the stamps it brings are merged into `actuation` in the same call that
+   * writes them, before the home's next write could delete them: a write makes
+   * the store hold exactly the record's map. Throws only on I/O (the read).
+   */
+  hydrate(homeId: HomeId, actuation: ActuationRecord): void;
+  /** Make the store hold exactly `lastControlledMs` for this home, touching only the devices that differ. */
+  write(homeId: HomeId, lastControlledMs: Readonly<Record<string, number>>): void;
+};
+
+export const createLastControlledStore = (
+  settings: SettingsPort,
+  repository: LastControlledRepository,
+  timers: TimerRegistry,
+): LastControlledStore => {
+  /** The homes whose legacy key is still owed, each with the record its import goes into. */
+  const owed = new Map<HomeId, ActuationRecord>();
+  const saidDeferrals = new Map<HomeId, string>();
+
+  const attempt = (homeId: HomeId, actuation: ActuationRecord): LegacyImportStanding => {
+    const result = importLegacyLastControlled(settings, repository, homeId, (imported) => {
+      actuation.loadLastControlled(laterStamps(actuation.lastDeviceControlledMs, imported));
+    });
+    const said = sayAttempt(homeId, result, saidDeferrals.get(homeId));
+    if (said === undefined) saidDeferrals.delete(homeId);
+    else saidDeferrals.set(homeId, said);
+    return legacyImportStanding(result);
+  };
+
+  const retryOwed = (): void => {
+    for (const [homeId, actuation] of owed) {
+      if (attempt(homeId, actuation) === 'settled') owed.delete(homeId);
+    }
+    if (owed.size > 0) scheduleLegacyImportRetry(timers, LEGACY_IMPORT_RETRY_TIMER, retryOwed);
+  };
+
+  return {
+    hydrate: (homeId, actuation) => {
+      // A home built again (a meter area re-created) owes its import to the new record.
+      owed.delete(homeId);
+      const standing = attempt(homeId, actuation);
+      actuation.loadLastControlled(repository.read(homeId));
+      if (standing === 'settled') return;
+      owed.set(homeId, actuation);
+      scheduleLegacyImportRetry(timers, LEGACY_IMPORT_RETRY_TIMER, retryOwed);
+    },
+    write: (homeId, lastControlledMs) => repository.write(homeId, lastControlledMs),
+  };
 };

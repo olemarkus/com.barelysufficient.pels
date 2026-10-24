@@ -3,7 +3,7 @@
  * What the executor did to which device, and when — the actuation-time clocks
  * and the in-flight commands the planner's cooldowns, back-offs, cards and
  * convergence reads consult. One per `PlanEngineState`. Written by the
- * executor through the mutators below (and hydrated once, when its engine is
+ * executor through the mutators below (and hydrated when its engine is
  * created, from the persisted last-controlled map); read by the planner by
  * reference. The clock
  * maps stay public for the same reason `PlanEngineState`'s do: the planner
@@ -24,7 +24,7 @@
 export class ActuationRecord {
   /**
    * The last time PELS wrote a device, any direction. The one persisted clock
-   * here (`lib/plan/lastControlledStore.ts`): the wiring hydrates it at boot through
+   * here (`lib/plan/lastControlledStore.ts`): the store hydrates it at boot through
    * `loadLastControlled`, and the executor persists the map after each apply.
    */
   lastDeviceControlledMs: Record<string, number> = {};
@@ -56,7 +56,11 @@ export class ActuationRecord {
 
   private readonly pendingRestores = new Set<string>();
 
-  /** Boot hydration from the userdata store (`lib/plan/lastControlledStore.ts`), already validated. */
+  /**
+   * Hydration from the userdata store (`lib/plan/lastControlledStore.ts`),
+   * already validated: at boot, and once more with the stamps a legacy import
+   * brings if it lands later in the run.
+   */
   loadLastControlled(stored: Readonly<Record<string, number>>): void {
     this.lastDeviceControlledMs = { ...stored };
   }
