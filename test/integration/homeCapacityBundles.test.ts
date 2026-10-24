@@ -66,7 +66,7 @@ import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { PlanRebuildRequestOptions, PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
 import { testLogger } from '../utils/testLogger';
-import { createLastControlledStore } from '../../lib/plan/lastControlledStore';
+import { createLastControlledRepository } from '../../lib/plan/lastControlledStore';
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 
@@ -465,7 +465,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
     expect(diagnosticsFor(rig.registry, 'h_a').lastDeviceControlledMs).toEqual({ 'dev-1': 123_456 });
     // The legacy key was imported into the userdata store and retired.
-    expect(createLastControlledStore(rig.ctx.getUserdataDatabase()).read('h_a')).toEqual({ 'dev-1': 123_456 });
+    expect(createLastControlledRepository(rig.ctx.getUserdataDatabase()).read('h_a')).toEqual({ 'dev-1': 123_456 });
     expect(mockHomeyInstance.settings.get(`${DEVICE_LAST_CONTROLLED_MS}:h_a`)).toBeNull();
     // Hydrated tracker survives the next persist round-trip.
     rig.registry.routeMeterReadings({ 'm-a': 800 }, Date.now());

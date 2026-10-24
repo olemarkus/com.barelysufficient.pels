@@ -1,17 +1,21 @@
 import { createLearnedPowerPeakState } from '../../lib/device/learnedPowerPeakState';
 import {
+  createImportingLearnedPowerPeakStore,
   createLearnedPowerPeakRepository,
-  importLegacyLearnedPowerPeaks,
   type LearnedPowerPeakRepository,
+  type LearnedPowerPeakStore,
 } from '../../lib/device/learnedPowerPeakStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase, type UserdataDatabase } from '../../lib/store/userdataDatabase';
 import { DEVICE_POWER_PEAKS } from '../../lib/utils/settingsKeys';
+import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import {
   PEAK_WINDOW_MS,
   PEAK_REANCHOR_INTERVAL_MS,
   type LearnedPeaksByDeviceId,
 } from '../../lib/device/devicePowerPeak';
+import { onTestFinished } from 'vitest';
 import { MockSettings } from '../mocks/homey';
+import { captureLogger } from '../utils/loggerCapture';
 import { testLogger } from '../utils/testLogger';
 
 const NOW = Date.UTC(2026, 7, 9, 12, 0, 0);
@@ -19,6 +23,13 @@ const NOW = Date.UTC(2026, 7, 9, 12, 0, 0);
 const rowCount = (db: UserdataDatabase): number => (
   (db.prepare('SELECT COUNT(*) AS n FROM device_power_peaks').get() as { n: number }).n
 );
+
+/** The settings of an install past its boot migrations, which set their markers first. */
+const installSettings = (): MockSettings => {
+  const settings = new MockSettings();
+  settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
+  return settings;
+};
 
 /**
  * The write-through layer for the learned peaks, over the real repository on an
@@ -29,13 +40,16 @@ const rowCount = (db: UserdataDatabase): number => (
 describe('learned power peak persistence', () => {
   let db: UserdataDatabase;
   let repository: LearnedPowerPeakRepository;
+  let store: LearnedPowerPeakStore;
   let peaks: LearnedPeaksByDeviceId;
+  let timers: TimerRegistry;
 
-  const buildState = (getRepository: () => LearnedPowerPeakRepository = () => repository) => (
+  const buildState = (getStore: () => LearnedPowerPeakStore = () => store) => (
     createLearnedPowerPeakState({
       getStructuredLogger: () => testLogger,
-      getRepository,
+      getStore,
       getPeaks: () => peaks,
+      timers,
     })
   );
 
@@ -44,10 +58,13 @@ describe('learned power peak persistence', () => {
     vi.setSystemTime(NOW);
     db = openUserdataDatabase(IN_MEMORY_DATABASE);
     repository = createLearnedPowerPeakRepository(db);
+    store = createImportingLearnedPowerPeakStore(installSettings(), repository);
     peaks = {};
+    timers = new TimerRegistry();
   });
 
   afterEach(() => {
+    timers.clearAll();
     db.close();
     vi.useRealTimers();
   });
@@ -66,8 +83,8 @@ describe('learned power peak persistence', () => {
     // write would make the store hold exactly that and delete every stored row.
     repository.write({ heater: { kw: 2, observedAtMs: NOW - 1000 } });
     let readable = false;
-    const flaky: LearnedPowerPeakRepository = {
-      ...repository,
+    const flaky: LearnedPowerPeakStore = {
+      ...store,
       read: () => {
         if (!readable) throw new Error('transient read failure');
         return repository.read();
@@ -123,8 +140,8 @@ describe('learned power peak persistence', () => {
 
   it('carries a peak whose write threw into the next write', () => {
     let failWrite = true;
-    const flaky: LearnedPowerPeakRepository = {
-      ...repository,
+    const flaky: LearnedPowerPeakStore = {
+      ...store,
       write: (next) => {
         if (failWrite) throw new Error('transient write failure');
         repository.write(next);
@@ -174,12 +191,9 @@ describe('learned power peak persistence', () => {
   });
 });
 
-describe('importLegacyLearnedPowerPeaks', () => {
+describe('the legacy learned-peaks import', () => {
   const rig = () => {
-    const settings = new MockSettings();
-    // A real install never has an empty key list here: the boot migrations set
-    // their markers first.
-    settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
+    const settings = installSettings();
     const db = openUserdataDatabase(IN_MEMORY_DATABASE);
     return { settings, db, repository: createLearnedPowerPeakRepository(db) };
   };
@@ -188,12 +202,12 @@ describe('importLegacyLearnedPowerPeaks', () => {
     const { settings, repository } = rig();
     settings.set(DEVICE_POWER_PEAKS, { heater: { kw: 2, observedAtMs: NOW - 1000 }, bad: { kw: 'x' } });
 
-    importLegacyLearnedPowerPeaks(settings, repository);
+    expect(createImportingLearnedPowerPeakStore(settings, repository).settleLegacyImport()).toBe('settled');
 
     expect(repository.read()).toEqual({ heater: { kw: 2, observedAtMs: NOW - 1000 } });
     expect(settings.get(DEVICE_POWER_PEAKS)).toBeNull();
     const get = vi.spyOn(settings, 'get');
-    importLegacyLearnedPowerPeaks(settings, repository);
+    createImportingLearnedPowerPeakStore(settings, repository).settleLegacyImport();
     expect(get).not.toHaveBeenCalled();
   });
 
@@ -206,7 +220,7 @@ describe('importLegacyLearnedPowerPeaks', () => {
       charger: { kw: 7, observedAtMs: NOW - 1000 },
     });
 
-    importLegacyLearnedPowerPeaks(settings, repository);
+    createImportingLearnedPowerPeakStore(settings, repository).settleLegacyImport();
 
     expect(repository.read()).toEqual({
       heater: { kw: 3, observedAtMs: NOW },
@@ -214,23 +228,148 @@ describe('importLegacyLearnedPowerPeaks', () => {
     });
   });
 
-  it('keeps a blob it can read nothing from for the next boot', () => {
+  it('keeps a blob it can read nothing from for the next boot, and does not retry it this run', () => {
     const { settings, repository } = rig();
     settings.set(DEVICE_POWER_PEAKS, { heater: { kw: 'x' } });
 
-    importLegacyLearnedPowerPeaks(settings, repository);
+    const store = createImportingLearnedPowerPeakStore(settings, repository);
+    expect(store.settleLegacyImport()).toBe('settled');
 
     expect(settings.get(DEVICE_POWER_PEAKS)).toEqual({ heater: { kw: 'x' } });
     expect(repository.hasImportedLegacy()).toBe(false);
+    const get = vi.spyOn(settings, 'get');
+    expect(store.settleLegacyImport()).toBe('settled');
+    expect(get).not.toHaveBeenCalled();
   });
 
   it('imports an empty record as nothing, since everything aging out is a real answer', () => {
     const { settings, repository } = rig();
     settings.set(DEVICE_POWER_PEAKS, {});
 
-    importLegacyLearnedPowerPeaks(settings, repository);
+    createImportingLearnedPowerPeakStore(settings, repository).settleLegacyImport();
 
     expect(settings.get(DEVICE_POWER_PEAKS)).toBeNull();
     expect(repository.hasImportedLegacy()).toBe(true);
+  });
+
+  it('keeps a blob owed while the key list or its read fails, and imports it once both answer', () => {
+    const { settings, repository } = rig();
+    settings.set(DEVICE_POWER_PEAKS, { heater: { kw: 2, observedAtMs: NOW - 1000 } });
+    const getKeys = vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+    const capture = captureLogger();
+    onTestFinished(() => capture.restore());
+
+    const store = createImportingLearnedPowerPeakStore(settings, repository);
+    expect(store.settleLegacyImport()).toBe('pending');
+    expect(store.settleLegacyImport()).toBe('pending');
+    getKeys.mockRestore();
+    const get = vi.spyOn(settings, 'get').mockImplementationOnce(() => {
+      throw new Error('transient settings read');
+    });
+    expect(store.settleLegacyImport()).toBe('pending');
+    get.mockRestore();
+
+    expect(repository.read()).toEqual({});
+    expect(settings.get(DEVICE_POWER_PEAKS)).not.toBeNull();
+    expect(store.settleLegacyImport()).toBe('settled');
+    expect(repository.read()).toEqual({ heater: { kw: 2, observedAtMs: NOW - 1000 } });
+    expect(settings.get(DEVICE_POWER_PEAKS)).toBeNull();
+    // Each deferral is said once, however often the retry meets it.
+    expect(capture.findEvents('legacy_learned_power_peaks_import_deferred').map((line) => line.reason))
+      .toEqual(['key_list_unreadable', 'read_threw']);
+    expect(capture.findEvent('legacy_learned_power_peaks_imported')).toBeDefined();
+  });
+});
+
+describe('a legacy learned-peaks import the upgrade boot could not finish', () => {
+  let db: UserdataDatabase;
+  let settings: MockSettings;
+  let peaks: LearnedPeaksByDeviceId;
+  let timers: TimerRegistry;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(NOW);
+    db = openUserdataDatabase(IN_MEMORY_DATABASE);
+    settings = installSettings();
+    settings.set(DEVICE_POWER_PEAKS, {
+      heater: { kw: 2, observedAtMs: NOW - 1000 },
+      charger: { kw: 5, observedAtMs: NOW - 1000 },
+    });
+    peaks = {};
+    timers = new TimerRegistry();
+  });
+
+  afterEach(() => {
+    timers.clearAll();
+    db.close();
+    vi.useRealTimers();
+  });
+
+  /** Boot with the key list answering nothing, as the SDK does on a transient miss. */
+  const bootWithUnreadableKeyList = () => {
+    const getKeys = vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+    const repository = createLearnedPowerPeakRepository(db);
+    const store = createImportingLearnedPowerPeakStore(settings, repository);
+    const state = createLearnedPowerPeakState({
+      getStructuredLogger: () => testLogger,
+      getStore: () => store,
+      getPeaks: () => peaks,
+      timers,
+    });
+    state.load();
+    return { state, repository, heal: () => getKeys.mockRestore() };
+  };
+
+  it('is retried within the minute, and the peaks of the devices that are off reach the ladder', () => {
+    const { repository, heal } = bootWithUnreadableKeyList();
+    expect(peaks).toEqual({});
+
+    heal();
+    vi.advanceTimersByTime(60_000);
+
+    expect(peaks).toEqual({
+      heater: { kw: 2, observedAtMs: NOW - 1000 },
+      charger: { kw: 5, observedAtMs: NOW - 1000 },
+    });
+    expect(repository.read()).toEqual(peaks);
+    expect(settings.get(DEVICE_POWER_PEAKS)).toBeNull();
+  });
+
+  it('keeps retrying while the key list stays unreadable', () => {
+    const { heal } = bootWithUnreadableKeyList();
+
+    vi.advanceTimersByTime(5 * 60_000);
+    expect(peaks).toEqual({});
+
+    heal();
+    vi.advanceTimersByTime(60_000);
+    expect(peaks.heater).toEqual({ kw: 2, observedAtMs: NOW - 1000 });
+  });
+
+  it('keeps the peaks learned while it was owed, and the next write keeps what it imported', () => {
+    const { state, repository, heal } = bootWithUnreadableKeyList();
+    // Written through while the blob is owed: the import goes under it.
+    peaks.charger = { kw: 7, observedAtMs: NOW };
+    state.persist();
+    expect(repository.read()).toEqual({ charger: { kw: 7, observedAtMs: NOW } });
+
+    // The write itself retries the import, and reads in what it brought before
+    // writing: a write makes the store hold exactly the record.
+    heal();
+    peaks.charger = { kw: 7.5, observedAtMs: NOW + 1000 };
+    state.persist();
+
+    const expected = {
+      heater: { kw: 2, observedAtMs: NOW - 1000 },
+      charger: { kw: 7.5, observedAtMs: NOW + 1000 },
+    };
+    expect(repository.read()).toEqual(expected);
+    expect(peaks).toEqual(expected);
+    expect(settings.get(DEVICE_POWER_PEAKS)).toBeNull();
+    expect(timers.has('learnedPeakLegacyImportRetry')).toBe(true);
+    vi.advanceTimersByTime(60_000);
+    expect(timers.has('learnedPeakLegacyImportRetry')).toBe(false);
+    expect(repository.read()).toEqual(expected);
   });
 });

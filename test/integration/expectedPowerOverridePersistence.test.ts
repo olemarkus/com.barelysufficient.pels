@@ -4,7 +4,11 @@ import type { FlowBackedDeviceState } from '../../lib/device/flowBackedDeviceSta
 import { createFlowBackedDeviceState } from '../../setup/flowBackedCardAccess';
 import { SettingsRepository } from '../../setup/settingsRepository';
 import { DEVICE_EXPECTED_POWER_OVERRIDES } from '../../lib/utils/settingsKeys';
-import { createLearnedPowerPeakRepository } from '../../lib/device/learnedPowerPeakStore';
+import {
+  createImportingLearnedPowerPeakStore,
+  createLearnedPowerPeakRepository,
+} from '../../lib/device/learnedPowerPeakStore';
+import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import type { DeviceExpectedPowerOverrides } from '../../packages/contracts/src/types';
 import { testLogger } from '../utils/testLogger';
@@ -32,7 +36,10 @@ describe('expected power override persistence', () => {
     getSteppedLoadProfile: () => undefined,
     getExpectedPowerKwOverrides: () => overrides,
     getLearnedPowerPeaks: () => ({}),
-    getLearnedPowerPeakRepository: () => createLearnedPowerPeakRepository(openUserdataDatabase(IN_MEMORY_DATABASE)),
+    getLearnedPowerPeakStore: () => createImportingLearnedPowerPeakStore(
+      homey.settings, createLearnedPowerPeakRepository(openUserdataDatabase(IN_MEMORY_DATABASE)),
+    ),
+    timers: new TimerRegistry(),
     syncHeadroomUsageObservation: () => {},
   });
 

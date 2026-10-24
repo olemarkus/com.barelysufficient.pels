@@ -234,8 +234,10 @@ carries it, where the userdata store would need an API route of its own
   conflicts the built-in controls last accepted
   (`lib/flowApi/acceptedFlowConflictStore.ts`: `native_flow_conflicts` and
   `charging_current_flow_writes`, one row per device, diffed), each written
-  through as it changes, and the learned solar forecast's generation history
-  (`lib/solar/pvForecastStateStore.ts`, one row per hour, diffed, so the
+  through as it changes, and the learned power peaks
+  (`lib/device/learnedPowerPeakStore.ts`, one row per device, diffed, so a
+  peak that moves writes its own row), and the learned solar forecast's
+  generation history (`lib/solar/pvForecastStateStore.ts`, one row per hour, diffed, so the
   five-minute persist writes the hour that changed), and when PELS last controlled each device
   (`lib/plan/lastControlledStore.ts`, one row per home and device, diffed;
   owner, 2026-10-24: actuation history, so it left settings, where one
@@ -255,9 +257,12 @@ first boot that finds the store empty for the home and the legacy value
 plausible; the key is then unset and nothing reads it again. A suspect read
 leaves the key for the next boot — one transient must never cost a user's
 history (`lib/store/legacySettingsImport.ts` holds the rules; each family's
-import beside its store hands in what "holds" and "adopt" mean). The settings UI
-reaches history through `api.js` endpoints and the store's own realtime push,
-never through a settings key.
+import beside its store hands in what "holds" and "adopt" mean). The learned
+solar forecast, the learned power peaks and the last-controlled map also
+retry a transient miss during the run while their key is owed, so one missed
+read on the upgrade boot does not leave that whole run without the history.
+The settings UI reaches history through `api.js` endpoints and the store's own
+realtime push, never through a settings key.
 
 ### Main-home power limit switches
 

@@ -22,7 +22,9 @@ import {
   hasLegacyImportMark,
   importLegacySettingsKey,
   isLegacySettingsKeyListed,
+  legacyImportStanding,
   type LegacyImportResult,
+  type LegacyImportStanding,
   type MarkedLegacyImport,
   writeLegacyImportMark,
 } from '../store/legacySettingsImport';
@@ -222,13 +224,6 @@ export const createPvForecastStateStore = (db: UserdataDatabase): PvForecastRepo
   };
 };
 
-// A deferral that a later attempt in this process can settle. `not_a_value`
-// (a blob that vouches for no history) never will, and `unset_threw` comes
-// after the import landed.
-const RETRYABLE_DEFERRALS: ReadonlySet<string> = new Set([
-  'read_threw', 'listed_key_empty', 'store_unreadable', 'store_write_failed',
-]);
-
 const logImportResult = (result: LegacyImportResult): void => {
   if (result.outcome === 'imported') {
     storeLogger.info({ event: 'legacy_pv_forecast_state_imported' });
@@ -251,7 +246,7 @@ const logImportResult = (result: LegacyImportResult): void => {
  * answers empty settles, since a fresh install answers that way too and the
  * next boot's import merges a blob this one missed.
  */
-const importLegacyBlob = (settings: SettingsPort, store: PvForecastRepository): 'settled' | 'pending' => {
+const importLegacyBlob = (settings: SettingsPort, store: PvForecastRepository): LegacyImportStanding => {
   const listed = isLegacySettingsKeyListed(settings, PV_FORECAST_STATE);
   if (listed === false) return 'settled';
   if (listed === null) {
@@ -283,7 +278,7 @@ const importLegacyBlob = (settings: SettingsPort, store: PvForecastRepository): 
     },
   });
   logImportResult(result);
-  return result.outcome === 'deferred' && RETRYABLE_DEFERRALS.has(result.reason) ? 'pending' : 'settled';
+  return legacyImportStanding(result);
 };
 
 /**
@@ -297,7 +292,7 @@ const importLegacyBlob = (settings: SettingsPort, store: PvForecastRepository): 
 export const importLegacyPvForecastState = (
   settings: SettingsPort,
   store: PvForecastRepository,
-): 'settled' | 'pending' => {
+): LegacyImportStanding => {
   const blob = importLegacyBlob(settings, store);
   if (blob === 'settled'
     && isLegacySettingsKeyListed(settings, PV_FORECAST_STATE_INITIALIZED) === true

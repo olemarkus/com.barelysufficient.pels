@@ -3,7 +3,11 @@ import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { createFlowBackedDeviceState } from '../../setup/flowBackedCardAccess';
 import { SettingsRepository } from '../../setup/settingsRepository';
 import { FLOW_REPORTED_DEVICE_CAPABILITIES } from '../../lib/utils/settingsKeys';
-import { createLearnedPowerPeakRepository } from '../../lib/device/learnedPowerPeakStore';
+import {
+  createImportingLearnedPowerPeakStore,
+  createLearnedPowerPeakRepository,
+} from '../../lib/device/learnedPowerPeakStore';
+import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import type { FlowReportedCapabilitiesByDevice } from '../../lib/device/transport/flowReportedCapabilities';
 import { testLogger } from '../utils/testLogger';
@@ -28,7 +32,10 @@ describe('Flow capability persistence reads', () => {
       getSteppedLoadProfile: () => undefined,
       getExpectedPowerKwOverrides: () => ({}),
       getLearnedPowerPeaks: () => ({}),
-      getLearnedPowerPeakRepository: () => createLearnedPowerPeakRepository(openUserdataDatabase(IN_MEMORY_DATABASE)),
+      getLearnedPowerPeakStore: () => createImportingLearnedPowerPeakStore(
+        mockHomeyInstance.settings, createLearnedPowerPeakRepository(openUserdataDatabase(IN_MEMORY_DATABASE)),
+      ),
+      timers: new TimerRegistry(),
       syncHeadroomUsageObservation: () => {},
     },
   );

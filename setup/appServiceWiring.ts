@@ -38,7 +38,7 @@ import {
   subscribePlanObservedState,
 } from './appInit';
 import { buildMainHomeScope, type HomeScope } from './homeRuntime/homeScope';
-import { createHomePlanRuntime } from './homeRuntime/createHomePlanRuntime';
+import { createHomePlanRuntime, createLastControlledStoreForApp } from './homeRuntime/createHomePlanRuntime';
 import { createHomeCapacityGuard } from './homeRuntime/createHomeCapacityGuard';
 import type { HomeRuntimeRegistry } from './homeRuntime/homeRuntimeRegistry';
 import type { PowerSamplePipeline } from './powerSamplePipeline';
@@ -99,6 +99,9 @@ const usesProductionStartupOrder = (): boolean => (
 // imports the factory.
 export { buildHomeRuntimeReadPort };
 export type { HomeRuntimeRegistry };
+// Re-exported for the same reason: `app.ts` opens the one store every home's
+// plan runtime hydrates from beside the other userdata stores.
+export { createLastControlledStoreForApp };
 
 /** Detaches the membership recompute triggers: refresh subscription + zone-tree-commit callback. */
 const MEMBERSHIP_TEARDOWN_KEY = 'homeMembership';

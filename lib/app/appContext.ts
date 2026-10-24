@@ -59,6 +59,7 @@ import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
 import type { HomeMembershipPort } from '../home/membership';
 import type { HomeRuntimeReadPort } from '../home/homeRuntimeRead';
 import type { PlanStatusRegistry } from '../plan/planStatusRegistry';
+import type { LastControlledStore } from '../plan/lastControlledStore';
 import type { GenerationPollSource } from '../power/sources/generationPoll';
 import type { HomeyEnergyPollSource } from '../power/sources/homeyEnergyPoll';
 import type { PlanRebuildThrottle } from '../plan/rebuildScheduler/throttle';
@@ -117,6 +118,12 @@ export type AppContext = {
    * step that opens it, and outlives the database close (see `app.ts`).
    */
   getPowerCalibrationStore: () => PowerCalibrationStore;
+  /**
+   * When PELS last controlled each device, the one store every home hydrates
+   * from and writes through; throws outside the window the userdata database
+   * is open.
+   */
+  getLastControlledStore: () => LastControlledStore;
   /**
    * The charging-current routes' accepted Flow writes, kept across a restart;
    * reading throws before the boot step that opens the userdata database.
