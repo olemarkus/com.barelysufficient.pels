@@ -21,7 +21,7 @@ export type FlowAutocompleteOption = { id?: unknown; name?: unknown };
  * `''` when the key is absent or the value is not a usable string.
  */
 export function readFlowStringArg(args: unknown, key: string): string {
-  const value = readPayloadProperty(args, key);
+  const value = readFlowRawArg(args, key);
   if (typeof value === 'string') return value.trim();
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     const id = (value as FlowAutocompleteOption).id;
@@ -35,7 +35,7 @@ export function readFlowStringArg(args: unknown, key: string): string {
  * the key is absent or cannot be coerced to a finite number.
  */
 export function readFlowNumberArg(args: unknown, key: string): number | null {
-  const value = readPayloadProperty(args, key);
+  const value = readFlowRawArg(args, key);
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
     const trimmed = value.trim();
@@ -52,7 +52,7 @@ export function readFlowNumberArg(args: unknown, key: string): number | null {
  * legacy `{ data: { id } }` shape via `getDeviceIdFromFlowArg`.
  */
 export function readFlowDeviceArg(args: unknown, key = 'device'): string {
-  const value = readPayloadProperty(args, key);
+  const value = readFlowRawArg(args, key);
   if (value === undefined || value === null) return '';
   return getDeviceIdFromFlowArg(value);
 }
@@ -62,10 +62,6 @@ export function readFlowDeviceArg(args: unknown, key = 'device'): string {
  * when the input is not a plain object or the key is missing.
  */
 export function readFlowRawArg(args: unknown, key: string): unknown {
-  return readPayloadProperty(args, key);
-}
-
-function readPayloadProperty(args: unknown, key: string): unknown {
   if (!args || typeof args !== 'object' || Array.isArray(args)) return undefined;
   const record = args as Record<string, unknown>;
   return Object.prototype.hasOwnProperty.call(record, key) ? record[key] : undefined;

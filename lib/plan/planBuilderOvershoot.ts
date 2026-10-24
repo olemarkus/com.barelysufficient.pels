@@ -14,7 +14,6 @@
  *
  * `lib/plan` is hot-path: no spread/Array.from in loops, no Array#forEach.
  */
-import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isCooldownBlockedReason } from '../planContract/planDecisionSemantics';
 import type { DevicePlanDevice, MeteredDevicePlanDevice } from './planTypes';
 import { isMeteredPlanDevice } from './planMeteredDevice';
@@ -519,11 +518,7 @@ function isCooldownBlocked(
   device: Pick<OvershootTrackedPlanDevice, 'reason'> | undefined,
 ): boolean {
   if (!device) return false;
-  return isCooldownReason(device.reason);
-}
-
-function isCooldownReason(reason: DeviceReason): boolean {
-  return isCooldownBlockedReason(reason);
+  return isCooldownBlockedReason(device.reason);
 }
 
 function resolveFiniteNumber(value: unknown): number | null {

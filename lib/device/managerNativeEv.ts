@@ -26,7 +26,7 @@ import {
   buildSyntheticTargetPowerCapabilityMap,
   hasTargetPowerCapability,
   isNativeSteppedLoadWiringCandidate,
-  isTargetPowerSteppedLoadWiringCandidate,
+  isTargetPowerSteppedLoadCandidate,
   resolveNativeSteppedLoadObservationCapabilityId,
   resolveNativeSteppedLoadProfileSuggestion,
   resolveNativeSteppedLoadReportedStepId,
@@ -382,7 +382,7 @@ function resolveNativeSteppedLoadOverlay(
   suggestedSteppedLoadProfile?: SteppedLoadProfile;
 } {
   const { capabilities, capabilityObj, targetPowerConfig } = targetPowerOverlay;
-  const targetPowerSteppedCandidate = isTargetPowerSteppedLoadWiringCandidate({ capabilities, capabilityObj });
+  const targetPowerSteppedCandidate = isTargetPowerSteppedLoadCandidate({ capabilities, capabilityObj });
   const nativeSteppedCandidate = isNativeSteppedLoadWiringCandidate({
     device,
     capabilities,

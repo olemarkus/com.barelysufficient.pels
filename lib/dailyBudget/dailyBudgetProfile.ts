@@ -78,13 +78,13 @@ const resolveControlledShare = (state: DailyBudgetState): number => (
   typeof state.profileControlledShare === 'number' ? state.profileControlledShare : 0
 );
 
-const resolveSampleCount = (state: DailyBudgetState): number => {
+export const getProfileSampleCount = (state: DailyBudgetState): number => {
   if (typeof state.profileSampleCount === 'number') return state.profileSampleCount;
   if (typeof state.profileUncontrolled?.sampleCount === 'number') return state.profileUncontrolled.sampleCount;
   return state.profile?.sampleCount ?? 0;
 };
 
-const resolveSplitSampleCount = (state: DailyBudgetState): number => (
+export const getProfileSplitSampleCount = (state: DailyBudgetState): number => (
   typeof state.profileSplitSampleCount === 'number' ? state.profileSplitSampleCount : 0
 );
 
@@ -122,8 +122,8 @@ export const ensureDailyBudgetProfile = (
     profileUncontrolled: resolveProfileUncontrolled(state, defaultProfile),
     profileControlled: resolveProfileControlled(state, defaultProfile),
     controlledShare: resolveControlledShare(state),
-    sampleCount: resolveSampleCount(state),
-    splitSampleCount: resolveSplitSampleCount(state),
+    sampleCount: getProfileSampleCount(state),
+    splitSampleCount: getProfileSplitSampleCount(state),
     observedStats: resolveObservedHourlyStats(state),
   };
 
@@ -141,10 +141,6 @@ export const ensureDailyBudgetProfile = (
     changed: true,
   };
 };
-
-export const getProfileSampleCount = (state: DailyBudgetState): number => resolveSampleCount(state);
-
-export const getProfileSplitSampleCount = (state: DailyBudgetState): number => resolveSplitSampleCount(state);
 
 const getLearnedProfileParts = (
   state: DailyBudgetState,

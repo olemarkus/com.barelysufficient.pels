@@ -90,13 +90,13 @@ export function buildPlanCapacityStateSummary(
     if (device.control.commandAuthority === false) continue;
     summary.controlledDevices += 1;
     const plannedShedCounts = buildPlannedShedCounts(
-      device.plannedState === 'shed', hasPendingCommand(device), isActiveControlledDevice(device),
+      device.plannedState === 'shed', hasPendingCommand(device), isPlanDeviceObservedOn(device),
     );
     summary.plannedShedDevices += plannedShedCounts.plannedShedDevices;
     summary.pendingPlannedShedDevices += plannedShedCounts.pendingPlannedShedDevices;
     summary.activePlannedShedDevices += plannedShedCounts.activePlannedShedDevices;
-    summary.activeControlledDevices += Number(isActiveControlledDevice(device));
-    summary.zeroDrawControlledDevices += Number(isZeroDrawControlledDevice(device));
+    summary.activeControlledDevices += Number(isPlanDeviceObservedOn(device));
+    summary.zeroDrawControlledDevices += Number(isZeroDrawDevice(device));
     summary.pendingControlledDevices += Number(hasPendingCommand(device));
     summary.blockedByCooldownDevices += Number(isBlockedByCooldown(device));
     summary.blockedByPenaltyDevices += Number(isBlockedByPenalty(device));
@@ -175,12 +175,12 @@ export function countPlanInputDevices(
     // per device was the shape this summary had before the store owned the
     // question.
     const pending = hasPendingInputCommand(device, isBinaryCommandPending);
-    const plannedShedCounts = buildPlannedShedCounts(shedSet.has(device.id), pending, isActiveInputDevice(device));
+    const plannedShedCounts = buildPlannedShedCounts(shedSet.has(device.id), pending, isPlanDeviceObservedOn(device));
     counts.plannedShedDevices += plannedShedCounts.plannedShedDevices;
     counts.pendingPlannedShedDevices += plannedShedCounts.pendingPlannedShedDevices;
     counts.activePlannedShedDevices += plannedShedCounts.activePlannedShedDevices;
-    counts.activeControlledDevices += Number(isActiveInputDevice(device));
-    counts.zeroDrawControlledDevices += Number(isZeroDrawInputDevice(device));
+    counts.activeControlledDevices += Number(isPlanDeviceObservedOn(device));
+    counts.zeroDrawControlledDevices += Number(isZeroDrawDevice(device));
     counts.pendingControlledDevices += Number(pending);
   }
   return { ...counts, actuationInFlight: counts.pendingControlledDevices > 0 };
@@ -283,26 +283,14 @@ export function buildPlanSignature(plan: DevicePlan): string {
   );
 }
 
-function isActiveControlledDevice(device: DevicePlanDevice): boolean {
-  // "Active" = on. Kind-aware: a binary device via `currentOn`, a step-only
-  // stepper via its (active) step — so step-only steppers are counted too.
-  return isPlanDeviceObservedOn(device);
-}
-
-function isActiveInputDevice(device: PlanInputDevice): boolean {
-  // "Active" = on. Kind-aware: a binary device via `currentOn`, a step-only
-  // stepper via its (active) step — so step-only steppers are counted too.
-  return isPlanDeviceObservedOn(device);
-}
-
+// "Active" = on (`isPlanDeviceObservedOn`), in both summaries. Kind-aware: a
+// binary device via `currentOn`, a step-only stepper via its (active) step — so
+// step-only steppers are counted too.
+//
 // "Zero draw" is a measured fact: a device without a power reading is not
 // counted here, because nothing says what it draws.
-function isZeroDrawControlledDevice(device: DevicePlanDevice): boolean {
-  return isMeteredPlanDevice(device) && isActiveControlledDevice(device) && device.currentDrawKw <= 0;
-}
-
-function isZeroDrawInputDevice(device: PlanInputDevice): boolean {
-  return isMeteredPlanDevice(device) && isActiveInputDevice(device) && device.currentDrawKw <= 0;
+function isZeroDrawDevice(device: DevicePlanDevice | PlanInputDevice): boolean {
+  return isMeteredPlanDevice(device) && isPlanDeviceObservedOn(device) && device.currentDrawKw <= 0;
 }
 
 function isActionableShortfallCandidate(device: DevicePlanDevice): boolean {
