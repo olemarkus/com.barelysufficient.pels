@@ -123,6 +123,7 @@ describe('resolveHeadroomReserves', () => {
       boostActive: false,
       surplusHoldShed: false,
       surplusAbsorbActive: false,
+      priceTargetShift: { kind: 'none' },
       surplusCeilingStepId: undefined,
     });
     expect(run([charger]).reserves.map((reserve) => reserve.kw)).toEqual([1.38]);

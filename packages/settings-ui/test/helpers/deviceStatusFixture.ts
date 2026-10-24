@@ -30,6 +30,8 @@ export function uiDeviceFixture(raw: Record<string, unknown> | CardFixture = {},
     ...device, reason, controllable: device.controllable ?? true, available,
     binaryControllable: device.binaryControllable ?? false, isEvCharger,
     expectedPowerKw: device.expectedPowerKw ?? 0,
+    // No card scenario here moves a target for price.
+    priceTargetShift: { kind: 'none' },
     currentState: physicalState,
     execution: {
       available, physicalState,

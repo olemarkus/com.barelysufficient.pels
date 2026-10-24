@@ -59,6 +59,7 @@ const buildPlanDevice = (
   binaryCommandPending: false,
   surplusTracking: false,
   recordRestoreOnTargetApply: false,
+  priceTargetShift: { kind: 'none' },
 })) as DevicePlan['devices'][number];
 
 describe('syncPendingTargetCommands', () => {

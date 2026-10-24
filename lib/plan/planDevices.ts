@@ -22,7 +22,10 @@ import { buildBasePlanDevice } from './planDevicesBase';
 import { emitBoostStateChange, resolveBoostActive } from './planBoost';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { temperatureSetpointsFor } from './planTemperatureSetpoints';
-import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
+import type {
+  PriceTargetShift,
+  TemperatureSetpointsByDevice,
+} from '../../packages/planner-types/src/temperatureSetpoints';
 import { addPerfDuration } from '../utils/perfCounters';
 import type { PlanBuilderDeps } from './planBuilderDeps';
 
@@ -136,6 +139,7 @@ export function buildInitialPlanDevices(
       surplusHoldShed: isSurplusOnlyHoldShed(dev, state, shedReasons),
       // Set by resolvePlannedTarget above (read after it ran for this device).
       surplusAbsorbActive: state.surplusAbsorbActiveByDevice[dev.id] === true,
+      priceTargetShift: resolvePriceTargetShift(dev, context.temperatureSetpoints, plannedTarget),
       surplusCeilingStepId,
     });
     baseMs += Date.now() - t1;
@@ -180,6 +184,19 @@ function resolvePlannedTarget(
   return lifted ? setpoints.surplusC : setpoints.keepC;
 }
 /* eslint-enable functional/immutable-data, no-param-reassign */
+
+const NO_PRICE_TARGET_SHIFT: PriceTargetShift = { kind: 'none' };
+
+/** The price shift behind the planned target: only when the kept setpoint is what the plan commands. */
+function resolvePriceTargetShift(
+  dev: PlanInputDevice,
+  temperatureSetpoints: TemperatureSetpointsByDevice,
+  plannedTarget: ResolvedPlannedTarget,
+): PriceTargetShift {
+  if (!isTemperaturePlanDevice(dev)) return NO_PRICE_TARGET_SHIFT;
+  const setpoints = temperatureSetpointsFor(temperatureSetpoints, dev.id);
+  return plannedTarget === setpoints.keepC ? setpoints.keepPriceShift : NO_PRICE_TARGET_SHIFT;
+}
 
 function isRecentlyRestored(lastRestoreMs: number | undefined, nowTs: number): boolean {
   if (!lastRestoreMs) return false;

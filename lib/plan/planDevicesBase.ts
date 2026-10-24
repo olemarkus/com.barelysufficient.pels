@@ -1,4 +1,5 @@
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
+import type { PriceTargetShift } from '../../packages/planner-types/src/temperatureSetpoints';
 import type {
   DevicePlanDevice, LooseDevicePlanDevice, MeteredDiscriminantProbe, PlanInputDevice, ShedAction, ShedBehavior,
   SteppedLoadKind, TemperatureKind,
@@ -171,6 +172,7 @@ export type BasePlanDeviceInputs = {
   /** The existing surplus-posture predicate's decision, excluding fresh capacity reasons. */
   surplusHoldShed: boolean;
   surplusAbsorbActive: boolean;
+  priceTargetShift: PriceTargetShift;
   /**
    * The rung this cycle's surplus allocation bought a surplus-TRACKING device,
    * or undefined for every other device. A ceiling on the keep step, never a
@@ -182,7 +184,7 @@ export type BasePlanDeviceInputs = {
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDevice {
   const {
-    dev, binaryCommandPending, boostActive, surplusAbsorbActive,
+    dev, binaryCommandPending, boostActive, surplusAbsorbActive, priceTargetShift,
   } = inputs;
   const { currentState } = dev;
   const decision = resolvePlannedDeviceDecision(inputs);
@@ -232,6 +234,7 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
     available: dev.available,
     boostActive,
     surplusAbsorbActive,
+    priceTargetShift,
     stepCommandPending: dev.stepCommandPending,
     stepCommandStatus: dev.stepCommandStatus,
     binaryCommandPending,

@@ -32,7 +32,7 @@ const ALWAYS: readonly string[] = [
   'currentState', 'desiredStepId', 'deviceType',
   'expectedPowerKw', 'expectedPowerSource', 'hasStandingDemand', 'id', 'isEvCharger',
   'lastDesiredStepId', 'lastStepCommandIssuedAt', 'name', 'nextStepCommandRetryAtMs', 'isBatteryOrSolar',
-  'plannedState', 'previousStepId', 'priority', 'reason', 'recordRestoreOnTargetApply',
+  'plannedState', 'previousStepId', 'priceTargetShift', 'priority', 'reason', 'recordRestoreOnTargetApply',
   'releaseShedStepId', 'reportedStepId', 'residualKw', 'shedAction', 'shedTemperature',
   'stepCommandPending', 'stepCommandRetryCount', 'stepCommandStatus', 'storageHold', 'surplusAbsorbActive',
   'surplusTracking',
@@ -226,6 +226,7 @@ const buildFor = (kind: Kind): Record<string, unknown> => {
     boostActive: kind.boost === true,
     surplusHoldShed: false,
     surplusAbsorbActive: kind.surplus === true,
+    priceTargetShift: { kind: 'none' },
     surplusCeilingStepId: kind.ceiling,
   }) as unknown as Record<string, unknown>;
 };
