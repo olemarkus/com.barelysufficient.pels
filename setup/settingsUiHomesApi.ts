@@ -8,12 +8,16 @@ import type {
 } from '../packages/contracts/src/settingsUiHomes';
 import {
   findMainMeterCollision,
-  generateHomeId,
   isValidSubHomeId,
   resolveExplicitMainMeterDeviceId,
   type HomeConfig,
   type SubHomeConfig,
 } from '../lib/home/homeConfig';
+import {
+  composeAreaUpsert,
+  findAreaUpsertRefusal,
+  isAreaRootAtForestRoot,
+} from '../lib/home/homeAreaSaveRules';
 import { normalizeHomeAreaName } from '../packages/shared-domain/src/homeAreaConfigRules';
 import { readMainMeterSelection } from './mainMeterSettings';
 import { readConfiguredPowerSource } from './powerSourceSettings';
@@ -26,12 +30,7 @@ import {
   commitHomesConfigWriteWithTrackerFreshnessReset,
   resolveApiLoggerProvider,
 } from './homeRuntime/homeTrackerConfigSafety';
-import {
-  areaRootsAtForestRoot,
-  findComposedHomeInvariantViolation,
-  savePowerSourceSelection,
-  type MultiHomeActivationRead,
-} from './homeMeterOwnership';
+import { savePowerSourceSelection, type MultiHomeActivationRead } from './homeMeterOwnership';
 
 type HomesApiContext = {
   homey: Homey.App['homey'];
@@ -103,7 +102,7 @@ const readMultiHomeActivation = (homey: Homey.App['homey']): MultiHomeActivation
  * a retained cache of an unknown persisted truth, and naming an obsolete
  * area's collision would be a false alarm — as does an unavailable settings
  * read: an unprovable conflict must not become an assertion. Both reads are
- * the same pure classifiers the save gate in `homeMeterOwnership.ts` uses
+ * the same pure classifiers the save rules in `lib/home/homeAreaSaveRules.ts` use
  * (not the authority owner's side-effecting wrappers), so composing the
  * payload latches nothing.
  */
@@ -195,7 +194,7 @@ const parseUpsertArea = (value: unknown): ParsedUpsertArea | null => {
   // Surrounding whitespace is normalized away at the boundary, so the name the
   // rules judge is the name that gets persisted and displayed. The rules
   // themselves (non-empty, length, reserved, unique) need the resulting config
-  // and run later, in `findComposedHomeInvariantViolation`.
+  // and run later, in `findAreaUpsertRefusal`.
   if (typeof area.name !== 'string') return null;
   const name = normalizeHomeAreaName(area.name);
   const rootZoneId = toSaveNonEmptyString(area.rootZoneId);
@@ -237,27 +236,6 @@ const parseHomesSaveRequest = (body: unknown): SettingsUiHomesSaveRequest | null
   return area === null ? null : { op: 'upsert', area };
 };
 
-/** The composed list plus the one entry the upsert wrote into it. */
-type AppliedUpsert = { subHomes: SubHomeConfig[]; upserted: SubHomeConfig };
-
-const applyHomesUpsert = (
-  current: readonly SubHomeConfig[],
-  area: Extract<SettingsUiHomesSaveRequest, { op: 'upsert' }>['area'],
-): AppliedUpsert => {
-  // Id allocation is the runtime's (create = absent id); an upsert with a
-  // vanished id honestly re-adds the area — the UI's "Add again" semantics.
-  const homeId = area.homeId ?? generateHomeId(current.map((entry) => entry.homeId));
-  const upserted: SubHomeConfig = {
-    homeId, name: area.name, rootZoneId: area.rootZoneId, meterDeviceId: area.meterDeviceId,
-  };
-  return {
-    upserted,
-    subHomes: current.some((existing) => existing.homeId === homeId)
-      ? current.map((existing) => (existing.homeId === homeId ? upserted : existing))
-      : [...current, upserted],
-  };
-};
-
 type AreaMutationRequest = Exclude<
 SettingsUiHomesSaveRequest,
 { op: 'set_main_meter' } | { op: 'set_power_source' }
@@ -268,7 +246,9 @@ const saveAreaMutation = (
   request: AreaMutationRequest,
 ): SettingsUiHomesSaveResponse => {
   const zoneTree = getHomeMembership(homey)?.getDiagnostics().zoneTree ?? null;
-  if (areaRootsAtForestRoot(request, zoneTree)) return { ok: false, reason: 'invalid' };
+  if (request.op === 'upsert' && isAreaRootAtForestRoot(request.area, zoneTree)) {
+    return { ok: false, reason: 'invalid' };
+  }
   // Refuse whenever the ui_homes read would report degraded — an unwired
   // membership service (boot window) OR EITHER persisted store `'suspect'` as
   // of the last recompute — not merely a suspect homes-store read: composing a
@@ -285,29 +265,22 @@ const saveAreaMutation = (
   // applying an op over a guess could erase areas.
   if (read.state === 'suspect') return { ok: false, reason: 'degraded' };
   const currentConfig: HomeConfig = read.state === 'present' ? read.value : { subHomes: [] };
-  // A delete composes its own list and names no written entry; an upsert hands
-  // back the entry it wrote so the name rules can judge that one alone.
-  const composed = request.op === 'delete'
-    ? {
-      subHomes: currentConfig.subHomes.filter((area) => area.homeId !== request.homeId),
-      upserted: null,
-    }
-    : applyHomesUpsert(currentConfig.subHomes, request.area);
-  const next = composed.subHomes;
   // An upsert must not reuse a meter, leave the Main home on Automatic, break
   // a name or count rule, or nest/duplicate an existing root zone. A delete is
   // never validated against those config rules — it can only make the list more
   // valid, and it is how an owner escapes a config the rules now refuse. (It is
   // still refused while the config is degraded, above: no write may be composed
   // over an unknown config.) Validate before any tracker-reset or write.
-  if (composed.upserted !== null) {
-    const refusal = findComposedHomeInvariantViolation(homey, {
-      subHomes: next,
-      upserted: composed.upserted,
-      growsList: next.length > currentConfig.subHomes.length,
-      zoneTree,
-    });
+  let next: SubHomeConfig[];
+  if (request.op === 'delete') {
+    next = currentConfig.subHomes.filter((area) => area.homeId !== request.homeId);
+  } else {
+    const upsert = composeAreaUpsert(currentConfig.subHomes, request.area);
+    const refusal = findAreaUpsertRefusal(
+      upsert, zoneTree, homey.settings, () => readConfiguredPowerSource(homey.settings),
+    );
     if (refusal !== null) return refusal;
+    next = upsert.subHomes;
   }
   const trackerStore = getTrackerStore(homey);
   if (trackerStore === undefined) return { ok: false, reason: 'degraded' };
