@@ -81,7 +81,6 @@ const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanCycle> 
   budgetPaceKw: null,
   projectedExemptKw: null,
   softLimitSource: 'capacity',
-  budgetReleasableHeadroomHold: false,
   capacityHeadroomKw: 1,
   budgetHeadroomKw: null,
   budgetKWh: 0,
@@ -205,6 +204,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       planDevices,
       emptyRestoreResult,
       false,
+      new Set<string>(),
       new Set<string>(),
     );
     const solarObservation = observations.find((o) => o.deviceId === SOLAR_ID);

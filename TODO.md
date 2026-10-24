@@ -174,27 +174,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       reading in between, and that e2e's shed ladder is unchanged. *(Codex review on #2434,
       2026-09-17.)* [P2]
 
-## Daily budget and weather
-
-- [ ] **A budget-axis restore rejection is attributed as capacity pressure when
-      `softLimitSource` is 'capacity'.** With an off exempt device projecting, the binding source
-      can read 'capacity' (`budgetPaceKw + projectedExempt > capacityPace`) while the per-axis
-      ledger rejects a non-exempt candidate on the MEASURED budget axis
-      (`budgetPaceKw + measuredExempt < capacityPace`). `budgetReleasableHeadroomHold` derives
-      from the binding source, so the hold keeps the numeric headroom framing and the budget
-      rescue is not offered even though the budget is the axis doing the work. Fix direction:
-      re-key hold attribution per axis at the rejection site (the ledger knows which axis bound),
-      not off the collapsed binding source — the same catch-up the reason fold got for exempt
-      candidates. *Persona:* daily-budget home with an off exempt charger and held thermostats.
-      *Hypothesis:* needs projected>measured AND the projection large enough to flip the argmin;
-      display-only harm (wrong framing, missing rescue offer). Source: Codex review on PR #1956 +
-      pels-layering-guardian corner (b), 2026-08-02.
-      **Absorbed from the merged admission item, the same flag's opposite face.** It is also a false
-      POSITIVE: where capacity sits between the budget pace and the candidate's restore need
-      (capacity pace 5 kW, draw 4 kW, daily pace 4.5 kW, need 1.2 kW) the held-back widget offers
-      "Let it run now" and the release still leaves the restore blocked, handing the owner a dead
-      lever. Deriving attribution per axis at the rejection site closes both faces. [P2]
-
 ## Device observation and transport
 
 - [ ] **The zone tree is refetched on every snapshot refresh — 538 Homey round-trips per 12 h for

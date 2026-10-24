@@ -49,7 +49,6 @@ const buildContext = (
   softLimitSource,
   // Mirrors the producer resolution in `buildPlanContext`: daily binding + fresh
   // power + no capacity breach (total 4 < capacitySoftLimit 5 in this fixture).
-  budgetReleasableHeadroomHold: softLimitSource === 'daily',
   capacityHeadroomKw: 1,
   budgetHeadroomKw: null,
   hourBucketKey: '2026-01-01T00',
@@ -119,6 +118,8 @@ const buildObservation = (params: {
   thermalDirection?: ThermalDirection;
   budgetPressureEligible?: boolean;
   smartTaskDriving?: boolean;
+  /** The producer's per-device verdict that the budget alone holds this headroom hold. */
+  budgetHeld?: boolean;
 }) => {
   const cycle = buildContext(
     buildPlanInputDevice(params.inputDevice),
@@ -150,6 +151,9 @@ const buildObservation = (params: {
     buildRestoreResult(params.restoreResult),
     params.budgetPressureEligible ?? false,
     params.smartTaskDriving
+      ? new Set([params.inputDevice.id ?? params.planDevice.id ?? ''])
+      : new Set<string>(),
+    params.budgetHeld
       ? new Set([params.inputDevice.id ?? params.planDevice.id ?? ''])
       : new Set<string>(),
   )[0];
@@ -1062,10 +1066,13 @@ describe('plan diagnostics observations', () => {
   it('re-attributes a daily-bound insufficient-headroom hold to the daily_budget counting cause', () => {
     // Live "Termostat Synne" repro: the device is held off because the binding
     // soft limit is the DAILY BUDGET, but the restore producer emits
-    // `insufficient_headroom`. The producer knows `softLimitSource === 'daily'`,
-    // so the counting cause resolves to the releasable budget bucket — the daily
-    // budget is the real lever, not the (far higher) physical capacity cap.
+    // `insufficient_headroom`. The producer judged the budget axis alone to hold
+    // it (`budgetHeld`), so the counting cause resolves to the releasable budget
+    // bucket — the daily budget is the real lever, not the (far higher) physical
+    // capacity cap. A keep-state hold like this one is never folded in the reason
+    // stage, so diagnostics re-attribute it themselves.
     const observation = buildObservation({
+      budgetHeld: true,
       inputDevice: {
         id: 'heater-1',
         name: 'Termostat Synne',
@@ -1319,6 +1326,7 @@ describe('daily-bound headroom starvation flows through to the overview budget b
   });
 
   const buildSteadyDailyHeadroomObservation = () => buildObservation({
+    budgetHeld: true,
     inputDevice: {
       id: 'heater-1',
       name: 'Termostat Synne',

@@ -194,7 +194,6 @@ const planFromRawDevices = async (): Promise<{ context: PlanCycle; planDevices: 
     budgetPaceKw: null,
     projectedExemptKw: null,
     softLimitSource: 'capacity',
-    budgetReleasableHeadroomHold: false,
     capacityHeadroomKw: 8,
     budgetHeadroomKw: null,
     budgetKWh: 0,
@@ -249,6 +248,7 @@ describe('class-resolved identity through the plan build', () => {
       planDevices,
       emptyRestoreResult,
       false,
+      new Set<string>(),
       new Set<string>(),
     );
 

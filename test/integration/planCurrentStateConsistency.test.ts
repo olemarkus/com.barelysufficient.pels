@@ -68,7 +68,6 @@ const buildContext = (device: PlanInputDevice): PlanCycle => buildPlanCycleObjec
   budgetPaceKw: null,
   projectedExemptKw: null,
   softLimitSource: 'capacity',
-  budgetReleasableHeadroomHold: false,
   capacityHeadroomKw: 1,
   budgetHeadroomKw: null,
   budgetKWh: 0,

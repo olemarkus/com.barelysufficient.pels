@@ -51,7 +51,6 @@ const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) 
   budgetPaceKw: null,
   projectedExemptKw: null,
   softLimitSource: 'capacity' as const,
-  budgetReleasableHeadroomHold: false,
   capacityHeadroomKw: 1,
   budgetHeadroomKw: null,
   budgetKWh: 0,

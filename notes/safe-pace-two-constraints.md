@@ -598,8 +598,12 @@ So the split is:
   neither predicate has fired. It must not grow a `'none'` variant: below both
   paces the hero still draws a tick and still owes the user a source for it.
 - **Consumers that want "is the non-exempt house over budget"** must read
-  `overBudgetPace` rather than infer it from the source string. The reason copy and
-  the starvation cause attribution infer it today.
+  `overBudgetPace` rather than infer it from the source string. A restore blocked
+  on headroom no longer does: whether the budget alone holds it is judged per
+  device on its own admission axes (`resolveBudgetHeldDeviceIds`,
+  `lib/plan/planReasonShortfall.ts`), for the reason fold and the starvation cause
+  alike. The fold of a carried `capacity` reason and the starvation attribution of
+  other budget-family holds still infer it from the source string.
 - **The hero** is where the coupling gets *shown* rather than removed. That is the
   carve-out geometry below, and it is the real fix for symptom 1.
 
@@ -761,7 +765,8 @@ implicit term inside the rebased threshold. Until it exists as a named quantity:
 - No surface can show the user what is being measured against their budget, so
   the textual composition can explain the "Safe pace now" jump but cannot render
   the current non-exempt load.
-- The reason copy and the starvation cause attribution keep inferring budget
+- The fold of a carried `capacity` reason and the starvation attribution of
+  budget-family holds other than a headroom-blocked restore keep inferring budget
   pressure from `softLimitSource` instead of reading `overBudgetPace`.
 - The negative case (solar more than covering the non-exempt load) is invisible
   everywhere, despite being a good thing to tell someone.

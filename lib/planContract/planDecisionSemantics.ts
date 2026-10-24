@@ -98,11 +98,11 @@ const COOLDOWN_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
 ]);
 
 // This table is a PURE reason-code → counting-cause map; it must stay free of planner
-// state (`softLimitSource`, headroom axes, …). The source-aware fold that
-// re-attributes `insufficient_headroom` → `daily_budget` for a budget-releasable hold
-// lives one layer up in the producer (`lib/plan/planDiagnostics.ts`,
-// `reattributeHeadroomShortfallCause`, gated on `budgetReleasableHeadroomHold`). Do not
-// pull that condition in here — it would break the resolution-in-producer boundary.
+// state (`softLimitSource`, headroom axes, …). Whether a headroom hold is the budget's
+// is decided per device where reasons are folded (`isBudgetReleasableHold` in
+// `lib/plan/planReasonShortfall.ts`), which hands this table `dailyBudget` for one.
+// Do not pull that condition in here — it would break the resolution-in-producer
+// boundary.
 //
 // Membership follows one rule (`notes/starvation/README.md` — "the clock runs whenever
 // PELS is the reason the device is down"): every hold PELS itself imposes counts, and the

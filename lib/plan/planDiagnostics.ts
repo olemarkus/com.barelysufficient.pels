@@ -42,16 +42,19 @@ export const buildDeviceDiagnosticsObservations = (
   restoreResult: RestorePlanResult,
   budgetPressureEligible: boolean,
   smartTaskDrivingDeviceIds: ReadonlySet<string>,
+  budgetHeldDeviceIds: ReadonlySet<string>,
 ): DeviceDiagnosticsPlanObservation[] => {
   const inputDeviceById = new Map(context.devices.map((device) => [device.id, device]));
+  // Over a physical limit, that limit holds every device whatever its reason says.
+  const budgetPacesHouse = context.softLimitSource === 'daily' && !power.physicalLimitBreached;
   return planDevices.map((device) => buildDiagnosticsObservation(
     context,
-    power,
     restoreResult,
     budgetPressureEligible,
     device,
     inputDeviceById.get(device.id),
     smartTaskDrivingDeviceIds.has(device.id),
+    resolveBudgetHoldStanding(budgetHeldDeviceIds.has(device.id), budgetPacesHouse),
   ));
 };
 
@@ -342,41 +345,44 @@ const resolveHeldBackScope = (device: DevicePlanDevice, eligibility: StarvationE
   return eligibility.kind === 'eligible' ? 'candidate' : eligibility.reason;
 };
 
-// A restore held for `insufficient_headroom` is blocked against the binding soft limit.
-// When that hold is BUDGET-RELEASABLE — the daily budget is the binding limit and
-// capacity is not also breached (`budgetReleasableHeadroomHold`, producer-resolved)
-// — the physical capacity cap is not the constraint doing the work; the daily budget is,
-// and it is the releasable lever the owner can rescue against. Re-attribute the counting
-// cause to `daily_budget` so device detail and the emitted `device_starvation_started`
-// cause both read the true, releasable cause — without any consumer re-deriving the
-// source. This mirrors the shed-time re-attribution `resolveShedReason`/`buildBaseReason`
-// already perform for capacity→daily. A genuine capacity-bound shortfall — physical
-// capacity, or an exhausted hourly cap (which forces `softLimitSource` to 'capacity') —
-// keeps `insufficient_headroom`. (The silent-meter pass never reaches this: it plans no
+/**
+ * What the daily budget has to do with this device's hold this cycle: the
+ * budget alone holds its headroom hold (`resolveBudgetHeldDeviceIds`), or the
+ * daily pace binds the house with no physical limit breached, so a
+ * budget-family hold is the budget's; otherwise neither. A carried `dailyBudget`
+ * reason while capacity binds is not budget demand.
+ */
+type BudgetHoldStanding = 'holds_headroom' | 'paces_house' | 'none';
+
+const resolveBudgetHoldStanding = (budgetHeld: boolean, budgetPacesHouse: boolean): BudgetHoldStanding => {
+  if (budgetHeld) return 'holds_headroom';
+  return budgetPacesHouse ? 'paces_house' : 'none';
+};
+
+// A restore held for `insufficient_headroom` is the budget's when the budget axis
+// alone turns it down (`holds_headroom`, resolved per device by
+// `resolveBudgetHeldDeviceIds` for this and the reason fold alike). Re-attribute
+// its counting cause to `daily_budget` so device detail and the emitted
+// `device_starvation_started` cause read the true, releasable cause. The reason
+// fold already did so for a shed device; this covers the keep-state hold it never
+// visits. A hold capacity or grid would impose as well keeps
+// `insufficient_headroom`. (The silent-meter pass never reaches this: it plans no
 // restores and observes no diagnostics.)
-//
-// This re-attribution no longer gates anything user-facing. Until 2026-08-04 it fed the
-// flat overview `budget | capacity` bucket, which decided whether the "Let it run now"
-// rescue was offered; both the bucket and that gate are gone (the rescue is offered on
-// either axis). What remains is diagnostic honesty — do not restore a consumer that
-// branches on it.
 const reattributeHeadroomShortfallCause = (
   countingCause: DeviceDiagnosticsStarvationCountingCause | null,
-  budgetReleasableHeadroomHold: boolean,
+  standing: BudgetHoldStanding,
 ): DeviceDiagnosticsStarvationCountingCause | null => (
-  countingCause === 'insufficient_headroom' && budgetReleasableHeadroomHold
-    ? 'daily_budget'
-    : countingCause
+  countingCause === 'insufficient_headroom' && standing === 'holds_headroom' ? 'daily_budget' : countingCause
 );
 
 const resolveSuppressionFromReason = (
   reason: DeviceReason,
-  budgetReleasableHeadroomHold: boolean,
+  standing: BudgetHoldStanding,
 ): StarvationSuppressionNormalization => {
   const semantics = resolveStarvationSuppressionSemantics(reason);
   return {
     suppressionState: semantics.state,
-    countingCause: reattributeHeadroomShortfallCause(semantics.countingCause, budgetReleasableHeadroomHold),
+    countingCause: reattributeHeadroomShortfallCause(semantics.countingCause, standing),
     pauseReason: semantics.pauseReason,
   };
 };
@@ -385,7 +391,7 @@ const resolveStarvationSuppression = (
   device: DevicePlanDevice,
   inputDevice: PlanInputDevice | undefined,
   hasStandingDemand: boolean,
-  budgetReleasableHeadroomHold: boolean,
+  standing: BudgetHoldStanding,
 ): StarvationSuppressionNormalization => {
   if (
     !resolveStarvationDemand(inputDevice, hasStandingDemand)
@@ -396,7 +402,7 @@ const resolveStarvationSuppression = (
     return noStarvationSuppression();
   }
   const reason = device.reason;
-  const normalized = resolveSuppressionFromReason(reason, budgetReleasableHeadroomHold);
+  const normalized = resolveSuppressionFromReason(reason, standing);
   if (normalized.suppressionState !== 'none') {
     return normalized;
   }
@@ -468,21 +474,13 @@ const resolveBudgetDemandRecovered = (
 
 const buildDiagnosticsObservation = (
   context: PlanContext,
-  power: MeasuredPower,
   restoreResult: RestorePlanResult,
   budgetPressureEligible: boolean,
   device: DevicePlanDevice,
   inputDevice: PlanInputDevice | undefined,
   smartTaskDriving: boolean,
+  budgetStanding: BudgetHoldStanding,
 ): DeviceDiagnosticsPlanObservation => {
-  // Producer-resolved on `MeasuredPower` (see the field doc there): daily pace binding
-  // AND no physical limit (capacity or grid) also breached. Hourly-cap exhaustion forces
-  // `softLimitSource` to 'capacity' (capacitySoftLimit → 0), so exhausted hours stay
-  // in the capacity bucket too. Reading the shared field keeps this fold and the
-  // device-reason re-attribution in `normalizeShedReasons` in lockstep — the breach
-  // term is what stops the rescue widget offering "Let it run now" during a genuine
-  // capacity breach while the card correctly keeps the headroom framing.
-  const { budgetReleasableHeadroomHold } = power;
   // Demand metrics and the starvation lanes both ask the same question — does
   // being off mean this device is going without? — and the producer answered it
   // (`hasStandingDemand`). A charger with no car is not starved, and neither
@@ -506,7 +504,7 @@ const buildDiagnosticsObservation = (
     device,
     inputDevice,
     hasStandingDemand,
-    budgetReleasableHeadroomHold,
+    budgetStanding,
   );
   const targetDeficitActive = includeDemandMetrics
     && setpoints !== null
@@ -539,7 +537,7 @@ const buildDiagnosticsObservation = (
       budgetPressureDenied: budgetPressureEligible && unmetDemand && isMeteredPlanDevice(device),
       budgetUnservedDenied: resolveBudgetUnservedDenied(
         device, setpoints, starvationSuppression, eligibleForStarvation, pelsHoldsBelowTarget,
-        budgetReleasableHeadroomHold,
+        budgetStanding !== 'none',
       ),
       budgetDemandRecovered: resolveBudgetDemandRecovered(device, inputDevice, setpoints),
     },

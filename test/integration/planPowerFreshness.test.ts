@@ -158,8 +158,6 @@ describe('power sample freshness policy', () => {
       // budget pace (0.9) + measured exempt (1.25) - total (1.85)
       expect(power?.budgetHeadroomKw).toBeCloseTo(0.3, 6);
       expect(power?.capacityBreached).toBe(false);
-      // Daily binding + capacity not breached: a headroom hold is budget-releasable.
-      expect(power?.budgetReleasableHeadroomHold).toBe(true);
     });
 
     it('has no budget axis without a resolved daily pace', () => {
@@ -172,7 +170,6 @@ describe('power sample freshness policy', () => {
       });
 
       expect(power?.budgetHeadroomKw).toBeNull();
-      expect(power?.budgetReleasableHeadroomHold).toBe(false);
     });
 
     it('reports a capacity breach from the measured draw, which closes the budget release', () => {
@@ -182,7 +179,6 @@ describe('power sample freshness policy', () => {
       });
 
       expect(power?.capacityBreached).toBe(true);
-      expect(power?.budgetReleasableHeadroomHold).toBe(false);
     });
   });
 });
