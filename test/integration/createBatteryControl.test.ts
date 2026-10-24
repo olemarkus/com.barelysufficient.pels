@@ -44,6 +44,7 @@ describe('createMainBatteryControl', () => {
       isOwnershipReady: () => true,
       hasPendingOwnershipGeneration: () => pendingOwnership,
       getHomeIdForDevice: () => 'main',
+      isDeviceZoneUnknown: () => false,
     } as unknown as HomeMembershipPort;
     const ctx = {
       homey: { settings, flow: { getTriggerCard: vi.fn() } },

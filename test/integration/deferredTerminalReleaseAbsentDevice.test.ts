@@ -36,6 +36,7 @@ const buildCtx = () => {
       isOwnershipReady: () => true,
       hasPendingOwnershipGeneration: () => false,
       isMainHomeActuationFenced: () => false,
+      isDeviceZoneUnknown: () => false,
       getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set() }),
     } as unknown as AppContext['homeMembership'],
     deviceManager: { setCapability: vi.fn(), applyDeviceTargets: vi.fn() } as unknown as AppContext['deviceManager'],

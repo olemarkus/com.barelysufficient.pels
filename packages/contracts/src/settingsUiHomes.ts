@@ -2,7 +2,7 @@
  * Typed payload for the read-only `ui_homes` settings-UI endpoint (multi-home).
  *
  * Structural mirror of the runtime's `lib/home` domain shapes (`SubHomeConfig`,
- * `HomeMembership`, `ZoneTree`): contracts cannot import runtime modules, so
+ * `HomeMembershipListing`, `ZoneTree`): contracts cannot import runtime modules, so
  * the composing handler (`setup/settingsUiApi.ts`) type-checks the mirror
  * against the domain values it serves. `ui_homes` itself is read-only. The
  * settings UI sends area and Main-meter mutations through the guarded

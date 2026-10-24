@@ -6,7 +6,8 @@
  * managed device the owner could switch.
  *
  * Unknown membership lists no battery: the port not wired yet (the boot
- * window), ownership not settled, or an ownership change not yet committed.
+ * window), ownership not settled, an ownership change not yet committed, or the
+ * battery held out of every home for a zone the tree does not know yet.
  * Membership then serves a fallback or the previous owner, and a battery shown
  * as Main's on that guess could be switched as one.
  */
@@ -18,14 +19,15 @@ type ListedDeviceCandidate = { id: string; isBatteryOrSolar: boolean; deviceClas
 
 /**
  * Whether the device is a Main-home member on settled membership: the port
- * wired, ownership ready, and no ownership change pending. Unknown membership
- * answers false (see the header).
+ * wired, ownership ready, no ownership change pending, and the device not held
+ * out of every home. Unknown membership answers false (see the header).
  */
 export const isSettledMainHomeMember = (membership: HomeMembershipPort | undefined, deviceId: string): boolean => (
   membership !== undefined
   && membership.isOwnershipReady()
   && !membership.hasPendingOwnershipGeneration()
   && membership.getHomeIdForDevice(deviceId) === MAIN_HOME_ID
+  && !membership.isDeviceZoneUnknown(deviceId)
 );
 
 export function isListedWholeHomeDevice(

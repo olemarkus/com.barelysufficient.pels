@@ -343,6 +343,7 @@ describe('settings-UI smart-task edit lane: sub-home rejection', () => {
         isOwnershipReady: () => true,
         hasPendingOwnershipGeneration: () => false,
         isMainHomeActuationFenced: () => true,
+        isDeviceZoneUnknown: () => false,
         getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set() }),
       } as unknown as AppContext['homeMembership'],
     });
@@ -375,6 +376,7 @@ describe('smart-task membership and authority predicates', () => {
       isOwnershipReady: () => homeId !== null && homeId !== undefined,
       hasPendingOwnershipGeneration: () => false,
       isMainHomeActuationFenced: () => fenced,
+      isDeviceZoneUnknown: () => false,
       getConfiguredMeterSources: () => ({
         state: 'resolved',
         deviceIds: meterDeviceIds,
@@ -429,6 +431,45 @@ describe('smart-task membership and authority predicates', () => {
     });
   });
 
+  it('offers no smart task on a device held out of every home, and offers it again once placed', () => {
+    let heldOut = true;
+    const ctx = createAppContextMock({
+      homeMembership: {
+        getHomeIdForDevice: () => 'main',
+        isOwnershipReady: () => true,
+        hasPendingOwnershipGeneration: () => false,
+        isMainHomeActuationFenced: () => false,
+        isDeviceZoneUnknown: (deviceId: string) => heldOut && deviceId === 'heater-moved',
+        getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set<string>() }),
+      } as unknown as AppContext['homeMembership'],
+    });
+    for (const [id, name] of [['heater-1', 'Hall heater'], ['heater-moved', 'Moved heater']] as const) {
+      ctx.latestTargetSnapshot.push(transportSnapshotFixture({
+        available: true,
+        id,
+        expectedPowerKw: 1, expectedPowerSource: 'default',
+        name,
+        managed: true,
+        measuredPowerKw: 0,
+        targets: [],
+      }));
+    }
+
+    expect(isSmartTaskDeviceInMainHome(ctx, 'heater-moved')).toBe(true);
+    expect(resolveSmartTaskHomeScope(ctx, 'heater-moved')).toBe('unavailable');
+    expect(readCreateSmartTaskCandidateDevices(ctx, () => null)).toEqual({
+      state: 'ready',
+      devices: [expect.objectContaining({ id: 'heater-1' })],
+    });
+
+    heldOut = false;
+    expect(resolveSmartTaskHomeScope(ctx, 'heater-moved')).toBe('main');
+    expect(readCreateSmartTaskCandidateDevices(ctx, () => null)).toEqual({
+      state: 'ready',
+      devices: [expect.objectContaining({ id: 'heater-1' }), expect.objectContaining({ id: 'heater-moved' })],
+    });
+  });
+
   it('keeps authoritative source identity durable across sub-home membership and a Main collision fence', () => {
     expect(resolveSmartTaskHomeScope(
       ctxWithHomeId('h_cabin', false, new Set(['meter-1'])),
@@ -447,6 +488,7 @@ describe('smart-task membership and authority predicates', () => {
         isOwnershipReady: () => true,
         hasPendingOwnershipGeneration: () => false,
         isMainHomeActuationFenced: () => true,
+        isDeviceZoneUnknown: () => false,
         getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set() }),
       } as unknown as AppContext['homeMembership'],
       latestTargetSnapshot: transportSnapshotFixtures([{
@@ -548,6 +590,7 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
         isOwnershipReady: () => true,
         hasPendingOwnershipGeneration: () => false,
         isMainHomeActuationFenced: () => fenced,
+        isDeviceZoneUnknown: () => false,
         getConfiguredMeterSources: () => ({
           state: 'resolved',
           deviceIds: meterDeviceIds,

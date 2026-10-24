@@ -7,9 +7,17 @@
  *   belongs to the implicit main home.
  * - An explicit pin ({@link DeviceHomeAssignments}) overrides the zone rule;
  *   pinning to `'main'` opts a device out of a surrounding sub-home.
- * - Fail-safe: a pin to a nonexistent homeId falls back to the zone rule, and
- *   an unknown/missing zone, broken parent chain, or parent cycle resolves to
- *   main — both visibly, as `source: 'fallback'`.
+ * - Held out: while meter areas exist, a device whose zone the committed zone
+ *   tree does not contain (a zone created after the tree was read) belongs to
+ *   NO home until the tree knows the zone. Main would otherwise plan and
+ *   actuate it against its own meter while it may sit behind an area's (owner
+ *   ruling 2026-10-24). It lists under Main meanwhile.
+ * - Fail-safe: a pin to a nonexistent homeId falls back to the zone rule (so
+ *   such a device can be held out too), and a missing zone, broken parent
+ *   chain, or parent cycle resolves to main — both visibly, as
+ *   `source: 'fallback'`. An unknown zone resolves to main the same way while
+ *   no meter area exists (every device is Main's then) or before any zone tree
+ *   has committed (the actuation fence holds then).
  *
  * Pure over typed inputs: the setup-layer caller validates the zone tree and
  * persisted config before handing them here — this module never re-validates.
@@ -20,8 +28,8 @@ import {
   zoneAncestryPath,
   type DeviceHomeAssignments,
   type HomeId,
+  type MembershipZoneTree,
   type SubHomeConfig,
-  type ZoneTree,
 } from './homeConfig';
 
 /**
@@ -31,6 +39,7 @@ import {
  * - `'pin'` — an explicit pin to an existing home was honored.
  * - `'fallback'` — a fail-safe path: dangling pin (fell back to the zone
  *   rule), or unusable zone data (missing zone, broken chain, cycle → main).
+ *   A held-out device lists with this source too.
  *
  * Control decisions consume only `homeId`; `source` is diagnostics and
  * settings-UI display ONLY — consumers must never branch control behaviour on
@@ -38,11 +47,34 @@ import {
  */
 export type HomeMembershipSource = 'zone' | 'pin' | 'fallback';
 
-/** Resolved membership: which home, and how it was decided. */
-export type HomeMembership = {
+/**
+ * Resolved membership: the home a device belongs to and how that was decided,
+ * or held out of every home for a zone the committed tree lacks (see the
+ * module doc).
+ */
+export type HomeMembership =
+  | { state: 'member'; homeId: HomeId; source: HomeMembershipSource }
+  | {
+    state: 'held_out';
+    /** The device's zone, which the committed zone tree does not contain. */
+    zoneId: string;
+  };
+
+/**
+ * Where a membership lists: a member under its own home, a held-out device
+ * under Main as a fallback. The view for listings and the `ui_homes`
+ * diagnostics; planning and actuation ask whether a device is held out.
+ */
+export type HomeMembershipListing = {
   homeId: HomeId;
   source: HomeMembershipSource;
 };
+
+export const listHomeMembership = (membership: HomeMembership): HomeMembershipListing => (
+  membership.state === 'member'
+    ? { homeId: membership.homeId, source: membership.source }
+    : { homeId: MAIN_HOME_ID, source: 'fallback' }
+);
 
 /**
  * Home-membership producer contract for meter-source fencing.
@@ -70,17 +102,21 @@ export type ConfiguredMeterSources = Readonly<{
  * never through this port.
  */
 export type HomeMembershipPort = {
-  /** Resolved home for a device; an unknown device belongs to the main home. */
+  /**
+   * The home a device lists under: its resolved home, and Main for an unknown
+   * device or one held out of every home ({@link isDeviceZoneUnknown}).
+   */
   getHomeIdForDevice(deviceId: string): HomeId;
   /**
-   * While meter areas run, a device following the zone rule whose zone the
-   * cached zone tree does not contain yet (it was just moved into a zone
-   * created after the tree was read). Its membership still reads Main, but no
-   * home plans or actuates it until the tree knows the zone: Main would
-   * otherwise control it against the wrong meter (owner ruling 2026-10-24).
+   * While meter areas run, whether the device's membership resolved as held
+   * out: it follows the zone rule and the committed zone tree does not contain
+   * its zone yet (it was just moved into a zone created after the tree was
+   * read). It lists under Main, but no home plans or actuates it until the
+   * tree knows the zone: Main would otherwise control it against the wrong
+   * meter (owner ruling 2026-10-24).
    */
   isDeviceZoneUnknown(deviceId: string): boolean;
-  /** `homeId` per snapshot device — no `source`, by design. */
+  /** Listed `homeId` per snapshot device — no `source`, by design. */
   getMembershipMap(): Readonly<Record<string, HomeId>>;
   /**
    * Producer-resolved source devices that no home may plan or actuate, plus
@@ -128,7 +164,7 @@ export type HomeMembershipPort = {
 };
 
 type ResolveDeviceHomeInput = {
-  zones: ZoneTree;
+  zones: MembershipZoneTree;
   subHomes: readonly SubHomeConfig[];
   pins: DeviceHomeAssignments;
   deviceId: string;
@@ -137,21 +173,31 @@ type ResolveDeviceHomeInput = {
 };
 
 // Zone-rule outcome: the deepest containing sub-home's id (or main as the
-// complement) on a healthy walk, `null` when the zone data is unusable
-// (missing zone, broken parent chain, parent cycle) and the caller must
-// fail-safe. Deepest-wins: the ancestry path is leaf-first, so the FIRST
-// zone on it that is some sub-home's root belongs to the deepest sub-home —
-// this holds even for nested roots that v1 validation flags but persisted
-// config may still contain. Duplicate roots resolve to the first sub-home in
-// config order (deterministic).
-const zoneRuleHomeId = (
-  zones: ZoneTree,
+// complement) on a healthy walk; `zone_unknown` when the committed tree does
+// not contain the device's zone itself; `unusable` for every other gap (no
+// tree yet, no device zone, broken parent chain, parent cycle), where the
+// caller must fail-safe. Deepest-wins: the ancestry path is leaf-first, so the
+// FIRST zone on it that is some sub-home's root belongs to the deepest
+// sub-home — this holds even for nested roots that v1 validation flags but
+// persisted config may still contain. Duplicate roots resolve to the first
+// sub-home in config order (deterministic).
+type ZoneRuleOutcome =
+  | { state: 'home'; homeId: HomeId }
+  | { state: 'zone_unknown'; zoneId: string }
+  | { state: 'unusable' };
+
+const resolveZoneRule = (
+  zones: MembershipZoneTree,
   subHomes: readonly SubHomeConfig[],
   deviceZoneId: string | null,
-): HomeId | null => {
-  if (deviceZoneId === null) return null;
-  const ancestry = zoneAncestryPath(zones, deviceZoneId);
-  if (ancestry === null) return null;
+): ZoneRuleOutcome => {
+  if (zones.kind === 'pending' || deviceZoneId === null) return { state: 'unusable' };
+  const { tree } = zones;
+  // Own-key guard, as in `zoneAncestryPath`: an inherited-property id must
+  // read as a zone the tree lacks, never as Object.prototype machinery.
+  if (!Object.hasOwn(tree, deviceZoneId)) return { state: 'zone_unknown', zoneId: deviceZoneId };
+  const ancestry = zoneAncestryPath(tree, deviceZoneId);
+  if (ancestry === null) return { state: 'unusable' };
   const homeIdByRootZone = new Map<string, HomeId>();
   for (const subHome of subHomes) {
     if (!homeIdByRootZone.has(subHome.rootZoneId)) {
@@ -160,24 +206,25 @@ const zoneRuleHomeId = (
   }
   for (const zoneId of ancestry) {
     const homeId = homeIdByRootZone.get(zoneId);
-    if (homeId !== undefined) return homeId;
+    if (homeId !== undefined) return { state: 'home', homeId };
   }
-  return MAIN_HOME_ID;
+  return { state: 'home', homeId: MAIN_HOME_ID };
 };
 
 /** Resolve which home a device belongs to. Pure; see the module doc for the rule. */
 export const resolveDeviceHome = (input: ResolveDeviceHomeInput): HomeMembership => {
   const { zones, subHomes, pins, deviceId, deviceZoneId } = input;
   const pin: HomeId | undefined = Object.hasOwn(pins, deviceId) ? pins[deviceId] : undefined;
-  if (pin !== undefined) {
-    if (pin === MAIN_HOME_ID || subHomes.some((subHome) => subHome.homeId === pin)) {
-      return { homeId: pin, source: 'pin' };
-    }
-    // Dangling pin: fall back to the zone rule, visibly.
-    return { homeId: zoneRuleHomeId(zones, subHomes, deviceZoneId) ?? MAIN_HOME_ID, source: 'fallback' };
+  if (pin !== undefined && (pin === MAIN_HOME_ID || subHomes.some((subHome) => subHome.homeId === pin))) {
+    return { state: 'member', homeId: pin, source: 'pin' };
   }
-  const zoneHomeId = zoneRuleHomeId(zones, subHomes, deviceZoneId);
-  return zoneHomeId === null
-    ? { homeId: MAIN_HOME_ID, source: 'fallback' }
-    : { homeId: zoneHomeId, source: 'zone' };
+  // A dangling pin falls back to the zone rule, visibly.
+  const zoneRule = resolveZoneRule(zones, subHomes, deviceZoneId);
+  if (zoneRule.state === 'home') {
+    return { state: 'member', homeId: zoneRule.homeId, source: pin === undefined ? 'zone' : 'fallback' };
+  }
+  if (zoneRule.state === 'zone_unknown' && subHomes.length > 0) {
+    return { state: 'held_out', zoneId: zoneRule.zoneId };
+  }
+  return { state: 'member', homeId: MAIN_HOME_ID, source: 'fallback' };
 };

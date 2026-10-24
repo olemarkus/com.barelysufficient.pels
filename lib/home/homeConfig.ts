@@ -44,6 +44,16 @@ export type ZoneNode = {
 /** Zone forest keyed by zone id; `parent: null` marks a root. */
 export type ZoneTree = Record<string, ZoneNode>;
 
+/**
+ * The zone tree membership resolves against. `pending` until the transport's
+ * first fetch commits: the zone rule then places nobody and active meter areas
+ * stay fenced. After that, the last committed tree, which a later failed fetch
+ * never replaces.
+ */
+export type MembershipZoneTree =
+  | { kind: 'pending' }
+  | { kind: 'committed'; tree: ZoneTree };
+
 export type SubHomeConfig = {
   /** Stable generated id; non-empty, never `'main'`, never contains `':'`. */
   homeId: HomeId;
