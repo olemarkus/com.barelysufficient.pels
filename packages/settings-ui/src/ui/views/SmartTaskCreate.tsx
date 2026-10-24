@@ -37,6 +37,7 @@ export type SmartTaskCreateViewProps = {
   // Who starts the device once the task is done (`deviceStartRule.ts`), shown
   // on the preview; null when there is nothing to state.
   afterTaskLine: string | null;
+  solarNote: string | null;
   actions: SmartTaskCreateActions;
 };
 
@@ -83,6 +84,7 @@ const ComposeFields = ({ step, view }: {
   const disabled = view.snapshot.busy !== 'idle';
   return (
     <>
+      {view.solarNote && <p class="pels-notice-info">{view.solarNote}</p>}
       <label class="field">
         <span class="field__label pels-text-settings-label">
           {CREATE_SMART_TASK_WIDGET_COPY.goalLabel} ({device.unitSymbol})

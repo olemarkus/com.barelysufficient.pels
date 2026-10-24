@@ -1,3 +1,4 @@
+import { currentSetupJourney, trackSetupSave } from './setupJourneyState.ts';
 import {
   readPowerLimitSettings,
   syncPowerLimitSwitches,
@@ -82,6 +83,7 @@ import {
   readCurrentCapacitySettings,
   resolveCapacityScalars,
   writeLimitsSettings,
+  writeCapacityPeriodSetting,
   writeSimulationSetting,
 } from './capacitySettingsPersistence.ts';
 import { refreshPlanSurface } from './planSurfaceRefresh.ts';
@@ -101,7 +103,8 @@ export type PowerSource = 'flow' | 'homey_energy';
 
 type CapacitySettingsCommand =
   | ({ kind: 'limits' } & PowerLimitSettings)
-  | { kind: 'simulation'; dryRun: boolean };
+  | { kind: 'simulation'; dryRun: boolean }
+  | { kind: 'period'; periodMinutes: 15 | 60 };
 
 // Mirrors the runtime snapshot's lifecycle: simulation is the boot default,
 // then only a resolved read or successful save replaces it.
@@ -116,7 +119,10 @@ let lastGoodCapacityScalars: CapacityScalarSettings = {
 
 // Whether the owner has saved a hard cap decides both the setup path's Limits
 // step and the page's offer to keep the built-in one, so they move together.
+let lastHardCapConfigured: boolean | undefined;
+
 const publishHardCapRead = (configured: boolean, scalars: CapacityScalarSettings): void => {
+  lastHardCapConfigured = configured;
   publishSetupHardCapRead(configured, scalars);
   syncHardCapChoice(configured, scalars);
 };
@@ -166,7 +172,8 @@ const renderDryRunBannerText = (text: string): void => {
 export const isSimulationBannerSuppressedOnPanel = (
   scope: SimulationBannerScope,
   activePanel: string,
-): boolean => activePanel === 'simulation' && scope !== 'areas';
+  guidedSetup = false,
+): boolean => (guidedSetup || activePanel === 'simulation' || activePanel === 'setup-review') && scope !== 'areas';
 
 // The global simulation banner shows on every tab; the Simulation-mode
 // settings page suppresses only the Main-remedy variants (see
@@ -196,7 +203,7 @@ export const syncDryRunBannerVisibility = (): void => {
   if (dryRunBanner) {
     if (content !== null) dryRunBanner.dataset.homeScope = content.scope;
     dryRunBanner.hidden = content === null
-      || isSimulationBannerSuppressedOnPanel(content.scope, state.activePanel)
+      || isSimulationBannerSuppressedOnPanel(content.scope, state.activePanel, currentSetupJourney() !== null)
       // An unread roster is not "no meter areas": only a known single home stands down.
       || isSimulationCarriedBySetupPath(hasMeterAreas === false);
   }
@@ -275,18 +282,18 @@ const syncCapacityOwnedControls = (scalars: CapacityScalarSettings): void => {
 const resolveCapacitySettingsCommand = (
   stored: CapacityScalarSettings,
   command: CapacitySettingsCommand,
-): CapacityScalarSettings => (
-  command.kind === 'limits'
-    ? {
-      ...stored,
-      capacityEnabled: command.capacityEnabled,
-      gridImportLimitKw: command.gridImportLimitKw,
-      limitKw: command.limitKw,
-      marginKw: command.marginKw,
-      periodMinutes: command.periodMinutes,
-    }
-    : { ...stored, dryRun: command.dryRun }
-);
+): CapacityScalarSettings => {
+  if (command.kind === 'limits') return {
+    ...stored,
+    capacityEnabled: command.capacityEnabled,
+    gridImportLimitKw: command.gridImportLimitKw,
+    limitKw: command.limitKw,
+    marginKw: command.marginKw,
+    periodMinutes: command.periodMinutes,
+  };
+  if (command.kind === 'period') return { ...stored, periodMinutes: command.periodMinutes };
+  return { ...stored, dryRun: command.dryRun };
+};
 
 type CapacityPowerRead =
   | { state: 'resolved'; payload: SettingsUiPowerPayload }
@@ -492,6 +499,7 @@ const saveCapacitySettingsCommand = async (
     // the 'flow' default for a user who never chose a source, and the select's
     // own change goes through the guarded seam (`savePowerSourceSetting`).
     if (command.kind === 'limits') await writeLimitsSettings(current, stored, resolved);
+    else if (command.kind === 'period') await writeCapacityPeriodSetting(current, resolved.periodMinutes);
     else await writeSimulationSetting(current, resolved.dryRun);
   } catch (caught) {
     // Started writes have settled, and each one that landed is already in the
@@ -516,20 +524,14 @@ const saveCapacitySettingsCommand = async (
   // realtime settings refresh may have established newer values for the other
   // fields while these writes were in flight; merge into that latest trusted
   // snapshot rather than restoring the pre-write read.
-  const committed = command.kind === 'limits'
-    ? {
-      ...lastGoodCapacityScalars,
-      capacityEnabled: resolved.capacityEnabled,
-      gridImportLimitKw: resolved.gridImportLimitKw,
-      limitKw: resolved.limitKw,
-      marginKw: resolved.marginKw,
-      periodMinutes: resolved.periodMinutes,
-    }
-    : { ...lastGoodCapacityScalars, dryRun: resolved.dryRun };
+  const committed = resolveCapacitySettingsCommand(lastGoodCapacityScalars, command);
   const dryRunChanged = state.dryRun !== committed.dryRun;
   commitCapacityScalars(committed);
   if (command.kind === 'limits') {
     publishHardCapRead(true, committed);
+    syncCapacityLimitControls(committed);
+  } else if (command.kind === 'period') {
+    if (lastHardCapConfigured !== undefined) publishHardCapRead(lastHardCapConfigured, committed);
     syncCapacityLimitControls(committed);
   } else {
     syncSimulationModeControl(committed.dryRun);
@@ -547,13 +549,30 @@ let limitsSaveQueue: Promise<void> = Promise.resolve();
 export const saveSettingsLimitsSettings = async () => {
   try {
     const command: CapacitySettingsCommand = { kind: 'limits', ...readPowerLimitSettings(lastGoodCapacityScalars) };
-    const save = limitsSaveQueue.then(() => saveCapacitySettingsCommand(command, 'Limits & safety saved.'));
+    const previous = limitsSaveQueue;
+    const save = trackSetupSave('limits', () => previous.then(
+      () => saveCapacitySettingsCommand(command, 'Limits & safety saved.'),
+    ));
     limitsSaveQueue = save.catch(() => undefined);
     await save;
   } catch (caught) {
     // A failed save must not leave a switch claiming a different control posture.
     syncPowerLimitSwitches(lastGoodCapacityScalars);
     throw caught;
+  }
+};
+
+export const saveCapacityPeriodSettings = async (periodMinutes: 15 | 60): Promise<void> => {
+  const previous = limitsSaveQueue;
+  const save = trackSetupSave('period', () => previous.then(
+    () => saveCapacitySettingsCommand({ kind: 'period', periodMinutes }, 'Capacity period saved.'),
+  ));
+  limitsSaveQueue = save.catch(() => undefined);
+  try {
+    await save;
+  } catch (error) {
+    syncCapacityLimitControls(lastGoodCapacityScalars);
+    throw error;
   }
 };
 

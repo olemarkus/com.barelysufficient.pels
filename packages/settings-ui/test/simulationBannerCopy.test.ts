@@ -14,6 +14,12 @@ import {
 import { resolveSimulationChipLabel } from '../../shared-domain/src/settingsHubChips.ts';
 
 describe('simulation posture resolution', () => {
+  it('leaves activation to guided review while preserving meter-area warnings', () => {
+    expect(isSimulationBannerSuppressedOnPanel('all', 'devices', true)).toBe(true);
+    expect(isSimulationBannerSuppressedOnPanel('main', 'limits', true)).toBe(true);
+    expect(isSimulationBannerSuppressedOnPanel('areas', 'limits', true)).toBe(false);
+  });
+
   it('is all_simulating only when Main and every area simulate', () => {
     expect(resolveSimulationPosture({ mainSimulating: true, areaSimulating: [] }))
       .toBe('all_simulating');
@@ -185,7 +191,7 @@ describe('simulation banner content', () => {
       simulatingAreaNames: [],
     })).toEqual({
       text: 'Simulation on — devices stay as-is',
-      actionLabel: 'Turn off simulation',
+      actionLabel: 'Review and start',
       scope: 'all',
     });
   });
@@ -208,7 +214,7 @@ describe('simulation banner content', () => {
         simulatingAreaNames,
       })).toEqual({
         text: 'Main home simulation on — Main home devices stay as-is',
-        actionLabel: 'Turn off Main home simulation',
+        actionLabel: 'Review Main home setup',
         scope: 'main',
       });
     }
@@ -221,7 +227,7 @@ describe('simulation banner content', () => {
       simulatingAreaNames: [],
     })).toEqual({
       text: 'Main home simulation on — Main home devices stay as-is',
-      actionLabel: 'Turn off Main home simulation',
+      actionLabel: 'Review Main home setup',
       scope: 'main',
     });
   });

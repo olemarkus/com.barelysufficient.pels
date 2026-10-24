@@ -138,8 +138,9 @@ test.describe('Settings UI (smoke)', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     await expect(page.locator('#dry-run-banner')).toContainText('Simulation on — devices stay as-is');
-    await expect(page.locator('#simulation-disable-button')).toHaveText('Turn off simulation');
+    await expect(page.locator('#simulation-disable-button')).toHaveText('Review and start');
     await page.locator('#simulation-disable-button').click();
+    await page.getByText('Start managing', { exact: true }).click();
 
     await expect(page.locator('#toast')).toContainText('Simulation mode updated.');
     await expect(page.locator('#dry-run-banner')).toBeHidden();

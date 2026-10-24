@@ -1,3 +1,4 @@
+import { trackSetupSave } from '../setupJourneyState.ts';
 import { logSettingsError } from '../logging.ts';
 import { savePriceOptimizationSettings } from '../priceOptimization.ts';
 import { state, type PriceOptimizationConfig } from '../state.ts';
@@ -37,7 +38,7 @@ export const savePriceOptimizationPatch = async (
   const patchedKeys = Object.keys(patch) as (keyof PriceOptimizationConfig)[];
   state.priceOptimizationSettings[deviceId] = { ...(previous ?? fresh), ...patch };
   try {
-    await savePriceOptimizationSettings();
+    await trackSetupSave('price_optimization_settings', savePriceOptimizationSettings);
     return true;
   } catch (error) {
     const current = state.priceOptimizationSettings[deviceId];

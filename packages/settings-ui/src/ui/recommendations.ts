@@ -42,22 +42,15 @@ import {
   renderSetupRecommendationsView,
 } from './views/SetupRecommendationsView.tsx';
 import {
-  checkFlowConflictNow,
-  hasEvSocFlowReporter,
   readEvSocFlowReporters,
   refreshFlowConflictFacts,
   refreshFlowConflictFactsExplicit,
   refreshEvSocReportersIfNeeded,
 } from './flowConflictRefresh.ts';
-import { showToast, showToastError } from './toast.ts';
-import { keepPriceSchemeInForce } from './priceSettingsPersistence.ts';
+import { showToastError } from './toast.ts';
+import { resolveRecommendationTask, type RecommendationNavigation } from './recommendationActions.ts';
+export type { RecommendationNavigation } from './recommendationActions.ts';
 import { subscribeToHomeScope } from './homeScope.ts';
-
-export type RecommendationNavigation = {
-  openPanel: (panelId: string) => void;
-  // `focus` names the setting to land on inside the device page.
-  openDevice: (deviceId: string, focus: 'top' | 'start-policy' | 'shed-limit') => void;
-};
 
 // Browser-owned acknowledgement state. The runtime acts on none of it; it only
 // serves the key in the settings bootstrap.
@@ -276,53 +269,15 @@ const applyCarInventoryRead = async (result: PromiseSettledResult<unknown>): Pro
 
 const runRecommendationAction = (recommendation: SetupRecommendation): void => {
   const { target } = recommendation;
-  if (target.kind === 'flow-conflict-check') {
+  const task = resolveRecommendationTask(
+    target, navigationRead.state === 'resolved' ? navigationRead.navigation : null,
+  );
+  if (task) {
     if (busyRecommendationId !== null) return;
     busyRecommendationId = recommendation.id;
     refreshRecommendationSurfaces();
-    void checkFlowConflictNow(target.deviceId)
-      .then((hasConflict) => showToast(
-        hasConflict ? 'PELS still finds Flow control for this device.' : 'No conflicting Flow control found.',
-        hasConflict ? 'warn' : 'ok',
-      ))
-      .catch((error) => showToastError(error, 'Could not check Homey Flows. Try again.'))
-      .finally(() => {
-        busyRecommendationId = null;
-        refreshRecommendationSurfaces();
-      });
-    return;
-  }
-  if (target.kind === 'ev-soc-flow-conflict-check') {
-    if (busyRecommendationId !== null) return;
-    busyRecommendationId = recommendation.id;
-    refreshRecommendationSurfaces();
-    void refreshFlowConflictFactsExplicit()
-      .then(() => {
-        const hasSelectedCar = (state.evCarAssociations[target.deviceId]?.carIds.length ?? 0) > 0;
-        const hasConflict = hasSelectedCar && hasEvSocFlowReporter(target.deviceId);
-        return showToast(
-          hasConflict ? 'PELS still finds battery reporting for this charger.' : 'No unused battery reporting found.',
-          hasConflict ? 'warn' : 'ok',
-        );
-      })
-      .catch((error) => showToastError(error, 'Could not check Homey Flows. Try again.'))
-      .finally(() => {
-        busyRecommendationId = null;
-        refreshRecommendationSurfaces();
-      });
-    return;
-  }
-  if (target.kind === 'keep-price-source') {
-    if (busyRecommendationId !== null) return;
-    busyRecommendationId = recommendation.id;
-    refreshRecommendationSurfaces();
-    void keepPriceSchemeInForce(target.scheme)
-      .then((kept) => {
-        if (!kept) return showToast('The price source changed. Check it under Electricity prices.', 'warn');
-        if (navigationRead.state === 'resolved') navigationRead.navigation.openPanel('devices');
-        return undefined;
-      })
-      .catch((error) => showToastError(error, 'Could not save the price source. Try again.'))
+    void task.run()
+      .catch((error) => showToastError(error, task.failureMessage))
       .finally(() => {
         busyRecommendationId = null;
         refreshRecommendationSurfaces();
@@ -410,6 +365,7 @@ export const refreshRecommendationSurfaces = (): void => {
       onRetry: retryRecommendationData,
     });
   }
+  document.dispatchEvent(new Event('pels:recommendations-updated'));
 };
 
 export const refreshAfterSetupRecommendations = async (): Promise<void> => {
@@ -565,3 +521,14 @@ export const initRecommendationSurfaces = (nextNavigation: RecommendationNavigat
   });
   refreshRecommendationSurfaces();
 };
+
+/** Shared by the setup context and the normal recommendation card. */
+export const readActiveRecommendation = (id: string): SetupRecommendation | null => {
+  if (!hasLoadedDismissals(dismissalRead)) return null;
+  return groupSetupRecommendations(resolveCurrentRecommendations(readAfterSetupFacts()), dismissalRead.dismissals)
+    .active.find((recommendation) => recommendation.id === id) ?? null;
+};
+
+export const dismissSetupRecommendation = (recommendation: SetupRecommendation): Promise<void> => (
+  runSerializedDismissalWrite(() => writeDismissal(recommendation, true))
+);

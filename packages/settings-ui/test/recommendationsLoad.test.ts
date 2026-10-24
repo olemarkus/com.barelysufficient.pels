@@ -256,7 +256,7 @@ describe('recommendation loading', () => {
     callApi.mockResolvedValue(resolvedCars());
     const openDevice = vi.fn();
     const listeners = vi.spyOn(document, 'addEventListener');
-    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice });
+    recommendations.initRecommendationSurfaces({ useQuarterHour: vi.fn().mockResolvedValue(undefined), openPanel: vi.fn(), openDevice });
     try {
       await recommendations.loadRecommendationData();
       document.querySelector('md-filled-tonal-button')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -415,7 +415,7 @@ describe('recommendation loading', () => {
 
     await recommendations.loadRecommendationData();
     const listeners = vi.spyOn(document, 'addEventListener');
-    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+    recommendations.initRecommendationSurfaces({ useQuarterHour: vi.fn().mockResolvedValue(undefined), openPanel: vi.fn(), openDevice: vi.fn() });
     try {
       const surface = document.getElementById('setup-recommendations-root');
       expect(surface?.textContent).toContain('Heat in cheap hours');
@@ -463,7 +463,7 @@ describe('recommendation loading', () => {
     // No charger has a car selected: the boot reads no Flows.
     expect(refreshFlowConflictsApi).not.toHaveBeenCalled();
     const listeners = vi.spyOn(document, 'addEventListener');
-    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+    recommendations.initRecommendationSurfaces({ useQuarterHour: vi.fn().mockResolvedValue(undefined), openPanel: vi.fn(), openDevice: vi.fn() });
     try {
       const surface = document.getElementById('setup-recommendations-root');
       expect(surface?.textContent).toContain('Use built-in device control for Connected 300');
@@ -631,7 +631,7 @@ describe('recommendation loading', () => {
 
     await recommendations.loadRecommendationData();
     const listeners = vi.spyOn(document, 'addEventListener');
-    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+    recommendations.initRecommendationSurfaces({ useQuarterHour: vi.fn().mockResolvedValue(undefined), openPanel: vi.fn(), openDevice: vi.fn() });
     try {
       const surface = document.getElementById('setup-recommendations-root');
       document.dispatchEvent(new CustomEvent('pels:tab-shown', { detail: { tabId: 'recommendations' } }));
@@ -678,7 +678,7 @@ describe('recommendation loading', () => {
     const surface = document.getElementById('setup-recommendations-root');
     expect(surface?.textContent).not.toContain('Remove unused battery reporting for Easee');
     const listeners = vi.spyOn(document, 'addEventListener');
-    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+    recommendations.initRecommendationSurfaces({ useQuarterHour: vi.fn().mockResolvedValue(undefined), openPanel: vi.fn(), openDevice: vi.fn() });
     try {
       document.dispatchEvent(new CustomEvent('pels:tab-shown', { detail: { tabId: 'recommendations' } }));
 
@@ -721,7 +721,7 @@ describe('recommendation loading', () => {
       .mockResolvedValue({ devices: [{ id: charger.id }], evSocReporters: [] });
 
     const listeners = vi.spyOn(document, 'addEventListener');
-    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+    recommendations.initRecommendationSurfaces({ useQuarterHour: vi.fn().mockResolvedValue(undefined), openPanel: vi.fn(), openDevice: vi.fn() });
     try {
       const surface = document.getElementById('setup-recommendations-root');
       document.dispatchEvent(new CustomEvent('pels:tab-shown', { detail: { tabId: 'recommendations' } }));
@@ -812,7 +812,7 @@ describe('recommendation loading', () => {
 
     await recommendations.loadRecommendationData();
     const listeners = vi.spyOn(document, 'addEventListener');
-    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+    recommendations.initRecommendationSurfaces({ useQuarterHour: vi.fn().mockResolvedValue(undefined), openPanel: vi.fn(), openDevice: vi.fn() });
     try {
       const surface = document.getElementById('setup-recommendations-root');
       const checkButtons = () => [...surface!.querySelectorAll('md-filled-tonal-button')]
@@ -890,7 +890,7 @@ describe('recommendation loading', () => {
       surplusPoolReachable: false,
     });
     const listeners = vi.spyOn(document, 'addEventListener');
-    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+    recommendations.initRecommendationSurfaces({ useQuarterHour: vi.fn().mockResolvedValue(undefined), openPanel: vi.fn(), openDevice: vi.fn() });
     try {
       const surface = document.getElementById('setup-recommendations-root');
       // The body also says "Check again", so wait on the button, not the surface text.
@@ -1022,7 +1022,7 @@ describe('recommendation loading', () => {
     callApi.mockResolvedValue(resolvedCars());
     await recommendations.loadRecommendationData();
     const listeners = vi.spyOn(document, 'addEventListener');
-    recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+    recommendations.initRecommendationSurfaces({ useQuarterHour: vi.fn().mockResolvedValue(undefined), openPanel: vi.fn(), openDevice: vi.fn() });
     const surface = document.getElementById('setup-recommendations-root');
     try {
       // Each `devices_updated` push re-reads the car list (`realtime.ts`).
@@ -1274,7 +1274,7 @@ it.each(['failed_read', 'tab_revisit'] as const)('refreshes charging recommendat
   await recommendations.loadRecommendationData();
   if (scenario === 'failed_read') chargingApi.mockRejectedValueOnce(new Error('Unavailable'));
   const listeners = vi.spyOn(document, 'addEventListener');
-  recommendations.initRecommendationSurfaces({ openPanel: vi.fn(), openDevice: vi.fn() });
+  recommendations.initRecommendationSurfaces({ useQuarterHour: vi.fn().mockResolvedValue(undefined), openPanel: vi.fn(), openDevice: vi.fn() });
   try {
     const initialCalls = chargingApi.mock.calls.length;
     document.dispatchEvent(new Event('charging-control-changed'));

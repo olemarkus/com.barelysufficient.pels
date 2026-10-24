@@ -144,6 +144,12 @@ export const revealDeviceDetailFocus = (focus: DeviceDetailFocus): void => {
   if (focus === 'start-policy') revealStartPolicyRow();
   if (focus === 'power-limit') revealPowerLimitRow();
   if (focus === 'shed-limit') revealShedLimitRow();
+  if (focus === 'solar') {
+    const row = ['device-detail-surplus-opt-row', 'device-detail-dump-load-row', 'device-detail-surplus-track-row']
+      .map((id) => document.getElementById(id))
+      .find((element) => element !== null && !element.hidden);
+    revealDetailRow(row ?? document.getElementById('device-detail-managed-row'));
+  }
 };
 
 /** Sync the row for the open device. */

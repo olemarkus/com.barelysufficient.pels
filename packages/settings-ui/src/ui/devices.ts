@@ -1,3 +1,9 @@
+import { render } from 'preact';
+import { SetupDevicePicker } from './views/SetupJourney.tsx';
+import { currentSetupJourney, isSolarSetupJourney, trackSetupSave } from './setupJourneyState.ts';
+import { readSetupDeviceChoices } from './setupDevices.ts';
+import { refreshHomeScopeAndNotify } from './homeScope.ts';
+import { notifySetupPathChange } from './setupPathFacts.ts';
 import { dispatchOpenDeviceDetail } from './cardActivation.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import { DEVICE_POWER_SUPPORT_HINT, POWER_READING_REMEDY } from './deviceControlAvailability.ts';
@@ -176,7 +182,15 @@ const withInitialLoadGuard = (
   await handler(checked);
 };
 
+const rollbackManagedIntent = (deviceId: string, generation: number, previous: boolean | undefined): void => {
+  if (!isCurrentManagedControlIntent(deviceId, generation)) return;
+  if (previous === undefined) delete state.managedMap[deviceId];
+  else state.managedMap[deviceId] = previous;
+  renderDevices(state.latestDevices);
+};
+
 const buildManagedToggleHandler = (deviceId: string) => withInitialLoadGuard('managed', async (checked) => {
+  const previousManaged = state.managedMap[deviceId];
   const intentGeneration = beginManagedControlIntent(deviceId);
   if (isHomeBatteryDeviceId(deviceId)) {
     const rerender = () => {
@@ -203,8 +217,9 @@ const buildManagedToggleHandler = (deviceId: string) => withInitialLoadGuard('ma
   renderPriceConfigDevices();
   // Debounced save: coalesces rapid toggles into single save
   try {
-    await debouncedSetSetting(MANAGED_DEVICES, () => ({ ...state.managedMap }));
+    await trackSetupSave(MANAGED_DEVICES, () => debouncedSetSetting(MANAGED_DEVICES, () => ({ ...state.managedMap })));
   } catch (error) {
+    rollbackManagedIntent(deviceId, intentGeneration, previousManaged);
     await logSettingsError('Failed to update managed device', error, 'device list');
     await showToastError(error, 'Failed to update managed devices.');
     return;
@@ -430,9 +445,32 @@ const buildDeviceClassCard = (group: DeviceGroup): HTMLElement => {
   return card;
 };
 
+const renderSetupDevices = (devices: SettingsUiDeviceListItem[], target: HTMLElement): void => {
+  const solar = isSolarSetupJourney();
+  if (!target.querySelector('.setup-journey__devices')) target.replaceChildren();
+  render(SetupDevicePicker({
+    choices: readSetupDeviceChoices(devices, solar),
+    solar,
+    onManaged: (id, value) => {
+      void trackSetupSave(`managed:${id}`, () => buildManagedToggleHandler(id)(value))
+        .catch((error) => showToastError(error, 'Could not save the device.'))
+        .finally(() => { renderDevices(state.latestDevices); notifySetupPathChange(); });
+    },
+    onOpen: (id) => dispatchOpenDeviceDetail(id, solar ? 'solar' : 'top'),
+    onRetry: () => { void refreshHomeScopeAndNotify(); },
+  }), target);
+};
+
 export const renderDevices = (devices: SettingsUiDeviceListItem[]) => {
   const target = deviceCardList;
   if (!target) return;
+  const journey = currentSetupJourney();
+  if (journey === 'devices' || journey === 'solar') {
+    emptyState.hidden = true;
+    renderSetupDevices(devices, target);
+    return;
+  }
+  render(null, target);
   target.replaceChildren();
   if (!devices.length) {
     emptyState.hidden = false;
