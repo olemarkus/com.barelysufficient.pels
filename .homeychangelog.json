@@ -691,5 +691,8 @@
   },
   "3.23.1": {
     "en": "On the Power by the Hour price source, PELS can now price exported energy from that app's own feed-in price: under Where the price comes from, choose Power by the Hour, and PELS uses the feed-in price the app publishes after the export markups set on its price device. The settings page also makes far fewer calls to Homey, so it opens faster, also in the browser away from home.\n\nDevice cards now say when a price level raised or lowered a temperature target, and when a stepped device's level change goes unconfirmed, pointing to the Flow that reports the level back. The meter area editor checks names and limits as you type instead of refusing the save, the weather card says when your Homey has no location set, and the activity log folds a device switching back and forth into one row. May reserve power to start sooner now lasts through busy minutes and re-arms each hour, an EV charger keeps its car's battery level through brief read failures, and the smart task preview's price curve matches the prices the plan used."
+  },
+  "3.23.2": {
+    "en": "New Report a problem, in Settings, on each device's page and next to each activity entry. Describe what happened and when, and PELS adds the device activity around that time and the current details. You see the full report before Send report shares it with the developer through Homey, together with the app's logs, and you can copy it instead."
   }
 }
