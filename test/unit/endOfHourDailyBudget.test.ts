@@ -6,11 +6,6 @@
 import { computeDailyUsageSoftLimit } from '../../lib/plan/planBudget';
 
 describe('End-of-Hour Mode', () => {
-  // Note: Testing computeDynamicSoftLimit with specific times is difficult because
-  // it uses Date.now() internally. The key behavior we want to verify here is that
-  // daily budget does NOT apply the end-of-hour drain (the hourly drain itself is
-  // covered in planBudget.test.ts).
-
   describe('Daily budget - never applies the end-of-hour drain', () => {
     test('allows burst rate even in last minutes of day', () => {
       // Setup: 23:55 (5 minutes until end of day)

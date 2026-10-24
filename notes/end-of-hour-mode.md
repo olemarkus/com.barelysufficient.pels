@@ -14,7 +14,7 @@ average from its first instant.
 
 Within an hour the planner lets you **burst** — spend the remaining period
 budget at whatever instantaneous rate fits the time left
-(`burstRate = remainingKWh / remainingHours`). Left unchecked, that invites an
+(`burstRate = remainingKWh / remainingHours`). Left unchecked, that invites a
 boundary burst: devices ramp up near the end to use leftover budget, then carry
 that high draw into the next period.
 
@@ -39,6 +39,18 @@ sustainable   = limitKw - marginKw                       // steady kW == kWh/h
 drainCeiling  = sustainable * e^(minutesRemaining / TAU)  // TAU = EOH_DRAIN_TAU_MIN
 allowedKw     = min(burstRate, drainCeiling)
 ```
+
+Hourly `burstRate` uses the **actual time left**, without a minimum-time floor.
+The drain already bounds the allowed power as the hour ends. At exactly `:00`,
+`getCurrentHourContext` selects the new hour with 60 minutes remaining, so the
+hourly divisor never reaches zero.
+
+The former ten-minute divisor floor made a busy hour taper from `:50` even when
+the drain ceiling allowed more power. For example, 0.55 kWh left at `:59` became
+3.3 kW under that floor, below even a 4.8 kW sustainable rate. A shorter floor
+would keep the same competing taper over a shorter window. Hourly control now
+has only the two intended constraints: spend no more than the remaining energy
+allows, and follow the exponential ceiling toward the boundary.
 
 - **Far from the boundary** the ceiling sits far above any feasible burst
   (`e^(minutesRemaining/TAU)` is large), so the budget-driven `burstRate`
@@ -118,25 +130,33 @@ restoring the step.
 - **Planner ceiling reaches the sustainable rate at the hour boundary.** `e^0 = 1`,
   so at `minutesRemaining = 0` the ceiling is exactly `sustainable`; actual
   device draw can lag if command/effect latency spans the boundary.
-- **`burstRate` floor.** `remainingHours` is floored at 10 minutes for an hour
-  and 10 seconds (one meter poll) for a quarter so the burst rate stays finite
-  as the period ends; this is a divisor floor only, unrelated to the drain. A
-  quarter's floor stays short because its pace is capped at the sustainable
-  rate anyway, and a longer floor understates the pace in the final minute.
+- **Hourly pacing uses actual remaining time.** There is no hourly divisor
+  floor. A nearly-spent allowance can still bind below the drain; the drain
+  never raises the pace above what the remaining energy permits.
+- **The quarter keeps its ten-second divisor floor** (one meter poll), with
+  its pace capped at the sustainable rate. A longer floor understates the pace
+  in the final minute.
 
 ## Daily budget is exempt by design
 
 `computeDailyUsageSoftLimit` does **not** apply the drain (`allowedKw = burstRate`).
+It retains its independent ten-minute remaining-time divisor floor.
 The daily budget is a soft pacing target with no per-hour grid penalty, so the
 planner stays free to make the right call at `23:55`. Only the selected-period
 hard-cap side needs boundary protection. See `docs/daily-budget.md`.
 
 ## Tests
 
-`test/integration/planBudget.test.ts` (pure math: drain near hour end, no cliff
-at the 10-minute mark, planner ceiling reaches sustainable at the boundary,
-monotone taper over the final minutes, a quarter never above sustainable) and `test/integration/app.test.ts`
-(the physical limit through the app, `computePhysicalPowerLimit`).
+`test/integration/planBudget.test.ts` covers the drain near hour end, no cliff
+at the 10-minute mark, the remaining-energy guard below the drain, a fresh
+allowance at exactly `:00`, monotone taper over the final minutes, and a quarter
+never above sustainable. Its busy-hour regression feeds allowed consumption
+back every ten seconds from 3.5 kWh used at `:50` against a 4.8 kWh allowance:
+the energy limit governs first, then the drain, with more than 4.7 kWh used by
+the boundary. This models pacing without device latency or discrete load steps.
+`test/unit/endOfHourDailyBudget.test.ts` checks the unchanged daily divisor floor
+and absence of a drain. `test/integration/app.test.ts` covers the physical limit
+through the app (`computePhysicalPowerLimit`).
 
 `test/e2e/capacityEndOfHourDrain.e2e.test.ts` drives the full SDK-boundary stack
 (energy poll → planner → executor → `api.put`) with the faked clock stepped toward
