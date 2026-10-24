@@ -100,7 +100,11 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
     getOperatingMode: () => 'Home',
     markSteppedLoadDesiredStepIssued: vi.fn(),
     syncLivePlanStateAfterTargetActuation: vi.fn(),
-    getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false, stepCommandPending: false }),
+    getSteppedLoadCommandSession: () => ({
+      hasPriorStepCommand: false,
+      stepCommandPending: false,
+      unconfirmedStepCommands: { kind: 'none' as const },
+    }),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
     storageLane: { kind: 'none' },
   };

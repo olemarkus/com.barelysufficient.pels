@@ -1,5 +1,5 @@
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
-import { isBuiltInSteppedLoadControlEnabled } from '../nativeSteppedLoadWiring';
+import { isBuiltInSteppedLoadControlEnabled } from '../deviceActionProjection';
 import {
     isEvTargetPowerConfig, resolveEvTargetPowerExactStep, resolveEvTargetPowerExactStepById,
 } from '../targetPowerReachability';

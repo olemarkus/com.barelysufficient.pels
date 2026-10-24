@@ -9,7 +9,7 @@ const state = (overrides: Partial<DeviceExecutionState> = {}): DeviceExecutionSt
   available: true, physicalState: 'on', observedStepId: null,
   desiredBinary: 'on', desiredStepId: null, binaryProgress: 'settled',
   stepProgress: 'undriven', targetProgress: 'undriven', resumeExpected: false,
-  steppedTransitionPending: false, externalOffHeld: false, ...overrides,
+  steppedTransitionPending: false, stepCommandUnanswered: false, externalOffHeld: false, ...overrides,
 });
 const device = () => buildPlanDevice({
   id: 'relay', name: 'Relay', currentState: 'on', plannedState: 'keep',

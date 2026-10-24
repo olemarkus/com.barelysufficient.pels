@@ -1,7 +1,9 @@
 import { isBinaryDrivenIntent } from './executableDesiredState';
 import { hasBinaryCommand } from './executablePlan';
 import type { DeviceExecutionState, AxisProgress } from '../planContract/deviceExecutionState';
-import type { ExecutableDeviceIntent, ExecutableObservedDeviceState } from './executablePlan';
+import type {
+  ExecutableDeviceIntent, ExecutableObservedDeviceState, UnconfirmedStepCommands,
+} from './executablePlan';
 import { hasSteppedCommand, hasTargetCommand, hasReleaseCommand } from './executablePlan';
 import type { DriftCommandRead } from './driftObservedDevice';
 import { getSteppedLoadStep, isSteppedLoadStepOff } from '../../packages/shared-domain/src/deviceControlProfiles';
@@ -11,7 +13,17 @@ import {
   isPendingBinaryCommandMatchingExpected,
 } from './executionExpectations';
 
-export type ExecutionCommandState = DriftCommandRead & { target: { desired: number } | null };
+export type ExecutionCommandState = DriftCommandRead & {
+  target: { desired: number } | null;
+  /** The tracked step command, when commands for it in a row went unconfirmed. */
+  unconfirmedStepCommands: UnconfirmedStepCommands;
+};
+
+/**
+ * One expiry can be a slow Flow or a busy device; a second in a row, about two
+ * minutes later on the retry ladder, is not.
+ */
+export const STEP_COMMAND_UNANSWERED_AFTER = 2;
 
 /** Comparison, never command eligibility. Pending suppression is not settlement. */
 function progress<T>(desired: T | null, observed: T | null, pending: boolean): AxisProgress {
@@ -89,6 +101,17 @@ function resolveTargetProgress(
   return progress(desired, observed?.target?.observedValue ?? null, command?.desired === desired);
 }
 
+// Counted for the step the plan still wants, which the device still does not report: a count
+// left over from a step the plan has since moved off says nothing about this one.
+function isStepCommandUnanswered(
+  unconfirmed: UnconfirmedStepCommands,
+  desiredStepId: string | null,
+  stepProgress: AxisProgress,
+): boolean {
+  return unconfirmed.kind === 'unconfirmed' && unconfirmed.stepId === desiredStepId
+    && stepProgress !== 'settled' && unconfirmed.count >= STEP_COMMAND_UNANSWERED_AFTER;
+}
+
 export function resolveDeviceExecutionState(
   intent: ExecutableDeviceIntent,
   observed: ExecutableObservedDeviceState | undefined,
@@ -110,6 +133,7 @@ export function resolveDeviceExecutionState(
     targetProgress: resolveTargetProgress(desiredTarget, observed, command.target),
     resumeExpected: physicalState === 'off' && resolveResumeExpected(intent, desiredBinary, desiredStepId),
     steppedTransitionPending: hasSteppedCommand(intent) && (binaryProgress === 'pending' || stepProgress === 'pending'),
+    stepCommandUnanswered: isStepCommandUnanswered(command.unconfirmedStepCommands, desiredStepId, stepProgress),
     externalOffHeld,
   };
 }

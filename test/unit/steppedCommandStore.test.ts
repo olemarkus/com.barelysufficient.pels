@@ -33,6 +33,28 @@ describe('SteppedCommandStore', () => {
     expect(store.getDesired('dev-1')).toMatchObject({ status: 'stale' });
   });
 
+  it('counts the commands for one step that went unconfirmed in a row, and starts over on another step', () => {
+    const { store } = steppedStoresForTest();
+    const issueAndExpire = (stepId: string, issuedAtMs: number) => {
+      store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: stepId, issuedAtMs });
+      store.pruneStale(issuedAtMs + STEPPED_LOAD_COMMAND_STALE_MS);
+    };
+
+    expect(store.getUnconfirmedStepCommands('dev-1')).toEqual({ kind: 'none' });
+    issueAndExpire('high', 1_000);
+    expect(store.getUnconfirmedStepCommands('dev-1')).toEqual({ kind: 'unconfirmed', stepId: 'high', count: 1 });
+    // The reissue in flight still carries the expiries before it.
+    store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 200_000 });
+    expect(store.getUnconfirmedStepCommands('dev-1')).toEqual({ kind: 'unconfirmed', stepId: 'high', count: 1 });
+    store.pruneStale(200_000 + STEPPED_LOAD_COMMAND_STALE_MS);
+    expect(store.getUnconfirmedStepCommands('dev-1')).toEqual({ kind: 'unconfirmed', stepId: 'high', count: 2 });
+    store.confirmDesired('dev-1', store.getDesired('dev-1')!);
+    expect(store.getUnconfirmedStepCommands('dev-1')).toEqual({ kind: 'none' });
+
+    issueAndExpire('low', 400_000);
+    expect(store.getUnconfirmedStepCommands('dev-1')).toEqual({ kind: 'unconfirmed', stepId: 'low', count: 1 });
+  });
+
   it('clears the whole command session when the ladder changed under it', () => {
     const { store } = steppedStoresForTest();
     store.markDesiredStepIssued({

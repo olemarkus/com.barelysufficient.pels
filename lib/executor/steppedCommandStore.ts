@@ -21,6 +21,7 @@
  */
 
 import type { FlowSteppedLoadObservation } from '../ports/flowSteppedLoadAdmission';
+import type { UnconfirmedStepCommands } from './executablePlan';
 import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 import {
   getSteppedLoadLowestActiveStep, getSteppedLoadStep,
@@ -119,6 +120,14 @@ export class SteppedCommandStore {
       || this.state.steppedLoadInitializedAtLowestStepByDeviceId.size > 0
       || this.state.steppedLoadStepCommandIssuedByDeviceId.size > 0
       || this.state.steppedLoadLastBinaryOnByDeviceId.size > 0;
+  }
+
+  /** The tracked step, when commands for it in a row went unconfirmed. */
+  getUnconfirmedStepCommands(deviceId: string): UnconfirmedStepCommands {
+    const desired = this.state.steppedLoadDesiredByDeviceId.get(deviceId);
+    return desired !== undefined && desired.unconfirmedCount > 0
+      ? { kind: 'unconfirmed', stepId: desired.stepId, count: desired.unconfirmedCount }
+      : { kind: 'none' };
   }
 
   /** Whether a step command is issued and not yet settled. */

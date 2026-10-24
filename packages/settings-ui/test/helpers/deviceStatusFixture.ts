@@ -44,6 +44,7 @@ export function uiDeviceFixture(raw: Record<string, unknown> | CardFixture = {},
       resumeExpected: physicalState === 'off' && device.plannedState === 'keep',
       steppedTransitionPending: device.steppedLoad !== undefined
         && (device.binaryCommandPending === true || device.steppedLoad.commandPending),
+      stepCommandUnanswered: false,
       externalOffHeld: false,
     },
   }, dryRun, anchorMs);

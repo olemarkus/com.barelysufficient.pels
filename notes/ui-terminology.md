@@ -347,6 +347,24 @@ off, and reading it as one is what once labelled a switched-off charger
 `Waiting for car`. Because the gate is an observation, it holds in simulation
 too. Matrix of record: `notes/ev-charger-state-copy.md`.
 
+### A level change nothing confirms (stepped card reason line)
+
+When a stepped device lets two step commands in a row expire unconfirmed and
+still reports another level than the one asked for, its reason line says what
+carries the level back, ahead of every other stepped line (source:
+`resolveUnansweredStepLine` in `lib/plan/deviceStatusReadModel.ts`, from the
+executor's `stepCommandUnanswered`):
+
+| Device | Line |
+|---|---|
+| Levels set through the owner's Flow | `Level change not confirmed — check the Flow that reports the level back` |
+| Levels set by built-in control | `Level change not confirmed by the device` |
+
+Without it the card kept saying `Increasing to 16 A`, or a retry countdown, for
+as long as PELS kept asking: the Flow that never reports back read as PELS
+never resuming. One expiry is not enough, since a slow Flow or a busy device
+can miss one confirmation window.
+
 ### Device cards say what a device needs; the hero says what limits the house
 
 The reason line under a Limited card states **what this device needs**. It does

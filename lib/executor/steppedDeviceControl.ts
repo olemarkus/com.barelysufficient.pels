@@ -43,6 +43,7 @@ export class SteppedDeviceControl {
       hasPriorStepCommand: this.store.hasPriorStepCommand(deviceId),
       reportedStepId: this.source.getObservedState(deviceId)?.reportedStepId,
       stepCommandPending: this.store.isStepCommandPending(deviceId),
+      unconfirmedStepCommands: this.store.getUnconfirmedStepCommands(deviceId),
     };
   }
 

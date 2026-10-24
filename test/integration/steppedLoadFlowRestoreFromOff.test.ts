@@ -372,6 +372,7 @@ describe('flow-backed stepped restore-from-off — binary activation before step
     expect(helpers.getSteppedLoadCommandSession(DEVICE_ID)).toMatchObject({
       initializationAssumedStepId: '6a',
       hasPriorStepCommand: true,
+      unconfirmedStepCommands: { kind: 'none' as const },
     });
 
     // No flow report arrives. The accepted initialization is a one-shot

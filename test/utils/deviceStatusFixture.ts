@@ -21,6 +21,7 @@ export function executionStateFixture(device: DevicePlanDevice): DeviceExecution
     resumeExpected: physicalState === 'off' && device.plannedState === 'keep',
     steppedTransitionPending: isSteppedLoadDevice(device)
       && (device.binaryCommandPending === true || device.stepCommandPending === true),
+    stepCommandUnanswered: false,
     externalOffHeld: false,
   };
 }
