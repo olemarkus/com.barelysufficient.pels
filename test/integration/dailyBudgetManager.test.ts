@@ -111,6 +111,36 @@ describe('daily budget profile blending', () => {
       .toBeCloseTo(getProfileBlendConfidence(10), 10);
   });
 
+  it('builds history on the learned sample count, not the legacy profile field', () => {
+    const manager = buildManager();
+    const settings = buildSettings({ dailyBudgetKWh: 10 });
+    const yesterdayStartUtcMs = getDateKeyStartMs('2024-01-14', TZ);
+    const firstBucketKey = new Date(yesterdayStartUtcMs).toISOString();
+
+    // A current install: the learned profiles carry the count, and the legacy
+    // `profile` field was never written.
+    manager.loadState({
+      profileUncontrolled: { weights: buildDefaultProfile(), sampleCount: 10 },
+      profileControlled: { weights: buildDefaultProfile(), sampleCount: 10 },
+      profileControlledShare: 0.5,
+      profileSampleCount: 10,
+      profileSplitSampleCount: 10,
+    });
+
+    const powerTracker = {
+      buckets: { [firstBucketKey]: 1.2 },
+      dailyBudgetCaps: { [firstBucketKey]: 1 },
+    };
+    const history = manager.buildHistory(yesterdayStartUtcMs, TZ, powerTracker, settings, {
+      combinedPrices: null,
+      priceOptimizationEnabled: false,
+      planningCeiling: null,
+    });
+
+    expect(history).not.toBeNull();
+    expect(history?.state.confidence).toBeCloseTo(getProfileBlendConfidence(10), 10);
+  });
+
   it('reuses cached confidence on background updates when refreshConfidence is false', () => {
     const manager = buildManager();
     const settings = buildSettings({ dailyBudgetKWh: 10 });
