@@ -91,7 +91,6 @@ const buildContext = (devices: PlanInputDevice[], overrides: PlanCycleSpec = {})
   budgetPaceKw: null,
   projectedExemptKw: null,
   softLimitSource: 'capacity',
-  budgetReleasableHeadroomHold: false,
   capacityHeadroomKw: 1,
   budgetHeadroomKw: null,
   budgetKWh: 0,
@@ -257,6 +256,7 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       planDevices,
       emptyRestoreResult,
       false,
+      new Set<string>(),
       new Set<string>(),
     );
     const batteryObservation = observations.find((o) => o.deviceId === BATTERY_ID);

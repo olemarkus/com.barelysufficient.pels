@@ -1,7 +1,9 @@
 import { SwapLedger } from '../../lib/plan/swap';
 import { fixtureLimitedSetpoints, fixtureSetpointLimit, fixtureTemperatureSetpointsEntry } from '../helpers/temperatureSetpointsFixture';
 import { finalizePlanDevices, normalizeShedReasons } from '../../lib/plan/planReasons';
-import { resolveCeilingShortfall, type CeilingShortfallInputs } from '../../lib/plan/planReasonShortfall';
+import {
+  resolveBudgetHeldDeviceIds, resolveCeilingShortfall, type CeilingShortfallInputs,
+} from '../../lib/plan/planReasonShortfall';
 import { computeRestoreRequirementKw, estimateRestorePower } from '../../lib/plan/restore/accounting';
 import { getRestoreNeed } from '../../lib/plan/restore/support';
 import { buildExecutableTargetIntent } from '../../lib/executor/executableTargetProjection';
@@ -14,7 +16,9 @@ import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import type { DevicePlanDevice, MeteredDevicePlanDevice } from '../../lib/plan/planTypes';
 import type { RestoreTiming } from '../../lib/plan/restore/timing';
-import { applyShedTemperatureHoldForSpec, buildPlanDevice, restoreTimingFixture } from '../utils/planTestUtils';
+import {
+  applyShedTemperatureHoldForSpec, buildPlanDevice, restoreTimingFixture, steppedPlanDevice,
+} from '../utils/planTestUtils';
 import { fixtureDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 import { reasonContext } from '../helpers/reasonContext';
 
@@ -269,95 +273,6 @@ describe('normalizeShedReasons', () => {
     expect(reasonText(device?.reason)).toBe('shed due to capacity');
   });
 
-  // Regression: prod 2026-08-01. With the daily budget binding (softLimitSource
-  // 'daily', capacity pace 10–19 kW, house at 0.6 kW) every restore-blocked device
-  // carried `insufficientHeadroom`, so the cards read "Waiting to resume — X kW
-  // more needed" while nothing else was running and the freeable power was zero.
-  // The hold is budget pacing; say so. `budgetReleasableHeadroomHold` is the
-  // producer-resolved flat semantic on `MeasuredPower` (daily binding + no
-  // capacity breach); a genuine capacity breach resolves it false upstream,
-  // keeping the headroom framing.
-  it('re-attributes a budget-bound insufficientHeadroom restore hold to dailyBudget', () => {
-    const build = (budgetReleasableHeadroomHold: boolean) => normalizeShedReasons([buildPlanDevice({
-        id: 'dev-budget-hold',
-        plannedState: 'shed',
-        reason: buildRestoreHeadroomReason(1.2, 0.7, -0.75, null, null, null),
-      })], reasonContext({
-      shedReasons: new Map(),
-      guardInShortfall: false,
-      inCooldown: false,
-      activeOvershoot: false,
-      shedCooldownRemainingSec: null,
-      softLimitSource: 'daily',
-      budgetReleasableHeadroomHold,
-    }))[0];
-
-    expect(reasonText(build(true)?.reason)).toBe('shed due to daily budget');
-    expect(reasonText(build(false)?.reason)).toContain('insufficient headroom');
-  });
-
-  // The breach carve-out sits inside the shared helper, ahead of the flat-field
-  // gate: a caller passing `budgetReleasableHeadroomHold: true` alongside a breach
-  // (a pair the producer never emits) must still not re-attribute.
-  it('keeps insufficientHeadroom holds numeric while capacity is breached', () => {
-    const [device] = normalizeShedReasons([buildPlanDevice({
-        id: 'dev-breach-hold',
-        plannedState: 'shed',
-        reason: buildRestoreHeadroomReason(1.2, 0.7, -0.75, null, null, null),
-      })], reasonContext({
-      shedReasons: new Map(),
-      guardInShortfall: false,
-      inCooldown: false,
-      activeOvershoot: false,
-      shedCooldownRemainingSec: null,
-      softLimitSource: 'daily',
-      physicalLimitBreached: true,
-      budgetReleasableHeadroomHold: true,
-    }));
-
-    expect(reasonText(device?.reason)).toContain('insufficient headroom');
-  });
-
-  // Per-axis admission evaluates a budget-exempt candidate on the CAPACITY
-  // axis, so its holds are capacity holds — folding them to dailyBudget would
-  // offer the budget rescue to a device that is already exempt (a no-op lever).
-  it('never folds a budget-exempt device\'s headroom hold to dailyBudget', () => {
-    const [device] = normalizeShedReasons([buildPlanDevice({
-        id: 'dev-exempt-hold',
-        plannedState: 'shed',
-        budgetExempt: true,
-        reason: buildRestoreHeadroomReason(1.4, 1.7, -0.28, null, null, null),
-      })], reasonContext({
-      shedReasons: new Map(),
-      guardInShortfall: false,
-      inCooldown: false,
-      activeOvershoot: false,
-      shedCooldownRemainingSec: null,
-      softLimitSource: 'daily',
-      budgetReleasableHeadroomHold: true,
-    }));
-
-    expect(reasonText(device?.reason)).toContain('insufficient headroom');
-  });
-
-  it('keeps insufficientHeadroom holds numeric when softLimitSource is capacity', () => {
-    const [device] = normalizeShedReasons([buildPlanDevice({
-        id: 'dev-capacity-hold',
-        plannedState: 'shed',
-        reason: buildRestoreHeadroomReason(1.2, 0.7, -0.75, null, null, null),
-      })], reasonContext({
-      shedReasons: new Map(),
-      guardInShortfall: false,
-      inCooldown: false,
-      activeOvershoot: false,
-      shedCooldownRemainingSec: null,
-      softLimitSource: 'capacity',
-      budgetReleasableHeadroomHold: false,
-    }));
-
-    expect(reasonText(device?.reason)).toContain('insufficient headroom');
-  });
-
   it('overrides capacity with deferredObjectiveAvoid when the device is in an avoid bucket', () => {
     const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'dev-smart-task',
@@ -525,29 +440,120 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     physicalLimitBreached?: boolean;
     lastDeviceShedMsById?: Readonly<Record<string, number>>;
     guardInShortfall?: boolean;
-  }) => normalizeShedReasons(params.devices, reasonContext({
+  }) => {
+    const admissionInputs = {
+      ledger: buildRestoreHeadroomLedger({
+        gridAvailableKw: null,
+        capacityAvailableKw: params.capacityAvailableKw,
+        budgetAvailableKw: params.budgetAvailableKw ?? null,
+      }),
+      headroomReserves: params.headroomReserves ?? [],
+      onDevices: params.devices,
+      swapLedger: new SwapLedger(),
+      restoredThisCycle: new Set<string>(),
+      lastDeviceShedMsById: params.lastDeviceShedMsById ?? {},
+      nowMs: SHORTFALL_NOW_MS,
+    };
+    const physicalLimitBreached = params.physicalLimitBreached ?? false;
+    return normalizeShedReasons(params.devices, reasonContext({
       shedReasons: new Map(),
       guardInShortfall: params.guardInShortfall ?? false,
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
       softLimitSource: params.softLimitSource ?? null,
-      physicalLimitBreached: params.physicalLimitBreached ?? false,
-      admissionInputs: {
-        ledger: buildRestoreHeadroomLedger({
-          gridAvailableKw: null,
-          capacityAvailableKw: params.capacityAvailableKw,
-          budgetAvailableKw: params.budgetAvailableKw ?? null,
-        }),
-        headroomReserves: params.headroomReserves ?? [],
-        onDevices: params.devices,
-        swapLedger: new SwapLedger(),
-        restoredThisCycle: new Set(),
-        lastDeviceShedMsById: params.lastDeviceShedMsById ?? {},
-        nowMs: SHORTFALL_NOW_MS,
-      },
+      physicalLimitBreached,
+      // Resolved from the same inputs, as the materialization stage does.
+      budgetHeldDeviceIds: resolveBudgetHeldDeviceIds(params.devices, admissionInputs, physicalLimitBreached),
+      admissionInputs,
       hourlyBudgetExhausted: params.hourlyBudgetExhausted ?? false,
     }));
+  };
+
+  // Whose hold a headroom-blocked restore is, judged per device on the axes it
+  // is admitted on. Prod 2026-08-01: with the daily pace binding, every held
+  // device read "insufficient headroom" while nothing else ran. The hold is the
+  // budget's exactly when the physical axes alone would admit the device.
+  describe('budget-held restores', () => {
+    // A restore rejected on headroom: need 1.2 kW (1.0 restore + 0.2 buffer).
+    const headroomHold = (overrides: Parameters<typeof buildPlanDevice>[0] = {}) => heldDevice({
+      reason: buildRestoreHeadroomReason(1.2, 0.7, -0.75, null, null, null),
+      ...overrides,
+    });
+
+    it('folds to dailyBudget when only the budget axis turns the device down, whichever pace binds', () => {
+      // An off exempt device's projection can make capacity the binding pace
+      // while the measured budget axis is the one holding this device.
+      for (const softLimitSource of ['daily', 'capacity'] as const) {
+        const [device] = normalize({
+          devices: [headroomHold()], capacityAvailableKw: 5, budgetAvailableKw: 0.2, softLimitSource,
+        });
+        expect(device?.reason.code).toBe('daily_budget');
+      }
+    });
+
+    it('stays a headroom hold when capacity would turn the device down as well', () => {
+      // Releasing the budget would leave it held: capacity has 0.9 kW of the 1.2 it needs.
+      const [device] = normalize({
+        devices: [headroomHold()], capacityAvailableKw: 0.9, budgetAvailableKw: 0.2, softLimitSource: 'daily',
+      });
+      expect(device?.reason.code).toBe('insufficient_headroom');
+    });
+
+    it('stays a headroom hold while a physical limit is breached', () => {
+      const [device] = normalize({
+        devices: [headroomHold()], capacityAvailableKw: 5, budgetAvailableKw: 0.2,
+        softLimitSource: 'daily', physicalLimitBreached: true,
+      });
+      expect(device?.reason.code).toBe('insufficient_headroom');
+    });
+
+    // Per-axis admission evaluates a budget-exempt candidate on the physical
+    // axes only, so its holds are never the budget's.
+    it('never folds a budget-exempt device\'s hold', () => {
+      const [device] = normalize({
+        devices: [headroomHold({ budgetExempt: true })], capacityAvailableKw: 5, budgetAvailableKw: 0.2,
+        softLimitSource: 'daily',
+      });
+      expect(device?.reason.code).toBe('insufficient_headroom');
+    });
+
+    // A running stepped device denied a step-up is judged on the need its own gate
+    // rejected on, the step it would climb, not its whole draw: an EV charger at
+    // 10 A wanting 16 A needs 4.1 kW more, not the 6.9 kW it would draw.
+    describe('a running stepped device denied a step-up', () => {
+      const stepUpHold = (needKw: number, gateAvailableKw: number, overrides: Partial<DevicePlanDevice> = {}) => (
+        steppedPlanDevice({
+          id: 'charger', currentState: 'on', plannedState: 'keep',
+          reason: buildRestoreHeadroomReason(needKw, gateAvailableKw, gateAvailableKw - needKw, null, null, null),
+          ...overrides,
+        })
+      );
+      const budgetHeld = (dev: DevicePlanDevice, capacityAvailableKw: number, budgetAvailableKw: number) => (
+        resolveBudgetHeldDeviceIds([dev], {
+          ledger: buildRestoreHeadroomLedger({ gridAvailableKw: null, capacityAvailableKw, budgetAvailableKw }),
+          headroomReserves: [],
+          onDevices: [],
+          swapLedger: new SwapLedger(),
+          restoredThisCycle: new Set<string>(),
+          lastDeviceShedMsById: {},
+          nowMs: SHORTFALL_NOW_MS,
+        }, false).has(dev.id)
+      );
+
+      it('is the budget\'s when capacity has room for the step', () => {
+        expect(budgetHeld(stepUpHold(4.1, 1), 5, 1)).toBe(true);
+      });
+
+      it('is not when capacity would hold the step back too', () => {
+        expect(budgetHeld(stepUpHold(2.5, 0.3), 1.5, 0.3)).toBe(false);
+      });
+
+      it('is never the budget\'s for a budget-exempt device', () => {
+        expect(budgetHeld(stepUpHold(4.1, 5, { budgetExempt: true }), 5, 1)).toBe(false);
+      });
+    });
+  });
 
   it('attaches the admission gap to a carry-forward capacity hold', () => {
     // gap = 0.25 − (0.5 − 1.2 − 0.25) = 1.2 kW

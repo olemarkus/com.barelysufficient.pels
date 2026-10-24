@@ -339,12 +339,15 @@ export class PlanBuilder {
       sheddingPlan,
       heldContext.temperatureSetpoints,
     );
-    const planDevices = attachDeferredReleaseIntents(this.stages.normalizeReasons(
+    const reasoned = this.stages.normalizeReasons(
       heldContext, admissionPower, restoreResult, sheddingPlan, {
         deferredHoldCauseByDeviceId: decoration.deferredHoldCauseByDeviceId,
         postureHoldReasonById: postureHolds.reasonById,
       }, holdResult,
-    ), decoration.deferredReleaseIntentByDeviceId, true);
+    );
+    const planDevices = attachDeferredReleaseIntents(
+      reasoned.planDevices, decoration.deferredReleaseIntentByDeviceId, true,
+    );
     const decidedDevices = attachStorageDecisions(
       this.stages.finalizePlan(planDevices, heldContext.temperatureSetpoints, nowTs).planDevices, storageRelief,
     );
@@ -376,7 +379,7 @@ export class PlanBuilder {
       restoreResult,
       isDailyBudgetBelowPlanningCeiling(dailyBudgetSnapshot, settings),
       decoration.drivingDeviceIds,
-      nowTs,
+      reasoned.budgetHeldDeviceIds,
     );
     return {
       meta,

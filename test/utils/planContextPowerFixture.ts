@@ -20,7 +20,6 @@ export const buildMeasuredPower = (overrides: Partial<MeasuredPower> = {}): Meas
     capacityHeadroomKw: 1,
     budgetHeadroomKw: null,
     capacityBreached: false,
-    budgetReleasableHeadroomHold: false,
     ...rest,
   };
   return { ...power, physicalLimitBreached: physicalLimitBreached ?? (power.capacityBreached || power.gridBreached) };
@@ -76,7 +75,7 @@ export type PlanCycleSpec = PlanContextFixtureOverrides & Partial<MeasuredPower>
 export const buildPlanCycle = (spec: PlanCycleSpec = {}): { context: PlanContext; power: MeasuredPower } => {
   const {
     total, headroom, headroomRaw, drawKw, headroomKw, capacityHeadroomKw, budgetHeadroomKw,
-    capacityBreached, physicalLimitBreached, budgetReleasableHeadroomHold, gridHeadroomKw, gridBreached,
+    capacityBreached, physicalLimitBreached, gridHeadroomKw, gridBreached,
     ...contextOverrides
   } = spec;
   const context = buildPlanContextFixture(contextOverrides);
@@ -94,7 +93,6 @@ export const buildPlanCycle = (spec: PlanCycleSpec = {}): { context: PlanContext
       budgetHeadroomKw: budgetHeadroomKw ?? null,
       capacityBreached: capacityBreached ?? (context.capacitySoftLimit !== null && draw > context.capacitySoftLimit),
       ...(physicalLimitBreached === undefined ? {} : { physicalLimitBreached }),
-      budgetReleasableHeadroomHold: budgetReleasableHeadroomHold ?? false,
     }),
   };
 };

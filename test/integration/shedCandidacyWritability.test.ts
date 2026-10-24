@@ -32,7 +32,6 @@ const buildContext = (devices: PlanInputDevice[], headroom: number): PlanCycle =
   budgetPaceKw: null,
   projectedExemptKw: null,
   softLimitSource: 'capacity',
-  budgetReleasableHeadroomHold: false,
   capacityHeadroomKw: 1,
   budgetHeadroomKw: null,
   hourBucketKey: '2026-01-01T00',

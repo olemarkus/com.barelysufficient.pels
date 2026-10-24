@@ -166,15 +166,6 @@ export type MeasuredPower = {
    * it from the two axes.
    */
   physicalLimitBreached: boolean;
-  // A headroom-blocked restore hold is releasable by the daily budget ONLY when
-  // the daily pace binds and neither capacity nor grid is also breached: when
-  // the total is over a physical limit too, that limit is the constraint doing
-  // the work and a budget release cannot help (prod 2026-07-25). Resolved to one
-  // flat boolean HERE so no consumer recomposes it from ingredients —
-  // `planDiagnostics` (starvation counting cause, rescue gating) and
-  // `normalizeShedReasons` (device reason re-attribution) must read this same
-  // field or the card and the rescue widget disagree about the hold.
-  budgetReleasableHeadroomHold: boolean;
 };
 
 /**
@@ -228,7 +219,7 @@ export function resolveMeasuredPower(
   limits: PlanLimits,
   devices: PlanInputDevice[],
 ): MeasuredPower {
-  const { softLimit, capacitySoftLimit, dailySoftLimit, budgetPaceKw, softLimitSource } = limits;
+  const { softLimit, capacitySoftLimit, dailySoftLimit, budgetPaceKw } = limits;
   const drawKw = reading.totalKw;
   // Budget axis with the MEASURED exempt sum (see the field doc): only exists
   // when the daily pace resolved this cycle.
@@ -251,6 +242,5 @@ export function resolveMeasuredPower(
       : null,
     capacityBreached,
     physicalLimitBreached,
-    budgetReleasableHeadroomHold: softLimitSource === 'daily' && !physicalLimitBreached,
   };
 }

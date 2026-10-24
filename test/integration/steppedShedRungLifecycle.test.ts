@@ -41,7 +41,6 @@ const buildContext = (overrides: PlanCycleSpec = {}): PlanCycle => (
     budgetPaceKw: null,
     projectedExemptKw: null,
     softLimitSource: 'capacity',
-    budgetReleasableHeadroomHold: false,
     capacityHeadroomKw: 1,
     budgetHeadroomKw: null,
     hourBucketKey: '2026-08-17T12',

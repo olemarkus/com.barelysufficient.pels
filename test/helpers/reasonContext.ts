@@ -35,7 +35,7 @@ export const reasonContext = (
     postureHoldReasonById: new Map<string, DeviceReason>(),
     softLimitSource: null,
     physicalLimitBreached: false,
-    budgetReleasableHeadroomHold: false,
+    budgetHeldDeviceIds: new Set<string>(),
     hourlyBudgetExhausted: false,
     admissionInputs: null,
     ...contextOverrides,

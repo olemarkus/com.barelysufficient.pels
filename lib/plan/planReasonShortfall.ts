@@ -40,16 +40,20 @@
  *    matching the restore gates exactly (parity, not a bug);
  *  - can overstate for a RUNNING stepped device denied a step-up: the need is
  *    the full restore power (`estimateRestorePower` → `planningPowerKw`), not
- *    the step-up increment the stepped gate admits on. Exposure is the
- *    swap-victim / carry-forward stepped corner; producer-resolved stepped
- *    admission numbers are refreshed whenever that lane actually runs.
+ *    the step-up increment the stepped gate admits on. For the card the
+ *    exposure is the swap-victim / carry-forward stepped corner, since
+ *    producer-resolved stepped admission numbers are refreshed whenever that
+ *    lane actually runs; the budget verdict (`isBudgetReleasableHold`) judges
+ *    such a hold on its gate's own need instead.
  */
 import type { DevicePlanDevice, MeteredDevicePlanDevice } from './planTypes';
-import type { RestoreHeadroomLedger } from './restore/headroomLedger';
+import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './restore/headroomLedger';
 import { isReserveAdmitted, resolveReserveAdmission, type HeadroomReserve } from './admission';
 import { computeRestoreRequirementKw, estimateRestorePower } from './restore/accounting';
 import { buildSwapCandidates, type SwapLedger } from './swap';
-import { ceilToDisplayKw } from '../../packages/shared-domain/src/planReasonSemantics';
+import { minPowerLimit } from './powerLimitMath';
+import { isSteppedLoadDevice } from './planSteppedLoad';
+import { ceilToDisplayKw, PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 
 // The per-cycle admission context the shortfall computation gates against —
 // per-axis availability, startup reservations, and the swap surface (running
@@ -151,4 +155,57 @@ export function resolveCeilingShortfall(params: {
     : plainGapKw;
   const shortfallKw = ceilToDisplayKw(gapKw);
   return shortfallKw === null ? { kind: 'no_gap' } : { kind: 'gap', shortfallKw };
+}
+
+/**
+ * Whether the daily budget alone holds this device back: it has an admission
+ * gap on the ledger, and the gap closes once the budget axis is set aside, so
+ * the capacity and grid limits would let it run (by swapping too).
+ *
+ * Judged per device on the axes it is admitted on, never from which limit
+ * binds the house. The binding source cannot answer it either way: an off
+ * budget-exempt device's projection can make capacity the lower pace while the
+ * measured budget axis is what turns a non-exempt device down, and a daily
+ * pace can bind while capacity would turn the device down as well, where
+ * releasing the budget would leave it held.
+ */
+export function isBudgetReleasableHold(params: {
+  dev: DevicePlanDevice;
+  inputs: CeilingShortfallInputs;
+}): boolean {
+  const { dev, inputs } = params;
+  const axes = inputs.ledger.axes();
+  if (dev.budgetExempt || axes.budgetAvailableKw === null) return false;
+  // A running stepped device denied a step-up would be priced here at its whole
+  // draw rather than the step it would climb (see the header), wrong both ways,
+  // so its own gate's need decides: the kW it had to find on its axes,
+  // reserves included, against what the physical axes hold.
+  const { reason } = dev;
+  if (isSteppedLoadDevice(dev) && dev.currentState === 'on' && reason.code === PLAN_REASON_CODES.insufficientHeadroom) {
+    const physicalKw = minPowerLimit(axes.capacityAvailableKw, axes.gridAvailableKw);
+    return physicalKw === null || physicalKw >= reason.availableKw - reason.admissionMarginKw;
+  }
+  if (resolveCeilingShortfall({ dev, inputs }).kind !== 'gap') return false;
+  const physicalOnly = { ...inputs, ledger: buildRestoreHeadroomLedger({ ...axes, budgetAvailableKw: null }) };
+  return resolveCeilingShortfall({ dev, inputs: physicalOnly }).kind === 'no_gap';
+}
+
+/**
+ * The devices whose headroom-blocked restore the budget alone holds this cycle
+ * (`isBudgetReleasableHold`), resolved once for the reason fold and the device
+ * diagnostics, which must agree about it. Every plan device with a headroom
+ * hold is judged, whatever its planned state: diagnostics read a keep-state
+ * hold too. None while a physical limit is breached, where that limit holds
+ * every device whatever its own axes say.
+ */
+export function resolveBudgetHeldDeviceIds(
+  devices: readonly DevicePlanDevice[],
+  inputs: CeilingShortfallInputs,
+  physicalLimitBreached: boolean,
+): ReadonlySet<string> {
+  if (physicalLimitBreached) return new Set();
+  return new Set(devices
+    .filter((dev) => dev.reason.code === PLAN_REASON_CODES.insufficientHeadroom)
+    .filter((dev) => isBudgetReleasableHold({ dev, inputs }))
+    .map((dev) => dev.id));
 }

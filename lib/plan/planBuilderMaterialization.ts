@@ -1,4 +1,5 @@
 import { buildRestoreHeadroomLedger, type RestoreHeadroomAxes } from './restore/headroomLedger';
+import { resolveBudgetHeldDeviceIds, type CeilingShortfallInputs } from './planReasonShortfall';
 /**
  * Post-shedding materialization stages of the plan pipeline, sliced out of
  * `planBuilder.ts` to keep that entry point under the line budget (and under
@@ -111,7 +112,7 @@ export class PlanMaterializationStages {
     holds: ShedReasonHoldInputs,
     /** The hold lane's result: the devices it settled and the availability it left. */
     holdResult: HoldPlanResult,
-  ): DevicePlanDevice[] {
+  ): { planDevices: DevicePlanDevice[]; budgetHeldDeviceIds: ReadonlySet<string> } {
     const { planDevices } = holdResult;
     // The cohort rank runs on the FULL list — every lane has written its
     // countdown by now — and before any carrier reads the plan. Only while a
@@ -121,46 +122,55 @@ export class PlanMaterializationStages {
     const rank = restoreResult.timing.inRestoreCooldown
       ? rankRestoreCooldownCohort
       : (devices: DevicePlanDevice[]): DevicePlanDevice[] => devices;
-    return trackPlanStage('plan_reasons_ms', () => rank(normalizeShedReasons(planDevices, {
-      shedReasons: sheddingPlan.shedReasons,
-      guardInShortfall: sheddingPlan.guardInShortfall,
-      timing: restoreResult.timing,
-      ...holds,
-      softLimitSource: context.softLimitSource,
-      // The one resolved breach answer: this used to read the RAW total, which
-      // survives a meter dropout, so a stale cached figure could claim a breach
-      // PELS could not observe.
-      physicalLimitBreached: power.physicalLimitBreached,
-      budgetReleasableHeadroomHold: power.budgetReleasableHeadroomHold,
-      // Use the availability left after temperature restores in this cycle.
-      admissionInputs: {
-        ledger: buildRestoreHeadroomLedger(holdResult.ledgerAxes),
-        headroomReserves: restoreResult.headroomReserves,
-        // The SAME victim filter the swap lane uses (`getOnDevices`), not
-        // raw plan devices — the raw list would fold "relief" from devices
-        // a swap can never actually shed (stepped `set_step` behavior,
-        // thermostats already at their shed floor, uncommandable devices),
-        // understating the displayed gap.
-        onDevices: getOnDevices(
-          planDevices,
-          (deviceId) => this.deps.getShedBehavior(deviceId),
-          context.temperatureSetpoints,
-        ),
-        // The same ledger instance the restore pass just reconciled — the
-        // swap surface the shortfall folds in is the one the next swap
-        // decision reads, now by identity rather than by a refresh step.
-        swapLedger: this.state.swapLedger,
-        restoredThisCycle: restoreResult.restoredThisCycle,
-        // Same need the restore gate rejects on: it inflates a recently shed
-        // device's requirement, and a card computed against the deflated
-        // figure would claim the device is admissible on the very cycle the
-        // gate turned it down. Same `timing.nowTs` the restore gate rejected
-        // on, so card and gate agree by construction.
-        lastDeviceShedMsById: this.state.actuation.lastDeviceShedMs,
-        nowMs: restoreResult.timing.nowTs,
-      },
-      hourlyBudgetExhausted: this.state.capacityPeriodSpentFor(context),
-    })));
+    // Use the availability left after temperature restores in this cycle.
+    const admissionInputs: CeilingShortfallInputs = {
+      ledger: buildRestoreHeadroomLedger(holdResult.ledgerAxes),
+      headroomReserves: restoreResult.headroomReserves,
+      // The SAME victim filter the swap lane uses (`getOnDevices`), not
+      // raw plan devices — the raw list would fold "relief" from devices
+      // a swap can never actually shed (stepped `set_step` behavior,
+      // thermostats already at their shed floor, uncommandable devices),
+      // understating the displayed gap.
+      onDevices: getOnDevices(
+        planDevices,
+        (deviceId) => this.deps.getShedBehavior(deviceId),
+        context.temperatureSetpoints,
+      ),
+      // The same ledger instance the restore pass just reconciled — the
+      // swap surface the shortfall folds in is the one the next swap
+      // decision reads, now by identity rather than by a refresh step.
+      swapLedger: this.state.swapLedger,
+      restoredThisCycle: restoreResult.restoredThisCycle,
+      // Same need the restore gate rejects on: it inflates a recently shed
+      // device's requirement, and a card computed against the deflated
+      // figure would claim the device is admissible on the very cycle the
+      // gate turned it down. Same `timing.nowTs` the restore gate rejected
+      // on, so card and gate agree by construction.
+      lastDeviceShedMsById: this.state.actuation.lastDeviceShedMs,
+      nowMs: restoreResult.timing.nowTs,
+    };
+    return trackPlanStage('plan_reasons_ms', () => {
+      // Whose headroom holds the budget alone holds, judged once for the reason
+      // fold here and for the device diagnostics after the plan is final.
+      const budgetHeldDeviceIds = resolveBudgetHeldDeviceIds(
+        planDevices, admissionInputs, power.physicalLimitBreached,
+      );
+      const reasoned = rank(normalizeShedReasons(planDevices, {
+        shedReasons: sheddingPlan.shedReasons,
+        guardInShortfall: sheddingPlan.guardInShortfall,
+        timing: restoreResult.timing,
+        ...holds,
+        softLimitSource: context.softLimitSource,
+        // The one resolved breach answer: this used to read the RAW total, which
+        // survives a meter dropout, so a stale cached figure could claim a breach
+        // PELS could not observe.
+        physicalLimitBreached: power.physicalLimitBreached,
+        budgetHeldDeviceIds,
+        admissionInputs,
+        hourlyBudgetExhausted: this.state.capacityPeriodSpentFor(context),
+      }));
+      return { planDevices: reasoned, budgetHeldDeviceIds };
+    });
   }
 
   finalizePlan(
@@ -213,14 +223,15 @@ export class PlanMaterializationStages {
     restoreResult: RestorePlanResult,
     budgetPressureEligible: boolean,
     smartTaskDrivingDeviceIds: ReadonlySet<string>,
-    nowTs: number,
+    budgetHeldDeviceIds: ReadonlySet<string>,
   ): void {
     trackPlanStage('plan_observe_diag_ms', () => {
       if (!this.deps.deviceDiagnostics) return;
       const observations = buildDeviceDiagnosticsObservations(
         context, power, planDevices, restoreResult, budgetPressureEligible, smartTaskDrivingDeviceIds,
+        budgetHeldDeviceIds,
       );
-      this.deps.deviceDiagnostics.observePlanSample({ observations, nowTs });
+      this.deps.deviceDiagnostics.observePlanSample({ observations, nowTs: context.nowTs });
     });
   }
 }

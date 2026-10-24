@@ -49,10 +49,10 @@ function buildBaseReason(ctx: ReasonContext, dev: DevicePlanDevice): DeviceReaso
   // lives on `resolveDailyBindingReattribution`.
   const reattributed = resolveDailyBindingReattribution(
     ctx,
+    dev,
     resolved.code,
     resolveRestoreShortfallKw(resolved),
     shedReasons.has(dev.id),
-    dev.budgetExempt,
   );
   return reattributed ?? resolved;
 }
@@ -94,8 +94,8 @@ export type ReasonContext = {
   readonly softLimitSource: SoftLimitSource;
   /** Over an enabled capacity or grid threshold (`MeasuredPower.physicalLimitBreached`). Producer-resolved. */
   readonly physicalLimitBreached: boolean;
-  /** Daily pace binding with neither capacity nor grid also breached. Producer-resolved. */
-  readonly budgetReleasableHeadroomHold: boolean;
+  /** Devices whose headroom hold the budget alone holds (`resolveBudgetHeldDeviceIds`). Producer-resolved. */
+  readonly budgetHeldDeviceIds: ReadonlySet<string>;
   /** The hour's energy budget is spent; folds every ceiling hold to `hourlyBudget`. */
   readonly hourlyBudgetExhausted: boolean;
   /** Post-hold per-axis availability + startup reservations, for ceiling shortfalls. */
@@ -391,10 +391,10 @@ function normalizeDeviceReason(ctx: ReasonContext, dev: DevicePlanDevice): Devic
 
   const dailyReattribution = resolveDailyBindingReattribution(
     ctx,
+    dev,
     currentReason.code,
     resolveRestoreShortfallKw(currentReason.reason),
     shedReasons.has(dev.id),
-    dev.budgetExempt,
   );
   if (dailyReattribution) return { ...dev, reason: dailyReattribution };
 
@@ -404,8 +404,9 @@ function normalizeDeviceReason(ctx: ReasonContext, dev: DevicePlanDevice): Devic
   return dev;
 }
 
-// Re-attribution to `dailyBudget` while the daily-budget pacing is the binding
-// constraint. Shared by `buildBaseReason` (carry-forward path) and
+// Re-attribution to `dailyBudget`: of a carried `capacity` reason while the
+// daily pace binds, and of a headroom-blocked restore the budget alone holds,
+// whichever pace binds. Shared by `buildBaseReason` (carry-forward path) and
 // `normalizeDeviceReason` (explicit-reason path) so the two sites cannot drift —
 // the removed inline copies had already needed one guard-mirroring fix each.
 // Two shapes:
@@ -425,15 +426,17 @@ function normalizeDeviceReason(ctx: ReasonContext, dev: DevicePlanDevice): Devic
 //   below: since per-axis restore admission, an exempt candidate is evaluated
 //   on the capacity axis, so its holds are never budget holds.
 //
-// - `insufficientHeadroom` restore holds: a restore rejected on headroom while the
-//   DAILY pace is binding is a budget hold, not a power shortage — `availableKw`
-//   was derived from the budget-derived pace, so no amount of freed power changes
-//   the decision; only budget pacing (or time) does. Without this fold every
-//   budget-bound hold surfaces as `insufficientHeadroom` and the hero's "to stay
-//   within today's budget" sentence can never fire. Gated on
-//   `budgetReleasableHeadroomHold`, the producer-resolved flat semantic on
-//   `PlanContext` that `planDiagnostics` also reads, so the card label and the
-//   rescue widget agree by construction.
+// - `insufficientHeadroom` restore holds: a restore the budget axis alone turns
+//   down is a budget hold, not a power shortage — no amount of freed power
+//   changes the decision; only budget pacing (or time) does. Without this fold
+//   every budget-bound hold surfaces as `insufficientHeadroom` and the hero's
+//   "to stay within today's budget" sentence can never fire. Judged per device on
+//   the post-hold ledger (`budgetHeldDeviceIds`, `isBudgetReleasableHold`), not
+//   from the plan's binding source: an off exempt device's projection can make
+//   capacity the binding pace while the measured budget axis is the one holding
+//   a non-exempt device, and a daily pace can bind while capacity would hold the
+//   device as well. `planDiagnostics` reads the same set, so device detail and
+//   the budget's unserved-demand evidence agree with the card by construction.
 //
 //   The fold re-labels the hold; it does NOT drop its numbers. `sourceShortfallKw`
 //   carries the admission shortfall onto the re-attributed reason so the device
@@ -458,23 +461,23 @@ function normalizeDeviceReason(ctx: ReasonContext, dev: DevicePlanDevice): Devic
 // budget holds ever ride keep-state devices, revisit that set deliberately.
 function resolveDailyBindingReattribution(
   ctx: ReasonContext,
+  dev: DevicePlanDevice,
   reasonCode: PlanReasonCode,
   sourceShortfallKw: number | null,
   shedReasonFresh: boolean,
-  budgetExempt: boolean,
 ): DeviceReason | null {
-  const { softLimitSource, physicalLimitBreached, budgetReleasableHeadroomHold } = ctx;
-  if (softLimitSource !== 'daily' || physicalLimitBreached) return null;
+  const { softLimitSource, physicalLimitBreached, budgetHeldDeviceIds } = ctx;
+  if (physicalLimitBreached) return null;
   // Never fold a budget-exempt device's hold to `dailyBudget`: per-axis restore
   // admission evaluates exempt candidates on the CAPACITY axis, so their holds
   // are capacity holds, and the budget rescue ("Let it run now") is a no-op for
   // a device that is already exempt — the wrong-lever symptom class this fold
   // exists to prevent. (This inverts the pre-per-axis comment that admission
   // had "no exemption carve-out"; it does now.)
-  if (budgetExempt) return null;
+  if (dev.budgetExempt) return null;
   const physicalHold = reasonCode === PLAN_REASON_CODES.capacity || reasonCode === PLAN_REASON_CODES.gridImport;
-  const reattribute = (physicalHold && !shedReasonFresh)
-    || (reasonCode === PLAN_REASON_CODES.insufficientHeadroom && budgetReleasableHeadroomHold);
+  const reattribute = (softLimitSource === 'daily' && physicalHold && !shedReasonFresh)
+    || (reasonCode === PLAN_REASON_CODES.insufficientHeadroom && budgetHeldDeviceIds.has(dev.id));
   if (!reattribute) return null;
   // Absence is the missing KEY, not a `null` value: `shortfallKw` is `?: number`
   // and `stripCycleAnnotations` expresses "no number this cycle" by deleting it.

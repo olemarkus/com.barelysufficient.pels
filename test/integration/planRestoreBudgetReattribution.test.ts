@@ -16,10 +16,10 @@ import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 // Full-builder wiring regression for the `insufficientHeadroom` → `dailyBudget`
 // re-attribution (prod 2026-08-01). The isolated `normalizeShedReasons` tests in
-// planReasons.test.ts pass explicit flags, so they cannot catch the one line that
-// wires `context.budgetReleasableHeadroomHold` through the materialization stage —
-// if that line is dropped, the feature silently reverts while every isolated test
-// stays green. This spec drives `PlanBuilder.buildDevicePlanSnapshot` end to end:
+// planReasons.test.ts hand the fold its inputs, so they cannot catch the wiring
+// that resolves `budgetHeldDeviceIds` in the materialization stage — if that line
+// is dropped, the feature silently reverts while every isolated test stays
+// green. This spec drives `PlanBuilder.buildDevicePlanSnapshot` end to end:
 // shed a device in cycle 1, reject its restore on headroom in cycle 2, and assert
 // the finalized reason names the constraint that actually binds.
 
@@ -135,6 +135,21 @@ describe('budget-bound restore holds through the full plan build', () => {
     // overview signature between cycles that render the same number.
     expect(shortfallKw).toBeCloseTo(Math.round((shortfallKw ?? 0) * 10) / 10, 10);
     expect(resolveRestoreShortfallKw(thirdDevice.reason)).toBe(shortfallKw);
+  });
+
+  // The daily pace binds, but capacity would turn the restore down as well (a
+  // 1.2 kW limit against a ~1.2 kW need over 0.35 kW of background): releasing
+  // the budget would leave the device held, so the hold is not the budget's
+  // (the per-device verdict, `resolveBudgetHeldDeviceIds`).
+  it('keeps a daily-bound blocked restore on the headroom reason when capacity would hold it too', async () => {
+    const { third, thirdDevice } = await runShedThenBlockedRestore({
+      limitKw: 1.2,
+      dailyBudget: true,
+    });
+
+    expect(third.meta.softLimitSource).toBe('daily');
+    expect(thirdDevice.plannedState).toBe('shed');
+    expect(thirdDevice.reason.code).toBe(PLAN_REASON_CODES.insufficientHeadroom);
   });
 
   it('keeps a capacity-bound blocked restore on the numeric headroom reason', async () => {
