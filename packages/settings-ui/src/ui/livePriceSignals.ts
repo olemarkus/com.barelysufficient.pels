@@ -1,23 +1,11 @@
-// "Right now" card live signals for the Electricity prices view, all derived
-// from the combined-prices read-model:
-//   - `lastFetchedShort` — the pre-formatted short clock time of the last fetch.
-//   - `exportText` — the current-hour export (feed-in) price, scaled through the
-//     CostDisplay divisor (what the home is paid, or pays, for exported power).
-//   - `priceText` — the import price now, and `breakdownText` the parts the
-//     Norway source adds up into it (`Spot 0.27 · grid tariff 0.20 · taxes 0.10`).
-//
-// Kept out of `priceConfig.ts` so that orchestrator stays under its line
-// ceiling, and so every "Right now" derivation from the combined-prices payload
-// lives in one place. The export field is null when no row covers this hour or
-// when export pricing is off — so a non-prosumer's card never gains a row
-// (byte-identical outside a solar home). The price level itself classifies the
-// import price, so no solar note explains it.
+// Current prices use native periods. Hourly projections supply Norway's
+// itemized breakdown and the fetch timestamp, never a quarter-hour price.
 
+import type { PriceTimelineRead } from '../../../contracts/src/priceTimeline.ts';
 import { findCurrentPriceRow, normalizeCombinedPrices, type CombinedPriceRow } from './combinedPrices.ts';
 import {
   formatScaledPriceNumber,
   formatScaledPriceValue,
-  resolveCostDisplayFromCombinedPrices,
 } from './priceUnit.ts';
 import { resolvePriceBreakdown } from './priceBreakdown.ts';
 import type { CostDisplay } from './dailyBudgetCost.ts';
@@ -65,24 +53,27 @@ const resolveLastFetchedShort = (combinedPrices: unknown): string | null => {
 
 export const resolveLiveSummarySignals = (
   combinedPrices: unknown,
+  timeline: PriceTimelineRead,
   nowMs: number,
 ): LiveSummarySignals => {
   const lastFetchedShort = resolveLastFetchedShort(combinedPrices);
-  const current = findCurrentPriceRow(normalizeCombinedPrices(combinedPrices), nowMs);
-  if (!current) {
+  const period = timeline.state === 'ready' ? timeline.periods.find((candidate) => {
+    const start = Date.parse(candidate.startsAt);
+    return start <= nowMs && nowMs < start + candidate.durationMinutes * 60_000;
+  }) : undefined;
+  if (!period || timeline.state !== 'ready') {
     return { lastFetchedShort, exportText: null, priceText: null, breakdownText: null, gridTariffMissing: false };
   }
-  const costDisplay = resolveCostDisplayFromCombinedPrices(combinedPrices);
+  const costDisplay: CostDisplay = timeline.priceUnit === 'øre/kWh'
+    ? { unit: 'kr', divisor: 100 }
+    : { unit: timeline.priceUnit === 'price units' ? '' : timeline.priceUnit, divisor: 1 };
+  const current = findCurrentPriceRow(normalizeCombinedPrices(combinedPrices), nowMs);
   return {
     lastFetchedShort,
-    // Finite-gate before scaling so a NaN/Infinity never renders as "NaN kr/kWh".
-    // `normalizeCombinedPrices` already finite-gates `exportPrice`, so this is a
-    // defensive consumer-side assertion (`Number.isFinite` global — no `lib/**`).
-    exportText: Number.isFinite(current.exportPrice)
-      ? formatScaledPriceValue(current.exportPrice as number, costDisplay)
-      : null,
-    priceText: formatScaledPriceValue(current.total, costDisplay),
-    breakdownText: formatBreakdownText(current, costDisplay),
-    gridTariffMissing: current.norwayParts?.gridTariffExVat === 0,
+    exportText: period.exportPrice !== undefined ? formatScaledPriceValue(period.exportPrice, costDisplay) : null,
+    priceText: formatScaledPriceValue(period.importPrice, costDisplay),
+    breakdownText: current && Math.abs(current.total - period.importPrice) < 0.01
+      ? formatBreakdownText(current, costDisplay) : null,
+    gridTariffMissing: current?.norwayParts?.gridTariffExVat === 0,
   };
 };

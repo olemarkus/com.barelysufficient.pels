@@ -72,6 +72,7 @@ const buildProps = (
     { name: 'Grid Company', organizationNumber: '123' },
   ],
   sourceAssumption: { kind: 'none' },
+  market: { state: 'unavailable' },
   norwayChoices: { kind: 'unknown' },
   priceSetupOffer: { kind: 'none' },
   showExportSection: false,
@@ -939,13 +940,13 @@ describe('ElectricityPricesView, price now', () => {
     expect(summary?.textContent).toContain('Import price0.82 kr/kWh');
   });
 
-  it('shows no price on a source that may publish quarter-hours, where the hourly figure is an average', () => {
+  it.each(['homey', 'powerhour', 'flow'] as const)('shows the current native-period price for %s', (priceScheme) => {
     const summary = render({
-      priceScheme: 'homey',
+      priceScheme,
       liveSummary: liveSummary({ priceText: '0.31 EUR/kWh', breakdownText: null }),
     });
 
-    expect(summary?.textContent).not.toContain('0.31 EUR/kWh');
+    expect(summary?.textContent).toContain('0.31 EUR/kWh');
     expect(summary?.querySelector('.electricity-prices-breakdown')).toBeNull();
   });
 });
@@ -1061,3 +1062,20 @@ describe('ElectricityPricesView, Homey Energy without prices', () => {
   });
 });
 
+
+
+describe('ElectricityPricesView, source order by hub location', () => {
+  it.each([
+    [{ state: 'resolved', country: 'NL' }, ['homey', 'powerhour', 'flow', 'norway']],
+    [{ state: 'resolved', country: 'NO' }, ['norway', 'homey', 'powerhour', 'flow']],
+    [{ state: 'unavailable' }, ['homey', 'powerhour', 'flow', 'norway']],
+  ] as const)('orders options for %j without changing the selected source', (market, expected) => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+    renderElectricityPricesView(mount, buildProps({ priceScheme: 'flow' }, { market }));
+    const select = mount.querySelector('#price-source-select') as HTMLElement & { value: string };
+    expect(Array.from(select.querySelectorAll<HTMLElement & { value: string }>('md-select-option')).map((option) => option.value))
+      .toEqual(expected);
+    expect(select.value).toBe('flow');
+  });
+});
