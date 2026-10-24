@@ -1,11 +1,19 @@
-// Unit: normalizePvForecastState — pure persisted-blob validation at the settings
-// boundary. Scope: the net-evidence fields added for zero-export clamp detection
-// (importMs/exportMs/netMs, lastNetW) + legacy passthrough. The pre-existing
-// field coercion (kwh/coveredMs/irradiance) is exercised incidentally.
+// Unit: normalizeLegacyPvForecastState — pure validation of the legacy settings
+// blob the one-shot import reads. Scope: the net-evidence fields added for
+// zero-export clamp detection (importMs/exportMs/netMs, lastNetW) + legacy
+// passthrough. The pre-existing field coercion (kwh/coveredMs/irradiance) is
+// exercised incidentally. The same bucket bounds hold the userdata rows
+// (`test/integration/pvForecastStore.test.ts`).
 import { describe, expect, it } from 'vitest';
-import { normalizePvForecastState } from '../../setup/pvForecastStateAdapter';
+import { normalizeLegacyPvForecastState } from '../../lib/solar/pvForecastStateStore';
 import type { PvForecastServiceState } from '../../lib/solar/pvForecastService';
 import { classifyHourNetEvidence } from '../../packages/shared-domain/src/solar/pvGenerationHistory';
+
+/** The blob as the import reads it: its state, or `malformed` when it vouches for none. */
+const normalizePvForecastState = (raw: unknown) => {
+  const state = normalizeLegacyPvForecastState(raw);
+  return state === null ? { kind: 'malformed' as const } : { kind: 'valid' as const, state };
+};
 
 /** Unwrap a parse expected to be valid; a malformed parse fails the assertion. */
 const parseValid = (raw: unknown): PvForecastServiceState => {
@@ -18,7 +26,7 @@ const HOUR_MS = 3_600_000;
 const BASE = Date.UTC(2026, 5, 21, 10, 0, 0);
 const KEY = String(BASE);
 
-describe('normalizePvForecastState net-evidence fields', () => {
+describe('normalizeLegacyPvForecastState net-evidence fields', () => {
   it('passes a legacy blob through unchanged (no fabricated evidence fields)', () => {
     const legacy = {
       history: {
@@ -162,9 +170,8 @@ describe('normalizePvForecastState net-evidence fields', () => {
   });
 
   it('classifies a non-record blob as malformed (never an empty state)', () => {
-    // Malformed means the blob cannot vouch for any history AT ALL — the boot
-    // read stays suspect instead of starting the service empty and letting the
-    // persist timer overwrite recorded history.
+    // Malformed means the blob cannot vouch for any history AT ALL — the import
+    // keeps the key rather than retiring it on the strength of nothing.
     expect(normalizePvForecastState('junk')).toEqual({ kind: 'malformed' });
     expect(normalizePvForecastState(undefined)).toEqual({ kind: 'malformed' });
   });
@@ -179,8 +186,8 @@ describe('normalizePvForecastState net-evidence fields', () => {
   });
 
   it('classifies a blob whose EVERY claimed hour fails coercion as malformed, not empty', () => {
-    // Partial corruption must stay suspect: parsing this to an empty-but-valid
-    // state would let the next persist overwrite a possibly-recoverable blob.
+    // Partial corruption imports nothing: parsing this to an empty-but-valid
+    // state would retire a possibly-recoverable blob.
     expect(normalizePvForecastState({
       history: { hourly: { [KEY]: { kwh: 'junk', coveredMs: HOUR_MS } } },
     })).toEqual({ kind: 'malformed' });
@@ -189,7 +196,7 @@ describe('normalizePvForecastState net-evidence fields', () => {
   it('classifies array-shaped payloads as malformed — arrays are not records', () => {
     // `typeof [] === 'object'`: an array-shaped hourly (numeric indices pass
     // the hour-key check) or blob must not pass plausibility as a valid empty
-    // state and let the first dirty persist overwrite a suspect blob.
+    // state and be imported as nothing.
     expect(normalizePvForecastState({ history: { hourly: [] } })).toEqual({ kind: 'malformed' });
     expect(normalizePvForecastState({
       history: { hourly: [{ kwh: 1.2, coveredMs: HOUR_MS }] },

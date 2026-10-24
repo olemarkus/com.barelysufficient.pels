@@ -13,6 +13,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import { createLastControlledStore } from '../../lib/plan/lastControlledStore';
+import { createPvForecastStateStore } from '../../lib/solar/pvForecastStateStore';
+import type { PvForecastServiceState } from '../../lib/solar/pvForecastService';
 import { createPriceCacheStore, type PriceCacheKey } from '../../lib/price/priceCacheStore';
 import { createDailyBudgetStateStore } from '../../lib/dailyBudget/dailyBudgetStateStore';
 import type { DailyBudgetState } from '../../lib/dailyBudget/dailyBudgetTypes';
@@ -164,6 +166,21 @@ export function getStoredLastControlledForTests(homeId: string = 'main'): Record
   const database = openUserdataDatabase(testUserdataDatabase());
   try {
     return createLastControlledStore(database).read(homeId);
+  } finally {
+    database.close();
+  }
+}
+
+/**
+ * The learned solar forecast's state as the app under test has stored it in
+ * its userdata rows, or `null` while nothing has been stored.
+ */
+export function getStoredPvForecastStateForTests(): PvForecastServiceState | null {
+  if (testUserdataDir === undefined) return null;
+  const database = openUserdataDatabase(testUserdataDatabase());
+  try {
+    const read = createPvForecastStateStore(database).read();
+    return read.kind === 'loaded' ? read.state : null;
   } finally {
     database.close();
   }

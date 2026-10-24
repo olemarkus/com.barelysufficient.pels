@@ -1,193 +1,170 @@
-// Integration: createPvForecastStore boot-read classification at the settings
-// seam — the loaded/absent/unreadable discrimination over the written-before
-// marker (`pv_forecast_state_initialized`) and the key-list cross-check, plus
-// the blob+marker single-persist write. SDK weirdness (throws, null-vs-undefined
-// absence, junk key lists) is pinned HERE at the adapter boundary; the
-// controller only ever branches on the semantic result (AGENTS.md "Clean and
-// trusted interfaces between layers").
-import { describe, expect, it } from 'vitest';
-import { createPvForecastStore, type PvForecastStoreSettings } from '../../setup/pvForecastStateAdapter';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  createImportingPvForecastStore,
+  createPvForecastStateStore,
+  importLegacyPvForecastState,
+} from '../../lib/solar/pvForecastStateStore';
+import { PvForecastController } from '../../lib/solar/pvForecastController';
+import type { PvForecastServiceState } from '../../lib/solar/pvForecastService';
+import { IN_MEMORY_DATABASE, openUserdataDatabase, type UserdataDatabase } from '../../lib/store/userdataDatabase';
 import { PV_FORECAST_STATE, PV_FORECAST_STATE_INITIALIZED } from '../../lib/utils/settingsKeys';
-import { emptyPvForecastServiceState } from '../../lib/solar/pvForecastService';
+import { MockSettings } from '../mocks/homey';
 
 const HOUR_MS = 3_600_000;
 const BASE = Date.UTC(2026, 5, 21, 10, 0, 0);
-const validBlob = {
-  history: { hourly: { [String(BASE)]: { kwh: 1.2, coveredMs: HOUR_MS } } },
-  irradianceByHour: {},
+const hourKey = (offset: number): string => String(BASE + offset * HOUR_MS);
+
+const open = () => {
+  const db = openUserdataDatabase(IN_MEMORY_DATABASE);
+  return { db, store: createPvForecastStateStore(db) };
 };
 
-/** Map-backed settings double; `getKeys` mirrors the live key list by default. */
-const makeSettings = (
-  overrides: Partial<PvForecastStoreSettings> = {},
-): { stored: Map<string, unknown>; settings: PvForecastStoreSettings } => {
-  const stored = new Map<string, unknown>();
-  const settings: PvForecastStoreSettings = {
-    // The real SDK answers an unset key with `null`, not `undefined`.
-    get: (key) => (stored.has(key) ? stored.get(key) : null),
-    set: (key, value) => { stored.set(key, value); },
-    getKeys: () => [...stored.keys()],
-    ...overrides,
-  };
-  return { stored, settings };
-};
+const totalChanges = (db: UserdataDatabase): number => (
+  (db.prepare('SELECT total_changes() AS n').get() as { n: number }).n
+);
 
-describe('createPvForecastStore boot-read classification', () => {
-  it('loads a valid blob and backfills the written-before marker (pre-marker upgrade)', () => {
-    const { stored, settings } = makeSettings();
-    stored.set(PV_FORECAST_STATE, validBlob);
-    const read = createPvForecastStore({ settings }).read();
-    expect(read).toEqual({ kind: 'loaded', state: validBlob });
-    // The backfill is what lets a LATER transient miss on this install be
-    // recognised as one instead of a fresh install.
-    expect(stored.get(PV_FORECAST_STATE_INITIALIZED)).toBe(true);
+// Three recorded hours, irradiance for two of them, one gap-tainted, and the cursor.
+const recorded = (): PvForecastServiceState => ({
+  history: {
+    lastSampleMs: BASE + 2.5 * HOUR_MS,
+    lastGenerationW: 900,
+    lastNetW: -300,
+    hourly: {
+      [hourKey(0)]: { kwh: 0.8, coveredMs: HOUR_MS, netMs: HOUR_MS, importMs: 0, exportMs: 600_000 },
+      [hourKey(1)]: { kwh: 1.1, coveredMs: HOUR_MS },
+      [hourKey(2)]: { kwh: 0.4, coveredMs: 1_800_000 },
+    },
+    taintedHourStarts: { [hourKey(1)]: true },
+  },
+  irradianceByHour: { [hourKey(0)]: 520, [hourKey(1)]: 610 },
+});
+
+describe('pvForecastStateStore', () => {
+  it('answers absent while empty, and round-trips a state', () => {
+    const { store } = open();
+    expect(store.read()).toEqual({ kind: 'absent' });
+    store.write(recorded());
+    expect(store.read()).toEqual({ kind: 'loaded', state: recorded() });
   });
 
-  it('still loads when the marker read throws, but skips the backfill (no signal it is missing)', () => {
-    const { stored, settings } = makeSettings({
-      get: (key) => {
-        if (key === PV_FORECAST_STATE_INITIALIZED) throw new Error('transient');
-        return validBlob;
-      },
-    });
-    expect(createPvForecastStore({ settings }).read().kind).toBe('loaded');
-    expect(stored.has(PV_FORECAST_STATE_INITIALIZED)).toBe(false);
+  it('a persist rewrites the hour that changed and the cursor, not the history around them', () => {
+    const { db, store } = open();
+    store.write(recorded());
+    const next = recorded();
+    next.history.hourly[hourKey(2)] = { kwh: 0.6, coveredMs: 2_400_000 };
+    next.history.lastSampleMs = BASE + 2.7 * HOUR_MS;
+    const before = totalChanges(db);
+    store.write(next);
+    expect(totalChanges(db) - before).toBe(2);
+    expect(createPvForecastStateStore(db).read()).toEqual({ kind: 'loaded', state: next });
   });
 
-  it('classifies a proven fresh install as absent: no blob, no marker, healthy key list without the key', () => {
-    const { stored, settings } = makeSettings();
-    stored.set('pels_status', 'something'); // a running install always has keys
-    expect(createPvForecastStore({ settings }).read()).toEqual({ kind: 'absent' });
-  });
-
-  it('classifies marker-present + blob cleanly missing from a healthy key list as marker_only', () => {
-    // The half-persist signature: the marker-first write landed, the blob
-    // write never did. NOT bundled into `unreadable` — process-lifetime
-    // deferral over this shape would wedge persistence permanently.
-    const { stored, settings } = makeSettings();
-    stored.set(PV_FORECAST_STATE_INITIALIZED, true);
-    expect(createPvForecastStore({ settings }).read()).toEqual({ kind: 'marker_only' });
-  });
-
-  it('classifies marker-present + blob absent as unreadable when the key list still LISTS the blob', () => {
-    // The key list contradicts the empty read: this is a transient miss, not a
-    // half-persist — it must stay ambiguous.
-    const { settings } = makeSettings({
-      get: (key) => (key === PV_FORECAST_STATE_INITIALIZED ? true : null),
-      getKeys: () => [PV_FORECAST_STATE, PV_FORECAST_STATE_INITIALIZED],
-    });
-    expect(createPvForecastStore({ settings }).read()).toEqual({ kind: 'unreadable', reason: 'absence_unproven' });
-  });
-
-  it('classifies marker-present + blob absent as unreadable when the key list cannot answer', () => {
-    const { settings } = makeSettings({
-      get: (key) => (key === PV_FORECAST_STATE_INITIALIZED ? true : null),
-      getKeys: () => { throw new Error('transient'); },
-    });
-    expect(createPvForecastStore({ settings }).read()).toEqual({ kind: 'unreadable', reason: 'absence_unproven' });
-  });
-
-  it('classifies an absent blob the key list still vouches for as unreadable (pre-marker install, miss)', () => {
-    // The blob key is listed but the read came back empty: an install that
-    // persisted before the marker existed, hit by a transient miss.
-    const { settings } = makeSettings({
-      get: () => null,
-      getKeys: () => [PV_FORECAST_STATE],
-    });
-    expect(createPvForecastStore({ settings }).read()).toEqual({ kind: 'unreadable', reason: 'absence_unproven' });
-  });
-
-  it('treats an empty or junk key list as proving nothing — absence stays unreadable', () => {
-    const empty = makeSettings(); // nothing stored at all ⇒ empty key list
-    expect(createPvForecastStore({ settings: empty.settings }).read())
-      .toEqual({ kind: 'unreadable', reason: 'absence_unproven' });
-
-    const junk = makeSettings({ getKeys: () => 'not-a-list' });
-    expect(createPvForecastStore({ settings: junk.settings }).read())
-      .toEqual({ kind: 'unreadable', reason: 'absence_unproven' });
-  });
-
-  it('classifies a thrown key-list read as unreadable', () => {
-    const { settings } = makeSettings({ getKeys: () => { throw new Error('transient'); } });
-    expect(createPvForecastStore({ settings }).read()).toEqual({ kind: 'unreadable', reason: 'absence_unproven' });
-  });
-
-  it('classifies a thrown marker read (with the blob absent) as unreadable', () => {
-    const { settings } = makeSettings({
-      get: (key) => {
-        if (key === PV_FORECAST_STATE_INITIALIZED) throw new Error('transient');
-        return null;
-      },
-      getKeys: () => ['pels_status'],
-    });
-    expect(createPvForecastStore({ settings }).read()).toEqual({ kind: 'unreadable', reason: 'absence_unproven' });
-  });
-
-  it('classifies a thrown blob read as unreadable — the adapter never throws', () => {
-    const { settings } = makeSettings({
-      get: (key) => {
-        if (key === PV_FORECAST_STATE) throw new Error('transient');
-        return null;
-      },
-    });
-    expect(createPvForecastStore({ settings }).read()).toEqual({ kind: 'unreadable', reason: 'read_threw' });
-  });
-
-  it('classifies a malformed blob as unreadable — a re-read may still heal it', () => {
-    const { stored, settings } = makeSettings();
-    stored.set(PV_FORECAST_STATE, { history: 'junk' });
-    expect(createPvForecastStore({ settings }).read()).toEqual({ kind: 'unreadable', reason: 'malformed' });
-  });
-
-  it('classifies a blob whose every claimed hour fails coercion as unreadable (partial corruption)', () => {
-    const { stored, settings } = makeSettings();
-    stored.set(PV_FORECAST_STATE, { history: { hourly: { [String(BASE)]: { kwh: 'junk' } } } });
-    expect(createPvForecastStore({ settings }).read()).toEqual({ kind: 'unreadable', reason: 'malformed' });
-  });
-
-  it('still loads when the backfill marker WRITE throws — read() must never throw at boot', () => {
-    const { settings } = makeSettings({
-      get: (key) => (key === PV_FORECAST_STATE ? validBlob : null),
-      set: () => { throw new Error('quota'); },
-      getKeys: () => [PV_FORECAST_STATE],
-    });
-    expect(createPvForecastStore({ settings }).read()).toEqual({ kind: 'loaded', state: validBlob });
+  it('drops a stored hour that could not have been recorded, keeping the rest', () => {
+    // A bucket covering more than an hour would forge training evidence.
+    const { db, store } = open();
+    store.write(recorded());
+    db.prepare('UPDATE pv_forecast_hours SET row_json = ? WHERE hour_start = ?')
+      .run(JSON.stringify({ bucket: { kwh: 5, coveredMs: 2 * HOUR_MS } }), hourKey(2));
+    const read = createPvForecastStateStore(db).read();
+    expect(read.kind === 'loaded' && Object.keys(read.state.history.hourly)).toEqual([hourKey(0), hourKey(1)]);
   });
 });
 
-describe('createPvForecastStore write', () => {
-  it('writes the blob and the marker as one persist, and the marker only once per process', () => {
-    const { stored, settings } = makeSettings();
-    const markerWrites: unknown[] = [];
-    const store = createPvForecastStore({
-      settings: {
-        ...settings,
-        set: (key, value) => {
-          if (key === PV_FORECAST_STATE_INITIALIZED) markerWrites.push(value);
-          settings.set(key, value);
-        },
-      },
-    });
-    store.write(emptyPvForecastServiceState());
-    store.write(emptyPvForecastServiceState());
-    expect(stored.get(PV_FORECAST_STATE)).toEqual(emptyPvForecastServiceState());
-    expect(stored.get(PV_FORECAST_STATE_INITIALIZED)).toBe(true);
-    expect(markerWrites).toEqual([true]); // confirmed once ⇒ not rewritten
+describe('importLegacyPvForecastState', () => {
+  const rig = () => {
+    const settings = new MockSettings();
+    // A real install never has an empty key list here: the boot migrations
+    // set their markers first.
+    settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
+    return { settings, ...open() };
+  };
+
+  it('imports the blob, retires it and its written-before marker; a second boot has nothing to do', () => {
+    const { settings, store } = rig();
+    settings.set(PV_FORECAST_STATE, recorded());
+    settings.set(PV_FORECAST_STATE_INITIALIZED, true);
+    importLegacyPvForecastState(settings, store);
+    expect(store.read()).toEqual({ kind: 'loaded', state: recorded() });
+    expect(settings.get(PV_FORECAST_STATE)).toBeNull();
+    expect(settings.get(PV_FORECAST_STATE_INITIALIZED)).toBeNull();
+
+    // A key that comes back (an unset that failed) never imports twice.
+    settings.set(PV_FORECAST_STATE, { history: { hourly: { [hourKey(9)]: { kwh: 1, coveredMs: HOUR_MS } } } });
+    importLegacyPvForecastState(settings, store);
+    expect(store.read()).toEqual({ kind: 'loaded', state: recorded() });
   });
 
-  it('a marker-write failure fails the whole persist so the caller retries both', () => {
-    const { stored, settings } = makeSettings({
-      set: (key, value) => {
-        if (key === PV_FORECAST_STATE_INITIALIZED) throw new Error('quota');
-        stored.set(key, value);
+  it('merges the blob under what the store recorded since a deferred import', () => {
+    const { settings, store } = rig();
+    const since: PvForecastServiceState = {
+      history: {
+        lastSampleMs: BASE + 5.5 * HOUR_MS,
+        hourly: { [hourKey(2)]: { kwh: 0.9, coveredMs: HOUR_MS }, [hourKey(5)]: { kwh: 0.2, coveredMs: 1_800_000 } },
       },
+      irradianceByHour: { [hourKey(5)]: 300 },
+    };
+    store.write(since);
+    settings.set(PV_FORECAST_STATE, recorded());
+    importLegacyPvForecastState(settings, store);
+
+    const read = store.read();
+    if (read.kind !== 'loaded') throw new Error('expected a loaded store');
+    // The store's hours and cursor win; the blob fills the hours it lacks.
+    expect(read.state.history.hourly[hourKey(2)]).toEqual({ kwh: 0.9, coveredMs: HOUR_MS });
+    expect(read.state.history.hourly[hourKey(0)]).toEqual(recorded().history.hourly[hourKey(0)]);
+    expect(read.state.history.lastSampleMs).toBe(BASE + 5.5 * HOUR_MS);
+    expect(read.state.irradianceByHour).toEqual({ [hourKey(0)]: 520, [hourKey(1)]: 610, [hourKey(5)]: 300 });
+  });
+
+  it('keeps a blob that vouches for no history, and imports nothing from it', () => {
+    const { settings, store } = rig();
+    settings.set(PV_FORECAST_STATE, { history: 'junk' });
+    settings.set(PV_FORECAST_STATE_INITIALIZED, true);
+    importLegacyPvForecastState(settings, store);
+    expect(store.read()).toEqual({ kind: 'absent' });
+    expect(settings.get(PV_FORECAST_STATE)).toEqual({ history: 'junk' });
+    expect(settings.get(PV_FORECAST_STATE_INITIALIZED)).toBe(true);
+  });
+});
+
+describe('createImportingPvForecastStore', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  // The upgrade boot: the blob is listed but its first read misses, so the
+  // import defers. The controller must not trust the empty store for the whole
+  // uptime; the next persist tick imports the blob and merges it in.
+  it('answers unreadable while the blob is still owed, and the controller recovers it on the next tick', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ hourly: { time: [], shortwave_radiation: [] } }) })));
+    const settings = new MockSettings();
+    settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
+    settings.set(PV_FORECAST_STATE, recorded());
+    const get = settings.get.bind(settings);
+    // The import at construction and the controller's boot read both miss.
+    let misses = 2;
+    vi.spyOn(settings, 'get').mockImplementation((key: string) => {
+      if (key === PV_FORECAST_STATE && misses > 0) {
+        misses -= 1;
+        return undefined;
+      }
+      return get(key);
     });
-    const store = createPvForecastStore({ settings });
-    expect(() => { store.write(emptyPvForecastServiceState()); }).toThrow('quota');
-    // Marker-first ordering: the failed marker means the blob was never
-    // attempted, so NOTHING half-written remains — the caller keeps its state
-    // dirty and the retry rewrites both keys.
-    expect(stored.has(PV_FORECAST_STATE_INITIALIZED)).toBe(false);
-    expect(stored.has(PV_FORECAST_STATE)).toBe(false);
+    const controller = new PvForecastController({
+      store: createImportingPvForecastStore(settings, createPvForecastStateStore(openUserdataDatabase(IN_MEMORY_DATABASE))),
+      userAgent: 'pels-test',
+      getNowMs: () => Date.now(),
+      readCoordinates: async () => ({ kind: 'unavailable', outcome: 'no_location' }),
+      logger: { info: vi.fn(), warn: vi.fn() },
+    });
+    expect(Object.keys(controller.service.getState().history.hourly)).toHaveLength(0);
+
+    controller.start();
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    expect(Object.keys(controller.service.getState().history.hourly)).toEqual(Object.keys(recorded().history.hourly));
+    expect(settings.get(PV_FORECAST_STATE)).toBeNull();
+    controller.stop();
   });
 });
