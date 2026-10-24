@@ -12,7 +12,6 @@ import type {
 import type { ConfiguredShedBehavior } from '../../packages/shared-domain/src/settings/shedBehaviors';
 import { COOLING_SHED_DEFAULT_C } from '../../packages/shared-domain/src/utils/airtreatmentConstants';
 import {
-  computeDefaultSetpointShedTemperature,
   normalizeShedTemperature,
 } from '../../packages/shared-domain/src/utils/airtreatmentShedTemperature';
 import { getPrimaryTargetCapability } from '../../packages/shared-domain/src/targetCapabilities';
@@ -167,8 +166,7 @@ export function hasTemperaturePolicyPowerControl(device: ControlPostureDevice): 
  * - **Axis.** A temperature device with neither on/off nor steps can only be
  *   limited through its setpoint, whatever the owner saved: "turn off" or
  *   "step down" has nothing to command there. Its limit is the saved one, or
- *   the governing mode target less the default setback when none is saved
- *   (a fixed fallback base without one), never below the device's floor.
+ *   the device's configured minimum target when none is saved.
  *   Resolved per call from what the device offers now, so a capability
  *   missing from one read changes no saved setting.
  *
@@ -178,9 +176,7 @@ export function hasTemperaturePolicyPowerControl(device: ControlPostureDevice): 
  * silent-meter pass). It is read at most once, and only when the answer
  * needs it: for a saved setpoint limit (denied, or checked for the device's
  * measured temperature), or for a device whose stored configuration is a
- * temperature target (decoration never turns another model into one). The
- * mode target is a thunk for the same reason, read only for a setpoint-only
- * device with no saved limit.
+ * temperature target (decoration never turns another model into one).
  *
  * - **Eligibility.** A saved setpoint limit needs the device's temperature
  *   this read: without `measure_temperature` the device is not eligible for
@@ -193,7 +189,6 @@ export function resolveTemperaturePolicyShedBehavior(
   readDevice: () => SetpointShedPostureDevice | undefined,
   allowsLimiting: boolean,
   direction: ThermalDirection,
-  readModeTargetC: () => number | null,
 ): ResidualKwShedBehavior {
   if (!allowsLimiting) {
     if (configured.action !== 'set_temperature') return configured;
@@ -202,7 +197,7 @@ export function resolveTemperaturePolicyShedBehavior(
   const isTemperatureTarget = configuration?.controlModel === 'temperature_target';
   const device = isTemperatureTarget ? readDevice() : undefined;
   if (device && isSetpointOnlyShedDevice(device)) {
-    return resolveSetpointOnlyShed(configured, device, direction, readModeTargetC);
+    return resolveSetpointOnlyShed(configured, device, direction);
   }
   if (configured.action !== 'set_temperature') return configured;
   // A saved setpoint limit needs the device's temperature this read: without
@@ -215,9 +210,11 @@ export function resolveTemperaturePolicyShedBehavior(
     return resolved;
   }
   noteSetpointLimitAvailable(limitedDevice);
+  const heatingLimitC = configured.temperature === 'device_minimum'
+    ? limitedDevice.setpointShedFloorC : configured.temperature;
   return {
     action: 'set_temperature',
-    temperature: direction === 'cooling' ? configured.coolingTemperature : configured.temperature,
+    temperature: direction === 'cooling' ? configured.coolingTemperature : heatingLimitC,
   };
 }
 
@@ -255,7 +252,7 @@ const noteSetpointLimitAvailable = (device: SetpointShedPostureDevice): void => 
   moduleLogger.info({ event: 'shed_setpoint_limit_available', deviceId: device.id, deviceName: device.name });
 };
 
-/** The posture slice plus the control model and class-keyed setpoint floor the device owner resolves. */
+/** The posture slice plus the control model and minimum target the device owner resolves. */
 type SetpointShedPostureDevice = ControlPostureDevice
   & Pick<DeviceConfigurationRead, 'controlModel' | 'setpointShedFloorC'>;
 
@@ -273,24 +270,17 @@ function resolveSetpointOnlyShed(
   configured: ConfiguredShedBehavior,
   device: SetpointShedPostureDevice,
   direction: ThermalDirection,
-  readModeTargetC: () => number | null,
 ): ResidualKwShedBehavior {
-  const minFloorC = device.setpointShedFloorC;
-  if (configured.action === 'set_temperature') {
+  if (direction === 'cooling') {
     return {
       action: 'set_temperature',
-      temperature: direction === 'cooling'
-        ? configured.coolingTemperature
-        : Math.max(minFloorC, normalizeShedTemperature(configured.temperature)),
+      temperature: configured.action === 'set_temperature' ? configured.coolingTemperature : COOLING_SHED_DEFAULT_C,
     };
   }
-  if (direction === 'cooling') return { action: 'set_temperature', temperature: COOLING_SHED_DEFAULT_C };
-  // Never from the device's live setpoint: while it is limited that setpoint
-  // is the limit PELS wrote, and a setback from it would fall every build.
-  return {
-    action: 'set_temperature',
-    temperature: computeDefaultSetpointShedTemperature(readModeTargetC(), minFloorC),
-  };
+  const temperature = configured.action === 'set_temperature' && typeof configured.temperature === 'number'
+    ? Math.max(device.setpointShedFloorC, normalizeShedTemperature(configured.temperature))
+    : device.setpointShedFloorC;
+  return { action: 'set_temperature', temperature };
 }
 
 /**
@@ -303,7 +293,6 @@ export function resolveTemperaturePolicyShedLimitsC(
   configured: ConfiguredShedBehavior,
   configuration: Pick<DeviceConfigurationRead, 'controlModel'> | undefined,
   readDevice: () => SetpointShedPostureDevice | undefined,
-  readModeTargetC: () => number | null,
 ): readonly number[] {
   // Both directions ask about the same device: read it at most once.
   let device: SetpointShedPostureDevice | undefined;
@@ -317,7 +306,7 @@ export function resolveTemperaturePolicyShedLimitsC(
   };
   return (['heating', 'cooling'] as const).flatMap((direction) => {
     const resolved = resolveTemperaturePolicyShedBehavior(
-      configured, configuration, readDeviceOnce, true, direction, readModeTargetC,
+      configured, configuration, readDeviceOnce, true, direction,
     );
     return resolved.action === 'set_temperature' ? [resolved.temperature] : [];
   });

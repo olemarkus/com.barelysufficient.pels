@@ -22,7 +22,6 @@ export const resolveDeviceSettingRecommendations = (): SetupRecommendation[] => 
       state.managedMap,
       state.controllableMap,
       state.shedBehaviors,
-      state.modeTargets[state.activeMode] ?? {},
     )
     : []),
 ];

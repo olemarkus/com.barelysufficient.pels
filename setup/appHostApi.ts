@@ -319,14 +319,12 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     // for the direction the device is moving demand in — the same resolution
     // `toPlanDevice` asks for the price shift.
     this.context.observer.getThermalDirection(deviceId),
-    () => this.readGoverningModeTargetC(deviceId),
   );
 
   public getShedLimitTemperaturesC = (deviceId: string): readonly number[] => resolveTemperaturePolicyShedLimitsC(
     this.context.deviceControlSettings.getConfiguredShedBehavior(deviceId),
     this.context.deviceConfiguration.get(deviceId),
     () => this.getRuntimeDevice(deviceId),
-    () => this.readGoverningModeTargetC(deviceId),
   );
 
   public computePhysicalPowerLimit = (): number | null => requirePlanService(this.context).computePhysicalPowerLimit();

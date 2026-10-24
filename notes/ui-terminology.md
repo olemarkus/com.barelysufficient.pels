@@ -632,6 +632,20 @@ renders visible-but-disabled with a gate hint naming the real switch**
 sections are structurally absent. Never vanish a control the user could
 re-enable from this page.
 
+### Device-page automatic limited temperature
+
+On a temperature-only device without on/off or power levels, **Limited temperature**
+shows an empty field with **Automatic** as its placeholder when no fixed heating
+limit is saved. Its persistent hint is `Automatic: uses the device’s minimum target,
+N °C, when limiting.` If Homey supplies no minimum, name `PELS’s default minimum`
+instead (10 °C generally, 16 °C for air treatment). This target does not follow the
+mode temperature or the current measured temperature.
+
+A fixed value reads `Uses this target when limiting, in every mode.` and offers
+**Use automatic**. Clearing and committing the field has the same effect. Resetting
+heating preserves a separately configured cooling limit. Never describe this target
+as the device's current measured temperature or promise that it has stopped drawing.
+
 ### Device-page "Power when running" — one line about the present source
 
 The device's Setup section carries **Power when running** (watts, `suffix-text="W"`)
@@ -2235,31 +2249,20 @@ device-neutral.
 
 A managed device with Power-limit control on, a power reading and a
 temperature target but no on/off and no steps is limited only through its
-target. With no limited temperature saved, PELS picks one itself (mode target
-less 3 °C, at most 40 °C, from `computeDefaultSetpointShedTemperature`), which
-may be far from what the owner wants for a water heater's tank. It gets a
-Recommended suggestion. Source of truth:
-`resolveSetpointShedLimitRecommendations`
-(`packages/settings-ui/src/ui/recommendationsModel.ts`).
+target. With no fixed limit saved, **Automatic** uses the device's configured
+minimum target, with the class fallback only when no minimum is reported.
+`resolveSetpointShedLimitRecommendations` in
+`packages/settings-ui/src/ui/recommendationsModel.ts` offers an optional suggestion
+named `Set the limited temperature for {device name}`. It states the automatic
+heating temperature and whether that is the device minimum or PELS's fallback;
+a reversible unit also names the cooling limit. Dismissing it keeps automatic.
+The `Set temperature` action opens the device with **Limited temperature** in view.
 
-- Title: `Set the limited temperature for {device name}`.
-- Body: `PELS limits {device} by lowering its target temperature. No limited
-  temperature is saved, so PELS chooses one itself: {N} °C in the current mode.
-  Set your own below each mode's temperature, or dismiss this to let PELS
-  choose.` Without the selected home's mode temperature for the device (a device
-  in another area), the figure is `3 °C below the mode's temperature, between
-  {floor} and 40 °C`, the floor being the device class's lowest limit (10 °C, or
-  16 °C for air treatment). A unit that reports heating or cooling names both limits: `{N} °C in
-  the current mode while heating, and 28 °C while cooling`.
-- Action: `Set temperature`, opening the device page with `Limited temperature`
-  in view.
-- Saving a limited temperature removes it. Dismissing it keeps PELS's choice.
-  Nothing shows until the saved limits are read; a key that reads absent counts
-  as "nothing saved" only once fresh reads a moment apart agree.
-- The field's hint on such a device: `PELS lowers the target to this while it
-  limits the device. Keep it below each mode's temperature, or PELS cannot limit
-  the device in that mode.` A limit at or above a mode's temperature leaves the
-  planner nothing to lower in that mode.
+Saving a fixed limit removes the suggestion. Nothing shows until the saved limits
+are read; a key that reads absent counts as "nothing saved" only once fresh reads
+a moment apart agree. The field follows "Device-page automatic limited temperature"
+above. A fixed heating limit's hint also says `Keep it below each mode’s temperature
+so PELS can reduce heating.`
 
 ### Car battery recommendations
 

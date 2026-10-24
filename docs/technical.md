@@ -349,7 +349,15 @@ For a temperature device that another app or Flow controls, set **When the tempe
 
 ### Limited temperature for a heating and cooling device
 
-When PELS limits a device by setpoint, the **Limited temperature** is the point it may fall to: a heater set to 21 °C that is limited to 16 °C is allowed to cool down to 16 °C, and no further, until power allows it back up. That number is a floor, and for a heater it is the whole story.
+When PELS limits a device by setpoint, **Limited temperature** is the target it sends: a heater normally set to 21 °C receives a target of 16 °C while limited, until power allows it back up. The device’s own controller decides whether to heat at that target. This setting changes the target, not the measured temperature.
+
+For a device without on/off or power levels, the heating limit defaults to its
+configured minimum target temperature. The **Limited temperature** field shows
+**Automatic** and the temperature PELS will use. Enter a number to use a fixed
+limit in every mode; **Use automatic** or clearing the field returns to the
+device minimum. If the device reports no minimum, PELS uses 10 °C, or 16 °C for
+air-treatment devices. A separate cooling limit is kept when heating returns to
+automatic.
 
 A reversible unit — an air conditioner or a heat pump that also cools — has two stories. While it is heating, the same floor applies. While it is cooling, a floor is the wrong thing to hand it: setting a cooling unit *down* to 16 °C makes it work harder, which is the opposite of limiting. So a device that reports its own heating/cooling mode gets a second setting, **Limited temperature when cooling**, and that one is a ceiling: the point the room may rise to while the device is limited.
 

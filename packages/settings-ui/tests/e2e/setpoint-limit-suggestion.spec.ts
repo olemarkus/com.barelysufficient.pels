@@ -2,8 +2,7 @@ import { expect, test } from './fixtures/test';
 import { readMdValue, setMdValue } from './fixtures/materialWeb';
 
 // A water heater PELS can limit only through its target, with no limited
-// temperature saved: PELS picks one itself (its mode target less a setback, at
-// most 40 °C), so it suggests setting one, opens the device at that field, and
+// temperature saved: PELS uses the device minimum, so it suggests setting one, opens the device at that field, and
 // stops suggesting it once one is saved.
 test.describe('Limited temperature suggestion', () => {
   test.beforeEach(async ({ page }) => {
@@ -48,15 +47,17 @@ test.describe('Limited temperature suggestion', () => {
     const card = page.locator('#setup-recommendations-root .setup-recommendation-card', {
       hasText: 'Set the limited temperature for Water Heater',
     });
-    await expect(card).toContainText('so PELS chooses one itself: 40 °C in the current mode');
+    await expect(card).toContainText('so automatic uses 10 °C (the device’s minimum target)');
     await card.getByText('Set temperature').click();
 
     // The field the suggestion names, in view, starting at PELS's own choice
     // and going as high as the tank allows.
     const field = page.locator('#device-detail-overshoot-temp');
     await expect(page.locator('#device-detail-overshoot-temp-row')).toBeInViewport();
-    expect(await readMdValue(page, '#device-detail-overshoot-temp')).toBe('40');
+    expect(await readMdValue(page, '#device-detail-overshoot-temp')).toBe('');
     await expect(field).toHaveJSProperty('max', '75');
+    await expect(field).toHaveJSProperty('placeholder', 'Automatic');
+    await expect(page.locator('#device-detail-overshoot-temp-hint')).toContainText('10 °C');
 
     await setMdValue(page, '#device-detail-overshoot-temp', '55');
     await expect.poll(() => page.evaluate(() => new Promise((resolve) => {

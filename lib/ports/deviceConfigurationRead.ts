@@ -15,8 +15,8 @@ type DeviceConfigurationFields = {
   starvationSupported: boolean;
   /**
    * The lowest heating limit PELS sheds this device's setpoint to when the
-   * setpoint is its only way to shed (no on/off, no steps). Class-keyed:
-   * higher for air treatment, whose setpoint is the supply air.
+   * setpoint is its only way to shed (no on/off, no steps). The device's
+   * configured target minimum, with a class-specific fallback when unreported.
    */
   setpointShedFloorC: number;
   capabilities?: DeviceDescriptorRead['capabilities'];

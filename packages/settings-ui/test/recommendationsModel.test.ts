@@ -136,7 +136,6 @@ describe('setup recommendations', () => {
       { ...on, unmanaged: false },
       { ...on, 'not-limited': false },
       { saved: { action: 'set_temperature', temperature: 55, coolingTemperature: 28 } },
-      { eligible: 65 },
     );
     state.temperatureControlDisabledMap = {};
 
@@ -146,8 +145,8 @@ describe('setup recommendations', () => {
       category: 'recommendation',
       title: 'Set the limited temperature for Water Heater',
       body: 'PELS limits Water Heater by lowering its target temperature. No limited temperature is saved, '
-        + 'so PELS chooses one itself: 40 °C in the current mode. Set your own below each mode\'s '
-        + 'temperature, or dismiss this to let PELS choose.',
+        + 'so automatic uses 10 °C (the device’s minimum target). Set your own below each mode\'s '
+        + 'temperature, or dismiss this to keep automatic.',
       actionLabel: 'Set temperature',
       target: { kind: 'device-shed-limit', deviceId: 'eligible' },
     }]);
@@ -165,15 +164,15 @@ describe('setup recommendations', () => {
     });
 
     const [recommendation] = resolveSetpointShedLimitRecommendations(
-      [heatPump], { 'heat-pump': true }, { 'heat-pump': true }, {}, { 'heat-pump': 22 },
+      [heatPump], { 'heat-pump': true }, { 'heat-pump': true }, {},
     );
 
     expect(recommendation?.body).toBe('PELS limits Heat Pump by changing its target temperature. '
-      + 'No limited temperatures are saved, so PELS chooses them itself: 19 °C in the current mode while '
-      + 'heating, and 28 °C while cooling. Set your own, or dismiss this to let PELS choose.');
+      + 'No limited temperatures are saved, so automatic uses 10 °C (PELS’s default minimum) while '
+      + 'heating, and 28 °C while cooling. Set your own, or dismiss this to keep automatic.');
   });
 
-  it('states PELS\'s rule for a device the selected home holds no mode temperature for', () => {
+  it('names the fallback when the device reports no minimum', () => {
     // A device in another area: its mode temperature lives in that area's catalog.
     const heater = device({
       id: 'annex-heater',
@@ -186,11 +185,10 @@ describe('setup recommendations', () => {
     });
 
     const [recommendation] = resolveSetpointShedLimitRecommendations(
-      [heater], { 'annex-heater': true }, { 'annex-heater': true }, {}, {},
+      [heater], { 'annex-heater': true }, { 'annex-heater': true }, {},
     );
 
-    expect(recommendation?.body).toContain('so PELS chooses one itself: 3 °C below the mode\'s temperature, '
-      + 'between 10 and 40 °C.');
+    expect(recommendation?.body).toContain('so automatic uses 10 °C (PELS’s default minimum).');
   });
 
   it('does not recommend built-in control for devices without an available switch', () => {
