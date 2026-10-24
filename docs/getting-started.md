@@ -34,7 +34,7 @@ Check the selected meter in Homey and whether its reading changes. For a Fluvius
 
 Turn on **Managed by PELS** for one suitable device. For devices with power readings, this also enables **Power-limit control**. Open **Device settings** to review what PELS may change.
 
-For solar, select **Use more of your own solar**. The action opens the appropriate existing control:
+For solar, select **Use more of your own solar**. It appears once PELS finds a solar device in Homey or sees your home export power. The action opens the appropriate existing control:
 
 | Device control | Setting |
 | --- | --- |
@@ -43,7 +43,7 @@ For solar, select **Use more of your own solar**. The action opens the appropria
 | EV charging with suitable control | **Charge on solar surplus** |
 | Other suitable stepped loads | **Match solar surplus** |
 
-You can find this path before export has been observed. If a prerequisite is missing, follow the hint beside the action. [Solar setup details](/solar).
+You can find this path before your home has exported any power. Until PELS sees your solar produce more than the home is using, the hint says so, and the solar control appears after that. If a prerequisite is missing, follow the hint beside the action. [Solar setup details](/solar).
 
 A dynamic-price contract, battery, daily budget, and Smart task are not required.
 
