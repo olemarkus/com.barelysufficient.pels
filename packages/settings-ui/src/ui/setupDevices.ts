@@ -8,7 +8,7 @@ import { resolveDeviceDetailControlMode, resolveDeviceDetailKind } from './devic
 import { resolveDeviceDetailControlState } from './deviceDetail/controlState.ts';
 import { isSurplusTrackingDeviceShape } from './deviceDetail/solarSurplusTracking.ts';
 import { isDumpLoadDeviceShape } from './deviceDetail/solarSurplus.ts';
-import { hasActiveDeadlineObjective, resolveSurplusControlAvailable, state } from './state.ts';
+import { hasActiveDeadlineObjective, state } from './state.ts';
 import { SURPLUS_TRACKING_LABELS } from '../../../shared-domain/src/solarSurplusTrackingCopy.ts';
 
 export type SolarSetupAction = {
@@ -48,8 +48,9 @@ const solarSetupHint = (device: SettingsUiDeviceListItem): string | null => {
       return 'Solar-only control can be changed after the active Smart task ends.';
     }
   }
-  return resolveSurplusControlAvailable()
-    ? null : 'Waiting for usable solar readings. Check the meter and solar devices in Homey.';
+  // Waiting for the first surplus is not a prerequisite the owner can meet; the
+  // step's header says it once instead of every card repeating it.
+  return null;
 };
 
 export const resolveSolarSetupAction = (device: SettingsUiDeviceListItem): SolarSetupAction | null => {
