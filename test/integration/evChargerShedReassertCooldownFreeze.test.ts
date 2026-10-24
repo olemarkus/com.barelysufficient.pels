@@ -250,7 +250,7 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
     getSteppedLoadCommandSession: () => ({
       hasPriorStepCommand: false,
       stepCommandPending: false,
-      unconfirmedStepCommands: { kind: 'none' as const },
+      unansweredStepCommands: { kind: 'none' as const },
     }),
     pendingBinaryCommandStore,
     storageLane: { kind: 'none' },

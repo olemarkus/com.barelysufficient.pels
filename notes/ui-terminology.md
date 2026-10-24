@@ -349,9 +349,9 @@ too. Matrix of record: `notes/ev-charger-state-copy.md`.
 
 ### A level change nothing confirms (stepped card reason line)
 
-When a stepped device lets two step commands in a row expire unconfirmed and
-still reports another level than the one asked for, its reason line says what
-carries the level back, ahead of every other stepped line (source:
+When a stepped device reports no level at all back to two step commands in a
+row, and is still not at the level asked for, its reason line
+says what carries the level back, ahead of every other stepped line (source:
 `resolveUnansweredStepLine` in `lib/plan/deviceStatusReadModel.ts`, from the
 executor's `stepCommandUnanswered`):
 
@@ -363,7 +363,9 @@ executor's `stepCommandUnanswered`):
 Without it the card kept saying `Increasing to 16 A`, or a retry countdown, for
 as long as PELS kept asking: the Flow that never reports back read as PELS
 never resuming. One expiry is not enough, since a slow Flow or a busy device
-can miss one confirmation window.
+can miss one confirmation window. A device that reports any other level after
+a command has answered it, so it gets no such line: a charger asked for 16 A
+that clamps to 10 A and reports 10 A has a working Flow.
 
 ### Device cards say what a device needs; the hero says what limits the house
 

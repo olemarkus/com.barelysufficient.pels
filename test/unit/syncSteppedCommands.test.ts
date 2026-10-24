@@ -107,6 +107,36 @@ describe('syncSteppedCommands', () => {
     expect(store.isStepCommandPending('dev-1')).toBe(false);
   });
 
+  it('counts no command for a step once the device reports another level after one of them', () => {
+    // Asked for `high`, the device clamps at `medium` and says so. Its report
+    // came back, so neither this command nor a reissue that changes nothing
+    // (and so draws no new report) is one nothing answered.
+    const { store } = steppedStoresForTest();
+    const clamped = device({
+      steppedCommandConfirmation: { state: 'observed', observedStepId: 'medium', observedAtMs: 1_500 },
+    });
+    store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 1_000 });
+    syncSteppedCommands({ store, devices: [clamped], nowMs: 1_000 + STEPPED_LOAD_COMMAND_STALE_MS });
+    store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 200_000 });
+    syncSteppedCommands({ store, devices: [clamped], nowMs: 200_000 + STEPPED_LOAD_COMMAND_STALE_MS });
+
+    expect(store.getDesired('dev-1')).toMatchObject({ stepId: 'high', status: 'stale' });
+    expect(store.getUnansweredStepCommands('dev-1')).toEqual({ kind: 'none' });
+  });
+
+  it('counts a command a report from before it does not answer', () => {
+    const { store } = steppedStoresForTest();
+    const reportedEarlier = device({
+      steppedCommandConfirmation: { state: 'observed', observedStepId: 'medium', observedAtMs: 500 },
+    });
+    store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 1_000 });
+    syncSteppedCommands({ store, devices: [reportedEarlier], nowMs: 1_000 + STEPPED_LOAD_COMMAND_STALE_MS });
+    store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 200_000 });
+    syncSteppedCommands({ store, devices: [reportedEarlier], nowMs: 200_000 + STEPPED_LOAD_COMMAND_STALE_MS });
+
+    expect(store.getUnansweredStepCommands('dev-1')).toEqual({ kind: 'unanswered', stepId: 'high', count: 2 });
+  });
+
   it('reports nothing tracked on a fresh store, so the sweep can be skipped', () => {
     const { store } = steppedStoresForTest();
     expect(store.hasTrackedState()).toBe(false);

@@ -77,7 +77,7 @@ If your device app exposes a direct level trigger, prefer reporting the step dir
 
 ## Common Pitfalls
 
-- Forgetting the feedback Flow. Without it, PELS only knows what it last asked for. When two level changes in a row go unconfirmed, the device card says **Level change not confirmed** and points you to the Flow that reports the level back.
+- Forgetting the feedback Flow. Without it, PELS only knows what it last asked for. When the device reports no level back for two level changes in a row, the device card says **Level change not confirmed** and points you to the Flow that reports the level back.
 - Treating `measure_power = 0` as if the selected step were `Off`.
 - Mapping vendor power feedback to the wrong configured planning power.
 - Using **Set expected power for device** for a stepped-load device. That card is legacy and is rejected for built-in stepped loads.

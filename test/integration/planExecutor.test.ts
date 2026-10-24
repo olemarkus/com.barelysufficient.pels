@@ -339,7 +339,7 @@ const buildExecutor = (
     getSteppedLoadCommandSession: () => ({
       hasPriorStepCommand: false,
       stepCommandPending: false,
-      unconfirmedStepCommands: { kind: 'none' as const },
+      unansweredStepCommands: { kind: 'none' as const },
     }),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
     storageLane: { kind: 'none' },
@@ -1935,7 +1935,7 @@ describe('PlanExecutor stepped loads', () => {
           hasPriorStepCommand: false,
           stepCommandPending: false,
           reportedStepId: 'low',
-          unconfirmedStepCommands: { kind: 'none' as const },
+          unansweredStepCommands: { kind: 'none' as const },
         }),
       },
     );
@@ -1965,7 +1965,7 @@ describe('PlanExecutor stepped loads', () => {
           hasPriorStepCommand: false,
           stepCommandPending: false,
           reportedStepId: 'max',
-          unconfirmedStepCommands: { kind: 'none' as const },
+          unansweredStepCommands: { kind: 'none' as const },
         }),
       },
     );
@@ -2027,7 +2027,7 @@ describe('PlanExecutor stepped loads', () => {
           initializationAssumedStepId: 'low',
           hasPriorStepCommand: false,
           stepCommandPending: false,
-          unconfirmedStepCommands: { kind: 'none' as const },
+          unansweredStepCommands: { kind: 'none' as const },
         }),
       },
     );
@@ -2067,7 +2067,7 @@ describe('PlanExecutor stepped loads', () => {
           initializationAssumedStepId: 'low',
           hasPriorStepCommand: false,
           stepCommandPending: false,
-          unconfirmedStepCommands: { kind: 'none' as const },
+          unansweredStepCommands: { kind: 'none' as const },
         }),
       },
     );
@@ -2190,7 +2190,7 @@ describe('PlanExecutor stepped loads', () => {
       { getSteppedLoadCommandSession: () => ({
         hasPriorStepCommand: true,
         stepCommandPending: false,
-        unconfirmedStepCommands: { kind: 'none' as const },
+        unansweredStepCommands: { kind: 'none' as const },
       }) },
     );
     desiredSteppedTrigger.trigger.mockImplementation(async () => {
@@ -2228,7 +2228,7 @@ describe('PlanExecutor stepped loads', () => {
       getSteppedLoadCommandSession: () => ({
         hasPriorStepCommand: true,
         stepCommandPending: false,
-        unconfirmedStepCommands: { kind: 'none' as const },
+        unansweredStepCommands: { kind: 'none' as const },
       }),
     });
     nativeSteppedAdapters.observe('dev-1', {

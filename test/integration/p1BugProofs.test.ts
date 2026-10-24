@@ -102,7 +102,7 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
     getSteppedLoadCommandSession: () => ({
       hasPriorStepCommand: false,
       stepCommandPending: false,
-      unconfirmedStepCommands: { kind: 'none' as const },
+      unansweredStepCommands: { kind: 'none' as const },
     }),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
     storageLane: { kind: 'none' },
