@@ -109,3 +109,11 @@ export const writeLimitsSettings = async (
 export const writeSimulationSetting = async (current: CurrentCapacitySettings, dryRun: boolean): Promise<void> => {
   if (current.dryRun !== dryRun) await setSetting(CAPACITY_DRY_RUN, dryRun);
 };
+
+/** Changing the period never materializes the built-in hard cap. */
+export const writeCapacityPeriodSetting = async (
+  current: CurrentCapacitySettings,
+  periodMinutes: 15 | 60,
+): Promise<void> => {
+  if (current.periodMinutes !== periodMinutes) await setSetting(CAPACITY_PERIOD_MINUTES, periodMinutes);
+};

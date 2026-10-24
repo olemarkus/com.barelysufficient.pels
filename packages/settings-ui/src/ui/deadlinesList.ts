@@ -1,3 +1,4 @@
+import { state } from './state.ts';
 import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import {
@@ -399,6 +400,9 @@ const paintSmartTaskCreate = (snapshot: SmartTaskCreateSnapshot | null): void =>
   renderSmartTaskCreate(root, {
     snapshot,
     afterTaskLine: step.kind === 'preview' ? resolveSmartTaskCreateAfterTaskLine(step.device.deviceId) : null,
+    solarNote: (step.kind === 'compose' || step.kind === 'preview')
+      && state.priceOptimizationSettings[step.device.deviceId]?.surplusWilling === true
+      ? 'While active, the Smart task decides when this device runs and may use grid electricity.' : null,
     actions: smartTaskCreateActions,
   });
 };

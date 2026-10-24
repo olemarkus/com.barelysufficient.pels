@@ -47,7 +47,7 @@ test('single-home user sees the Main-home form, no scope bar', async ({ page }) 
   // settings card is just part of the page.
   await expect(page.locator('#settings-capacity-limit-hint')).toHaveText(
     'The peak or tariff step you want to protect. PELS keeps each selected period’s average power under this. '
-      + 'No capacity tariff where you live? Turn off Capacity limit.',
+      + 'Not charged for measured peaks? You can turn off Capacity limit.',
   );
   await expect(page.locator('#settings-limits-global')).toBeVisible();
   // Layout identity: the scope bar's mount stays display:none, so it claims no
@@ -319,7 +319,7 @@ test('Main simulation banner stays truthful while a meter area actively controls
   await expect(page.locator('#dry-run-banner')).toContainText(
     'Main home simulation on — Main home devices stay as-is',
   );
-  await expect(page.locator('#simulation-disable-button')).toHaveText('Turn off Main home simulation');
+  await expect(page.locator('#simulation-disable-button')).toHaveText('Review Main home setup');
   const bannerLayout = await page.evaluate(() => {
     const banner = document.querySelector('#dry-run-banner')!.getBoundingClientRect();
     const text = document.querySelector('#dry-run-banner-text')!.getBoundingClientRect();
@@ -356,7 +356,7 @@ test('simulation banner keeps a conservative scope across transient and realtime
     stub.emitSettingsSet('homes_config_initialized');
   });
   await expect(banner).toContainText('Main home simulation on — Main home devices stay as-is');
-  await expect(action).toHaveText('Turn off Main home simulation');
+  await expect(action).toHaveText('Review Main home setup');
 
   await page.evaluate(() => {
     const stub = (window as unknown as {
@@ -392,7 +392,7 @@ test('simulation banner keeps a conservative scope across transient and realtime
     stub.emitSettingsSet('homes_config');
   });
   await expect(banner).toContainText('Simulation on — devices stay as-is');
-  await expect(action).toHaveText('Turn off simulation');
+  await expect(action).toHaveText('Review and start');
 });
 
 test('a simulating area surfaces on the global banner while Main is live, until control turns on', async ({ page }) => {

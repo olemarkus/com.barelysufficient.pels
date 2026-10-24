@@ -90,7 +90,7 @@ describe('setup path', () => {
       // this device will be held to 10 kW until the owner says otherwise.
       const facts = { ...priceOnlyOwner, limitableDeviceCount: 1 };
       expect(statuses(facts)).toEqual(['power:done', 'devices:done', 'hardCap:next']);
-      expect(detailOf(facts, 'hardCap')).toBe('10 kW hard cap (hourly average) until you set yours');
+      expect(detailOf(facts, 'hardCap')).toContain('10 kW hard cap (hourly average) until you set yours');
     });
 
     it('puts Devices before Hard cap: what may be limited, then to what', () => {
@@ -104,7 +104,7 @@ describe('setup path', () => {
     // The step stands in for that banner where the card is on screen, so it
     // must lose nothing the banner said: both remedies, and the names to look for.
     expect(detailOf(freshInstall, 'power')).toBe(NEVER.remedy);
-    expect(detailOf({ ...freshInstall, power: { state: 'received' } }, 'power')).toBe('Readings are arriving');
+    expect(detailOf({ ...freshInstall, power: { state: 'received' } }, 'power')).toBe('Meter connected');
   });
 
   it('names the capacity period, so a quarter-hour tariff on the hourly default is visible', () => {
@@ -121,72 +121,18 @@ describe('setup path', () => {
     expect(detailOf(saved(60), 'hardCap')).toBe('2.5 kW hard cap (hourly average), 0.2 kW safety margin');
   });
 
-  describe('tailored by where the hub is, never by its language', () => {
-    const belgian = (periodMinutes: 15 | 60): SetupPathFacts => ({
-      ...freshInstall,
-      managedDeviceCount: 1,
-      limitableDeviceCount: 1,
-      market: { state: 'resolved', country: 'BE' },
-      hardCap: { state: 'unset', runningLimitKw: 10, periodMinutes },
-    });
-
-    it('names Flanders to a Belgian home still on the hourly default', () => {
-      // Flanders bills the 15-minute peak; the rest of Belgium has no such
-      // tariff and a country code cannot tell them apart, so this names
-      // Flanders rather than telling every Belgian owner to change it.
-      expect(detailOf(belgian(60), 'hardCap'))
-        .toBe('10 kW hard cap (hourly average) until you set yours. In Flanders, use the 15-minute average.');
-    });
-
-    it('says nothing more once that home is on the 15-minute average', () => {
-      expect(detailOf(belgian(15), 'hardCap')).toBe('10 kW hard cap (15-minute average) until you set yours');
-    });
-
-    it('asks a Swedish home whether it pays for its peak instead of presuming a tariff', () => {
-      // Whether a Swedish home pays a capacity charge depends on its grid company.
-      const swedish = (periodMinutes: 15 | 60) => ({
-        ...belgian(periodMinutes), market: { state: 'resolved' as const, country: 'SE' },
-      });
-      expect(detailOf(swedish(60), 'hardCap')).toBe('Does your grid company charge for your highest hourly use? '
-        + 'If so, set your hard cap. If not, turn off Capacity limit.');
-      expect(detailOf(swedish(15), 'hardCap')).toContain('your highest 15-minute use?');
-    });
-
-    it('keeps a Swedish home\'s grid import limit in a finished Limits step', () => {
-      const withGrid = {
-        ...belgian(60),
-        market: { state: 'resolved' as const, country: 'SE' },
-        hardCap: {
-          state: 'grid' as const,
-          limitKw: 11,
-          capacity: { state: 'unset' as const, runningLimitKw: 10, periodMinutes: 60 as const },
-        },
-      };
-      expect(detailOf(withGrid, 'hardCap')).toBe('11 kW grid import limit, 10 kW hard cap (hourly average) until you set yours');
-    });
-
-    it('states a Swedish home\'s own choice once it has made one', () => {
-      const saved = {
-        ...belgian(60),
-        market: { state: 'resolved' as const, country: 'SE' },
-        hardCap: { state: 'saved' as const, limitKw: 6, marginKw: 0.2, periodMinutes: 60 as const },
-      };
-      expect(detailOf(saved, 'hardCap')).toBe('6 kW hard cap (hourly average), 0.2 kW safety margin');
-    });
-
-    it('gives a Norwegian hub, and an unknown one, exactly the neutral copy', () => {
-      const norwegian = { ...belgian(60), market: { state: 'resolved' as const, country: 'NO' } };
-      const unknown = { ...belgian(60), market: { state: 'unavailable' as const } };
-      expect(detailOf(norwegian, 'hardCap')).toBe('10 kW hard cap (hourly average) until you set yours');
-      expect(detailOf(unknown, 'hardCap')).toBe('10 kW hard cap (hourly average) until you set yours');
-    });
+  it.each(['NL', 'BE', 'SE', 'NO'])('asks about measured peaks in %s without choosing a target', (country) => {
+    const facts = { ...freshInstall, managedDeviceCount: 1, limitableDeviceCount: 1,
+      market: { state: 'resolved' as const, country } };
+    expect(detailOf(facts, 'hardCap')).toContain('Charged for your highest hourly or 15-minute average grid import?');
+    expect(detailOf(facts, 'hardCap')).toContain('10 kW hard cap (hourly average) until you set yours');
+    expect(statuses(facts)).toContain('hardCap:later');
   });
 
   it('sells no single market in its lede', () => {
-    // The Netherlands has no household capacity tariff; an owner there came for
-    // solar and dynamic prices and must not read this as somebody else's app.
+    // The first setup supports either solar use or measured-peak control.
     expect(pathOf(freshInstall)?.lede).toBe(
-      'Check the essentials PELS uses to manage this home. Prices, solar and Smart tasks build on them.',
+      'Connect your meter, choose a device, then review your settings.',
     );
   });
 
@@ -201,7 +147,7 @@ describe('setup path', () => {
     expect(pathOf(usingPrices)?.steps.find((step) => step.id === 'prices')?.detail).toBe(summary);
     // Prices are a step of their own here, so the lede does not promise them.
     expect(pathOf(usingPrices)?.lede).toBe(
-      'Check the essentials PELS uses to manage this home. Solar and Smart tasks build on them.',
+      'Connect your meter, choose a device, then review your settings.',
     );
     expect(resolveSetupPath({ ...usingPrices, prices: { state: 'used', complete: true, summary: 'Homey Energy' } }))
       .toEqual({ state: 'complete' });
@@ -222,7 +168,7 @@ describe('setup path', () => {
   it('states the devices as a fact and never tells the owner to turn Limit on', () => {
     // Devices that cannot be limited, or that the owner chose not to limit, are
     // a finished choice.
-    expect(detailOf(freshInstall, 'devices')).toBe('Choose the devices PELS manages');
+    expect(detailOf(freshInstall, 'devices')).toBe('Choose one device to start');
     expect(detailOf({ ...priceOnlyOwner, power: NEVER }, 'devices')).toBe('2 devices managed');
     expect(detailOf({ ...configuredAndSimulating, power: NEVER }, 'devices')).toBe('1 device PELS may limit');
   });

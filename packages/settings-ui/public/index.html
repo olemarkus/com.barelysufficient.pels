@@ -29,7 +29,7 @@
         <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" focusable="false"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
       </span>
       <span class="banner__text" id="dry-run-banner-text">Simulation on — devices stay <span class="banner__no-break">as-is</span></span>
-      <md-text-button type="button" class="banner__action dry-run-banner__action" id="simulation-disable-button">Turn off simulation</md-text-button>
+      <md-text-button type="button" class="banner__action dry-run-banner__action" id="simulation-disable-button">Review and start</md-text-button>
     </div>
 
     <div id="stale-data-banner" class="banner banner--warning" hidden>
@@ -623,7 +623,7 @@
           <md-switch id="settings-capacity-enabled" selected aria-labelledby="settings-capacity-enabled-label"></md-switch>
           <span class="md-switch-row__content">
             <span class="md-switch-row__label pels-text-settings-label" id="settings-capacity-enabled-label">Capacity limit</span>
-            <small class="field__hint">Keep average power within your tariff's capacity limit.</small>
+            <small class="field__hint">Limit measured hourly or 15-minute average grid import.</small>
           </span>
         </div>
         <div id="settings-capacity-fields" class="form-grid">
@@ -640,7 +640,7 @@
           <md-filled-text-field id="settings-capacity-limit" name="settings_capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required suffix-text="kW" aria-labelledby="settings-capacity-limit-label"></md-filled-text-field>
           <!-- Text owned by homeLimits once meter areas exist: "your" stops
                meaning the whole house the moment the home is split. -->
-          <small class="field__hint" id="settings-capacity-limit-hint">The peak or tariff step you want to protect. PELS keeps each selected period&rsquo;s average power under this. No capacity tariff where you live? Turn off Capacity limit.</small>
+          <small class="field__hint" id="settings-capacity-limit-hint">The peak or tariff step you want to protect. PELS keeps each selected period&rsquo;s average power under this. Not charged for measured peaks? You can turn off Capacity limit.</small>
         </label>
         <!-- Shown while no hard cap has been saved: the number above is the
              built-in one, and the form only saves a change, so Keep is how an
@@ -665,7 +665,7 @@
         <div class="settings-result" id="settings-capacity-monthly-peak" role="group" aria-labelledby="settings-capacity-monthly-peak-label" hidden>
           <span class="settings-result__label" id="settings-capacity-monthly-peak-label">Highest completed quarter this month</span>
           <strong class="settings-result__value" id="settings-capacity-monthly-peak-value">Peak unavailable</strong>
-          <span class="settings-result__note">Tracked estimate; your grid operator may apply a minimum or combine several monthly peaks.</span>
+          <span class="settings-result__note">Based on readings PELS received, not your grid operator’s billing calculation.</span>
         </div>
       </form>
       <!-- App-GLOBAL settings, deliberately outside the Main-home cap form:
@@ -697,6 +697,10 @@
           <small class="field__hint" id="settings-homey-energy-meter-hint">Choose the whole-home grid meter. With solar, use net import (negative when exporting).</small>
         </div>
       </div>
+    </section>
+
+    <section class="card panel hidden settings-detail-panel" id="setup-review-panel" data-panel="setup-review" aria-label="Review setup">
+      <div id="setup-review-root"></div>
     </section>
 
     <section class="card panel hidden settings-detail-panel" id="simulation-panel" data-panel="simulation" aria-labelledby="simulation-title">

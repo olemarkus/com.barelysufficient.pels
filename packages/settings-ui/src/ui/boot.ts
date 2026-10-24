@@ -1,3 +1,5 @@
+import { initSetupJourney, openSetupReview } from './setupJourney.ts';
+import { setupJourneyFromSearch } from './setupJourneyState.ts';
 import { showUsageDayToday } from './usageDayView.ts';
 import { syncSettingsHubChips } from './settingsHubChips.ts';
 import './materialWeb.ts';
@@ -50,6 +52,7 @@ import {
   refreshPowerLimitControls,
   refreshStaleDataBanner,
   saveSettingsLimitsSettings,
+  saveCapacityPeriodSettings,
   saveSimulationModeSettings,
   syncDryRunBannerVisibility,
 } from './capacity.ts';
@@ -222,14 +225,15 @@ const initTabHandlers = () => {
     // area is selected would land the user on a page whose promised target is
     // hidden, so the link names the scope it needs and we switch first.
     if (trigger.dataset.settingsHomeScope === MAIN_HOME_ID) selectHomeScope(MAIN_HOME_ID);
-    showTab(target);
+    const setup = setupJourneyFromSearch(`setup=${trigger.dataset.setupJourney ?? ''}`);
+    showTab(target, setup ?? undefined);
     // Optional deep-link anchor: land on the field the trigger promised, not
     // the top of the target panel (e.g. the no-data banner's "Choose power
     // source" scrolls the Power source select into view on Limits & safety).
     // The selector is repo-authored markup; guard anyway so a typo degrades to
     // landing at the panel top instead of an uncaught DOMException.
     const anchor = trigger.dataset.settingsAnchor;
-    if (anchor) scrollSettingsAnchorWhenVisible(anchor);
+    if (anchor && !setup) scrollSettingsAnchorWhenVisible(anchor);
   });
   // Track the shown panel so the global simulation banner can suppress itself on
   // the Simulation-mode settings page (its own toggle is the single control
@@ -283,7 +287,12 @@ const initLimitsAndSimulationHandlers = () => {
   settingsCapacityMarginInput?.addEventListener('input', refreshLimitsValidationHints);
   settingsCapacityLimitInput?.addEventListener('change', () => autoSaveSettingsLimits());
   settingsCapacityMarginInput?.addEventListener('change', () => autoSaveSettingsLimits());
-  settingsCapacityPeriodSelect?.addEventListener('change', () => autoSaveSettingsLimits());
+  settingsCapacityPeriodSelect?.addEventListener('change', () => {
+    const period = settingsCapacityPeriodSelect?.value;
+    if (period !== '15' && period !== '60') return;
+    void saveCapacityPeriodSettings(period === '15' ? 15 : 60)
+      .catch((error) => showToastError(error, 'Could not save the capacity period.'));
+  });
   // Saving the form as shown writes the hard cap key, which is what makes the
   // built-in number the owner's own (`syncHardCapChoice`).
   settingsCapacityKeepButton?.addEventListener('click', () => autoSaveSettingsLimits());
@@ -305,14 +314,7 @@ const initLimitsAndSimulationHandlers = () => {
       await showToastError(error, 'Failed to save simulation mode setting.');
     }
   });
-  simulationDisableButton?.addEventListener('click', async () => {
-    try {
-      await saveSimulationModeSettings(false);
-    } catch (error) {
-      await logSettingsError('Failed to turn off simulation mode', error, 'simulationDisableButton');
-      await showToastError(error, 'Failed to turn off simulation mode.');
-    }
-  });
+  simulationDisableButton?.addEventListener('click', openSetupReview);
   priorityForm?.addEventListener('submit', (event) => {
     event.preventDefault();
   });
@@ -502,8 +504,10 @@ const initializeBootHandlers = () => {
   initRecommendationSurfaces({
     openPanel: showTab,
     openDevice: openDeviceDetailAt,
+    useQuarterHour: () => saveCapacityPeriodSettings(15),
   });
   initSmartTaskCreateController(showTab);
+  initSetupJourney();
   renderPanel('overview');
   initTabHandlers();
   // Before the Smart task router: Back from its page is left to it.
