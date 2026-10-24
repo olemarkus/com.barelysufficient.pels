@@ -29,6 +29,7 @@ const loadShedHelpers = async () => {
     deviceDetailShedAction: null,
     deviceDetailShedStep: null,
     deviceDetailShedStepRow: null,
+    deviceDetailShedTempAutomatic: null,
     deviceDetailShedTemp: null,
     deviceDetailShedTempRow: null,
     deviceDetailShedCoolingTemp: null,

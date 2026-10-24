@@ -18,7 +18,7 @@ PELS does not use the heater's on/off. In the OSO app that value shows whether t
 1. Open the heater under **Settings → Devices** and turn on **Managed by PELS**. In **Modes**, place it low in each mode's priority order. A full tank holds its heat for hours, so a low priority makes it the first device PELS limits.
 2. Under **Temperature per mode**, set the tank temperature for each mode, for example 65 °C in Home and 45 °C in Away.
 3. Keep **When the temperature changes outside PELS** on **Return to mode target** or **Save as current mode target**. With **Keep the new temperature**, PELS never writes the target, and the target is the only way PELS can limit this heater.
-4. Under **Power limiting**, **Limited temperature** sets the target PELS uses while it limits the heater, up to the heater's maximum of 75 °C. The element stays off while the tank is hotter than that. Keep it below each mode's tank temperature: in a mode at or below it, PELS has nothing to lower and cannot limit the heater. With no value saved, PELS uses the mode's target less 3 °C, at most 40 °C, and **Setup & recommendations** suggests setting one.
+4. Under **Power limiting**, **Limited temperature** sets the target PELS uses while it limits the heater, up to the heater's maximum of 75 °C. The element stays off while the tank is hotter than that. Keep it below each mode's tank temperature: in a mode at or below it, PELS has nothing to lower and cannot limit the heater. With no value saved, **Automatic** uses the heater’s configured minimum target. The field shows the temperature PELS will use. Choose **Use automatic** or clear the field to return to that minimum.
 
 A smart task can have the tank hot by a set time, using the temperature the heater reports.
 

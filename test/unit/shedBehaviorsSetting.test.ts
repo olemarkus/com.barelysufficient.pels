@@ -32,6 +32,12 @@ describe('overshoot_behaviors read policy', () => {
     });
   });
 
+  it('preserves an automatic heating choice alongside a custom cooling limit', () => {
+    expect(readShedBehaviors({
+      heater: { action: 'set_temperature', temperature: 'device_minimum', coolingTemperature: 26 },
+    })).toEqual({ heater: { action: 'set_temperature', temperature: 'device_minimum', coolingTemperature: 26 } });
+  });
+
   it('reads a setpoint entry with no usable heating limit as turn_off, and drops an entry that is not an object', () => {
     expect(readShedBehaviors({
       broken: { action: 'set_temperature', temperature: 'cold' },

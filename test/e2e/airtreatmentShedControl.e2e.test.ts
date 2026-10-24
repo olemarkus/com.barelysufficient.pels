@@ -22,6 +22,9 @@ type DeviceOverrides = {
   class?: string;
   capabilities?: string[];
   targetTemperature?: number;
+  minimumTemperature?: number;
+  maximumTemperature?: number;
+  measuredTemperature?: number;
   measurePower?: number;
   onoff?: boolean;
 };
@@ -41,9 +44,9 @@ const buildTemperatureApiDevice = (o: DeviceOverrides = {}) => {
     step?: number;
   }> = {
     measure_power: { id: 'measure_power', value: o.measurePower ?? 245.73, lastUpdated },
-    measure_temperature: { id: 'measure_temperature', value: 18, lastUpdated, units: '°C' },
+    measure_temperature: { id: 'measure_temperature', value: o.measuredTemperature ?? 18, lastUpdated, units: '°C' },
     target_temperature: {
-      id: 'target_temperature', value: o.targetTemperature ?? 19, lastUpdated, units: '°C', min: 10, max: 30, step: 0.5,
+      id: 'target_temperature', value: o.targetTemperature ?? 19, lastUpdated, units: '°C', min: o.minimumTemperature ?? 10, max: o.maximumTemperature ?? 30, step: 0.5,
     },
     fan_mode: { id: 'fan_mode', value: 'home', lastUpdated },
   };
@@ -121,9 +124,9 @@ describe('Airtreatment capacity shedding (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, cap('airtreatment-1', 'target_temperature'), { value: 16 });
+    await drainUntilCalledWith(putSpy, cap('airtreatment-1', 'target_temperature'), { value: 10 });
 
-    expect(putSpy).toHaveBeenCalledWith(cap('airtreatment-1', 'target_temperature'), { value: 16 });
+    expect(putSpy).toHaveBeenCalledWith(cap('airtreatment-1', 'target_temperature'), { value: 10 });
     expect(onoffWrites(putSpy)).toHaveLength(0);
   });
 
@@ -146,6 +149,24 @@ describe('Airtreatment capacity shedding (SDK-boundary e2e)', () => {
     await drainUntilCalledWith(putSpy, cap('thermostat-1', 'target_temperature'), { value: 10 });
 
     expect(putSpy).toHaveBeenCalledWith(cap('thermostat-1', 'target_temperature'), { value: 10 });
+    expect(onoffWrites(putSpy)).toHaveLength(0);
+  });
+
+  it.each([20, 45])('limits a 70 °C water heater at its configured minimum %s °C', async (minimumTemperature) => {
+    enableCapacity('water-heater', 1);
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'water-heater': 70 } });
+    stubSdk({
+      'water-heater': buildTemperatureApiDevice({
+        id: 'water-heater', class: 'heater', targetTemperature: 70,
+        measuredTemperature: 50, minimumTemperature, maximumTemperature: 85, measurePower: 2000,
+      }),
+    }, 5000);
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+    const app = createApp();
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await drainUntilCalledWith(putSpy, cap('water-heater', 'target_temperature'), { value: minimumTemperature });
+    expect(putSpy).toHaveBeenCalledWith(cap('water-heater', 'target_temperature'), { value: minimumTemperature });
     expect(onoffWrites(putSpy)).toHaveLength(0);
   });
 

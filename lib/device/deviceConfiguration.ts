@@ -43,7 +43,7 @@ const resolveConfiguration = (snapshot: TransportDeviceSnapshot): DeviceConfigur
     isBatteryOrSolar: snapshot.isBatteryOrSolar,
     isEvCharger: snapshot.isEvCharger,
     starvationSupported: isStarvationSupportedDeviceClass(snapshot.deviceClass),
-    setpointShedFloorC: resolveSetpointShedFloorC(snapshot.deviceClass),
+    setpointShedFloorC: resolveSetpointShedFloorC(snapshot),
     capabilities: snapshot.capabilities,
     canSetControl: snapshot.canSetControl,
     powerCapable: snapshot.powerCapable,

@@ -33,6 +33,7 @@ const buildOsoHeater = async () => {
   await device.setCapabilityValue('meter_power', 100);
   await device.setCapabilityValue('measure_temperature', 58);
   await device.setCapabilityValue('target_temperature', 65);
+  device.setCapabilityMetadata('target_temperature', { min: 20, max: 75, step: 1 });
   return device;
 };
 
@@ -78,7 +79,7 @@ describe('OSO water heater capacity control (SDK-boundary e2e)', () => {
     vi.useRealTimers();
   });
 
-  it('writes a saved limited temperature above the 40 °C default cap, up to the tank\'s own maximum', async () => {
+  it('writes a saved limited temperature up to the tank\'s own maximum', async () => {
     const heater = await buildOsoHeater();
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
@@ -124,16 +125,15 @@ describe('OSO water heater capacity control (SDK-boundary e2e)', () => {
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
     // The tank is heating and has pushed the house over its limit: PELS limits
-    // the heater to its default limited temperature, mode target less 3 °C
-    // capped at 40 °C, and leaves the plug on.
+    // the heater to its configured minimum target of 20 °C, and leaves the plug on.
     connectLiveFeed();
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, cap('oso-a', 'target_temperature'), { value: 40 });
+    await drainUntilCalledWith(putSpy, cap('oso-a', 'target_temperature'), { value: 20 });
     expect(writesTo(putSpy, 'plug-a', 'onoff')).toEqual([]);
 
-    // The 58 °C tank is above its 40 °C limit, so the element stops.
+    // The 58 °C tank is above its 20 °C limit, so the element stops.
     await heater.setCapabilityValue('onoff', false);
     await heater.setCapabilityValue('water_heater_heating', 'off');
     await heater.setCapabilityValue('measure_power', 0);
@@ -153,7 +153,7 @@ describe('OSO water heater capacity control (SDK-boundary e2e)', () => {
 
     expect(writesTo(putSpy, 'oso-a', 'onoff')).toEqual([]);
     expect(writesTo(putSpy, 'oso-a', 'target_temperature')).toEqual([
-      [cap('oso-a', 'target_temperature'), { value: 40 }],
+      [cap('oso-a', 'target_temperature'), { value: 20 }],
     ]);
   });
 });

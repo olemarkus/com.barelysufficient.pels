@@ -12,6 +12,8 @@
  * ## The setpoint entry carries both limits
  *
  * `temperature` is the limit while heating (a floor the device may fall to),
+ * or `device_minimum` to follow the device's configured minimum. This explicit
+ * choice lets heating stay automatic while cooling has its own saved limit.
  * `coolingTemperature` the limit while cooling (a ceiling it may rise to). Both
  * are always present on a read value. A device with no mode axis is a heater
  * and never reads the second; an entry persisted before the second existed
@@ -40,7 +42,7 @@ import { clamp } from '../utils/math';
 export type ConfiguredShedBehavior =
   | { action: 'turn_off' }
   | { action: 'set_step' }
-  | { action: 'set_temperature'; temperature: number; coolingTemperature: number };
+  | { action: 'set_temperature'; temperature: number | 'device_minimum'; coolingTemperature: number };
 
 export type ConfiguredShedAction = ConfiguredShedBehavior['action'];
 
@@ -75,10 +77,12 @@ export const isShedBehaviorsSetting = (value: unknown): value is Readonly<Record
 
 const readShedBehaviorEntry = (raw: Readonly<Record<string, unknown>>): ConfiguredShedBehavior => {
   if (raw.action === 'set_step') return { action: 'set_step' };
-  if (raw.action !== 'set_temperature' || !isFiniteNumber(raw.temperature)) return TURN_OFF;
+  if (raw.action !== 'set_temperature'
+    || (raw.temperature !== 'device_minimum' && !isFiniteNumber(raw.temperature))) return TURN_OFF;
   return {
     action: 'set_temperature',
-    temperature: clampToRange(raw.temperature, HEATING_SHED_LIMIT_RANGE),
+    temperature: raw.temperature === 'device_minimum'
+      ? raw.temperature : clampToRange(raw.temperature, HEATING_SHED_LIMIT_RANGE),
     coolingTemperature: isFiniteNumber(raw.coolingTemperature)
       ? clampToRange(raw.coolingTemperature, COOLING_SHED_LIMIT_RANGE)
       : COOLING_SHED_DEFAULT_C,

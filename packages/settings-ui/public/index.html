@@ -1005,6 +1005,7 @@
                 <small class="field__hint" id="device-detail-shed-hint">PELS uses this action when it needs to lower power: to stay under your grid import limit or hard cap, to keep to your daily budget, or when solar surplus runs out.</small>
               </div>
               <div class="md-field-row" id="device-detail-overshoot-temp-row" hidden>
+                <span class="field__label pels-text-settings-label" id="device-detail-overshoot-temp-label" hidden></span>
                 <md-filled-text-field
                   id="device-detail-overshoot-temp"
                   label="Limited temperature"
@@ -1016,6 +1017,7 @@
                   suffix-text="°C"
                 ></md-filled-text-field>
                 <small class="field__hint" id="device-detail-overshoot-temp-hint">Use this target instead of turning the device off.</small>
+                <md-text-button id="device-detail-overshoot-temp-automatic" hidden>Use automatic</md-text-button>
               </div>
               <!-- Only for a device that reports a heating/cooling mode. While cooling,
                    the limit is a ceiling the device may rise to, not a floor. -->

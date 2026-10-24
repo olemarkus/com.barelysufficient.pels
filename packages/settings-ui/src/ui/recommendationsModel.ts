@@ -14,9 +14,9 @@ import {
   type ConfiguredShedBehavior,
 } from '../../../shared-domain/src/settings/shedBehaviors.ts';
 import {
-  computeDefaultSetpointShedTemperature,
   resolveSetpointShedFloorC,
 } from '../../../shared-domain/src/utils/airtreatmentShedTemperature.ts';
+import { getPrimaryTargetCapability } from '../../../shared-domain/src/targetCapabilities.ts';
 import { COOLING_SHED_DEFAULT_C } from '../../../shared-domain/src/utils/airtreatmentConstants.ts';
 import { isSteppedLoadControlModel } from './deviceKind.ts';
 import {
@@ -326,9 +326,8 @@ export const resolveSmartTaskStartPolicyRecommendations = (
 
 /**
  * A device PELS can limit only through its target, with no limited temperature
- * saved. PELS then picks one itself, its mode target less a setback and at most
- * 40 °C, which may be far from what the owner wants: a water heater's tank, or a
- * room that should stay warmer. A device with steps is limited by them instead.
+ * saved. PELS uses the device minimum, which may be lower than the owner
+ * wants for a water heater's tank or a room that should stay warmer. A device with steps is limited by them instead.
  * Opening the device lands on the field; Dismiss is the owner keeping PELS's
  * choice.
  */
@@ -337,7 +336,6 @@ export const resolveSetpointShedLimitRecommendations = (
   managedMap: Readonly<Record<string, boolean>>,
   controllableMap: Readonly<Record<string, boolean>>,
   shedBehaviors: Readonly<Record<string, ConfiguredShedBehavior>>,
-  activeModeTargets: Readonly<Record<string, number>>,
 ): SetupRecommendation[] => devices.flatMap((device) => {
   if (managedMap[device.id] !== true
     || controllableMap[device.id] !== true
@@ -346,23 +344,19 @@ export const resolveSetpointShedLimitRecommendations = (
     || isSteppedLoadControlModel(device)
     || !supportsTemperatureControlDevice(device)
     || resolveShedBehavior(shedBehaviors, device.id).action === 'set_temperature') return [];
-  // The selected home's catalog: a device in another area has no target here,
-  // so the copy states PELS's rule rather than a figure from the wrong mode.
-  const modeTargetC = activeModeTargets[device.id];
-  const floorC = resolveSetpointShedFloorC(device.deviceClass || '');
-  const heatingC = typeof modeTargetC === 'number'
-    ? `${computeDefaultSetpointShedTemperature(modeTargetC, floorC)} °C in the current mode`
-    : `3 °C below the mode's temperature, between ${floorC} and 40 °C`;
+  const minimumSource = getPrimaryTargetCapability(device.targets)?.min === undefined
+    ? 'PELS’s default minimum' : 'the device’s minimum target';
+  const heatingC = `${resolveSetpointShedFloorC(device)} °C (${minimumSource})`;
   const name = formatDisplayDeviceName(device.name);
   // A unit that reports heating or cooling has a second limit, a ceiling while cooling.
   const body = device.capabilities?.includes('thermostat_mode') === true
-    ? `PELS limits ${name} by changing its target temperature. No limited temperatures are saved, so PELS `
-      + `chooses them itself: ${heatingC} while heating, and ${COOLING_SHED_DEFAULT_C} °C while cooling. `
-      + 'Set your own, or dismiss this to let PELS choose.'
+    ? `PELS limits ${name} by changing its target temperature. No limited temperatures are saved, `
+      + `so automatic uses ${heatingC} while heating, and ${COOLING_SHED_DEFAULT_C} °C while cooling. `
+      + 'Set your own, or dismiss this to keep automatic.'
     // A limit at or above a mode's temperature leaves PELS nothing to lower in that mode.
-    : `PELS limits ${name} by lowering its target temperature. No limited temperature is saved, so PELS `
-      + `chooses one itself: ${heatingC}. Set your own below each mode's temperature, or dismiss this to `
-      + 'let PELS choose.';
+    : `PELS limits ${name} by lowering its target temperature. No limited temperature is saved, `
+      + `so automatic uses ${heatingC}. Set your own below each mode's temperature, or dismiss this to `
+      + 'keep automatic.';
   return [{
     id: recommendationId('setpoint-shed-limit', device.id),
     version: RECOMMENDATION_VERSION,

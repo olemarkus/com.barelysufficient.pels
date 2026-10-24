@@ -10,6 +10,7 @@ import {
   deviceDetailShedStep,
   deviceDetailShedStepRow,
   deviceDetailShedTemp,
+  deviceDetailShedTempAutomatic,
   deviceDetailShedTempRow,
 } from '../dom.ts';
 import { applyLimitWording, reportsThermostatMode } from './shedLimitWording.ts';
@@ -39,10 +40,10 @@ import {
   OVERSHOOT_BEHAVIORS,
 } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import {
-  computeDefaultSetpointShedTemperature,
   normalizeShedTemperature,
   resolveSetpointShedFloorC,
 } from '../../../../shared-domain/src/utils/airtreatmentShedTemperature.ts';
+import { COOLING_SHED_DEFAULT_C } from '../../../../shared-domain/src/utils/airtreatmentConstants.ts';
 import {
   createSerializedAsyncRunner,
   writeFreshSetting,
@@ -66,6 +67,8 @@ type ShedBehaviorWriteParams = {
 };
 
 const runSerializedShedBehaviorWrite = createSerializedAsyncRunner();
+// Only the latest edit may refresh the fields after an asynchronous write.
+let shedBehaviorEditRevision = 0;
 
 export const writeShedBehaviors = async (params: ShedBehaviorWriteParams) => (
   runSerializedShedBehaviorWrite(() => writeFreshSetting<Record<string, ConfiguredShedBehavior>>({
@@ -84,6 +87,14 @@ export const writeShedBehaviors = async (params: ShedBehaviorWriteParams) => (
     rollback: params.rollback,
   }))
 );
+
+/** A saved automatic choice remains visible if the device later exposes on/off. */
+const supportsAutomaticHeatingLimit = (device: SettingsUiDeviceDetailItem | null): boolean => {
+  if (isTemperatureDeviceWithoutOnOff(device)) return true;
+  if (device === null) return false;
+  const saved = resolveShedBehavior(state.shedBehaviors, device.id);
+  return saved.action === 'set_temperature' && saved.temperature === 'device_minimum';
+};
 
 const updateShedActionOptions = (params: {
   canConfigure: boolean;
@@ -158,36 +169,10 @@ const resolveShedActionValue = (params: {
   return params.configuredAction;
 };
 
-const resolveShedTemperatureValue = (params: {
-  canConfigure: boolean;
-  forceTemperatureOnly: boolean;
-  saved: ConfiguredShedBehavior;
-  fallbackTemperature: number;
-}): string => {
-  if (!params.canConfigure) return '';
-  if (params.saved.action === 'set_temperature') return params.saved.temperature.toString();
-  if (params.forceTemperatureOnly) return params.fallbackTemperature.toString();
-  return '';
-};
-
-/**
- * The limit the planner applies to a device with no on/off when nothing is saved
- * (`resolveTemperaturePolicyShedBehavior`): from the active mode's target only,
- * never the mode being edited, and never from the live setpoint, which is the
- * limit itself while the device is limited.
- */
-const getSetpointOnlyShedDefaultTemp = (device: SettingsUiDeviceDetailItem): number => {
-  const activeModeTarget = state.modeTargets[state.activeMode]?.[device.id];
-  return computeDefaultSetpointShedTemperature(
-    typeof activeModeTarget === 'number' ? activeModeTarget : null,
-    resolveSetpointShedFloorC(device.deviceClass || ''),
-  );
-};
-
 const getShedDefaultTemp = (device: SettingsUiDeviceDetailItem | null): number => {
   if (!device) return 10;
 
-  if (isTemperatureDeviceWithoutOnOff(device)) return getSetpointOnlyShedDefaultTemp(device);
+  if (isTemperatureDeviceWithoutOnOff(device)) return resolveSetpointShedFloorC(device);
 
   const modeTarget = state.modeTargets[state.activeMode]?.[device.id]
     ?? state.modeTargets[state.editingMode]?.[device.id];
@@ -218,12 +203,13 @@ const resolveHeatingShedTemperature = (
   device: SettingsUiDeviceDetailItem,
   saved: ConfiguredShedBehavior,
 ): number => {
-  const savedC = saved.action === 'set_temperature' ? saved.temperature : getShedDefaultTemp(device);
+  const savedC = saved.action === 'set_temperature' && typeof saved.temperature === 'number'
+    ? saved.temperature : getShedDefaultTemp(device);
   const fieldC = deviceDetailShedTemp
     ? readShedLimitField(deviceDetailShedTemp, resolveHeatingShedLimitRange(device), savedC)
     : savedC;
   const temperature = isTemperatureDeviceWithoutOnOff(device)
-    ? Math.max(resolveSetpointShedFloorC(device.deviceClass || ''), normalizeShedTemperature(fieldC))
+    ? Math.max(resolveSetpointShedFloorC(device), normalizeShedTemperature(fieldC))
     : fieldC;
   // Show the field the value that is saved, whatever its text said.
   if (deviceDetailShedTemp) deviceDetailShedTemp.value = temperature.toString();
@@ -248,7 +234,8 @@ const resolveTemperatureShedBehavior = (device: SettingsUiDeviceDetailItem): Con
   }
   return {
     action: 'set_temperature',
-    temperature: resolveHeatingShedTemperature(device, saved),
+    temperature: supportsAutomaticHeatingLimit(device) && deviceDetailShedTemp?.value.trim() === ''
+      ? 'device_minimum' : resolveHeatingShedTemperature(device, saved),
     coolingTemperature,
   };
 };
@@ -439,12 +426,10 @@ export const setDeviceDetailShedBehavior = (
   }
 
   if (deviceDetailShedTemp) {
-    deviceDetailShedTemp.value = resolveShedTemperatureValue({
-      canConfigure: shedControls.canConfigure,
-      forceTemperatureOnly: shedControls.forceTemperatureOnly,
-      saved,
-      fallbackTemperature: getShedDefaultTemp(device),
-    });
+    deviceDetailShedTemp.value = shedControls.canConfigure
+      && saved.action === 'set_temperature' && typeof saved.temperature === 'number'
+      ? saved.temperature.toString() : '';
+    deviceDetailShedTemp.placeholder = supportsAutomaticHeatingLimit(device) ? 'Automatic' : '';
     deviceDetailShedTemp.disabled = !shedControls.canConfigure;
     deviceDetailShedTemp.max = resolveHeatingShedLimitRange(device).maxC.toString();
   }
@@ -454,6 +439,20 @@ export const setDeviceDetailShedBehavior = (
       : '';
     deviceDetailShedCoolingTemp.disabled = !shedControls.canConfigure;
   }
+};
+
+const updateHeatingLimitWording = (device: SettingsUiDeviceDetailItem | null, visible: boolean): void => {
+  const supportsAutomatic = supportsAutomaticHeatingLimit(device);
+  const automatic = supportsAutomatic && deviceDetailShedTemp?.value.trim() === '';
+  if (deviceDetailShedTempAutomatic) {
+    deviceDetailShedTempAutomatic.hidden = !supportsAutomatic || automatic || !visible;
+  }
+  if (device === null) return;
+  if (!supportsAutomatic) {
+    applyLimitWording(device, 'switchable');
+    return;
+  }
+  applyLimitWording(device, automatic ? 'automatic' : 'fixed');
 };
 
 export const updateShedFieldVisibility = (device: SettingsUiDeviceDetailItem | null) => {
@@ -470,7 +469,7 @@ export const updateShedFieldVisibility = (device: SettingsUiDeviceDetailItem | n
     deviceDetailShedTempRow.hidden = false;
     if (deviceDetailShedTemp) {
       deviceDetailShedTemp.disabled = false;
-      if (!deviceDetailShedTemp.value) {
+      if (!deviceDetailShedTemp.value && !supportsAutomaticHeatingLimit(device)) {
         const fallback = getShedDefaultTemp(device);
         deviceDetailShedTemp.value = fallback.toString();
       }
@@ -483,7 +482,7 @@ export const updateShedFieldVisibility = (device: SettingsUiDeviceDetailItem | n
   if (deviceDetailShedCoolingTemp) {
     deviceDetailShedCoolingTemp.disabled = selectedAction !== 'set_temperature';
   }
-  if (device !== null) applyLimitWording(device);
+  updateHeatingLimitWording(device, selectedAction === 'set_temperature');
 
   deviceDetailShedStepRow.hidden = true;
 };
@@ -495,6 +494,13 @@ const saveShedBehavior = async (
   // A device that is no longer there has nothing to save.
   if (device === null) return;
   const deviceId = device.id;
+  const revision = ++shedBehaviorEditRevision;
+  const refreshSavedFields = () => {
+    if (revision !== shedBehaviorEditRevision || getCurrentDetailDeviceId() !== deviceId) return;
+    const currentDevice = findLatestDevice(deviceId);
+    setDeviceDetailShedBehavior(deviceId, currentDevice, () => {});
+    updateShedFieldVisibility(currentDevice);
+  };
   let nextBehavior: ConfiguredShedBehavior = { action: 'turn_off' };
 
   if (supportsPowerDevice(device)) {
@@ -513,21 +519,22 @@ const saveShedBehavior = async (
     context: 'device detail',
     logMessage: 'Failed to save shed behavior',
     toastMessage: 'Failed to save shed behavior.',
-    mutate: (currentBehaviors) => ({
-      ...currentBehaviors,
-      [deviceId]: nextBehavior,
-    }),
+    mutate: (currentBehaviors) => {
+      const next = { ...currentBehaviors };
+      if (nextBehavior.action === 'set_temperature'
+        && nextBehavior.temperature === 'device_minimum' && nextBehavior.coolingTemperature === COOLING_SHED_DEFAULT_C
+        && isTemperatureDeviceWithoutOnOff(device)) {
+        delete next[deviceId];
+      } else {
+        next[deviceId] = nextBehavior;
+      }
+      return next;
+    },
     commit: (nextBehaviors) => {
       state.shedBehaviors = nextBehaviors;
+      refreshSavedFields();
     },
-    rollback: () => {
-      const activeDetailDeviceId = getCurrentDetailDeviceId();
-      if (!activeDetailDeviceId) return;
-
-      const activeDevice = findLatestDevice(activeDetailDeviceId);
-      setDeviceDetailShedBehavior(activeDetailDeviceId, activeDevice, () => {});
-      updateShedFieldVisibility(activeDevice);
-    },
+    rollback: refreshSavedFields,
   });
 };
 
@@ -535,12 +542,25 @@ export const initDeviceDetailShedHandlers = (params: {
   getCurrentDetailDeviceId: () => string | null;
 }) => {
   const autoSaveShedBehavior = async () => {
+    // A number field can look empty while a partial number (for example '-')
+    // is being entered. Only a deliberately empty field selects automatic.
+    if (deviceDetailShedTemp?.validity?.badInput) {
+      deviceDetailShedTemp.reportValidity();
+      return;
+    }
     const currentDetailDeviceId = params.getCurrentDetailDeviceId();
     const device = currentDetailDeviceId ? findLatestDevice(currentDetailDeviceId) : null;
     updateShedFieldVisibility(device);
     await saveShedBehavior(device, params.getCurrentDetailDeviceId);
   };
 
+  const markPendingEdit = () => { shedBehaviorEditRevision += 1; };
+  deviceDetailShedTemp?.addEventListener('input', markPendingEdit);
+  deviceDetailShedCoolingTemp?.addEventListener('input', markPendingEdit);
+  deviceDetailShedTempAutomatic?.addEventListener('click', async () => {
+    if (deviceDetailShedTemp) deviceDetailShedTemp.value = '';
+    await autoSaveShedBehavior();
+  });
   deviceDetailShedAction?.addEventListener('change', autoSaveShedBehavior);
   deviceDetailShedTemp?.addEventListener('change', autoSaveShedBehavior);
   deviceDetailShedCoolingTemp?.addEventListener('change', autoSaveShedBehavior);

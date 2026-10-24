@@ -1,5 +1,5 @@
 import {
-  computeDefaultSetpointShedTemperature,
+  resolveSetpointShedFloorC,
   normalizeShedTemperature,
 } from '../../packages/shared-domain/src/utils/airtreatmentShedTemperature';
 
@@ -16,22 +16,19 @@ describe('airtreatment shed temperature utils', () => {
     });
   });
 
-  describe('computeDefaultSetpointShedTemperature', () => {
-    it('uses the fixed base when the mode holds no target', () => {
-      expect(computeDefaultSetpointShedTemperature(null, 10)).toBe(17);
+  describe('resolveSetpointShedFloorC', () => {
+    it.each([5, 20, 40, 45, 4.2])('uses the device minimum %s without the old 40 °C cap or half-degree rounding', (min) => {
+      expect(resolveSetpointShedFloorC({
+        deviceClass: 'heater', targets: [{ id: 'target_temperature', value: 70, unit: '°C', min }],
+      })).toBe(min);
     });
 
-    it('sets back from the mode target', () => {
-      expect(computeDefaultSetpointShedTemperature(22, 10)).toBe(19);
-    });
-
-    it('enforces the floor and caps the default at 40 °C', () => {
-      expect(computeDefaultSetpointShedTemperature(15, 16)).toBe(16);
-      expect(computeDefaultSetpointShedTemperature(12, 10)).toBe(10);
-      // A 65 °C tank's default is 40 °C, not 62 °C: a setback from its target
-      // would let it keep heating while limited.
-      expect(computeDefaultSetpointShedTemperature(65, 10)).toBe(40);
-      expect(computeDefaultSetpointShedTemperature(100, 10)).toBe(40);
-    });
+    it.each([['heater', 10], ['airtreatment', 16], [' AIRTREATMENT ', 16]])(
+      'retains the %s fallback only when the device supplies no minimum', (deviceClass, expected) => {
+        expect(resolveSetpointShedFloorC({
+          deviceClass: String(deviceClass), targets: [{ id: 'target_temperature', value: 70, unit: '°C' }],
+        })).toBe(expected);
+      },
+    );
   });
 });
