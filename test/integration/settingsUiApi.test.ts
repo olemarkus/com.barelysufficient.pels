@@ -679,6 +679,7 @@ describe('settingsUiApi', () => {
       priceOptimizationSetup: { state: 'unavailable' },
       priceSetup: { state: 'unavailable' },
       priceLevelSummary: { state: 'unavailable' },
+      priceTimeline: { state: 'unavailable', reason: 'no_prices' },
     });
     expect(getSettingsUiDeviceDiagnosticsPayload({ homey: homey as never })).toEqual({
       generatedAt: 123456,
@@ -687,6 +688,21 @@ describe('settingsUiApi', () => {
         'dev-1': expect.objectContaining({ currentPenaltyLevel: 2 }),
       }),
     });
+  });
+
+  it('forwards native price periods without averaging them into hours', () => {
+    const homey = createHomey();
+    const priceTimeline = {
+      state: 'ready', priceUnit: 'EUR', hasExportPrice: false,
+      periods: [
+        { startsAt: '2026-10-24T10:00:00Z', durationMinutes: 15, importPrice: 0.1, level: 'cheap' },
+        { startsAt: '2026-10-24T10:15:00Z', durationMinutes: 15, importPrice: 0.3, level: 'expensive' },
+      ],
+      lines: { average: 0.2, cheapAtOrBelow: 0.1, expensiveFrom: 0.3 },
+    };
+    Object.assign(homey.app, { getPriceTimelineForUi: () => priceTimeline });
+
+    expect(getSettingsUiPricesPayload({ homey: homey as never }).priceTimeline).toEqual(priceTimeline);
   });
 
   it('carries the price owner\'s classified setup facts without re-reading settings', () => {

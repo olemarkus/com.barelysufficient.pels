@@ -50,6 +50,7 @@ import {
   type SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
 import { buildFlowStatus, buildHomeyStatus, buildPowerhourStatus } from './priceConfigStatus.ts';
+import { onSetupPathChange, readSetupMarket } from './setupPathFacts.ts';
 import { resolveLiveSummarySignals } from './livePriceSignals.ts';
 import {
   renderElectricityPricesView,
@@ -104,6 +105,8 @@ let configState: PriceConfigState = {
   priceLevelSummary: { state: 'unavailable' },
 };
 
+let currentPrices: SettingsUiPricesPayload | null = null;
+
 let electricityPricesSurface: HTMLElement | null = null;
 let priceAwareDevicesSurface: HTMLElement | null = null;
 let settingsLoaded = false;
@@ -133,6 +136,7 @@ const renderElectricityPrices = () => {
   if (!electricityPricesSurface) return;
   const props: ElectricityPricesViewProps = {
     config: configState,
+    market: readSetupMarket(),
     handlers: electricityPricesHandlers,
     gridCompanyOptions: getGridCompanyOptions(configState.countyCode),
     sourceAssumption: resolvePriceSourceAssumption(configState.priceSetup, configState.priceScheme),
@@ -470,6 +474,7 @@ const refreshStatusInfo = async () => {
     ]);
     // A read that cannot say which settings the owner chose keeps the last one
     // that could, rather than showing every setting as chosen.
+    currentPrices = payload;
     const priceSetup = payload.priceSetup.state === 'resolved' ? payload.priceSetup : configState.priceSetup;
     configState = {
       ...configState,
@@ -482,7 +487,7 @@ const refreshStatusInfo = async () => {
       // Same `priceLevel` field the budget hero reads, so the tier chip never
       // disagrees across surfaces.
       currentPriceLevel: liveStatusOrNull(powerPayload?.status)?.priceLevel ?? null,
-      liveSummary: resolveLiveSummarySignals(payload.combinedPrices, Date.now()),
+      liveSummary: resolveLiveSummarySignals(payload.combinedPrices, payload.priceTimeline, Date.now()),
       // Shape-guarded at the seam: the prices read model crosses the Homey API
       // bridge as a cast, so this nested object is untrusted until the adapter
       // discriminates it (root AGENTS.md § "Clean and trusted interfaces").
@@ -525,6 +530,18 @@ export const renderPriceConfigDevices = () => {
   renderElectricityPrices();
 };
 
+// Shares the shell's status read for the runtime-owned level; native-period
+// prices advance locally, without another price-source read.
+export const refreshCurrentPriceView = async () => {
+  if (!currentPrices) return;
+  const powerPayload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
+  const liveSummary = resolveLiveSummarySignals(currentPrices.combinedPrices, currentPrices.priceTimeline, Date.now());
+  const currentPriceLevel = liveSummary.priceText === null
+    ? null : liveStatusOrNull(powerPayload?.status)?.priceLevel ?? null;
+  configState = { ...configState, liveSummary, currentPriceLevel };
+  renderElectricityPrices();
+};
+
 export const refreshPriceConfigView = async () => {
   await refreshStatusInfo();
   renderAll();
@@ -561,3 +578,5 @@ export const initPriceAwareDevicesView = async (surface: HTMLElement) => {
   await ensureLoaded();
   renderPriceAwareDevices();
 };
+
+onSetupPathChange(renderElectricityPrices);

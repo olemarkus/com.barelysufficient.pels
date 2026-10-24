@@ -5,6 +5,7 @@ import {
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
+  SETTINGS_UI_PRICES_PATH,
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
 } from '../../contracts/src/settingsUiApi.ts';
 import { SETTINGS_UI_HOMES_PATH } from '../../contracts/src/settingsUiHomes.ts';
@@ -85,6 +86,58 @@ describe('Overview refresh cadence', () => {
     const { setHomeyClient } = await import('../src/ui/homey.ts');
     setHomeyClient(null);
     document.body.innerHTML = '';
+  });
+
+  it('advances the open price card across native periods without another prices request', async () => {
+    vi.setSystemTime(Date.parse('2026-10-24T10:14:45Z'));
+    document.body.innerHTML = '<section id="electricity-prices-panel"><div id="price-surface"></div></section>';
+    homey = installHomeyMock({
+      settings: {
+        price_scheme: 'homey',
+        power_tracker_state: { lastPowerW: 1000, lastTimestamp: Date.now() },
+        pels_status: { priceLevel: 'cheap' },
+      },
+      uiState: {
+        prices: {
+          combinedPrices: null,
+          priceTimeline: {
+            state: 'ready', priceUnit: 'EUR', hasExportPrice: false,
+            lines: { average: 0.2, cheapAtOrBelow: 0.1, expensiveFrom: 0.3 },
+            periods: [
+              { startsAt: '2026-10-24T10:00:00Z', durationMinutes: 15, importPrice: 0.1, level: 'cheap' },
+              { startsAt: '2026-10-24T10:15:00Z', durationMinutes: 15, importPrice: 0.3, level: 'expensive' },
+            ],
+          },
+        },
+      },
+    });
+    const { setHomeyClient } = await import('../src/ui/homey.ts');
+    setHomeyClient(homey as never);
+    const { initElectricityPricesView } = await import('../src/ui/priceConfig.ts');
+    const surface = document.getElementById('price-surface')!;
+    await initElectricityPricesView(surface);
+    expect(surface.querySelector('.electricity-prices-live-summary')?.textContent).toContain('0.10 EUR/kWh');
+    expect(surface.querySelector('[data-price-level="cheap"]')).not.toBeNull();
+    homey.api.mockClear();
+    const { startStaleDataRefreshInterval } = await import('../src/ui/realtime.ts');
+    startStaleDataRefreshInterval();
+    // The runtime publishes the new tier; the UI shares the status poll's read.
+    homey.__settingsStore.pels_status = { priceLevel: 'expensive' };
+
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    expect(surface.querySelector('.electricity-prices-live-summary')?.textContent).toContain('0.30 EUR/kWh');
+    expect(surface.querySelector('[data-price-level="expensive"]')).not.toBeNull();
+    expect(surface.querySelector('[data-price-level="cheap"]')).toBeNull();
+    expect(getCount(homey, SETTINGS_UI_POWER_PATH)).toBe(1);
+    expect(getCount(homey, SETTINGS_UI_PRICES_PATH)).toBe(0);
+
+    // The last period expires: leaving the page open must not leave its old price.
+    vi.setSystemTime(Date.parse('2026-10-24T10:30:00Z'));
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    expect(surface.querySelector('.electricity-prices-live-summary')?.textContent).not.toContain('EUR/kWh');
+    expect(surface.querySelector('[data-price-level]')).toBeNull();
+    expect(surface.querySelector('.electricity-prices-live-summary')?.textContent).toContain('Awaiting prices');
+    expect(getCount(homey, SETTINGS_UI_PRICES_PATH)).toBe(0);
   });
 
   it('reads only the status on most polls and the plan and history on every fourth', async () => {
