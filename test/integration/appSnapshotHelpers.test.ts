@@ -1,4 +1,5 @@
 import type { DeviceTransport } from '../../lib/device/deviceTransport';
+import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { PlanService } from '../../lib/plan/planService';
 import type { TargetDeviceSnapshot, MeasuredPowerObservedProbe } from '../../packages/contracts/src/types';
 import { partialDouble } from '../helpers/partialDouble';
@@ -72,6 +73,54 @@ describe('appSnapshotHelpers', () => {
 
     helper.stop();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('refreshes each minute while the plan holds a target command unconfirmed for a minute, until stopped', async () => {
+    const refreshSnapshot = vi.fn().mockResolvedValue(undefined);
+    let stuck = false;
+    const hasPendingTargetCommandsOlderThan = vi.fn((_thresholdMs: number) => stuck);
+    const helper = new AppSnapshotHelpers({
+      getPowerSource: mockPowerSource,
+      timers: new TimerRegistry(),
+      getDeviceManager: () => partialDouble<DeviceTransport>({ refreshSnapshot }),
+      getPlanEngine: () => partialDouble<PlanEngine>({ hasPendingTargetCommandsOlderThan }),
+      getPlanService: () => partialDouble<PlanService>({
+        syncLivePlanState: vi.fn(async () => false),
+        syncHeadroomCardState: vi.fn(),
+        getLatestPlanSnapshot: vi.fn(),
+      }),
+      getPlanInputSnapshot: () => [],
+      getDeviceSurfaces: () => [],
+      resolveManagedState: () => false,
+      isCapacityControlEnabled: () => false,
+      getStructuredLogger: () => testLogger,
+      getNow: () => new Date('2026-03-21T10:00:00Z'),
+      logPeriodicStatus: vi.fn(),
+      persistFilledModeTargets: vi.fn(),
+      getFlowReportedDeviceIds: vi.fn(() => []),
+      emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
+      emitSettingsUiDevicesUpdated: vi.fn(),
+      recordPowerSample: vi.fn().mockResolvedValue(undefined),
+      resolveMainMeterSelection: mainMeterSelection,
+      readMainMeter: resolveMainMeterRead,
+    });
+    helper.startPeriodicSnapshotRefresh();
+
+    // Nothing stuck: the poll asks about commands older than a minute and reads nothing.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(hasPendingTargetCommandsOlderThan).toHaveBeenCalledTimes(1);
+    expect(hasPendingTargetCommandsOlderThan).toHaveBeenCalledWith(60_000);
+    expect(refreshSnapshot).not.toHaveBeenCalled();
+
+    stuck = true;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(refreshSnapshot).toHaveBeenCalledTimes(1);
+    expect(refreshSnapshot).toHaveBeenCalledWith(expect.objectContaining({ targetedRefresh: true }));
+
+    helper.stop();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(hasPendingTargetCommandsOlderThan).toHaveBeenCalledTimes(2);
+    expect(refreshSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it('settles overlapping target-power probes at each independent deadline', async () => {

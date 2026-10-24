@@ -5,13 +5,13 @@
  * stops them all.
  *
  * It lives here, not in `setup/`, because it is runtime state (`setup/AGENTS.md`
- * § "No state"), built the way `targetPowerProbeScheduler.ts` is: the refresh
+ * § "No state"), built the way `targetPowerProbeScheduler.ts` is. The refresh
  * cycle itself fans out across plan, power and home, so it stays in `setup/`
- * and is handed in as a function, as is the check for stuck target commands,
- * which is the plan's question.
+ * and is handed in as a function. So is the plan's answer to "is a target
+ * command older than this still unconfirmed?"; refreshing on that answer is
+ * this scheduler's job.
  */
-import type { Logger as PinoLogger } from '../logging/logger';
-import { getDebugEmitter } from '../logging/logger';
+import { getComponentLogger, getDebugEmitter } from '../logging/logger';
 import { runWithoutContext } from '../logging/alsContext';
 import { normalizeError } from '../utils/errorUtils';
 import { createSingleFlightLoop } from '../utils/singleFlightLoop';
@@ -19,9 +19,11 @@ import type { TimerRegistry } from '../utils/timerRegistry';
 import type { DeviceTransportPort } from './deviceTransport';
 
 const PERIODIC_STATUS_MINUTE_INTERVALS = [25, 55];
-// How often PELS checks for target commands a device has not confirmed. The
-// plan says which commands count as stuck; this is only how often it asks.
-const TARGET_CONFIRMATION_POLL_INTERVAL_MS = 60 * 1000;
+// A target command no device has confirmed this long after PELS sent it is
+// stuck, and the scheduler asks the plan about stuck commands this often. One
+// value for both, so a command is read again at most one poll after it becomes
+// stuck.
+const TARGET_CONFIRMATION_STUCK_POLL_MS = 60 * 1000;
 const POST_ACTUATION_REFRESH_DELAY_MS = 5_000;
 // The app's device poll. A Homey driver pushes a capability only on value
 // CHANGE, so a device that keeps doing the same thing sends nothing — and the
@@ -59,19 +61,7 @@ type SnapshotRefreshRequest = {
   options: SnapshotRefreshOptions;
 };
 
-/** What the scheduler drives and reports through; the cycle itself is the wiring's. */
-export type SnapshotRefreshSchedulerDeps = {
-  timers: TimerRegistry;
-  getNow: () => Date;
-  /** The transport to refresh from; `undefined` before device management starts. */
-  getTransport: () => DeviceTransportPort | undefined;
-  /** One refresh cycle over `transport`, owned by the wiring that fans it out. */
-  runCycle: (transport: DeviceTransportPort, options: SnapshotRefreshOptions) => Promise<void>;
-  logPeriodicStatus: (options: { includeDeviceHealth: boolean }) => void;
-  /** Refresh when the plan holds target commands no device has confirmed in time. */
-  pollStuckTargetConfirmations: () => Promise<void>;
-  getLogger: () => PinoLogger;
-};
+const logger = getComponentLogger('snapshot');
 
 export class SnapshotRefreshScheduler {
   private stopped = true;
@@ -89,7 +79,7 @@ export class SnapshotRefreshScheduler {
    * most once per drain.
    */
   private readonly loop = createSingleFlightLoop<SnapshotRefreshRequest>({
-    run: (request) => this.deps.runCycle(request.transport, request.options),
+    run: (request) => this.runCycle(request.transport, request.options),
     nextRequest: (_queued, ran) => ({
       ...ran,
       options: { ...ran.options, emitFlowBackedRefresh: false },
@@ -105,34 +95,44 @@ export class SnapshotRefreshScheduler {
     onRerun: () => {},
   });
 
-  constructor(private readonly deps: SnapshotRefreshSchedulerDeps) {}
+  constructor(
+    private readonly timers: TimerRegistry,
+    private readonly getNow: () => Date,
+    /** The transport to refresh from; `undefined` before device management starts. */
+    private readonly getTransport: () => DeviceTransportPort | undefined,
+    /** One refresh cycle over `transport`, owned by the wiring that fans it out. */
+    private readonly runCycle: (transport: DeviceTransportPort, options: SnapshotRefreshOptions) => Promise<void>,
+    private readonly logPeriodicStatus: (options: { includeDeviceHealth: boolean }) => void,
+    /** The plan's answer: does a target command older than `thresholdMs` still await confirmation? */
+    private readonly hasPendingTargetCommandsOlderThan: (thresholdMs: number) => boolean,
+  ) {}
 
   start(): void {
     this.stopped = false;
     this.schedulePeriodicStatusLog();
     this.scheduleNextDevicePoll();
-    this.deps.timers.registerInterval(
+    this.timers.registerInterval(
       'targetConfirmationPoll',
       setInterval(() => {
-        this.deps.pollStuckTargetConfirmations()
-          .catch((error) => this.deps.getLogger().error({
+        this.pollStuckTargetConfirmations()
+          .catch((error) => logger.error({
             event: 'stuck_target_confirmation_poll_failed',
             err: normalizeError(error),
           }));
-      }, TARGET_CONFIRMATION_POLL_INTERVAL_MS),
+      }, TARGET_CONFIRMATION_STUCK_POLL_MS),
     );
   }
 
   stop(): void {
     this.stopped = true;
-    this.deps.timers.clear('periodicStatus');
-    this.deps.timers.clear('devicePoll');
-    this.deps.timers.clear('targetConfirmationPoll');
-    this.deps.timers.clear('postActuationRefresh');
+    this.timers.clear('periodicStatus');
+    this.timers.clear('devicePoll');
+    this.timers.clear('targetConfirmationPoll');
+    this.timers.clear('postActuationRefresh');
   }
 
   async refresh(options: SnapshotRefreshOptions = {}): Promise<void> {
-    const transport = this.deps.getTransport();
+    const transport = this.getTransport();
     if (!transport) return;
     await this.loop.request({
       transport,
@@ -148,11 +148,11 @@ export class SnapshotRefreshScheduler {
    * null-check.
    */
   hasPendingPostActuationRefresh(): boolean {
-    return this.deps.timers.has('postActuationRefresh');
+    return this.timers.has('postActuationRefresh');
   }
 
   schedulePostActuationRefresh(): void {
-    if (this.deps.timers.has('postActuationRefresh')) {
+    if (this.timers.has('postActuationRefresh')) {
       getDebugEmitter('snapshot', 'plan')({
         event: 'post_actuation_refresh_skipped',
         reason: 'already_scheduled',
@@ -165,15 +165,15 @@ export class SnapshotRefreshScheduler {
       delayMs: POST_ACTUATION_REFRESH_DELAY_MS,
     });
     runWithoutContext(() => (
-      this.deps.timers.registerTimeout('postActuationRefresh', setTimeout(async () => {
-        this.deps.timers.clear('postActuationRefresh');
+      this.timers.registerTimeout('postActuationRefresh', setTimeout(async () => {
+        this.timers.clear('postActuationRefresh');
         getDebugEmitter('snapshot', 'plan')({
           event: 'post_actuation_refresh_running',
         });
         try {
           await this.refresh({ targeted: true, recordHomeyEnergySample: false });
         } catch (error) {
-          this.deps.getLogger().error({
+          logger.error({
             event: 'post_actuation_snapshot_refresh_failed',
             err: normalizeError(error),
           });
@@ -189,7 +189,7 @@ export class SnapshotRefreshScheduler {
    * never more than `DEVICE_POLL_INTERVAL_MS` old.
    */
   schedulePeriodicStatusLog(): void {
-    const now = this.deps.getNow();
+    const now = this.getNow();
     const currentMinute = now.getMinutes();
     const nextMinute = PERIODIC_STATUS_MINUTE_INTERVALS.find((minute) => minute > currentMinute);
 
@@ -200,14 +200,24 @@ export class SnapshotRefreshScheduler {
       next.setHours(now.getHours() + 1, PERIODIC_STATUS_MINUTE_INTERVALS[0], 0, 0);
     }
 
-    this.deps.timers.registerTimeout('periodicStatus', setTimeout(() => {
-      this.deps.timers.clear('periodicStatus');
+    this.timers.registerTimeout('periodicStatus', setTimeout(() => {
+      this.timers.clear('periodicStatus');
       try {
-        this.deps.logPeriodicStatus({ includeDeviceHealth: true });
+        this.logPeriodicStatus({ includeDeviceHealth: true });
       } finally {
         if (!this.stopped) this.schedulePeriodicStatusLog();
       }
     }, next.getTime() - now.getTime()));
+  }
+
+  /** Refresh when the plan holds a target command no device has confirmed in time. */
+  private async pollStuckTargetConfirmations(): Promise<void> {
+    if (!this.hasPendingTargetCommandsOlderThan(TARGET_CONFIRMATION_STUCK_POLL_MS)) return;
+    getDebugEmitter('snapshot', 'devices')({
+      event: 'stuck_target_confirmation_poll',
+      thresholdMs: TARGET_CONFIRMATION_STUCK_POLL_MS,
+    });
+    await this.refresh({ targeted: true });
   }
 
   /**
@@ -220,14 +230,14 @@ export class SnapshotRefreshScheduler {
    */
   private scheduleNextDevicePoll(): void {
     if (this.stopped) return;
-    this.deps.timers.registerTimeout(
+    this.timers.registerTimeout(
       'devicePoll',
       setTimeout(async () => {
-        this.deps.timers.clear('devicePoll');
+        this.timers.clear('devicePoll');
         try {
           await this.refresh({ targeted: true });
         } catch (error) {
-          this.deps.getLogger().error({
+          logger.error({
             event: 'device_poll_failed',
             err: normalizeError(error),
           });

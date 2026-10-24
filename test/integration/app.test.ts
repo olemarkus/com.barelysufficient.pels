@@ -40,10 +40,7 @@ import {
   OPERATING_MODE_SETTING,
   MAIN_HOME_ID,
 } from '../../lib/utils/settingsKeys';
-import {
-  SHED_COOLDOWN_MS,
-  TARGET_CONFIRMATION_STUCK_POLL_MS,
-} from '../../lib/plan/planConstants';
+import { SHED_COOLDOWN_MS } from '../../lib/plan/planConstants';
 import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../../lib/dailyBudget/dailyBudgetConstants';
 import { getHourBucketKey } from '../../lib/utils/hourBuckets';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
@@ -2219,10 +2216,12 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    const nowMs = new Date('2026-03-20T06:00:00.000Z').getTime();
+    // This describe fakes only the interval clocks, so the stuck-confirmation
+    // poll fires when the spec advances them, while `Date.now()` stays real.
+    const nowMs = Date.now();
     app.planEngine.state.pendingTargetCommands['dev-1'] = {
       desired: 16,
-      startedMs: nowMs - TARGET_CONFIRMATION_STUCK_POLL_MS - 1,
+      startedMs: nowMs - 60_000 - 1,
       lastAttemptMs: nowMs - 5_000,
       retryCount: 0,
       nextRetryAtMs: nowMs + 30_000,
@@ -2231,14 +2230,17 @@ describe('MyApp initialization', () => {
       lastObservedSource: 'snapshot_refresh',
     };
     const refreshSpy = vi.spyOn(app.snapshotHelpers['refreshScheduler'], 'refresh').mockResolvedValue(undefined);
-    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
+    app.snapshotHelpers.startPeriodicSnapshotRefresh();
     try {
-      await app.snapshotHelpers.pollStuckTargetConfirmations();
-    } finally {
-      nowSpy.mockRestore();
-    }
+      await vi.advanceTimersByTimeAsync(60_000 - 1);
+      expect(refreshSpy).not.toHaveBeenCalled();
 
-    expect(refreshSpy).toHaveBeenCalledWith({ targeted: true });
+      await vi.advanceTimersByTimeAsync(1);
+      expect(refreshSpy).toHaveBeenCalledTimes(1);
+      expect(refreshSpy).toHaveBeenCalledWith({ targeted: true });
+    } finally {
+      app.snapshotHelpers.stop();
+    }
   });
 
   it('does not reapply targets when set_capacity_mode is invoked with the current mode (not dry-run)', async () => {
