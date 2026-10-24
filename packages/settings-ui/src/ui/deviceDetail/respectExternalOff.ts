@@ -114,13 +114,11 @@ const shouldShowRow = (
   optedIn: boolean,
 ): boolean => (device?.binaryControllable === true && isPowerLimitControlOn(deviceId)) || optedIn;
 
-export const syncRespectExternalOffRow = (params: {
-  deviceId: string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
-}): void => {
+export const syncRespectExternalOffRow = (
+  deviceId: string | null,
+  device: SettingsUiDeviceDetailItem | null,
+): void => {
   if (!rowEl || !toggleEl) return;
-  const { deviceId } = params;
-  const device = deviceId ? params.getDeviceById(deviceId) : null;
   const controlState = resolveDeviceDetailControlState(device, deviceId ?? '');
   const optedIn = deviceId !== null && state.respectExternalOffMap[deviceId] === true;
   const showRow = deviceId !== null && shouldShowRow(deviceId, device, optedIn);

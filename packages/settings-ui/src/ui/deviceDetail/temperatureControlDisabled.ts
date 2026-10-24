@@ -8,7 +8,7 @@ import {
   type TemperatureControlMode,
   type TemperatureControlModes,
 } from '../../../../shared-domain/src/settings/temperatureControl.ts';
-import { state, hasActiveDeadlineObjective } from '../state.ts';
+import { findLatestDevice, state, hasActiveDeadlineObjective } from '../state.ts';
 import { supportsTemperatureDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import type { MdFilledSelectElement } from '../dom.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
@@ -39,12 +39,8 @@ const syncPowerHint = (device: SettingsUiDeviceDetailItem, selected: Temperature
   if (selected !== 'mode') powerHintEl.textContent = manualTemperaturePowerHint(device, selected);
 };
 
-export const syncTemperatureControlDisabledRow = (params: {
-  deviceId: string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
-}): void => {
+export const syncTemperatureControlDisabledRow = (device: SettingsUiDeviceDetailItem | null): void => {
   if (!rowEl || !selectEl) return;
-  const device = params.deviceId ? params.getDeviceById(params.deviceId) : null;
   rowEl.hidden = !supportsTemperatureDevice(device);
   if (device === null || rowEl.hidden) return;
   const { id } = device;
@@ -63,7 +59,6 @@ export const syncTemperatureControlDisabledRow = (params: {
 
 type HandlerDeps = {
   getCurrentDetailDeviceId: () => string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
   refreshSharedDeviceViews: () => void;
   refreshOpenDeviceDetail: () => void;
 };
@@ -108,7 +103,7 @@ export const initTemperatureControlDisabledHandler = (deps: HandlerDeps): void =
     if (next === previous) return;
     // Keep the saved selection and its effective controls visible until confirmed.
     deps.refreshOpenDeviceDetail();
-    const device = deps.getDeviceById(deviceId);
+    const device = findLatestDevice(deviceId);
     if (!device) return;
     if (previous === 'mode' && next !== 'mode'
       && !await confirmTemperatureControlChange(device, next)) return;

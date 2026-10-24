@@ -82,7 +82,7 @@ describe('detail adjustment input boundary', () => {
     const cheapInput = document.querySelector<HTMLInputElement>('#device-detail-cheap-delta')!;
     const expensiveInput = document.querySelector<HTMLInputElement>('#device-detail-expensive-delta')!;
     const { initDeviceDetailPriceOptHandlers } = await import('../src/ui/deviceDetail/priceOpt.ts');
-    initDeviceDetailPriceOptHandlers({ getCurrentDetailDeviceId: () => 'heater', getDeviceById: () => null });
+    initDeviceDetailPriceOptHandlers({ getCurrentDetailDeviceId: () => 'heater' });
     cheapInput.value = String(input);
     expensiveInput.value = String(input);
     cheapInput.dispatchEvent(new Event('change'));

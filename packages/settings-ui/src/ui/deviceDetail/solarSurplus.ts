@@ -17,7 +17,8 @@ import {
 } from '../deviceUtils.ts';
 import { isEvDevice } from '../../../../shared-domain/src/commandableNow.ts';
 import { DEFAULT_SURPLUS_LIFT_C } from '../../../../shared-domain/src/settings/priceOptimization.ts';
-import { resolveSurplusControlAvailable,
+import { findLatestDevice,
+  resolveSurplusControlAvailable,
   resolveManagedState,
   state,
   defaultPriceOptimizationConfig,
@@ -79,19 +80,15 @@ const resolveSurplusGateHint = (
   return null;
 };
 
-export const updateSurplusSectionVisibility = (params: {
-  currentDetailDeviceId: string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
-}) => {
+export const updateSurplusSectionVisibility = (device: SettingsUiDeviceDetailItem | null) => {
   if (!deviceDetailSurplusSection || !deviceDetailSurplusOpt) return;
-  const device = params.currentDetailDeviceId ? params.getDeviceById(params.currentDetailDeviceId) : null;
-  const isManaged = params.currentDetailDeviceId ? resolveManagedState(params.currentDetailDeviceId) : false;
+  const isManaged = device ? resolveManagedState(device.id) : false;
   // Section visibility follows the toggle row's own offer gate (pool reachable
   // or already opted in): a non-solar home never sees the section at all, while
   // an opted-in device keeps it reachable regardless of reachability — an
   // install that opted in before the gate existed must be able to see and clear
   // its stored setting.
-  const offered = params.currentDetailDeviceId ? surplusControlVisibleFor(params.currentDetailDeviceId) : false;
+  const offered = device ? surplusControlVisibleFor(device.id) : false;
   const applicable = supportsTemperatureDevice(device) && (offered || deviceDetailSurplusOpt.selected);
   if (!applicable) {
     deviceDetailSurplusSection.style.display = 'none';
@@ -118,12 +115,11 @@ export const updateSurplusSectionVisibility = (params: {
 
 export const initDeviceDetailSurplusOptHandlers = (params: {
   getCurrentDetailDeviceId: () => string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
 }) => {
   const autoSaveSurplus = async () => {
     const deviceId = params.getCurrentDetailDeviceId();
     if (!deviceId) return;
-    const device = params.getDeviceById(deviceId);
+    const device = findLatestDevice(deviceId);
     if (!supportsTemperatureAdjustments(device)) return;
 
     const { surplusWilling, surplusDelta } = readSurplusInputs();
@@ -146,7 +142,7 @@ export const initDeviceDetailSurplusOptHandlers = (params: {
     // section's visibility against the current switch state.
     if (saved && params.getCurrentDetailDeviceId() === deviceId) {
       setDeviceDetailSurplusValues(deviceId);
-      updateSurplusSectionVisibility({ currentDetailDeviceId: deviceId, getDeviceById: params.getDeviceById });
+      updateSurplusSectionVisibility(findLatestDevice(deviceId));
     }
   };
 
@@ -230,16 +226,15 @@ const hideDumpLoadRow = (): void => {
   if (deviceDetailDumpLoadPowerLimitHint) deviceDetailDumpLoadPowerLimitHint.hidden = true;
 };
 
-export const setDeviceDetailDumpLoadControl = (params: {
-  deviceId: string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
-}) => {
+export const setDeviceDetailDumpLoadControl = (
+  deviceId: string | null,
+  device: SettingsUiDeviceDetailItem | null,
+) => {
   if (!deviceDetailDumpLoadRow || !deviceDetailDumpLoadOpt) return;
-  const device = params.deviceId ? params.getDeviceById(params.deviceId) : null;
-  const controlState = resolveDeviceDetailControlState(device, params.deviceId ?? '');
-  const shape = params.deviceId !== null && isDumpLoadDeviceShape(device, controlState);
-  const optedIn = params.deviceId !== null
-    && state.priceOptimizationSettings[params.deviceId]?.surplusWilling === true;
+  const controlState = resolveDeviceDetailControlState(device, deviceId ?? '');
+  const shape = deviceId !== null && isDumpLoadDeviceShape(device, controlState);
+  const optedIn = deviceId !== null
+    && state.priceOptimizationSettings[deviceId]?.surplusWilling === true;
   // Matching the temperature surplus/boost gate: the home's surplus pool must be
   // reachable (`resolveSurplusControlAvailable`). Escape hatch: keep the row
   // visible whenever the device is opted in, regardless of that signal, so the
@@ -248,22 +243,21 @@ export const setDeviceDetailDumpLoadControl = (params: {
   // needs a way to see and clear the setting.
   const showRow = shape && (resolveSurplusControlAvailable() || optedIn);
   deviceDetailDumpLoadRow.hidden = !showRow;
-  if (!showRow || !params.deviceId) {
+  if (!showRow || !deviceId) {
     hideDumpLoadRow();
     return;
   }
   deviceDetailDumpLoadOpt.selected = optedIn;
-  applyDumpLoadDisabledState(params.deviceId);
+  applyDumpLoadDisabledState(deviceId);
 };
 
 const initDeviceDetailDumpLoadHandlers = (params: {
   getCurrentDetailDeviceId: () => string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
 }) => {
   const autoSaveDumpLoad = async () => {
     const deviceId = params.getCurrentDetailDeviceId();
     if (!deviceId || !deviceDetailDumpLoadOpt) return;
-    const device = params.getDeviceById(deviceId);
+    const device = findLatestDevice(deviceId);
     const controlState = resolveDeviceDetailControlState(device, deviceId);
     // Shape-only (not the solar-offer gate): a user opting OUT while the solar
     // device has disappeared must still be able to save — the escape hatch would
@@ -274,7 +268,7 @@ const initDeviceDetailDumpLoadHandlers = (params: {
     // the one field a dump load reads.
     const rebind = (): void => {
       if (params.getCurrentDetailDeviceId() === deviceId) {
-        setDeviceDetailDumpLoadControl({ deviceId, getDeviceById: params.getDeviceById });
+        setDeviceDetailDumpLoadControl(deviceId, findLatestDevice(deviceId));
       }
     };
     if (await savePriceOptimizationPatch(

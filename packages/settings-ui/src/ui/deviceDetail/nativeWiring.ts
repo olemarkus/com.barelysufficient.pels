@@ -18,7 +18,7 @@ import {
   supportsNativeWiringActivation,
   type SettingsUiDeviceDetailItem,
 } from '../deviceUtils.ts';
-import { state } from '../state.ts';
+import { findLatestDevice, state } from '../state.ts';
 import { readRecordSettingStrict, writeFreshSetting } from './settingsWrite.ts';
 import { checkFlowConflictNow } from '../flowConflictRefresh.ts';
 import { showToast, showToastError } from '../toast.ts';
@@ -118,13 +118,11 @@ export const updateCurrentDeviceNativeWiringSnapshot = (
 
 export const initDeviceDetailNativeWiringHandler = (params: {
   getCurrentDetailDeviceId: () => string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
   refreshCurrentDeviceControlStates: () => void;
   refreshSharedDeviceViews: () => void;
 }) => {
   const {
     getCurrentDetailDeviceId,
-    getDeviceById,
     refreshCurrentDeviceControlStates,
     refreshSharedDeviceViews,
   } = params;
@@ -146,7 +144,7 @@ export const initDeviceDetailNativeWiringHandler = (params: {
       }),
       commit: (nextMap) => {
         state.nativeWiringMap = nextMap;
-        updateCurrentDeviceNativeWiringSnapshot(getDeviceById(deviceId), nativeWiringEnabled);
+        updateCurrentDeviceNativeWiringSnapshot(findLatestDevice(deviceId), nativeWiringEnabled);
         refreshSharedDeviceViews();
         refreshCurrentDeviceControlStates();
       },
@@ -158,7 +156,7 @@ export const initDeviceDetailNativeWiringHandler = (params: {
     const deviceId = getCurrentDetailDeviceId();
     if (!deviceId || !deviceDetailNativeWiring || nativeWiringSaveInProgress) return;
 
-    const device = getDeviceById(deviceId);
+    const device = findLatestDevice(deviceId);
     if (!supportsNativeWiringActivation(device)) return;
 
     const builtInChosen = isBuiltInControlChosen(device, state.nativeWiringMap);

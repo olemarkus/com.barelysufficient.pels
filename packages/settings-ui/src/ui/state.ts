@@ -232,6 +232,15 @@ export const state: UiState = {
   meterAreaSimulation: [],
 };
 
+/**
+ * The listed device with this id, read from `state.latestDevices` when called.
+ * A handler that runs after a refresh replaced the list calls it then, so it
+ * sees the device as the refresh left it.
+ */
+export const findLatestDevice = (deviceId: string): SettingsUiDeviceView | null => (
+  state.latestDevices.find((device) => device.id === deviceId) ?? null
+);
+
 /** Whether this listed device is a home battery, whose Managed toggle is its own setting. */
 export const isHomeBatteryDeviceId = (deviceId: string): boolean => (
   isHomeBatteryClassKey(state.latestDevices.find((device) => device.id === deviceId)?.deviceClass)

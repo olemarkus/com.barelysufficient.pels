@@ -225,7 +225,6 @@ describe('steppedLoadDraft step card disclosure', () => {
     const module = await import('../src/ui/deviceDetail/steppedLoadDraft.ts');
     module.initSteppedLoadDraftHandlers({
       getCurrentDetailDeviceId: () => null,
-      getDeviceById: () => null,
       persistDeviceControlProfile: async () => true,
       refreshOpenDeviceDetail: () => undefined,
     });

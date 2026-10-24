@@ -11,6 +11,7 @@ import {
   type SettingsUiDeviceDetailItem,
 } from '../deviceUtils.ts';
 import {
+  findLatestDevice,
   hasActiveDeadlineObjective,
   resolveSurplusControlAvailable,
   state,
@@ -102,25 +103,24 @@ const hideTrackingRow = (): void => {
  * out is not asked here: it stops, and where it parks is the answer the Power
  * limiting section already gives for every other kind of stop.
  */
-export const setDeviceDetailSurplusTrackingControl = (params: {
-  deviceId: string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
-}): void => {
+export const setDeviceDetailSurplusTrackingControl = (
+  deviceId: string | null,
+  device: SettingsUiDeviceDetailItem | null,
+): void => {
   if (!deviceDetailSurplusTrackRow || !deviceDetailSurplusTrackOpt) return;
-  const device = params.deviceId ? params.getDeviceById(params.deviceId) : null;
-  const controlState = resolveDeviceDetailControlState(device, params.deviceId ?? '');
-  const shape = params.deviceId !== null && isSurplusTrackingDeviceShape(device, controlState);
-  const optedIn = params.deviceId !== null
-    && state.priceOptimizationSettings[params.deviceId]?.surplusWilling === true;
+  const controlState = resolveDeviceDetailControlState(device, deviceId ?? '');
+  const shape = deviceId !== null && isSurplusTrackingDeviceShape(device, controlState);
+  const optedIn = deviceId !== null
+    && state.priceOptimizationSettings[deviceId]?.surplusWilling === true;
   const showRow = shape && (resolveSurplusControlAvailable() || optedIn);
   deviceDetailSurplusTrackRow.hidden = !showRow;
-  if (!showRow || !params.deviceId || !device) {
+  if (!showRow || !deviceId || !device) {
     hideTrackingRow();
     return;
   }
   applyTrackingCopy(device);
   deviceDetailSurplusTrackOpt.selected = optedIn;
-  applyTrackingDisabledState(params.deviceId);
+  applyTrackingDisabledState(deviceId);
 };
 
 const applyTrackingCopy = (device: SettingsUiDeviceDetailItem): void => {
@@ -136,12 +136,11 @@ const applyTrackingCopy = (device: SettingsUiDeviceDetailItem): void => {
 
 export const initDeviceDetailSurplusTrackingHandlers = (params: {
   getCurrentDetailDeviceId: () => string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
 }): void => {
   const save = async (surplusWilling: boolean): Promise<void> => {
     const deviceId = params.getCurrentDetailDeviceId();
     if (!deviceId) return;
-    const device = params.getDeviceById(deviceId);
+    const device = findLatestDevice(deviceId);
     const controlState = resolveDeviceDetailControlState(device, deviceId);
     // Shape-only, not the solar-offer gate: an owner opting OUT after their
     // solar device disappeared must still be able to save, or the escape hatch
@@ -151,7 +150,7 @@ export const initDeviceDetailSurplusTrackingHandlers = (params: {
     // An existing entry keeps its other fields and only flips `surplusWilling`.
     const rebind = (): void => {
       if (params.getCurrentDetailDeviceId() === deviceId) {
-        setDeviceDetailSurplusTrackingControl({ deviceId, getDeviceById: params.getDeviceById });
+        setDeviceDetailSurplusTrackingControl(deviceId, findLatestDevice(deviceId));
       }
     };
     if (await savePriceOptimizationPatch(

@@ -13,7 +13,7 @@ import {
 } from '../dom.ts';
 import { getSetting } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
-import { state, type SettingsUiDeviceView } from '../state.ts';
+import { findLatestDevice, state, type SettingsUiDeviceView } from '../state.ts';
 import { showToast } from '../toast.ts';
 import {
   createSerializedAsyncRunner,
@@ -102,7 +102,6 @@ export const renderExpectedPowerField = (device: SettingsUiDeviceView | null) =>
 
 type ExpectedPowerHandlerDeps = {
   getCurrentDetailDeviceId: () => string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceView | null;
   refreshOpenDeviceDetail: () => void;
 };
 
@@ -147,7 +146,7 @@ export const initExpectedPowerHandlers = (deps: ExpectedPowerHandlerDeps) => {
     // Same refusal as the runtime, checked at the moment of the write: a device
     // that became a stepped load while its page was open must not persist a
     // figure the runtime would reject.
-    if (!supportsExpectedPowerDevice(deps.getDeviceById(deviceId))) return;
+    if (!supportsExpectedPowerDevice(findLatestDevice(deviceId))) return;
     const entry = readExpectedPowerFieldEntry(deviceDetailExpectedPower.value);
     if (entry.kind === 'invalid') {
       await showToast(INVALID_EXPECTED_POWER_MESSAGE, 'warn');

@@ -20,7 +20,7 @@ import {
 } from './shedTemperatureInputs.ts';
 import { getSetting } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
-import { resolveManagedState, state } from '../state.ts';
+import { findLatestDevice, resolveManagedState, state } from '../state.ts';
 import {
   supportsPowerDevice,
   supportsTemperatureControlDevice,
@@ -192,19 +192,15 @@ const getSetpointOnlyShedDefaultTemp = (device: SettingsUiDeviceDetailItem): num
   );
 };
 
-const getShedDefaultTemp = (
-  deviceId: string | null,
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null,
-): number => {
-  if (!deviceId) return 10;
+const getShedDefaultTemp = (device: SettingsUiDeviceDetailItem | null): number => {
+  if (!device) return 10;
 
-  const device = getDeviceById(deviceId);
-  if (device && isTemperatureDeviceWithoutOnOff(device)) return getSetpointOnlyShedDefaultTemp(device);
+  if (isTemperatureDeviceWithoutOnOff(device)) return getSetpointOnlyShedDefaultTemp(device);
 
-  const modeTarget = state.modeTargets[state.activeMode]?.[deviceId]
-    ?? state.modeTargets[state.editingMode]?.[deviceId];
+  const modeTarget = state.modeTargets[state.activeMode]?.[device.id]
+    ?? state.modeTargets[state.editingMode]?.[device.id];
   const normalizedModeTarget = typeof modeTarget === 'number' ? modeTarget : null;
-  const currentTarget = typeof device?.targets?.[0]?.value === 'number'
+  const currentTarget = typeof device.targets?.[0]?.value === 'number'
     ? device.targets[0].value
     : null;
 
@@ -217,9 +213,8 @@ const getShedDefaultTemp = (
 const resolveHeatingShedTemperature = (
   device: SettingsUiDeviceDetailItem,
   saved: ConfiguredShedBehavior,
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null,
 ): number => {
-  const savedC = saved.action === 'set_temperature' ? saved.temperature : getShedDefaultTemp(device.id, getDeviceById);
+  const savedC = saved.action === 'set_temperature' ? saved.temperature : getShedDefaultTemp(device);
   const fieldC = deviceDetailShedTemp
     ? readShedLimitField(deviceDetailShedTemp, HEATING_SHED_LIMIT_RANGE, savedC)
     : savedC;
@@ -236,10 +231,7 @@ const resolveHeatingShedTemperature = (
  * can say it is cooling has a cooling field to read, and a hidden field's value
  * is not the owner's choice.
  */
-const resolveTemperatureShedBehavior = (
-  device: SettingsUiDeviceDetailItem,
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null,
-): ConfiguredShedBehavior => {
+const resolveTemperatureShedBehavior = (device: SettingsUiDeviceDetailItem): ConfiguredShedBehavior => {
   if (!isTemperatureDeviceWithoutOnOff(device) && deviceDetailShedAction?.value !== 'set_temperature') {
     return { action: 'turn_off' };
   }
@@ -252,20 +244,16 @@ const resolveTemperatureShedBehavior = (
   }
   return {
     action: 'set_temperature',
-    temperature: resolveHeatingShedTemperature(device, saved, getDeviceById),
+    temperature: resolveHeatingShedTemperature(device, saved),
     coolingTemperature,
   };
 };
 
-const resolveVisibleShedAction = (params: {
-  currentDetailDeviceId: string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
-}): ShedAction | null => {
-  const device = params.currentDetailDeviceId ? params.getDeviceById(params.currentDetailDeviceId) : null;
+const resolveVisibleShedAction = (device: SettingsUiDeviceDetailItem | null): ShedAction | null => {
   if (!deviceDetailShedAction || !device || !supportsPowerDevice(device)) return null;
   // Limiting switched off: the statement says PELS will not limit, so the
   // parameter rows (limited temperature / limited step) have nothing to set.
-  if (params.currentDetailDeviceId && isPowerLimitControlOff(device, params.currentDetailDeviceId)) return null;
+  if (isPowerLimitControlOff(device, device.id)) return null;
 
   if (isTemperatureDeviceWithoutOnOff(device) && isShedActionOptionVisible('set_temperature')) {
     return 'set_temperature';
@@ -411,23 +399,22 @@ export const loadShedBehaviors = async () => {
   }
 };
 
-export const setDeviceDetailShedBehavior = (params: {
-  deviceId: string;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
-  updateSetStepOptionLabel: (device: SettingsUiDeviceDetailItem | null) => void;
-}) => {
-  const device = params.getDeviceById(params.deviceId);
-  params.updateSetStepOptionLabel(device);
+export const setDeviceDetailShedBehavior = (
+  deviceId: string,
+  device: SettingsUiDeviceDetailItem | null,
+  updateSetStepOptionLabel: (device: SettingsUiDeviceDetailItem | null) => void,
+) => {
+  updateSetStepOptionLabel(device);
 
   const shedControls = resolveShedControlCapabilities({
     device,
   });
-  const saved = resolveShedBehavior(state.shedBehaviors, params.deviceId);
+  const saved = resolveShedBehavior(state.shedBehaviors, deviceId);
 
   // A device that is no longer there is one PELS does not limit.
   renderShedStatement(device === null ? 'PELS does not limit this device.' : resolveShedStatement({
     device,
-    deviceId: params.deviceId,
+    deviceId,
     shedControls,
   }));
 
@@ -462,7 +449,7 @@ export const setDeviceDetailShedBehavior = (params: {
       canConfigure: shedControls.canConfigure,
       forceTemperatureOnly: shedControls.forceTemperatureOnly,
       saved,
-      fallbackTemperature: getShedDefaultTemp(params.deviceId, params.getDeviceById),
+      fallbackTemperature: getShedDefaultTemp(device),
     });
     deviceDetailShedTemp.disabled = !shedControls.canConfigure;
   }
@@ -474,14 +461,10 @@ export const setDeviceDetailShedBehavior = (params: {
   }
 };
 
-export const updateShedFieldVisibility = (params: {
-  currentDetailDeviceId: string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
-}) => {
+export const updateShedFieldVisibility = (device: SettingsUiDeviceDetailItem | null) => {
   if (!deviceDetailShedAction || !deviceDetailShedTempRow || !deviceDetailShedStepRow) return;
 
-  const selectedAction = resolveVisibleShedAction(params);
-  const device = params.currentDetailDeviceId ? params.getDeviceById(params.currentDetailDeviceId) : null;
+  const selectedAction = resolveVisibleShedAction(device);
   const showsCoolingLimit = selectedAction === 'set_temperature' && device !== null && reportsThermostatMode(device);
   if (selectedAction !== 'set_temperature') {
     deviceDetailShedTempRow.hidden = true;
@@ -493,7 +476,7 @@ export const updateShedFieldVisibility = (params: {
     if (deviceDetailShedTemp) {
       deviceDetailShedTemp.disabled = false;
       if (!deviceDetailShedTemp.value) {
-        const fallback = getShedDefaultTemp(params.currentDetailDeviceId, params.getDeviceById);
+        const fallback = getShedDefaultTemp(device);
         deviceDetailShedTemp.value = fallback.toString();
       }
     }
@@ -510,17 +493,13 @@ export const updateShedFieldVisibility = (params: {
   deviceDetailShedStepRow.hidden = true;
 };
 
-const saveShedBehavior = async (params: {
-  currentDetailDeviceId: string | null;
-  getCurrentDetailDeviceId: () => string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
-}) => {
-  const deviceId = params.currentDetailDeviceId;
-  if (!deviceId) return;
-
+const saveShedBehavior = async (
+  device: SettingsUiDeviceDetailItem | null,
+  getCurrentDetailDeviceId: () => string | null,
+) => {
   // A device that is no longer there has nothing to save.
-  const device = params.getDeviceById(deviceId);
   if (device === null) return;
+  const deviceId = device.id;
   let nextBehavior: ConfiguredShedBehavior = { action: 'turn_off' };
 
   if (supportsPowerDevice(device)) {
@@ -531,7 +510,7 @@ const saveShedBehavior = async (params: {
     ) {
       nextBehavior = { action: 'set_step' };
     } else if (supportsTemperatureControlDevice(device)) {
-      nextBehavior = resolveTemperatureShedBehavior(device, params.getDeviceById);
+      nextBehavior = resolveTemperatureShedBehavior(device);
     }
   }
 
@@ -547,37 +526,24 @@ const saveShedBehavior = async (params: {
       state.shedBehaviors = nextBehaviors;
     },
     rollback: () => {
-      const activeDetailDeviceId = params.getCurrentDetailDeviceId();
+      const activeDetailDeviceId = getCurrentDetailDeviceId();
       if (!activeDetailDeviceId) return;
 
-      setDeviceDetailShedBehavior({
-        deviceId: activeDetailDeviceId,
-        getDeviceById: params.getDeviceById,
-        updateSetStepOptionLabel: () => {},
-      });
-      updateShedFieldVisibility({
-        currentDetailDeviceId: activeDetailDeviceId,
-        getDeviceById: params.getDeviceById,
-      });
+      const activeDevice = findLatestDevice(activeDetailDeviceId);
+      setDeviceDetailShedBehavior(activeDetailDeviceId, activeDevice, () => {});
+      updateShedFieldVisibility(activeDevice);
     },
   });
 };
 
 export const initDeviceDetailShedHandlers = (params: {
   getCurrentDetailDeviceId: () => string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
 }) => {
   const autoSaveShedBehavior = async () => {
     const currentDetailDeviceId = params.getCurrentDetailDeviceId();
-    updateShedFieldVisibility({
-      currentDetailDeviceId,
-      getDeviceById: params.getDeviceById,
-      });
-    await saveShedBehavior({
-      currentDetailDeviceId,
-      getCurrentDetailDeviceId: params.getCurrentDetailDeviceId,
-      getDeviceById: params.getDeviceById,
-      });
+    const device = currentDetailDeviceId ? findLatestDevice(currentDetailDeviceId) : null;
+    updateShedFieldVisibility(device);
+    await saveShedBehavior(device, params.getCurrentDetailDeviceId);
   };
 
   deviceDetailShedAction?.addEventListener('change', autoSaveShedBehavior);

@@ -1,5 +1,5 @@
 import { deviceDetailBudgetExempt } from '../dom.ts';
-import { state } from '../state.ts';
+import { findLatestDevice, state } from '../state.ts';
 import { BUDGET_EXEMPT_DEVICES } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { readRecordSettingStrict, writeFreshSetting } from './settingsWrite.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
@@ -14,25 +14,19 @@ export const setDeviceDetailBudgetExemptState = (device: SettingsUiDeviceDetailI
 
 type BudgetExemptHandlerDeps = {
   getCurrentDetailDeviceId: () => string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
   refreshSharedDeviceViews: () => void;
   refreshOpenDeviceDetail: () => void;
 };
 
 // Mirror the new flag onto the live device object so the shared views render
 // the change before the next snapshot arrives.
-const updateCurrentDeviceBudgetExemptSnapshot = (
-  getDeviceById: BudgetExemptHandlerDeps['getDeviceById'],
-  deviceId: string,
-  budgetExempt: boolean,
-): void => {
-  const device = getDeviceById(deviceId);
+const updateCurrentDeviceBudgetExemptSnapshot = (deviceId: string, budgetExempt: boolean): void => {
+  const device = findLatestDevice(deviceId);
   if (device) device.budgetExempt = budgetExempt;
 };
 
 export const initDeviceDetailBudgetExemptHandler = ({
   getCurrentDetailDeviceId,
-  getDeviceById,
   refreshSharedDeviceViews,
   refreshOpenDeviceDetail,
 }: BudgetExemptHandlerDeps): void => {
@@ -61,7 +55,7 @@ export const initDeviceDetailBudgetExemptHandler = ({
       },
       commit: (nextMap) => {
         state.budgetExemptMap = nextMap;
-        updateCurrentDeviceBudgetExemptSnapshot(getDeviceById, deviceId, nextChecked);
+        updateCurrentDeviceBudgetExemptSnapshot(deviceId, nextChecked);
         refreshSharedDeviceViews();
         refreshOpenDeviceDetail();
       },

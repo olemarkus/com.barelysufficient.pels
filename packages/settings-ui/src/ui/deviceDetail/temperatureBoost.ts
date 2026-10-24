@@ -12,7 +12,7 @@ import {
 } from '../dom.ts';
 import { getSetting } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
-import { state, type SettingsUiDeviceView } from '../state.ts';
+import { findLatestDevice, state, type SettingsUiDeviceView } from '../state.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
 import { isSteppedLoadControlModel } from '../deviceKind.ts';
 import { supportsTemperatureControlDevice } from '../deviceUtils.ts';
@@ -22,7 +22,6 @@ const DEFAULT_BOOST_BELOW_C = 55;
 
 type TemperatureBoostHandlerDeps = {
   getCurrentDetailDeviceId: () => string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceView | null;
   refreshOpenDeviceDetail: () => void;
 };
 
@@ -88,7 +87,7 @@ export const initTemperatureBoostHandlers = (deps: TemperatureBoostHandlerDeps) 
         },
         commit: (nextSettings) => {
           state.temperatureBoostSettings = nextSettings;
-          const device = deps.getDeviceById(deviceId);
+          const device = findLatestDevice(deviceId);
           if (device) device.temperatureBoost = nextSettings[deviceId];
           deps.refreshOpenDeviceDetail();
         },

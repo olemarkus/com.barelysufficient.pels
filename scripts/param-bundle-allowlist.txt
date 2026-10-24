@@ -109,7 +109,7 @@ packages/settings-ui/src/ui/deviceDetail/modes.ts 1
 packages/settings-ui/src/ui/deviceDetail/nativeWiring.ts 1
 packages/settings-ui/src/ui/deviceDetail/priceOpt.ts 1
 packages/settings-ui/src/ui/deviceDetail/sectionLayout.ts 1
-packages/settings-ui/src/ui/deviceDetail/shedBehavior.ts 6
+packages/settings-ui/src/ui/deviceDetail/shedBehavior.ts 4
 packages/settings-ui/src/ui/deviceDetail/steppedLoadDraft.ts 3
 packages/settings-ui/src/ui/deviceDetail/targetPowerConfig.ts 1
 packages/settings-ui/src/ui/devices.ts 2

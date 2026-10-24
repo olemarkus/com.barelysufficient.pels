@@ -86,11 +86,7 @@ const loadShedStatementHarness = async () => {
   state.deviceControlProfiles = {};
 
   const render = (device: SettingsUiDeviceSnapshot) => {
-    module.setDeviceDetailShedBehavior({
-      deviceId: device.id,
-      getDeviceById: () => device,
-      updateSetStepOptionLabel: () => {},
-    });
+    module.setDeviceDetailShedBehavior(device.id, device, () => {});
   };
 
   return { state, statement, segmented, segmentedLabel, hint, shedAction, options, render };

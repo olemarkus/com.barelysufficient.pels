@@ -13,7 +13,7 @@ import {
 } from '../dom.ts';
 import { getSetting } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
-import { state, type SettingsUiDeviceView } from '../state.ts';
+import { findLatestDevice, state, type SettingsUiDeviceView } from '../state.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
 
 const runSerializedEvBoostWrite = createSerializedAsyncRunner();
@@ -29,7 +29,6 @@ export const supportsEvBoostDevice = (device: SettingsUiDeviceDetailItem | null 
 
 type EvBoostHandlerDeps = {
   getCurrentDetailDeviceId: () => string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceView | null;
   refreshOpenDeviceDetail: () => void;
 };
 
@@ -129,7 +128,7 @@ export const initEvBoostHandlers = (deps: EvBoostHandlerDeps) => {
         },
         commit: (nextSettings) => {
           state.evBoostSettings = nextSettings;
-          const device = deps.getDeviceById(deviceId);
+          const device = findLatestDevice(deviceId);
           if (device) device.evBoost = nextSettings[deviceId];
           deps.refreshOpenDeviceDetail();
         },
