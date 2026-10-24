@@ -65,7 +65,6 @@ export const registerSettingsHandler = (
     },
     refreshTargetDevicesSnapshot: () => ctx.refreshTargetDevicesSnapshot(),
     getCapacitySettings: () => ctx.capacitySettings,
-    getCapacityDryRun: () => ctx.capacityDryRun,
     loadDailyBudgetSettings: () => dailyBudgetService.loadSettings(),
     updateDailyBudgetState: (options) => ctx.updateDailyBudgetState(options),
     resetDailyBudgetLearning: () => dailyBudgetService.resetLearning(),

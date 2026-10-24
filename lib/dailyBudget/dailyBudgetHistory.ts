@@ -91,7 +91,6 @@ export const buildDailyBudgetHistory = (params: {
     budgetControlUsedNowKWh,
     meteredUsedNowKWh,
     exemptUsedNowKWh,
-    currentBucketUsage: bucketUsage[currentBucketIndex] ?? 0,
   };
 
   const budget = computeBudgetState(context, enabled, dailyBudgetKWh, plannedKWh, profileSampleCount);

@@ -69,7 +69,6 @@ describe('registerAppFlowCards', () => {
       deviceControlHelpers: { reportSteppedLoadActualStep: vi.fn() },
       setExpectedOverride: vi.fn(() => false),
       evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
-      updateDailyBudgetState: vi.fn(),
       getTimeZone: vi.fn(() => 'Europe/Oslo'),
       getNow: vi.fn(() => now),
       getStructuredLogger: vi.fn(() => testLogger),
@@ -106,7 +105,6 @@ describe('registerAppFlowCards', () => {
       deviceControlHelpers: { reportSteppedLoadActualStep: vi.fn() },
       setExpectedOverride: vi.fn(() => false),
       evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
-      updateDailyBudgetState: vi.fn(),
       getTimeZone: vi.fn(() => 'Europe/Oslo'),
       getNow: vi.fn(() => new Date('2026-04-16T00:00:00.000Z')),
       getStructuredLogger: vi.fn(() => testLogger),
@@ -205,63 +203,6 @@ describe('registerAppFlowCards', () => {
 
     expect(deps.isDeviceInMainHome('heater-main')).toBe(true);
     expect(deps.hasMainHomeSmartTaskAuthority('heater-main')).toBe(false);
-  });
-
-  it('routes daily budget updates through the app context callback', async () => {
-    const updateDailyBudgetState = vi.fn();
-    const dailyBudgetServiceUpdateState = vi.fn();
-    const ctx = {
-      homey: {
-        flow: {
-          getTriggerCard: vi.fn(),
-          getConditionCard: vi.fn(),
-          getActionCard: vi.fn(),
-        },
-        settings: {
-          get: vi.fn(),
-          set: vi.fn(),
-        },
-      },
-      resolveModeName: vi.fn((mode: string) => mode),
-      getAllModes: vi.fn(() => new Set<string>()),
-      operatingMode: 'Home',
-      handleOperatingModeChange: vi.fn(async () => undefined),
-      getCurrentPriceLevel: vi.fn(),
-      recordPowerSample: vi.fn(async () => admitted()),
-      capacityGuard: { getHeadroom: vi.fn(() => null), setLimit: vi.fn() },
-      getFlowSnapshot: vi.fn(async () => []),
-      refreshTargetDevicesSnapshot: vi.fn(async () => undefined),
-      deviceControlHelpers: { reportSteppedLoadActualStep: vi.fn() },
-      setExpectedOverride: vi.fn(() => false),
-      evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
-      dailyBudgetService: {
-        loadSettings: vi.fn(),
-        updateState: dailyBudgetServiceUpdateState,
-      },
-      updateDailyBudgetState,
-      getTimeZone: vi.fn(() => 'Europe/Oslo'),
-      getNow: vi.fn(() => new Date('2026-04-16T00:00:00.000Z')),
-      getStructuredLogger: vi.fn(() => testLogger),
-      log: vi.fn(),
-      error: vi.fn(),
-      timers: new TimerRegistry(),
-      powerTracker: {},
-    } as unknown as AppContext;
-
-    registerAppFlowCards(
-      ctx,
-      homeModeCatalog.resolveModeName,
-      homeModeCatalog.getAllModes,
-      homeModeCatalog.getOperatingMode,
-      homeModeCatalog.listDeviceTargetModes,
-      homeModeCatalog.setDeviceModeTarget,
-    );
-    const deps = registerFlowCards.mock.calls[0]?.[0];
-
-    await deps.updateDailyBudgetState({ forcePlanRebuild: true });
-
-    expect(updateDailyBudgetState).toHaveBeenCalledWith({ forcePlanRebuild: true });
-    expect(dailyBudgetServiceUpdateState).not.toHaveBeenCalled();
   });
 
   it('records Flow power stamped with the app clock', async () => {

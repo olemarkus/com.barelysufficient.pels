@@ -319,8 +319,6 @@ const buildDeps = (overrides: {
       clearObjectiveForDevice(buildWriteDeps(), params)
     ),
     evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
-    loadDailyBudgetSettings: () => {},
-    updateDailyBudgetState: () => {},
     getCombinedHourlyPrices: () => null,
     getTimeZone: () => 'UTC',
     getNow: () => new Date(MOCK_NOW_MS),

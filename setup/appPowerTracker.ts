@@ -17,7 +17,6 @@ import {
 } from '../lib/device/devicePowerCalibrationStore';
 import { emitSettingsUiPowerUpdatedForApp } from './settingsUiAppRuntime';
 import { addPerfDuration } from '../lib/utils/perfCounters';
-import type { DailyBudgetService } from '../lib/dailyBudget/dailyBudgetService';
 import type { DailyBudgetUpdateStateOptions } from '../lib/dailyBudget/dailyBudgetTypes';
 import type { AppContext } from '../lib/app/appContext';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
@@ -65,7 +64,6 @@ export type AppPowerTrackerDeps = {
   timers: TimerRegistry;
   getTracker: () => HomeTrackerPersistence;
   getPowerCalibrationStore: () => PowerCalibrationStore;
-  getDailyBudgetService: () => DailyBudgetService;
   error: (...args: unknown[]) => void;
   updateDailyBudgetAndRecordCap: (options?: DailyBudgetUpdateStateOptions) => void;
 }

@@ -52,7 +52,6 @@ export const buildPreviewDayContext = (dayStartUtcMs: number, timeZone: string):
     budgetControlUsedNowKWh: 0,
     meteredUsedNowKWh: 0,
     exemptUsedNowKWh: 0,
-    currentBucketUsage: 0,
   };
 };
 

@@ -33,7 +33,6 @@ export const settingsHandlerDepsDouble = (overrides: Partial<SettingsHandlerDeps
   rebuildPlanFromCache: vi.fn().mockResolvedValue(undefined),
   refreshTargetDevicesSnapshot: vi.fn().mockResolvedValue(undefined),
   getCapacitySettings: vi.fn().mockReturnValue({ limitKw: 10, marginKw: 1, periodMinutes: 60 }),
-  getCapacityDryRun: vi.fn().mockReturnValue(false),
   loadDailyBudgetSettings: vi.fn(),
   updateDailyBudgetState: vi.fn(),
   resetDailyBudgetLearning: vi.fn(),

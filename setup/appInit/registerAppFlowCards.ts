@@ -1,7 +1,6 @@
 import { getDebugEmitter } from '../../lib/logging/logger';
 import {
   requireBatteryControl,
-  requireDailyBudgetService,
   requireDeviceManager,
   requireFlowHomey,
   requirePriceCoordinator,
@@ -133,8 +132,6 @@ export function registerAppFlowCards(
     deferredObjectiveHoursRemainingBus: ctx.deferredObjectiveHoursRemainingBus,
     deferredObjectiveHoursRemainingTracker: ctx.deferredObjectiveHoursRemainingTracker,
     evaluateHeadroomForDevice: (params) => ctx.evaluateHeadroomForDevice(params),
-    loadDailyBudgetSettings: () => requireDailyBudgetService(ctx).loadSettings(),
-    updateDailyBudgetState: (options) => ctx.updateDailyBudgetState(options),
     getCombinedHourlyPrices: () => requirePriceCoordinator(ctx).getCombinedHourlyPrices(),
     getTimeZone: () => ctx.getTimeZone(),
     getNow: () => ctx.getNow(),

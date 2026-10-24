@@ -76,7 +76,6 @@ const buildContext = () => {
     getFlowSnapshot: vi.fn(async () => []),
     getCurrentPriceLevel: vi.fn(),
     setExpectedOverride: vi.fn(() => false),
-    loadDailyBudgetSettings: vi.fn(),
     updateDailyBudgetState: vi.fn(),
     resolveManagedState: vi.fn(() => false),
     isCapacityControlEnabled: vi.fn(() => false),

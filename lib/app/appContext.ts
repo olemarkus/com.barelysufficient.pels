@@ -147,7 +147,6 @@ export type AppContext = {
   recordPowerSample: (powerW: number, nowMs?: number) => Promise<PowerSampleAdmission>;
   handleOperatingModeChange: (rawMode: string) => Promise<void>;
   getFlowSnapshot: () => Promise<TargetDeviceSnapshot[]>;
-  loadDailyBudgetSettings: () => void;
   updateDailyBudgetState: (options?: DailyBudgetUpdateStateOptions) => void;
   /** App-wiring route to the PlanService that owns one device (main or sub-home). */
   rebuildOwningHomePlanForDevice?: (
@@ -228,8 +227,6 @@ export type AppContext = {
    * committed snapshot rather than through the Flow-card lazy refresh.
    */
   getDeviceDescriptors(): DeviceDescriptorRead[];
-  /** One device's descriptor, or `undefined` for an untracked id. */
-  getDeviceDescriptor(deviceId: string): DeviceDescriptorRead | undefined;
   /**
    * Inventory metadata reads (`lib/device/deviceReads.ts`). Runtime observations
    * are read from Observer; configuration is read from `deviceConfiguration`.
