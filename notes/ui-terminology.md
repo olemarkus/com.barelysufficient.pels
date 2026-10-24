@@ -2117,6 +2117,8 @@ from tracker fields or persisted-blob fallbacks.
   always once readings that had arrived stop: that is an alert about a working
   setup, not a setup step. Single-home only. Source:
   `isNoReadingsCarriedBySetupPath` (`packages/settings-ui/src/ui/setupPathFacts.ts`).
+- The guided `Connect your meter` page also carries the never-received remedy
+  and suppresses its duplicate banner. Stopped readings still use the banner.
 - Action label: `Check power source` on every arm.
 - Retired: the onboarding arm ("PELS needs to know where to read your home's
   power use") — an install with no source chosen is the never-received Flow
@@ -2126,140 +2128,77 @@ from tracker fields or persisted-blob fallbacks.
 
 ## The setup path
 
-The `Set up PELS` card leads the Overview and the Setup & recommendations page
-while first-run setup is open, and the Settings hub row carries its progress as
-a chip (`1 of 2`). Source of truth: `resolveSetupPath`
-(`packages/settings-ui/src/ui/setupPathModel.ts`). It is state, not a tour: each
-step is judged from what the app already holds, and the card returns for a
-returning owner who unmanages their last device.
+The Overview and Setup & recommendations show `Set up PELS` while essential
+configuration is incomplete. `resolveSetupPath` derives progress from accepted
+settings. No tour-completed flag is persisted.
 
-- **A step appears only when what it configures is in force for this home**
-  (owner ruling 2026-09-20: never tell an owner to configure something that is
-  not relevant to them). `Power meter` and `Devices` apply to every home.
-  `Limits` does not: the limits are enforced only on devices PELS may limit, so
-  an owner who manages thermostats for their price response alone never sees
-  it, and their setup is complete without it. Once a managed device has Limit
-  on, the step appears, because a home that has never chosen still runs the
-  capacity limit on a built-in 10 kW. A saved grid import limit, a saved hard
-  cap, or an explicit choice to turn both limits off completes it. Hence the
-  order: Devices before Limits. Apply the same test before adding any step.
-- **`Prices` appears once something uses prices** (owner ruling 2026-10-11):
-  Respond to prices on, and a managed device with Price-based control on, a
-  Smart task, or a daily budget that shapes toward cheaper hours. It stays open
-  while PELS prices with a source the owner never chose, a source with no
-  prices, or a Norway setting the owner never chose (grid company, price area,
-  pricing model). Its detail names what PELS prices with meanwhile, as Limits
-  names its 10 kW: `Norway, without your grid tariff. PELS uses NO1 and
-  Strømstøtte until you choose.` / `PELS uses Homey Energy until you choose a
-  source.` / `Homey Energy has no electricity prices for your Homey yet.` /
-  `PELS can’t use the price setup in Homey Energy.` Done: `Norway ·
-  ARVA AS · NO4 · Norgespris`. Source of truth: `resolvePriceSetupStatus`
-  (`packages/settings-ui/src/ui/priceSetupStatus.ts`), shared with the
-  `Prices from` card on Price-aware devices and the line under a device's
-  Price-based control (`Prices from …` / `Price setup isn’t finished. …`).
-- **Priority is automatic, not a setup step** (owner ruling 2026-09-22).
-  Every planned device receives a unique rank, including devices with no saved
-  preference in the active mode. Adding a device never reopens setup merely
-  because its priority has not been saved. Owners can optionally change the
-  order in Modes; they do not need to confirm the automatic order.
-- **Modes explains the optional adjustment:** `PELS orders devices automatically.
-  Drag to change the order — the top device keeps running longest. Changes save
-  automatically.` The device page shows its numeric priority in the same home
-  and mode order as Modes. Saved and filled ranks are not separate UI states.
-- Each step is a **noun title that never changes** with a detail line that
-  does. The status icon carries done / next / later; there is no "Next" chip (it
-  wrapped the title at 320 px).
-- **Detail lines state facts and never instruct past the step itself.** Devices
-  reads `Choose the devices PELS manages` / `3 devices PELS may limit` / `2
-  devices managed`. It never says "Turn on Limit": devices that cannot be
-  limited, or that the owner chose not to limit, are a finished choice.
-- Power meter, before any reading: the no-readings banner's own sentence,
-  handed over verbatim (`No power readings yet. Pick a whole-home meter under
-  Limits & safety, or …`), because the step stands in for that banner where the
-  card is on screen. After: `Readings are arriving`.
-- **The copy sells no single market.** Norway and Flanders come for the capacity
-  tariff, the Netherlands for solar and dynamic prices. The lede says what
-  builds on the steps (`Prices, solar and Smart tasks build on them.`, or
-  `Solar and Smart tasks build on them.` while prices are a step of their own)
-  and never frames PELS as a hard-cap product.
-- **The Limits detail names each limit in force, and the capacity period** in the
-  words of the Capacity period options: `8 kW hard cap (hourly average), 0.4 kW
-  safety margin` / `2.5 kW hard cap (15-minute average), …`, led by the grid
-  import limit when it is on (`3.3 kW grid import limit, 8 kW hard cap (hourly
-  average), 0.4 kW safety margin`, or `3.3 kW grid import limit` alone). A
-  quarter-hour tariff left on the hourly default is the one silent way to get
-  setup wrong, and only the period beside the number shows it. Unsaved: `10 kW
-  hard cap (hourly average) until you set yours`, so the running default is
-  named, never silent. Both limits off: `Power limits off`.
-- **Simulation is not a step.** The card says `Simulation is on, so devices stay
-  as-is until you turn it off.` while it is open; a configured home left
-  simulating is a finished setup and the simulation banner speaks for it.
-- The card stands in for both global banners where it is on screen, so a new
-  install's first viewport is the path rather than two alerts above it. The
-  never-received no-readings banner: see § "The no-readings banner".
-- While the path is open the simulation banner stands down where the card is on
-  screen, and everywhere while nothing is managed (there is no device for
-  "devices stay as-is" to be about, and "Turn off simulation" is the wrong first
-  action). Single-home only; with meter areas the banner is unchanged.
-- There is no "setup complete" state: once every step in force is done the card
-  is gone.
+- Journey: **Connect the meter → choose one suitable device → confirm relevant
+  settings → preview and activate**. Reuse the settings pages with progress,
+  `Back to setup`, and `Continue`; the final action is `Review setup`.
+- Assume owners know their goal, devices, and contract. Explain only PELS's
+  controls, missing prerequisites, consequences, and next action. Background
+  belongs in optional documentation, not an introductory lesson.
+- One suitable device is enough. Priority is automatic; custom modes, priorities,
+  Flows, batteries, daily budgets, Smart tasks, and prices are not universal
+  setup requirements.
+- `Power meter` and `Devices` apply to every home. `Limits` applies once a
+  managed device may be limited. A saved hard cap, a saved grid import limit,
+  or an explicit choice to disable both completes that step. `Prices` applies
+  only when an enabled feature uses them; its source status comes from
+  `resolvePriceSetupStatus`.
+- The checklist keeps noun titles and done / next / later status icons.
+  Devices says `Choose one device to start`. A received reading says `Meter
+  connected`; freshness remains the global no-readings banner's responsibility.
+- Ask about **measured hourly or 15-minute average grid import**, not whether
+  the owner has a “capacity tariff”. Connection-capacity charges use that name
+  too. `Grid import limit` stays a separate choice.
+- `Use more of your own solar` is an optional entry during setup and remains
+  available under Setup & recommendations before export is observed. Discovery
+  never enables solar-only settings. The existing controls keep their eligibility
+  checks and their opted-in escape hatch. Use the device's actual label:
+  `Use solar surplus`, `Run on solar surplus`, `Charge on solar surplus`, or
+  `Match solar surplus`. Put missing prerequisites beside the action.
+- Simulation is not a completion requirement. The explicit review says
+  `Simulation mode is on`, offers `Start managing` and `Keep simulating`, and
+  shows saved controls separately from runtime status. The Main simulation
+  banner stands down during guided setup; meter-area warnings remain visible.
+  No persistent Overview
+  completion card. The simulation banner offers `Review and start` (or
+  `Review Main home setup` when areas exist).
+- `Waiting for solar surplus` is a normal runtime state; do not substitute it
+  for missing readings or incomplete solar configuration. Before combining a
+  Smart task with solar-only operation, state that the active task decides when
+  the device runs and may use grid electricity.
 
 ### Tailoring by market: geography only
 
-The runtime tells the settings UI which country the hub is in (`GET
-/ui_hub_market`, owned by `lib/home/hubMarket.ts`), from Homey's own
-location-derived `country`. It follows the location the owner set on the map
-(verified 2026-09-20 by moving a test hub). **Never infer a market from the hub's
-language** (owner ruling 2026-09-19).
+Country comes from `GET /ui_hub_market`, never language. It changes emphasis,
+not feature availability or settings. An unavailable market uses neutral copy.
+The UI and getting-started guide remain English-only.
 
-- `unavailable` draws the market-neutral copy, which is always correct. A
-  resolved market only ever sharpens it, and a Norwegian hub reads exactly the
-  neutral copy. No surface waits for the market.
-- **A market changes emphasis and order, never what exists.** No market adds or
-  removes an optional feature. The Netherlands gets `Use more of your own solar`
-  before prices, because net metering is ending there.
-- **Belgium, hourly average, a device PELS may limit:** Flanders bills the
-  15-minute peak; Wallonia and Brussels have no such tariff, and a country code
-  cannot tell them apart. So it is a QUESTION, never a verdict, and it names who
-  may ignore it: the recommendation `Check your capacity period` (`If you live
-  in Flanders … Elsewhere in Belgium this does not apply, and you can dismiss
-  it.`), and on the setup path's Limits step `In Flanders, use the 15-minute
-  average.` It is a recommendation and not a setup step because that step closes
-  the moment a cap is saved, which is exactly when the mistake goes quiet.
+- Dutch solar setup needs no dynamic contract or price configuration. Contract
+  context and the end of net metering belong in optional background guidance.
+- Belgian advice stays conditional: `In Flanders? Use the 15-minute average for
+  measured peaks.` The action is `Use 15-minute average`. It saves only the
+  period, never confirms the built-in hard cap, and preserves completed setup.
+  Reuse the existing recommendation dismissal. Country detection never changes
+  a setting. The 2.5 kW billing minimum belongs in relevant help, never as a
+  recommended control target.
+- PELS's tracked peak is based on received readings, not the operator's billing
+  calculation. Do not promise a bill prediction or reproduce billing rules.
 
 ### After setup: optional features
 
-Once the setup path closes, PELS suggests what else applies to the home, on the
-existing recommendation surfaces. Source of truth:
-`resolveAfterSetupRecommendations`
-(`packages/settings-ui/src/ui/afterSetupRecommendations.ts`). They are the three
-things the path's lede promises: prices, solar, Smart tasks.
+`resolveAfterSetupRecommendations` offers relevant features not already in use.
+The automatic solar suggestion still requires available surplus; the explicit
+solar discovery entry above does not. Price and Smart task suggestions stay
+out of incomplete setup. The dismissible Flemish period advice can appear
+both during and after setup.
 
-- **Only what is relevant to this home, never what it already uses, and never on
-  an unread fact.** Prices needs a managed device with a temperature target;
-  solar needs available surplus — measured export or inferred zero-export
-  curtailment — AND a pool the runtime can act on AND a device PELS may limit;
-  Smart tasks needs a device that could take one. Each is dropped once any
-  device uses it. An unread setting looks exactly like a feature nobody turned
-  on, so an unknown fact yields no suggestion.
-- **The solar copy never says "export".** It must be true of a zero-export home
-  that curtails as well as one that exports: `while your solar produces more
-  than the home is using`.
-- **A feature the owner turned off is not suggested.** `Respond to prices` off is
-  a choice made, not a feature undiscovered; per-device Price entries still
-  count as "in use" under it.
-- **None shows while the setup path is open.** One thing at a time.
-- Chip: `Optional`, never `Recommended`. Nothing is wrong with a home that skips
-  them. `Recommended` stays for changes PELS would make to a home's setup.
-- Overview banner: `PELS can do more for this home` / `See what` when only
-  optional items are active. `N recommendations` / `Review` whenever a real
-  recommendation is among them.
-- Titles name the outcome, not the feature: `Heat more while power is cheap`,
-  `Use more of your own solar`, `Have something ready by a set
-  time`. Bodies name the real controls (`Price`, `Use solar surplus`, the `Add
-  charging task` Flow action) so the words are findable on the next page.
-- **Dismiss is the owner saying "not relevant to me"**, remembered like any
-  other recommendation. Do not add a suggestion that cannot be dismissed.
+`Optional` means no configuration defect. `Recommended` identifies a suggested
+setup change. Preserve `PELS can do more for this home` / `See what` for optional
+suggestions alone and `N recommendations` / `Review` for actual recommendations.
+Dismissal means “not relevant to me” and is retained.
 
 ### Keep a device within Smart tasks
 

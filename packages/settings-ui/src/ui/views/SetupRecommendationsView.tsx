@@ -42,7 +42,7 @@ const CATEGORY_CHIP: Record<SetupRecommendation['category'], string> = {
 const busyActionLabel = (recommendation: SetupRecommendation): string | null => {
   const { kind } = recommendation.target;
   if (kind === 'flow-conflict-check' || kind === 'ev-soc-flow-conflict-check') return 'Checking…';
-  return kind === 'keep-price-source' ? 'Saving…' : null;
+  return kind === 'keep-price-source' || kind === 'quarter-hour' ? 'Saving…' : null;
 };
 
 const RecommendationCard = (props: RecommendationCardProps) => {
@@ -154,9 +154,13 @@ export const SetupRecommendationsView = (props: SetupRecommendationsViewProps) =
     <AppBar
       back={{ label: 'Back to Settings', target: 'settings' }}
       title="Setup & recommendations"
-      lede="The essentials PELS uses for this home, and changes that can make it work better with your devices."
     />
     {props.setupPath.state === 'open' && <SetupPathCard path={props.setupPath.path} surface="setup" />}
+    {props.setupPath.state === 'complete' && (
+      <MdTextButton type="button" data-settings-target="devices" data-setup-journey="solar" data-settings-home-scope="main">
+        Use more of your own solar
+      </MdTextButton>
+    )}
     {props.readiness === 'loading' && (
       <p class="muted setup-recommendations-loading">Checking your configuration…</p>
     )}

@@ -167,3 +167,5 @@ export const initDebouncedSaveFlush = (): (() => void) | undefined => {
 };
 
 export { debouncedSetSetting };
+/** Finish queued field edits before advancing guided setup. */
+export const flushDebouncedSettingSaves = flushPendingSaves;

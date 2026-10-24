@@ -2,30 +2,9 @@ import type { PriceSchemeSetting, SettingsUiHubMarketRead } from '../../../contr
 import type { SetupRecommendation } from './recommendationsModel.ts';
 
 /**
- * What PELS can do next, once first-run setup is complete.
- *
- * The setup path ends the moment PELS can manage a home's devices, and its lede
- * promises that "Prices, solar and Smart tasks build on" it. Then the card
- * disappears and nothing said where those are. For a Norwegian owner that is
- * fine: capacity control, the thing they came for, is now running. For an owner
- * in the Netherlands or Flanders it is the point where their actual goal starts.
- *
- * These ride the existing recommendation surfaces rather than a list of their
- * own: the Overview banner announces them at exactly the moment the setup card
- * goes, and **Dismiss is the owner saying "not relevant to me"**, remembered.
- *
- * Each one appears only when it is relevant to THIS home (owner ruling
- * 2026-09-20: never tell an owner to configure something that is not relevant
- * to them), judged from state the settings UI already holds:
- *
- * - it applies here (there is a device it could act on, the home has solar
- *   surplus PELS can use);
- * - it is not already in use — recommending prices to an owner who set them up
- *   last year is the same mistake from the other side;
- * - and every fact behind that verdict has been resolved by its boundary.
- *
- * None shows while the setup path is open. One thing at a time: the path is the
- * instruction until it is done.
+ * Optional features appear after first-run setup, using accepted facts from
+ * this home. Flemish period advice also appears during setup and shares the
+ * same dismissible recommendation on both surfaces.
  */
 
 /** A managed device, reduced to what decides whether a suggestion applies. */
@@ -96,11 +75,9 @@ const FLANDERS_PERIOD: SetupRecommendation = {
   version: VERSION,
   category: 'recommendation',
   title: 'Check your capacity period',
-  body: 'In Flanders the capacity tariff bills your highest 15-minute average, and PELS is holding an '
-    + 'hourly average. If you live in Flanders, change Capacity period to 15-minute average. '
-    + 'Elsewhere in Belgium this does not apply, and you can dismiss it.',
-  actionLabel: 'Open Limits & safety',
-  target: { kind: 'panel', panelId: 'limits' },
+  body: 'In Flanders? Use the 15-minute average for measured peaks.',
+  actionLabel: 'Use 15-minute average',
+  target: { kind: 'quarter-hour' },
 };
 
 const suggestion = (
@@ -204,10 +181,10 @@ const resolveSmartTasks = (
 );
 
 export const resolveAfterSetupRecommendations = (facts: AfterSetupFacts): SetupRecommendation[] => {
-  if (!facts.setupComplete) return [];
   const { devices } = facts;
   // No cap is in force, so none can be wrong, unless PELS may limit something.
   const flanders = facts.belgianHomeOnHourlyPeriod && devices.some((device) => device.limitable)
     ? [FLANDERS_PERIOD] : [];
+  if (!facts.setupComplete) return flanders;
   return [...flanders, ...resolvePricesAndSolar(facts, devices), ...resolveSmartTasks(facts, devices)];
 };
