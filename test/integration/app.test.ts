@@ -2368,6 +2368,12 @@ describe('MyApp initialization', () => {
     // at recovery, so devices were restored immediately — causing another
     // overshoot within seconds.  The fix records lastRecoveryMs so the
     // cooldown window starts from the moment of recovery.
+    // The phases span about two and a half minutes of one capacity hour; a wall
+    // clock near the hour's end would carry them into the next hour. Wall time is
+    // pinned mid-hour (and stubbed per phase below); the rebuild clock is faked
+    // and moved with it.
+    vi.useFakeTimers({ toFake: ['Date', 'performance'] });
+    vi.setSystemTime(new Date('2026-03-03T10:05:00.000Z'));
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
     await heater.setCapabilityValue('measure_power', 3000);
     await heater.setCapabilityValue('target_temperature', 23);
@@ -2399,8 +2405,6 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    // Wall time is stubbed per phase; the rebuild clock is faked and moved with it.
-    vi.useFakeTimers({ toFake: ['performance'] });
     const nowSpy = vi.spyOn(Date, 'now');
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
     try {
@@ -2530,7 +2534,9 @@ describe('computePhysicalPowerLimit', () => {
       buckets: {},
     };
 
+    // Half the hour left: in its last 72 seconds even 0.1 kWh paces above 5 kW.
     const now = new Date();
+    now.setMinutes(30, 0, 0);
     const nowMs = now.getTime();
     vi.spyOn(Date, 'now').mockReturnValue(nowMs);
 
