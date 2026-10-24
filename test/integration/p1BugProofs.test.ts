@@ -1,6 +1,5 @@
 import { withDeviceConfiguration, buildInitialPlanDevicesForSpec } from '../utils/planTestUtils';
 import { NO_STORAGE_RELIEF } from '../../lib/plan/battery/storageRelief';
-import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { recordPowerSampleForApp } from '../../lib/power/sampleIngest';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
@@ -94,8 +93,6 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
       },
       requestTemperatureTarget: async (_deviceId, desired) => desired,
     }),
-    capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-    getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0, periodMinutes: 60 }),
     getPowerTracker: () => ({}),
     getCapacityPaceKw: () => 9.5,
     getShortfallThresholdKw: () => 0,

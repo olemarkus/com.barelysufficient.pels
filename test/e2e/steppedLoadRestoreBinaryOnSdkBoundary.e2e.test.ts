@@ -15,7 +15,6 @@ import { withDeviceConfiguration } from '../utils/planTestUtils';
  * restored by the fix) is that a binary `onoff=true` write reaches the SDK
  * boundary.
  */
-import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
@@ -206,8 +205,6 @@ const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) 
       requestSteppedLoadStep: (params) => deviceManager.requestSteppedLoadStep(params),
       ...noStorageTransport,
     }),
-    capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-    getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
     getPowerTracker: () => ({}),
     getCapacityPaceKw: () => 9.5,
     getShortfallThresholdKw: () => 0,

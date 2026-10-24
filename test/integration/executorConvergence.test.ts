@@ -7,7 +7,6 @@ import { DeviceConfigurationStore } from '../../lib/device/deviceConfiguration';
 import { projectObservedState } from '../../lib/device/observedStateProjection';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
-import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { createTestDeviceTransport, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import { mockHomeyInstance } from '../mocks/homey';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
@@ -983,8 +982,6 @@ describe('executor drift through PlanExecutor.driftObservationDeps', () => {
         requestSteppedLoadStep: vi.fn(async () => ({ requested: true, acknowledged: true, transport: 'native_capability' } as const)),
         ...noStorageTransport,
       }),
-      capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
       getPowerTracker: () => ({}),
       getCapacityPaceKw: () => 9.5,
       getShortfallThresholdKw: () => 0,
