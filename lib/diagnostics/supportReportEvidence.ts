@@ -1,12 +1,16 @@
+import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
+import type { DailyBudgetUiRead } from '../../packages/contracts/src/dailyBudgetTypes';
+import type { PriceTimelineRead } from '../../packages/contracts/src/priceTimeline';
 import type {
-  SettingsUiDeviceActivityEntry, SettingsUiDeviceLogPayload, SettingsUiPlanSnapshot,
+  PriceSetupRead, SettingsUiDeviceActivityEntry, SettingsUiDeviceLogPayload, SettingsUiPlanSnapshot,
 } from '../../packages/contracts/src/settingsUiApi';
 import type {
   SupportReportEvidence, SupportReportRequest, SupportReportSection, SupportReportSubject,
 } from '../../packages/contracts/src/supportReport';
-import { readPelsHost, type PelsHost } from '../app/pelsHost';
 import { MAIN_HOME_ID } from '../home/homeConfig';
-import type { HomeRuntimeReading } from '../home/homeRuntimeRead';
+import type { HomeRuntimeReadPort, HomeRuntimeReading } from '../home/homeRuntimeRead';
+import type { HomeMembershipPort } from '../home/membership';
+import type { DevicePlan } from '../plan/planTypes';
 import { selectSupportReportActivity } from './supportReportHistory';
 import { SupportReportInputError } from './supportReportInput';
 import {
@@ -15,11 +19,30 @@ import {
   type SupportReportDeviceSnapshot,
 } from './supportReportProjection';
 
-/** Metadata from the running Homey installation; the app handle is resolved only when capturing. */
+/** Metadata from the running Homey installation. */
 export type SupportReportHomey = {
-  readonly app?: unknown;
   readonly manifest: { readonly version: string };
   readonly version: string;
+};
+
+/**
+ * The owner reads a report captures, made at capture time. A read whose owner is
+ * not running yet throws; capture records that read as unavailable.
+ */
+export type SupportReportReads = {
+  /** `undefined` when device transport does not hold the device. */
+  getDeviceSnapshot(deviceId: string): SupportReportDeviceSnapshot | undefined;
+  getHomeMembership(): Pick<HomeMembershipPort,
+    'isOwnershipReady' | 'hasPendingOwnershipGeneration' | 'getHomeIdForDevice'>;
+  /** Main's latest plan decisions; `null` before the first plan. */
+  getLatestDevicePlan(): DevicePlan | null;
+  readHome: HomeRuntimeReadPort['readHome'];
+  getDeviceLogUiPayload(): SettingsUiDeviceLogPayload;
+  getLatestPlanSnapshotForUi(): SettingsUiPlanSnapshot | null;
+  getCapacityScalars(): CapacityScalarSettings;
+  getDailyBudgetUiPayload(): DailyBudgetUiRead;
+  readPriceSetup(): PriceSetupRead;
+  getPriceTimelineForUi(): PriceTimelineRead;
 };
 
 type ReportSubject = {
@@ -41,7 +64,7 @@ const readSection = (title: string, read: () => SupportReportSection | null): Se
 };
 
 const resolveSubject = (
-  host: PelsHost,
+  host: SupportReportReads,
   subject: SupportReportSubject,
   history: SettingsUiDeviceLogPayload | undefined,
   capturedAtMs: number,
@@ -52,7 +75,13 @@ const resolveSubject = (
   )).reduce<SettingsUiDeviceActivityEntry | undefined>((latest, entry) => (
     !latest || entry.atMs > latest.atMs ? entry : latest
   ), undefined);
-  const device = readOptional(() => host.deviceManager?.getSnapshotByDeviceId(subject.deviceId));
+  let device: SupportReportDeviceSnapshot | undefined;
+  try {
+    device = host.getDeviceSnapshot(subject.deviceId);
+  } catch {
+    // A failed read is not evidence that the device is unknown; ask for another try.
+    if (!recorded) throw new SupportReportInputError('capture_failed');
+  }
   if (!device) {
     if (!recorded) throw new SupportReportInputError('invalid_subject');
     return {
@@ -61,8 +90,8 @@ const resolveSubject = (
     };
   }
   const homeId = readOptional(() => {
-    const membership = host.homeMembership;
-    return membership?.isOwnershipReady() && !membership.hasPendingOwnershipGeneration()
+    const membership = host.getHomeMembership();
+    return membership.isOwnershipReady() && !membership.hasPendingOwnershipGeneration()
       ? membership.getHomeIdForDevice(device.id) : null;
   });
   if (!homeId) {
@@ -81,14 +110,14 @@ const resolveSubject = (
   return { name: device.name, currentDevice: device, omissions: [] };
 };
 
-const readArea = (host: PelsHost, homeId: string): HomeRuntimeReading | null => {
+const readArea = (host: SupportReportReads, homeId: string): HomeRuntimeReading | null => {
   if (homeId === MAIN_HOME_ID) return null;
-  const result = readOptional(() => host.homeRuntimeRead.readHome(homeId));
+  const result = readOptional(() => host.readHome(homeId));
   return result?.state === 'resolved' ? result.reading : null;
 };
 
 const readHomeSections = (
-  host: PelsHost,
+  host: SupportReportReads,
   homeId: string,
   plan: SettingsUiPlanSnapshot | null | undefined,
   area: HomeRuntimeReading | null,
@@ -108,7 +137,7 @@ const readHomeSections = (
   }),
 ];
 
-const readPriceSections = (host: PelsHost, capturedAtMs: number): SectionRead[] => [
+const readPriceSections = (host: SupportReportReads, capturedAtMs: number): SectionRead[] => [
   readSection('Current app-wide price source', () => {
     const read = host.readPriceSetup();
     return read.state === 'resolved' ? {
@@ -140,7 +169,7 @@ const readPriceSections = (host: PelsHost, capturedAtMs: number): SectionRead[] 
 ];
 
 const readDeviceSections = (
-  host: PelsHost,
+  host: SupportReportReads,
   subject: SupportReportSubject,
   device: SupportReportDeviceSnapshot | null,
   plan: SettingsUiPlanSnapshot | null | undefined,
@@ -154,7 +183,7 @@ const readDeviceSections = (
     }),
     readSection('Current device plan', () => {
       if (subject.homeId !== MAIN_HOME_ID) return null;
-      const decision = host.planService?.getLatestPlanSnapshot()?.devices.find((entry) => entry.id === device.id);
+      const decision = host.getLatestDevicePlan()?.devices.find((entry) => entry.id === device.id);
       return decision ? reportDeviceDecision(decision) : null;
     }),
   ];
@@ -162,11 +191,10 @@ const readDeviceSections = (
 
 /** Captures existing owner readouts without refreshing devices, planning, or actuating. */
 export class SupportReportEvidenceSource {
-  constructor(private readonly homey: SupportReportHomey) {}
+  constructor(private readonly host: SupportReportReads, private readonly homey: SupportReportHomey) {}
 
   async capture(request: SupportReportRequest, capturedAtMs: number): Promise<SupportReportEvidence> {
-    const host = readPelsHost(this.homey);
-    if (!host) throw new SupportReportInputError('capture_failed');
+    const { host } = this;
     const history = request.subject.homeId === MAIN_HOME_ID
       ? readOptional(() => host.getDeviceLogUiPayload()) : undefined;
     const subject = resolveSubject(host, request.subject, history, capturedAtMs);

@@ -118,7 +118,13 @@ test('keeps the description editable after the prepared report expires', async (
   await expect(panel).toContainText('This preview has expired');
   await expect(panel.locator('[data-report-action="preview"]')).toBeEnabled();
   await expect.poll(() => readMdValue(page, '[data-report-field="problem"]')).toBe('The device stopped.');
+  await expect.poll(() => readMdValue(page, '[data-report-field="when"]')).toBe('custom');
   expect(new URL(page.url()).searchParams.has('reportId')).toBe(false);
+  await panel.locator('[data-report-action="preview"]').click();
+  const readRequests = () => page.evaluate(() => (window as unknown as ReportStubWindow).reportRequests);
+  await expect.poll(async () => (await readRequests()).length).toBe(2);
+  const [first, second] = await readRequests();
+  expect(second?.occurredAtMs).toBe(first?.occurredAtMs);
 });
 
 test('keeps the latest navigation target when a previous report loads late', async ({ page }) => {

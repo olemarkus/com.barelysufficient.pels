@@ -22,5 +22,5 @@ export const supportReportFixture = (): PreparedSupportReport => ({
     sections: [{ title: 'Current device state', values: { powerW: 0 } }], omissions: [],
   },
   message: 'PELS PROBLEM REPORT V1\n{"problem":"The heater stayed off."}\nEND PELS REPORT report-1',
-  bytes: 88, expiresAtMs: 1700001000000, availability: 'available', submission: { state: 'draft' },
+  expiresAtMs: 1700001000000, availability: 'available', submission: { state: 'draft' },
 });

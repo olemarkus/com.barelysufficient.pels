@@ -567,7 +567,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   protected readonly smartTaskApi = new AppSmartTaskApi(this.ctx, this.serviceWiring.taskEvaluationSource);
 
   public readonly observedTemperatureModeUpdates = this.serviceWiring.createObservedTemperatureModeUpdates();
-  public readonly supportReports = this.serviceWiring.createSupportReports();
+  public readonly supportReports = this.serviceWiring.createSupportReports(this);
 }
 
 export = PelsApp;

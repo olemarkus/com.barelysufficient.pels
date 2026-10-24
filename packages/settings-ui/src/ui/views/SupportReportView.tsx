@@ -170,7 +170,7 @@ const ReportContents = ({ report, textRef, homeName }: ReportContentsProps) => {
       <ul>{snapshot.omissions.map((omission) => <li key={omission}>{omission}</li>)}</ul>
     </div>}
     <details class="settings-collapse" data-report-details>
-      <summary>Full report · {Math.ceil(report.bytes / 1024)} KiB</summary>
+      <summary>Full report · {Math.ceil(new TextEncoder().encode(report.message).byteLength / 1024)} KiB</summary>
       <pre ref={textRef} tabIndex={0} class="support-report__text" aria-label="Report text">{report.message}</pre>
     </details>
   </>;

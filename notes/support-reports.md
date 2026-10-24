@@ -27,9 +27,11 @@ and copy. No new Homey API key is required. The public
 documents the optional `message` string, without a size limit.
 
 The description is limited to 1,500 characters and expected behavior to 800.
-The local message limit is 1 MiB of UTF-8 bytes. It is a memory bound, not a claim
-about Homey's delivery limit, which is undocumented. Oversized reports are rejected
-without silently removing evidence. A versioned opening marker and a closing
+The message limit is 512 KiB of UTF-8 bytes. Homey documents no limit, but on
+2026-10-24 it delivered 256 KiB and 512 KiB reports intact while a 1 MiB report got
+a log id and was never delivered, so a larger report would look sent and be lost.
+The largest realistic report, 1,000 activity entries, is about 400 KiB. Oversized
+reports are rejected without silently removing evidence. A versioned opening marker and a closing
 marker containing the report identifier let received content be checked for truncation.
 
 At most four reports are retained in memory for 15 minutes. Preparing another

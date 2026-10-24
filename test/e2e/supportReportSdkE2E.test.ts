@@ -38,7 +38,7 @@ describe('manual report through the app API and Homey boundary', () => {
         : originalGet(path)
     ));
     const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (_url, options) => (
-      httpResponse(options?.method === 'POST' ? { id: 'homey-report-123' } : { origin: 'appstore' })
+      httpResponse(options?.method === 'POST' ? '70f408bd-ec4a-495b-858a-966532d6d2b8' : { origin: 'appstore' })
     ));
     vi.stubGlobal('fetch', fetchMock);
     const app = createApp({ withoutPowerMeasurement: true });
@@ -57,7 +57,9 @@ describe('manual report through the app API and Homey boundary', () => {
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
     const id = preview.report.document.id;
     const sent = await api.support_report_send({ homey: app.homey, params: { id }, body: { consent: true } });
-    expect(sent.ok && sent.report.submission).toEqual({ state: 'sent', reference: 'homey-report-123' });
+    expect(sent.ok && sent.report.submission).toEqual({
+      state: 'sent', reference: '70f408bd-ec4a-495b-858a-966532d6d2b8',
+    });
     const posts = fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST');
     expect(posts).toHaveLength(1);
     expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({ message: preview.report.message });

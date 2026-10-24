@@ -3,7 +3,6 @@ import type {
   PreparedSupportReport, SupportReportDocument, SupportReportEvidence, SupportReportRequest,
   SupportReportResponse,
 } from '../../packages/contracts/src/supportReport';
-import { SUPPORT_REPORT_MAX_BYTES } from '../../packages/shared-domain/src/supportReport';
 import { getLogger } from '../logging/logger';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import type { SupportReportTransport } from './homeyReportTransport';
@@ -15,6 +14,11 @@ type EvidenceSource = {
 
 const TTL_MS = 15 * 60_000;
 const MAX_REPORTS = 4;
+/**
+ * The largest message Homey has been seen to deliver. Homey answers a 1 MiB report
+ * with a log id but never delivers it, so a larger report is refused before sending.
+ */
+export const SUPPORT_REPORT_MAX_BYTES = 512 * 1024;
 const logger = getLogger('diagnostics/support-report');
 
 /** Owns prepared snapshots and dispatch outcomes. No timer or incident can initiate a submission. */
@@ -42,7 +46,7 @@ export class SupportReportService {
       this.prune();
       if (!this.makeRoom()) return { ok: false, code: 'report_busy' };
       this.reports.set(document.id, {
-        document: JSON.parse(json) as SupportReportDocument, message, bytes,
+        document: JSON.parse(json) as SupportReportDocument, message,
         expiresAtMs: Date.now() + TTL_MS, availability, submission: { state: 'draft' },
       });
       logger.info({ event: 'support_report_prepared', reportId: document.id, bytes });
@@ -82,7 +86,7 @@ export class SupportReportService {
       const delivery = await this.transport.send(report.message);
       switch (delivery.state) {
         case 'accepted': report.submission = { state: 'sent', reference: delivery.reference }; break;
-        case 'rejected': report.submission = { state: 'failed', reason: 'Homey refused the report.' }; break;
+        case 'rejected': report.submission = { state: 'failed' }; break;
         case 'unknown': report.submission = { state: 'unknown' }; break;
         default: delivery satisfies never;
       }

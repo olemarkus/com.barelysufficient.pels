@@ -2,8 +2,7 @@ import { vi, beforeEach, afterEach, describe, it, expect } from 'vitest';
 import type {
   SupportReportEvidence, SupportReportRequest, SupportReportResponse,
 } from '../../packages/contracts/src/supportReport';
-import { SUPPORT_REPORT_MAX_BYTES } from '../../packages/shared-domain/src/supportReport';
-import { SupportReportService } from '../../lib/diagnostics/supportReportService';
+import { SUPPORT_REPORT_MAX_BYTES, SupportReportService } from '../../lib/diagnostics/supportReportService';
 import type { SupportReportDelivery, SupportReportTransport } from '../../lib/diagnostics/homeyReportTransport';
 
 const now = Date.UTC(2026, 9, 23, 12);

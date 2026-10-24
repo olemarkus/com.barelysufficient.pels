@@ -88,7 +88,7 @@ export class HomeyReportTransport implements SupportReportTransport {
   }
 }
 
+// Homey answers an accepted report with its identifier as a bare JSON string.
 function readReportReference(result: unknown): string {
-  const candidate = isUnknownRecord(result) ? result.id ?? result.uuid ?? result.logId ?? result.crashId : result;
-  return typeof candidate === 'string' && /^[a-zA-Z0-9:_-]{6,100}$/.test(candidate) ? candidate : '';
+  return typeof result === 'string' && /^[a-zA-Z0-9:_-]{6,100}$/.test(result) ? result : '';
 }

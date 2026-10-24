@@ -33,7 +33,7 @@ module.exports = {
       name: 'no-domain-to-app-layer',
       comment: 'Domain modules should not depend on app wiring.',
       severity: 'error',
-      from: { path: '^lib/(battery|device|power|objectives|plan|price|dailyBudget|observer|executor|actuator|weather|solar|home|thermostat)/' },
+      from: { path: '^lib/(battery|device|power|objectives|plan|price|dailyBudget|observer|executor|actuator|weather|solar|home|thermostat|diagnostics)/' },
       to: { path: '^lib/app/' },
     },
     {
