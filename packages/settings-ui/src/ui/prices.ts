@@ -2,6 +2,7 @@ import {
   SETTINGS_UI_PRICES_PATH,
   type SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
+import { classifyPriceTimelineRead } from './priceTimelineRead.ts';
 import { getApiReadModel } from './homey.ts';
 import { classifyPriceOptimizationSetupRead } from './priceOptimizationSetupRead.ts';
 import { classifyPriceSetupRead } from './priceSetupRead.ts';
@@ -9,6 +10,7 @@ import { classifyPriceLevelSummaryRead } from './priceLevelSummaryRead.ts';
 
 const EMPTY_PRICES_PAYLOAD: SettingsUiPricesPayload = {
   combinedPrices: null,
+  priceTimeline: { state: 'unavailable', reason: 'no_prices' },
   priceArea: null,
   flowToday: null,
   flowTomorrow: null,
@@ -37,6 +39,7 @@ export const getPricesReadModel = async (): Promise<SettingsUiPricesPayload> => 
   if (!payload) return EMPTY_PRICES_PAYLOAD;
   return {
     ...payload,
+    priceTimeline: classifyPriceTimelineRead(payload.priceTimeline),
     homeyPriceFormula: payload.homeyPriceFormula ?? EMPTY_PRICES_PAYLOAD.homeyPriceFormula,
     priceOptimizationSetup: classifyPriceOptimizationSetupRead(payload.priceOptimizationSetup),
     priceSetup: classifyPriceSetupRead(payload.priceSetup),

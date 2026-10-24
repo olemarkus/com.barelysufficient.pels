@@ -6,7 +6,7 @@ import type { DeferredObjectiveRoster } from './deferredObjectiveSettings.js';
 import type { SettingsUiDeviceDiagnosticsPayload } from './deviceDiagnosticsTypes.js';
 import type { SettingsUiPowerTracker } from './powerTrackerTypes.js';
 import type { PriceOptimizationSetupRead } from './priceOptimizationSettings.js';
-import type { PriceTimelineLines } from './priceTimeline.js';
+import type { PriceTimelineLines, PriceTimelineRead } from './priceTimeline.js';
 import type {
   AssociatedCarSnapshot,
   CarConfirmation,
@@ -973,6 +973,8 @@ export type PriceLevelSummaryRead =
 
 export type SettingsUiPricesPayload = SettingsUiPriceSourcePayloads & {
   combinedPrices: unknown | null;
+  /** Native price periods for the current import and export prices. */
+  priceTimeline: PriceTimelineRead;
   priceArea: string | null;
   /** `{ kind: 'unknown' }` during the boot window before the forecast selector is wired. */
   pvForecastSource: PvForecastSourceUiStatus;

@@ -587,7 +587,14 @@ describe('handleSchemeChange export transition (via priceConfig)', () => {
     // to have landed before asserting what the card leaves out.
     const powerPayload = { status: { state: 'live', status: { priceLevel: 'normal' } } };
     getApiReadModelMock.mockImplementation(async (path: string) => {
-      if (path === '/ui_prices') return { combinedPrices };
+      if (path === '/ui_prices') return {
+        combinedPrices,
+        priceTimeline: {
+          state: 'ready', priceUnit: 'øre/kWh', hasExportPrice: true,
+          periods: [{ startsAt, durationMinutes: 60, importPrice: 1, exportPrice: -0.05, level: 'normal' }],
+          lines: { average: 1, cheapAtOrBelow: 0.8, expensiveFrom: 1.2 },
+        },
+      };
       if (path === '/ui_power') return powerPayload;
       return null;
     });
