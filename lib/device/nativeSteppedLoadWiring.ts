@@ -102,13 +102,6 @@ export function isNativeSteppedLoadWiringCandidate(params: {
   return isTargetPowerSteppedLoadCandidate({ capabilities, capabilityObj });
 }
 
-export function isTargetPowerSteppedLoadWiringCandidate(params: {
-  capabilities: readonly string[];
-  capabilityObj?: DeviceCapabilityMap;
-}): boolean {
-  return isTargetPowerSteppedLoadCandidate(params);
-}
-
 export function hasTargetPowerCapability(capabilities: readonly string[]): boolean {
   return capabilities.includes(TARGET_POWER_CAPABILITY_ID);
 }
@@ -391,7 +384,7 @@ function isHoiaxDevice(device: HomeyDeviceLike): boolean {
     || HOIAX_DRIVER_ID_PREFIXES.some((prefix) => driverId.startsWith(prefix));
 }
 
-function isTargetPowerSteppedLoadCandidate(params: {
+export function isTargetPowerSteppedLoadCandidate(params: {
   capabilities: readonly string[];
   capabilityObj?: DeviceCapabilityMap;
 }): boolean {

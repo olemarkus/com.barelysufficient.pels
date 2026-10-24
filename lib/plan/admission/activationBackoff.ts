@@ -83,19 +83,6 @@ const getPenalty = (state: PlanEngineState, deviceId: string): ActivationPenalty
   state.activationPenaltyByDevice[deviceId]
 );
 
-const getPenaltyLevel = (state: PlanEngineState, deviceId: string): number => (
-  getPenalty(state, deviceId)?.level ?? 0
-);
-
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-const closeAttempt = (state: PlanEngineState, deviceId: string): boolean => {
-  const attempts = state.activationAttemptByDevice;
-  if (!(deviceId in attempts)) return false;
-  delete attempts[deviceId];
-  return true;
-};
-/* eslint-enable functional/immutable-data */
-
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 const clearPenalty = (state: PlanEngineState, deviceId: string): void => {
   const penalties = state.activationPenaltyByDevice;
@@ -140,7 +127,7 @@ const shouldCloseAttemptAsInactive = (
 );
 
 export function getActivationPenaltyLevel(state: PlanEngineState, deviceId: string): number {
-  return getPenaltyLevel(state, deviceId);
+  return getPenalty(state, deviceId)?.level ?? 0;
 }
 
 export function isActivationObservationExplicitlyInactive(
@@ -176,23 +163,32 @@ const closeAttemptWithTransition = (
 ): DeviceDiagnosticsBackoffTransition | null => {
   const attempt = getAttempt(state, deviceId);
   if (!attempt) return null;
-  closeAttempt(state, deviceId);
+  closeActivationAttemptForDevice(state, deviceId);
   return {
     kind,
     deviceId,
-    penaltyLevel: getPenaltyLevel(state, deviceId),
+    penaltyLevel: getActivationPenaltyLevel(state, deviceId),
     elapsedMs: elapsedMs(attempt.startedMs, nowTs),
     nowTs,
   };
 };
 
-/** Close a device's open attempt without a diagnostics transition (it left the snapshot). */
+/**
+ * Close a device's open attempt without a diagnostics transition (it left the
+ * snapshot, or the caller here builds its own transition). Answers whether one
+ * was open.
+ */
+/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function closeActivationAttemptForDevice(
   state: PlanEngineState,
   deviceId: string,
 ): boolean {
-  return closeAttempt(state, deviceId);
+  const attempts = state.activationAttemptByDevice;
+  if (!(deviceId in attempts)) return false;
+  delete attempts[deviceId];
+  return true;
 }
+/* eslint-enable functional/immutable-data */
 
 /** Close a device's open attempt because PELS shed it. Null when none was open. */
 export function closeActivationAttemptForShed(
@@ -210,7 +206,7 @@ export function syncActivationPenaltyState(
   observation: ActivationBackoffObservation,
 ): ActivationPenaltyInfo {
   const attempt = getAttempt(state, deviceId);
-  const penaltyLevel = getPenaltyLevel(state, deviceId);
+  const penaltyLevel = getActivationPenaltyLevel(state, deviceId);
 
   if (!attempt) {
     return { penaltyLevel, attemptOpen: false, transition: null };
@@ -240,7 +236,7 @@ export function syncActivationPenaltyState(
     // not to draw (legitimate-zero, e.g. heater at setpoint) is still a
     // successful exercise of the cautious admission as long as the household
     // stayed safe through the window.
-    closeAttempt(state, deviceId);
+    closeActivationAttemptForDevice(state, deviceId);
     if (!attempt.cleanWholeHomeSampleSeen || penaltyLevel === 0) {
       return { penaltyLevel, attemptOpen: false, transition: null };
     }
@@ -298,7 +294,7 @@ export function recordActivationAttemptStart(
   return {
     kind: 'attempt_started',
     deviceId,
-    penaltyLevel: getPenaltyLevel(state, deviceId),
+    penaltyLevel: getActivationPenaltyLevel(state, deviceId),
     nowTs,
   };
 }
@@ -315,10 +311,10 @@ export function recordActivationSetback(
   nowTs: number,
 ): ActivationSetbackResult {
   const attempt = getAttempt(state, deviceId);
-  const penaltyLevel = getPenaltyLevel(state, deviceId);
+  const penaltyLevel = getActivationPenaltyLevel(state, deviceId);
   if (!attempt) return { bumped: false, penaltyLevel, transition: null };
 
-  closeAttempt(state, deviceId);
+  closeActivationAttemptForDevice(state, deviceId);
   if (hasAttributionWindowExpired(attempt.startedMs, nowTs)) {
     return { bumped: false, penaltyLevel, transition: null };
   }

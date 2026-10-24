@@ -12,11 +12,6 @@ export type ResolvedActiveCommittedPlan = {
   latest: DeferredObjectiveActivePlanRevisionV1;
 };
 
-const objectiveSignatureFor = (
-  objective: DeferredObjectiveSettingsEntry,
-  progressDirection: ObjectiveProgressDirectionRead,
-): string => buildObjectiveSignatureForEntry(objective, progressDirection);
-
 // Returns the coherent active-plan view runtime consumers are allowed to use for
 // committed smart-task control. Raw persisted plans are deliberately loose for
 // legacy/pending compatibility; this accessor keeps that defensive handling in
@@ -33,7 +28,7 @@ export const resolveActiveCommittedPlan = (
   if (plan.objectiveKind !== objective.kind) return undefined;
   if (compareObjectiveSignatures(
     plan.objectiveSignature,
-    objectiveSignatureFor(objective, progressDirection),
+    buildObjectiveSignatureForEntry(objective, progressDirection),
   ).changed) return undefined;
   return {
     commitmentHours: plan.commitment.hours,

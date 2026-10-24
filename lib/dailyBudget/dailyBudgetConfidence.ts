@@ -38,7 +38,7 @@ import {
   getDateKeyInTimeZone,
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
-  getPreviousLocalDayStartUtcMs as resolvePreviousLocalDayStartUtcMs,
+  getPreviousLocalDayStartUtcMs,
   getZonedParts,
 } from '../../packages/shared-domain/src/utils/dateUtils';
 import {
@@ -242,10 +242,6 @@ function aggregateHourlyBins(
   return { total, controlled, planned, hasPlanData };
 }
 /* eslint-enable functional/immutable-data */
-
-function getPreviousLocalDayStartUtcMs(dayStartUtcMs: number, timeZone: string): number {
-  return resolvePreviousLocalDayStartUtcMs(dayStartUtcMs, timeZone);
-}
 
 function normalizeProfile(profile: HourProfile): HourProfile {
   const sum = profile.reduce((s, v) => s + v, 0);
