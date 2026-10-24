@@ -63,23 +63,30 @@ const buildBootErrorMessage = (error: unknown): string => (
 
 const DEADLINE_PLAN_REFRESH_DEBOUNCE_MS = 200;
 
-// Optional override for the shell tab the deadline-plan view lands on when
-// it closes. `closeView` in `deadlinePlanRouter.ts` reads this so the
-// recourse-action row (e.g. "Open Budget") can land the user on Budget
-// directly in a single click — without racing the popstate handler that
-// would have re-shown the Smart-tasks tab. `onSettled` fires after the
-// close path has settled (popstate handled on the history-back branch,
-// inline on the replaceState branch) so the history-detail recourse can
-// open the device-detail overlay *after* the view has unmounted.
+// How the deadline-plan view closes; `closeView` in `deadlinePlanRouter.ts`
+// reads these.
 export type DeadlinePlanCloseOptions = {
+  // Optional override for which shell tab to land on after the deadline-plan
+  // view closes. Defaults to 'deadlines'. Used by the cannot-finish recourse
+  // action row so e.g. "Open Budget" closes the plan and lands the user on
+  // the Budget tab in a single click — without a race against the popstate
+  // handler, which would have re-shown the Smart-tasks tab: the prior "close
+  // then showTab(target)" flow lost that race.
   fallbackTab?: string;
+  // Optional callback fired after the close path has settled (popstate has
+  // fired on the history-back branch, or synchronously on the replaceState
+  // branch). The history-detail "Review device" recourse uses this to open
+  // the device-detail overlay, deferring the `open-device-detail` dispatch
+  // until *after* the view has unmounted — dispatching synchronously raced
+  // popstate and only worked by luck of the overlay's z-index. See the
+  // recourse dispatcher below.
   onSettled?: () => void;
 };
 
-// Resolved by `boot.ts` so the close button can return to whichever tab the
-// user came from (almost always Smart tasks). Kept as a module-local instead
-// of a parameter on `mountDeadlinePlan` so the close button stays bound across
-// the SPA's lifetime even when the deadline-plan view is re-mounted.
+// Set by `deadlinePlanRouter.ts` so the close button can return to whichever
+// tab the user came from (almost always Smart tasks). Kept as a module-local
+// instead of a parameter on `mountDeadlinePlan` so the close button stays bound
+// across the SPA's lifetime even when the deadline-plan view is re-mounted.
 let onCloseDeadlinePlan: (options?: DeadlinePlanCloseOptions) => void = () => {};
 
 export const setDeadlinePlanCloseHandler = (

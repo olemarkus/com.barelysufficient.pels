@@ -15,7 +15,6 @@ vi.mock('../src/ui/views/PriceAwareDevicesView.tsx', () => ({ renderPriceAwareDe
 vi.mock('../src/ui/logging.ts', () => ({ logSettingsError: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../src/ui/toast.ts', () => ({ showToast: vi.fn(), showToastError: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../src/ui/devices.ts', () => ({ renderDevices: vi.fn() }));
-vi.mock('../src/ui/priceOptimization.ts', () => ({ renderPriceOptimization: vi.fn() }));
 vi.mock('../src/ui/deviceDetail/temperaturePolicy.ts', () => ({
   supportsTemperatureAdjustments: () => true,
   temperatureAdjustmentGateHint: () => '',

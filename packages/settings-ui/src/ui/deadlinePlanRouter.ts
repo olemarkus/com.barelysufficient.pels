@@ -2,6 +2,12 @@ import { isDeadlinePlanRoute } from './deadlineUrls.ts';
 import { setActiveTabIndicator } from './realtime.ts';
 import { initialShellPanel, renderPanel, replaceTab } from './tabNavigation.ts';
 import { isShellPanel, shellRouteUrl } from './shellRoutes.ts';
+import {
+  mountDeadlinePlan,
+  setDeadlinePlanCloseHandler,
+  unmountDeadlinePlan,
+  type DeadlinePlanCloseOptions,
+} from './deadlinePlanMount.ts';
 
 const PANEL_ID = 'deadline-plan-panel';
 // Shell-nav tab id for the Smart tasks section. The deadline-plan view is a
@@ -28,29 +34,7 @@ const hideDeadlinePlanPanel = (fallbackTab: string): void => {
   replaceTab(fallbackTab);
 };
 
-type CloseOptions = {
-  // Optional override for which shell tab to land on after the deadline-plan
-  // view closes. Defaults to 'deadlines'. Used by the cannot-finish recourse
-  // action row so e.g. "Open Budget" closes the plan and lands the user on
-  // the Budget tab in a single click — without a race against the popstate
-  // handler that the prior "close then showTab(target)" flow lost to.
-  fallbackTab?: string;
-  // Optional callback fired after the close path has settled (popstate has
-  // fired on the history-back branch, or synchronously on the replaceState
-  // branch). The history-detail "Review device" recourse uses this to defer
-  // the `open-device-detail` dispatch until *after* the view has unmounted —
-  // dispatching synchronously raced popstate and only worked by luck of the
-  // overlay's z-index. See `deadlinePlanMount.ts` recourse dispatcher.
-  onSettled?: () => void;
-};
-
-type RouterDeps = {
-  mount: () => Promise<void>;
-  unmount: () => void;
-  setCloseHandler: (handler: (options?: CloseOptions) => void) => void;
-};
-
-export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
+export const initDeadlinePlanRouter = (): void => {
   let openedViaPushState = false;
   // Whether the panel is currently mounted/visible. Used so we only force a
   // tab restore on transitions *out of* the deadline-plan view; the boot
@@ -71,7 +55,7 @@ export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
   // synchronous replaceState branch invokes the callback inline.
   let pendingOnSettled: (() => void) | null = null;
 
-  const closeView = (options?: CloseOptions): void => {
+  const closeView = (options?: DeadlinePlanCloseOptions): void => {
     const fallbackTab = options?.fallbackTab ?? 'deadlines';
     if (openedViaPushState && window.history.length > 1) {
       pendingFallbackTab = fallbackTab;
@@ -82,7 +66,7 @@ export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
     // `hideDeadlinePlanPanel` replaces the deadline-plan URL with the fallback
     // tab's, so reload / history-back lands on a coherent surface instead of
     // re-opening the closed plan.
-    deps.unmount();
+    unmountDeadlinePlan();
     // Clear `panelVisible` *before* `hideDeadlinePlanPanel` runs `showTab`,
     // which dispatches `pels:tab-shown`. The router's own tab-shown listener
     // (see below) reads `panelVisible` and would otherwise re-run unmount on
@@ -92,14 +76,14 @@ export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
     hideDeadlinePlanPanel(fallbackTab);
     options?.onSettled?.();
   };
-  deps.setCloseHandler(closeView);
+  setDeadlinePlanCloseHandler(closeView);
 
   const applyRouteFromUrl = (): void => {
     if (isDeadlinePlanRoute(window.location.search)) {
       showDeadlinePlanPanel();
       panelVisible = true;
       pendingFallbackTab = null;
-      void deps.mount();
+      void mountDeadlinePlan();
       return;
     }
     // Non-deadline-plan URL. Only intervene if we were previously on the
@@ -115,7 +99,7 @@ export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
       else renderPanel(initialShellPanel());
     }
     pendingFallbackTab = null;
-    deps.unmount();
+    unmountDeadlinePlan();
     openedViaPushState = false;
     // Fire after unmount + tab switch so the callback observes the settled
     // post-close DOM state (overlay opens cleanly on top of the target tab).
@@ -194,7 +178,7 @@ export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
     if (isDeadlinePlanRoute(window.location.search) && typeof tabId === 'string' && isShellPanel(tabId)) {
       window.history.replaceState(window.history.state, '', shellRouteUrl(tabId, window.location));
     }
-    deps.unmount();
+    unmountDeadlinePlan();
   });
 
   applyRouteFromUrl();

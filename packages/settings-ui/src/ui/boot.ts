@@ -140,11 +140,6 @@ import {
   renderPanel,
 } from './tabNavigation.ts';
 import { panelFromSearch } from './shellRoutes.ts';
-import {
-  mountDeadlinePlan,
-  setDeadlinePlanCloseHandler,
-  unmountDeadlinePlan,
-} from './deadlinePlanMount.ts';
 import { initDeadlinePlanRouter } from './deadlinePlanRouter.ts';
 import { initSmartTaskCreateController } from './smartTaskCreate.ts';
 import { liveStatusOrNull } from './powerStatusRead.ts';
@@ -516,11 +511,7 @@ const initializeBootHandlers = () => {
   // Register deep-link interception before awaited startup reads begin. The
   // overview can paint smart-task links while those reads are still pending;
   // without the capture handler, an early tap performs a full navigation.
-  initDeadlinePlanRouter({
-    mount: mountDeadlinePlan,
-    unmount: unmountDeadlinePlan,
-    setCloseHandler: setDeadlinePlanCloseHandler,
-  });
+  initDeadlinePlanRouter();
   // After initTabHandlers: the scope bar's visibility depends on the shown
   // panel, and that handler is what updates `state.activePanel` for the
   // `pels:tab-shown` event both listeners receive.

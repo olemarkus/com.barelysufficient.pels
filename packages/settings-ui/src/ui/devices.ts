@@ -21,7 +21,8 @@ import { writeBatteryManaged } from './batteryManaged.ts';
 import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 import { renderPriorities } from './modes.ts';
 import { refreshPlan } from './plan.ts';
-import { renderPriceOptimization, savePriceOptimizationSettings } from './priceOptimization.ts';
+import { renderPriceConfigDevices } from './priceConfig.ts';
+import { savePriceOptimizationSettings } from './priceOptimization.ts';
 import { createIconToggle } from './components.ts';
 import { logSettingsError, logSettingsWarn } from './logging.ts';
 import { debouncedSetSetting } from './utils.ts';
@@ -193,7 +194,7 @@ const buildManagedToggleHandler = (deviceId: string) => withInitialLoadGuard('ma
   state.managedMap[deviceId] = checked;
   renderDevices(state.latestDevices);
   renderPriorities(state.latestDevices);
-  renderPriceOptimization(state.latestDevices);
+  renderPriceConfigDevices();
   // Debounced save: coalesces rapid toggles into single save
   try {
     await debouncedSetSetting(MANAGED_DEVICES, () => ({ ...state.managedMap }));
@@ -238,7 +239,7 @@ const buildPriceToggleHandler = (deviceId: string) => withInitialLoadGuard('pric
   state.priceOptimizationSettings[deviceId].priceConfigured = true;
   try {
     await savePriceOptimizationSettings();
-    renderPriceOptimization(state.latestDevices);
+    renderPriceConfigDevices();
   } catch (error) {
     await logSettingsError('Failed to update price optimization settings', error, 'device list');
     await showToastError(error, 'Failed to update price optimization settings.');
@@ -492,7 +493,7 @@ export const refreshDevices = async (options?: { render?: boolean }) => {
     if (shouldRender) {
       renderDevices(devices);
       renderPriorities(devices);
-      renderPriceOptimization(devices);
+      renderPriceConfigDevices();
     }
     const devicesUpdated = new CustomEvent('devices-updated', { detail: { devices } });
     document.dispatchEvent(devicesUpdated);

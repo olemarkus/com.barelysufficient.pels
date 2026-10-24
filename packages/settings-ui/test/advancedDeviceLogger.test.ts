@@ -51,8 +51,8 @@ vi.mock('../src/ui/modes.ts', () => ({
   renderPriorities: vi.fn(),
 }));
 
-vi.mock('../src/ui/priceOptimization.ts', () => ({
-  renderPriceOptimization: vi.fn(),
+vi.mock('../src/ui/priceConfig.ts', () => ({
+  renderPriceConfigDevices: vi.fn(),
 }));
 
 vi.mock('../src/ui/toast.ts', () => ({

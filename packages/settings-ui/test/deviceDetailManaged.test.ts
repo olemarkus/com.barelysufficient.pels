@@ -544,8 +544,10 @@ describe('device detail managed state saves', () => {
     vi.doMock('../src/ui/modes.ts', () => ({
       renderPriorities: vi.fn(),
     }));
+    vi.doMock('../src/ui/priceConfig.ts', () => ({
+      renderPriceConfigDevices: vi.fn(),
+    }));
     vi.doMock('../src/ui/priceOptimization.ts', () => ({
-      renderPriceOptimization: vi.fn(),
       savePriceOptimizationSettings,
       clonePriceOptimizationSettings: <T extends Record<string, unknown>>(source: T): T => {
         const next: Record<string, unknown> = {};
