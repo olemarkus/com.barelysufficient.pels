@@ -11,6 +11,7 @@
 import type { SettingsUiHomesSaveRefusal } from '../../../contracts/src/settingsUiHomes';
 import {
   composeDraftErrorLine,
+  composeHomesAreaLimitLine,
   HOMES_CONFIG_DEGRADED,
   HOMES_SAVE_FAILED_TOAST,
 } from './homesManagementCopy';
@@ -106,11 +107,7 @@ export const composeHomeAreaSaveRefusalLine = (refusal: SettingsUiHomesSaveRefus
   if (refusal.reason === 'degraded') return HOMES_CONFIG_DEGRADED;
   if (refusal.reason === 'main_meter_required') return HOMES_AREA_NEEDS_MAIN_METER;
   if (refusal.reason === 'homey_energy_required') return HOMES_AREA_NEEDS_HOMEY_ENERGY;
-  if (refusal.reason === 'area_limit_reached') {
-    // Reachable on an edit too (a config already past the cap), so the remedy
-    // must not assume the user was adding.
-    return `PELS handles up to ${refusal.maxCount} meter areas. Remove one to make room.`;
-  }
+  if (refusal.reason === 'area_limit_reached') return composeHomesAreaLimitLine(refusal.maxCount);
   if (refusal.reason === 'meter_in_use') {
     return composeDraftErrorLine({ kind: 'meter_in_use', otherName: refusal.otherName });
   }
@@ -119,11 +116,10 @@ export const composeHomeAreaSaveRefusalLine = (refusal: SettingsUiHomesSaveRefus
     return composeDraftErrorLine({ kind: 'name_duplicate', otherName: refusal.otherName });
   }
   if (refusal.reason === 'name_reserved') {
-    return `“${refusal.reservedName}” is what PELS calls the rest of your home. `
-      + 'Give this area a different name.';
+    return composeDraftErrorLine({ kind: 'name_reserved', reservedName: refusal.reservedName });
   }
   if (refusal.reason === 'name_too_long') {
-    return `Shorten the name to ${refusal.maxLength} characters or fewer.`;
+    return composeDraftErrorLine({ kind: 'name_too_long', maxLength: refusal.maxLength });
   }
   return HOMES_SAVE_FAILED_TOAST;
 };

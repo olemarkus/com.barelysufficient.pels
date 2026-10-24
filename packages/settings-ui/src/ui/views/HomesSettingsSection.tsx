@@ -123,6 +123,12 @@ export type HomesSettingsSectionProps = {
    */
   mainMeterConflictAreaName: string | null;
   editor: HomesEditorView | null;
+  /**
+   * Why no area can be added right now (the area cap, or no meter left for
+   * one), or null when one can. Resolved before the editor opens, so the owner
+   * learns it here rather than from a refused save.
+   */
+  addBlockedLine: string | null;
   confirmingDeleteHomeId: string | null;
   deleteBusy: boolean;
   onAddClick: () => void;
@@ -339,16 +345,17 @@ const HomesList = (props: HomesSettingsSectionProps) => (
   </section>
 );
 
-const AddButtonRow = ({ zonesAvailable, configDegraded, mutationsLocked, onAddClick }: {
+const AddButtonRow = ({ zonesAvailable, configDegraded, mutationsLocked, addBlockedLine, onAddClick }: {
   zonesAvailable: boolean;
   configDegraded: boolean;
   mutationsLocked: boolean;
+  addBlockedLine: string | null;
   onAddClick: () => void;
 }) => (
   <div class="homes-settings__add">
     <MdFilledButton
       id="homes-add-button"
-      disabled={!zonesAvailable || configDegraded || mutationsLocked || undefined}
+      disabled={!zonesAvailable || configDegraded || mutationsLocked || addBlockedLine !== null || undefined}
       onClick={onAddClick}
     >
       {HOMES_ADD_BUTTON}
@@ -357,6 +364,8 @@ const AddButtonRow = ({ zonesAvailable, configDegraded, mutationsLocked, onAddCl
         only shows on a healthy read. */}
     {!configDegraded && !zonesAvailable
       && <small class="field__hint">{HOMES_ZONES_UNAVAILABLE}</small>}
+    {!configDegraded && zonesAvailable && addBlockedLine !== null
+      && <small class="field__hint" id="homes-add-blocked">{addBlockedLine}</small>}
   </div>
 );
 
@@ -450,6 +459,7 @@ const HomesSettingsSectionView = (props: HomesSettingsSectionProps) => {
           zonesAvailable={props.zonesAvailable}
           configDegraded={props.configDegraded}
           mutationsLocked={props.mutationsLocked}
+          addBlockedLine={props.addBlockedLine}
           onAddClick={props.onAddClick}
         />
       </div>
@@ -472,6 +482,7 @@ const HomesSettingsSectionView = (props: HomesSettingsSectionProps) => {
         zonesAvailable={props.zonesAvailable}
         configDegraded={props.configDegraded}
         mutationsLocked={props.mutationsLocked}
+        addBlockedLine={props.addBlockedLine}
         onAddClick={props.onAddClick}
       />
     </div>

@@ -157,30 +157,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       a UI test. *Hypothesis:* an owner whose rental-unit meter drops out sees its devices held with
       no explanation and reads it as PELS being broken. *Persona:* the multi-home owner. [P2]
 
-- [ ] **Area rules refuse on save instead of guiding in the editor — and a one-meter home can cycle
-      between two of those refusals with no diagnosis.** The name-length cap, the reserved "Main
-      home" name, the eight-area cap, and the whole-home-meter requirement are enforced at the
-      `ui_homes_save` seam and surface as a toast after a round trip; only non-emptiness and
-      uniqueness are pre-checked inline by `validateSubHomeDraft`. The editor should carry a
-      `maxlength` on the name input, an inline error for the reserved name, a disabled "Add meter
-      area" button at the cap, and an inline main-meter refusal from the `shouldPromptMainHomeMeter`
-      predicate `homesSettings.ts` already evaluates for the notice. Held out of the enforcing PR
-      because `SubHomeDraftError` and `HomesSettingsSection.tsx` were owned by a concurrent branch;
-      the server rules were deliberately scoped to the entry being written so `validateDraftName`
-      can absorb them unchanged (the two validators this shares a fix with).
-
-      *The case the missing guidance leaves worst off:* an area needs its own meter and the Main home
-      needs its own, so a home whose Homey Energy report lists a single meter cannot use meter areas
-      at all. Today it discovers that by bouncing between two refusals — saving an area refuses with
-      `main_meter_required`, and assigning that one meter to the Main home makes the area editor
-      refuse inline with "'Main home' already uses this meter". Both rules are correct, so the fix is
-      a diagnosis line, not a relaxation of either: detect "no report meter is assignable to the Main
-      home" on the Multiple meters page and say so.
-
-      Personas: owner who types a long or reserved name and only learns on save; owner with a single
-      HAN meter who tries to add a rental. Source: multi-home finishing train, area-config invariants
-      PR. [P2]
-
 ## Prices
 
 - [ ] **The Power by the Hour source drops the export price it is handed.** The app's

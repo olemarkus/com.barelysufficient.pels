@@ -204,6 +204,17 @@ describe('validateSubHomeDraft', () => {
       .toEqual(['name_missing', 'meter_missing', 'zone_missing']);
   });
 
+  it('refuses inline the names the save refuses: too long, or the Main home\'s own name', () => {
+    const tooLong = validateSubHomeDraft({
+      draft: { ...validDraft, name: 'A'.repeat(41) }, existing: [], zones, meterZoneId: null,
+    });
+    expect(tooLong.errors).toContainEqual({ kind: 'name_too_long', maxLength: 40 });
+    const reserved = validateSubHomeDraft({
+      draft: { ...validDraft, name: ' main HOME ' }, existing: [], zones, meterZoneId: null,
+    });
+    expect(reserved.errors).toContainEqual({ kind: 'name_reserved', reservedName: 'Main home' });
+  });
+
   it('flags a duplicate name case-insensitively, naming the clash', () => {
     const result = validateSubHomeDraft({
       draft: { ...validDraft, name: ' utleie ' }, existing: [rentalHome], zones, meterZoneId: null,

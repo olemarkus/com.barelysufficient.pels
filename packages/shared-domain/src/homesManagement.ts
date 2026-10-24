@@ -14,7 +14,7 @@
  */
 
 import { HOMES_MAIN_HOME_NAME } from './homeNames';
-import { foldHomeAreaName } from './homeAreaConfigRules';
+import { findHomeAreaNameRejection } from './homeAreaConfigRules';
 
 /** One Homey zone as the `ui_homes` payload serves it. */
 export type HomesZoneNode = {
@@ -168,6 +168,8 @@ export type SubHomeDraft = {
 
 export type SubHomeDraftError =
   | { kind: 'name_missing' }
+  | { kind: 'name_too_long'; maxLength: number }
+  | { kind: 'name_reserved'; reservedName: string }
   | { kind: 'name_duplicate'; otherName: string }
   | { kind: 'meter_missing' }
   | { kind: 'meter_in_use'; otherName: string }
@@ -198,14 +200,15 @@ const validateDraftName = (
   name: string,
   others: readonly SubHomeListEntry[],
 ): SubHomeDraftError[] => {
-  const trimmedName = name.trim();
-  if (trimmedName.length === 0) return [{ kind: 'name_missing' }];
-  // Same normalized fold as the save seam (NFC + lowercase): an NFC/NFD pair
-  // renders identically, so the inline check must refuse what the save would.
-  const nameClash = others.find(
-    (entry) => foldHomeAreaName(entry.name) === foldHomeAreaName(trimmedName),
-  );
-  return nameClash === undefined ? [] : [{ kind: 'name_duplicate', otherName: nameClash.name }];
+  // The save seam's own rule, so the editor refuses inline exactly what the
+  // save would (length, the Main home's reserved name, and the same NFC +
+  // lowercase fold for uniqueness), instead of after a round trip.
+  const rejection = findHomeAreaNameRejection({ name, otherNames: others.map((entry) => entry.name) });
+  if (rejection === null) return [];
+  if (rejection.reason === 'name_required') return [{ kind: 'name_missing' }];
+  if (rejection.reason === 'name_too_long') return [{ kind: 'name_too_long', maxLength: rejection.maxLength }];
+  if (rejection.reason === 'name_reserved') return [{ kind: 'name_reserved', reservedName: rejection.reservedName }];
+  return [{ kind: 'name_duplicate', otherName: rejection.otherName }];
 };
 
 const validateDraftMeter = (
