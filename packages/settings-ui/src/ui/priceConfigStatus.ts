@@ -1,5 +1,5 @@
 import { getHomeyTimezone } from './homey.ts';
-import { getDateKeyInTimeZone, getZonedParts, shiftDateKey } from './timezone.ts';
+import { getDateKeyInTimeZone, getZonedParts, shiftDateKey } from '../../../shared-domain/src/utils/dateUtils.ts';
 import { getTimeAgo } from './utils.ts';
 import {
   getFlowPricePayload,

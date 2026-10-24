@@ -12,7 +12,7 @@ import type {
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../packages/contracts/src/settingsUiApi';
 import { toResolvedLegacyPlanHistoryEntry } from '../utils/planHistoryFixtures';
 import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
-import { SMART_TASK_WIDGET_EMPTY_HINT } from '../../packages/shared-domain/src/deadlineLabels';
+import { SMART_TASK_WIDGET_EMPTY_HINT, SMART_TASK_WIDGET_EMPTY_SUBTITLE } from '../../packages/shared-domain/src/deadlineLabels';
 import { SMART_TASK_SUB_HOME_UNAVAILABLE } from '../../packages/shared-domain/src/objectiveWriteStrings';
 import {
   SMART_TASK_DEVICE_UNMANAGED_RECOURSE,
@@ -21,7 +21,6 @@ import {
 import {
   buildSmartTaskDeviceView,
   buildSmartTasksWidgetPayload,
-  EMPTY_SUBTITLE_DEFAULT,
   ENDED_ROW_CAP,
   ENDED_WINDOW_MS,
   ROW_CAP,
@@ -76,7 +75,7 @@ describe('buildSmartTasksWidgetPayload', () => {
     const payload = buildSmartTasksWidgetPayload({ activePlans: null, devices: [], nowMs: NOW });
     expect(payload).toEqual({
       state: 'empty',
-      subtitle: EMPTY_SUBTITLE_DEFAULT,
+      subtitle: SMART_TASK_WIDGET_EMPTY_SUBTITLE,
       hint: SMART_TASK_WIDGET_EMPTY_HINT,
     });
   });

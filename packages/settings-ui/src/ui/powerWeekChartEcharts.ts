@@ -20,7 +20,7 @@ import {
   getDateKeyInTimeZone,
   getDateKeyStartMs,
   shiftDateKey,
-} from './timezone.ts';
+} from '../../../shared-domain/src/utils/dateUtils.ts';
 import type { UsageDayEntry } from './usageDayView.ts';
 
 type PowerUsageEntry = UsageDayEntry;

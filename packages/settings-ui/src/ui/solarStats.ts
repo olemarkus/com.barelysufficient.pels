@@ -7,7 +7,7 @@
 // comfortably covers it); merging the aged `*DailyTotals` families into a
 // longer window is deferred to the v2 month view.
 
-import { getDateKeyInTimeZone, shiftDateKey } from './timezone.ts';
+import { getDateKeyInTimeZone, shiftDateKey } from '../../../shared-domain/src/utils/dateUtils.ts';
 
 export type SolarDayRow = {
   dateKey: string;

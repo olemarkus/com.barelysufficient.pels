@@ -1,10 +1,10 @@
 import {
   formatSmartTaskWidgetOverflow,
   SMART_TASK_WIDGET_ENDED_HEADING,
+  SMART_TASK_WIDGET_EMPTY_SUBTITLE,
   SMART_TASK_WIDGET_LOADING,
   SMART_TASK_WIDGET_TARGET_NOUN,
 } from '../../../../packages/shared-domain/src/deadlineLabels';
-import { EMPTY_SUBTITLE_DEFAULT } from '../smartTasksWidgetConstants';
 import type {
   SmartTasksWidgetEmptyPayload,
   SmartTasksWidgetEndedRow,
@@ -149,7 +149,7 @@ const renderListReady = (
     // No active rows but ended rows exist: keep the empty line off so the
     // "Recently ended" section carries the surface on its own.
     emptyEl.hidden = payload.endedRows.length > 0;
-    if (!emptyEl.hidden) emptyEl.textContent = EMPTY_SUBTITLE_DEFAULT;
+    if (!emptyEl.hidden) emptyEl.textContent = SMART_TASK_WIDGET_EMPTY_SUBTITLE;
     emptyHintEl.hidden = true;
     overflowEl.hidden = true;
     return;
@@ -248,7 +248,7 @@ export const renderWidget = (
   if (!payload || payload.state !== 'ready') {
     const emptyPayload: SmartTasksWidgetEmptyPayload = payload?.state === 'empty'
       ? payload
-      : { state: 'empty', subtitle: EMPTY_SUBTITLE_DEFAULT, hint: null };
+      : { state: 'empty', subtitle: SMART_TASK_WIDGET_EMPTY_SUBTITLE, hint: null };
     root.dataset.state = 'empty';
     root.dataset.view = 'list';
     listView.hidden = false;

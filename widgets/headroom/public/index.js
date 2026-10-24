@@ -268,9 +268,6 @@
   var isPreviewLimitState = (state) => state !== null && Object.prototype.hasOwnProperty.call(PREVIEW_HEADROOM_PAYLOADS, state);
   var resolveHeadroomPreviewPayload = (state) => isPreviewLimitState(state) ? PREVIEW_HEADROOM_PAYLOADS[state] : PREVIEW_HEADROOM_PAYLOAD;
 
-  // widgets/headroom/src/headroomWidgetConstants.ts
-  var EMPTY_SUBTITLE_DEFAULT = HEADROOM_WIDGET_COPY.noDataSubtitle;
-
   // widgets/headroom/src/public/render.ts
   var SHOW_PRICE_CHIP_FOR = /* @__PURE__ */ new Set(["cheap", "expensive"]);
   var formatKw = (value) => {
@@ -370,7 +367,7 @@
   };
   var renderWidget = (targets, payload) => {
     if (!payload || payload.state !== "ready") {
-      renderEmpty(targets, payload?.state === "empty" ? payload.subtitle : EMPTY_SUBTITLE_DEFAULT);
+      renderEmpty(targets, payload?.state === "empty" ? payload.subtitle : HEADROOM_WIDGET_COPY.noDataSubtitle);
       return;
     }
     renderReady(targets, payload);

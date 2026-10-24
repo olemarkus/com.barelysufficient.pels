@@ -48,13 +48,13 @@ import {
   resolveSmartTaskWidgetEtaVerb,
   resolveSmartTaskWidgetTargetActionVerb,
   SMART_TASK_WIDGET_EMPTY_HINT,
+  SMART_TASK_WIDGET_EMPTY_SUBTITLE,
   SMART_TASK_WIDGET_PLAN_META_LABEL_PREFIX,
   SMART_TASK_WIDGET_STATUS_LABELS,
   SMART_TASK_WIDGET_TARGET_NOUN,
   type SmartTaskListStatusId,
 } from '../../../packages/shared-domain/src/deadlineLabels';
 import { getStartOfDayInTimeZone } from '../../../packages/shared-domain/src/utils/dateUtils';
-import { EMPTY_SUBTITLE_DEFAULT } from './smartTasksWidgetConstants';
 import type {
   SmartTasksWidgetEmptyPayload,
   SmartTasksWidgetEndedRow,
@@ -69,9 +69,6 @@ export const ROW_CAP = 3;
 export const ENDED_ROW_CAP = 5;
 // A task counts as "recently ended" when it finalized within this window.
 export const ENDED_WINDOW_MS = 24 * 60 * 60 * 1000;
-// Re-exported from the browser-safe constants module so existing consumers
-// and tests keep a stable import surface off the builder.
-export { EMPTY_SUBTITLE_DEFAULT };
 
 const STATUS_TIER: Record<SmartTaskListStatusId, number> = {
   cannot_meet: 0,
@@ -411,7 +408,7 @@ export const buildSmartTasksWidgetPayload = (input: SmartTasksWidgetInput): Smar
 
   // Empty only when there is nothing to show in EITHER section.
   if (candidates.length === 0 && endedRows.length === 0) {
-    return emptyPayload(EMPTY_SUBTITLE_DEFAULT, SMART_TASK_WIDGET_EMPTY_HINT);
+    return emptyPayload(SMART_TASK_WIDGET_EMPTY_SUBTITLE, SMART_TASK_WIDGET_EMPTY_HINT);
   }
 
   const sorted = [...candidates].sort(compareCandidates);

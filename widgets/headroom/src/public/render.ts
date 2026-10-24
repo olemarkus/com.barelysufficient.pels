@@ -7,7 +7,6 @@ import {
   headroomPriceChipLabel,
   type HeadroomWidgetLimitState,
 } from '../../../../packages/shared-domain/src/headroomWidgetCopy';
-import { EMPTY_SUBTITLE_DEFAULT } from '../headroomWidgetConstants';
 import type {
   HeadroomWidgetPayload,
   HeadroomWidgetPriceLevel,
@@ -148,7 +147,7 @@ const renderEmpty = (targets: RenderTargets, subtitle: string): void => {
 
 export const renderWidget = (targets: RenderTargets, payload: HeadroomWidgetPayload | null): void => {
   if (!payload || payload.state !== 'ready') {
-    renderEmpty(targets, payload?.state === 'empty' ? payload.subtitle : EMPTY_SUBTITLE_DEFAULT);
+    renderEmpty(targets, payload?.state === 'empty' ? payload.subtitle : HEADROOM_WIDGET_COPY.noDataSubtitle);
     return;
   }
   renderReady(targets, payload);

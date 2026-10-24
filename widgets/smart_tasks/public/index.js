@@ -1281,9 +1281,6 @@
     renderChart(detailChartEl, row.chart);
   };
 
-  // widgets/smart_tasks/src/smartTasksWidgetConstants.ts
-  var EMPTY_SUBTITLE_DEFAULT = SMART_TASK_WIDGET_EMPTY_SUBTITLE;
-
   // widgets/smart_tasks/src/public/render.ts
   var formatValuesLine = (row) => {
     const target = formatTaskValue(row.targetValue, row.unitSymbol);
@@ -1368,7 +1365,7 @@
     if (payload.rows.length === 0) {
       rowsList.hidden = true;
       emptyEl.hidden = payload.endedRows.length > 0;
-      if (!emptyEl.hidden) emptyEl.textContent = EMPTY_SUBTITLE_DEFAULT;
+      if (!emptyEl.hidden) emptyEl.textContent = SMART_TASK_WIDGET_EMPTY_SUBTITLE;
       emptyHintEl.hidden = true;
       overflowEl.hidden = true;
       return;
@@ -1451,7 +1448,7 @@
   var renderWidget = (targets, payload, view) => {
     const { root, listView, detailView } = targets;
     if (!payload || payload.state !== "ready") {
-      const emptyPayload = payload?.state === "empty" ? payload : { state: "empty", subtitle: EMPTY_SUBTITLE_DEFAULT, hint: null };
+      const emptyPayload = payload?.state === "empty" ? payload : { state: "empty", subtitle: SMART_TASK_WIDGET_EMPTY_SUBTITLE, hint: null };
       root.dataset.state = "empty";
       root.dataset.view = "list";
       listView.hidden = false;
