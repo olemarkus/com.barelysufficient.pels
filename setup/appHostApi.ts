@@ -231,11 +231,6 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     return this.context.deviceReads.descriptors();
   }
 
-  /** The by-id form of the inventory read. */
-  public getDeviceDescriptor(deviceId: string): DeviceDescriptorRead | undefined {
-    return this.context.deviceReads.descriptor(deviceId);
-  }
-
   /** Settings UI needs inventory metadata plus the separately owned observation. */
   public getSettingsUiManagedDevices(): DecoratedDeviceSnapshot[] {
     return this.context.deviceControlHelpers.decorateTargetSnapshotList(

@@ -44,7 +44,6 @@ export type DayContext = {
   budgetControlUsedNowKWh: number;
   meteredUsedNowKWh: number;
   exemptUsedNowKWh: number;
-  currentBucketUsage: number;
 };
 
 export type BudgetState = {
@@ -91,8 +90,6 @@ export const buildDayContext = (nowMs: number, timeZone: string, powerTracker: P
     bucketUsage,
     bucketUsageExempt,
   });
-  const currentBucketUsage = bucketUsage[currentBucketIndex] ?? 0;
-
   return {
     nowMs,
     timeZone,
@@ -112,7 +109,6 @@ export const buildDayContext = (nowMs: number, timeZone: string, powerTracker: P
     budgetControlUsedNowKWh,
     meteredUsedNowKWh,
     exemptUsedNowKWh,
-    currentBucketUsage,
   };
 };
 

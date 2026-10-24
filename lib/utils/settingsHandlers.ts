@@ -101,7 +101,6 @@ export type SettingsHandlerDeps = {
   rebuildPlanFromCache: (settingsSource: string) => Promise<void>;
   refreshTargetDevicesSnapshot: () => Promise<void>;
   getCapacitySettings: () => CapacitySettings;
-  getCapacityDryRun: () => boolean;
   loadDailyBudgetSettings: () => void;
   updateDailyBudgetState: (options?: DailyBudgetUpdateStateOptions) => void;
   resetDailyBudgetLearning: () => void;

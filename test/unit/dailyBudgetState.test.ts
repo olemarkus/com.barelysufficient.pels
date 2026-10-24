@@ -399,7 +399,6 @@ function buildSnapshotContext(overrides: Partial<DayContext> = {}): DayContext {
     budgetControlUsedNowKWh: 0,
     meteredUsedNowKWh: 0,
     exemptUsedNowKWh: 0,
-    currentBucketUsage: 0,
     ...overrides,
   };
 }

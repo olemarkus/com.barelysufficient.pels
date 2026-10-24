@@ -5,11 +5,9 @@ import { inertPlanHistoryDeps, createInertEnergyDelivery } from '../helpers/defe
 const {
   capturedPlanExecutorDeps,
   capturedEmitterDeps,
-  capturedFlowCardDeps,
 } = vi.hoisted(() => ({
   capturedPlanExecutorDeps: { current: null as null | Record<string, unknown> },
   capturedEmitterDeps: { current: null as null | Record<string, unknown> },
-  capturedFlowCardDeps: { current: null as null | Record<string, unknown> },
 }));
 
 vi.mock('../../lib/plan/planBuilder', () => ({
@@ -42,19 +40,12 @@ vi.mock('../../lib/objectives/deferredObjectives/lifecycleEmitter', () => ({
   },
 }));
 
-vi.mock('../../flowCards/registerFlowCards', () => ({
-  registerFlowCards: (deps: Record<string, unknown>) => {
-    capturedFlowCardDeps.current = deps;
-  },
-}));
-
 import {
   createDeferredObjectiveLifecycleEmitter,
   createDeferredObjectivePlanHistoryRecorder,
   createPlanEngineComposition,
   createPlanService,
   persistDeferredObjectiveObservationWatermark,
-  registerAppFlowCards,
 } from '../../setup/appInit';
 import { DeferredObjectivePlanHistoryRecorder, normalizeDeferredObjectivePlanHistory } from '../../lib/objectives/deferredObjectives';
 import { createPlanHistoryStore } from '../../lib/objectives/deferredObjectives/planHistoryStore';
@@ -68,7 +59,6 @@ import type { Actuator } from '../../lib/actuator/deviceActuator';
 import {
   buildMainHomeScopeForTest,
   buildTaskEvaluationSourceForTest,
-  getHomeModeCatalogForTest,
   createAppContextMock,
 } from '../helpers/appContextTestHelpers';
 import { transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
@@ -215,28 +205,6 @@ describe('app init plan service wiring', () => {
 
     expect(() => createPlanService(ctx, buildMainHomeScopeForTest(ctx, () => false), planEngine)).toThrow(
       'DeviceTransport must be initialized before use.',
-    );
-  });
-
-  it('fails fast when daily budget wiring is missing for flow card registration', () => {
-    capturedFlowCardDeps.current = null;
-    const ctx = createAppContextMock({
-      dailyBudgetService: undefined,
-    });
-
-    registerAppFlowCards(
-      ctx,
-      (mode) => getHomeModeCatalogForTest(ctx).resolveModeName(mode),
-      () => getHomeModeCatalogForTest(ctx).getAllModes(),
-      () => getHomeModeCatalogForTest(ctx).getOperatingMode(),
-      (deviceId) => getHomeModeCatalogForTest(ctx).listDeviceTargetModes(deviceId),
-      (deviceId, selection, targetC) => getHomeModeCatalogForTest(ctx).setDeviceModeTarget(deviceId, selection, targetC),
-    );
-
-    expect(
-      () => (capturedFlowCardDeps.current as { loadDailyBudgetSettings: () => void }).loadDailyBudgetSettings(),
-    ).toThrow(
-      'DailyBudgetService must be initialized before use.',
     );
   });
 

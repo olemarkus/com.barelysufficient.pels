@@ -166,8 +166,6 @@ export type FlowCardDeps = {
   deferredObjectiveHoursRemainingBus: DeferredObjectiveHoursRemainingBus;
   deferredObjectiveHoursRemainingTracker: DeferredObjectiveHoursRemainingTracker;
   evaluateHeadroomForDevice: (query: HeadroomCardQuery) => HeadroomForDeviceDecision;
-  loadDailyBudgetSettings: () => void;
-  updateDailyBudgetState: (options?: { forcePlanRebuild?: boolean }) => void;
   getCombinedHourlyPrices: () => CombinedHourlyPrice[];
   getTimeZone: () => string;
   getNow: () => Date;

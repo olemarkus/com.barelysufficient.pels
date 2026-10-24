@@ -68,7 +68,6 @@ const planDay = (spec: PlanSpec) => {
     budgetControlUsedNowKWh: spec.usedNowKWh,
     meteredUsedNowKWh: spec.usedNowKWh,
     exemptUsedNowKWh: 0,
-    currentBucketUsage: spec.bucketUsage[spec.currentBucketIndex] ?? 0,
   };
   const settings = {
     enabled: true,

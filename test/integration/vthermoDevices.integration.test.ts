@@ -86,7 +86,7 @@ describe('VThermo device integration', () => {
 
     await app.refreshTargetDevicesSnapshot();
 
-    const descriptor = app.getDeviceDescriptor('vthermo-1');
+    const descriptor = app.getDeviceDescriptors().find((device) => device.id === 'vthermo-1');
     expect(descriptor).toMatchObject({
       deviceClass: 'thermostat',
       deviceType: 'temperature',

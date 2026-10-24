@@ -500,7 +500,6 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     timers: this.timers,
     getTracker: () => this.mainTracker,
     getPowerCalibrationStore: () => this.getPowerCalibrationStore(),
-    getDailyBudgetService: () => this.dailyBudgetService,
     error: (...args) => this.error(...args),
     updateDailyBudgetAndRecordCap: (options) => this.updateDailyBudgetAndRecordCap(options),
   });

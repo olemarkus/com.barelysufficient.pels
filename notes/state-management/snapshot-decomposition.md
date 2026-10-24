@@ -335,8 +335,9 @@ store, because:
 5. **Convert plan + executor reads** from `DeviceObservation` → observer's
    `ObservedDeviceState` — **DONE.** The executor's device read is
    `readExecutorDevice` / `readExecutorDevices` (`lib/executor/executorDeviceRead.ts`):
-   the descriptor (`getDeviceDescriptor` on `AppHostApi`, surface 2 from stage 6.5)
-   joined per device with the observer's record (`getObservedState`). `PlanExecutorDeps`
+   the device's resolved configuration (`getDeviceConfiguration`, which replaced the
+   stage-6.5 `getDeviceDescriptor` host read) joined per device with the observer's
+   record (`getObservedState`). `PlanExecutorDeps`
    lost `deviceManager`; the binary-control decision's one observed read is
    `getObservedState` (`ObservedBinaryControlRead`, the projection's binary axis,
    read through the executor's command context); `PlanExecutorSteppedContext.observation`

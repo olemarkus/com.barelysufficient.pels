@@ -1463,7 +1463,6 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     vi.mocked(rig.ctx.observer.getObservedRecord).mockImplementation(() => load);
     // The executor's device read is the descriptor joined with that record
     // (stage 5); the mock context's descriptor reads default to nothing.
-    rig.ctx.getDeviceDescriptor = vi.fn((id: string) => deviceManager.getSnapshotByDeviceId(id));
     rig.ctx.getDeviceDescriptors = vi.fn(() => deviceManager.getSnapshot());
     rig.ctx.homeMembership = {
       hasSubHomes: () => true,

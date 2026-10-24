@@ -61,9 +61,6 @@ abstract class AppRuntimeApi extends Base {
   public recordPowerSample(powerW: number, nowMs?: number): ReturnType<AppContext['recordPowerSample']> {
     return this.powerSamplePipeline.recordPowerSample(powerW, nowMs);
   }
-  public loadDailyBudgetSettings(): void {
-    requireDailyBudgetService(this.context).loadSettings();
-  }
   public updateDailyBudgetState(options?: DailyBudgetUpdateStateOptions): void {
     this.updateDailyBudgetAndRecordCap(options);
   }

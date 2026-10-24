@@ -140,8 +140,6 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     setExpectedOverride: vi.fn(() => false),
     storeFlowPriceData: vi.fn(),
     evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
-    loadDailyBudgetSettings: vi.fn(),
-    updateDailyBudgetState: vi.fn(),
     getCombinedHourlyPrices: vi.fn(() => []),
     getTimeZone: vi.fn(() => 'Europe/Oslo'),
     getNow: vi.fn(() => new Date('2026-03-11T10:00:00Z')),
@@ -393,7 +391,6 @@ describe('registerFlowCards', () => {
       deviceName: 'Heater',
     });
     expect(structuredInfo).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'device_setting_toggled' }));
-    expect(deps.updateDailyBudgetState).not.toHaveBeenCalled();
     expect(deps.refreshSnapshot).not.toHaveBeenCalled();
   });
 

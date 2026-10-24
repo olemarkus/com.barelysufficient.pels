@@ -360,7 +360,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     recordPowerSample: vi.fn(async () => ({ state: 'admitted' as const, revision: 1 })),
     handleOperatingModeChange: vi.fn(async () => undefined),
     getFlowSnapshot: vi.fn(async () => []),
-    loadDailyBudgetSettings: vi.fn(),
     updateDailyBudgetState: vi.fn(),
     flowBacked: partialDouble<FlowBackedDeviceState>({
       areFlowBackedCardsAvailable: vi.fn(() => false),
@@ -395,7 +394,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     ),
     getFlowDeviceDescriptors: vi.fn(async () => []),
     getDeviceDescriptors: vi.fn(() => []),
-    getDeviceDescriptor: vi.fn(() => undefined),
     isCapacityControlEnabled: vi.fn(() => false),
     isTemperatureControlDisabled: vi.fn(() => false),
     getShedBehavior: vi.fn((): ReturnType<AppContext['getShedBehavior']> => ({ action: 'turn_off' })),
