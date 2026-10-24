@@ -2111,17 +2111,41 @@ settings. No tour-completed flag is persisted.
 - One suitable device is enough. Priority is automatic; custom modes, priorities,
   Flows, batteries, daily budgets, Smart tasks, and prices are not universal
   setup requirements.
-- `Power meter` and `Devices` apply to every home. `Limits` applies once a
-  managed device may be limited. A saved hard cap, a saved grid import limit,
-  or an explicit choice to disable both completes that step. `Prices` applies
-  only when an enabled feature uses them; its source status comes from
-  `resolvePriceSetupStatus`.
+- **A step appears only when what it configures is in force for this home**
+  (owner ruling 2026-09-20: never tell an owner to configure something that is
+  not relevant to them). Apply the same test to every step and every setup
+  entry. `Power meter` and `Devices` apply to every home. `Limits` applies once
+  a managed device may be limited, because a home that has never chosen still
+  runs the capacity limit on a built-in 10 kW. A saved hard cap, a saved grid
+  import limit, or an explicit choice to disable both completes that step.
+- **`Prices` appears once something uses prices** (owner ruling 2026-10-11).
+  It stays open while PELS prices with a source the owner never chose, a source
+  with no prices, or a Norway setting the owner never chose. Its detail names
+  what PELS prices with meanwhile, as Limits names its 10 kW: `Norway, without
+  your grid tariff. PELS uses NO1 and Strømstøtte until you choose.` / `PELS
+  uses Homey Energy until you choose a source.` Source of truth:
+  `resolvePriceSetupStatus` (`packages/settings-ui/src/ui/priceSetupStatus.ts`).
+- **Priority is automatic, not a setup step** (owner ruling 2026-09-22). Modes
+  explains the optional adjustment: `PELS orders devices automatically. Drag to
+  change the order — the top device keeps running longest. Changes save
+  automatically.`
 - The checklist keeps noun titles and done / next / later status icons.
   Devices says `Choose one device to start`. A received reading says `Meter
   connected`; freshness remains the global no-readings banner's responsibility.
+- **Detail lines state facts.** Devices never says "Turn on Limit": a device
+  that cannot be limited, or that the owner chose not to limit, is a finished
+  choice. The one exception is an unchosen Limits step, which names the running
+  default and then says how to finish it, because only the owner knows how the
+  grid bills the home.
+- The Limits detail names each limit in force and the capacity period: `8 kW
+  hard cap (hourly average), 0.4 kW safety margin`, led by the grid import
+  limit when it is on. Unchosen, it starts `10 kW hard cap (hourly average)
+  until you set yours`, so the running default is never silent.
 - Ask about **measured hourly or 15-minute average grid import**, not whether
   the owner has a “capacity tariff”. Connection-capacity charges use that name
-  too. `Grid import limit` stays a separate choice.
+  too. `Grid import limit` stays a separate choice. Norway is not asked: every
+  Norwegian household pays for its measured hourly peaks, so its unchosen step
+  is the running default alone.
 - `Use more of your own solar` is an optional entry during setup and remains
   available under Setup & recommendations before export is observed. Discovery
   never enables solar-only settings. The existing controls keep their eligibility
@@ -2142,14 +2166,20 @@ settings. No tour-completed flag is persisted.
 
 ### Tailoring by market: geography only
 
-Country comes from `GET /ui_hub_market`, never language. It changes emphasis,
-not feature availability or settings. An unavailable market uses neutral copy.
-The UI and getting-started guide remain English-only.
+Country comes from `GET /ui_hub_market` (`lib/home/hubMarket.ts`), from
+Homey's location-derived `country`, which follows the location the owner set on
+the map. **Never infer a market from the hub's language** (owner ruling
+2026-09-19). It changes emphasis, not feature availability or settings. An
+unavailable market uses neutral copy. The UI and getting-started guide remain
+English-only.
 
 - For Dutch households, an unchosen Capacity limit explains that grid charges
   depend on connection size, and that turning this limit off preserves prices
-  and solar. Keep the running default visible until the owner makes a choice;
-  geography never disables a limit or replaces a saved target.
+  and solar. The guided Limits step offers `Turn off Capacity limit` beside
+  that detail. Like `Use 15-minute average`, it writes only its own setting, so
+  the built-in hard cap stays unchosen. Keep the running default visible until
+  the owner makes a choice; geography never disables a limit or replaces a
+  saved target.
 - Dutch solar setup needs no dynamic contract or price configuration. Contract
   context and the end of net metering belong in optional background guidance.
 - Belgian advice stays conditional: `In Flanders? Use the 15-minute average for
@@ -2168,6 +2198,17 @@ The automatic solar suggestion still requires available surplus; the explicit
 solar discovery entry above does not. Price and Smart task suggestions stay
 out of incomplete setup. The dismissible Flemish period advice can appear
 both during and after setup.
+
+- **Only what is relevant to this home, never what it already uses, and never
+  on an unread fact.** An unread setting looks exactly like a feature nobody
+  turned on, so an unknown fact yields no suggestion.
+- **A feature the owner turned off is not suggested.** `Respond to prices` off
+  is a choice made, not a feature undiscovered.
+- **The solar copy never says "export".** It must be true of a zero-export home
+  that curtails as well as one that exports: `while your solar produces more
+  than the home is using`.
+- Titles name the outcome, not the feature: `Heat in cheap hours`, `Use more of
+  your own solar`, `Have something ready by a set time`.
 
 `Optional` means no configuration defect. `Recommended` identifies a suggested
 setup change. Preserve `PELS can do more for this home` / `See what` for optional
@@ -2340,11 +2381,13 @@ label reads as "not for me" to everyone else on a quarter-hour tariff. Two rules
    before a deadline is to **lower the daily budget** so future days reserve
    available power earlier — see `cannotMeetDailyBudgetExhausted` copy in
    `deadlineLabels.ts`.
-3. **A home with no capacity tariff is told so, once, where the cap is set.**
-   The Main home's **Capacity limit** switch turns the hard cap off, so an owner
-   with no tariff (the Netherlands, Wallonia) is no longer held to a number that
-   means nothing to them. The single-home hard cap hint ends `No capacity tariff
-   where you live? Turn off Capacity limit.` (`HOME_LIMITS_MAIN_HARD_CAP_HINT`).
+3. **A home not charged for measured peaks is told so, once, where the cap is
+   set.** The Main home's **Capacity limit** switch turns the hard cap off, so an
+   owner whose grid bills no measured peak (the Netherlands, Wallonia) is no
+   longer held to a number that means nothing to them. Never call that home one
+   with "no capacity tariff": Dutch bills name the fixed connection-size charge a
+   capacity tariff. The single-home hard cap hint ends `Not charged for measured
+   peaks? You can turn off Capacity limit.` (`HOME_LIMITS_MAIN_HARD_CAP_HINT`).
    This is a setup-time instruction for a home the cap does not apply to, not
    rule 2's forbidden remedy: for a home WITH a tariff the cap stays a given.
    Meter areas still always run a cap. Do not repeat it in status copy, reason
