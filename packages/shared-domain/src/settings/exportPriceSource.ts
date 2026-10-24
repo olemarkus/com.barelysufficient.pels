@@ -10,6 +10,11 @@
  * - `homey_energy` — Homey's own export pricing, which it models exactly as it
  *   models import pricing: a type (`fixed | dynamic | disabled`), a fixed
  *   per-kWh amount, and for dynamic a formula over each period's spot price.
+ * - `power_by_the_hour` — the feed-in price the Power by the Hour app publishes
+ *   per period, after the export markups the owner set in that app.
+ *
+ * Each source's own price applies only on its own price source; anywhere else
+ * the stored choice reads as `manual`, and is left alone for a return.
  *
  * The key exists because both are legitimate and only the owner knows which
  * they mean. Reading Homey's terms when they are set and silently ignoring the
@@ -22,7 +27,7 @@
  *
  * ## Read policy: RECOGNISE OR DEFAULT
  *
- * A flat two-value union with nothing to sanitize partially. Anything else,
+ * A flat union with nothing to sanitize partially. Anything else,
  * absence included, reads as `manual`: the behaviour every home had before this
  * key existed, so an upgrade keeps paying out exactly what it paid yesterday
  * and a never-written key means what it has always meant. Choosing Homey's
@@ -36,14 +41,14 @@
  * Browser-safe: no Homey SDK types, no runtime imports.
  */
 
-export type ExportPriceSourceSetting = 'manual' | 'homey_energy';
+export type ExportPriceSourceSetting = 'manual' | 'homey_energy' | 'power_by_the_hour';
 
 export const EXPORT_PRICE_SOURCE_DEFAULT: ExportPriceSourceSetting = 'manual';
 
 export const isExportPriceSourceSetting = (
   value: unknown,
 ): value is ExportPriceSourceSetting => (
-  value === 'manual' || value === 'homey_energy'
+  value === 'manual' || value === 'homey_energy' || value === 'power_by_the_hour'
 );
 
 export const readExportPriceSourceSetting = (value: unknown): ExportPriceSourceSetting => (

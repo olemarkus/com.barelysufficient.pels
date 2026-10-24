@@ -292,6 +292,8 @@ On the **Homey Energy** price source you also get **Where the price comes from**
 - **Amounts I enter here** — the two amounts above. This is the default, and what every existing setup keeps.
 - **Homey Energy** — the export price you already set up in Homey under **Energy > Electricity**. Choosing it replaces the amount fields, because the price then comes from Homey. If Homey has no export price set up, or PELS cannot work out the formula, PELS plans on the import price as it would for a home with no export price at all, and your own amounts are no longer applied, so check **Energy > Electricity** in Homey before switching. See [Getting paid for solar you export](/homey-energy#getting-paid-for-solar-you-export).
 
+On the **Power by the Hour** price source the same choice offers **Power by the Hour**: the feed-in price that app publishes for each period, after the export markups you set on its price device. Without any export markup there, the feed-in price equals the import price, so set those markups first. Choosing it replaces the amount fields here too.
+
 PELS then schedules against the blended **planning price** (what your energy is actually worth once export is accounted for), while your bills, receipts, and the budget's money view stay on the **import price** you are billed. This section appears once PELS can see your solar (a managed solar device reports production, or your meter has recorded about a kilowatt-hour of grid export), and stays visible if you already have an export price configured. See [Solar and Self-Consumption](/solar).
 
 ## Settings > Price-Aware Devices

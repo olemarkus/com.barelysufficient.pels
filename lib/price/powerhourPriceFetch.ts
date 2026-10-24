@@ -36,6 +36,12 @@ export type PowerhourSlot = {
   startsAt: string;
   /** Import price per kWh, after the owner's markups, in `currency`. */
   importPrice: number;
+  /**
+   * Feed-in price per kWh, after the owner's export markups in the app, in
+   * `currency`. With no export markup set there it equals `importPrice`. Absent
+   * where the slot carries no finite one.
+   */
+  exportPrice?: number;
 };
 
 /** One of the app's price devices, resolved. */
@@ -142,7 +148,12 @@ const resolveSlot = (value: unknown): PowerhourSlot | null => {
   if (!Number.isFinite(startsAtMs)) return null;
   const importPrice = toFiniteNumber(record.importPrice);
   if (importPrice === null) return null;
-  return { startsAt: new Date(startsAtMs).toISOString(), importPrice };
+  const exportPrice = toFiniteNumber(record.exportPrice);
+  return {
+    startsAt: new Date(startsAtMs).toISOString(),
+    importPrice,
+    ...(exportPrice === null ? {} : { exportPrice }),
+  };
 };
 
 /**

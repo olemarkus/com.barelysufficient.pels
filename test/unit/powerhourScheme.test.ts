@@ -3,10 +3,13 @@ import {
   readPowerhourDeviceChoice,
   resolvePowerhourDevice,
   resolvePowerhourPresence,
+  resolvePowerhourSeries,
   resolvePowerhourSourceUiStatus,
   type PowerhourCache,
   type PowerhourCachedDay,
 } from '../../lib/price/powerhourScheme';
+import { EXPORT_PRICE_ENABLED, EXPORT_PRICE_SOURCE } from '../../lib/utils/settingsKeys';
+import { MockSettings } from '../mocks/homey';
 import type { FlowPricePayload } from '../../packages/shared-domain/src/price/flowPriceUtils';
 import type { PowerhourDevice } from '../../lib/price/powerhourPriceFetch';
 import { getFlowPricePayload } from '../../packages/shared-domain/src/price/flowPriceUtils';
@@ -337,6 +340,34 @@ describe('mirroring one read into the stored days', () => {
     expect(buildPowerhourPayloads(device({ currency: '' }), emptyCache(), TZ, NOW).currency).toBeNull();
   });
 
+  it('stores each period’s feed-in price and reads it back from the stored day', () => {
+    const quarters = Array.from({ length: 4 }, (_, index) => ({
+      startsAt: new Date(OSLO_MIDNIGHT + 12 * 3_600_000 + index * 900_000).toISOString(),
+      importPrice: 0.2,
+      exportPrice: (index + 1) / 100,
+    }));
+    const payloads = buildPowerhourPayloads(
+      device({ priceIntervalMinutes: 15, slots: quarters }),
+      emptyCache(),
+      TZ,
+      NOW,
+    );
+    const stored = getFlowPricePayload(payloads.today.kind === 'store' ? payloads.today.payload : null);
+    expect(stored?.pricesByPeriod?.map((period) => period.exportPrice)).toEqual([0.01, 0.02, 0.03, 0.04]);
+    // The hour an hour-shaped reader sees is worth what its quarters were.
+    expect(stored?.pricesBySlot?.[0]?.exportPrice).toBeCloseTo(0.025);
+
+    // A later read from the next quarter on keeps what the stored day said.
+    const later = buildPowerhourPayloads(
+      device({ priceIntervalMinutes: 15, slots: quarters.slice(1) }),
+      cacheOf(stored, null, 'no2'),
+      TZ,
+      NOW,
+    );
+    const merged = later.today.kind === 'store' ? later.today.payload : null;
+    expect(merged?.pricesByPeriod?.[0]?.exportPrice).toBe(0.01);
+  });
+
   it('writes a payload an older build can still read', () => {
     const payloads = buildPowerhourPayloads(device(), emptyCache(), TZ, NOW);
     const stored = payloads.today.kind === 'store' ? payloads.today.payload : null;
@@ -390,5 +421,28 @@ describe('what the owner is told about the source', () => {
         biddingZone: '10YNO-2--------T',
       }],
     });
+  });
+});
+
+describe('whose feed-in price the series carries', () => {
+  const periods = [
+    { startsAt: '2026-09-20T10:00:00.000Z', totalPrice: 0.2, durationMinutes: 60, exportPrice: 0.04 },
+  ];
+  const settingsWith = (enabled: boolean, source: string) => {
+    const settings = new MockSettings();
+    settings.set(EXPORT_PRICE_ENABLED, enabled);
+    settings.set(EXPORT_PRICE_SOURCE, source);
+    return settings;
+  };
+
+  it('keeps the app’s price while the owner chose it on this source', () => {
+    expect(resolvePowerhourSeries(periods, settingsWith(true, 'power_by_the_hour'), 'powerhour')).toEqual(periods);
+  });
+
+  it('drops it for the owner’s own amounts, with export off, and on another source', () => {
+    const importOnly = [{ startsAt: '2026-09-20T10:00:00.000Z', totalPrice: 0.2, durationMinutes: 60 }];
+    expect(resolvePowerhourSeries(periods, settingsWith(true, 'manual'), 'powerhour')).toEqual(importOnly);
+    expect(resolvePowerhourSeries(periods, settingsWith(false, 'power_by_the_hour'), 'powerhour')).toEqual(importOnly);
+    expect(resolvePowerhourSeries(periods, settingsWith(true, 'power_by_the_hour'), 'flow')).toEqual(importOnly);
   });
 });

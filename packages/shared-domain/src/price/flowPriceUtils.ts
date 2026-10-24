@@ -30,6 +30,15 @@ export type FlowPricePeriod = {
   startsAt: string;
   totalPrice: number;
   durationMinutes: number;
+  /**
+   * The feed-in price the source itself published for the period, in the same
+   * unit as `totalPrice`. Two producers attach one: Power by the Hour, whose
+   * slots carry it after the owner's export markups, and the Homey scheme when
+   * the owner pointed the export price at Homey's own terms
+   * (`lib/price/homeyExportPrice.ts`). Absent on owner Flow input, and PELS's
+   * own export model decorates the series later instead.
+   */
+  exportPrice?: number;
 };
 
 export type FlowPricePayload = {
@@ -184,7 +193,14 @@ const normalizeFlowSlotEntries = (input: unknown): FlowPricePeriod[] => {
     if (durationMinutes === null) return acc;
     const startsAt = new Date(startsAtMs).toISOString();
     if (acc.has(startsAt)) return acc;
-    acc.set(startsAt, { startsAt, totalPrice, durationMinutes });
+    // Only a stored finite number is a feed-in price; nothing is not zero.
+    const { exportPrice } = record;
+    acc.set(startsAt, {
+      startsAt,
+      totalPrice,
+      durationMinutes,
+      ...(typeof exportPrice === 'number' && Number.isFinite(exportPrice) ? { exportPrice } : {}),
+    });
     return acc;
   }, new Map<string, FlowPricePeriod>());
 

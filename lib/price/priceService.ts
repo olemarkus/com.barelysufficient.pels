@@ -45,7 +45,9 @@ import {
   resolveNorwayHourlyPrices,
   type NorwaySchemeSettings,
 } from './priceServiceNorway';
-import { mirrorPowerhourPrices, type PowerhourPresence, type PowerhourSourceUiStatus } from './powerhourScheme';
+import {
+  mirrorPowerhourPrices, resolvePowerhourSeries, type PowerhourPresence, type PowerhourSourceUiStatus,
+} from './powerhourScheme';
 import { applyExportPrices, type ExportPriceConfig } from './exportPrice';
 import { applyBudgetPrices, type BudgetPriceInputs } from './budgetPrice';
 import { buildPriceTimeline } from './priceTimeline';
@@ -395,8 +397,10 @@ export default class PriceService {
     }
     if (scheme === 'homey') return this.resolveHomeyPricePeriods().periods;
     if (scheme === 'powerhour') {
-      return this.getPricePeriodsFromPayloads(
-        POWERHOUR_PRICES_TODAY, POWERHOUR_PRICES_TOMORROW, 'Power by the Hour prices',
+      return resolvePowerhourSeries(
+        this.getPricePeriodsFromPayloads(POWERHOUR_PRICES_TODAY, POWERHOUR_PRICES_TOMORROW, 'Power by the Hour prices'),
+        this.homey.settings,
+        scheme,
       );
     }
     // Norwegian spot prices are hourly, and each entry carries the whole cost

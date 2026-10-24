@@ -25,21 +25,50 @@ import {
   type FlowPricePeriod,
 } from '../../packages/shared-domain/src/price/flowPriceUtils';
 import { readPowerhourDeviceIdSetting } from '../../packages/shared-domain/src/settings/priceScheme';
+import { readExportPriceSourceSetting } from '../../packages/shared-domain/src/settings/exportPriceSource';
 
 import type {
   PowerhourDeviceUiOption,
   PowerhourSourceUiStatus,
 } from '../../packages/contracts/src/settingsUiApi';
 import type { ApiPort, SettingsPort } from '../ports/homeyRuntime';
-import { POWERHOUR_DEVICE_ID } from '../utils/settingsKeys';
+import { EXPORT_PRICE_ENABLED, EXPORT_PRICE_SOURCE, POWERHOUR_DEVICE_ID } from '../utils/settingsKeys';
 import { readSettingsKeyList } from '../utils/settingsKeyList';
 import { toHourlyPeriods } from './hourlyPriceProjection';
+import type { CombinedPricePeriod, PriceScheme } from './priceTypes';
 import {
   fetchPowerhourPrices,
   type PowerhourDevice,
   type PowerhourRead,
   type PowerhourUnavailableReason,
 } from './powerhourPriceFetch';
+
+/**
+ * Whether the feed-in price this app publishes is what PELS pays the owner for
+ * export: export pricing is on, this source prices the home, and the owner
+ * chose it as the export source. The conditions of `usesHomeyExportTerms`
+ * (`homeyScheme.ts`), without its mirror: here the price arrives on the slots.
+ */
+export const usesPowerhourExportPrices = (settings: SettingsPort, scheme: PriceScheme): boolean => (
+  settings.get(EXPORT_PRICE_ENABLED) === true
+  && scheme === 'powerhour'
+  && readExportPriceSourceSetting(settings.get(EXPORT_PRICE_SOURCE)) === 'power_by_the_hour'
+);
+
+/**
+ * The stored periods as the series carries them: with the app's feed-in price
+ * while that is the owner's export price, and without it otherwise, so the
+ * owner's own amounts apply (or no export price at all) instead.
+ */
+export const resolvePowerhourSeries = (
+  periods: CombinedPricePeriod[],
+  settings: SettingsPort,
+  scheme: PriceScheme,
+): CombinedPricePeriod[] => (
+  usesPowerhourExportPrices(settings, scheme)
+    ? periods
+    : periods.map(({ startsAt, totalPrice, durationMinutes }) => ({ startsAt, totalPrice, durationMinutes }))
+);
 
 /**
  * Which device prices this home.
@@ -312,6 +341,7 @@ export const buildPowerhourPayloads = (
       startsAt: slot.startsAt,
       totalPrice: slot.importPrice,
       durationMinutes: device.priceIntervalMinutes,
+      ...(slot.exportPrice === undefined ? {} : { exportPrice: slot.exportPrice }),
     };
     acc.set(dateKey, [...(acc.get(dateKey) ?? []), period]);
     return acc;
