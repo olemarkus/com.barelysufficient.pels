@@ -9,6 +9,7 @@ import {
   resolveEffectivePlanStatus,
 } from '../packages/shared-domain/src/deadlineLabels';
 import { normalizeError } from '../lib/utils/errorUtils';
+import type { FlowCard } from '../lib/utils/types';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 import { isEvCharger, supportsTemperatureObjective } from './smartTaskDeviceCapability';
 import { registerSetEnergyDeadlineCard } from './energyDeadlineCard';
@@ -255,116 +256,108 @@ function registerClearDeadlineCard(deps: FlowCardDeps): void {
   });
 }
 
-function registerDeadlineStatusChangedTrigger(deps: FlowCardDeps): void {
-  const card = deps.homey.flow.getTriggerCard('deadline_status_changed');
-  card.registerRunListener(async (args: unknown, state?: unknown) => {
-    const payload = args as { device?: RawFlowDeviceArg } | null;
-    const stateRecord = (state ?? {}) as { deviceId?: string };
-    const wantedDeviceId = getDeviceIdFromFlowArg(payload?.device);
-    return Boolean(wantedDeviceId && wantedDeviceId === stateRecord.deviceId);
-  });
+// The smart-task trigger cards. Each logs `<card id>_tokens_build_failed` and
+// `<card id>_trigger_failed` through `fireSmartTaskTrigger`.
+type SmartTaskTriggerCardId =
+  | 'deadline_status_changed'
+  | 'deadline_ended'
+  | 'deadline_plan_changed'
+  | 'smart_task_hours_remaining';
+
+// Every device in the snapshot, matched against the typed query.
+const registerDeviceAutocomplete = (deps: FlowCardDeps, card: FlowCard): void => {
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
     const snapshot = await deps.getSnapshot();
     return buildDeviceAutocompleteOptions(snapshot, query);
   });
+};
+
+// Run listener for a trigger that fires only for the device its Flow names.
+const matchesTriggeredDevice = async (args: unknown, state?: unknown): Promise<boolean> => {
+  const payload = args as { device?: RawFlowDeviceArg } | null;
+  const stateRecord = (state ?? {}) as { deviceId?: string };
+  const wantedDeviceId = getDeviceIdFromFlowArg(payload?.device);
+  return Boolean(wantedDeviceId && wantedDeviceId === stateRecord.deviceId);
+};
+
+// Builds one bus event's tokens and fires the card with `state`. `buildTokens`
+// returns null for an event the card does not fire on. A build failure is
+// logged and swallowed, and a trigger failure is logged.
+function fireSmartTaskTrigger(
+  deps: FlowCardDeps,
+  card: FlowCard,
+  cardId: SmartTaskTriggerCardId,
+  deviceId: string,
+  state: Record<string, unknown>,
+  buildTokens: () => Record<string, unknown> | null,
+): void {
+  let tokens: Record<string, unknown> | null;
+  try {
+    tokens = buildTokens();
+  } catch (err) {
+    deps.getStructuredLogger('flow').error({
+      event: `${cardId}_tokens_build_failed`,
+      deviceId,
+      err: normalizeError(err),
+    });
+    return;
+  }
+  if (tokens === null) return;
+  void card.trigger?.(tokens, state)
+    .catch((err: Error) => deps.getStructuredLogger('flow').error({
+      event: `${cardId}_trigger_failed`,
+      deviceId,
+      err: normalizeError(err),
+    }));
+}
+
+function registerDeadlineStatusChangedTrigger(deps: FlowCardDeps): void {
+  const cardId = 'deadline_status_changed';
+  const card = deps.homey.flow.getTriggerCard(cardId);
+  card.registerRunListener(matchesTriggeredDevice);
+  registerDeviceAutocomplete(deps, card);
 
   deps.deferredObjectivePlanRevisionBus.onRevision((event) => {
-    let tokens: Record<string, unknown>;
-    try {
+    fireSmartTaskTrigger(deps, card, cardId, event.deviceId, { deviceId: event.deviceId }, () => {
       const previousStatus = mapPreviousPlanStatusToFlowStatus(event);
       // No prior public status means task creation/discovery, not a status change.
-      if (previousStatus === null) return;
+      if (previousStatus === null) return null;
       const flowStatus = mapPlanEventToFlowStatus(event);
-      if (previousStatus === flowStatus) return;
-      tokens = buildSmartTaskStatusTokens(event, flowStatus);
-    } catch (err) {
-      deps.getStructuredLogger('flow').error({
-        event: 'deadline_status_changed_tokens_build_failed',
-        deviceId: event.deviceId,
-        err: normalizeError(err),
-      });
-      return;
-    }
-    void card.trigger?.(tokens, { deviceId: event.deviceId })
-      .catch((err: Error) => deps.getStructuredLogger('flow').error({
-        event: 'deadline_status_changed_trigger_failed',
-        deviceId: event.deviceId,
-        err: normalizeError(err),
-      }));
+      if (previousStatus === flowStatus) return null;
+      return buildSmartTaskStatusTokens(event, flowStatus);
+    });
   });
 }
 
 function registerDeadlineEndedTrigger(deps: FlowCardDeps): void {
-  const card = deps.homey.flow.getTriggerCard('deadline_ended');
-  card.registerRunListener(async (args: unknown, state?: unknown) => {
-    const payload = args as { device?: RawFlowDeviceArg } | null;
-    const stateRecord = (state ?? {}) as { deviceId?: string };
-    const wantedDeviceId = getDeviceIdFromFlowArg(payload?.device);
-    return Boolean(wantedDeviceId && wantedDeviceId === stateRecord.deviceId);
-  });
-  card.registerArgumentAutocompleteListener('device', async (query: string) => {
-    const snapshot = await deps.getSnapshot();
-    return buildDeviceAutocompleteOptions(snapshot, query);
-  });
+  const cardId = 'deadline_ended';
+  const card = deps.homey.flow.getTriggerCard(cardId);
+  card.registerRunListener(matchesTriggeredDevice);
+  registerDeviceAutocomplete(deps, card);
 
   deps.deferredObjectiveEndedBus.onEnded((event) => {
-    let tokens: Record<string, unknown>;
-    try {
-      tokens = buildSmartTaskEndedTokens(event);
-    } catch (err) {
-      // Swallow listener-side errors so a malformed event cannot unwind back
-      // into the plan-history finalization that published it.
-      deps.getStructuredLogger('flow').error({
-        event: 'deadline_ended_tokens_build_failed',
-        deviceId: event.deviceId,
-        err: normalizeError(err),
-      });
-      return;
-    }
-    void card.trigger?.(tokens, { deviceId: event.deviceId })
-      .catch((err: Error) => deps.getStructuredLogger('flow').error({
-        event: 'deadline_ended_trigger_failed',
-        deviceId: event.deviceId,
-        err: normalizeError(err),
-      }));
+    // Swallow listener-side errors so a malformed event cannot unwind back
+    // into the plan-history finalization that published it.
+    fireSmartTaskTrigger(deps, card, cardId, event.deviceId, { deviceId: event.deviceId }, () => (
+      buildSmartTaskEndedTokens(event)
+    ));
   });
 }
 
 function registerDeadlinePlanChangedTrigger(deps: FlowCardDeps): void {
-  const card = deps.homey.flow.getTriggerCard('deadline_plan_changed');
-  card.registerRunListener(async (args: unknown, state?: unknown) => {
-    const payload = args as { device?: RawFlowDeviceArg } | null;
-    const stateRecord = (state ?? {}) as { deviceId?: string };
-    const wantedDeviceId = getDeviceIdFromFlowArg(payload?.device);
-    return Boolean(wantedDeviceId && wantedDeviceId === stateRecord.deviceId);
-  });
-  card.registerArgumentAutocompleteListener('device', async (query: string) => {
-    const snapshot = await deps.getSnapshot();
-    return buildDeviceAutocompleteOptions(snapshot, query);
-  });
+  const cardId = 'deadline_plan_changed';
+  const card = deps.homey.flow.getTriggerCard(cardId);
+  card.registerRunListener(matchesTriggeredDevice);
+  registerDeviceAutocomplete(deps, card);
 
   deps.deferredObjectivePlanRevisionBus.onRevision((event) => {
     if (event.eventType !== 'revision_written') return;
     if (!event.allocationChanged) return;
-    let tokens: Record<string, unknown>;
-    try {
-      tokens = buildSmartTaskPlanChangedTokens(event, deps.getTimeZone());
-    } catch (err) {
-      // Swallow listener-side errors so a malformed event cannot unwind back
-      // into the plan-engine cycle that published it.
-      deps.getStructuredLogger('flow').error({
-        event: 'deadline_plan_changed_tokens_build_failed',
-        deviceId: event.deviceId,
-        err: normalizeError(err),
-      });
-      return;
-    }
-    void card.trigger?.(tokens, { deviceId: event.deviceId })
-      .catch((err: Error) => deps.getStructuredLogger('flow').error({
-        event: 'deadline_plan_changed_trigger_failed',
-        deviceId: event.deviceId,
-        err: normalizeError(err),
-      }));
+    // Swallow listener-side errors so a malformed event cannot unwind back
+    // into the plan-engine cycle that published it.
+    fireSmartTaskTrigger(deps, card, cardId, event.deviceId, { deviceId: event.deviceId }, () => (
+      buildSmartTaskPlanChangedTokens(event, deps.getTimeZone())
+    ));
   });
 }
 
@@ -378,7 +371,8 @@ const resolveHoursThreshold = (raw: unknown): number | null => {
 };
 
 function registerSmartTaskHoursRemainingTrigger(deps: FlowCardDeps): void {
-  const card = deps.homey.flow.getTriggerCard('smart_task_hours_remaining');
+  const cardId = 'smart_task_hours_remaining';
+  const card = deps.homey.flow.getTriggerCard(cardId);
   card.registerRunListener(async (args: unknown, state?: unknown) => {
     const payload = args as { device?: RawFlowDeviceArg; hours?: unknown } | null;
     const stateRecord = (state ?? {}) as {
@@ -400,32 +394,17 @@ function registerSmartTaskHoursRemainingTrigger(deps: FlowCardDeps): void {
     const wasAboveThreshold = previous === null || previous === undefined || previous > threshold;
     return stateRecord.hoursRemaining <= threshold && wasAboveThreshold;
   });
-  card.registerArgumentAutocompleteListener('device', async (query: string) => {
-    const snapshot = await deps.getSnapshot();
-    return buildDeviceAutocompleteOptions(snapshot, query);
-  });
+  registerDeviceAutocomplete(deps, card);
 
   deps.deferredObjectiveHoursRemainingBus.onCrossing((event) => {
-    let tokens: Record<string, unknown>;
-    try {
-      tokens = buildSmartTaskHoursRemainingTokens(event);
-    } catch (err) {
-      deps.getStructuredLogger('flow').error({
-        event: 'smart_task_hours_remaining_tokens_build_failed',
-        deviceId: event.deviceId,
-        err: normalizeError(err),
-      });
-      return;
-    }
-    void card.trigger?.(tokens, {
+    const state = {
       deviceId: event.deviceId,
       hoursRemaining: event.hoursRemaining,
       previousHoursRemaining: event.previousHoursRemaining,
-    }).catch((triggerErr: Error) => deps.getStructuredLogger('flow').error({
-      event: 'smart_task_hours_remaining_trigger_failed',
-      deviceId: event.deviceId,
-      err: normalizeError(triggerErr),
-    }));
+    };
+    fireSmartTaskTrigger(deps, card, cardId, event.deviceId, state, () => (
+      buildSmartTaskHoursRemainingTokens(event)
+    ));
   });
 }
 
@@ -457,10 +436,7 @@ function registerDeadlineStatusIsCondition(deps: FlowCardDeps): void {
     );
     return effectiveStatus !== null && effectiveStatus === wantedStatus;
   });
-  card.registerArgumentAutocompleteListener('device', async (query: string) => {
-    const snapshot = await deps.getSnapshot();
-    return buildDeviceAutocompleteOptions(snapshot, query);
-  });
+  registerDeviceAutocomplete(deps, card);
 }
 
 // Resolves the public, settled smart-task status used by Flow conditions.
@@ -508,8 +484,5 @@ function registerHasActiveDeadlineCondition(deps: FlowCardDeps): void {
     const settings = deps.getDeferredObjectiveSettings();
     return Boolean(settings.objectivesByDeviceId[deviceId]?.enabled);
   });
-  card.registerArgumentAutocompleteListener('device', async (query: string) => {
-    const snapshot = await deps.getSnapshot();
-    return buildDeviceAutocompleteOptions(snapshot, query);
-  });
+  registerDeviceAutocomplete(deps, card);
 }
