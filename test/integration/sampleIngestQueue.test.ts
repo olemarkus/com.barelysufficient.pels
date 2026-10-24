@@ -14,18 +14,17 @@ const buildQueue = (options: { onRun?: (sample: Sample) => void } = {}): {
   const ran: number[] = [];
   const parked: Array<() => void> = [];
   const runEntered: Array<() => void> = [];
-  const queue = createSampleIngestQueue<Sample>({
-    run: async (sample) => {
-      ran.push(sample.revision);
-      options.onRun?.(sample);
-      runEntered.splice(0).forEach((notify) => notify());
-      await new Promise<void>((resolve) => { parked.push(() => resolve()); });
-    },
-  });
+  const queue = createSampleIngestQueue<Sample>();
+  const ingest = async (sample: Sample): Promise<void> => {
+    ran.push(sample.revision);
+    options.onRun?.(sample);
+    runEntered.splice(0).forEach((notify) => notify());
+    await new Promise<void>((resolve) => { parked.push(() => resolve()); });
+  };
   return {
     queue,
     ran,
-    submit: async () => describeAdmission(await queue.submit((revision) => ({ revision }))),
+    submit: async () => describeAdmission(await queue.submit((revision) => ({ revision }), ingest)),
     release: () => { parked.shift()?.(); },
     nextRun: () => new Promise<void>((resolve) => { runEntered.push(() => resolve()); }),
   };
@@ -88,13 +87,12 @@ describe('createSampleIngestQueue', () => {
   });
 
   it('leaves the ledger pending when a run throws, so nothing reads its watts as admitted', async () => {
-    const queue = createSampleIngestQueue<Sample>({
-      run: async () => {
-        await Promise.resolve();
-        throw new Error('ingest failed');
-      },
-    });
-    await expect(queue.submit((revision) => ({ revision }))).rejects.toThrow('ingest failed');
+    const queue = createSampleIngestQueue<Sample>();
+    const failingIngest = async (): Promise<void> => {
+      await Promise.resolve();
+      throw new Error('ingest failed');
+    };
+    await expect(queue.submit((revision) => ({ revision }), failingIngest)).rejects.toThrow('ingest failed');
     // The revision was requested but never completed.
     expect(queue.getStableRevision()).toEqual({ state: 'pending' });
   });

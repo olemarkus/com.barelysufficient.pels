@@ -62,7 +62,8 @@ import type { PlanStatusRegistry } from '../plan/planStatusRegistry';
 import type { GenerationPollSource } from '../power/sources/generationPoll';
 import type { HomeyEnergyPollSource } from '../power/sources/homeyEnergyPoll';
 import type { PlanRebuildThrottle } from '../plan/rebuildScheduler/throttle';
-import type { RefreshTargetDevicesSnapshotOptions, AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
+import type { AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
+import type { SnapshotRefreshOptions } from '../device/snapshotRefreshScheduler';
 import type { TimerRegistry } from '../utils/timerRegistry';
 import type { FlowBackedDeviceState } from '../device/flowBackedDeviceState';
 import type {
@@ -142,7 +143,7 @@ export type AppContext = {
   updateOverheadToken: (value?: number) => Promise<void>;
   registerFlowCards: () => void;
   registerWidgetSettings: () => void;
-  refreshTargetDevicesSnapshot: (options?: RefreshTargetDevicesSnapshotOptions) => Promise<void>;
+  refreshTargetDevicesSnapshot: (options?: SnapshotRefreshOptions) => Promise<void>;
   recordPowerSample: (powerW: number, nowMs?: number) => Promise<PowerSampleAdmission>;
   handleOperatingModeChange: (rawMode: string) => Promise<void>;
   getFlowSnapshot: () => Promise<TargetDeviceSnapshot[]>;

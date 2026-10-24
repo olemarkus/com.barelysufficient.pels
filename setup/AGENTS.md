@@ -4,7 +4,7 @@
 
 ## No state
 
-- Keep mutable runtime state with its owning `lib/` module. A `setup/` class may hold readonly references to collaborators, not a changing cache, store, queue, or domain state. `npm run setup:stateless` enforces the syntactic rule; its allowlist only shrinks.
+- Keep mutable runtime state with its owning `lib/` module. A `setup/` class may hold readonly references to collaborators, not a changing cache, store, queue, or domain state. `npm run setup:stateless` enforces the syntactic rule, with no file exempt.
 
 ## No domain logic
 

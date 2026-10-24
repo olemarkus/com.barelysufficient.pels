@@ -2201,7 +2201,7 @@ describe('MyApp initialization', () => {
       lastObservedValue: 23,
       lastObservedSource: 'snapshot_refresh',
     };
-    const refreshSpy = vi.spyOn(app.snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(app.snapshotHelpers['refreshScheduler'], 'refresh').mockResolvedValue(undefined);
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     try {
       await app.snapshotHelpers.pollStuckTargetConfirmations();
@@ -2927,9 +2927,10 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     vi.spyOn(app, 'getNow').mockReturnValue(new Date('2026-03-21T10:00:00Z'));
 
-    const refreshSpy = vi.spyOn(app.snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const scheduler = app.snapshotHelpers['refreshScheduler'];
+    const refreshSpy = vi.spyOn(scheduler, 'refresh').mockResolvedValue(undefined);
     const logSpy = vi.spyOn(app as unknown as Record<'logPeriodicStatus', () => void>, 'logPeriodicStatus').mockImplementation(() => {});
-    const rescheduleSpy = vi.spyOn(app.snapshotHelpers, 'schedulePeriodicStatusLog');
+    const rescheduleSpy = vi.spyOn(scheduler, 'schedulePeriodicStatusLog');
 
     app.snapshotHelpers.startPeriodicSnapshotRefresh();
     refreshSpy.mockClear();
@@ -2990,7 +2991,7 @@ describe('periodic snapshot refresh scheduling', () => {
       expect(app.deviceManager.getSnapshot().find((device) => device.id === 'dev-1')?.lastFreshDataMs)
         .toBe(new Date(lastDataAt).getTime());
 
-      const refreshSpy = vi.spyOn(app.snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+      const refreshSpy = vi.spyOn(app.snapshotHelpers['refreshScheduler'], 'refresh').mockResolvedValue(undefined);
       app.snapshotHelpers.startPeriodicSnapshotRefresh();
       // 25 minutes: five 5-minute polls, ending exactly on the :25 status log
       // (which no longer fetches, so it contributes nothing here).
@@ -3013,7 +3014,7 @@ describe('periodic snapshot refresh scheduling', () => {
     vi.spyOn(app as unknown as Record<'logPeriodicStatus', () => void>, 'logPeriodicStatus').mockImplementation(() => {});
 
     let resolveRefresh: (() => void) | undefined;
-    const refreshSpy = vi.spyOn(app.snapshotHelpers, 'refreshTargetDevicesSnapshot').mockImplementation(() => (
+    const refreshSpy = vi.spyOn(app.snapshotHelpers['refreshScheduler'], 'refresh').mockImplementation(() => (
       new Promise<void>((resolve) => { resolveRefresh = resolve; })
     ));
 
@@ -3111,7 +3112,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const capture = captureLogger();
     try {
       const app = createApp();
-      const refreshSpy = vi.spyOn(app.snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+      const refreshSpy = vi.spyOn(app.snapshotHelpers['refreshScheduler'], 'refresh').mockResolvedValue(undefined);
 
       app.snapshotHelpers.schedulePostActuationRefresh();
       expect(app.snapshotHelpers.hasPendingPostActuationRefresh()).toBe(true);
@@ -3142,7 +3143,7 @@ describe('periodic snapshot refresh scheduling', () => {
 
   it('runs post-actuation refresh without recording a Homey Energy sample', async () => {
     const app = createApp();
-    const refreshSpy = vi.spyOn(app.snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(app.snapshotHelpers['refreshScheduler'], 'refresh').mockResolvedValue(undefined);
 
     app.snapshotHelpers.schedulePostActuationRefresh();
     await vi.advanceTimersByTimeAsync(5_000);
@@ -3158,7 +3159,7 @@ describe('periodic snapshot refresh scheduling', () => {
     try {
       const app = createApp();
       const refreshContexts: Array<Record<string, unknown>> = [];
-      const refreshSpy = vi.spyOn(app.snapshotHelpers, 'refreshTargetDevicesSnapshot')
+      const refreshSpy = vi.spyOn(app.snapshotHelpers['refreshScheduler'], 'refresh')
         .mockImplementation(async () => { refreshContexts.push(getCurrentContext()); });
 
       runWithContext({ homeId: 'h_area', rebuildId: 'rb_test' }, () => {

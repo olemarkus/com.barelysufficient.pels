@@ -463,7 +463,7 @@ describe('appSnapshotHelpers', () => {
       readMainMeter: resolveMainMeterRead,
     });
     helperRef.current = helper;
-    helper['snapshotRefreshStopped'] = false;
+    helper['refreshScheduler']['stopped'] = false;
 
     await helper.refreshTargetDevicesSnapshot();
 
@@ -508,7 +508,7 @@ describe('appSnapshotHelpers', () => {
       resolveMainMeterSelection: mainMeterSelection,
       readMainMeter: resolveMainMeterRead,
     });
-    helper['snapshotRefreshStopped'] = false;
+    helper['refreshScheduler']['stopped'] = false;
 
     const firstRefresh = helper.refreshTargetDevicesSnapshot();
     await Promise.resolve();
@@ -559,7 +559,7 @@ describe('appSnapshotHelpers', () => {
       resolveMainMeterSelection: mainMeterSelection,
       readMainMeter: resolveMainMeterRead,
     });
-    helper['snapshotRefreshStopped'] = false;
+    helper['refreshScheduler']['stopped'] = false;
 
     const firstRefresh = helper.refreshTargetDevicesSnapshot();
     await Promise.resolve();

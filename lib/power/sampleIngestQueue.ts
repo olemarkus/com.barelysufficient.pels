@@ -21,9 +21,11 @@ import { PreparedReconcileFence } from './preparedReconcileFence';
  *   The revision is taken at the synchronous request edge, before a coalesced
  *   sample can wait on plan work.
  *
- * The queue never sees what a run does. `run` is injected, which is what lets
- * this live in `lib/power` at all: the ingest it drives reaches into `lib/plan`
- * and `lib/objectives`, and `lib/power` sits under both.
+ * The queue never sees what a run does. Each submit hands in the ingest that
+ * runs it, which is what lets this live in `lib/power` at all: the ingest
+ * reaches into `lib/plan` and `lib/objectives`, and `lib/power` sits under both.
+ * Handing it in per submit, rather than at construction, is what lets the
+ * pipeline that owns the ingest take a queue built before it.
  */
 
 /** Whether the caller's own sample is the one the tracker now serves. */
@@ -47,25 +49,23 @@ export type SampleIngestQueue<TRequest> = {
    * what it cannot do is read a verdict that accounts for it, so it sees
    * `superseded` — see `resolveAdmission`.
    */
-  submit: (buildRequest: (revision: number) => TRequest) => Promise<SampleAdmission>;
+  submit: (
+    buildRequest: (revision: number) => TRequest,
+    /** One ingest. Never called concurrently with another this queue runs. */
+    ingest: (request: TRequest) => Promise<void>,
+  ) => Promise<SampleAdmission>;
   getStableRevision: () => StableSampleRevision;
   /** The fence a prepared reconcile holds against this ledger's stable revision. */
   preparedReconcileFence: PreparedReconcileFence;
 };
 
-export type SampleIngestQueueDeps<TRequest> = {
-  /** One ingest. Never called concurrently with itself. */
-  run: (request: TRequest) => Promise<void>;
-};
-
 type QueuedSample<TRequest> = {
   revision: number;
   request: TRequest;
+  ingest: (request: TRequest) => Promise<void>;
 };
 
-export const createSampleIngestQueue = <TRequest>(
-  deps: SampleIngestQueueDeps<TRequest>,
-): SampleIngestQueue<TRequest> => {
+export const createSampleIngestQueue = <TRequest>(): SampleIngestQueue<TRequest> => {
   let requestedRevision = 0;
   let completedRevision = 0;
 
@@ -76,7 +76,7 @@ export const createSampleIngestQueue = <TRequest>(
   );
 
   const loop = createSingleFlightLoop<QueuedSample<TRequest>>({
-    run: (queued) => deps.run(queued.request).then(() => {
+    run: (queued) => queued.ingest(queued.request).then(() => {
       // Only a run that COMPLETED advances the ledger; a throwing ingest leaves
       // the revision pending, so nothing reads its watts as admitted.
       completedRevision = queued.revision;
@@ -109,11 +109,11 @@ export const createSampleIngestQueue = <TRequest>(
   };
 
   return {
-    submit: async (buildRequest) => {
+    submit: async (buildRequest, ingest) => {
       requestedRevision += 1;
       const revision = requestedRevision;
       incPerfCounter('power_sample_requested_total');
-      await loop.request({ revision, request: buildRequest(revision) });
+      await loop.request({ revision, request: buildRequest(revision), ingest });
       return resolveAdmission(revision);
     },
     getStableRevision,
