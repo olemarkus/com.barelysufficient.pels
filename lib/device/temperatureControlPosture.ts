@@ -210,11 +210,9 @@ export function resolveTemperaturePolicyShedBehavior(
     return resolved;
   }
   noteSetpointLimitAvailable(limitedDevice);
-  const heatingLimitC = configured.temperature === 'device_minimum'
-    ? limitedDevice.setpointShedFloorC : configured.temperature;
   return {
     action: 'set_temperature',
-    temperature: direction === 'cooling' ? configured.coolingTemperature : heatingLimitC,
+    temperature: direction === 'cooling' ? configured.coolingTemperature : configured.temperature,
   };
 }
 
@@ -277,7 +275,7 @@ function resolveSetpointOnlyShed(
       temperature: configured.action === 'set_temperature' ? configured.coolingTemperature : COOLING_SHED_DEFAULT_C,
     };
   }
-  const temperature = configured.action === 'set_temperature' && typeof configured.temperature === 'number'
+  const temperature = configured.action === 'set_temperature'
     ? Math.max(device.setpointShedFloorC, normalizeShedTemperature(configured.temperature))
     : device.setpointShedFloorC;
   return { action: 'set_temperature', temperature };

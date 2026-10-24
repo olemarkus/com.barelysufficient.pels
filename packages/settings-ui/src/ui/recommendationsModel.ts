@@ -326,10 +326,10 @@ export const resolveSmartTaskStartPolicyRecommendations = (
 
 /**
  * A device PELS can limit only through its target, with no limited temperature
- * saved. PELS uses the device minimum, which may be lower than the owner
- * wants for a water heater's tank or a room that should stay warmer. A device with steps is limited by them instead.
- * Opening the device lands on the field; Dismiss is the owner keeping PELS's
- * choice.
+ * saved. PELS then lowers the target to the device's minimum, which may be
+ * colder than the owner wants for a water heater's tank or a room. A device with
+ * steps is limited by them instead. Opening the device lands on the field;
+ * Dismiss is the owner keeping the minimum.
  */
 export const resolveSetpointShedLimitRecommendations = (
   devices: readonly SettingsUiDeviceDetailItem[],
@@ -344,19 +344,17 @@ export const resolveSetpointShedLimitRecommendations = (
     || isSteppedLoadControlModel(device)
     || !supportsTemperatureControlDevice(device)
     || resolveShedBehavior(shedBehaviors, device.id).action === 'set_temperature') return [];
-  const minimumSource = getPrimaryTargetCapability(device.targets)?.min === undefined
-    ? 'PELS’s default minimum' : 'the device’s minimum target';
-  const heatingC = `${resolveSetpointShedFloorC(device)} °C (${minimumSource})`;
+  const heatingC = `${resolveSetpointShedFloorC(device)} °C`;
+  // Without a reported minimum the figure is PELS's class fallback, not the device's.
+  const lowest = getPrimaryTargetCapability(device.targets)?.min === undefined
+    ? '' : ', the lowest temperature it accepts';
   const name = formatDisplayDeviceName(device.name);
   // A unit that reports heating or cooling has a second limit, a ceiling while cooling.
   const body = device.capabilities?.includes('thermostat_mode') === true
-    ? `PELS limits ${name} by changing its target temperature. No limited temperatures are saved, `
-      + `so automatic uses ${heatingC} while heating, and ${COOLING_SHED_DEFAULT_C} °C while cooling. `
-      + 'Set your own, or dismiss this to keep automatic.'
-    // A limit at or above a mode's temperature leaves PELS nothing to lower in that mode.
-    : `PELS limits ${name} by lowering its target temperature. No limited temperature is saved, `
-      + `so automatic uses ${heatingC}. Set your own below each mode's temperature, or dismiss this to `
-      + 'keep automatic.';
+    ? `PELS limits ${name} by changing its target: to ${heatingC} while heating${lowest}, `
+      + `and ${COOLING_SHED_DEFAULT_C} °C while cooling. Set your own limits, or dismiss this to keep these.`
+    : `PELS limits ${name} by lowering its target to ${heatingC}${lowest}. Set a higher limit if it `
+      + `should stay warmer while limited, or dismiss this to keep ${heatingC}.`;
   return [{
     id: recommendationId('setpoint-shed-limit', device.id),
     version: RECOMMENDATION_VERSION,

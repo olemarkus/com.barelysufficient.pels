@@ -42,8 +42,7 @@ const loadHarness = async () => {
   const listening = (name: string) => ({
     addEventListener: (type: string, fn: () => Promise<void> | void) => { listeners[`${name}:${type}`] = fn; },
   });
-  const shedTemp = { value: '', label: '', placeholder: '', disabled: false, validity: { badInput: false }, reportValidity: vi.fn(), ...listening('temp') };
-  const automaticButton = { hidden: true, ...listening('automatic') };
+  const shedTemp = { value: '', label: '', disabled: false, validity: { badInput: false }, reportValidity: vi.fn(), ...listening('temp') };
   const shedTempRow = { hidden: true };
   const shedTempHint = { textContent: '' };
   const shedCoolingTemp = { value: '', disabled: false, ...listening('cooling') };
@@ -59,10 +58,8 @@ const loadHarness = async () => {
     deviceDetailShedSegmentedLabel: { hidden: false },
     deviceDetailShedHint: { hidden: false },
     deviceDetailShedTemp: shedTemp,
-    deviceDetailShedTempAutomatic: automaticButton,
     deviceDetailShedTempRow: shedTempRow,
     deviceDetailShedTempHint: shedTempHint,
-    deviceDetailShedTempLabel: { textContent: '', hidden: true },
     deviceDetailShedCoolingTemp: shedCoolingTemp,
     deviceDetailShedCoolingTempRow: shedCoolingTempRow,
     deviceDetailShedCoolingTempHint: shedCoolingTempHint,
@@ -108,15 +105,10 @@ const loadHarness = async () => {
     shedTemp.value = value;
     await listeners['temp:change']?.();
   };
-  const useAutomatic = async (device: SettingsUiDeviceSnapshot) => {
-    state.latestDevices = [device];
-    module.initDeviceDetailShedHandlers({ getCurrentDetailDeviceId: () => device.id });
-    await listeners['automatic:click']?.();
-  };
 
   return {
     state, shedTemp, shedTempRow, shedTempHint, shedCoolingTemp, shedCoolingTempRow, shedCoolingTempHint,
-    setSetting, show, changeCoolingLimit, changeHeatingLimit, useAutomatic, automaticButton,
+    setSetting, show, changeCoolingLimit, changeHeatingLimit,
   };
 };
 
@@ -202,74 +194,64 @@ const setpointOnlyDevice = () => buildDevice({
 });
 
 describe('limited temperature for a device with no on/off', () => {
-  it('shows automatic and the device minimum without saving the displayed result', async () => {
-    const { state, shedTemp, shedTempHint, automaticButton, setSetting, show } = await loadHarness();
+  it('starts the field at the device minimum without saving it', async () => {
+    const { state, shedTemp, shedTempHint, setSetting, show } = await loadHarness();
     const device = setpointOnlyDevice();
+    // The mode temperature plays no part: the limit is the device's minimum.
     state.modeTargets = { [state.activeMode]: { 'device-1': 70 } };
     show(device);
-    expect(shedTemp.value).toBe('');
-    expect(shedTemp.placeholder).toBe('Automatic');
-    expect(shedTempHint.textContent).toBe('Automatic: uses the device’s minimum target, 20 °C, when limiting.');
-    expect(automaticButton.hidden).toBe(true);
-    state.modeTargets = {};
-    show(device);
-    expect(shedTemp.value).toBe('');
-    expect(shedTempHint.textContent).toContain('20 °C');
+    expect(shedTemp.value).toBe('20');
+    expect(shedTempHint.textContent).toBe('PELS lowers the target to this while it limits the device. '
+      + 'Keep it below each mode\'s temperature, or PELS cannot limit the device in that mode.');
     expect(setSetting).not.toHaveBeenCalled();
   });
 
-  it('names the fallback honestly when the device supplies no minimum', async () => {
-    const { shedTempHint, show } = await loadHarness();
+  it('starts at PELS\'s fallback when the device reports no minimum', async () => {
+    const { shedTemp, show } = await loadHarness();
     show({ ...setpointOnlyDevice(), targets: [{ id: 'target_temperature', value: 70, unit: '°C' }] });
-    expect(shedTempHint.textContent).toBe('Automatic: uses PELS’s default minimum, 10 °C, when limiting.');
+    expect(shedTemp.value).toBe('10');
   });
 
-  it('saves an explicit value and removes it when Use automatic is pressed', async () => {
-    const { state, shedTemp, shedTempHint, automaticButton, show, changeHeatingLimit, useAutomatic } = await loadHarness();
+  it('saves a raised limit as a number, and an emptied field goes back to the device minimum', async () => {
+    const { state, shedTemp, show, changeHeatingLimit } = await loadHarness();
     const device = setpointOnlyDevice();
     state.shedBehaviors = { other: { action: 'turn_off' } };
     show(device);
     await changeHeatingLimit('25', device);
-    expect(state.shedBehaviors[device.id]).toEqual({ action: 'set_temperature', temperature: 25, coolingTemperature: 28 });
-    expect(shedTempHint.textContent).toContain('Uses this target when limiting, in every mode.');
-    expect(automaticButton.hidden).toBe(false);
-    await useAutomatic(device);
-    expect(state.shedBehaviors).toEqual({ other: { action: 'turn_off' } });
-    expect(shedTemp.value).toBe('');
-    expect(automaticButton.hidden).toBe(true);
+    expect(state.shedBehaviors).toEqual({
+      other: { action: 'turn_off' },
+      [device.id]: { action: 'set_temperature', temperature: 25, coolingTemperature: 28 },
+    });
+    await changeHeatingLimit('', device);
+    expect(state.shedBehaviors[device.id]).toEqual({ action: 'set_temperature', temperature: 20, coolingTemperature: 28 });
+    expect(shedTemp.value).toBe('20');
   });
 
-  it('clearing the heating field restores automatic and preserves a custom cooling limit', async () => {
-    const { state, shedTemp, show, changeHeatingLimit, changeCoolingLimit } = await loadHarness();
+  it('saves the device minimum as the heating limit when only the cooling limit changes', async () => {
+    const { state, shedTemp, show, changeCoolingLimit } = await loadHarness();
     const device = setpointOnlyDevice();
     device.capabilities?.push('thermostat_mode');
-    state.shedBehaviors = { [device.id]: { action: 'set_temperature', temperature: 25, coolingTemperature: 27 } };
     show(device);
-    await changeHeatingLimit('', device);
-    expect(state.shedBehaviors[device.id]).toEqual({
-      action: 'set_temperature', temperature: 'device_minimum', coolingTemperature: 27,
-    });
-    show(device);
-    expect(shedTemp.value).toBe('');
+    expect(shedTemp.value).toBe('20');
     await changeCoolingLimit('26', device);
-    expect(state.shedBehaviors[device.id]).toEqual({
-      action: 'set_temperature', temperature: 'device_minimum', coolingTemperature: 26,
-    });
+    expect(state.shedBehaviors[device.id]).toEqual({ action: 'set_temperature', temperature: 20, coolingTemperature: 26 });
   });
 
-  it('does not mistake incomplete numeric input for clearing the field', async () => {
+  it('does not mistake a partial number for a cleared field', async () => {
     const { state, shedTemp, setSetting, show, changeHeatingLimit } = await loadHarness();
     const device = setpointOnlyDevice();
-    state.shedBehaviors = { [device.id]: { action: 'set_temperature', temperature: 25, coolingTemperature: 28 } };
+    state.shedBehaviors = { [device.id]: { action: 'set_temperature', temperature: 55, coolingTemperature: 28 } };
     show(device);
+    // A number field reads empty while it holds '-'.
     shedTemp.validity.badInput = true;
     await changeHeatingLimit('', device);
     expect(setSetting).not.toHaveBeenCalled();
     expect(shedTemp.reportValidity).toHaveBeenCalled();
+    expect(state.shedBehaviors[device.id]).toMatchObject({ temperature: 55 });
   });
 
-  it('keeps a queued reset visible when an earlier numeric save fails', async () => {
-    const { state, shedTemp, shedTempHint, automaticButton, setSetting, show, changeHeatingLimit, useAutomatic } = await loadHarness();
+  it('keeps a newer limit visible when an earlier save fails', async () => {
+    const { state, shedTemp, setSetting, show, changeHeatingLimit } = await loadHarness();
     const device = setpointOnlyDevice();
     state.shedBehaviors = { [device.id]: { action: 'set_temperature', temperature: 25, coolingTemperature: 28 } };
     show(device);
@@ -280,26 +262,23 @@ describe('limited temperature for a device with no on/off', () => {
       failWrite = reject;
       markStarted();
     }));
-    const numericSave = changeHeatingLimit('30', device);
+    const firstSave = changeHeatingLimit('30', device);
     await started;
-    const reset = useAutomatic(device);
+    const secondSave = changeHeatingLimit('35', device);
     failWrite(new Error('earlier write failed'));
-    await Promise.all([numericSave, reset]);
-    expect(state.shedBehaviors[device.id]).toBeUndefined();
-    expect(shedTemp.value).toBe('');
-    expect(automaticButton.hidden).toBe(true);
-    expect(shedTempHint.textContent).toContain('Automatic:');
+    await Promise.all([firstSave, secondSave]);
+    expect(state.shedBehaviors[device.id]).toMatchObject({ temperature: 35 });
+    expect(shedTemp.value).toBe('35');
   });
 
-  it('restores the saved choice if resetting to automatic fails', async () => {
-    const { state, shedTemp, automaticButton, setSetting, show, useAutomatic } = await loadHarness();
+  it('restores the saved limit if a save fails', async () => {
+    const { state, shedTemp, setSetting, show, changeHeatingLimit } = await loadHarness();
     const device = setpointOnlyDevice();
     state.shedBehaviors = { [device.id]: { action: 'set_temperature', temperature: 25, coolingTemperature: 28 } };
     show(device);
     setSetting.mockRejectedValueOnce(new Error('write failed'));
-    await useAutomatic(device);
+    await changeHeatingLimit('30', device);
     expect(shedTemp.value).toBe('25');
-    expect(automaticButton.hidden).toBe(false);
     expect(state.shedBehaviors[device.id]).toMatchObject({ temperature: 25 });
   });
 });

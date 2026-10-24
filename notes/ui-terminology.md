@@ -632,19 +632,20 @@ renders visible-but-disabled with a gate hint naming the real switch**
 sections are structurally absent. Never vanish a control the user could
 re-enable from this page.
 
-### Device-page automatic limited temperature
+### Device-page limited temperature on a setpoint-only device
 
-On a temperature-only device without on/off or power levels, **Limited temperature**
-shows an empty field with **Automatic** as its placeholder when no fixed heating
-limit is saved. Its persistent hint is `Automatic: uses the device’s minimum target,
-N °C, when limiting.` If Homey supplies no minimum, name `PELS’s default minimum`
-instead (10 °C generally, 16 °C for air treatment). This target does not follow the
-mode temperature or the current measured temperature.
+On a temperature device without on/off or power levels, **Limited temperature**
+shows the device's minimum target when no limit is saved (10 °C if Homey reports
+no minimum, 16 °C for air treatment). There is no separate automatic choice: the
+field holds a temperature, and the owner raises it to keep the device warmer while
+limited; clearing it saves the minimum again. It does not follow the mode
+temperature or the measured temperature.
 
-A fixed value reads `Uses this target when limiting, in every mode.` and offers
-**Use automatic**. Clearing and committing the field has the same effect. Resetting
-heating preserves a separately configured cooling limit. Never describe this target
-as the device's current measured temperature or promise that it has stopped drawing.
+The field's hint is `PELS lowers the target to this while it limits the device.
+Keep it below each mode's temperature, or PELS cannot limit the device in that
+mode.` A unit that reports heating or cooling starts it with `While heating,
+PELS lowers its target to this instead of turning it off.` instead. Never describe this target as the device's current measured temperature
+or promise that it has stopped drawing.
 
 ### Device-page "Power when running" — one line about the present source
 
@@ -2249,20 +2250,26 @@ device-neutral.
 
 A managed device with Power-limit control on, a power reading and a
 temperature target but no on/off and no steps is limited only through its
-target. With no fixed limit saved, **Automatic** uses the device's configured
-minimum target, with the class fallback only when no minimum is reported.
+target. With no limit saved, PELS lowers the target to the device's minimum,
+with the class fallback only when no minimum is reported.
 `resolveSetpointShedLimitRecommendations` in
 `packages/settings-ui/src/ui/recommendationsModel.ts` offers an optional suggestion
-named `Set the limited temperature for {device name}`. It states the automatic
-heating temperature and whether that is the device minimum or PELS's fallback;
-a reversible unit also names the cooling limit. Dismissing it keeps automatic.
-The `Set temperature` action opens the device with **Limited temperature** in view.
+named `Set the limited temperature for {device name}`.
 
-Saving a fixed limit removes the suggestion. Nothing shows until the saved limits
-are read; a key that reads absent counts as "nothing saved" only once fresh reads
-a moment apart agree. The field follows "Device-page automatic limited temperature"
-above. A fixed heating limit's hint also says `Keep it below each mode’s temperature
-so PELS can reduce heating.`
+- Body: `PELS limits {device} by lowering its target to {N} °C, the lowest
+  temperature it accepts. Set a higher limit if it should stay warmer while
+  limited, or dismiss this to keep {N} °C.` Without a reported minimum the
+  `, the lowest temperature it accepts` clause is left out, since {N} is PELS's
+  fallback. A unit that reports heating or cooling reads `PELS limits {device}
+  by changing its target: to {N} °C while heating, the lowest temperature it
+  accepts, and 28 °C while cooling. Set your own limits, or dismiss this to keep
+  these.`
+- Action: `Set temperature`, opening the device with **Limited temperature** in
+  view.
+- Saving a limit removes the suggestion; dismissing it keeps the minimum.
+  Nothing shows until the saved limits are read; a key that reads absent counts
+  as "nothing saved" only once fresh reads a moment apart agree. The field
+  follows "Device-page limited temperature on a setpoint-only device" above.
 
 ### Car battery recommendations
 

@@ -104,7 +104,7 @@ describe('DeviceConfigurationStore identity resolution', () => {
     expect(resolve(snapshotFor(deviceClass, shape))).toMatchObject(expected);
   });
 
-  it('resolves the automatic limit from the accepted device target metadata', () => {
+  it('resolves the default limit from the accepted device target metadata', () => {
     const device = snapshotFor('heater', 'temperature_only');
     device.targets = [{ id: 'target_temperature', value: 70, unit: '°C', min: 45, max: 85, step: 1 }];
     expect(resolve(device)?.setpointShedFloorC).toBe(45);

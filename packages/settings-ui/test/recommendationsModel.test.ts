@@ -144,9 +144,8 @@ describe('setup recommendations', () => {
       version: 1,
       category: 'recommendation',
       title: 'Set the limited temperature for Water Heater',
-      body: 'PELS limits Water Heater by lowering its target temperature. No limited temperature is saved, '
-        + 'so automatic uses 10 °C (the device’s minimum target). Set your own below each mode\'s '
-        + 'temperature, or dismiss this to keep automatic.',
+      body: 'PELS limits Water Heater by lowering its target to 10 °C, the lowest temperature it accepts. '
+        + 'Set a higher limit if it should stay warmer while limited, or dismiss this to keep 10 °C.',
       actionLabel: 'Set temperature',
       target: { kind: 'device-shed-limit', deviceId: 'eligible' },
     }]);
@@ -167,13 +166,31 @@ describe('setup recommendations', () => {
       [heatPump], { 'heat-pump': true }, { 'heat-pump': true }, {},
     );
 
-    expect(recommendation?.body).toBe('PELS limits Heat Pump by changing its target temperature. '
-      + 'No limited temperatures are saved, so automatic uses 10 °C (PELS’s default minimum) while '
-      + 'heating, and 28 °C while cooling. Set your own, or dismiss this to keep automatic.');
+    expect(recommendation?.body).toBe('PELS limits Heat Pump by changing its target: to 10 °C while heating, '
+      + 'and 28 °C while cooling. Set your own limits, or dismiss this to keep these.');
   });
 
-  it('names the fallback when the device reports no minimum', () => {
-    // A device in another area: its mode temperature lives in that area's catalog.
+  it('names the device\'s own minimum for a unit that reports heating or cooling', () => {
+    const heatPump = device({
+      id: 'heat-pump',
+      name: 'Heat Pump',
+      deviceClass: 'heatpump',
+      deviceType: 'temperature',
+      powerCapable: true,
+      capabilities: ['measure_power', 'measure_temperature', 'target_temperature', 'thermostat_mode'],
+      targets: [{ id: 'target_temperature', value: 22, unit: '°C', min: 16, max: 30 }],
+    });
+
+    const [recommendation] = resolveSetpointShedLimitRecommendations(
+      [heatPump], { 'heat-pump': true }, { 'heat-pump': true }, {},
+    );
+
+    expect(recommendation?.body).toBe('PELS limits Heat Pump by changing its target: to 16 °C while heating, '
+      + 'the lowest temperature it accepts, and 28 °C while cooling. Set your own limits, or dismiss this to '
+      + 'keep these.');
+  });
+
+  it('does not call the fallback the device\'s own minimum', () => {
     const heater = device({
       id: 'annex-heater',
       name: 'Annex Water Heater',
@@ -188,7 +205,8 @@ describe('setup recommendations', () => {
       [heater], { 'annex-heater': true }, { 'annex-heater': true }, {},
     );
 
-    expect(recommendation?.body).toContain('so automatic uses 10 °C (PELS’s default minimum).');
+    expect(recommendation?.body).toBe('PELS limits Annex Water Heater by lowering its target to 10 °C. '
+      + 'Set a higher limit if it should stay warmer while limited, or dismiss this to keep 10 °C.');
   });
 
   it('does not recommend built-in control for devices without an available switch', () => {
