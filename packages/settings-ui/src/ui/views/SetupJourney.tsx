@@ -2,7 +2,7 @@ import type { SetupPath } from '../setupPathModel.ts';
 import type { SolarSetupAction } from '../setupDevices.ts';
 import { AppBar } from './AppBar.tsx';
 import {
-  MdFilledButton, MdTextButton, MdSwitch, readSwitchSelected,
+  MdFilledButton, MdFilledTonalButton, MdTextButton, MdSwitch, readSwitchSelected,
 } from './materialWebJSX.tsx';
 
 export type SetupDeviceChoice = {
@@ -70,6 +70,8 @@ export type SetupJourneyHeaderProps = {
   quarterHourAdvice: boolean;
   onQuarterHour: () => void;
   onDismissQuarterHour: () => void;
+  capacityOffAction: boolean;
+  onCapacityOff: () => void;
 };
 
 export const SetupJourneyHeader = (props: SetupJourneyHeaderProps) => (
@@ -79,6 +81,15 @@ export const SetupJourneyHeader = (props: SetupJourneyHeaderProps) => (
       <span class="plan-chip plan-chip--muted">{props.progress}</span>
     </div>
     {props.detail && <p class="pels-card-supporting">{props.detail}</p>}
+    {/* Tonal, not text: while it shows, Continue is disabled, so this is the
+        step's next action and must not read as a peer of Back to setup. */}
+    {props.capacityOffAction && (
+      <div class="setup-recommendation-card__actions">
+        <MdFilledTonalButton type="button" disabled={props.busy} onClick={props.onCapacityOff}>
+          Turn off Capacity limit
+        </MdFilledTonalButton>
+      </div>
+    )}
     {props.quarterHourAdvice && <div>
       <p class="pels-card-supporting">In Flanders? Use the 15-minute average for measured peaks.</p>
       <div class="setup-recommendation-card__actions">

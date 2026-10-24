@@ -49,8 +49,10 @@ export const syncHardCapChoice = (configured: boolean, scalars: CapacityScalarSe
   if (configured) return;
   const limit = formatHardCapKw(scalars.limitKw);
   if (settingsCapacityChoiceText) {
+    // All three ways out, so the line never contradicts a setup step that
+    // explains why this home can turn the limit off.
     settingsCapacityChoiceText.textContent = `Not chosen yet. PELS uses ${limit}. `
-      + `Set the level you want to stay under, or keep ${limit}.`;
+      + `Set the level you want to stay under, keep ${limit}, or turn off Capacity limit.`;
   }
   if (settingsCapacityKeepButton) settingsCapacityKeepButton.textContent = `Keep ${limit}`;
 };

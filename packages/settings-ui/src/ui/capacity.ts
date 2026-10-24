@@ -82,6 +82,7 @@ import {
   readCurrentCapacitySettings,
   resolveCapacityScalars,
   writeLimitsSettings,
+  writeCapacityOffSetting,
   writeCapacityPeriodSetting,
   writeSimulationSetting,
 } from './capacitySettingsPersistence.ts';
@@ -103,7 +104,8 @@ export type PowerSource = 'flow' | 'homey_energy';
 type CapacitySettingsCommand =
   | ({ kind: 'limits' } & PowerLimitSettings)
   | { kind: 'simulation'; dryRun: boolean }
-  | { kind: 'period'; periodMinutes: 15 | 60 };
+  | { kind: 'period'; periodMinutes: 15 | 60 }
+  | { kind: 'capacity-off' };
 
 // Mirrors the runtime snapshot's lifecycle: simulation is the boot default,
 // then only a resolved read or successful save replaces it.
@@ -291,6 +293,7 @@ const resolveCapacitySettingsCommand = (
     periodMinutes: command.periodMinutes,
   };
   if (command.kind === 'period') return { ...stored, periodMinutes: command.periodMinutes };
+  if (command.kind === 'capacity-off') return { ...stored, capacityEnabled: false };
   return { ...stored, dryRun: command.dryRun };
 };
 
@@ -499,6 +502,7 @@ const saveCapacitySettingsCommand = async (
     // own change goes through the guarded seam (`savePowerSourceSetting`).
     if (command.kind === 'limits') await writeLimitsSettings(current, stored, resolved);
     else if (command.kind === 'period') await writeCapacityPeriodSetting(current, resolved.periodMinutes);
+    else if (command.kind === 'capacity-off') await writeCapacityOffSetting(stored);
     else await writeSimulationSetting(current, resolved.dryRun);
   } catch (caught) {
     // Started writes have settled, and each one that landed is already in the
@@ -529,7 +533,7 @@ const saveCapacitySettingsCommand = async (
   if (command.kind === 'limits') {
     publishHardCapRead(true, committed);
     syncCapacityLimitControls(committed);
-  } else if (command.kind === 'period') {
+  } else if (command.kind === 'period' || command.kind === 'capacity-off') {
     if (lastHardCapConfigured !== undefined) publishHardCapRead(lastHardCapConfigured, committed);
     syncCapacityLimitControls(committed);
   } else {
@@ -561,10 +565,15 @@ export const saveSettingsLimitsSettings = async () => {
   }
 };
 
-export const saveCapacityPeriodSettings = async (periodMinutes: 15 | 60): Promise<void> => {
+// One-tap setup actions: queued behind any form save, each writing only its own
+// field, so neither confirms the built-in hard cap.
+const saveCapacityFieldCommand = async (
+  command: Extract<CapacitySettingsCommand, { kind: 'period' | 'capacity-off' }>,
+  successMessage: string,
+): Promise<void> => {
   const previous = limitsSaveQueue;
-  const save = trackSetupSave('period', () => previous.then(
-    () => saveCapacitySettingsCommand({ kind: 'period', periodMinutes }, 'Capacity period saved.'),
+  const save = trackSetupSave(command.kind, () => previous.then(
+    () => saveCapacitySettingsCommand(command, successMessage),
   ));
   limitsSaveQueue = save.catch(() => undefined);
   try {
@@ -574,6 +583,14 @@ export const saveCapacityPeriodSettings = async (periodMinutes: 15 | 60): Promis
     throw error;
   }
 };
+
+export const saveCapacityPeriodSettings = (periodMinutes: 15 | 60): Promise<void> => (
+  saveCapacityFieldCommand({ kind: 'period', periodMinutes }, 'Capacity period saved.')
+);
+
+export const saveCapacityOffSettings = (): Promise<void> => (
+  saveCapacityFieldCommand({ kind: 'capacity-off' }, 'Capacity limit turned off.')
+);
 
 export const saveSimulationModeSettings = async (
   enabled = settingsSimulationModeInput ? settingsSimulationModeInput.selected : true,

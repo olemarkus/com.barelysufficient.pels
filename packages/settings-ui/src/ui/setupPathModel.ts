@@ -178,15 +178,27 @@ export const isBelgianHourlySetup = (market: SettingsUiHubMarketRead, hardCap: S
 const MEASURED_PEAK_QUESTION = 'Charged for your highest hourly or 15-minute average grid import? '
   + 'Set your hard cap, or turn off Capacity limit.';
 
+const DUTCH_CONNECTION_TARIFF = 'Dutch household grid charges depend on connection size, not measured peaks. '
+  + 'You can turn off Capacity limit and still use prices and solar.';
+
+// What an unchosen cap adds after the running default. Every Norwegian household
+// pays for its measured hourly peaks, so asking would only make the owner answer
+// the same yes; the step names the running default and stops. Dutch bills call
+// the connection-size charge a capacity tariff too, so the Netherlands gets the
+// distinction spelled out. Everywhere else the answer depends on the grid company.
+const resolveUnsetCapacityGuidance = (market: SettingsUiHubMarketRead): string | null => {
+  if (market.state !== 'resolved') return MEASURED_PEAK_QUESTION;
+  if (market.country === 'NO') return null;
+  return market.country === 'NL' ? DUTCH_CONNECTION_TARIFF : MEASURED_PEAK_QUESTION;
+};
+
 const resolveHardCapDetail = (facts: SetupPathFacts): string => {
   const { hardCap, market } = facts;
   // Only while the step is open: beside a grid import limit the step is done.
   if (hardCap.state === 'unset') {
-    const guidance = market.state === 'resolved' && market.country === 'NL'
-      ? 'Dutch household grid charges depend on connection size, not measured peaks. '
-        + 'You can turn off Capacity limit and still use prices and solar.'
-      : MEASURED_PEAK_QUESTION;
-    return `${formatCapacityDetail(hardCap)}. ${guidance}`;
+    const guidance = resolveUnsetCapacityGuidance(market);
+    const running = formatCapacityDetail(hardCap);
+    return guidance === null ? running : `${running}. ${guidance}`;
   }
   return formatLimitsSummary(hardCap);
 };
