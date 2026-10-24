@@ -1,6 +1,7 @@
 import type {
   PreparedSupportReport,
   SupportReportErrorCode,
+  SupportReportSubmission,
   SupportReportRequest,
   SupportReportSubject,
 } from '../../../contracts/src/supportReport.ts';
@@ -16,7 +17,7 @@ export type ReportDraft = {
   historyWindow: SupportReportRequest['historyWindow'];
 };
 
-export type ReportOperation = 'idle' | 'preparing' | 'sending' | 'checking';
+export type ReportOperation = 'idle' | 'sending' | 'checking';
 
 export type SupportReportViewState = {
   draft: ReportDraft;
@@ -71,25 +72,27 @@ const REPORT_ERRORS: Record<SupportReportErrorCode, string> = {
   invalid_time: 'Choose a valid date and time that is not in the future.',
   invalid_subject: 'Choose an available device or report a problem with the app.',
   invalid_window: 'Choose how much activity to include.',
-  report_expired: 'This preview has expired. Your description is kept; preview it again to capture current details.',
-  report_too_large: 'The report is too large to prepare. Choose one device or activity around the incident.',
-  report_busy: 'A report is being sent or was just sent. Wait a moment before trying again.',
-  consent_required: 'Use Send report after reviewing the preview.',
+  report_expired: 'The report expired before it was sent. Your description is kept; send it again.',
+  report_too_large: 'The report is too large to send. Choose one device or activity around the incident.',
+  report_busy: 'A report was just sent. Wait a minute before sending another.',
+  consent_required: 'Use Send report to send the report.',
   app_store_required: 'Sending requires an App Store installation. You can copy the report instead.',
   sender_unavailable: 'Homey’s reporting service is unavailable. You can copy the report instead.',
-  capture_failed: 'Could not prepare the report. Your description is kept. Try Preview report again.',
+  capture_failed: 'Could not prepare the report. Your description is kept. Try Send report again.',
 };
 
 export const reportErrorMessage = (code: SupportReportErrorCode): string => REPORT_ERRORS[code];
 
+const SUBMISSION_MESSAGES: Record<Exclude<SupportReportSubmission['state'], 'draft'>, string> = {
+  sending: 'Sending your report through Homey…',
+  sent: '',
+  unknown: 'Submission could not be confirmed. It may have arrived. Check submission before sending another report.',
+  failed: 'Homey refused the report. Your description is kept; send it again or copy it.',
+};
+
 export const reportSubmissionMessage = (report: PreparedSupportReport): string => {
-  switch (report.submission.state) {
-    case 'draft': return 'Your report is ready to review.';
-    case 'sending': return 'Sending your report through Homey…';
-    case 'sent': return 'Homey accepted your report.';
-    case 'unknown':
-      return 'Submission could not be confirmed. It may have arrived. Check submission before sending another report.';
-    case 'failed': return 'The report was not sent. Your description is kept. Edit details to prepare a new preview.';
-    default: return '';
-  }
+  const { state } = report.submission;
+  if (state !== 'draft') return SUBMISSION_MESSAGES[state];
+  if (report.availability === 'available') return '';
+  return reportErrorMessage(report.availability === 'app_store_required' ? 'app_store_required' : 'sender_unavailable');
 };

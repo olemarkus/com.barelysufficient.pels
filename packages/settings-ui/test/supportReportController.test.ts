@@ -20,71 +20,116 @@ const setup = () => {
 };
 
 describe('support report controller', () => {
-  it('requires a preview and invalidates it when the description changes', async () => {
+  it('sends the description in one step: prepares the report, then sends that report', async () => {
     const { controller, api, current } = setup();
-    await controller.send();
-    expect(api.send).not.toHaveBeenCalled();
-    await controller.prepare();
-    expect(current().report?.document.id).toBe('report-1');
-    controller.edit({ ...current().draft, problem: 'The heater resumed late.' });
-    expect(current().report).toBeNull();
-    await controller.send();
-    expect(api.send).not.toHaveBeenCalled();
+    await controller.submit();
+    expect(api.prepare).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ problem: 'The heater stayed off.' }));
+    expect(api.send).toHaveBeenCalledExactlyOnceWith('report-1');
+    expect(current().report?.submission).toEqual({ state: 'sent', reference: 'homey-1' });
+    expect(current().operation).toBe('idle');
   });
 
-  it('returns to editing with the reviewed incident time and requires another preview', async () => {
-    const { controller, api, current, report } = setup();
-    await controller.prepare();
-    controller.editDetails();
-    expect(current().report).toBeNull();
-    expect(current().draft.problem).toBe(report.document.request.problem);
-    expect(current().draft.when).toBe('custom');
-    expect(current().draft.atMs).toBe(report.document.request.occurredAtMs);
-    await controller.send();
-    expect(api.send).not.toHaveBeenCalled();
-    await controller.prepare();
-    expect(api.prepare).toHaveBeenLastCalledWith(report.document.request);
+  it('asks for a description before sending anything', async () => {
+    const { controller, api, current } = setup();
+    controller.edit({ ...current().draft, problem: '  ' });
+    await controller.submit();
+    expect(api.prepare).not.toHaveBeenCalled();
+    expect(current().notice).toBe('Describe what happened before sending the report.');
   });
 
-  it('sends only the reviewed identifier and ignores a second click while in flight', async () => {
+  it('ignores a second send and edits while a send is in flight', async () => {
     const { controller, api, current, report } = setup();
     let finish!: (response: SupportReportResponse) => void;
     vi.mocked(api.send).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
-    await controller.prepare();
-    const sending = controller.send();
-    await controller.send();
+    const sending = controller.submit();
+    await vi.waitFor(() => expect(api.send).toHaveBeenCalled());
+    await controller.submit();
     controller.edit({ ...current().draft, problem: 'Changed while sending' });
-    controller.editDetails();
     expect(current().report?.submission.state).toBe('sending');
-    expect(api.send).toHaveBeenCalledExactlyOnceWith('report-1');
     expect(current().draft.problem).toBe('The heater stayed off.');
     finish({ ok: true, report: { ...report, submission: { state: 'sent', reference: 'homey-1' } } });
     await sending;
+    expect(api.prepare).toHaveBeenCalledTimes(1);
+    expect(api.send).toHaveBeenCalledExactlyOnceWith('report-1');
     expect(current().report?.submission).toEqual({ state: 'sent', reference: 'homey-1' });
+  });
+
+  it('keeps a report it cannot send so it can be copied, and drops it once the description changes', async () => {
+    const { controller, api, current, report } = setup();
+    vi.mocked(api.prepare).mockResolvedValue({ ok: true, report: { ...report, availability: 'app_store_required' } });
+    await controller.submit();
+    expect(api.send).not.toHaveBeenCalled();
+    expect(current().report?.submission.state).toBe('draft');
+    expect(current().notice).toBe('Sending requires an App Store installation. You can copy the report instead.');
+    controller.edit({ ...current().draft, problem: 'The heater resumed late.' });
+    expect(current().report).toBeNull();
+  });
+
+  it('keeps a refused report for copying and prepares a new one when sent again', async () => {
+    const { controller, api, current, report } = setup();
+    vi.mocked(api.send).mockResolvedValueOnce({ ok: true, report: { ...report, submission: { state: 'failed' } } });
+    await controller.submit();
+    expect(current().report?.submission.state).toBe('failed');
+    expect(current().notice).toContain('Homey refused the report');
+    await controller.submit();
+    expect(api.prepare).toHaveBeenCalledTimes(2);
+    expect(current().report?.submission.state).toBe('sent');
+  });
+
+  it('keeps the prepared report for copying when Homey refuses the send itself', async () => {
+    const { controller, api, current } = setup();
+    vi.mocked(api.send).mockResolvedValueOnce({ ok: false, code: 'sender_unavailable' });
+    await controller.submit();
+    expect(current().report?.submission.state).toBe('draft');
+    expect(current().report?.document.id).toBe('report-1');
+    expect(current().notice).toBe('Homey’s reporting service is unavailable. You can copy the report instead.');
+  });
+
+  it('keeps the report it could not send when sending again cannot prepare a new one', async () => {
+    const { controller, api, current, report } = setup();
+    vi.mocked(api.prepare).mockResolvedValueOnce({ ok: true, report: { ...report, availability: 'unavailable' } });
+    await controller.submit();
+    vi.mocked(api.prepare).mockRejectedValueOnce(new Error('Connection lost'));
+    await controller.submit();
+    expect(current().report?.document.id).toBe('report-1');
+    expect(current().notice).toContain('Could not prepare the report');
+  });
+
+  it('keeps the incident time of a report that expires before its outcome is checked', async () => {
+    const { controller, api, current, report } = setup();
+    vi.mocked(api.send).mockRejectedValueOnce(new Error('Network request failed'));
+    vi.mocked(api.get).mockResolvedValueOnce({ ok: false, code: 'report_expired' });
+    await controller.submit();
+    await controller.check();
+    expect(current().report).toBeNull();
+    expect(current().draft).toMatchObject({ when: 'custom', atMs: report.document.request.occurredAtMs });
+    await controller.submit();
+    expect(api.prepare).toHaveBeenLastCalledWith(expect.objectContaining({
+      occurredAtMs: report.document.request.occurredAtMs,
+    }));
   });
 
   it('preserves an uncertain submission and checks its outcome without posting again', async () => {
     const { controller, api, current } = setup();
     vi.mocked(api.send).mockRejectedValue(new Error('Network request failed'));
-    await controller.prepare();
-    await controller.send();
+    await controller.submit();
     expect(current().report?.submission.state).toBe('unknown');
-    expect(current().draft.problem).toBe('The heater stayed off.');
-    await controller.send();
+    await controller.submit();
     await controller.check();
     expect(api.send).toHaveBeenCalledTimes(1);
     expect(api.get).toHaveBeenCalledExactlyOnceWith('report-1');
     expect(current().report?.submission.state).toBe('sent');
   });
 
-  it('retains the description after preparation fails and when returning to the page', async () => {
+  it('retains the description when the report cannot be prepared', async () => {
     const { controller, api, current } = setup();
     vi.mocked(api.prepare).mockRejectedValue(new Error('History unavailable'));
-    await controller.prepare();
+    await controller.submit();
     controller.show();
     expect(current().draft.problem).toBe('The heater stayed off.');
     expect(current().notice).toContain('description is kept');
     expect(current().report).toBeNull();
+    expect(api.send).not.toHaveBeenCalled();
   });
 
   it('restores a prepared report by identifier without sending it', async () => {
@@ -115,7 +160,7 @@ describe('support report controller', () => {
     vi.mocked(api.get).mockRejectedValueOnce(new Error('Connection lost'));
     await controller.restore('report-1');
     expect(current().recoveryId).toBe('report-1');
-    await controller.prepare();
+    await controller.submit();
     expect(api.prepare).not.toHaveBeenCalled();
     await controller.check();
     expect(current().recoveryId).toBeNull();
@@ -126,7 +171,7 @@ describe('support report controller', () => {
     const { controller, api, current } = setup();
     controller.selectContext({ kind: 'device', homeId: 'area-1', deviceId: 'heater' }, 1700000000123);
     controller.edit({ ...current().draft, historyWindow: 'day' });
-    await controller.prepare();
+    await controller.submit();
     expect(api.prepare).toHaveBeenCalledWith(expect.objectContaining({
       subject: { kind: 'device', homeId: 'area-1', deviceId: 'heater' },
       occurredAtMs: 1700000000123,
@@ -134,25 +179,9 @@ describe('support report controller', () => {
     }));
   });
 
-  it('keeps the incident time of a preview that expires before it is sent', async () => {
-    const { controller, api, current, report } = setup();
-    await controller.prepare();
-    vi.mocked(api.send).mockResolvedValueOnce({ ok: false, code: 'report_expired' });
-    await controller.send();
-    expect(current().report).toBeNull();
-    expect(current().draft).toMatchObject({
-      when: 'custom', atMs: report.document.request.occurredAtMs, problem: report.document.request.problem,
-    });
-    await controller.prepare();
-    expect(api.prepare).toHaveBeenLastCalledWith(expect.objectContaining({
-      occurredAtMs: report.document.request.occurredAtMs,
-    }));
-  });
-
   it('starts a new report from another device after a sent one', async () => {
     const { controller, current } = setup();
-    await controller.prepare();
-    await controller.send();
+    await controller.submit();
     expect(current().report?.submission.state).toBe('sent');
     controller.selectContext({ kind: 'device', homeId: 'main', deviceId: 'boiler' }, 1700000000456);
     expect(current().notice).toBe('');
@@ -161,5 +190,18 @@ describe('support report controller', () => {
       subject: { kind: 'device', homeId: 'main', deviceId: 'boiler' }, when: 'custom', atMs: 1700000000456,
       problem: '', expected: '',
     });
+  });
+
+  it('starts a new report when the page is reopened after a sent one, but keeps an unsettled one', async () => {
+    const { controller, api, current } = setup();
+    await controller.submit();
+    controller.leaveSentReport();
+    expect(current().report).toBeNull();
+    expect(current().draft.problem).toBe('');
+    controller.edit({ ...current().draft, problem: 'The boiler stopped.' });
+    vi.mocked(api.send).mockRejectedValueOnce(new Error('Network request failed'));
+    await controller.submit();
+    controller.leaveSentReport();
+    expect(current().report?.submission.state).toBe('unknown');
   });
 });

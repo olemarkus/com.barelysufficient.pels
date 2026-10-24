@@ -1,8 +1,9 @@
 # Manual problem reports
 
-The reporting owner in `lib/diagnostics/` prepares an immutable incident snapshot,
-then submits it only after the user previews it and selects **Send report**.
-It has no automatic triggers or analytics collection.
+The reporting owner in `lib/diagnostics/` prepares an immutable incident snapshot
+when the user selects **Send report**, and the settings UI sends it straight away.
+The UI shows the user's own description, not the captured report, which is not
+written for people to read. It has no automatic triggers or analytics collection.
 
 Reports contain the description, incident time, selected home/device, an explicitly
 selected slice of persisted device activity, and allowlisted current readouts.
@@ -13,7 +14,7 @@ Current readouts retain their timestamps and are separate from incident history.
 Unavailable history or current sections remain visible omissions. Area reports
 never substitute Main's data where the selected area's read is unavailable.
 
-The preview is the PELS-authored message. Homey also attaches its normal app logs.
+The message is PELS-authored. Homey also attaches its normal app logs.
 The current collector does not dump settings, credentials, raw Homey devices, or
 ordinary stdout/stderr into the message. New sections require explicit field
 selection at their diagnostic projection, rather than serializing an owner object.
@@ -21,8 +22,8 @@ selection at their diagnostic projection, rather than serializing an owner objec
 The authenticated prepare/read/send endpoints operate on report identifiers. Send
 requires explicit consent and transmits the saved message, without recapturing
 state. Homey's owner-authenticated manager API receives `{message}` at the app's
-`crashlog` endpoint. Only App Store installations can submit; others can preview
-and copy. No new Homey API key is required. The public
+`crashlog` endpoint. Only App Store installations can submit; for others the UI
+offers Copy report, which shows the text only when the clipboard is unavailable. No new Homey API key is required. The public
 [Homey manager API](https://athombv.github.io/node-homey-api/HomeyAPIV2.ManagerApps.html#getAppStd)
 documents the optional `message` string, without a size limit.
 

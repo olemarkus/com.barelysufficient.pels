@@ -64,9 +64,8 @@ const controller = new SupportReportController({
   const previousStage = surface.querySelector<HTMLElement>('[data-report-stage]')?.dataset.reportStage;
   renderSupportReportView(surface, { state: view, homeName, backTarget, actions: {
     edit: (draft) => { clearReportReference(); controller.edit(draft); },
-    editDetails: () => { clearReportReference(); controller.editDetails(); },
-    prepare: () => { clearReportReference(); return controller.prepare(); },
-    send: () => controller.send(), check: () => controller.check(),
+    submit: () => { clearReportReference(); return controller.submit(); },
+    check: () => controller.check(),
     startAnother: () => { clearReportReference(); controller.startAnother(); },
     notice: (message) => controller.notice(message),
   } });
@@ -88,6 +87,7 @@ export const refreshSupportReport = async (): Promise<void> => {
     contextInitialized = true;
     await Promise.all([controller.restore(reportId), refreshHomeScope()]);
   } else {
+    controller.leaveSentReport();
     await refreshHomeScope();
   }
   if (request !== refreshSequence) return;
