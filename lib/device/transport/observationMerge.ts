@@ -8,7 +8,6 @@ import { EV_SOC_NATIVE_CAPABILITY_IDS } from './stateOfCharge';
 import {
     buildCapabilityObservationKey,
     type CapabilityObservation,
-    type CapabilityObservationSource,
     type DeviceTransportObservationState,
 } from './observationState';
 import { incPerfCounter } from '../../utils/perfCounters';
@@ -328,9 +327,8 @@ function mergeCapabilityObservation(
         return;
     }
     const fetchedLastUpdatedMs = getCapabilityLastUpdatedMs(sourceDevice, capabilityId);
-    const fetchedHasKnownFreshness = typeof fetchedLastUpdatedMs === 'number'
-        && Number.isFinite(fetchedLastUpdatedMs);
-    const fetchedIsFreshEnough = fetchedHasKnownFreshness && fetchedLastUpdatedMs >= observation.observedAt;
+    const fetchedIsFreshEnough = fetchedLastUpdatedMs !== undefined
+        && fetchedLastUpdatedMs >= observation.observedAt;
     // For the binary control capability, log both sources' observations and the
     // value the observer consolidates them to whenever one source wins (the
     // two-source reconciliation we want visibility on); when both already agree
@@ -373,14 +371,7 @@ function mergeCapabilityObservation(
         acceptFreshCapabilityPull(state, snapshot, capabilityId, observation, fetchedValue);
         return;
     }
-    const shouldPreserveObservation = shouldPreserveRetainedObservation({
-        source: observation.source,
-        fetchedHasKnownFreshness,
-        fetchedLastUpdatedMs,
-        observedAt: observation.observedAt,
-        preserveWithoutFetchedFreshness: isRejectedTemperatureObservation(capabilityId, observation),
-    });
-    if (!shouldPreserveObservation) {
+    if (!shouldPreserveRetainedObservation(capabilityId, observation, fetchedLastUpdatedMs)) {
         emitConsolidation(fetchedValue, 'pull', 'retained_not_preserved');
         return;
     }
@@ -396,9 +387,7 @@ function mergeCapabilityObservation(
         source: observation.source,
         capabilityId,
         observedAtMs: observation.observedAt,
-        fetchedLastUpdatedMs: typeof fetchedLastUpdatedMs === 'number' && Number.isFinite(fetchedLastUpdatedMs)
-            ? fetchedLastUpdatedMs
-            : null,
+        fetchedLastUpdatedMs: fetchedLastUpdatedMs ?? null,
     });
 }
 
@@ -425,23 +414,19 @@ function isRejectedTemperatureObservation(
     return isTemperatureCapability && !isFiniteNumber(observation.value);
 }
 
-function shouldPreserveRetainedObservation(params: {
-    source: CapabilityObservationSource;
-    fetchedHasKnownFreshness: boolean;
-    fetchedLastUpdatedMs?: number;
-    observedAt: number;
-    preserveWithoutFetchedFreshness: boolean;
-}): boolean {
-    const {
-        source, fetchedHasKnownFreshness, fetchedLastUpdatedMs, observedAt,
-        preserveWithoutFetchedFreshness,
-    } = params;
-    if (preserveWithoutFetchedFreshness && !fetchedHasKnownFreshness) return true;
-    const fetchedIsOlder = fetchedLastUpdatedMs !== undefined && fetchedLastUpdatedMs < observedAt;
-    if (source === 'device_update') {
-        return !fetchedHasKnownFreshness || fetchedIsOlder;
+// A dated pull wins unless it is older than the retained observation. An
+// undated pull cannot be ordered against it, so only a device update or a
+// rejected temperature reading is kept over it.
+function shouldPreserveRetainedObservation(
+    capabilityId: string,
+    observation: CapabilityObservation,
+    fetchedLastUpdatedMs: number | undefined,
+): boolean {
+    if (fetchedLastUpdatedMs === undefined) {
+        return observation.source === 'device_update'
+            || isRejectedTemperatureObservation(capabilityId, observation);
     }
-    return fetchedHasKnownFreshness && fetchedIsOlder;
+    return fetchedLastUpdatedMs < observation.observedAt;
 }
 
 // Only a source that actually won carries a decision. The case where both
