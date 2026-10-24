@@ -1,6 +1,7 @@
 import { refreshActivityHistory } from './activityHistory.ts';
 import { refreshAdvancedDeviceLogger } from './advanced.ts';
 import { refreshSupportReport } from './supportReport.ts';
+import { currentSetupJourney, type SetupJourneyStep } from './setupJourneyState.ts';
 import { panels, tabListEntries, tabs, type MdTabElement } from './dom.ts';
 import { SETTINGS_UI_POWER_PATH } from '../../../contracts/src/settingsUiApi.ts';
 import { loadCapacitySettings } from './capacity.ts';
@@ -238,6 +239,7 @@ const showPanel = (tabId: string) => {
 // The route on screen: a panel id, or a Budget view route that shares the
 // Budget panel (see shellRoutes.ts). Back and Forward compare against it.
 let currentRouteId = 'overview';
+let currentSetup: SetupJourneyStep | null = null;
 
 // Leaving a Budget view route for the plain Budget page closes the view, as a
 // Budget-tab tap does for the editor (with the same unsaved-changes notice).
@@ -256,6 +258,7 @@ const closeBudgetViewFor = (nextRouteId: string) => {
 export const renderPanel = (routeId: string) => {
   closeBudgetViewFor(routeId);
   currentRouteId = routeId;
+  currentSetup = currentSetupJourney();
   if (!isBudgetViewRoute(routeId)) {
     showPanel(routeId);
     return;
@@ -286,10 +289,11 @@ const readShellHistoryState = (): ShellHistoryState | null => {
  * (`?page=…`, see shellRoutes.ts), so Back, Forward, reload and links reach
  * it. A panel already named by the URL is only shown.
  */
-export const showTab = (tabId: string) => {
-  if (isShellPanel(tabId) && panelFromSearch(window.location.search) !== tabId) {
+export const showTab = (tabId: string, setup?: SetupJourneyStep) => {
+  if (isShellPanel(tabId) && (panelFromSearch(window.location.search) !== tabId
+    || currentSetupJourney() !== (setup ?? null))) {
     const entry: ShellHistoryState = { pelsShellPanel: tabId, pelsFrom: currentRouteId };
-    window.history.pushState(entry, '', shellRouteUrl(tabId, window.location));
+    window.history.pushState(entry, '', shellRouteUrl(tabId, window.location, setup));
   }
   renderPanel(tabId);
 };
@@ -328,7 +332,7 @@ export const initShellRouter = () => {
   window.addEventListener('popstate', () => {
     if (isDeadlinePlanRoute(window.location.search) || isDeadlinePlanShown()) return;
     const routeId = panelFromSearch(window.location.search) ?? 'overview';
-    if (routeId === currentRouteId) {
+    if (routeId === currentRouteId && currentSetup === currentSetupJourney()) {
       if (routeId === 'report-problem') runTabActivationSideEffects(routeId);
       return;
     }

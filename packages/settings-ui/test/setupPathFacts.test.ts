@@ -67,7 +67,7 @@ describe('setup path facts', () => {
     facts.publishSetupMarket({ state: 'resolved', country: 'BE' });
     facts.publishSetupHardCapRead(true, { ...running, gridImportLimitKw: 3.3, limitKw: 5, marginKw: 0.3 });
     expect(hardCapDetail(facts)).toBe(
-      '3.3 kW grid import limit, 5 kW hard cap (hourly average), 0.3 kW safety margin. In Flanders, use the 15-minute average.',
+      '3.3 kW grid import limit, 5 kW hard cap (hourly average), 0.3 kW safety margin',
     );
   });
 

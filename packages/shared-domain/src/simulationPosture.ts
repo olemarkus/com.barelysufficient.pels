@@ -96,7 +96,7 @@ export const resolveSimulationBannerContent = (input: {
     if (!input.mainSimulating) return null;
     return {
       text: 'Simulation on — devices stay as-is',
-      actionLabel: 'Turn off simulation',
+      actionLabel: 'Review and start',
       scope: 'all',
     };
   }
@@ -105,7 +105,7 @@ export const resolveSimulationBannerContent = (input: {
     // SAME way in both strings: the button used to say bare "Main".
     return {
       text: `${HOMES_MAIN_HOME_NAME} simulation on — ${HOMES_MAIN_HOME_NAME} devices stay as-is`,
-      actionLabel: `Turn off ${HOMES_MAIN_HOME_NAME} simulation`,
+      actionLabel: `Review ${HOMES_MAIN_HOME_NAME} setup`,
       scope: 'main',
     };
   }

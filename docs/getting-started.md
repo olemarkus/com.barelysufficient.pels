@@ -1,186 +1,124 @@
 ---
-title: "Setup Guide: Connect Your Power Meter & Set a Capacity Limit"
-description: Install PELS on Homey Pro, connect your power meter, choose your limits, and get your first useful setup running.
+title: "Setup Guide: Connect a Meter and Start Managing a Device"
+description: Connect your meter, choose one device, confirm the relevant settings, then preview and activate PELS.
 ---
 
 # Getting Started
 
-PELS is the Homey app that takes your heavy electrical loads off your hands. It keeps your power usage inside your capacity limit, decides which devices to turn down first, plans Smart tasks around deadlines, and shifts flexible load into cheaper hours — automatically, every hour.
-
-In practice, most users spend their time in **More -> Apps -> PELS -> Settings** and a small number of Homey Flows.
-
-If PELS is not installed yet, get it from the [Homey App Store](https://homey.app/a/com.barelysufficient.pels).
-
-<figure class="docs-figure">
-  <img class="docs-diagram" src="/diagrams/pels-control-loop.svg" alt="Diagram showing whole-home power data flowing into PELS, PELS applying hard cap, priorities, prices, modes and Smart tasks, and then managing EV charging, hot water, heating and ventilation." />
-  <figcaption>PELS sits between whole-home power data and managed devices. It uses your hard cap, priorities, prices, modes and Smart tasks to decide what should run, pause or resume.</figcaption>
-</figure>
+**Connect the meter → choose one device → confirm settings → preview and activate.**
 
 ## Before you begin
 
-- PELS must already be installed on your Homey Pro.
-- You need a whole-home power meter paired with Homey (e.g. Tibber Pulse, AMS/HAN reader, P1 reader, Shelly EM) or another Flow source that can report current load in watts.
-- You should know which devices in your home use the most power and can tolerate being turned down temporarily.
+Install [PELS on Homey Pro](https://homey.app/a/com.barelysufficient.pels), with a whole-home meter and a suitable device available in Homey.
 
 ## Open PELS settings
 
-In the Homey app, open **More -> Apps -> PELS -> Settings**. This is where all configuration happens. Homey does not take you there after installing, so this is the first thing to find.
-
-The first time you open it, the **Overview** shows a **Set up PELS** card with what PELS needs before it manages anything: your power meter and the devices it manages. Once a device may be limited, the card also shows the hard cap PELS is holding it to, so you can set your own. Once something in your home uses prices, it also shows where they come from, until you have set them up. Each row opens the page where you do that step, and the card shows what is done as you go. The same card sits under **Settings > Setup & recommendations**. It disappears once everything that applies to your home is done.
-
-When it does, the Overview may show **PELS can do more for this home**. That opens the features that apply to your home and are not in use yet: following electricity prices, using your own solar, and Smart tasks. Each one can be dismissed if it is not for you.
+Open **More → Apps → PELS → Settings**, then **Set up PELS** on Overview. You can also open **Settings > Setup & recommendations**. Use **Continue** to move through the settings that apply to your home.
 
 ## Step 1: Connect your power meter
 
-Live power input is what PELS plans on — connect it once and every other feature unlocks.
+Check the detected source and current reading. If you need to select a meter, choose **Power source > Power meter**, then **Whole-home meter**. PELS can adopt the only whole-home meter marked **Tracks total home energy consumption** in Homey, unless it has already received Flow readings.
 
-**Easiest path — use your power meter.** If your power meter is marked **Tracks total home energy consumption** in Homey and it is the only whole-home meter Homey lists, PELS starts reading it on its own shortly after starting, unless it has ever received readings from a Flow. No Flow and nothing to pick. This works for Tibber Pulse, P1/HAN readers, Shelly EM, and similar. If you have several meters, or you chose the Flow source earlier, go to **Settings > Limits & safety**, set **Power source** to **Power meter**, and pick the meter under **Whole-home meter**.
+If your source needs a Flow, use **Report power usage** with current power in watts. For solar, send net import, negative when exporting. [Meter setup details](/homey-energy).
 
-See [Using Homey Energy](/homey-energy) for the full walkthrough, including how to also read electricity prices from Homey Energy (especially useful outside Norway).
+<details>
+<summary>No meter readings?</summary>
 
-**Alternative — feed power via Flow.** If your meter is not in Homey Energy, or you want to combine sources before sending the value to PELS, create a Homey Flow that calls the **Report power usage** action whenever your meter updates. Input is current power in watts.
+Check the selected meter in Homey and whether its reading changes. For a Fluvius P1 reader, [activate the user port through Mijn Fluvius](https://www.fluvius.be/nl/meters-en-meterstanden/maak-je-meter-slim) and check the P1 or GP indicator on the meter. Activation can take up to 72 hours.
 
-Once power data is flowing, the **Overview** page starts showing real data.
+</details>
 
-## Step 2: Set your limits
+<span id="step-3-choose-which-devices-pels-controls"></span>
 
-Go to **Settings > Limits & safety** and turn on the limits that apply to your home. You can use either, both, or neither.
+## Step 2: Choose one device
 
-- **Grid import limit**: the most power you want to draw from the grid at any moment, for example the contracted power of your meter. PELS starts reducing loads near 95% of it, using the latest whole-home net import reading, and brings devices back in priority order when power is available again. It is not electrical protection: a short overshoot is possible while the meter updates and devices respond.
-- **Capacity limit**: turn this on when your grid tariff charges for your highest average power over an hour or a quarter-hour. Turn it off if you have no capacity tariff (the Netherlands, for example); everything else still works. With it on, set:
-  - **Capacity period** — choose **Hourly average** for hourly tariffs, or **15-minute average** when your grid tariff measures quarter-hour peaks (Belgium's capacity tariff, and 15-minute peak tariffs in several other markets).
-  - **Hard cap (kW)** — the average power level you do not want the selected period to exceed. Set this to match the peak or tariff step you want PELS to protect, for example 5 kW or 8 kW.
-  - **Safety margin (kW)** — a buffer below the hard cap. PELS starts turning things down before you actually hit the limit. A margin of 0.3-0.5 kW is a reasonable starting point. On the 15-minute period this margin is the whole buffer, so size it for your slowest device. See [Tips > Capacity tuning](/tips-and-best-practices#capacity-tuning-advice).
+Turn on **Managed by PELS** for one suitable device. For devices with power readings, this also enables **Power-limit control**. Open **Device settings** to review what PELS may change.
 
-With the 15-minute period selected, a 5 kW hard cap gives each quarter a 1.25 kWh allowance. The page also reports the highest fully tracked quarter-hour average in the current month. This is a control aid based on the readings PELS received; your grid operator may apply a minimum peak or combine monthly peaks when calculating the bill.
+For solar, select **Use more of your own solar**. The action opens the appropriate existing control:
 
-<figure class="docs-figure">
-  <img class="docs-screenshot" src="/screenshots/settings/limits-safety.png" alt="PELS Settings Limits and safety page showing the Grid import limit and Capacity limit switches, capacity period, hard cap and safety margin." />
-  <figcaption>Limits & safety is where you turn on the grid import limit and the capacity limit, and choose the capacity period, power source, hard cap and safety margin.</figcaption>
-</figure>
-
-::: tip
-Enable **Simulation mode** in **Settings > Simulation mode** while you are getting started. PELS will calculate what it *would* do without actually controlling any devices. This lets you verify the setup is sensible before giving PELS real control.
-:::
-
-## Step 3: Choose which devices PELS controls
-
-Go to **Settings > Devices**. For each device you want PELS to manage, configure:
-
-| Control | What it means |
+| Device control | Setting |
 | --- | --- |
-| **Managed** | PELS includes the device in its planning. Unmanaged devices are treated as background load. For devices with a power reading, turning Managed on also turns on Limit. |
-| **Limit** | PELS is allowed to lower, pause or turn this device off: to stay within your grid import limit or hard cap, to keep to your daily budget, or to follow your solar surplus. |
-| **Price** | PELS adjusts this device's temperature targets based on electricity prices (only relevant for temperature devices). |
+| Temperature adjustment | **Use solar surplus** |
+| On/off operation | **Run on solar surplus** |
+| EV charging with suitable control | **Charge on solar surplus** |
+| Other suitable stepped loads | **Match solar surplus** |
 
-Good first candidates are water heaters, floor heating, panel heaters, and ventilation — devices that use a lot of power but can tolerate being turned down for a while.
+You can find this path before export has been observed. If a prerequisite is missing, follow the hint beside the action. [Solar setup details](/solar).
 
-<figure class="docs-figure">
-  <img class="docs-screenshot" src="/screenshots/settings/devices.png" alt="PELS Settings Devices page showing EV charger, heater and thermostat devices with Managed, Limit and Price controls." />
-  <figcaption>Devices is where each load is marked as managed, can be limited to stay under your limits, adjusted by price, or left as background usage.</figcaption>
-</figure>
+A dynamic-price contract, battery, daily budget, and Smart task are not required.
 
-## Step 4: Set up modes, priorities, and targets
+<span id="step-2-set-your-limits"></span>
 
-Modes are the core of how PELS decides what to do. Each mode stores a separate set of priorities and target temperatures for your devices. Go to **Settings > Modes** to configure them.
+## Step 3: Confirm relevant settings
 
-### Create your modes
+Review the choices PELS shows for this home:
 
-Common modes are **Home**, **Night**, and **Away**. Think of them as profiles for different situations:
+- **Capacity limit** applies to measured hourly or 15-minute average grid import. Choose the period, hard cap, and safety margin, or turn it off if it does not apply.
+- **Grid import limit** is a separate choice for limiting current grid import. Use either limit, both, or neither.
+- **Prices** appears in setup only when an enabled feature uses them.
 
-- **Home** — normal daytime comfort
-- **Night** — keep bedrooms warm, lower priority on other heating
-- **Away** — reduce everything to minimum acceptable levels
+In Flanders, use **15-minute average** if your bill uses measured quarter-hour peaks. **Use 15-minute average** changes only the period; confirm your hard cap separately. Advice can be dismissed and never changes settings automatically.
 
-### Set priorities and target temperatures
+<details>
+<summary>Dutch solar contracts and Flemish peak billing</summary>
 
-For each device in each mode, you configure two things:
+Dutch net metering ends on **1 January 2027**. Export still receives compensation; the benefit of using more solar at home depends on your contract. [Dutch government guidance](https://www.rijksoverheid.nl/themas/klimaat-milieu-en-natuur/energie-thuis/salderingsregeling).
 
-- **Priority** — a number where lower means more important. When PELS needs to turn things down, it starts with the highest-numbered (least important) devices and works its way up. When there is room again, it resumes devices in the opposite order.
-- **Desired temperature** — the target temperature PELS will set for this device in this mode (for temperature devices).
+Dutch bills also use “capacity tariff” for connection-capacity charges. PELS's **Capacity limit** concerns measured average peaks. [ACM guidance](https://consument.acm.nl/elektriciteit-en-gas/wat-betaal-ik-voor-mijn-energie/wat-zijn-netwerkkosten-capaciteitstarief-aansluittarief-meettarief).
 
-<figure class="docs-figure">
-  <img class="docs-screenshot" src="/screenshots/settings/modes.png" alt="PELS Settings Modes page showing Home mode priorities and target temperatures for managed devices." />
-  <figcaption>Modes is where priorities and comfort targets differ between Home, Away and Night.</figcaption>
-</figure>
+For eligible Flemish digital-meter households, the **2.5 kW billing minimum** is a billing rule, not a recommended PELS target. **Highest completed quarter this month** is based on readings received by PELS. It does not reproduce the operator's billing calculation, which applies its own minimums and aggregation. [Vlaamse Nutsregulator guidance](https://www.vlaamsenutsregulator.be/elektriciteit-en-aardgas/nettarieven/capaciteitstarief).
 
-For example, in **Night** mode you might set:
-- Bedroom heater: priority 1, target 20 °C — stays on as long as possible
-- Living room heater: priority 2, target 18 °C — turned down before the bedroom
-- Water heater: priority 3 — limited first if needed
+</details>
 
-### Switch modes with Flows
+## Step 4: Preview and activate
 
-Modes only take effect when activated. Create Flows to switch modes automatically:
+Open **Review setup**. Check the selected device, enabled controls, and applicable limits.
 
-- **Time-based**: Set mode to Night at 23:00, Home at 07:00
-- **Presence-based**: Set mode to Away when everyone leaves, Home when someone arrives
-- **Manual**: Use a virtual button or the Homey app to switch modes on demand
+**Simulation mode is on** means PELS is still previewing. Choose **Start managing** to enable control, or **Keep simulating** to return to Overview. The simulation banner's **Review and start** action brings you back.
 
-Use the **Set operating mode** Flow action card to change the active mode.
+A solar device showing **Waiting for solar surplus** can be correctly configured. Missing meter readings or an unavailable solar signal are separate conditions with their own checks.
 
-Re-sending the current mode is also a simple way to reapply targets if a device has drifted from its target temperature.
+Before adding a Smart task to a solar-only device, remember that the active task decides when it runs and may use grid electricity.
 
-## Step 5: Add price optimization (optional)
+<span id="quick-setup-checklist"></span>
 
-If you want PELS to shift heating to cheaper hours, go to **Settings > Electricity prices**:
+Your first setup needs a connected meter, one suitable managed device, and confirmation of the settings that apply. You can add more devices later.
 
-1. Choose your price source — **Norway (spot + grid tariff)** if you are in Norway, or **Homey Energy**, **Power by the Hour** or a **Flow card** for other sources. If you already run the Power by the Hour app, that source needs no setup beyond picking it. Until you choose, the page says which source PELS is using, with a button to keep it.
-2. Make sure the price status shows that data is available.
-3. If using the Norway source, select your county, grid company, tariff group, pricing model (Strømstøtte or Norgespris) and price area. A setting you have not chosen yet says what PELS uses in its place, and without a grid company your prices leave out the grid tariff. PELS suggests the grid company, county and price area for your Homey's location; tap **Use these** to save them.
+## Optional next steps
 
-Then go to **Settings > Devices**, open each temperature device that should participate, and enable **Price** or **Setup > Price-based control**. Water heaters and floor heating are the highest-impact picks — they carry the thermal mass that makes shifting pay off.
+<span id="step-4-set-up-modes-priorities-and-targets"></span>
+<span id="create-your-modes"></span>
+<span id="set-priorities-and-target-temperatures"></span>
+<span id="switch-modes-with-flows"></span>
 
-After at least one device has price response enabled, use **Settings > Price-aware devices** to turn **Respond to prices** on or off globally and set per-device temperature adjustments:
-- **Cheap** (°C): the cheap-hour boost, how far the temperature goes up while power is cheap, for example 2 °C.
-- **Expensive** (°C): the expensive-hour reduction, how far the temperature goes down while power is expensive, for example 2 °C.
+### Modes and priorities
 
-## Step 6: Add Smart tasks (optional)
+Priorities are assigned automatically. Change them or add custom modes under **Settings > Modes** when needed. For temperature devices, review the existing target. [Configuration reference](/configuration).
 
-Use Smart tasks when one device must reach a target by a specific time. For example:
+<span id="step-5-add-price-optimization-optional"></span>
 
-- charge an EV to 80% by 07:00
-- heat a room to 21 °C by 06:30
-- heat a water heater before a busy morning
+### Price response
 
-Smart tasks are created with Homey Flow action cards such as **Add charging task** and **Add heating task**. See [Smart Tasks](/smart-tasks) for the full guide.
+Choose a source under **Settings > Electricity prices**, then enable **Price-based control** on the temperature devices that should use it. [Price-aware devices](/configuration#settings-price-aware-devices).
 
-For dashboard-driven setup, pin the **Create smart task** widget. It lets you pick a managed device, preview the ready-by window, and create a one-off task. The **Smart task list** widget then shows active task status, and **Held-back devices** can offer **Let it run now** for a device PELS has kept below its target.
+<span id="step-6-add-smart-tasks-optional"></span>
 
-## Quick setup checklist
+### Smart tasks
 
-Once you have worked through the steps above, verify:
+Open **Smart tasks > New smart task**, choose a device and goal, then preview its ready-by time. Use Flows for repeating tasks. [Smart tasks guide](/smart-tasks).
 
-1. Your power meter Flow is running and the Overview shows current usage.
-2. You have chosen your limits in **Settings > Limits & safety**: Grid import limit, Capacity limit (with a hard cap and safety margin), both, or neither.
-3. At least a few devices are marked as Managed and have Limit enabled.
-4. You have at least one mode with sensible priorities and targets.
-5. You have Flows to switch between modes.
-6. Optional Smart task Flows are configured for devices that need a target by a ready-by time.
-7. Simulation mode is disabled when you are ready for PELS to take real control.
+### Daily budget
+
+Add a [daily energy budget](/daily-budget) only if you want one.
 
 ## Terminology and units
 
-- **Power** is instantaneous load, measured in **W** or **kW**.
-- **Energy** is usage over time, measured in **kWh**.
-- **Grid import limit**: the most power you want to draw from the grid at any moment, in **kW**.
-- **Hard cap** — your maximum average power for the selected capacity period, in **kW**.
-- **Safety margin** — a buffer below the hard cap where PELS starts reacting, in **kW**.
-- **Available power** — how much more load PELS can fit right now before it reaches the current safe pace, in **kW**.
-- **Daily budget** — an optional soft guide for total energy in a day, in **kWh**. Used to spend less by shifting load into cheap hours or to hold the home under a daily energy ceiling; it never overrides the selected-period hard cap. See [Daily Energy Budget](/daily-budget#why-set-a-daily-budget).
-
-For the full vocabulary, see the [Glossary](/glossary).
+See the [Glossary](/glossary) for units and PELS terms, and [Limits & safety](/configuration) for the settings reference.
 
 ## What to read next
 
-- [How PELS Decides](/how-pels-decides) for the plain-language mental model
-- [Configuration](/configuration) for the full settings reference
-- [Cost-Saving Functions](/cost-saving-functions) for choosing between power limiting, budget, price shift, tasks, and Flows
-- [Smart Tasks](/smart-tasks) for charging or heating a device by a ready-by time
-- [Book Cheap Hours With Flows](/how-to-book-cheap-hours-with-flows) for fixed cheapest-hour windows
-- [PELS Insights](/insights-device) for dashboards and quick status
-- [Configure an EV Charger](/ev-charger) for current-controlled EV charging
-- [Tips and Best Practices](/tips-and-best-practices) for tuning advice
-- [Daily Energy Budget](/daily-budget) for daily pacing and budget control
-- [Glossary](/glossary) for any term, defined
-- [Troubleshooting](/troubleshooting) when something isn't behaving as expected
+- [Solar and Self-Consumption](/solar)
+- [Configure an EV Charger](/ev-charger)
+- [How PELS Decides](/how-pels-decides)
+- [Tips and Best Practices](/tips-and-best-practices)
+- [Troubleshooting](/troubleshooting)

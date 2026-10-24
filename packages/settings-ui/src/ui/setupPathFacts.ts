@@ -8,6 +8,8 @@ import {
   type SetupCapacityLimit,
   type SetupHardCap,
   type SetupPathState,
+  type SetupPathFacts,
+  resolveSetupSteps,
   type SetupPowerReadings,
   type SetupPrices,
 } from './setupPathModel.ts';
@@ -15,6 +17,7 @@ import type { ResolvedPriceSetupStatus } from './priceSetupStatus.ts';
 import { supportsTemperatureDevice } from './deviceUtils.ts';
 import { readHomeMembership, subscribeToHomeScope } from './homeScope.ts';
 import { hasActiveDeadlineObjective, state } from './state.ts';
+import { currentSetupJourney } from './setupJourneyState.ts';
 
 /**
  * Where the setup path's facts meet.
@@ -66,7 +69,7 @@ let lastNotifiedPath = '';
 const notify = (): void => {
   // The market is part of it: with setup complete the path is unchanged either way,
   // yet a market landing still changes which recommendations are drawn.
-  const resolved = JSON.stringify([readSetupPath(), market]);
+  const resolved = JSON.stringify([readSetupPath(), readSetupReview(), market]);
   if (resolved === lastNotifiedPath) return;
   lastNotifiedPath = resolved;
   listeners.forEach((listener) => listener());
@@ -185,7 +188,7 @@ const resolveSetupPrices = (managedIds: readonly string[]): SetupPrices => {
 };
 
 /** `loading` until every fact has arrived once, so no step is judged on a guess. */
-export const readSetupPath = (): SetupPathRead => {
+const readSetupFacts = (): SetupFactsRead<SetupPathFacts> => {
   const membership = readHomeMembership();
   if (power.state === 'loading' || hardCap.state === 'loading' || prices.state === 'loading'
     || !state.devicesLoaded || membership.state === 'loading') return { state: 'loading' };
@@ -196,7 +199,7 @@ export const readSetupPath = (): SetupPathRead => {
     .map((device) => device.id));
   const managedIds = [...knownIds].filter((id) => state.managedMap[id] === true);
   const limitableIds = managedIds.filter((id) => state.controllableMap[id] === true);
-  return resolveSetupPath({
+  return { state: 'ready', value: {
     power: power.value,
     hardCap: hardCap.value,
     market,
@@ -204,7 +207,17 @@ export const readSetupPath = (): SetupPathRead => {
     limitableDeviceCount: limitableIds.length,
     simulating: state.dryRun,
     prices: resolveSetupPrices(managedIds),
-  });
+  } };
+};
+
+export const readSetupPath = (): SetupPathRead => {
+  const facts = readSetupFacts();
+  return facts.state === 'ready' ? resolveSetupPath(facts.value) : facts;
+};
+
+export const readSetupReview = () => {
+  const facts = readSetupFacts();
+  return facts.state === 'ready' ? resolveSetupSteps(facts.value) : null;
 };
 
 // While the setup path is open, the card stands in for two global banners.
@@ -225,8 +238,7 @@ const isCardOnScreen = (): boolean => SETUP_PATH_PANELS.has(state.activePanel);
 // The simulation banner stands down in two cases.
 //
 // Nothing managed, on every panel: there is no device for simulation to hold
-// still, so "devices stay as-is" is vacuous — and its one action, "Turn off
-// simulation", is the last thing an owner with no configuration should do first.
+// still. Setup leads to review once the essential settings are ready.
 //
 // On a panel that shows the path card: the card carries its own simulation
 // note a few pixels below. Same reasoning as the Simulation page, where the
@@ -240,13 +252,10 @@ export const isSimulationCarriedBySetupPath = (knownSingleHome: boolean): boolea
   return isCardOnScreen() || isSetupStepOpen(path, 'devices');
 };
 
-// The no-readings banner stands down in ONE case: no reading has ever arrived,
-// and the card is on screen with its Power meter step saying the banner's own
-// sentence (owner ruling 2026-09-20). Two surfaces a few pixels apart telling a
-// new owner the same thing cost the first viewport at 320 px and said nothing
-// twice. Everywhere else the banner is still the one staleness surface: on
-// panels without the card, and always once readings that HAD arrived stop —
-// that is an alert about a working setup, not a setup step.
-export const isNoReadingsCarriedBySetupPath = (knownSingleHome: boolean): boolean => (
-  isCardOnScreen() && isSetupStepOpen(readOpenPath(knownSingleHome), 'power')
-);
+// Before the first reading, the path card and guided meter step carry the
+// same remedy as the banner. Show it once. Stopped readings still use the
+// banner: that is an alert about a previously working meter.
+export const isNoReadingsCarriedBySetupPath = (knownSingleHome: boolean): boolean => {
+  const powerStepVisible = state.activePanel === 'limits' && currentSetupJourney() === 'power';
+  return (isCardOnScreen() || powerStepVisible) && isSetupStepOpen(readOpenPath(knownSingleHome), 'power');
+};

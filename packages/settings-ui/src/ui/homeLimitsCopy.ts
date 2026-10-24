@@ -31,11 +31,11 @@ export const HOME_LIMITS_HARD_CAP_HINT = 'The peak or tariff step this meter are
 // a subpart's cap is exactly the mistake the scope bar exists to prevent. The
 // area branch names its scope three times; the Main branch must name it once.
 //
-// Homes without a capacity tariff can now turn this axis off independently
+// Homes without measured-peak charges can turn this axis off independently
 // of grid import control. The setting does not need an artificially high cap.
 export const HOME_LIMITS_MAIN_HARD_CAP_HINT = 'The peak or tariff step you want to protect. '
   + 'PELS keeps each selected period’s average power under this. '
-  + 'No capacity tariff where you live? Turn off Capacity limit.';
+  + 'Not charged for measured peaks? You can turn off Capacity limit.';
 export const HOME_LIMITS_MAIN_HARD_CAP_HINT_WITH_AREAS = 'The Main home’s peak or tariff step. '
   + 'PELS keeps each selected period’s average power under this.';
 
