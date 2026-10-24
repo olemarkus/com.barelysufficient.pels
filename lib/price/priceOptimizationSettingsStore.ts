@@ -15,6 +15,7 @@ import {
   encodePriceAdjustment,
   type PriceAdjustmentKind,
 } from '../../packages/shared-domain/src/settings/priceOptimization';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 export type PriceOptimizationDeviceSettings = Record<string, PriceOptimizationConfig>;
 
@@ -47,10 +48,6 @@ export type PriceOptimizationSettingsStore = {
 
 const DEFAULT_THRESHOLD_PERCENT = 25;
 const DEFAULT_MIN_DIFF_ORE = 0;
-
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
 
 const readNumberOrDefault = (value: unknown, fallback: number): number => (
   typeof value === 'number' && Number.isFinite(value) ? value : fallback
@@ -170,9 +167,9 @@ export function writeDevicePriceAdjustment(
     return 'unavailable';
   }
   const read = classifyPriceOptimizationConfigMap(raw);
-  if (read.state === 'unavailable' || !isRecord(raw)) return 'unavailable';
+  if (read.state === 'unavailable' || !isUnknownRecord(raw)) return 'unavailable';
   const entry = raw[deviceId];
-  if (!Object.hasOwn(read.settings, deviceId) || !isRecord(entry) || !read.settings[deviceId]?.enabled) {
+  if (!Object.hasOwn(read.settings, deviceId) || !isUnknownRecord(entry) || !read.settings[deviceId]?.enabled) {
     return 'price_control_off';
   }
   if (entry[encoded.field] === encoded.value) return 'unchanged';

@@ -2,6 +2,7 @@ import type {
     TargetPowerSteppedLoadConfig,
     TargetPowerSteppedLoadPreset,
 } from '../../packages/contracts/src/types';
+import { isUnknownRecord, type UnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 export type Logger = {
     log: (...args: unknown[]) => void;
@@ -54,12 +55,6 @@ export type CapabilityValue<T> = {
     setable?: boolean;
     lastUpdated?: string | number | Date | null;
 };
-
-type UnknownRecord = Record<string, unknown>;
-
-export const isUnknownRecord = (value: unknown): value is UnknownRecord => (
-    typeof value === 'object' && value !== null && !Array.isArray(value)
-);
 
 export type HomeyDeviceLike = {
     id: string;

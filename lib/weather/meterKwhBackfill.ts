@@ -1,5 +1,5 @@
 import { parseInsightsTimestamp } from './insightsTimestamp';
-import { isUnknownRecord } from '../utils/types';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import {
   getDateKeyInTimeZone,
   getDateKeyStartMs,

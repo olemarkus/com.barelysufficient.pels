@@ -1,16 +1,11 @@
 import { getRawFromHomeyApi, HOMEY_LOCATION_API_PATH } from '../lib/device/transport/managerHomeyApi';
 import type { HubCoordinatesResult } from '../lib/solar/pvForecastStore';
+import { asUnknownRecord } from '../packages/shared-domain/src/recordGuards';
 
 // The contract is the domain's; this adapter only implements it. Re-exported
 // for existing importers so there is one definition, not two that happen to
 // agree today (`setup/AGENTS.md` § "Adapter naming").
 export type { HubCoordinates, HubCoordinatesResult } from '../lib/solar/pvForecastStore';
-
-const asRecord = (value: unknown): Record<string, unknown> | undefined => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined
-);
 
 /**
  * Resolve the Homey Web API's weakly-typed location response into finite hub
@@ -18,8 +13,8 @@ const asRecord = (value: unknown): Record<string, unknown> | undefined => (
  * direct shape remains accepted for compatibility with older API variants.
  */
 export function normalizeHubCoordinates(raw: unknown): HubCoordinatesResult {
-  const response = asRecord(raw);
-  const candidate = asRecord(response?.value) ?? response;
+  const response = asUnknownRecord(raw);
+  const candidate = asUnknownRecord(response?.value) ?? response;
   const latitude = candidate?.latitude;
   const longitude = candidate?.longitude;
   if (

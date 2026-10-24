@@ -22,6 +22,7 @@
 import { randomUUID } from 'node:crypto';
 import { isCanonicalHomeyDeviceId } from '../utils/homeyDeviceId';
 import { MAIN_HOME_ID, type HomeId } from '../utils/settingsKeys';
+import { asUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 /**
  * Home identity, re-exported for domain consumers. Single source of truth in
@@ -167,17 +168,6 @@ export class HomeStoreWriteRefusedError extends Error {
   }
 }
 
-type UnknownRecord = Record<string, unknown>;
-
-// Arrays are `typeof 'object'` but never a valid record here — rejecting them
-// centrally keeps every caller from re-checking (indices would otherwise
-// surface as fabricated ids).
-const asRecord = (value: unknown): UnknownRecord | null => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? value as UnknownRecord
-    : null
-);
-
 const toNonEmptyString = (value: unknown): string | null => (
   typeof value === 'string' && value.length > 0 ? value : null
 );
@@ -212,7 +202,7 @@ const isValidAssignmentHomeId = (value: string): boolean => (
 );
 
 const normalizeSubHome = (raw: unknown): SubHomeConfig | null => {
-  const entry = asRecord(raw);
+  const entry = asUnknownRecord(raw);
   if (!entry) return null;
   const homeId = toNonEmptyString(entry.homeId);
   if (homeId === null || !isValidSubHomeId(homeId)) return null;
@@ -233,7 +223,7 @@ const normalizeSubHome = (raw: unknown): SubHomeConfig | null => {
  * rejects that whole blob instead of silently choosing an owner.
  */
 export const normalizeHomesConfig = (raw: unknown): HomeConfig => {
-  const record = asRecord(raw);
+  const record = asUnknownRecord(raw);
   const rawList = record?.subHomes;
   const entries = Array.isArray(rawList) ? rawList : [];
   const subHomes = entries.flatMap((entry) => {
@@ -258,7 +248,7 @@ export const normalizeHomesConfig = (raw: unknown): HomeConfig => {
  * see {@link DeviceHomeAssignments}.
  */
 export const normalizeDeviceHomeAssignments = (raw: unknown): DeviceHomeAssignments => {
-  const record = asRecord(raw);
+  const record = asUnknownRecord(raw);
   if (!record) return {};
   return Object.fromEntries(
     Object.entries(record).flatMap(([deviceId, homeId]) => (
@@ -273,7 +263,7 @@ export const normalizeDeviceHomeAssignments = (raw: unknown): DeviceHomeAssignme
 // field the normalizer would lossily coerce (e.g. a malformed meterDeviceId →
 // null) marks the entry implausible instead of silently repaired.
 const isPlausibleSubHomeEntry = (raw: unknown): boolean => {
-  const entry = asRecord(raw);
+  const entry = asUnknownRecord(raw);
   if (!entry) return false;
   const meter = entry.meterDeviceId;
   return typeof entry.homeId === 'string' && isValidSubHomeId(entry.homeId)
@@ -292,7 +282,7 @@ const isPlausibleSubHomeEntry = (raw: unknown): boolean => {
  * classifies `'suspect'`, never a quietly-shrunken config.
  */
 export const isPlausibleHomesConfigBlob = (raw: unknown): boolean => {
-  const record = asRecord(raw);
+  const record = asUnknownRecord(raw);
   if (!record) return false;
   if (
     record.activationVersion !== undefined
@@ -301,7 +291,7 @@ export const isPlausibleHomesConfigBlob = (raw: unknown): boolean => {
   const { subHomes } = record;
   if (!Array.isArray(subHomes) || !subHomes.every(isPlausibleSubHomeEntry)) return false;
   const homeIds = subHomes.flatMap((entry) => {
-    const homeId = asRecord(entry)?.homeId;
+    const homeId = asUnknownRecord(entry)?.homeId;
     return typeof homeId === 'string' ? [homeId] : [];
   });
   return new Set(homeIds).size === subHomes.length
@@ -316,7 +306,7 @@ export const isPlausibleHomesConfigBlob = (raw: unknown): boolean => {
  * implausible (`'suspect'` at the store), never a quietly-shrunken record.
  */
 export const isPlausibleDeviceHomeAssignmentsBlob = (raw: unknown): boolean => {
-  const record = asRecord(raw);
+  const record = asUnknownRecord(raw);
   if (!record) return false;
   return Object.entries(record).every(([deviceId, homeId]) => (
     isSafeUntrustedKey(deviceId) && typeof homeId === 'string' && isValidAssignmentHomeId(homeId)

@@ -19,6 +19,7 @@ import {
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import type { PvForecastHour } from './pvForecastService';
 import type { PvForecastConfidence } from './pvForecastSource';
+import { asUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 const HOUR_MS = 3_600_000;
 const WATTS_PER_KW = 1000;
@@ -58,12 +59,6 @@ export type HomeyEnergySolarForecastDeps = {
   getNowMs: () => number;
 };
 
-const asRecord = (value: unknown): Record<string, unknown> | undefined => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined
-);
-
 /**
  * Resolve a raw forecast-day body into per-UTC-hour mean kWh. Points are
  * 15-minute `{ t: ISO-UTC, watts }` samples; an hour's kWh is the mean of its
@@ -73,10 +68,10 @@ const asRecord = (value: unknown): Record<string, unknown> | undefined => (
  * points yields an empty map for the caller to classify.
  */
 export function parseSolarForecastDay(raw: unknown): SolarForecastDay {
-  const body = asRecord(raw);
+  const body = asUnknownRecord(raw);
   const points = Array.isArray(body?.points) ? body.points : [];
   const sums = points.reduce<Record<string, { watts: number; count: number }>>((acc, point) => {
-    const record = asRecord(point);
+    const record = asUnknownRecord(point);
     if (!record) return acc;
     const atMs = typeof record.t === 'string' ? Date.parse(record.t) : Number.NaN;
     const watts = record.watts;

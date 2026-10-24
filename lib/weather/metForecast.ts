@@ -5,7 +5,7 @@ import {
   shiftDateKey,
 } from '../../packages/shared-domain/src/utils/dateUtils';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
-import { isUnknownRecord } from '../utils/types';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import { normalizeError } from '../utils/errorUtils';
 import { getLogger } from '../logging/logger';
 

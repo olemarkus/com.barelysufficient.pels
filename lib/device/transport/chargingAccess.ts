@@ -3,6 +3,7 @@ import type { ChargingAccessStatus } from '../../../packages/contracts/src/charg
 import type { Logger } from '../../utils/types';
 import type { SettingsPort } from '../../ports/homeyRuntime';
 import { HomeyRequestTimeoutError } from '../../utils/errorUtils';
+import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuards';
 
 /** An adapter-resolved Homey action, never supplied by the settings UI. */
 export type ChargingCurrentAction = {
@@ -22,11 +23,6 @@ export type ChargingAccessHomey = {
   api: { getLocalUrl(): Promise<string> };
   cloud: { getHomeyId(): Promise<string> };
 };
-
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function readKey(value: unknown): string {
   if (typeof value !== 'string' || value.length === 0 || value.length > 4096 || /\s/u.test(value)) {
@@ -66,7 +62,7 @@ export class ChargingAccess {
   }
 
   async save(body: unknown): Promise<ChargingAccessStatus> {
-    if (!isRecord(body) || typeof body.key !== 'string') throw new ChargingAccessError('unavailable');
+    if (!isUnknownRecord(body) || typeof body.key !== 'string') throw new ChargingAccessError('unavailable');
     const candidate = readKey(body.key.trim());
     this.sync();
     const generation = ++this.generation;
@@ -102,7 +98,7 @@ export class ChargingAccess {
     const operation = this.request(
       this.key, path, 'POST', { args: action.args }, generation, assertAuthorized,
     ).then((result) => {
-      if (result === false || !isRecord(result) || result.error !== null) {
+      if (result === false || !isUnknownRecord(result) || result.error !== null) {
         throw new ChargingAccessError('unavailable');
       }
     });
@@ -162,7 +158,7 @@ export class ChargingAccess {
 
   private async verify(key: string): Promise<void> {
     const session = await this.request(key, 'manager/sessions/session/me', 'GET');
-    if (!isRecord(session) || !Array.isArray(session.intersectedScopes)) {
+    if (!isUnknownRecord(session) || !Array.isArray(session.intersectedScopes)) {
       throw new ChargingAccessError('unavailable');
     }
     if (!session.intersectedScopes.some((scope) => scope === 'homey.flow' || scope === 'homey')) {

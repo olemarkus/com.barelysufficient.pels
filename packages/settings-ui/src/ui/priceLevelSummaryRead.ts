@@ -3,12 +3,9 @@ import type {
   PriceThresholdSuggestion,
 } from '../../../contracts/src/settingsUiApi.ts';
 import { isFiniteNumber } from '../../../shared-domain/src/numberGuards.ts';
+import { asUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 const UNAVAILABLE: PriceLevelSummaryRead = { state: 'unavailable' };
-
-const asRecord = (value: unknown): Record<string, unknown> | null => (
-  typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null
-);
 
 // The runtime never suggests below the threshold field's minimum.
 const MIN_SUGGESTED_PERCENT = 5;
@@ -16,7 +13,7 @@ const MIN_SUGGESTED_PERCENT = 5;
 const NO_SUGGESTION: PriceThresholdSuggestion = { kind: 'none' };
 
 const classifySuggestion = (value: unknown): PriceThresholdSuggestion => {
-  const suggestion = asRecord(value);
+  const suggestion = asUnknownRecord(value);
   if (!suggestion || !isFiniteNumber(suggestion.cheapUpTo)) return NO_SUGGESTION;
   const { cheapUpTo } = suggestion;
   if (
@@ -41,8 +38,8 @@ const classifySuggestion = (value: unknown): PriceThresholdSuggestion => {
  * states no lines rather than wrong ones; a malformed suggestion is none.
  */
 export const classifyPriceLevelSummaryRead = (value: unknown): PriceLevelSummaryRead => {
-  const read = asRecord(value);
-  const lines = asRecord(read?.lines);
+  const read = asUnknownRecord(value);
+  const lines = asUnknownRecord(read?.lines);
   if (
     read?.state !== 'ready' || !lines
     || !isFiniteNumber(lines.average) || !isFiniteNumber(lines.cheapAtOrBelow) || !isFiniteNumber(lines.expensiveFrom)

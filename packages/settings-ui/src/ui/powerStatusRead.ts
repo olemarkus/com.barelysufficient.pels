@@ -15,10 +15,7 @@ import type {
   SettingsUiPowerStatus,
   SettingsUiPowerStatusRead,
 } from '../../../contracts/src/settingsUiApi.ts';
-
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
+import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 const UNAVAILABLE_REASONS: ReadonlySet<string> = new Set([
   'no_measurement',
@@ -28,8 +25,8 @@ const UNAVAILABLE_REASONS: ReadonlySet<string> = new Set([
 ]);
 
 export const isPowerStatusRead = (value: unknown): value is SettingsUiPowerStatusRead => {
-  if (!isRecord(value)) return false;
-  if (value.state === 'live') return isRecord(value.status);
+  if (!isUnknownRecord(value)) return false;
+  if (value.state === 'live') return isUnknownRecord(value.status);
   if (value.state === 'unavailable') {
     return typeof value.reason === 'string' && UNAVAILABLE_REASONS.has(value.reason);
   }

@@ -1,5 +1,5 @@
 import type { RawHomeyDeviceLike } from '../utils/types';
-import { isUnknownRecord } from '../utils/types';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import { isPlausibleOutdoorTemperature } from './weatherHistory';
 
 /**

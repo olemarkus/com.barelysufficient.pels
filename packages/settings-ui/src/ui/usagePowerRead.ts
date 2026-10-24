@@ -8,6 +8,7 @@ import { logSettingsError } from './logging.ts';
 import { resolvePowerStatusRead } from './powerStatusRead.ts';
 import { classifyCapacityPeak } from './capacityPeakRead.ts';
 import { classifyCapacityScalarsRead } from './capacityScalarsRead.ts';
+import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 /**
  * The scope-following `ui_power` read (multi-home). Named for the Usage
@@ -36,9 +37,6 @@ import { classifyCapacityScalarsRead } from './capacityScalarsRead.ts';
  * leave Main's chip sitting over the previous area's figures. A read the
  * runtime could not answer IS the `unavailable` state.
  */
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
 
 const hasOwn = (value: Record<string, unknown>, key: string): boolean => (
   Object.prototype.hasOwnProperty.call(value, key)
@@ -56,9 +54,9 @@ type MainPowerEnvelope = Omit<SettingsUiPowerPayload, 'status' | 'capacityPeak' 
   & { status: unknown; capacityPeak: unknown; capacityScalars: unknown };
 
 const isMainPowerEnvelope = (value: unknown): value is MainPowerEnvelope => {
-  if (!isRecord(value) || hasOwn(value, 'homeScope')) return false;
+  if (!isUnknownRecord(value) || hasOwn(value, 'homeScope')) return false;
   if (!hasOwn(value, 'tracker') || !hasOwn(value, 'readings')) return false;
-  if (!isRecord(value.tracker)) return false;
+  if (!isUnknownRecord(value.tracker)) return false;
   if (classifyPowerReadingsFact(value.readings) === null) return false;
   return value.hasManagedSolarDevice === undefined || typeof value.hasManagedSolarDevice === 'boolean';
 };

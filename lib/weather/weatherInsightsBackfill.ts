@@ -1,6 +1,6 @@
 import { parseInsightsTimestamp } from './insightsTimestamp';
 import type { WeatherDailyRecord } from '../../packages/contracts/src/weatherAdvisorTypes';
-import { isUnknownRecord } from '../utils/types';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import { getDateKeyInTimeZone } from '../../packages/shared-domain/src/utils/dateUtils';
 import { isPlausibleOutdoorTemperature } from './weatherHistory';
 

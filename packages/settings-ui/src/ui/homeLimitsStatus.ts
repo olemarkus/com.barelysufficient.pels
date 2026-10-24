@@ -22,6 +22,7 @@
  */
 
 import { formatHomeDeviceCount } from './homesManagementCopy';
+import { asUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 export type HomeLimitsPosture = 'simulating' | 'active';
 
@@ -80,12 +81,6 @@ export const HOME_LIMITS_STATUS_SHORTFALL
 
 // ── Boundary guards ──────────────────────────────────────────────────────────
 
-const asRecord = (value: unknown): Record<string, unknown> | null => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null
-);
-
 const toFiniteNumber = (value: unknown): number | null => (
   typeof value === 'number' && Number.isFinite(value) ? value : null
 );
@@ -122,7 +117,7 @@ export const resolveHomeLimitsStatus = (
   raw: unknown,
   input: { dryRun: boolean; hardCapKw: number | null },
 ): HomeLimitsStatus => {
-  const record = asRecord(raw);
+  const record = asUnknownRecord(raw);
   // Posture reflects the EFFECTIVE actuation state, not just the persisted
   // dry-run intent. The runtime writes `dryRunEffective` (the membership-gated
   // `getCapacityDryRun()` the bundle acts on) into the blob, so a home that is

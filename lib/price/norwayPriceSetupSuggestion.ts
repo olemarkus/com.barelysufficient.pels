@@ -5,6 +5,7 @@ import type {
   NorwayPriceSetupSuggestion,
   SettingsUiHubMarketRead,
 } from '../../packages/contracts/src/settingsUiApi';
+import { asUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 /**
  * The hub's location as the wiring reads it from Homey. Declared here rather
@@ -43,10 +44,6 @@ const ORGANIZATION_NUMBER = /^\d{9}$/;
 const COUNTY_CODE = /^\d{2}$/;
 const NORWAY_ZONE_NAME = /^NO-(NO[1-5])$/;
 
-const asRecord = (value: unknown): Record<string, unknown> | null => (
-  typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null
-);
-
 const fetchJson = async (url: string): Promise<{ status: number; body: unknown }> => {
   const response = await fetch(url, {
     headers: { Accept: 'application/json' },
@@ -57,10 +54,10 @@ const fetchJson = async (url: string): Promise<{ status: number; body: unknown }
 
 /** The grid company whose area concession covers the point, from NVE's answer. */
 export const classifyGridCompanyLookup = (body: unknown): Lookup<GridCompany> => {
-  const features = asRecord(body)?.features;
+  const features = asUnknownRecord(body)?.features;
   if (!Array.isArray(features)) return { kind: 'failed' };
   if (features.length === 0) return { kind: 'none' };
-  const attributes = asRecord(asRecord(features[0])?.attributes);
+  const attributes = asUnknownRecord(asUnknownRecord(features[0])?.attributes);
   const name = attributes?.navn;
   const owner = attributes?.eier_id;
   const organizationNumber = typeof owner === 'number' || typeof owner === 'string' ? String(owner) : '';
@@ -75,12 +72,12 @@ export const classifyCountyLookup = (status: number, body: unknown): Lookup<stri
   // Kartverket answers a point outside Norway, such as at sea, with 404.
   if (status === 404) return { kind: 'none' };
   if (status !== 200) return { kind: 'failed' };
-  const county = asRecord(body)?.fylkesnummer;
+  const county = asUnknownRecord(body)?.fylkesnummer;
   return typeof county === 'string' && COUNTY_CODE.test(county) ? { kind: 'found', value: county } : { kind: 'failed' };
 };
 
 const zoneArea = (zone: unknown): string | null => {
-  const record = asRecord(zone);
+  const record = asUnknownRecord(zone);
   if (record?.zoneCountryKey !== 'NO' || typeof record.zoneName !== 'string') return null;
   return NORWAY_ZONE_NAME.exec(record.zoneName)?.[1] ?? null;
 };
@@ -90,7 +87,7 @@ const zoneArea = (zone: unknown): string | null => {
  * set in Homey, or else the one Homey set from the hub's location.
  */
 export const classifyHomeyEnergyZone = (body: unknown): Lookup<string> => {
-  const record = asRecord(body);
+  const record = asUnknownRecord(body);
   if (!record) return { kind: 'failed' };
   const area = zoneArea(record.userConfigured) ?? zoneArea(record.autoConfigured);
   return area === null ? { kind: 'none' } : { kind: 'found', value: area };

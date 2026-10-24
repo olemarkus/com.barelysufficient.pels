@@ -18,6 +18,7 @@ import type {
     EvCarLinkVersion,
     EvCarObservedStops,
 } from '../../packages/contracts/src/evCarLink';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 /**
  * Runtime version constant for {@link EvCarLinkSnapshot}. Defined here (not in
@@ -69,10 +70,6 @@ export const parseEvCarLinkPairKey = (key: string): { carId: string; chargerId: 
     return { carId, chargerId };
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-    typeof value === 'object' && value !== null && !Array.isArray(value)
-);
-
 const isFinitePositive = (value: unknown): value is number => (
     typeof value === 'number' && Number.isFinite(value) && value > 0
 );
@@ -86,7 +83,7 @@ const isValidSocPct = (value: unknown): value is number => (
 );
 
 const normalizeAffinity = (value: unknown): EvCarLinkAffinity | null => {
-    if (!isRecord(value)) return null;
+    if (!isUnknownRecord(value)) return null;
     const { votes, lastVotedAtMs } = value;
     if (!isFinitePositive(votes)) return null;
     if (!isFinitePositive(lastVotedAtMs)) return null;
@@ -94,7 +91,7 @@ const normalizeAffinity = (value: unknown): EvCarLinkAffinity | null => {
 };
 
 const normalizeObservedStops = (value: unknown): EvCarObservedStops | null => {
-    if (!isRecord(value)) return null;
+    if (!isUnknownRecord(value)) return null;
     const { stopSocPct, lastObservedAtMs } = value;
     if (!isFinitePositive(lastObservedAtMs)) return null;
     if (!Array.isArray(stopSocPct)) return null;
@@ -112,11 +109,11 @@ const normalizeObservedStops = (value: unknown): EvCarObservedStops | null => {
  * silently. Use this whenever a snapshot crosses the persistence boundary.
  */
 export const normalizeEvCarLinkSnapshot = (value: unknown, nowMs: number): EvCarLinkSnapshot | null => {
-    if (!isRecord(value)) return null;
+    if (!isUnknownRecord(value)) return null;
     if (!isKnownEvCarLinkVersion(value.version)) return null;
     const pairsRaw = value.pairs;
     const carsRaw = value.version === EV_CAR_LINK_VERSION_WITH_UNSOUND_STOPS ? {} : value.cars;
-    if (!isRecord(pairsRaw) || !isRecord(carsRaw)) return null;
+    if (!isUnknownRecord(pairsRaw) || !isUnknownRecord(carsRaw)) return null;
 
     // Clamp any timestamp that sits in the future to the load-time clock. A
     // Homey clock jump mid-vote, or a corrupt persisted value, otherwise makes
@@ -134,9 +131,9 @@ export const normalizeEvCarLinkSnapshot = (value: unknown, nowMs: number): EvCar
     });
     // Absent on snapshots written before sessions were persisted, which just
     // means nothing can be resumed — never a reason to discard the whole blob.
-    const sessionsRaw = isRecord(value.sessions) ? value.sessions : {};
+    const sessionsRaw = isUnknownRecord(value.sessions) ? value.sessions : {};
     const sessions = Object.entries(sessionsRaw).flatMap(([chargerId, raw]) => {
-        if (chargerId.length === 0 || !isRecord(raw)) return [];
+        if (chargerId.length === 0 || !isUnknownRecord(raw)) return [];
         const { carId, sinceMs } = raw;
         if (typeof carId !== 'string' || carId.length === 0) return [];
         if (typeof sinceMs !== 'number' || !Number.isFinite(sinceMs) || sinceMs < 0) return [];
@@ -170,14 +167,14 @@ export const normalizeEvCarLinkSnapshot = (value: unknown, nowMs: number): EvCar
  */
 export const normalizeLegacyEvCarLinkSnapshot = (value: unknown, nowMs: number): EvCarLinkSnapshot | null => {
     const snapshot = normalizeEvCarLinkSnapshot(value, nowMs);
-    if (snapshot === null || !isRecord(value)) return null;
+    if (snapshot === null || !isUnknownRecord(value)) return null;
     const carried = entryCount(value.pairs) + entryCount(value.sessions)
         + (value.version === EV_CAR_LINK_VERSION_WITH_UNSOUND_STOPS ? 0 : entryCount(value.cars));
     const held = entryCount(snapshot.pairs) + entryCount(snapshot.cars) + entryCount(snapshot.sessions);
     return carried > 0 && held === 0 ? null : snapshot;
 };
 
-const entryCount = (value: unknown): number => (isRecord(value) ? Object.keys(value).length : 0);
+const entryCount = (value: unknown): number => (isUnknownRecord(value) ? Object.keys(value).length : 0);
 
 /** Records the session a charger is in, so a restart can offer to resume it. */
 export const recordEvCarLinkSession = (

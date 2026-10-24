@@ -31,6 +31,8 @@
  * made that Flow action redundant.
  */
 
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
+
 /**
  * deviceId → capabilityId → (flowId → flowName) for every device-capability
  * written by some user-flow action.
@@ -62,10 +64,6 @@ export type UserFlowFacts = {
 const DEVICE_CARD_ID_PREFIX = 'homey:device:';
 export const EV_SOC_REPORT_CARD_ID = 'homey:app:com.barelysufficient.pels:report_evcharger_battery_level';
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 /**
  * Parse a flow card's `id` into a device-capability write, or null when the
  * card does not write a device capability (PELS-app card, manager card,
@@ -86,9 +84,9 @@ export function parseDeviceCapabilityWrite(
 
 function readFlowDeviceId(value: unknown): string | null {
   if (typeof value === 'string') return value.trim() || null;
-  if (!isRecord(value)) return null;
+  if (!isUnknownRecord(value)) return null;
   if (typeof value.id === 'string') return value.id.trim() || null;
-  return isRecord(value.data) && typeof value.data.id === 'string'
+  return isUnknownRecord(value.data) && typeof value.data.id === 'string'
     ? value.data.id.trim() || null
     : null;
 }
@@ -98,8 +96,8 @@ function readFlowDeviceId(value: unknown): string | null {
  * it is that action but its charger argument is malformed.
  */
 export function parseEvSocReportTarget(card: unknown): string | null | undefined {
-  if (!isRecord(card) || card.id !== EV_SOC_REPORT_CARD_ID) return undefined;
-  if (!isRecord(card.args)) return null;
+  if (!isUnknownRecord(card) || card.id !== EV_SOC_REPORT_CARD_ID) return undefined;
+  if (!isUnknownRecord(card.args)) return null;
   return readFlowDeviceId(card.args.device);
 }
 
@@ -125,7 +123,7 @@ function recordWrite(
 
 /** App-owned action cards can address a device through an autocomplete argument. */
 function parseAppDeviceWrite(card: Record<string, unknown>): { deviceId: string; capabilityId: string } | null {
-  if (typeof card.id !== 'string' || !card.id.startsWith('homey:app:') || !isRecord(card.args)) return null;
+  if (typeof card.id !== 'string' || !card.id.startsWith('homey:app:') || !isUnknownRecord(card.args)) return null;
   // PELS reports and bridge actions are facts about control, not vendor writes.
   if (card.id.startsWith('homey:app:com.barelysufficient.pels:')) return null;
   const deviceId = readFlowDeviceId(card.args.device);
@@ -141,7 +139,7 @@ function collectFromCard(
   flowId: string,
   flowName: string,
 ): void {
-  if (!isRecord(card)) return;
+  if (!isUnknownRecord(card)) return;
   const write = parseDeviceCapabilityWrite(card.id) ?? parseAppDeviceWrite(card);
   if (write) recordWrite(writes, write.deviceId, write.capabilityId, flowId, flowName);
   const chargerDeviceId = parseEvSocReportTarget(card);
@@ -175,7 +173,7 @@ function collectFromFlatFlows(
   flatFlows: Record<string, unknown>,
 ): void {
   for (const [flowId, flow] of Object.entries(flatFlows)) {
-    if (!isRecord(flow) || isDisabledFlow(flow)) continue;
+    if (!isUnknownRecord(flow) || isDisabledFlow(flow)) continue;
     const actions = flow.actions;
     if (!Array.isArray(actions)) continue;
     const flowName = flowDisplayName(flow);
@@ -191,12 +189,12 @@ function collectFromAdvancedFlows(
   advancedFlows: Record<string, unknown>,
 ): void {
   for (const [flowId, flow] of Object.entries(advancedFlows)) {
-    if (!isRecord(flow) || isDisabledFlow(flow)) continue;
+    if (!isUnknownRecord(flow) || isDisabledFlow(flow)) continue;
     const cards = flow.cards;
-    if (!isRecord(cards)) continue;
+    if (!isUnknownRecord(cards)) continue;
     const flowName = flowDisplayName(flow);
     for (const card of Object.values(cards)) {
-      if (!isRecord(card) || card.type !== 'action') continue;
+      if (!isUnknownRecord(card) || card.type !== 'action') continue;
       collectFromCard(writes, evSocReports, card, flowId, flowName);
     }
   }

@@ -1,4 +1,5 @@
-import { isUnknownRecord, type CapabilityValue, type HomeyDeviceLike } from '../../utils/types';
+import type { CapabilityValue, HomeyDeviceLike } from '../../utils/types';
+import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuards';
 import {
   toCapabilityTimestampMs,
   type DeviceCapabilityMap,

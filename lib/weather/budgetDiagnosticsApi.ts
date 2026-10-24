@@ -1,5 +1,5 @@
 import type { BudgetDailyHistory, BudgetDecisionHistory } from '../../packages/contracts/src/budgetDiagnostics';
-import { isUnknownRecord } from '../utils/types';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 type BudgetHistoryHost = {
   getBudgetDailyHistory(query: unknown): BudgetDailyHistory;

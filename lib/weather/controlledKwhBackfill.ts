@@ -1,6 +1,6 @@
 import type { Logger as PinoLogger } from 'pino';
 import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
-import { isUnknownRecord } from '../utils/types';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import { fetchDeviceDailyKwh, meterCapabilityOf, quantileSorted } from './meterKwhBackfill';
 import { applyControlledBackfill, CONTROLLED_BACKFILL_VERSION } from './weatherHistory';
 

@@ -17,10 +17,7 @@
 // silently.
 
 import { isFiniteNumber } from '../../../shared-domain/src/numberGuards.ts';
-
-const isRecord = (candidate: unknown): candidate is Record<string, unknown> => (
-  Boolean(candidate) && typeof candidate === 'object' && !Array.isArray(candidate)
-);
+import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 export type CombinedPriceRow = {
   startsAt: string;
@@ -95,11 +92,11 @@ export const normalizeCombinedPrices = (combined: unknown): CombinedPriceRow[] =
   let entries: unknown[] = [];
   if (Array.isArray(combined)) {
     entries = combined;
-  } else if (isRecord(combined)) {
+  } else if (isUnknownRecord(combined)) {
     const days = (combined as CombinedPricesShape).days;
-    if (isRecord(days)) {
+    if (isUnknownRecord(days)) {
       entries = Object.values(days).flatMap((day) => (
-        isRecord(day) && Array.isArray((day as { hours?: unknown }).hours)
+        isUnknownRecord(day) && Array.isArray((day as { hours?: unknown }).hours)
           ? (day as { hours: unknown[] }).hours
           : []
       ));
@@ -108,7 +105,7 @@ export const normalizeCombinedPrices = (combined: unknown): CombinedPriceRow[] =
     }
   }
   return entries.flatMap<CombinedPriceRow>((entry) => {
-    if (!isRecord(entry) || typeof entry.startsAt !== 'string') return [];
+    if (!isUnknownRecord(entry) || typeof entry.startsAt !== 'string') return [];
     let total: number | null = null;
     if (isFiniteNumber(entry.total)) total = entry.total;
     else if (isFiniteNumber(entry.totalPrice)) total = entry.totalPrice;
