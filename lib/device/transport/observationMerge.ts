@@ -413,7 +413,7 @@ function acceptFreshCapabilityPull(
         state.capabilityObservations.delete(buildCapabilityObservationKey(snapshot.id, capabilityId));
         return;
     }
-    clearCapabilityObservationIfMatched(state, snapshot.id, capabilityId, snapshot);
+    clearCapabilityObservationIfMatched(state, snapshot, capabilityId);
 }
 
 function isRejectedTemperatureObservation(
