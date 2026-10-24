@@ -138,11 +138,13 @@ const ReportActivity = ({ report }: { report: PreparedSupportReport }) => {
   );
 };
 
-const ReportContents = ({ report, textRef, homeName }: {
+type ReportContentsProps = {
   report: PreparedSupportReport;
   textRef: { current: HTMLPreElement | null };
   homeName: string;
-}) => {
+};
+
+const ReportContents = ({ report, textRef, homeName }: ReportContentsProps) => {
   const { document: snapshot } = report;
   return <>
     <p class="pels-text-card-title entity-name">{snapshot.subjectName}</p>

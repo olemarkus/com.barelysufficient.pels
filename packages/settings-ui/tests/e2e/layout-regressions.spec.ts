@@ -482,8 +482,9 @@ test.describe('settings shell layout regressions', () => {
       const sections = [...document.querySelectorAll<HTMLElement>('#device-detail-panel .detail-section')]
         .filter((s) => s.getBoundingClientRect().height > 0);
       const sectionSlack = sections.map((s) => {
-        const child = s.firstElementChild!.getBoundingClientRect();
-        return Math.round(s.getBoundingClientRect().height - child.height);
+        const first = s.firstElementChild!.getBoundingClientRect();
+        const last = s.lastElementChild!.getBoundingClientRect();
+        return Math.round(s.getBoundingClientRect().height - (last.bottom - first.top));
       });
       const gaps: number[] = [];
       for (let i = 1; i < sections.length; i += 1) {
@@ -499,7 +500,7 @@ test.describe('settings shell layout regressions', () => {
     // App-bar header stays one compact row (48 px control + padding).
     expect(metrics.hasTitle).toBe(true);
     expect(metrics.headerHeight).toBeLessThanOrEqual(72);
-    // Each section wraps its collapsible exactly — no stretched dead space.
+    // Each section wraps its content, including any actions, without stretched dead space.
     for (const slack of metrics.sectionSlack) expect(slack).toBeLessThanOrEqual(2);
     // Adjacent sections sit at the standard grid gap.
     expect(metrics.maxGap).toBeLessThanOrEqual(16);
