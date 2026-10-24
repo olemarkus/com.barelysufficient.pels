@@ -409,14 +409,18 @@ export class DailyBudgetManager {
     settings: DailyBudgetSettings,
     inputs: DailyBudgetPlanInputs,
   ): DailyBudgetDayPayload | null {
+    // The breakdown and its sample count come from the same learned profile the
+    // live plan uses. The legacy `profile` field is absent on current installs
+    // and only catches up on export on older ones, so its count reads 0 or stale.
+    const profile = getEffectiveProfileData(this.state, settings, DEFAULT_PROFILE);
     return buildDailyBudgetHistory({
       dayStartUtcMs,
       timeZone,
       powerTracker,
       combinedPrices: inputs.combinedPrices,
       priceShapingEnabled: settings.priceShapingEnabled,
-      profileSampleCount: this.state.profile?.sampleCount ?? 0,
-      profileBreakdown: getEffectiveProfileData(this.state, settings, DEFAULT_PROFILE).breakdown,
+      profileSampleCount: profile.sampleCount,
+      profileBreakdown: profile.breakdown,
       planningCeiling: inputs.planningCeiling,
     });
   }
