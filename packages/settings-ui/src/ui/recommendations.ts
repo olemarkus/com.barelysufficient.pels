@@ -11,7 +11,6 @@ import {
   groupSetupRecommendations,
   normalizeRecommendationDismissals,
   resolveSetupRecommendations,
-  resolveSmartTaskStartPolicyRecommendations,
   type RecommendationDismissals,
   type SetupRecommendation,
 } from './recommendationsModel.ts';
@@ -21,7 +20,8 @@ import type {
 } from '../../../contracts/src/settingsUiApi.ts';
 import { parseCarAssociationCandidatesRead } from './carAssociationCandidates.ts';
 import { state } from './state.ts';
-import { readSmartTaskUsageDeviceIds, recordSmartTaskHistoryDevices } from './smartTaskUsage.ts';
+import { recordSmartTaskHistoryDevices } from './smartTaskUsage.ts';
+import { resolveDeviceSettingRecommendations } from './deviceSettingRecommendations.ts';
 import { notifySetupPathChange, onSetupPathChange, readSetupPath } from './setupPathFacts.ts';
 import {
   loadAfterSetupFacts,
@@ -56,7 +56,7 @@ import { subscribeToHomeScope } from './homeScope.ts';
 export type RecommendationNavigation = {
   openPanel: (panelId: string) => void;
   // `focus` names the setting to land on inside the device page.
-  openDevice: (deviceId: string, focus: 'top' | 'start-policy') => void;
+  openDevice: (deviceId: string, focus: 'top' | 'start-policy' | 'shed-limit') => void;
 };
 
 // Browser-owned acknowledgement state. The runtime never reads this key.
@@ -190,13 +190,7 @@ const resolveCurrentRecommendations = (afterSetupRead: AfterSetupFactsRead): Set
       state.nativeWiringMap,
       evSocReporters,
     ),
-    ...resolveSmartTaskStartPolicyRecommendations(
-      state.latestDevices,
-      state.managedMap,
-      state.controllableMap,
-      state.deviceStartPolicyMap,
-      readSmartTaskUsageDeviceIds(),
-    ),
+    ...resolveDeviceSettingRecommendations(),
     ...(afterSetupRead.state === 'resolved'
       ? resolveAfterSetupRecommendations(afterSetupRead.facts)
       : []),
@@ -343,6 +337,7 @@ const runRecommendationAction = (recommendation: SetupRecommendation): void => {
   navigationRead.navigation.openPanel('devices');
   if (target.kind === 'device') navigationRead.navigation.openDevice(target.deviceId, 'top');
   if (target.kind === 'device-start-policy') navigationRead.navigation.openDevice(target.deviceId, 'start-policy');
+  if (target.kind === 'device-shed-limit') navigationRead.navigation.openDevice(target.deviceId, 'shed-limit');
 };
 
 const writeDismissal = async (recommendation: SetupRecommendation, dismissed: boolean): Promise<void> => {

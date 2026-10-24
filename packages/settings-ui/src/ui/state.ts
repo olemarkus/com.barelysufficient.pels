@@ -114,6 +114,8 @@ export type UiState = {
   deviceExpectedPowerOverrides: DeviceExpectedPowerOverrides;
   modeAliases: Record<string, string>;
   shedBehaviors: Record<string, ConfiguredShedBehavior>;
+  /** Whether `shedBehaviors` holds a read; it starts empty, which reads as "no limit saved". */
+  shedBehaviorsLoaded: boolean;
   temperatureBoostSettings: TemperatureBoostSettings;
   evBoostSettings: EvBoostSettings;
   evChargeTargetSettings: EvChargeTargetSettings;
@@ -215,6 +217,7 @@ export const state: UiState = {
   deviceExpectedPowerOverrides: {},
   modeAliases: {},
   shedBehaviors: {},
+  shedBehaviorsLoaded: false,
   temperatureBoostSettings: {},
   evBoostSettings: {},
   evChargeTargetSettings: {},

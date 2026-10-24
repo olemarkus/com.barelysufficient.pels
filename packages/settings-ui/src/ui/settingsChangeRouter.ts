@@ -509,7 +509,11 @@ export const handlePowerTrackerPersisted = (payload: unknown) => {
 // Per-device setting maps the device page keeps a copy of: a write from
 // anywhere reloads that copy.
 const DEVICE_SETTING_RELOADERS: Readonly<Record<string, { load: () => Promise<void>; failure: string }>> = {
-  [OVERSHOOT_BEHAVIORS]: { load: loadShedBehaviors, failure: 'Failed to load shed behaviors' },
+  // A saved limited temperature settles the suggestion to set one.
+  [OVERSHOOT_BEHAVIORS]: {
+    load: () => loadShedBehaviors().then(refreshRecommendationSurfaces),
+    failure: 'Failed to load shed behaviors',
+  },
   [TEMPERATURE_BOOST_SETTINGS]: {
     load: loadTemperatureBoostSettings,
     failure: 'Failed to load temperature boost settings',
@@ -520,7 +524,11 @@ const DEVICE_SETTING_RELOADERS: Readonly<Record<string, { load: () => Promise<vo
     load: loadDeviceExpectedPowerOverrides,
     failure: 'Failed to load expected power overrides',
   },
-  [DEVICE_CONTROL_PROFILES]: { load: loadDeviceControlProfiles, failure: 'Failed to load device control profiles' },
+  // Steps change how a device is limited, and so which suggestions apply to it.
+  [DEVICE_CONTROL_PROFILES]: {
+    load: () => loadDeviceControlProfiles().then(refreshRecommendationSurfaces),
+    failure: 'Failed to load device control profiles',
+  },
   [DEVICE_TARGET_POWER_CONFIGS]: {
     load: loadDeviceControlProfiles,
     failure: 'Failed to load device control profiles',

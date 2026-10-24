@@ -133,10 +133,17 @@ const revealStartPolicyRow = (): void => revealDetailRow(rowEl);
  */
 const revealPowerLimitRow = (): void => revealDetailRow(q<HTMLElement>('#device-detail-controllable-row'));
 
-/** Land on the Setup row a deep link names; `top` leaves the page where it opened. */
+/**
+ * Land on "Limited temperature", in the limiting card. The "Set the limited
+ * temperature" suggestion names this field.
+ */
+const revealShedLimitRow = (): void => revealDetailRow(q<HTMLElement>('#device-detail-overshoot-temp-row'));
+
+/** Land on the row a deep link names; `top` leaves the page where it opened. */
 export const revealDeviceDetailFocus = (focus: DeviceDetailFocus): void => {
   if (focus === 'start-policy') revealStartPolicyRow();
   if (focus === 'power-limit') revealPowerLimitRow();
+  if (focus === 'shed-limit') revealShedLimitRow();
 };
 
 /** Sync the row for the open device. */

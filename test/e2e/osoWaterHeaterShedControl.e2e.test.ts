@@ -78,6 +78,33 @@ describe('OSO water heater capacity control (SDK-boundary e2e)', () => {
     vi.useRealTimers();
   });
 
+  it('writes a saved limited temperature above the 40 °C default cap, up to the tank\'s own maximum', async () => {
+    const heater = await buildOsoHeater();
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+    mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 2);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    mockHomeyInstance.settings.set('controllable_devices', { 'oso-a': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'oso-a': true });
+    mockHomeyInstance.settings.set('operating_mode', 'Home');
+    mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'oso-a': 65 } });
+    mockHomeyInstance.settings.set('overshoot_behaviors', {
+      'oso-a': { action: 'set_temperature', temperature: 55, coolingTemperature: 28 },
+    });
+    reportHomePower(4000);
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+
+    connectLiveFeed();
+    const app = createApp();
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await drainUntilCalledWith(putSpy, cap('oso-a', 'target_temperature'), { value: 55 });
+
+    expect(writesTo(putSpy, 'oso-a', 'onoff')).toEqual([]);
+  });
+
   it('limits through the target, never onoff, and limits the next device when a force-on keeps it heating', async () => {
     const heater = await buildOsoHeater();
     const plug = await buildPlug();

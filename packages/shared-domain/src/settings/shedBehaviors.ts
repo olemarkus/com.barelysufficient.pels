@@ -47,7 +47,11 @@ export type ConfiguredShedAction = ConfiguredShedBehavior['action'];
 /** The range a limit may take. The editor's fields use the same numbers. */
 export type ShedLimitRange = { readonly minC: number; readonly maxC: number };
 
-export const HEATING_SHED_LIMIT_RANGE: ShedLimitRange = { minC: -20, maxC: 50 };
+/**
+ * Wide enough for a water heater's tank. The device's own target range bounds
+ * what is written, and the editor caps its field at that range's maximum.
+ */
+export const HEATING_SHED_LIMIT_RANGE: ShedLimitRange = { minC: -20, maxC: 90 };
 
 /**
  * Narrower than the heating range on purpose: a ceiling below any real cooling

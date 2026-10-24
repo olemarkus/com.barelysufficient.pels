@@ -524,6 +524,35 @@ describe('device owner control resolution', () => {
     expect(transport.getSnapshotByDeviceId('oso')).toMatchObject({ binaryControl: undefined, measuredPowerKw: 3 });
   });
 
+  it('withholds only a null capability from an OSO read, as from any device read as Homey reports it', async () => {
+    // OSO copies cloud fields straight into capabilities, so a field the cloud
+    // omits reads null. The rest of the read still stands.
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger);
+    const stamp = '2026-09-30T08:00:00.000Z';
+    // Homey's wire shape: the typed fixture map has no room for a null value.
+    const omittedByCloud: Record<string, { value: null; lastUpdated: string }> = {
+      meter_power: { value: null, lastUpdated: stamp },
+    };
+    const oso: HomeyDeviceLike = {
+      id: 'oso', name: 'OSO', class: 'other', driverId: 'homey:app:no.osoincharge:water-heater',
+      capabilities: ['onoff', 'measure_power', 'measure_temperature', 'target_temperature', 'meter_power'],
+      capabilitiesObj: {
+        onoff: { value: false, setable: true, lastUpdated: stamp },
+        measure_power: { value: 0, lastUpdated: stamp },
+        measure_temperature: { value: 58, lastUpdated: stamp },
+        target_temperature: { value: 65, setable: true, min: 10, max: 75, units: '°C', lastUpdated: stamp },
+        ...omittedByCloud,
+      },
+      available: true, ready: true,
+    };
+    await initWithLiveFeed(transport);
+    const [snapshot] = await seedTransportDevices(transport, [oso]);
+    expect(snapshot).toMatchObject({
+      deviceClass: 'heater', deviceType: 'temperature', powerCapable: true,
+      targets: [{ id: 'target_temperature', value: 65 }],
+    });
+  });
+
   it('admits exact EV feedback through the owner and publishes the extended confirmed ladder before notifications', async () => {
     const notifiedProfiles: SteppedLoadProfile[] = [];
     const transport = createTestDeviceTransport(

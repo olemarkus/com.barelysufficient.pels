@@ -2231,6 +2231,36 @@ device-neutral.
   removes the suggestion; disabling it brings the suggestion back unless it
   was dismissed. Toggling the policy does not clear a dismissal.
 
+### Set the limited temperature
+
+A managed device with Power-limit control on, a power reading and a
+temperature target but no on/off and no steps is limited only through its
+target. With no limited temperature saved, PELS picks one itself (mode target
+less 3 °C, at most 40 °C, from `computeDefaultSetpointShedTemperature`), which
+may be far from what the owner wants for a water heater's tank. It gets a
+Recommended suggestion. Source of truth:
+`resolveSetpointShedLimitRecommendations`
+(`packages/settings-ui/src/ui/recommendationsModel.ts`).
+
+- Title: `Set the limited temperature for {device name}`.
+- Body: `PELS limits {device} by lowering its target temperature. No limited
+  temperature is saved, so PELS chooses one itself: {N} °C in the current mode.
+  Set your own below each mode's temperature, or dismiss this to let PELS
+  choose.` Without the selected home's mode temperature for the device (a device
+  in another area), the figure is `3 °C below the mode's temperature, between
+  {floor} and 40 °C`, the floor being the device class's lowest limit (10 °C, or
+  16 °C for air treatment). A unit that reports heating or cooling names both limits: `{N} °C in
+  the current mode while heating, and 28 °C while cooling`.
+- Action: `Set temperature`, opening the device page with `Limited temperature`
+  in view.
+- Saving a limited temperature removes it. Dismissing it keeps PELS's choice.
+  Nothing shows until the saved limits are read; a key that reads absent counts
+  as "nothing saved" only once fresh reads a moment apart agree.
+- The field's hint on such a device: `PELS lowers the target to this while it
+  limits the device. Keep it below each mode's temperature, or PELS cannot limit
+  the device in that mode.` A limit at or above a mode's temperature leaves the
+  planner nothing to lower in that mode.
+
 ### Car battery recommendations
 
 - The charger's Car section opens with `Select the cars that charge here. Once
