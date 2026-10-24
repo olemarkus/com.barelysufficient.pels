@@ -306,11 +306,22 @@ describe('a legacy learned-peaks import the upgrade boot could not finish', () =
     vi.useRealTimers();
   });
 
-  /** Boot with the key list answering nothing, as the SDK does on a transient miss. */
+  /**
+   * Boot with the key list answering nothing, as the SDK does on a transient
+   * miss, over a store whose reads fail while `failReads` is set.
+   */
   const bootWithUnreadableKeyList = () => {
     const getKeys = vi.spyOn(settings, 'getKeys').mockReturnValue([]);
     const repository = createLearnedPowerPeakRepository(db);
-    const store = createImportingLearnedPowerPeakStore(settings, repository);
+    const importing = createImportingLearnedPowerPeakStore(settings, repository);
+    const reads = { fail: false };
+    const store: LearnedPowerPeakStore = {
+      ...importing,
+      read: () => {
+        if (reads.fail) throw new Error('transient read failure');
+        return importing.read();
+      },
+    };
     const state = createLearnedPowerPeakState({
       getStructuredLogger: () => testLogger,
       getStore: () => store,
@@ -318,7 +329,7 @@ describe('a legacy learned-peaks import the upgrade boot could not finish', () =
       timers,
     });
     state.load();
-    return { state, repository, heal: () => getKeys.mockRestore() };
+    return { state, repository, reads, heal: () => getKeys.mockRestore() };
   };
 
   it('is retried within the minute, and the peaks of the devices that are off reach the ladder', () => {
@@ -345,6 +356,49 @@ describe('a legacy learned-peaks import the upgrade boot could not finish', () =
     heal();
     vi.advanceTimersByTime(60_000);
     expect(peaks.heater).toEqual({ kw: 2, observedAtMs: NOW - 1000 });
+  });
+
+  it('keeps reading in an import whose first read after it failed, with nothing written meanwhile', () => {
+    const { repository, reads, heal } = bootWithUnreadableKeyList();
+    heal();
+    reads.fail = true;
+    vi.advanceTimersByTime(60_000);
+    // Imported and retired, but not yet read in.
+    expect(settings.get(DEVICE_POWER_PEAKS)).toBeNull();
+    expect(peaks).toEqual({});
+
+    reads.fail = false;
+    vi.advanceTimersByTime(60_000);
+
+    expect(peaks).toEqual({
+      heater: { kw: 2, observedAtMs: NOW - 1000 },
+      charger: { kw: 5, observedAtMs: NOW - 1000 },
+    });
+    expect(repository.read()).toEqual(peaks);
+    expect(timers.has('learnedPeakLegacyImportRetry')).toBe(false);
+  });
+
+  it('reads in and writes through an import a write landed while the read failed, with the home idle after', () => {
+    // The minute retry is already queued from the boot when the write lands
+    // the import; that one retry must carry the read and the waiting write.
+    const { state, repository, reads, heal } = bootWithUnreadableKeyList();
+    heal();
+    reads.fail = true;
+    peaks.charger = { kw: 7.5, observedAtMs: NOW };
+    state.persist();
+    expect(settings.get(DEVICE_POWER_PEAKS)).toBeNull();
+    expect(peaks).toEqual({ charger: { kw: 7.5, observedAtMs: NOW } });
+
+    reads.fail = false;
+    vi.advanceTimersByTime(60_000);
+
+    const expected = {
+      heater: { kw: 2, observedAtMs: NOW - 1000 },
+      charger: { kw: 7.5, observedAtMs: NOW },
+    };
+    expect(peaks).toEqual(expected);
+    expect(repository.read()).toEqual(expected);
+    expect(timers.has('learnedPeakLegacyImportRetry')).toBe(false);
   });
 
   it('keeps the peaks learned while it was owed, and the next write keeps what it imported', () => {

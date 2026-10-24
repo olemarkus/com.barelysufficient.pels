@@ -9,8 +9,8 @@ import type { TimerRegistry } from '../utils/timerRegistry';
 import { scheduleLegacyImportRetry } from '../store/legacySettingsImport';
 import type { LearnedPowerPeakStore } from './learnedPowerPeakStore';
 
-/** Registry name for the owed legacy import's retry. */
-const LEGACY_IMPORT_RETRY_TIMER = 'learnedPeakLegacyImportRetry';
+/** Registry name for the minute retry of an owed legacy import or the read after it. */
+const CATCH_UP_TIMER = 'learnedPeakLegacyImportRetry';
 
 export type LearnedPowerPeakState = {
   /** Restore the learned peaks at boot. */
@@ -30,11 +30,12 @@ export type LearnedPowerPeakState = {
  * Every change is written as it happens: the store diffs one row per device, so
  * a write costs what changed and nothing is buffered for a restart to lose.
  *
- * A legacy settings import the boot could not finish is retried on every write
- * and once a minute (`LearnedPowerPeakStore.settleLegacyImport`): a home whose
- * running devices sit steady at their peaks learns nothing new for hours, and
- * until the import lands the imported peaks of the devices that are off are
- * missing from the expected-power ladder.
+ * A legacy settings import the boot could not finish, and a read that failed,
+ * are retried on every write and once a minute
+ * (`LearnedPowerPeakStore.settleLegacyImport`): a home whose running devices
+ * sit steady at their peaks learns nothing new for hours, and until the import
+ * is read in the imported peaks of the devices that are off are missing from
+ * the expected-power ladder.
  */
 export function createLearnedPowerPeakState(params: {
   getStore: () => LearnedPowerPeakStore;
@@ -51,6 +52,8 @@ export function createLearnedPowerPeakState(params: {
   let read = false;
   /** True until the store says the legacy import has settled. */
   let importOwed = true;
+  /** A change has not reached the store, because no read had yet told us what it holds. */
+  let writeOwed = false;
   /** One error line per run: an unopened store fails every read the same way. */
   let loadFailureLogged = false;
 
@@ -67,9 +70,9 @@ export function createLearnedPowerPeakState(params: {
       return false;
     }
     const peaks = getPeaks();
-    // Merged rather than replaced: a failed boot read is retried from the first
-    // write, and a late legacy import is read from the minute it lands, by which
-    // point the ingest path holds peaks of its own.
+    // Merged rather than replaced: a failed read is retried from the next write,
+    // and the read after a legacy import also each minute until it lands, by
+    // which point the ingest path holds peaks of its own.
     const adopted = adoptPersistedLearnedPeaks(persisted, peaks);
     // In-place: the record is shared by reference with `DeviceTransport`, which
     // took it at construction. Replacing it would leave the transport writing
@@ -81,51 +84,64 @@ export function createLearnedPowerPeakState(params: {
   };
   /* eslint-enable functional/immutable-data */
 
-  /** One more attempt at an owed legacy import; a store that is not open is the read's to say. */
-  const settleImport = (): void => {
-    if (!importOwed) return;
+  /**
+   * One more attempt at an owed legacy import. `false` when the store is not
+   * open (before the boot step that opens it, or after teardown closed it),
+   * which arranges no retry: the next write tries again.
+   */
+  const settleImport = (): boolean => {
     let store: LearnedPowerPeakStore;
     try {
       store = getStore();
     } catch {
-      return;
+      return false;
     }
-    if (store.settleLegacyImport() === 'pending') {
-      scheduleLegacyImportRetry(timers, LEGACY_IMPORT_RETRY_TIMER, retryImport);
-      return;
+    if (importOwed && store.settleLegacyImport() === 'settled') {
+      importOwed = false;
+      // The import may have written peaks this record has not seen, and a
+      // write makes the store hold exactly the record: read them in first.
+      read = false;
     }
-    importOwed = false;
-    // The import may have written peaks this record has not seen, and a write
-    // makes the store hold exactly the record: read them in before the next one.
-    read = false;
+    return true;
   };
 
-  const retryImport = (): void => {
-    settleImport();
-    if (!importOwed && !read) readIntoStore();
+  const write = (): void => {
+    try {
+      getStore().write(pruneExpiredLearnedPeaks(getPeaks(), Date.now()));
+    } catch (error) {
+      // The record stays in memory, and the next write carries it too: the diff
+      // base is what the database last committed.
+      getStructuredLogger().error({ event: 'learned_peaks_write_failed', err: normalizeError(error) });
+    }
+  };
+
+  /**
+   * Settle an owed import, read in what the store holds, write a change that
+   * waited for that read, and come back in a minute while the import is owed
+   * or the read has not landed. The one retry for every step, so a retry
+   * queued for one never stands in for another.
+   */
+  const catchUp = (): void => {
+    const reachable = settleImport();
+    if (!read) readIntoStore();
+    if (read && writeOwed) {
+      writeOwed = false;
+      write();
+    }
+    if (reachable && (importOwed || !read)) scheduleLegacyImportRetry(timers, CATCH_UP_TIMER, catchUp);
   };
 
   return {
-    /** The legacy import is settled first, so the read sees what it brought. */
-    load: () => {
-      settleImport();
-      readIntoStore();
-    },
+    /** The legacy import is settled first, so the boot read sees what it brought. */
+    load: catchUp,
 
     /**
      * Prunes entries whose window has closed on the way out, so the store does
      * not accumulate devices that left the home years ago.
      */
     persist: () => {
-      settleImport();
-      if (!read && !readIntoStore()) return;
-      try {
-        getStore().write(pruneExpiredLearnedPeaks(getPeaks(), Date.now()));
-      } catch (error) {
-        // The record stays in memory, and the next write carries it too: the diff
-        // base is what the database last committed.
-        getStructuredLogger().error({ event: 'learned_peaks_write_failed', err: normalizeError(error) });
-      }
+      writeOwed = true;
+      catchUp();
     },
   };
 }
