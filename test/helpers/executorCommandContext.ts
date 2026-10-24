@@ -3,9 +3,7 @@ import type { PlanEngineState } from '../../lib/plan/planState';
 import type { ExecutorCommandContext } from '../../lib/executor/executorCommandContext';
 import type { ExecutableSteppedLoadCommandSession } from '../../lib/executor/executablePlan';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
-import { createSteppedCommandClaim } from '../../lib/executor/steppedCommandClaim';
-import { createTargetCommandClaim } from '../../lib/executor/targetCommandClaim';
+import { createCommandClaim } from '../../lib/executor/commandClaim';
 
 /**
  * The command session of a device that was already commanded a step: no unknown
@@ -43,9 +41,9 @@ export const createTestExecutorCommandContext = (
   getSteppedLoadCommandSession: () => ({ hasPriorStepCommand: false, stepCommandPending: false }),
   markSteppedLoadDesiredStepIssued: vi.fn(),
   syncLivePlanStateAfterTargetActuation: vi.fn(),
-  binaryCommandClaim: createBinaryCommandClaim(),
-  steppedCommandClaim: createSteppedCommandClaim(),
-  targetCommandClaim: createTargetCommandClaim(),
+  binaryCommandClaim: createCommandClaim<boolean>(),
+  steppedCommandClaim: createCommandClaim<string>(),
+  targetCommandClaim: createCommandClaim<number>(),
   lifecycleFallback: { isActive: () => false, getOwnedTargetPending: () => undefined },
   isAuthorityCurrent: () => true,
   recordShedActuation: vi.fn(),
