@@ -130,10 +130,10 @@ export const SETTINGS_UI_WEATHER_ADVISOR_READOUT_PATH = '/ui_weather_advisor_rea
 export const SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH = '/ui_preview_daily_budget_model';
 export const SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH = '/ui_apply_daily_budget_model';
 // Budget-exempt rescue from the overview device card (the bounded "Let it run
-// now" path, identical to the starvation_rescue widget's rescue). Devices = the
-// gate (which cards may offer the chip); preview = the optional bounded-window
-// readout; create = the committed rescue.
-export const SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH = '/ui_starvation_rescue_devices';
+// now" path, identical to the starvation_rescue widget's rescue). The plan
+// carries the gate (which cards may offer the chip,
+// `SettingsUiPlanSnapshot.rescuableDeviceIds`); preview = the optional
+// bounded-window readout; create = the committed rescue.
 export const SETTINGS_UI_STARVATION_RESCUE_PREVIEW_PATH = '/ui_starvation_rescue_preview';
 export const SETTINGS_UI_STARVATION_RESCUE_CREATE_PATH = '/ui_starvation_rescue_create';
 // Smart-task edit lane from the detail page (edit end time/target + clear).
@@ -406,10 +406,12 @@ export type SettingsUiPlanSnapshot = {
   devices?: SettingsUiPlanDeviceSnapshot[];
   /**
    * The held-back devices the Overview's "Let it run now" chip may offer the
-   * rescue on: task-free, with a known target. The same gate as
-   * `/ui_starvation_rescue_devices`, carried on the plan so an open Overview
-   * reads nothing extra per plan push. A meter area's plan lists none, since
-   * the rescue lane is the Main home's.
+   * rescue on: task-free, with a known target, by the rule the rescue's preview
+   * and create re-check against the live list (`selectRescuableDeviceIds`). It
+   * rides the plan so an open Overview reads nothing extra per plan push. A
+   * snapshot: a chip shown from it can still come back `not_rescuable` or
+   * `no_target`. A meter area's plan lists none, since the rescue lane is the
+   * Main home's.
    */
   rescuableDeviceIds: string[];
 };

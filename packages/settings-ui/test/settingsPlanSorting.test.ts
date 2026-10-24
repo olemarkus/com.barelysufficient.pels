@@ -620,16 +620,14 @@ describe('Overview "Let it run now" rescue-gate freshness on tab activation', ()
     expect(rescueChipButton()).toBeNull();
 
     // Leave Overview, then the gate flips off-tab (the device entered the
-    // server-resolved rescuable set). The `plan_updated` gate refresh is
-    // Overview-only, so nothing updates `state.starvationRescuableDeviceIds`
-    // while the user is away.
+    // rescuable set). No plan push reaches the page here, so its copy of the
+    // gate stays stale while the user is away.
     (document.querySelector('[data-tab="settings"]') as HTMLButtonElement | null)?.click();
     await flushPromises();
     homey.__uiState.starvationRescuableDeviceIds = ['heater-1'];
 
-    // Re-opening Overview must refresh the gate alongside the plan, so the now-
-    // rescuable device's chip appears (a fresh plan against a stale gate would
-    // miss it).
+    // Re-opening Overview re-reads the plan, which carries the gate, so the
+    // now-rescuable device's chip appears.
     (document.querySelector('[data-tab="overview"]') as HTMLButtonElement | null)?.click();
     await waitFor(() => rescueChipButton() !== null);
     expect(rescueChipButton()?.textContent).toBe('Let it run now');

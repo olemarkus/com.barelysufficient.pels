@@ -1,7 +1,6 @@
 import type Homey from 'homey';
 import type {
   SettingsUiStarvationRescueCreateResponse,
-  SettingsUiStarvationRescueDevicesPayload,
   SettingsUiStarvationRescuePreviewResponse,
   StarvationRescueRejectReason,
 } from '../packages/contracts/src/starvationRescue';
@@ -10,7 +9,6 @@ import {
   mapAppRescueReason,
   parseRescueRequest,
   RESCUE_DEADLINE_HORIZON_MS,
-  selectRescuableDeviceIds,
 } from '../packages/shared-domain/src/starvationRescueShared';
 import { formatSmartTaskDeadlineLong } from '../packages/shared-domain/src/smartTaskDeadlineFormat';
 import { scheduledHoursIncludeCurrentHour } from '../packages/shared-domain/src/planStarvation';
@@ -39,16 +37,6 @@ const previewRescueReject = (
 const createRescueReject = (
   reason: StarvationRescueRejectReason,
 ): SettingsUiStarvationRescueCreateResponse => ({ ok: false, reason });
-
-// The device IDs the overview chip may offer the rescue on — the same gate the
-// widget uses (task-free + a known target), resolved from
-// `getStarvedRescueDevices`. A snapshot: the create path re-validates against the
-// live list, so a chip shown from a stale set can still be rejected.
-export const getSettingsUiStarvationRescueDevices = (
-  { homey }: RescueApiContext,
-): SettingsUiStarvationRescueDevicesPayload => ({
-  rescuableDeviceIds: selectRescuableDeviceIds(readPelsHost(homey)?.getStarvedRescueDevices() ?? []),
-});
 
 export const previewSettingsUiStarvationRescue = (
   { homey, body }: RescueApiContext & { body?: unknown },

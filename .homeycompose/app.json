@@ -475,10 +475,6 @@
       "method": "POST",
       "path": "/ui_reset_power_stats"
     },
-    "ui_starvation_rescue_devices": {
-      "method": "GET",
-      "path": "/ui_starvation_rescue_devices"
-    },
     "ui_starvation_rescue_preview": {
       "method": "POST",
       "path": "/ui_starvation_rescue_preview"

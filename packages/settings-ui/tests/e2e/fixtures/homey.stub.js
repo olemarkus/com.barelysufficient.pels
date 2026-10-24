@@ -2013,9 +2013,6 @@
     'GET /ui_deferred_objective_settings': () => (
       settings.deferred_objectives ?? { version: 1, objectivesByDeviceId: {} }
     ),
-    // The runtime still serves the rescue gate on its own route; the settings
-    // page reads it from the plan (`rescuableDeviceIds`). Empty, like the plan's.
-    'GET /ui_starvation_rescue_devices': () => ({ rescuableDeviceIds: [] }),
     'GET /ui_weather_advisor_readout': () => {
       // `inactive` = the feature is off; the producer's structural-absence member.
       const payload = buildWeatherReadoutPayload();
