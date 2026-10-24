@@ -1725,6 +1725,64 @@ describe('round-seven findings', () => {
     expect(h.producer.getObservedCarDeviceIds()).toEqual([]);
     expect(h.snapshot.sessions?.['charger-1']).toBeUndefined();
   });
+
+  it('requests a car back from unavailable with no readable plug state once, and counts one miss per read', () => {
+    h.producer.observe(conformingRead([
+      carDevice({ state: 'plugged_out', socPct: 40, available: false }),
+    ]), { fullRefresh: true, nowMs: 0 });
+    // Available again, but its plug state does not read yet.
+    h.producer.observe(conformingRead([carDevice({ socPct: 41 })]), { fullRefresh: false, nowMs: 1_000 });
+    expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
+
+    // Two reads that miss it, five minutes apart, are two misses: still within grace.
+    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 2_000 });
+    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 2_000 + TARGETED_DEVICE_MISS_GRACE_MS });
+    expect(h.producer.getObservedCarDeviceIds()).toEqual(['car-1']);
+
+    h.producer.observe(conformingRead([]), { fullRefresh: false, nowMs: 3_000 + TARGETED_DEVICE_MISS_GRACE_MS });
+    expect(h.producer.getObservedCarDeviceIds()).toEqual([]);
+  });
+
+  it('keeps watching the charger while a car back from unavailable has no readable plug state', () => {
+    seedDisconnected(h, 0);
+    plugIn(h, 10_000, 55);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 55, available: false }), SETTLE_MS + 200_000);
+    h.car(carDevice({ socPct: 55 }), SETTLE_MS + 205_000);
+
+    // The charger is unplugged and replugged while the car still reads no plug state.
+    h.setCharger({ evChargingState: 'plugged_out', measuredPowerW: 0, controlOn: false });
+    h.cap('charger-1', 'evcharger_charging_state', 'plugged_out', SETTLE_MS + 210_000);
+    h.setCharger({ evChargingState: 'plugged_in_charging', measuredPowerW: 7_000, controlOn: true });
+    h.cap('charger-1', 'evcharger_charging_state', 'plugged_in_charging', SETTLE_MS + 220_000);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 56 }), SETTLE_MS + 230_000);
+
+    expect(h.snapshot.sessions?.['charger-1']).toBeUndefined();
+    expect(h.of('ev_car_link_resumed')).toHaveLength(0);
+  });
+
+  it('leaves a charger connect for the refresh that first reads its car', () => {
+    // A car that has never read is not correlated, so the charger's realtime
+    // connect is not spent before the refresh that reads the car connected can
+    // pair it, from match history since the car brings no edge of its own.
+    h.snapshot = {
+      version: h.snapshot.version,
+      pairs: { 'car-1|charger-1': { votes: EV_CAR_LINK_MIN_PRIOR_VOTES, lastVotedAtMs: 1 } },
+      cars: {},
+      sessions: {},
+    };
+    h.producer.observe(conformingRead([carDevice({ socPct: 40 })]), { fullRefresh: true, nowMs: 0 });
+    h.setCharger({ evChargingState: 'plugged_in_charging', measuredPowerW: 7_000, controlOn: true });
+    h.cap('charger-1', 'evcharger_charging_state', 'plugged_in_charging', 10_000);
+
+    h.producer.observe(conformingRead([
+      carDevice({ state: 'plugged_in_charging', socPct: 40 }),
+    ]), { fullRefresh: false, nowMs: 60_000 });
+    h.tick(60_000 + SETTLE_MS);
+
+    expect(h.of('ev_car_link_resolved')).toEqual([expect.objectContaining({
+      carId: 'car-1', chargerId: 'charger-1', source: 'affinity_prior',
+    })]);
+  });
 });
 
 describe('round-eight currency gates', () => {
