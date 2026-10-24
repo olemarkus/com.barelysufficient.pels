@@ -87,12 +87,14 @@ const loadHarness = async () => {
   const show = (device: SettingsUiDeviceSnapshot) => {
     state.managedMap = { [device.id]: true };
     state.controllableMap = { [device.id]: true };
-    module.setDeviceDetailShedBehavior({ deviceId: device.id, getDeviceById: () => device, updateSetStepOptionLabel: () => {} });
-    module.updateShedFieldVisibility({ currentDetailDeviceId: device.id, getDeviceById: () => device });
+    module.setDeviceDetailShedBehavior(device.id, device, () => {});
+    module.updateShedFieldVisibility(device);
   };
 
   const changeCoolingLimit = async (value: string, device: SettingsUiDeviceSnapshot) => {
-    module.initDeviceDetailShedHandlers({ getCurrentDetailDeviceId: () => device.id, getDeviceById: () => device });
+    // The save reads the open device from the device list, as on the real page.
+    state.latestDevices = [device];
+    module.initDeviceDetailShedHandlers({ getCurrentDetailDeviceId: () => device.id });
     shedCoolingTemp.value = value;
     await listeners['cooling:change']?.();
   };

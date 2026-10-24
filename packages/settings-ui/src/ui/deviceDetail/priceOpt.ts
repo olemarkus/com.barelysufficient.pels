@@ -12,7 +12,7 @@ import {
   type SettingsUiDeviceDetailItem,
 } from '../deviceUtils.ts';
 import { renderPriceOptimization } from '../priceOptimization.ts';
-import { resolveManagedState, state, defaultPriceOptimizationConfig } from '../state.ts';
+import { findLatestDevice, resolveManagedState, state, defaultPriceOptimizationConfig } from '../state.ts';
 import { savePriceOptimizationPatch } from './priceOptimizationPatch.ts';
 import {
   encodePriceAdjustment,
@@ -63,19 +63,15 @@ const resolveDeltaGateHint = (params: {
   return null;
 };
 
-export const updateDeltaSectionVisibility = (params: {
-  currentDetailDeviceId: string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
-}) => {
+export const updateDeltaSectionVisibility = (device: SettingsUiDeviceDetailItem | null) => {
   if (!deviceDetailDeltaSection || !deviceDetailPriceOpt) return;
 
-  const device = params.currentDetailDeviceId ? params.getDeviceById(params.currentDetailDeviceId) : null;
   if (!supportsTemperatureDevice(device)) {
     deviceDetailDeltaSection.style.display = 'none';
     return;
   }
 
-  const isManaged = params.currentDetailDeviceId ? resolveManagedState(params.currentDetailDeviceId) : false;
+  const isManaged = device ? resolveManagedState(device.id) : false;
   const gateHint = resolveDeltaGateHint({
     canControlTemperature: supportsTemperatureAdjustments(device),
     disabledHint: temperatureAdjustmentGateHint(device),
@@ -93,22 +89,19 @@ export const updateDeltaSectionVisibility = (params: {
 
 export const initDeviceDetailPriceOptHandlers = (params: {
   getCurrentDetailDeviceId: () => string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
 }) => {
   const renderPriceOptDependents = () => {
     renderDevices(state.latestDevices);
     renderPriceOptimization(state.latestDevices);
-    updateDeltaSectionVisibility({
-      currentDetailDeviceId: params.getCurrentDetailDeviceId(),
-      getDeviceById: params.getDeviceById,
-    });
+    const currentDetailDeviceId = params.getCurrentDetailDeviceId();
+    updateDeltaSectionVisibility(currentDetailDeviceId ? findLatestDevice(currentDetailDeviceId) : null);
   };
 
   const autoSavePriceOpt = async () => {
     const deviceId = params.getCurrentDetailDeviceId();
     if (!deviceId) return;
 
-    const device = params.getDeviceById(deviceId);
+    const device = findLatestDevice(deviceId);
     if (!supportsTemperatureAdjustments(device)) return;
 
     const { enabled, cheapDelta, expensiveDelta } = readPriceOptInputs();

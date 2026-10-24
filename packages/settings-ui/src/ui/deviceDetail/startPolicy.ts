@@ -140,13 +140,11 @@ export const revealDeviceDetailFocus = (focus: DeviceDetailFocus): void => {
 };
 
 /** Sync the row for the open device. */
-export const syncStartPolicyRow = (params: {
-  deviceId: string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
-}): void => {
+export const syncStartPolicyRow = (
+  deviceId: string | null,
+  device: SettingsUiDeviceDetailItem | null,
+): void => {
   if (!rowEl || !toggleEl) return;
-  const { deviceId } = params;
-  const device = deviceId ? params.getDeviceById(deviceId) : null;
   const controlState = resolveDeviceDetailControlState(device, deviceId ?? '');
   const optedIn = deviceId !== null && isPelsOnly(deviceId);
   const showRow = deviceId !== null
@@ -237,11 +235,11 @@ const syncStartRuleLine = (device: SettingsUiDeviceDetailItem | null): void => {
  * are complements (one applies when Power-limit control is on, the other when
  * it is off), so all three are synced together and read as one concern.
  */
-export const syncDevicePolicyRows = (params: {
-  deviceId: string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
-}): void => {
-  syncRespectExternalOffRow(params);
-  syncStartPolicyRow(params);
-  syncStartRuleLine(params.deviceId ? params.getDeviceById(params.deviceId) : null);
+export const syncDevicePolicyRows = (
+  deviceId: string | null,
+  device: SettingsUiDeviceDetailItem | null,
+): void => {
+  syncRespectExternalOffRow(deviceId, device);
+  syncStartPolicyRow(deviceId, device);
+  syncStartRuleLine(device);
 };

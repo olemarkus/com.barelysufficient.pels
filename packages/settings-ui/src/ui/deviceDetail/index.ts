@@ -19,7 +19,7 @@ import {
 } from '../deviceControlProfiles.ts';
 import { renderPriorities } from '../modes.ts';
 import { renderPriceOptimization } from '../priceOptimization.ts';
-import { state } from '../state.ts';
+import { findLatestDevice, state, type SettingsUiDeviceView } from '../state.ts';
 import { renderDeviceDetailModes } from './modes.ts';
 import {
   resetDeviceDetailDiagnosticsRequests,
@@ -133,8 +133,6 @@ const pendingDeviceDetailOpen = createPendingDeviceDetailOpen();
 
 const getCurrentDetailDeviceId = () => currentDetailDeviceId;
 
-const getDeviceById = (deviceId: string) => state.latestDevices.find((device) => device.id === deviceId) || null;
-
 const refreshSharedDeviceViews = () => {
   renderDevices(state.latestDevices);
   renderPriorities(state.latestDevices);
@@ -145,26 +143,14 @@ const refreshSharedDeviceViews = () => {
 const refreshCurrentDeviceControlStates = () => {
   const activeDeviceId = getCurrentDetailDeviceId();
   if (!activeDeviceId) return;
-  setDeviceDetailControlStates(activeDeviceId);
-  updateDeltaSectionVisibility({
-    currentDetailDeviceId: activeDeviceId,
-    getDeviceById,
-  });
-  updateSurplusSectionVisibility({
-    currentDetailDeviceId: activeDeviceId,
-    getDeviceById,
-  });
+  const device = findLatestDevice(activeDeviceId);
+  setDeviceDetailControlStates(activeDeviceId, device);
+  updateDeltaSectionVisibility(device);
+  updateSurplusSectionVisibility(device);
   // The limiting card's statement/radiogroup split follows Power-limit
   // control, so a toggle must re-resolve it without reopening the panel.
-  setDeviceDetailShedBehavior({
-    deviceId: activeDeviceId,
-    getDeviceById,
-    updateSetStepOptionLabel,
-  });
-  updateShedFieldVisibility({
-    currentDetailDeviceId: activeDeviceId,
-    getDeviceById,
-  });
+  setDeviceDetailShedBehavior(activeDeviceId, device, updateSetStepOptionLabel);
+  updateShedFieldVisibility(device);
   syncSwitchRowDisabledStyling();
 };
 
@@ -191,7 +177,7 @@ const syncSwitchRowDisabledStyling = () => {
 };
 
 const renderManagedControl = (
-  device: ReturnType<typeof getDeviceById>,
+  device: SettingsUiDeviceView | null,
   controlState: ReturnType<typeof resolveDeviceDetailControlState>,
 ): void => {
   if (deviceDetailManaged) {
@@ -205,7 +191,7 @@ const renderManagedControl = (
 };
 
 const resolveManagedHint = (
-  device: ReturnType<typeof getDeviceById>,
+  device: SettingsUiDeviceView | null,
   controlState: ReturnType<typeof resolveDeviceDetailControlState>,
 ): string => {
   if (controlState.isHomeBattery) {
@@ -220,8 +206,7 @@ const resolveManagedHint = (
   return 'Include this device in modes and optimization plans.';
 };
 
-const setDeviceDetailControlStates = (deviceId: string) => {
-  const device = getDeviceById(deviceId);
+const setDeviceDetailControlStates = (deviceId: string, device: SettingsUiDeviceView | null) => {
   const controlState = resolveDeviceDetailControlState(device, deviceId);
 
   setDeviceDetailNativeWiringState(device);
@@ -249,10 +234,10 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   }
   // Binary sibling: the "Run on solar surplus" dump-load posture row (solarSurplus.ts
   // owns the gate — managed binary device, solar present, not temperature/stepped/EV).
-  setDeviceDetailDumpLoadControl({ deviceId, getDeviceById });
-  setDeviceDetailSurplusTrackingControl({ deviceId, getDeviceById });
-  syncDevicePolicyRows({ deviceId, getDeviceById });
-  syncTemperatureControlDisabledRow({ deviceId, getDeviceById });
+  setDeviceDetailDumpLoadControl(deviceId, device);
+  setDeviceDetailSurplusTrackingControl(deviceId, device);
+  syncDevicePolicyRows(deviceId, device);
+  syncTemperatureControlDisabledRow(device);
 
   setDeviceDetailBudgetExemptState(device);
   setDeviceDetailSocState(device);
@@ -305,7 +290,7 @@ const persistDeviceControlProfile = (
 const refreshOpenDeviceDetail = () => {
   if (!currentDetailDeviceId) return;
 
-  const device = getDeviceById(currentDetailDeviceId);
+  const device = findLatestDevice(currentDetailDeviceId);
   if (!device) {
     closeDeviceDetail();
     return;
@@ -315,12 +300,8 @@ const refreshOpenDeviceDetail = () => {
   applyDeviceDetailSectionLayout(device);
   void renderDeviceDetailLiveStatus(currentDetailDeviceId);
   renderDeviceSmartTaskBox(currentDetailDeviceId);
-  setDeviceDetailControlStates(currentDetailDeviceId);
-  setDeviceDetailShedBehavior({
-    deviceId: currentDetailDeviceId,
-    getDeviceById,
-    updateSetStepOptionLabel,
-  });
+  setDeviceDetailControlStates(currentDetailDeviceId, device);
+  setDeviceDetailShedBehavior(currentDetailDeviceId, device, updateSetStepOptionLabel);
   renderSteppedLoadDraft(device);
   renderTargetPowerConfig(device);
   renderExpectedPowerField(device);
@@ -330,23 +311,14 @@ const refreshOpenDeviceDetail = () => {
   setDeviceDetailDeltaValues(currentDetailDeviceId);
   setDeviceDetailSurplusValues(currentDetailDeviceId);
   renderDeviceDetailModes(device);
-  updateDeltaSectionVisibility({
-    currentDetailDeviceId,
-    getDeviceById,
-  });
-  updateSurplusSectionVisibility({
-    currentDetailDeviceId,
-    getDeviceById,
-  });
-  updateShedFieldVisibility({
-    currentDetailDeviceId,
-    getDeviceById,
-  });
+  updateDeltaSectionVisibility(device);
+  updateSurplusSectionVisibility(device);
+  updateShedFieldVisibility(device);
   syncSwitchRowDisabledStyling();
 };
 
 export const openDeviceDetail = (deviceId: string) => {
-  const device = getDeviceById(deviceId);
+  const device = findLatestDevice(deviceId);
   if (!device) return;
 
   resetDeviceDetailDiagnosticsRequests();
@@ -361,12 +333,8 @@ export const openDeviceDetail = (deviceId: string) => {
   applyDeviceDetailSectionLayout(device);
   void renderDeviceDetailLiveStatus(deviceId);
   renderDeviceSmartTaskBox(deviceId);
-  setDeviceDetailControlStates(deviceId);
-  setDeviceDetailShedBehavior({
-    deviceId,
-    getDeviceById,
-    updateSetStepOptionLabel,
-  });
+  setDeviceDetailControlStates(deviceId, device);
+  setDeviceDetailShedBehavior(deviceId, device, updateSetStepOptionLabel);
   renderSteppedLoadDraft(device);
   renderTargetPowerConfig(device);
   renderExpectedPowerField(device);
@@ -377,18 +345,9 @@ export const openDeviceDetail = (deviceId: string) => {
   renderDeviceDetailModes(device);
   setDeviceDetailDeltaValues(deviceId);
   setDeviceDetailSurplusValues(deviceId);
-  updateDeltaSectionVisibility({
-    currentDetailDeviceId: deviceId,
-    getDeviceById,
-  });
-  updateSurplusSectionVisibility({
-    currentDetailDeviceId: deviceId,
-    getDeviceById,
-  });
-  updateShedFieldVisibility({
-    currentDetailDeviceId: deviceId,
-    getDeviceById,
-  });
+  updateDeltaSectionVisibility(device);
+  updateSurplusSectionVisibility(device);
+  updateShedFieldVisibility(device);
 
   syncSwitchRowDisabledStyling();
 
@@ -422,7 +381,7 @@ const initDeviceDetailControlModelHandler = () => {
     const deviceId = currentDetailDeviceId;
     if (!deviceId || !deviceDetailControlModel) return;
 
-    const device = getDeviceById(deviceId);
+    const device = findLatestDevice(deviceId);
     if (!device) return;
     if (isNativeSteppedLoadProfileActive(device)) {
       refreshOpenDeviceDetail();
@@ -470,7 +429,6 @@ export const openDeviceDetailAt = (deviceId: string, focus: DeviceDetailFocus): 
 export const initDeviceDetailHandlers = () => {
   const overlayContext = {
     getCurrentDetailDeviceId,
-    getDeviceById,
     openDeviceDetailAt,
     closeDeviceDetail,
     refreshOpenDeviceDetail,
@@ -479,7 +437,6 @@ export const initDeviceDetailHandlers = () => {
   initDeviceDetailOverlayChrome(overlayContext);
   initDeviceDetailNativeWiringHandler({
     getCurrentDetailDeviceId,
-    getDeviceById,
     refreshCurrentDeviceControlStates,
     refreshSharedDeviceViews,
   });
@@ -497,19 +454,15 @@ export const initDeviceDetailHandlers = () => {
   initDeviceDetailControlModelHandler();
   initDeviceDetailPriceOptHandlers({
     getCurrentDetailDeviceId,
-    getDeviceById,
   });
   initDeviceDetailSurplusOptHandlers({
     getCurrentDetailDeviceId,
-    getDeviceById,
   });
   initDeviceDetailSurplusTrackingHandlers({
     getCurrentDetailDeviceId,
-    getDeviceById,
   });
   initDeviceDetailBudgetExemptHandler({
     getCurrentDetailDeviceId,
-    getDeviceById,
     refreshSharedDeviceViews,
     refreshOpenDeviceDetail,
   });
@@ -517,17 +470,14 @@ export const initDeviceDetailHandlers = () => {
   initStartPolicyHandler({ getCurrentDetailDeviceId, refreshSharedDeviceViews, refreshOpenDeviceDetail });
   initTemperatureControlDisabledHandler({
     getCurrentDetailDeviceId,
-    getDeviceById,
     refreshSharedDeviceViews,
     refreshOpenDeviceDetail,
   });
   initDeviceDetailShedHandlers({
     getCurrentDetailDeviceId,
-    getDeviceById,
   });
   initSteppedLoadDraftHandlers({
     getCurrentDetailDeviceId,
-    getDeviceById,
     persistDeviceControlProfile,
     refreshOpenDeviceDetail,
   });
@@ -537,17 +487,14 @@ export const initDeviceDetailHandlers = () => {
   });
   initChargingCardHandlers({
     getCurrentDetailDeviceId,
-    getDeviceById,
     refreshOpenDeviceDetail,
   });
   initExpectedPowerHandlers({
     getCurrentDetailDeviceId,
-    getDeviceById,
     refreshOpenDeviceDetail,
   });
   initTemperatureBoostHandlers({
     getCurrentDetailDeviceId,
-    getDeviceById,
     refreshOpenDeviceDetail,
   });
   initDeviceDetailActivityLogToggleHandler(() => currentDetailDeviceId);

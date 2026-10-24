@@ -25,7 +25,7 @@ import {
   isNativeSteppedLoadProfileActive,
 } from '../deviceControlProfiles.ts';
 import { logSettingsError } from '../logging.ts';
-import { state } from '../state.ts';
+import { findLatestDevice, state } from '../state.ts';
 import { showToastError } from '../toast.ts';
 import { hasEvTargetPowerPreset, isSteppedLoadControlModel, resolveDeviceDetailKind } from '../deviceKind.ts';
 import { writeShedBehaviors } from './shedBehavior.ts';
@@ -363,7 +363,6 @@ export const closeSteppedLoadDraft = (deviceId: string): void => {
 
 export const initSteppedLoadDraftHandlers = (params: {
   getCurrentDetailDeviceId: () => string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
   persistDeviceControlProfile: (deviceId: string, profile: SteppedLoadProfile | null) => Promise<boolean>;
   refreshOpenDeviceDetail: () => void;
 }) => {
@@ -375,7 +374,7 @@ export const initSteppedLoadDraftHandlers = (params: {
     const deviceId = params.getCurrentDetailDeviceId();
     if (!deviceId) return;
 
-    const device = params.getDeviceById(deviceId);
+    const device = findLatestDevice(deviceId);
     if (!device) return;
     if (!canEditSteppedLoadProfile(device)) return;
     if (isNativeSteppedLoadProfileActive(device)) return;
@@ -406,7 +405,7 @@ export const initSteppedLoadDraftHandlers = (params: {
     const deviceId = params.getCurrentDetailDeviceId();
     if (!deviceId) return;
 
-    const device = params.getDeviceById(deviceId);
+    const device = findLatestDevice(deviceId);
     if (!device) return;
     if (!canEditSteppedLoadProfile(device)) return;
     if (isNativeSteppedLoadProfileActive(device)) return;
@@ -422,7 +421,7 @@ export const initSteppedLoadDraftHandlers = (params: {
     const deviceId = params.getCurrentDetailDeviceId();
     if (!deviceId) return;
 
-    const device = params.getDeviceById(deviceId);
+    const device = findLatestDevice(deviceId);
     if (!device) return;
     if (!canEditSteppedLoadProfile(device)) return;
     if (isNativeSteppedLoadProfileActive(device)) return;

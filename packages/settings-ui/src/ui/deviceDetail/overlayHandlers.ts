@@ -18,7 +18,7 @@ import { refreshDeviceDetailActivityLogIfExpanded } from './activityLog.ts';
 import type { createPendingDeviceDetailOpen, DeviceDetailFocus, OpenDeviceDetailDetail } from './focus.ts';
 import { buildDeadlineHref, followDeadlineHref, isDeadlinePlanRoute } from '../deadlineUrls.ts';
 import { dispatchOpenSmartTaskCreate } from '../smartTaskCreate.ts';
-import { state, type SettingsUiDeviceView } from '../state.ts';
+import { findLatestDevice, state } from '../state.ts';
 
 /**
  * The device-detail overlay's DOM subscriptions: close/escape/backdrop, the
@@ -33,7 +33,6 @@ import { state, type SettingsUiDeviceView } from '../state.ts';
  */
 export type DeviceDetailOverlayHandlerContext = {
   getCurrentDetailDeviceId: () => string | null;
-  getDeviceById: (deviceId: string) => SettingsUiDeviceView | null;
   openDeviceDetailAt: (deviceId: string, focus: DeviceDetailFocus) => void;
   closeDeviceDetail: () => void;
   refreshOpenDeviceDetail: () => void;
@@ -169,7 +168,7 @@ const initDeviceDetailOpenHandler = (ctx: DeviceDetailOverlayHandlerContext) => 
   document.addEventListener('open-device-detail', (event) => {
     const { deviceId, focus } = (event as CustomEvent<OpenDeviceDetailDetail>).detail;
 
-    if (ctx.getDeviceById(deviceId)) {
+    if (findLatestDevice(deviceId)) {
       ctx.openDeviceDetailAt(deviceId, focus);
     } else {
       ctx.pendingDeviceDetailOpen.set({ deviceId, focus });
@@ -205,7 +204,7 @@ const initDeviceDetailRefreshHandlers = (ctx: DeviceDetailOverlayHandlerContext)
     // drop the request before the device ever loads. Leave it queued for a later
     // `devices-updated` instead.
     const pending = ctx.pendingDeviceDetailOpen.peek();
-    if (pending && ctx.getDeviceById(pending.deviceId)) {
+    if (pending && findLatestDevice(pending.deviceId)) {
       ctx.pendingDeviceDetailOpen.take();
       ctx.openDeviceDetailAt(pending.deviceId, pending.focus);
       return;
