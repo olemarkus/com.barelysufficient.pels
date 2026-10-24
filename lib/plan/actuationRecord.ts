@@ -1,4 +1,3 @@
-import { isNumberMap } from '../utils/appTypeGuards';
 
 /**
  * What the executor did to which device, and when — the actuation-time clocks
@@ -25,7 +24,7 @@ import { isNumberMap } from '../utils/appTypeGuards';
 export class ActuationRecord {
   /**
    * The last time PELS wrote a device, any direction. The one persisted clock
-   * here (`DEVICE_LAST_CONTROLLED_MS`): the wiring hydrates it at boot through
+   * here (`lib/plan/lastControlledStore.ts`): the wiring hydrates it at boot through
    * `loadLastControlled`, and the executor persists the map after each apply.
    */
   lastDeviceControlledMs: Record<string, number> = {};
@@ -57,13 +56,9 @@ export class ActuationRecord {
 
   private readonly pendingRestores = new Set<string>();
 
-  /**
-   * Boot hydration from the persisted `DEVICE_LAST_CONTROLLED_MS` read. The
-   * record classifies the raw settings value itself: a map of finite numbers
-   * is the history, anything else (absent, malformed) starts empty.
-   */
-  loadLastControlled(stored: unknown): void {
-    this.lastDeviceControlledMs = isNumberMap(stored) ? { ...stored } : {};
+  /** Boot hydration from the userdata store (`lib/plan/lastControlledStore.ts`), already validated. */
+  loadLastControlled(stored: Readonly<Record<string, number>>): void {
+    this.lastDeviceControlledMs = { ...stored };
   }
 
   beginShed(deviceId: string): void {

@@ -29,12 +29,11 @@
  * before any tree) could otherwise be double-controlled while main still plans
  * it through the fail-safe complement.
  *
- * Persistence: the home's tracker rows in the userdata store and
- * `device_last_controlled_ms:<homeId>` are rehydrated on (re)creation. Tracker
+ * Persistence: the home's tracker rows and last-controlled rows in the userdata
+ * store are rehydrated on (re)creation. Tracker
  * hydration is identity-bound before this factory runs: a store that cannot
  * be read fences construction until the owned retry, while an identity
- * mismatch clears freshness but keeps accounting. Last-controlled state uses
- * its typed map guard. Persistence
+ * mismatch clears freshness but keeps accounting. Persistence
  * follows main's debounce/hour-rollover policy, minus main-only daily-budget,
  * UI, and calibration piggybacks. Teardown stops timers; persisted state stays.
  */

@@ -211,30 +211,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Device observation and transport
 
-- [ ] **P2 — rule on where `device_last_controlled_ms` lives: one transient boot read can wipe it.**
-      The map is hydrated by `setup/homeRuntime/createHomePlanRuntime.ts` through
-      `ActuationRecord` (`lib/executor/actuationRecord.ts`) as `isNumberMap(stored) ? … : {}`, and
-      written back whole by `planExecutor.ts` through `homeSignalWriters.ts` on every actuation
-      batch (~19 writes an hour on production, 2026-09-26). One transient SDK miss at boot lands as
-      `{}`, and the first shed or restore afterwards persists a one-device map over the stored
-      history. What a lost map costs is small: the reason text on off devices between boot and the
-      first fresh reading (`restore/devices.ts`, `restore/helpers.ts`, `planReasonsHoldDecisions.ts`
-      tell "never controlled" from "controlled before"); planned state is the same either way.
-      **Rule on one of these:**
-      (a) *Move it to the userdata store* (~250-400 lines, the shape of
-      `lib/device/learnedPowerPeakStore.ts`: a repository, a one-time import of the bare key and
-      each `:<homeId>` key, the two files above rewired). A userdata read does not transiently
-      fail, so the wipe goes, and so do ~19 whole-settings-object writes an hour. It is actuation
-      history, which the 2026-09-07 ruling sends to userdata, though this entry's sibling lists it
-      as a live latch that stays in settings.
-      (b) *Keep it in settings behind the written-before marker and grace*
-      (`notes/persisted-settings-state.md`; ~400-500 lines per store, machinery deleted everywhere
-      else).
-      (c) *Accept the reason-text gap* and close this entry.
-      **Done when** the chosen option lands, with a spec whose boot read misses once followed by a
-      shed asserting the prior devices survive (a, b), or the entry is gone (c). Source: runtime
-      review of the actuation-record state layer, 2026-09-08.
-
 - [ ] **The zone tree is refetched on every snapshot refresh — 538 Homey round-trips per 12 h for
       an answer that changed zero times.** `refreshZoneTreeCache` (`lib/device/transport/snapshotRefresh.ts`)
       fetches `manager/zones/zone` at the tail of every `refreshSnapshot`, roughly every 80 s. In the
@@ -354,9 +330,8 @@ Design-of-record: `notes/web-app.md`.
       event, so its move replaces that with an `api.realtime` push) and `pv_forecast_state`
       (up to 90 days of generation history, `setup/pvForecastStateAdapter.ts`). The size is what
       matters, because the small live latches stay in settings by ruling and keep writing:
-      measured on production on 2026-09-26, `device_last_controlled_ms` writes ~19 times an hour
-      (every executor actuation batch, `setup/homeRuntime/homeSignalWriters.ts`) and
-      `deferred_objective_observation_watermark` 12 (`setup/appInit/deferredRecorders.ts`).
+      measured on production on 2026-09-26, `deferred_objective_observation_watermark` writes 12
+      times an hour (`setup/appInit/deferredRecorders.ts`).
       Change: one repository per family beside its domain, taking the
       open database (the tracker and weather stores are the pattern: rows or one JSON row per
       event, diffed writes, the legacy key imported once at boot through

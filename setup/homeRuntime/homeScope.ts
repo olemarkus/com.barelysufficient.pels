@@ -278,8 +278,8 @@ export function buildMainHomeScope(
     // seam before any awaited or synchronous cleanup". Its persisted
     // writers were the one Main component that did not read that signal —
     // `mainTracker` already does — so a rebuild continuation dispatched before
-    // uninit could still publish a status and, worse, write
-    // `device_last_controlled_ms`, which the next boot hydrates from.
+    // uninit could still publish a status and, worse, write the
+    // last-controlled rows the next boot hydrates from.
     ...createHomeSignalWriters(ctx, homeId, () => shutdown.isStopped()),
     getPriceOptimizationEnabled: () => requirePriceCoordinator(ctx).getPriceOptimizationEnabled(),
     getCurrentHourPriceLevel: () => requirePriceCoordinator(ctx).getCurrentHourPriceLevel(),
