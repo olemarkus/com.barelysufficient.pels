@@ -6,7 +6,7 @@ import {
   usageHeroProjection,
   usageHeroSolar,
 } from './dom.ts';
-import { getStartOfDayInTimeZone, getZonedParts } from './timezone.ts';
+import { getStartOfDayInTimeZone, getZonedParts } from '../../../shared-domain/src/utils/dateUtils.ts';
 import {
   USAGE_HERO_ON_PACE,
   USAGE_HERO_ON_TRACK,

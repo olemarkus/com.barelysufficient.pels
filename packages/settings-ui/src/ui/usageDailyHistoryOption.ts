@@ -23,7 +23,7 @@ import {
   type ChartReadoutContent,
 } from './chartTooltipFormat.ts';
 import { prefersCoarsePointer } from './chartReadout.ts';
-import { formatDayFirstInTimeZone, getDateKeyStartMs } from './timezone.ts';
+import { formatDayFirstInTimeZone, getDateKeyStartMs } from '../../../shared-domain/src/utils/dateUtils.ts';
 import type { DailyHistoryPoint } from './powerStats.ts';
 import type { UsageStatsPalette } from './usageStatsChartsEcharts.ts';
 

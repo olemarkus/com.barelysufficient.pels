@@ -5,7 +5,6 @@ import type {
 } from '../../../packages/contracts/src/settingsUiApi';
 import type { PelsStatus } from '../../../lib/plan/pelsStatus';
 import { HEADROOM_WIDGET_COPY } from '../../../packages/shared-domain/src/headroomWidgetCopy';
-import { EMPTY_SUBTITLE_DEFAULT } from './headroomWidgetConstants';
 import type {
   HeadroomWidgetEmptyPayload,
   HeadroomWidgetPayload,
@@ -15,9 +14,6 @@ import type {
 
 const STALE_AFTER_MS = 90 * 1000;
 const NEAR_PACE_RATIO = 0.85;
-// Re-exported from the browser-safe constants module so existing consumers
-// and tests keep a stable import surface off the builder.
-export { EMPTY_SUBTITLE_DEFAULT };
 
 const resolvePriceLevel = (value: SettingsUiPowerStatus['priceLevel']): HeadroomWidgetPriceLevel => {
   if (value === 'cheap') return 'cheap';
@@ -84,7 +80,7 @@ const emptyPayload = (subtitle: string): HeadroomWidgetEmptyPayload => ({
 });
 
 export const buildHeadroomWidgetPayload = (input: HeadroomWidgetInput): HeadroomWidgetPayload => {
-  if (input.status.state !== 'live') return emptyPayload(EMPTY_SUBTITLE_DEFAULT);
+  if (input.status.state !== 'live') return emptyPayload(HEADROOM_WIDGET_COPY.noDataSubtitle);
   const status = input.status.status;
   // The planner had no measurement behind this status: it carries no
   // headroom then, and nothing derived from it is honest to draw — not even
@@ -97,7 +93,7 @@ export const buildHeadroomWidgetPayload = (input: HeadroomWidgetInput): Headroom
   // The status omits `headroomKw` exactly when it sets `powerKnown: false`,
   // which the branch above already answered.
   const { headroomKw } = status;
-  if (hourBudgetKw === undefined || headroomKw === undefined) return emptyPayload(EMPTY_SUBTITLE_DEFAULT);
+  if (hourBudgetKw === undefined || headroomKw === undefined) return emptyPayload(HEADROOM_WIDGET_COPY.noDataSubtitle);
 
   const currentKw = Math.max(0, hourBudgetKw - headroomKw);
   const shedCount = status.devicesOff ?? 0;

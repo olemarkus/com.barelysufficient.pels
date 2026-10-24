@@ -8,7 +8,7 @@ import {
   getStartOfDayInTimeZone,
   getWeekStartInTimeZone,
   getZonedParts,
-} from './timezone.ts';
+} from '../../../shared-domain/src/utils/dateUtils.ts';
 
 export type HourlyPatternPoint = { hour: number; avg: number };
 export type DailyHistoryPoint = { date: string; kWh: number };

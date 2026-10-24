@@ -22,7 +22,11 @@ import {
   resolveSolarCardVisible,
   type SolarDayRow,
 } from './solarStats.ts';
-import { formatDayFirstInTimeZone, getDateKeyInTimeZone, getDateKeyStartMs } from './timezone.ts';
+import {
+  formatDayFirstInTimeZone,
+  getDateKeyInTimeZone,
+  getDateKeyStartMs,
+} from '../../../shared-domain/src/utils/dateUtils.ts';
 import {
   renderSolarUsageCard,
   type SolarHistoryRow,

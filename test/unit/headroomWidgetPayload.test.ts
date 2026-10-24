@@ -1,7 +1,8 @@
 /**
  * @vitest-environment node
  */
-import { buildHeadroomWidgetPayload, EMPTY_SUBTITLE_DEFAULT } from '../../widgets/headroom/src/headroomWidgetPayload';
+import { HEADROOM_WIDGET_COPY } from '../../packages/shared-domain/src/headroomWidgetCopy';
+import { buildHeadroomWidgetPayload } from '../../widgets/headroom/src/headroomWidgetPayload';
 
 const NOW = new Date('2026-03-19T10:00:00.000Z').getTime();
 
@@ -18,7 +19,7 @@ describe('buildHeadroomWidgetPayload', () => {
       status: { state: 'unavailable', reason: 'no_status_recorded' },
       nowMs: NOW,
     });
-    expect(payload).toEqual({ state: 'empty', subtitle: EMPTY_SUBTITLE_DEFAULT });
+    expect(payload).toEqual({ state: 'empty', subtitle: HEADROOM_WIDGET_COPY.noDataSubtitle });
   });
 
   test('a home with no measurement renders empty — never last run blob as current', () => {
@@ -31,7 +32,7 @@ describe('buildHeadroomWidgetPayload', () => {
       status: { state: 'unavailable', reason: 'no_measurement' },
       nowMs: NOW,
     });
-    expect(payload).toEqual({ state: 'empty', subtitle: EMPTY_SUBTITLE_DEFAULT });
+    expect(payload).toEqual({ state: 'empty', subtitle: HEADROOM_WIDGET_COPY.noDataSubtitle });
   });
 
   test('a status the planner did not measure renders empty, naming the cause — never a derived figure', () => {
