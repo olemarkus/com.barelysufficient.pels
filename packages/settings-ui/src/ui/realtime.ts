@@ -48,6 +48,7 @@ import {
   refreshDailyBudgetIfVisible,
   refreshPowerDataIfVisible,
   refreshPricesIfVisible,
+  refreshCurrentPriceIfVisible,
   refreshStaleDataStatus,
   runLoggedTask,
 } from './uiRefreshTasks.ts';
@@ -232,6 +233,7 @@ export const startStaleDataRefreshInterval = () => {
     refreshStaleDataStatus('staleDataInterval');
     // Shares the status read above rather than sending its own.
     refreshOverviewOnStatusPoll('periodicRefresh');
+    refreshCurrentPriceIfVisible();
     if (isPanelVisible('#overview-panel')) {
       // The Overview's cards are device rows. A device load that failed is
       // retried on this cadence; a loaded list is kept current by the

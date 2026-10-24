@@ -1089,6 +1089,44 @@
     };
   };
 
+  const buildPriceTimeline = () => {
+    // Scenarios can supply the exact owner read, including quarter-hours and
+    // export prices. Never reconstruct sub-hourly prices from combined averages.
+    if (settings.ui_price_timeline !== undefined) return settings.ui_price_timeline;
+    const scheme = buildPriceSetup().setup.source.scheme;
+    const combined = settings.combined_prices;
+    const rows = scheme === 'norway' && combined?.priceScheme === 'norway'
+      ? (combined.prices ?? []).map((row) => ({
+        startsAt: row.startsAt, durationMinutes: 60, importPrice: row.total,
+        ...(Number.isFinite(row.exportPrice) ? { exportPrice: row.exportPrice } : {}),
+      }))
+      : ['today', 'tomorrow'].flatMap((day) => {
+        const payload = settings[`${scheme}_prices_${day}`];
+        return (payload?.pricesByPeriod ?? payload?.pricesBySlot ?? []).map((row) => ({
+          startsAt: row.startsAt, durationMinutes: row.durationMinutes ?? 60, importPrice: row.totalPrice,
+        }));
+      });
+    if (rows.length === 0) return { state: 'unavailable', reason: 'no_prices' };
+    const minutes = rows.reduce((sum, row) => sum + row.durationMinutes, 0);
+    const average = rows.reduce((sum, row) => sum + row.importPrice * row.durationMinutes, 0) / minutes;
+    const lines = {
+      average,
+      cheapAtOrBelow: scheme === 'norway' ? combined?.lowThreshold ?? average * 0.75 : average * 0.75,
+      expensiveFrom: scheme === 'norway' ? combined?.highThreshold ?? average * 1.25 : average * 1.25,
+    };
+    return {
+      state: 'ready',
+      priceUnit: scheme === 'norway' ? 'øre/kWh' : settings[`${scheme}_prices_currency`] ?? 'price units',
+      hasExportPrice: rows.some((row) => row.exportPrice !== undefined),
+      lines,
+      periods: rows.map((row) => ({
+        ...row,
+        level: row.importPrice <= lines.cheapAtOrBelow ? 'cheap'
+          : row.importPrice >= lines.expensiveFrom ? 'expensive' : 'normal',
+      })),
+    };
+  };
+
   const buildPricesPayload = () => {
     const deviceSettings = settings.price_optimization_settings;
     const settingsRecord = deviceSettings && typeof deviceSettings === 'object' && !Array.isArray(deviceSettings)
@@ -1096,6 +1134,7 @@
       : {};
     return {
       combinedPrices: settings.combined_prices ?? null,
+      priceTimeline: buildPriceTimeline(),
       priceArea: typeof settings.price_area === 'string' ? settings.price_area : null,
       flowToday: settings.flow_prices_today ?? null,
       flowTomorrow: settings.flow_prices_tomorrow ?? null,

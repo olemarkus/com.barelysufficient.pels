@@ -378,6 +378,7 @@ const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => 
   if (!host) {
     return {
       combinedPrices: null,
+      priceTimeline: { state: 'unavailable', reason: 'no_prices' },
       priceArea,
       ...NO_PRICE_SOURCE_PAYLOADS,
       pvForecastSource: { kind: 'unknown' },
@@ -395,6 +396,7 @@ const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => 
   // V2 in place; later bootstrap calls then see V2 here.
   return {
     combinedPrices: host.getCombinedPricesForUi(),
+    priceTimeline: host.getPriceTimelineForUi(),
     priceArea,
     ...host.getPriceSourcePayloadsForUi(),
     pvForecastSource: host.getPvForecastSourceUiStatus(),

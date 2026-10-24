@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeCombinedPrices } from '../src/ui/combinedPrices.ts';
 import { resolvePriceBreakdown } from '../src/ui/priceBreakdown.ts';
+import type { PriceTimelineRead } from '../../contracts/src/priceTimeline.ts';
 import { resolveLiveSummarySignals } from '../src/ui/livePriceSignals.ts';
 
 // One Norway hour as the runtime stores it (`priceServiceCombined.ts`), in øre.
@@ -22,6 +23,14 @@ const norwayHour = (extra: Record<string, unknown>) => {
     + parts.consumptionTaxExVat + parts.enovaFeeExVat;
   return { startsAt: '2026-10-13T10:00:00.000Z', total: exVat * 1.25 + relief, ...parts };
 };
+
+const timelineFor = (importPrice: number): Extract<PriceTimelineRead, { state: 'ready' }> => ({
+  state: 'ready',
+  periods: [{ startsAt: '2026-10-13T10:00:00.000Z', durationMinutes: 60, importPrice, level: 'normal' }],
+  lines: { average: importPrice, cheapAtOrBelow: importPrice, expensiveFrom: importPrice },
+  priceUnit: 'øre/kWh',
+  hasExportPrice: false,
+});
 
 const sum = (values: number[]): number => values.reduce((total, value) => total + value, 0);
 
@@ -67,7 +76,7 @@ describe('resolvePriceBreakdown', () => {
 
   it('shows no parts that do not add up to the price', () => {
     const hour = { ...norwayHour({ electricitySupport: 0 }), total: 30 };
-    expect(resolveLiveSummarySignals({ priceScheme: 'norway', prices: [hour] }, NOW).breakdownText).toBeNull();
+    expect(resolveLiveSummarySignals({ priceScheme: 'norway', prices: [hour] }, timelineFor(hour.total), NOW).breakdownText).toBeNull();
   });
 
   it('carries no parts for a row that lacks any of them', () => {
@@ -78,7 +87,8 @@ describe('resolvePriceBreakdown', () => {
 
 describe('resolveLiveSummarySignals, price now', () => {
   it('writes the price and its parts in the card\'s unit', () => {
-    const signals = resolveLiveSummarySignals({ priceScheme: 'norway', prices: [norwayHour({ electricitySupport: 3.5 })] }, NOW);
+    const hour = norwayHour({ electricitySupport: 3.5 });
+    const signals = resolveLiveSummarySignals({ priceScheme: 'norway', prices: [hour] }, timelineFor(hour.total), NOW);
 
     // Shown rounded, the parts add up to the price shown (0.84): the spot price takes any rounding.
     expect(signals.breakdownText).toBe('Spot 0.50 · grid tariff 0.25 · surcharge 0.03 · taxes 0.10 · support −0.04');
@@ -87,9 +97,10 @@ describe('resolveLiveSummarySignals, price now', () => {
   });
 
   it('says when a Norway price has no grid tariff in it', () => {
+    const hour = norwayHour({ gridTariffExVat: 0, electricitySupport: 0 });
     const signals = resolveLiveSummarySignals({
-      priceScheme: 'norway', prices: [norwayHour({ gridTariffExVat: 0, electricitySupport: 0 })],
-    }, NOW);
+      priceScheme: 'norway', prices: [hour],
+    }, timelineFor(hour.total), NOW);
 
     expect(signals.gridTariffMissing).toBe(true);
   });
@@ -97,7 +108,7 @@ describe('resolveLiveSummarySignals, price now', () => {
   it('writes no parts for a source that publishes one price', () => {
     const signals = resolveLiveSummarySignals({
       priceScheme: 'homey', priceUnit: 'EUR', prices: [{ startsAt: '2026-10-13T10:00:00.000Z', total: 0.31 }],
-    }, NOW);
+    }, { ...timelineFor(0.31), priceUnit: 'EUR' }, NOW);
 
     expect(signals.priceText).toBe('0.31 EUR/kWh');
     expect(signals.breakdownText).toBeNull();

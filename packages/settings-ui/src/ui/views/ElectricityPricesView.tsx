@@ -12,6 +12,7 @@ import type {
 } from '../priceConfigTypes.ts';
 import { normalizeNorwayPriceModel, normalizePriceSchemeSelection } from '../priceSettingsPersistence.ts';
 import type {
+  SettingsUiHubMarketRead,
   PowerhourDeviceUiOption,
   PowerhourSourceUiStatus,
   PriceSetupSuggestion,
@@ -99,6 +100,7 @@ export type ElectricityPricesHandlers = {
 };
 
 export type ElectricityPricesViewProps = {
+  market: SettingsUiHubMarketRead;
   config: PriceConfigState;
   handlers: ElectricityPricesHandlers;
   gridCompanyOptions: GridCompanyOption[];
@@ -180,9 +182,7 @@ const LiveSummaryCard = ({ config }: { config: PriceConfigState }) => {
           <span class="price-config-status-value">{calmValue}</span>
         )}
       </div>
-      {/* Norway only: its hourly price is the price now. Other sources may
-          publish quarter-hours, where the hourly figure here is an average. */}
-      {isNorway && liveSummary.priceText !== null ? (
+      {liveSummary.priceText !== null ? (
         // `Import price` only beside an export price, as the price glossary has it.
         <StatusRow
           label={currentExportPriceText !== null ? IMPORT_PRICE_LABEL : 'Price'}
@@ -815,6 +815,19 @@ const resolveSourceStatusLines = (props: ElectricityPricesViewProps): SourceStat
   };
 };
 
+const PRICE_SOURCE_OPTIONS = [
+  { value: 'homey', label: 'Homey Energy (dynamic prices)' },
+  { value: 'powerhour', label: 'Power by the Hour (app)' },
+  { value: 'flow', label: 'Flow (prices from a Flow card)' },
+  { value: 'norway', label: 'Norway (spot + grid tariff)' },
+] as const;
+
+const orderedPriceSources = (market: SettingsUiHubMarketRead) => (
+  market.state === 'resolved' && market.country === 'NO'
+    ? [PRICE_SOURCE_OPTIONS[3], ...PRICE_SOURCE_OPTIONS.slice(0, 3)]
+    : PRICE_SOURCE_OPTIONS
+);
+
 const SourceForm = (props: ElectricityPricesViewProps) => {
   const { config, handlers } = props;
   const note = schemeNote(config.priceScheme, config.organizationNumber !== '');
@@ -834,18 +847,11 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
           value={config.priceScheme}
           onChange={(e) => handlers.onSchemeChange(normalizePriceSchemeSelection(readValue(e)))}
         >
-          <MdSelectOption value="norway">
-            <div slot="headline">Norway (spot + grid tariff)</div>
-          </MdSelectOption>
-          <MdSelectOption value="flow">
-            <div slot="headline">Flow (prices from a Flow card)</div>
-          </MdSelectOption>
-          <MdSelectOption value="homey">
-            <div slot="headline">Homey Energy (dynamic prices)</div>
-          </MdSelectOption>
-          <MdSelectOption value="powerhour">
-            <div slot="headline">Power by the Hour (app)</div>
-          </MdSelectOption>
+          {orderedPriceSources(props.market).map((source) => (
+            <MdSelectOption key={source.value} value={source.value}>
+              <div slot="headline">{source.label}</div>
+            </MdSelectOption>
+          ))}
         </MdFilledSelect>
         {sourceStatus.hint}
       </div>

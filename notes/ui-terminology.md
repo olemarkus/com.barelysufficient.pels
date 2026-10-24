@@ -1490,7 +1490,7 @@ the ceiling, and each exists because its page mission needs it:
 |---|---|---|
 | Overview hero | The one *actionable* price fact for the set-and-forget owner | `Cheapest hour ahead: 02:00, 0.18 kr/kWh.` subline (`formatCheapestUpcomingHour`) — nothing else |
 | Budget tab | Price as *planning context* for the Optimiser | Exception-only `Price low` / `Price high` header chip + the shaping tagline (`Using cheaper hours`) + prosumer `Export price now:` subline |
-| Settings → Electricity prices | Price as *configuration + verification* | The `Right now` card (current price level, on the Norway source the price now and its parts, export row) + source settings |
+| Settings → Electricity prices | Price as *configuration + verification* | The `Right now` card (current price level, native-period price for every source, Norway price parts, export row) + source settings |
 | Electricity price widget (owner-requested 2026-10-05) | Price as *expectation*: what counts as low or high, and when that changes | Current price + `Price low` / `Price normal` / `Price high` (chip only for low/high), a subline that always states both lines in the settings page's terms (`Cheap at or below 24.60 øre · expensive from 40.90 øre`, or `… expensive from 0.412 EUR` on a currency source; never `High from` / `low up to`, and never drops the lines), then, when a level is never reached in the window, one more sentence for that level only (`No expensive prices: the highest is 87.84 øre.` / `No cheap prices: the lowest is 73.84 øre.`; both unreached: `No cheap or expensive prices: they stay between 73.84 and 87.84 øre.`), a rolling curve from three hours back (never before today's midnight) to the last known price with low/high shades and both lines drawn as faint dashed horizontals inside the y range (import and both views; the export view has no lines), a `Tomorrow` divider once tomorrow is published, screen-reader phrase `Price now <price>. Price: low|normal|high`, and `The lines can move when tomorrow's prices arrive.` until tomorrow is published. Lines are the producer's effective ones (percentage and minimum difference), never widget-derived. |
 
 The other widgets reuse the same exception-only `Price low` / `Price high` pair
@@ -1539,10 +1539,11 @@ never saw). On Electricity prices:
   offered only for a grid company PELS lists, and is asked for only when the
   owner opens the page with the grid company or price area missing, because the
   lookup sends the hub's coordinates to NVE and Kartverket.
-- `Right now` card, Norway source only (its hourly price is the price now;
-  another source may publish quarter-hours, where an hourly figure is an
-  average): a `Price` row (`Import price` beside an export price) and the parts
-  that add up to it, with VAT, in the card's unit:
+- `Right now` card, every source: a `Price` row (`Import price` beside an
+  export price), using the current published period, including quarter-hours.
+  Missing native coverage shows no price; an hourly average never substitutes
+  for the current period. The Norway source also shows the parts that add up
+  to it, with VAT, in the card's unit:
   `Spot 0.50 · grid tariff 0.25 · surcharge 0.03 · taxes 0.10 · support −0.04`
   (under Norgespris, `Norgespris −0.70` after `Spot`: the signed adjustment to
   the fixed price, partial or zero under the monthly cap; no `support`). A part
@@ -1601,7 +1602,7 @@ names exactly one of them:
 
 | Concept | Label | Per-hour field | Notes |
 |---|---|---|---|
-| The import price you're billed — the only price non-solar users ever see | **Import price** | `total` | Money and receipts stay on this; a receipt must reconcile to the bill. "Import price" is the disambiguator used ONLY on surfaces that also show the Export or Planning price; surfaces that show one price concept (all of today's non-solar UI) keep their established bare labels (`Price`; the Electricity prices card's current-hour price sits under its `Right now` heading — the separate `Current price` row label was dropped as a redundant restatement). |
+| The import price you're billed — the only price non-solar users ever see | **Import price** | `total` | Money and receipts stay on this; a receipt must reconcile to the bill. "Import price" is the disambiguator used ONLY on surfaces that also show the Export or Planning price; surfaces that show one price concept (all of today's non-solar UI) keep their established bare labels (`Price`; the Electricity prices card's current-period price sits under its `Right now` heading — the separate `Current price` row label was dropped as a redundant restatement). |
 | What you're paid — or charged — for exported power | **Export price** | `exportPrice` | Signed: negative means you pay to export. The Budget tab's prosumer-gated subline is the canonical rendering: `Export price now: 0.34 kr/kWh` (`composeExportPriceNow` in `packages/shared-domain/src/dailyBudgetHeroStrings.ts`), rendered only when an export price exists for the current hour. |
 | The derived price PELS plans against | **Planning price** | `budgetPrice` | Reason line: `using your solar`. Always labelled an estimate, never "the bill". |
 

@@ -51,6 +51,7 @@ const pricesPayload = (combinedPrices: unknown): SettingsUiPricesPayload => ({
   priceOptimizationSetup: { state: 'unavailable' },
   priceSetup: { state: 'unavailable' },
   priceLevelSummary: { state: 'unavailable' },
+  priceTimeline: { state: 'unavailable', reason: 'no_prices' },
 });
 
 const expectReady = (result: ReturnType<typeof resolveRenderInput>) => {

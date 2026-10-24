@@ -10,7 +10,7 @@ import { refreshHomeBadges } from './homeBadges.ts';
 import { refreshHomeScopeAndNotify, subscribeToHomeScope } from './homeScope.ts';
 import { invalidateApiCache, invalidateApiCacheForAllHomes } from './homey.ts';
 import { loadModeAndPriorities, renderPriorities } from './modes.ts';
-import { refreshPriceConfigView, renderPriceConfigDevices } from './priceConfig.ts';
+import { refreshCurrentPriceView, refreshPriceConfigView, renderPriceConfigDevices } from './priceConfig.ts';
 import { refreshDailyBudgetPlan } from './dailyBudget.ts';
 import {
   refreshPlan,
@@ -114,6 +114,11 @@ export const refreshPlanHistoryIfVisible = () => {
 export const refreshOverviewPlanIfVisible = (context: string) => {
   if (!isPanelVisible('#overview-panel')) return;
   runLoggedTask(refreshPlan(), 'Failed to refresh plan', context);
+};
+
+export const refreshCurrentPriceIfVisible = () => {
+  if (!isPanelVisible('#electricity-prices-panel')) return;
+  runLoggedTask(refreshCurrentPriceView(), 'Failed to refresh current price', 'periodicRefresh');
 };
 
 export const refreshPricesIfVisible = (context: string) => {
