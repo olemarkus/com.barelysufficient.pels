@@ -161,8 +161,6 @@ export function createPlanEngineComposition(
     getObservedState: (deviceId: string) => ctx.observer.getObservedRecord(deviceId),
     getObservationRevision: () => ctx.observer.getRevision(),
     actuator,
-    capacityGuard: options.capacityGuard,
-    getCapacitySettings: scope.getCapacitySettings,
     getPowerTracker: scope.getPowerTracker,
     getCapacityPaceKw: () => builder.computeCapacityPace(),
     // Planner-owned number, resolved here so the executor does not import

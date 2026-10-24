@@ -36,7 +36,6 @@ import { withDeviceConfiguration } from '../utils/planTestUtils';
  * binary control capability (`!snapshot.binaryCapabilityId` in
  * `shedReleaseActuation`), and this charger has `evcharger_charging`.
  */
-import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { syncSteppedCommands } from '../../lib/executor/syncSteppedCommands';
 import { buildSteppedSettleSnapshot } from '../../lib/observer/steppedSettleSnapshot';
 import { steppedStoresForTest } from '../helpers/steppedStores';
@@ -300,8 +299,6 @@ const buildHarness = (
       requestSteppedLoadStep: (params) => deviceManager.requestSteppedLoadStep(params),
       ...noStorageTransport,
     }),
-    capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-    getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
     getPowerTracker: () => ({}),
     getCapacityPaceKw: () => 9.5,
     getShortfallThresholdKw: () => 0,

@@ -1,4 +1,3 @@
-import type CapacityGuard from '../power/capacityGuard';
 import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
 import type { PowerTrackerState } from '../power/tracker';
 import type { PlanEngineState } from '../plan/planState';
@@ -22,8 +21,6 @@ export type ShortfallExecutorDeps = {
   /** Stable home id used to correlate structured enter, alert, and clear logs. */
   homeId: HomeId;
   setCapacityInShortfall: (inShortfall: boolean) => void;
-  capacityGuard: CapacityGuard;
-  getCapacitySettings: () => { limitKw: number; marginKw: number };
   getPowerTracker: () => PowerTrackerState;
   /** `capacityPaceKw` — the planner's live hourly threshold, for the log line. */
   getCapacityPaceKw: () => number | null;

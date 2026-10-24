@@ -2,7 +2,6 @@ import { steppedPlanDevice } from '../utils/planTestUtils';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsServiceTypes';
 import { partialDouble } from '../helpers/partialDouble';
-import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import type Homey from 'homey';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
@@ -322,8 +321,6 @@ const buildExecutor = (
       requestSteppedLoadStep: (params) => deviceManager.requestSteppedLoadStep(params),
       ...noStorageTransport,
     }),
-    capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-    getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
     getPowerTracker: () => ({}),
     getCapacityPaceKw: () => 9.5,
     getShortfallThresholdKw: () => 0,

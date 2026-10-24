@@ -42,7 +42,6 @@ import { withDeviceConfiguration } from '../utils/planTestUtils';
  * 60→34→17→60 for 3.5 hours of a cheap overnight charging window, and the
  * charger itself could never start its own planned bucket.
  */
-import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
@@ -240,8 +239,6 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
       requestSteppedLoadStep: (params) => deviceManager.requestSteppedLoadStep(params),
       ...noStorageTransport,
     }),
-    capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-    getCapacitySettings: () => ({ limitKw: 10, marginKw: 0, periodMinutes: 60 }),
     getPowerTracker: () => ({}),
     getCapacityPaceKw: () => 9.5,
     getShortfallThresholdKw: () => 0,
