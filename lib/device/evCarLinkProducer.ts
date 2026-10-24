@@ -43,6 +43,7 @@ import { EvCarSelfStopWatcher } from './evCarLinkSelfStop';
 import { EvCarLinkReportKeys } from './evCarLinkReportKeys';
 import { finalLinks, findUnsupportedProvisionalLinks, mayOpenProvisionalLink } from './evCarLinkProvisional';
 import { admitsCar, type EvCarLinkChargerView } from './evCarLinkChargerView';
+import { EvCarLinkRoster } from './evCarLinkRoster';
 import {
     applyCarCapability,
     mergeCarObservation,
@@ -113,13 +114,8 @@ export type EvCarLinkProducerDeps = {
 
 export class EvCarLinkProducer {
     private edges: EvLinkEdgeHistory = { carEdges: [], chargerEdges: [] };
-    private readonly cars = new Map<string, CarObservation>();
-    /** Cars Homey still reports but explicitly marks unavailable. Kept only so
-     *  targeted refresh can discover recovery; never offered to correlation. */
-    private readonly unavailableCars = new Map<string, string>();
-    /** Cars Homey reports with no readable plug state yet. Requested on every
-     *  targeted refresh so a later readable state is seen; never correlated. */
-    private readonly unreadCars = new Set<string>();
+    /** Every tracked car in exactly one state; only observed cars are correlated. */
+    private readonly cars = new EvCarLinkRoster();
     private readonly lastChargerState = new Map<string, EvChargingState>();
     private readonly chargerConnectedAtMs = new Map<string, number>();
     private readonly activeLinks = new Map<string, ActiveLink>();
@@ -155,13 +151,14 @@ export class EvCarLinkProducer {
 
     /** This charger's car for the CURRENT session; rules in `evCarLinkReadModel.ts`. */
     getAssociatedCarForCharger(chargerId: string): AssociatedCarSnapshot | undefined {
-        return resolveAssociatedCarSnapshot({ cars: this.cars, links: this.activeLinks, chargerId });
+        return resolveAssociatedCarSnapshot({ cars: this.cars.observed, links: this.activeLinks, chargerId });
     }
 
     getCarConfirmation(chargerId: string): CarConfirmation | undefined {
         const session = this.deps.getSnapshot().sessions[chargerId];
         if (!session?.confirmed) return undefined;
-        return { carId: session.carId, carName: this.carName(session.carId), available: this.cars.has(session.carId) };
+        const { carId } = session;
+        return { carId, carName: this.carName(carId), available: this.cars.observed.has(carId) };
     }
 
     clearCarConfirmation(chargerId: string): void {
@@ -174,7 +171,7 @@ export class EvCarLinkProducer {
         if (!charger || !isEvPlugStateConnected(charger.evChargingState)) {
             throw new Error('The charger is not connected.');
         }
-        if (!this.cars.has(carId)) throw new Error('The selected car is unavailable.');
+        if (!this.cars.observed.has(carId)) throw new Error('The selected car is unavailable.');
         const sessions = this.deps.getSnapshot().sessions;
         if (Object.entries(sessions).some(([id, session]) => id !== chargerId && session.carId === carId)
             || [...this.activeLinks].some(([id, link]) => id !== chargerId && link.carId === carId)) {
@@ -209,7 +206,7 @@ export class EvCarLinkProducer {
      * would go unobserved for as long as that feed was down.
      */
     getObservedCarDeviceIds(): string[] {
-        return [...this.cars.keys(), ...this.unavailableCars.keys(), ...this.unreadCars];
+        return this.cars.ids();
     }
 
     /**
@@ -228,7 +225,7 @@ export class EvCarLinkProducer {
      */
     noteDeviceUpdate(device: HomeyDeviceLike, nowMs: number): void {
         this.ingestCar(device, nowMs);
-        if (this.cars.size === 0 && this.unavailableCars.size === 0) return;
+        if (!this.cars.needsCorrelation()) return;
         this.correlate(nowMs);
     }
 
@@ -239,7 +236,7 @@ export class EvCarLinkProducer {
      * gone. Advancing the clock is not that evidence.
      */
     tick(nowMs: number): void {
-        if (this.cars.size === 0 && this.unavailableCars.size === 0) return;
+        if (!this.cars.needsCorrelation()) return;
         this.correlate(nowMs);
     }
 
@@ -254,12 +251,12 @@ export class EvCarLinkProducer {
      * previous one.
      */
     noteCapabilityUpdate(deviceId: string, capabilityId: string, value: unknown, nowMs: number): void {
-        const previous = this.cars.get(deviceId);
+        const previous = this.cars.observed.get(deviceId);
         if (previous) {
             const next = applyCarCapability(previous, { capabilityId, value, atMs: nowMs });
             if (next) this.applyCarObservation(deviceId, previous, next, nowMs);
         }
-        if (this.cars.size === 0 && this.unavailableCars.size === 0) return;
+        if (!this.cars.needsCorrelation()) return;
         this.correlate(nowMs);
     }
 
@@ -275,7 +272,7 @@ export class EvCarLinkProducer {
         merged: CarObservation,
         nowMs: number,
     ): void {
-        this.cars.set(deviceId, merged);
+        this.cars.observe(deviceId, merged);
         const edgeKind = previous ? resolveEvLinkEdge(previous.state, merged.state) : null;
         if (edgeKind !== null) {
             this.edges = appendEvLinkHistory(
@@ -310,8 +307,8 @@ export class EvCarLinkProducer {
      * (`shouldDeferEmptySnapshotCommit`) has already decided that an empty full
      * read is genuine rather than a transient miss. Re-gating on emptiness would
      * stack a second grace on top of that one and mean the LAST car could never
-     * be pruned at all. A targeted read re-reads only known ids and never
-     * narrows, because `fullRefresh` is false for it.
+     * be pruned at all. A targeted read re-reads only known ids, so a car it
+     * misses is dropped only on the miss grace below.
      */
     observe(read: DeviceListRead, options: { fullRefresh: boolean; nowMs: number }): void {
         const seen = new Set<string>();
@@ -348,9 +345,7 @@ export class EvCarLinkProducer {
 
     /** Drop a car Homey no longer reports, plus anything keyed on it. */
     private forgetCar(carId: string, nowMs: number): void {
-        this.cars.delete(carId);
-        this.unavailableCars.delete(carId);
-        this.unreadCars.delete(carId);
+        this.cars.forget(carId);
         this.targetedMissesByCarId.delete(carId);
         this.pendingSocShadows.delete(carId);
         this.edges = dropEvLinkCarEdges(this.edges, carId, nowMs, this.admits);
@@ -382,9 +377,7 @@ export class EvCarLinkProducer {
         const result = readCarDevice(device, nowMs);
         if (!result) return false;
         if (result.kind === 'unavailable') {
-            this.unavailableCars.set(result.deviceId, result.name);
-            this.unreadCars.delete(result.deviceId);
-            this.cars.delete(result.deviceId);
+            this.cars.markUnavailable(result.deviceId, result.name);
             this.pendingSocShadows.delete(result.deviceId);
             this.edges = dropEvLinkCarEdges(this.edges, result.deviceId, nowMs, this.admits);
             this.clearSessionsForCar(result.deviceId, true);
@@ -393,16 +386,14 @@ export class EvCarLinkProducer {
         const { reading } = result;
         const { deviceId } = reading;
 
-        const previous = this.cars.get(deviceId);
+        const previous = this.cars.observed.get(deviceId);
         const merged = mergeCarObservation(previous, reading);
         // No readable plug state ever: hold no observation rather than an
         // unknown, but keep requesting the car so a readable state is seen.
         if (!merged) {
-            this.unreadCars.add(deviceId);
+            this.cars.markUnread(deviceId, reading.name);
             return true;
         }
-        this.unreadCars.delete(deviceId);
-        this.unavailableCars.delete(deviceId);
         this.applyCarObservation(deviceId, previous, merged, nowMs);
         return true;
     }
@@ -426,10 +417,10 @@ export class EvCarLinkProducer {
     private correlate(nowMs: number): void {
         const chargers = this.deps.getChargers();
         this.ingestChargerEdges(chargers, nowMs);
-        // Keep observing charger disconnects while every car is unavailable so
+        // Keep observing charger disconnects while every car is in an outage so
         // they can disprove a preserved session, but retain no correlation edge
         // that could later be matched against data from after the outage.
-        if (this.cars.size === 0) { this.edges.carEdges = []; this.edges.chargerEdges = []; return; }
+        if (this.cars.observed.size === 0) { this.edges.carEdges = []; this.edges.chargerEdges = []; return; }
 
         // Hand the matcher EVERY retained charger edge: it needs the unsettled
         // ones to judge contention, and settles the decision itself.
@@ -458,7 +449,7 @@ export class EvCarLinkProducer {
         this.flushPendingSocShadows(chargers);
         this.publishAssociatedCarLevels();
         // Self-stop evidence is persisted, so only a final link may produce it.
-        this.selfStop.watch(chargers, nowMs, finalLinks(this.activeLinks), this.cars);
+        this.selfStop.watch(chargers, nowMs, finalLinks(this.activeLinks), this.cars.observed);
     }
 
     private ingestChargerEdges(chargers: readonly EvCarLinkChargerView[], nowMs: number): void {
@@ -492,12 +483,12 @@ export class EvCarLinkProducer {
             // watcher keeps watching that pair after the association ends.
             if (kind !== 'disconnect') continue;
             const ended = this.clearSession(charger.id);
-            this.selfStop.linger(charger.id, ended?.provisional ? undefined : ended, this.cars, nowMs);
+            this.selfStop.linger(charger.id, ended?.provisional ? undefined : ended, this.cars.observed, nowMs);
         }
     }
 
     getTaskDeliveryConstraint = (chargerId: string) => this.selfStop.getTaskDeliveryConstraint(
-        chargerId, this.deps.getChargers(), finalLinks(this.activeLinks), this.cars);
+        chargerId, this.deps.getChargers(), finalLinks(this.activeLinks), this.cars.observed);
 
     noteStopCommand(chargerId: string, nowMs: number): void { this.selfStop.noteStopCommand(chargerId, nowMs); }
 
@@ -624,7 +615,7 @@ export class EvCarLinkProducer {
         if (this.deps.getSnapshot().sessions[charger.id]?.confirmed) return false;
         if (coincidentCarId === undefined) return true;
         if (isCarConfirmedElsewhere(this.deps.getSnapshot().sessions, charger.id, coincidentCarId)) return false;
-        const coincidentCar = this.cars.get(coincidentCarId);
+        const coincidentCar = this.cars.observed.get(coincidentCarId);
         return coincidentCar !== undefined && isEvPlugStateConnected(coincidentCar.state);
     }
 
@@ -643,7 +634,7 @@ export class EvCarLinkProducer {
         const verdict = resolveResumableSessions(
             this.deps.getSnapshot().sessions,
             chargers,
-            this.cars,
+            this.cars.observed,
             (id) => this.activeLinks.has(id) || this.resumedChargerIds.has(id),
         );
         // Disproved first: a remembered endpoint reporting disconnected means that
@@ -727,7 +718,7 @@ export class EvCarLinkProducer {
             // car with history would otherwise be the "unique qualified prior"
             // for a charger a guest car is actually on, and its later charge
             // updates would be attributed to a charger it is not attached to.
-            candidateCarIds: [...this.cars.entries()]
+            candidateCarIds: [...this.cars.observed.entries()]
                 .filter(([, car]) => isEvPlugStateConnected(car.state))
                 .map(([carId]) => carId),
             votesFor: (carId) => getEvCarLinkVotes(snapshot, carId, chargerId),
@@ -774,9 +765,8 @@ export class EvCarLinkProducer {
     private publishAssociatedCarLevels(): void {
         const publish = this.deps.onAssociatedCarStateOfCharge;
         if (!publish) return;
-        for (const reading of collectAssociatedCarLevels(this.cars, this.activeLinks, this.deps.getSnapshot())) {
-            publish(reading);
-        }
+        const readings = collectAssociatedCarLevels(this.cars.observed, this.activeLinks, this.deps.getSnapshot());
+        for (const reading of readings) publish(reading);
     }
     private flushPendingSocShadows(chargers: readonly EvCarLinkChargerView[]): void {
         if (this.pendingSocShadows.size === 0) return;
@@ -815,5 +805,5 @@ export class EvCarLinkProducer {
         return charger === undefined || admitsCar(charger, carId);
     };
 
-    private carName = (carId: string): string => this.cars.get(carId)?.name ?? this.unavailableCars.get(carId) ?? carId;
+    private carName = (carId: string): string => this.cars.name(carId) ?? carId;
 }

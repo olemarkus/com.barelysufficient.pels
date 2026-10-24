@@ -296,7 +296,9 @@ events and a corrupted vote (`lib/device/AGENTS.md`). Two rules follow:
   skipped and the previous value kept. Storing `undefined` would erase the last trusted plug
   state, and the next genuine transition would then be compared against it and yield no edge —
   the session could neither link nor clear.
-- **No unknown crosses the boundary at all.** A car with no readable plug state is not tracked;
+- **No unknown crosses the boundary at all.** A car that has never reported a readable plug
+  state holds no observation and is never correlated, though the targeted refresh keeps
+  requesting it;
   resolved observations carry a required `EvChargingState`, and absent charge/power are omitted
   rather than nulled. The correlation domain takes only resolved values, so there is no
   "unknown" arm anywhere downstream to get wrong — and no fabricated `0 W`, which would read as
@@ -312,8 +314,12 @@ declare, whose value is absent too.
 
 **A full refresh is authoritative on membership.** A car removed from Homey is dropped, so the
 affinity fallback cannot resolve a live session to a device that no longer exists and its id
-stops being re-requested. Narrowing is gated on a non-empty list, and a targeted read (which
-re-reads only known ids) never narrows.
+stops being re-requested. A targeted read re-reads every tracked car by id and drops one it
+keeps missing only on the snapshot's own grace: enough misses and five minutes
+(`advanceTargetedMiss`). Each tracked car is in exactly one state (`evCarLinkRoster.ts`):
+observed, or reported with no observation because it is in an outage (marked unavailable, and
+no plug state has read since) or has never read. So it is requested once per read and misses
+count once.
 
 **A car is linked to at most one charger.** A missed disconnect would otherwise leave the
 old charger's link in place while the car links to a new one — charge readings credited
@@ -480,10 +486,10 @@ mis-resolved link puts another car's charge on the charger, and a missing one le
 charge at all, which EV boost and smart-task progress both read. Read the logs with these in
 mind:
 
-- **A car can be invisible rather than mis-read.** A car whose plug state is unreadable on the
-  first fetch, one whose by-id reads flake three times, and one whose app is installed after
-  startup are all untracked until a full refresh or restart. "No events for that car" therefore
-  does not mean "detection failed" — check the car was tracked at all.
+- **A car can be invisible rather than mis-read.** A car that has never reported a readable plug
+  state, or whose app reports it unavailable, is requested on every targeted refresh but takes no
+  part in correlation until a plug state reads. "No events for that car" therefore does not mean
+  "detection failed": check the car was observed at all.
 - **Coincidence quality depends on the live feed.** With it, edges are timestamped when they
   happened. Without it, both sides land in the same :25/:55 refresh tick and "coincidence"
   degrades to "same refresh" — much weaker. Links formed during a feed outage deserve suspicion.
