@@ -5,6 +5,7 @@ import type {
 } from '../../../../contracts/src/types.ts';
 import { type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { DEVICE_TARGET_POWER_CONFIGS } from '../../../../shared-domain/src/settings/settingsKeys.ts';
+import { isUnknownRecord } from '../../../../shared-domain/src/recordGuards.ts';
 import { createEvTargetPowerConfig } from '../../../../shared-domain/src/evTargetPowerConfig.ts';
 import {
   resolveTargetPowerLadderIssue,
@@ -150,7 +151,7 @@ export const resolveManagedOptInControlMode = (
 // its "unreadable" signal so it falls back to the snapshot instead of
 // normalising garbage into `{}` and erasing every other device's entry.
 const readFreshTargetPowerConfigs = (value: unknown): DeviceTargetPowerConfigs | null => (
-  value && typeof value === 'object' && !Array.isArray(value)
+  isUnknownRecord(value)
     ? normalizeDeviceTargetPowerConfigs(value)
     : null
 );

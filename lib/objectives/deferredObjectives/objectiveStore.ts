@@ -15,6 +15,7 @@ import type {
   DeferredObjectiveSettingsEntry,
   DeferredObjectiveSettingsV1,
 } from '../../../packages/contracts/src/deferredObjectiveSettings';
+import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuards';
 
 // ─── Per-device-key objective store ─────────────────────────────────────────
 //
@@ -258,11 +259,9 @@ export const clearObjectiveForDevice = (
 // that from a genuinely-empty-but-valid blob is what lets the migration consume a
 // truly-empty blob WITHOUT erasing a real one on a transient empty/malformed read.
 const legacyBlobReadIsTrustworthy = (raw: unknown): boolean => (
-  typeof raw === 'object'
-  && raw !== null
-  && !Array.isArray(raw)
-  && typeof (raw as { objectivesByDeviceId?: unknown }).objectivesByDeviceId === 'object'
-  && (raw as { objectivesByDeviceId?: unknown }).objectivesByDeviceId !== null
+  isUnknownRecord(raw)
+  && typeof raw.objectivesByDeviceId === 'object'
+  && raw.objectivesByDeviceId !== null
 );
 
 /**

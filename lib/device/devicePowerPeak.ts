@@ -24,6 +24,7 @@
  * changed its mind.
  */
 import type { DeviceExpectedPowerOverrides } from '../../packages/contracts/src/types';
+import { asUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 /**
  * How long a learned peak stands without being re-observed. 30 days: a water
@@ -149,12 +150,6 @@ const isFiniteTimestamp = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value) && value >= 0
 );
 
-const asRecord = (value: unknown): Record<string, unknown> | null => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null
-);
-
 /**
  * Validate a persisted learned-peak record at the store boundary (and the legacy
  * settings blob it was imported from).
@@ -169,12 +164,12 @@ const asRecord = (value: unknown): Record<string, unknown> | null => (
  */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export const parseLearnedPeaks = (raw: unknown): LearnedPeaksByDeviceId => {
-  const record = asRecord(raw);
+  const record = asUnknownRecord(raw);
   if (!record) return {};
   const parsed: LearnedPeaksByDeviceId = {};
   for (const [deviceId, value] of Object.entries(record)) {
     if (!deviceId) continue;
-    const entry = asRecord(value);
+    const entry = asUnknownRecord(value);
     if (!entry) continue;
     if (!isFinitePositive(entry.kw) || !isFiniteTimestamp(entry.observedAtMs)) continue;
     parsed[deviceId] = { kw: entry.kw, observedAtMs: entry.observedAtMs };
@@ -191,12 +186,12 @@ export const parseLearnedPeaks = (raw: unknown): LearnedPeaksByDeviceId => {
  */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export const parseExpectedPowerOverrides = (raw: unknown): DeviceExpectedPowerOverrides => {
-  const record = asRecord(raw);
+  const record = asUnknownRecord(raw);
   if (!record) return {};
   const parsed: DeviceExpectedPowerOverrides = {};
   for (const [deviceId, value] of Object.entries(record)) {
     if (!deviceId) continue;
-    const entry = asRecord(value);
+    const entry = asUnknownRecord(value);
     if (!entry) continue;
     if (!isFinitePositive(entry.kw) || !isFiniteTimestamp(entry.ts)) continue;
     parsed[deviceId] = { kw: entry.kw, ts: entry.ts };
@@ -278,7 +273,7 @@ const isWhollyUnparsableRecord = (
 export const classifyExpectedPowerOverridesSetting = (
   evidence: PersistedRecordReadEvidence,
 ): ExpectedPowerOverridesRead => {
-  const record = asRecord(evidence.raw);
+  const record = asUnknownRecord(evidence.raw);
   if (record) {
     const overrides = parseExpectedPowerOverrides(record);
     return isWhollyUnparsableRecord(record, overrides)

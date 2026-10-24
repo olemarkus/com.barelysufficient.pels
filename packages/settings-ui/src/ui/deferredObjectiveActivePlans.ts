@@ -5,6 +5,7 @@ import type {
   OverviewDeferredObjectiveActivePlans,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING } from '../../../shared-domain/src/settings/settingsKeys.ts';
+import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 import {
   normalizeDeferredObjectiveActivePlansShape,
 } from '../../../shared-domain/src/deferredObjectiveActivePlanShape.ts';
@@ -45,15 +46,15 @@ const isPlanStatus = (value: unknown): boolean => (
 
 const isOverviewLatest = (latest: unknown): boolean => {
   if (latest === null) return true;
-  if (typeof latest !== 'object' || Array.isArray(latest)) return false;
-  const { hours, planStatus } = latest as { hours?: unknown; planStatus?: unknown };
+  if (!isUnknownRecord(latest)) return false;
+  const { hours, planStatus } = latest;
   return isPlanStatus(planStatus) && Array.isArray(hours) && hours.every(isOverviewHour);
 };
 
 const isOverviewPlanShaped = (plan: unknown): plan is OverviewDeferredObjectiveActivePlan => (
-  Boolean(plan) && typeof plan === 'object' && !Array.isArray(plan)
-  && Number.isFinite((plan as { deadlineAtMs?: unknown }).deadlineAtMs)
-  && isOverviewLatest((plan as { latest?: unknown }).latest)
+  isUnknownRecord(plan)
+  && Number.isFinite(plan.deadlineAtMs)
+  && isOverviewLatest(plan.latest)
 );
 
 // Browser-safe coercion of the raw `deferred_objective_active_plans` setting.

@@ -24,6 +24,7 @@
  */
 
 import type { ApiPort, ApiAppPort } from '../ports/homeyRuntime';
+import { asUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 export const POWERHOUR_APP_ID = 'com.gruijter.powerhour';
 export const DAP_PRICES_PATH = '/dap-prices';
@@ -89,12 +90,6 @@ export const resolvePowerhourApiApp = (
   }
 };
 
-const asRecord = (value: unknown): Record<string, unknown> | null => (
-  value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null
-);
-
 const toFiniteNumber = (value: unknown): number | null => (
   typeof value === 'number' && Number.isFinite(value) ? value : null
 );
@@ -139,7 +134,7 @@ const resolveIntervalMinutes = (value: unknown): number | null => {
  * prices only.
  */
 const resolveSlot = (value: unknown): PowerhourSlot | null => {
-  const record = asRecord(value);
+  const record = asUnknownRecord(value);
   if (!record) return null;
   if (record.isForecast === true) return null;
   const time = toNonEmptyString(record.time);
@@ -162,7 +157,7 @@ const resolveSlot = (value: unknown): PowerhourSlot | null => {
  * offering them a dead end.
  */
 const resolveDevice = (value: unknown): PowerhourDevice | null => {
-  const record = asRecord(value);
+  const record = asUnknownRecord(value);
   if (!record) return null;
   const driverType = toNonEmptyString(record.driverType);
   if (!driverType || !ELECTRICITY_DRIVER_TYPES.has(driverType)) return null;
@@ -196,7 +191,7 @@ const resolveDevice = (value: unknown): PowerhourDevice | null => {
  * read, which is a different fact from the app not being there.
  */
 export const resolvePowerhourPayload = (payload: unknown): PowerhourRead => {
-  const record = asRecord(payload);
+  const record = asUnknownRecord(payload);
   if (!record || !Array.isArray(record.prices)) return { kind: 'unavailable', reason: 'malformed' };
   const devices = record.prices
     .map(resolveDevice)

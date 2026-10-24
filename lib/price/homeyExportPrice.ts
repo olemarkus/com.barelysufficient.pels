@@ -25,6 +25,7 @@
  */
 
 import { getDebugEmitter } from '../logging/logger';
+import { asUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import { resolveHomeyHttpStatusCode } from '../utils/homeyHttpStatusError';
 import {
   HOMEY_EXPORT_PRICE_TERMS,
@@ -54,10 +55,6 @@ export type HomeyExportTerms =
   | { kind: 'disabled' }
   | { kind: 'failed'; reasonCode: 'read_threw' | 'unrecognised_body' };
 
-const asRecord = (value: unknown): Record<string, unknown> | null => (
-  typeof value === 'object' && value !== null ? value as Record<string, unknown> : null
-);
-
 /**
  * Sum Homey's named cost components, the way Homey sums them itself.
  *
@@ -67,14 +64,14 @@ const asRecord = (value: unknown): Record<string, unknown> | null => (
  * that silently omits one of its parts is worse than none.
  */
 export const sumExportCostComponents = (value: unknown): number | null => {
-  const option = asRecord(value);
-  const costs = asRecord(option?.costs);
+  const option = asUnknownRecord(value);
+  const costs = asUnknownRecord(option?.costs);
   if (!costs) return null;
   const components = Object.values(costs);
   if (components.length === 0) return null;
   let total = 0;
   for (const component of components) {
-    const amount = asRecord(component)?.value;
+    const amount = asUnknownRecord(component)?.value;
     if (typeof amount !== 'number' || !Number.isFinite(amount)) return null;
     total += amount;
   }
@@ -94,7 +91,7 @@ export const fetchHomeyExportTerms = async (
     const type = await webApiGet(EXPORT_TYPE_API_PATH);
     if (type === 'disabled' || type === null) return { kind: 'disabled' };
     if (type === 'fixed') {
-      const amount = sumExportCostComponents(asRecord(await webApiGet(EXPORT_FIXED_OPTION_API_PATH))?.value);
+      const amount = sumExportCostComponents(asUnknownRecord(await webApiGet(EXPORT_FIXED_OPTION_API_PATH))?.value);
       // A `fixed` type whose amount has never been entered prices nothing, and
       // is the owner's configuration half-done rather than a read failure.
       return amount === null
@@ -103,7 +100,7 @@ export const fetchHomeyExportTerms = async (
     }
     if (type === 'dynamic') {
       const body = await webApiGet(EXPORT_USER_COSTS_API_PATH);
-      const expression = asRecord(body)?.mathExpression;
+      const expression = asUnknownRecord(body)?.mathExpression;
       // Homey applies no raw-spot fallback on the export side: a dynamic export
       // with no expression is unpriced there too, so it prices nothing here.
       if (body === null) return { kind: 'disabled' };
@@ -157,7 +154,7 @@ export const readExportTerms = (settings: SettingsPort): ExportTermsRead => {
       ? { kind: 'suspect' }
       : { kind: 'absent' };
   }
-  const stored = asRecord(raw);
+  const stored = asUnknownRecord(raw);
   if (!stored) return { kind: 'suspect' };
   if (stored.disabled === true) return { kind: 'terms', value: { disabled: true } };
   if (typeof stored.fixedAmount === 'number' && Number.isFinite(stored.fixedAmount)) {

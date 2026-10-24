@@ -12,6 +12,7 @@
 import type { SettingsUiPowerTracker } from '../../../contracts/src/powerTrackerTypes.ts';
 import { hasRecordedAnyExport } from '../../../shared-domain/src/solar/exhibitedExport.ts';
 import { resolveSolarMoneyToday } from '../../../shared-domain/src/solar/solarMoney.ts';
+import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 import { normalizeCombinedPrices } from './combinedPrices.ts';
 import { formatCost } from './dailyBudgetCost.ts';
 import { getPricesReadModel } from './prices.ts';
@@ -34,10 +35,8 @@ import {
   type SolarUsageCardProps,
 } from './views/SolarUsageCard.tsx';
 
-const asRecord = (value: unknown): Record<string, number> | undefined => (
-  value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, number>
-    : undefined
+const asBuckets = (value: Record<string, number> | undefined): Record<string, number> | undefined => (
+  isUnknownRecord(value) ? value : undefined
 );
 
 // Appended INLINE to a money value (registered rule in notes/ui-terminology.md
@@ -136,8 +135,8 @@ export const resolveSolarUsageCardProps = (params: {
   hasManagedSolarDevice: boolean;
 }): SolarUsageCardProps | null => {
   const { tracker, combined, timeZone, todayKey, hasManagedSolarDevice } = params;
-  const generationBuckets = asRecord(tracker?.generationBuckets);
-  const exportBuckets = asRecord(tracker?.exportBuckets);
+  const generationBuckets = asBuckets(tracker?.generationBuckets);
+  const exportBuckets = asBuckets(tracker?.exportBuckets);
   const rows = buildSolarDayRows({ generationBuckets, exportBuckets, timeZone, todayKey });
   if (!resolveSolarCardVisible({ hasManagedSolarDevice, generationBuckets, rows })) return null;
   if (rows.length === 0) {

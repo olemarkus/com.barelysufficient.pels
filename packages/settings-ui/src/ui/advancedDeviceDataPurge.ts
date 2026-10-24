@@ -5,7 +5,7 @@ import {
 import { callApi, getSetting, getSettingFresh, setSetting } from './homey.ts';
 import { state } from './state.ts';
 import { hasLoadedDeferredObjectiveSettings, loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
-import { createSerializedAsyncRunner } from './deviceDetail/settingsWrite.ts';
+import { createSerializedAsyncRunner, readRecordSettingStrict } from './deviceDetail/settingsWrite.ts';
 import {
   DEVICE_CONTROL_PROFILES,
   DEVICE_EXPECTED_POWER_OVERRIDES,
@@ -60,10 +60,6 @@ export type PurgeableDeviceOption = {
 };
 
 const runSerializedPurge = createSerializedAsyncRunner();
-
-const readRecordSetting = <T>(value: unknown): Record<string, T> | null => (
-  typeof value === 'object' && value !== null && !Array.isArray(value) ? { ...(value as Record<string, T>) } : null
-);
 
 const getPurgeHomeIds = (): string[] => {
   const scope = getHomeScope();
@@ -217,7 +213,7 @@ const purgedRecord = <T>(
   key: string,
   pageCopy: () => Record<string, T>,
   apply: (map: Record<string, T>) => void,
-): PurgedMap => purgedMap(key, readRecordSetting<T>, pageCopy, apply, removeDeviceIdsFromRecord);
+): PurgedMap => purgedMap(key, readRecordSettingStrict<T>, pageCopy, apply, removeDeviceIdsFromRecord);
 
 const PURGED_MAPS: readonly PurgedMap[] = [
   purgedRecord(
