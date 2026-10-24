@@ -55,22 +55,15 @@ describe('debouncedSetSetting', () => {
   });
 
   it('allows retry after a failed flush', async () => {
-    const { debouncedSetSetting, flushDebouncedSettingSaves, setSetting } = await loadUtils();
+    const { debouncedSetSetting, initDebouncedSaveFlush, setSetting } = await loadUtils();
+    const cleanup = initDebouncedSaveFlush();
     setSetting
       .mockRejectedValueOnce(new Error('boom'))
       .mockResolvedValueOnce(undefined);
 
     const first = debouncedSetSetting('managed_devices', () => 'value');
 
-    let flushError: unknown;
-    try {
-      await flushDebouncedSettingSaves();
-    } catch (error) {
-      flushError = error;
-    }
-    expect(flushError).toBeInstanceOf(Error);
-    expect((flushError as Error).message).toBe('Failed to flush pending setting saves');
-    expect((flushError as Error & { causes?: unknown[] }).causes).toHaveLength(1);
+    window.dispatchEvent(new Event('pagehide'));
     await expect(first).rejects.toThrow('boom');
 
     const retry = debouncedSetSetting('managed_devices', () => 'value2');
@@ -82,22 +75,8 @@ describe('debouncedSetSetting', () => {
     await expect(retry).resolves.toBeUndefined();
     expect(setSetting).toHaveBeenCalledTimes(2);
     expect(setSetting).toHaveBeenLastCalledWith('managed_devices', 'value2');
-  });
 
-  it('flushes pending saves immediately', async () => {
-    const { debouncedSetSetting, flushDebouncedSettingSaves, setSetting } = await loadUtils();
-    const promise = debouncedSetSetting('managed_devices', () => 'value');
-
-    await flushDebouncedSettingSaves();
-    await flushMicrotasks();
-
-    await expect(promise).resolves.toBeUndefined();
-    expect(setSetting).toHaveBeenCalledTimes(1);
-    expect(setSetting).toHaveBeenCalledWith('managed_devices', 'value');
-
-    vi.runOnlyPendingTimers();
-    await flushMicrotasks();
-    expect(setSetting).toHaveBeenCalledTimes(1);
+    if (cleanup) cleanup();
   });
 
   it('flushes on beforeunload', async () => {
@@ -110,6 +89,7 @@ describe('debouncedSetSetting', () => {
 
     await expect(promise).resolves.toBeUndefined();
     expect(setSetting).toHaveBeenCalledTimes(1);
+    expect(setSetting).toHaveBeenCalledWith('managed_devices', 'value');
 
     vi.runOnlyPendingTimers();
     await flushMicrotasks();
@@ -133,11 +113,12 @@ describe('debouncedSetSetting', () => {
   });
 
   it('flushes multiple keys independently', async () => {
-    const { debouncedSetSetting, flushDebouncedSettingSaves, setSetting } = await loadUtils();
+    const { debouncedSetSetting, initDebouncedSaveFlush, setSetting } = await loadUtils();
+    const cleanup = initDebouncedSaveFlush();
     const managed = debouncedSetSetting('managed_devices', () => 'managed');
     const controllable = debouncedSetSetting('controllable_devices', () => 'controllable');
 
-    await flushDebouncedSettingSaves();
+    window.dispatchEvent(new Event('pagehide'));
     await flushMicrotasks();
 
     await expect(managed).resolves.toBeUndefined();
@@ -145,20 +126,25 @@ describe('debouncedSetSetting', () => {
     expect(setSetting).toHaveBeenCalledTimes(2);
     expect(setSetting).toHaveBeenCalledWith('managed_devices', 'managed');
     expect(setSetting).toHaveBeenCalledWith('controllable_devices', 'controllable');
+
+    if (cleanup) cleanup();
   });
 
   it('flushes the latest value for a key', async () => {
-    const { debouncedSetSetting, flushDebouncedSettingSaves, setSetting } = await loadUtils();
+    const { debouncedSetSetting, initDebouncedSaveFlush, setSetting } = await loadUtils();
+    const cleanup = initDebouncedSaveFlush();
     const first = debouncedSetSetting('managed_devices', () => 'value1');
     const second = debouncedSetSetting('managed_devices', () => 'value2');
 
     expect(first).toBe(second);
 
-    await flushDebouncedSettingSaves();
+    window.dispatchEvent(new Event('pagehide'));
     await flushMicrotasks();
 
     await expect(second).resolves.toBeUndefined();
     expect(setSetting).toHaveBeenCalledTimes(1);
     expect(setSetting).toHaveBeenCalledWith('managed_devices', 'value2');
+
+    if (cleanup) cleanup();
   });
 });

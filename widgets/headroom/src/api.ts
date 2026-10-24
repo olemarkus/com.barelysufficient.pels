@@ -39,9 +39,10 @@ const toLatchEvidence = (app: unknown): PowerMeasurementEvidence => {
 };
 
 export const getHeadroom = async ({ homey }: WidgetApiContext): Promise<HeadroomWidgetPayload> => (
-  buildHeadroomWidgetPayload({
-    status: classifyPowerStatusRead(toLatchEvidence(homey.app), toStatusRead(homey.app)),
-  })
+  buildHeadroomWidgetPayload(
+    classifyPowerStatusRead(toLatchEvidence(homey.app), toStatusRead(homey.app)),
+    Date.now(),
+  )
 );
 
 export const logClientError = (context: WidgetClientLogContext): { ok: boolean } => (

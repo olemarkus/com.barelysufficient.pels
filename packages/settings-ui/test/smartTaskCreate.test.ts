@@ -7,6 +7,7 @@ import {
 } from '../../contracts/src/settingsUiApi.ts';
 import type { SmartTaskCandidateDevice } from '../../contracts/src/smartTaskEdit.ts';
 import { createEmptyDeferredObjectiveSettings } from '../../shared-domain/src/settings/deferredObjectiveSettings.ts';
+import type { SmartTaskCreateSnapshot } from '../src/ui/smartTaskCreate.ts';
 
 const callApiMock = vi.fn();
 vi.mock('../src/ui/homey.ts', () => ({
@@ -58,7 +59,9 @@ const recordNavigation = (event: MouseEvent): void => {
   navigatedTo.push(anchor.getAttribute('href') ?? '');
 };
 
-const paints: Array<ReturnType<typeof controller.getSmartTaskCreateSnapshot>> = [];
+// Every snapshot the controller hands the registered renderer: the flow's real
+// output, which the Smart tasks page paints.
+const paints: Array<SmartTaskCreateSnapshot | null> = [];
 const openPanel = vi.fn();
 
 const answer = (byPath: Record<string, unknown>): void => {
@@ -68,7 +71,7 @@ const answer = (byPath: Record<string, unknown>): void => {
   });
 };
 
-const step = () => controller.getSmartTaskCreateSnapshot()?.step;
+const step = () => paints.at(-1)?.step;
 
 describe('New smart task flow', () => {
   beforeEach(() => {
@@ -141,7 +144,6 @@ describe('New smart task flow', () => {
     answer({ [SETTINGS_UI_SMART_TASK_DEVICES_PATH]: { state: 'ready', devices: [HEATER] } });
     controller.openSmartTaskCreate({ kind: 'device', deviceId: 'heater', sourceTab: 'devices' });
     await flush();
-    expect(controller.getSmartTaskCreateSnapshot()).toBeNull();
     expect(paints.at(-1)).toBeNull();
     expect(navigatedTo).toEqual(['./?page=deadline-plan&deviceId=heater&edit=1']);
   });
@@ -152,7 +154,7 @@ describe('New smart task flow', () => {
     await flush();
     controller.setSmartTaskCreateGoal('90');
     await controller.requestSmartTaskCreatePreview();
-    expect(controller.getSmartTaskCreateSnapshot()?.errorLine).toBe('Enter a goal within this device’s range.');
+    expect(paints.at(-1)?.errorLine).toBe('Enter a goal within this device’s range.');
     expect(callApiMock).toHaveBeenCalledTimes(1);
   });
 
@@ -178,7 +180,7 @@ describe('New smart task flow', () => {
       pauseLowerPriorityDevices: false,
       deadlineAtMs: PREVIEW.deadlineAtMs,
     });
-    expect(controller.getSmartTaskCreateSnapshot()).toBeNull();
+    expect(paints.at(-1)).toBeNull();
     expect(navigatedTo).toEqual(['./?page=deadline-plan&deviceId=heater']);
   });
 
