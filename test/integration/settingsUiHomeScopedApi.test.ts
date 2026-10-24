@@ -80,6 +80,7 @@ const createMembershipPort = (options: {
   pendingGeneration?: boolean;
 }): HomeMembershipPort => ({
   getHomeIdForDevice: (id) => options.membership[id] ?? 'main',
+  isDeviceZoneUnknown: () => false,
   getMembershipMap: () => ({ ...options.membership }),
   getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set<string>() }),
   hasSubHomes: () => true,

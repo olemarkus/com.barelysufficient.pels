@@ -2,6 +2,8 @@ import type { ZoneTree } from './managerZones';
 import type { TargetedMissState } from './targetedSnapshotMerge';
 import { ZoneTreeCache } from './zoneTreeCache';
 
+const UNKNOWN_ZONE_REFRESH_MIN_INTERVAL_MS = 10_000;
+
 type EmptySnapshotGrace = {
   firstSeenMs: number;
   reads: number;
@@ -14,6 +16,7 @@ export class SnapshotRefreshState {
   private emptySnapshotGrace: EmptySnapshotGrace | null = null;
   private lastRefreshMetricsKey: string | null = null;
   private warm = false;
+  private lastUnknownZoneRefreshAtMs = Number.NEGATIVE_INFINITY;
 
   getTargetedMisses(): Map<string, TargetedMissState> {
     return this.targetedMisses;
@@ -52,6 +55,17 @@ export class SnapshotRefreshState {
   commitZoneTree(tree: ZoneTree, generation: number): boolean {
     if (generation <= this.zoneTree.getLastCommittedGeneration()) return false;
     this.zoneTree.set(tree, generation);
+    return true;
+  }
+
+  /**
+   * Whether an unknown zone may trigger a tree fetch now: at most one per
+   * `UNKNOWN_ZONE_REFRESH_MIN_INTERVAL_MS`, so a zone read that keeps failing,
+   * or a burst of devices moving at once, cannot turn into a fetch per update.
+   */
+  claimUnknownZoneRefresh(nowMs: number): boolean {
+    if (nowMs - this.lastUnknownZoneRefreshAtMs < UNKNOWN_ZONE_REFRESH_MIN_INTERVAL_MS) return false;
+    this.lastUnknownZoneRefreshAtMs = nowMs;
     return true;
   }
 

@@ -11,10 +11,12 @@
  *
  * Consumed by multi-home membership, which joins device `zoneId`s against it
  * (`lib/home/homeMembershipService.ts`); until the first tree commits, a pinned sub-home
- * member is held out of actuation. AFTER that first commit an unknown zone is
- * no longer held — it resolves to Main — so the tree rides every snapshot
- * refresh rather than a slower cadence of its own: Homey publishes no zone
- * event, so a stale tree has nothing to correct it.
+ * member is held out of actuation. After that, in a home with meter areas, a
+ * device in a zone the tree lacks is held out of every home until a refetch
+ * places it, and a device moving into such a zone triggers one at once. The
+ * tree also rides every snapshot refresh rather than a slower cadence of its
+ * own: Homey publishes no zone event, so a stale tree has nothing else to
+ * correct it.
  */
 import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuards';
 import { normalizeError } from '../../utils/errorUtils';

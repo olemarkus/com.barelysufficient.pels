@@ -93,7 +93,7 @@ function notifyDeviceZoneChangeContained(
     if (!currentSnapshot) return;
     if ((previousSnapshot?.zoneId ?? null) === (currentSnapshot.zoneId ?? null)) return;
     try {
-        ingest.notifications.notifyDeviceZoneChanged();
+        ingest.notifications.notifyDeviceZoneChanged(currentSnapshot.zoneId ?? null);
     } catch (error) {
         emitDeviceDebug({
             event: 'device_zone_changed_notify_failed',
