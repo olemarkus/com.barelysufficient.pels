@@ -78,19 +78,9 @@ export function mergeFresherCapabilityObservations(params: {
         if (!sourceDevice) continue;
         const hadTemperature = snapshot.temperature !== undefined;
         if (previous) {
-            mergeSnapshotObservationsForDevice({
-                state,
-                nextSnapshot: snapshot,
-                previous,
-                sourceDevice,
-            });
+            mergeSnapshotObservationsForDevice(state, previous, snapshot, sourceDevice);
         } else {
-            mergeTemperatureRejectionObservations({
-                state,
-                snapshot,
-                sourceDevice,
-                readPath: 'snapshot_refresh',
-            });
+            mergeTemperatureRejectionObservations(state, snapshot, sourceDevice, 'snapshot_refresh');
         }
         if (lostOnlyControlFacet(hadTemperature, snapshot)) {
             nextSnapshot.splice(index, 1);
@@ -125,12 +115,7 @@ export function mergeTemperatureRejectionsIntoDeviceUpdate(
     sourceDevice: HomeyDeviceLike,
 ): DeviceUpdateTemperatureMerge {
     const hadTemperature = snapshot.temperature !== undefined;
-    const retiredRejection = mergeTemperatureRejectionObservations({
-        state,
-        snapshot,
-        sourceDevice,
-        readPath: 'device_update',
-    });
+    const retiredRejection = mergeTemperatureRejectionObservations(state, snapshot, sourceDevice, 'device_update');
     if (lostOnlyControlFacet(hadTemperature, snapshot)) return { admitted: false };
     const { temperature } = snapshot;
     // A second rejection the read did not retire stripped the facet again.
@@ -147,29 +132,18 @@ function lostOnlyControlFacet(hadTemperature: boolean, snapshot: TransportDevice
 }
 
 /** Merge each retained temperature rejection into the read; whether the read retired one. */
-function mergeTemperatureRejectionObservations(params: {
-    state: DeviceTransportObservationState;
-    snapshot: TransportDeviceSnapshot;
-    sourceDevice: HomeyDeviceLike;
-    readPath: MergedReadPath;
-}): boolean {
-    const {
-        state, snapshot, sourceDevice, readPath,
-    } = params;
+function mergeTemperatureRejectionObservations(
+    state: DeviceTransportObservationState,
+    snapshot: TransportDeviceSnapshot,
+    sourceDevice: HomeyDeviceLike,
+    readPath: MergedReadPath,
+): boolean {
     let retired = false;
     for (const capabilityId of ['target_temperature', 'measure_temperature'] as const) {
         const observationKey = buildCapabilityObservationKey(snapshot.id, capabilityId);
         const observation = state.capabilityObservations.get(observationKey);
         if (!observation || isFiniteNumber(observation.value)) continue;
-        mergeCapabilityObservation({
-            state,
-            deviceId: snapshot.id,
-            deviceName: snapshot.name,
-            capabilityId,
-            sourceDevice,
-            nextSnapshot: snapshot,
-            readPath,
-        });
+        mergeCapabilityObservation(state, snapshot, sourceDevice, capabilityId, readPath);
         // A rejection leaves the store only when a finite read at or after it retires it.
         retired ||= !state.capabilityObservations.has(observationKey);
     }
@@ -212,20 +186,14 @@ function retainTemperaturePair(
     }
 }
 
-/* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
-function mergeSnapshotObservationsForDevice(params: {
-    state: DeviceTransportObservationState;
-    nextSnapshot: TransportDeviceSnapshot;
-    previous: TransportDeviceSnapshot;
-    sourceDevice: HomeyDeviceLike;
-}): void {
-    const {
-        state,
-        nextSnapshot,
-        previous,
-        sourceDevice,
-    } = params;
-    const snapshot = nextSnapshot;
+/* eslint-disable functional/immutable-data, no-param-reassign --
+   In-place update avoids another state or accumulator copy. */
+function mergeSnapshotObservationsForDevice(
+    state: DeviceTransportObservationState,
+    previous: TransportDeviceSnapshot,
+    snapshot: TransportDeviceSnapshot,
+    sourceDevice: HomeyDeviceLike,
+): void {
     snapshot.lastLocalWriteMs = Math.max(
         snapshot.lastLocalWriteMs ?? 0,
         previous.lastLocalWriteMs ?? 0,
@@ -244,55 +212,27 @@ function mergeSnapshotObservationsForDevice(params: {
     preserveNewerHomeBatteryReadings(previous, snapshot);
 
     if (snapshot.binaryCapabilityId) {
-        mergeCapabilityObservation({
-            state,
-            deviceId: snapshot.id,
-            deviceName: snapshot.name,
-            capabilityId: snapshot.binaryCapabilityId,
-            sourceDevice,
-            nextSnapshot: snapshot,
-            readPath: 'snapshot_refresh',
-        });
+        mergeCapabilityObservation(state, snapshot, sourceDevice, snapshot.binaryCapabilityId, 'snapshot_refresh');
     }
 
     for (const target of snapshot.targets) {
-        mergeCapabilityObservation({
-            state,
-            deviceId: snapshot.id,
-            deviceName: snapshot.name,
-            capabilityId: target.id,
-            sourceDevice,
-            nextSnapshot: snapshot,
-            readPath: 'snapshot_refresh',
-        });
+        mergeCapabilityObservation(state, snapshot, sourceDevice, target.id, 'snapshot_refresh');
     }
 
     for (const capabilityId of [
         'measure_temperature',
         'evcharger_charging_state',
     ]) {
-        mergeCapabilityObservation({
-            state,
-            deviceId: snapshot.id,
-            deviceName: snapshot.name,
-            capabilityId,
-            sourceDevice,
-            nextSnapshot: snapshot,
-            readPath: 'snapshot_refresh',
-        });
+        mergeCapabilityObservation(state, snapshot, sourceDevice, capabilityId, 'snapshot_refresh');
     }
-    mergeStateOfChargeObservationsForDevice({
-        state,
-        snapshot,
-        sourceDevice,
-    });
+    mergeStateOfChargeObservationsForDevice(state, snapshot, sourceDevice);
     const maxRetainedMs = getMaxRetainedObservationTimeMs(state, snapshot);
     if (maxRetainedMs > 0) {
         snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, maxRetainedMs) || undefined;
         snapshot.lastUpdated = snapshot.lastFreshDataMs;
     }
 }
-/* eslint-enable functional/immutable-data */
+/* eslint-enable functional/immutable-data, no-param-reassign */
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 function preserveBinaryControlObservation(params: {
@@ -319,16 +259,11 @@ function preserveBinaryControlObservation(params: {
     }
 }
 /* eslint-enable functional/immutable-data */
-function mergeStateOfChargeObservationsForDevice(params: {
-    state: DeviceTransportObservationState;
-    snapshot: TransportDeviceSnapshot;
-    sourceDevice: HomeyDeviceLike;
-}): void {
-    const {
-        state,
-        snapshot,
-        sourceDevice,
-    } = params;
+function mergeStateOfChargeObservationsForDevice(
+    state: DeviceTransportObservationState,
+    snapshot: TransportDeviceSnapshot,
+    sourceDevice: HomeyDeviceLike,
+): void {
     let newestCapabilityId: string | undefined;
     let newestObservedAt = 0;
     for (const capabilityId of EV_SOC_NATIVE_CAPABILITY_IDS) {
@@ -350,15 +285,7 @@ function mergeStateOfChargeObservationsForDevice(params: {
         state.capabilityObservations.delete(buildCapabilityObservationKey(snapshot.id, capabilityId));
     }
 
-    mergeCapabilityObservation({
-        state,
-        deviceId: snapshot.id,
-        deviceName: snapshot.name,
-        capabilityId: newestCapabilityId,
-        sourceDevice,
-        nextSnapshot: snapshot,
-        readPath: 'snapshot_refresh',
-    });
+    mergeCapabilityObservation(state, snapshot, sourceDevice, newestCapabilityId, 'snapshot_refresh');
 }
 
 function getMaxRetainedObservationTimeMs(
@@ -383,25 +310,14 @@ function getMaxRetainedObservationTimeMs(
     return max;
 }
 
-function mergeCapabilityObservation(params: {
-    state: DeviceTransportObservationState;
-    deviceId: string;
-    deviceName: string;
-    capabilityId: string;
-    sourceDevice: HomeyDeviceLike;
-    nextSnapshot: TransportDeviceSnapshot;
-    readPath: MergedReadPath;
-}): void {
-    const {
-        state,
-        deviceId,
-        deviceName,
-        capabilityId,
-        sourceDevice,
-        nextSnapshot,
-        readPath,
-    } = params;
-    const observationKey = buildCapabilityObservationKey(deviceId, capabilityId);
+function mergeCapabilityObservation(
+    state: DeviceTransportObservationState,
+    snapshot: TransportDeviceSnapshot,
+    sourceDevice: HomeyDeviceLike,
+    capabilityId: string,
+    readPath: MergedReadPath,
+): void {
+    const observationKey = buildCapabilityObservationKey(snapshot.id, capabilityId);
     const observation = state.capabilityObservations.get(observationKey);
     if (!observation) return;
     if (
@@ -426,11 +342,11 @@ function mergeCapabilityObservation(params: {
         winner: ConsolidationWinner,
         reason: ConsolidationReason,
     ): void => {
-        if (capabilityId !== nextSnapshot.binaryCapabilityId) return;
+        if (capabilityId !== snapshot.binaryCapabilityId) return;
         emitDeviceDebug({
             event: 'binary_observation_consolidated',
-            deviceId,
-            deviceName,
+            deviceId: snapshot.id,
+            deviceName: snapshot.name,
             capabilityId,
             pull: {
                 value: fetchedValue ?? null,
@@ -445,7 +361,7 @@ function mergeCapabilityObservation(params: {
         });
     };
     const recordUnchangedConsolidation = (): void => {
-        if (capabilityId !== nextSnapshot.binaryCapabilityId) return;
+        if (capabilityId !== snapshot.binaryCapabilityId) return;
         if (fetchedValue !== observation.value) {
             emitConsolidation(observation.value, 'retained', 'retained_over_disagreeing_pull');
             return;
@@ -454,15 +370,7 @@ function mergeCapabilityObservation(params: {
     };
     if (fetchedIsFreshEnough) {
         emitConsolidation(fetchedValue, 'pull', 'pull_fresher_or_equal');
-        acceptFreshCapabilityPull({
-            state,
-            observationKey,
-            capabilityId,
-            fetchedValue,
-            deviceId,
-            nextSnapshot,
-            observation,
-        });
+        acceptFreshCapabilityPull(state, snapshot, capabilityId, observation, fetchedValue);
         return;
     }
     const shouldPreserveObservation = shouldPreserveRetainedObservation({
@@ -476,15 +384,15 @@ function mergeCapabilityObservation(params: {
         emitConsolidation(fetchedValue, 'pull', 'retained_not_preserved');
         return;
     }
-    if (!applyCapabilityObservation(nextSnapshot, capabilityId, observation)) {
+    if (!applyCapabilityObservation(snapshot, capabilityId, observation)) {
         recordUnchangedConsolidation();
         return;
     }
     emitConsolidation(observation.value, 'retained', 'retained_fresher');
     emitDeviceDebug({
         event: readPath === 'device_update' ? 'device_update_preserved_newer' : 'snapshot_refresh_preserved_newer',
-        deviceId,
-        deviceName,
+        deviceId: snapshot.id,
+        deviceName: snapshot.name,
         source: observation.source,
         capabilityId,
         observedAtMs: observation.observedAt,
@@ -494,24 +402,18 @@ function mergeCapabilityObservation(params: {
     });
 }
 
-function acceptFreshCapabilityPull(params: {
-    state: DeviceTransportObservationState;
-    observationKey: string;
-    capabilityId: string;
-    fetchedValue: unknown;
-    deviceId: string;
-    nextSnapshot: TransportDeviceSnapshot;
-    observation: CapabilityObservation;
-}): void {
-    const {
-    state, observationKey, capabilityId, fetchedValue, deviceId,
-        nextSnapshot, observation,
-    } = params;
+function acceptFreshCapabilityPull(
+    state: DeviceTransportObservationState,
+    snapshot: TransportDeviceSnapshot,
+    capabilityId: string,
+    observation: CapabilityObservation,
+    fetchedValue: unknown,
+): void {
     if (isRejectedTemperatureObservation(capabilityId, observation) && isFiniteNumber(fetchedValue)) {
-        state.capabilityObservations.delete(observationKey);
+        state.capabilityObservations.delete(buildCapabilityObservationKey(snapshot.id, capabilityId));
         return;
     }
-    clearCapabilityObservationIfMatched(state, deviceId, capabilityId, nextSnapshot);
+    clearCapabilityObservationIfMatched(state, snapshot.id, capabilityId, snapshot);
 }
 
 function isRejectedTemperatureObservation(
