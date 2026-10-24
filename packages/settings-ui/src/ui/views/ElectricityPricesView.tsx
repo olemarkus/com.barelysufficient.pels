@@ -941,6 +941,32 @@ const spotShareHint = (hasSpotPrice: boolean, staleSpotShare: boolean): string =
   return 'Needs a spot price, which only the Norway price source provides. Only the fixed amount applies.';
 };
 
+/**
+ * The feed-in price a price source publishes of its own, as the selector offers
+ * it: Homey Energy's export terms and Power by the Hour's feed-in price. The
+ * Norway and Flow sources publish none, so their owners have nothing to choose.
+ */
+const resolveSourceExportOption = (scheme: PriceConfigState['priceScheme']): {
+  value: ExportPriceSourceSetting; label: string; hint: string;
+} | null => {
+  if (scheme === 'homey') {
+    return {
+      value: 'homey_energy',
+      label: 'Homey Energy',
+      hint: 'PELS uses the feed-in price set up in Homey under Energy > Electricity.',
+    };
+  }
+  if (scheme === 'powerhour') {
+    return {
+      value: 'power_by_the_hour',
+      label: 'Power by the Hour',
+      hint: 'PELS uses the feed-in price Power by the Hour publishes, after the export markups you set '
+        + 'in that app. Without any, it equals the import price.',
+    };
+  }
+  return null;
+};
+
 // Export (feed-in) price — a distinct section, deliberately separate from the
 // import-price config above it: the export price is built from the wholesale
 // spot plus the user's feed-in contract terms, never from the import price
@@ -963,10 +989,11 @@ const ExportPriceForm = ({ config, handlers }: {
   const hasSpotPrice = priceScheme === 'norway';
   const staleSpotShare = !hasSpotPrice && exportSpotFactor !== 0;
   const shareEditable = hasSpotPrice || staleSpotShare;
-  // Homey holds export terms only for homes priced from Homey Energy, so that
-  // is the only source where there is a choice to offer.
-  const canReadFromHomey = priceScheme === 'homey';
-  const usesHomeyTerms = canReadFromHomey && exportPriceSource === 'homey_energy';
+  // A choice exists only on a price source that publishes a feed-in price of
+  // its own. A stored choice of another source's price reads as the owner's
+  // amounts here, as it does in the runtime, and is kept for a return.
+  const sourceOption = resolveSourceExportOption(priceScheme);
+  const usesSourcePrice = sourceOption !== null && exportPriceSource === sourceOption.value;
   return (
     <form
       id="electricity-prices-export-section"
@@ -989,7 +1016,7 @@ const ExportPriceForm = ({ config, handlers }: {
           <span class="md-switch-row__label pels-text-settings-label">Use an export price</span>
         </span>
       </label>
-      {exportPriceEnabled && canReadFromHomey && (
+      {exportPriceEnabled && sourceOption !== null && (
         <div class="field">
           <span class="field__label pels-text-settings-label" id="electricity-prices-export-source-label">
             Where the price comes from
@@ -997,24 +1024,22 @@ const ExportPriceForm = ({ config, handlers }: {
           <MdFilledSelect
             id="electricity-prices-export-source"
             aria-labelledby="electricity-prices-export-source-label"
-            value={exportPriceSource}
+            value={usesSourcePrice ? sourceOption.value : 'manual'}
             onChange={(e) => handlers.onExportSourceChange(readValue(e) as ExportPriceSourceSetting)}
           >
             <MdSelectOption value="manual">
               <div slot="headline">Amounts I enter here</div>
             </MdSelectOption>
-            <MdSelectOption value="homey_energy">
-              <div slot="headline">Homey Energy</div>
+            <MdSelectOption value={sourceOption.value}>
+              <div slot="headline">{sourceOption.label}</div>
             </MdSelectOption>
           </MdFilledSelect>
           <small class="field__hint">
-            {usesHomeyTerms
-              ? 'PELS uses the feed-in price set up in Homey under Energy > Electricity.'
-              : 'PELS uses the amounts below.'}
+            {usesSourcePrice ? sourceOption.hint : 'PELS uses the amounts below.'}
           </small>
         </div>
       )}
-      {exportPriceEnabled && !usesHomeyTerms && (
+      {exportPriceEnabled && !usesSourcePrice && (
         <>
           <label class="field">
             <span class="field__label pels-text-settings-label" id="electricity-prices-export-spot-factor-label">

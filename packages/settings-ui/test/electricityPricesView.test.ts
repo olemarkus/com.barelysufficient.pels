@@ -245,10 +245,10 @@ describe('ElectricityPricesView', () => {
       expect(mount.querySelector('#electricity-prices-export-section')).toBeNull();
     });
 
-    it('offers no export source choice where Homey holds no feed-in terms', () => {
-      // Only a home priced from Homey Energy has terms PELS can read, so
-      // anywhere else the owner's own amounts are the only source and a
-      // selector would be a choice with one answer.
+    it('offers no export source choice where the price source publishes no feed-in price', () => {
+      // Only Homey Energy and Power by the Hour publish one, so anywhere else
+      // the owner's own amounts are the only source and a selector would be a
+      // choice with one answer.
       const mount = mountView({
         exportPriceEnabled: true,
         priceScheme: 'norway',
@@ -280,6 +280,31 @@ describe('ElectricityPricesView', () => {
       expect(mount.querySelector('#electricity-prices-export-fixed')).toBeNull();
       expect(mount.querySelector('#electricity-prices-export-spot-factor')).toBeNull();
       expect(mount.textContent).toContain('feed-in price set up in Homey');
+    });
+
+    it('lets a Power by the Hour home take the app’s feed-in price instead of the amounts', () => {
+      const mount = mountView({
+        exportPriceEnabled: true,
+        priceScheme: 'powerhour',
+        exportPriceSource: 'power_by_the_hour',
+      });
+      const select = mount.querySelector('#electricity-prices-export-source') as HTMLElement & { value: string };
+      expect(select.value).toBe('power_by_the_hour');
+      expect(mount.querySelector('#electricity-prices-export-fixed')).toBeNull();
+      expect(mount.textContent).toContain('feed-in price Power by the Hour publishes');
+    });
+
+    it('reads another source’s stored choice as the owner’s amounts', () => {
+      // Chosen on Homey Energy, then the home moved to Power by the Hour: the
+      // runtime prices from the amounts, so the selector must say so too.
+      const mount = mountView({
+        exportPriceEnabled: true,
+        priceScheme: 'powerhour',
+        exportPriceSource: 'homey_energy',
+      });
+      const select = mount.querySelector('#electricity-prices-export-source') as HTMLElement & { value: string };
+      expect(select.value).toBe('manual');
+      expect(mount.querySelector('#electricity-prices-export-fixed')).not.toBeNull();
     });
 
     it('shows only the toggle while export pricing is off', () => {

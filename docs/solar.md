@@ -154,15 +154,16 @@ Exported solar is often worth far less than the power you would otherwise buy, a
 
 PELS lets you tell it what exported power is worth to you. Under **Settings > Electricity prices**, turn on **"Use an export price"** (the section appears once PELS can see your solar, meaning a managed solar device reports production or your meter has recorded about a kilowatt-hour of grid export, and stays visible if you already have an export price configured).
 
-If your electricity prices come from **Homey Energy**, you can then set **Where the price comes from**:
+If your electricity prices come from **Homey Energy** or **Power by the Hour**, you can then set **Where the price comes from**:
 
 - **Homey Energy**: PELS uses the feed-in price you already set up in Homey under **Energy > Electricity**. That can be a fixed amount, or a formula that follows the hourly price, which is how most dynamic contracts pay for exported power. Nothing to retype. See [Getting paid for solar you export](/homey-energy#getting-paid-for-solar-you-export).
+- **Power by the Hour**: PELS uses the feed-in price that app publishes for each period, after the export markups you set on its price device. Without any export markup there, it equals the import price.
 - **Amounts I enter here**: the two amounts below. This is the default.
 
 On the other price sources, or with **Amounts I enter here**, enter what your power company pays you:
 
 - **Share of spot price** — how much of the hourly spot price (incl. VAT) you are paid per exported kWh, as a percentage. Available on the Norway price source, which has an hourly spot price; if your contract pays the raw spot price, enter 80.
-- **Fixed amount** — added for every exported kWh, in the same unit as your other prices. It can be negative if you pay to export. On the Flow and Homey Energy price sources this fixed amount is the whole export price, since no hourly spot price is available there. On Homey Energy, choose **Homey Energy** above instead if your feed-in price follows the hour.
+- **Fixed amount** — added for every exported kWh, in the same unit as your other prices. It can be negative if you pay to export. On the Flow, Homey Energy and Power by the Hour price sources this fixed amount is the whole export price, since no hourly spot price is available there. On Homey Energy or Power by the Hour, choose that source above instead if your feed-in price follows the hour.
 
 Once it is on:
 

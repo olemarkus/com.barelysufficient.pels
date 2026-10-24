@@ -32,6 +32,7 @@ import {
   hasMirroredExportTerms, readExportTerms, resolveHomeyExportPrice, syncHomeyExportTerms,
 } from './homeyExportPrice';
 import { readExportPriceConfig, EXPORT_PRICE_DISABLED, type ExportPriceConfig } from './exportPrice';
+import { usesPowerhourExportPrices } from './powerhourScheme';
 
 import { dropsPersistedPrices } from './homeyPriceFormula';
 
@@ -118,8 +119,9 @@ export const resolveHomeySeries = (
  *
  * When Homey's terms are the source, the feed-in price is already attached per
  * period by {@link resolveHomeySeries} — where a period's raw spot and resolved
- * import price both exist — so PELS's own export model sits this one out rather
- * than overwriting what Homey said.
+ * import price both exist — and when Power by the Hour's is, the app published
+ * it on each slot (`resolvePowerhourSeries`). Either way PELS's own export model
+ * sits this one out rather than overwriting what the source said.
  */
 export const resolveExportConfigForScheme = (
   settings: SettingsPort,
@@ -127,7 +129,7 @@ export const resolveExportConfigForScheme = (
   getRaw: (key: string) => unknown,
   getNumber: (key: string, fallback: number) => number,
 ): ExportPriceConfig => (
-  usesHomeyExportTerms(settings, scheme)
+  usesHomeyExportTerms(settings, scheme) || usesPowerhourExportPrices(settings, scheme)
     ? EXPORT_PRICE_DISABLED
     : readExportPriceConfig({ getRaw, getNumber })
 );

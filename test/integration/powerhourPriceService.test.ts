@@ -5,6 +5,9 @@ import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 import type { PriceCacheKey } from '../../lib/price/priceCacheStore';
 import { mockHomeyInstance, resetMockHomey, setMockApiApp } from '../mocks/homey';
 import {
+  EXPORT_FIXED,
+  EXPORT_PRICE_ENABLED,
+  EXPORT_PRICE_SOURCE,
   POWERHOUR_DEVICE_ID,
   POWERHOUR_PRICES_CURRENCY,
   POWERHOUR_PRICES_DEVICE,
@@ -57,7 +60,12 @@ describe('Power by the Hour price service', () => {
   const tomorrowKey = shiftDateKey(todayKey, 1);
 
   /** The app's payload: hourly slots from `fromHour` to the end of `dateKey`. */
-  const dapPrices = (dateKey: string, fromHour: number, price: (hour: number) => number) => {
+  const dapPrices = (
+    dateKey: string,
+    fromHour: number,
+    price: (hour: number) => number,
+    exportPrice: (hour: number) => number = () => 0,
+  ) => {
     const dayStartMs = getDateKeyStartMs(dateKey, timeZone);
     return {
       generatedAt: new Date().toISOString(),
@@ -71,7 +79,7 @@ describe('Power by the Hour price service', () => {
         slots: Array.from({ length: 24 - fromHour }, (_, index) => ({
           time: new Date(dayStartMs + (fromHour + index) * 3_600_000).toISOString(),
           importPrice: price(fromHour + index),
-          exportPrice: 0,
+          exportPrice: exportPrice(fromHour + index),
           isForecast: false,
         })),
       }],
@@ -123,6 +131,48 @@ describe('Power by the Hour price service', () => {
     // The whole cost stack is the Norwegian scheme's; this source publishes one
     // opaque total and nothing is invented to fill the rest in.
     expect(hourly[0]?.spotPriceExVat).toBeUndefined();
+  });
+
+  describe('the feed-in price the app publishes', () => {
+    const refreshed = async () => {
+      setMockApiApp(POWERHOUR_APP_ID, {
+        installed: true,
+        get: async () => dapPrices(todayKey, 14, () => 1.5, (hour) => hour / 100),
+      });
+      const service = buildService();
+      await service.refreshSpotPrices(true);
+      return service;
+    };
+
+    beforeEach(() => {
+      mockHomeyInstance.settings.set(EXPORT_PRICE_ENABLED, true);
+      mockHomeyInstance.settings.set(EXPORT_FIXED, 0.05);
+    });
+
+    it('prices export from it when the owner chose it, on the planner series and the widget', async () => {
+      mockHomeyInstance.settings.set(EXPORT_PRICE_SOURCE, 'power_by_the_hour');
+      const service = await refreshed();
+
+      const hourly = service.getCombinedHourlyPrices();
+      expect(hourly[0]?.exportPrice).toBeCloseTo(0.14);
+      expect(hourly[9]?.exportPrice).toBeCloseTo(0.23);
+      // The import side, and so the price level, is untouched by it.
+      expect(hourly.every((entry) => entry.totalPrice === 1.5)).toBe(true);
+      const timeline = service.getPriceTimeline();
+      expect(timeline.state === 'ready' && timeline.hasExportPrice).toBe(true);
+    });
+
+    it('leaves the owner’s own amounts in force while they have not chosen it', async () => {
+      const service = await refreshed();
+      expect(service.getCombinedHourlyPrices().every((entry) => entry.exportPrice === 0.05)).toBe(true);
+    });
+
+    it('pays nothing for export with export pricing off, whichever source was chosen', async () => {
+      mockHomeyInstance.settings.set(EXPORT_PRICE_SOURCE, 'power_by_the_hour');
+      mockHomeyInstance.settings.set(EXPORT_PRICE_ENABLED, false);
+      const service = await refreshed();
+      expect(service.getCombinedHourlyPrices().some((entry) => entry.exportPrice !== undefined)).toBe(false);
+    });
   });
 
   it('labels prices in the app’s own currency', async () => {

@@ -471,6 +471,8 @@ Homey Energy pricing, Flow tag pricing (any provider) and Power by the Hour pric
 
 The Power by the Hour source reads that app directly over Homey's app-to-app API (`GET /dap-prices` on `com.gruijter.powerhour`, added in its v8.10.0), so no flow is needed. It offers every electricity price device the app has paired — hourly and quarter-hourly alike — and the owner picks the one that prices their home when there is more than one. The prices are that app's own: the spot price for its bidding zone with whatever markups the owner configured there, and **no grid tariff** unless they added it themselves as a fixed or time-of-day markup. Gas price devices are not offered; they price per m³ and would be meaningless to the planner.
 
+Each slot also carries the app's feed-in price, after the export markups the owner set on that device (equal to the import price when they set none). PELS stores it with the period, and when the owner chooses **Power by the Hour** as the export price source it is the period's export price, in place of PELS's own export model, exactly as Homey's export terms are on the Homey Energy source.
+
 Two consequences of the app publishing only the current period onwards:
 
 - Today's stored day is **merged into**, never replaced, so hours already read are kept as the day goes on. A home that switches to this source mid-afternoon simply has no prices for that morning — PELS does not invent them.

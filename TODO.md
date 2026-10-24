@@ -159,20 +159,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Prices
 
-- [ ] **The Power by the Hour source drops the export price it is handed.** The app's
-      `/dap-prices` slots carry `exportPrice` beside `importPrice` (verified against 8.19.0 on SHS),
-      and `resolveSlot` (`lib/price/powerhourPriceFetch.ts`) reads only the import half. A prosumer
-      on this source therefore gets the weakest feed-in configuration on the page: the spot-share
-      field is Norway-only (`hasSpotPrice` in `ElectricityPricesView.tsx`) and the **Where the price
-      comes from** selector offers Homey Energy only (`export_price_source`), so they are left with
-      a flat manual amount while the source they chose publishes the real number per period.
-      Change: carry `exportPrice` through the adapter into the stored periods, add `power_by_the_hour`
-      to `ExportPriceSourceSetting` (`packages/shared-domain/src/settings/exportPriceSource.ts`), and
-      teach `applyExportPrices` to take a GIVEN per-period export price rather than always deriving
-      one from spot — today every source derives it, which is why this is more than a field read.
-      Done when a home on this source with export pricing on shows the app's own feed-in price on
-      the Budget tab's "Export price now", and the planning price follows it. [P2]
-
 - [ ] **Under `power_source = flow`, a price-level change waits for the next meter reading.** The
       `price_level` Flow trigger and the `pels_insights` level capability are written by
       `PlanStatusWriter.update`, which runs only on a plan rebuild. The first reading in each new

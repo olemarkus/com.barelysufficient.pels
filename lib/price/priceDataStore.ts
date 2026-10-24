@@ -35,12 +35,14 @@ import { isLegacySettingsKeyListed } from '../store/legacySettingsImport';
  * period is an hour long, because that is exactly what the read boundary gives
  * a period that carries none (`normalizeFlowSlotEntries`) — so an hourly source
  * stores what it always stored, and only a sub-hourly source pays the bytes for
- * saying how long its periods are.
+ * saying how long its periods are. A feed-in price is stored where the source
+ * published one (Power by the Hour).
  */
 type StoredFlowPricePeriod = {
   startsAt: string;
   totalPrice: number;
   durationMinutes?: number;
+  exportPrice?: number;
 };
 
 type StoredFlowPricePayload = Omit<FlowPricePayload, 'pricesBySlot' | 'pricesByPeriod'> & {
@@ -49,11 +51,12 @@ type StoredFlowPricePayload = Omit<FlowPricePayload, 'pricesBySlot' | 'pricesByP
 };
 
 const toStoredPeriods = (periods: FlowPricePeriod[]): StoredFlowPricePeriod[] => (
-  periods.map(({ startsAt, totalPrice, durationMinutes }) => (
-    durationMinutes === DEFAULT_PERIOD_MINUTES
-      ? { startsAt, totalPrice }
-      : { startsAt, totalPrice, durationMinutes }
-  ))
+  periods.map(({ startsAt, totalPrice, durationMinutes, exportPrice }) => ({
+    startsAt,
+    totalPrice,
+    ...(durationMinutes === DEFAULT_PERIOD_MINUTES ? {} : { durationMinutes }),
+    ...(exportPrice === undefined ? {} : { exportPrice }),
+  }))
 );
 
 const toStoredFlowPayload = (payload: FlowPricePayload | null): StoredFlowPricePayload | null => {

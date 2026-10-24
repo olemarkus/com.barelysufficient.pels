@@ -5,8 +5,10 @@ import {
 } from '../../lib/price/powerhourPriceFetch';
 import type { ApiAppPort, ApiPort } from '../../lib/ports/homeyRuntime';
 
-const slot = (time: string, importPrice: number, isForecast = false) => (
-  { time, importPrice, exportPrice: 0, isForecast }
+// As the app publishes a slot: with no export markup set there, the feed-in
+// price equals the import price.
+const slot = (time: string, importPrice: number, isForecast = false, exportPrice = importPrice) => (
+  { time, importPrice, exportPrice, isForecast }
 );
 
 const device = (overrides: Record<string, unknown> = {}) => ({
@@ -41,11 +43,30 @@ describe('Power by the Hour payload resolution', () => {
         currency: '€',
         priceIntervalMinutes: 60,
         slots: [
-          { startsAt: '2026-09-20T10:00:00.000Z', importPrice: 0.11 },
-          { startsAt: '2026-09-20T11:00:00.000Z', importPrice: 0.12 },
+          { startsAt: '2026-09-20T10:00:00.000Z', importPrice: 0.11, exportPrice: 0.11 },
+          { startsAt: '2026-09-20T11:00:00.000Z', importPrice: 0.12, exportPrice: 0.12 },
         ],
       }],
     });
+  });
+
+  it('carries each slot’s feed-in price, and none where the slot has no finite one', () => {
+    const read = resolvePowerhourPayload({
+      prices: [device({
+        slots: [
+          slot('2026-09-20T10:00:00.000Z', 0.11, false, 0.04),
+          slot('2026-09-20T11:00:00.000Z', 0.12, false, -0.01),
+          { time: '2026-09-20T12:00:00.000Z', importPrice: 0.13, exportPrice: null },
+          { time: '2026-09-20T13:00:00.000Z', importPrice: 0.14 },
+        ],
+      })],
+    });
+    expect(read.kind === 'resolved' && read.devices[0]?.slots).toEqual([
+      { startsAt: '2026-09-20T10:00:00.000Z', importPrice: 0.11, exportPrice: 0.04 },
+      { startsAt: '2026-09-20T11:00:00.000Z', importPrice: 0.12, exportPrice: -0.01 },
+      { startsAt: '2026-09-20T12:00:00.000Z', importPrice: 0.13 },
+      { startsAt: '2026-09-20T13:00:00.000Z', importPrice: 0.14 },
+    ]);
   });
 
   // A gas device prices per m³. Offered to the planner it would look like a
@@ -75,7 +96,7 @@ describe('Power by the Hour payload resolution', () => {
       })],
     });
     expect(read.kind === 'resolved' && read.devices[0]?.slots).toEqual([
-      { startsAt: '2026-09-20T12:00:00.000Z', importPrice: 0.5 },
+      { startsAt: '2026-09-20T12:00:00.000Z', importPrice: 0.5, exportPrice: 0.5 },
     ]);
   });
 
@@ -93,8 +114,8 @@ describe('Power by the Hour payload resolution', () => {
       })],
     });
     expect(read.kind === 'resolved' && read.devices[0]?.slots).toEqual([
-      { startsAt: '2026-09-20T10:00:00.000Z', importPrice: 0.11 },
-      { startsAt: '2026-09-20T11:00:00.000Z', importPrice: 0.12 },
+      { startsAt: '2026-09-20T10:00:00.000Z', importPrice: 0.11, exportPrice: 0.11 },
+      { startsAt: '2026-09-20T11:00:00.000Z', importPrice: 0.12, exportPrice: 0.12 },
     ]);
   });
 

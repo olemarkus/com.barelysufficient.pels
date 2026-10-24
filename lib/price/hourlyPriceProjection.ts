@@ -5,17 +5,6 @@ import type { FlowPricePeriod } from '../../packages/shared-domain/src/price/flo
 const HOUR_MINUTES = 60;
 
 /**
- * A published period, which may already carry a feed-in price.
- *
- * Only one producer attaches one this early: the Homey scheme, when the owner
- * has pointed the export price at Homey's own terms, because that is where a
- * period's raw spot and its resolved import price both exist
- * (`lib/price/homeyExportPrice.ts`). PELS's own export model decorates the
- * series later instead, and leaves this absent.
- */
-export type ExportablePricePeriod = FlowPricePeriod & { exportPrice?: number };
-
-/**
  * One hour-long period per local hour the series covers.
  *
  * A price source publishes periods — an hour each on most zones, a quarter-hour
@@ -37,9 +26,9 @@ export type ExportablePricePeriod = FlowPricePeriod & { exportPrice?: number };
  * while this one keys by instant so the repeated clock hour stays two hours.
  */
 export const toHourlyPeriods = (
-  periods: ExportablePricePeriod[],
+  periods: FlowPricePeriod[],
   timeZone: string,
-): ExportablePricePeriod[] => {
+): FlowPricePeriod[] => {
   const buckets = new Map<number, {
     weighted: number;
     minutes: number;
@@ -92,7 +81,7 @@ export const toHourlyPeriods = (
  * consumer, and no consumer is handed a span it might reason about.
  */
 export const toHourlyPrices = (
-  periods: ExportablePricePeriod[],
+  periods: FlowPricePeriod[],
   timeZone: string,
 ): CombinedHourlyPrice[] => (
   toHourlyPeriods(periods, timeZone).map(({ startsAt, totalPrice, exportPrice }) => ({
