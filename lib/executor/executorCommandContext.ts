@@ -5,13 +5,7 @@ import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommand
 import type { MarkSteppedLoadDesiredStepIssuedParams } from '../ports/steppedCommand';
 import type { ExecutorDeviceRead, ObserverDeviceRead } from './executorDeviceRead';
 import type { ExecutableSteppedLoadCommandSession } from './executablePlan';
-import type { BinaryCommandClaim, BinaryCommandClaimState } from './binaryCommandClaim';
-import type { SteppedCommandClaim, SteppedCommandClaimState } from './steppedCommandClaim';
-import type {
-  TargetCommandClaim,
-  TargetCommandClaimState,
-  TargetCommandOwner,
-} from './targetCommandClaim';
+import type { CommandClaim, CommandClaimState, TargetCommandOwner } from './commandClaim';
 
 /** Records one actuation against the executor's clocks and diagnostics. */
 export type ActuationRecorder = (deviceId: string, name: string, now: number) => void;
@@ -67,16 +61,16 @@ export type ExecutorCommandContext = {
   markSteppedLoadDesiredStepIssued: (params: MarkSteppedLoadDesiredStepIssuedParams) => void;
   syncLivePlanStateAfterTargetActuation: (source: PendingTargetObservationSource) => boolean | void;
   /** Synchronous claims closing the pre-pending async dispatch race between the lanes. */
-  binaryCommandClaim: BinaryCommandClaim;
-  steppedCommandClaim: SteppedCommandClaim;
-  targetCommandClaim: TargetCommandClaim;
+  binaryCommandClaim: CommandClaim<boolean>;
+  steppedCommandClaim: CommandClaim<string>;
+  targetCommandClaim: CommandClaim<number>;
   lifecycleFallback: LifecycleFallbackView;
   /** Prevents a late actuator completion from installing state after authority ended. */
   isAuthorityCurrent: () => boolean;
   /** Lifecycle-only retries scheduled when an already-running ordinary write releases its claim. */
-  onBinaryCommandClaimReleased?: (released: BinaryCommandClaimState) => void;
-  onSteppedCommandClaimReleased?: (released: SteppedCommandClaimState) => void;
-  onTargetCommandClaimReleased?: (released: TargetCommandClaimState) => void;
+  onBinaryCommandClaimReleased?: (released: CommandClaimState<boolean>) => void;
+  onSteppedCommandClaimReleased?: (released: CommandClaimState<string>) => void;
+  onTargetCommandClaimReleased?: (released: CommandClaimState<number>) => void;
   recordShedActuation: ActuationRecorder;
   /**
    * Diagnostic-only recorder for the smart-task lifecycle-end disable path:

@@ -21,9 +21,7 @@ import { applyDeferredBinaryCommand } from './binaryExecutor';
 import { applyShedReleaseStepFallback, applyShedReleaseTemperature } from './shedReleaseActuation';
 import { buildExecutableObservedDeviceState } from './executablePlanProjection';
 import type { ExecutorCommandContext } from './executorCommandContext';
-import type { BinaryCommandClaimState } from './binaryCommandClaim';
-import type { SteppedCommandClaimState } from './steppedCommandClaim';
-import type { TargetCommandClaimState } from './targetCommandClaim';
+import type { CommandClaimState } from './commandClaim';
 import {
   hasReleasedOpposingCommand,
   type ReleasedOpposingCommand,
@@ -401,7 +399,7 @@ export class LifecycleFallbackDispatcher {
   private retryAfterBinaryClaimRelease(
     deviceId: string,
     authorityToken: object,
-    released: BinaryCommandClaimState,
+    released: CommandClaimState<boolean>,
   ): void {
     if (this.authorityTokens.get(deviceId) !== authorityToken) return;
     if (released.owner === 'ordinary' && released.accepted && released.desired) {
@@ -413,7 +411,7 @@ export class LifecycleFallbackDispatcher {
   private retryAfterTargetClaimRelease(
     deviceId: string,
     authorityToken: object,
-    released: TargetCommandClaimState,
+    released: CommandClaimState<number>,
   ): void {
     if (this.authorityTokens.get(deviceId) !== authorityToken) return;
     const current = this.currentRequests.get(deviceId);
@@ -434,7 +432,7 @@ export class LifecycleFallbackDispatcher {
   private retryAfterStepClaimRelease(
     deviceId: string,
     authorityToken: object,
-    released: SteppedCommandClaimState,
+    released: CommandClaimState<string>,
   ): void {
     if (this.authorityTokens.get(deviceId) !== authorityToken) return;
     const current = this.currentRequests.get(deviceId);
@@ -442,11 +440,11 @@ export class LifecycleFallbackDispatcher {
       released.owner === 'ordinary'
       && released.accepted
       && current?.kind === 'step_fallback'
-      && released.desiredStepId !== current.targetStepId
+      && released.desired !== current.targetStepId
     ) {
       this.releasedOpposingCommands.set(deviceId, {
         kind: 'step_fallback',
-        desiredStepId: released.desiredStepId,
+        desiredStepId: released.desired,
       });
     }
     this.retryCurrent(deviceId, authorityToken);

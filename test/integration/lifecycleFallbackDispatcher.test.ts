@@ -23,9 +23,7 @@ import { dispatchTargetCommand } from '../../lib/executor/targetExecutor';
 import type { ExecutorCommandContext, LifecycleFallbackView } from '../../lib/executor/executorCommandContext';
 import type { ExecutorDeviceRead } from '../../lib/executor/executorDeviceRead';
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../../lib/executor/commandRetrySchedule';
-import { createTargetCommandClaim } from '../../lib/executor/targetCommandClaim';
-import { createSteppedCommandClaim } from '../../lib/executor/steppedCommandClaim';
-import { createBinaryCommandClaim } from '../../lib/executor/binaryCommandClaim';
+import { createCommandClaim } from '../../lib/executor/commandClaim';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { createTestExecutorCommandContext } from '../helpers/executorCommandContext';
 import { noStorageTransport } from '../helpers/storageTransportStub';
@@ -479,7 +477,7 @@ describe('LifecycleFallbackDispatcher', () => {
 
   it('judges a claim-release retry by the same ladder as the first build', async () => {
     const state = createPlanEngineState();
-    const steppedCommandClaim = createSteppedCommandClaim();
+    const steppedCommandClaim = createCommandClaim<string>();
     const configured = {
       steps: [
         { id: 'off', planningPowerW: 0 },
@@ -1071,7 +1069,7 @@ describe('LifecycleFallbackDispatcher', () => {
     ['opposing', 'off'],
   ] as const)('skips a %s ordinary step collision without replay', async (_kind, ordinaryStepId) => {
     const state = createPlanEngineState();
-    const steppedCommandClaim = createSteppedCommandClaim();
+    const steppedCommandClaim = createCommandClaim<string>();
     let resolveLifecycle: ((value: { requested: true; acknowledged: true; transport: 'native_capability' }) => void) | undefined;
     const requestSteppedLoadStep = vi.fn()
       .mockImplementationOnce(() => new Promise((resolve) => { resolveLifecycle = resolve; }))
@@ -1401,7 +1399,7 @@ describe('LifecycleFallbackDispatcher', () => {
 
   it('atomically claims an in-flight target write across lifecycle and ordinary clocks', async () => {
     const planState = createPlanEngineState();
-    const targetCommandClaim = createTargetCommandClaim();
+    const targetCommandClaim = createCommandClaim<number>();
     const device = buildLifecycleSnapshot({
       binaryControllable: false,
       id: 'heater-1',
@@ -1447,7 +1445,7 @@ describe('LifecycleFallbackDispatcher', () => {
 
   it('drops an opposing ordinary target until abandon permits a fresh decision', async () => {
     const planState = createPlanEngineState();
-    const targetCommandClaim = createTargetCommandClaim();
+    const targetCommandClaim = createCommandClaim<number>();
     const device = buildLifecycleSnapshot({
       binaryControllable: false,
       id: 'heater-1',
@@ -1520,7 +1518,7 @@ describe('LifecycleFallbackDispatcher', () => {
     recordTargetCommandAttempt(planState, 'heater-1', 20, Date.now(), 'waiting_confirmation', 5);
     let observedValue = 20;
     const actuator = createTestActuator();
-    const targetCommandClaim = createTargetCommandClaim();
+    const targetCommandClaim = createCommandClaim<number>();
     const buildDevice = () => buildLifecycleSnapshot({
       binaryControllable: false,
       id: 'heater-1',
@@ -1567,7 +1565,7 @@ describe('LifecycleFallbackDispatcher', () => {
 
   it('retains settled target authority until abandon permits an ordinary command', async () => {
     const planState = createPlanEngineState();
-    const targetCommandClaim = createTargetCommandClaim();
+    const targetCommandClaim = createCommandClaim<number>();
     const actuator = createTestActuator();
     let observedValue = 21;
     const buildDevice = () => buildLifecycleSnapshot({
@@ -1685,7 +1683,7 @@ describe('LifecycleFallbackDispatcher', () => {
     const actuator = createTestActuator(
       () => new Promise<{ requested: true }>((resolve) => { resolveWrite = resolve; }),
     );
-    const binaryCommandClaim = createBinaryCommandClaim();
+    const binaryCommandClaim = createCommandClaim<boolean>();
     const buildContext = (owner: 'lifecycle' | 'ordinary'): ExecutorCommandContext => (
       createTestExecutorCommandContext(state, {
         owner,
@@ -1980,7 +1978,7 @@ describe('LifecycleFallbackDispatcher', () => {
 
   it('retries target fallback immediately after an opposing ordinary claim releases', async () => {
     const state = createPlanEngineState();
-    const targetCommandClaim = createTargetCommandClaim();
+    const targetCommandClaim = createCommandClaim<number>();
     let observedValue = 5;
     let lifecyclePendingObservedValue: unknown;
     const buildDevice = () => buildLifecycleSnapshot({
@@ -2036,7 +2034,7 @@ describe('LifecycleFallbackDispatcher', () => {
 
   it('retries step fallback immediately after an opposing ordinary claim releases', async () => {
     const state = createPlanEngineState();
-    const steppedCommandClaim = createSteppedCommandClaim();
+    const steppedCommandClaim = createCommandClaim<string>();
     let resolveOrdinary: ((value: { requested: true; acknowledged: true; transport: 'native_capability' }) => void) | undefined;
     const requestSteppedLoadStep = vi.fn()
       .mockImplementationOnce(() => new Promise((resolve) => { resolveOrdinary = resolve; }))

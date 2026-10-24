@@ -33,9 +33,7 @@ import {
   LifecycleFallbackDispatcher,
   type LifecycleFallbackPort,
 } from './lifecycleFallbackDispatcher';
-import { createTargetCommandClaim } from './targetCommandClaim';
-import { createSteppedCommandClaim } from './steppedCommandClaim';
-import { createBinaryCommandClaim } from './binaryCommandClaim';
+import { createCommandClaim } from './commandClaim';
 import { buildExecutablePlan, buildExecutableObservedDeviceState } from './executablePlanProjection';
 import { buildExecutableSteppedLoadIntent } from './executableSteppedLoadProjection';
 import type { DriftObservationDeps } from './driftObservedDevice';
@@ -126,9 +124,9 @@ export class PlanExecutor {
       getSteppedLoadCommandSession: deps.getSteppedLoadCommandSession,
       markSteppedLoadDesiredStepIssued: deps.markSteppedLoadDesiredStepIssued,
       syncLivePlanStateAfterTargetActuation: deps.syncLivePlanStateAfterTargetActuation,
-      binaryCommandClaim: createBinaryCommandClaim(),
-      steppedCommandClaim: createSteppedCommandClaim(),
-      targetCommandClaim: createTargetCommandClaim(),
+      binaryCommandClaim: createCommandClaim<boolean>(),
+      steppedCommandClaim: createCommandClaim<string>(),
+      targetCommandClaim: createCommandClaim<number>(),
       lifecycleFallback: {
         isActive: (deviceId) => this.lifecycleFallback.isActive(deviceId),
         getOwnedTargetPending: (deviceId) => this.lifecycleFallback.getOwnedTargetPending(deviceId),
