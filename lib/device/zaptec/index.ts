@@ -5,6 +5,7 @@ import { applyNativeEvWiringOverlay, normalizeNativeEvCapabilityUpdate,
 
 export const zaptecAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
+  readsAsReported: false,
   matches: (device) => /^homey:app:com\.zaptec:(go|go2|home|pro)$/u.test(device.driverId?.trim().toLowerCase() ?? ''),
   matchesCapabilities: (capabilities) => capabilities.includes('charging_button')
     || capabilities.includes('charge_mode'),

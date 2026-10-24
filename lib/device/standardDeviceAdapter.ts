@@ -7,8 +7,12 @@ const unrestrictedSession: DeviceAdapterSession = {
   controlEvents: (_id, capabilityId, value) => [{ capabilityId, value }],
 };
 
-/** Default behavior for standard Homey capabilities and unsupported integration facets. */
-export const standardDeviceAdapter: DeviceAdapter = {
+/**
+ * Default behavior for standard Homey capabilities and unsupported integration
+ * facets. A vendor adapter builds on it and states `readsAsReported` itself, so
+ * none reads a null capability as Homey reports it by accident.
+ */
+export const standardDeviceAdapter: Omit<DeviceAdapter, 'readsAsReported'> = {
   matches: () => false, matchesCapabilities: () => false,
   identity: (device) => device,
   overlay: (_device, capabilities, capabilityObj) => ({ kind: 'standard', capabilities, capabilityObj }),
@@ -29,3 +33,6 @@ export const standardDeviceAdapter: DeviceAdapter = {
   recoverSwitchWrite: (snapshot, _raw, request) => standardDeviceAdapter.switchWrite(snapshot, request),
   createSession: () => unrestrictedSession,
 };
+
+/** A device no integration claims, read as Homey reports it. */
+export const plainDeviceAdapter: DeviceAdapter = { ...standardDeviceAdapter, readsAsReported: true };

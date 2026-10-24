@@ -5,7 +5,7 @@ import { easeeAdapter } from './easee';
 import { zaptecAdapter } from './zaptec';
 import { futurehomeAdapter } from './futurehome';
 import { osoAdapter } from './oso';
-import { standardDeviceAdapter } from './standardDeviceAdapter';
+import { plainDeviceAdapter } from './standardDeviceAdapter';
 import type { DeviceAdapter, AdapterObservation, AdapterControlTarget, DeviceAdapterSession } from './deviceAdapter';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../utils/types';
@@ -13,10 +13,10 @@ import type { HomeyDeviceLike } from '../utils/types';
 const adapters: readonly DeviceAdapter[] = [teslaAdapter, easeeAdapter, zaptecAdapter, futurehomeAdapter, osoAdapter];
 
 export function getDeviceAdapter(device: HomeyDeviceLike): DeviceAdapter {
-  return adapters.find((adapter) => adapter.matches(device)) ?? standardDeviceAdapter;
+  return adapters.find((adapter) => adapter.matches(device)) ?? plainDeviceAdapter;
 }
 export function getCapabilityAdapter(capabilities: readonly string[]): DeviceAdapter {
-  return adapters.find((adapter) => adapter.matchesCapabilities(capabilities)) ?? standardDeviceAdapter;
+  return adapters.find((adapter) => adapter.matchesCapabilities(capabilities)) ?? plainDeviceAdapter;
 }
 export function getSnapshotAdapter(snapshot: AdapterObservation): DeviceAdapter {
   return getCapabilityAdapter(snapshot.capabilities ?? []);

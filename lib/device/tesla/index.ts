@@ -20,6 +20,7 @@ const TESLA_MODEL_CAPABILITY_TYPES: Readonly<Record<string, Readonly<Record<stri
 };
 export const teslaAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
+  readsAsReported: false,
   matches: (device) => device.driverId?.startsWith('homey:app:com.tesla.car:') === true,
   matchesCapabilities: (capabilities) => capabilities.includes('charging_on'),
   identity: (device) => isTeslaChargingDevice(device)

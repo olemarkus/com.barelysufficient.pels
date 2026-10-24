@@ -19,6 +19,7 @@ const currentControl: NativeCurrentControl = {
 
 export const easeeAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
+  readsAsReported: false,
   matches: (device) => isEaseeDevice(device) || isEaseeChargerDevice(device),
   matchesCapabilities: (capabilities) => capabilities.includes(EASEE_CHARGER_CURRENT_CAPABILITY_ID),
   normalize: (snapshot, capabilityId, value) => isEaseeUnderBuiltInControl(snapshot)

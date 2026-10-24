@@ -2,7 +2,7 @@
  * Where a request to open a device page lands: the top of the page, or a Setup
  * row a deep link names (Setup expanded, the row scrolled into view).
  */
-export type DeviceDetailFocus = 'top' | 'start-policy' | 'power-limit';
+export type DeviceDetailFocus = 'top' | 'start-policy' | 'power-limit' | 'shed-limit';
 
 export type OpenDeviceDetailDetail = {
   deviceId: string;

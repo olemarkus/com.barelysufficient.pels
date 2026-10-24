@@ -38,6 +38,7 @@ function resolvePhaseReport(device: HomeyDeviceLike): ChargerPhaseReport {
 
 export const futurehomeAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
+  readsAsReported: false,
   matches: isFuturehomeCharger,
   overlay: (device, capabilities, capabilityObj) => ({
     kind: 'standard', capabilities, capabilityObj: withSentCurrent(device, capabilityObj),

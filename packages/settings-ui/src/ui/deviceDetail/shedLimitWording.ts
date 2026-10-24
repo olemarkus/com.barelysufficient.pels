@@ -9,7 +9,7 @@ import {
   deviceDetailShedTemp,
   deviceDetailShedTempHint,
 } from '../dom.ts';
-import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
+import { isTemperatureDeviceWithoutOnOff, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 
 /**
  * Whether the device reports which way it is moving demand. Only then does a
@@ -26,11 +26,18 @@ export const describeLimitFields = (device: SettingsUiDeviceDetailItem): {
   coolingHint: string;
 } => {
   const reversible = reportsThermostatMode(device);
+  // With no on/off, the target is PELS's only way to limit the device, so a
+  // limit at or above a mode's temperature leaves nothing to lower in that mode.
+  const setpointOnly = isTemperatureDeviceWithoutOnOff(device);
+  const keepBelow = setpointOnly
+    ? ' Keep it below each mode\'s temperature, or PELS cannot limit the device in that mode.'
+    : '';
+  let heatingHint = 'Use this target instead of turning the device off.';
+  if (reversible) heatingHint = 'While heating, PELS lowers its target to this instead of turning it off.';
+  else if (setpointOnly) heatingHint = 'PELS lowers the target to this while it limits the device.';
   return {
     heatingLabel: reversible ? 'Limited temperature when heating' : 'Limited temperature',
-    heatingHint: reversible
-      ? 'While heating, PELS lowers its target to this instead of turning it off.'
-      : 'Use this target instead of turning the device off.',
+    heatingHint: heatingHint + keepBelow,
     coolingHint: 'While cooling, PELS raises its target to this instead of turning it off.',
   };
 };

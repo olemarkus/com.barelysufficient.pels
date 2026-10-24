@@ -22,12 +22,12 @@ describe('overshoot_behaviors read policy', () => {
     expect(readShedBehaviors({
       'dev-1': { action: 'set_temperature', temperature: 16, coolingTemperature: 27 },
       'dev-2': { action: 'set_temperature', temperature: -40, coolingTemperature: 99 },
-      'dev-3': { action: 'set_temperature', temperature: 60, coolingTemperature: 'warm' },
+      'dev-3': { action: 'set_temperature', temperature: 95, coolingTemperature: 'warm' },
       'dev-4': { action: 'set_temperature', temperature: 16 },
     })).toEqual({
       'dev-1': { action: 'set_temperature', temperature: 16, coolingTemperature: 27 },
       'dev-2': { action: 'set_temperature', temperature: -20, coolingTemperature: 40 },
-      'dev-3': { action: 'set_temperature', temperature: 50, coolingTemperature: 28 },
+      'dev-3': { action: 'set_temperature', temperature: 90, coolingTemperature: 28 },
       'dev-4': { action: 'set_temperature', temperature: 16, coolingTemperature: 28 },
     });
   });

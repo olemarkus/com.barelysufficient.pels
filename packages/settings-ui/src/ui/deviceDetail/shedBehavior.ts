@@ -18,13 +18,11 @@ import {
   resolveCoolingShedTemperature,
   savedCoolingShedTemperature,
 } from './shedTemperatureInputs.ts';
-import { getSetting } from '../homey.ts';
-import { logSettingsError } from '../logging.ts';
 import { findLatestDevice, resolveManagedState, state } from '../state.ts';
 import {
+  isTemperatureDeviceWithoutOnOff,
   supportsPowerDevice,
   supportsTemperatureControlDevice,
-  supportsTemperatureDevice,
   type SettingsUiDeviceDetailItem,
 } from '../deviceUtils.ts';
 import {
@@ -34,7 +32,9 @@ import {
   resolveShedBehavior,
   type ConfiguredShedAction,
   type ConfiguredShedBehavior,
+  type ShedLimitRange,
 } from '../../../../shared-domain/src/settings/shedBehaviors.ts';
+import { getPrimaryTargetCapability } from '../../../../shared-domain/src/targetCapabilities.ts';
 import {
   OVERSHOOT_BEHAVIORS,
 } from '../../../../shared-domain/src/settings/settingsKeys.ts';
@@ -83,14 +83,6 @@ export const writeShedBehaviors = async (params: ShedBehaviorWriteParams) => (
     commit: params.commit,
     rollback: params.rollback,
   }))
-);
-
-const isTemperatureDeviceWithoutOnOff = (device: SettingsUiDeviceDetailItem | null): boolean => (
-  Boolean(
-    device
-    && supportsTemperatureDevice(device)
-    && !device.capabilities?.includes('onoff'),
-  )
 );
 
 const updateShedActionOptions = (params: {
@@ -209,6 +201,18 @@ const getShedDefaultTemp = (device: SettingsUiDeviceDetailItem | null): number =
   return 10;
 };
 
+/**
+ * The heating limit field's range: the key's, capped at the device's own target
+ * maximum, so a water heater's limit can go as high as its tank allows and no
+ * device's limit goes above what its target accepts.
+ */
+const resolveHeatingShedLimitRange = (device: SettingsUiDeviceDetailItem | null): ShedLimitRange => {
+  const deviceMaxC = getPrimaryTargetCapability(device?.targets)?.max;
+  return typeof deviceMaxC === 'number' && Number.isFinite(deviceMaxC) && deviceMaxC < HEATING_SHED_LIMIT_RANGE.maxC
+    ? { minC: HEATING_SHED_LIMIT_RANGE.minC, maxC: deviceMaxC }
+    : HEATING_SHED_LIMIT_RANGE;
+};
+
 /** The heating limit to save: the field's value, raised to the device's floor when it has no on/off. */
 const resolveHeatingShedTemperature = (
   device: SettingsUiDeviceDetailItem,
@@ -216,7 +220,7 @@ const resolveHeatingShedTemperature = (
 ): number => {
   const savedC = saved.action === 'set_temperature' ? saved.temperature : getShedDefaultTemp(device);
   const fieldC = deviceDetailShedTemp
-    ? readShedLimitField(deviceDetailShedTemp, HEATING_SHED_LIMIT_RANGE, savedC)
+    ? readShedLimitField(deviceDetailShedTemp, resolveHeatingShedLimitRange(device), savedC)
     : savedC;
   const temperature = isTemperatureDeviceWithoutOnOff(device)
     ? Math.max(resolveSetpointShedFloorC(device.deviceClass || ''), normalizeShedTemperature(fieldC))
@@ -389,16 +393,6 @@ const renderShedStatement = (statement: string | null): void => {
   if (deviceDetailShedHint) deviceDetailShedHint.hidden = statement !== null;
 };
 
-export const loadShedBehaviors = async () => {
-  try {
-    const behaviors = await getSetting(OVERSHOOT_BEHAVIORS);
-    // A read that is not the map keeps the one already held.
-    if (isShedBehaviorsSetting(behaviors)) state.shedBehaviors = readShedBehaviors(behaviors);
-  } catch (error) {
-    await logSettingsError('Failed to load shed behaviors', error, 'loadShedBehaviors');
-  }
-};
-
 export const setDeviceDetailShedBehavior = (
   deviceId: string,
   device: SettingsUiDeviceDetailItem | null,
@@ -452,6 +446,7 @@ export const setDeviceDetailShedBehavior = (
       fallbackTemperature: getShedDefaultTemp(device),
     });
     deviceDetailShedTemp.disabled = !shedControls.canConfigure;
+    deviceDetailShedTemp.max = resolveHeatingShedLimitRange(device).maxC.toString();
   }
   if (deviceDetailShedCoolingTemp) {
     deviceDetailShedCoolingTemp.value = shedControls.canConfigure

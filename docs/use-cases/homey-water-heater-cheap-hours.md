@@ -127,6 +127,7 @@ Start here:
 - [Using Homey Energy](../homey-energy.md)
 - [Compare cost-saving functions](../cost-saving-functions.md)
 - [Smart Tasks](../smart-tasks.md)
+- [Configure an OSO Water Heater](../oso-water-heater.md)
 - [Book cheap hours with Flows](../how-to-book-cheap-hours-with-flows.md)
 - [Configuration](../configuration.md)
 - [Flow Cards](../flow-cards.md)

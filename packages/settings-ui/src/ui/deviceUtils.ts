@@ -82,6 +82,15 @@ export const supportsTemperatureDevice = (device?: SettingsUiDeviceListItem | nu
   return (device.targets?.length ?? 0) > 0;
 };
 
+/** A temperature device with no on/off: PELS can limit it only through its target. */
+export const isTemperatureDeviceWithoutOnOff = (device?: SettingsUiDeviceDetailItem | null): boolean => (
+  Boolean(
+    device
+    && supportsTemperatureDevice(device)
+    && !device.capabilities?.includes('onoff'),
+  )
+);
+
 /** Temperature capability PELS is currently allowed to command. */
 export const supportsTemperatureControlDevice = (
   device?: SettingsUiDeviceListItem | null,

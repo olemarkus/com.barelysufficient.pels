@@ -48,10 +48,10 @@ import {
 } from './solarSurplusTracking.ts';
 import {
   initDeviceDetailShedHandlers,
-  loadShedBehaviors,
   setDeviceDetailShedBehavior,
   updateShedFieldVisibility,
 } from './shedBehavior.ts';
+import { loadShedBehaviors } from './shedBehaviorsLoad.ts';
 import { setDeviceDetailSocState } from './socState.ts';
 import {
   closeSteppedLoadDraft,

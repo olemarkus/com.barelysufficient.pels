@@ -43,7 +43,6 @@
 import { isUnknownRecord, type HomeyDeviceLike } from '../../utils/types';
 import { isEvCarDeviceClass } from '../evCarDeviceClass';
 import { getDeviceAdapter } from '../deviceAdapterRegistry';
-import { standardDeviceAdapter } from '../standardDeviceAdapter';
 import type { DeviceReadRule } from '../deviceAdapter';
 import { toCapabilityTimestampMs, type DeviceCapabilityMap } from '../managerControl';
 import { applyNativeEvWiringOverlay } from '../nativeEvWiring';
@@ -174,14 +173,14 @@ const isModelValue = (capabilityId: string, value: unknown, type: ModelValueType
 
 /**
  * The model capabilities `device` declares with a `null` value. Only a device
- * read as Homey reports it: a vendor device an adapter converts or reads more
- * of (Tesla, Easee, Zaptec) chooses its control path from what it declares, so
- * it stays all-or-nothing.
+ * whose adapter reads it as Homey reports it (`readsAsReported`): one an
+ * adapter converts or reads more of (Tesla, Easee, Zaptec, Futurehome) chooses
+ * its control path from what it declares, so it stays all-or-nothing.
  */
 function findNullModelCapabilityIds(device: HomeyDeviceLike): ReadonlySet<string> {
     const { capabilities, capabilitiesObj } = device;
     if (!Array.isArray(capabilities) || !isUnknownRecord(capabilitiesObj)) return new Set();
-    if (getDeviceAdapter(device) !== standardDeviceAdapter) return new Set();
+    if (!getDeviceAdapter(device).readsAsReported) return new Set();
     const modelTypes = resolveModelCapabilityTypes(device, capabilities);
     return new Set(capabilities.filter((capabilityId) => {
         if (modelTypes[capabilityId] === undefined) return false;
