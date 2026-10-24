@@ -105,10 +105,6 @@ export const resolveInitialHalf = (payload: PlanPriceWidgetPayload | null): Plan
   return 'morning';
 };
 
-// Re-exported under the widget-local name the browser test imports; the
-// implementation is the shared runtime's `applyPreviewTheme`.
-export const maybeApplyPreviewTheme = applyPreviewTheme;
-
 const resolveTargets = (widgetDocument: Document): WidgetTargets | null => {
   const chartEl = widgetDocument.getElementById('chart');
   const summaryEl = widgetDocument.querySelector('[data-summary]');

@@ -45,11 +45,6 @@ export type HeadroomWidgetStatusRead =
   | { readonly state: 'live'; readonly status: HeadroomWidgetStatus }
   | { readonly state: 'unavailable'; readonly reason: SettingsUiPowerStatusUnavailableReason };
 
-export type HeadroomWidgetInput = {
-  status: HeadroomWidgetStatusRead;
-  nowMs?: number;
-};
-
 /**
  * Resolve the at-limit state so the renderer reads a flat enum instead of
  * re-deriving kW thresholds. `over_cap` — the only red/danger state — is the
@@ -79,9 +74,12 @@ const emptyPayload = (subtitle: string): HeadroomWidgetEmptyPayload => ({
   subtitle,
 });
 
-export const buildHeadroomWidgetPayload = (input: HeadroomWidgetInput): HeadroomWidgetPayload => {
-  if (input.status.state !== 'live') return emptyPayload(HEADROOM_WIDGET_COPY.noDataSubtitle);
-  const status = input.status.status;
+export const buildHeadroomWidgetPayload = (
+  statusRead: HeadroomWidgetStatusRead,
+  nowMs: number,
+): HeadroomWidgetPayload => {
+  if (statusRead.state !== 'live') return emptyPayload(HEADROOM_WIDGET_COPY.noDataSubtitle);
+  const { status } = statusRead;
   // The planner had no measurement behind this status: it carries no
   // headroom then, and nothing derived from it is honest to draw — not even
   // dimmed as "not current". The empty state names the cause instead (owner
@@ -101,7 +99,6 @@ export const buildHeadroomWidgetPayload = (input: HeadroomWidgetInput): Headroom
   const limitState = resolveLimitState(currentKw, hourBudgetKw, status.projectedOverHardCap === true);
 
   const lastUpdate = status.lastPowerUpdate ?? null;
-  const nowMs = input.nowMs ?? Date.now();
   const timeStale = lastUpdate === null ? true : (nowMs - lastUpdate) > STALE_AFTER_MS;
   // Time-based only: a status the planner measured, whose stamp has since
   // aged, is still the last real figure and dims rather than blanks.

@@ -13,10 +13,10 @@ import { resolveYAxis } from '../../widgets/plan_budget/src/public/chartTicks';
 import { findRuleBlock, parseCssRuleBlocks } from '../cssTestUtils';
 import { PREVIEW_OVER_PAYLOAD, PREVIEW_TODAY_PAYLOAD } from '../../widgets/plan_budget/src/public/previewPayloads';
 import type { PlanPriceWidgetReadyPayload } from '../../widgets/plan_budget/src/planPriceWidgetTypes';
+import { applyPreviewTheme } from '../../widgets/_shared/widgetRuntime';
 import {
   createWidgetController,
   installWidget,
-  maybeApplyPreviewTheme,
   resolveInitialHalf,
   resolveTarget,
   type WidgetHomey,
@@ -329,12 +329,12 @@ describe('plan budget widget browser', () => {
   test('applies preview themes and resolves targets from query params first', () => {
     const searchParams = new URLSearchParams('theme=dark&day=tomorrow');
 
-    maybeApplyPreviewTheme(document, searchParams);
+    applyPreviewTheme(document, searchParams);
 
     expect(document.body.classList.contains('homey-dark-mode')).toBe(true);
     expect(resolveTarget({ day: 'today' }, searchParams)).toBe('tomorrow');
 
-    maybeApplyPreviewTheme(document, new URLSearchParams('theme=light'));
+    applyPreviewTheme(document, new URLSearchParams('theme=light'));
     expect(document.body.classList.contains('homey-dark-mode')).toBe(false);
   });
 

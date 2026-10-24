@@ -99,8 +99,6 @@ export const registerSmartTaskCreateRenderer = (
   paint = renderer;
 };
 
-export const getSmartTaskCreateSnapshot = (): SmartTaskCreateSnapshot | null => snapshot;
-
 /**
  * Whether the flow is open for this device. The device page, opened over the
  * flow by "Change", treats such a device as one with a Smart task, and hides

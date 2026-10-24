@@ -8,17 +8,17 @@ const NOW = new Date('2026-03-19T10:00:00.000Z').getTime();
 
 describe('buildHeadroomWidgetPayload', () => {
   test('renders a grid-only binding rate and distinguishes disabled limits from missing readings', () => {
-    expect(buildHeadroomWidgetPayload({ status: { state: 'live', status: { powerKnown: true, powerLimitKw: 3.135, headroomKw: 0.535, lastPowerUpdate: NOW } }, nowMs: NOW }))
+    expect(buildHeadroomWidgetPayload({ state: 'live', status: { powerKnown: true, powerLimitKw: 3.135, headroomKw: 0.535, lastPowerUpdate: NOW } }, NOW))
       .toMatchObject({ state: 'ready', currentKw: expect.closeTo(2.6, 6), hourBudgetKw: 3.135 });
-    expect(buildHeadroomWidgetPayload({ status: { state: 'live', status: { powerKnown: true, powerLimitKw: null } }, nowMs: NOW }))
+    expect(buildHeadroomWidgetPayload({ state: 'live', status: { powerKnown: true, powerLimitKw: null } }, NOW))
       .toEqual({ state: 'empty', subtitle: 'Power limits off' });
   });
 
   test('returns empty payload when no status blob is recorded', () => {
-    const payload = buildHeadroomWidgetPayload({
-      status: { state: 'unavailable', reason: 'no_status_recorded' },
-      nowMs: NOW,
-    });
+    const payload = buildHeadroomWidgetPayload(
+      { state: 'unavailable', reason: 'no_status_recorded' },
+      NOW,
+    );
     expect(payload).toEqual({ state: 'empty', subtitle: HEADROOM_WIDGET_COPY.noDataSubtitle });
   });
 
@@ -28,10 +28,10 @@ describe('buildHeadroomWidgetPayload', () => {
     // swap, corrupt restore, first boot). The widget must not present the
     // persisted blob's numbers for even the first 90 seconds — timestamp
     // aging alone cannot see a latch cleared moments after a fresh sample.
-    const payload = buildHeadroomWidgetPayload({
-      status: { state: 'unavailable', reason: 'no_measurement' },
-      nowMs: NOW,
-    });
+    const payload = buildHeadroomWidgetPayload(
+      { state: 'unavailable', reason: 'no_measurement' },
+      NOW,
+    );
     expect(payload).toEqual({ state: 'empty', subtitle: HEADROOM_WIDGET_COPY.noDataSubtitle });
   });
 
@@ -41,16 +41,16 @@ describe('buildHeadroomWidgetPayload', () => {
     // derived is honest to draw (owner ruling 2026-09-02) — this used to render
     // the last-known figures dimmed, with `currentKw` computed from a headroom
     // the planner had synthesized.
-    const payload = buildHeadroomWidgetPayload({
-      status: { state: 'live', status: { powerKnown: false, powerLimitKw: 7, lastPowerUpdate: NOW - 5_000 } },
-      nowMs: NOW,
-    });
+    const payload = buildHeadroomWidgetPayload(
+      { state: 'live', status: { powerKnown: false, powerLimitKw: 7, lastPowerUpdate: NOW - 5_000 } },
+      NOW,
+    );
     expect(payload).toEqual({ state: 'empty', subtitle: 'No new power readings' });
   });
 
   test('derives current draw from hourly limit minus headroom', () => {
-    const payload = buildHeadroomWidgetPayload({
-      status: {
+    const payload = buildHeadroomWidgetPayload(
+      {
         state: 'live',
         status: {
           headroomKw: 3.8,
@@ -60,8 +60,8 @@ describe('buildHeadroomWidgetPayload', () => {
           lastPowerUpdate: NOW - 5_000,
         },
       },
-      nowMs: NOW,
-    });
+      NOW,
+    );
     expect(payload).toMatchObject({
       state: 'ready',
       currentKw: 3.2,
@@ -75,50 +75,50 @@ describe('buildHeadroomWidgetPayload', () => {
   });
 
   test('reports at_pace (not danger) when draw reaches safe pace with the hour on track', () => {
-    const payload = buildHeadroomWidgetPayload({
-      status: { state: 'live', status: { headroomKw: 0, powerLimitKw: 6.3, projectedOverHardCap: false } },
-      nowMs: NOW,
-    });
+    const payload = buildHeadroomWidgetPayload(
+      { state: 'live', status: { headroomKw: 0, powerLimitKw: 6.3, projectedOverHardCap: false } },
+      NOW,
+    );
     expect(payload).toMatchObject({ state: 'ready', currentKw: 6.3, limitState: 'at_pace' });
   });
 
   test('reports near when approaching but below the safe pace', () => {
-    const payload = buildHeadroomWidgetPayload({
-      status: { state: 'live', status: { headroomKw: 0.5, powerLimitKw: 6 } },
-      nowMs: NOW,
-    });
+    const payload = buildHeadroomWidgetPayload(
+      { state: 'live', status: { headroomKw: 0.5, powerLimitKw: 6 } },
+      NOW,
+    );
     expect(payload).toMatchObject({ state: 'ready', limitState: 'near' });
   });
 
   test('reports over_cap only on the producer-resolved trajectory flag', () => {
     // The flag means "this hour is projected past the cap's kWh" — it is never
     // derived widget-side from instantaneous kW vs the cap.
-    const payload = buildHeadroomWidgetPayload({
-      status: { state: 'live', status: { headroomKw: 0, powerLimitKw: 6.3, projectedOverHardCap: true } },
-      nowMs: NOW,
-    });
+    const payload = buildHeadroomWidgetPayload(
+      { state: 'live', status: { headroomKw: 0, powerLimitKw: 6.3, projectedOverHardCap: true } },
+      NOW,
+    );
     expect(payload).toMatchObject({ state: 'ready', limitState: 'over_cap' });
   });
 
   test('does not escalate to over_cap when the trajectory flag is absent', () => {
-    const payload = buildHeadroomWidgetPayload({
-      status: { state: 'live', status: { headroomKw: -0.5, powerLimitKw: 6 } },
-      nowMs: NOW,
-    });
+    const payload = buildHeadroomWidgetPayload(
+      { state: 'live', status: { headroomKw: -0.5, powerLimitKw: 6 } },
+      NOW,
+    );
     expect(payload).toMatchObject({ state: 'ready', limitState: 'at_pace' });
   });
 
   test('clamps negative current to zero', () => {
-    const payload = buildHeadroomWidgetPayload({
-      status: { state: 'live', status: { headroomKw: 8, powerLimitKw: 7 } },
-      nowMs: NOW,
-    });
+    const payload = buildHeadroomWidgetPayload(
+      { state: 'live', status: { headroomKw: 8, powerLimitKw: 7 } },
+      NOW,
+    );
     expect(payload).toMatchObject({ state: 'ready', currentKw: 0 });
   });
 
   test('flags stale when last power update is older than 90s', () => {
-    const payload = buildHeadroomWidgetPayload({
-      status: {
+    const payload = buildHeadroomWidgetPayload(
+      {
         state: 'live',
         status: {
           headroomKw: 1,
@@ -126,16 +126,16 @@ describe('buildHeadroomWidgetPayload', () => {
           lastPowerUpdate: NOW - 120_000,
         },
       },
-      nowMs: NOW,
-    });
+      NOW,
+    );
     expect(payload).toMatchObject({ state: 'ready', stale: true });
   });
 
   test('maps unknown price level to "unknown"', () => {
-    const payload = buildHeadroomWidgetPayload({
-      status: { state: 'live', status: { headroomKw: 1, powerLimitKw: 5, priceLevel: undefined } },
-      nowMs: NOW,
-    });
+    const payload = buildHeadroomWidgetPayload(
+      { state: 'live', status: { headroomKw: 1, powerLimitKw: 5, priceLevel: undefined } },
+      NOW,
+    );
     expect(payload).toMatchObject({ state: 'ready', priceLevel: 'unknown' });
   });
 });

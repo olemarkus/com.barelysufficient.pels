@@ -53,8 +53,8 @@ export const applyPreviewTheme = (
 // A periodic-refresh loop with a regain-visibility reload and a teardown that is
 // safe against an in-flight load. This is the live-correctness hazard the shared
 // module exists to consolidate: `start()` (re)arms a single interval that calls
-// `onTick`, and `bindVisibility()` reloads when the document becomes visible
-// again (mobile dashboards background the WebView). `stop()` clears the interval
+// `onTick`, and `bindVisibility()` calls the same `onTick` when the document
+// becomes visible again (mobile dashboards background the WebView). `stop()` clears the interval
 // and unbinds the listener; it is idempotent and the bound flags ensure repeated
 // `start()`/`bindVisibility()` never leak a second timer or listener.
 //
@@ -68,18 +68,13 @@ export const createRefreshLoop = (config: {
   widgetDocument: Document;
   intervalMs: number;
   onTick: () => void;
-  // Called when the document transitions back to `visible`. Defaults to
-  // `onTick`; starvation_rescue passes a list-only reload so a background poll
-  // never disturbs an in-progress confirm flow.
-  onVisible?: () => void;
 }): { start: () => void; bindVisibility: () => void; stop: () => void } => {
   const { widgetWindow, widgetDocument, intervalMs, onTick } = config;
-  const onVisible = config.onVisible ?? onTick;
   let refreshTimer: number | null = null;
   let visibilityBound = false;
 
   const handleVisibilityChange = (): void => {
-    if (widgetDocument.visibilityState === 'visible') onVisible();
+    if (widgetDocument.visibilityState === 'visible') onTick();
   };
 
   return {

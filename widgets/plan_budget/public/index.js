@@ -584,11 +584,10 @@
   };
   var createRefreshLoop = (config) => {
     const { widgetWindow, widgetDocument, intervalMs, onTick } = config;
-    const onVisible = config.onVisible ?? onTick;
     let refreshTimer = null;
     let visibilityBound = false;
     const handleVisibilityChange = () => {
-      if (widgetDocument.visibilityState === "visible") onVisible();
+      if (widgetDocument.visibilityState === "visible") onTick();
     };
     return {
       start: () => {
