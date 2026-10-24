@@ -9,7 +9,7 @@ import {
 import { callApi } from './homey.ts';
 import { renderDevices } from './devices.ts';
 import { renderPriorities } from './modes.ts';
-import { renderPriceOptimization } from './priceOptimization.ts';
+import { renderPriceConfigDevices } from './priceConfig.ts';
 import { showToast, showToastError } from './toast.ts';
 import { logSettingsError } from './logging.ts';
 import { state } from './state.ts';
@@ -102,7 +102,7 @@ const renderAdvancedDeviceOptions = () => {
 const refreshUiAfterDeviceCleanup = () => {
   renderDevices(state.latestDevices);
   renderPriorities(state.latestDevices);
-  renderPriceOptimization(state.latestDevices);
+  renderPriceConfigDevices();
   renderAdvancedDeviceOptions();
 };
 

@@ -516,8 +516,9 @@ const ensureLoaded = async () => {
   if (!settingsLoaded) await loadPriceConfigSettings();
 };
 
-export const updatePriceConfigDevices = (devices: SettingsUiDeviceView[]) => {
-  state.latestDevices = devices;
+// Repaints both price pages from `state.latestDevices`; the caller has already
+// stored the new list there.
+export const renderPriceConfigDevices = () => {
   renderPriceAwareDevices();
   // The devices payload also carries the home-level managed-solar flag that
   // gates the export-price section, so the prices view must repaint too.

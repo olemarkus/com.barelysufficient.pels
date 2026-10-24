@@ -15,10 +15,8 @@ vi.mock('../src/ui/deviceDetail/targetPowerConfig.ts', () => ({
 
 vi.mock('../src/ui/utils.ts', () => ({ debouncedSetSetting: (...args: unknown[]) => debouncedSetSetting(...args) }));
 vi.mock('../src/ui/modes.ts', () => ({ renderPriorities: vi.fn() }));
-vi.mock('../src/ui/priceOptimization.ts', () => ({
-  renderPriceOptimization: vi.fn(),
-  savePriceOptimizationSettings: vi.fn(),
-}));
+vi.mock('../src/ui/priceConfig.ts', () => ({ renderPriceConfigDevices: vi.fn() }));
+vi.mock('../src/ui/priceOptimization.ts', () => ({ savePriceOptimizationSettings: vi.fn() }));
 vi.mock('../src/ui/plan.ts', () => ({ refreshPlan: vi.fn() }));
 vi.mock('../src/ui/toast.ts', () => ({ showToast: vi.fn(), showToastError: vi.fn() }));
 vi.mock('../src/ui/logging.ts', () => ({

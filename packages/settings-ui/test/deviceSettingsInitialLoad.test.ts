@@ -50,8 +50,10 @@ const setupHarness = async (options: {
   vi.doMock('../src/ui/modes.ts', () => ({
     renderPriorities: vi.fn(),
   }));
+  vi.doMock('../src/ui/priceConfig.ts', () => ({
+    renderPriceConfigDevices: vi.fn(),
+  }));
   vi.doMock('../src/ui/priceOptimization.ts', () => ({
-    renderPriceOptimization: vi.fn(),
     savePriceOptimizationSettings,
   }));
   vi.doMock('../src/ui/plan.ts', () => ({

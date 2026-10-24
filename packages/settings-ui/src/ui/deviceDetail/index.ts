@@ -18,7 +18,7 @@ import {
   isNativeSteppedLoadProfileActive,
 } from '../deviceControlProfiles.ts';
 import { renderPriorities } from '../modes.ts';
-import { renderPriceOptimization } from '../priceOptimization.ts';
+import { renderPriceConfigDevices } from '../priceConfig.ts';
 import { findLatestDevice, state, type SettingsUiDeviceView } from '../state.ts';
 import { renderDeviceDetailModes } from './modes.ts';
 import {
@@ -136,7 +136,7 @@ const getCurrentDetailDeviceId = () => currentDetailDeviceId;
 const refreshSharedDeviceViews = () => {
   renderDevices(state.latestDevices);
   renderPriorities(state.latestDevices);
-  renderPriceOptimization(state.latestDevices);
+  renderPriceConfigDevices();
   refreshRecommendationSurfaces();
 };
 

@@ -11,7 +11,7 @@ import {
   supportsTemperatureDevice,
   type SettingsUiDeviceDetailItem,
 } from '../deviceUtils.ts';
-import { renderPriceOptimization } from '../priceOptimization.ts';
+import { renderPriceConfigDevices } from '../priceConfig.ts';
 import { findLatestDevice, resolveManagedState, state, defaultPriceOptimizationConfig } from '../state.ts';
 import { savePriceOptimizationPatch } from './priceOptimizationPatch.ts';
 import {
@@ -92,7 +92,7 @@ export const initDeviceDetailPriceOptHandlers = (params: {
 }) => {
   const renderPriceOptDependents = () => {
     renderDevices(state.latestDevices);
-    renderPriceOptimization(state.latestDevices);
+    renderPriceConfigDevices();
     const currentDetailDeviceId = params.getCurrentDetailDeviceId();
     updateDeltaSectionVisibility(currentDetailDeviceId ? findLatestDevice(currentDetailDeviceId) : null);
   };

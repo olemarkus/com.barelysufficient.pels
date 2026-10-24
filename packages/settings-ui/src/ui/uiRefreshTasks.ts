@@ -11,7 +11,7 @@ import { refreshHomeScopeAndNotify, subscribeToHomeScope } from './homeScope.ts'
 import { invalidateApiCache, invalidateApiCacheForAllHomes } from './homey.ts';
 import { loadModeAndPriorities, renderPriorities } from './modes.ts';
 import { refreshOverviewPlanWithRescueGate } from './overviewRescueGate.ts';
-import { refreshPriceConfigView, updatePriceConfigDevices } from './priceConfig.ts';
+import { refreshPriceConfigView, renderPriceConfigDevices } from './priceConfig.ts';
 import { refreshDailyBudgetPlan } from './dailyBudget.ts';
 import { refreshPlan, resetPlanSurfaceForScopeChange } from './plan.ts';
 import { refreshAdvancedDeviceCleanup } from './advanced.ts';
@@ -164,7 +164,7 @@ const renderLatestDevices = (devices: Awaited<ReturnType<typeof getTargetDevices
   state.latestDevices = devices;
   renderPriorities(devices);
   renderDevices(devices);
-  updatePriceConfigDevices(devices);
+  renderPriceConfigDevices();
   refreshAdvancedDeviceCleanup();
   // The Overview's cards are DEVICE rows, so a new device list is a reason to
   // repaint it — the plan alone no longer determines what it shows. Without

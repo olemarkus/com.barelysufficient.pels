@@ -19,8 +19,10 @@ export const mockDeviceDetailCollaborators = (spies: DeviceDetailCollaboratorSpi
   vi.doMock('../../src/ui/modes.ts', () => ({
     renderPriorities: vi.fn(),
   }));
+  vi.doMock('../../src/ui/priceConfig.ts', () => ({
+    renderPriceConfigDevices: vi.fn(),
+  }));
   vi.doMock('../../src/ui/priceOptimization.ts', () => ({
-    renderPriceOptimization: vi.fn(),
     savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
   }));
   vi.doMock('../../src/ui/toast.ts', () => ({
