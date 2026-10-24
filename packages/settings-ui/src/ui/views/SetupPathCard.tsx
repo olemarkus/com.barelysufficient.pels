@@ -1,4 +1,4 @@
-import { MdElevation, MdList, MdListItem } from './materialWebJSX.tsx';
+import { MdElevation, MdList, MdListItem, MdTextButton } from './materialWebJSX.tsx';
 import { MAIN_HOME_ID } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { formatSetupProgress, type SetupPath, type SetupStep } from '../setupPathModel.ts';
 
@@ -41,6 +41,7 @@ const StepRow = ({ step }: { step: SetupStep }) => (
     type="button"
     class="setup-path__step"
     data-setup-step={step.id}
+    data-setup-journey={step.id}
     data-setup-status={step.status}
     data-settings-target={step.target.panel}
     data-settings-anchor={step.target.anchor}
@@ -79,8 +80,11 @@ export const SetupPathCard = ({ path, surface }: { path: SetupPath; surface: 'ov
     <MdList class="settings-nav-list setup-path__steps">
       {path.steps.map((step) => <StepRow key={step.id} step={step} />)}
     </MdList>
+    <MdTextButton type="button" data-settings-target="devices" data-setup-journey="solar" data-settings-home-scope={MAIN_HOME_ID}>
+      Use more of your own solar
+    </MdTextButton>
     {path.simulating && (
-      <p class="pels-card-supporting">Simulation is on, so devices stay as-is until you turn it off.</p>
+      <p class="pels-card-supporting">Simulation mode is on.</p>
     )}
   </section>
 );

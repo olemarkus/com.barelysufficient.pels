@@ -111,9 +111,8 @@ test.describe('Onboarding links', () => {
     // A home with no plan has nothing on its way: the hero skeleton would be a
     // loading state that never resolves.
     await expect(page.locator('#overview-panel .pels-skeleton').filter({ visible: true })).toHaveCount(0);
-    // The card says simulation is on; the banner's "Turn off simulation" is the
-    // one action an owner with nothing configured should not be offered first.
-    await expect(card).toContainText('Simulation is on');
+    // The card carries simulation posture while setup is still open.
+    await expect(card).toContainText('Simulation mode is on');
     await expect(page.locator('#dry-run-banner')).toBeHidden();
     // Both global banners stand down where the card speaks for them, so the
     // whole path fits the first viewport instead of starting below two alerts.
@@ -273,7 +272,7 @@ test.describe('Onboarding links', () => {
     await expect(page.locator('#electricity-prices-panel')).toBeVisible();
   });
 
-  test('a home with no solar surplus PELS can use is never told to use its solar', async ({ page }) => {
+  test('a home without usable surplus can discover solar without an automatic solar recommendation', async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
         settings: {
@@ -288,7 +287,8 @@ test.describe('Onboarding links', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('#setup-recommendations-banner-root').getByText('See what').click();
     await expect(page.locator('#setup-recommendations-root .setup-recommendation-card')).toHaveCount(2);
-    await expect(page.locator('#setup-recommendations-root')).not.toContainText('solar');
+    await expect(page.locator('#setup-recommendations-root .setup-recommendation-card').filter({ hasText: 'solar' })).toHaveCount(0);
+    await expect(page.locator('#setup-recommendations-root').getByText('Use more of your own solar', { exact: true })).toBeVisible();
   });
 
   test('nothing is suggested while setup is still open, or to a home already using it all', async ({ page }) => {
@@ -314,13 +314,12 @@ test.describe('Onboarding links', () => {
     await banner.getByText('Review').click();
 
     const card = page.locator('.setup-recommendation-card', { hasText: 'Check your capacity period' });
-    await expect(card).toContainText('If you live in Flanders');
+    await expect(card).toContainText('In Flanders?');
     // Wallonia and Brussels have no such tariff, and a country code cannot tell.
-    await expect(card).toContainText('Elsewhere in Belgium this does not apply');
     await expect(card.locator('.plan-chip')).toHaveText('Recommended');
 
-    await card.getByText('Open Limits & safety').click();
-    await expect(page.locator('#limits-panel')).toBeVisible();
+    await card.getByText('Use 15-minute average').click();
+    await expect(card).toHaveCount(0);
   });
 
   test('a Belgian hub already on the 15-minute average is asked nothing', async ({ page }) => {

@@ -113,6 +113,11 @@ export const hasChosenWholeHomeMeter = (): boolean => selectedMeterId !== null;
 /** The chosen whole-home meter id; `null` while none is chosen yet. */
 export const getChosenWholeHomeMeterId = (): string | null => selectedMeterId;
 
+/** Display name from the same accepted meter inventory that owns the picker. */
+export const getChosenWholeHomeMeterName = (): string | null => (
+  pickerDevices?.find((meter) => meter.value === selectedMeterId)?.label ?? null
+);
+
 const renderMeterOptions = (): void => {
   const select = settingsHomeyEnergyMeterSelect;
   if (!select) return;

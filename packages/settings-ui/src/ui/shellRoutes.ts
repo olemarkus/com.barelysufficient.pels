@@ -4,6 +4,8 @@
 // stays inside one document, which the Homey WebView requires, and the
 // fragment stays free for the web app's `#homey=`.
 
+import type { SetupJourneyStep } from './setupJourneyState.ts';
+
 const TOP_LEVEL_PANELS = ['overview', 'budget', 'usage', 'deadlines', 'settings'] as const;
 
 // Views on the Budget panel that are pages of their own: the Daily budget
@@ -19,6 +21,7 @@ type BudgetViewRoute = keyof typeof BUDGET_VIEW_ROUTES;
 // Settings hub sub-pages, addressed as `settings/<id>`.
 export const SETTINGS_SUB_PANELS = [
   'recommendations',
+  'setup-review',
   'limits',
   'devices',
   'modes',
@@ -35,7 +38,7 @@ export const SETTINGS_SUB_PANELS = [
 const SETTINGS_PREFIX = 'settings/';
 const PAGE_PARAM = 'page';
 // Parameters that belong to a route and must not leak into the next one.
-const ROUTE_PARAMS = ['deviceId', 'historyId', 'edit', 'date'];
+const ROUTE_PARAMS = ['deviceId', 'historyId', 'edit', 'date', 'setup', 'setupGoal'];
 
 const isTopLevel = (id: string): boolean => (TOP_LEVEL_PANELS as readonly string[]).includes(id);
 const isSettingsSub = (id: string): boolean => (SETTINGS_SUB_PANELS as readonly string[]).includes(id);
@@ -67,12 +70,21 @@ export const isShellPanel = (panelId: string): boolean => (
 
 // The URL for a shell page, keeping the current path, fragment and any
 // parameter no route owns.
-export const shellRouteUrl = (panelId: string, location: Pick<Location, 'pathname' | 'search' | 'hash'>): string => {
+export const shellRouteUrl = (
+  panelId: string, location: Pick<Location, 'pathname' | 'search' | 'hash'>, setup?: SetupJourneyStep,
+): string => {
   const params = new URLSearchParams(location.search);
   for (const param of ROUTE_PARAMS) params.delete(param);
   let page: string = panelId;
   if (isSettingsSub(panelId)) page = `${SETTINGS_PREFIX}${panelId}`;
   else if (isBudgetViewRoute(panelId)) page = BUDGET_VIEW_ROUTES[panelId];
   params.set(PAGE_PARAM, page);
+  if (setup) {
+    params.set('setup', setup);
+    if (setup === 'solar' || new URLSearchParams(location.search).get('setup') === 'solar'
+      || new URLSearchParams(location.search).get('setupGoal') === 'solar') {
+      params.set('setupGoal', 'solar');
+    }
+  }
   return `${location.pathname}?${params.toString()}${location.hash}`;
 };

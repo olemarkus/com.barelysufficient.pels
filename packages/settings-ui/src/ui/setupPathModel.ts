@@ -31,26 +31,14 @@ import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUiA
  * Priority is automatic, so confirming or customising the order is not a setup
  * requirement. Owners can change it in Modes whenever they want.
  *
- * The same rule is why the copy picks no market. Norway and Flanders come for
- * the capacity tariff, Italy for the grid import limit, the Netherlands for
- * solar and dynamic prices; the lede says what builds on the steps rather than
- * selling one limit, and the Limits step names the capacity period it runs on,
- * because a quarter-hour tariff on the hourly default is the one silent way to
- * get this setup wrong. Sweden is the one market where the step asks instead:
- * whether a home pays a capacity charge depends on its grid company, so while
- * the built-in cap runs unchosen, the step asks which before the owner limits a
- * home to a tariff it may not have.
- *
- * Simulation is not a step. It is on by default and the path says so while it
- * is open, but a configured home left simulating is a finished setup: the slim
- * simulation banner already speaks for it, and a card that stayed until the
- * owner went live would sit on top of a cautious owner's Overview for weeks.
+ * Simulation is not a completion requirement. The explicit review surface
+ * offers activation; a configured home may remain simulating indefinitely.
  *
  * Settings-UI-owned on purpose: the runtime has no use for it, so it lives
  * beside its one consumer rather than in shared-domain.
  */
 
-type SetupStepId = 'power' | 'hardCap' | 'devices' | 'prices';
+export type SetupStepId = 'power' | 'hardCap' | 'devices' | 'prices';
 
 /** `next` is the first step still open; every later open step is `later`. */
 type SetupStepStatus = 'done' | 'next' | 'later';
@@ -134,9 +122,6 @@ export type SetupPathState =
 
 type SetupPathVisibility = SetupPathState | { state: 'loading' };
 
-const LEDE = 'Check the essentials PELS uses to manage this home. Prices, solar and Smart tasks build on them.';
-// With prices a step of their own, the lede names only what builds on the steps.
-const LEDE_WITH_PRICES = 'Check the essentials PELS uses to manage this home. Solar and Smart tasks build on them.';
 const formatKw = (value: number): string => `${Number(value.toFixed(1))} kW`;
 
 const countDevices = (count: number): string => (count === 1 ? '1 device' : `${count} devices`);
@@ -144,7 +129,7 @@ const countDevices = (count: number): string => (count === 1 ? '1 device' : `${c
 const resolvePowerDetail = (power: SetupPowerReadings): string => (
   // A reading that has gone quiet is the no-readings banner's job; the meter was
   // connected once, and that is all this step asks.
-  power.state === 'received' ? 'Readings are arriving' : power.remedy
+  power.state === 'received' ? 'Meter connected' : power.remedy
 );
 
 // The same words as the Capacity period options on Limits & safety, so the
@@ -169,8 +154,6 @@ const resolveSetupCapacityLimit = (hardCap: SetupHardCap): SetupCapacityLimit | 
   return hardCap.capacity.state === 'off' ? null : hardCap.capacity;
 };
 
-const FLANDERS_PERIOD_NOTE = ' In Flanders, use the 15-minute average.';
-
 const formatCapacityDetail = (capacity: SetupCapacityLimit): string => {
   const period = formatPeriod(capacity.periodMinutes);
   return capacity.state === 'saved'
@@ -191,38 +174,30 @@ export const isBelgianHourlySetup = (market: SettingsUiHubMarketRead, hardCap: S
   return capacity !== null && isBelgianHourly(market, capacity.periodMinutes);
 };
 
-// In Sweden a capacity charge depends on the grid company: many homes pay one,
-// many pay only for their fuse size. While the built-in cap runs unchosen the
-// step asks which, instead of presuming a tariff the home may not have.
-const formatSwedishCapacityQuestion = (capacity: SetupCapacityLimit): string => (
-  `Does your grid company charge for your highest ${capacity.periodMinutes === 15 ? '15-minute' : 'hourly'} use? `
-  + 'If so, set your hard cap. If not, turn off Capacity limit.'
-);
+// Ask about measured peaks: connection-capacity charges use similar names.
+const MEASURED_PEAK_QUESTION = 'Charged for your highest hourly or 15-minute average grid import? '
+  + 'Set your hard cap, or turn off Capacity limit.';
 
-const resolveHardCapDetail = (hardCap: SetupHardCap, market: SettingsUiHubMarketRead): string => {
+const resolveHardCapDetail = (hardCap: SetupHardCap): string => {
   // Only while the step is open: beside a grid import limit the step is done.
-  if (hardCap.state === 'unset' && market.state === 'resolved' && market.country === 'SE') {
-    return formatSwedishCapacityQuestion(hardCap);
+  if (hardCap.state === 'unset') {
+    return `${formatCapacityDetail(hardCap)}. ${MEASURED_PEAK_QUESTION}`;
   }
-  const summary = formatLimitsSummary(hardCap);
-  return isBelgianHourlySetup(market, hardCap) ? `${summary}.${FLANDERS_PERIOD_NOTE}` : summary;
+  return formatLimitsSummary(hardCap);
 };
 
 // A fact, never an instruction. Devices that cannot be limited (no power
 // reading) or that the owner chose not to limit are a finished choice; telling
 // that owner to go turn Limit on asks for something they did not come for.
 const resolveDevicesDetail = (facts: SetupPathFacts): string => {
-  if (facts.managedDeviceCount === 0) return 'Choose the devices PELS manages';
+  if (facts.managedDeviceCount === 0) return 'Choose one device to start';
   return facts.limitableDeviceCount > 0
     ? `${countDevices(facts.limitableDeviceCount)} PELS may limit`
     : `${countDevices(facts.managedDeviceCount)} managed`;
 };
 
-/**
- * `complete` when setup is complete — there is no "all done" card, because a
- * finished setup has nothing left to say (the Overview says it instead).
- */
-export const resolveSetupPath = (facts: SetupPathFacts): SetupPathState => {
+/** Keep the resolved steps available for the explicit review, even after setup closes. */
+export const resolveSetupSteps = (facts: SetupPathFacts): SetupPath => {
   // In force only once some managed device may be limited; see the header.
   const hardCapApplies = facts.limitableDeviceCount > 0;
   const candidates: Array<Omit<SetupStep, 'status'> & { done: boolean }> = [
@@ -244,7 +219,7 @@ export const resolveSetupPath = (facts: SetupPathFacts): SetupPathState => {
       id: 'hardCap' as const,
       done: facts.hardCap.state !== 'unset',
       title: 'Limits',
-      detail: resolveHardCapDetail(facts.hardCap, facts.market),
+      detail: resolveHardCapDetail(facts.hardCap),
       target: { panel: 'limits' },
     }] : []),
     ...(facts.prices.state === 'used' ? [{
@@ -255,7 +230,6 @@ export const resolveSetupPath = (facts: SetupPathFacts): SetupPathState => {
       target: { panel: 'electricity-prices', anchor: '#price-source-select' },
     }] : []),
   ];
-  if (candidates.every((step) => step.done)) return { state: 'complete' };
 
   const nextIndex = candidates.findIndex((step) => !step.done);
   const statusAt = (done: boolean, index: number): SetupStepStatus => {
@@ -268,14 +242,16 @@ export const resolveSetupPath = (facts: SetupPathFacts): SetupPathState => {
   }));
 
   return {
-    state: 'open',
-    path: {
-      steps,
-      doneCount: candidates.filter((step) => step.done).length,
-      lede: facts.prices.state === 'used' ? LEDE_WITH_PRICES : LEDE,
-      simulating: facts.simulating,
-    },
+    steps,
+    doneCount: candidates.filter((step) => step.done).length,
+    lede: 'Connect your meter, choose a device, then review your settings.',
+    simulating: facts.simulating,
   };
+};
+
+export const resolveSetupPath = (facts: SetupPathFacts): SetupPathState => {
+  const path = resolveSetupSteps(facts);
+  return path.doneCount === path.steps.length ? { state: 'complete' } : { state: 'open', path };
 };
 
 /** Whether the path is open AND still waiting on this step. */
