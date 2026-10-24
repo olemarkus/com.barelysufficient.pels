@@ -1,4 +1,5 @@
 import type {
+  PreparedSupportReport,
   SupportReportResponse,
   SupportReportRequest,
   SupportReportSubject,
@@ -63,15 +64,10 @@ export class SupportReportController {
     this.show();
   }
 
-  editDetails(): void {
-    if (reportIsLocked(this.state) || !this.state.report) return;
-    this.edit(draftFromRequest(this.state.report.document.request));
-  }
-
   private accept(response: SupportReportResponse): void {
     if (!response.ok) {
       const { report, draft } = this.state;
-      // An expired preview keeps its incident time, so another preview reads the same activity.
+      // An expired report keeps its incident time, so sending again reads the same activity.
       this.state = { ...this.state, notice: reportErrorMessage(response.code),
         ...(response.code === 'report_expired'
           ? { report: null, draft: report ? draftFromRequest(report.document.request) : draft } : {}) };
@@ -80,11 +76,15 @@ export class SupportReportController {
     this.state = { ...this.state, report: response.report, notice: reportSubmissionMessage(response.report) };
   }
 
-  async prepare(): Promise<void> {
+  /**
+   * Prepares the report and sends it in one step. A report that cannot be sent is kept so it can be
+   * copied, and stays until a new one is prepared.
+   */
+  async submit(): Promise<void> {
     if (reportIsLocked(this.state)) return;
     const request = reportRequest(this.state.draft);
     if (!request.problem.trim()) {
-      this.state = { ...this.state, notice: 'Describe what happened before previewing the report.' };
+      this.state = { ...this.state, notice: 'Describe what happened before sending the report.' };
       this.show();
       return;
     }
@@ -93,38 +93,42 @@ export class SupportReportController {
       this.show();
       return;
     }
-    this.state = { ...this.state, report: null, operation: 'preparing', notice: 'Preparing your report…' };
+    this.state = { ...this.state, operation: 'sending', notice: 'Sending your report through Homey…' };
     const generation = ++this.operationGeneration;
     this.show();
     try {
-      const response = await this.api.prepare(request);
-      if (generation === this.operationGeneration) this.accept(response);
-    } catch {
-      if (generation === this.operationGeneration) {
-        this.state = { ...this.state, notice: reportErrorMessage('capture_failed') };
+      let prepared: SupportReportResponse;
+      try {
+        prepared = await this.api.prepare(request);
+      } catch {
+        if (generation === this.operationGeneration) {
+          this.state = { ...this.state, notice: reportErrorMessage('capture_failed') };
+        }
+        return;
       }
+      if (generation !== this.operationGeneration) return;
+      if (!prepared.ok || prepared.report.availability !== 'available') {
+        this.accept(prepared);
+        return;
+      }
+      await this.dispatch(prepared.report, generation);
     } finally { this.finishOperation(generation); }
   }
 
-  async send(): Promise<void> {
-    const { report } = this.state;
-    if (this.state.operation !== 'idle' || !report || report.submission.state !== 'draft'
-      || report.availability !== 'available') return;
-    this.state = { ...this.state, operation: 'sending', notice: 'Sending your report through Homey…',
-      report: { ...report, submission: { state: 'sending' } } };
-    const generation = ++this.operationGeneration;
+  private async dispatch(report: PreparedSupportReport, generation: number): Promise<void> {
+    this.state = { ...this.state, report: { ...report, submission: { state: 'sending' } } };
     this.show();
     try {
       const response = await this.api.send(report.document.id);
       if (generation !== this.operationGeneration) return;
-      // Explicit API rejections occur before dispatch. Retain the reviewed snapshot.
+      // Explicit API refusals occur before dispatch. Keep the prepared report so it can be copied.
       if (!response.ok) this.state = { ...this.state, report };
       this.accept(response);
     } catch {
       if (generation !== this.operationGeneration) return;
       const uncertain = { ...report, submission: { state: 'unknown' as const } };
       this.state = { ...this.state, report: uncertain, notice: reportSubmissionMessage(uncertain) };
-    } finally { this.finishOperation(generation); }
+    }
   }
 
   async check(): Promise<void> {
@@ -164,7 +168,7 @@ export class SupportReportController {
       this.accept(response);
       if (!response.ok && response.code === 'report_expired') {
         this.state = {
-          ...this.state, notice: 'This report is no longer available. Start another report to prepare a new preview.',
+          ...this.state, notice: 'This report is no longer available. Start another report to send it again.',
         };
       }
     } catch {
@@ -187,6 +191,11 @@ export class SupportReportController {
       ...this.state, draft: newReportDraft(this.state.draft.subject), report: null, recoveryId: null, notice: '',
     };
     this.show();
+  }
+
+  /** Reopening the page after a sent report starts a new one; a report still being settled stays. */
+  leaveSentReport(): void {
+    if (this.state.report?.submission.state === 'sent') this.startAnother();
   }
 
   notice(message: string): void {

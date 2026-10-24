@@ -21,7 +21,6 @@ type DeviceLogViewProps = {
   state: DeviceLogViewState;
   formatTimestamp: (atMs: number) => string;
   showDeviceNames?: boolean;
-  reportable?: boolean;
 };
 
 const DeviceLogEmpty = ({ message }: { message: string }) => (
@@ -31,7 +30,6 @@ const DeviceLogEmpty = ({ message }: { message: string }) => (
 type DeviceLogEntryRowProps = {
   item: CollapsedLogEntry;
   showDeviceNames: boolean;
-  reportable: boolean;
   formatTimestamp: (atMs: number) => string;
 };
 
@@ -54,7 +52,7 @@ const formatRunCaption = (item: CollapsedLogEntry, formatTimestamp: (atMs: numbe
     : `Seen ${item.occurrenceCount} times since ${formatTimestamp(item.firstAtMs)}`;
 };
 
-const DeviceLogEntryRow = ({ item, formatTimestamp, showDeviceNames, reportable }: DeviceLogEntryRowProps) => {
+const DeviceLogEntryRow = ({ item, formatTimestamp, showDeviceNames }: DeviceLogEntryRowProps) => {
   const { entry } = item;
   return (
     <li class="device-log__entry">
@@ -80,13 +78,13 @@ const DeviceLogEntryRow = ({ item, formatTimestamp, showDeviceNames, reportable 
       {item.occurrenceCount > 1 ? (
         <p class="pels-text-caption muted device-log__line">{formatRunCaption(item, formatTimestamp)}</p>
       ) : null}
-      {reportable && <MdTextButton type="button" data-report-device-id={entry.deviceId}
-        data-report-home-id="main" data-report-at-ms={entry.atMs}>Report a problem</MdTextButton>}
+      <MdTextButton type="button" data-report-device-id={entry.deviceId}
+        data-report-home-id="main" data-report-at-ms={entry.atMs}>Report a problem</MdTextButton>
     </li>
   );
 };
 
-export const DeviceLogContent = ({ state, formatTimestamp, showDeviceNames = false, reportable = true }: DeviceLogViewProps) => {
+export const DeviceLogContent = ({ state, formatTimestamp, showDeviceNames = false }: DeviceLogViewProps) => {
   if (state.status === 'loading') {
     return <DeviceLogEmpty message="Loading activity…" />;
   }
@@ -117,7 +115,6 @@ export const DeviceLogContent = ({ state, formatTimestamp, showDeviceNames = fal
               item={item}
               formatTimestamp={formatTimestamp}
               showDeviceNames={showDeviceNames}
-              reportable={reportable}
             />
           </Fragment>
         ))}

@@ -1,5 +1,5 @@
 import { render } from 'preact';
-import { useLayoutEffect, useRef } from 'preact/hooks';
+import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { PreparedSupportReport } from '../../../../contracts/src/supportReport.ts';
 import {
   SUPPORT_REPORT_EXPECTED_MAX_LENGTH,
@@ -13,16 +13,16 @@ import {
   type SupportReportViewState,
 } from '../supportReportModel.ts';
 import { AppBar } from './AppBar.tsx';
-import { DeviceLogContent } from './DeviceLogView.tsx';
 import {
   MdFilledButton, MdFilledSelect, MdFilledTextField, MdOutlinedButton, MdSelectOption, MdTextButton,
 } from './materialWebJSX.tsx';
 
+/** The app's Homey Community topic (`homeyCommunityTopicId` in the manifest). */
+const FORUM_URL = 'https://community.homey.app/t/147496';
+
 export type SupportReportActions = {
   edit(draft: ReportDraft): void;
-  editDetails(): void;
-  prepare(): Promise<void>;
-  send(): Promise<void>;
+  submit(): Promise<void>;
   check(): Promise<void>;
   startAnother(): void;
   notice(message: string): void;
@@ -34,10 +34,6 @@ type SupportReportViewProps = {
   homeName: string;
   backTarget: string;
 };
-
-const timestamp = (atMs: number): string => new Date(atMs).toLocaleString(undefined, {
-  dateStyle: 'medium', timeStyle: 'short',
-});
 
 const fieldValue = (event: Event): string => (event.currentTarget as HTMLElement & { value: string }).value;
 
@@ -54,7 +50,7 @@ const ReportForm = ({ state, actions, homeName }: SupportReportViewProps) => {
   return (
     <form class="support-report__form" onSubmit={(event) => {
       event.preventDefault();
-      if (event.currentTarget.reportValidity()) void actions.prepare();
+      if (event.currentTarget.reportValidity()) void actions.submit();
     }}>
       <p class="pels-text-supporting muted">Home: {homeName}</p>
       <MdFilledSelect ref={deviceSelect} label="Affected device" disabled={disabled}
@@ -111,164 +107,100 @@ const ReportForm = ({ state, actions, homeName }: SupportReportViewProps) => {
       <p class="pels-text-supporting muted">{draft.historyWindow === 'incident'
         ? 'Includes available activity one hour before and after the incident, plus the preceding recorded state.'
         : 'Includes available activity in the 24 hours before the incident, plus the preceding recorded state.'}</p>
-      <MdFilledButton type="submit" disabled={disabled} data-report-action="preview">
-        {state.operation === 'preparing' ? 'Preparing…' : 'Preview report'}
+      <MdFilledButton type="submit" disabled={disabled} data-report-action="send">
+        {state.operation === 'sending' ? 'Sending…' : 'Send report'}
       </MdFilledButton>
+      <p class="pels-text-supporting muted">Sent to the PELS developer through Homey, with the app’s logs.</p>
     </form>
   );
 };
 
-const ReportActivity = ({ report }: { report: PreparedSupportReport }) => {
-  const { activity } = report.document;
-  if (activity.state === 'unavailable') return <p class="pels-text-supporting">{activity.reason}</p>;
+// Shown only when the report cannot be sent, so it can be shared another way.
+const ReportCopy = ({ report, actions }: { report: PreparedSupportReport; actions: SupportReportActions }) => {
+  const [manual, setManual] = useState(false);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    if (manual) textRef.current?.select();
+  }, [manual]);
+  const copy = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(report.message);
+      actions.notice('Report copied.');
+    } catch {
+      setManual(true);
+      actions.notice('Select and copy the report text below.');
+    }
+  };
   return (
-    <details class="settings-collapse">
-      <summary>Included activity ({activity.entries.length})</summary>
-      <div class="support-report__detail">
-        <p class="pels-text-supporting muted">
-          {timestamp(activity.fromMs)} to {timestamp(activity.toMs)}, plus any preceding recorded state.
-          {' '}History keeps up to {activity.retentionDays} days with limits on the number of entries.
-        </p>
-        {activity.entries.length === 0
-          ? <p class="pels-text-supporting muted">No retained activity was found for this incident and time window.</p>
-          : <DeviceLogContent state={{ status: 'ready', entries: [...activity.entries], persistence: activity.persistence }}
-            formatTimestamp={timestamp} showDeviceNames reportable={false} />}
-      </div>
-    </details>
+    <div class="support-report__copy">
+      <MdOutlinedButton type="button" onClick={() => { void copy(); }} data-report-action="copy">Copy report</MdOutlinedButton>
+      {manual && <textarea ref={textRef} readOnly rows={6} class="support-report__text" aria-label="Report text"
+        value={report.message} />}
+    </div>
   );
 };
 
-type ReportContentsProps = {
-  report: PreparedSupportReport;
-  textRef: { current: HTMLPreElement | null };
-  homeName: string;
-};
-
-const ReportContents = ({ report, textRef, homeName }: ReportContentsProps) => {
-  const { document: snapshot } = report;
-  return <>
-    <p class="pels-text-card-title entity-name">{snapshot.subjectName}</p>
-    <p class="pels-text-supporting muted">Home: {homeName}</p>
-    <dl class="support-report__summary">
-      <dt class="pels-text-caption muted">Incident</dt><dd>{timestamp(snapshot.request.occurredAtMs)}</dd>
-      <dt class="pels-text-caption muted">Current details captured</dt><dd>{timestamp(snapshot.capturedAtMs)}</dd>
-    </dl>
-    <p class="pels-text-supporting muted">Time zone: {reportTimeZone()}</p>
-    <p class="support-report__description">{snapshot.request.problem}</p>
-    {snapshot.request.expected && <p class="support-report__description">
-      <strong>Expected:</strong> {snapshot.request.expected}
-    </p>}
-    <p class="pels-text-supporting muted">Current details describe the system when this preview was prepared.
-      {' '}Recorded activity retains its original timestamps.</p>
-    <ReportActivity report={report} />
-    {snapshot.sections.length > 0 && <details class="settings-collapse">
-      <summary>Included current details</summary>
-      <ul>{snapshot.sections.map((section) => <li key={section.title}>{section.title}</li>)}</ul>
-    </details>}
-    {snapshot.omissions.length > 0 && <div class="support-report__omissions">
-      <p class="pels-text-supporting">Some details could not be included:</p>
-      <ul>{snapshot.omissions.map((omission) => <li key={omission}>{omission}</li>)}</ul>
-    </div>}
-    <details class="settings-collapse" data-report-details>
-      <summary>Full report · {Math.ceil(new TextEncoder().encode(report.message).byteLength / 1024)} KiB</summary>
-      <pre ref={textRef} tabIndex={0} class="support-report__text" aria-label="Report text">{report.message}</pre>
-    </details>
-  </>;
+const ReportResult = ({ state, actions, backTarget }: SupportReportViewProps) => {
+  const { report } = state;
+  if (!report) return null;
+  const { submission } = report;
+  if (submission.state === 'sent') {
+    return (
+      <section class="support-report__result" aria-label="Report sent">
+        <h3 class="pels-text-section-title">Report sent</h3>
+        <p class="support-report__reference">Reference: {submission.reference || report.document.id}</p>
+        <p class="pels-text-supporting">
+          Want an answer? Post in the <a class="support-report__link" href={FORUM_URL} target="_blank"
+            rel="noopener noreferrer">PELS forum
+          thread</a> and quote the reference.
+        </p>
+        <MdFilledButton type="button" data-settings-target={backTarget} data-report-action="done">Done</MdFilledButton>
+      </section>
+    );
+  }
+  return (
+    <section class="support-report__result" aria-label="Submission not confirmed">
+      <h3 class="pels-text-section-title">
+        {submission.state === 'sending' ? 'Sending report…' : 'Submission not confirmed'}
+      </h3>
+      <p class="support-report__reference">PELS reference: {report.document.id}</p>
+      <div class="support-report__actions">
+        <MdFilledButton type="button" disabled={state.operation !== 'idle'}
+          onClick={() => { void actions.check(); }} data-report-action="check">
+          {state.operation === 'checking' ? 'Checking…' : 'Check submission'}
+        </MdFilledButton>
+        {submission.state === 'unknown' && (
+          <MdTextButton type="button" disabled={state.operation !== 'idle'}
+            onClick={() => actions.startAnother()} data-report-action="new">Start another report</MdTextButton>
+        )}
+      </div>
+    </section>
+  );
 };
 
 const ReportNotice = ({ state }: { state: SupportReportViewState }) => (
   <p class="pels-text-supporting support-report__notice" role="status" aria-live="polite">{state.notice}</p>
 );
 
-const ReportPreview = ({ state, actions, backTarget, homeName }: SupportReportViewProps) => {
-  const textRef = useRef<HTMLPreElement>(null);
-  const { report } = state;
-  if (!report) return null;
-  const submission = report.submission.state;
-  const title = {
-    draft: 'Report preview', sending: 'Sending report…', sent: 'Report sent to Homey',
-    unknown: 'Submission not confirmed', failed: 'Report not sent',
-  }[submission];
-  const copy = async (): Promise<void> => {
-    try {
-      await navigator.clipboard.writeText(report.message);
-      actions.notice('Report copied.');
-    } catch {
-      const element = textRef.current;
-      let details = element?.closest('details');
-      while (details) {
-        details.open = true;
-        details = details.parentElement?.closest('details') ?? null;
-      }
-      if (element) {
-        element.focus();
-        const range = document.createRange();
-        range.selectNodeContents(element);
-        const selection = window.getSelection();
-        selection?.removeAllRanges();
-        selection?.addRange(range);
-      }
-      actions.notice('Select and copy the report text below.');
-    }
-  };
-  const contents = <ReportContents report={report} textRef={textRef} homeName={homeName} />;
-  return (
-    <section class="support-report__preview" aria-label={title}>
-      <h3 class="pels-text-section-title">{title}</h3>
-      <ReportNotice state={state} />
-      {(submission === 'sent' || submission === 'unknown') && <p class="pels-text-supporting support-report__reference">
-        {report.submission.state === 'sent' && report.submission.reference
-          ? `Report reference: ${report.submission.reference}` : `PELS reference: ${report.document.id}`}
-      </p>}
-      {(submission === 'unknown' || submission === 'sending') && <MdFilledButton type="button"
-        disabled={state.operation !== 'idle'} onClick={() => { void actions.check(); }} data-report-action="check">
-        {state.operation === 'checking' ? 'Checking…' : 'Check submission'}
-      </MdFilledButton>}
-      {submission === 'sent' && <MdFilledButton type="button" data-settings-target={backTarget}
-        data-report-action="done">Done</MdFilledButton>}
-      {submission === 'draft' ? contents : <details class="settings-collapse" data-report-submitted-details>
-        <summary>View report</summary>
-        <div class="support-report__contents support-report__detail">{contents}</div>
-      </details>}
-      <div class="support-report__actions">
-        {(submission === 'draft' || submission === 'failed') && <MdOutlinedButton type="button"
-          onClick={() => actions.editDetails()} disabled={state.operation !== 'idle'} data-report-action="edit">
-          Edit details
-        </MdOutlinedButton>}
-        <MdOutlinedButton type="button" onClick={() => { void copy(); }} data-report-action="copy">Copy report</MdOutlinedButton>
-      </div>
-      {submission === 'draft' && <div class="support-report__send">
-        {report.availability === 'available' ? <p class="pels-text-supporting">
-          Send shares this report with the PELS developer through Homey.
-          {' '}Homey also attaches the app’s logs, which are separate from this preview.
-        </p> : <p class="pels-text-supporting" role="status">
-          {report.availability === 'app_store_required'
-            ? 'Sending requires an App Store installation. You can copy this report instead.'
-            : 'Homey’s reporting service is unavailable. You can copy this report instead.'}
-        </p>}
-        <MdFilledButton type="button" onClick={() => { void actions.send(); }} data-report-action="send"
-          disabled={state.operation !== 'idle' || report.availability !== 'available'}>Send report</MdFilledButton>
-      </div>}
-      {(submission === 'sent' || submission === 'failed' || submission === 'unknown') && (
-        <MdTextButton type="button" disabled={state.operation !== 'idle'}
-          onClick={() => actions.startAnother()} data-report-action="new">Start another report</MdTextButton>
-      )}
-    </section>
-  );
-};
-
 const SupportReportView = (props: SupportReportViewProps) => {
-  const { report, recoveryId } = props.state;
+  const { report, recoveryId, operation } = props.state;
+  const state = report?.submission.state;
+  // A send this page started keeps the form until it settles; one restored mid-flight shows its status.
+  const settled = state === 'sent' || state === 'unknown' || (state === 'sending' && operation !== 'sending');
+  // Any report kept unsent can be copied and shared another way.
+  const copyable = report !== null && operation === 'idle' && (state === 'draft' || state === 'failed');
   let stage = recoveryId ? 'recovery' : 'description';
-  if (report) stage = `${report.document.id}:${report.submission.state}`;
+  if (report && settled) stage = `${report.document.id}:${report.submission.state}`;
   return <>
     <AppBar back={{ target: props.backTarget, label: 'Back' }} title="Report a problem"
-      lede={report || recoveryId ? undefined
-        : 'Describe what happened. PELS adds relevant activity and current details for you to review.'} />
+      lede={settled || recoveryId ? undefined
+        : 'Describe what happened. PELS adds recent device activity and its current state.'} />
     <div class="support-report" data-report-stage={stage} tabIndex={-1}>
-      {!report && <ReportNotice state={props.state} />}
-      {!report && !recoveryId && <ReportForm {...props} />}
-      {recoveryId && props.state.operation === 'idle' && <div class="support-report__actions">
+      <ReportNotice state={props.state} />
+      {!settled && !recoveryId && <ReportForm {...props} />}
+      {copyable && <ReportCopy report={report} actions={props.actions} />}
+      {settled && <ReportResult {...props} />}
+      {recoveryId && operation === 'idle' && <div class="support-report__actions">
         <MdOutlinedButton type="button" onClick={() => { void props.actions.check(); }} data-report-action="check">
           Check submission
         </MdOutlinedButton>
@@ -276,7 +208,6 @@ const SupportReportView = (props: SupportReportViewProps) => {
           Start another report
         </MdTextButton>
       </div>}
-      <ReportPreview {...props} />
     </div>
   </>;
 };

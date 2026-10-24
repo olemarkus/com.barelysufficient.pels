@@ -48,7 +48,7 @@ const installReportStub = async (page: Page, uncertain = false, expired = false)
   }, { templateJson: JSON.stringify(supportReportFixture()), loseResponse: uncertain, expireOnSend: expired });
 };
 
-test('keeps a draft through Back, requires a fresh preview after editing, and sends the reviewed report', async ({ page }) => {
+test('keeps a draft through Back, sends it in one step, and starts fresh after Done', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 1100 });
   await injectHomeyHostCss(page);
   await installReportStub(page);
@@ -63,39 +63,31 @@ test('keeps a draft through Back, requires a fresh preview after editing, and se
   await expect(page.locator('#settings-panel')).toBeVisible();
   await page.locator('.settings-nav-card[data-settings-target="report-problem"]').click();
   await expect.poll(() => readMdValue(page, '[data-report-field="problem"]')).toBe('The heater stayed off.');
-  await expect(panel.locator('[data-report-action="send"]')).toHaveCount(0);
-  await panel.locator('[data-report-action="preview"]').click();
-  await expect(panel.getByRole('region', { name: 'Report preview' })).toBeVisible();
-  await expect(panel.locator('[data-report-field="problem"]')).toHaveCount(0);
-  await expect(panel.locator('[data-report-stage]')).toBeFocused();
-  await expect(panel.getByRole('heading', { name: 'Report preview' })).toBeInViewport();
-  await panel.locator('[data-report-action="edit"]').click();
-  await setMdValue(page, '[data-report-field="problem"]', 'The heater resumed late.');
-  await expect(panel.getByRole('region', { name: 'Report preview' })).toHaveCount(0);
-  await panel.locator('[data-report-action="preview"]').click();
-  await expect(panel.getByRole('region', { name: 'Report preview' })).toContainText('The heater resumed late.');
-  await panel.locator('[data-report-action="copy"]').click();
-  await expect(panel.locator('[data-report-details]')).toHaveAttribute('open', '');
-  expect(await page.evaluate(() => window.getSelection()?.toString())).toContain('The heater resumed late.');
   await panel.locator('[data-report-action="send"]').click();
+  await expect(panel.getByRole('heading', { name: 'Report sent' })).toBeInViewport();
   await expect(panel).toContainText('homey-receipt-1');
-  await expect(panel.getByRole('heading', { name: 'Report sent to Homey' })).toBeInViewport();
-  await expect(panel.locator('[data-report-submitted-details]')).not.toHaveAttribute('open', '');
   await expect(panel.locator('[data-report-field="problem"]')).toHaveCount(0);
-  expect(await page.evaluate(() => (window as unknown as ReportStubWindow).reportSends)).toEqual([{ consent: true }]);
+  await expect(panel).not.toContainText('PELS PROBLEM REPORT');
+  const stub = () => page.evaluate(() => {
+    const report = window as unknown as ReportStubWindow;
+    return { requests: report.reportRequests, sends: report.reportSends };
+  });
+  expect((await stub()).requests.map((request) => request.problem)).toEqual(['The heater stayed off.']);
+  expect((await stub()).sends).toEqual([{ consent: true }]);
   expect(page.url()).not.toContain('heater');
-  expect(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }))).not.toContain('heater resumed');
+  expect(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }))).not.toContain('heater stayed');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await panel.locator('[data-report-action="done"]').click();
   await expect(page.locator('#settings-panel')).toBeVisible();
+  await page.locator('.settings-nav-card[data-settings-target="report-problem"]').click();
+  await expect.poll(() => readMdValue(page, '[data-report-field="problem"]')).toBe('');
+  await expect(panel.getByRole('heading', { name: 'Report sent' })).toHaveCount(0);
 });
-
 test('checks an uncertain send without another submission and restores status after reload', async ({ page }) => {
   await installReportStub(page, true);
   await page.goto('/?page=settings/report-problem');
   const panel = page.locator('#report-problem-panel');
   await setMdValue(page, '[data-report-field="problem"]', 'The device stopped.');
-  await panel.locator('[data-report-action="preview"]').click();
   await panel.locator('[data-report-action="send"]').click();
   await expect(panel).toContainText('Submission could not be confirmed');
   await expect(panel.locator('[data-report-action="send"]')).toHaveCount(0);
@@ -108,25 +100,20 @@ test('checks an uncertain send without another submission and restores status af
   expect(await page.evaluate(() => (window as unknown as ReportStubWindow).reportSends)).toHaveLength(0);
 });
 
-test('keeps the description editable after the prepared report expires', async ({ page }) => {
+test('keeps the description when the prepared report expires before it is sent', async ({ page }) => {
   await installReportStub(page, false, true);
   await page.goto('/?page=settings/report-problem');
   const panel = page.locator('#report-problem-panel');
   await setMdValue(page, '[data-report-field="problem"]', 'The device stopped.');
-  await panel.locator('[data-report-action="preview"]').click();
   await panel.locator('[data-report-action="send"]').click();
-  await expect(panel).toContainText('This preview has expired');
-  await expect(panel.locator('[data-report-action="preview"]')).toBeEnabled();
+  await expect(panel).toContainText('The report expired before it was sent');
+  await expect(panel.locator('[data-report-action="send"]')).toBeEnabled();
   await expect.poll(() => readMdValue(page, '[data-report-field="problem"]')).toBe('The device stopped.');
-  await expect.poll(() => readMdValue(page, '[data-report-field="when"]')).toBe('custom');
   expect(new URL(page.url()).searchParams.has('reportId')).toBe(false);
-  await panel.locator('[data-report-action="preview"]').click();
+  await panel.locator('[data-report-action="send"]').click();
   const readRequests = () => page.evaluate(() => (window as unknown as ReportStubWindow).reportRequests);
   await expect.poll(async () => (await readRequests()).length).toBe(2);
-  const [first, second] = await readRequests();
-  expect(second?.occurredAtMs).toBe(first?.occurredAtMs);
 });
-
 test('keeps the latest navigation target when a previous report loads late', async ({ page }) => {
   await installReportStub(page);
   await page.goto('/?page=settings');
@@ -154,11 +141,11 @@ test('keeps the latest navigation target when a previous report loads late', asy
   expect(new URL(page.url()).searchParams.get('reportId')).toBe('report-1');
   await panel.getByRole('button', { name: 'Back', exact: true }).click();
   await page.locator('.settings-nav-card[data-settings-target="report-problem"]').click();
-  await panel.locator('[data-report-action="new"]').click();
   await expect.poll(() => readMdValue(page, '[data-report-field="device"]')).toBe('device:heater');
+  await expect.poll(() => readMdValue(page, '[data-report-field="problem"]')).toBe('');
 });
 
-test('opens an activity incident at its exact time and renders the preview at narrow widths in both themes', async ({ browser, browserName, baseURL }, testInfo) => {
+test('opens an activity incident at its exact time and renders the form and result at narrow widths in both themes', async ({ browser, browserName, baseURL }, testInfo) => {
   test.skip(browserName !== 'chromium', 'Touch emulation uses Chromium');
   for (const width of [320, 480]) {
     for (const dark of [false, true]) {
@@ -178,17 +165,15 @@ test('opens an activity incident at its exact time and renders the preview at na
         await panel.locator('[data-report-field="problem"] textarea').fill('The heater stayed off.');
         await panel.locator('[data-report-field="expected"] textarea').fill('I expected the room to warm up.');
         await panel.getByRole('heading', { name: 'Report a problem', exact: true }).click();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(dark);
         await page.screenshot({ path: testInfo.outputPath(`form-${width}-${dark ? 'dark' : 'light'}.png`) });
-        await panel.locator('[data-report-action="preview"]').click();
-        await expect(panel.getByRole('region', { name: 'Report preview' })).toBeVisible();
+        await panel.locator('[data-report-action="send"]').click();
+        await expect(panel).toContainText('homey-receipt-1');
         const requests = await page.evaluate(() => (window as unknown as ReportStubWindow).reportRequests);
         expect(requests[0].subject).toEqual({ kind: 'device', homeId: 'main', deviceId: 'heater' });
         expect(requests[0].occurredAtMs).toBe(1700000000000);
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-        expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(dark);
-        await page.screenshot({ path: testInfo.outputPath(`report-${width}-${dark ? 'dark' : 'light'}.png`) });
-        await panel.locator('[data-report-action="send"]').click();
-        await expect(panel).toContainText('homey-receipt-1');
         await page.screenshot({ path: testInfo.outputPath(`sent-${width}-${dark ? 'dark' : 'light'}.png`) });
         await panel.getByRole('button', { name: 'Back', exact: true }).click();
         await expect(page.locator('#activity-panel')).toBeVisible();
