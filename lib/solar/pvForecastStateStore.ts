@@ -31,18 +31,16 @@ import type { UserdataDatabase } from '../store/userdataDatabase';
 import { normalizeError } from '../utils/errorUtils';
 import { PV_FORECAST_STATE, PV_FORECAST_STATE_INITIALIZED } from '../utils/settingsKeys';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
+import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import type { PvGenerationHistory, PvHourBucket } from '../../packages/shared-domain/src/solar/pvGenerationHistory';
 import { mergeRecoveredPvForecastState, type PvForecastServiceState } from './pvForecastService';
 import type { PvForecastStateRead, PvForecastStore } from './pvForecastStore';
 
 const storeLogger = getLogger('solar/pv-forecast-store');
 
-// Arrays are rejected too: `typeof [] === 'object'`, and an array-shaped
+// `isUnknownRecord` rejects arrays, which matters here: an array-shaped
 // `hourly` (numeric indices pass the hour-key check) would otherwise read as
 // a valid empty state.
-const isRecord = (value: unknown): value is Record<string, unknown> => (
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-);
 const isHourKey = (key: string): boolean => Number.isFinite(Number(key));
 
 // Physical ceiling for an hourly bucket's covered/evidence durations. In-memory
@@ -61,7 +59,7 @@ const isEvidenceMs = (value: unknown, maxMs: number): value is number => (
 
 /** One stored bucket, or nothing when its energy or coverage is not a real one. */
 const normalizeBucket = (value: unknown): PvHourBucket | undefined => {
-  if (!isRecord(value) || !isFiniteNumber(value.kwh) || !isEvidenceMs(value.coveredMs, ONE_HOUR_MS)) {
+  if (!isUnknownRecord(value) || !isFiniteNumber(value.kwh) || !isEvidenceMs(value.coveredMs, ONE_HOUR_MS)) {
     return undefined;
   }
   // netMs is bounded by coveredMs; importMs/exportMs are SUB-durations of the
@@ -81,7 +79,7 @@ const normalizeBucket = (value: unknown): PvHourBucket | undefined => {
 };
 
 const normalizeHourly = (raw: unknown): Record<string, PvHourBucket> => {
-  if (!isRecord(raw)) return {};
+  if (!isUnknownRecord(raw)) return {};
   return Object.fromEntries(Object.entries(raw).flatMap(([key, value]) => {
     const bucket = isHourKey(key) ? normalizeBucket(value) : undefined;
     return bucket === undefined ? [] : [[key, bucket] as const];
@@ -89,14 +87,14 @@ const normalizeHourly = (raw: unknown): Record<string, PvHourBucket> => {
 };
 
 const normalizeNumberMap = (raw: unknown): Record<string, number> => {
-  if (!isRecord(raw)) return {};
+  if (!isUnknownRecord(raw)) return {};
   return Object.fromEntries(Object.entries(raw).flatMap(([key, value]) => (
     isHourKey(key) && isFiniteNumber(value) ? [[key, value] as const] : []
   )));
 };
 
 const normalizeTainted = (raw: unknown): Record<string, true> => {
-  if (!isRecord(raw)) return {};
+  if (!isUnknownRecord(raw)) return {};
   return Object.fromEntries(Object.keys(raw).flatMap((key) => (isHourKey(key) ? [[key, true] as const] : [])));
 };
 
@@ -107,7 +105,7 @@ const normalizeTainted = (raw: unknown): Record<string, true> => {
  * hours that ALL failed validation (partial corruption, not emptiness).
  */
 export const normalizeLegacyPvForecastState = (raw: unknown): PvForecastServiceState | null => {
-  if (!isRecord(raw) || !isRecord(raw.history) || !isRecord(raw.history.hourly)) return null;
+  if (!isUnknownRecord(raw) || !isUnknownRecord(raw.history) || !isUnknownRecord(raw.history.hourly)) return null;
   const historyRaw = raw.history;
   const hourly = normalizeHourly(historyRaw.hourly);
   if (Object.keys(historyRaw.hourly as Record<string, unknown>).length > 0 && Object.keys(hourly).length === 0) {
@@ -119,7 +117,7 @@ export const normalizeLegacyPvForecastState = (raw: unknown): PvForecastServiceS
     ...(isFiniteNumber(historyRaw.lastGenerationW) ? { lastGenerationW: historyRaw.lastGenerationW } : {}),
     // SIGNED net anchor — never floor at 0 (export is negative by design).
     ...(isFiniteNumber(historyRaw.lastNetW) ? { lastNetW: historyRaw.lastNetW } : {}),
-    ...(isRecord(historyRaw.taintedHourStarts)
+    ...(isUnknownRecord(historyRaw.taintedHourStarts)
       ? { taintedHourStarts: normalizeTainted(historyRaw.taintedHourStarts) }
       : {}),
   };
@@ -134,7 +132,7 @@ const CURSOR_FIELDS = ['lastSampleMs', 'lastGenerationW', 'lastNetW'] as const;
 const isCursorField = (key: string): boolean => (CURSOR_FIELDS as readonly string[]).includes(key);
 
 const acceptHourRow = (value: unknown, key: string): PvHourRow | undefined => {
-  if (!isHourKey(key) || !isRecord(value)) return undefined;
+  if (!isHourKey(key) || !isUnknownRecord(value)) return undefined;
   const bucket = normalizeBucket(value.bucket);
   const row: PvHourRow = {
     ...(bucket === undefined ? {} : { bucket }),
