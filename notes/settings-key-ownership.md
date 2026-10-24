@@ -234,7 +234,9 @@ carries it, where the userdata store would need an API route of its own
   conflicts the built-in controls last accepted
   (`lib/flowApi/acceptedFlowConflictStore.ts`: `native_flow_conflicts` and
   `charging_current_flow_writes`, one row per device, diffed), each written
-  through as it changes, and when PELS last controlled each device
+  through as it changes, and the learned solar forecast's generation history
+  (`lib/solar/pvForecastStateStore.ts`, one row per hour, diffed, so the
+  five-minute persist writes the hour that changed), and when PELS last controlled each device
   (`lib/plan/lastControlledStore.ts`, one row per home and device, diffed;
   owner, 2026-10-24: actuation history, so it left settings, where one
   transient boot read could wipe it). A cache belongs here whatever its size (owner, 2026-09-27):

@@ -254,12 +254,11 @@ export const POWER_CALIBRATION = 'power_calibration';
  * store and then unsets the key (`lib/weather/weatherHistoryStore.ts`).
  */
 export const WEATHER_HISTORY_STATE = 'weather_history_state';
-// Learned PV-generation forecast: recorded generation history + concurrent irradiance.
+// Legacy: the learned PV-generation forecast (generation history + concurrent
+// irradiance) lives in the userdata store (lib/solar/pvForecastStateStore.ts). As
+// a settings key it is only read by the one-shot import there, then unset.
 export const PV_FORECAST_STATE = 'pv_forecast_state';
-// Written-before marker for the above: lets the boot read tell a fresh install (no marker ⇒ nothing to
-// protect, persist immediately) from a transient SDK miss (marker set ⇒ engage
-// the abandon-grace window instead of overwriting up to 90 days of learned
-// generation history). Read/written only by `setup/pvForecastStateAdapter.ts`.
+// Legacy: the written-before marker for the blob above, unset once the blob is.
 export const PV_FORECAST_STATE_INITIALIZED = 'pv_forecast_state_initialized';
 // Curtailment-surplus refute ladder: {holdLevel, holdUntilMs, importLatchUntilMs},
 // written on verification transitions only (crash-loop resilience).

@@ -140,6 +140,20 @@ const mergeRecoveredHistory = (
   };
 };
 
+/**
+ * A state recovered from persistence with a live one laid over it: the
+ * history by `mergeRecoveredHistory`, and live irradiance winning per hour.
+ * The legacy settings import uses it too, with the userdata store as the live
+ * side.
+ */
+export const mergeRecoveredPvForecastState = (
+  recovered: PvForecastServiceState,
+  live: PvForecastServiceState,
+): PvForecastServiceState => ({
+  history: mergeRecoveredHistory(recovered.history, live.history),
+  irradianceByHour: { ...recovered.irradianceByHour, ...live.irradianceByHour },
+});
+
 // The gain memo. Nothing memoised yet (or an invalidation since) is a state of
 // the MEMO — `stale` — not a missing gain: the gain's own `learning` member
 // already means "no fit yet", and one type may not carry both meanings.
@@ -202,8 +216,9 @@ export class PvForecastService {
    * `mergeRecoveredHistory`.
    */
   mergeRecoveredState(recovered: PvForecastServiceState): void {
-    this.history = mergeRecoveredHistory(recovered.history, this.history);
-    this.irradianceByHour = { ...recovered.irradianceByHour, ...this.irradianceByHour };
+    const merged = mergeRecoveredPvForecastState(recovered, this.getState());
+    this.history = merged.history;
+    this.irradianceByHour = merged.irradianceByHour;
     this.cachedFit = { kind: 'stale' }; // recovered data ⇒ re-fit on next read
   }
 

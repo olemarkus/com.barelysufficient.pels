@@ -19,7 +19,7 @@ import {
   setMockGeolocation,
   MockDriver,
 } from '../mocks/homey';
-import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { createApp, cleanupApps, getStoredPvForecastStateForTests } from '../utils/appTestUtils';
 import { PV_FORECAST_STATE } from '../../lib/utils/settingsKeys';
 
 const HOUR_MS = 3_600_000;
@@ -126,10 +126,11 @@ describe('Learning a PV device through the app (SDK-boundary e2e, Open-Meteo moc
     await app['powerSamplePipeline'].recordPowerSample(1500, liveNowMs, { generationW: 800 });
     await vi.advanceTimersByTimeAsync(5 * 60_000); // fire the persist timer
     await flush();
-    const persisted = mockHomeyInstance.settings.get(PV_FORECAST_STATE) as {
-      history?: { lastSampleMs?: number; lastNetW?: number };
-    };
-    expect(persisted.history?.lastSampleMs).toBe(liveNowMs);
-    expect(persisted.history?.lastNetW).toBe(1500);
+    // Seeded through the legacy settings key, which the boot import moved into
+    // the userdata store; the persist writes there.
+    const persisted = getStoredPvForecastStateForTests();
+    expect(persisted?.history.lastSampleMs).toBe(liveNowMs);
+    expect(persisted?.history.lastNetW).toBe(1500);
+    expect(mockHomeyInstance.settings.get(PV_FORECAST_STATE)).toBeNull();
   });
 });
