@@ -28,9 +28,15 @@ export class TransportNotifications {
   }
 
   notifyZoneTreeCommitted(): void { this.zoneTreeCommitted?.(); }
-  /** A device's zone changed to `zoneId` (null: it reports none). */
+  /**
+   * A device's zone changed to `zoneId` (null: it reports none). Membership
+   * recomputes first: that recompute is what holds a device in a zone the tree
+   * lacks out of every home, so a tree refetch that throws must not skip it.
+   * The refetch is detached, so starting it second cannot change what the
+   * recompute reads.
+   */
   notifyDeviceZoneChanged(zoneId: string | null): void {
-    if (zoneId !== null) this.zoneEntered(zoneId);
     this.deviceZoneChanged?.();
+    if (zoneId !== null) this.zoneEntered(zoneId);
   }
 }
