@@ -93,5 +93,4 @@ export const HEADROOM_RESERVE_MAX_MS = 15 * 60 * 1000;
 // moved to `lib/executor/commandRetrySchedule.ts`. Command retry pacing is
 // materialization, and the planner never read either constant — only the
 // executor did, through an import that existed because of where the file sat.
-export const TARGET_CONFIRMATION_STUCK_POLL_MS = 60 * 1000;
 export const TARGET_WAITING_LOG_REPEAT_MS = 60 * 1000;

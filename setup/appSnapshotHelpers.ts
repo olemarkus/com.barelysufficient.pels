@@ -6,7 +6,6 @@ import type { PlanInputSnapshotDevice } from '../lib/planInput/runtimeDeviceRead
 import type { MainMeterRead, MeterPowerSample as HomePowerSample } from '../lib/ports/homeMeterReadings';
 import { getDebugEmitter, type Logger as PinoLogger } from '../lib/logging/logger';
 import type { PlanEngine } from '../lib/plan/planEngine';
-import { TARGET_CONFIRMATION_STUCK_POLL_MS } from '../lib/plan/planConstants';
 import type { PlanService } from '../lib/plan/planService';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSelection';
@@ -89,15 +88,14 @@ export class AppSnapshotHelpers {
       refreshForSettlement: async () => this.refreshTargetDevicesSnapshot({ targeted: true }),
       getLogger: () => deps.getStructuredLogger('snapshot'),
     });
-    this.refreshScheduler = new SnapshotRefreshScheduler({
-      timers: deps.timers,
-      getNow: deps.getNow,
-      getTransport: deps.getDeviceManager,
-      runCycle: (deviceManager, options) => this.runSnapshotRefreshCycle(deviceManager, options),
-      logPeriodicStatus: deps.logPeriodicStatus,
-      pollStuckTargetConfirmations: () => this.pollStuckTargetConfirmations(),
-      getLogger: () => deps.getStructuredLogger('snapshot'),
-    });
+    this.refreshScheduler = new SnapshotRefreshScheduler(
+      deps.timers,
+      deps.getNow,
+      deps.getDeviceManager,
+      (deviceManager, options) => this.runSnapshotRefreshCycle(deviceManager, options),
+      deps.logPeriodicStatus,
+      (thresholdMs) => deps.getPlanEngine()?.hasPendingTargetCommandsOlderThan(thresholdMs) === true,
+    );
   }
 
   /** Whether a post-actuation refresh is already armed. */
@@ -119,18 +117,6 @@ export class AppSnapshotHelpers {
     options: SnapshotRefreshOptions = {},
   ): Promise<void> {
     await this.refreshScheduler.refresh(options);
-  }
-
-  async pollStuckTargetConfirmations(): Promise<void> {
-    if (!this.deps.getPlanEngine()?.hasPendingTargetCommandsOlderThan(TARGET_CONFIRMATION_STUCK_POLL_MS)) {
-      return;
-    }
-
-    getDebugEmitter('snapshot', 'devices')({
-      event: 'stuck_target_confirmation_poll',
-      thresholdMs: TARGET_CONFIRMATION_STUCK_POLL_MS,
-    });
-    await this.refreshScheduler.refresh({ targeted: true });
   }
 
   schedulePostActuationRefresh(): void {
