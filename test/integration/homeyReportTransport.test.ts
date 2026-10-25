@@ -39,9 +39,9 @@ describe('Homey diagnostic transport', () => {
     expect(fetchMock.mock.calls[0]![1]?.method).toBe('GET');
   });
 
-  it.each([400, 401, 403, 413])('treats an explicit HTTP %s refusal as rejected', async (status) => {
+  it.each([400, 401, 403, 408, 413, 429, 500, 504])('preserves delivery uncertainty after HTTP %s', async (status) => {
     fetchMock.mockResolvedValue(httpResponse('Refused', status));
-    expect(await new HomeyReportTransport(homey()).send('report')).toEqual({ state: 'rejected' });
+    expect(await new HomeyReportTransport(homey()).send('report')).toEqual({ state: 'unknown' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
