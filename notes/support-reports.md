@@ -42,7 +42,8 @@ The message is PELS-authored. Homey also attaches the app's log, but only its la
 a busy install. Evidence for anything older has to be in the message.
 
 So PELS keeps its own log (`lib/diagnostics/logTailStore.ts`): every info, warning and
-error line, never debug, in the userdata database for up to 48 hours and 6,000 lines.
+error line, never debug, in the userdata database for up to 48 hours and 6,000 lines,
+trimmed every 100 writes rather than with each line.
 The info level writes a few hundred kilobytes a day; the opt-in debug topics can write
 megabytes an hour. A flood is cut at 20 lines of one event for one device per hour,
 and the cut lines are counted in memory and written when the count doubles and when
@@ -72,8 +73,10 @@ a log id and was never delivered, so a larger report would look sent and be lost
 The largest realistic report, an app report with 1,000 activity entries, is about
 400 KiB. A device report carries at most 100 activity entries and 300 kept events,
 together about 190 KiB. The kept log comes on top. A report that would
-outgrow the limit leaves out the oldest log lines first and says how many; one still
-too large without any log is rejected, and no other evidence is cut. A versioned opening marker and a closing
+outgrow the limit leaves out the oldest log lines first and says how many. An owner's
+report still too large without any log is rejected, and no other evidence is cut: the
+owner can choose one device or a shorter window. Nobody can do that for the daily
+report, so it then leaves out its oldest activity too, and says how many. A versioned opening marker and a closing
 marker containing the report identifier let received content be checked for truncation.
 
 At most four reports are retained in memory for 15 minutes. Preparing another
@@ -95,7 +98,8 @@ saying it was sent because the owner turned it on (`SupportReportService.sendDai
 start so a report never captures a half-started app. When the next one is due lives
 in the userdata database and is written before sending, as if the report goes out,
 so a restart mid-send or a failed write afterwards never sends it twice; a write that
-fails before sending sends nothing. The next is due 23.5 hours later: a day, less half
+fails before sending sends nothing. A due time more than a day ahead was written while
+the clock ran ahead, so it counts as due. The next is due 23.5 hours later: a day, less half
 the hourly check, so the report stays on the same check instead of drifting later each
 day, and an uncertain one is never sent again. One Homey refused or that could not be
 prepared tries again 3 hours later. An install that cannot send at all (anything but

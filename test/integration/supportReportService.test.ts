@@ -4,6 +4,7 @@ import type {
 } from '../../packages/contracts/src/supportReport';
 import { SUPPORT_REPORT_MAX_BYTES, SupportReportService } from '../../lib/diagnostics/supportReportService';
 import type { SupportReportDelivery, SupportReportTransport } from '../../lib/diagnostics/homeyReportTransport';
+import { reportActivityFixture } from '../helpers/supportReportEvidenceFixtures';
 
 const now = Date.UTC(2026, 9, 23, 12);
 const request: SupportReportRequest = {
@@ -91,6 +92,40 @@ describe('manual support reporting', () => {
     expect(leftOutForSize).toBeGreaterThan(0);
     expect(prepared.document.log.lines[0]?.entry.event).toBe(`line-${leftOutForSize}`);
     expect(prepared.document.log.lines.at(-1)?.entry.event).toBe('line-1999');
+  });
+
+  it('fits a daily report at every cap by leaving out the oldest log, then the oldest activity', async () => {
+    const live = evidence();
+    // Every part at its cap on a busy install: a full log and 1,000 activity entries.
+    const lines = Array.from({ length: 1_000 }, (_, index) => ({
+      atMs: now - 1_000 + index, level: 'info' as const, entry: { event: `line-${index}`, filler: 'x'.repeat(250) },
+    }));
+    live.log = { state: 'available', lines, overflow: [], fromMs: now - 86_400_000, toMs: now, leftOutForSize: 0 };
+    // Newest first, as the activity history keeps them.
+    const entries = Array.from({ length: 1_000 }, (_, index) => reportActivityFixture({
+      id: `activity-${index}`, atMs: now - index, deviceId: `device-${index % 30}`,
+      statusMsg: 'Kept at its limited temperature while the hour is near its limit. '.repeat(6),
+    }));
+    live.activity = {
+      state: 'available', entries, fromMs: now - 86_400_000, toMs: now, retentionDays: 7, maxEntries: 1_000,
+      maxEntriesPerDevice: 100, persistence: 'stored', leftOutForSize: 0,
+    };
+    const delivery = transport();
+    const service = new SupportReportService({ capture: async () => live }, delivery);
+    expect(await service.prepare({ ...request, subject: { kind: 'app', homeId: 'main' }, historyWindow: 'day' }))
+      .toEqual({ ok: false, code: 'report_too_large' });
+    const sent = report(await service.sendDaily(() => true));
+    expect(Buffer.byteLength(sent.message, 'utf8')).toBeLessThanOrEqual(SUPPORT_REPORT_MAX_BYTES);
+    if (sent.document.log.state !== 'available' || sent.document.activity.state !== 'available') {
+      throw new Error('Expected the log and the activity');
+    }
+    expect(sent.document.log.lines).toEqual([]);
+    expect(sent.document.log.leftOutForSize).toBe(1_000);
+    const { leftOutForSize } = sent.document.activity;
+    expect(leftOutForSize).toBeGreaterThan(0);
+    expect(sent.document.activity.entries).toHaveLength(1_000 - leftOutForSize);
+    expect(sent.document.activity.entries[0]?.id).toBe('activity-0');
+    expect(sent.submission).toEqual({ state: 'sent', reference: 'homey-reference' });
   });
 
   it('sends the daily report as a report about the whole app over the last day, named as such', async () => {

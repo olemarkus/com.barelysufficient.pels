@@ -17,7 +17,7 @@ export const supportReportFixture = (): PreparedSupportReport => ({
         usageMsg: '18 °C · target 22 °C', statusMsg: 'Waiting for capacity',
       }],
       fromMs: 1699996400000, toMs: 1700000100000, retentionDays: 7,
-      maxEntries: 1000, maxEntriesPerDevice: 100, persistence: 'stored',
+      maxEntries: 1000, maxEntriesPerDevice: 100, persistence: 'stored', leftOutForSize: 0,
     },
     deviceEvents: {
       state: 'available', entries: [], deviceIds: ['heater'], fromMs: 1699996400000, toMs: 1700000100000,

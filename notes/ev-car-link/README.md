@@ -592,9 +592,9 @@ written for it:
   plug-ins belong to a charger that selected those cars.
 - `ev_car_link_late_car_report`: a car that may pair with the charger reported a
   plug-in after the window closed, while the charger was still plugged in with no car.
-  Plug-in timing never pairs it. While the charger's plug-in is kept (an hour), its past
-  matches can still link it, and `ev_car_link_resolved` then follows. On 2026-10-24 a
-  Polestar's app reported its plug-in 12 h 35 min after the charger did.
+  Neither plug-in timing nor past matches pair it: it could have plugged in anywhere
+  meanwhile (owner, 2026-10-25), so only the owner's confirmation links it. On 2026-10-24
+  a Polestar's app reported its plug-in 12 h 35 min after the charger did.
 
 Connection times say how they were seen: `plug_in`, or `already_plugged_in_at_start`
 when the charger was plugged in when PELS started, so the time is the start, not the

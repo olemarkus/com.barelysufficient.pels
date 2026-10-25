@@ -10,13 +10,23 @@ export type PendingSocShadow = { previousSocPct?: number; socPct: number; socAtM
 
 export class EvCarLinkSocShadowReporter {
     /** Charge readings awaiting link resolution, by car. */
-    readonly pending = new Map<string, PendingSocShadow>();
+    private readonly pending = new Map<string, PendingSocShadow>();
 
     constructor(
         private readonly deps: EvCarLinkProducerDeps,
         private readonly selfStop: EvCarSelfStopWatcher,
         private readonly carName: (carId: string) => string,
     ) {}
+
+    /** Holds a car's newest charge reading until its link resolves, replacing any older one. */
+    hold(carId: string, reading: PendingSocShadow): void {
+        this.pending.set(carId, reading);
+    }
+
+    /** Forgets a car's held reading: it can no longer be reported against a charger. */
+    drop(carId: string): void {
+        this.pending.delete(carId);
+    }
 
     /** Reports each held reading against the chargers its car is linked to now, then drops it. */
     flush(

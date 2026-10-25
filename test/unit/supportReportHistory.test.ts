@@ -96,7 +96,7 @@ describe('support report incident activity selection', () => {
       ...request, occurredAtMs: 1, historyWindow: 'day',
     }, now)).toEqual({
       state: 'available', entries: [], fromMs: 0, toMs: now,
-      retentionDays: 7, maxEntries: 1000, maxEntriesPerDevice: 100, persistence: 'stored',
+      retentionDays: 7, maxEntries: 1000, maxEntriesPerDevice: 100, persistence: 'stored', leftOutForSize: 0,
     });
   });
 });

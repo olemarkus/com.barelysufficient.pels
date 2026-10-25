@@ -5,11 +5,11 @@ import {
   EV_CAR_LINK_PELS_STOP_LOOKBACK_MS,
   appendEvLinkHistory,
   classifyEvCarSelfStop,
+  decideLinkForCharger,
   isChargingElsewhere,
   matchCoincidentEdges,
   pruneExpiredEvLinkEdges,
   resolveEvLinkEdge,
-  resolveLinkForCharger,
   type EvCarStopObservation,
   type EvLinkEdge,
 } from '../../lib/device/evCarLink';
@@ -392,38 +392,36 @@ describe('matchCoincidentEdges', () => {
   });
 });
 
-describe('resolveLinkForCharger', () => {
+describe('decideLinkForCharger', () => {
   it('prefers a live coincidence over the persisted prior', () => {
-    const resolution = resolveLinkForCharger({
+    expect(decideLinkForCharger({
       coincidentCarId: 'carB',
       candidateCarIds: ['carA', 'carB'],
       votesFor: (carId) => (carId === 'carA' ? 50 : 0),
-    });
-    expect(resolution).toEqual({ carId: 'carB', source: 'coincidence', votes: 0 });
+    })).toEqual({ kind: 'linked', resolution: { carId: 'carB', source: 'coincidence', votes: 0 } });
   });
 
   it('uses the prior when exactly one candidate has cleared the threshold', () => {
-    const resolution = resolveLinkForCharger({
+    expect(decideLinkForCharger({
       candidateCarIds: ['carA', 'carB'],
       votesFor: (carId) => (carId === 'carA' ? 3 : 0),
-    });
-    expect(resolution).toEqual({ carId: 'carA', source: 'affinity_prior', votes: 3 });
+    })).toEqual({ kind: 'linked', resolution: { carId: 'carA', source: 'affinity_prior', votes: 3 } });
   });
 
   it('refuses the prior when a rival has any votes at all', () => {
     // A second household car must never inherit the first car's history just
     // because it is behind on votes.
-    expect(resolveLinkForCharger({
+    expect(decideLinkForCharger({
       candidateCarIds: ['carA', 'carB'],
       votesFor: (carId) => (carId === 'carA' ? 9 : 1),
-    })).toBeNull();
+    })).toEqual({ kind: 'refused', reason: 'rival_with_past_matches' });
   });
 
   it('refuses the prior below the vote threshold', () => {
-    expect(resolveLinkForCharger({
+    expect(decideLinkForCharger({
       candidateCarIds: ['carA'],
       votesFor: () => 1,
-    })).toBeNull();
+    })).toEqual({ kind: 'refused', reason: 'not_enough_past_matches' });
   });
 });
 

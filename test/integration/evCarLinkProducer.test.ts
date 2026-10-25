@@ -2190,6 +2190,27 @@ describe('what a charger waited for, and what arrived late', () => {
     expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
   });
 
+  it('never lets past matches link a selected car that reports its plug-in after the window', () => {
+    h.snapshot = {
+      version: h.snapshot.version,
+      pairs: { 'car-1|charger-1': { votes: EV_CAR_LINK_MIN_PRIOR_VOTES + 5, lastVotedAtMs: 1 } },
+      cars: {},
+      sessions: {},
+    };
+    seedSelected(plugIn - 25 * 60_000);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.tick(plugIn);
+    h.tick(plugIn + SETTLE_MS);
+    // Inside the hour the charger's plug-in is kept, so a past-match retry still runs.
+    const lateAt = plugIn + EV_CAR_LINK_COINCIDENCE_WINDOW_MS + 60_000;
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', lateAt);
+    expect(h.of('ev_car_link_late_car_report')).toHaveLength(1);
+    h.tick(lateAt + SETTLE_MS);
+    h.tick(lateAt + SETTLE_MS + 10 * 60_000);
+    expect(h.of('ev_car_link_resolved')).toEqual([]);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
+  });
+
   it('reports a late plug-in to a charger that selects no car, and none to one that selects another', () => {
     h.chargers = [charger(), charger({ id: 'charger-2', name: 'Carport', selectedCarIds: ['car-2'] })];
     h.car(carDevice({ state: 'plugged_out', socPct: 55, observedAtMs: plugIn - 25 * 60_000 }), plugIn - 25 * 60_000);

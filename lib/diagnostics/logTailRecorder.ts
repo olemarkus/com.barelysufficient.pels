@@ -26,7 +26,9 @@ const keyOf = (line: string): string => {
     const parsed: unknown = JSON.parse(line);
     if (!isUnknownRecord(parsed)) return 'unnamed';
     const event = typeof parsed.event === 'string' ? parsed.event : 'unnamed';
-    return typeof parsed.deviceId === 'string' ? `${event}|${parsed.deviceId}` : event;
+    // Car-link lines name their charger rather than a device.
+    const device = typeof parsed.deviceId === 'string' ? parsed.deviceId : parsed.chargerId;
+    return typeof device === 'string' ? `${event}|${device}` : event;
   } catch {
     return 'unparsed';
   }

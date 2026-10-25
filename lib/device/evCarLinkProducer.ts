@@ -296,7 +296,7 @@ export class EvCarLinkProducer {
         // against a charger the car has left.
         if (edgeKind === 'disconnect') this.clearSessionsForCar(deviceId);
         if (merged.socPct !== undefined && previous?.socPct !== merged.socPct) {
-            this.socShadows.pending.set(deviceId, {
+            this.socShadows.hold(deviceId, {
                 ...(previous?.socPct === undefined ? {} : { previousSocPct: previous.socPct }),
                 socPct: merged.socPct,
                 socAtMs: merged.socAtMs,
@@ -337,7 +337,7 @@ export class EvCarLinkProducer {
     private forgetCar(carId: string, nowMs: number): void {
         this.cars.forget(carId);
         this.readMisses.forget(carId);
-        this.socShadows.pending.delete(carId);
+        this.socShadows.drop(carId);
         this.edges = dropEvLinkCarEdges(this.edges, carId, nowMs, this.admits);
         this.clearSessionsForCar(carId);
     }
@@ -368,7 +368,7 @@ export class EvCarLinkProducer {
         if (!result) return false;
         if (result.kind === 'unavailable') {
             this.cars.markUnavailable(result.deviceId, result.name);
-            this.socShadows.pending.delete(result.deviceId);
+            this.socShadows.drop(result.deviceId);
             this.edges = dropEvLinkCarEdges(this.edges, result.deviceId, nowMs, this.admits);
             this.clearSessionsForCar(result.deviceId, true);
             return true;
@@ -589,8 +589,9 @@ export class EvCarLinkProducer {
         for (const edge of unmatchedChargerEdges) {
             if (edge.kind !== 'connect') continue;
             // The first settled pass decides whether the timeout is said, whatever
-            // it finds; later passes retry the link, so a car that reports late can
-            // still link through its past matches, but never re-report a timeout.
+            // it finds; later passes retry the link, so a car update missed at the
+            // plug-in can still link through past matches, never one reported after
+            // the window (`resolveSession`), and the timeout is never said again.
             const firstPass = this.reportKeys.claim(`unmatched|${edge.deviceId}|${edge.atMs}`);
             if (this.activeLinks.has(edge.deviceId)) continue;
             const charger = chargers.find((entry) => entry.id === edge.deviceId);
@@ -701,7 +702,7 @@ export class EvCarLinkProducer {
     /**
      * Commit the car a charger is serving for this session. A live coincidence
      * wins outright; otherwise the persisted affinity prior may break the tie
-     * only under the strict conditions in `resolveLinkForCharger`.
+     * only under the strict conditions in `decideLinkForCharger`.
      *
      * Refuses outright for a charger that is not currently connected. Edges are
      * matched only after they settle, so a short session's connect edge can be
@@ -732,8 +733,12 @@ export class EvCarLinkProducer {
         // car with history would otherwise be the "unique qualified prior"
         // for a charger a guest car is actually on, and its later charge
         // updates would be attributed to a charger it is not attached to.
+        // Nor a car whose plug-in reached PELS after this connection's window
+        // closed: it could have plugged in anywhere meanwhile (owner, 2026-10-25).
+        const windowClosedAtMs = sessionStartedAtMs + EV_CAR_LINK_COINCIDENCE_WINDOW_MS;
         const weighed = [...this.cars.observed.entries()]
-            .filter(([, car]) => isEvPlugStateConnected(car.state))
+            .filter(([carId, car]) => isEvPlugStateConnected(car.state) && !this.edges.carEdges.some((edge) => (
+                edge.deviceId === carId && edge.kind === 'connect' && edge.atMs > windowClosedAtMs)))
             .map(([carId]) => carId);
         const decision = decideLinkForCharger({
             coincidentCarId,

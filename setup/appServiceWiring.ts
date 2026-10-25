@@ -7,8 +7,8 @@ import type { ObservedHomePower } from '../lib/observer/observedHomePower';
 import type { ObservedDeviceStateProjection } from '../lib/observer/observedDeviceStateProjection';
 import { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';
 import type { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
-import type { Logger as PinoLogger } from '../lib/logging/logger';
 import { attachLogTail, installStructuredLogger, startDailyReport } from './appInit/diagnosticsWiring';
+import type { SupportReportService } from '../lib/diagnostics/supportReportService';
 import { normalizeError } from '../lib/utils/errorUtils';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
 import {
@@ -173,9 +173,7 @@ export class AppServiceWiring {
   }
 
   createSupportReports(app: SupportReportApp) {
-    const service = createSupportReports(this.deps.homeyApp.homey, app);
-    this.deps.handles.supportReports = service;
-    return service;
+    return createSupportReports(this.deps.homeyApp.homey, app);
   }
 
   createObservedTemperatureModeUpdates() {
@@ -187,7 +185,8 @@ export class AppServiceWiring {
     );
   }
 
-  async runInit(): Promise<void> {
+  /** `reports`: the app's problem-report service, which also sends the daily report the owner turned on. */
+  async runInit(reports: Pick<SupportReportService, 'sendDaily'>): Promise<void> {
     const { ctx } = this.deps;
     const deferStartupBootstrap = usesProductionStartupOrder();
     const logStartupStepFailure = (label: string, error: Error): void => {
@@ -198,7 +197,7 @@ export class AppServiceWiring {
         err: normalizeError(error),
       });
     };
-    const structuredLogger = this.installStructuredLogger();
+    const { logger: structuredLogger, logTail } = this.installStructuredLogger();
     structuredLogger.child({ component: 'startup' }).info({ event: 'app_initialized' });
     this.deps.backgroundTasks.startResourceWarningListeners();
     this.deps.backgroundTasks.installHeapSnapshotHandler(structuredLogger);
@@ -208,10 +207,7 @@ export class AppServiceWiring {
     // opened is attributed to the store rather than to whichever step first
     // reached for it — and no step runs without it.
     await runStartupStep('openUserdataStores', () => this.deps.openUserdataStores(), logStartupStepFailure);
-    await runStartupStep('attachLogTail', () => {
-      const { logTail } = this.deps.handles;
-      if (logTail) attachLogTail(logTail, ctx);
-    }, logStartupStepFailure);
+    await runStartupStep('attachLogTail', () => attachLogTail(logTail, ctx), logStartupStepFailure);
     await runStartupStep('initPriceCoordinator', () => this.initPriceCoordinator(), logStartupStepFailure);
     await runStartupStep(
       'runStartupSettingsMigrations',
@@ -256,14 +252,19 @@ export class AppServiceWiring {
       () => this.startPostStartupBackgroundTasks(),
       logStartupStepFailure,
     );
+    // Its own step, after the others: a report store that cannot open must not
+    // keep the background tasks from starting.
+    await runStartupStep(
+      'startDailyReport',
+      () => startDailyReport(ctx, reports, this.deps.timers),
+      logStartupStepFailure,
+    );
   }
 
   startPostStartupBackgroundTasks(): void {
     const { ctx } = this.deps;
     requireInitializedAppContext(ctx);
     this.deps.powerTrackerHelpers.startPowerTrackerPruning();
-    const reports = this.deps.handles.supportReports;
-    if (reports) startDailyReport(ctx, reports, this.deps.timers);
     startPostStartupBackgroundTasks(
       ctx,
       this.taskEvaluationSource,
@@ -294,12 +295,12 @@ export class AppServiceWiring {
     service.loadState();
   }
 
-  installStructuredLogger(): PinoLogger {
+  installStructuredLogger(): ReturnType<typeof installStructuredLogger> {
     const { ctx, handles } = this.deps;
-    const { logger, logTail } = installStructuredLogger(ctx);
-    handles.logTail = logTail;
-    handles.structuredLogger = logger;
-    return logger;
+    const installed = installStructuredLogger(ctx);
+    handles.logTail = installed.logTail;
+    handles.structuredLogger = installed.logger;
+    return installed;
   }
 
   // Bodies in `setup/appInit/wireDeviceTransport.ts`; the order is load-bearing.
@@ -308,7 +309,7 @@ export class AppServiceWiring {
     const deviceManager = buildDeviceTransport(
       ctx,
       this.deps.homeyApp,
-      handles.structuredLogger ?? this.installStructuredLogger(),
+      handles.structuredLogger ?? this.installStructuredLogger().logger,
       observedStateEmitter.asDispatcher(this.deps.observedHomePower),
     );
     subscribeObservedStateProjection(observedStateEmitter, this.deps.observedDeviceStateProjection);

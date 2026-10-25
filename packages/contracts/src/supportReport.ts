@@ -32,6 +32,8 @@ export type SupportReportActivity =
     maxEntries: number;
     maxEntriesPerDevice: number;
     persistence: 'stored' | 'pending';
+    /** Entries in the window left out, the oldest first, so a daily report fits its size limit. */
+    leftOutForSize: number;
   }
   | { state: 'unavailable'; reason: string };
 
@@ -73,8 +75,11 @@ export type SupportReportLogLine = {
   entry: { readonly [key: string]: SupportReportValue };
 };
 
-/** Lines of one event left out of an hour once it passed the per-hour cap. */
-export type SupportReportLogOverflow = { hourStartMs: number; event: string; dropped: number };
+/**
+ * Lines left out of an hour once they passed the per-hour cap. `key` is what the
+ * cap counts: the event, then `|` and the device when the line names one.
+ */
+export type SupportReportLogOverflow = { hourStartMs: number; key: string; dropped: number };
 
 export type SupportReportLog =
   | {
