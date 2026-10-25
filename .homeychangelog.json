@@ -700,5 +700,8 @@
   },
   "3.23.4": {
     "en": "New in Settings, under Advanced: Send a daily diagnostics report. Turn it on, and once a day PELS sends the developer a report like Report a problem does, covering the last day. It stays off unless you turn it on.\n\nProblem reports now carry PELS's own log and what an EV charger waited for, so a report sent hours later still explains what happened, and the activity they include runs up to the moment you send. A car whose plug-in reaches PELS after the charger's matching window is no longer linked to that charger on its own, since it could have plugged in anywhere meanwhile; you can still confirm it. Report a problem also shows its messages next to Send report, and a report Homey refused can be sent again right away."
+  },
+  "3.23.5": {
+    "en": "After PELS resumes a device, the next one can now resume as soon as the first is visibly drawing power and the home meter has reported it, instead of always waiting five minutes.\n\nAn EV charger still identifying its car now says Waiting to identify the connected car, with no battery level beside its plug state. If the car is not identified within 20 minutes, the card and Activity say Could not identify the connected car, so you can confirm it in the charger's Car section. A car that only appears as connected after that time, for example after being unavailable, is no longer linked on its own, and a charger already plugged in when PELS starts keeps trying until the time is up. Copy report now names the email address to send it to."
   }
 }
