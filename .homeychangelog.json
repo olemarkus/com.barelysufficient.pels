@@ -697,5 +697,8 @@
   },
   "3.23.3": {
     "en": "Report a problem now sends in one step: describe what happened and select Send report. If the report cannot be sent, Copy report keeps it for you, and after sending you get a reference to quote in the PELS forum thread if you want an answer.\n\nA stepped device no longer says Level change not confirmed when it reports back a different level than PELS asked for, such as a charger asked for 16 A that settles at 10 A. With meter areas, a device moved into a zone PELS has not seen yet is left alone until PELS knows where it belongs, instead of being controlled with the Main home. After an update, PELS also keeps what it learned about each device's power and when it last controlled each device even if Homey's settings are briefly unreadable at startup, and an EV car that comes back after being unavailable stays tracked more reliably."
+  },
+  "3.23.4": {
+    "en": "New in Settings, under Advanced: Send a daily diagnostics report. Turn it on, and once a day PELS sends the developer a report like Report a problem does, covering the last day. It stays off unless you turn it on.\n\nProblem reports now carry PELS's own log and what an EV charger waited for, so a report sent hours later still explains what happened, and the activity they include runs up to the moment you send. A car whose plug-in reaches PELS after the charger's matching window is no longer linked to that charger on its own, since it could have plugged in anywhere meanwhile; you can still confirm it. Report a problem also shows its messages next to Send report, and a report Homey refused can be sent again right away."
   }
 }
