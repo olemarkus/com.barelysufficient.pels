@@ -31,6 +31,8 @@ import {
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
 import api from '../../api';
+import { httpResponse } from '../helpers/httpResponse';
+import type { SupportReportDocument } from '../../packages/contracts/src/supportReport';
 import { createEvCarLinkRepository } from '../../lib/device/evCarLinkStore';
 import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
 import { drainUntil } from '../utils/asyncDrain';
@@ -176,6 +178,7 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
   afterEach(async () => {
     await cleanupApps();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     vi.useRealTimers();
   });
 
@@ -617,6 +620,45 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
       'ev_car_link_plug_edge', 'ev_car_link_waiting_started', 'ev_car_link_unmatched', 'ev_car_link_late_car_report',
     ]));
     expect(kept.indexOf('ev_car_link_unmatched')).toBeLessThan(kept.indexOf('ev_car_link_late_car_report'));
+  });
+
+  it('sends a report about the charger when it could not identify the car, once the owner turned it on', async () => {
+    vi.setSystemTime(Date.UTC(2026, 9, 24, 14, 30, 0));
+    const car = await buildCar();
+    const charger = await buildCharger();
+    setMockDrivers({ driverA: new MockDriver('driverA', [car, charger]) });
+    seedSettings();
+    mockHomeyInstance.settings.set(EV_CAR_ASSOCIATIONS, { [CHARGER_ID]: { carIds: [CAR_ID] } });
+    mockHomeyInstance.settings.set('event_diagnostics_reports', true);
+    driveHomeEnergy(liveHomeW(3_000));
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (_url, options) => (
+      httpResponse(options?.method === 'POST' ? 'event-reference' : { origin: 'appstore' })
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const posts = () => fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST');
+    const app = createApp();
+    spyLogs(app);
+    await app.onInit();
+    await pumpMinutes(2);
+
+    await charger.setCapabilityValue('evcharger_charging_state', 'plugged_in');
+    await pumpMinutes(45);
+    expect(of('ev_car_link_unmatched')).toHaveLength(1);
+    expect(posts()).toHaveLength(1);
+    const { message } = JSON.parse(String(posts()[0]?.[1]?.body)) as { message: string };
+    const document = JSON.parse(message.split('\n')[1] ?? '{}') as SupportReportDocument;
+    expect(document.trigger).toBe('event');
+    expect(document.request.subject).toEqual({ kind: 'device', homeId: 'main', deviceId: CHARGER_ID });
+    if (document.deviceEvents.state !== 'available') throw new Error('kept device events unavailable');
+    expect(document.deviceEvents.entries.map((entry) => entry.event)).toContain('ev_car_link_unmatched');
+
+    // The charger keeps failing; one report a day is enough.
+    await charger.setCapabilityValue('evcharger_charging_state', 'plugged_out');
+    await pumpMinutes(5);
+    await charger.setCapabilityValue('evcharger_charging_state', 'plugged_in');
+    await pumpMinutes(45);
+    expect(of('ev_car_link_unmatched')).toHaveLength(2);
+    expect(posts()).toHaveLength(1);
   });
 
   it('serves the associated car to the settings UI only for a car the user ticked', async () => {

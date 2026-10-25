@@ -7,7 +7,9 @@ import type { ObservedHomePower } from '../lib/observer/observedHomePower';
 import type { ObservedDeviceStateProjection } from '../lib/observer/observedDeviceStateProjection';
 import { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';
 import type { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
-import { attachLogTail, installStructuredLogger, startDailyReport } from './appInit/diagnosticsWiring';
+import {
+  attachLogTail, installStructuredLogger, startDailyReport, startEventReports,
+} from './appInit/diagnosticsWiring';
 import type { SupportReportService } from '../lib/diagnostics/supportReportService';
 import { normalizeError } from '../lib/utils/errorUtils';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
@@ -185,8 +187,8 @@ export class AppServiceWiring {
     );
   }
 
-  /** `reports`: the app's problem-report service, which also sends the daily report the owner turned on. */
-  async runInit(reports: Pick<SupportReportService, 'sendDaily'>): Promise<void> {
+  /** `reports`: the app's problem-report service, which also sends the reports the owner turned on. */
+  async runInit(reports: Pick<SupportReportService, 'sendDaily' | 'sendOnEvent'>): Promise<void> {
     const { ctx } = this.deps;
     const deferStartupBootstrap = usesProductionStartupOrder();
     const logStartupStepFailure = (label: string, error: Error): void => {
@@ -257,6 +259,11 @@ export class AppServiceWiring {
     await runStartupStep(
       'startDailyReport',
       () => startDailyReport(ctx, reports, this.deps.timers),
+      logStartupStepFailure,
+    );
+    await runStartupStep(
+      'startEventReports',
+      () => startEventReports(ctx, reports, this.deps.timers),
       logStartupStepFailure,
     );
   }

@@ -41,7 +41,7 @@ import {
   waitForHomey,
 } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
-import { initDailyReportSwitch } from './dailyReportSwitch.ts';
+import { initDiagnosticsReportSwitches } from './diagnosticsReportSwitches.ts';
 import { refreshDevices, renderDevices } from './devices.ts';
 import { refreshPowerData } from './uiRefreshTasks.ts';
 import {
@@ -534,7 +534,7 @@ const initializeBootHandlers = () => {
   }
   initDebugLoggingSwitches();
   initAdvancedHandlers();
-  void initDailyReportSwitch();
+  void initDiagnosticsReportSwitches();
   markSettingsUi('boot:handlers-ready');
 };
 

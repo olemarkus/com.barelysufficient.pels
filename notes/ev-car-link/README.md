@@ -618,6 +618,9 @@ written for it:
   meanwhile (owner, 2026-10-25), so only the owner's confirmation links it. On 2026-10-24
   a Polestar's app reported its plug-in 12 h 35 min after the charger did.
 
+When the owner turned on reports on specific events, `ev_car_link_unmatched` also sends a
+report about the charger a few minutes later (`notes/support-reports.md`).
+
 Connection times say how they were seen: `plug_in`, or `already_plugged_in_at_start`
 when the charger was plugged in when PELS started, so the time is the start, not the
 plug-in, and a lateness measured from it is too short.
