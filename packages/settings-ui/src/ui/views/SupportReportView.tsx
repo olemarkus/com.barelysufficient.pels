@@ -107,6 +107,9 @@ const ReportForm = ({ state, actions, homeName }: SupportReportViewProps) => {
       <p class="pels-text-supporting muted">{draft.historyWindow === 'incident'
         ? 'Includes available activity from one hour before the incident until now, plus the preceding recorded state.'
         : 'Includes available activity from 24 hours before the incident until now, plus the preceding recorded state.'}</p>
+      {/* Beside the button that caused it: at 320 px a notice at the top of a
+          long form is off screen, and the page does not scroll within a stage. */}
+      <ReportNotice state={state} />
       <MdFilledButton type="submit" disabled={disabled} data-report-action="send">
         {state.operation === 'sending' ? 'Sending…' : 'Send report'}
       </MdFilledButton>
@@ -196,7 +199,7 @@ const SupportReportView = (props: SupportReportViewProps) => {
       lede={settled || recoveryId ? undefined
         : 'Describe what happened. PELS adds recent device activity and its current state.'} />
     <div class="support-report" data-report-stage={stage} tabIndex={-1}>
-      <ReportNotice state={props.state} />
+      {(settled || recoveryId) && <ReportNotice state={props.state} />}
       {!settled && !recoveryId && <ReportForm {...props} />}
       {copyable && <ReportCopy report={report} actions={props.actions} />}
       {settled && <ReportResult {...props} />}

@@ -15,6 +15,7 @@ const evidence = (): SupportReportEvidence => ({
   subjectName: 'Hall heater', appVersion: '3.21.0', homeyVersion: '12.3.0',
   activity: { state: 'unavailable', reason: 'No retained history for this home.' },
   deviceEvents: { state: 'unavailable', reason: 'No kept device events.' },
+  log: { state: 'available', lines: [], overflow: [], fromMs: now - 60 * 60_000, toMs: now, leftOutForSize: 0 },
   sections: [{ title: 'Current device state', values: { target: 22 } }], omissions: [],
 });
 const transport = (): SupportReportTransport => ({
@@ -74,6 +75,52 @@ describe('manual support reporting', () => {
     const service = new SupportReportService({ capture: async () => live }, delivery);
     expect(await service.prepare(request)).toEqual({ ok: false, code: 'report_too_large' });
     expect(delivery.send).not.toHaveBeenCalled();
+  });
+
+  it('leaves out the oldest log lines, and says how many, when the log would make it too large', async () => {
+    const live = evidence();
+    const lines = Array.from({ length: 2_000 }, (_, index) => ({
+      atMs: now - 2_000 + index, level: 'info' as const, entry: { event: `line-${index}`, filler: 'x'.repeat(400) },
+    }));
+    live.log = { state: 'available', lines, overflow: [], fromMs: now - 3_600_000, toMs: now, leftOutForSize: 0 };
+    const service = new SupportReportService({ capture: async () => live }, transport());
+    const prepared = report(await service.prepare(request));
+    expect(Buffer.byteLength(prepared.message, 'utf8')).toBeLessThanOrEqual(SUPPORT_REPORT_MAX_BYTES);
+    if (prepared.document.log.state !== 'available') throw new Error('Expected the log');
+    const { leftOutForSize } = prepared.document.log;
+    expect(leftOutForSize).toBeGreaterThan(0);
+    expect(prepared.document.log.lines[0]?.entry.event).toBe(`line-${leftOutForSize}`);
+    expect(prepared.document.log.lines.at(-1)?.entry.event).toBe('line-1999');
+  });
+
+  it('sends the daily report as a report about the whole app over the last day, named as such', async () => {
+    const delivery = transport();
+    const source = { capture: vi.fn(async () => evidence()) };
+    const service = new SupportReportService(source, delivery);
+    const sent = report(await service.sendDaily());
+    expect(source.capture).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      subject: { kind: 'app', homeId: 'main' }, historyWindow: 'day', occurredAtMs: now,
+    }), now);
+    expect(sent.document.trigger).toBe('daily');
+    expect(sent.submission).toEqual({ state: 'sent', reference: 'homey-reference' });
+    expect(delivery.send).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('"trigger":"daily"'));
+  });
+
+  it('lets a report Homey refused be sent again at once', async () => {
+    const delivery = transport();
+    vi.mocked(delivery.send).mockResolvedValueOnce({ state: 'rejected' });
+    const service = new SupportReportService({ capture: async () => evidence() }, delivery);
+    const refused = report(await service.prepare(request));
+    expect(report(await service.send(refused.document.id, { consent: true })).submission).toEqual({ state: 'failed' });
+    const again = report(await service.prepare(request));
+    expect(report(await service.send(again.document.id, { consent: true })).submission.state).toBe('sent');
+    const third = report(await service.prepare(request));
+    expect(await service.send(third.document.id, { consent: true })).toEqual({ ok: false, code: 'report_busy' });
+  });
+
+  it('marks a report the owner sent as theirs', async () => {
+    const service = new SupportReportService({ capture: async () => evidence() }, transport());
+    expect(report(await service.prepare(request)).document.trigger).toBe('owner');
   });
 
   it('expires drafts and bounds retained previews while allowing repeated edits', async () => {

@@ -23,6 +23,10 @@ export const supportReportFixture = (): PreparedSupportReport => ({
       state: 'available', entries: [], deviceIds: ['heater'], fromMs: 1699996400000, toMs: 1700000100000,
       retentionDays: 7, maxEntriesPerDevice: 200, leftOut: 0,
     },
+    log: {
+      state: 'available', lines: [], overflow: [], fromMs: 1699996400000, toMs: 1700000100000, leftOutForSize: 0,
+    },
+    trigger: 'owner',
     sections: [{ title: 'Current device state', values: { powerW: 0 } }], omissions: [],
   },
   message: 'PELS PROBLEM REPORT V1\n{"problem":"The heater stayed off."}\nEND PELS REPORT report-1',

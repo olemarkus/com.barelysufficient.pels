@@ -8,7 +8,7 @@ describe('Homey log forwarding through Pino', () => {
     'routes %s to the Homey channel and omits transport metadata', (level) => {
       const log = vi.fn();
       const error = vi.fn();
-      const logger = createRootLogger(createHomeyDestination({ log, error }), 'trace');
+      const logger = createRootLogger(createHomeyDestination({ log, error }, () => undefined), 'trace');
       logger[level]({ event: 'forwarded' }, 'hello');
 
       const expected = JSON.stringify({ event: 'forwarded', msg: 'hello' });
@@ -24,7 +24,7 @@ describe('Homey log forwarding through Pino', () => {
 
   it('preserves child bindings, context, nested data and escaped messages', () => {
     const log = vi.fn();
-    const logger = createRootLogger(createHomeyDestination({ log, error: vi.fn() }));
+    const logger = createRootLogger(createHomeyDestination({ log, error: vi.fn() }, () => undefined));
     const child = logger.child({ module: 'test/forwarding' });
     runWithContext({ homeId: 'main', rebuildId: 'rb1' }, () => {
       child.info({ event: 'sample', nested: { level: 50, value: 'a"b' } }, 'first\nsecond');
@@ -37,14 +37,14 @@ describe('Homey log forwarding through Pino', () => {
 
   it('forwards an empty record as valid JSON', () => {
     const log = vi.fn();
-    createRootLogger(createHomeyDestination({ log, error: vi.fn() })).info({});
+    createRootLogger(createHomeyDestination({ log, error: vi.fn() }, () => undefined)).info({});
     expect(log).toHaveBeenCalledExactlyOnceWith('{}');
   });
 
   it('reserves the transport level from child bindings and allows debug children', () => {
     const log = vi.fn();
     const error = vi.fn();
-    const logger = createRootLogger(createHomeyDestination({ log, error }));
+    const logger = createRootLogger(createHomeyDestination({ log, error }, () => undefined));
     logger.child({ level: 60, component: 'test' }, { level: 'debug' }).debug({ event: 'debug_child' });
     expect(log).toHaveBeenCalledExactlyOnceWith('{"component":"test","event":"debug_child"}');
     expect(error).not.toHaveBeenCalled();
@@ -53,7 +53,7 @@ describe('Homey log forwarding through Pino', () => {
   it('routes using the logging method even when a payload supplies its own level', () => {
     const log = vi.fn();
     const error = vi.fn();
-    const logger = createRootLogger(createHomeyDestination({ log, error }));
+    const logger = createRootLogger(createHomeyDestination({ log, error }, () => undefined));
     logger.info({ level: 60, event: 'info' });
     logger.error({ level: 10, event: 'error' });
     expect(log).toHaveBeenCalledExactlyOnceWith('{"event":"info"}');
@@ -66,7 +66,7 @@ describe('Homey log forwarding through Pino', () => {
       logger.error({ event: 'nested_error' });
       logger.fatal({ event: 'nested_fatal' });
     });
-    const logger = createRootLogger(createHomeyDestination({ log, error }));
+    const logger = createRootLogger(createHomeyDestination({ log, error }, () => undefined));
     logger.info({ event: 'outer_info' });
     logger.warn({ event: 'outer_warn' });
     expect(log.mock.calls).toEqual([['{"event":"outer_info"}'], ['{"event":"outer_warn"}']]);
@@ -79,7 +79,7 @@ describe('Homey log forwarding through Pino', () => {
   it('contains callback failures and continues forwarding', () => {
     const log = vi.fn(() => { throw new Error('log failed'); });
     const error = vi.fn(() => { throw new Error('error failed'); });
-    const logger = createRootLogger(createHomeyDestination({ log, error }));
+    const logger = createRootLogger(createHomeyDestination({ log, error }, () => undefined));
     expect(() => logger.info({ event: 'info' })).not.toThrow();
     expect(() => logger.error({ event: 'error' })).not.toThrow();
     expect(() => logger.warn({ event: 'warn' })).not.toThrow();
@@ -89,7 +89,7 @@ describe('Homey log forwarding through Pino', () => {
 
   it('preserves serialized errors', () => {
     const error = vi.fn();
-    const logger = createRootLogger(createHomeyDestination({ log: vi.fn(), error }));
+    const logger = createRootLogger(createHomeyDestination({ log: vi.fn(), error }, () => undefined));
     logger.error({ event: 'failure', err: new Error('boom') });
     expect(JSON.parse(error.mock.calls[0][0])).toMatchObject({
       event: 'failure', err: { type: 'Error', message: 'boom', stack: expect.any(String) },

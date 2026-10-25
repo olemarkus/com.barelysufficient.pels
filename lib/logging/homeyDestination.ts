@@ -8,6 +8,12 @@ export type HomeyLogCallbacks = {
 };
 
 /**
+ * Sees every forwarded line with its Pino level, after Homey has it: the log
+ * tail PELS keeps for problem reports (`lib/diagnostics/logTailRecorder.ts`).
+ */
+export type LogLineObserver = (level: number, line: string) => void;
+
+/**
  * Pino writes one complete JSON line and sets level metadata before each write.
  * Forward synchronously: a buffered stream could read a later line's metadata.
  */
@@ -15,7 +21,10 @@ export class HomeyLogDestination implements pino.DestinationStream {
   readonly [pino.symbols.needsMetadataGsym] = true;
   lastLevel = 0;
 
-  constructor(private readonly callbacks: HomeyLogCallbacks) {}
+  constructor(
+    private readonly callbacks: HomeyLogCallbacks,
+    private readonly observeLine: LogLineObserver,
+  ) {}
 
   write(line: string): void {
     const level = this.lastLevel;
@@ -30,9 +39,15 @@ export class HomeyLogDestination implements pino.DestinationStream {
     } catch {
       // Homey logging failures must never throw into app code.
     }
+    try {
+      this.observeLine(level, forwarded);
+    } catch {
+      // Neither may keeping the line.
+    }
   }
 }
 
-export const createHomeyDestination = (callbacks: HomeyLogCallbacks): HomeyLogDestination => (
-  new HomeyLogDestination(callbacks)
-);
+export const createHomeyDestination = (
+  callbacks: HomeyLogCallbacks,
+  observeLine: LogLineObserver,
+): HomeyLogDestination => new HomeyLogDestination(callbacks, observeLine);

@@ -3,6 +3,7 @@ import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriv
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
 import { httpResponse } from '../helpers/httpResponse';
+import type { SupportReportDocument } from '../../packages/contracts/src/supportReport';
 
 describe('manual report through the app API and Homey boundary', () => {
   beforeEach(() => {
@@ -65,5 +66,36 @@ describe('manual report through the app API and Homey boundary', () => {
     expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({ message: preview.report.message });
     await api.support_report_send({ homey: app.homey, params: { id }, body: { consent: true } });
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
+  });
+
+  it('sends the daily report once a day after the owner turns it on, with the log PELS kept', async () => {
+    const device = new MockDevice('heater', 'Hall heater', ['onoff', 'measure_power'], 'socket');
+    await device.setCapabilityValue('onoff', true);
+    setMockDrivers({ sockets: new MockDriver('sockets', [device]) });
+    mockHomeyInstance.settings.set('managed_devices', { heater: true });
+    mockHomeyInstance.settings.set('daily_diagnostics_report', true);
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (_url, options) => (
+      httpResponse(options?.method === 'POST' ? 'daily-reference' : { origin: 'appstore' })
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const app = createApp({ withoutPowerMeasurement: true });
+    await app.onInit();
+    const posts = () => fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST');
+
+    await vi.advanceTimersByTimeAsync(14 * 60 * 1000);
+    expect(posts()).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
+    expect(posts()).toHaveLength(1);
+    const { message } = JSON.parse(String(posts()[0]?.[1]?.body)) as { message: string };
+    const document = JSON.parse(message.split('\n')[1] ?? '{}') as SupportReportDocument;
+    expect(document.trigger).toBe('daily');
+    expect(document.request.subject).toEqual({ kind: 'app', homeId: 'main' });
+    if (document.log.state !== 'available') throw new Error('the kept log is missing');
+    expect(document.log.lines.map((line) => line.entry.event)).toContain('app_initialized');
+
+    await vi.advanceTimersByTimeAsync(3 * 60 * 60 * 1000);
+    expect(posts()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(21 * 60 * 60 * 1000);
+    expect(posts()).toHaveLength(2);
   });
 });

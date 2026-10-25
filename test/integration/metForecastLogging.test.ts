@@ -9,7 +9,7 @@ describe('MET forecast failure logs', () => {
 
   beforeEach(() => {
     log.mockClear();
-    setRootLogger(createRootLogger(createHomeyDestination({ log, error: vi.fn() })));
+    setRootLogger(createRootLogger(createHomeyDestination({ log, error: vi.fn() }, () => undefined)));
   });
 
   afterEach(() => {

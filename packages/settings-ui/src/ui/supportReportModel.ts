@@ -83,6 +83,10 @@ const REPORT_ERRORS: Record<SupportReportErrorCode, string> = {
 
 export const reportErrorMessage = (code: SupportReportErrorCode): string => REPORT_ERRORS[code];
 
+/** A report whose delivery was uncertain is gone, so nothing can tell any more whether it arrived. */
+export const REPORT_EXPIRED_UNCERTAIN = 'PELS no longer has this report, so it cannot tell whether it arrived. '
+  + 'Your description is kept; send it again if you think it did not.';
+
 const SUBMISSION_MESSAGES: Record<Exclude<SupportReportSubmission['state'], 'draft'>, string> = {
   sending: 'Sending your report through Homey…',
   sent: '',

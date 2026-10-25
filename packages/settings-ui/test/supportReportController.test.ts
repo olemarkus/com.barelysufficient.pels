@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SupportReportResponse } from '../../contracts/src/supportReport';
 import { SupportReportController, type SupportReportApi } from '../src/ui/supportReportController';
-import type { SupportReportViewState } from '../src/ui/supportReportModel';
+import { REPORT_EXPIRED_UNCERTAIN, type SupportReportViewState } from '../src/ui/supportReportModel';
 import { supportReportFixture } from './helpers/supportReportFixture';
 
 const setup = () => {
@@ -102,7 +102,10 @@ describe('support report controller', () => {
     await controller.submit();
     await controller.check();
     expect(current().report).toBeNull();
-    expect(current().draft).toMatchObject({ when: 'custom', atMs: report.document.request.occurredAtMs });
+    expect(current().notice).toBe(REPORT_EXPIRED_UNCERTAIN);
+    expect(current().draft).toMatchObject({
+      when: 'custom', atMs: report.document.request.occurredAtMs, problem: report.document.request.problem,
+    });
     await controller.submit();
     expect(api.prepare).toHaveBeenLastCalledWith(expect.objectContaining({
       occurredAtMs: report.document.request.occurredAtMs,
@@ -153,6 +156,13 @@ describe('support report controller', () => {
     expect(current().report?.document.id).toBe('report-1');
     expect(current().recoveryId).toBeNull();
     expect(api.send).not.toHaveBeenCalled();
+  });
+
+  it('asks for the description again when the report it reopens is gone', async () => {
+    const { controller, api, current } = setup();
+    vi.mocked(api.get).mockResolvedValueOnce({ ok: false, code: 'report_expired' });
+    await controller.restore('report-gone');
+    expect(current().notice).toBe('This report is no longer available. Start another report and describe the problem again.');
   });
 
   it('retains a failed recovery identifier until a status check succeeds', async () => {
