@@ -24,7 +24,6 @@ const PRICES_URI = '/ui_prices';
 
 const ROSTER_PAYLOAD = {
   homes: [{ homeId: AREA, name: 'Rental unit' }],
-  runtimeActive: true,
   configDegraded: false,
   membershipByDeviceId: {},
 };

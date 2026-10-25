@@ -247,7 +247,7 @@ describe('importLegacyPowerCalibration', () => {
     // An upgrading install lists its keys here. A fresh one's list is empty,
     // since the userdata stores open before the boot migrations write
     // anything, and an empty list imports nothing.
-    settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
+    settings.set('boot_migrations_v2_unusable_stepped_config_repaired', true);
     const db = openUserdataDatabase(IN_MEMORY_DATABASE);
     return { settings, db, repository: createPowerCalibrationRepository(db) };
   };

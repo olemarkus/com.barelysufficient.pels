@@ -70,9 +70,8 @@ export const HOME_SCOPE_OVERVIEW_UNAVAILABLE_BODY = 'PELS couldn’t read the cu
 // are in use: a Main-home page carries a scope line naming the Main home, and
 // a feature that does not cover meter areas yet says so explicitly instead of
 // serving an empty payload that reads as healthy. All four strings render only
-// while at least one ACTIVE meter area exists (`areMeterAreasInUse`) — for a
-// single-meter home, and for a held pre-GA config whose devices still belong
-// to the Main home, every one of them would be noise.
+// while at least one meter area exists (`areMeterAreasInUse`) — for a
+// single-meter home every one of them would be noise.
 
 /**
  * Budget tab scope line. The daily budget is a MAIN-HOME budget (locked

@@ -27,7 +27,7 @@ const install = async () => {
   vi.doMock('../src/ui/homeScope.ts', () => ({
     getHomeScope: () => ({ selectedHomeId }),
     getHomeIdForUiDevice: (id: string) => MEMBERSHIP[id] ?? 'main',
-    readHomeMembership: () => ({ state: 'resolved', runtimeActive: true, membershipByDeviceId: MEMBERSHIP }),
+    readHomeMembership: () => ({ state: 'resolved', membershipByDeviceId: MEMBERSHIP }),
     subscribeToHomeScope: () => undefined,
   }));
   const homey = createHomeyMock({
@@ -47,7 +47,6 @@ const install = async () => {
   setHomeyClient(homey);
   const { state } = await import('../src/ui/state.ts');
   const { homeScopeMembership } = await import('../src/ui/homeScopeMembership.ts');
-  homeScopeMembership.runtimeActive = true;
   homeScopeMembership.membershipByDeviceId = MEMBERSHIP;
   state.loadedModeHomeId = AREA_A;
   state.activeMode = 'Home';

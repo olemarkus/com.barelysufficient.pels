@@ -345,8 +345,8 @@ export const refreshDeadlinesList = async (): Promise<void> => {
   }
 };
 
-// The Main-only notice's only external input is the shell's roster +
-// activation posture; refresh a VISIBLE Smart tasks panel when they change (an
+// The Main-only notice's only external input is the shell's roster; refresh a
+// VISIBLE Smart tasks panel when it changes (an
 // area added or removed from the Multiple-meters panel, or a second WebView).
 // Scope PICKS also fire this listener, but the picker never renders on this
 // panel, so those only arrive while it is hidden. Visibility is checked inline

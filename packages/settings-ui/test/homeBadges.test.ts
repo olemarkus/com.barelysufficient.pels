@@ -30,7 +30,6 @@ const buildHomesPayload = (overrides: Record<string, unknown> = {}) => ({
   },
   zoneTree: null,
   hasSubHomes: true,
-  runtimeActive: true,
   configDegraded: false,
   ...overrides,
 });
@@ -85,23 +84,10 @@ describe('home badge index resolution', () => {
     vi.resetModules();
   });
 
-  it('badges nothing while the saved config is held (runtimeActive false)', async () => {
-    const { resolveHomeBadgeRead } = await import('../src/ui/homeBadges.ts');
-    // `ui_homes` diagnostics report SAVED areas even while the control port is
-    // held all-main, so a badge here would name a home the runtime is not using.
-    // A vouched-for held config RESOLVES (to the empty index) — it must clear
-    // stale badges, unlike a degraded read.
-    const held = resolveHomeBadgeRead(buildHomesPayload({ runtimeActive: false }));
-    expect(held).toEqual({
-      status: 'resolved',
-      index: { areaNameByHomeId: {}, areaHomeIdByDeviceId: {} },
-    });
-  });
-
   it('badges nothing on a single-home install', async () => {
     const { resolveHomeBadgeRead } = await import('../src/ui/homeBadges.ts');
     expect(resolveHomeBadgeRead({
-      homes: [], membershipByDeviceId: {}, hasSubHomes: false, runtimeActive: true, configDegraded: false,
+      homes: [], membershipByDeviceId: {}, hasSubHomes: false, configDegraded: false,
     })).toEqual({
       status: 'resolved',
       index: { areaNameByHomeId: {}, areaHomeIdByDeviceId: {} },
@@ -118,25 +104,23 @@ describe('home badge index resolution', () => {
     expect(resolveHomeBadgeRead(buildHomesPayload({ configDegraded: undefined }))).toEqual({ status: 'unavailable' });
   });
 
-  it('classifies a vouched payload with missing or junk flags as unavailable, not an empty index', async () => {
+  it('classifies a vouched payload with a missing or junk flag as unavailable, not an empty index', async () => {
     const { resolveHomeBadgeRead } = await import('../src/ui/homeBadges.ts');
     // `configDegraded: false` vouches for the snapshot, but a MISSING or
-    // non-boolean `runtimeActive`/`hasSubHomes` is a partial/malformed payload
-    // (version skew, truncated serve) — not an affirmation that no areas are
-    // active. Resolving it to the empty index would clear every badge.
-    expect(resolveHomeBadgeRead(buildHomesPayload({ runtimeActive: undefined }))).toEqual({ status: 'unavailable' });
+    // non-boolean `hasSubHomes` is a partial/malformed payload (truncated
+    // serve) — not an affirmation that no areas are configured. Resolving it
+    // to the empty index would clear every badge.
     expect(resolveHomeBadgeRead(buildHomesPayload({ hasSubHomes: undefined }))).toEqual({ status: 'unavailable' });
-    expect(resolveHomeBadgeRead(buildHomesPayload({ runtimeActive: 'true' }))).toEqual({ status: 'unavailable' });
     expect(resolveHomeBadgeRead(buildHomesPayload({ hasSubHomes: 1 }))).toEqual({ status: 'unavailable' });
-    // Boolean `false` remains a vouched intentional-no-badging read (held
-    // config / single-home) and must keep RESOLVING to the empty index — the
-    // gate narrows to typed booleans without breaking stale-badge clearing.
+    // Boolean `false` remains a vouched no-badging read (single-home) and must
+    // keep RESOLVING to the empty index — the gate narrows to a typed boolean
+    // without breaking stale-badge clearing.
     expect(resolveHomeBadgeRead(buildHomesPayload({ hasSubHomes: false })).status).toBe('resolved');
   });
 
   it('classifies a malformed active badge collection as unavailable, not a cleared index', async () => {
     const { resolveHomeBadgeRead } = await import('../src/ui/homeBadges.ts');
-    // The flags vouch that meter areas are ACTIVE, so the collections carrying
+    // The flag vouches that meter areas exist, so the collections carrying
     // them have to be present. A truncated serve that drops `homes` would clear
     // every badge; one that drops `membershipByDeviceId` would re-badge every
     // device as Main home. Both state something the payload never carried, so
@@ -186,9 +170,9 @@ describe('home badge index resolution', () => {
     const { refreshHomeBadges, resolveHomeBadge } = await import('../src/ui/homeBadges.ts');
     const homeyModule = await import('../src/ui/homey.ts');
     homeyModule.setHomeyClient(createHomeyMock({
-      // `configDegraded: false` but no `runtimeActive`: a partial payload must
+      // `configDegraded: false` but no `hasSubHomes`: a partial payload must
       // not overwrite the good index and re-badge every device as Main home.
-      uiState: { homes: buildHomesPayload({ runtimeActive: undefined }) },
+      uiState: { homes: buildHomesPayload({ hasSubHomes: undefined }) },
     }));
 
     await refreshHomeBadges();
@@ -349,7 +333,7 @@ describe('home badge chip', () => {
 
   it('renders no badge at all on a single-home install', async () => {
     await primeBadges({
-      homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false, runtimeActive: true, configDegraded: false,
+      homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false, configDegraded: false,
     });
     const { appendHomeBadge } = await import('../src/ui/homeBadges.ts');
     const host = document.createElement('div');

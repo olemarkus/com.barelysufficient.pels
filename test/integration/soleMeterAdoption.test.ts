@@ -17,7 +17,7 @@ const makeHomey = (initial: Record<string, unknown>): Homey.App['homey'] => {
 
 // A fresh install never has an empty key list by the time the adoption
 // classifies: the boot migrations run first and set their markers.
-const FRESH_INSTALL_BASE = { boot_migrations_v1_ev_setting_cleanup_done: true };
+const FRESH_INSTALL_BASE = { boot_migrations_v2_unusable_stepped_config_repaired: true };
 
 const cumulative = (id: string, watts: number) => ({ type: 'cumulative', id, values: { W: watts } });
 const soleMeterReport = { items: [cumulative(METER_ID, 1200)] };
@@ -425,7 +425,6 @@ describe('runSoleMeterAdoption', () => {
     const homey = makeHomey({
       ...FRESH_INSTALL_BASE,
       homes_config: {
-        activationVersion: 1,
         subHomes: [{ homeId: 'area-1', name: 'Rental', rootZoneId: 'zone-1', meterDeviceId: METER_ID }],
       },
     });

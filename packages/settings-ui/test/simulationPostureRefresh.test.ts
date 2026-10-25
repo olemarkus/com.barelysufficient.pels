@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { installHomeyMock, type MockHomeyClient } from './helpers/homeyApiMock.ts';
 import { setHomeyClient } from '../src/ui/homey.ts';
 import { notifyAreaSimulationSettingChanged } from '../src/ui/capacity.ts';
@@ -33,8 +33,7 @@ const AREA_FLAG_KEY = `${CAPACITY_DRY_RUN}:${AREA_ID}`;
 // tracker: the UI reads them only through the scoped `ui_power` payload.
 const AREA_STATUS_SLOT = `pels_status:${AREA_ID}`;
 const AREA_TRACKER_SLOT = `power_tracker_state:${AREA_ID}`;
-const ACTIVATED_ROSTER = {
-  activationVersion: 1,
+const SAVED_ROSTER = {
   subHomes: [{ homeId: AREA_ID, name: 'Rental unit', rootZoneId: 'z_rental' }],
 };
 
@@ -72,7 +71,7 @@ describe('meter-area simulation posture refresh', () => {
     // A transient read failure must not drop the area (the posture would
     // flip to all-live and hide the one warning naming it).
     setup({
-      [HOMES_CONFIG]: ACTIVATED_ROSTER,
+      [HOMES_CONFIG]: SAVED_ROSTER,
       [HOMES_CONFIG_INITIALIZED]: true,
     });
     homey.get.mockImplementation((key: string, cb: (err: Error | null, value?: unknown) => void) => {
@@ -97,7 +96,7 @@ describe('meter-area simulation posture refresh', () => {
     // The runtime store keeps its last-good dryRun for a non-boolean value —
     // the UI must not announce a simulation the runtime is not doing.
     setup({
-      [HOMES_CONFIG]: ACTIVATED_ROSTER,
+      [HOMES_CONFIG]: SAVED_ROSTER,
       [HOMES_CONFIG_INITIALIZED]: true,
       [AREA_FLAG_KEY]: 'yes',
     });
@@ -117,7 +116,7 @@ describe('meter-area simulation posture refresh', () => {
     // banner naming the simulating area until another refresh (abandon-grace,
     // `notes/persisted-settings-state.md`).
     setup({
-      [HOMES_CONFIG]: ACTIVATED_ROSTER,
+      [HOMES_CONFIG]: SAVED_ROSTER,
       [HOMES_CONFIG_INITIALIZED]: true,
     });
     homey.get.mockImplementation((key: string, cb: (err: Error | null, value?: unknown) => void) => {
@@ -145,7 +144,6 @@ describe('meter-area simulation posture refresh', () => {
     // clear it as a resolved-empty roster.
     setup({
       [HOMES_CONFIG]: {
-        activationVersion: 1,
         subHomes: [
           { homeId: AREA_ID, name: 'Rental unit', rootZoneId: 'z_rental', meterDeviceId: 'dev_shared' },
           { homeId: 'h_cabin', name: 'Cabin', rootZoneId: 'z_cabin', meterDeviceId: 'dev_shared' },
@@ -170,7 +168,7 @@ describe('meter-area simulation posture refresh', () => {
     // with the boot default and announce a simulation the runtime isn't
     // doing.
     setup({
-      [HOMES_CONFIG]: ACTIVATED_ROSTER,
+      [HOMES_CONFIG]: SAVED_ROSTER,
       [HOMES_CONFIG_INITIALIZED]: true,
     });
     state.meterAreaSimulation = [{ homeId: AREA_ID, name: 'Rental unit', simulating: false }];
@@ -185,7 +183,7 @@ describe('meter-area simulation posture refresh', () => {
 
   it('carries an explicit unknown for a malformed flag with nothing last-good', async () => {
     setup({
-      [HOMES_CONFIG]: ACTIVATED_ROSTER,
+      [HOMES_CONFIG]: SAVED_ROSTER,
       [HOMES_CONFIG_INITIALIZED]: true,
       [AREA_FLAG_KEY]: 'yes',
     });
@@ -205,7 +203,7 @@ describe('meter-area simulation posture refresh', () => {
     // repaint the area with the boot default and claim a simulation nobody is
     // running.
     setup({
-      [HOMES_CONFIG]: ACTIVATED_ROSTER,
+      [HOMES_CONFIG]: SAVED_ROSTER,
       [HOMES_CONFIG_INITIALIZED]: true,
       [AREA_TRACKER_SLOT]: { lastPowerW: 900, lastTimestamp: 1_700_000_000_000, buckets: {} },
       [AREA_STATUS_SLOT]: { limitReason: 'none', devicesOff: 0, dryRunEffective: false },
@@ -223,7 +221,7 @@ describe('meter-area simulation posture refresh', () => {
     // Absent, with no runtime posture published either = never written = the
     // runtime's dry-run-TRUE boot default.
     setup({
-      [HOMES_CONFIG]: ACTIVATED_ROSTER,
+      [HOMES_CONFIG]: SAVED_ROSTER,
       [HOMES_CONFIG_INITIALIZED]: true,
     });
 
@@ -237,7 +235,7 @@ describe('meter-area simulation posture refresh', () => {
 
   it('never lets a stale refresh overwrite a newer one', async () => {
     setup({
-      [HOMES_CONFIG]: ACTIVATED_ROSTER,
+      [HOMES_CONFIG]: SAVED_ROSTER,
       [HOMES_CONFIG_INITIALIZED]: true,
     });
     const pendingFlagReads: Array<(err: Error | null, value?: unknown) => void> = [];
@@ -274,7 +272,7 @@ describe('meter-area simulation posture refresh', () => {
     // is unwritten (boot-default simulating) — the posture must pick it up
     // without a Limits/Simulation panel visit.
     setup({
-      [HOMES_CONFIG]: ACTIVATED_ROSTER,
+      [HOMES_CONFIG]: SAVED_ROSTER,
       [HOMES_CONFIG_INITIALIZED]: true,
     });
 
@@ -313,64 +311,5 @@ describe('meter-area simulation posture refresh', () => {
     await flushAsync();
 
     expect(state.meterAreaSimulation).toEqual([]);
-  });
-});
-
-/* -------------------------------------------------------------------------- *
- * The banner's own SCOPE claim, on the rendered element. `hasMeterAreas` is
- * module state, so this reloads the capacity module against a DOM carrying the
- * banner — the only way to catch the refresh handing the banner a claim that
- * contradicts the snapshot it just retained.
- * -------------------------------------------------------------------------- */
-
-describe('simulation banner scope across a suspect roster read', () => {
-  const BANNER_TEMPLATE = [
-    '<div id="dry-run-banner" hidden></div>',
-    '<span id="dry-run-banner-text"></span>',
-  ].join('');
-
-  afterEach(() => {
-    document.body.innerHTML = '';
-    vi.resetModules();
-  });
-
-  it('keeps naming the simulating area when the roster turns suspect-empty', async () => {
-    // Static template built from a literal — no untrusted content.
-    document.body.innerHTML = BANNER_TEMPLATE;
-    vi.resetModules();
-    const homeyModule = await import('../src/ui/homey.ts');
-    const client = installHomeyMock({
-      settings: {
-        [HOMES_CONFIG]: ACTIVATED_ROSTER,
-        [HOMES_CONFIG_INITIALIZED]: true,
-        [AREA_FLAG_KEY]: true,
-      },
-    });
-    homeyModule.setHomeyClient(client as never);
-    const capacity = await import('../src/ui/capacity.ts');
-    const uiState = await import('../src/ui/state.ts');
-    uiState.state.dryRun = false; // Main is live; only the area simulates.
-    const banner = document.querySelector('#dry-run-banner') as HTMLElement;
-
-    capacity.notifyAreaSimulationSettingChanged(AREA_FLAG_KEY);
-    await flushAsync();
-    expect(banner.hidden).toBe(false);
-    expect(banner.dataset.homeScope).toBe('areas');
-
-    // The saved roster is rewritten into a blob nobody can vouch for whose
-    // `subHomes` happens to be empty. The snapshot survives (abandon-grace),
-    // so the scope claim behind the banner must survive with it — reading it
-    // as a vouched empty roster would hide the only warning naming the area.
-    client.__settingsStore[HOMES_CONFIG] = { activationVersion: 2, subHomes: [] };
-    homeyModule.invalidateSettingCache(HOMES_CONFIG);
-
-    capacity.notifyAreaSimulationSettingChanged(HOMES_CONFIG);
-    await flushAsync();
-
-    expect(uiState.state.meterAreaSimulation).toEqual([
-      { homeId: AREA_ID, name: 'Rental unit', simulating: true },
-    ]);
-    expect(banner.hidden).toBe(false);
-    expect(banner.dataset.homeScope).toBe('areas');
   });
 });

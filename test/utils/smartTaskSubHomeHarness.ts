@@ -9,7 +9,6 @@ import { expect } from 'vitest';
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { createApp } from './appTestUtils';
 import { DEVICE_HOME_ASSIGNMENTS, HOMES_CONFIG, MANAGED_DEVICES } from '../../lib/utils/settingsKeys';
-import { HOME_CONFIG_ACTIVATION_VERSION } from '../../lib/home/homeConfig';
 import type { DeferredObjectivePlanPreviewCandidate } from '../../lib/objectives/deferredObjectives';
 
 export const SUB_HOME_ZONES = {
@@ -71,7 +70,6 @@ export const initAppWithSubHome = async (
   const app = createApp({ withoutPowerMeasurement: true });
   await app.onInit();
   mockHomeyInstance.settings.set(HOMES_CONFIG, {
-    activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
     subHomes: [SUB_HOME],
   });
   mockHomeyInstance.settings.set(DEVICE_HOME_ASSIGNMENTS, { 'heater-sub': 'h_cabin' });

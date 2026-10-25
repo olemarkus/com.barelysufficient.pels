@@ -65,18 +65,8 @@ export type SubHomeConfig = {
   meterDeviceId: string | null;
 };
 
-/**
- * Positive acknowledgement that a persisted homes config may drive the GA
- * multi-home runtime. Pre-GA configs do not carry this field: when the retired
- * `multi_home_enabled` flag was false/absent they must remain inert across the
- * upgrade until an owner deliberately saves an area.
- */
-export const HOME_CONFIG_ACTIVATION_VERSION = 1 as const;
-
 /** The persisted multi-home configuration: sub-homes only (main is implicit). */
 export type HomeConfig = {
-  /** Present after an owner-authored GA upsert or the legacy-true boot migration. */
-  activationVersion?: typeof HOME_CONFIG_ACTIVATION_VERSION;
   subHomes: SubHomeConfig[];
 };
 
@@ -243,12 +233,7 @@ export const normalizeHomesConfig = (raw: unknown): HomeConfig => {
   const deduped = subHomes.filter(
     (subHome, index) => subHomes.findIndex((other) => other.homeId === subHome.homeId) === index,
   );
-  return {
-    ...(record?.activationVersion === HOME_CONFIG_ACTIVATION_VERSION
-      ? { activationVersion: HOME_CONFIG_ACTIVATION_VERSION }
-      : {}),
-    subHomes: deduped,
-  };
+  return { subHomes: deduped };
 };
 
 /**
@@ -294,10 +279,6 @@ const isPlausibleSubHomeEntry = (raw: unknown): boolean => {
 export const isPlausibleHomesConfigBlob = (raw: unknown): boolean => {
   const record = asUnknownRecord(raw);
   if (!record) return false;
-  if (
-    record.activationVersion !== undefined
-    && record.activationVersion !== HOME_CONFIG_ACTIVATION_VERSION
-  ) return false;
   const { subHomes } = record;
   if (!Array.isArray(subHomes) || !subHomes.every(isPlausibleSubHomeEntry)) return false;
   const homeIds = subHomes.flatMap((entry) => {

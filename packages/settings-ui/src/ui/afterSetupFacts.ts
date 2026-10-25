@@ -90,8 +90,7 @@ const resolveDevices = (
   const configuredDeviceIds = new Set(setup.configuredDeviceIds);
   const solarSurplusDeviceIds = new Set(setup.solarSurplusDeviceIds);
   return state.latestDevices
-    .filter((device) => !membership.runtimeActive
-      || (membership.membershipByDeviceId[device.id] ?? MAIN_HOME_ID) === MAIN_HOME_ID)
+    .filter((device) => (membership.membershipByDeviceId[device.id] ?? MAIN_HOME_ID) === MAIN_HOME_ID)
     .filter((device) => state.managedMap[device.id] === true)
     .map((device) => {
       const temperature = supportsTemperatureControlDevice(device);

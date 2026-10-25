@@ -3,9 +3,8 @@ import { isSimulationBannerSuppressedOnPanel } from '../src/ui/capacity.ts';
 import {
   mergeMeterAreaSimulation,
   readHomesConfigScope,
-  resolveActiveMeterAreas,
+  resolveSavedMeterAreas,
   resolveHasMeterAreas,
-  resolveRetainedScopeClaim,
 } from '../src/ui/meterAreaPosture.ts';
 import {
   resolveSimulationBannerContent,
@@ -41,7 +40,7 @@ describe('simulation posture resolution', () => {
     // An unknown (null) area is one nobody can vouch for: `all_live` would
     // silence the chip while it may simulate, `all_simulating` would
     // overclaim `On` while it may be live. The aggregate degrades to the
-    // cautious `mixed` until every active area has a resolved flag.
+    // cautious `mixed` until every area has a resolved flag.
     expect(resolveSimulationPosture({ mainSimulating: true, areaSimulating: [null] }))
       .toBe('mixed');
     expect(resolveSimulationPosture({ mainSimulating: false, areaSimulating: [null] }))
@@ -302,12 +301,11 @@ describe('meter-area roster classification', () => {
     expect(resolveHasMeterAreas({ status: 'unavailable' })).toBeNull();
   });
 
-  it('resolves active areas only from a GA-activated config', () => {
+  it('resolves the saved roster\'s areas', () => {
     // Meter absent, meter null, and meter set are all plausible shapes.
-    expect(resolveActiveMeterAreas({
+    expect(resolveSavedMeterAreas({
       status: 'resolved',
       config: {
-        activationVersion: 1,
         subHomes: [
           { homeId: 'h_rental', name: 'Rental unit', rootZoneId: 'z_rental' },
           { homeId: 'h_cabin', name: 'Cabin', rootZoneId: 'z_cabin', meterDeviceId: null },
@@ -323,24 +321,24 @@ describe('meter-area roster classification', () => {
         { homeId: 'h_annex', name: 'Annex' },
       ],
     });
+    // A config saved while the retired activation marker was written still
+    // carries `activationVersion: 1`; it resolves the same.
+    expect(resolveSavedMeterAreas({
+      status: 'resolved',
+      config: { activationVersion: 1, subHomes: [{ homeId: 'h_rental', name: 'Rental unit', rootZoneId: 'z_rental' }] },
+      initializedMarker: true,
+    })).toEqual({ status: 'resolved', areas: [{ homeId: 'h_rental', name: 'Rental unit' }] });
   });
 
-  it('resolves a held pre-GA config, and an absent one, to no active areas', () => {
-    // A held config's devices still belong to the Main home, so its flags
-    // must never enter the posture; a never-written config has no areas at
-    // all. Both are RESOLVED empties — legitimately clearing a snapshot —
-    // unlike the suspect reads below.
-    expect(resolveActiveMeterAreas({
-      status: 'resolved',
-      config: { subHomes: [{ homeId: 'h_rental', name: 'Rental unit', rootZoneId: 'z_rental' }] },
-      initializedMarker: true,
-    })).toEqual({ status: 'resolved', areas: [] });
-    expect(resolveActiveMeterAreas({
+  it('resolves an absent config to no areas', () => {
+    // A never-written config has no areas at all: a RESOLVED empty —
+    // legitimately clearing a snapshot — unlike the suspect reads below.
+    expect(resolveSavedMeterAreas({
       status: 'resolved',
       config: undefined,
       initializedMarker: undefined,
     })).toEqual({ status: 'resolved', areas: [] });
-    expect(resolveActiveMeterAreas({
+    expect(resolveSavedMeterAreas({
       status: 'resolved',
       config: null,
       initializedMarker: null,
@@ -355,7 +353,7 @@ describe('meter-area roster classification', () => {
     // naming a still-simulating area.
     for (const initializedMarker of [true, false, 'invalid', 1]) {
       for (const config of [null, undefined]) {
-        expect(resolveActiveMeterAreas({
+        expect(resolveSavedMeterAreas({
           status: 'resolved',
           config,
           initializedMarker,
@@ -398,9 +396,9 @@ describe('meter-area roster classification', () => {
       { homeId: 'h_reuse', name: 'Meter reuse', rootZoneId: 'z_b', meterDeviceId: 'dev_rental_meter' },
     ];
     for (const entry of implausibleEntries) {
-      expect(resolveActiveMeterAreas({
+      expect(resolveSavedMeterAreas({
         status: 'resolved',
-        config: { activationVersion: 1, subHomes: [intact, entry] },
+        config: { subHomes: [intact, entry] },
         initializedMarker: true,
       })).toEqual({ status: 'unavailable' });
     }
@@ -409,52 +407,17 @@ describe('meter-area roster classification', () => {
   it('classifies unavailable or malformed reads unavailable, never resolved-empty', () => {
     // Abandon-grace at the caller depends on this discrimination: a suspect
     // read keeps the last-good snapshot; only a RESOLVED empty clears it.
-    expect(resolveActiveMeterAreas({ status: 'unavailable' })).toEqual({ status: 'unavailable' });
-    expect(resolveActiveMeterAreas({
+    expect(resolveSavedMeterAreas({ status: 'unavailable' })).toEqual({ status: 'unavailable' });
+    expect(resolveSavedMeterAreas({
       status: 'resolved',
       config: ['not', 'a', 'record'],
       initializedMarker: true,
     })).toEqual({ status: 'unavailable' });
-    expect(resolveActiveMeterAreas({
+    expect(resolveSavedMeterAreas({
       status: 'resolved',
-      config: { activationVersion: 2, subHomes: [{ homeId: 'h_rental', name: 'Rental unit' }] },
+      config: { subHomes: 'invalid' },
       initializedMarker: true,
     })).toEqual({ status: 'unavailable' });
-    expect(resolveActiveMeterAreas({
-      status: 'resolved',
-      config: { activationVersion: 1, subHomes: 'invalid' },
-      initializedMarker: true,
-    })).toEqual({ status: 'unavailable' });
-  });
-
-  it('keeps the last-good scope claim when a suspect roster looks empty', () => {
-    // `{ activationVersion: 2, subHomes: [] }` is suspect wholesale, so its
-    // empty array must not resolve to the vouched "no meter areas" claim: the
-    // banner's no-areas branch would hide the area warning while the retained
-    // snapshot still names a simulating area.
-    const suspectEmpty: Parameters<typeof resolveRetainedScopeClaim>[1] = {
-      status: 'resolved',
-      config: { activationVersion: 2, subHomes: [] },
-      initializedMarker: true,
-    };
-    expect(resolveHasMeterAreas(suspectEmpty)).toBe(false);
-    expect(resolveActiveMeterAreas(suspectEmpty)).toEqual({ status: 'unavailable' });
-    expect(resolveRetainedScopeClaim(true, suspectEmpty)).toBe(true);
-    expect(resolveRetainedScopeClaim(null, suspectEmpty)).toBeNull();
-    // A single-home install that never had areas keeps its own claim, so the
-    // whole-home banner copy survives a suspect blob too.
-    expect(resolveRetainedScopeClaim(false, suspectEmpty)).toBe(false);
-  });
-
-  it('adopts every scope claim a suspect roster can still support', () => {
-    // Only `false` is withheld: `true` and `null` both keep the cautious
-    // Main-scoped copy, so adopting them can never overclaim.
-    expect(resolveRetainedScopeClaim(false, {
-      status: 'resolved',
-      config: { activationVersion: 2, subHomes: [{ homeId: 'h_rental' }] },
-      initializedMarker: true,
-    })).toBe(true);
-    expect(resolveRetainedScopeClaim(false, { status: 'unavailable' })).toBeNull();
   });
 
   it('classifies a thrown roster or marker read as unavailable', async () => {

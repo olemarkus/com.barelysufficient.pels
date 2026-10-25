@@ -116,7 +116,7 @@ export type AppServiceWiringDeps = {
   getModeDeviceTargets: () => Record<string, Record<string, number>>;
   resolveOperatingModeForDevice: Parameters<typeof createObservedTemperatureModeUpdates>[1];
   createHomeRuntimeRegistry: (
-    membership: Pick<HomeMembershipService, 'isSubHomeExecutionReady' | 'isRuntimeActive'>,
+    membership: Pick<HomeMembershipService, 'isSubHomeExecutionReady'>,
   ) => HomeRuntimeRegistry;
   handles: AppRuntimeHandles;
   /** The app's one-way teardown signal: tripped as the first edge of uninit. */
@@ -364,10 +364,9 @@ export class AppServiceWiring {
    */
   initHomeRuntimeRegistry(): void {
     const { handles } = this.deps;
-    // Lazy over the handle, so both answers fail closed once uninit clears it.
+    // Lazy over the handle, so the answer fails closed once uninit clears it.
     handles.homeRuntimeRegistry = this.deps.createHomeRuntimeRegistry({
       isSubHomeExecutionReady: () => handles.homeMembershipService?.isSubHomeExecutionReady() === true,
-      isRuntimeActive: () => handles.homeMembershipService?.isRuntimeActive() === true,
     });
     wirePlanStatusRealtime(this.deps.ctx);
   }

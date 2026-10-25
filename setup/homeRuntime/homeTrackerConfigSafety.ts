@@ -3,7 +3,6 @@ import {
   HOMES_CONFIG,
 } from '../../lib/utils/settingsKeys';
 import {
-  HOME_CONFIG_ACTIVATION_VERSION,
   HomeStoreWriteRefusedError,
   type HomeConfig,
   type HomesStore,
@@ -11,7 +10,11 @@ import {
 } from '../../lib/home/homeConfig';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { SettingsUiHomesSaveRequest } from '../../packages/contracts/src/settingsUiHomes';
-import { beginTrackerFreshnessReset, type TrackerFreshnessFailure } from '../../lib/power/trackerMeterIdentity';
+import {
+  beginTrackerFreshnessReset,
+  type TrackerFreshnessFailure,
+  type TrackerFreshnessReset,
+} from '../../lib/power/trackerMeterIdentity';
 import type { TrackerStore } from '../../lib/power/trackerStore';
 
 type AreaMutationRequest = Exclude<
@@ -85,20 +88,6 @@ const reportHomeTrackerConfigSafetyFailure = (params: {
   fallbackLogger.error(fields);
 };
 
-/** Compose the one homes-config value written for an owner-authored intent op. */
-export const buildHomesConfigWrite = (
-  request: AreaMutationRequest,
-  currentConfig: HomeConfig,
-  subHomes: SubHomeConfig[],
-): HomeConfig => {
-  const active = request.op === 'upsert'
-    || currentConfig.activationVersion === HOME_CONFIG_ACTIVATION_VERSION;
-  return {
-    ...(active ? { activationVersion: HOME_CONFIG_ACTIVATION_VERSION } : {}),
-    subHomes,
-  };
-};
-
 type HomesConfigWriteResult =
   | { state: 'committed' }
   | { state: 'invalid' }
@@ -114,14 +103,12 @@ type HomesConfigWriteResult =
  */
 const persistHomesConfigWrite = (params: {
   store: HomesStore;
-  request: AreaMutationRequest;
   currentConfig: HomeConfig;
   next: SubHomeConfig[];
   onFailure: ReportHomeTrackerConfigSafetyFailure;
 }): HomesConfigWriteResult => {
-  const intended = buildHomesConfigWrite(params.request, params.currentConfig, params.next);
   try {
-    params.store.write(intended);
+    params.store.write({ subHomes: params.next });
     return { state: 'committed' };
   } catch (error) {
     if (error instanceof HomeStoreWriteRefusedError) return { state: 'invalid' };
@@ -147,86 +134,46 @@ const persistHomesConfigWrite = (params: {
   }
 };
 
-const resolveFreshnessResetHomeIds = (
+// The one area whose meter or runtime identity the mutation changes: the
+// deleted area, or an upserted area that is new or reads another meter.
+const resolveFreshnessResetHomeId = (
   request: AreaMutationRequest,
   currentConfig: HomeConfig,
   next: readonly SubHomeConfig[],
-): string[] => {
-  const activationHomeIds = (
-    request.op === 'upsert'
-    && currentConfig.activationVersion !== HOME_CONFIG_ACTIVATION_VERSION
-  )
-    // This one write activates every EXISTING configured area, not only the
-    // edited one. A newly allocated area has no prior runtime freshness to
-    // reset, and a genuinely empty settings store must remain a valid create.
-    ? currentConfig.subHomes.map((home) => home.homeId)
-    : [];
+): string | null => {
   if (request.op === 'delete') {
-    return currentConfig.subHomes.some((home) => home.homeId === request.homeId)
-      ? [request.homeId]
-      : [];
+    return currentConfig.subHomes.some((home) => home.homeId === request.homeId) ? request.homeId : null;
   }
-  if (request.area.homeId === undefined) return activationHomeIds;
+  if (request.area.homeId === undefined) return null;
   const current = currentConfig.subHomes.find((home) => home.homeId === request.area.homeId);
   const updated = next.find((home) => home.homeId === request.area.homeId);
-  const upsertHomeIds = updated && (
-    current === undefined || current.meterDeviceId !== updated.meterDeviceId
-  )
-    ? [request.area.homeId]
-    : [];
-  return [...new Set([...activationHomeIds, ...upsertHomeIds])];
+  return updated && (current === undefined || current.meterDeviceId !== updated.meterDeviceId)
+    ? request.area.homeId
+    : null;
 };
 
 /**
- * Clear every freshness latch whose meter/runtime identity changes before the
- * corresponding whole-value homes config is committed. The returned rollback
- * restores all prior typed tracker states when the config adapter proves the
- * old config remained durable.
+ * Clear the freshness latch whose meter/runtime identity changes before the
+ * whole-value homes config is committed. The returned rollback restores the
+ * prior typed tracker state when the config adapter proves the old config
+ * remained durable.
  */
-type HomeTrackerFreshnessResetTransaction =
-  | { state: 'prepared'; rollback: () => boolean }
-  | { state: 'unavailable' };
-
-const runTrackerRollbacks = (
-  rollbacks: ReadonlyArray<() => boolean>,
-): boolean => {
-  let complete = true;
-  for (const rollback of rollbacks) {
-    if (!rollback()) complete = false;
-  }
-  return complete;
-};
-
 const beginHomeTrackerFreshnessResetBeforeConfigWrite = (params: {
   trackerStore: TrackerStore;
   request: AreaMutationRequest;
   currentConfig: HomeConfig;
   next: readonly SubHomeConfig[];
   onFailure: ReportHomeTrackerConfigSafetyFailure;
-}): HomeTrackerFreshnessResetTransaction => {
-  const {
-    trackerStore, request, currentConfig, next, onFailure,
-  } = params;
-  const homeIds = resolveFreshnessResetHomeIds(request, currentConfig, next);
-  let rollbacks: ReadonlyArray<() => boolean> = [];
-  for (const homeId of homeIds) {
-    const reset = beginTrackerFreshnessReset(trackerStore, homeId, undefined, onFailure);
-    if (reset.state === 'unavailable') {
-      runTrackerRollbacks(rollbacks);
-      return { state: 'unavailable' };
-    }
-    rollbacks = [reset.rollback, ...rollbacks];
-  }
-  return {
-    state: 'prepared',
-    rollback: () => runTrackerRollbacks(rollbacks),
-  };
+}): TrackerFreshnessReset => {
+  const homeId = resolveFreshnessResetHomeId(params.request, params.currentConfig, params.next);
+  if (homeId === null) return { state: 'prepared', rollback: () => true };
+  return beginTrackerFreshnessReset(params.trackerStore, homeId, undefined, params.onFailure);
 };
 
 /**
- * Commit one homes-config intent with its identity-bound tracker resets.
- * Known non-commits restore every prior tracker; uncertain writes retain the
- * fail-closed reset and surface only semantic `unavailable`.
+ * Commit one homes-config intent with its identity-bound tracker reset.
+ * A known non-commit restores the prior tracker; an uncertain write retains
+ * the fail-closed reset and surfaces only semantic `unavailable`.
  */
 export const commitHomesConfigWriteWithTrackerFreshnessReset = (params: {
   apiApp: unknown;

@@ -45,27 +45,7 @@ export const resolveHasMeterAreas = (read: HomesConfigScopeRead): boolean | null
   return Array.isArray(subHomes) ? subHomes.length > 0 : null;
 };
 
-/**
- * The scope claim to hold when the ROSTER read is unavailable. `false` — "this
- * install has no meter areas" — is a vouched claim only a resolved roster may
- * make. A suspect blob whose `subHomes` happens to be empty
- * (`{ activationVersion: 2, subHomes: [] }`) is unclassifiable WHOLESALE, yet
- * its empty array reads as a legitimate empty roster here and would send the
- * banner down its no-areas branch: with Main live that hides the one warning
- * naming the simulating area the caller's snapshot just retained, while the
- * hub chip keeps saying `Partly on` from that same snapshot. So a `false` off
- * a suspect read keeps the last-good claim instead. `true` and `null` are
- * adopted — both keep the cautious Main-scoped copy, so neither can overclaim.
- */
-export const resolveRetainedScopeClaim = (
-  lastGood: boolean | null,
-  read: HomesConfigScopeRead,
-): boolean | null => {
-  const claim = resolveHasMeterAreas(read);
-  return claim === false ? lastGood : claim;
-};
-
-export type ActiveMeterArea = { homeId: string; name: string };
+export type SavedMeterArea = { homeId: string; name: string };
 
 // Domain validity for an area id, mirroring the runtime's `isValidSubHomeId`
 // (duplicated at the architecture boundary — same rule set as homeScope.ts's
@@ -83,12 +63,12 @@ const isValidAreaId = (value: string): boolean => (
 // `isValidAreaId` above): a record with a valid area id, a string name, a
 // non-empty `rootZoneId`, and an absent-or-non-empty `meterDeviceId`. The
 // posture only displays id+name, but an entry malformed in ANY required
-// field marks the WHOLE roster unclassifiable — see `resolveActiveMeterAreas`.
+// field marks the WHOLE roster unclassifiable — see `resolveSavedMeterAreas`.
 // The meter identity is carried out (normalized to flat-null absence, the
 // runtime's shape) so the roster-level meter-uniqueness rule can see it.
 const asPlausibleAreaEntry = (
   raw: unknown,
-): (ActiveMeterArea & { meterDeviceId: string | null }) | null => {
+): (SavedMeterArea & { meterDeviceId: string | null }) | null => {
   if (!isUnknownRecord(raw)) return null;
   const { homeId, name, rootZoneId, meterDeviceId } = raw as {
     homeId?: unknown; name?: unknown; rootZoneId?: unknown; meterDeviceId?: unknown;
@@ -110,24 +90,24 @@ const asPlausibleAreaEntry = (
  * last-good snapshot (the abandon-grace convention, distinct from a RESOLVED
  * empty roster, which legitimately clears it).
  */
-export type ActiveMeterAreasRead = {
+export type SavedMeterAreasRead = {
   status: 'resolved';
-  areas: ActiveMeterArea[];
+  areas: SavedMeterArea[];
 } | {
   status: 'unavailable';
 };
 
-const UNAVAILABLE_ROSTER: ActiveMeterAreasRead = { status: 'unavailable' };
+const UNAVAILABLE_ROSTER: SavedMeterAreasRead = { status: 'unavailable' };
 
 /**
  * The roster entries, or `null` when the saved list is unclassifiable
  * WHOLESALE: one implausible entry, a duplicate area id, or one meter routed
  * into two areas (the runtime's `hasUniqueSubHomeMeters`). Split out of
- * `resolveActiveMeterAreas` to keep that classifier under its complexity
+ * `resolveSavedMeterAreas` to keep that classifier under its complexity
  * budget; it carries no policy of its own.
  */
-const resolveRosterEntries = (subHomes: readonly unknown[]): ActiveMeterArea[] | null => {
-  const resolved: ActiveMeterArea[] = [];
+const resolveRosterEntries = (subHomes: readonly unknown[]): SavedMeterArea[] | null => {
+  const resolved: SavedMeterArea[] = [];
   const seenHomeIds = new Set<string>();
   const assignedMeterIds = new Set<string>();
   for (const entry of subHomes) {
@@ -144,11 +124,8 @@ const resolveRosterEntries = (subHomes: readonly unknown[]): ActiveMeterArea[] |
 };
 
 /**
- * The GA-activated meter areas in the saved roster. A held pre-GA config
- * (plausible, but no `activationVersion`) RESOLVES to none: its devices still
- * belong to the Main home, so its per-area flags must not enter the
- * simulation posture. A config absent with NO written-before marker resolves
- * to none the same way — a fresh install that never had a roster. Suspect
+ * The meter areas in the saved roster. A config absent with NO written-before
+ * marker resolves to none — a fresh install that never had a roster. Suspect
  * state is `unavailable` instead — a marker-backed absence (written before,
  * but the blob read back missing: the runtime store's own `'suspect'`), one
  * implausible entry, a duplicate area id, or a meter shared across areas
@@ -158,7 +135,7 @@ const resolveRosterEntries = (subHomes: readonly unknown[]): ActiveMeterArea[] |
  * drops an area from the simulation posture, nor wipe the last-good snapshot
  * the caller holds.
  */
-export const resolveActiveMeterAreas = (read: HomesConfigScopeRead): ActiveMeterAreasRead => {
+export const resolveSavedMeterAreas = (read: HomesConfigScopeRead): SavedMeterAreasRead => {
   if (read.status === 'unavailable') return UNAVAILABLE_ROSTER;
   const { config, initializedMarker } = read;
   if (config === null || config === undefined) {
@@ -171,12 +148,11 @@ export const resolveActiveMeterAreas = (read: HomesConfigScopeRead): ActiveMeter
     return markerAbsent ? { status: 'resolved', areas: [] } : UNAVAILABLE_ROSTER;
   }
   if (!isUnknownRecord(config)) return UNAVAILABLE_ROSTER;
-  const { activationVersion, subHomes } = config as { activationVersion?: unknown; subHomes?: unknown };
-  if (activationVersion !== undefined && activationVersion !== 1) return UNAVAILABLE_ROSTER;
+  const { subHomes } = config as { subHomes?: unknown };
   if (!Array.isArray(subHomes)) return UNAVAILABLE_ROSTER;
   const resolved = resolveRosterEntries(subHomes);
   if (resolved === null) return UNAVAILABLE_ROSTER;
-  return { status: 'resolved', areas: activationVersion === 1 ? resolved : [] };
+  return { status: 'resolved', areas: resolved };
 };
 
 export const readHomesConfigScope = async (
@@ -286,7 +262,7 @@ export const readAreaSimulationFlag = async (homeId: string): Promise<AreaSimula
  * `homeId` so a rename keeps its last-good value while adopting the new name.
  */
 export const mergeMeterAreaSimulation = (
-  activeAreas: readonly ActiveMeterArea[],
+  activeAreas: readonly SavedMeterArea[],
   flags: ReadonlyArray<AreaSimulationFlagRead>,
   previous: readonly MeterAreaSimulationEntry[],
 ): MeterAreaSimulationEntry[] => activeAreas.map((area, index) => {

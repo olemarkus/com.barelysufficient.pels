@@ -30,7 +30,7 @@ import {
   commitHomesConfigWriteWithTrackerFreshnessReset,
   resolveApiLoggerProvider,
 } from './homeRuntime/homeTrackerConfigSafety';
-import { savePowerSourceSelection, type MultiHomeActivationRead } from './homeMeterOwnership';
+import { savePowerSourceSelection } from './homeMeterOwnership';
 
 type HomesApiContext = {
   homey: Homey.App['homey'];
@@ -69,29 +69,6 @@ const isHomesConfigDegraded = (diagnostics: HomeMembershipDiagnostics | undefine
   diagnostics === undefined || diagnostics.configDegraded
 );
 
-// The membership service's LATCHED activation posture, forwarded as a typed
-// semantic result. It resolved the retired legacy flag once at wiring time and
-// its diagnostics contract forbids consumers re-reading it.
-//
-// Resolved ONLY from a snapshot the service can vouch for, which is exactly the
-// condition `isHomesConfigDegraded` reports and the area write refuses on. A
-// degraded snapshot's `runtimeActive` is not an answer: `refreshStoreCaches`
-// leaves the field at its previous value on a suspect homes-store read, so a
-// service whose recompute never adopted a config still reports the initial
-// `false`. Reading that as "areas are not running" while `saveMainMeterSelection`
-// re-reads a recovered, activated config would let Automatic persist moments
-// before the runtime reactivates those areas. Sharing the predicate also pulls
-// in the pins-store arm, which activation does not depend on; that is accepted
-// so there is ONE degraded condition, and it only ever errs toward "try again".
-// (The `undefined` arm is what narrows for the compiler; the predicate covers it.)
-const readMultiHomeActivation = (homey: Homey.App['homey']): MultiHomeActivationRead => {
-  const diagnostics = getHomeMembership(homey)?.getDiagnostics();
-  if (diagnostics === undefined || isHomesConfigDegraded(diagnostics)) {
-    return { state: 'unavailable' };
-  }
-  return { state: 'resolved', runtimeActive: diagnostics.runtimeActive };
-};
-
 /**
  * Display-side mirror of the runtime's Main-meter ownership check (the
  * configured-selection clause of `homeMainMeterAuthority`). Reports a clash
@@ -109,10 +86,9 @@ const readMultiHomeActivation = (homey: Homey.App['homey']): MultiHomeActivation
 const resolveMainMeterConflictAreaName = (
   homey: Homey.App['homey'],
   subHomes: readonly SubHomeConfig[],
-  runtimeActive: boolean,
   configDegraded: boolean,
 ): string | null => {
-  if (configDegraded || !runtimeActive || subHomes.length === 0) return null;
+  if (configDegraded || subHomes.length === 0) return null;
   const powerSource = readConfiguredPowerSource(homey.settings);
   if (powerSource.state !== 'resolved' || powerSource.value !== 'homey_energy') return null;
   const selection = readMainMeterSelection(homey.settings);
@@ -132,7 +108,7 @@ export const getSettingsUiHomesPayload = ({ homey }: HomesApiContext): SettingsU
       // Boot window: nothing can vouch for the persisted config, so the
       // payload is the empty single-home shape AND degraded — the UI must not
       // compose a whole-value homes_config write from this view.
-      homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false, runtimeActive: false,
+      homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false,
       configDegraded: true,
       // Nothing can vouch for the config in the boot window, so claim no clash
       // rather than assert one from an empty view.
@@ -147,12 +123,10 @@ export const getSettingsUiHomesPayload = ({ homey }: HomesApiContext): SettingsU
     membershipByDeviceId: { ...diagnostics.membershipByDeviceId },
     zoneTree: diagnostics.zoneTree === null ? null : { ...diagnostics.zoneTree },
     hasSubHomes: diagnostics.hasSubHomes,
-    runtimeActive: diagnostics.runtimeActive,
     configDegraded: isHomesConfigDegraded(diagnostics),
     mainMeterConflictAreaName: resolveMainMeterConflictAreaName(
       homey,
       diagnostics.subHomes,
-      diagnostics.runtimeActive,
       isHomesConfigDegraded(diagnostics),
     ),
   };
@@ -303,7 +277,7 @@ const routeHomesSaveRequest = (
   request: SettingsUiHomesSaveRequest,
 ): SettingsUiHomesSaveResponse => {
   if (request.op === 'set_power_source') {
-    return savePowerSourceSelection(homey, request, readMultiHomeActivation(homey));
+    return savePowerSourceSelection(homey, request);
   }
   return saveAreaMutation(homey, request);
 };

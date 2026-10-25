@@ -63,7 +63,6 @@ const emptyPayload = (): SettingsUiHomesPayload => ({
     z2: { id: 'z2', name: 'Annex', parent: 'z1' },
   },
   hasSubHomes: false,
-  runtimeActive: false,
   configDegraded: false,
   mainMeterConflictAreaName: null,
 });

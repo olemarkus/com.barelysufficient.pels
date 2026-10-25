@@ -38,7 +38,6 @@ export type OwnershipGenerationRuntime = {
 export type WireHomeMembershipOptions = {
   onOwnershipReadyBeforePlanWork?: (allowPendingOwnershipGeneration: boolean) => void;
   onZoneTreeCommitReady?: () => void;
-  onRuntimeActiveChanged?: (runtimeActive: boolean) => void;
   onSubHomeMembershipChanged?: () => boolean;
   ownershipGenerationRuntime?: OwnershipGenerationRuntime;
 };
@@ -471,7 +470,7 @@ const createMainOwnershipRecovery = (
  * target snapshot. Runs after `initDeviceManager` so the recompute triggers
  * ride the transport-owned notification seams; zone-tree and device reads are
  * lazy closures, so an unpopulated transport resolves fail-safe. `lib/home`
- * owns the settings stores and legacy activation migration. The control path
+ * owns the settings stores. The control path
  * consumes membership through `filterDevicesForHome` — main's plan input
  * (`setup/homeRuntime/homeScope.ts`) and the sample-pipeline snapshot view
  * (`setup/homeRuntime/createHomePowerPipeline.ts`).
@@ -489,7 +488,6 @@ export const wireHomeMembership = (
   const {
     onOwnershipReadyBeforePlanWork,
     onZoneTreeCommitReady,
-    onRuntimeActiveChanged,
     onSubHomeMembershipChanged,
     ownershipGenerationRuntime,
   } = options;
@@ -507,7 +505,6 @@ export const wireHomeMembership = (
     }),
     subscribeToObservedStateRefresh,
     onZoneTreeCommitReady,
-    onRuntimeActiveChanged,
     onMainOwnershipReady: recovery.applyNow,
     onMainAuthorityUnresolved: recovery.schedule,
     // A repaired sampled-meter fence still leaves a committed plan derived

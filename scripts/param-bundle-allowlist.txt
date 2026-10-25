@@ -128,7 +128,6 @@ packages/settings-ui/src/ui/views/DeadlinePlan.tsx 5
 packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx 6
 packages/settings-ui/src/ui/views/DeadlinesHistoryList.tsx 1
 packages/settings-ui/src/ui/views/ElectricityPricesView.tsx 1
-packages/settings-ui/src/ui/views/HomeLimitsSection.tsx 1
 packages/settings-ui/src/ui/views/HomesSettingsSection.tsx 3
 packages/settings-ui/src/ui/views/PlanDeviceCards.tsx 5
 packages/settings-ui/src/ui/views/PlanHero.tsx 3

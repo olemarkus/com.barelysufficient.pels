@@ -79,12 +79,6 @@ export type MainMeterAuthorityDeps = {
   onSampledAuthorityReopened?: () => void;
 };
 
-/** The membership state each resolution is evaluated against. */
-export type MainMeterAuthorityContext = {
-  runtimeActive: boolean;
-  subHomes: readonly SubHomeConfig[];
-};
-
 export type ConfiguredMeterSources =
   | { state: 'resolved'; deviceIds: ReadonlySet<string> }
   | { state: 'unavailable'; deviceIds: ReadonlySet<string> };
@@ -159,10 +153,10 @@ export class MainMeterAuthority {
   noteResolvedHomeMeter(
     deviceId: string,
     sampleAtMs: number,
-    ctx: MainMeterAuthorityContext,
+    subHomes: readonly SubHomeConfig[],
   ): void {
     this.deps.sampledMeterIdentity.note(deviceId, sampleAtMs);
-    if (this.hasSampledFence(ctx)) {
+    if (this.hasSampledFence(subHomes)) {
       this.sampledFenceEpisode = true;
       return;
     }
@@ -226,11 +220,11 @@ export class MainMeterAuthority {
    *   the sampled clause, so the write seam is closed anyway and an episode
    *   latched here records a real reconcile debt.
    */
-  private hasSampledFence(ctx: MainMeterAuthorityContext): boolean {
-    if (!ctx.runtimeActive || ctx.subHomes.length === 0) return false;
+  private hasSampledFence(subHomes: readonly SubHomeConfig[]): boolean {
+    if (subHomes.length === 0) return false;
     if (this.lastResolvedPowerSource !== 'homey_energy') return false;
     if (this.lastResolvedMainMeterDeviceId === undefined) return false;
-    return this.sampledFence(ctx) !== null;
+    return this.sampledFence(subHomes) !== null;
   }
 
   /**
@@ -241,13 +235,13 @@ export class MainMeterAuthority {
    * ingest hands it to fresh-plan recovery. This holds for the restart window
    * too: a sample already expired at boot never starts an episode.
    */
-  private sampledFence(ctx: MainMeterAuthorityContext): SampledFence | null {
+  private sampledFence(subHomes: readonly SubHomeConfig[]): SampledFence | null {
     const provenance = this.deps.sampledMeterIdentity.resolveFor(Date.now());
     if (provenance.state === 'unknown') return null;
     if (provenance.state === 'unattributable') {
       return { reason: 'unattributable_restored_sample' };
     }
-    const collision = findMainMeterCollision(provenance.deviceId, ctx.subHomes);
+    const collision = findMainMeterCollision(provenance.deviceId, subHomes);
     return collision === null ? null : {
       reason: 'meter_area_collision',
       meterDeviceId: provenance.deviceId,
@@ -256,17 +250,17 @@ export class MainMeterAuthority {
   }
 
   /** Authority for membership bookkeeping: configured inputs only. */
-  resolveForCommit(ctx: MainMeterAuthorityContext): MainMeterAuthorityState {
-    return this.resolve(ctx, false);
+  resolveForCommit(subHomes: readonly SubHomeConfig[]): MainMeterAuthorityState {
+    return this.resolve(subHomes, false);
   }
 
   /** Authority for the final write seam: configured inputs plus what was sampled. */
-  resolveForActuation(ctx: MainMeterAuthorityContext): MainMeterAuthorityState {
-    return this.resolve(ctx, true);
+  resolveForActuation(subHomes: readonly SubHomeConfig[]): MainMeterAuthorityState {
+    return this.resolve(subHomes, true);
   }
 
   private resolve(
-    ctx: MainMeterAuthorityContext,
+    subHomes: readonly SubHomeConfig[],
     includeSampled: boolean,
   ): MainMeterAuthorityState {
     const powerSource = this.readActiveMeterPowerSource();
@@ -281,8 +275,8 @@ export class MainMeterAuthority {
       // check observed it. Keep that episode fenced until the first admitted
       // Flow sample settles it and the wiring takes over with a fresh-plan
       // ownership generation.
-      if (!includeSampled || !ctx.runtimeActive || ctx.subHomes.length === 0) return 'ready';
-      return this.resolveSampled(ctx);
+      if (!includeSampled || subHomes.length === 0) return 'ready';
+      return this.resolveSampled(subHomes);
     }
     const selection = this.readMainMeterSelection();
     // A read that could not be trusted is worth asking again; a meter the owner
@@ -292,12 +286,12 @@ export class MainMeterAuthority {
     // re-opens this seam, so nothing is waiting on a poll.
     if (selection.state === 'unavailable') return 'retry';
     if (selection.state === 'unconfigured') return 'blocked';
-    if (!ctx.runtimeActive || ctx.subHomes.length === 0) {
+    if (subHomes.length === 0) {
       this.mainMeterCollisionLogged = false;
       this.loggedSampledFenceReason = null;
       return 'ready';
     }
-    const configured = findMainMeterCollision(selection.meterDeviceId, ctx.subHomes);
+    const configured = findMainMeterCollision(selection.meterDeviceId, subHomes);
     if (configured !== null && !this.mainMeterCollisionLogged) {
       this.deps.getLogger().warn({
         event: 'main_home_meter_ownership_conflict',
@@ -321,7 +315,7 @@ export class MainMeterAuthority {
     // seam reopens only when a sample admitted under the new selection proves
     // the tracker serves safe watts. Provenance expiry alone cannot actuate a
     // shed already committed behind the fence.
-    return this.resolveSampled(ctx);
+    return this.resolveSampled(subHomes);
   }
 
   /**
@@ -346,8 +340,8 @@ export class MainMeterAuthority {
    * the restored sample stops being able to reach a decision — so fail closed
    * rather than authorize Main against watts nobody can vouch for.
    */
-  private resolveSampled(ctx: MainMeterAuthorityContext): MainMeterAuthorityState {
-    const fence = this.sampledFence(ctx);
+  private resolveSampled(subHomes: readonly SubHomeConfig[]): MainMeterAuthorityState {
+    const fence = this.sampledFence(subHomes);
     this.logSampledFenceEdge(fence);
     // The episode latch is also an actuation fence. Sample expiry stops new
     // plans from trusting the watts, but it does not remove an already
@@ -388,10 +382,10 @@ export class MainMeterAuthority {
    * outside its area's zone may resolve to Main, but it remains a source device
    * and must never enter any home's controllable set.
    */
-  getConfiguredMeterSources(ctx: MainMeterAuthorityContext): ConfiguredMeterSources {
+  getConfiguredMeterSources(subHomes: readonly SubHomeConfig[]): ConfiguredMeterSources {
     const powerSource = this.readActiveMeterPowerSource();
     if (powerSource === 'unavailable') {
-      return { state: 'unavailable', deviceIds: this.knownConfiguredMeterDeviceIds(ctx) };
+      return { state: 'unavailable', deviceIds: this.knownConfiguredMeterDeviceIds(subHomes) };
     }
     if (powerSource === 'flow') return { state: 'resolved', deviceIds: new Set() };
     const mainSelection = this.readMainMeterSelection();
@@ -401,17 +395,15 @@ export class MainMeterAuthority {
     // plan rather than risk commanding a device that is really a meter.
     return {
       state: mainSelection.state === 'resolved' ? 'resolved' : 'unavailable',
-      deviceIds: this.knownConfiguredMeterDeviceIds(ctx),
+      deviceIds: this.knownConfiguredMeterDeviceIds(subHomes),
     };
   }
 
-  private knownConfiguredMeterDeviceIds(ctx: MainMeterAuthorityContext): ReadonlySet<string> {
+  private knownConfiguredMeterDeviceIds(subHomes: readonly SubHomeConfig[]): ReadonlySet<string> {
     const main = this.lastResolvedMainMeterDeviceId;
     return new Set([
       ...(main === undefined ? [] : [main]),
-      ...(ctx.runtimeActive
-        ? ctx.subHomes.flatMap((home) => (home.meterDeviceId === null ? [] : [home.meterDeviceId]))
-        : []),
+      ...subHomes.flatMap((home) => (home.meterDeviceId === null ? [] : [home.meterDeviceId])),
     ]);
   }
 

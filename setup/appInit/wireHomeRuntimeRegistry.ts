@@ -23,7 +23,7 @@ import { emitPlanStatusPublishedForApp } from '../settingsUiAppRuntime';
 export const createHomeRuntimeRegistryForApp = (
   ctx: AppContext,
   homeModeCatalog: HomeModeCatalog,
-  membership: Pick<HomeMembershipService, 'isSubHomeExecutionReady' | 'isRuntimeActive'>,
+  membership: Pick<HomeMembershipService, 'isSubHomeExecutionReady'>,
 ): HomeRuntimeRegistry => {
   const registry = createHomeRuntimeRegistry(
     ctx,

@@ -50,7 +50,6 @@ const seedMeterAreaBeforeBoot = async (page: Page): Promise<void> => {
         power_source: 'homey_energy',
         capacity_dry_run: true,
         homes_config: {
-          activationVersion: 1,
           subHomes: [{
             homeId: 'h_11111111',
             name: 'Rental unit',

@@ -2,7 +2,6 @@ import { expect, test, type Page } from './fixtures/test';
 import {
   gotoApp,
   installRentalMeterDeviceList,
-  seedHeldRentalArea,
   seedRentalArea,
   pickHomeScope,
   seedRentalMeterSnapshot,
@@ -289,7 +288,6 @@ test('Main simulation banner stays truthful while a meter area actively controls
         capacity_dry_run: true,
         'capacity_dry_run:h_11111111': false,
         homes_config: {
-          activationVersion: 1,
           subHomes: [{
             homeId: 'h_11111111',
             name: 'Rental unit',
@@ -370,7 +368,6 @@ test('simulation banner keeps a conservative scope across transient and realtime
       };
     }).Homey.__stub;
     stub.setSetting('homes_config', {
-      activationVersion: 1,
       subHomes: [{
         homeId: 'h_11111111',
         name: 'Rental unit',
@@ -391,7 +388,7 @@ test('simulation banner keeps a conservative scope across transient and realtime
         };
       };
     }).Homey.__stub;
-    stub.setSetting('homes_config', { activationVersion: 1, subHomes: [] });
+    stub.setSetting('homes_config', { subHomes: [] });
     stub.emitSettingsSet('homes_config');
   });
   await expect(banner).toContainText('Simulation on — devices stay as-is');
@@ -453,34 +450,6 @@ test('a simulating area surfaces on the global banner while Main is live, until 
   await expect.poll(() => readStubSetting(page, `capacity_dry_run:${AREA_ID}`)).toBe(false);
   await expect(banner).toBeHidden();
   await expect(chip).toHaveJSProperty('hidden', true);
-});
-
-test('a held pre-GA meter area cannot claim active control or stale live power', async ({ page }) => {
-  await installRentalMeterDeviceList(page);
-  await gotoApp(page);
-  await seedRentalMeterSnapshot(page);
-  await seedHeldRentalArea(page);
-  await seedStubSetting(page, `capacity_dry_run:${AREA_ID}`, false);
-  await seedStubSetting(page, `power_tracker_state:${AREA_ID}`, { lastPowerW: 4000, lastTimestamp: Date.now() });
-  await seedStubSetting(page, `pels_status:${AREA_ID}`, {
-    controlledKw: 2.5,
-    uncontrolledKw: 1.5,
-    powerKnown: true,
-    devicesOff: 0,
-    limitReason: 'none',
-  });
-  await openLimitsPanel(page);
-  await pickHomeScope(page, AREA_ID);
-
-  const control = page.locator('#home-limits-simulation-switch');
-  // Material's custom element owns disabled semantics inside its shadow root;
-  // pin the reflected property/attribute instead of native-form detection.
-  await expect(control).toHaveAttribute('disabled', '');
-  await expect(control).toHaveJSProperty('selected', false);
-  await expect(page.locator('#home-limits-status-chip')).toHaveText('Not active');
-  await expect(page.locator('#home-limits-status-power')).toHaveText('—');
-  await expect(page.locator('#home-limits-inactive-notice'))
-    .toContainText('open Multiple meters and save this area');
 });
 
 test('a device pin overrides zone membership in a scoped devices read', async ({ page }) => {

@@ -62,7 +62,7 @@ describe('lastControlledStore', () => {
     settings = new MockSettings();
     // A real install never has an empty key list here: the boot migrations
     // set their markers first.
-    settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
+    settings.set('boot_migrations_v2_unusable_stepped_config_repaired', true);
     ({ repository } = open());
     timers = new TimerRegistry();
   });

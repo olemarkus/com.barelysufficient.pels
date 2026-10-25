@@ -43,7 +43,6 @@ const HOMES_PAYLOAD = {
   },
   zoneTree: null,
   hasSubHomes: true,
-  runtimeActive: true,
   configDegraded: false,
 };
 
@@ -157,8 +156,7 @@ describe('device-detail honest states for a meter-area device', () => {
 
 describe('Simulation-mode page scope note (multi-home honest states)', () => {
   const AREA_FLAG_KEY = `${CAPACITY_DRY_RUN}:${RENTAL}`;
-  const ACTIVATED_ROSTER = {
-    activationVersion: 1,
+  const SAVED_ROSTER = {
     subHomes: [{ homeId: RENTAL, name: 'Rental unit', rootZoneId: 'z_rental' }],
   };
 
@@ -180,11 +178,11 @@ describe('Simulation-mode page scope note (multi-home honest states)', () => {
     vi.clearAllMocks();
   });
 
-  it('un-hides the note naming the per-area control once an active meter area exists', async () => {
+  it('un-hides the note naming the per-area control once a meter area exists', async () => {
     buildSimulationDom();
     const homey = installHomeyMock({
       settings: {
-        [HOMES_CONFIG]: ACTIVATED_ROSTER,
+        [HOMES_CONFIG]: SAVED_ROSTER,
         [HOMES_CONFIG_INITIALIZED]: true,
         [AREA_FLAG_KEY]: true,
       },

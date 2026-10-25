@@ -28,8 +28,8 @@
  * gap; a zero is never fabricated.
  *
  * The registry owns its state and every transition over it: the bundle map,
- * the recovery retry backoff, the stop latch, the activation bookkeeping and
- * the prepared ownership samples. Home imports no other domain, so what it
+ * the recovery retry backoff, the stop latch and the prepared ownership
+ * samples. Home imports no other domain, so what it
  * cannot name arrives as ports: each area's bundle is composed by the wiring
  * (`setup/homeRuntime/homeRuntimeRegistry.ts`) from the plan, power and price
  * factories, and the power owner's source-epoch fence
@@ -159,12 +159,10 @@ export type SubHomeBundleFactory<THooks> = {
    * prepared; the registry keeps the old runtime fenced and retries.
    */
   create(home: SubHomeConfig, powerSource: PowerSource): SubHomeBundle<THooks>;
-  /** Clear a dormant area's persisted meter freshness before its activation; false = retry. */
-  resetDormantTrackerFreshness(homeId: HomeId): boolean;
 };
 
 /** What the registry reads from membership; `HomeMembershipService` satisfies it. */
-type SubHomeRegistryMembership = Pick<HomeMembershipService, 'isRuntimeActive' | 'getHomeIdForDevice'>;
+type SubHomeRegistryMembership = Pick<HomeMembershipService, 'getHomeIdForDevice'>;
 
 /**
  * The power owner's source-epoch fence (`lib/power/powerSourceEpochFence.ts`),
@@ -196,8 +194,6 @@ export class HomeRuntimeRegistry<THooks> implements HomeRuntimeReadPort {
   private readonly bundles = new Map<HomeId, SubHomeBundle<THooks>>();
   private recoveryRetryAttempt = 0;
   private stopped = false;
-  private handledRuntimeActive: boolean;
-  private readonly activationResetHomeIds = new Set<HomeId>();
   private readonly preparedOwnershipSamples = new Map<HomeId, {
     bundle: SubHomeBundle<THooks>;
     sampleRevision: number;
@@ -217,9 +213,7 @@ export class HomeRuntimeRegistry<THooks> implements HomeRuntimeReadPort {
     private readonly sourceEpoch: MeterSourceEpoch,
     private readonly timers: TimerRegistry,
     private readonly getLogger: () => PinoLogger,
-  ) {
-    this.handledRuntimeActive = membership.isRuntimeActive();
-  }
+  ) {}
 
   getLiveBundles(): SubHomeBundle<THooks>[] {
     return [...this.bundles.values()].filter((bundle) => !bundle.isTornDown());
@@ -320,20 +314,7 @@ export class HomeRuntimeRegistry<THooks> implements HomeRuntimeReadPort {
       this.scheduleRecoveryRetry();
       return false;
     }
-    const runtimeActive = this.membership.isRuntimeActive();
-    const desired: readonly SubHomeConfig[] = read.state === 'present'
-      && runtimeActive
-      ? read.value.subHomes
-      : [];
-    if (!runtimeActive) this.activationResetHomeIds.clear();
-    if (
-      runtimeActive
-      && !this.handledRuntimeActive
-      && !this.resetDormantTrackerFreshness(desired)
-    ) {
-      this.scheduleRecoveryRetry();
-      return false;
-    }
+    const desired: readonly SubHomeConfig[] = read.state === 'present' ? read.value.subHomes : [];
     const desiredIds = new Set(desired.map((home) => home.homeId));
     let complete = this.removeUndesiredBundles(desiredIds);
     for (const home of desired) {
@@ -345,8 +326,6 @@ export class HomeRuntimeRegistry<THooks> implements HomeRuntimeReadPort {
       options.deferModeOwnershipTransfer === true,
     );
     if (complete) {
-      this.handledRuntimeActive = runtimeActive;
-      this.activationResetHomeIds.clear();
       this.clearRecoveryRetry();
     } else {
       this.scheduleRecoveryRetry();
@@ -613,15 +592,6 @@ export class HomeRuntimeRegistry<THooks> implements HomeRuntimeReadPort {
     this.preparedOwnershipSamples.clear();
     for (const bundle of this.bundles.values()) bundle.teardown();
     this.bundles.clear();
-  }
-
-  private resetDormantTrackerFreshness(homes: readonly SubHomeConfig[]): boolean {
-    for (const home of homes) {
-      if (this.activationResetHomeIds.has(home.homeId)) continue;
-      if (!this.bundleFactory.resetDormantTrackerFreshness(home.homeId)) return false;
-      this.activationResetHomeIds.add(home.homeId);
-    }
-    return true;
   }
 
   private completeObservedPowerSourceTransition(): boolean {

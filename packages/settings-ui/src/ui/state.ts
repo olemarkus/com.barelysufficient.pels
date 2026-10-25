@@ -150,7 +150,7 @@ export type UiState = {
   // payload; only reporting chargers are keys. Read once, when the owner turns
   // Managed on, to pick a starting control mode (`applyManagedOptInControlMode`).
   chargerPhasePresets: ChargerPhasePresets;
-  // One entry per ACTIVE meter area (maintained by capacity.ts's roster+flag
+  // One entry per meter area (maintained by capacity.ts's roster+flag
   // refresh). `simulating` is the area's resolved `capacity_dry_run:<homeId>`
   // flag; `null` = no resolved value this session — a transient read miss or a
   // malformed persisted value with nothing last-good to keep (the refresh
@@ -161,7 +161,7 @@ export type UiState = {
   meterAreaSimulation: MeterAreaSimulationEntry[];
 };
 
-// The posture snapshot entry for one ACTIVE meter area. Keyed by `homeId` so
+// The posture snapshot entry for one meter area. Keyed by `homeId` so
 // a refresh can match an area across renames when it keeps last-good values.
 export type MeterAreaSimulationEntry = {
   homeId: string;

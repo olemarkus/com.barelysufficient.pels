@@ -94,7 +94,6 @@ const makeMembershipService = (
     getLogger: () => testLogger,
     getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: mainMeterDeviceId }),
     getConfiguredPowerSource: () => ({ state: 'resolved', value: powerSource }),
-    legacyMultiHomeEnabled: true,
   });
   service.recompute();
   return service;
@@ -158,7 +157,6 @@ describe('filterDevicesForHome identity guard', () => {
       getLogger: () => testLogger,
       getMainMeterSelection,
       getConfiguredPowerSource: () => ({ state: 'resolved', value: 'flow' }),
-      legacyMultiHomeEnabled: true,
     });
     service.recompute();
     const devices = [mainDevice, subDevice];
@@ -187,7 +185,6 @@ describe('filterDevicesForHome identity guard', () => {
         reason: 'read_failed',
         error: new Error('transient settings read failure'),
       }),
-      legacyMultiHomeEnabled: true,
       onMainAuthorityUnresolved,
     });
     service.recompute();
@@ -219,7 +216,6 @@ describe('filterDevicesForHome identity guard', () => {
       getDevices: () => membershipInputs,
       getLogger: () => testLogger,
       getMainMeterSelection: () => selection,
-      legacyMultiHomeEnabled: true,
     });
     service.recompute();
     const devices = [mainDevice, subDevice];

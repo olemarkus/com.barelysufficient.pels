@@ -4,7 +4,7 @@ Design-of-record for the R5 slice of the multi-home train — the first
 behavior-affecting membership consumer. Documents what ships in
 `feat(plan): main plan input becomes the membership complement`, not the
 per-home bundles that follow. For the full v1 model (home identity, suffix
-scheme, per-home bundles, upgrade activation containment) see
+scheme, per-home bundles) see
 [multi-home-model](multi-home-model.md).
 
 ## Rule of record

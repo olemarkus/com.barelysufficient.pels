@@ -19,11 +19,6 @@ import { asUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
  * has no home field and its render is synchronous. Membership therefore
  * arrives out of band from `ui_homes` and is retained as a resolved index.
  * Modes uses `homeScope.ts` instead because it intentionally filters by owner.
- *
- * Gated on `runtimeActive`: `ui_homes` diagnostics describe SAVED configuration
- * even while the control port is held all-main (a pre-GA config the owner has
- * not re-saved). `getHomeIdForDevice` returns Main for every device in that
- * posture, so badging areas would state something the runtime is not doing.
  */
 
 type HomeBadgeIndex = {
@@ -33,7 +28,7 @@ type HomeBadgeIndex = {
   areaHomeIdByDeviceId: Record<string, string>;
 };
 
-/** No active meter area ⇒ no badges at all (the single-home install). */
+/** No meter area ⇒ no badges at all (the single-home install). */
 const NO_BADGES: HomeBadgeIndex = { areaNameByHomeId: {}, areaHomeIdByDeviceId: {} };
 
 let index: HomeBadgeIndex = NO_BADGES;
@@ -103,21 +98,16 @@ export const resolveHomeBadgeRead = (payload: unknown): HomeBadgeRead => {
   // vouch: a junk or flagless payload is not an affirmation of health. Same
   // rule as the roster resolver in `homeScope.ts`.
   if (record === null || record.configDegraded !== false) return { status: 'unavailable' };
-  const { runtimeActive, hasSubHomes } = record;
-  // A payload vouched healthy but MISSING a flag (or carrying a non-boolean
-  // one) is partial/malformed — version skew or a truncated serve, not an
-  // affirmation that no areas are active. Resolving it would clear every badge,
-  // so it gets the same abandon-grace as the degraded path above.
-  if (typeof runtimeActive !== 'boolean' || typeof hasSubHomes !== 'boolean') {
-    return { status: 'unavailable' };
-  }
-  // Vouched-for reads the runtime is intentionally not badging: a held pre-GA
-  // config (`runtimeActive` false) or a single-home install. These RESOLVE to
-  // the empty index — clearing stale badges is correct here.
-  if (!runtimeActive || !hasSubHomes) {
-    return { status: 'resolved', index: NO_BADGES };
-  }
-  // Past this point the flags AFFIRM active meter areas, so the collections
+  const { hasSubHomes } = record;
+  // A payload vouched healthy but MISSING the flag (or carrying a non-boolean
+  // one) is partial/malformed — a truncated serve, not an affirmation that no
+  // areas are configured. Resolving it would clear every badge, so it gets the
+  // same abandon-grace as the degraded path above.
+  if (typeof hasSubHomes !== 'boolean') return { status: 'unavailable' };
+  // A vouched-for single-home install RESOLVES to the empty index — clearing
+  // stale badges is correct here.
+  if (!hasSubHomes) return { status: 'resolved', index: NO_BADGES };
+  // Past this point the flag AFFIRMS meter areas, so the collections
   // that carry them have to be there. A missing/non-array `homes` or a
   // missing/non-object `membershipByDeviceId` is a truncated or version-skewed
   // serve, not a home without areas: the first would clear every badge and the
@@ -128,7 +118,7 @@ export const resolveHomeBadgeRead = (payload: unknown): HomeBadgeRead => {
   if (homes === null || membership === null) return { status: 'unavailable' };
   const areaNameByHomeId = resolveAreaNames(homes);
   // `hasSubHomes` promised at least one area and not one entry survived
-  // resolution — the collection contradicts its own flags, which is the same
+  // resolution — the collection contradicts its own flag, which is the same
   // defect as a missing one, so it keeps the last-good index rather than
   // clearing every badge.
   if (Object.keys(areaNameByHomeId).length === 0) return { status: 'unavailable' };
@@ -175,8 +165,8 @@ export const refreshHomeBadges = async (): Promise<void> => {
  * Whether the device belongs to a meter area per the last-good membership
  * index. Gates the device-detail honest states (diagnostics + activity log are
  * the MAIN home's recorders, so an area device would otherwise serve an empty
- * payload that reads as healthy). Inherits the index's own gating: a held
- * pre-GA config or a single-home install resolves every device to `false`.
+ * payload that reads as healthy). Inherits the index's own gating: a
+ * single-home install resolves every device to `false`.
  */
 export const isDeviceInMeterArea = (deviceId: string): boolean => (
   // Own-key guard as in `resolveHomeBadge`: an inherited-property device id

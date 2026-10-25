@@ -11,9 +11,6 @@
  * and any future runtime logging speak the same words for the same state
  * (`feedback_ui_text_shared_with_logs`). Import this module directly — there
  * is no shared-domain barrel.
- *
- * Held (pre-GA) meter areas are the CALLER's concern: their devices still
- * belong to the Main home, so their flags must not be passed in at all.
  */
 
 import { HOMES_MAIN_HOME_NAME, resolveHomeAreaDisplayName } from './homeNames';
@@ -29,7 +26,7 @@ export type SimulationPostureInput = {
   /** Main home's `capacity_dry_run` flag (true = simulating). */
   mainSimulating: boolean;
   /**
-   * One `capacity_dry_run:<homeId>` flag per ACTIVE meter area. `null` marks
+   * One `capacity_dry_run:<homeId>` flag per meter area. `null` marks
    * a flag with no resolved value this session (a transient read failure or a
    * malformed persisted value, with no last-good value to fall back on). An
    * unknown BLOCKS both absolute claims: an aggregate containing an area

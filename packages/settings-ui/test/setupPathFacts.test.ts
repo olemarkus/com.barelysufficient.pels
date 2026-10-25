@@ -13,7 +13,7 @@ const NO_PRICE_USE = {
 const loadUnpublished = async (membershipByDeviceId: Readonly<Record<string, string>> = {}) => {
   vi.resetModules();
   vi.doMock('../src/ui/homeScope.ts', () => ({
-    readHomeMembership: () => ({ state: 'resolved', runtimeActive: true, membershipByDeviceId }),
+    readHomeMembership: () => ({ state: 'resolved', membershipByDeviceId }),
     subscribeToHomeScope: () => undefined,
   }));
   const facts = await import('../src/ui/setupPathFacts.ts');

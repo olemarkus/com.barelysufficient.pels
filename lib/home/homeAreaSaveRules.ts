@@ -83,9 +83,6 @@ export const isAreaRootAtForestRoot = (
  * side. The refusal order is deliberate: on Flow the whole-home meter picker is
  * hidden, so `main_meter_required` would name a control the owner cannot
  * reach — the source refusal is the one with an actionable remedy.
- *
- * No activation gate is needed on this path: every upsert commits
- * `activationVersion`, so a save through here always leaves multi-home running.
  */
 const findMeterOwnershipRefusal = (
   subHomes: readonly SubHomeConfig[],

@@ -75,7 +75,7 @@ describe('importLegacyPvForecastState', () => {
     const settings = new MockSettings();
     // A real install never has an empty key list here: the boot migrations
     // set their markers first.
-    settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
+    settings.set('boot_migrations_v2_unusable_stepped_config_repaired', true);
     return { settings, ...open() };
   };
 
@@ -140,7 +140,7 @@ describe('createImportingPvForecastStore', () => {
     vi.useFakeTimers();
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ hourly: { time: [], shortwave_radiation: [] } }) })));
     const settings = new MockSettings();
-    settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
+    settings.set('boot_migrations_v2_unusable_stepped_config_repaired', true);
     settings.set(PV_FORECAST_STATE, recorded());
     const get = settings.get.bind(settings);
     // The import at construction and the controller's boot read both miss.

@@ -45,7 +45,6 @@ const homesPayload = (homes: Array<{ homeId: string; name: string }>) => ({
   membershipByDeviceId: {},
   zoneTree: null,
   hasSubHomes: homes.length > 0,
-  runtimeActive: true,
   configDegraded: false,
 });
 
@@ -400,7 +399,7 @@ describe('reconciliation against a fresh roster', () => {
     // stands between this response and the branch that clears the roster and
     // deletes the stored key. An absent flag is the runtime saying nothing.
     homey.__uiState.homes = {
-      homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false, runtimeActive: true,
+      homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false,
     };
     await refreshHomeScope();
     await flushAsync();
@@ -422,35 +421,16 @@ describe('reconciliation against a fresh roster', () => {
     await flushAsync();
     selectHomeScope(AREA_ID);
 
-    // A structurally successful but junk payload must not admit invalid ids, and
-    // a stringy `runtimeActive` must never read as permission to control.
-    homey.__uiState.homes = { homes: [{ homeId: 7, name: null }], runtimeActive: 'false' };
+    // A structurally successful but junk payload must not admit invalid ids.
+    homey.__uiState.homes = { homes: [{ homeId: 7, name: null }] };
     await refreshHomeScope();
     await flushAsync();
 
     expect(getHomeScope().selectedHomeId).toBe(AREA_ID);
-    expect(getHomeScope().runtimeActive).toBe(true);
     expect(optionHomeIds()).toEqual([MAIN_HOME_ID, AREA_ID]);
   });
 
-  it('ignores inert membership data while meter-area runtime is inactive', async () => {
-    install([{ homeId: AREA_ID, name: 'Utleie' }]);
-    await refreshHomeScope();
-    selectHomeScope(AREA_ID);
-
-    homey.__uiState.homes = {
-      ...homesPayload([]),
-      membershipByDeviceId: null,
-      runtimeActive: false,
-    };
-    await refreshHomeScope();
-    await flushAsync();
-
-    expect(getHomeScope().selectedHomeId).toBe(MAIN_HOME_ID);
-    expect(getHomeScope().areas).toEqual([]);
-  });
-
-  it('keeps the last-good ownership generation when an active roster omits membership', async () => {
+  it('keeps the last-good ownership generation when a roster omits membership', async () => {
     install([{ homeId: AREA_ID, name: 'Utleie' }]);
     await refreshHomeScope();
     await flushAsync();
@@ -458,7 +438,6 @@ describe('reconciliation against a fresh roster', () => {
 
     homey.__uiState.homes = {
       homes: [{ homeId: 'h_other', name: 'Other' }],
-      runtimeActive: true,
       configDegraded: false,
     };
     await refreshHomeScope();

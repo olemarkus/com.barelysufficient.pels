@@ -32,9 +32,8 @@ import {
   mergeMeterAreaSimulation,
   readAreaSimulationFlag,
   readHomesConfigScope,
-  resolveActiveMeterAreas,
+  resolveSavedMeterAreas,
   resolveHasMeterAreas,
-  resolveRetainedScopeClaim,
 } from './meterAreaPosture.ts';
 import {
   CAPACITY_DRY_RUN,
@@ -216,16 +215,16 @@ const refreshDryRunBannerHomeScope = async (): Promise<void> => {
   postureRefreshGeneration += 1;
   const generation = postureRefreshGeneration;
   const scopeRead = await readHomesConfigScope();
-  const rosterRead = resolveActiveMeterAreas(scopeRead);
+  const rosterRead = resolveSavedMeterAreas(scopeRead);
   if (rosterRead.status === 'unavailable') {
     if (generation !== postureRefreshGeneration) return;
     // Abandon-grace: an unclassifiable roster read keeps the last-good
     // snapshot — wiping it would hide the one banner naming a simulating
     // area (and flip the chip) on a single transient or suspect read. The
-    // scope claim is held on exactly the same terms, so the two can never
-    // contradict each other (`resolveRetainedScopeClaim`): only a RESOLVED
-    // roster may claim this install has no meter areas.
-    hasMeterAreas = resolveRetainedScopeClaim(hasMeterAreas, scopeRead);
+    // scope claim cannot contradict it: every read the roster refuses claims
+    // areas or nothing (`resolveHasMeterAreas`), so only a RESOLVED roster
+    // claims this install has none.
+    hasMeterAreas = resolveHasMeterAreas(scopeRead);
     syncDryRunBannerVisibility();
     return;
   }

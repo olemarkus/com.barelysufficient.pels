@@ -60,11 +60,6 @@ export type HomeScopeState = {
   selectedHomeId: string;
   /** Read-only view: this module is the single owner of the roster. */
   areas: readonly HomeScopeArea[];
-  /**
-   * Producer-resolved activation posture from `ui_homes`. False is not
-   * simulation: it is a held legacy config whose devices still belong to Main.
-   */
-  runtimeActive: boolean;
   /** Authoritative device ownership from the same roster generation. */
   membershipByDeviceId: Readonly<Record<string, string>>;
 };
@@ -132,7 +127,6 @@ export type HomeMembershipRead =
   | { state: 'unavailable' }
   | {
     state: 'resolved';
-    runtimeActive: boolean;
     membershipByDeviceId: Readonly<Record<string, string>>;
   };
 
@@ -148,14 +142,12 @@ export const readHomeMembership = (): HomeMembershipRead => (
 );
 
 /**
- * Whether at least one meter area is actually IN USE — the gate for the honest
- * scope lines and not-supported-yet notices (Budget's Main-home scope line,
- * the Smart tasks Main-only notice). A held pre-GA config (`runtimeActive`
- * false) does not count: its devices still belong to the Main home, so a
- * "Main home only" claim there would describe a split the runtime is not
- * doing. Same predicate the home badges resolve (`resolveHomeBadgeRead`).
+ * Whether at least one meter area is IN USE — the gate for the honest scope
+ * lines and not-supported-yet notices (Budget's Main-home scope line, the
+ * Smart tasks Main-only notice). Same predicate the home badges resolve
+ * (`resolveHomeBadgeRead`).
  */
-export const areMeterAreasInUse = (): boolean => homeScopeMembership.runtimeActive && areas.length > 0;
+export const areMeterAreasInUse = (): boolean => areas.length > 0;
 
 /** Register a consumer of the selected home. There is no unsubscribe: every
  * subscriber is a long-lived shell controller. */
@@ -301,7 +293,6 @@ type RosterRead =
   | {
     status: 'resolved';
     areas: HomeScopeArea[];
-    runtimeActive: boolean;
     membershipByDeviceId: Record<string, string>;
   }
   | { status: 'unavailable' };
@@ -326,25 +317,16 @@ const resolveRosterMembership = (
   raw: unknown,
   resolvedAreas: readonly HomeScopeArea[],
 ): Record<string, string> | null => {
-  if (raw !== undefined && !isUnknownRecord(raw)) return null;
+  if (!isUnknownRecord(raw)) return null;
   const validHomeIds = new Set([MAIN_HOME_ID, ...resolvedAreas.map((area) => area.homeId)]);
   const membership: Record<string, string> = {};
-  for (const [deviceId, entry] of Object.entries(raw ?? {})) {
+  for (const [deviceId, entry] of Object.entries(raw)) {
     if (!isUnknownRecord(entry) || typeof entry.homeId !== 'string' || !validHomeIds.has(entry.homeId)) {
       return null;
     }
     membership[deviceId] = entry.homeId;
   }
   return membership;
-};
-
-const resolvePayloadMembership = (
-  payload: Record<string, unknown>,
-  resolvedAreas: readonly HomeScopeArea[],
-): Record<string, string> | null => {
-  if (!payload.runtimeActive) return {};
-  if (payload.membershipByDeviceId === undefined) return null;
-  return resolveRosterMembership(payload.membershipByDeviceId, resolvedAreas);
 };
 
 const resolveRosterPayload = (payload: unknown): RosterRead => {
@@ -360,7 +342,6 @@ const resolveRosterPayload = (payload: unknown): RosterRead => {
   if (typeof payload.configDegraded !== 'boolean' || payload.configDegraded) {
     return { status: 'unavailable' };
   }
-  if (typeof payload.runtimeActive !== 'boolean') return { status: 'unavailable' };
   if (!Array.isArray(payload.homes)) return { status: 'unavailable' };
   const resolved: HomeScopeArea[] = [];
   for (const home of payload.homes) {
@@ -382,13 +363,12 @@ const resolveRosterPayload = (payload: unknown): RosterRead => {
     }
     resolved.push({ homeId, name });
   }
-  const membership = resolvePayloadMembership(payload, resolved);
+  const membership = resolveRosterMembership(payload.membershipByDeviceId, resolved);
   if (membership === null) return { status: 'unavailable' };
   return {
     status: 'resolved',
     areas: resolved,
-    runtimeActive: payload.runtimeActive,
-    membershipByDeviceId: payload.runtimeActive ? membership : {},
+    membershipByDeviceId: membership,
   };
 };
 
@@ -417,7 +397,6 @@ export const refreshHomeScope = async (): Promise<boolean> => {
   if (generation !== rosterGeneration) return listenerPublicationRevision !== publicationRevisionAtStart;
   const previousState = rosterState;
   const previousAreas = areas;
-  const previousRuntimeActive = homeScopeMembership.runtimeActive;
   const previousMembership = homeScopeMembership.membershipByDeviceId;
   const previousSelectedHomeId = selectedHomeId;
   if (read.status === 'resolved') {
@@ -425,7 +404,6 @@ export const refreshHomeScope = async (): Promise<boolean> => {
     // a real "no meter areas" state and correctly clears it. Anything else keeps
     // the last-good roster and the still-armed persisted candidate.
     areas = read.areas;
-    homeScopeMembership.runtimeActive = read.runtimeActive;
     homeScopeMembership.membershipByDeviceId = read.membershipByDeviceId;
     rosterState = 'resolved';
     reconcileSelection();
@@ -433,12 +411,11 @@ export const refreshHomeScope = async (): Promise<boolean> => {
     rosterState = 'unavailable';
   }
   renderScopeBar();
-  // Availability may be unchanged while the vouched-for roster, membership,
-  // runtime posture, or reconciled selection changed underneath consumers.
+  // Availability may be unchanged while the vouched-for roster, membership, or
+  // reconciled selection changed underneath consumers.
   // An identical tab-activation refresh stays silent so it cannot restart the
   // panel work that caused the refresh in the first place.
   const scopeChanged = previousState !== rosterState
-    || previousRuntimeActive !== homeScopeMembership.runtimeActive
     || previousSelectedHomeId !== selectedHomeId
     || !sameAreas(previousAreas, areas)
     || !sameMembership(previousMembership, homeScopeMembership.membershipByDeviceId);

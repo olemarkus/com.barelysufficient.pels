@@ -21,7 +21,6 @@ const homesPayload = {
   membershipByDeviceId: {},
   zoneTree: null,
   hasSubHomes: true,
-  runtimeActive: true,
   configDegraded: false,
 };
 
@@ -56,7 +55,6 @@ describe('current modes settings hub', () => {
       membershipByDeviceId: {},
       zoneTree: null,
       hasSubHomes: false,
-      runtimeActive: false,
       configDegraded: false,
     });
 
@@ -220,7 +218,6 @@ describe('current modes settings hub', () => {
       membershipByDeviceId: {},
       zoneTree: null,
       hasSubHomes: false,
-      runtimeActive: false,
       configDegraded: false,
     });
     const releases: Array<() => void> = [];
@@ -253,7 +250,6 @@ describe('current modes settings hub', () => {
       membershipByDeviceId: {},
       zoneTree: null,
       hasSubHomes: false,
-      runtimeActive: false,
       configDegraded: false,
     });
     let rejectWrite: (() => void) | undefined;
@@ -283,7 +279,6 @@ describe('current modes settings hub', () => {
       membershipByDeviceId: {},
       zoneTree: null,
       hasSubHomes: false,
-      runtimeActive: false,
       configDegraded: false,
     });
     const rejectWrites: Array<() => void> = [];
@@ -319,7 +314,6 @@ describe('current modes settings hub', () => {
       membershipByDeviceId: {},
       zoneTree: null,
       hasSubHomes: false,
-      runtimeActive: false,
       configDegraded: false,
     });
     const writes: Array<(error?: Error) => void> = [];
@@ -378,7 +372,6 @@ describe('current modes settings hub', () => {
     const { getHomeScope, refreshHomeScope } = await import('../src/ui/homeScope.ts');
     const { refreshCurrentModes } = await import('../src/ui/currentModes.ts');
     await refreshHomeScope();
-    expect(getHomeScope()).toMatchObject({ runtimeActive: true });
     expect(getHomeScope().areas).toHaveLength(2);
     await refreshCurrentModes();
     homey.__settingsStore.operating_mode = 'Away';

@@ -1983,7 +1983,7 @@ because `Home` as a stock operating-mode name appears as a dropdown *value* on
 other cards, never as a tag title.
 ### Simulation posture across homes
 
-Main's simulation flag and each active meter area's control flag are
+Main's simulation flag and each meter area's control flag are
 independent, so the global surfaces render the AGGREGATE posture — all live /
 all simulating / mixed (source: `resolveSimulationPosture` and
 `resolveSimulationBannerContent` in
@@ -1998,9 +1998,6 @@ all simulating / mixed (source: `resolveSimulationPosture` and
 | Main live, several areas simulating | `PELS is only simulating N meter areas. Turn on control under Limits & safety.` | `Partly on` |
 | Everything live | hidden | hidden |
 
-Held pre-GA areas never enter the posture: their devices still belong to the
-Main home, so their flags say nothing about what PELS controls.
-
 ### Beta notice
 
 The Multiple meters page leads with `HOMES_BETA_NOTICE`
@@ -2012,8 +2009,8 @@ whether the feature works, and never an em-dashed aside.
 ### Honest scope lines and not-supported-yet states
 
 Surfaces that do NOT follow the `Showing` picker say so once meter areas are
-**in use** (an active roster with `runtimeActive` — a held pre-GA config or a
-single-home install renders none of these). Canonical copy lives in
+**in use** (a resolved roster with at least one area — a single-home install
+renders none of these). Canonical copy lives in
 `homeScopeCopy.ts`; every line says what happens and names the Main home with
 the one registered constant:
 
@@ -2374,7 +2371,7 @@ named `Set the limited temperature for {device name}`.
 
 With one home, the Settings page renders one selector labelled `Current mode`.
 With meter areas, the card is labelled `Current modes` and renders one selector
-for **Main home** and each active area. Each selector uses that home's
+for **Main home** and each meter area. Each selector uses that home's
 independent catalog. Selected options remain untranslated user-authored names
 (Home, Away, Night, or `Hjemme`).
 

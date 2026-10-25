@@ -412,7 +412,7 @@ test.describe('Onboarding links', () => {
         apiHandlers: {
           'GET /ui_devices': () => ({ devices: [] }),
           'GET /ui_homes': () => ({
-            homes: [], membershipByDeviceId: {}, runtimeActive: false, configDegraded: false,
+            homes: [], membershipByDeviceId: {}, configDegraded: false,
           }),
         },
       };

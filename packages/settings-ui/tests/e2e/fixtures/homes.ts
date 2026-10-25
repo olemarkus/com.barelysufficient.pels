@@ -108,7 +108,6 @@ export const seedUtilityMeterSnapshot = async (page: Page): Promise<void> => {
 /** Seed one configured meter area (the rental unit) into the stub settings. */
 export const seedRentalArea = async (page: Page, name = 'Rental unit'): Promise<void> => {
   await setHomesConfig(page, {
-    activationVersion: 1,
     subHomes: [{
       homeId: 'h_11111111',
       name,
@@ -118,16 +117,16 @@ export const seedRentalArea = async (page: Page, name = 'Rental unit'): Promise<
   });
 };
 
-/** Seed the same area in the pre-GA held posture: populated, but not activated. */
-export const seedHeldRentalArea = async (page: Page): Promise<void> => {
-  await setHomesConfig(page, {
-    subHomes: [{
-      homeId: 'h_11111111',
-      name: 'Rental unit',
-      rootZoneId: 'z_rental',
-      meterDeviceId: 'dev_rental_meter',
-    }],
-  });
+/**
+ * Before boot: the runtime holds no committed reading for `homeId` (in
+ * production, its bundle is not built yet), so every scoped read answers
+ * `homeScope: unavailable`.
+ */
+export const installAreaWithoutRuntime = async (page: Page, homeId: string): Promise<void> => {
+  await page.addInitScript((areaId) => {
+    const stubWindow = window as unknown as { __PELS_HOMEY_STUB__?: Record<string, unknown> };
+    stubWindow.__PELS_HOMEY_STUB__ = { ...(stubWindow.__PELS_HOMEY_STUB__ ?? {}), homesWithoutRuntime: [areaId] };
+  }, homeId);
 };
 
 /**
@@ -192,7 +191,6 @@ export const installDegradedHomesPayload = async (page: Page): Promise<void> => 
             z_rental: { id: 'z_rental', name: 'Rental unit', parent: 'z_home' },
           },
           hasSubHomes: true,
-          runtimeActive: true,
           configDegraded: true,
         }),
       },

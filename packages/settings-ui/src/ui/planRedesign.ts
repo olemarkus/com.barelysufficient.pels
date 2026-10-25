@@ -159,7 +159,7 @@ const overviewDeviceRows = (): OverviewDeviceRowsRead => {
   const membership = readHomeMembership();
   if (membership.state !== 'resolved') return { state: membership.state };
   const devices = state.latestDevices.filter((device) => (
-    !membership.runtimeActive || (membership.membershipByDeviceId[device.id] ?? MAIN_HOME_ID) === MAIN_HOME_ID
+    (membership.membershipByDeviceId[device.id] ?? MAIN_HOME_ID) === MAIN_HOME_ID
   ));
   return { state: 'resolved', rows: buildOverviewDeviceRows({ devices, plan: currentPlan }) };
 };

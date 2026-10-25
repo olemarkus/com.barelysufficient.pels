@@ -477,7 +477,6 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
       membershipByDeviceId: {},
       zoneTree: null,
       hasSubHomes: false,
-      runtimeActive: true,
       configDegraded: false,
       mainMeterConflictAreaName: null,
     }

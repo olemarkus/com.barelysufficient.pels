@@ -96,7 +96,7 @@ describe('priceCacheStore', () => {
 describe('importLegacyPriceCaches', () => {
   const rig = () => {
     const settings = new MockSettings();
-    settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
+    settings.set('boot_migrations_v2_unusable_stepped_config_repaired', true);
     return { settings, ...open() };
   };
 
@@ -173,7 +173,7 @@ describe('importLegacyPriceCaches: spot prices', () => {
   ];
   const rig = () => {
     const settings = new MockSettings();
-    settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
+    settings.set('boot_migrations_v2_unusable_stepped_config_repaired', true);
     return { settings, ...open() };
   };
 
@@ -217,7 +217,7 @@ describe('importLegacyPriceCaches: payload-fed sources', () => {
   const PAYLOAD = { dateKey: '2026-09-27', pricesByHour: { 0: 1.2 }, updatedAt: '2026-09-27T00:00:00.000Z' };
   const rig = () => {
     const settings = new MockSettings();
-    settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
+    settings.set('boot_migrations_v2_unusable_stepped_config_repaired', true);
     return { settings, ...open() };
   };
 
@@ -349,7 +349,7 @@ describe('createPriceDataStore: a Power by the Hour day without a row', () => {
   const PAYLOAD = { dateKey: '2026-09-27', pricesByHour: { 0: 1.2 }, updatedAt: '2026-09-27T00:00:00.000Z' };
   const rig = () => {
     const settings = new MockSettings();
-    settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
+    settings.set('boot_migrations_v2_unusable_stepped_config_repaired', true);
     const { store } = open();
     return { settings, priceData: createPriceDataStore(settings, store) };
   };
@@ -389,7 +389,7 @@ describe('importLegacyPriceCaches: combined prices', () => {
   const V1 = { prices: [{ startsAt: '2026-09-26T22:00:00.000Z', total: 1 }], avgPrice: 1 };
   const rig = () => {
     const settings = new MockSettings();
-    settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
+    settings.set('boot_migrations_v2_unusable_stepped_config_repaired', true);
     return { settings, ...open() };
   };
 

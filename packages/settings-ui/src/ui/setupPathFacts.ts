@@ -192,8 +192,7 @@ export const readSetupPath = (): SetupPathRead => {
   if (power.state === 'unavailable' || hardCap.state === 'unavailable'
     || membership.state === 'unavailable') return { state: 'unavailable' };
   const knownIds = new Set(state.latestDevices
-    .filter((device) => !membership.runtimeActive
-      || (membership.membershipByDeviceId[device.id] ?? MAIN_HOME_ID) === MAIN_HOME_ID)
+    .filter((device) => (membership.membershipByDeviceId[device.id] ?? MAIN_HOME_ID) === MAIN_HOME_ID)
     .map((device) => device.id));
   const managedIds = [...knownIds].filter((id) => state.managedMap[id] === true);
   const limitableIds = managedIds.filter((id) => state.controllableMap[id] === true);

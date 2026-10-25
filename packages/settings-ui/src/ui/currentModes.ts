@@ -160,13 +160,9 @@ export const applyCurrentModeRename = (
 export const refreshCurrentModes = async (): Promise<void> => {
   generation += 1;
   const run = generation;
-  const scope = getHomeScope();
   const homes = [
     { homeId: MAIN_HOME_ID, homeName: MAIN_HOME_NAME },
-    ...(scope.runtimeActive ? scope.areas.map((area) => ({
-      homeId: area.homeId,
-      homeName: area.name,
-    })) : []),
+    ...getHomeScope().areas.map((area) => ({ homeId: area.homeId, homeName: area.name })),
   ];
   const writeVersions = new Map(homes.map(({ homeId }) => [
     homeId,

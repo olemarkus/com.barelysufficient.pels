@@ -138,11 +138,6 @@ export type SettingsUiHomesPayload = {
   zoneTree: Record<string, SettingsUiZoneNode> | null;
   hasSubHomes: boolean;
   /**
-   * Producer-resolved activation posture. False means a saved pre-GA config is
-   * intentionally held in Main home until the owner saves a meter area.
-   */
-  runtimeActive: boolean;
-  /**
    * True while the runtime cannot vouch for the served config: either homes
    * store read classified suspect (persisted truth unknown; `homes` may be a
    * stale cache) or the membership service is not wired yet (boot window).

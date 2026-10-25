@@ -8,9 +8,8 @@
  * setting is surfaced as a
  * POSITIVE **"Control devices in this area"** toggle (ON = PELS limits this
  * area, OFF = it only simulates) — never the internal "dry-run" jargon, and
- * never the old OFF-to-activate double-negative. A current config reads
- * **"Simulating"/"Active"**; a held pre-GA config reads **"Not active"** and
- * points the owner to the deliberate save that activates it. Copy says what
+ * never the old OFF-to-activate double-negative. An area reads
+ * **"Simulating"/"Active"**. Copy says what
  * happens ("let PELS limit devices", "only simulating"), never the planner's
  * shed/restore words.
  *
@@ -79,9 +78,6 @@ export const HOME_LIMITS_REACTION_NOTE = '(hard cap minus safety margin; it adap
 export const HOME_LIMITS_CONTROL_LABEL = 'Control devices in this area';
 export const HOME_LIMITS_CONTROL_HINT
   = 'When on, PELS limits devices in this meter area to keep each selected period under its cap.';
-export const HOME_LIMITS_INACTIVE_CHIP = 'Not active';
-export const HOME_LIMITS_INACTIVE_STATUS
-  = 'Open Multiple meters and save this area to start using these settings.';
 
 /**
  * The unmissable activation notice, shown only while the selected meter area is
@@ -94,12 +90,6 @@ export const HOME_LIMITS_INACTIVE_STATUS
 export const composeHomeLimitsSimulationNotice = (name: string): string => (
   `PELS is only simulating “${resolveHomeAreaDisplayName(name)}” — `
   + 'turn on control to let it limit devices in this meter area.'
-);
-
-/** A held pre-GA area needs an explicit owner save before any per-area control can start. */
-export const composeHomeLimitsInactiveNotice = (name: string): string => (
-  `PELS isn’t using “${resolveHomeAreaDisplayName(name)}” yet — `
-  + 'open Multiple meters and save this area before turning on control.'
 );
 
 // ── Save toasts ─────────────────────────────────────────────────────────────
