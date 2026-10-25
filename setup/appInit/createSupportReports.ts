@@ -5,6 +5,7 @@ import {
 } from '../../lib/diagnostics/supportReportEvidence';
 import { SupportReportService } from '../../lib/diagnostics/supportReportService';
 import { createDeviceEventStore } from '../../lib/diagnostics/deviceEventStore';
+import { createLogTailStore } from '../../lib/diagnostics/logTailStore';
 import { requireDeviceManager, requireHomeMembership, requirePlanService } from './contextGuards';
 
 export type SupportReportApp = Pick<PelsHost,
@@ -29,6 +30,7 @@ export const createSupportReportReads = (app: SupportReportApp): SupportReportRe
   // Built per capture: the database opens after the report service is constructed.
   readDeviceEvents: (deviceIds, fromMs, toMs) => (
     createDeviceEventStore(app.getUserdataDatabase()).read(deviceIds, fromMs, toMs)),
+  readLogTail: (fromMs, toMs) => createLogTailStore(app.getUserdataDatabase()).read(fromMs, toMs),
 });
 
 export const createSupportReports = (

@@ -1,13 +1,20 @@
-# Manual problem reports
+# Problem reports
 
 The reporting owner in `lib/diagnostics/` prepares an immutable incident snapshot
 when the user selects **Send report**, and the settings UI sends it straight away.
 The UI shows the user's own description, not the captured report, which is not
-written for people to read. It has no automatic triggers or analytics collection.
+written for people to read.
+
+The only other sender is the daily report, and only when the owner turned it on
+(Settings → Advanced → Diagnostics reports, the `daily_diagnostics_report` setting;
+off by default, offered on every install). Homey files every report as submitted by
+the user, and the switch is what makes that true of a report nobody pressed Send for
+(owner, 2026-10-25). No incident sends a report on its own, and there is no analytics
+collection. A report says which it is: `trigger` is `owner` or `daily`.
 
 Reports contain the description, incident time, selected home/device, an explicitly
-selected slice of persisted device activity, the device events PELS kept, and
-allowlisted current readouts.
+selected slice of persisted device activity, the device events PELS kept, PELS's
+kept log, and allowlisted current readouts.
 Activity is the state and reason PELS presented; it is not an actuator audit trail.
 The default window starts an hour before the incident, the wider one 24 hours
 before it, and both run to capture: owners report after the fact, and what followed
@@ -33,6 +40,15 @@ never substitute Main's data where the selected area's read is unavailable.
 The message is PELS-authored. Homey also attaches the app's log, but only its last
 100 stdout and 100 stderr lines (seen on a Homey Pro, 2026-10-25), a few minutes on
 a busy install. Evidence for anything older has to be in the message.
+
+So PELS keeps its own log (`lib/diagnostics/logTailStore.ts`): every info, warning and
+error line, never debug, in the userdata database for 48 hours. The info level writes
+a few hundred kilobytes a day; the opt-in debug topics can write megabytes an hour.
+A flood is cut at 20 lines of one event per hour and the cut lines are counted per
+hour, so a report still says they happened. Lines are written as they happen,
+because Homey exits the process before `onUninit` runs; lines from the start of a
+boot wait in memory until the database opens. A report carries the kept log for its
+window.
 The current collector does not dump settings, credentials, raw Homey devices, or
 ordinary stdout/stderr into the message. New sections require explicit field
 selection at their diagnostic projection, rather than serializing an owner object.
@@ -51,15 +67,31 @@ The message limit is 512 KiB of UTF-8 bytes. Homey documents no limit, but on
 a log id and was never delivered, so a larger report would look sent and be lost.
 The largest realistic report, an app report with 1,000 activity entries, is about
 400 KiB. A device report carries at most 100 activity entries and 300 kept events,
-together about 190 KiB. Oversized
-reports are rejected without silently removing evidence. A versioned opening marker and a closing
+together about 190 KiB. The kept log comes on top. A report that would
+outgrow the limit leaves out the oldest log lines first and says how many; one still
+too large without any log is rejected, and no other evidence is cut. A versioned opening marker and a closing
 marker containing the report identifier let received content be checked for truncation.
 
 At most four reports are retained in memory for 15 minutes. Preparing another
 report can evict an older draft or finished report, but never an in-flight or
 uncertain submission. One submission can run at a time, with a minute between
-dispatches. Repeated sends of an existing identifier return its original outcome.
+dispatches; the minute starts with a report Homey may have taken, so one it refused
+can be sent again at once. Repeated sends of an existing identifier return its original outcome.
 Timeouts and lost responses are uncertain and never automatically retried. Status
 checks read PELS's saved outcome; they do not query Homey's received-report store.
 App restart expires drafts and submission status. Logs record report identifiers,
 sizes, and outcomes, never report content.
+
+## The daily report
+
+A report about the whole app, the activity of every device and every kept device
+event and log line from the last 24 hours through capture, with the problem text
+saying it was sent because the owner turned it on (`SupportReportService.sendDaily`).
+`lib/diagnostics/dailyReportSchedule.ts` checks every hour, first 15 minutes after
+start so a report never captures a half-started app. When the next one is due lives
+in the userdata database, so a restart or an update neither sends twice nor skips a
+day. After a report that went out, or one whose delivery is uncertain, the next is
+due 23.5 hours later: a day, less half the hourly check, so the report stays on the
+same check instead of drifting later each day, and an uncertain one is never sent
+again. One that could not go out tries again 3 hours later. An install that cannot
+send at all (anything but an App Store install) checks again a day later.

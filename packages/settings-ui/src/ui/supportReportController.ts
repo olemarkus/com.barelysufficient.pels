@@ -7,6 +7,7 @@ import type {
 import {
   draftFromRequest,
   newReportDraft,
+  REPORT_EXPIRED_UNCERTAIN,
   reportErrorMessage,
   reportIsLocked,
   reportRequest,
@@ -67,8 +68,10 @@ export class SupportReportController {
   private accept(response: SupportReportResponse): void {
     if (!response.ok) {
       const { report, draft } = this.state;
+      const uncertain = report !== null && ['sending', 'unknown'].includes(report.submission.state);
       // An expired report keeps its incident time, so sending again reads the same activity.
-      this.state = { ...this.state, notice: reportErrorMessage(response.code),
+      this.state = { ...this.state, notice: response.code === 'report_expired' && uncertain
+        ? REPORT_EXPIRED_UNCERTAIN : reportErrorMessage(response.code),
         ...(response.code === 'report_expired'
           ? { report: null, draft: report ? draftFromRequest(report.document.request) : draft } : {}) };
       return;
@@ -168,7 +171,8 @@ export class SupportReportController {
       this.accept(response);
       if (!response.ok && response.code === 'report_expired') {
         this.state = {
-          ...this.state, notice: 'This report is no longer available. Start another report to send it again.',
+          ...this.state,
+          notice: 'This report is no longer available. Start another report and describe the problem again.',
         };
       }
     } catch {

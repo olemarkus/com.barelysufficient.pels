@@ -26,8 +26,8 @@ const DEVICE_EVENT_RETENTION_MS = DEVICE_EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1
 const logger = getLogger('diagnostics/device-events');
 
 export type DeviceEventStore = DeviceJournal & {
-  /** Events about any of `deviceIds` at or after `fromMs` and at or before `toMs`, oldest first. */
-  read(deviceIds: readonly string[], fromMs: number, toMs: number): SupportReportDeviceEvent[];
+  /** Events about any of `deviceIds` (or every device) at or after `fromMs` and at or before `toMs`, oldest first. */
+  read(deviceIds: readonly string[] | 'all', fromMs: number, toMs: number): SupportReportDeviceEvent[];
 };
 
 const SCHEMA = `
@@ -67,6 +67,8 @@ export const createDeviceEventStore = (db: UserdataDatabase): DeviceEventStore =
     + 'SELECT id FROM device_event_history WHERE device_id = ? ORDER BY at_ms DESC, id DESC LIMIT -1 OFFSET ?)');
   const load = db.prepare('SELECT rowid, id, device_id, at_ms, event_json FROM device_event_history '
     + 'WHERE device_id = ? AND at_ms >= ? AND at_ms <= ?');
+  const loadAll = db.prepare('SELECT rowid, id, device_id, at_ms, event_json FROM device_event_history '
+    + 'WHERE at_ms >= ? AND at_ms <= ?');
   const devicesOf = db.prepare('SELECT device_id FROM device_event_history WHERE id = ?');
   const remove = db.prepare('DELETE FROM device_event_history WHERE id = ?');
   // Repeated write failures are said once, until a write succeeds again.
@@ -97,8 +99,11 @@ export const createDeviceEventStore = (db: UserdataDatabase): DeviceEventStore =
       const byId = new Map<string, SupportReportDeviceEvent>();
       // Insertion order breaks a tie in time, so events of one millisecond keep the order they happened in.
       const recordedAt = new Map<string, number>();
-      for (const deviceId of new Set(deviceIds)) {
-        for (const row of load.all(deviceId, fromMs, toMs)) {
+      const batches = deviceIds === 'all'
+        ? [loadAll.all(fromMs, toMs)]
+        : [...new Set(deviceIds)].map((deviceId) => load.all(deviceId, fromMs, toMs));
+      for (const rows of batches) {
+        for (const row of rows) {
           if (typeof row.id !== 'string' || byId.has(row.id)) continue;
           const stored = parseStoredEvent(row.event_json);
           if (!stored || typeof row.at_ms !== 'number') {

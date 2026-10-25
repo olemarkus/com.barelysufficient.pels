@@ -5,8 +5,8 @@ import type {
   PriceSetupRead, SettingsUiDeviceActivityEntry, SettingsUiDeviceLogPayload, SettingsUiPlanSnapshot,
 } from '../../packages/contracts/src/settingsUiApi';
 import type {
-  SupportReportDeviceEvent, SupportReportDeviceEvents, SupportReportEvidence, SupportReportRequest,
-  SupportReportSection, SupportReportSubject,
+  SupportReportDeviceEvent, SupportReportDeviceEvents, SupportReportEvidence, SupportReportLog,
+  SupportReportRequest, SupportReportSection, SupportReportSubject,
 } from '../../packages/contracts/src/supportReport';
 import type { CarLinkDiagnostics } from '../ports/carLinkDiagnostics';
 import { DEVICE_EVENT_MAX_ENTRIES_PER_DEVICE, DEVICE_EVENT_RETENTION_DAYS } from './deviceEventStore';
@@ -14,7 +14,7 @@ import { MAIN_HOME_ID } from '../home/homeConfig';
 import type { HomeRuntimeReadPort, HomeRuntimeReading } from '../home/homeRuntimeRead';
 import type { HomeMembershipPort } from '../home/membership';
 import type { DevicePlan } from '../plan/planTypes';
-import { selectSupportReportActivity } from './supportReportHistory';
+import { selectSupportReportActivity, supportReportWindow } from './supportReportHistory';
 import { SupportReportInputError } from './supportReportInput';
 import {
   reportCapacitySettings, reportCarLink, reportDailyBudget, reportDeviceDecision, reportDevicePresentation,
@@ -48,8 +48,10 @@ export type SupportReportReads = {
   getPriceTimelineForUi(): PriceTimelineRead;
   /** `undefined` for a device that is neither a charger nor a car the car link knows. */
   getCarLinkDiagnostics(deviceId: string): CarLinkDiagnostics | undefined;
-  /** Kept device events about any of `deviceIds` in the window, oldest first. */
-  readDeviceEvents(deviceIds: readonly string[], fromMs: number, toMs: number): SupportReportDeviceEvent[];
+  /** Kept device events about any of `deviceIds` in the window, oldest first; every device without ids. */
+  readDeviceEvents(deviceIds: readonly string[] | 'all', fromMs: number, toMs: number): SupportReportDeviceEvent[];
+  /** PELS's kept log lines in the window (`logTailStore.ts`). */
+  readLogTail(fromMs: number, toMs: number): Pick<KeptLog, 'lines' | 'overflow'>;
 };
 
 type ReportSubject = {
@@ -196,6 +198,8 @@ const readDeviceSections = (
   ];
 };
 
+type KeptLog = Extract<SupportReportLog, { state: 'available' }>;
+
 type CarLinkRead = { state: 'read'; link: CarLinkDiagnostics | undefined } | { state: 'failed' };
 
 const readCarLink = (host: SupportReportReads, subject: SupportReportSubject): CarLinkRead => {
@@ -236,7 +240,9 @@ const nearestToIncident = (
 /**
  * A device report reads every event kept about the device and the devices
  * related to it, whatever the report window: a missed car link is explained by
- * a plug-in and a timeout that may lie hours before the reported time.
+ * a plug-in and a timeout that may lie hours before the reported time. A
+ * report about the whole app, such as the daily report, reads every device's
+ * events in its window.
  */
 const readDeviceEvents = (
   host: SupportReportReads,
@@ -245,9 +251,12 @@ const readDeviceEvents = (
   capturedAtMs: number,
 ): SupportReportDeviceEvents => {
   const { subject } = request;
-  if (subject.kind !== 'device') return { state: 'unavailable', reason: 'Device events are kept per device.' };
-  const deviceIds = relatedDeviceIds(subject.deviceId, carLink.state === 'read' ? carLink.link : undefined);
-  const fromMs = Math.max(0, capturedAtMs - DEVICE_EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const deviceIds = subject.kind === 'device'
+    ? relatedDeviceIds(subject.deviceId, carLink.state === 'read' ? carLink.link : undefined) : 'all';
+  // A report about the whole app keeps to its window; a device report reads everything kept.
+  const fromMs = deviceIds === 'all'
+    ? supportReportWindow(request, capturedAtMs).fromMs
+    : Math.max(0, capturedAtMs - DEVICE_EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
   const toMs = capturedAtMs;
   const read = readOptional(() => host.readDeviceEvents(deviceIds, fromMs, toMs));
   if (!read) return { state: 'unavailable', reason: 'Kept device events could not be read.' };
@@ -256,6 +265,14 @@ const readDeviceEvents = (
     state: 'available', entries, deviceIds, fromMs, toMs, leftOut: read.length - entries.length,
     retentionDays: DEVICE_EVENT_RETENTION_DAYS, maxEntriesPerDevice: DEVICE_EVENT_MAX_ENTRIES_PER_DEVICE,
   };
+};
+
+const readLog = (host: SupportReportReads, request: SupportReportRequest, capturedAtMs: number): SupportReportLog => {
+  const { fromMs, toMs } = supportReportWindow(request, capturedAtMs);
+  const read = readOptional(() => host.readLogTail(fromMs, toMs));
+  return read
+    ? { state: 'available', ...read, fromMs, toMs, leftOutForSize: 0 }
+    : { state: 'unavailable', reason: 'The kept log could not be read.' };
 };
 
 const readCarLinkSection = (carLink: CarLinkRead): SectionRead[] => {
@@ -294,6 +311,7 @@ export class SupportReportEvidenceSource {
           ? 'Retained device activity could not be read.' : 'Retained device activity is available only for Main.',
       },
       deviceEvents: readDeviceEvents(host, request, carLink, capturedAtMs),
+      log: readLog(host, request, capturedAtMs),
       sections: sectionReads.flatMap((read) => read.state === 'available' ? [read.section] : []),
       omissions: [
         ...subject.omissions,

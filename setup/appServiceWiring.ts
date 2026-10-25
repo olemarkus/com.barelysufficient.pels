@@ -7,8 +7,8 @@ import type { ObservedHomePower } from '../lib/observer/observedHomePower';
 import type { ObservedDeviceStateProjection } from '../lib/observer/observedDeviceStateProjection';
 import { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';
 import type { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
-import { createRootLogger, setRootLogger, type Logger as PinoLogger } from '../lib/logging/logger';
-import { createHomeyDestination } from '../lib/logging/homeyDestination';
+import type { Logger as PinoLogger } from '../lib/logging/logger';
+import { attachLogTail, installStructuredLogger, startDailyReport } from './appInit/diagnosticsWiring';
 import { normalizeError } from '../lib/utils/errorUtils';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
 import {
@@ -173,7 +173,9 @@ export class AppServiceWiring {
   }
 
   createSupportReports(app: SupportReportApp) {
-    return createSupportReports(this.deps.homeyApp.homey, app);
+    const service = createSupportReports(this.deps.homeyApp.homey, app);
+    this.deps.handles.supportReports = service;
+    return service;
   }
 
   createObservedTemperatureModeUpdates() {
@@ -206,6 +208,10 @@ export class AppServiceWiring {
     // opened is attributed to the store rather than to whichever step first
     // reached for it — and no step runs without it.
     await runStartupStep('openUserdataStores', () => this.deps.openUserdataStores(), logStartupStepFailure);
+    await runStartupStep('attachLogTail', () => {
+      const { logTail } = this.deps.handles;
+      if (logTail) attachLogTail(logTail, ctx);
+    }, logStartupStepFailure);
     await runStartupStep('initPriceCoordinator', () => this.initPriceCoordinator(), logStartupStepFailure);
     await runStartupStep(
       'runStartupSettingsMigrations',
@@ -256,6 +262,8 @@ export class AppServiceWiring {
     const { ctx } = this.deps;
     requireInitializedAppContext(ctx);
     this.deps.powerTrackerHelpers.startPowerTrackerPruning();
+    const reports = this.deps.handles.supportReports;
+    if (reports) startDailyReport(ctx, reports, this.deps.timers);
     startPostStartupBackgroundTasks(
       ctx,
       this.taskEvaluationSource,
@@ -287,12 +295,10 @@ export class AppServiceWiring {
   }
 
   installStructuredLogger(): PinoLogger {
-    const { ctx } = this.deps;
-    const logger = createRootLogger(
-      createHomeyDestination(ctx),
-    );
-    setRootLogger(logger);
-    this.deps.handles.structuredLogger = logger;
+    const { ctx, handles } = this.deps;
+    const { logger, logTail } = installStructuredLogger(ctx);
+    handles.logTail = logTail;
+    handles.structuredLogger = logger;
     return logger;
   }
 
@@ -676,6 +682,7 @@ export class AppServiceWiring {
     ctx.priceCoordinator?.stop();
     ctx.deviceManager?.destroy();
     ctx.settingsUiDeviceReads.disconnect();
+    handles.logTail?.detach();
     this.deps.closeUserdataDatabase();
   }
 

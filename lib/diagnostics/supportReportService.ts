@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type {
   PreparedSupportReport, SupportReportDocument, SupportReportEvidence, SupportReportRequest,
-  SupportReportResponse,
+  SupportReportResponse, SupportReportTrigger,
 } from '../../packages/contracts/src/supportReport';
+import { MAIN_HOME_ID } from '../home/homeConfig';
 import { getLogger } from '../logging/logger';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import type { SupportReportTransport } from './homeyReportTransport';
@@ -21,7 +22,54 @@ const MAX_REPORTS = 4;
 export const SUPPORT_REPORT_MAX_BYTES = 512 * 1024;
 const logger = getLogger('diagnostics/support-report');
 
-/** Owns prepared snapshots and dispatch outcomes. No timer or incident can initiate a submission. */
+const DAILY_REPORT_PROBLEM = 'Daily diagnostics report, sent because the owner turned it on.';
+
+const toMessage = (document: SupportReportDocument): { json: string; message: string; bytes: number } => {
+  const json = JSON.stringify(document);
+  const message = `PELS PROBLEM REPORT V1\n${json}\nEND PELS REPORT ${document.id}\n`;
+  return { json, message, bytes: Buffer.byteLength(message, 'utf8') };
+};
+
+/** The document with its oldest log lines left out so the message fits; the log says how many. */
+const withoutOldestLogLines = (document: SupportReportDocument, count: number): SupportReportDocument => (
+  document.log.state === 'available' && count > 0 ? {
+    ...document,
+    log: { ...document.log, lines: document.log.lines.slice(count), leftOutForSize: count },
+  } : document
+);
+
+/**
+ * The largest message for this document that fits, leaving out the fewest of
+ * the oldest log lines; `null` when the report is too large without any.
+ */
+const fitToSize = (document: SupportReportDocument): ReturnType<typeof toMessage> & {
+  document: SupportReportDocument;
+} | null => {
+  const whole = toMessage(document);
+  if (whole.bytes <= SUPPORT_REPORT_MAX_BYTES) return { ...whole, document };
+  const lineCount = document.log.state === 'available' ? document.log.lines.length : 0;
+  let fitting: (ReturnType<typeof toMessage> & { document: SupportReportDocument }) | null = null;
+  let low = 1;
+  let high = lineCount;
+  while (low <= high) {
+    const leftOut = Math.floor((low + high) / 2);
+    const trimmed = withoutOldestLogLines(document, leftOut);
+    const candidate = toMessage(trimmed);
+    if (candidate.bytes <= SUPPORT_REPORT_MAX_BYTES) {
+      fitting = { ...candidate, document: trimmed };
+      high = leftOut - 1;
+    } else {
+      low = leftOut + 1;
+    }
+  }
+  return fitting;
+};
+
+/**
+ * Owns prepared snapshots and dispatch outcomes. A submission starts only from
+ * the owner's Send, or from the daily report the owner turned on
+ * (`dailyReportSchedule.ts`); no incident starts one on its own.
+ */
 export class SupportReportService {
   private readonly reports = new Map<string, PreparedSupportReport>();
   private dispatching = false;
@@ -30,18 +78,38 @@ export class SupportReportService {
   constructor(private readonly source: EvidenceSource, private readonly transport: SupportReportTransport) {}
 
   async prepare(raw: unknown): Promise<SupportReportResponse> {
+    try {
+      return await this.prepareRequest(readSupportReportRequest(raw, Date.now()), 'owner');
+    } catch (error) {
+      if (error instanceof SupportReportInputError) return { ok: false, code: error.code };
+      throw error;
+    }
+  }
+
+  /**
+   * The daily report: the whole app over the last day, prepared and sent in
+   * one step. Only the owner's switch calls this (`dailyReportSchedule.ts`).
+   */
+  async sendDaily(): Promise<SupportReportResponse> {
+    const prepared = await this.prepareRequest({
+      subject: { kind: 'app', homeId: MAIN_HOME_ID },
+      problem: DAILY_REPORT_PROBLEM,
+      expected: '',
+      occurredAtMs: Date.now(),
+      historyWindow: 'day',
+    }, 'daily');
+    return prepared.ok ? this.send(prepared.report.document.id, { consent: true }) : prepared;
+  }
+
+  private async prepareRequest(request: SupportReportRequest, trigger: SupportReportTrigger):
+    Promise<SupportReportResponse> {
     this.prune();
     try {
       const capturedAtMs = Date.now();
-      const request = readSupportReportRequest(raw, capturedAtMs);
       const evidence = await this.source.capture(request, capturedAtMs);
-      const document: SupportReportDocument = {
-        ...evidence, version: 1, id: randomUUID(), capturedAtMs, request,
-      };
-      const json = JSON.stringify(document);
-      const message = `PELS PROBLEM REPORT V1\n${json}\nEND PELS REPORT ${document.id}\n`;
-      const bytes = Buffer.byteLength(message, 'utf8');
-      if (bytes > SUPPORT_REPORT_MAX_BYTES) return { ok: false, code: 'report_too_large' };
+      const fitted = fitToSize({ ...evidence, version: 1, id: randomUUID(), capturedAtMs, request, trigger });
+      if (!fitted) return { ok: false, code: 'report_too_large' };
+      const { document, json, message, bytes } = fitted;
       const availability = await this.transport.availability();
       this.prune();
       if (!this.makeRoom()) return { ok: false, code: 'report_busy' };
@@ -49,11 +117,11 @@ export class SupportReportService {
         document: JSON.parse(json) as SupportReportDocument, message,
         expiresAtMs: Date.now() + TTL_MS, availability, submission: { state: 'draft' },
       });
-      logger.info({ event: 'support_report_prepared', reportId: document.id, bytes });
+      logger.info({ event: 'support_report_prepared', reportId: document.id, bytes, trigger });
       return this.get(document.id);
     } catch (error) {
       if (error instanceof SupportReportInputError) return { ok: false, code: error.code };
-      logger.warn({ event: 'support_report_capture_failed' });
+      logger.warn({ event: 'support_report_capture_failed', trigger });
       return { ok: false, code: 'capture_failed' };
     }
   }
@@ -75,6 +143,7 @@ export class SupportReportService {
     this.dispatching = true;
     report.submission = { state: 'sending' };
     report.expiresAtMs = Date.now() + TTL_MS;
+    let dispatchedAtMs: number | undefined;
     try {
       report.availability = await this.transport.availability();
       if (report.availability !== 'available') {
@@ -82,8 +151,11 @@ export class SupportReportService {
         return { ok: false, code: report.availability === 'app_store_required'
           ? 'app_store_required' : 'sender_unavailable' };
       }
-      this.lastDispatchAtMs = Date.now();
+      dispatchedAtMs = Date.now();
       const delivery = await this.transport.send(report.message);
+      // The minute between dispatches starts with a report Homey may have taken.
+      // One it refused may be sent again at once.
+      if (delivery.state !== 'rejected') this.lastDispatchAtMs = dispatchedAtMs;
       switch (delivery.state) {
         case 'accepted': report.submission = { state: 'sent', reference: delivery.reference }; break;
         case 'rejected': report.submission = { state: 'failed' }; break;
@@ -92,6 +164,7 @@ export class SupportReportService {
       }
     } catch {
       // Never classify a possible post-dispatch failure as safe to retry.
+      if (dispatchedAtMs !== undefined) this.lastDispatchAtMs = dispatchedAtMs;
       report.submission = { state: 'unknown' };
     } finally {
       this.dispatching = false;

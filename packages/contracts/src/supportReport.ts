@@ -52,8 +52,11 @@ export type SupportReportDeviceEvents =
   | {
     state: 'available';
     entries: readonly SupportReportDeviceEvent[];
-    /** The reported device and the devices related to it, such as a charger's selected cars. */
-    deviceIds: readonly string[];
+    /**
+     * The reported device and the devices related to it, such as a charger's
+     * selected cars; `all` in a report about the whole app.
+     */
+    deviceIds: readonly string[] | 'all';
     fromMs: number;
     toMs: number;
     retentionDays: number;
@@ -63,22 +66,49 @@ export type SupportReportDeviceEvents =
   }
   | { state: 'unavailable'; reason: string };
 
+/** One of PELS's own structured log lines, as it was written. */
+export type SupportReportLogLine = {
+  atMs: number;
+  level: 'info' | 'warn' | 'error' | 'fatal';
+  entry: { readonly [key: string]: SupportReportValue };
+};
+
+/** Lines of one event left out of an hour once it passed the per-hour cap. */
+export type SupportReportLogOverflow = { hourStartMs: number; event: string; dropped: number };
+
+export type SupportReportLog =
+  | {
+    state: 'available';
+    lines: readonly SupportReportLogLine[];
+    overflow: readonly SupportReportLogOverflow[];
+    fromMs: number;
+    toMs: number;
+    /** The oldest lines left out so the report fits its size limit. */
+    leftOutForSize: number;
+  }
+  | { state: 'unavailable'; reason: string };
+
 export type SupportReportEvidence = {
   subjectName: string;
   appVersion: string;
   homeyVersion: string;
   activity: SupportReportActivity;
   deviceEvents: SupportReportDeviceEvents;
+  log: SupportReportLog;
   sections: readonly SupportReportSection[];
   omissions: readonly string[];
 };
 
-/** Immutable snapshot prepared for one explicit user submission. */
+/** `owner`: the owner sent it; `daily`: the daily report the owner turned on. */
+export type SupportReportTrigger = 'owner' | 'daily';
+
+/** Immutable snapshot prepared for one submission. */
 export type SupportReportDocument = SupportReportEvidence & {
   version: 1;
   id: string;
   capturedAtMs: number;
   request: SupportReportRequest;
+  trigger: SupportReportTrigger;
 };
 
 export type SupportReportAvailability = 'available' | 'app_store_required' | 'unavailable';
