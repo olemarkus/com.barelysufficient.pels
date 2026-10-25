@@ -199,6 +199,11 @@ Every runtime file is clean, so the guard allows no site at all. `api.ts`'s pre-
 - Per-device overview wording is resolved once by `lib/plan/deviceStatusReadModel.ts` into
   `DeviceStatus`. Settings UI renders that status, and `lib/plan/deviceOverviewLog.ts` copies its
   label, power, fact, and reason text into activity history and structured transition events.
+  Activity history records a row only for a change of state: a device PELS leaves on running or
+  resting by itself, a figure moving inside the same sentence, and a countdown wait (`Waiting after
+  limiting a device`, `Waiting to resume — 270s`) never add one, and a stored row names a countdown
+  wait without its countdown. The card, and the event's `cardReasonText`, keep the countdown
+  (owner, 2026-10-25).
   Device-log and diagnostics surfaces should render those recorded fields without reconstructing
   status from raw runtime state or calling a separate overview formatter.
 - Shared-domain wording helpers remain appropriate where both browser and runtime consumers need

@@ -1,4 +1,4 @@
-/** Exclude countdown decay: identical states must not create a log every second. */
+/** What the activity log records of a card: its state changes, never a countdown or a drifting figure. */
 import type {
   SettingsUiDeviceLogEntry,
   SettingsUiPlanDeviceSnapshot,
@@ -31,34 +31,71 @@ export function buildPresentationSignatureForDevice(device: OverviewLogDevice): 
 const toSentenceShape = (text: string): string => text.replace(/\d+(?:[.,]\d+)?/gu, '#');
 const toNullableSentenceShape = (text: string | null): string | null => (text === null ? null : toSentenceShape(text));
 
+type OverviewStatusReason = OverviewLogDevice['status']['reason'];
+
+/**
+ * A reason that is itself a countdown, such as the pause after limiting a
+ * device or the wait before resuming ("Waiting to resume — 270s"). The card
+ * counts it down; the activity log never records one (owner, 2026-10-25): it
+ * comes and goes with every device limited anywhere in the home.
+ */
+export const isCountdownWait = (reason: OverviewStatusReason): boolean => reason?.countdown?.kind === 'in_text';
+
+/** A countdown wait's sentence without its countdown: "Waiting after limiting a device", "Waiting to resume". */
+const withoutCountdown = (prefix: string, suffix: string): string => [
+  prefix.replace(/\s*(?:—|\()\s*$/u, ''),
+  // "… (60s)" leaves ")"; a simulation line goes on after the countdown, as in "… — 270s (simulation)".
+  suffix.replace(/^\s*\)/u, '').trim(),
+].filter((part) => part !== '').join(' ').trim();
+
+/** The reason as the log compares it: its sentence without figures or countdown. */
+export function buildLoggedReasonShape(reason: OverviewStatusReason): string | null {
+  if (!reason) return null;
+  const { countdown, detail, text, ...rest } = reason;
+  return JSON.stringify({
+    ...rest,
+    text: toSentenceShape(countdown?.kind === 'in_text' ? withoutCountdown(countdown.prefix, countdown.suffix) : text),
+    ...(detail === undefined ? {} : { detail: toSentenceShape(detail) }),
+  });
+}
+
 /**
  * What makes a log entry: a change of state, reason, rail, kind of power line
  * (live, reported, expected or none) or a categorical fact (a charger's plug
  * turning `Unplugged`). The live power reading and the fact line's measured
  * readings (temperature, battery level, also carried as the status `reading`)
- * drift without being a state change, the reason's figures move with the pace,
- * and a countdown's end and length are re-anchored on rebuilds that have no
- * recorded start, so none of them may move the signature on their own.
+ * drift without being a state change, and the reason's figures move with the
+ * pace, so none of them may move the signature on their own.
+ *
+ * A device PELS leaves on is one state whether it is running or resting: a
+ * thermostat holding its target switches its own element every few minutes,
+ * and those switches would fill a busy device's history in hours. `reason` is
+ * the reason as the log keeps it (`buildLoggedReasonShape`), or the one the log
+ * carries through a countdown wait (`DeviceOverviewTransitions`).
  */
-export function buildOverviewSignatureForDevice(device: OverviewLogDevice): string {
-  const status = { ...device.status,
-    powerText: toNullableSentenceShape(device.status.powerText),
-    factText: toNullableSentenceShape(device.status.factText),
+export function buildOverviewSignatureForDevice(device: OverviewLogDevice, reason: string | null): string {
+  const { kind, label, tone, canEaseOff, reason: _reason, ...status } = device.status;
+  const leftOn = kind === 'active' || kind === 'idle';
+  return JSON.stringify({
+    ...status,
+    kind: leftOn ? 'left_on' : kind,
+    // For a device left on, the ease-off control follows whether it is running.
+    ...(leftOn ? {} : { label, tone, canEaseOff }),
+    powerText: toNullableSentenceShape(status.powerText),
+    factText: toNullableSentenceShape(status.factText),
     // The same measured figures as numbers: only which kind of reading it is
     // can move the signature.
-    reading: device.status.reading?.kind ?? null };
-  const reason = status.reason;
-  if (!reason) return JSON.stringify(status);
-  const { countdown, detail } = reason;
-  return JSON.stringify({ ...status, reason: {
-    ...reason,
-    text: countdown?.kind === 'in_text' ? null : toSentenceShape(reason.text),
-    ...(detail === undefined ? {} : { detail: toSentenceShape(detail) }),
-    ...(countdown ? { countdown: countdown.kind === 'in_text'
-      ? { kind: countdown.kind, prefix: toSentenceShape(countdown.prefix), suffix: toSentenceShape(countdown.suffix) }
-      : { kind: countdown.kind } } : {}),
-  } });
+    reading: status.reading?.kind ?? null,
+    reason,
+  });
 }
+
+/** The reason line as the log stores it: the card's sentence, a countdown wait without its countdown. */
+const loggedReasonText = (reason: OverviewStatusReason): string => {
+  if (!reason) return '';
+  const { countdown } = reason;
+  return countdown?.kind === 'in_text' ? withoutCountdown(countdown.prefix, countdown.suffix) : reason.text;
+};
 
 export function buildDeviceLogEntry(device: OverviewLogDevice, atMs = Date.now()): SettingsUiDeviceLogEntry {
   return {
@@ -68,7 +105,7 @@ export function buildDeviceLogEntry(device: OverviewLogDevice, atMs = Date.now()
     stateTone: device.status.tone,
     powerMsg: device.status.powerText,
     usageMsg: device.status.factText ?? '',
-    statusMsg: device.status.reason?.text ?? '',
+    statusMsg: loggedReasonText(device.status.reason),
   };
 }
 

@@ -1,6 +1,8 @@
 import {
+  buildDeviceLogEntry,
+  buildLoggedReasonShape,
   buildOverviewEventForDevice,
-  buildOverviewSignatureForDevice,
+  buildOverviewSignatureForDevice as buildSignatureWithReason,
   buildPresentationSignatureForDevice,
   type OverviewDecisionFacts,
   type OverviewLogDevice,
@@ -10,6 +12,10 @@ import { buildOverviewSteppedLoad } from '../../lib/plan/planOverviewSteppedStat
 import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
 import { buildOverviewDeviceCard, overviewReadModelWiring } from '../utils/settingsOverviewFixture';
 import { executionStateFixture } from '../utils/deviceStatusFixture';
+import { DeviceOverviewTransitions } from '../../lib/plan/planOverviewEmit';
+import type { DeviceOverviewLogRecorder } from '../../lib/diagnostics/deviceActivityRecorder';
+import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
+import { partialDouble } from '../helpers/partialDouble';
 
 // The log seam receives the same resolved presentation as the UI.
 // Keep the decision anchor and display clock fixed; these tests do not advance time.
@@ -27,6 +33,10 @@ const overviewLogDevice = (
   overrides: Parameters<typeof buildPlanDevice>[0] = {},
 ): OverviewLogDevice => asOverviewLogDevice(buildPlanDevice(overrides));
 
+// The signature with the device's own reason, as the log compares it outside a countdown wait.
+const signatureOf = (device: OverviewLogDevice): string => (
+  buildSignatureWithReason(device, buildLoggedReasonShape(device.status.reason)));
+
 // The debug event's decision facts; these tests assert the presented fields.
 const decision: OverviewDecisionFacts = {
   reasonCode: 'keep', plannedState: 'keep', desiredStepId: null, observedStepId: null,
@@ -41,35 +51,35 @@ describe('buildOverviewSignatureForDevice', () => {
   it('ignores measured readings in the fact line so a drifting temperature is not a state change', () => {
     const base = withStatus(overviewLogDevice(), { factText: '47.4 °C · target 22 °C' });
     const drifted = withStatus(base, { factText: '47.3 °C · target 22 °C' });
-    expect(buildOverviewSignatureForDevice(drifted)).toBe(buildOverviewSignatureForDevice(base));
+    expect(signatureOf(drifted)).toBe(signatureOf(base));
   });
 
   it('records a categorical fact change such as a charger becoming unplugged', () => {
     const base = withStatus(overviewLogDevice(), { factText: 'Charging · 64 % · level 16 A' });
     const unplugged = withStatus(base, { factText: 'Unplugged · Level 16 A' });
-    expect(buildOverviewSignatureForDevice(unplugged)).not.toBe(buildOverviewSignatureForDevice(base));
+    expect(signatureOf(unplugged)).not.toBe(signatureOf(base));
     const batteryDrift = withStatus(base, { factText: 'Charging · 65 % · level 16 A' });
-    expect(buildOverviewSignatureForDevice(batteryDrift)).toBe(buildOverviewSignatureForDevice(base));
+    expect(signatureOf(batteryDrift)).toBe(signatureOf(base));
   });
 
   it('still records a change of state, reason or kind of power line', () => {
     const base = overviewLogDevice();
-    const signature = buildOverviewSignatureForDevice(base);
-    expect(buildOverviewSignatureForDevice(withStatus(base, { kind: 'held', label: 'Limited' }))).not.toBe(signature);
-    expect(buildOverviewSignatureForDevice(withStatus(base, { reason: { text: 'Waiting to resume' } })))
+    const signature = signatureOf(base);
+    expect(signatureOf(withStatus(base, { kind: 'held', label: 'Limited' }))).not.toBe(signature);
+    expect(signatureOf(withStatus(base, { reason: { text: 'Waiting to resume' } })))
       .not.toBe(signature);
-    expect(buildOverviewSignatureForDevice(withStatus(base, { powerText: '1.4 kW', powerVariant: 'live' })))
+    expect(signatureOf(withStatus(base, { powerText: '1.4 kW', powerVariant: 'live' })))
       .not.toBe(signature);
   });
 
   it('ignores a power reading moving within the same kind of power line', () => {
     const base = withStatus(overviewLogDevice(), { powerText: '1.4 kW', powerVariant: 'live' });
-    const signature = buildOverviewSignatureForDevice(base);
-    expect(buildOverviewSignatureForDevice(withStatus(base, { powerText: '1.5 kW' }))).toBe(signature);
-    expect(buildOverviewSignatureForDevice(withStatus(base, { powerText: null }))).not.toBe(signature);
-    expect(buildOverviewSignatureForDevice(withStatus(base, {
+    const signature = signatureOf(base);
+    expect(signatureOf(withStatus(base, { powerText: '1.5 kW' }))).toBe(signature);
+    expect(signatureOf(withStatus(base, { powerText: null }))).not.toBe(signature);
+    expect(signatureOf(withStatus(base, {
       powerText: 'Reported 1.4 kW', powerVariant: 'reported' }))).not.toBe(signature);
-    expect(buildOverviewSignatureForDevice(withStatus(base, {
+    expect(signatureOf(withStatus(base, {
       powerText: '≈ 1.4 kW when active', powerVariant: 'expected' }))).not.toBe(signature);
     // The open card still receives every reading.
     expect(buildPresentationSignatureForDevice(withStatus(base, { powerText: '1.5 kW' })))
@@ -82,9 +92,9 @@ describe('buildOverviewSignatureForDevice', () => {
     const base = withStatus(overviewLogDevice(), { kind: 'held', label: 'Limited · Off',
       reason: { text: 'Waiting to resume — 0.8 kW more needed' } });
     const moved = withStatus(base, { reason: { text: 'Waiting to resume — 0.9 kW more needed' } });
-    expect(buildOverviewSignatureForDevice(moved)).toBe(buildOverviewSignatureForDevice(base));
+    expect(signatureOf(moved)).toBe(signatureOf(base));
     const otherCause = withStatus(base, { reason: { text: 'Waiting for cheaper hours' } });
-    expect(buildOverviewSignatureForDevice(otherCause)).not.toBe(buildOverviewSignatureForDevice(base));
+    expect(signatureOf(otherCause)).not.toBe(signatureOf(base));
   });
 
   it('treats a countdown re-anchored on a later rebuild as the same countdown', () => {
@@ -93,10 +103,83 @@ describe('buildOverviewSignatureForDevice', () => {
     const base = withStatus(overviewLogDevice(), { reason: { text: 'Waiting after limiting a device (60s)', countdown } });
     const reanchored = withStatus(base, { reason: { text: 'Waiting after limiting a device (59s)',
       countdown: { ...countdown, endsAtMs: 60_400 } } });
-    expect(buildOverviewSignatureForDevice(reanchored)).toBe(buildOverviewSignatureForDevice(base));
+    expect(signatureOf(reanchored)).toBe(signatureOf(base));
     const otherCause = withStatus(base, { reason: { text: 'Waiting for power to settle (60s)',
       countdown: { ...countdown, prefix: 'Waiting for power to settle (' } } });
-    expect(buildOverviewSignatureForDevice(otherCause)).not.toBe(buildOverviewSignatureForDevice(base));
+    expect(signatureOf(otherCause)).not.toBe(signatureOf(base));
+  });
+});
+
+describe('what the activity log keeps of a device PELS leaves on, and of a countdown wait', () => {
+  const withStatus = (
+    device: OverviewLogDevice, status: Partial<OverviewLogDevice['status']>,
+  ): OverviewLogDevice => ({ ...device, status: { ...device.status, ...status } });
+  const cooldown = {
+    text: 'Waiting after limiting a device (60s)',
+    countdown: { kind: 'in_text' as const, endsAtMs: 60_000, totalSec: 60,
+      prefix: 'Waiting after limiting a device (', suffix: ')' },
+  };
+
+  it('still records a device left on gaining or losing a reason', () => {
+    const resting = withStatus(overviewLogDevice(), { kind: 'idle', tone: 'idle', label: 'Idle' });
+    expect(signatureOf(withStatus(resting, { reason: { text: 'Raised while power is cheap' } })))
+      .not.toBe(signatureOf(resting));
+    expect(signatureOf(withStatus(resting, { kind: 'held', tone: 'held', label: 'Limited' })))
+      .not.toBe(signatureOf(resting));
+  });
+
+  it('stores a countdown wait without its countdown', () => {
+    expect(buildDeviceLogEntry(withStatus(overviewLogDevice(), { reason: cooldown }), 0).statusMsg)
+      .toBe('Waiting after limiting a device');
+    expect(buildDeviceLogEntry(withStatus(overviewLogDevice(), { reason: {
+      text: 'Waiting to resume — 270s',
+      countdown: { kind: 'in_text', endsAtMs: 270_000, totalSec: 270, prefix: 'Waiting to resume — ', suffix: '' },
+    } }), 0).statusMsg).toBe('Waiting to resume');
+    expect(buildDeviceLogEntry(withStatus(overviewLogDevice(), { reason: {
+      text: 'Would be waiting to resume — 270s (simulation)',
+      countdown: { kind: 'in_text', endsAtMs: 270_000, totalSec: 270,
+        prefix: 'Would be waiting to resume — ', suffix: ' (simulation)' },
+    } }), 0).statusMsg).toBe('Would be waiting to resume (simulation)');
+  });
+
+  it('records no row when a held device passes through the pause after another device is limited', () => {
+    const recorded: string[] = [];
+    const recorder = partialDouble<DeviceOverviewLogRecorder>({
+      record: (_device, entry) => { recorded.push(entry.statusMsg); }, flush: () => undefined,
+    });
+    const held = withStatus(overviewLogDevice({ id: 'adrian' }), {
+      kind: 'held', tone: 'held', label: 'Limited · Off', reason: { text: 'Waiting to resume — 4.1 kW more needed' } });
+    const transitions = new DeviceOverviewTransitions();
+    const capture = (device: OverviewLogDevice) => transitions.capture(
+      partialDouble<SettingsUiPlanSnapshot>({ devices: [device] }), recorder, () => decision);
+    capture(held);
+    expect(capture(withStatus(held, { reason: cooldown }))).toBe(true);
+    capture(withStatus(held, { reason: { text: 'Waiting to resume — 0.4 kW more needed' } }));
+    expect(recorded).toEqual(['Waiting to resume — 4.1 kW more needed']);
+    capture(withStatus(held, { reason: { text: 'Waiting to resume — other devices are ahead' } }));
+    expect(recorded).toHaveLength(2);
+  });
+
+  it('records the reason coming back after a row written during a countdown wait', () => {
+    const recorded: string[] = [];
+    const recorder = partialDouble<DeviceOverviewLogRecorder>({
+      record: (_device, entry) => { recorded.push(`${entry.stateMsg} | ${entry.statusMsg}`); }, flush: () => undefined,
+    });
+    const shortfall = { text: 'Waiting to resume — 4.1 kW more needed' };
+    const off = withStatus(overviewLogDevice({ id: 'adrian' }), {
+      kind: 'held', tone: 'held', label: 'Limited · Off', reason: shortfall });
+    const transitions = new DeviceOverviewTransitions();
+    const capture = (device: OverviewLogDevice) => transitions.capture(
+      partialDouble<SettingsUiPlanSnapshot>({ devices: [device] }), recorder, () => decision);
+    capture(off);
+    capture(withStatus(off, { label: 'Limited · On', reason: cooldown }));
+    capture(withStatus(off, { label: 'Limited · On', reason: cooldown }));
+    capture(withStatus(off, { label: 'Limited · On', reason: shortfall }));
+    expect(recorded).toEqual([
+      'Limited · Off | Waiting to resume — 4.1 kW more needed',
+      'Limited · On | Waiting after limiting a device',
+      'Limited · On | Waiting to resume — 4.1 kW more needed',
+    ]);
   });
 });
 
@@ -150,13 +233,16 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
       'cooldown',
       { code: 'cooldown_restore' as const, remainingSec: 18 },
       'Waiting to increase — 18s',
+      // The activity row keeps no countdown; the card's line does.
+      'Waiting to increase',
     ],
     [
       'queue',
       { code: 'waiting_for_other_devices' as const },
       'Waiting to increase — other devices are ahead',
+      'Waiting to increase — other devices are ahead',
     ],
-  ])('logs the action-specific line for an active stepped device in the %s', (_label, reason, copy) => {
+  ])('logs the action-specific line for an active stepped device in the %s', (_label, reason, copy, stored) => {
     const event = buildOverviewEventForDevice(asOverviewLogDevice(steppedPlanDevice({
       id: 'charger',
       currentState: 'on' as const,
@@ -166,7 +252,7 @@ describe('buildOverviewEventForDevice — cardReasonText', () => {
       reason,
     })), decision);
 
-    expect(event['statusMsg']).toBe(copy);
+    expect(event['statusMsg']).toBe(stored);
     expect(event['cardReasonText']).toBe(copy);
   });
 
