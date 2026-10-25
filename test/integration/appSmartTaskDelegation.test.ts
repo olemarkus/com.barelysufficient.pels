@@ -17,12 +17,12 @@ import { createInertEnergyDelivery, noReservationSuppression } from '../helpers/
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type {
-  DeferredObjectiveActivePlansV1,
+  DeferredObjectiveActivePlansV2,
   DeferredObjectiveActivePlanV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   DeferredObjectivePlanHistoryRecord,
-  DeferredObjectivePlanHistoryV6,
+  DeferredObjectivePlanHistoryV7,
 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { DeviceConfigurationStore } from '../../lib/device/deviceConfiguration';
@@ -67,8 +67,8 @@ const buildHistoryEntry = (
 });
 
 const buildAppWithRecorders = (options: {
-  activePlans?: DeferredObjectiveActivePlansV1;
-  history?: DeferredObjectivePlanHistoryV6;
+  activePlans?: DeferredObjectiveActivePlansV2;
+  history?: DeferredObjectivePlanHistoryV7;
 } = {}) => {
   const app = createApp();
   app.deviceManager = partialDouble<MyApp['deviceManager']>({
@@ -100,7 +100,7 @@ const buildAppWithRecorders = (options: {
     getActivePlansSnapshot: () => options.activePlans ?? createEmptyActivePlans(),
   });
   app.deferredObjectivePlanHistoryRecorder = partialDouble<MyApp['deferredObjectivePlanHistoryRecorder']>({
-    getHistorySnapshot: () => options.history as DeferredObjectivePlanHistoryV6,
+    getHistorySnapshot: () => options.history as DeferredObjectivePlanHistoryV7,
     getInProgressTrajectory: () => null,
     isReservationSuppressed: noReservationSuppression,
     hasObservedTask: () => false,
@@ -116,7 +116,7 @@ afterEach(async () => {
 describe('PelsApp smart-task delegation stubs', () => {
   it('routes getDeferredObjectiveActivePlansUiPayload to the payload assembler', () => {
     const app = buildAppWithRecorders({
-      activePlans: { version: 1, plansByDeviceId: { [DEVICE_ID]: buildActivePlan() } },
+      activePlans: { version: 2, plansByDeviceId: { [DEVICE_ID]: buildActivePlan() } },
     });
     const payload = app.getDeferredObjectiveActivePlansUiPayload();
     // The resolved (unit-agnostic) view is the assembler's output, not the raw snapshot.
@@ -132,7 +132,7 @@ describe('PelsApp smart-task delegation stubs', () => {
   it('routes getDeferredObjectivePlanHistoryUiPayload to the unbounded history payload', () => {
     const app = buildAppWithRecorders({
       history: {
-        version: 6,
+        version: 7,
         entries: [buildHistoryEntry({ id: 'old', finalizedAtMs: 1_000 }), buildHistoryEntry({ id: 'new' })],
       },
     });
@@ -146,7 +146,7 @@ describe('PelsApp smart-task delegation stubs', () => {
     // proves the `sinceMs` cutoff was actually applied.
     const app = buildAppWithRecorders({
       history: {
-        version: 6,
+        version: 7,
         entries: [buildHistoryEntry({ id: 'stale', finalizedAtMs: 1_000 }), buildHistoryEntry({ id: 'recent' })],
       },
     });

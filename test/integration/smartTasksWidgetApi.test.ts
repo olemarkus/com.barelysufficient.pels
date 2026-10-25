@@ -10,7 +10,7 @@
  */
 import { getSmartTasks } from '../../widgets/smart_tasks/src/api';
 import type {
-  ResolvedDeferredObjectiveActivePlansV1,
+  ResolvedDeferredObjectiveActivePlansV2,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import { type ActivePlanFixture, resolveActivePlanFixtures } from '../helpers/activePlanFixtures';
 import type {
@@ -41,7 +41,7 @@ const activePlan = (o: Partial<ActivePlanFixture> = {}): ActivePlanFixture => ({
     revisedAtMs: NOW,
     computedFromPricesUpTo: null,
     reason: 'flow_card',
-    hours: [{ startsAtMs: NOW, plannedKWh: 1 }, { startsAtMs: NOW + H, plannedKWh: 1 }],
+    hours: [{ startsAtMs: NOW, endsAtMs: (NOW) + 3_600_000, plannedKWh: 1 }, { startsAtMs: NOW + H, endsAtMs: (NOW + H) + 3_600_000, plannedKWh: 1 }],
     energyNeededKWh: 2,
     planStatus: 'on_track',
     rateMean: 0.5,
@@ -80,7 +80,7 @@ const historyEntry = (
   observedIntervals: [],
   discoveredFrom: 'observation',
   originalPlan: {
-    hours: [{ startsAtMs: NOW - 5 * H, plannedKWh: 1 }, { startsAtMs: NOW - 4 * H, plannedKWh: 1 }],
+    hours: [{ startsAtMs: NOW - 5 * H, endsAtMs: (NOW - 5 * H) + 3_600_000, plannedKWh: 1 }, { startsAtMs: NOW - 4 * H, endsAtMs: (NOW - 4 * H) + 3_600_000, plannedKWh: 1 }],
     energyNeededKWh: 2,
     planStatus: 'on_track',
     revisedAtMs: NOW - 5 * H,
@@ -99,7 +99,7 @@ const emptyHistory: SettingsUiDeferredObjectivePlanHistoryPayload = { version: 1
 // Structural mock of the app methods the widget API reads — the SDK/settings
 // surface, faked. Every method optional, matching the real `WidgetApiApp`.
 type AppMock = {
-  getDeferredObjectiveActivePlansUiPayload?: () => ResolvedDeferredObjectiveActivePlansV1 | null;
+  getDeferredObjectiveActivePlansUiPayload?: () => ResolvedDeferredObjectiveActivePlansV2 | null;
   getDeferredObjectivePlanHistoryRecentUiPayload?: (sinceMs: number) => SettingsUiDeferredObjectivePlanHistoryPayload;
   getDeferredObjectivePlanHistoryUiPayload?: () => SettingsUiDeferredObjectivePlanHistoryPayload;
   getUiPickerDevices?: () => TargetDeviceSnapshot[];
@@ -112,7 +112,7 @@ const run = (app: AppMock, timeZone = 'UTC') => getSmartTasks({
 // The app's `getDeferredObjectiveActivePlansUiPayload` returns the RESOLVED
 // container in production (the assembler resolves each plan with its
 // trajectory), so resolve the fixtures here at the same boundary.
-const plansOf = (...plans: ActivePlanFixture[]): ResolvedDeferredObjectiveActivePlansV1 => (
+const plansOf = (...plans: ActivePlanFixture[]): ResolvedDeferredObjectiveActivePlansV2 => (
   resolveActivePlanFixtures(Object.fromEntries(plans.map((plan) => [plan.deviceId, plan])))
 );
 
@@ -187,7 +187,7 @@ describe('smart_tasks widget API — mocked SDK/settings scenarios', () => {
             finalProgressC: 48,
             finalizedAtMs: NOW - 2 * H,
             finalPlan: {
-              hours: [{ startsAtMs: NOW - 5 * H, plannedKWh: 1 }],
+              hours: [{ startsAtMs: NOW - 5 * H, endsAtMs: (NOW - 5 * H) + 3_600_000, plannedKWh: 1 }],
               energyNeededKWh: 4,
               planStatus: 'cannot_meet',
               revisedAtMs: NOW - 5 * H,

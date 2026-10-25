@@ -9,9 +9,9 @@ import type { PriceHorizonEntry } from '../../packages/planner-types/src/priceHo
 const PRICE_HORIZON_HOUR_MS = 60 * 60 * 1000;
 
 /**
- * Build the deferred-objective allocation horizon's price source directly from
- * the price layer (`CombinedPricesV2`), independent of the daily-budget
- * snapshot. Flattens the store, filters to hours that overlap
+ * Adapt a stored hourly price series to the interval horizon contract.
+ * Live Smart-task evaluations use the native periods from PriceService instead.
+ * Flattens the store, filters to hours that overlap
  * `[nowMs, deadlineAtMs)`, dedupes by epoch hour (first-write-wins), and sorts
  * ascending. Returns an empty array when the store is null or no priced hour
  * falls in the window. Lives in the price layer (the producer); the leafward
@@ -26,9 +26,8 @@ const PRICE_HORIZON_HOUR_MS = 60 * 60 * 1000;
  * Each hour carries the PLANNING price (`budgetPrice ?? total` — see
  * `resolvePlanningPrice`): the horizon exists to schedule flexible load, so a
  * prosumer's forecast-surplus hours rank by the blended planning price. The
- * finiteness gate applies to the RESOLVED value, so an entry with a junk
- * `total` but a finite `budgetPrice` still contributes; only an hour with no
- * finite price at all is skipped.
+ * import price remains separately available for money estimates. Both must be
+ * finite: a valid planning price cannot rescue a malformed billed price.
  */
 export const buildPriceHorizonFromCombined = (
   store: CombinedPricesV2 | null,
@@ -39,12 +38,19 @@ export const buildPriceHorizonFromCombined = (
   for (const entry of flattenAllHours(store)) {
     const startMs = new Date(entry.startsAt).getTime();
     const price = resolvePlanningPrice(entry.budgetPrice, entry.total);
-    if (!Number.isFinite(startMs) || !Number.isFinite(price)) continue;
+    if (!Number.isFinite(startMs) || !Number.isFinite(price) || !Number.isFinite(entry.total)) continue;
     const hourKey = Math.floor(startMs / PRICE_HORIZON_HOUR_MS) * PRICE_HORIZON_HOUR_MS;
     // Overlap test on the price hour `[startMs, startMs + HOUR)`.
     if (startMs + PRICE_HORIZON_HOUR_MS <= nowMs || startMs >= deadlineAtMs) continue;
     // First-write wins: keep the earliest entry that floors to this epoch hour.
-    if (!byHour.has(hourKey)) byHour.set(hourKey, { startMs, price });
+    if (!byHour.has(hourKey)) {
+      byHour.set(hourKey, {
+        startMs,
+        endMs: startMs + PRICE_HORIZON_HOUR_MS,
+        price,
+        moneyPrice: entry.total,
+      });
+    }
   }
   return [...byHour.values()].sort((left, right) => left.startMs - right.startMs);
 };

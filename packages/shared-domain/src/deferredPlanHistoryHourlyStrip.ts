@@ -1,42 +1,25 @@
-import { hoursWithPlannedEnergy } from './deferredPlanBookedHours';
-// Producer for the smart-task history-detail per-hour bar strip (v2.7.3).
-//
-// Resolves the postmortem question "when did each hour run, and what did
-// each hour cost?" into a flat per-bucket payload the view layer renders
-// without branching on the entry shape. Per
-// `feedback_layering_resolution_in_producer.md`, every conditional
-// (planned-vs-delivered, cheapest-hour glow, fallback to planned kWh)
-// lives here so the renderer is a pure mapper.
 import type {
   DeferredObjectivePlanHistoryEntry,
-  DeferredObjectivePlanHistoryHourStartBooking,
-  DeferredObjectivePlanHistoryHourlyContribution,
   DeferredObjectivePlanHistoryHourlyTone,
-  DeferredObjectivePlanHistoryRevisionSnapshot,
+  DeferredObjectivePlanHistoryHourlyContribution,
 } from '../../contracts/src/deferredObjectivePlanHistory';
+import { pickScheduledHours, type ScheduledHistoryHour } from './deferredPlanHistoryShared';
 
-const HOUR_MS = 60 * 60 * 1000;
-
-// One bar on the strip. The view layer reads these fields directly without
-// inspecting the entry — every conditional (cheap-hour glow, planned-but-
-// skipped outline, kWh fallback) is resolved here.
 export type HourlyStripBucket = {
-  // Hour-aligned start; the view renders this on the same time axis as the
+  // Recorded interval start; the view renders this on the same time axis as the
   // trajectory chart above. The view does not re-derive bucket positions
   // from the entry — windowStartMs / windowEndMs already span them.
   atMs: number;
-  // Bar height in kWh. `delivered` when the hour was actually charged in;
-  // falls back to `planned` when the hour was scheduled but not delivered
-  // (the dashed-outline case). `0` means "this hour was neither scheduled
-  // nor charged"; the view still emits the bucket so the strip's 24-hour
-  // shape is intact, but renders nothing for it.
+  endsAtMs: number;
+  // Bar height in kWh. Delivered energy takes precedence over planned
+  // energy (the dashed-outline case). Zero buckets preserve time gaps.
   kwh: number;
-  // Hour-resolved tone for the fill colour. `null` only on buckets the
+  // Interval-resolved tone for the fill colour. `null` only on buckets the
   // entry never carried a contribution or plan for — the view treats those
   // as gap buckets.
-  tone: DeferredObjectivePlanHistoryHourlyTone | null;
-  // True when the hour had work booked when it began (on entries recorded
-  // before the per-hour record, when the original or final schedule planned
+  tone: DeferredObjectivePlanHistoryHourlyTone | 'mixed' | null;
+  // True when the interval had work booked when it began (on entries recorded
+  // before start bookings, when the original or final schedule planned
   // it), regardless of whether the runtime delivered against it.
   planned: boolean;
   // True when at least one delivery contribution landed on the bucket.
@@ -45,19 +28,20 @@ export type HourlyStripBucket = {
   // True when `planned && !delivered`. The view renders a dashed 1 px
   // outline to read as "schedule said yes, machinery did not".
   outlinePresent: boolean;
-  // True only on the single cheapest hour the run actually charged in
+  // True only on the single cheapest interval the run actually charged in
   // (`tone === 'cheap'` AND `delivered` AND lowest `priceValue` among
-  // delivered hours). The view paints the soft accent glow on this bucket.
+  // delivered intervals). The view paints the soft accent glow on this bucket.
   // The producer guarantees at most one bucket per payload carries this.
   cheapestDeliveredHighlight: boolean;
-  // The hour's spot price at contribution time, in the user's display
+  // The interval's import price at contribution time, in the user's display
   // currency. `null` when the bucket had no contribution. The view
   // surfaces it in the tooltip.
   priceValue: number | null;
+  priceIsAverage: boolean;
 };
 
 // Resolved bar-strip payload. `mode === 'absent'` means the entry has no
-// usable per-hour data; the view suppresses the strip entirely so legacy
+// usable contribution data; the view suppresses the strip entirely so legacy
 // v4 entries (no `hourlyContributions`) keep rendering the trajectory
 // chart only. `mode === 'present'` carries a non-empty bucket list.
 export type DeferredPlanHistoryHourlyStripData =
@@ -69,135 +53,116 @@ export type DeferredPlanHistoryHourlyStripData =
     buckets: HourlyStripBucket[];
   };
 
-const floorToHour = (ms: number): number => Math.floor(ms / HOUR_MS) * HOUR_MS;
-const ceilToHour = (ms: number): number => Math.ceil(ms / HOUR_MS) * HOUR_MS;
+type RecordedCostSpan = {
+  atMs: number;
+  endsAtMs: number;
+  deliveredKWh: number;
+  totalCost: number;
+  priceValue: number;
+  priceIsAverage: boolean;
+  tone: DeferredObjectivePlanHistoryHourlyTone | 'mixed' | null;
+};
 
-const indexContributions = (
+// A restart may append quarter observations alongside an older hourly total.
+// Keep overlapping observations at their coarsest recorded resolution: summing
+// exact energy/cost is honest; reconstructing historical quarter prices is not.
+const collectRecordedCostSpans = (
   contributions: readonly DeferredObjectivePlanHistoryHourlyContribution[],
-): Map<number, DeferredObjectivePlanHistoryHourlyContribution> => {
-  const byAtMs = new Map<number, DeferredObjectivePlanHistoryHourlyContribution>();
-  for (const contribution of contributions) {
-    byAtMs.set(floorToHour(contribution.atMs), contribution);
-  }
-  return byAtMs;
-};
-
-// Collect planned-hour metadata from the original + final snapshots so the
-// strip can show "scheduled but not delivered" even when the planner
-// revised the schedule mid-run. The final plan wins on `plannedKWh`
-// because it represents the planner's last word for that hour. The fallback
-// for entries recorded before `hourStartBookings`.
-const indexLegacyPlannedHours = (
-  original: DeferredObjectivePlanHistoryRevisionSnapshot | null,
-  final: DeferredObjectivePlanHistoryRevisionSnapshot | null,
-): Map<number, number> => {
-  const byAtMs = new Map<number, number>();
-  hoursWithPlannedEnergy(original?.hours ?? [])
-    .forEach((hour) => byAtMs.set(floorToHour(hour.startsAtMs), hour.plannedKWh));
-  hoursWithPlannedEnergy(final?.hours ?? [])
-    .forEach((hour) => byAtMs.set(floorToHour(hour.startsAtMs), hour.plannedKWh));
-  return byAtMs;
-};
-
-// Each hour's booking at its start, the same schedule the planned total and the
-// chart's run bands read (`pickScheduledHours`). Only positive bookings count
-// as planned: an hour the plan in force booked nothing for reads as not
-// scheduled, which is what it was when it ran.
-const indexBookedHours = (
-  bookings: readonly DeferredObjectivePlanHistoryHourStartBooking[],
-): Map<number, number> => {
-  const byAtMs = new Map<number, number>();
-  for (const booking of bookings) {
-    if (Number.isFinite(booking.bookedKWh) && booking.bookedKWh > 0) {
-      byAtMs.set(floorToHour(booking.atMs), booking.bookedKWh);
+  windowStartMs: number,
+  windowEndMs: number,
+): RecordedCostSpan[] => {
+  const spans: RecordedCostSpan[] = [];
+  for (const contribution of [...contributions].sort((a, b) => a.atMs - b.atMs)) {
+    const atMs = Math.max(windowStartMs, contribution.atMs);
+    const endsAtMs = Math.min(windowEndMs, contribution.endsAtMs);
+    if (endsAtMs <= atMs) continue;
+    const totalCost = contribution.priceValue * contribution.deliveredKWh;
+    const previous = spans[spans.length - 1];
+    if (previous && atMs < previous.endsAtMs) {
+      const deliveredKWh = previous.deliveredKWh + contribution.deliveredKWh;
+      const cost = previous.totalCost + totalCost;
+      spans[spans.length - 1] = {
+        atMs: previous.atMs, endsAtMs: Math.max(previous.endsAtMs, endsAtMs),
+        deliveredKWh, totalCost: cost,
+        priceValue: deliveredKWh > 0 ? cost / deliveredKWh : previous.priceValue,
+        priceIsAverage: previous.priceIsAverage || previous.priceValue !== contribution.priceValue,
+        tone: previous.tone === contribution.tone ? previous.tone : 'mixed',
+      };
+    } else {
+      spans.push({ atMs, endsAtMs, deliveredKWh: contribution.deliveredKWh,
+        totalCost, priceValue: contribution.priceValue, priceIsAverage: false, tone: contribution.tone });
     }
   }
-  return byAtMs;
+  return spans;
 };
 
-// Resolve the single bucket eligible for the cheapest-delivered glow. The
-// design synthesis spec calls for one bucket only — `tone === 'cheap'`,
-// delivered, and the lowest `priceValue` among delivered hours.
-const resolveCheapestDeliveredAtMs = (
-  contributions: readonly DeferredObjectivePlanHistoryHourlyContribution[],
-): number | null => {
-  let bestAtMs: number | null = null;
-  let bestPrice = Number.POSITIVE_INFINITY;
-  for (const contribution of contributions) {
-    if (contribution.tone !== 'cheap') continue;
-    if (contribution.deliveredKWh <= 0) continue;
-    if (contribution.priceValue < bestPrice) {
-      bestPrice = contribution.priceValue;
-      bestAtMs = floorToHour(contribution.atMs);
-    }
-  }
-  return bestAtMs;
+// Before start bookings were recorded, the strip showed both snapshots so a
+// period removed by a replan could still explain its missing delivery. Prefer
+// the final allocation where they overlap without counting either plan twice.
+const resolveStripBookings = (
+  entry: Pick<DeferredObjectivePlanHistoryEntry, 'hourStartBookings' | 'originalPlan' | 'finalPlan'>,
+): readonly ScheduledHistoryHour[] => {
+  if (entry.hourStartBookings !== undefined) return pickScheduledHours(entry) ?? [];
+  const original = (entry.originalPlan?.hours ?? []).filter((period) => period.plannedKWh > 0);
+  const final = (entry.finalPlan?.hours ?? []).filter((period) => period.plannedKWh > 0);
+  const boundaries = [...new Set([...original, ...final]
+    .flatMap((period) => [period.coversFromMs ?? period.startsAtMs, period.endsAtMs]))].sort((a, b) => a - b);
+  return boundaries.slice(0, -1).flatMap((atMs, index) => {
+    const coversStart = (period: ScheduledHistoryHour): boolean => (
+      (period.coversFromMs ?? period.startsAtMs) <= atMs && atMs < period.endsAtMs
+    );
+    const period = final.find(coversStart) ?? original.find(coversStart);
+    if (period === undefined) return [];
+    const endsAtMs = boundaries[index + 1]!;
+    const coveredStartMs = period.coversFromMs ?? period.startsAtMs;
+    return [{
+      startsAtMs: atMs,
+      endsAtMs,
+      plannedKWh: period.plannedKWh * (endsAtMs - atMs) / (period.endsAtMs - coveredStartMs),
+    }];
+  });
 };
 
-/**
- * Compose the bar-strip payload for the postmortem.
- *
- * Returns `{ mode: 'absent' }` when the entry has neither hourly
- * contributions nor planned hours — the view suppresses the strip. Returns
- * `{ mode: 'present', buckets }` with one bucket per hour in
- * `[startedAtMs, deadlineAtMs]` otherwise. Each bucket is fully resolved
- * here so the view renders straight from the flat fields.
- */
 export const resolveHistoryDetailHourlyStrip = (
   entry: Pick<DeferredObjectivePlanHistoryEntry,
     'startedAtMs' | 'deadlineAtMs' | 'hourlyContributions' | 'hourStartBookings' | 'originalPlan' | 'finalPlan'>,
 ): DeferredPlanHistoryHourlyStripData => {
-  const contributions = entry.hourlyContributions ?? [];
-  // Suppress the strip entirely for entries with no hourly delivery data,
-  // even when `originalPlan` carries planned hours. Legacy v4 entries (from
-  // before `hourlyContributions` shipped) have planned hours but no
-  // contributions — rendering an all-outlined strip would falsely imply
-  // "PELS scheduled and then skipped every hour". The postmortem question
-  // ("when did each hour run, and what did each hour cost?") has no honest
-  // answer without delivery data, so we render the trajectory chart alone
-  // for those entries. Planned-only entries that *do* carry contributions
-  // still surface the outlined buckets for genuinely-skipped hours.
-  if (contributions.length === 0) {
-    return { mode: 'absent' };
-  }
-  const plannedByAtMs = entry.hourStartBookings !== undefined
-    ? indexBookedHours(entry.hourStartBookings)
-    : indexLegacyPlannedHours(entry.originalPlan, entry.finalPlan);
-  const contributionsByAtMs = indexContributions(contributions);
-  const cheapestAtMs = resolveCheapestDeliveredAtMs(contributions);
-  const windowStartMs = floorToHour(entry.startedAtMs);
-  const windowEndMs = Math.max(ceilToHour(entry.deadlineAtMs), windowStartMs + HOUR_MS);
-  const buckets: HourlyStripBucket[] = [];
-  for (let atMs = windowStartMs; atMs < windowEndMs; atMs += HOUR_MS) {
-    const contribution = contributionsByAtMs.get(atMs) ?? null;
-    const plannedKWh = plannedByAtMs.get(atMs) ?? null;
-    // A contribution with a positive kWh counts as delivered; a zero-kWh
-    // contribution (real-but-zero, e.g. free-hour metering at 0) still
-    // means the feed ran for the bucket, but the strip's bar height stays
-    // 0 and the dashed-outline contract treats it as "not delivered" so
-    // the bucket reads as restraint rather than action.
-    const delivered = contribution !== null && contribution.deliveredKWh > 0;
-    const planned = plannedKWh !== null;
-    const outlinePresent = planned && !delivered;
-    const kwh = delivered
-      ? contribution.deliveredKWh
-      : (plannedKWh ?? 0);
-    const tone: DeferredObjectivePlanHistoryHourlyTone | null = contribution?.tone ?? null;
-    buckets.push({
-      atMs,
-      kwh,
-      tone,
-      planned,
-      delivered,
-      outlinePresent,
-      cheapestDeliveredHighlight: cheapestAtMs === atMs,
+  const spans = collectRecordedCostSpans(entry.hourlyContributions ?? [], entry.startedAtMs, entry.deadlineAtMs);
+  if (spans.length === 0) return { mode: 'absent' };
+  const bookings = resolveStripBookings(entry);
+  const bookingBoundaries = bookings.flatMap((period) => [period.coversFromMs ?? period.startsAtMs, period.endsAtMs])
+    .filter((atMs) => atMs > entry.startedAtMs && atMs < entry.deadlineAtMs
+      && !spans.some((span) => span.atMs < atMs && atMs < span.endsAtMs));
+  const boundaries = [...new Set([
+    entry.startedAtMs, entry.deadlineAtMs, ...bookingBoundaries,
+    ...spans.flatMap((period) => [period.atMs, period.endsAtMs]),
+  ])].sort((a, b) => a - b);
+  const buckets: HourlyStripBucket[] = boundaries.slice(0, -1).map((atMs, index) => {
+    const endsAtMs = boundaries[index + 1]!;
+    const contribution = spans.find((period) => period.atMs === atMs && period.endsAtMs === endsAtMs);
+    const deliveredKWh = contribution?.deliveredKWh ?? 0;
+    const plannedKWh = bookings.reduce((sum, period) => {
+      const startMs = period.coversFromMs ?? period.startsAtMs;
+      const overlap = Math.max(0, Math.min(endsAtMs, period.endsAtMs) - Math.max(atMs, startMs));
+      return sum + (overlap > 0 ? period.plannedKWh * overlap / (period.endsAtMs - startMs) : 0);
+    }, 0);
+    const delivered = deliveredKWh > 0;
+    const planned = plannedKWh > 0;
+    return {
+      atMs, endsAtMs,
+      kwh: delivered ? deliveredKWh : plannedKWh,
+      tone: contribution?.tone ?? null,
+      planned, delivered,
+      outlinePresent: planned && !delivered,
+      cheapestDeliveredHighlight: false,
       priceValue: contribution?.priceValue ?? null,
-    });
-  }
+      priceIsAverage: contribution?.priceIsAverage ?? false,
+    };
+  });
+  const cheapest = buckets.filter((bucket) => bucket.delivered && bucket.tone === 'cheap')
+    .sort((a, b) => a.priceValue! - b.priceValue!)[0];
   return {
-    mode: 'present',
-    windowStartMs,
-    windowEndMs,
-    buckets,
+    mode: 'present', windowStartMs: entry.startedAtMs, windowEndMs: entry.deadlineAtMs,
+    buckets: buckets.map((bucket) => ({ ...bucket, cheapestDeliveredHighlight: bucket === cheapest })),
   };
 };

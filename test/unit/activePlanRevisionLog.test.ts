@@ -19,7 +19,7 @@ const revision = (
   revisedAtMs: HOUR_MS,
   computedFromPricesUpTo: 6 * HOUR_MS,
   reason: 'flow_card',
-  hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 }],
+  hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 }],
   energyNeededKWh: 1.5,
   planStatus: 'on_track',
   ...overrides,
@@ -78,9 +78,9 @@ describe('buildActivePlanRevisionLog', () => {
         reason: 'schedule_revised',
         revisedAtMs: 3 * HOUR_MS,
         hours: [
-          { startsAtMs: 2 * HOUR_MS, plannedKWh: 1 },
-          { startsAtMs: 3 * HOUR_MS, plannedKWh: 1 },
-          { startsAtMs: 5 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: 3 * HOUR_MS, endsAtMs: (3 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: 5 * HOUR_MS, endsAtMs: (5 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
         ],
       }),
       history: [
@@ -89,8 +89,8 @@ describe('buildActivePlanRevisionLog', () => {
           reason: 'schedule_revised',
           revisedAtMs: 2 * HOUR_MS,
           hours: [
-            { startsAtMs: 2 * HOUR_MS, plannedKWh: 1 },
-            { startsAtMs: 3 * HOUR_MS, plannedKWh: 1 },
+            { startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+            { startsAtMs: 3 * HOUR_MS, endsAtMs: (3 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
           ],
         }),
         revision({
@@ -98,9 +98,9 @@ describe('buildActivePlanRevisionLog', () => {
           reason: 'flow_card',
           revisedAtMs: HOUR_MS,
           hours: [
-            { startsAtMs: HOUR_MS, plannedKWh: 1 },
-            { startsAtMs: 2 * HOUR_MS, plannedKWh: 1 },
-            { startsAtMs: 3 * HOUR_MS, plannedKWh: 1 },
+            { startsAtMs: HOUR_MS, endsAtMs: (HOUR_MS) + 3_600_000, plannedKWh: 1 },
+            { startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+            { startsAtMs: 3 * HOUR_MS, endsAtMs: (3 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
           ],
         }),
       ],
@@ -119,8 +119,8 @@ describe('buildActivePlanRevisionLog', () => {
         revisedAtMs: 2 * HOUR_MS,
         reason: 'rate_refined',
         hours: [
-          { startsAtMs: HOUR_MS, plannedKWh: 1.0 },
-          { startsAtMs: 2 * HOUR_MS, plannedKWh: 0.5 },
+          { startsAtMs: HOUR_MS, endsAtMs: (HOUR_MS) + 3_600_000, plannedKWh: 1.0 },
+          { startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 0.5 },
         ],
       }),
       history: [
@@ -128,8 +128,8 @@ describe('buildActivePlanRevisionLog', () => {
           revision: 1,
           reason: 'flow_card',
           hours: [
-            { startsAtMs: HOUR_MS, plannedKWh: 0.7 },
-            { startsAtMs: 2 * HOUR_MS, plannedKWh: 0.8 },
+            { startsAtMs: HOUR_MS, endsAtMs: (HOUR_MS) + 3_600_000, plannedKWh: 0.7 },
+            { startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 0.8 },
           ],
         }),
       ],
@@ -183,7 +183,7 @@ describe('buildActivePlanRevisionLog schedule_revised disambiguation', () => {
     reason: 'flow_card',
     revisedAtMs: HOUR_MS,
     planStatus: 'on_track',
-    hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+    hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1 }],
   });
 
   it('emits "daily budget shifted" when floorShortfallCause is "budget"', () => {
@@ -192,7 +192,7 @@ describe('buildActivePlanRevisionLog schedule_revised disambiguation', () => {
         revision: 2,
         reason: 'schedule_revised',
         revisedAtMs: 2 * HOUR_MS,
-        hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+        hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1 }],
         floorShortfallCause: 'budget',
       }),
       history: [priorRev],
@@ -209,7 +209,7 @@ describe('buildActivePlanRevisionLog schedule_revised disambiguation', () => {
         reason: 'schedule_revised',
         revisedAtMs: 2 * HOUR_MS,
         planStatus: 'at_risk',
-        hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+        hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1 }],
       }),
       history: [priorRev], // priorRev.planStatus === 'on_track'
       timeZone: TZ,
@@ -226,8 +226,8 @@ describe('buildActivePlanRevisionLog schedule_revised disambiguation', () => {
         revisedAtMs: 2 * HOUR_MS,
         planStatus: 'on_track',
         hours: [
-          { startsAtMs: 2 * HOUR_MS, plannedKWh: 1 },
-          { startsAtMs: 3 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: 3 * HOUR_MS, endsAtMs: (3 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
         ],
       }),
       history: [priorRev], // priorRev has only the [2*HOUR_MS] bucket
@@ -247,7 +247,7 @@ describe('buildActivePlanRevisionLog schedule_revised disambiguation', () => {
         reason: 'schedule_revised',
         revisedAtMs: 2 * HOUR_MS,
         planStatus: 'on_track',
-        hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+        hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1 }],
       }),
       history: [priorRev],
       timeZone: TZ,
@@ -264,7 +264,7 @@ describe('buildActivePlanRevisionLog schedule_revised disambiguation', () => {
         revisedAtMs: 2 * HOUR_MS,
         planStatus: 'cannot_meet',
         floorShortfallCause: 'budget',
-        hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+        hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1 }],
       }),
       history: [priorRev], // priorRev planStatus 'on_track' → risk transition
       timeZone: TZ,
@@ -280,7 +280,7 @@ describe('buildActivePlanRevisionLog schedule_revised disambiguation', () => {
         reason: 'schedule_revised',
         revisedAtMs: 2 * HOUR_MS,
         planStatus: 'on_track',
-        hours: [{ startsAtMs: 3 * HOUR_MS, plannedKWh: 1 }], // swapped: dropped 2*, added 3*
+        hours: [{ startsAtMs: 3 * HOUR_MS, endsAtMs: (3 * HOUR_MS) + 3_600_000, plannedKWh: 1 }], // swapped: dropped 2*, added 3*
       }),
       history: [priorRev], // priorRev has [2*HOUR_MS]
       timeZone: TZ,
@@ -297,7 +297,7 @@ describe('buildActivePlanRevisionLog schedule_revised disambiguation', () => {
         revision: 1,
         reason: 'schedule_revised',
         planStatus: 'at_risk',
-        hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+        hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1 }],
       }),
       history: undefined,
       timeZone: TZ,
@@ -318,14 +318,14 @@ describe('buildActivePlanRevisionLog hourDiffAriaLabel', () => {
         reason: 'schedule_revised',
         revisedAtMs: 2 * HOUR_MS,
         hours: [
-          { startsAtMs: 2 * HOUR_MS, plannedKWh: 1 },
-          { startsAtMs: 3 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: 3 * HOUR_MS, endsAtMs: (3 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
         ],
       }),
       history: [revision({
         revision: 1,
         reason: 'flow_card',
-        hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+        hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1 }],
       })],
       timeZone: TZ,
       kind: 'temperature',
@@ -339,15 +339,15 @@ describe('buildActivePlanRevisionLog hourDiffAriaLabel', () => {
         revision: 2,
         reason: 'schedule_revised',
         revisedAtMs: 2 * HOUR_MS,
-        hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+        hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1 }],
       }),
       history: [revision({
         revision: 1,
         reason: 'flow_card',
         hours: [
-          { startsAtMs: 2 * HOUR_MS, plannedKWh: 1 },
-          { startsAtMs: 3 * HOUR_MS, plannedKWh: 1 },
-          { startsAtMs: 4 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: 3 * HOUR_MS, endsAtMs: (3 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: 4 * HOUR_MS, endsAtMs: (4 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
         ],
       })],
       timeZone: TZ,
@@ -363,14 +363,14 @@ describe('buildActivePlanRevisionLog hourDiffAriaLabel', () => {
         reason: 'schedule_revised',
         revisedAtMs: 2 * HOUR_MS,
         hours: [
-          { startsAtMs: 3 * HOUR_MS, plannedKWh: 1 },
-          { startsAtMs: 4 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: 3 * HOUR_MS, endsAtMs: (3 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: 4 * HOUR_MS, endsAtMs: (4 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
         ],
       }),
       history: [revision({
         revision: 1,
         reason: 'flow_card',
-        hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+        hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1 }],
       })],
       timeZone: TZ,
       kind: 'temperature',
@@ -383,7 +383,7 @@ describe('buildActivePlanRevisionLog hourDiffAriaLabel', () => {
       latest: revision({
         revision: 1,
         reason: 'flow_card',
-        hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+        hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1 }],
       }),
       history: undefined,
       timeZone: TZ,
@@ -446,14 +446,14 @@ describe('buildActivePlanRevisionLogSummary', () => {
       reason: 'prices_arrived',
       revisedAtMs: 2 * HOUR_MS,
       hours: [
-        { startsAtMs: 2 * HOUR_MS, plannedKWh: 1 },
-        { startsAtMs: 3 * HOUR_MS, plannedKWh: 1 },
+        { startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+        { startsAtMs: 3 * HOUR_MS, endsAtMs: (3 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
       ],
     });
     const history = [revision({
       revision: 1,
       reason: 'flow_card',
-      hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+      hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1 }],
     })];
     const rows = buildActivePlanRevisionLog({ latest, history, timeZone: TZ, kind: 'temperature' });
     const summary = buildActivePlanRevisionLogSummary({ latest, history, rows });
@@ -474,14 +474,14 @@ describe('buildActivePlanRevisionLogSummary', () => {
       reason: 'newly_added_recorder_code' as never,
       revisedAtMs: 2 * HOUR_MS,
       hours: [
-        { startsAtMs: 2 * HOUR_MS, plannedKWh: 1 },
-        { startsAtMs: 3 * HOUR_MS, plannedKWh: 1 },
+        { startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+        { startsAtMs: 3 * HOUR_MS, endsAtMs: (3 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
       ],
     });
     const history = [revision({
       revision: 1,
       reason: 'flow_card',
-      hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+      hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1 }],
     })];
     const rows = buildActivePlanRevisionLog({ latest, history, timeZone: TZ, kind: 'temperature' });
     const summary = buildActivePlanRevisionLogSummary({ latest, history, rows });
@@ -501,7 +501,7 @@ describe('buildActivePlanRevisionLogSummary', () => {
       revision: 3,
       reason: 'flow_card',
       revisedAtMs: 3 * HOUR_MS,
-      hours: [{ startsAtMs: 5 * HOUR_MS, plannedKWh: 1 }],
+      hours: [{ startsAtMs: 5 * HOUR_MS, endsAtMs: (5 * HOUR_MS) + 3_600_000, plannedKWh: 1 }],
     });
     const history = [
       revision({
@@ -509,8 +509,8 @@ describe('buildActivePlanRevisionLogSummary', () => {
         reason: 'prices_arrived',
         revisedAtMs: 2 * HOUR_MS,
         hours: [
-          { startsAtMs: 4 * HOUR_MS, plannedKWh: 1 },
-          { startsAtMs: 5 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: 4 * HOUR_MS, endsAtMs: (4 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: 5 * HOUR_MS, endsAtMs: (5 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
         ],
       }),
       revision({ revision: 1, reason: 'flow_card', revisedAtMs: HOUR_MS }),

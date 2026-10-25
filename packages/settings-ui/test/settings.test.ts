@@ -1,3 +1,4 @@
+import { taskPricePeriodsFixture } from './helpers/taskPricePeriodsFixture.ts';
 import type { TargetDeviceSnapshot } from '../../contracts/src/types.ts';
 import { installHomeyMock } from './helpers/homeyApiMock';
 import {
@@ -174,7 +175,7 @@ describe('settings script', () => {
           plan: null,
           power: { tracker: {}, status: { state: 'unavailable', reason: 'no_status_recorded' }, readings: { state: 'never' } },
           prices: {
-            combinedPrices: null,
+            combinedPrices: null, taskPricePeriods: taskPricePeriodsFixture(null),
             priceArea: null,
             flowToday: null,
             flowTomorrow: null,
@@ -223,7 +224,7 @@ describe('settings script', () => {
           plan: null,
           power: { tracker: {}, status: { state: 'unavailable', reason: 'no_status_recorded' }, readings: { state: 'never' } },
           prices: {
-            combinedPrices: null,
+            combinedPrices: null, taskPricePeriods: taskPricePeriodsFixture(null),
             priceArea: null,
             flowToday: null,
             flowTomorrow: null,

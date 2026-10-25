@@ -36,6 +36,7 @@ import { buildRevisionPanelFeed } from './deadlinePlanRevisionPanelFeed.ts';
 import { resolveCostDisplayFromCombinedPrices, resolvePriceUnitLabel } from './priceUnit.ts';
 import {
   collectHorizonHours,
+  splitHorizonAtBookings,
   type DeadlinePlanSchedule,
   type ObjectivePayloadReady,
   type ResolvedObjectiveContext,
@@ -200,7 +201,9 @@ const prepareObjectivePayload = (
   }
 
   const windowStartMs = Math.min(ctx.nowMs, ctx.activePlan.original?.revisedAtMs ?? ctx.nowMs);
-  const hours = collectHorizonHours(ctx.deadlineAtMs, windowStartMs, params.prices);
+  const hours = splitHorizonAtBookings(
+    collectHorizonHours(ctx.deadlineAtMs, windowStartMs, params.prices), ctx.activePlan,
+  );
   if (hours.length === 0) return { kind: 'awaiting_prices' };
 
   const costDisplay = resolveCostDisplayFromCombinedPrices(params.prices.combinedPrices);
@@ -225,8 +228,8 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
     // trajectory the hero's budget-cause derivation reads, because a device
     // left off is not a budget shortfall.
     planStatus: resolveEffectivePlanStatus(latest.planStatus, activePlan),
-    originalChargeByStartMs: buildChargeByStartMs(activePlan.original ?? latest),
-    currentChargeByStartMs: buildChargeByStartMs(latest),
+    originalChargeByStartMs: buildChargeByStartMs(activePlan.original ?? latest, input.hours),
+    currentChargeByStartMs: buildChargeByStartMs(latest, input.hours),
   };
   const revisionPanelFeed = buildRevisionPanelFeed({
     latest,

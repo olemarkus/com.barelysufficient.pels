@@ -110,7 +110,7 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     });
     // Schema is upgraded to v4 in-place; entry shape is preserved.
     expect(result.version).toBe(DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION);
-    expect(result.version).toBe(6);
+    expect(result.version).toBe(7);
     expect(result.entries).toHaveLength(1);
     const migrated = result.entries[0]!;
     expect(migrated.id).toBe('v3-entry-1');
@@ -321,7 +321,7 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
 
   it('accepts a revision snapshot with kwhPerUnitMean present', () => {
     const snapshot = {
-      hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+      hours: [{ startsAtMs: 0, endsAtMs: (0) + HOUR_MS, plannedKWh: 1.5 }],
       energyNeededKWh: 1.5,
       planStatus: 'on_track',
       revisedAtMs: 0,
@@ -338,7 +338,7 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
 
   it('drops a revision snapshot whose kwhPerUnitMean is non-positive', () => {
     const snapshot = {
-      hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+      hours: [{ startsAtMs: 0, endsAtMs: (0) + HOUR_MS, plannedKWh: 1.5 }],
       energyNeededKWh: 1.5,
       planStatus: 'on_track',
       revisedAtMs: 0,
@@ -359,7 +359,7 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
   // validator stays lenient).
   it('accepts a revision snapshot with dailyBudgetExhaustedBucketCount present', () => {
     const snapshot = {
-      hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+      hours: [{ startsAtMs: 0, endsAtMs: (0) + HOUR_MS, plannedKWh: 1.5 }],
       energyNeededKWh: 1.5,
       planStatus: 'cannot_meet',
       revisedAtMs: 0,
@@ -375,7 +375,7 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
 
   it('accepts a revision snapshot carrying a valid floorShortfallCause', () => {
     const snapshot = {
-      hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+      hours: [{ startsAtMs: 0, endsAtMs: (0) + HOUR_MS, plannedKWh: 1.5 }],
       energyNeededKWh: 1.5,
       planStatus: 'at_risk',
       revisedAtMs: 0,
@@ -394,7 +394,7 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     // assert a `DeferredObjectiveActivePlanFloorShortfallCause` that is not one,
     // and that value reaches the miss-attribution logic.
     const snapshot = {
-      hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+      hours: [{ startsAtMs: 0, endsAtMs: (0) + HOUR_MS, plannedKWh: 1.5 }],
       energyNeededKWh: 1.5,
       planStatus: 'at_risk',
       revisedAtMs: 0,
@@ -409,7 +409,7 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
 
   it('drops a revision snapshot whose dailyBudgetExhaustedBucketCount is negative', () => {
     const snapshot = {
-      hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+      hours: [{ startsAtMs: 0, endsAtMs: (0) + HOUR_MS, plannedKWh: 1.5 }],
       energyNeededKWh: 1.5,
       planStatus: 'cannot_meet',
       revisedAtMs: 0,
@@ -428,7 +428,7 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
   // malformed (so a corrupted persisted entry never feeds a wrong attribution).
   it('accepts a revision snapshot with miss-attribution provenance present', () => {
     const snapshot = {
-      hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+      hours: [{ startsAtMs: 0, endsAtMs: (0) + HOUR_MS, plannedKWh: 1.5 }],
       energyNeededKWh: 1.5,
       planStatus: 'cannot_meet',
       revisedAtMs: 0,
@@ -448,7 +448,7 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
 
   it('drops a revision snapshot whose rateConfidence is not a known band', () => {
     const snapshot = {
-      hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+      hours: [{ startsAtMs: 0, endsAtMs: (0) + HOUR_MS, plannedKWh: 1.5 }],
       energyNeededKWh: 1.5,
       planStatus: 'cannot_meet',
       revisedAtMs: 0,
@@ -463,7 +463,7 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
 
   it('drops a revision snapshot whose planningSpeedKw is non-positive', () => {
     const snapshot = {
-      hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+      hours: [{ startsAtMs: 0, endsAtMs: (0) + HOUR_MS, plannedKWh: 1.5 }],
       energyNeededKWh: 1.5,
       planStatus: 'cannot_meet',
       revisedAtMs: 0,
@@ -484,7 +484,7 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     // tampering or a downgraded build — drop the whole entry rather than load
     // it with a half-trustworthy snapshot.
     const snapshot = {
-      hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+      hours: [{ startsAtMs: 0, endsAtMs: (0) + HOUR_MS, plannedKWh: 1.5 }],
       energyNeededKWh: 1.5,
       planStatus: 'cannot_meet',
       revisedAtMs: 0,
@@ -515,7 +515,7 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     // Round-trip the optional field so persistence stays byte-stable across
     // the v2.9 → v2.10 jump for entries the recorder writes after this PR.
     const snapshot = {
-      hours: [{ startsAtMs: 0, plannedKWh: 2.5 }],
+      hours: [{ startsAtMs: 0, endsAtMs: (0) + HOUR_MS, plannedKWh: 2.5 }],
       energyNeededKWh: 5.0,
       planStatus: 'cannot_meet',
       revisedAtMs: 0,
@@ -628,6 +628,7 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
   describe('hourlyContributions validation (v2.9 hardening)', () => {
     const wellFormedContribution = {
       atMs: HOUR_MS,
+      endsAtMs: 2 * HOUR_MS,
       deliveredKWh: 1.2,
       priceValue: 0.85,
       tone: 'cheap' as const,
@@ -644,8 +645,8 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
         id: 'hourly-ok',
         hourlyContributions: [
           wellFormedContribution,
-          { atMs: HOUR_MS * 2, deliveredKWh: 0.9, priceValue: 1.1, tone: 'normal' },
-          { atMs: HOUR_MS * 3, deliveredKWh: 0.5, priceValue: 2.4, tone: 'expensive' },
+          { atMs: HOUR_MS * 2, endsAtMs: (HOUR_MS * 2) + HOUR_MS, deliveredKWh: 0.9, priceValue: 1.1, tone: 'normal' },
+          { atMs: HOUR_MS * 3, endsAtMs: (HOUR_MS * 3) + HOUR_MS, deliveredKWh: 0.5, priceValue: 2.4, tone: 'expensive' },
         ],
       };
       const result = normalizeDeferredObjectivePlanHistory({
@@ -802,7 +803,7 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     it('round-trips hourStartBookings on a compact record, zero bookings included', () => {
       const record = {
         ...normalizeDeferredObjectivePlanHistory({ version: 4, entries: [v3Entry] }).entries[0]!,
-        hourStartBookings: [{ atMs: 0, bookedKWh: 2.5 }, { atMs: HOUR_MS, bookedKWh: 0 }],
+        hourStartBookings: [{ atMs: 0, endsAtMs: (0) + HOUR_MS, bookedKWh: 2.5 }, { atMs: HOUR_MS, endsAtMs: (HOUR_MS) + HOUR_MS, bookedKWh: 0 }],
       };
       const parsed = parseDeferredObjectivePlanHistory({ version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION, entries: [record] });
       if (parsed.state !== 'resolved') throw new Error('expected resolved');
@@ -810,10 +811,10 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     });
 
     it.each<[string, Record<string, unknown>]>([
-      ['a negative booking', { atMs: HOUR_MS, bookedKWh: -1 }],
-      ['a NaN booking', { atMs: HOUR_MS, bookedKWh: Number.NaN }],
-      ['a non-finite hour', { atMs: Number.POSITIVE_INFINITY, bookedKWh: 1 }],
-      ['a negative hour', { atMs: -HOUR_MS, bookedKWh: 1 }],
+      ['a negative booking', { atMs: HOUR_MS, endsAtMs: (HOUR_MS) + HOUR_MS, bookedKWh: -1 }],
+      ['a NaN booking', { atMs: HOUR_MS, endsAtMs: (HOUR_MS) + HOUR_MS, bookedKWh: Number.NaN }],
+      ['a non-finite hour', { atMs: Number.POSITIVE_INFINITY, endsAtMs: (Number.POSITIVE_INFINITY) + HOUR_MS, bookedKWh: 1 }],
+      ['a negative hour', { atMs: -HOUR_MS, endsAtMs: (-HOUR_MS) + HOUR_MS, bookedKWh: 1 }],
       ['a missing booking', { atMs: HOUR_MS }],
     ])('rejects a compact record whose hourStartBookings carry %s', (_label, booking) => {
       const record = {
@@ -840,5 +841,50 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
       // Nor hourStartBookings: absence is the legacy shape the readers fall back on.
       expect(result.entries[0]!.hourStartBookings).toBeUndefined();
     });
+  });
+});
+
+describe('history v7 interval migration', () => {
+  const record = () => normalizeDeferredObjectivePlanHistory({
+    version: 4,
+    entries: [{ ...baseEntry, id: 'interval-migration', originalPlan: null, finalPlan: null }],
+  }).entries[0]!;
+
+  it('preserves archived cost and promotes legacy hours to explicit intervals', () => {
+    const legacy = {
+      ...record(),
+      totalCost: 12.34,
+      deliveredKWh: 3,
+      originalPlan: {
+        hours: [{ startsAtMs: HOUR_MS, coversFromMs: HOUR_MS + 60_000, plannedKWh: 3, plannedUnitMilestone: 65 }],
+        energyNeededKWh: 3, planStatus: 'on_track', revisedAtMs: HOUR_MS,
+      },
+      hourlyContributions: [{ atMs: HOUR_MS, deliveredKWh: 3, priceValue: 12.34 / 3, tone: 'normal' }],
+      hourStartBookings: [{ atMs: HOUR_MS, bookedKWh: 3 }],
+    };
+    const migrated = normalizeDeferredObjectivePlanHistory({ version: 6, entries: [legacy] });
+    expect(migrated.version).toBe(7);
+    expect(migrated.entries[0]).toMatchObject({
+      totalCost: 12.34, deliveredKWh: 3,
+      originalPlan: { hours: [{
+        startsAtMs: HOUR_MS, endsAtMs: 2 * HOUR_MS, coversFromMs: HOUR_MS + 60_000, plannedUnitMilestone: 65,
+      }] },
+      hourlyContributions: [{ atMs: HOUR_MS, endsAtMs: 2 * HOUR_MS }],
+      hourStartBookings: [{ atMs: HOUR_MS, endsAtMs: 2 * HOUR_MS }],
+    });
+  });
+
+  it('requires endpoints in v7 and preserves quarter intervals on round-trip', () => {
+    const current = {
+      ...record(),
+      hourlyContributions: [{
+        atMs: HOUR_MS, endsAtMs: HOUR_MS * 1.25, deliveredKWh: 0.5, priceValue: 2, tone: 'normal',
+      }],
+      hourStartBookings: [{ atMs: HOUR_MS, endsAtMs: HOUR_MS * 1.25, bookedKWh: 0.5 }],
+    };
+    expect(normalizeDeferredObjectivePlanHistory({ version: 7, entries: [current] }).entries).toEqual([current]);
+    expect(parseDeferredObjectivePlanHistory({
+      version: 7, entries: [{ ...current, hourStartBookings: [{ atMs: HOUR_MS, bookedKWh: 0.5 }] }],
+    }).state).toBe('unavailable');
   });
 });

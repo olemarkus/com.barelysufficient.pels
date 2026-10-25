@@ -6461,6 +6461,10 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   background: var(--pels-chart-hour-tone-expensive);
 }
 
+.hourly-strip__bucket[data-tone="mixed"] .hourly-strip__bar {
+  background: var(--pels-text-supporting-color);
+}
+
 /* Gap buckets carry `data-tone="gap"` — no fill (the strip still reserves
  * space so the time axis stays intact across DST 23/25-hour windows). */
 .hourly-strip__bucket[data-tone="gap"] .hourly-strip__bar {

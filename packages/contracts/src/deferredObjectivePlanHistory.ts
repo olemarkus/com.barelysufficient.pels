@@ -1,7 +1,7 @@
 import type { TaskDeliveryExplanation } from './taskDelivery.js';
 import type {
   DeferredObjectiveActivePlanFloorShortfallCause,
-  DeferredObjectiveActivePlanHourV1,
+  DeferredObjectivePlanInterval,
   DeferredObjectiveActivePlanStatusV1,
 } from './deferredObjectiveActivePlans.js';
 import type { DeferredObjectiveSettingsKind } from './deferredObjectiveSettings.js';
@@ -58,7 +58,7 @@ export type DeferredObjectivePlanHistoryObservedInterval = {
 // the runtime `DeferredObjectiveActivePlanRevisionV1` minus fields that don't
 // matter retrospectively (`revision` index, `reason`, `kwhPerUnitSource`).
 export type DeferredObjectivePlanHistoryRevisionSnapshot = {
-  hours: DeferredObjectiveActivePlanHourV1[];
+  hours: DeferredObjectivePlanInterval[];
   energyNeededKWh: number;
   planStatus: DeferredObjectiveActivePlanStatusV1;
   revisedAtMs: number;
@@ -124,41 +124,28 @@ export type DeferredObjectivePlanHistoryRevisionSnapshot = {
 // the cheap / normal / expensive heatmap split surfaced elsewhere in the UI.
 export type DeferredObjectivePlanHistoryHourlyTone = 'cheap' | 'normal' | 'expensive';
 
-// Per-hour delivery contribution persisted alongside `deliveredKWh` /
-// `totalCost`. Each entry corresponds to one closed hour of the run,
-// captured at hour-aligned `atMs` with the delivered kWh, the spot price
-// the recorder summed into `totalCost`, and the resolved price tone. The
-// postmortem bar strip on `DeadlinePlanHistoryDetail` reads this list to
-// render one bar per hour. Optional — runs that finalize without any
-// hourly delivery contribution (price feed unavailable, legacy v4 entries
-// from before this field shipped) persist without it and the bar strip is
-// suppressed. Added in schema v4 as an additive optional field (no version
-// bump: v4 already shipped in v2.7.2, but older clients preserve unknown
-// fields on round-trip and absence degrades gracefully).
+// Measured energy and its import price over an actual source period. Endpoint
+// bounds are explicit from schema v7; legacy hourly contributions migrate to
+// 60-minute intervals without repricing their recorded cost. The historical
+// field/type names remain for storage compatibility. A source correction
+// within a period keeps the delivery-weighted price used in totalCost.
 export type DeferredObjectivePlanHistoryHourlyContribution = {
   atMs: number;
+  endsAtMs: number;
   deliveredKWh: number;
   priceValue: number;
   tone: DeferredObjectivePlanHistoryHourlyTone;
 };
 
-// What one hour of the run had booked when it became current: the revision in
-// force at the hour's start (normally the one the previous hour's `:58` settle
-// wrote, or the run's first plan for the hour it arrived in). Recorded once
-// per hour and never revised, so it survives the hourly re-plans that drop
-// elapsed hours from every later revision — no revision snapshot can say
-// what an earlier hour had booked.
-//
-// `atMs` is the hour-aligned start; `bookedKWh` the useful energy booked for
-// it (`0` when the plan in force booked nothing for that hour). An hour with
-// no revision in force at its start has no entry, and neither has an hour with
-// no recorder tick inside it (an outage spanning the whole hour).
-//
-// A per-hour view, not the run's need: a `:58` re-plan books an
-// under-delivered hour's shortfall into later hours, so the sum over the
-// bookings counts that energy again. The need is `initialEnergyExpectedKWh`.
+// What an interval had booked when it became current, from the revision then
+// in force. Bounds retain partial coverage and native price-period boundaries.
+// Recorded once and kept after restart; no tick in a whole interval means no
+// capture. Zero energy records an observed interval with no promised delivery.
+// Booked energy may include shortfall rebooked at a later hourly settle, so its
+// sum is planning telemetry rather than the run's initial energy requirement.
 export type DeferredObjectivePlanHistoryHourStartBooking = {
   atMs: number;
+  endsAtMs: number;
   bookedKWh: number;
 };
 
@@ -206,9 +193,8 @@ export type DeferredObjectivePlanHistoryCostDisplay = {
 // `rate_refined`, `objective_changed`, `prices_arrived`, `device_unavailable`,
 // `measured_deviation`); kept as a plain string so the contract stays
 // browser-safe (the union is owned by `deferredObjectiveActivePlans.ts`).
-// `hoursAdded` / `hoursRemoved` are the symmetric-difference counts of
-// `startsAtMs` between consecutive revisions, suitable for an inline
-// `+a / −b` mini-diff. Added in schema v4.
+// `hoursAdded` / `hoursRemoved` are the symmetric-difference coverage durations
+// in hours (fractional from v7), suitable for an inline `+a / −b` mini-diff.
 export type DeferredObjectivePlanHistoryRevisionLogEntry = {
   atMs: number;
   reasonId: string;
@@ -456,7 +442,7 @@ export type ResolvedDeferredObjectivePlanHistoryEntry = DeferredObjectivePlanHis
   progressDirection: 'increasing' | 'decreasing' | 'unknown';
 };
 
-export type DeferredObjectivePlanHistoryV6 = {
-  version: 6;
+export type DeferredObjectivePlanHistoryV7 = {
+  version: 7;
   entries: DeferredObjectivePlanHistoryRecord[];
 };

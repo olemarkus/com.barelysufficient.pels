@@ -6,7 +6,7 @@ import type { DeferredObjectiveRescuePermissions } from '../../../packages/contr
 import type {
   DeferredObjectivePlanPreviewCandidate,
   DeferredObjectivePlanPreviewEstimate,
-  DeferredObjectivePlanPreviewHour,
+  DeferredObjectivePlanPreviewInterval,
   DeferredObjectivePlanPreviewStatus,
   DeferredObjectivePlanPreviewUnavailableReason,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
@@ -23,7 +23,7 @@ import {
   buildDeferredObjectivePolicyBucketPrices,
   buildDeferredObjectivePolicyWindowPrices,
 } from './policyHorizon';
-import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
+import type { PriceHorizonEntry } from '../../../packages/planner-types/src/priceHorizon';
 import type { BuildPriceHorizon } from './diagnosticTypes';
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { PriorityAllocationTracker } from './priorityAllocation';
@@ -120,7 +120,6 @@ export const buildUnavailableDeferredObjectivePlanEstimate = (
   costEstimate: null,
 });
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
 // Fraction of the hard cap the measured draw must reach to count as "at cap".
 // The preview cannot promise live capacity; only flag when the house is
 // genuinely pressed against the physical ceiling, not merely busy.
@@ -150,7 +149,7 @@ const resolvePressedAt = (settings: PowerLimitSettings): { limit: PowerLimitAxis
 // next one: a meter that went silent is `lib/power`'s to escalate, not this
 // line's to second-guess.
 const resolveAtPowerLimitNow = (
-  scheduledHours: readonly DeferredObjectivePlanPreviewHour[],
+  scheduledHours: readonly DeferredObjectivePlanPreviewInterval[],
   snapshot: TaskEvaluationSnapshot,
 ): PowerLimitAxis | undefined => {
   const { nowMs, powerTracker } = snapshot;
@@ -159,8 +158,7 @@ const resolveAtPowerLimitNow = (
   // from the same settings.
   const pressedAt = resolvePressedAt(snapshot.powerLimits);
   if (pressedAt === null) return undefined;
-  const currentHourStartMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
-  const runsCurrentHour = scheduledHours.some((hour) => hour.startsAtMs === currentHourStartMs);
+  const runsCurrentHour = scheduledHours.some((hour) => hour.startsAtMs <= nowMs && nowMs < hour.endsAtMs);
   if (!runsCurrentHour) return undefined;
   const { lastPowerW } = powerTracker;
   if (lastPowerW === undefined) return undefined;
@@ -227,7 +225,7 @@ const buildEstimateFromDiagnostic = (
   priceRateLabel: string,
   buildPriceHorizon: BuildPriceHorizon,
 ): DeferredObjectivePlanPreviewEstimate => {
-  const { dailyBudgetSnapshot, nowMs } = snapshot;
+  const { nowMs } = snapshot;
   const { deadlineAtMs } = candidate;
   // The candidate handed to this producer is ALREADY gated by the caller
   // (`AppSmartTaskApi.gateCandidateExtraPermissions` runs before this), so its `rescue`
@@ -244,10 +242,11 @@ const buildEstimateFromDiagnostic = (
     return { ...buildUnavailableDeferredObjectivePlanEstimate(resolvePreviewUnavailableReason(diag)), ...granted };
   }
   // The hours the device is planned to run; a 0 kWh booking promises nothing to show.
-  const scheduledHours: DeferredObjectivePlanPreviewHour[] = hoursWithPlannedEnergy(
+  const scheduledHours: DeferredObjectivePlanPreviewInterval[] = hoursWithPlannedEnergy(
     buildHoursFromHorizonPlan(diag.evaluation) ?? [],
   );
-  const cost = resolveCostEstimate(diag.horizonPlan, dailyBudgetSnapshot);
+  const priceHorizon = buildPriceHorizon(nowMs, deadlineAtMs);
+  const cost = resolveCostEstimate(diag.horizonPlan, priceHorizon);
   // `costEstimate` is a TOTAL amount (Σ kWh × price), so it must be labelled
   // with the money unit, never the per-kWh rate label `priceRateLabel` carries.
   const costUnit = priceRateLabelToAmountUnit(priceRateLabel);
@@ -256,9 +255,8 @@ const buildEstimateFromDiagnostic = (
   // ranks the hours the way the schedule did, epoch-hour-floored on the same basis
   // as `scheduledHours` so the widget joins them by `startsAtMs`. Read only once a
   // plan exists.
-  const priceHorizon = buildPriceHorizon(nowMs, deadlineAtMs);
   const priceSeries = buildDeferredObjectivePolicyWindowPrices(priceHorizon, nowMs, deadlineAtMs)
-    .map((point) => ({ startsAtMs: point.startMs, price: point.price }));
+    .map((point) => ({ startsAtMs: point.startMs, endsAtMs: point.endMs, price: point.price }));
   const atPowerLimitNow = resolveAtPowerLimitNow(scheduledHours, snapshot);
   const floorShortfallCause = resolveFloorShortfallCause(diag.horizonPlan.statusDetail);
   let budgetRole: DeferredObjectivePlanPreviewEstimate['budgetRole'] = 'none';
@@ -330,16 +328,16 @@ const resolveEnergyExpectedKWh = (diag: DeferredObjectiveDiagnostic): number | n
 // price is available for any planned bucket.
 const resolveCostEstimate = (
   horizonPlan: NonNullable<DeferredObjectiveDiagnostic['horizonPlan']>,
-  dailyBudgetSnapshot: DailyBudgetUiPayload | null,
+  priceHorizon: readonly PriceHorizonEntry[],
 ): number | null => {
-  const pricesByBucketId = buildDeferredObjectivePolicyBucketPrices(dailyBudgetSnapshot);
+  const pricesByBucketId = buildDeferredObjectivePolicyBucketPrices(priceHorizon);
   if (pricesByBucketId.size === 0) return null;
   let cost = 0;
   let pricedAny = false;
   for (const bucket of horizonPlan.plannedBuckets) {
     if (bucket.plannedUsefulEnergyKWh <= 0) continue;
     const price = pricesByBucketId.get(bucket.sourceBucketId);
-    if (typeof price !== 'number') continue;
+    if (typeof price !== 'number') return null;
     cost += bucket.plannedUsefulEnergyKWh * price;
     pricedAny = true;
   }

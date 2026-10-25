@@ -27,7 +27,7 @@ describe('smart-task car association', () => {
     expect(resolveSmartTaskListStatus({
       liveCompletion: { kind: 'unavailable' }, pending: false,
       diagnosticReasonCode: 'objective_waiting_for_car',
-      latest: { planStatus: 'on_track', hours: [{ startsAtMs: 1, plannedKWh: 1 }] },
+      latest: { planStatus: 'on_track', hours: [{ startsAtMs: 1, endsAtMs: (1) + 3_600_000, plannedKWh: 1 }] },
       carChargeLimit: { limitValue: 50, reached: true }, targetValue: 80,
     }, 0)).toBe('building_plan');
     expect(resolveSmartTaskWidgetDetailCopy({

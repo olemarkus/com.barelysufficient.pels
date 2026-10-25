@@ -81,7 +81,7 @@ describe('PlanHistoryCard', () => {
   it('renders the recorded budget blocker on Missed list cards', () => {
     const start = Date.UTC(2026, 4, 6, 0, 0, 0);
     const finalPlan = {
-      hours: [{ startsAtMs: start, plannedKWh: 2 }],
+      hours: [{ startsAtMs: start, endsAtMs: (start) + 3_600_000, plannedKWh: 2 }],
       energyNeededKWh: 10,
       planStatus: 'cannot_meet' as const,
       revisedAtMs: start,
@@ -131,7 +131,7 @@ describe('PlanHistoryCard', () => {
     expect(mount.textContent).toContain('reconstructed from settings');
   });
 
-  it('surfaces the planned-hour coverage line from the helper on the list card', () => {
+  it('surfaces the scheduled-period coverage line from the helper on the list card', () => {
     // DOM smoke test only — the helper's branch math (partial coverage, N=0 actionable
     // case, singularization, no-plan suppression) is pinned in
     // `test/unit/deferredPlanHistoryObservedCoverage.test.ts`. This test only confirms the
@@ -143,11 +143,11 @@ describe('PlanHistoryCard', () => {
     const HOUR_MS = 60 * 60 * 1000;
     const finalPlan = {
       hours: [
-        { startsAtMs: start, plannedKWh: 2 },
-        { startsAtMs: start + HOUR_MS, plannedKWh: 2 },
-        { startsAtMs: start + 2 * HOUR_MS, plannedKWh: 2 },
-        { startsAtMs: start + 3 * HOUR_MS, plannedKWh: 2 },
-        { startsAtMs: start + 4 * HOUR_MS, plannedKWh: 2 },
+        { startsAtMs: start, endsAtMs: (start) + 3_600_000, plannedKWh: 2 },
+        { startsAtMs: start + HOUR_MS, endsAtMs: (start + HOUR_MS) + 3_600_000, plannedKWh: 2 },
+        { startsAtMs: start + 2 * HOUR_MS, endsAtMs: (start + 2 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
+        { startsAtMs: start + 3 * HOUR_MS, endsAtMs: (start + 3 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
+        { startsAtMs: start + 4 * HOUR_MS, endsAtMs: (start + 4 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
       ],
       energyNeededKWh: 10,
       planStatus: 'on_track' as const,
@@ -165,7 +165,7 @@ describe('PlanHistoryCard', () => {
     });
     const mount = mountIntoBody(h(PlanHistoryCard, { entry: entry, timeZone: 'UTC' }));
     expect(mount.querySelector('.plan-history-card__coverage')?.textContent)
-      .toBe('Observed 0 of 5 scheduled hours');
+      .toBe('Observed 0 of 5 scheduled periods');
   });
 
   it('does not crash when observedIntervals is missing from an entry payload', () => {

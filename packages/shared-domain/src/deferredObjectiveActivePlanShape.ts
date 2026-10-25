@@ -24,7 +24,7 @@ import { isUnknownRecord } from './recordGuards';
 // literal also lives here (it previously lived runtime-side) — it is a plain
 // constant with no runtime dependency.
 
-export const DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION = 1 as const;
+export const DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION = 2 as const;
 
 // The persisted envelope, generic over the per-device plan shape each surface
 // keeps. `version` is the recognised literal on both the runtime and UI views.
@@ -54,14 +54,40 @@ export function normalizeDeferredObjectiveActivePlansShape<TPlan, TEmpty>(
   // pseudo-deviceIds instead of degrading to `empty()`.
   if (!isUnknownRecord(raw)) return options.empty();
   const r = raw;
-  if (r.version !== DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION) return options.empty();
+  if (r.version !== 1 && r.version !== DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION) return options.empty();
   if (!isUnknownRecord(r.plansByDeviceId)) {
     return options.empty();
   }
   const entries = Object.entries(r.plansByDeviceId)
-    .filter((entry): entry is [string, TPlan] => options.isValidPlan(entry[1]));
+    .map(([id, plan]) => [id, r.version === 1 ? migrateLegacyActivePlanIntervals(plan) : plan] as const)
+    .filter((entry): entry is readonly [string, TPlan] => options.isValidPlan(entry[1]));
   return {
     version: DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION,
     plansByDeviceId: Object.fromEntries(entries),
+  };
+}
+
+// Upgrade only known legacy envelopes. Unknown versions never acquire invented
+// interval ends. Values remain untrusted until the caller validates the result.
+export function migrateLegacyRevisionIntervals(raw: unknown): unknown {
+  if (!isUnknownRecord(raw) || !Array.isArray(raw.hours)) return raw;
+  return {
+    ...raw,
+    hours: raw.hours.map((hour: unknown) => (
+      isUnknownRecord(hour) && typeof hour.startsAtMs === 'number'
+        ? { ...hour, endsAtMs: hour.startsAtMs + 3_600_000 }
+        : hour
+    )),
+  };
+}
+
+function migrateLegacyActivePlanIntervals(raw: unknown): unknown {
+  if (!isUnknownRecord(raw)) return raw;
+  return {
+    ...raw,
+    ...(raw.commitment === undefined ? {} : { commitment: migrateLegacyRevisionIntervals(raw.commitment) }),
+    original: migrateLegacyRevisionIntervals(raw.original),
+    latest: migrateLegacyRevisionIntervals(raw.latest),
+    ...(Array.isArray(raw.history) ? { history: raw.history.map(migrateLegacyRevisionIntervals) } : {}),
   };
 }

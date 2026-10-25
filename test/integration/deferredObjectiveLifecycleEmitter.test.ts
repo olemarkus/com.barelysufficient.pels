@@ -20,7 +20,7 @@ import {
 import type { TaskEvaluationSource } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DeferredObjectiveRoster } from '../../packages/contracts/src/deferredObjectiveSettings';
-import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectiveActivePlansV2 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import {
   createDeferredObjectiveStatusBus,
   type DeferredObjectiveStatusSnapshot,
@@ -144,7 +144,7 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
   });
 
   it('reads the active-plan snapshot once per tick and forwards that same instance to observe', () => {
-    const activePlans: DeferredObjectiveActivePlansV1 = { version: 1, plansByDeviceId: {} };
+    const activePlans: DeferredObjectiveActivePlansV2 = { version: 2, plansByDeviceId: {} };
     const getDeferredObjectiveActivePlans = vi.fn(() => activePlans);
     const observeDeferredObjectivePlanHistory = vi.fn();
     const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
@@ -200,8 +200,8 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
     // it is the one lane that resolves a stall to `satisfied` (the decoration
     // lane reads the same stall evidence for the reservation ledger only).
     const deadlineAtMs = NOW_MS + 4 * HOUR_MS;
-    const activePlans: DeferredObjectiveActivePlansV1 = {
-      version: 1,
+    const activePlans: DeferredObjectiveActivePlansV2 = {
+      version: 2,
       plansByDeviceId: {
         'ev-1': {
           liveCompletion: { kind: 'unavailable' as const },
@@ -233,7 +233,7 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
       getPriceOptimizationEnabled: () => true,
       buildPriceHorizon: (nowMs, endMs) => Array.from(
         { length: Math.ceil((endMs - nowMs) / HOUR_MS) + 1 },
-        (_, index) => ({ startMs: Math.floor(nowMs / HOUR_MS) * HOUR_MS + index * HOUR_MS, price: 5 }),
+        (_, index) => ({ startMs: Math.floor(nowMs / HOUR_MS) * HOUR_MS + index * HOUR_MS, endMs: (Math.floor(nowMs / HOUR_MS) * HOUR_MS + index * HOUR_MS) + 3_600_000, moneyPrice: 5, price: 5 }),
       ).filter((entry) => entry.startMs < endMs),
       getDeferredObjectiveActivePlans: () => activePlans,
       getStallClassification: () => ({ classification: 'near_target_idle', classifiedAgainstTargetValue: 80, temperatureGapC: 0 }),

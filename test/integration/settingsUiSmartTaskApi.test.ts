@@ -36,7 +36,7 @@ const buildEstimate = (
 ): DeferredObjectivePlanPreviewEstimate => ({
   budgetRole: 'none',
   status: 'on_track',
-  scheduledHours: [{ startsAtMs: NOW_MS + 60 * 60 * 1000, plannedKWh: 2 }],
+  scheduledHours: [{ startsAtMs: NOW_MS + 60 * 60 * 1000, endsAtMs: (NOW_MS + 60 * 60 * 1000) + 3_600_000, plannedKWh: 2 }],
   projectedFinishAtMs: NOW_MS + 2 * 60 * 60 * 1000,
   energyEstimateKWh: 2,
   energyExpectedKWh: 1.8,

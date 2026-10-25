@@ -1,3 +1,4 @@
+import type { SettingsUiTaskPricePeriod } from './packages/contracts/src/settingsUiApi';
 import { createHomeModeCatalog } from './lib/home/homeModeCatalog';
 import type {
   ContinuousBatteryPlanRead,
@@ -382,6 +383,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
 
   // The stored combined prices, for the settings UI and the plan widget.
   // Replaced when the price coordinator is wired; nothing stored until then.
+  public getTaskPricePeriodsForUi: () => SettingsUiTaskPricePeriod[] = () => [];
   public getCombinedPricesForUi: () => unknown = () => null;
 
   private readonly backgroundTaskBundle: BackgroundTasks = createBackgroundTasks(this.context);

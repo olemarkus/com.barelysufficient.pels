@@ -119,8 +119,6 @@ export type DeferredPlanHistoryChartData = {
   metMarkerValue: number | null;
 };
 
-const HOUR_MS = 60 * 60 * 1000;
-
 // Resolves the scheduled-run bands from a plan snapshot's hours: each hour
 // with booked energy spans `[coversFromMs ?? startsAtMs, startsAtMs + 1h]`
 // (the same coverage semantics as the staircase integration below), clamped to
@@ -144,7 +142,7 @@ export const resolveRunBands = (
     const coverFromMs = hour.coversFromMs ?? hour.startsAtMs;
     if (!Number.isFinite(hour.startsAtMs) || !Number.isFinite(coverFromMs)) continue;
     const fromMs = Math.max(windowStartMs, coverFromMs);
-    const toMs = Math.min(windowEndMs, hour.startsAtMs + HOUR_MS);
+    const toMs = Math.min(windowEndMs, hour.endsAtMs);
     if (toMs <= fromMs) continue;
     spans.push({ fromMs, toMs });
   }
@@ -245,7 +243,7 @@ export const integratePlannedStaircase = (
     // horizontal segment across the hour's full duration. Clamp to the
     // deadline so a plan that overshoots the window doesn't push the last
     // point past the chart's right edge.
-    const endOfHour = Math.min(windowEndMs, hour.startsAtMs + HOUR_MS);
+    const endOfHour = Math.min(windowEndMs, hour.endsAtMs);
     // Drop hours that fully elapsed before the anchor (only possible on a
     // re-anchored revised staircase). The original staircase anchors at the
     // window start, so every hour ends after it and nothing is dropped.

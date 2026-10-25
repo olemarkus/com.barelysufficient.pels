@@ -11,13 +11,13 @@
 import { allocatedTaskPlan } from './taskEvaluation';
 import type { DeferredObjectiveHorizonPlan } from './types';
 import type {
-  DeferredObjectiveActivePlanHourV1,
+  DeferredObjectivePlanInterval,
   DeferredObjectiveActivePlanReservationSegmentV1,
   DeferredObjectiveActivePlanPendingReason,
   DeferredObjectiveActivePlanRevisionReason,
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanV1,
-  DeferredObjectiveActivePlansV1,
+  DeferredObjectiveActivePlansV2,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import {
   formatEstimatedDuration,
@@ -57,8 +57,8 @@ export const reportedPlanStatus = (
 };
 
 export type ActivePlanPersistDeps = {
-  load: () => DeferredObjectiveActivePlansV1 | null;
-  save: (plans: DeferredObjectiveActivePlansV1) => void;
+  load: () => DeferredObjectiveActivePlansV2 | null;
+  save: (plans: DeferredObjectiveActivePlansV2) => void;
   onRevisionWritten?: (event: DeferredObjectivePlanRevisionEvent) => void;
 };
 
@@ -272,7 +272,7 @@ const resolveSpeedMode = (
 
 export const buildRevision = (
   diag: DeferredObjectiveDiagnostic,
-  hours: DeferredObjectiveActivePlanHourV1[],
+  hours: DeferredObjectivePlanInterval[],
   revision: number,
   reason: DeferredObjectiveActivePlanRevisionReason,
   nowMs: number,
@@ -552,7 +552,7 @@ export const MAX_HISTORY_REVISIONS = 20;
 export const resolveCommitment = (
   objectiveChanged: boolean,
   scheduleChanged: boolean,
-  effectiveHours: DeferredObjectiveActivePlanHourV1[],
+  effectiveHours: DeferredObjectivePlanInterval[],
   previous: DeferredObjectiveActivePlanV1['commitment'],
   nowMs: number,
 ): DeferredObjectiveActivePlanV1['commitment'] => {

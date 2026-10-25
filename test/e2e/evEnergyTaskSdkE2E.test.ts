@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { seedHourlyFlowPricesForTests } from '../helpers/smartTaskPriceSourceFixture';
 import api from '../../api';
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
@@ -6,7 +7,7 @@ import { createActivePlanStore } from '../../lib/objectives/deferredObjectives/a
 import { drainPending } from '../utils/asyncDrain';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW,
-  COMBINED_PRICES, CONTROLLABLE_DEVICES, DAILY_BUDGET_ENABLED, DEVICE_TARGET_POWER_CONFIGS,
+  CONTROLLABLE_DEVICES, DAILY_BUDGET_ENABLED, DEVICE_TARGET_POWER_CONFIGS,
   MANAGED_DEVICES, NATIVE_EV_WIRING_DEVICES, OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
 
@@ -57,15 +58,9 @@ describe('EV energy task through Homey SDK', () => {
     });
     settings.set('capacity_priorities', { Home: { [DEVICE_ID]: 1 } });
     settings.set('price_optimization_enabled', true);
-    settings.set(COMBINED_PRICES, {
-      version: 2,
-      days: { '2026-01-01': { hours: Array.from({ length: 24 }, (_, hour) => ({
-        startsAt: new Date(Date.UTC(2026, 0, 1, hour)).toISOString(),
-        total: hour === 17 ? 5 : 50, isCheap: hour === 17, isExpensive: hour !== 17,
-      })) } },
-      avgPrice: 40, lowThreshold: 10, highThreshold: 45,
-      priceScheme: 'norway', priceUnit: 'øre/kWh',
-    });
+    seedHourlyFlowPricesForTests(Date.UTC(2026, 0, 1), Array.from({ length: 24 }, (_, hour) => (
+      hour === 17 ? 5 : 50
+    )));
     const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
     vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => (
       path === 'manager/energy/live'

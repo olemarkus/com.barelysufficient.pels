@@ -7,7 +7,7 @@ import type { TaskEvaluation } from './taskEvaluation';
 import type {
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanV1,
-  DeferredObjectiveActivePlansV1,
+  DeferredObjectiveActivePlansV2,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   DeferredObjectivePlanHistoryCostDisplay,
@@ -194,7 +194,7 @@ const pickRevisionForFinal = (
 };
 
 export const findPlanForRecord = (
-  plans: DeferredObjectiveActivePlansV1,
+  plans: DeferredObjectiveActivePlansV2,
   record: { deviceId: string; deadlineAtMs: number },
 ): DeferredObjectiveActivePlanV1 | undefined => {
   const plan = plans.plansByDeviceId[record.deviceId];

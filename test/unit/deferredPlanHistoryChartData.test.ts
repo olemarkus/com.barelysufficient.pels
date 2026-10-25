@@ -29,8 +29,8 @@ const buildSnapshot = (
   overrides: Partial<DeferredObjectivePlanHistoryRevisionSnapshot> = {},
 ): DeferredObjectivePlanHistoryRevisionSnapshot => ({
   hours: [
-    { startsAtMs: START_MS, plannedKWh: 1 },
-    { startsAtMs: START_MS + HOUR_MS, plannedKWh: 1 },
+    { startsAtMs: START_MS, endsAtMs: (START_MS) + 3_600_000, plannedKWh: 1 },
+    { startsAtMs: START_MS + HOUR_MS, endsAtMs: (START_MS + HOUR_MS) + 3_600_000, plannedKWh: 1 },
   ],
   energyNeededKWh: 2,
   planStatus: 'on_track',
@@ -133,9 +133,9 @@ describe('resolveHistoryDetailChartData', () => {
         // detached one — contiguous spans merge, the gap stays a gap.
         finalPlan: buildSnapshot({
           hours: [
-            { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 },
-            { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
-            { startsAtMs: START_MS + 5 * HOUR_MS, plannedKWh: 1 },
+            { startsAtMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+            { startsAtMs: START_MS + 3 * HOUR_MS, endsAtMs: (START_MS + 3 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+            { startsAtMs: START_MS + 5 * HOUR_MS, endsAtMs: (START_MS + 5 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
           ],
         }),
       });
@@ -151,10 +151,10 @@ describe('resolveHistoryDetailChartData', () => {
         originalPlan: buildSnapshot({
           hours: [
             // Trimmed current hour: coverage starts mid-hour.
-            { startsAtMs: START_MS, plannedKWh: 0.4, coversFromMs: START_MS + HOUR_MS / 2 },
-            { startsAtMs: START_MS + HOUR_MS, plannedKWh: 0 },
+            { startsAtMs: START_MS, endsAtMs: (START_MS) + 3_600_000, plannedKWh: 0.4, coversFromMs: START_MS + HOUR_MS / 2 },
+            { startsAtMs: START_MS + HOUR_MS, endsAtMs: (START_MS + HOUR_MS) + 3_600_000, plannedKWh: 0 },
             // Overruns the deadline — clamped to the window end.
-            { startsAtMs: DEADLINE_MS - HOUR_MS / 2, plannedKWh: 1 },
+            { startsAtMs: DEADLINE_MS - HOUR_MS / 2, endsAtMs: (DEADLINE_MS - HOUR_MS / 2) + 3_600_000, plannedKWh: 1 },
           ],
         }),
         finalPlan: null,
@@ -173,9 +173,9 @@ describe('resolveHistoryDetailChartData', () => {
       const entry = buildEntry({
         originalPlan: buildSnapshot({
           hours: [
-            { startsAtMs: Number.NaN, plannedKWh: 1 },
-            { startsAtMs: START_MS + HOUR_MS, plannedKWh: 1, coversFromMs: Number.NaN },
-            { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 },
+            { startsAtMs: Number.NaN, endsAtMs: (Number.NaN) + 3_600_000, plannedKWh: 1 },
+            { startsAtMs: START_MS + HOUR_MS, endsAtMs: (START_MS + HOUR_MS) + 3_600_000, plannedKWh: 1, coversFromMs: Number.NaN },
+            { startsAtMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
           ],
         }),
         finalPlan: null,
@@ -192,14 +192,14 @@ describe('resolveHistoryDetailChartData', () => {
       const entry = buildEntry({
         originalPlan: buildSnapshot(),
         finalPlan: buildSnapshot({
-          hours: [{ startsAtMs: START_MS + 5 * HOUR_MS, plannedKWh: 0.03, coversFromMs: DEADLINE_MS - 2 * 60_000 }],
+          hours: [{ startsAtMs: START_MS + 5 * HOUR_MS, endsAtMs: (START_MS + 5 * HOUR_MS) + 3_600_000, plannedKWh: 0.03, coversFromMs: DEADLINE_MS - 2 * 60_000 }],
         }),
         hourStartBookings: [
-          { atMs: START_MS, bookedKWh: 1 },
-          { atMs: START_MS + HOUR_MS, bookedKWh: 1 },
-          { atMs: START_MS + 2 * HOUR_MS, bookedKWh: 0 },
-          { atMs: START_MS + 3 * HOUR_MS, bookedKWh: 2 },
-          { atMs: START_MS + 5 * HOUR_MS, bookedKWh: 1.5 },
+          { atMs: START_MS, endsAtMs: (START_MS) + 3_600_000, bookedKWh: 1 },
+          { atMs: START_MS + HOUR_MS, endsAtMs: (START_MS + HOUR_MS) + 3_600_000, bookedKWh: 1 },
+          { atMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, bookedKWh: 0 },
+          { atMs: START_MS + 3 * HOUR_MS, endsAtMs: (START_MS + 3 * HOUR_MS) + 3_600_000, bookedKWh: 2 },
+          { atMs: START_MS + 5 * HOUR_MS, endsAtMs: (START_MS + 5 * HOUR_MS) + 3_600_000, bookedKWh: 1.5 },
         ],
       });
       const data = resolveHistoryDetailChartData(entry);
@@ -230,8 +230,8 @@ describe('resolveHistoryDetailChartData', () => {
         startProgressC: 50,
         originalPlan: buildSnapshot({
           hours: [
-            { startsAtMs: START_MS, plannedKWh: 1 },
-            { startsAtMs: START_MS + HOUR_MS, plannedKWh: 1 },
+            { startsAtMs: START_MS, endsAtMs: (START_MS) + 3_600_000, plannedKWh: 1 },
+            { startsAtMs: START_MS + HOUR_MS, endsAtMs: (START_MS + HOUR_MS) + 3_600_000, plannedKWh: 1 },
           ],
           kwhPerUnitMean: 0.5,
         }),
@@ -258,8 +258,8 @@ describe('resolveHistoryDetailChartData', () => {
         finalProgressPercent: 80,
         originalPlan: buildSnapshot({
           hours: [
-            { startsAtMs: START_MS, plannedKWh: 2 },
-            { startsAtMs: START_MS + HOUR_MS, plannedKWh: 2 },
+            { startsAtMs: START_MS, endsAtMs: (START_MS) + 3_600_000, plannedKWh: 2 },
+            { startsAtMs: START_MS + HOUR_MS, endsAtMs: (START_MS + HOUR_MS) + 3_600_000, plannedKWh: 2 },
           ],
           kwhPerUnitMean: 0.5,
         }),
@@ -278,7 +278,7 @@ describe('resolveHistoryDetailChartData', () => {
       const entry = buildEntry({
         originalPlan: buildSnapshot({
           hours: [
-            { startsAtMs: DEADLINE_MS - HOUR_MS / 2, plannedKWh: 1 },
+            { startsAtMs: DEADLINE_MS - HOUR_MS / 2, endsAtMs: (DEADLINE_MS - HOUR_MS / 2) + 3_600_000, plannedKWh: 1 },
           ],
           kwhPerUnitMean: 0.5,
         }),
@@ -305,8 +305,8 @@ describe('resolveHistoryDetailChartData', () => {
         deadlineAtMs: START_MS + 8 * HOUR_MS,
         originalPlan: buildSnapshot({
           hours: [
-            { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 2 },
-            { startsAtMs: START_MS + 6 * HOUR_MS, plannedKWh: 2 },
+            { startsAtMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
+            { startsAtMs: START_MS + 6 * HOUR_MS, endsAtMs: (START_MS + 6 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
           ],
           kwhPerUnitMean: 0.5,
         }),
@@ -347,9 +347,9 @@ describe('resolveHistoryDetailChartData', () => {
       const snapshot = buildSnapshot({
         progressDirection: 'decreasing',
         hours: [
-          { startsAtMs: START_MS, plannedKWh: 5 },
-          { startsAtMs: START_MS + HOUR_MS, plannedKWh: 5 },
-          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 5 },
+          { startsAtMs: START_MS, endsAtMs: (START_MS) + 3_600_000, plannedKWh: 5 },
+          { startsAtMs: START_MS + HOUR_MS, endsAtMs: (START_MS + HOUR_MS) + 3_600_000, plannedKWh: 5 },
+          { startsAtMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 5 },
         ],
         kwhPerUnitMean: 0.5,
       });
@@ -403,15 +403,15 @@ describe('resolveHistoryDetailChartData', () => {
     it('surfaces plannedFinal when the run replanned with a different schedule', () => {
       const original = buildSnapshot({
         hours: [
-          { startsAtMs: START_MS, plannedKWh: 1 },
-          { startsAtMs: START_MS + HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS, endsAtMs: (START_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: START_MS + HOUR_MS, endsAtMs: (START_MS + HOUR_MS) + 3_600_000, plannedKWh: 1 },
         ],
         kwhPerUnitMean: 0.5,
       });
       const final = buildSnapshot({
         hours: [
-          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 },
-          { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: START_MS + 3 * HOUR_MS, endsAtMs: (START_MS + 3 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
         ],
         kwhPerUnitMean: 0.5,
       });
@@ -436,16 +436,16 @@ describe('resolveHistoryDetailChartData', () => {
       const revisedAtMs = START_MS + 2 * HOUR_MS;
       const original = buildSnapshot({
         hours: [
-          { startsAtMs: START_MS, plannedKWh: 1 },
-          { startsAtMs: START_MS + HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS, endsAtMs: (START_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: START_MS + HOUR_MS, endsAtMs: (START_MS + HOUR_MS) + 3_600_000, plannedKWh: 1 },
         ],
         revisedAtMs: START_MS,
         kwhPerUnitMean: 0.5,
       });
       const final = buildSnapshot({
         hours: [
-          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 },
-          { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: START_MS + 3 * HOUR_MS, endsAtMs: (START_MS + 3 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
         ],
         revisedAtMs,
         kwhPerUnitMean: 0.5,
@@ -478,8 +478,8 @@ describe('resolveHistoryDetailChartData', () => {
       const revisedAtMs = START_MS + 2 * HOUR_MS;
       const final = buildSnapshot({
         hours: [
-          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 },
-          { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: START_MS + 3 * HOUR_MS, endsAtMs: (START_MS + 3 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
         ],
         revisedAtMs,
         kwhPerUnitMean: 0.5,
@@ -503,8 +503,8 @@ describe('resolveHistoryDetailChartData', () => {
       // though observed samples exist.
       const final = buildSnapshot({
         hours: [
-          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 },
-          { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: START_MS + 3 * HOUR_MS, endsAtMs: (START_MS + 3 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
         ],
         revisedAtMs: START_MS,
         kwhPerUnitMean: 0.5,
@@ -532,8 +532,8 @@ describe('resolveHistoryDetailChartData', () => {
       const firstBookedMs = START_MS + 2 * HOUR_MS;
       const final = buildSnapshot({
         hours: [
-          { startsAtMs: firstBookedMs, plannedKWh: 1 },
-          { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: firstBookedMs, endsAtMs: (firstBookedMs) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: START_MS + 3 * HOUR_MS, endsAtMs: (START_MS + 3 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
         ],
         revisedAtMs: firstBookedMs,
         kwhPerUnitMean: 0.5,
@@ -563,8 +563,8 @@ describe('resolveHistoryDetailChartData', () => {
       const reheatStart = START_MS + 2 * HOUR_MS;
       const final = buildSnapshot({
         hours: [
-          { startsAtMs: reheatStart, plannedKWh: 5 },
-          { startsAtMs: reheatStart + HOUR_MS, plannedKWh: 5 },
+          { startsAtMs: reheatStart, endsAtMs: (reheatStart) + 3_600_000, plannedKWh: 5 },
+          { startsAtMs: reheatStart + HOUR_MS, endsAtMs: (reheatStart + HOUR_MS) + 3_600_000, plannedKWh: 5 },
         ],
         revisedAtMs: reheatStart,
         kwhPerUnitMean: 0.5,
@@ -611,8 +611,8 @@ describe('resolveHistoryDetailChartData', () => {
       const reheatStart = START_MS + 2 * HOUR_MS;
       const final = buildSnapshot({
         hours: [
-          { startsAtMs: reheatStart, plannedKWh: 5 },
-          { startsAtMs: reheatStart + HOUR_MS, plannedKWh: 5 },
+          { startsAtMs: reheatStart, endsAtMs: (reheatStart) + 3_600_000, plannedKWh: 5 },
+          { startsAtMs: reheatStart + HOUR_MS, endsAtMs: (reheatStart + HOUR_MS) + 3_600_000, plannedKWh: 5 },
         ],
         revisedAtMs: reheatStart,
         kwhPerUnitMean: 0.5,
@@ -650,8 +650,8 @@ describe('resolveHistoryDetailChartData', () => {
       const revisedAtMs = START_MS + 2 * HOUR_MS + HOUR_MS / 2;
       const final = buildSnapshot({
         hours: [
-          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 }, // straddles anchor
-          { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 }, // straddles anchor
+          { startsAtMs: START_MS + 3 * HOUR_MS, endsAtMs: (START_MS + 3 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
         ],
         revisedAtMs,
         kwhPerUnitMean: 0.5,
@@ -683,8 +683,8 @@ describe('resolveHistoryDetailChartData', () => {
       const final = buildSnapshot({
         hours: [
           // Trimmed current hour: 0.5 kWh already scoped to [2.5h, 3h).
-          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 0.5, coversFromMs: revisedAtMs },
-          { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 0.5, coversFromMs: revisedAtMs },
+          { startsAtMs: START_MS + 3 * HOUR_MS, endsAtMs: (START_MS + 3 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
         ],
         revisedAtMs,
         kwhPerUnitMean: 0.5,
@@ -714,8 +714,8 @@ describe('resolveHistoryDetailChartData', () => {
       const revisedAtMs = START_MS + 2 * HOUR_MS;
       const final = buildSnapshot({
         hours: [
-          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 },
-          { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: START_MS + 3 * HOUR_MS, endsAtMs: (START_MS + 3 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
         ],
         revisedAtMs,
         kwhPerUnitMean: 0.5,
@@ -744,8 +744,8 @@ describe('resolveHistoryDetailChartData', () => {
       const coversFromMs = START_MS + 2 * HOUR_MS + HOUR_MS / 3; // 2h20m
       const final = buildSnapshot({
         hours: [
-          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 0.5, coversFromMs },
-          { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 0.5, coversFromMs },
+          { startsAtMs: START_MS + 3 * HOUR_MS, endsAtMs: (START_MS + 3 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
         ],
         revisedAtMs,
         kwhPerUnitMean: 0.5,

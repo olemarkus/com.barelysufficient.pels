@@ -42,7 +42,7 @@ const T0 = Date.UTC(2026, 4, 11, 0, 0, 0);
 const emptyBootstrap = {
   settings: {},
   deferredObjectives: { objectivesByDeviceId: {} },
-  deferredObjectiveActivePlans: { version: 1, plansByDeviceId: {} },
+  deferredObjectiveActivePlans: { version: 2, plansByDeviceId: {} },
 };
 const emptyDevices = { devices: [] };
 

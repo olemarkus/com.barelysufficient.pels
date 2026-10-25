@@ -3,7 +3,7 @@ import { buildAllocatedTaskEvaluation } from './taskEvaluationProducer';
 import type {
   DeferredObjectiveActivePlanFloorShortfallCause,
   DeferredObjectiveActivePlanRevisionV1,
-  DeferredObjectiveActivePlansV1,
+  DeferredObjectiveActivePlansV2,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveEnergyResolution } from './profileEnergyResolution';
 import type { DeferredObjectiveProgressResolution } from './diagnosticProgress';
@@ -25,7 +25,6 @@ import {
 } from './diagnosticFields';
 
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
 
 // Persisted-cause classification for the frozen read. `isOptionalFloorShortfallCause`
 // (`activePlanSettings.ts`) deliberately admits ANY string, so a cause written by a
@@ -63,7 +62,7 @@ const resolveFrozenReadInputs = (
   objective: DeferredObjectiveSettingsEntry,
   progressDirection: ObjectiveProgressDirectionRead,
   nowMs: number,
-  activePlans: DeferredObjectiveActivePlansV1,
+  activePlans: DeferredObjectiveActivePlansV2,
 ): FrozenReadInputs | null => {
   const activePlan = resolveActiveCommittedPlan(
     deviceId,
@@ -72,8 +71,10 @@ const resolveFrozenReadInputs = (
     activePlans,
   );
   if (activePlan === undefined) return null;
-  const currentHourStartMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
-  if (!activePlan.commitmentHours.some((hour) => hour.startsAtMs >= currentHourStartMs)) return null;
+  // Keep the existing all-elapsed recovery on the hourly clock. Ending the last
+  // quarter is a control transition, not permission for an extra allocation.
+  const currentHourStartMs = Math.floor(nowMs / 3_600_000) * 3_600_000;
+  if (!activePlan.commitmentHours.some((hour) => hour.endsAtMs > currentHourStartMs)) return null;
   const { latest } = activePlan;
   return {
     planStatus: latest.planStatus,
@@ -98,7 +99,7 @@ const resolveDrawWindows = (
   startMs, endMs, plannedKWh,
 })) ?? latest.hours.flatMap((hour) => {
   const startMs = hour.coversFromMs ?? hour.startsAtMs;
-  const endMs = Math.min(hour.startsAtMs + ONE_HOUR_MS, deadlineAtMs);
+  const endMs = Math.min(hour.endsAtMs, deadlineAtMs);
   return hour.plannedKWh > 0 && endMs > startMs ? [{ startMs, endMs, plannedKWh: hour.plannedKWh }] : [];
 });
 
@@ -107,7 +108,7 @@ export const resolveDeadlineBoundFrozenReadInputs = (
   objective: DeferredObjectiveSettingsEntry,
   progressDirection: ObjectiveProgressDirectionRead,
   nowMs: number,
-  activePlans: DeferredObjectiveActivePlansV1,
+  activePlans: DeferredObjectiveActivePlansV2,
 ): FrozenReadInputs | null => (
   objective.deadlineAtMs > nowMs
     ? resolveFrozenReadInputs(deviceId, objective, progressDirection, nowMs, activePlans)

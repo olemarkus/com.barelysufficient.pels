@@ -1,7 +1,6 @@
 import type { AppContext } from '../../lib/app/appContext';
 import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
 import type { TaskEvaluationSource } from '../../lib/objectives/deferredObjectives';
-import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import { requirePlanService, requirePriceCoordinator } from './contextGuards';
 import {
   requireDeferredObjectiveActivePlanRecorder,
@@ -30,13 +29,9 @@ export const buildTaskEvaluationSource = (
   getDeferredObjectiveActivePlans: () => requireDeferredObjectiveActivePlanRecorder(ctx).getActivePlansSnapshot(),
   getCapacitySettings: () => ctx.capacitySettings,
   hasSolarProduction: () => ctx.deviceReads.hasProductionCandidate(),
-  // The allocation-horizon price grid, resolved directly from the price layer (a
-  // legacy V1 payload is migrated to V2 on read) so the leafward objectives
-  // subsystem never imports `lib/price`.
-  buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(
-    requirePriceCoordinator(ctx).combinedPricesReader.readStore(ctx.getNow(), ctx.getTimeZone()),
-    nowMs,
-    deadlineAtMs,
+  // Native price periods, resolved in the price owner for every evaluation lane.
+  buildPriceHorizon: (nowMs, deadlineAtMs) => (
+    requirePriceCoordinator(ctx).buildPriceHorizon(nowMs, deadlineAtMs)
   ),
   getPrioritiesForDevices,
   // A device out of the main planning lane resolves to its own dedicated

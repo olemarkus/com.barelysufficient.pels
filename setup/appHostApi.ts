@@ -1,3 +1,4 @@
+import type { SettingsUiTaskPricePeriod } from '../packages/contracts/src/settingsUiApi';
 import type { DeferredObjectiveSettingsKind } from '../packages/contracts/src/deferredObjectiveSettings';
 import type { NewSmartTaskWriteResult } from '../packages/contracts/src/smartTaskEdit';
 import { getDebugEmitter } from '../lib/logging/logger';
@@ -41,7 +42,7 @@ import type { SmartTaskHomeScope } from '../packages/contracts/src/smartTaskHome
 import type { StarvationRescuePlanPreview } from '../packages/contracts/src/starvationRescue';
 import type { PriceTimelineRead } from '../packages/contracts/src/priceTimeline';
 import type { SettingsUiDeviceDiagnosticsPayload } from '../packages/contracts/src/deviceDiagnosticsTypes';
-import type { ResolvedDeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
+import type { ResolvedDeferredObjectiveActivePlansV2 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   DeferredObjectivePlanPreviewEstimate,
   SmartTaskQuickTargetsRead,
@@ -108,6 +109,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   protected abstract readonly smartTaskPayloads: AppSmartTaskPayloads;
   protected abstract readonly runtime: AppRuntimeHandles;
   // The price wiring replaces PelsApp's default once the coordinator exists.
+  public abstract getTaskPricePeriodsForUi: () => SettingsUiTaskPricePeriod[];
   public abstract getCombinedPricesForUi: () => unknown;
 
   public readHardCapConfiguration = (): SettingsUiHardCapConfigurationRead => (
@@ -359,7 +361,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   public hasDeferredObjectiveForDevice(deviceId: string): boolean {
     return this.smartTaskApi.hasDeferredObjectiveForDevice(deviceId);
   }
-  public getDeferredObjectiveActivePlansUiPayload(): ResolvedDeferredObjectiveActivePlansV1 | null {
+  public getDeferredObjectiveActivePlansUiPayload(): ResolvedDeferredObjectiveActivePlansV2 | null {
     return this.smartTaskPayloads.getDeferredObjectiveActivePlansUiPayload();
   }
   public previewStarvationRescuePlan(

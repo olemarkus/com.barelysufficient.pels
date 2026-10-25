@@ -1,11 +1,11 @@
 import type { TaskEvaluation } from './taskEvaluation';
 import type {
-  DeferredObjectiveActivePlanHourV1,
+  DeferredObjectivePlanInterval,
   DeferredObjectiveActivePlanReservationSegmentV1,
   DeferredObjectiveActivePlanRevisionV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
-import type { DeferredObjectiveHorizonPlan, DeferredObjectivePlannedBucket } from './types';
+import type { DeferredObjectiveHorizonPlan } from './types';
 import { hasCheaperEnergyHourAhead } from './priceBand';
 import { hoursWithPlannedEnergy } from '../../../packages/shared-domain/src/deferredPlanBookedHours';
 import { roundKWh } from './activePlanMath';
@@ -16,70 +16,54 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 // and physical reservations until their bucket ends.
 const PLANNED_EPSILON_KWH = 0.001;
 
-/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
+// Book actual allocation coverage. Adjacent pieces of one source period may
+// reunite after the deadline-reserve split; a gap or a new price stays distinct.
 export const buildHoursFromHorizonPlan = (
   evaluation: TaskEvaluation,
-): DeferredObjectiveActivePlanHourV1[] | null => {
+): DeferredObjectivePlanInterval[] | null => {
   if (evaluation.planning.kind === 'inactive') return null;
-  const horizonPlan = evaluation.planning.plan;
-  // The horizon planner trims the current bucket's start to `nowMs` and may
-  // split a single hour into two segments at `planningEndMs` (see
-  // `bucketAllocation.ts`), so plannedBucket startMs values can be
-  // mid-hour. The Settings UI keys planned usage by hour-aligned price-horizon
-  // start timestamps, so floor each bucket to its containing hour and sum
-  // segments that collapse into the same hour.
-  const byHour = new Map<number, {
-    plannedKWh: number;
-    plannedAdmissionPowerKw: number;
-    earliestStartMs: number;
-  }>();
-  // Every booked bucket becomes an hour, also one booked at 0 kWh: the saved hours
-  // are the plan's bookings, and `plannedKWh` is what each one promises.
-  for (const bucket of horizonPlan.plannedBuckets) {
-    if (!bucket.booked) continue;
-    const hourStart = Math.floor(bucket.startMs / ONE_HOUR_MS) * ONE_HOUR_MS;
-    const existing = byHour.get(hourStart);
-    if (existing) {
-      existing.plannedKWh += bucket.plannedUsefulEnergyKWh;
-      existing.plannedAdmissionPowerKw = Math.max(
-        existing.plannedAdmissionPowerKw,
-        bucket.plannedAdmissionPowerKw ?? 0,
-      );
-      existing.earliestStartMs = Math.min(existing.earliestStartMs, bucket.startMs);
+  const booked: Array<{ sourceBucketId: string; interval: DeferredObjectivePlanInterval }> = [];
+  const candidates = evaluation.planning.plan.plannedBuckets.filter((bucket) => bucket.booked).map((bucket) => ({
+    sourceBucketId: bucket.sourceBucketId,
+    interval: {
+      startsAtMs: bucket.startMs,
+      endsAtMs: bucket.endMs,
+      plannedKWh: bucket.plannedUsefulEnergyKWh,
+      ...(bucket.plannedAdmissionPowerKw ? { plannedAdmissionPowerKw: bucket.plannedAdmissionPowerKw } : {}),
+    },
+  }));
+  // Only newly constructed bookings are coalesced; the allocation stays immutable.
+  /* eslint-disable functional/immutable-data */
+  for (const candidate of candidates) {
+    const previous = booked.at(-1);
+    const { interval } = candidate;
+    if (previous && previous.sourceBucketId === candidate.sourceBucketId
+      && previous.interval.endsAtMs === interval.startsAtMs
+      && previous.interval.plannedAdmissionPowerKw === interval.plannedAdmissionPowerKw) {
+      previous.interval.endsAtMs = interval.endsAtMs;
+      previous.interval.plannedKWh += interval.plannedKWh;
     } else {
-      byHour.set(hourStart, {
-        plannedKWh: bucket.plannedUsefulEnergyKWh,
-        plannedAdmissionPowerKw: bucket.plannedAdmissionPowerKw ?? 0,
-        earliestStartMs: bucket.startMs,
-      });
+      booked.push(candidate);
     }
   }
-  const hours = [...byHour.entries()]
-    .map(([startsAtMs, { plannedKWh, plannedAdmissionPowerKw, earliestStartMs }]) => ({
-      startsAtMs,
-      // Preserve positive sub-Wh bookings across the fresh-to-frozen handoff.
-      plannedKWh: plannedKWh < PLANNED_EPSILON_KWH ? plannedKWh : roundKWh(plannedKWh),
-      ...(plannedAdmissionPowerKw > 0 ? { plannedAdmissionPowerKw } : {}),
-      // When the earliest bucket folded into this hour starts after the hour
-      // boundary, the planner trimmed it to `nowMs` (the current hour on a
-      // mid-hour cycle), so `plannedKWh` is already only the post-trim
-      // remainder covering `[earliestStartMs, hourEnd]`. Record that so the
-      // history chart does not prorate an already-trimmed value. A full hour
-      // (earliest bucket hour-aligned) leaves `coversFromMs` absent.
-      ...(earliestStartMs > startsAtMs ? { coversFromMs: earliestStartMs } : {}),
-    }))
-    .sort((left, right) => left.startsAtMs - right.startsAtMs);
-  // Milestones are NOT stamped here: they must reflect the committed kWh AFTER
-  // `mergeHoursPreservingCommitment` applies its floors (an earlier hour's kWh can
-  // win the Math.max, which raises the cumulative for downstream hours). The
-  // recorder calls `stampUnitMilestones` on the merged `effectiveHours` instead.
-  return hours;
+  /* eslint-enable functional/immutable-data */
+  return booked.map(({ interval }) => ({
+    ...interval,
+    plannedKWh: interval.plannedKWh < PLANNED_EPSILON_KWH ? interval.plannedKWh : roundKWh(interval.plannedKWh),
+  }));
 };
-/* eslint-enable functional/immutable-data */
 
-const segmentHourStart = (segment: Pick<DeferredObjectiveActivePlanReservationSegmentV1, 'startMs'>): number => (
-  Math.floor(segment.startMs / ONE_HOUR_MS) * ONE_HOUR_MS
-);
+const clipSegmentToBooking = (
+  segment: DeferredObjectiveActivePlanReservationSegmentV1,
+  hour: DeferredObjectivePlanInterval,
+): DeferredObjectiveActivePlanReservationSegmentV1[] => {
+  const startMs = Math.max(segment.startMs, hour.coversFromMs ?? hour.startsAtMs);
+  const endMs = Math.min(segment.endMs, hour.endsAtMs);
+  if (endMs <= startMs) return [];
+  if (startMs === segment.startMs && endMs === segment.endMs) return [segment];
+  return [{ ...segment, startMs, endMs,
+    plannedKWh: segment.plannedKWh * (endMs - startMs) / (segment.endMs - segment.startMs) }];
+};
 
 export const buildLiveReservationSegments = (
   plan: DeferredObjectiveHorizonPlan,
@@ -104,10 +88,11 @@ export const buildLiveReservationSegments = (
 
 const scaleSegmentsToHour = (params: {
   segments: readonly DeferredObjectiveActivePlanReservationSegmentV1[];
-  hour: DeferredObjectiveActivePlanHourV1;
+  hour: DeferredObjectivePlanInterval;
 }): DeferredObjectiveActivePlanReservationSegmentV1[] => {
   const totalKWh = params.segments.reduce((sum, segment) => sum + segment.plannedKWh, 0);
   if (totalKWh <= 0 || params.hour.plannedKWh <= 0) return [];
+  if (totalKWh === params.hour.plannedKWh) return [...params.segments];
   return params.segments.map((segment) => ({
     ...segment,
     plannedKWh: segment.plannedKWh * params.hour.plannedKWh / totalKWh,
@@ -129,10 +114,7 @@ const overlayLiveAdmissionPower = (params: {
 }): DeferredObjectiveActivePlanReservationSegmentV1[] => params.previous.map((previous) => {
   let matchingLiveAdmissionPowerKw = 0;
   for (const live of params.live) {
-    const sameSource = previous.sourceBucketId === undefined
-      || live.sourceBucketId === undefined
-      || previous.sourceBucketId === live.sourceBucketId;
-    if (!sameSource || !segmentsOverlap(previous, live)) continue;
+    if (!segmentsOverlap(previous, live)) continue;
     matchingLiveAdmissionPowerKw = Math.max(
       matchingLiveAdmissionPowerKw,
       live.plannedAdmissionPowerKw,
@@ -144,7 +126,7 @@ const overlayLiveAdmissionPower = (params: {
 });
 
 const selectExactSegmentsForHour = (
-  hour: DeferredObjectiveActivePlanHourV1,
+  hour: DeferredObjectivePlanInterval,
   live: readonly DeferredObjectiveActivePlanReservationSegmentV1[],
   previous: readonly DeferredObjectiveActivePlanReservationSegmentV1[],
 ): readonly DeferredObjectiveActivePlanReservationSegmentV1[] => {
@@ -180,7 +162,7 @@ const selectExactSegmentsForHour = (
 // hour segment whose hourly admission is necessarily conservative.
 export const buildReservationSegmentsFromHorizonPlan = (
   diag: DeferredObjectiveDiagnostic,
-  effectiveHours: readonly DeferredObjectiveActivePlanHourV1[],
+  effectiveHours: readonly DeferredObjectivePlanInterval[],
   previousSegments: readonly DeferredObjectiveActivePlanReservationSegmentV1[] = [],
 ): DeferredObjectiveActivePlanReservationSegmentV1[] => {
   const liveSegments = diag.evaluation.planning.kind === 'allocated'
@@ -188,12 +170,12 @@ export const buildReservationSegmentsFromHorizonPlan = (
     : [];
   return effectiveHours.flatMap((hour) => {
     if (hour.plannedKWh <= 0) return [];
-    const liveForHour = liveSegments.filter((segment) => segmentHourStart(segment) === hour.startsAtMs);
-    const previousForHour = previousSegments.filter((segment) => segmentHourStart(segment) === hour.startsAtMs);
+    const liveForHour = liveSegments.flatMap((segment) => clipSegmentToBooking(segment, hour));
+    const previousForHour = previousSegments.flatMap((segment) => clipSegmentToBooking(segment, hour));
     const exactSegments = selectExactSegmentsForHour(hour, liveForHour, previousForHour);
     if (exactSegments.length > 0) return scaleSegmentsToHour({ segments: exactSegments, hour });
     const startMs = hour.coversFromMs ?? hour.startsAtMs;
-    const endMs = Math.min(hour.startsAtMs + ONE_HOUR_MS, diag.deadlineAtMs ?? Number.POSITIVE_INFINITY);
+    const endMs = Math.min(hour.endsAtMs, diag.deadlineAtMs ?? Number.POSITIVE_INFINITY);
     if (endMs <= startMs) return [];
     const durationHours = (endMs - startMs) / ONE_HOUR_MS;
     const admissionPowerKw = hour.plannedAdmissionPowerKw ?? hour.plannedKWh / durationHours;
@@ -248,13 +230,13 @@ const resolveUnitTrajectoryAnchor = (
 // Elapsed hours are left untouched (their milestone is history) but still advance
 // the running base so a later hour after a gap accumulates correctly.
 export const stampUnitMilestones = (
-  hours: DeferredObjectiveActivePlanHourV1[],
+  hours: DeferredObjectivePlanInterval[],
   diag: DeferredObjectiveDiagnostic,
   nowMs: number,
-): DeferredObjectiveActivePlanHourV1[] => {
+  previous: readonly DeferredObjectivePlanInterval[],
+): DeferredObjectivePlanInterval[] => {
   const anchor = resolveUnitTrajectoryAnchor(diag);
   if (!anchor || diag.progressDirection === 'unknown') return hours;
-  const currentHourStartMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
   let lastMilestone: number | null = null;
   return [...hours]
     .sort((left, right) => left.startsAtMs - right.startsAtMs)
@@ -267,7 +249,11 @@ export const stampUnitMilestones = (
         return hour;
       }
       // Elapsed hour with no milestone (legacy) — leave it, don't fabricate history.
-      if (hour.startsAtMs < currentHourStartMs) return hour;
+      if (hour.endsAtMs <= nowMs) return hour;
+      // A grid split creates an intermediate edge with no saved unit target.
+      // Keep its energy milestone instead of anchoring it at a later live read.
+      if (previous.some((old) => old.plannedKWh > 0 && old.startsAtMs <= hour.startsAtMs
+        && old.endsAtMs > hour.endsAtMs)) return hour;
       // New current/future hour: build on the last frozen milestone, or seed the
       // very first hour of a brand-new plan at the live measured anchor.
       const base = lastMilestone ?? anchor.anchorUnit;
@@ -293,24 +279,16 @@ export const stampUnitMilestones = (
 // build-time allocator also uses, so "worth shifting load" stays consistent. An hour the live plan carries
 // no comparable price for is left unstamped (consumer reads absence as `false`).
 export const stampCheaperHourAhead = (
-  hours: DeferredObjectiveActivePlanHourV1[],
+  hours: DeferredObjectivePlanInterval[],
   diag: DeferredObjectiveDiagnostic,
-): DeferredObjectiveActivePlanHourV1[] => {
+): DeferredObjectivePlanInterval[] => {
   const horizonPlan = diag.evaluation.planning.kind === 'allocated' ? diag.evaluation.planning.plan : null;
   if (!horizonPlan) return hours;
   const buckets = horizonPlan.plannedBuckets;
-  // Reference bucket per hour-aligned slot: the earliest covering priced bucket
-  // (buckets may be split sub-hour at `nowMs`/`planningEndMs`; segments of one
-  // hour share the source price).
-  const referenceByHour = new Map<number, DeferredObjectivePlannedBucket>();
-  for (const bucket of buckets) {
-    if (typeof bucket.price !== 'number' || !Number.isFinite(bucket.price)) continue;
-    const hourStart = Math.floor(bucket.startMs / ONE_HOUR_MS) * ONE_HOUR_MS;
-    if (!referenceByHour.has(hourStart)) referenceByHour.set(hourStart, bucket);
-  }
   return hours.map((hour) => {
     if (typeof hour.cheaperHourAhead === 'boolean') return hour; // frozen at booking
-    const reference = referenceByHour.get(hour.startsAtMs);
+    const reference = buckets.find((bucket) => bucket.startMs < hour.endsAtMs
+      && bucket.endMs > (hour.coversFromMs ?? hour.startsAtMs) && bucket.price !== null);
     if (!reference) return hour; // no comparable price ⇒ leave absent
     const cheaperAhead = hasCheaperEnergyHourAhead(buckets, reference, PLANNED_EPSILON_KWH);
     return { ...hour, cheaperHourAhead: cheaperAhead };
@@ -342,8 +320,8 @@ export const resolveProjectedFinishAtMs = (
   return Math.round(lastPlannedBucket.startMs + fraction * bucketDurationMs);
 };
 
-// User-facing notification gate. Fires only when the number of charging
-// hours actually changes — same-count swaps stay quiet on the flow bus.
+// User-facing notification gate. Fires when total scheduled duration changes;
+// equal-duration swaps stay quiet on the Flow bus.
 // Empty schedules split by intent: a `satisfied` collapse is suppressed
 // (target met — no plan to notify about); a `cannot_meet`, `invalid`, or
 // `at_risk` collapse fires so automations see "your plan blew up" even when the
@@ -353,30 +331,27 @@ export const resolveProjectedFinishAtMs = (
 // empty schedule — reserve/policy at-risk always plan buckets — and an empty
 // floor schedule is still a "plan blew up" event worth surfacing.
 export const shouldFireNotification = (
-  previousHourCount: number,
-  nextHourCount: number,
+  previousDurationHours: number,
+  nextDurationHours: number,
   planStatus: DeferredObjectiveActivePlanRevisionV1['planStatus'],
 ): boolean => {
-  if (previousHourCount === nextHourCount) return false;
-  if (nextHourCount > 0) return true;
+  if (previousDurationHours === nextDurationHours) return false;
+  if (nextDurationHours > 0) return true;
   return planStatus === 'cannot_meet' || planStatus === 'invalid' || planStatus === 'at_risk';
 };
 
-// Schedule comparison: two hour lists are equivalent iff they cover the same
-// set of hour-aligned `startsAtMs` values, in order. `plannedKWh` is
-// deliberately excluded — a shrinking `energyNeededKWh` redistributes kWh
-// across the same hours without changing the user-visible schedule.
+// Schedule identity is time coverage. Changing the source grid or redistributing
+// energy across the same covered time does not change the visible schedule.
 export const sameHourSchedule = (
-  a: readonly DeferredObjectiveActivePlanHourV1[],
-  b: readonly DeferredObjectiveActivePlanHourV1[],
+  a: readonly DeferredObjectivePlanInterval[],
+  b: readonly DeferredObjectivePlanInterval[],
 ): boolean => {
-  if (a.length !== b.length) return false;
-  for (const [i, left] of a.entries()) {
-    const right = b[i];
-    // Lengths match above, so every peer exists; a missing one is not equivalent.
-    if (right === undefined || left.startsAtMs !== right.startsAtMs) return false;
-  }
-  return true;
+  const leftCoverage = scheduleCoverage(a);
+  const rightCoverage = scheduleCoverage(b);
+  return leftCoverage.length === rightCoverage.length && leftCoverage.every((left, index) => {
+    const right = rightCoverage[index];
+    return right !== undefined && left.startsAtMs === right.startsAtMs && left.endsAtMs === right.endsAtMs;
+  });
 };
 
 // Coordination-sensitive equality. Lower-priority commitments may need a
@@ -384,13 +359,13 @@ export const sameHourSchedule = (
 // kWh left in an hour or the physical step reservation lower tasks expose to
 // tasks behind them.
 export const samePriorityAllocation = (
-  a: readonly DeferredObjectiveActivePlanHourV1[],
-  b: readonly DeferredObjectiveActivePlanHourV1[],
+  a: readonly DeferredObjectivePlanInterval[],
+  b: readonly DeferredObjectivePlanInterval[],
 ): boolean => {
-  if (!sameHourSchedule(a, b)) return false;
+  if (a.length !== b.length || !sameHourSchedule(a, b)) return false;
   for (const [i, left] of a.entries()) {
     const right = b[i];
-    if (right === undefined) return false;
+    if (right === undefined || left.startsAtMs !== right.startsAtMs || left.endsAtMs !== right.endsAtMs) return false;
     if (left.plannedKWh !== right.plannedKWh) return false;
     if ((left.plannedAdmissionPowerKw ?? 0) !== (right.plannedAdmissionPowerKw ?? 0)) return false;
   }
@@ -398,13 +373,13 @@ export const samePriorityAllocation = (
 };
 
 const sameAdmissionAllocation = (
-  a: readonly DeferredObjectiveActivePlanHourV1[],
-  b: readonly DeferredObjectiveActivePlanHourV1[],
+  a: readonly DeferredObjectivePlanInterval[],
+  b: readonly DeferredObjectivePlanInterval[],
 ): boolean => {
-  if (!sameHourSchedule(a, b)) return false;
+  if (a.length !== b.length || !sameHourSchedule(a, b)) return false;
   for (const [i, left] of a.entries()) {
     const right = b[i];
-    if (right === undefined) return false;
+    if (right === undefined || left.startsAtMs !== right.startsAtMs || left.endsAtMs !== right.endsAtMs) return false;
     if ((left.plannedAdmissionPowerKw ?? 0) !== (right.plannedAdmissionPowerKw ?? 0)) return false;
   }
   return true;
@@ -413,14 +388,14 @@ const sameAdmissionAllocation = (
 export const resolveCoordinatedScheduleUpdate = (
   diag: DeferredObjectiveDiagnostic,
   objectiveChanged: boolean,
-  committedHours: readonly DeferredObjectiveActivePlanHourV1[],
+  committedHours: readonly DeferredObjectivePlanInterval[],
   latest: DeferredObjectiveActivePlanRevisionV1,
-  liveHours: DeferredObjectiveActivePlanHourV1[],
+  liveHours: DeferredObjectivePlanInterval[],
   nowMs: number,
   metadataDrifted: boolean,
 ): {
   replaceCommitment: boolean;
-  effectiveHours: DeferredObjectiveActivePlanHourV1[];
+  effectiveHours: DeferredObjectivePlanInterval[];
   scheduleChanged: boolean;
   metadataDriftedWithinSchedule: boolean;
 } => {
@@ -432,7 +407,7 @@ export const resolveCoordinatedScheduleUpdate = (
     ? liveHours
     : mergeHoursPreservingCommitment(committedHours, liveHours, nowMs);
   const effectiveHours = stampCheaperHourAhead(
-    stampUnitMilestones(mergedHours, diag, nowMs),
+    stampUnitMilestones(mergedHours, diag, nowMs, replaceCommitment ? [] : committedHours),
     diag,
   );
   const scheduleChanged = !sameHourSchedule(latest.hours, effectiveHours);
@@ -447,126 +422,97 @@ export const resolveCoordinatedScheduleUpdate = (
   return { replaceCommitment, effectiveHours, scheduleChanged, metadataDriftedWithinSchedule };
 };
 
-// Merge live horizon hours into the existing commitment. The recorder bypasses
-// this helper for an explicit priority-coordination replacement; all ordinary
-// replan paths retain the no-shrink rules below.
-//
-// The committed schedule is the task's contract (which hour-aligned hours it
-// will run). Each plan cycle the live horizon plan is merged in.
-//
-// We split `committed` relative to the ACTUAL current hour
-// (`floor(nowMs / ONE_HOUR_MS)`), NOT relative to the live plan's earliest
-// hour. The horizon allocator is a price optimizer
-// (`bucketAllocation.ts` sorts by reserve→relative-price-band→time, and
-// `buildHoursFromHorizonPlan` keeps only the hours the plan books), so when
-// near-term hours are relatively expensive they are not booked and vanish from
-// the live set. The live plan's earliest populated hour can therefore be a FUTURE
-// hour while the current hour is still pending — keying the partition off the
-// live earliest hour would misclassify still-pending committed hours as
-// "elapsed" and let optimizer thrash silently drop them from the coverage
-// contract. We key off wall-clock `nowMs` instead.
-//
-//   • ELAPSED committed hours (`startsAtMs < currentHourStart`) are settled
-//     history — the hour they describe is strictly in the past. They are
-//     preserved as floors in the result but MUST NOT gate the coverage check,
-//     otherwise the merge would freeze permanently after the task's first
-//     committed hour elapses and could never adopt a newly-planned future hour
-//     again.
-//
-//   • CURRENT/FUTURE committed hours (`startsAtMs >= currentHourStart`) are the
-//     part of the contract that is still pending (current hour onward). The
-//     coverage check runs over these only. A committed current/future hour
-//     missing from the live plan is genuine optimizer churn (the allocator
-//     repriced it to 0 kWh or dropped it), NOT an elapsed hour.
-//
-// Two branches on that current/future coverage:
-//
-// **live ⊇ current/future committed**: adopt the live hour set. For each
-// overlapping hour take `Math.max(committed.plannedKWh, live.plannedKWh)` so
-// the historical kWh is preserved as a contract floor — a shrinking live kWh
-// (per-cycle re-fill against a smaller current need) must not rewrite a
-// committed hour downward. Elapsed committed hours are added back as floors.
-// This lets per-cycle growth (within-hour drift or phase-2 expansion) extend
-// the commitment with brand-new future hours, but only once the earlier hours
-// have TRULY elapsed. When committed is empty the inclusion check is vacuously
-// true → live becomes the first real commitment.
-//
-// **live ⊉ current/future committed**: a still-pending committed hour is
-// genuinely missing from the live allocation (real optimizer churn). Preserve
-// the full commitment as-is — "committed schedule cannot shrink mid-task and
-// cannot churn from optimizer thrash" is the long-standing invariant.
-//
-// Only hours with energy are floors. A 0 kWh booking promises nothing, so it never
-// gates coverage and a still-pending one is not kept once the live plan stops
-// booking it: the live plan's booking rule decides it afresh each settle. An ELAPSED
-// 0 kWh booking is kept like any elapsed hour — it is history, and dropping it would
-// read as a schedule change at every settle.
-//
-// Pure: no mutation of the inputs. Hour math is UTC-millisecond floor/compare
-// of `nowMs` and the already-hour-floored `startsAtMs` values, so a 23/25-hour
-// DST day does not perturb the elapsed/future partition (no local-time
-// assumption).
+// Floors promise energy over coverage, independent of the price source's grid.
+// Regrid by the union of old/new boundaries, conserving each floor's energy.
+// Elapsed slices remain history; a missing pending floor keeps the commitment.
 export const mergeHoursPreservingCommitment = (
-  committed: readonly DeferredObjectiveActivePlanHourV1[],
-  live: readonly DeferredObjectiveActivePlanHourV1[],
+  committed: readonly DeferredObjectivePlanInterval[],
+  live: readonly DeferredObjectivePlanInterval[],
   nowMs: number,
-): DeferredObjectiveActivePlanHourV1[] => {
+): DeferredObjectivePlanInterval[] => {
   const floors = hoursWithPlannedEnergy(committed);
-  const currentHourStart = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
-  const liveStarts = new Set(live.map((h) => h.startsAtMs));
-  // Elapsed hours (`startsAtMs < currentHourStart`) are re-added as history. In
-  // production the planner trims the live plan's current bucket start to
-  // `nowMs`, so its earliest hour is >= currentHourStart and elapsed hours do
-  // not appear in `live`. Guard against a live plan that still carries a
-  // sub-current hour anyway: any elapsed hour already present in `live` is
-  // folded into it (with the committed kWh floor applied), so exclude it here to
-  // avoid duplicating its `startsAtMs`.
-  const elapsedCommitted = committed.filter(
-    (h) => h.startsAtMs < currentHourStart && !liveStarts.has(h.startsAtMs),
-  );
   if (floors.length === 0) {
-    return [...elapsedCommitted, ...live].sort((left, right) => left.startsAtMs - right.startsAtMs);
+    return [...committed.filter((interval) => interval.endsAtMs <= nowMs), ...live]
+      .sort((left, right) => left.startsAtMs - right.startsAtMs);
   }
-  // With no live plan there is nothing to adopt — preserve the commitment
-  // (no-shrink invariant). An EARLY-SATISFIED task hits this branch every
-  // cycle: once the target is reached `energyNeededKWh` is 0, the horizon
-  // allocator emits no positive buckets, and `buildHoursFromHorizonPlan`
-  // returns `[]`, so the merge preserves the full committed schedule. This is
-  // intentional and benign — admission acts on the LIVE plan: a task at its
-  // target gets an empty plan, so every hour it has left is released and the
-  // device is held until the deadline ends the task, never run on these
-  // persisted committed hours. The preserved hours are the run's historical
-  // plan, not a standing commitment to keep charging. (Verified, no concrete
-  // effect found — do not re-flag as "stale committed hours".)
   if (live.length === 0) return [...committed];
-
-  const currentOrFutureCommitted = floors.filter((h) => h.startsAtMs >= currentHourStart);
-
-  const liveByStart = new Map(live.map((h) => [h.startsAtMs, h] as const));
-  const liveCoversCommitment = currentOrFutureCommitted.every((h) => liveByStart.has(h.startsAtMs));
-  // Genuine churn: a still-pending committed hour vanished from the allocation.
-  if (!liveCoversCommitment) return [...committed];
-
-  const committedByStart = new Map(floors.map((h) => [h.startsAtMs, h] as const));
-  const mergedLive = live.map((liveHour) => {
-    const c = committedByStart.get(liveHour.startsAtMs);
-    if (!c) return liveHour;
-    // Take the floor that wins the `Math.max` *whole*, so coverage follows the
-    // energy: when the committed hour wins, its `coversFromMs` (absent ⇒ full
-    // hour) replaces the live hour's trimmed `coversFromMs`. Keeping the live
-    // trimmed coverage with the committed full energy would mislabel a full-hour
-    // floor as a sub-hour span and suppress proration in the chart. Ties go to
-    // the committed hour (`>=`): when a trimmed live current-hour bucket rounds
-    // back to the committed full-hour kWh (or the device made no measurable
-    // progress), the committed full-hour coverage is the correct one to keep so
-    // the chart still prorates the elapsed part. When the live hour strictly
-    // wins (fresh/grown), it keeps its own coverage.
-    const winner = c.plannedKWh >= liveHour.plannedKWh ? { ...c } : liveHour;
-    const plannedAdmissionPowerKw = Math.max(
-      c.plannedAdmissionPowerKw ?? 0,
-      liveHour.plannedAdmissionPowerKw ?? 0,
-    );
-    return plannedAdmissionPowerKw > 0 ? { ...winner, plannedAdmissionPowerKw } : winner;
+  const resolvedLive = retainUnsplitFloorCoverage(floors, live);
+  const coverage = scheduleCoverage(resolvedLive);
+  const missingFloor = floors.some((floor) => floor.endsAtMs > nowMs && !coverage.some((span) => (
+    span.startsAtMs <= Math.max(nowMs, floor.coversFromMs ?? floor.startsAtMs)
+      && span.endsAtMs >= floor.endsAtMs
+  )));
+  if (missingFloor) return [...committed];
+  const retained = committed.filter((interval) => interval.plannedKWh > 0 || interval.endsAtMs <= nowMs);
+  const boundaries = [...new Set([...retained, ...resolvedLive].flatMap((interval) => [
+    interval.coversFromMs ?? interval.startsAtMs, interval.endsAtMs,
+  ]))].sort((left, right) => left - right);
+  return boundaries.slice(0, -1).flatMap((startsAtMs, index) => {
+    const endsAtMs = boundaries[index + 1];
+    if (endsAtMs === undefined) return [];
+    const old = retained.find((interval) => (interval.coversFromMs ?? interval.startsAtMs) <= startsAtMs
+      && interval.endsAtMs >= endsAtMs);
+    const fresh = resolvedLive.find((interval) => (interval.coversFromMs ?? interval.startsAtMs) <= startsAtMs
+      && interval.endsAtMs >= endsAtMs);
+    if (!old && !fresh) return [];
+    const oldEnergy = old ? intervalEnergy(old, startsAtMs, endsAtMs) : 0;
+    const freshEnergy = fresh ? intervalEnergy(fresh, startsAtMs, endsAtMs) : 0;
+    const winner = old && (!fresh || oldEnergy >= freshEnergy) ? old : fresh;
+    if (!winner) return [];
+    const admissionPower = Math.max(old?.plannedAdmissionPowerKw ?? 0, fresh?.plannedAdmissionPowerKw ?? 0);
+    return [sliceBooking(winner, startsAtMs, endsAtMs, admissionPower)];
   });
-  return [...elapsedCommitted, ...mergedLive].sort((left, right) => left.startsAtMs - right.startsAtMs);
+};
+
+const sliceBooking = (
+  interval: DeferredObjectivePlanInterval,
+  startsAtMs: number,
+  endsAtMs: number,
+  admissionPower: number,
+): DeferredObjectivePlanInterval => {
+  const { coversFromMs: _coverage, plannedUnitMilestone, ...metadata } = interval;
+  return {
+    ...metadata, startsAtMs, endsAtMs,
+    ...(plannedUnitMilestone !== undefined && endsAtMs === interval.endsAtMs ? { plannedUnitMilestone } : {}),
+    plannedKWh: intervalEnergy(interval, startsAtMs, endsAtMs),
+    ...(admissionPower > 0 ? { plannedAdmissionPowerKw: admissionPower } : {}),
+  };
+};
+
+// A moving `now` trims the live current period, not its already-booked energy.
+// Keep the original coverage when its floor wins and no new grid boundary cuts
+// it. Regridding into several periods instead uses proportional floors below.
+const retainUnsplitFloorCoverage = (
+  floors: readonly DeferredObjectivePlanInterval[],
+  live: readonly DeferredObjectivePlanInterval[],
+): DeferredObjectivePlanInterval[] => live.map((fresh) => {
+  const floor = floors.find((old) => old.endsAtMs === fresh.endsAtMs
+    && (old.coversFromMs ?? old.startsAtMs) <= (fresh.coversFromMs ?? fresh.startsAtMs)
+    && old.plannedKWh >= fresh.plannedKWh
+    && live.filter((candidate) => candidate.startsAtMs < old.endsAtMs
+      && candidate.endsAtMs > (old.coversFromMs ?? old.startsAtMs)).length === 1);
+  if (!floor) return fresh;
+  const admissionPower = Math.max(floor.plannedAdmissionPowerKw ?? 0, fresh.plannedAdmissionPowerKw ?? 0);
+  return { ...floor, ...(admissionPower > 0 ? { plannedAdmissionPowerKw: admissionPower } : {}) };
+});
+
+const intervalEnergy = (interval: DeferredObjectivePlanInterval, startMs: number, endMs: number): number => (
+  interval.plannedKWh * (endMs - startMs) / (interval.endsAtMs - (interval.coversFromMs ?? interval.startsAtMs))
+);
+
+const scheduleCoverage = (
+  intervals: readonly DeferredObjectivePlanInterval[],
+): Array<{ startsAtMs: number; endsAtMs: number }> => {
+  const coverage: Array<{ startsAtMs: number; endsAtMs: number }> = [];
+  const ordered = [...intervals].sort((left, right) => left.startsAtMs - right.startsAtMs);
+  // Mutate only the local coverage accumulator, never the caller's bookings.
+  /* eslint-disable functional/immutable-data */
+  for (const interval of ordered) {
+    const startsAtMs = interval.coversFromMs ?? interval.startsAtMs;
+    const previous = coverage.at(-1);
+    if (previous && startsAtMs <= previous.endsAtMs) previous.endsAtMs = Math.max(previous.endsAtMs, interval.endsAtMs);
+    else coverage.push({ startsAtMs, endsAtMs: interval.endsAtMs });
+  }
+  /* eslint-enable functional/immutable-data */
+  return coverage;
 };

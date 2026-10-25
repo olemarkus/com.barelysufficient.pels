@@ -1,14 +1,14 @@
 import type {
-  DeferredObjectiveActivePlanHourV1,
+  DeferredObjectivePlanInterval,
   DeferredObjectiveActivePlanRevisionV1,
-  DeferredObjectiveActivePlansV1,
+  DeferredObjectiveActivePlansV2,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import { buildObjectiveSignatureForEntry, compareObjectiveSignatures } from './activePlanSignature';
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { ObjectiveProgressDirectionRead } from '../../objectives/types';
 
 export type ResolvedActiveCommittedPlan = {
-  commitmentHours: DeferredObjectiveActivePlanHourV1[];
+  commitmentHours: DeferredObjectivePlanInterval[];
   latest: DeferredObjectiveActivePlanRevisionV1;
 };
 
@@ -20,7 +20,7 @@ export const resolveActiveCommittedPlan = (
   deviceId: string,
   objective: DeferredObjectiveSettingsEntry,
   progressDirection: ObjectiveProgressDirectionRead,
-  activePlans: DeferredObjectiveActivePlansV1,
+  activePlans: DeferredObjectiveActivePlansV2,
 ): ResolvedActiveCommittedPlan | undefined => {
   const plan = activePlans.plansByDeviceId[deviceId];
   if (!plan || plan.pending || !plan.commitment || plan.latest == null) return undefined;
@@ -48,7 +48,7 @@ export const resolveCommittedHours = (
   deviceId: string,
   objective: DeferredObjectiveSettingsEntry,
   progressDirection: ObjectiveProgressDirectionRead,
-  activePlans: DeferredObjectiveActivePlansV1,
-): DeferredObjectiveActivePlanHourV1[] | undefined => (
+  activePlans: DeferredObjectiveActivePlansV2,
+): DeferredObjectivePlanInterval[] | undefined => (
   resolveActiveCommittedPlan(deviceId, objective, progressDirection, activePlans)?.commitmentHours
 );

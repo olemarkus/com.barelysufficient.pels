@@ -8,7 +8,7 @@
 // is OBSERVED ONLY through structured logs. The whole app boots through
 // `createApp().onInit()`; power, prices, the device's observed temperature/step,
 // the clock, and the persisted learned-rate datum are simulated at the SDK seam
-// (the energy poll, the `combined_prices` setting, the mock device's capabilities,
+// (the energy poll, the Flow price source, the mock device's capabilities,
 // `vi.setSystemTime`, the stored tracker); the plan cycle is driven
 // by advancing the timers (the real 10 s energy poll + the periodic rebuild), NOT
 // by reaching into `planService`. The real snapshot parser (`parseDevice`), the
@@ -30,19 +30,19 @@
 // `blockedByShedInvariant: false`). The ONLY lever between the two task cases is the
 // price curve (which hour the planner books).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { seedHourlyFlowPricesForTests } from '../helpers/smartTaskPriceSourceFixture';
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import { drainUntil } from '../utils/asyncDrain';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW,
-  COMBINED_PRICES, CONTROLLABLE_DEVICES, DAILY_BUDGET_ENABLED,
+  CONTROLLABLE_DEVICES, DAILY_BUDGET_ENABLED,
   DEBUG_LOGGING_TOPICS, DEVICE_TARGET_POWER_CONFIGS, MANAGED_DEVICES,
 } from '../../lib/utils/settingsKeys';
 
 const HOUR_MS = 60 * 60 * 1000;
-// Midnight UTC so the price day-key and the clock stay aligned without offset math.
+// Price indexes are elapsed hours from this UTC anchor.
 const DAY = Date.UTC(2026, 4, 10, 0, 0, 0);
-const TODAY_KEY = new Date(DAY).toISOString().slice(0, 10);
 const TANK = 'tank';
 const LOWER = 'lower';
 
@@ -67,25 +67,6 @@ const ESCALATED_STEP = '3000w'; // highest rung funded by the conservative headr
 const buildPrices = (cheapHour: number): number[] => (
   Array.from({ length: 24 }, (_, h) => (h === cheapHour ? 5 : 50))
 );
-
-const buildCombinedPrices = (cheapHour: number) => ({
-  version: 2,
-  days: {
-    [TODAY_KEY]: {
-      hours: buildPrices(cheapHour).map((total, i) => ({
-        startsAt: new Date(DAY + i * HOUR_MS).toISOString(),
-        total,
-        isCheap: false,
-        isExpensive: false,
-      })),
-    },
-  },
-  avgPrice: 0,
-  lowThreshold: 0,
-  highThreshold: 0,
-  priceScheme: 'norway',
-  priceUnit: 'øre/kWh',
-});
 
 // The persisted learned-rate datum the app restores on init (temperature
 // objectives have no bootstrap rate, so this is what lets the task plan at all).
@@ -181,7 +162,7 @@ const runCycleAtHour = async (params: {
   mockHomeyInstance.settings.set('capacity_priorities', { Home: { [TANK]: 1, [LOWER]: 5 } });
   // Defined stepped load via the target-power config: off/500…3000 W in 500 W steps.
   mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, { [TANK]: { enabled: true, min: 0, max: 3000, step: 500 } });
-  mockHomeyInstance.settings.set(COMBINED_PRICES, buildCombinedPrices(cheapHour));
+  seedHourlyFlowPricesForTests(DAY, buildPrices(cheapHour));
   seedStoredPowerTrackerForTests(buildPowerTracker(DAY + currentHour * HOUR_MS));
   if (withSmartTask === 'boost') {
     mockHomeyInstance.settings.set(`deferred_objective.${TANK}`, BOOST_TASK);

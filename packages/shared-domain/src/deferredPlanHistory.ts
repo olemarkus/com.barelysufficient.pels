@@ -15,7 +15,6 @@ import {
 import {
   formatClockTime,
   formatHistoryValueForKind,
-  HOUR_MS,
   OVERSHOOT_THRESHOLD_BY_KIND,
   pickLastPlan,
 } from './deferredPlanHistoryShared';
@@ -461,8 +460,8 @@ export type PlanHistoryRevisionLogRow = {
 // persistence) into clean non-negative integers. Shared by the glyph + aria
 // formatters so both surfaces agree on the "zero" threshold.
 const normalizeHourCounts = (hoursAdded: number, hoursRemoved: number): { added: number; removed: number } => ({
-  added: Number.isFinite(hoursAdded) && hoursAdded > 0 ? Math.floor(hoursAdded) : 0,
-  removed: Number.isFinite(hoursRemoved) && hoursRemoved > 0 ? Math.floor(hoursRemoved) : 0,
+  added: Number.isFinite(hoursAdded) && hoursAdded > 0 ? Math.round(hoursAdded * 60) / 60 : 0,
+  removed: Number.isFinite(hoursRemoved) && hoursRemoved > 0 ? Math.round(hoursRemoved * 60) / 60 : 0,
 });
 
 const formatHourDiff = (hoursAdded: number, hoursRemoved: number): string | null => {
@@ -572,7 +571,7 @@ export const formatPlanHistoryObservedCoverage = (
   // in the renderer.
   const intervals = Array.isArray(entry.observedIntervals) ? entry.observedIntervals : [];
   const observedBuckets = plannedBuckets.filter((hour) => {
-    const hourEndMs = hour.startsAtMs + HOUR_MS;
+    const hourEndMs = hour.endsAtMs;
     return intervals.some((interval) => interval.fromMs < hourEndMs && interval.toMs > hour.startsAtMs);
   }).length;
   // Singularize the noun for the M === 1 case ("…of 1 scheduled hour") — matches the
@@ -582,7 +581,7 @@ export const formatPlanHistoryObservedCoverage = (
   // (not the status-chip vocabulary — the queued chip now reads "On track")
   // and keeps planner-layer vocabulary ("planned") out of user copy
   // (feedback_terminology_plan_vs_deadline).
-  const noun = plannedBuckets.length === 1 ? 'hour' : 'hours';
+  const noun = plannedBuckets.length === 1 ? 'period' : 'periods';
   return `Observed ${observedBuckets} of ${plannedBuckets.length} scheduled ${noun}`;
 };
 

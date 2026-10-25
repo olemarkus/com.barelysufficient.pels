@@ -1,7 +1,7 @@
 import type { ContinuousBatteryPlanRead } from './continuousBatteryPlan.js';
 import type { CapacityPeriodMinutes, CapacityScalarSettings } from './capacitySettings.js';
 import type { DailyBudgetUiRead } from './dailyBudgetTypes.js';
-import type { ResolvedDeferredObjectiveActivePlansV1 } from './deferredObjectiveActivePlans.js';
+import type { ResolvedDeferredObjectiveActivePlansV2 } from './deferredObjectiveActivePlans.js';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from './deferredObjectivePlanHistory.js';
 import type { DeferredObjectiveRoster } from './deferredObjectiveSettings.js';
 import type { SettingsUiDeviceDiagnosticsPayload } from './deviceDiagnosticsTypes.js';
@@ -238,7 +238,7 @@ export type SettingsUiBootstrap = SettingsUiSettingsPatch & {
   // The smart tasks, assembled from the per-device keys; the same read model
   // as `SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH`.
   deferredObjectives: DeferredObjectiveRoster;
-  deferredObjectiveActivePlans: ResolvedDeferredObjectiveActivePlansV1 | null;
+  deferredObjectiveActivePlans: ResolvedDeferredObjectiveActivePlansV2 | null;
   plan: SettingsUiPlanSnapshot | null;
   power: SettingsUiPowerPayload;
   prices: SettingsUiPricesPayload;
@@ -978,10 +978,20 @@ export type PriceLevelSummaryRead =
   | ({ readonly state: 'ready' } & PriceLevelSummary)
   | { readonly state: 'unavailable' };
 
+export type SettingsUiTaskPricePeriod = {
+  startsAtMs: number;
+  endsAtMs: number;
+  price: number;
+  planningPrice: number;
+  isCheap: boolean;
+  isExpensive: boolean;
+};
+
 export type SettingsUiPricesPayload = SettingsUiPriceSourcePayloads & {
   combinedPrices: unknown | null;
   /** Native price periods for the current import and export prices. */
   priceTimeline: PriceTimelineRead;
+  taskPricePeriods: SettingsUiTaskPricePeriod[];
   priceArea: string | null;
   /** `{ kind: 'unknown' }` during the boot window before the forecast selector is wired. */
   pvForecastSource: PvForecastSourceUiStatus;

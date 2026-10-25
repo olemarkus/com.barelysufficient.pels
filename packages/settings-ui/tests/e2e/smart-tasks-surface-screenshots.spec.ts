@@ -61,9 +61,9 @@ const makeEntry = (params: {
   const deadlineAtMs = finalizedAtMs - HOUR;
   const originalPlan = {
     hours: [
-      { startsAtMs: startedAtMs, plannedKWh: 1.0 },
-      { startsAtMs: startedAtMs + HOUR, plannedKWh: 0.8 },
-      { startsAtMs: startedAtMs + 2 * HOUR, plannedKWh: 0.6 },
+      { startsAtMs: startedAtMs, endsAtMs: (startedAtMs) + 3_600_000, plannedKWh: 1.0 },
+      { startsAtMs: startedAtMs + HOUR, endsAtMs: (startedAtMs + HOUR) + 3_600_000, plannedKWh: 0.8 },
+      { startsAtMs: startedAtMs + 2 * HOUR, endsAtMs: (startedAtMs + 2 * HOUR) + 3_600_000, plannedKWh: 0.6 },
     ],
     energyNeededKWh: 4,
     planStatus: 'on_track' as const,
@@ -79,9 +79,9 @@ const makeEntry = (params: {
   const finalPlan = revised
     ? {
       hours: [
-        { startsAtMs: startedAtMs + 3 * HOUR, plannedKWh: 1.2 },
-        { startsAtMs: startedAtMs + 4 * HOUR, plannedKWh: 1.0 },
-        { startsAtMs: startedAtMs + 5 * HOUR, plannedKWh: 0.9 },
+        { startsAtMs: startedAtMs + 3 * HOUR, endsAtMs: (startedAtMs + 3 * HOUR) + 3_600_000, plannedKWh: 1.2 },
+        { startsAtMs: startedAtMs + 4 * HOUR, endsAtMs: (startedAtMs + 4 * HOUR) + 3_600_000, plannedKWh: 1.0 },
+        { startsAtMs: startedAtMs + 5 * HOUR, endsAtMs: (startedAtMs + 5 * HOUR) + 3_600_000, plannedKWh: 0.9 },
       ],
       energyNeededKWh: 4.5,
       planStatus: 'on_track' as const,
@@ -105,9 +105,9 @@ const makeEntry = (params: {
   // divisor. Σ deliveredKWh = 4.6 matches the entry's `deliveredKWh`.
   const hourlyContributions = revised
     ? [
-      { atMs: startedAtMs + 3 * HOUR, deliveredKWh: 2.0, priceValue: 40, tone: 'cheap' as const },
-      { atMs: startedAtMs + 4 * HOUR, deliveredKWh: 1.5, priceValue: 52, tone: 'normal' as const },
-      { atMs: startedAtMs + 5 * HOUR, deliveredKWh: 1.1, priceValue: 60, tone: 'expensive' as const },
+      { atMs: startedAtMs + 3 * HOUR, endsAtMs: (startedAtMs + 3 * HOUR) + 3_600_000, deliveredKWh: 2.0, priceValue: 40, tone: 'cheap' as const },
+      { atMs: startedAtMs + 4 * HOUR, endsAtMs: (startedAtMs + 4 * HOUR) + 3_600_000, deliveredKWh: 1.5, priceValue: 52, tone: 'normal' as const },
+      { atMs: startedAtMs + 5 * HOUR, endsAtMs: (startedAtMs + 5 * HOUR) + 3_600_000, deliveredKWh: 1.1, priceValue: 60, tone: 'expensive' as const },
     ]
     : undefined;
   return {

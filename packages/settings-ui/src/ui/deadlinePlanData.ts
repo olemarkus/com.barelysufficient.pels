@@ -9,8 +9,6 @@ import type {
   DeviceDescriptor, MeasuredPowerObservedProbe, ObservedDeviceState,
 } from '../../../contracts/src/types.ts';
 import type { DeadlineLabels } from '../../../shared-domain/src/deadlineLabels.ts';
-import { resolvePlanningPrice } from '../../../shared-domain/src/price/planningPrice.ts';
-import { normalizeCombinedPrices } from './combinedPrices.ts';
 import type { CostDisplay } from './dailyBudgetCost.ts';
 import type { DeadlineProgress, resolveEnergyNeededKWh } from './deadlinePlanResolvers.ts';
 
@@ -42,17 +40,8 @@ export const collectHorizonHours = (
   windowStartMs: number,
   prices: SettingsUiPricesPayload,
 ): HorizonHour[] => (
-  normalizeCombinedPrices(prices.combinedPrices)
-    .map((price) => ({ price, startsAtMs: new Date(price.startsAt).getTime() }))
-    .filter(({ startsAtMs }) => Number.isFinite(startsAtMs))
-    .map(({ price, startsAtMs }) => ({
-      startsAtMs,
-      endMs: startsAtMs + ONE_HOUR_MS,
-      price: price.total,
-      planningPrice: resolvePlanningPrice(price.budgetPrice, price.total),
-      isCheap: price.isCheap,
-      isExpensive: price.isExpensive,
-    }))
+  prices.taskPricePeriods
+    .map(({ endsAtMs, ...period }) => ({ ...period, endMs: endsAtMs }))
     .filter((hour) => hour.endMs > windowStartMs && hour.startsAtMs < deadlineAtMs)
     .sort((left, right) => left.startsAtMs - right.startsAtMs)
 );
@@ -93,4 +82,19 @@ export type DeadlinePlanSchedule = {
   // revision's (the latest's when there is none) and the latest's.
   originalChargeByStartMs: Map<number, number>;
   currentChargeByStartMs: Map<number, number>;
+};
+
+// Split only for presentation: booking and price boundaries may differ after a
+// source-grid change or a partial first/last booking. No column spans idle time.
+export const splitHorizonAtBookings = (
+  hours: HorizonHour[],
+  plan: ResolvedDeferredObjectiveActivePlanV1,
+): HorizonHour[] => {
+  const boundaries = [...(plan.original?.hours ?? []), ...(plan.latest?.hours ?? [])]
+    .flatMap((booking) => [booking.coversFromMs ?? booking.startsAtMs, booking.endsAtMs]);
+  return hours.flatMap((hour) => {
+    const cuts = [...new Set([hour.startsAtMs, hour.endMs,
+      ...boundaries.filter((atMs) => atMs > hour.startsAtMs && atMs < hour.endMs)])].sort((a, b) => a - b);
+    return cuts.slice(0, -1).map((startsAtMs, index) => ({ ...hour, startsAtMs, endMs: cuts[index + 1]! }));
+  });
 };

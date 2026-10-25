@@ -29,8 +29,8 @@ const buildPlan = (
     reason: 'flow_card',
     // 0.5 kWh/°C → 1 kWh raises progress by 2 °C.
     hours: [
-      { startsAtMs: START_MS + HOUR_MS, plannedKWh: 1 },
-      { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 },
+      { startsAtMs: START_MS + HOUR_MS, endsAtMs: (START_MS + HOUR_MS) + 3_600_000, plannedKWh: 1 },
+      { startsAtMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
     ],
     energyNeededKWh: 2,
     planStatus: 'on_track',
@@ -94,11 +94,11 @@ describe('resolveActivePlanChartData', () => {
         ...buildPlan().latest!,
         rateMean: 0.5,
         hours: [
-          { startsAtMs: START_MS + HOUR_MS, plannedKWh: 1 },
-          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 },
-          { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
-          { startsAtMs: START_MS + 4 * HOUR_MS, plannedKWh: 1 },
-          { startsAtMs: START_MS + 5 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS + HOUR_MS, endsAtMs: (START_MS + HOUR_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: START_MS + 3 * HOUR_MS, endsAtMs: (START_MS + 3 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: START_MS + 4 * HOUR_MS, endsAtMs: (START_MS + 4 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: START_MS + 5 * HOUR_MS, endsAtMs: (START_MS + 5 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
         ],
       },
     }));
@@ -138,9 +138,9 @@ describe('resolveActivePlanChartData', () => {
         progressDirection: 'decreasing',
         // 5 kWh each ÷ 0.5 kWh/°C changes the temperature by 10 °C.
         hours: [
-          { startsAtMs: coolingStart, plannedKWh: 5 },
-          { startsAtMs: coolingStart + HOUR_MS, plannedKWh: 5 },
-          { startsAtMs: coolingStart + 2 * HOUR_MS, plannedKWh: 5 },
+          { startsAtMs: coolingStart, endsAtMs: (coolingStart) + 3_600_000, plannedKWh: 5 },
+          { startsAtMs: coolingStart + HOUR_MS, endsAtMs: (coolingStart + HOUR_MS) + 3_600_000, plannedKWh: 5 },
+          { startsAtMs: coolingStart + 2 * HOUR_MS, endsAtMs: (coolingStart + 2 * HOUR_MS) + 3_600_000, plannedKWh: 5 },
         ],
         rateMean: 0.5,
       },
@@ -255,9 +255,9 @@ describe('resolveActivePlanChartData', () => {
       latest: {
         ...buildPlan().latest!,
         hours: [
-          { startsAtMs: START_MS, plannedKWh: 1 },
-          { startsAtMs: START_MS + HOUR_MS, plannedKWh: 0 },
-          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS, endsAtMs: (START_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: START_MS + HOUR_MS, endsAtMs: (START_MS + HOUR_MS) + 3_600_000, plannedKWh: 0 },
+          { startsAtMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
         ],
       },
     }));

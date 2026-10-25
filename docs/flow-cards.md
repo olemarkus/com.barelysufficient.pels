@@ -35,7 +35,7 @@ Whole-home power data is what unlocks every other planner feature — the meter 
 | **Current price is one of the lowest before a time** | Fires when the current hour is among the selected number of cheapest hours in a window before a chosen end hour. |
 | **Stepped device target changed** | Fires when PELS wants a stepped-load device, including EV charger control modes, to move to another configured step. |
 | **Smart task status changed** | Fires when PELS saves a new Smart task status for a device, such as **On track** to **At risk**. Short mid-hour recalculations do not fire it, and PELS limiting the device for the grid import limit, the hard cap, the daily budget or a higher-priority device does not change the status on its own. Once PELS has confirmed that a device stopped taking power, it stays **At risk** through such limiting and fires again only when the device draws power. |
-| **Smart task schedule changed** | Fires when the task is rescheduled with a different number of hours, for example after new prices arrive. Swapping hours with the same total does not fire it. |
+| **Smart task schedule changed** | Fires when the total scheduled duration changes. Moving scheduled periods without changing their total duration, or changing only the energy estimate, does not fire it. |
 | **Smart task ended** | Fires once when a task run concludes. The **Outcome** tag is `succeeded`, `missed`, or `abandoned`. Filter on the tag downstream — for example, send a notification only when `Outcome = missed`. |
 | **Smart task time is running low** | Fires once when the time left before a task's ready-by drops to or below a chosen number of hours, re-arming if the ready-by is rescheduled. Exposes an `hours_remaining` tag. Use it to act a fixed lead-time before a deadline, such as 2 hours left. |
 | **PELS price list was updated** | Fires when today's or tomorrow's adjusted prices change in a way that matters (new day-ahead prices arrived, grid tariffs re-fetched, local midnight rollover). Exposes a `prices_json` token with the full hourly array. See [Price Tags in Flow & HomeyScript](/price-tags). |
@@ -160,7 +160,16 @@ Use Smart task cards when one device should reach a target by a ready-by time.
 | Deliver an amount of energy to an on/off device, for example a water heater on a relay | **Add energy task** |
 | Remove the current task for a device | **Clear smart task** |
 
-Use **Smart task status changed** for notifications after the task status has settled, **Smart task schedule changed** when you care that the number of scheduled hours changed, and **Has smart task** when another Flow should behave differently while a task is active.
+Smart tasks use the periods supplied by your electricity-price source: 15-minute prices let PELS
+schedule individual quarters; hourly prices keep hourly scheduling. This applies to charging,
+temperature and energy tasks automatically, independently of the **Capacity period** setting.
+
+Use **Smart task status changed** for notifications after the task status has settled,
+**Smart task schedule changed** when the total scheduled duration changes, and **Has smart task**
+when another Flow should behave differently while a task is active. The **Planned hours** tag
+(`planned_hours`) is that duration in hours, including fractions: two scheduled 15-minute periods
+count as `0.5`. It measures scheduled time with planned energy, rather than predicted time drawing
+power. A change of scheduled periods with the same total duration does not fire the trigger.
 
 To give a task more room when a deadline matters, use **Set what a smart task may do** to let it go over today's budget, limit lower-priority devices, or reserve power so it can start sooner, while it is scheduled to run. Use **Smart task time is running low** to act a fixed lead-time before the ready-by — for example, to grant that leeway only when little time remains.
 

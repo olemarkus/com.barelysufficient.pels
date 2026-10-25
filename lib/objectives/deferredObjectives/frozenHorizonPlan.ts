@@ -1,6 +1,6 @@
 import type {
   DeferredObjectiveActivePlanFloorShortfallCause,
-  DeferredObjectiveActivePlanHourV1,
+  DeferredObjectivePlanInterval,
   DeferredObjectiveActivePlanStatusV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
@@ -43,7 +43,7 @@ export type FrozenReadInputs = {
   // (the merge only re-commits on a schedule change), so reading `commitment`
   // would serve stale energy / `cheaperHourAhead`. `latest.hours` is the
   // Math.max-merged floored plan — the freshest thing the device should follow.
-  hours: readonly DeferredObjectiveActivePlanHourV1[];
+  hours: readonly DeferredObjectivePlanInterval[];
   // When within those hours the booked energy is due: the settled revision's exact
   // segments (`latest.reservationSegments`), one per allocator bucket that booked
   // energy. A revision saved before exact segments resolves at the boundary to one
@@ -87,28 +87,21 @@ const toPlannableStatus = (planStatus: DeferredObjectiveActivePlanStatusV1): Def
   PLANNABLE_PLAN_STATUSES.has(planStatus) ? planStatus : 'on_track'
 );
 
-// Current + future committed hours become the planned buckets (elapsed hours are
-// history). Each bucket is a FULL committed hour `[startsAtMs, startsAtMs+1h]` — we
-// do NOT trim the current hour's start to `nowMs`: the frozen read carries the
-// committed full-hour energy, and the requested step is read off the saved draw
-// window rather than the shrinking remainder, so it recovers the committed floor
-// step instead of escalating as the hour runs out (mid-hour escalation is the
-// per-cycle re-plan the two-clock model removes;
-// the executor still climbs opportunistically when behind, and the `:58` settle
-// re-plans genuine shortfalls). `sourceBucketId` matches the allocator's
-// hour-aligned ISO convention so plannedBuckets read identically fresh-vs-frozen.
+// Replay exact saved coverage and its energy. The requested step comes from
+// the saved draw window's whole duration, never the shrinking time remaining;
+// passing a quarter boundary changes the current booking without reallocation.
 const buildFrozenPlannedBuckets = (
-  futureHours: readonly DeferredObjectiveActivePlanHourV1[],
-  currentHourStartMs: number,
+  futureHours: readonly DeferredObjectivePlanInterval[],
+  nowMs: number,
 ): DeferredObjectivePlannedBucket[] => futureHours.map((hour) => ({
   id: `frozen-${hour.startsAtMs}`,
   sourceBucketId: new Date(hour.startsAtMs).toISOString(),
-  startMs: hour.startsAtMs,
-  endMs: hour.startsAtMs + ONE_HOUR_MS,
-  durationHours: 1,
+  startMs: hour.coversFromMs ?? hour.startsAtMs,
+  endMs: hour.endsAtMs,
+  durationHours: (hour.endsAtMs - (hour.coversFromMs ?? hour.startsAtMs)) / ONE_HOUR_MS,
   price: null,
   reserve: false,
-  current: hour.startsAtMs === currentHourStartMs,
+  current: (hour.coversFromMs ?? hour.startsAtMs) <= nowMs && nowMs < hour.endsAtMs,
   usefulEnergyCapacityKWh: hour.plannedKWh,
   plannedUsefulEnergyKWh: hour.plannedKWh,
   plannedAdmissionPowerKw: hour.plannedAdmissionPowerKw ?? 0,
@@ -142,13 +135,14 @@ export const buildFrozenHorizonPlan = (
   steps: DeferredObjectiveStep[],
 ): DeferredObjectiveHorizonPlan => {
   const { deadlineAtMs } = objective;
-  const currentHourStartMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
   // Every saved hour is a booking; its kWh is what it promises, possibly 0.
-  const currentHour = frozenRead.hours.find((hour) => hour.startsAtMs === currentHourStartMs) ?? null;
+  const currentHour = frozenRead.hours.find((hour) => (
+    (hour.coversFromMs ?? hour.startsAtMs) <= nowMs && nowMs < hour.endsAtMs
+  )) ?? null;
   const futureHours = frozenRead.hours
-    .filter((hour) => hour.startsAtMs >= currentHourStartMs)
+    .filter((hour) => hour.endsAtMs > nowMs)
     .sort((left, right) => left.startsAtMs - right.startsAtMs);
-  const plannedBuckets = buildFrozenPlannedBuckets(futureHours, currentHourStartMs);
+  const plannedBuckets = buildFrozenPlannedBuckets(futureHours, nowMs);
 
   // The current bucket is the saved window that covers now, as the fresh allocation's
   // current bucket was: its energy over its own duration, so the requested step
@@ -170,8 +164,8 @@ export const buildFrozenHorizonPlan = (
     : null;
   const currentBucket = currentHour
     ? {
-      bucketId: `frozen-${currentHourStartMs}`,
-      sourceBucketId: new Date(currentHourStartMs).toISOString(),
+      bucketId: `frozen-${currentHour.startsAtMs}`,
+      sourceBucketId: new Date(currentHour.startsAtMs).toISOString(),
       plannedUsefulEnergyKWh: currentBookedKWh,
       booked: true,
       expectedStepId: requestedStep?.id ?? null,
@@ -218,7 +212,7 @@ export const buildFrozenHorizonPlan = (
     currentHourFacts,
     // Resolved through the SAME function as the fresh path, on the settle's
     // persisted verdict — so the mid-hour answer cannot drift from the one the
-    // allocator reached, and cannot move within the hour.
+    // allocator reached; the current booking changes at its explicit boundary.
     currentHourClaim: resolveCurrentHourClaim(
       resolveCurrentHourBooking(currentBucket),
       currentHourFacts,

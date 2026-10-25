@@ -1,5 +1,6 @@
+import { resolveRunBands } from '../../../packages/shared-domain/src/deferredPlanHistoryChartData';
 import type {
-  DeferredObjectivePlanPreviewHour,
+  DeferredObjectivePlanPreviewInterval,
   DeferredObjectivePlanPreviewPricePoint,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
 import { clearChildren } from '../widgetDom';
@@ -21,15 +22,6 @@ const PLOT = { left: 10, right: 470, top: 14, bottom: 104 };
 const PLOT_WIDTH = PLOT.right - PLOT.left;
 const PLOT_HEIGHT = PLOT.bottom - PLOT.top;
 
-// Hourly spot prices are piecewise-constant: each hour is a flat price BLOCK,
-// not a point on a smooth curve. So the x-axis is divided into `count` equal
-// hour buckets and the price is drawn as a step line across them — which is what
-// a real electricity price chart looks like. `bucketLeft`/`bucketCenter` resolve
-// a bucket's left edge and centre.
-const bucketWidth = (count: number): number => PLOT_WIDTH / Math.max(1, count);
-const bucketLeft = (index: number, count: number): number => PLOT.left + bucketWidth(count) * index;
-const bucketCenter = (index: number, count: number): number => bucketLeft(index, count) + bucketWidth(count) / 2;
-
 // Padded price→y mapping so the curve never hugs the top/bottom edge. Returns a
 // constant mid-line when every price is equal (or only one point).
 const makeYScale = (prices: number[]): ((price: number) => number) => {
@@ -46,42 +38,30 @@ const makeYScale = (prices: number[]): ((price: number) => number) => {
 // backend concern; for the curve's sparse ticks the host-local hour matches how
 // the user reads the chosen times, and a one-off here avoids a timezone helper
 // in the widget bundle.
-const hourLabel = (startsAtMs: number): string => String(new Date(startsAtMs).getHours()).padStart(2, '0');
+const hourLabel = (startsAtMs: number): string => (
+  new Date(startsAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+);
 
-// Contiguous runs of scheduled indices, so an N-hour window shades as one band
-// rather than abutting per-hour rects.
-const scheduledRuns = (scheduledIndexes: number[]): Array<{ start: number; end: number }> => {
-  const sorted = [...scheduledIndexes].sort((a, b) => a - b);
-  const runs: Array<{ start: number; end: number }> = [];
-  for (const index of sorted) {
-    const last = runs[runs.length - 1];
-    if (last && index === last.end + 1) last.end = index;
-    else runs.push({ start: index, end: index });
-  }
-  return runs;
-};
-
-// Step path across the hour buckets: a flat segment at each bucket's price,
-// with a vertical step at the boundary where the price changes. Breaks the pen
-// across buckets with no price (null y).
-const buildStepPath = (ys: Array<number | null>, count: number): string => {
+const buildStepPath = (
+  periods: readonly DeferredObjectivePlanPreviewPricePoint[],
+  xScale: (atMs: number) => number,
+  yScale: (price: number) => number,
+): string => {
   let path = '';
-  let penDown = false;
-  ys.forEach((y, index) => {
-    if (y === null) { penDown = false; return; }
-    const left = bucketLeft(index, count);
-    const right = left + bucketWidth(count);
-    // `M` to start a run; otherwise `L` to the new bucket's left edge at the new
-    // price — that command IS the vertical step between hours.
-    path += `${penDown ? 'L' : 'M'}${left.toFixed(1)} ${y.toFixed(1)} L${right.toFixed(1)} ${y.toFixed(1)} `;
-    penDown = true;
-  });
+  let previousEnd: number | null = null;
+  for (const period of periods) {
+    if (period.price === null) { previousEnd = null; continue; }
+    const y = yScale(period.price).toFixed(1);
+    const command = previousEnd === period.startsAtMs ? 'L' : 'M';
+    path += `${command}${xScale(period.startsAtMs).toFixed(1)} ${y} L${xScale(period.endsAtMs).toFixed(1)} ${y} `;
+    previousEnd = period.endsAtMs;
+  }
   return path.trim();
 };
 
 export type PreviewChartInput = {
   priceSeries: DeferredObjectivePlanPreviewPricePoint[];
-  scheduledHours: DeferredObjectivePlanPreviewHour[];
+  scheduledHours: DeferredObjectivePlanPreviewInterval[];
 };
 
 // Render the price curve into `container` (cleared first). Returns false when
@@ -99,12 +79,10 @@ export const renderPreviewChart = (
   if (count < 2 || prices.length === 0) return false;
 
   const yScale = makeYScale(prices);
-  const ys = priceSeries.map((point) => (Number.isFinite(point.price) ? yScale(point.price as number) : null));
-  const scheduledStarts = new Set(scheduledHours.map((hour) => hour.startsAtMs));
-  const scheduledIndexes = priceSeries
-    .map((point, index) => (scheduledStarts.has(point.startsAtMs) ? index : -1))
-    .filter((index) => index >= 0);
-
+  const startMs = priceSeries[0].startsAtMs;
+  const endMs = priceSeries[priceSeries.length - 1].endsAtMs;
+  const xScale = (atMs: number): number => PLOT.left + (atMs - startMs) / (endMs - startMs) * PLOT_WIDTH;
+  const bands = resolveRunBands(scheduledHours, startMs, endMs);
   const svg = createSvg(doc, 'svg', {
     class: 'pchart',
     viewBox: `0 0 ${VIEW.width} ${VIEW.height}`,
@@ -114,9 +92,9 @@ export const renderPreviewChart = (
 
   // 1) Scheduled-hour bands behind everything: shade the chosen hour buckets
   // edge-to-edge so the band aligns with the price steps, not a centred slot.
-  for (const run of scheduledRuns(scheduledIndexes)) {
-    const x1 = bucketLeft(run.start, count);
-    const x2 = bucketLeft(run.end, count) + bucketWidth(count);
+  for (const run of bands) {
+    const x1 = xScale(run.fromMs);
+    const x2 = xScale(run.toMs);
     svg.appendChild(createSvg(doc, 'rect', {
       class: 'pchart__band',
       x: x1, y: PLOT.top, width: Math.max(0, x2 - x1), height: PLOT_HEIGHT, rx: 3,
@@ -124,18 +102,17 @@ export const renderPreviewChart = (
   }
 
   // 2) Stepped price line across the hour buckets (breaks across null prices).
-  const stepPath = buildStepPath(ys, count);
+  const stepPath = buildStepPath(priceSeries, xScale, yScale);
   if (stepPath) svg.appendChild(createSvg(doc, 'path', { class: 'pchart__line', d: stepPath }));
 
-  // 3) Dots at the centre of each scheduled hour's step so the chosen hours read
-  // even at a glance.
-  for (const index of scheduledIndexes) {
-    const y = ys[index];
-    if (y !== null) {
-      svg.appendChild(createSvg(doc, 'circle', {
-        class: 'pchart__dot', cx: bucketCenter(index, count), cy: y, r: 4,
-      }));
-    }
+  // A dot at each booked span's centre, using the price at that time.
+  for (const period of scheduledHours) {
+    const centerMs = (period.startsAtMs + period.endsAtMs) / 2;
+    const price = priceSeries.find((point) => point.startsAtMs <= centerMs && point.endsAtMs > centerMs)?.price;
+    if (price === null || price === undefined) continue;
+    svg.appendChild(createSvg(doc, 'circle', {
+      class: 'pchart__dot', cx: xScale(centerMs), cy: yScale(price), r: 4,
+    }));
   }
 
   // 4) Sparse hour ticks at bucket centres: first, last, and ~every third — but
@@ -146,12 +123,12 @@ export const renderPreviewChart = (
   priceSeries.forEach((point, index) => {
     const show = index === 0
       || index === count - 1
-      || (index % 3 === 0 && (count - 1 - index) >= 2);
+      || (index % Math.ceil(count / 5) === 0 && (count - 1 - index) >= Math.ceil(count / 10));
     if (!show) return;
     // HTML labels keep the host's caption size when the chart is narrow.
     const label = doc.createElement('span');
     label.className = 'pchart__axis';
-    label.style.left = `${bucketCenter(index, count) / VIEW.width * 100}%`;
+    label.style.left = `${xScale((point.startsAtMs + point.endsAtMs) / 2) / VIEW.width * 100}%`;
     label.textContent = hourLabel(point.startsAtMs);
     axis.appendChild(label);
   });

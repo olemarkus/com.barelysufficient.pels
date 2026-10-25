@@ -42,6 +42,7 @@ const resumeSavedCommitment = (state: PersistedMeteredDeliveryState): InProgress
 );
 
 export const toPersistedMeteredDeliveryState = (record: InProgressRecord): PersistedMeteredDeliveryState => ({
+  version: 1,
   deviceId: record.deviceId,
   deadlineAtMs: record.deadlineAtMs,
   startedAtMs: record.startedAtMs,

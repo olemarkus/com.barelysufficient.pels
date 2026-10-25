@@ -46,7 +46,7 @@ const buildPlan = (overrides: Partial<ActivePlanFixture>): ActivePlanFixture => 
     revisedAtMs: NOW,
     computedFromPricesUpTo: null,
     reason: 'flow_card',
-    hours: [{ startsAtMs: NOW, plannedKWh: 1 }, { startsAtMs: NOW + HOUR, plannedKWh: 1 }],
+    hours: [{ startsAtMs: NOW, endsAtMs: (NOW) + 3_600_000, plannedKWh: 1 }, { startsAtMs: NOW + HOUR, endsAtMs: (NOW + HOUR) + 3_600_000, plannedKWh: 1 }],
     energyNeededKWh: 2,
     planStatus: 'on_track',
   },
@@ -150,7 +150,7 @@ describe('buildSmartTasksWidgetPayload', () => {
       deviceName: 'Early ETA',
       latest: {
         ...buildPlan({}).latest!,
-        hours: [{ startsAtMs: NOW, plannedKWh: 1 }],
+        hours: [{ startsAtMs: NOW, endsAtMs: (NOW) + 3_600_000, plannedKWh: 1 }],
       },
       deadlineAtMs: NOW + 8 * HOUR,
     });
@@ -159,7 +159,7 @@ describe('buildSmartTasksWidgetPayload', () => {
       deviceName: 'Late ETA',
       latest: {
         ...buildPlan({}).latest!,
-        hours: [{ startsAtMs: NOW, plannedKWh: 1 }, { startsAtMs: NOW + 2 * HOUR, plannedKWh: 1 }],
+        hours: [{ startsAtMs: NOW, endsAtMs: (NOW) + 3_600_000, plannedKWh: 1 }, { startsAtMs: NOW + 2 * HOUR, endsAtMs: (NOW + 2 * HOUR) + 3_600_000, plannedKWh: 1 }],
       },
       deadlineAtMs: NOW + 4 * HOUR,
     });
@@ -179,7 +179,7 @@ describe('buildSmartTasksWidgetPayload', () => {
       deadlineAtMs: deadline,
       latest: {
         ...buildPlan({}).latest!,
-        hours: [{ startsAtMs: NOW, plannedKWh: 1 }],
+        hours: [{ startsAtMs: NOW, endsAtMs: (NOW) + 3_600_000, plannedKWh: 1 }],
       },
     });
     const payload = buildSmartTasksWidgetPayload({
@@ -243,7 +243,7 @@ describe('buildSmartTasksWidgetPayload', () => {
       deviceName: 'Queued',
       latest: {
         ...buildPlan({}).latest!,
-        hours: [{ startsAtMs: NOW + 2 * HOUR, plannedKWh: 1 }],
+        hours: [{ startsAtMs: NOW + 2 * HOUR, endsAtMs: (NOW + 2 * HOUR) + 3_600_000, plannedKWh: 1 }],
         planStatus: 'on_track',
       },
     });
@@ -565,7 +565,7 @@ describe('buildSmartTasksWidgetPayload', () => {
       deviceId: 'queued',
       latest: {
         ...buildPlan({}).latest!,
-        hours: [{ startsAtMs: NOW + 2 * HOUR, plannedKWh: 1 }],
+        hours: [{ startsAtMs: NOW + 2 * HOUR, endsAtMs: (NOW + 2 * HOUR) + 3_600_000, plannedKWh: 1 }],
         planStatus: 'on_track',
       },
     });
@@ -612,7 +612,7 @@ describe('buildSmartTasksWidgetPayload', () => {
     expect(payload.state).toBe('ready');
     if (payload.state !== 'ready') return;
     expect(payload.rows[0].statusLabel).toBe('Building plan…');
-    expect(payload.rows[0].whyLabel).toBe('Choosing the cheapest hours now.');
+    expect(payload.rows[0].whyLabel).toBe('Choosing when to run now.');
     expect(payload.rows[0].recourseHint).toBeNull();
     // The copy branch and the suppression branch must agree about absence —
     // they disagreed before, so the row showed "Estimating" beside a "why" line
@@ -625,7 +625,7 @@ describe('buildSmartTasksWidgetPayload', () => {
       deviceId: 'dev',
       latest: {
         ...buildPlan({}).latest!,
-        hours: [{ startsAtMs: NOW, plannedKWh: 1 }],
+        hours: [{ startsAtMs: NOW, endsAtMs: (NOW) + 3_600_000, plannedKWh: 1 }],
         energyNeededKWh: 7.2,
         planningSpeedKw: 2.4,
         estimatedDurationText: '3h 0m',
@@ -764,8 +764,8 @@ const buildHistoryEntry = (
   discoveredFrom: 'observation',
   originalPlan: {
     hours: [
-      { startsAtMs: NOW - 4 * HOUR, plannedKWh: 1 },
-      { startsAtMs: NOW - 3 * HOUR, plannedKWh: 1 },
+      { startsAtMs: NOW - 4 * HOUR, endsAtMs: (NOW - 4 * HOUR) + 3_600_000, plannedKWh: 1 },
+      { startsAtMs: NOW - 3 * HOUR, endsAtMs: (NOW - 3 * HOUR) + 3_600_000, plannedKWh: 1 },
     ],
     energyNeededKWh: 2,
     planStatus: 'on_track',
@@ -829,7 +829,7 @@ describe('buildSmartTasksWidgetPayload — recently ended section', () => {
           metAtMs: null,
           finalProgressC: 48,
           finalPlan: {
-            hours: [{ startsAtMs: NOW - 4 * HOUR, plannedKWh: 1 }],
+            hours: [{ startsAtMs: NOW - 4 * HOUR, endsAtMs: (NOW - 4 * HOUR) + 3_600_000, plannedKWh: 1 }],
             energyNeededKWh: 4,
             planStatus: 'cannot_meet',
             revisedAtMs: NOW - 4 * HOUR,
@@ -970,12 +970,12 @@ describe('buildSmartTaskDeviceView', () => {
 
   test('names the next booked hour after now, never one already past', () => {
     const latest = buildPlan({}).latest!;
-    const at = (hours: Array<{ startsAtMs: number; plannedKWh: number }>) => buildSmartTaskDeviceView(
+    const at = (hours: Array<{ startsAtMs: number; endsAtMs: number; plannedKWh: number }>) => buildSmartTaskDeviceView(
       buildInput({ dev: buildPlan({ latest: { ...latest, hours } }) }), 'dev',
     ).active?.run;
-    expect(at([{ startsAtMs: NOW - 2 * HOUR, plannedKWh: 1 }, { startsAtMs: NOW + 2 * HOUR, plannedKWh: 1 },
-      { startsAtMs: NOW + 3 * HOUR, plannedKWh: 0 }])).toEqual({ kind: 'next', startsAtMs: NOW + 2 * HOUR });
-    expect(at([{ startsAtMs: NOW - 2 * HOUR, plannedKWh: 1 }])).toEqual({ kind: 'none_ahead' });
+    expect(at([{ startsAtMs: NOW - 2 * HOUR, endsAtMs: (NOW - 2 * HOUR) + 3_600_000, plannedKWh: 1 }, { startsAtMs: NOW + 2 * HOUR, endsAtMs: (NOW + 2 * HOUR) + 3_600_000, plannedKWh: 1 },
+      { startsAtMs: NOW + 3 * HOUR, endsAtMs: (NOW + 3 * HOUR) + 3_600_000, plannedKWh: 0 }])).toEqual({ kind: 'next', startsAtMs: NOW + 2 * HOUR });
+    expect(at([{ startsAtMs: NOW - 2 * HOUR, endsAtMs: (NOW - 2 * HOUR) + 3_600_000, plannedKWh: 1 }])).toEqual({ kind: 'none_ahead' });
   });
 
   test('keeps only a task that ended today, newest first', () => {

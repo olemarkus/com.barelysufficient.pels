@@ -17,8 +17,8 @@ import type {
   DeferredObjectivePlannedBucket,
 } from '../../lib/objectives/deferredObjectives';
 import type {
-  DeferredObjectiveActivePlanHourV1,
-  DeferredObjectiveActivePlansV1,
+  DeferredObjectivePlanInterval,
+  DeferredObjectiveActivePlansV2,
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
@@ -185,8 +185,8 @@ const makeDiag = (overrides: Omit<Partial<DeferredObjectiveDiagnostic>, 'targetT
 // (covered by its own test) so these assertions stay focused on which hours carry
 // what energy, not the unit-trajectory formula.
 const scheduleShape = (
-  hours: readonly DeferredObjectiveActivePlanHourV1[] | undefined,
-): Array<Omit<DeferredObjectiveActivePlanHourV1, 'plannedUnitMilestone'>> => (
+  hours: readonly DeferredObjectivePlanInterval[] | undefined,
+): Array<Omit<DeferredObjectivePlanInterval, 'plannedUnitMilestone'>> => (
   (hours ?? []).map(({ plannedUnitMilestone: _drop, ...rest }) => rest)
 );
 
@@ -200,12 +200,12 @@ const buildSeed = (overrides: Partial<ActivePlanFlowCardSeed> = {}): ActivePlanF
   ...overrides,
 });
 
-const buildPersistDeps = (initial?: DeferredObjectiveActivePlansV1): {
+const buildPersistDeps = (initial?: DeferredObjectiveActivePlansV2): {
   deps: ActivePlanPersistDeps;
-  saved: () => DeferredObjectiveActivePlansV1 | null;
+  saved: () => DeferredObjectiveActivePlansV2 | null;
   saveCount: () => number;
 } => {
-  let saved: DeferredObjectiveActivePlansV1 | null = null;
+  let saved: DeferredObjectiveActivePlansV2 | null = null;
   let saveCount = 0;
   return {
     deps: {
@@ -511,7 +511,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
 
     expect(persist.saved()?.plansByDeviceId.dev?.latest).toMatchObject({
       allocationContextSignature: 'ctx-1',
-      hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5, plannedAdmissionPowerKw: 1.8 }],
+      hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1.5, plannedAdmissionPowerKw: 1.8 }],
       reservationSegments: [{
         startMs: 2 * HOUR_MS,
         endMs: 3 * HOUR_MS,
@@ -552,7 +552,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
 
     const normalized = normalizeDeferredObjectiveActivePlans(persist.saved());
     const latest = normalized.plansByDeviceId.dev?.latest;
-    expect(latest?.hours).toHaveLength(1);
+    expect(latest?.hours).toHaveLength(2);
     expect(latest?.reservationSegments).toEqual([
       {
         startMs: firstStartMs,
@@ -661,7 +661,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const saved = persist.saved();
     expect(saved?.plansByDeviceId.dev?.latest).toMatchObject({
       revision: 2,
-      hours: [{ startsAtMs: hourStartMs, plannedKWh: 1, plannedAdmissionPowerKw: 2 }],
+      hours: [{ startsAtMs: hourStartMs, endsAtMs: (hourStartMs) + 3_600_000, plannedKWh: 1, plannedAdmissionPowerKw: 2 }],
       reservationSegments: [{
         startMs: hourStartMs,
         endMs: hourStartMs + HOUR_MS,
@@ -752,7 +752,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(buildReservationSegmentsFromHorizonPlan(
       diagnostic,
       [{
-        startsAtMs: hourStartMs,
+        startsAtMs: hourStartMs, endsAtMs: (hourStartMs) + 3_600_000,
         plannedKWh: 1,
         plannedAdmissionPowerKw: 1,
       }],
@@ -792,7 +792,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       revision: 2,
       reason: 'schedule_revised',
       allocationContextSignature: 'ctx-after',
-      hours: [{ startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5, plannedAdmissionPowerKw: 1.5 }],
+      hours: [{ startsAtMs: 3 * HOUR_MS, endsAtMs: (3 * HOUR_MS) + 3_600_000, plannedKWh: 1.5, plannedAdmissionPowerKw: 1.5 }],
     });
     expect(persist.saved()?.plansByDeviceId.dev?.commitment?.hours).toEqual(
       persist.saved()?.plansByDeviceId.dev?.latest?.hours,
@@ -841,9 +841,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan.original?.revision).toBe(1);
     expect(plan.original?.reason).toBe('flow_card');
     expect(scheduleShape(plan.latest?.hours)).toEqual([
-      { startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 },
-      { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5 },
-      { startsAtMs: 4 * HOUR_MS, plannedKWh: 1.5 },
+      { startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
+      { startsAtMs: 3 * HOUR_MS, endsAtMs: (3 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
+      { startsAtMs: 4 * HOUR_MS, endsAtMs: (4 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
     ]);
     expect(plan.commitment).toEqual({
       committedAtMs: HOUR_MS,
@@ -1612,8 +1612,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
 
     expect(expanded?.latest?.revision).toBe(2);
     expect(scheduleShape(expanded?.commitment?.hours)).toEqual([
-      { startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 },
-      { startsAtMs: 5 * HOUR_MS, plannedKWh: 0.5 },
+      { startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
+      { startsAtMs: 5 * HOUR_MS, endsAtMs: (5 * HOUR_MS) + 3_600_000, plannedKWh: 0.5 },
     ]);
     // Regression: hour 5's milestone reflects the FLOORED hour-2 kWh (1.5), not
     // the shrunk live value (1.0) — milestones are stamped on the MERGED hours.
@@ -1719,7 +1719,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     })], HOUR_MS);
     expect(planOf(recorder, 'dev')?.latest?.revision).toBe(1);
     expect(scheduleShape(planOf(recorder, 'dev')?.latest?.hours)).toEqual([
-      { startsAtMs: 2 * HOUR_MS, plannedKWh: 0.71 },
+      { startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 0.71 },
     ]);
 
     // Subsequent cycles: drift grows primary's plannedKWh inside the same
@@ -1744,7 +1744,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     // (and within-hour delivery) absorbs the extra demand against the
     // remaining bucket capacity without rewriting the commitment.
     expect(scheduleShape(stable?.commitment?.hours)).toEqual([
-      { startsAtMs: 2 * HOUR_MS, plannedKWh: 0.71 },
+      { startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 0.71 },
     ]);
   });
 
@@ -1771,9 +1771,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan?.original?.revision).toBe(1);
     expect(plan?.original?.hours[0]?.plannedKWh).toBe(1.5);
     expect(scheduleShape(plan?.latest?.hours)).toEqual([
-      { startsAtMs: 2 * HOUR_MS, plannedKWh: 2 },
-      { startsAtMs: 3 * HOUR_MS, plannedKWh: 2 },
-      { startsAtMs: 4 * HOUR_MS, plannedKWh: 2 },
+      { startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
+      { startsAtMs: 3 * HOUR_MS, endsAtMs: (3 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
+      { startsAtMs: 4 * HOUR_MS, endsAtMs: (4 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
     ]);
     expect(plan?.commitment?.hours).toEqual(plan?.latest?.hours);
   });
@@ -2287,8 +2287,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     // line stops falling back to the shrinking per-revision value. Drive the
     // replan via a `planStatus` transition so the commitment-backfilled
     // schedule envelope stays stable while metadata drifts.
-    const legacyPlan: DeferredObjectiveActivePlansV1 = {
-      version: 1,
+    const legacyPlan: DeferredObjectiveActivePlansV2 = {
+      version: 2,
       plansByDeviceId: {
         dev: {
           liveCompletion: { kind: 'unavailable' as const },
@@ -2305,7 +2305,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
             revisedAtMs: HOUR_MS,
             computedFromPricesUpTo: 5 * HOUR_MS,
             reason: 'flow_card',
-            hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 }],
+            hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 }],
             energyNeededKWh: 1.5,
             planStatus: 'on_track',
           },
@@ -2314,7 +2314,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
             revisedAtMs: HOUR_MS,
             computedFromPricesUpTo: 5 * HOUR_MS,
             reason: 'flow_card',
-            hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 }],
+            hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 }],
             energyNeededKWh: 1.5,
             planStatus: 'on_track',
           },
@@ -2445,9 +2445,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan?.latest?.reason).toBe('flow_card');
     expect(plan?.latest?.energyNeededKWh).toBe(4.5);
     expect(scheduleShape(plan?.latest?.hours)).toEqual([
-      { startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 },
-      { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5 },
-      { startsAtMs: 4 * HOUR_MS, plannedKWh: 1.5 },
+      { startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
+      { startsAtMs: 3 * HOUR_MS, endsAtMs: (3 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
+      { startsAtMs: 4 * HOUR_MS, endsAtMs: (4 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
     ]);
   });
 
@@ -2679,9 +2679,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(events).toEqual([]);
     // Schedule unchanged; 5h not adopted, 3h retained.
     expect(scheduleShape(planOf(recorder, 'dev')?.latest?.hours)).toEqual([
-      { startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 },
-      { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5 },
-      { startsAtMs: 4 * HOUR_MS, plannedKWh: 1.5 },
+      { startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
+      { startsAtMs: 3 * HOUR_MS, endsAtMs: (3 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
+      { startsAtMs: 4 * HOUR_MS, endsAtMs: (4 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
     ]);
   });
 
@@ -2734,10 +2734,10 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(events).toEqual([{ reason: 'prices_revised', hours: 4 }]);
     // Elapsed hours preserved as floors; the new future hour adopted.
     expect(scheduleShape(planOf(recorder, 'dev')?.latest?.hours)).toEqual([
-      { startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 },
-      { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5 },
-      { startsAtMs: 4 * HOUR_MS, plannedKWh: 1.5 },
-      { startsAtMs: 5 * HOUR_MS, plannedKWh: 1.5 },
+      { startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
+      { startsAtMs: 3 * HOUR_MS, endsAtMs: (3 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
+      { startsAtMs: 4 * HOUR_MS, endsAtMs: (4 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
+      { startsAtMs: 5 * HOUR_MS, endsAtMs: (5 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
     ]);
   });
 
@@ -3569,14 +3569,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan?.objectiveSignature).toContain('70');
   });
 
-  it('aggregates trimmed current-bucket segments into the containing hour', () => {
-    // Regression: the horizon planner trims the current bucket's start to nowMs
-    // and may split a single hour into two segments at planningEndMs. Persist
-    // each segment under the floor-of-hour timestamp and sum the energy so the
-    // Settings UI can find the planned kWh by the price-horizon hour key.
-    // See PR #643 review thread 5. The trimmed hour also records `coversFromMs`
-    // (the earliest segment start) so the history chart knows its energy is
-    // already only the post-trim remainder and must not be prorated again.
+  it('preserves exact trimmed segment coverage instead of flooring it into an hour', () => {
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
     const hourStart = 2 * HOUR_MS;
@@ -3598,14 +3591,15 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
 
     const plan = planOf(recorder, 'dev');
     expect(scheduleShape(plan?.latest?.hours)).toEqual([
-      { startsAtMs: hourStart, plannedKWh: 1.0, coversFromMs: midHour },
-      { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5 },
+      { startsAtMs: midHour, endsAtMs: splitMid, plannedKWh: 0.4 },
+      { startsAtMs: splitMid, endsAtMs: hourStart + HOUR_MS, plannedKWh: 0.6 },
+      { startsAtMs: 3 * HOUR_MS, endsAtMs: (3 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
     ]);
   });
 
   it('survives reload by restoring plans from persisted state', () => {
-    const persisted: DeferredObjectiveActivePlansV1 = {
-      version: 1,
+    const persisted: DeferredObjectiveActivePlansV2 = {
+      version: 2,
       plansByDeviceId: {
         dev: {
           liveCompletion: { kind: 'unavailable' as const },
@@ -3622,14 +3616,14 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
             revisedAtMs: HOUR_MS,
             computedFromPricesUpTo: 5 * HOUR_MS,
             reason: 'flow_card',
-            hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 }],
+            hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 }],
           }),
           latest: legacyRevision({
             revision: 1,
             revisedAtMs: HOUR_MS,
             computedFromPricesUpTo: 5 * HOUR_MS,
             reason: 'flow_card',
-            hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 }],
+            hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 }],
           }),
         },
       },
@@ -3641,15 +3635,15 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
 
   describe('commitment backfill on legacy persisted plans', () => {
     const legacyHours = [
-      { startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 },
-      { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5 },
-      { startsAtMs: 4 * HOUR_MS, plannedKWh: 1.5 },
+      { startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
+      { startsAtMs: 3 * HOUR_MS, endsAtMs: (3 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
+      { startsAtMs: 4 * HOUR_MS, endsAtMs: (4 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
     ];
 
     const buildLegacyPersisted = (
-      overrides: Partial<DeferredObjectiveActivePlansV1['plansByDeviceId'][string]> = {},
-    ): DeferredObjectiveActivePlansV1 => ({
-      version: 1,
+      overrides: Partial<DeferredObjectiveActivePlansV2['plansByDeviceId'][string]> = {},
+    ): DeferredObjectiveActivePlansV2 => ({
+      version: 2,
       plansByDeviceId: {
         dev: {
           liveCompletion: { kind: 'unavailable' as const },
@@ -3814,7 +3808,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       revision: 1,
       revisedAtMs: HOUR_MS,
       computedFromPricesUpTo: 6 * HOUR_MS,
-      hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 }],
+      hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 }],
       energyNeededKWh: 1.5,
       planStatus: 'on_track' as const,
     };
@@ -4100,8 +4094,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       const commitment = {
         committedAtMs: HOUR_MS,
         hours: [
-          { startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 },
-          { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5 },
+          { startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
+          { startsAtMs: 3 * HOUR_MS, endsAtMs: (3 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
         ],
       };
       const persisted = {
@@ -4118,7 +4112,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     });
 
     it('round-trips priority-allocation power and context signatures', () => {
-      const hours = [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5, plannedAdmissionPowerKw: 2 }];
+      const hours = [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1.5, plannedAdmissionPowerKw: 2 }];
       const reservationSegments = [{
         startMs: 2 * HOUR_MS + 30 * 60 * 1000,
         endMs: 3 * HOUR_MS + 30 * 60 * 1000,
@@ -4148,7 +4142,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     });
 
     it.each([
-      ['non-positive admission power', { hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5, plannedAdmissionPowerKw: 0 }] }],
+      ['non-positive admission power', { hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1.5, plannedAdmissionPowerKw: 0 }] }],
       ['an empty allocation context', { allocationContextSignature: '' }],
       ['an inverted reservation segment', {
         reservationSegments: [{
@@ -4242,7 +4236,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
             ...basePlan({ reason: 'flow_card' }),
             commitment: {
               committedAtMs: HOUR_MS,
-              hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 }],
+              hours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 }],
             },
             latest: null,
           },

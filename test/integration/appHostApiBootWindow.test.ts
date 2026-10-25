@@ -46,6 +46,8 @@ const createHostApi = (
       backgroundCollectors: weatherCollector ? partialDouble<BackgroundCollectors>({ weatherCollector }) : undefined,
     };
 
+    public getTaskPricePeriodsForUi = () => [];
+
     public getCombinedPricesForUi = (): unknown => null;
 
     protected registerAppFlowCards(): void {}

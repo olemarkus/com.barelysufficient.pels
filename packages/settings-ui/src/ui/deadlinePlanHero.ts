@@ -19,12 +19,11 @@ import {
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import {
-  ONE_HOUR_MS,
   type DeadlinePlanSchedule,
   type HorizonHour,
   type ObjectivePayloadReady,
 } from './deadlinePlanData.ts';
-import { resolveActualDeviceKwh } from './deadlinePlanTimeline.ts';
+import { resolveActualPeriodKwh } from './deadlinePlanTimeline.ts';
 import {
   formatDeadlineFull,
   formatHourLabel,
@@ -272,31 +271,6 @@ export const resolveCannotMeetRecourse = (
   return { ...labels.cannotMeetRecourse.openOverview, deviceId };
 };
 
-// Prorate one bucket's `actualKWh` against the plan's run interval. Tracker
-// buckets accumulate incrementally during the current hour (see
-// `lib/power/trackerEnergy.ts`), so the value represents `[hour_start,
-// min(now, hour_end))` of measured energy — not necessarily a full-hour
-// aggregate. The relevant slice for delivered-so-far is
-// `[max(startedAtMs, hour_start), min(now, hour_end))`, so the bucket is
-// prorated by `relevant / elapsed`: past closed hours have
-// `elapsed = ONE_HOUR_MS`; the current open hour has `elapsed = now -
-// hour_start` and the prorate becomes "fraction of the already-elapsed slice
-// that landed after `startedAtMs`". Returns 0 for any bucket that doesn't
-// overlap the run interval, or whose tracker reading is missing / non-positive.
-const resolveProratedActualKWh = (input: ObjectivePayloadReady, hourStartsAtMs: number): number => {
-  const { startedAtMs } = input.ctx.activePlan;
-  const { nowMs } = input.ctx;
-  const hourEndMs = hourStartsAtMs + ONE_HOUR_MS;
-  if (hourEndMs <= startedAtMs) return 0;
-  const bucketCloseMs = Math.min(nowMs, hourEndMs);
-  const elapsedMs = bucketCloseMs - hourStartsAtMs;
-  const relevantMs = bucketCloseMs - Math.max(startedAtMs, hourStartsAtMs);
-  if (elapsedMs <= 0 || relevantMs <= 0) return 0;
-  const actualKWh = resolveActualDeviceKwh(input.bootstrap, input.ctx.deviceId, hourStartsAtMs);
-  if (actualKWh === null || actualKWh <= 0) return 0;
-  return actualKWh * (relevantMs / elapsedMs);
-};
-
 // Resolves the live-derived cost + delivered-kWh fields of the hero.
 //
 // Live derivation (no persistence): the active plan revisions carry hourly
@@ -314,7 +288,7 @@ const resolveLiveCostAndDelivery = (
     const displayPrice = hour.price / divisor;
     const plannedKWh = currentChargeByStartMs.get(hour.startsAtMs) ?? 0;
     if (plannedKWh > 0) plannedTotalCost += displayPrice * plannedKWh;
-    const proratedKWh = resolveProratedActualKWh(input, hour.startsAtMs);
+    const proratedKWh = (resolveActualPeriodKwh(input, hour) ?? 0);
     if (proratedKWh > 0) deliveredKWh += proratedKWh;
   }
   return { plannedTotalCost, deliveredKWh };
@@ -338,12 +312,14 @@ const resolvePlannedWindowCheaperThanNow = (
   // the import-price comparison for a non-prosumer. The divisor cancels out of
   // a relative comparison, so raw planning prices are compared directly.
   const plannedPrices = hours
-    .filter((hour) => (currentChargeByStartMs.get(hour.startsAtMs) ?? 0) > 0)
-    .map((hour) => hour.planningPrice);
+    .filter((hour) => (currentChargeByStartMs.get(hour.startsAtMs) ?? 0) > 0);
   if (plannedPrices.length === 0) return false;
   const currentHour = hours.find((hour) => nowMs >= hour.startsAtMs && nowMs < hour.endMs);
   if (!currentHour) return false;
-  const plannedAverage = plannedPrices.reduce((sum, price) => sum + price, 0) / plannedPrices.length;
+  const duration = plannedPrices.reduce((sum, period) => sum + period.endMs - period.startsAtMs, 0);
+  const plannedAverage = plannedPrices.reduce((sum, period) => (
+    sum + period.planningPrice * (period.endMs - period.startsAtMs)
+  ), 0) / duration;
   return plannedAverage < currentHour.planningPrice;
 };
 

@@ -1,3 +1,5 @@
+import type { DeferredObjectivePlanInterval } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
+
 export type DeferredObjectiveEnforcement = 'soft' | 'hard';
 
 export type DeferredObjectiveKind =
@@ -246,7 +248,7 @@ export type DeferredObjectiveHorizonInput = {
   // The producer resolves commitment presence before entering the horizon engine.
   commitment:
     | { kind: 'uncommitted' }
-    | { kind: 'committed'; hours: DeferredObjectiveCommittedHour[] };
+    | { kind: 'committed'; hours: DeferredObjectiveCommittedInterval[] };
   // Producer-resolved per-cycle trajectory gate (mid-execution price deferral).
   // `true` when the buffered energy still needed is already covered by the
   // committed plan's future hours — i.e. the device is at/above this hour's
@@ -256,10 +258,9 @@ export type DeferredObjectiveHorizonInput = {
   aheadOfHourMilestone: boolean;
 };
 
-export type DeferredObjectiveCommittedHour = {
-  startsAtMs: number;
-  plannedKWh: number;
-};
+export type DeferredObjectiveCommittedInterval = Pick<
+  DeferredObjectivePlanInterval, 'startsAtMs' | 'endsAtMs' | 'coversFromMs' | 'plannedKWh'
+>;
 
 // A bucket as the allocator leaves it: its energy, before the plan decides which
 // hours it books.

@@ -8,11 +8,11 @@
  * planner, admission or actuator internal is mocked.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { seedHourlyFlowPricesForTests } from '../helpers/smartTaskPriceSourceFixture';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
-  COMBINED_PRICES,
   CONTROLLABLE_DEVICES,
   DAILY_BUDGET_ENABLED,
   DEVICE_TARGET_POWER_CONFIGS,
@@ -56,24 +56,7 @@ const buildCharger = async (setup: ChargerSetup): Promise<MockDevice> => {
 };
 
 /** Hour 17 is cheap, every other hour dear, so a smart task books the hour it starts in. */
-const cheapNowPrices = () => ({
-  version: 2,
-  days: {
-    '2026-01-01': {
-      hours: Array.from({ length: 24 }, (_, hour) => ({
-        startsAt: new Date(Date.UTC(2026, 0, 1, hour)).toISOString(),
-        total: hour === 17 ? 5 : 50,
-        isCheap: hour === 17,
-        isExpensive: hour !== 17,
-      })),
-    },
-  },
-  avgPrice: 40,
-  lowThreshold: 10,
-  highThreshold: 45,
-  priceScheme: 'norway',
-  priceUnit: 'øre/kWh',
-});
+const cheapNowPrices = () => Array.from({ length: 24 }, (_, hour) => (hour === 17 ? 5 : 50));
 
 const boot = async (setup: ChargerSetup): Promise<MockDevice> => {
   const charger = await buildCharger(setup);
@@ -100,7 +83,7 @@ const boot = async (setup: ChargerSetup): Promise<MockDevice> => {
   }
   settings.set('capacity_priorities', { Home: { [CHARGER_ID]: 1 } });
   settings.set('price_optimization_enabled', true);
-  settings.set(COMBINED_PRICES, cheapNowPrices());
+  seedHourlyFlowPricesForTests(Date.UTC(2026, 0, 1), cheapNowPrices());
   settings.set(EV_CHARGE_TARGET_SETTINGS, {
     [CHARGER_ID]: { targetPercent: 30, chargeBeforeLevelKnown: setup.chargeBeforeLevelKnown },
   });

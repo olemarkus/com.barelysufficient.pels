@@ -21,7 +21,7 @@ import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import type { CombinedPricesV2 } from '../../lib/price/priceTypes';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
 import type { DeferredObjectiveRoster } from '../../packages/contracts/src/deferredObjectiveSettings';
-import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectiveActivePlansV2 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectivePlanRevisionEvent } from '../../lib/objectives/deferredObjectives/planRevisionBus';
 import type { TaskDeliveryControl } from '../../packages/contracts/src/taskDelivery';
 import { effectivePlanStatusOf } from '../../lib/objectives/deferredObjectives/effectivePlanStatusEvents';
@@ -112,9 +112,9 @@ const evSettings = (): DeferredObjectiveRoster => objectiveRosterFor({
 const createScenario = (settings: DeferredObjectiveRoster) => {
   const energyStore = createMemoryEnergyDeliveryStore();
   let persistedHistory: PlanHistoryLoadResult = {
-    snapshot: { version: 6, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [],
+    snapshot: { version: 7, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [],
   };
-  let persistedActive: DeferredObjectiveActivePlansV1 | null = null;
+  let persistedActive: DeferredObjectiveActivePlansV2 | null = null;
   let devices: Device[] = [];
   let reported: DeferredObjectiveDiagnostic[] = [];
   let active: DeferredObjectiveActivePlanRecorder;

@@ -44,7 +44,7 @@ const taskOwningBudgetDevice: StarvationRescueDevice = {
 const buildEstimate = (overrides: Partial<DeferredObjectivePlanPreviewEstimate> = {}): DeferredObjectivePlanPreviewEstimate => ({
   budgetRole: 'none',
   status: 'on_track',
-  scheduledHours: [{ startsAtMs: NOW_MS + 60 * 60 * 1000, plannedKWh: 1.5 }],
+  scheduledHours: [{ startsAtMs: NOW_MS + 60 * 60 * 1000, endsAtMs: (NOW_MS + 60 * 60 * 1000) + 3_600_000, plannedKWh: 1.5 }],
   projectedFinishAtMs: NOW_MS + 2 * 60 * 60 * 1000,
   energyEstimateKWh: 1.5,
   energyExpectedKWh: 1.4,
@@ -408,7 +408,7 @@ describe('createStarvationRescue', () => {
     const rescueDeviceWithBudgetExemption = vi.fn(() => ({ ok: true as const }));
     // Post-persist re-derivation schedules the CURRENT hour → honest "on the way".
     const previewStarvationRescuePlan = freshPreviewPlan(
-      buildEstimate({ scheduledHours: [{ startsAtMs: NOW_MS, plannedKWh: 1.5 }] }),
+      buildEstimate({ scheduledHours: [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1.5 }] }),
     );
     const result = await createStarvationRescue({
       ...buildContext({
@@ -447,7 +447,7 @@ describe('createStarvationRescue', () => {
     vi.setSystemTime(NOW_MS + 60 * 60 * 1000); // advance one hour → current hour is now 05:00
     const rescueDeviceWithBudgetExemption = vi.fn(() => ({ ok: true as const }));
     const previewStarvationRescuePlan = freshPreviewPlan(
-      buildEstimate({ scheduledHours: [{ startsAtMs: NOW_MS, plannedKWh: 1.5 }] }), // 04:00 bucket only
+      buildEstimate({ scheduledHours: [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1.5 }] }), // 04:00 bucket only
     );
     const result = await createStarvationRescue({
       ...buildContext({

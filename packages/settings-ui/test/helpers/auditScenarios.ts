@@ -14,7 +14,7 @@
  *   props.
  * - Scenarios are typed against the production contracts
  *   (`SettingsUiBootstrap`, `SettingsUiPlanSnapshot`, `SettingsUiPowerPayload`,
- *   `DailyBudgetUiPayload`, `DeferredObjectiveActivePlansV1`,
+ *   `DailyBudgetUiPayload`, `DeferredObjectiveActivePlansV2`,
  *   `SettingsUiDeviceDiagnosticsPayload`,
  *   `SettingsUiDeferredObjectivePlanHistoryPayload`) so compile errors catch
  *   contract drift early. No `as any` casts.
@@ -39,7 +39,7 @@ import type {
   DailyBudgetUiPayload,
 } from '../../../contracts/src/dailyBudgetTypes.ts';
 import type {
-  DeferredObjectiveActivePlansV1,
+  DeferredObjectiveActivePlansV2,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type {
   SettingsUiDeferredObjectivePlanHistoryPayload,
@@ -95,7 +95,7 @@ export type BootstrapAuditScenario = {
   /** Override for `/ui_device_diagnostics`. */
   deviceDiagnostics?: SettingsUiDeviceDiagnosticsPayload;
   /** Override for `bootstrap.deferredObjectiveActivePlans`. */
-  deferredObjectiveActivePlans?: DeferredObjectiveActivePlansV1 | null;
+  deferredObjectiveActivePlans?: DeferredObjectiveActivePlansV2 | null;
 };
 
 const HOUR_MS = 3600 * 1000;
@@ -484,7 +484,7 @@ const SCENARIO_FACTORIES: Record<AuditScenarioName, () => BootstrapAuditScenario
   }),
   'empty-history': () => ({
     description: 'No smart-task history yet: deferredObjectiveHistory and active plans both empty so the past-tasks list shows its zero-state.',
-    deferredObjectiveActivePlans: { version: 1, plansByDeviceId: {} },
+    deferredObjectiveActivePlans: { version: 2, plansByDeviceId: {} },
     deferredObjectiveHistory: { version: 1, entriesByDeviceId: {} },
   }),
   'dense-device': () => ({

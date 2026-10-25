@@ -35,7 +35,7 @@ const DEADLINE_MS = Date.UTC(2026, 4, 16, 16, 0, 0); // Sat 16 May 16:00 UTC
 const buildSnapshot = (
   overrides: Partial<DeferredObjectivePlanHistoryRevisionSnapshot> = {},
 ): DeferredObjectivePlanHistoryRevisionSnapshot => ({
-  hours: [{ startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 2 }],
+  hours: [{ startsAtMs: DEADLINE_MS - 2 * HOUR_MS, endsAtMs: (DEADLINE_MS - 2 * HOUR_MS) + 3_600_000, plannedKWh: 2 }],
   energyNeededKWh: 2,
   planStatus: 'on_track',
   revisedAtMs: DEADLINE_MS - 3 * HOUR_MS,

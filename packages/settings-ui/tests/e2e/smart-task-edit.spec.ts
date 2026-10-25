@@ -18,7 +18,7 @@ const installSmartTaskApiStub = async (page: Page) => {
           scheduledWindowLabel: '02:00–04:00',
           estimate: {
             status: 'on_track',
-            scheduledHours: [{ startsAtMs: 1, plannedKWh: 1.5 }],
+            scheduledHours: [{ startsAtMs: 1, endsAtMs: (1) + 3_600_000, plannedKWh: 1.5 }],
             projectedFinishAtMs: 2,
             energyEstimateKWh: 1.5,
             energyExpectedKWh: 1.4,
@@ -179,7 +179,7 @@ test.describe('Smart task edit', () => {
             scheduledWindowLabel: '02:00–04:00',
             estimate: {
               status: 'on_track',
-              scheduledHours: [{ startsAtMs: 1, plannedKWh: 1.5 }],
+              scheduledHours: [{ startsAtMs: 1, endsAtMs: (1) + 3_600_000, plannedKWh: 1.5 }],
               projectedFinishAtMs: 2,
               energyEstimateKWh: 1.5,
               energyExpectedKWh: 1.4,

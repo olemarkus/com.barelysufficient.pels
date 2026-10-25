@@ -77,7 +77,7 @@ export const pickLastPlan = (
 // hour the run-band producer clamps that to the window start.
 export type ScheduledHistoryHour = Pick<
   DeferredObjectivePlanHistoryRevisionSnapshot['hours'][number],
-  'startsAtMs' | 'plannedKWh' | 'coversFromMs'
+  'startsAtMs' | 'endsAtMs' | 'plannedKWh' | 'coversFromMs'
 >;
 
 /**
@@ -105,7 +105,9 @@ export const pickScheduledHours = (
   entry: Pick<DeferredObjectivePlanHistoryEntry, 'hourStartBookings' | 'finalPlan' | 'originalPlan'>,
 ): readonly ScheduledHistoryHour[] | null => {
   if (entry.hourStartBookings !== undefined) {
-    return entry.hourStartBookings.map((booking) => ({ startsAtMs: booking.atMs, plannedKWh: booking.bookedKWh }));
+    return entry.hourStartBookings.map((booking) => ({
+      startsAtMs: booking.atMs, endsAtMs: booking.endsAtMs, plannedKWh: booking.bookedKWh,
+    }));
   }
   return pickLastPlan(entry)?.hours ?? null;
 };

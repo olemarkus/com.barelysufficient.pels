@@ -173,7 +173,7 @@ export const EV_PLUG_OUT_PAUSED_CARD_LINE = 'Charging paused — car unplugged';
 
 const SMART_TASK_WIDGET_WHY_BY_PENDING_REASON:
 Partial<Record<DeferredObjectiveActivePlanPendingReason, string>> = {
-  not_yet_planned: 'Choosing the cheapest hours now.',
+  not_yet_planned: 'Choosing when to run now.',
   awaiting_horizon_plan: 'Waiting for tomorrow’s prices.',
   device_data_missing: 'Waiting for a reading from this device.',
   waiting_for_car: WAITING_FOR_CAR_ASSOCIATION,
@@ -699,7 +699,7 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   createButton: 'Create task',
   createAnywayButton: 'Create anyway',
   chartPrice: 'Price',
-  chartScheduled: 'Scheduled hours',
+  chartScheduled: 'Scheduled',
   cannotMeetHint: 'PELS will work toward this goal within your power limits, but it may not finish in time.',
   backButton: 'Back',
   // Shown when the preview can't be projected and the backend did not provide a
@@ -1942,7 +1942,7 @@ export type DeadlineLabels = {
   // sits below the queued headline. Branches resolve in this order:
   //   1. prices_short_of_deadline → "Waiting for tomorrow's prices through HH:MM."
   //   2. planned avg < now price  → "Cheaper than now — starts at HH:MM."
-  //   3. otherwise                → "Scheduled for the cheapest hours it can use — starts at HH:MM."
+  //   3. otherwise                → "Scheduled for the cheapest times it can use — starts at HH:MM."
   resolveQueuedHeadlineReason: DeadlineHeadlineReasonResolver;
   completedHero: { headline: string; body: string };
   targetUnit: DeferredObjectiveUnit;
@@ -2171,7 +2171,7 @@ const resolveQueuedHeadlineReason: DeadlineHeadlineReasonResolver = (params) => 
   if (params.plannedWindowCheaperThanNow) {
     return `Cheaper than now — starts at ${params.firstPlannedTime}.`;
   }
-  return `Scheduled for the cheapest hours it can use — starts at ${params.firstPlannedTime}.`;
+  return `Scheduled for the cheapest times it can use — starts at ${params.firstPlannedTime}.`;
 };
 
 // Shared recourse-action labels + target tabs across both kinds. The producer
@@ -2251,7 +2251,7 @@ type SmartTaskPlanNoun = 'heat plan' | 'cooling plan' | 'temperature plan' | 'ch
 
 const notYetPlannedCopy = (kindNoun: SmartTaskPlanNoun): DeadlinePendingCopyResolver => (
   () => ({
-    headline: 'Choosing the cheapest hours',
+    headline: 'Choosing when to run',
     body: `PELS is working out the ${kindNoun}. `
       + 'This normally lands within a minute.',
     headlineReason: null,
@@ -2714,8 +2714,6 @@ export const deadlineLabels = (
 
 // ─── EV device-card state lines ───────────────────────────────────────────────
 
-const EV_CARD_HOUR_MS = 60 * 60 * 1000;
-
 export type EvCardStateLine =
   | { kind: 'next_start'; text: string }
   | { kind: 'active_charging'; text: string }
@@ -2734,7 +2732,7 @@ export type EvCardStateLine =
 // layer) so shared-domain stays free of locale/Date helpers — see the rule on
 // `DeadlinePendingContext`.
 export const resolveEvCardStateLine = (
-  hours: ReadonlyArray<{ startsAtMs: number }>,
+  hours: ReadonlyArray<{ startsAtMs: number; endsAtMs: number; coversFromMs?: number }>,
   nowMs: number,
   isPlugOutPaused: boolean,
   formatTime: (ms: number) => string,
@@ -2743,14 +2741,14 @@ export const resolveEvCardStateLine = (
   // into the settings UI, which esbuild targets at es2020.
   const lastHour = hours[hours.length - 1];
   if (lastHour !== undefined) {
-    const lastHourEndMs = lastHour.startsAtMs + EV_CARD_HOUR_MS;
+    const lastHourEndMs = lastHour.endsAtMs;
     // Active charging requires `nowMs` to fall inside one of the planned
     // hour buckets, not just between first and last. EV schedules can be
     // non-contiguous (e.g. planned hours at 01:00 and 05:00 with `now` at
     // 03:00); during a gap the card should show "Waiting · charging starts
     // HH:MM" with the next planned hour, not the active-charging line.
     const insidePlannedHour = hours.some(
-      (hour) => hour.startsAtMs <= nowMs && hour.startsAtMs + EV_CARD_HOUR_MS > nowMs,
+      (hour) => (hour.coversFromMs ?? hour.startsAtMs) <= nowMs && hour.endsAtMs > nowMs,
     );
     if (insidePlannedHour) {
       return { kind: 'active_charging', text: `Charging · planned finish ${formatTime(lastHourEndMs)}` };
@@ -2936,33 +2934,25 @@ export const formatEnergyEstimateKWh = (params: {
 // fewer than two hours in the window (no real "picking" happened), or a missing
 // price unit (Flow / Homey scheme without one). The caller suppresses the line
 // rather than render a degenerate "Picked 0 of 1 hours" summary.
-const averagePrice = (values: readonly number[]): number => (
-  values.length === 0 ? Number.NaN : values.reduce((sum, value) => sum + value, 0) / values.length
-);
+type PricedSchedulePeriod = { startsAtMs: number; endsAtMs: number; priceValue: number };
 
 export const formatCheapestHoursCaption = (
-  plannedPrices: readonly number[],
-  allPrices: readonly number[],
+  plannedPrices: readonly PricedSchedulePeriod[],
+  allPrices: readonly PricedSchedulePeriod[],
   unitLabel: string,
 ): string | null => {
   const unit = unitLabel.trim();
-  if (unit.length === 0 || unit === 'Price') return null;
-  const plannedHourCount = plannedPrices.length;
-  const totalHourCount = allPrices.length;
-  if (plannedHourCount <= 0 || totalHourCount < 2) return null;
-  const plannedAverage = averagePrice(plannedPrices);
-  if (!Number.isFinite(plannedAverage)) return null;
-  // "the M hours it can use" names the eligible pool explicitly: `allPrices`
-  // is every hour the planner could have picked (the chart window ends at the
-  // deadline), so the count reconciles with the bars the user sees — and the
-  // phrasing avoids colliding with the hero's "N hours left", which counts
-  // from now and can differ by one. The window-average comparison was dropped
-  // with the two-chart split — the muted unplanned bars already carry the
-  // baseline visually.
-  return (
-    `Picked ${plannedHourCount} of the ${totalHourCount} hours it can use`
-    + ` · avg ${plannedAverage.toFixed(2)} ${unit}`
-  );
+  if (unit.length === 0 || unit === 'Price' || plannedPrices.length === 0 || allPrices.length < 2) return null;
+  const durationMs = plannedPrices.reduce((sum, period) => sum + period.endsAtMs - period.startsAtMs, 0);
+  if (durationMs <= 0) return null;
+  const average = plannedPrices.reduce((sum, period) => (
+    sum + period.priceValue * (period.endsAtMs - period.startsAtMs)
+  ), 0) / durationMs;
+  const minutes = Math.round(durationMs / 60000);
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  const duration = hours > 0 ? `${hours}h${remainder > 0 ? ` ${remainder}m` : ''}` : `${minutes > 0 ? minutes : '<1'}m`;
+  return `Scheduled ${duration} · avg ${average.toFixed(2)} ${unit}`;
 };
 
 // ─── Live-page two-chart split copy (schedule + trajectory cards) ────────────
@@ -2977,10 +2967,8 @@ export const formatCheapestHoursCaption = (
 export const SMART_TASK_SCHEDULE_CARD_TITLE = 'When will it run, and at what price?';
 
 // One-line key under the schedule chart decoding its one-hue-two-states bar
-// encoding (filled mint = picked, dimmed = eligible but not picked). "Picked"
-// is the trust caption's vocabulary (`Picked N of the M hours it can use`), so
-// the key and the caption speak the same language.
-export const SMART_TASK_SCHEDULE_CHART_KEY = 'Filled bars are the picked hours · dimmed bars were not picked';
+// encoding (filled mint = scheduled, dimmed = eligible but not scheduled).
+export const SMART_TASK_SCHEDULE_CHART_KEY = 'Filled bars are scheduled · dimmed bars are not scheduled';
 
 // Kind-aware trajectory card title: "Will it reach 65 °C in time?" /
 // "Will it reach 80% in time?". The target label is composed from the same
@@ -2990,10 +2978,9 @@ export const formatSmartTaskTrajectoryCardTitle = (params: {
   targetUnit: DeferredObjectiveUnit;
 }): string => `Will it reach ${formatProgressValueForUnit(params.targetValue, params.targetUnit)} in time?`;
 
-// Pinned-readout helper line shown when the selected hour carries no revision
-// sentence. Names the gesture (drag/scrub), not a tap, because 26 one-hour
-// columns at 320 px are too thin for individual taps.
-export const SMART_TASK_READOUT_SCRUB_HINT = 'Drag across the chart to read any hour';
+// Pinned-readout helper for a period without a revision sentence. Dragging
+// works even when the displayed periods are too narrow for individual taps.
+export const SMART_TASK_READOUT_SCRUB_HINT = 'Drag across the chart to read each period';
 
 // Third segment of the readout primary line for an hour with no planned
 // energy that is not the current hour.

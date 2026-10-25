@@ -26,7 +26,7 @@ const NOW_MS = Date.UTC(2026, 0, 1, 4, 0, 0);
 const buildEstimate = (overrides: Partial<DeferredObjectivePlanPreviewEstimate> = {}): DeferredObjectivePlanPreviewEstimate => ({
   budgetRole: 'none',
   status: 'on_track',
-  scheduledHours: [{ startsAtMs: NOW_MS + 60 * 60 * 1000, plannedKWh: 2 }],
+  scheduledHours: [{ startsAtMs: NOW_MS + 60 * 60 * 1000, endsAtMs: (NOW_MS + 60 * 60 * 1000) + 3_600_000, plannedKWh: 2 }],
   projectedFinishAtMs: NOW_MS + 2 * 60 * 60 * 1000,
   energyEstimateKWh: 2,
   energyExpectedKWh: 1.8,
@@ -200,8 +200,8 @@ describe('previewCreateSmartTask', () => {
     expect(result.estimate.costEstimate).toBe(3.4);
     expect(result.deadlineLabel).toMatch(/\d{2}:\d{2}/);
     // Scheduled window is formatted server-side in the Homey TZ (Oslo). The
-    // single estimate hour starts at NOW+1h = 06:00 Oslo (05:00 UTC + 1h).
-    expect(result.scheduledWindowLabel).toBe('06:00');
+    // single estimate interval spans 06:00–07:00 Oslo.
+    expect(result.scheduledWindowLabel).toBe('06:00–07:00');
     expect(received).not.toBeNull();
     expect(received!.deviceId).toBe('ev-1');
     expect(received!.candidate).toEqual({

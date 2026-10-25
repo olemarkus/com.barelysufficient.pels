@@ -1,5 +1,5 @@
 import { isAheadOfHourMilestone } from '../../lib/objectives/deferredObjectives/trajectoryMilestone';
-import type { DeferredObjectiveActivePlanHourV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectivePlanInterval } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 
 const HOUR_MS = 60 * 60 * 1000;
 // A clock-hour boundary so "current hour" math is unambiguous.
@@ -9,7 +9,7 @@ const NOW_MS = HOUR_START + 20 * 60 * 1000; // 17:20, mid-hour
 type IsAheadParams = {
   energyNeededKWh: number;
   measuredValue?: number | null;
-  committedHours: readonly DeferredObjectiveActivePlanHourV1[];
+  committedHours: readonly DeferredObjectivePlanInterval[];
   nowMs: number;
 };
 const isAhead = (params: IsAheadParams): boolean => isAheadOfHourMilestone(
@@ -19,8 +19,8 @@ const isAhead = (params: IsAheadParams): boolean => isAheadOfHourMilestone(
 const futureHours = (
   kWhPerHour: number[],
   firstStartMs = HOUR_START + HOUR_MS,
-): DeferredObjectiveActivePlanHourV1[] => (
-  kWhPerHour.map((plannedKWh, index) => ({ startsAtMs: firstStartMs + index * HOUR_MS, plannedKWh }))
+): DeferredObjectivePlanInterval[] => (
+  kWhPerHour.map((plannedKWh, index) => ({ startsAtMs: firstStartMs + index * HOUR_MS, endsAtMs: (firstStartMs + index * HOUR_MS) + 3_600_000, plannedKWh }))
 );
 
 describe('isAheadOfHourMilestone', () => {
@@ -29,7 +29,7 @@ describe('isAheadOfHourMilestone', () => {
     expect(isAhead({
       energyNeededKWh: 6,
       committedHours: [
-        { startsAtMs: HOUR_START, plannedKWh: 4 }, // current hour — excluded
+        { startsAtMs: HOUR_START, endsAtMs: (HOUR_START) + 3_600_000, plannedKWh: 4 }, // current hour — excluded
         ...futureHours([5, 5]),
       ],
       nowMs: NOW_MS,
@@ -74,8 +74,8 @@ describe('isAheadOfHourMilestone', () => {
     expect(isAhead({
       energyNeededKWh: 1,
       committedHours: [
-        { startsAtMs: HOUR_START - HOUR_MS, plannedKWh: 5 }, // past
-        { startsAtMs: HOUR_START, plannedKWh: 5 }, // current
+        { startsAtMs: HOUR_START - HOUR_MS, endsAtMs: (HOUR_START - HOUR_MS) + 3_600_000, plannedKWh: 5 }, // past
+        { startsAtMs: HOUR_START, endsAtMs: (HOUR_START) + 3_600_000, plannedKWh: 5 }, // current
       ],
       nowMs: NOW_MS,
     })).toBe(false);
@@ -98,7 +98,7 @@ describe('isAheadOfHourMilestone', () => {
     expect(isAhead({
       energyNeededKWh: 3.8,
       committedHours: [
-        { startsAtMs: HOUR_START, plannedKWh: 100 }, // current hour — excluded
+        { startsAtMs: HOUR_START, endsAtMs: (HOUR_START) + 3_600_000, plannedKWh: 100 }, // current hour — excluded
         ...futureHours([4]),
       ],
       nowMs: NOW_MS,
@@ -122,10 +122,10 @@ describe('isAheadOfHourMilestone — unit trajectory (bug 1)', () => {
   const milestoneHours = (
     currentMilestone: number,
     futureMilestones: number[],
-  ): DeferredObjectiveActivePlanHourV1[] => [
-    { startsAtMs: HOUR_START, plannedKWh: 2, plannedUnitMilestone: currentMilestone },
+  ): DeferredObjectivePlanInterval[] => [
+    { startsAtMs: HOUR_START, endsAtMs: (HOUR_START) + 3_600_000, plannedKWh: 2, plannedUnitMilestone: currentMilestone },
     ...futureMilestones.map((plannedUnitMilestone, i) => ({
-      startsAtMs: HOUR_START + (i + 1) * HOUR_MS,
+      startsAtMs: HOUR_START + (i + 1) * HOUR_MS, endsAtMs: (HOUR_START + (i + 1) * HOUR_MS) + 3_600_000,
       plannedKWh: 2,
       plannedUnitMilestone,
     })),
@@ -185,7 +185,7 @@ describe('isAheadOfHourMilestone — unit trajectory (bug 1)', () => {
     expect(isAhead({
       energyNeededKWh: 6,
       measuredValue: 54,
-      committedHours: [{ startsAtMs: HOUR_START, plannedKWh: 4 }, ...futureHours([5, 5])], // 10 kWh ⇒ 6 ≤ 9.8 true
+      committedHours: [{ startsAtMs: HOUR_START, endsAtMs: (HOUR_START) + 3_600_000, plannedKWh: 4 }, ...futureHours([5, 5])], // 10 kWh ⇒ 6 ≤ 9.8 true
       nowMs: NOW_MS,
     })).toBe(true);
   });
@@ -198,10 +198,10 @@ describe('isAheadOfHourMilestone — unit trajectory (bug 1)', () => {
     // hour's (52). The old code subtracted across these (final − current) and
     // could mis-release; the single-milestone compare reads ONLY the current
     // hour's 52, so the inflated future scale is irrelevant to the result.
-    const mixedAnchorHours: DeferredObjectiveActivePlanHourV1[] = [
-      { startsAtMs: HOUR_START, plannedKWh: 2, plannedUnitMilestone: 52 }, // old, lower anchor
-      { startsAtMs: HOUR_START + HOUR_MS, plannedKWh: 2, plannedUnitMilestone: 80 }, // new, higher anchor
-      { startsAtMs: HOUR_START + 2 * HOUR_MS, plannedKWh: 2, plannedUnitMilestone: 90 },
+    const mixedAnchorHours: DeferredObjectivePlanInterval[] = [
+      { startsAtMs: HOUR_START, endsAtMs: (HOUR_START) + 3_600_000, plannedKWh: 2, plannedUnitMilestone: 52 }, // old, lower anchor
+      { startsAtMs: HOUR_START + HOUR_MS, endsAtMs: (HOUR_START + HOUR_MS) + 3_600_000, plannedKWh: 2, plannedUnitMilestone: 80 }, // new, higher anchor
+      { startsAtMs: HOUR_START + 2 * HOUR_MS, endsAtMs: (HOUR_START + 2 * HOUR_MS) + 3_600_000, plannedKWh: 2, plannedUnitMilestone: 90 },
     ];
     // Below this hour's target (52) ⇒ NOT ahead, despite the inflated future milestones.
     expect(isAhead({
@@ -217,10 +217,10 @@ describe('isAheadOfHourMilestone — unit trajectory (bug 1)', () => {
     // Latest started hour is the CURRENT hour (HOUR_START), which lacks a milestone
     // (booked before a rate existed); an EARLIER elapsed hour has one (40). The gate
     // must NOT reach back to the earlier 40 — it falls through to the energy gate.
-    const hours: DeferredObjectiveActivePlanHourV1[] = [
-      { startsAtMs: HOUR_START - HOUR_MS, plannedKWh: 2, plannedUnitMilestone: 40 }, // elapsed, has milestone
-      { startsAtMs: HOUR_START, plannedKWh: 2 }, // current hour, NO milestone
-      { startsAtMs: HOUR_START + HOUR_MS, plannedKWh: 5 }, // future
+    const hours: DeferredObjectivePlanInterval[] = [
+      { startsAtMs: HOUR_START - HOUR_MS, endsAtMs: (HOUR_START - HOUR_MS) + 3_600_000, plannedKWh: 2, plannedUnitMilestone: 40 }, // elapsed, has milestone
+      { startsAtMs: HOUR_START, endsAtMs: (HOUR_START) + 3_600_000, plannedKWh: 2 }, // current hour, NO milestone
+      { startsAtMs: HOUR_START + HOUR_MS, endsAtMs: (HOUR_START + HOUR_MS) + 3_600_000, plannedKWh: 5 }, // future
     ];
     // If it (wrongly) used the stale 40, measured 60 ≥ 40 ⇒ true. The fix takes the
     // energy path instead: future 5 kWh, need 6 ⇒ 6 ≤ 5 × 0.98 is false.
@@ -233,10 +233,10 @@ describe('isAheadOfHourMilestone — unit trajectory (bug 1)', () => {
   });
 
   it('uses the descending milestone comparison for a cooling objective', () => {
-    const committedHours: DeferredObjectiveActivePlanHourV1[] = [
-      { startsAtMs: HOUR_START, plannedKWh: 2, plannedUnitMilestone: 25 },
-      { startsAtMs: HOUR_START + HOUR_MS, plannedKWh: 2, plannedUnitMilestone: 23 },
-      { startsAtMs: HOUR_START + 2 * HOUR_MS, plannedKWh: 2, plannedUnitMilestone: 22 },
+    const committedHours: DeferredObjectivePlanInterval[] = [
+      { startsAtMs: HOUR_START, endsAtMs: (HOUR_START) + 3_600_000, plannedKWh: 2, plannedUnitMilestone: 25 },
+      { startsAtMs: HOUR_START + HOUR_MS, endsAtMs: (HOUR_START + HOUR_MS) + 3_600_000, plannedKWh: 2, plannedUnitMilestone: 23 },
+      { startsAtMs: HOUR_START + 2 * HOUR_MS, endsAtMs: (HOUR_START + 2 * HOUR_MS) + 3_600_000, plannedKWh: 2, plannedUnitMilestone: 22 },
     ];
     expect(isAheadOfHourMilestone(999, 'decreasing', committedHours, NOW_MS, 24)).toBe(true);
     expect(isAheadOfHourMilestone(0, 'decreasing', committedHours, NOW_MS, 26)).toBe(false);

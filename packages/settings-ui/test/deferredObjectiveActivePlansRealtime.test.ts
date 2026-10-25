@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DeferredObjectiveActivePlansV1 } from '../../contracts/src/deferredObjectiveActivePlans.ts';
+import type { DeferredObjectiveActivePlansV2 } from '../../contracts/src/deferredObjectiveActivePlans.ts';
 
 // The active-plans recorder pushes every replan/session change as a
 // `deferred_objective_active_plans_updated` realtime event carrying the
@@ -26,8 +26,8 @@ import {
 } from '../src/ui/deferredObjectiveActivePlans.ts';
 import { state } from '../src/ui/state.ts';
 
-const planFor = (deviceId: string, revision: number): DeferredObjectiveActivePlansV1 => ({
-  version: 1,
+const planFor = (deviceId: string, revision: number): DeferredObjectiveActivePlansV2 => ({
+  version: 2,
   plansByDeviceId: {
     [deviceId]: {
       liveCompletion: { kind: 'unavailable' as const },
@@ -45,7 +45,7 @@ const planFor = (deviceId: string, revision: number): DeferredObjectiveActivePla
         revisedAtMs: 0,
         computedFromPricesUpTo: null,
         reason: 'flow_card',
-        hours: [{ startsAtMs: revision * 1000, plannedKWh: 3 }],
+        hours: [{ startsAtMs: revision * 1000, endsAtMs: (revision * 1000) + 3_600_000, plannedKWh: 3 }],
         energyNeededKWh: 5,
         planStatus: 'on_track',
       },
@@ -72,7 +72,7 @@ describe('coerceDeferredObjectiveActivePlans', () => {
   });
 
   it('returns null when the version literal does not match the recognised schema', () => {
-    const stale = { ...planFor('ev-1', 1), version: 2 };
+    const stale = { ...planFor('ev-1', 1), version: 3 };
     expect(coerceDeferredObjectiveActivePlans(stale)).toBeNull();
   });
 
@@ -80,15 +80,30 @@ describe('coerceDeferredObjectiveActivePlans', () => {
     const raw = planFor('ev-1', 2);
     const result = coerceDeferredObjectiveActivePlans(raw);
     expect(result).not.toBeNull();
-    expect(result?.version).toBe(1);
+    expect(result?.version).toBe(2);
     expect(result?.plansByDeviceId['ev-1']).toStrictEqual(raw.plansByDeviceId['ev-1']);
     expect(result?.plansByDeviceId['ev-1']?.latest?.revision).toBe(2);
+  });
+
+  it('migrates legacy hourly plans through the shared version boundary', () => {
+    const raw = planFor('ev-1', 1);
+    const plan = raw.plansByDeviceId['ev-1']!;
+    const result = coerceDeferredObjectiveActivePlans({
+      version: 1,
+      plansByDeviceId: { 'ev-1': { ...plan, latest: {
+        ...plan.latest, hours: [{ startsAtMs: 1000, plannedKWh: 3 }],
+      } } },
+    });
+    expect(result?.version).toBe(2);
+    expect(result?.plansByDeviceId['ev-1']?.latest?.hours[0]).toMatchObject({
+      startsAtMs: 1000, endsAtMs: 1000 + 3_600_000, plannedKWh: 3,
+    });
   });
 
   it('filters out non-object per-device entries', () => {
     const raw = planFor('ev-1', 2);
     const tampered = {
-      version: 1 as const,
+      version: 2 as const,
       plansByDeviceId: { ...raw.plansByDeviceId, 'ev-bad': 7 as unknown },
     };
     const result = coerceDeferredObjectiveActivePlans(tampered);
@@ -99,7 +114,7 @@ describe('coerceDeferredObjectiveActivePlans', () => {
   it.each([
     ['hours that are not an array', { planStatus: 'on_track', hours: {} }],
     ['an hour with no start', { planStatus: 'on_track', hours: [null] }],
-    ['an hour with a non-finite start', { planStatus: 'on_track', hours: [{ startsAtMs: Number.NaN }] }],
+    ['an hour with a non-finite start', { planStatus: 'on_track', hours: [{ startsAtMs: Number.NaN, endsAtMs: (Number.NaN) + 3_600_000 }] }],
     // Not `null` (not yet planned): the smart-task row reads `latest.planStatus`.
     ['no revision at all', undefined],
     // The smart-task row would otherwise count it "on track".
@@ -108,7 +123,7 @@ describe('coerceDeferredObjectiveActivePlans', () => {
   ])('drops a plan with %s, which the Overview EV line would walk', (_case, latest) => {
     const raw = planFor('ev-1', 2);
     const tampered = {
-      version: 1 as const,
+      version: 2 as const,
       plansByDeviceId: { ...raw.plansByDeviceId, 'ev-bad': { ...raw.plansByDeviceId['ev-1'], latest } as unknown },
     };
     expect(Object.keys(coerceDeferredObjectiveActivePlans(tampered)?.plansByDeviceId ?? {})).toEqual(['ev-1']);
@@ -117,7 +132,7 @@ describe('coerceDeferredObjectiveActivePlans', () => {
   it('drops a plan with a non-finite deadline, which the Overview smart-task row shows', () => {
     const raw = planFor('ev-1', 2);
     const tampered = {
-      version: 1 as const,
+      version: 2 as const,
       plansByDeviceId: {
         ...raw.plansByDeviceId,
         'ev-bad': { ...raw.plansByDeviceId['ev-1'], deadlineAtMs: Number.NaN } as unknown,
@@ -142,13 +157,13 @@ describe('applyDeferredObjectiveActivePlansPush', () => {
 
   it('drops the plan of a task that ended when the push no longer carries it', () => {
     state.deferredObjectiveActivePlans = planFor('ev-1', 1);
-    applyDeferredObjectiveActivePlansPush({ version: 1, plansByDeviceId: {} });
+    applyDeferredObjectiveActivePlansPush({ version: 2, plansByDeviceId: {} });
     expect(state.deferredObjectiveActivePlans?.plansByDeviceId).toEqual({});
   });
 
   it('validates the payload as it validates the bootstrap: a malformed push clears state', () => {
     state.deferredObjectiveActivePlans = planFor('ev-1', 1);
-    applyDeferredObjectiveActivePlansPush({ version: 2, plansByDeviceId: {} });
+    applyDeferredObjectiveActivePlansPush({ version: 3, plansByDeviceId: {} });
     expect(state.deferredObjectiveActivePlans).toBeNull();
     expect(bumpPlanSurfaceMock).toHaveBeenCalledTimes(1);
   });

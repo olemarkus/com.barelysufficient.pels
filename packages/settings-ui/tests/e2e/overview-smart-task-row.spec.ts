@@ -32,7 +32,7 @@ test('cannot-finish outranks steady and swaps Ready by → Due', async ({ page }
     // applies the `deferred_objective_active_plans_updated` payload directly)
     // with the fixture task flipped to a cannot-finish verdict.
     homey.__stub.emitHomeyEvent('deferred_objective_active_plans_updated', {
-      version: 1,
+      version: 2,
       plansByDeviceId: {
         dev_connected300: {
           pending: false,
@@ -41,7 +41,7 @@ test('cannot-finish outranks steady and swaps Ready by → Due', async ({ page }
           deadlineAtMs: Date.now() + 6 * 3_600_000,
           latest: {
             planStatus: 'cannot_meet',
-            hours: [{ startsAtMs: Date.now() + 3_600_000, plannedKWh: 2 }],
+            hours: [{ startsAtMs: Date.now() + 3_600_000, endsAtMs: (Date.now() + 3_600_000) + 3_600_000, plannedKWh: 2 }],
           },
         },
       },

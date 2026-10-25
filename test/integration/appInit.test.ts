@@ -389,7 +389,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
       return originalTransaction(work);
     });
     const recorder = createDeferredObjectivePlanHistoryRecorder(ctx);
-    expect(recorder.getHistorySnapshot()).toEqual({ version: 6, entries: [] });
+    expect(recorder.getHistorySnapshot()).toEqual({ version: 7, entries: [] });
     recorder.backfillFromConfig([{
       deviceId: 'dev',
       deadlineAtMs: 7_200_000,
@@ -460,7 +460,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
     setSpy.mockClear();
     const recorder = new DeferredObjectivePlanHistoryRecorder({
       ...inertPlanHistoryDeps(),
-      load: () => ({ snapshot: { version: 6, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
+      load: () => ({ snapshot: { version: 7, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
       save: () => false,
     });
     // Drive the recorder into a dirty-and-couldn't-flush state.
@@ -513,7 +513,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
     setSpy.mockClear();
     const recorder = new DeferredObjectivePlanHistoryRecorder({
       ...inertPlanHistoryDeps(),
-      load: () => ({ snapshot: { version: 6, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
+      load: () => ({ snapshot: { version: 7, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
       save: () => true,
     });
     expect(recorder.isDirty()).toBe(false);
@@ -589,7 +589,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
     const ctx = createAppContextMock({ deviceManager: {} as AppContext['deviceManager'] });
     ctx.deferredObjectivePlanHistoryRecorder = new DeferredObjectivePlanHistoryRecorder({
       ...inertPlanHistoryDeps(),
-      load: () => ({ snapshot: { version: 6, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
+      load: () => ({ snapshot: { version: 7, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
       save: () => true,
     });
     const setSpy = ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>;
@@ -653,7 +653,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
     // Save callback that always reports failure — drives the recorder into permanent dirty.
     const recorder = new DeferredObjectivePlanHistoryRecorder({
       ...inertPlanHistoryDeps(),
-      load: () => ({ snapshot: { version: 6, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
+      load: () => ({ snapshot: { version: 7, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
       save: () => false,
     });
     // Force a dirty record using a directly-pushed entry via observe.

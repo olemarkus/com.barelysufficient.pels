@@ -65,26 +65,12 @@ type PolicyBucketSource = {
 
 const HOUR_MS = 60 * 60 * 1000;
 
-// Far edge of the AVAILABLE price data, in epoch ms: the end of the last
-// published price hour the producer handed us (`max(entry.startMs) + 1h`).
-// `buildPriceHorizonFromCombined` already windowed the entries to `[nowMs,
-// deadlineAtMs)` and dropped hours with no published price, so this is the real
-// extent of usable Nordpool data for the deadline — NOT re-clamped to the
-// allocator's deadline-trimmed buckets (which saturate at the deadline once a
-// plan is committed). The active-plan recorder uses it as the "prices were valid
-// through" watermark to tell a genuine price-publication advance (`prices_revised`)
-// from an internal schedule reshuffle (`schedule_revised`). Returns `null` when
-// no priced hour is available (empty horizon), so the recorder can carry the
-// previous watermark forward rather than resetting it.
+// Last published period end, before deadline clipping. The recorder uses this
+// watermark to distinguish newly available prices from an internal replan.
 export const resolvePriceHorizonAvailableUpToMs = (
   priceHorizon: readonly PriceHorizonEntry[],
 ): number | null => {
-  let latestStartMs: number | null = null;
-  for (const entry of priceHorizon) {
-    if (!Number.isFinite(entry.startMs)) continue;
-    if (latestStartMs === null || entry.startMs > latestStartMs) latestStartMs = entry.startMs;
-  }
-  return latestStartMs === null ? null : latestStartMs + HOUR_MS;
+  return priceHorizon.length === 0 ? null : Math.max(...priceHorizon.map((entry) => entry.endMs));
 };
 
 // What a smart task's policy horizon is built from: its window, the price and
@@ -100,9 +86,8 @@ export type DeferredObjectivePolicyHorizonInputs = {
   // startMs / endMs / price) are built from this — NOT the daily-budget
   // snapshot, which is now only the budget overlay below.
   priceHorizon: PriceHorizonEntry[];
-  // OPTIONAL budget overlay. When a day-bucket matches a price-horizon hour
-  // (its `startUtc` floors to the same epoch hour), its `controlledShareKWh` /
-  // `backgroundKWh` / `grossBackgroundKWh` are overlaid onto that bucket.
+  // OPTIONAL hourly budget overlay. The source interval is split at allowance
+  // boundaries and receives its overlap share of controlled/background energy.
   // When absent, the bucket runs with no daily-budget cap and the per-hour
   // planning ceiling becomes the only constraint.
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
@@ -190,84 +175,44 @@ export const buildDeferredObjectivePolicyHorizon = (
   };
 };
 
-// Per-bucket money price (`total`) keyed by bucket id (the bucket's ISO start
-// string, which is also `DeferredObjectivePlannedBucket.sourceBucketId`), read
-// from the daily-budget snapshot's money series (`buckets.price`). The preview's
-// cost estimate reads this, not the planning price the plan was allocated on:
-// the cost is money, and the saved task's "Estimated cost" is on `total` too.
-// Empty when the snapshot has no priced bucket.
+// Import prices belong to the price owner; daily-budget prices are an hourly
+// projection and cannot price an individual quarter's delivery.
 export const buildDeferredObjectivePolicyBucketPrices = (
-  dailyBudgetSnapshot: DailyBudgetUiPayload | null,
-): Map<string, number> => {
-  const prices = new Map<string, number>();
-  if (!dailyBudgetSnapshot) return prices;
-  for (const dateKey of [dailyBudgetSnapshot.todayKey, dailyBudgetSnapshot.tomorrowKey]) {
-    const day = dateKey ? dailyBudgetSnapshot.days[dateKey] : undefined;
-    const starts = day?.buckets.startUtc;
-    const dayPrices = day?.buckets.price;
-    if (!Array.isArray(starts) || !Array.isArray(dayPrices)) continue;
-    for (const [index, startIso] of starts.entries()) {
-      const price = dayPrices[index];
-      if (typeof price === 'number' && Number.isFinite(price)) prices.set(startIso, price);
-    }
-  }
-  return prices;
-};
+  priceHorizon: readonly PriceHorizonEntry[],
+): Map<string, number> => new Map(priceHorizon.map((period) => [
+  new Date(period.startMs).toISOString(), period.moneyPrice,
+]));
 
-// One hour on the preview price curve: an EPOCH-hour-aligned UTC start and that
-// hour's per-kWh planning price, or `null` when no price is published for the hour.
 export type DeferredObjectivePolicyWindowPrice = {
   startMs: number;
+  endMs: number;
   price: number | null;
 };
 
-// Epoch-hour floor — the SAME basis `buildHoursFromHorizonPlan` floors scheduled
-// hours to (activePlanSchedule.ts). Keeping both on this basis is what lets the
-// widget join `priceSeries` against `scheduledHours` by `startsAtMs`; a
-// fractional-offset timezone (UTC+5:30/+5:45) starts its local-day buckets at
-// :30/:45 past the UTC hour, so emitting the raw bucket start would never match
-// the floored scheduled hours and the chart would highlight nothing.
-const PRICE_WINDOW_HOUR_MS = 60 * 60 * 1000;
-const floorToHourMs = (ms: number): number => Math.floor(ms / PRICE_WINDOW_HOUR_MS) * PRICE_WINDOW_HOUR_MS;
-
-// Hourly planning prices across the preview window `[nowMs, deadlineAtMs)`, as
-// a DENSE, ascending, epoch-hour-floored series — the SAME price horizon the
-// candidate's plan was allocated on, sliced to the window. Powers the
-// create-task preview chart's price curve. Imposes NO horizon-coverage
-// requirement (a partial curve is still informative). An interior hour with no
-// published price is emitted as a `null`-price slot (so the chart breaks the line
-// across the gap and the time axis stays true), NOT dropped — dropping would
-// collapse the array indices the chart lays out by and skew the x-axis. Returns
-// an empty array when no priced hour falls in the window.
-/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
+// Preserve explicit gaps and elapsed-time geometry, including non-hour grids.
 export const buildDeferredObjectivePolicyWindowPrices = (
   priceHorizon: readonly PriceHorizonEntry[],
   nowMs: number,
   deadlineAtMs: number,
 ): DeferredObjectivePolicyWindowPrice[] => {
-  const priceByHour = new Map<number, number>();
-  for (const entry of priceHorizon) {
-    if (entry.startMs + PRICE_WINDOW_HOUR_MS <= nowMs || entry.startMs >= deadlineAtMs) continue;
-    // The in-progress hour keys to the hour `nowMs` falls in, the SAME basis
-    // `buildHoursFromHorizonPlan` floors (the planner normalises a straddling
-    // bucket to `max(startMs, nowMs)`), so the current scheduled hour highlights.
-    const hour = floorToHourMs(Math.max(entry.startMs, nowMs));
-    if (!priceByHour.has(hour)) priceByHour.set(hour, entry.price);
-  }
-  if (priceByHour.size === 0) return [];
-  const hours = [...priceByHour.keys()].sort((left, right) => left - right);
-  const firstHour = hours[0];
-  const lastHour = hours.at(-1);
-  // The map is non-empty above, so both ends exist; without them there is no
-  // window to describe.
-  if (firstHour === undefined || lastHour === undefined) return [];
+  // Append to a fresh result while walking the source timeline once.
+  /* eslint-disable functional/immutable-data */
   const series: DeferredObjectivePolicyWindowPrice[] = [];
-  for (let hour = firstHour; hour <= lastHour; hour += PRICE_WINDOW_HOUR_MS) {
-    series.push({ startMs: hour, price: priceByHour.get(hour) ?? null });
+  let coveredUntilMs = nowMs;
+  for (const entry of priceHorizon) {
+    const startMs = Math.max(nowMs, entry.startMs);
+    const endMs = Math.min(deadlineAtMs, entry.endMs);
+    if (endMs <= startMs) continue;
+    if (startMs > coveredUntilMs) series.push({ startMs: coveredUntilMs, endMs: startMs, price: null });
+    series.push({ startMs, endMs, price: entry.price });
+    coveredUntilMs = endMs;
   }
+  if (series.length > 0 && coveredUntilMs < deadlineAtMs) {
+    series.push({ startMs: coveredUntilMs, endMs: deadlineAtMs, price: null });
+  }
+  /* eslint-enable functional/immutable-data */
   return series;
 };
-/* eslint-enable functional/immutable-data */
 
 const unavailable = (
   reasonCode: DeferredObjectivePolicyHorizonUnavailableReason,
@@ -305,70 +250,49 @@ const collectPriceBuckets = (
   priceHorizon: PriceHorizonEntry[],
   dailyBudgetSnapshot: DailyBudgetUiPayload | null,
 ): PolicyBucketSource[] | null => {
-  const budgetByHour = buildBudgetOverlayByHour(dailyBudgetSnapshot);
+  const overlays = collectBudgetOverlays(dailyBudgetSnapshot);
   const allBuckets = priceHorizon.flatMap((entry) => {
-    // `entry.startMs` is the RAW price-hour start instant (NOT clipped to `nowMs`,
-    // NOT floored). Keeping it raw is what preserves byte-identical behavior with
-    // the pre-decouple snapshot grid for ALL timezones: the horizon planner trims
-    // the current bucket to `nowMs` for allocation, while the bucket's own
-    // `endMs - startMs` feeds `resolveReservedHeadroomKw` / `resolveMaxUsefulEnergyKWh`
-    // at the FULL-hour duration (clipping would inflate the uncontrolled-kW term),
-    // and the raw instant keeps fractional-offset (UTC+5:30) grids phase-aligned
-    // with the daily-budget overlay. The epoch-hour floor is only the join key.
-    const startMs = entry.startMs;
-    // Each priced hour spans exactly ONE hour — do NOT stretch a bucket to the
-    // next entry's start. A sparse feed (e.g. 10:00 + 12:00 but no 11:00) must
-    // leave a real gap so `coversHorizon` reports `objective_missing_price_horizon`
-    // instead of silently bridging the missing hour at the prior hour's price.
-    const endMs = startMs + HOUR_MS;
-    // Window filter mirrors the legacy `endMs > nowMs && startMs < deadlineAtMs`.
-    if (endMs <= nowMs || startMs >= deadlineAtMs) return [];
-    const hourKey = Math.floor(startMs / HOUR_MS) * HOUR_MS;
-    const overlay = budgetByHour.get(hourKey) ?? NO_BUDGET_OVERLAY;
-    return [{
-      // Id is the raw price-hour-start ISO — for whole-hour-offset timezones this
-      // equals the daily-budget snapshot's `startUtc` id, and for fractional
-      // offsets it carries the same `:30`/`:45` instant, preserving the
-      // downstream `sourceBucketId` cost join in both cases.
-      id: new Date(startMs).toISOString(),
-      sourceBucketId: new Date(startMs).toISOString(),
-      startMs,
-      endMs,
-      price: entry.price,
-      backgroundKWh: overlay.backgroundKWh,
-      grossBackgroundKWh: overlay.grossBackgroundKWh,
-      controlledShareKWh: overlay.controlledShareKWh,
-    }];
+    if (entry.endMs <= nowMs || entry.startMs >= deadlineAtMs) return [];
+    const boundaries = [...new Set([
+      entry.startMs, entry.endMs,
+      ...overlays.flatMap((overlay) => [overlay.startMs, overlay.startMs + HOUR_MS])
+        .filter((boundary) => boundary > entry.startMs && boundary < entry.endMs),
+    ])].sort((left, right) => left - right);
+    return boundaries.slice(0, -1).flatMap((startMs, index): PolicyBucketSource[] => {
+      const endMs = boundaries[index + 1];
+      if (endMs === undefined) return [];
+      const overlay = overlays.find((hour) => hour.startMs <= startMs && startMs < hour.startMs + HOUR_MS)
+        ?? NO_BUDGET_OVERLAY;
+      const fraction = (endMs - startMs) / HOUR_MS;
+      return [{
+        id: new Date(startMs).toISOString(),
+        sourceBucketId: new Date(entry.startMs).toISOString(),
+        startMs, endMs, price: entry.price,
+        backgroundKWh: overlay.backgroundKWh === null ? null : overlay.backgroundKWh * fraction,
+        grossBackgroundKWh: overlay.grossBackgroundKWh === null ? null : overlay.grossBackgroundKWh * fraction,
+        controlledShareKWh: overlay.controlledShareKWh === null ? null : overlay.controlledShareKWh * fraction,
+      }];
+    });
   });
-  if (allBuckets.length === 0) return null;
-  if (!coversHorizon(allBuckets, nowMs, deadlineAtMs)) return null;
+  if (allBuckets.length === 0 || !coversHorizon(allBuckets, nowMs, deadlineAtMs)) return null;
   return allBuckets;
 };
 
-// Index the daily-budget snapshot's day-buckets by epoch-hour-floored start so
-// the price-horizon buckets can overlay the budget fields. First-write wins on a
-// duplicate hour (matches the price-horizon dedupe direction).
-const buildBudgetOverlayByHour = (
+// Daily-budget learning stays hourly. Split each native price interval where an
+// hourly allowance changes and distribute that allowance by elapsed duration.
+const collectBudgetOverlays = (
   snapshot: DailyBudgetUiPayload | null,
-): Map<number, BudgetOverlay> => {
-  const byHour = new Map<number, BudgetOverlay>();
-  if (!snapshot) return byHour;
+): Array<BudgetOverlay & { startMs: number }> => {
+  if (!snapshot) return [];
+  const byStart = new Map<number, BudgetOverlay & { startMs: number }>();
   for (const dateKey of [snapshot.todayKey, snapshot.tomorrowKey]) {
-    if (!dateKey) continue;
-    const day = snapshot.days[dateKey];
+    const day = dateKey ? snapshot.days[dateKey] : undefined;
     if (!day) continue;
     for (const overlay of collectDayBudgetOverlays(day)) {
-      const hour = Math.floor(overlay.startMs / HOUR_MS) * HOUR_MS;
-      if (!byHour.has(hour)) {
-        byHour.set(hour, {
-          backgroundKWh: overlay.backgroundKWh,
-          grossBackgroundKWh: overlay.grossBackgroundKWh,
-          controlledShareKWh: overlay.controlledShareKWh,
-        });
-      }
+      if (!byStart.has(overlay.startMs)) byStart.set(overlay.startMs, overlay);
     }
   }
-  return byHour;
+  return [...byStart.values()];
 };
 
 const collectDayBudgetOverlays = (

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { seedHourlyFlowPricesForTests } from '../helpers/smartTaskPriceSourceFixture';
 import api from '../../api';
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
@@ -7,7 +8,6 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
-  COMBINED_PRICES,
   CONTROLLABLE_DEVICES,
   DEBUG_LOGGING_TOPICS,
   MANAGED_DEVICES,
@@ -38,24 +38,9 @@ const seedSettings = (nowMs: number, cheaperAhead: boolean): void => {
   mockHomeyInstance.settings.set('overshoot_behaviors', {
     [HEATER_ID]: { action: 'set_temperature', temperature: 40 },
   });
-  mockHomeyInstance.settings.set(COMBINED_PRICES, {
-    version: 2,
-    days: {
-      '2026-10-02': {
-        hours: Array.from({ length: 24 }, (_, hour) => ({
-          startsAt: new Date(DAY_MS + hour * HOUR_MS).toISOString(),
-          total: cheaperAhead && hour === 0 ? 100 : 70,
-          isCheap: false,
-          isExpensive: false,
-        })),
-      },
-    },
-    avgPrice: 70,
-    lowThreshold: 60,
-    highThreshold: 80,
-    priceScheme: 'norway',
-    priceUnit: 'øre/kWh',
-  });
+  seedHourlyFlowPricesForTests(DAY_MS, Array.from({ length: 24 }, (_, hour) => (
+    cheaperAhead && hour === 0 ? 100 : 70
+  )));
   mockHomeyInstance.settings.set(`deferred_objective.${HEATER_ID}`, {
     enabled: true,
     kind: 'temperature',

@@ -9,8 +9,8 @@ import {
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
   PER_DEVICE_OBJECTIVE_KEY_PREFIX,
+  PRICE_SCHEME,
 } from '../../lib/utils/settingsKeys';
-import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import {
   getDateKeyInTimeZone,
   getDateKeyStartMs,
@@ -91,6 +91,11 @@ const EV_DEADLINE_TEST_NOW_MS = Date.UTC(2026, 4, 13, 10, 0, 0);
 let currentTimeMs = 1_730_000_000_000;
 const originalDateNow = Date.now;
 
+const setTestClock = (nowMs: number): void => {
+  currentTimeMs = nowMs;
+  vi.setSystemTime(nowMs);
+};
+
 class EaseeMockCharger extends MockDevice {
   public readonly commandLog: CommandEntry[] = [];
 
@@ -165,6 +170,8 @@ class EaseeMockCharger extends MockDevice {
   }
 
   private async applyObservedState(state: EaseeChargingState): Promise<void> {
+    // A new SDK observation must be newer than the packet it supersedes.
+    setTestClock(currentTimeMs + 1);
     this.observedState = state;
     const isCharging = state === 'plugged_in_charging';
     const powerW = isCharging ? this.chargePowerW : 0;
@@ -176,14 +183,6 @@ class EaseeMockCharger extends MockDevice {
   }
 }
 
-beforeAll(() => {
-  global.Date.now = vi.fn(() => currentTimeMs);
-});
-
-afterAll(() => {
-  global.Date.now = originalDateNow;
-});
-
 // `retry` is an interim guard for a rare scheduling race that only surfaces
 // under full-suite CPU load (the file passes 20+ runs in isolation and under
 // local concurrency). A genuine regression still fails all attempts. The
@@ -194,13 +193,17 @@ afterAll(() => {
 // that is confirmed and fixed.
 describe('EV charger integration', { retry: 2 }, () => {
   beforeEach(() => {
-    currentTimeMs = 1_730_000_000_000;
+    // Seed observations and later state changes share the same wall clock;
+    // real timers and the scheduler's monotonic clock continue normally.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    setTestClock(1_730_000_000_000);
     resetMockHomey();
     vi.clearAllMocks();
   });
 
   afterEach(async () => {
     await cleanupApps();
+    vi.useRealTimers();
   });
 
   it.each([
@@ -232,7 +235,7 @@ describe('EV charger integration', { retry: 2 }, () => {
   it('sheds and later restores an Easee-like charger through evcharger_charging only', async () => {
     // MockDevice capability timestamps use the wall clock. Keep the planner
     // clock on the same basis so confirmation-time cooldowns are meaningful.
-    currentTimeMs = originalDateNow();
+    setTestClock(originalDateNow());
     const charger = new EaseeMockCharger({ loadW: 7200 });
     await charger.seedState('plugged_in_charging');
     const app = await createEvApp(charger);
@@ -261,7 +264,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     expect(app.planEngine.state.pendingBinaryCommands[charger.idValue]).toBeUndefined();
     expect(app.planEngine.state.actuation.lastDeviceShedMs[charger.idValue]).toEqual(expect.any(Number));
 
-    currentTimeMs += 61_000;
+    setTestClock(currentTimeMs + 61_000);
     steerCapacityPace(app, 10.0);
     app.powerTracker.lastPowerW = 400;
     // Deactivate the guard after restoring headroom so shedding hysteresis allows it.
@@ -366,7 +369,7 @@ describe('EV charger integration', { retry: 2 }, () => {
   });
 
   it('resumes a paused plugged-in charger during a planned EV deadline bucket', async () => {
-    currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
+    setTestClock(EV_DEADLINE_TEST_NOW_MS);
     const charger = new EaseeMockCharger({ loadW: 7200 });
     await charger.seedState('plugged_in_paused');
     const app = await createEvApp(charger, [charger], {
@@ -389,7 +392,7 @@ describe('EV charger integration', { retry: 2 }, () => {
   });
 
   it('pauses a charging charger during an idle EV deadline bucket', async () => {
-    currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
+    setTestClock(EV_DEADLINE_TEST_NOW_MS);
     const charger = new EaseeMockCharger();
     await charger.seedState('plugged_in_charging');
     const app = await createEvApp(charger, [charger], {
@@ -414,7 +417,7 @@ describe('EV charger integration', { retry: 2 }, () => {
   // `satisfied`, exercising the cap-off planned/idle paths (not the terminal-pause path
   // covered further down).
   it('resumes a paused cap-off charger during a planned deadline bucket', async () => {
-    currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
+    setTestClock(EV_DEADLINE_TEST_NOW_MS);
     const charger = new EaseeMockCharger({ loadW: 7200 });
     await charger.seedState('plugged_in_paused', { socPercent: 35 });
     const app = await createEvApp(charger, [charger], {
@@ -437,7 +440,7 @@ describe('EV charger integration', { retry: 2 }, () => {
   });
 
   it('pauses a charging cap-off charger during an idle deadline bucket', async () => {
-    currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
+    setTestClock(EV_DEADLINE_TEST_NOW_MS);
     const charger = new EaseeMockCharger();
     await charger.seedState('plugged_in_charging');
     const app = await createEvApp(charger, [charger], {
@@ -463,7 +466,7 @@ describe('EV charger integration', { retry: 2 }, () => {
   // charger until its deadline (owner ruling 2026-10-17): an hour it did not book is a released
   // hour, so the plan pauses the charger. No lifecycle-clock fallback races it.
   it('pauses a satisfied charger through the plan path', async () => {
-    currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
+    setTestClock(EV_DEADLINE_TEST_NOW_MS);
     const charger = new EaseeMockCharger();
     // SoC already at 80, target 42 → diagnostic resolves to `satisfied` immediately.
     await charger.seedState('plugged_in_charging', { socPercent: 80 });
@@ -491,7 +494,7 @@ describe('EV charger integration', { retry: 2 }, () => {
 
   // Counter-case: an already-paused terminal device likewise produces no planner command.
   it('does not re-pause an already-paused charger that has reached target with Power-limit control off', async () => {
-    currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
+    setTestClock(EV_DEADLINE_TEST_NOW_MS);
     const charger = new EaseeMockCharger();
     await charger.seedState('plugged_in_paused', { socPercent: 80 });
     const app = await createEvApp(charger, [charger], {
@@ -508,7 +511,7 @@ describe('EV charger integration', { retry: 2 }, () => {
   // Power-limit control ON + satisfied: the task still governs until its deadline, so its unbooked
   // hour pauses the charger the same way. Normal managed charging takes over after the deadline.
   it('pauses a satisfied charger while Power-limit control is on', async () => {
-    currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
+    setTestClock(EV_DEADLINE_TEST_NOW_MS);
     const charger = new EaseeMockCharger();
     await charger.seedState('plugged_in_charging', { socPercent: 80 });
     const app = await createEvApp(charger, [charger], {
@@ -525,7 +528,7 @@ describe('EV charger integration', { retry: 2 }, () => {
   });
 
   it('skips a planned EV deadline resume while stale-fail-closed and through the post-fail-closed restore cooldown', async () => {
-    currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
+    setTestClock(EV_DEADLINE_TEST_NOW_MS);
     const charger = new EaseeMockCharger();
     await charger.seedState('plugged_in_paused');
     const app = await createEvApp(charger, [charger], {
@@ -597,7 +600,7 @@ describe('EV charger integration', { retry: 2 }, () => {
 
     await charger.setObservedState('plugged_out');
     await refreshSnapshot(app);
-    currentTimeMs += 5_000;
+    setTestClock(currentTimeMs + 5_000);
 
     plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
     const evPlan = getPlanEntry(plan, charger.idValue);
@@ -669,6 +672,9 @@ async function createEvApp(
     evDeadlineTargetPercent?: number;
   },
 ): Promise<InternalApp> {
+  if (options?.evDeadlinePricesByRelativeHour) {
+    mockHomeyInstance.settings.set(PRICE_SCHEME, 'flow');
+  }
   setMockDrivers({
     easee: new MockDriver('easee', devices),
   });
@@ -703,13 +709,9 @@ async function createEvApp(
   await app.onInit();
   if (options?.evDeadlinePricesByRelativeHour) {
     app.dailyBudgetService.getSnapshot = () => buildEvDeadlineDailyBudgetSnapshot(options.evDeadlinePricesByRelativeHour!);
-    // The allocation horizon now sources price from the price layer. Seed
-    // COMBINED_PRICES with the SAME per-hour prices the snapshot carries so the
-    // deferred objective can build its horizon (the snapshot is the budget overlay).
-    // They live in the booted app's price cache, which holds its rows in memory,
-    // so the seed goes through the app's own store.
-    app.priceCoordinator['deps'].priceDataStore.writeCombined(
-      buildEvDeadlineCombinedPrices(options.evDeadlinePricesByRelativeHour!),
+    // Publish the same hourly source prices that the budget overlay carries.
+    app.priceCoordinator.storeFlowPriceData(
+      'today', resolveEvDeadlinePricesByHour(options.evDeadlinePricesByRelativeHour!),
     );
   }
   await app.refreshTargetDevicesSnapshot({ fast: false });
@@ -733,14 +735,10 @@ function buildEvDeadlineDailyBudgetSnapshot(pricesByRelativeHour: number[]): Dai
   };
 }
 
-// Compute the absolute per-hour prices + UTC day start the deadline fixtures
-// share, from the relative-to-current-hour price overrides. Shared by the
-// daily-budget snapshot (budget overlay) and the price-layer store (allocation).
-function resolveEvDeadlinePricesByHour(pricesByRelativeHour: number[]): { dayStartMs: number; pricesByHour: number[] } {
+// Publish relative fixture prices at the source's local clock-hour indexes.
+function resolveEvDeadlinePricesByHour(pricesByRelativeHour: number[]): number[] {
   const now = new Date(currentTimeMs);
   const timeZone = 'Europe/Oslo';
-  const dateKey = getDateKeyInTimeZone(now, timeZone);
-  const dayStartMs = getDateKeyStartMs(dateKey, timeZone);
   const currentHour = Number(new Intl.DateTimeFormat('en-GB', {
     timeZone,
     hour: 'numeric',
@@ -750,32 +748,7 @@ function resolveEvDeadlinePricesByHour(pricesByRelativeHour: number[]): { daySta
   pricesByRelativeHour.forEach((price, offset) => {
     pricesByHour[(currentHour + offset) % 24] = price;
   });
-  return { dayStartMs, pricesByHour };
-}
-
-function buildEvDeadlineCombinedPrices(pricesByRelativeHour: number[]): CombinedPricesV2 {
-  const { dayStartMs, pricesByHour } = resolveEvDeadlinePricesByHour(pricesByRelativeHour);
-  const hours: CombinedPriceEntry[] = pricesByHour.map((total, hour) => ({
-    startsAt: new Date(dayStartMs + hour * HOUR_MS).toISOString(),
-    total,
-    isCheap: false,
-    isExpensive: false,
-  }));
-  // `combinedPricesReader.readStore` prunes day buckets to the [yesterday, today, tomorrow]
-  // window resolved from the REAL wall clock (`new Date()` in `App.getNow` is
-  // not driven by the test's `Date.now` override). Key the day under the real
-  // today so pruning keeps it; the horizon builder still selects the correct
-  // hours by their `startsAt` against the (test-clock) `nowMs`/deadline.
-  const dateKey = getDateKeyInTimeZone(new Date(), 'Europe/Oslo');
-  return {
-    version: 2,
-    days: { [dateKey]: { hours } },
-    avgPrice: 0,
-    lowThreshold: 0,
-    highThreshold: 0,
-    priceScheme: 'norway',
-    priceUnit: 'øre/kWh',
-  };
+  return pricesByHour;
 }
 
 function buildEvDeadlineDay(params: {

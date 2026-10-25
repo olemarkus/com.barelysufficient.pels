@@ -28,6 +28,7 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
       get: notWired('supportReports.get'),
       send: notWired('supportReports.send'),
     },
+    getTaskPricePeriodsForUi: () => [],
     log: vi.fn(),
     error: vi.fn(),
     planStatuses: createPlanStatusRegistry(),

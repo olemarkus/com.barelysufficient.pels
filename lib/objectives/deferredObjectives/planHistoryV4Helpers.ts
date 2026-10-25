@@ -5,14 +5,13 @@ import type { TaskEvaluation } from './taskEvaluation';
 // by the per-revision log. Lives next to the recorder so the recorder can
 // stay close to the 500-LOC ESLint cap.
 import type {
+  DeferredObjectivePlanInterval,
   DeferredObjectiveActivePlanFloorShortfallCause,
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
-  DeferredObjectivePlanHistoryCostDisplay,
   DeferredObjectivePlanHistoryHourlyContribution,
-  DeferredObjectivePlanHistoryHourlyTone,
   ResolvedDeferredObjectivePlanHistoryProgressSample,
   DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
@@ -22,30 +21,10 @@ import {
   resolveDeferredPlanHistoryMissAttribution,
 } from '../../../packages/shared-domain/src/deferredPlanHistoryAttribution';
 import { resolveRemainingEnergyKWh } from '../../../packages/shared-domain/src/energyQuantities';
-import { hoursWithPlannedEnergy } from '../../../packages/shared-domain/src/deferredPlanBookedHours';
+import {
+  hoursWithPlannedEnergy, plannedDurationHours,
+} from '../../../packages/shared-domain/src/deferredPlanBookedHours';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
-
-// Resolver supplied by the runtime wiring. Returns the spot price and
-// resolved tone for the hour that starts at `hourStartMs`. Returning `null`
-// (no price data yet, hour outside the published horizon) causes the
-// rollover detector to skip the contribution — the postmortem strip is
-// best-effort, not a hard requirement for finalization. See
-// `setup/appInit.ts` for the production wiring against
-// `combined_prices`.
-export type HourPriceResolver = (
-  hourStartMs: number,
-) => {
-  priceValue: number;
-  tone: DeferredObjectivePlanHistoryHourlyTone;
-  // Price-display provenance (`{ unit, divisor }`) for the scheme this price
-  // was resolved under. Hour-independent (it's the active scheme, not the
-  // hour's value) but surfaced here so the recorder can capture it onto the
-  // run's record the first time a priced contribution fires — see
-  // `DeferredObjectivePlanHistoryEntry.costDisplay`. The recorder persists it
-  // alongside `totalCost` so the archive formats the figure in its recorded
-  // currency, not whatever scheme is bootstrapped when the user later reads it.
-  costDisplay: DeferredObjectivePlanHistoryCostDisplay;
-} | null;
 
 // Runtime cap on persisted progress samples per entry. The contract module
 // documents a matching constant (intentionally not exported there — runtime
@@ -73,14 +52,6 @@ export const PROGRESS_SAMPLES_PER_ENTRY_CAP = 200;
 // `originalPlan`. In-memory cap only; existing persisted entries with
 // `<= MAX_REVISIONS_PER_ENTRY` revisions load identically.
 export const MAX_REVISIONS_PER_ENTRY = 64;
-
-const ONE_HOUR_MS = 60 * 60 * 1000;
-
-// Floor a timestamp to its containing hour. Used by the hour-rollover /
-// delivery-contribution machinery, which is genuinely hour-shaped (spot prices
-// and the postmortem bar strip are per-hour). Progress samples use the finer
-// 15-minute grid below.
-export const hourBucketMs = (atMs: number): number => Math.floor(atMs / ONE_HOUR_MS) * ONE_HOUR_MS;
 
 // Base sampling grid for the measured-progress trajectory. 15 minutes (down
 // from the original hourly grid) so a real heat→coast→heat run renders as a
@@ -365,48 +336,46 @@ export const appendRevisionLogIfNew = (
   return appended;
 };
 
-// Symmetric-difference counts of `startsAtMs` between two hour schedules, over the
-// hours the device is planned to run (a 0 kWh booking promises nothing).
-// O(n + m) via a Set; ordering is irrelevant — the recorder logs the count
-// so the UI can render "+2 / −1" without needing the specific timestamps.
+// Symmetric-difference duration, in hours. Changing the source grid without
+// changing coverage is quiet; adding one quarter records 0.25 hours.
 const diffHourSchedules = (
-  previous: readonly { startsAtMs: number; plannedKWh: number }[],
-  next: readonly { startsAtMs: number; plannedKWh: number }[],
+  previous: readonly DeferredObjectivePlanInterval[],
+  next: readonly DeferredObjectivePlanInterval[],
 ): { hoursAdded: number; hoursRemoved: number } => {
-  const previousStarts = new Set(hoursWithPlannedEnergy(previous).map((hour) => hour.startsAtMs));
-  const nextStarts = new Set(hoursWithPlannedEnergy(next).map((hour) => hour.startsAtMs));
-  let hoursAdded = 0;
-  for (const startsAtMs of nextStarts) if (!previousStarts.has(startsAtMs)) hoursAdded += 1;
-  let hoursRemoved = 0;
-  for (const startsAtMs of previousStarts) if (!nextStarts.has(startsAtMs)) hoursRemoved += 1;
-  return { hoursAdded, hoursRemoved };
+  const overlaps = hoursWithPlannedEnergy(previous).flatMap((left) => (
+    hoursWithPlannedEnergy(next).flatMap((right) => {
+      const startsAtMs = Math.max(left.coversFromMs ?? left.startsAtMs, right.coversFromMs ?? right.startsAtMs);
+      const endsAtMs = Math.min(left.endsAtMs, right.endsAtMs);
+      return endsAtMs > startsAtMs ? [{ startsAtMs, endsAtMs, plannedKWh: 1 }] : [];
+    })
+  ));
+  const sharedHours = plannedDurationHours(overlaps);
+  return {
+    hoursAdded: Math.max(0, plannedDurationHours(next) - sharedHours),
+    hoursRemoved: Math.max(0, plannedDurationHours(previous) - sharedHours),
+  };
 };
 
-// Hour-aligned snapshot of a trustworthy progress reading. The hour-rollover
-// detector keeps one of these for the "current hour's opening" (the first
-// trustworthy reading observed in the hour) so it can compute delivered kWh
-// for the hour by subtracting the opening value from the latest reading when
-// the hour closes. `value` is in the objective's native unit (°C or %); the
-// caller multiplies by kWh-per-unit to convert.
-// Append (or merge) a per-hour delivery contribution onto the running list
-// the recorder keeps on an in-progress run. If an entry already exists for
-// `next.atMs`, the kWh is summed and the latest price/tone wins — the
-// recorder's wiring contract is one-shot push per hour, so duplicates only
-// happen when an aggregator replays a missed slot; in that case the
-// fresher price/tone is the authoritative one for the postmortem.
+// Aggregate measured delivery within the same source price interval. A source
+// correction keeps the energy-weighted paid price, so the strip and total cost
+// describe the same measurements rather than repricing earlier consumption.
 export const appendHourlyContribution = (
   list: readonly DeferredObjectivePlanHistoryHourlyContribution[],
   next: DeferredObjectivePlanHistoryHourlyContribution,
 ): DeferredObjectivePlanHistoryHourlyContribution[] => {
-  const existingIndex = list.findIndex((entry) => entry.atMs === next.atMs);
+  const existingIndex = list.findIndex((entry) => entry.atMs === next.atMs && entry.endsAtMs === next.endsAtMs);
   const existing = existingIndex === -1 ? undefined : list[existingIndex];
   if (existing === undefined) {
     return [...list, next];
   }
   const merged: DeferredObjectivePlanHistoryHourlyContribution = {
     atMs: next.atMs,
+    endsAtMs: next.endsAtMs,
     deliveredKWh: existing.deliveredKWh + next.deliveredKWh,
-    priceValue: next.priceValue,
+    priceValue: existing.deliveredKWh + next.deliveredKWh > 0
+      ? (existing.deliveredKWh * existing.priceValue + next.deliveredKWh * next.priceValue)
+        / (existing.deliveredKWh + next.deliveredKWh)
+      : next.priceValue,
     tone: next.tone,
   };
   return list.map((entry, index) => (index === existingIndex ? merged : entry));

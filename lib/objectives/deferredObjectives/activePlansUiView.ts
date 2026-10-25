@@ -1,7 +1,7 @@
 import type {
-  DeferredObjectiveActivePlansV1,
+  DeferredObjectiveActivePlansV2,
   DeliveredEnergyReader,
-  ResolvedDeferredObjectiveActivePlansV1,
+  ResolvedDeferredObjectiveActivePlansV2,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import { toResolvedActivePlan } from '../../../packages/shared-domain/src/deferredActivePlanResolvedView';
 import type { DeferredObjectivePlanHistoryRecorder } from './planHistory';
@@ -22,10 +22,10 @@ import type { DeferredObjectivePlanHistoryRecorder } from './planHistory';
 // (just without a trajectory) — the widget falls back to a chartless detail
 // panel.
 export const assembleActivePlansUiView = (
-  snapshot: DeferredObjectiveActivePlansV1,
+  snapshot: DeferredObjectiveActivePlansV2,
   historyRecorder: DeferredObjectivePlanHistoryRecorder | undefined,
   readDeliveredEnergy: DeliveredEnergyReader,
-): ResolvedDeferredObjectiveActivePlansV1 => {
+): ResolvedDeferredObjectiveActivePlansV2 => {
   const plansByDeviceId = Object.fromEntries(
     Object.entries(snapshot.plansByDeviceId).map(([deviceId, plan]) => {
       // Defensive: pass a null/absent plan through untouched — resolving it (or

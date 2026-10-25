@@ -23,14 +23,14 @@ describe('mergeHoursPreservingCommitment', () => {
     const merged = mergeHoursPreservingCommitment(
       [],
       [
-        { startsAtMs: TEN, plannedKWh: 0.75 },
-        { startsAtMs: ELEVEN, plannedKWh: 0.5 },
+        { startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.75 },
+        { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 0.5 },
       ],
       TEN + SUB_HOUR,
     );
     expect(merged).toEqual([
-      { startsAtMs: TEN, plannedKWh: 0.75 },
-      { startsAtMs: ELEVEN, plannedKWh: 0.5 },
+      { startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.75 },
+      { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 0.5 },
     ]);
   });
 
@@ -43,27 +43,27 @@ describe('mergeHoursPreservingCommitment', () => {
     // thrash. now is in the committed hour (TEN), so TEN is current (gated)
     // and covered by live; the new ELEVEN expansion is adopted.
     const merged = mergeHoursPreservingCommitment(
-      [{ startsAtMs: TEN, plannedKWh: 0.65 }],
+      [{ startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.65 }],
       [
-        { startsAtMs: TEN, plannedKWh: 0.4 },
-        { startsAtMs: ELEVEN, plannedKWh: 0.3 },
+        { startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.4 },
+        { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 0.3 },
       ],
       TEN + SUB_HOUR,
     );
     expect(merged).toEqual([
-      { startsAtMs: TEN, plannedKWh: 0.65 },
-      { startsAtMs: ELEVEN, plannedKWh: 0.3 },
+      { startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.65 },
+      { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 0.3 },
     ]);
   });
 
   it('keeps the larger physical admission reservation when energy-floor hours merge', () => {
     const merged = mergeHoursPreservingCommitment(
-      [{ startsAtMs: TEN, plannedKWh: 0.65, plannedAdmissionPowerKw: 1 }],
-      [{ startsAtMs: TEN, plannedKWh: 0.4, plannedAdmissionPowerKw: 1.4 }],
+      [{ startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.65, plannedAdmissionPowerKw: 1 }],
+      [{ startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.4, plannedAdmissionPowerKw: 1.4 }],
       TEN + SUB_HOUR,
     );
     expect(merged).toEqual([{
-      startsAtMs: TEN,
+      startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000,
       plannedKWh: 0.65,
       plannedAdmissionPowerKw: 1.4,
     }]);
@@ -76,11 +76,11 @@ describe('mergeHoursPreservingCommitment', () => {
     // FULL hour — coversFromMs must drop so the history chart prorates it rather
     // than treating it as an already-trimmed sub-hour span.
     const merged = mergeHoursPreservingCommitment(
-      [{ startsAtMs: TEN, plannedKWh: 0.65 }],
-      [{ startsAtMs: TEN, plannedKWh: 0.4, coversFromMs: TEN + SUB_HOUR }],
+      [{ startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.65 }],
+      [{ startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.4, coversFromMs: TEN + SUB_HOUR }],
       TEN + SUB_HOUR,
     );
-    expect(merged).toEqual([{ startsAtMs: TEN, plannedKWh: 0.65 }]);
+    expect(merged).toEqual([{ startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.65 }]);
   });
 
   it('keeps coversFromMs for a freshly trimmed current hour with no committed floor', () => {
@@ -89,10 +89,10 @@ describe('mergeHoursPreservingCommitment', () => {
     // chart adds its energy whole rather than prorating it.
     const merged = mergeHoursPreservingCommitment(
       [],
-      [{ startsAtMs: TEN, plannedKWh: 0.4, coversFromMs: TEN + SUB_HOUR }],
+      [{ startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.4, coversFromMs: TEN + SUB_HOUR }],
       TEN + SUB_HOUR,
     );
-    expect(merged).toEqual([{ startsAtMs: TEN, plannedKWh: 0.4, coversFromMs: TEN + SUB_HOUR }]);
+    expect(merged).toEqual([{ startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.4, coversFromMs: TEN + SUB_HOUR }]);
   });
 
   it('prefers the committed full-hour coverage on an equal-energy overlap (tie)', () => {
@@ -102,11 +102,11 @@ describe('mergeHoursPreservingCommitment', () => {
     // coversFromMs would mislabel the full hour as already-trimmed and suppress
     // the chart's proration of the elapsed part.
     const merged = mergeHoursPreservingCommitment(
-      [{ startsAtMs: TEN, plannedKWh: 0.5 }],
-      [{ startsAtMs: TEN, plannedKWh: 0.5, coversFromMs: TEN + SUB_HOUR }],
+      [{ startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.5 }],
+      [{ startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.5, coversFromMs: TEN + SUB_HOUR }],
       TEN + SUB_HOUR,
     );
-    expect(merged).toEqual([{ startsAtMs: TEN, plannedKWh: 0.5 }]);
+    expect(merged).toEqual([{ startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.5 }]);
   });
 
   it('adopts the live plannedKWh on overlap when live exceeds the committed kWh (growth case)', () => {
@@ -115,16 +115,16 @@ describe('mergeHoursPreservingCommitment', () => {
     // re-fill now claims more for the same hour), the live value wins
     // because it represents the larger contract.
     const merged = mergeHoursPreservingCommitment(
-      [{ startsAtMs: TEN, plannedKWh: 0.4 }],
+      [{ startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.4 }],
       [
-        { startsAtMs: TEN, plannedKWh: 0.65 },
-        { startsAtMs: ELEVEN, plannedKWh: 0.3 },
+        { startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.65 },
+        { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 0.3 },
       ],
       TEN + SUB_HOUR,
     );
     expect(merged).toEqual([
-      { startsAtMs: TEN, plannedKWh: 0.65 },
-      { startsAtMs: ELEVEN, plannedKWh: 0.3 },
+      { startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.65 },
+      { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 0.3 },
     ]);
   });
 
@@ -136,15 +136,15 @@ describe('mergeHoursPreservingCommitment', () => {
     // task shortly) — verified, no concrete stale-commitment effect.
     const merged = mergeHoursPreservingCommitment(
       [
-        { startsAtMs: TEN, plannedKWh: 0.65 },
-        { startsAtMs: ELEVEN, plannedKWh: 0.3 },
+        { startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.65 },
+        { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 0.3 },
       ],
       [],
       TEN + SUB_HOUR,
     );
     expect(merged).toEqual([
-      { startsAtMs: TEN, plannedKWh: 0.65 },
-      { startsAtMs: ELEVEN, plannedKWh: 0.3 },
+      { startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.65 },
+      { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 0.3 },
     ]);
   });
 
@@ -155,18 +155,18 @@ describe('mergeHoursPreservingCommitment', () => {
     // coverage; live drops it, so freeze.
     const merged = mergeHoursPreservingCommitment(
       [
-        { startsAtMs: TEN, plannedKWh: 1.0 },
-        { startsAtMs: ELEVEN, plannedKWh: 1.0 },
+        { startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 1.0 },
+        { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 1.0 },
       ],
       [
-        { startsAtMs: ELEVEN, plannedKWh: 1.0 },
-        { startsAtMs: TWELVE, plannedKWh: 1.0 },
+        { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 1.0 },
+        { startsAtMs: TWELVE, endsAtMs: (TWELVE) + 3_600_000, plannedKWh: 1.0 },
       ],
       TEN + SUB_HOUR,
     );
     expect(merged).toEqual([
-      { startsAtMs: TEN, plannedKWh: 1.0 },
-      { startsAtMs: ELEVEN, plannedKWh: 1.0 },
+      { startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 1.0 },
+      { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 1.0 },
     ]);
   });
 
@@ -180,19 +180,19 @@ describe('mergeHoursPreservingCommitment', () => {
     // are preserved as floors and TWELVE is added.
     const merged = mergeHoursPreservingCommitment(
       [
-        { startsAtMs: TEN, plannedKWh: 1.5 },
-        { startsAtMs: ELEVEN, plannedKWh: 1.5 },
+        { startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 1.5 },
+        { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 1.5 },
       ],
       [
-        { startsAtMs: ELEVEN, plannedKWh: 1.5 },
-        { startsAtMs: TWELVE, plannedKWh: 1.2 },
+        { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 1.5 },
+        { startsAtMs: TWELVE, endsAtMs: (TWELVE) + 3_600_000, plannedKWh: 1.2 },
       ],
       ELEVEN + SUB_HOUR,
     );
     expect(merged).toEqual([
-      { startsAtMs: TEN, plannedKWh: 1.5 },
-      { startsAtMs: ELEVEN, plannedKWh: 1.5 },
-      { startsAtMs: TWELVE, plannedKWh: 1.2 },
+      { startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 1.5 },
+      { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 1.5 },
+      { startsAtMs: TWELVE, endsAtMs: (TWELVE) + 3_600_000, plannedKWh: 1.2 },
     ]);
     // The new future hour is present (the freeze-forever bug dropped it).
     expect(merged.some((h) => h.startsAtMs === TWELVE)).toBe(true);
@@ -204,19 +204,19 @@ describe('mergeHoursPreservingCommitment', () => {
     // kWh must survive as a floor.
     const merged = mergeHoursPreservingCommitment(
       [
-        { startsAtMs: TEN, plannedKWh: 1.5 },
-        { startsAtMs: ELEVEN, plannedKWh: 1.5 },
+        { startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 1.5 },
+        { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 1.5 },
       ],
       [
-        { startsAtMs: ELEVEN, plannedKWh: 0.8 },
-        { startsAtMs: TWELVE, plannedKWh: 1.2 },
+        { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 0.8 },
+        { startsAtMs: TWELVE, endsAtMs: (TWELVE) + 3_600_000, plannedKWh: 1.2 },
       ],
       ELEVEN + SUB_HOUR,
     );
     expect(merged).toEqual([
-      { startsAtMs: TEN, plannedKWh: 1.5 },
-      { startsAtMs: ELEVEN, plannedKWh: 1.5 },
-      { startsAtMs: TWELVE, plannedKWh: 1.2 },
+      { startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 1.5 },
+      { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 1.5 },
+      { startsAtMs: TWELVE, endsAtMs: (TWELVE) + 3_600_000, plannedKWh: 1.2 },
     ]);
   });
 
@@ -233,21 +233,21 @@ describe('mergeHoursPreservingCommitment', () => {
     // live, so this is genuine churn → FREEZE.
     const merged = mergeHoursPreservingCommitment(
       [
-        { startsAtMs: ELEVEN, plannedKWh: 1.5 },
-        { startsAtMs: TWELVE, plannedKWh: 1.5 },
-        { startsAtMs: THIRTEEN, plannedKWh: 1.5 },
+        { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 1.5 },
+        { startsAtMs: TWELVE, endsAtMs: (TWELVE) + 3_600_000, plannedKWh: 1.5 },
+        { startsAtMs: THIRTEEN, endsAtMs: (THIRTEEN) + 3_600_000, plannedKWh: 1.5 },
       ],
       [
-        { startsAtMs: THIRTEEN, plannedKWh: 1.5 },
-        { startsAtMs: 14 * HOUR_MS, plannedKWh: 1.5 },
+        { startsAtMs: THIRTEEN, endsAtMs: (THIRTEEN) + 3_600_000, plannedKWh: 1.5 },
+        { startsAtMs: 14 * HOUR_MS, endsAtMs: (14 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
       ],
       TEN + SUB_HOUR,
     );
     // Frozen to the full commitment.
     expect(merged).toEqual([
-      { startsAtMs: ELEVEN, plannedKWh: 1.5 },
-      { startsAtMs: TWELVE, plannedKWh: 1.5 },
-      { startsAtMs: THIRTEEN, plannedKWh: 1.5 },
+      { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 1.5 },
+      { startsAtMs: TWELVE, endsAtMs: (TWELVE) + 3_600_000, plannedKWh: 1.5 },
+      { startsAtMs: THIRTEEN, endsAtMs: (THIRTEEN) + 3_600_000, plannedKWh: 1.5 },
     ]);
     // The dropped future hour is retained and the optimizer-thrash expansion
     // (14:00) is NOT adopted.
@@ -261,20 +261,20 @@ describe('mergeHoursPreservingCommitment', () => {
     // genuine churn, so the commitment must freeze (no shrink).
     const merged = mergeHoursPreservingCommitment(
       [
-        { startsAtMs: TEN, plannedKWh: 1.5 },
-        { startsAtMs: ELEVEN, plannedKWh: 1.5 },
-        { startsAtMs: TWELVE, plannedKWh: 1.5 },
+        { startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 1.5 },
+        { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 1.5 },
+        { startsAtMs: TWELVE, endsAtMs: (TWELVE) + 3_600_000, plannedKWh: 1.5 },
       ],
       [
-        { startsAtMs: TEN, plannedKWh: 1.5 },
-        { startsAtMs: ELEVEN, plannedKWh: 1.5 },
+        { startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 1.5 },
+        { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 1.5 },
       ],
       TEN + SUB_HOUR,
     );
     expect(merged).toEqual([
-      { startsAtMs: TEN, plannedKWh: 1.5 },
-      { startsAtMs: ELEVEN, plannedKWh: 1.5 },
-      { startsAtMs: TWELVE, plannedKWh: 1.5 },
+      { startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 1.5 },
+      { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 1.5 },
+      { startsAtMs: TWELVE, endsAtMs: (TWELVE) + 3_600_000, plannedKWh: 1.5 },
     ]);
   });
 
@@ -282,45 +282,45 @@ describe('mergeHoursPreservingCommitment', () => {
     // A 0 kWh booking promises nothing, so it is not a floor: it neither freezes the
     // merge as "churn" nor survives once the live plan stops booking it.
     const merged = mergeHoursPreservingCommitment(
-      [{ startsAtMs: ELEVEN, plannedKWh: 0 }, { startsAtMs: TWELVE, plannedKWh: 1 }],
-      [{ startsAtMs: TWELVE, plannedKWh: 1 }, { startsAtMs: THIRTEEN, plannedKWh: 0.5 }],
+      [{ startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 0 }, { startsAtMs: TWELVE, endsAtMs: (TWELVE) + 3_600_000, plannedKWh: 1 }],
+      [{ startsAtMs: TWELVE, endsAtMs: (TWELVE) + 3_600_000, plannedKWh: 1 }, { startsAtMs: THIRTEEN, endsAtMs: (THIRTEEN) + 3_600_000, plannedKWh: 0.5 }],
       TEN + SUB_HOUR,
     );
     expect(merged).toEqual([
-      { startsAtMs: TWELVE, plannedKWh: 1 },
-      { startsAtMs: THIRTEEN, plannedKWh: 0.5 },
+      { startsAtMs: TWELVE, endsAtMs: (TWELVE) + 3_600_000, plannedKWh: 1 },
+      { startsAtMs: THIRTEEN, endsAtMs: (THIRTEEN) + 3_600_000, plannedKWh: 0.5 },
     ]);
   });
 
   it('keeps an elapsed 0 kWh booking as history, so the schedule does not change every hour', () => {
     // H (ELEVEN) was booked at 0 kWh and has elapsed. Dropping it would read as a
     // schedule change at every settle and write an empty revision each hour.
-    const committed = [{ startsAtMs: ELEVEN, plannedKWh: 0 }, { startsAtMs: TWELVE, plannedKWh: 1 }];
-    const merged = mergeHoursPreservingCommitment(committed, [{ startsAtMs: TWELVE, plannedKWh: 1 }], TWELVE + SUB_HOUR);
+    const committed = [{ startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 0 }, { startsAtMs: TWELVE, endsAtMs: (TWELVE) + 3_600_000, plannedKWh: 1 }];
+    const merged = mergeHoursPreservingCommitment(committed, [{ startsAtMs: TWELVE, endsAtMs: (TWELVE) + 3_600_000, plannedKWh: 1 }], TWELVE + SUB_HOUR);
     expect(merged).toEqual(committed);
     expect(sameHourSchedule(merged, committed)).toBe(true);
   });
 
   it('keeps a 0 kWh booking the live plan still books, and lets live energy win over it', () => {
     const merged = mergeHoursPreservingCommitment(
-      [{ startsAtMs: ELEVEN, plannedKWh: 0 }, { startsAtMs: TWELVE, plannedKWh: 1 }],
-      [{ startsAtMs: ELEVEN, plannedKWh: 0.4 }, { startsAtMs: TWELVE, plannedKWh: 1 }, { startsAtMs: THIRTEEN, plannedKWh: 0 }],
+      [{ startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 0 }, { startsAtMs: TWELVE, endsAtMs: (TWELVE) + 3_600_000, plannedKWh: 1 }],
+      [{ startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 0.4 }, { startsAtMs: TWELVE, endsAtMs: (TWELVE) + 3_600_000, plannedKWh: 1 }, { startsAtMs: THIRTEEN, endsAtMs: (THIRTEEN) + 3_600_000, plannedKWh: 0 }],
       TEN + SUB_HOUR,
     );
     expect(merged).toEqual([
-      { startsAtMs: ELEVEN, plannedKWh: 0.4 },
-      { startsAtMs: TWELVE, plannedKWh: 1 },
-      { startsAtMs: THIRTEEN, plannedKWh: 0 },
+      { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 0.4 },
+      { startsAtMs: TWELVE, endsAtMs: (TWELVE) + 3_600_000, plannedKWh: 1 },
+      { startsAtMs: THIRTEEN, endsAtMs: (THIRTEEN) + 3_600_000, plannedKWh: 0 },
     ]);
   });
 
   it('returns live sorted by startsAtMs when expansion adds out-of-order new hours', () => {
     const merged = mergeHoursPreservingCommitment(
-      [{ startsAtMs: ELEVEN, plannedKWh: 0.5 }],
+      [{ startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 0.5 }],
       [
-        { startsAtMs: TWELVE, plannedKWh: 0.4 },
-        { startsAtMs: ELEVEN, plannedKWh: 0.5 },
-        { startsAtMs: TEN, plannedKWh: 0.3 },
+        { startsAtMs: TWELVE, endsAtMs: (TWELVE) + 3_600_000, plannedKWh: 0.4 },
+        { startsAtMs: ELEVEN, endsAtMs: (ELEVEN) + 3_600_000, plannedKWh: 0.5 },
+        { startsAtMs: TEN, endsAtMs: (TEN) + 3_600_000, plannedKWh: 0.3 },
       ],
       ELEVEN + SUB_HOUR,
     );

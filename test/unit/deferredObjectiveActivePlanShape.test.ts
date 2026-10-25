@@ -25,7 +25,7 @@ describe('normalizeDeferredObjectiveActivePlansShape', () => {
     ['undefined', undefined],
     ['a primitive', 7],
     ['an array', []],
-    ['a wrong-version blob', { version: 2, plansByDeviceId: { a: { marker: 1 } } }],
+    ['a wrong-version blob', { version: 3, plansByDeviceId: { a: { marker: 1 } } }],
     ['a missing plansByDeviceId', { version: DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION }],
     ['a non-object plansByDeviceId', { version: DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION, plansByDeviceId: 9 }],
     // `typeof [] === 'object'` — an array plansByDeviceId must reject, not
@@ -60,4 +60,19 @@ describe('normalizeDeferredObjectiveActivePlansShape', () => {
     if (result === EMPTY_ENVELOPE) throw new Error('expected a populated envelope');
     expect(result.plansByDeviceId).not.toBe(raw.plansByDeviceId);
   });
+});
+
+
+it('migrates legacy commitments and every revision without changing their energy or milestones', () => {
+  const hour = { startsAtMs: 1_000, coversFromMs: 2_000, plannedKWh: 3, plannedUnitMilestone: 65 };
+  const revision = { hours: [hour] };
+  const result = normalizeDeferredObjectiveActivePlansShape({
+    version: 1,
+    plansByDeviceId: { task: { marker: 1, commitment: revision, original: revision, latest: revision, history: [revision] } },
+  }, runtimeLike);
+  const expectedRevision = { hours: [{ ...hour, endsAtMs: 3_601_000 }] };
+  expect(result).toEqual({ version: 2, plansByDeviceId: { task: {
+    marker: 1, commitment: expectedRevision, original: expectedRevision, latest: expectedRevision,
+    history: [expectedRevision],
+  } } });
 });

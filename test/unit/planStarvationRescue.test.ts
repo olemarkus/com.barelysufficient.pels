@@ -181,17 +181,17 @@ describe('starvation-rescue shared helpers', () => {
     const nowMs = Date.UTC(2026, 0, 1, 4, 30, 0); // 04:30 — mid-hour, floors to 04:00
 
     it('is true when a scheduled hour matches the epoch-hour floor of now', () => {
-      expect(scheduledHoursIncludeCurrentHour([{ startsAtMs: Date.UTC(2026, 0, 1, 4, 0, 0) }], nowMs)).toBe(true);
+      expect(scheduledHoursIncludeCurrentHour([{ startsAtMs: Date.UTC(2026, 0, 1, 4, 0, 0), endsAtMs: (Date.UTC(2026, 0, 1, 4, 0, 0)) + 3_600_000 }], nowMs)).toBe(true);
     });
 
     it('is false when the only scheduled hour is a later (cheaper) hour', () => {
       // The exact case the naive "has any scheduled hour" check got wrong.
-      expect(scheduledHoursIncludeCurrentHour([{ startsAtMs: Date.UTC(2026, 0, 1, 7, 0, 0) }], nowMs)).toBe(false);
+      expect(scheduledHoursIncludeCurrentHour([{ startsAtMs: Date.UTC(2026, 0, 1, 7, 0, 0), endsAtMs: (Date.UTC(2026, 0, 1, 7, 0, 0)) + 3_600_000 }], nowMs)).toBe(false);
     });
 
     it('matches the current hour even when other future hours are also scheduled', () => {
       expect(scheduledHoursIncludeCurrentHour(
-        [{ startsAtMs: Date.UTC(2026, 0, 1, 4, 0, 0) }, { startsAtMs: Date.UTC(2026, 0, 1, 6, 0, 0) }],
+        [{ startsAtMs: Date.UTC(2026, 0, 1, 4, 0, 0), endsAtMs: (Date.UTC(2026, 0, 1, 4, 0, 0)) + 3_600_000 }, { startsAtMs: Date.UTC(2026, 0, 1, 6, 0, 0), endsAtMs: (Date.UTC(2026, 0, 1, 6, 0, 0)) + 3_600_000 }],
         nowMs,
       )).toBe(true);
     });
@@ -201,7 +201,7 @@ describe('starvation-rescue shared helpers', () => {
     });
 
     it('ignores a past hour (a stale earlier bucket never counts as now)', () => {
-      expect(scheduledHoursIncludeCurrentHour([{ startsAtMs: nowMs - HOUR }], nowMs)).toBe(false);
+      expect(scheduledHoursIncludeCurrentHour([{ startsAtMs: nowMs - HOUR, endsAtMs: (nowMs - HOUR) + 3_600_000 }], nowMs)).toBe(false);
     });
   });
 

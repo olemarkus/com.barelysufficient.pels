@@ -173,7 +173,6 @@
     confirmLabel: STARVATION_RESCUE_WIDGET_COPY.rescueConfirmButton
   };
   var starvationRowIsRescuable = (intendedTarget, hasSmartTask = false, smartTaskHomeScope = "main") => smartTaskHomeScope === "main" && !hasSmartTask && intendedTarget !== null;
-  var ONE_HOUR_MS = 60 * 60 * 1e3;
   var resolveStarvationRescueRejectCopy = (reason) => {
     if (reason === "deadline_passed") return STARVATION_RESCUE_WIDGET_COPY.deadlinePassed;
     if (reason === "device_in_sub_home") return SMART_TASK_SUB_HOME_UNAVAILABLE;
@@ -435,7 +434,7 @@
     createButton: "Create task",
     createAnywayButton: "Create anyway",
     chartPrice: "Price",
-    chartScheduled: "Scheduled hours",
+    chartScheduled: "Scheduled",
     cannotMeetHint: "PELS will work toward this goal within your power limits, but it may not finish in time.",
     backButton: "Back",
     // Shown when the preview can't be projected and the backend did not provide a
@@ -638,7 +637,7 @@
     if (params.plannedWindowCheaperThanNow) {
       return `Cheaper than now \u2014 starts at ${params.firstPlannedTime}.`;
     }
-    return `Scheduled for the cheapest hours it can use \u2014 starts at ${params.firstPlannedTime}.`;
+    return `Scheduled for the cheapest times it can use \u2014 starts at ${params.firstPlannedTime}.`;
   };
   var CANNOT_MEET_RECOURSE = {
     openBudget: { label: "Open Budget", targetTab: "budget" },
@@ -663,7 +662,7 @@
     recourse: overviewDeviceRecourse(ctx.deviceId)
   });
   var notYetPlannedCopy = (kindNoun) => (() => ({
-    headline: "Choosing the cheapest hours",
+    headline: "Choosing when to run",
     body: `PELS is working out the ${kindNoun}. This normally lands within a minute.`,
     headlineReason: null,
     recourse: null
@@ -975,10 +974,9 @@
       planInputsRateBootstrapNote: null
     }
   };
-  var EV_CARD_HOUR_MS = 60 * 60 * 1e3;
   var SAMPLE_STALE_THRESHOLD_MS = 24 * 60 * 60 * 1e3;
   var ONE_MINUTE_MS = 60 * 1e3;
-  var ONE_HOUR_MS2 = 60 * ONE_MINUTE_MS;
+  var ONE_HOUR_MS = 60 * ONE_MINUTE_MS;
   var formatEnergyEstimateKWh = (params) => {
     const planned = params.energyPlannedKWh;
     const expected = typeof params.energyExpectedKWh === "number" ? params.energyExpectedKWh : planned;
@@ -1009,6 +1007,39 @@
     return `${params.scheduledLabel} ${params.scheduledWindowLabel} \xB7 ${readyByPart}`;
   };
 
+  // packages/shared-domain/src/utils/dateUtils.ts
+  var DAY_START_SEARCH_WINDOW_MS = 72 * 60 * 60 * 1e3;
+
+  // packages/shared-domain/src/deferredPlanHistoryShared.ts
+  var MINUTE_MS = 60 * 1e3;
+  var HOUR_MS2 = 60 * MINUTE_MS;
+
+  // packages/shared-domain/src/deferredPlanHistoryChartData.ts
+  var resolveRunBands = (hours, windowStartMs, windowEndMs) => {
+    const spans = [];
+    for (const hour of hours) {
+      const plannedKWh = Number.isFinite(hour.plannedKWh) ? hour.plannedKWh : 0;
+      if (plannedKWh <= 0) continue;
+      const coverFromMs = hour.coversFromMs ?? hour.startsAtMs;
+      if (!Number.isFinite(hour.startsAtMs) || !Number.isFinite(coverFromMs)) continue;
+      const fromMs = Math.max(windowStartMs, coverFromMs);
+      const toMs = Math.min(windowEndMs, hour.endsAtMs);
+      if (toMs <= fromMs) continue;
+      spans.push({ fromMs, toMs });
+    }
+    spans.sort((a, b) => a.fromMs - b.fromMs);
+    const merged = [];
+    for (const span of spans) {
+      const last = merged[merged.length - 1];
+      if (last !== void 0 && span.fromMs <= last.toMs) {
+        last.toMs = Math.max(last.toMs, span.toMs);
+        continue;
+      }
+      merged.push({ ...span });
+    }
+    return merged;
+  };
+
   // widgets/_shared/widgetSvg.ts
   var SVG_NS = "http://www.w3.org/2000/svg";
   var createSvg = (chartDocument, tagName, attributes = {}, textContent = "") => {
@@ -1028,9 +1059,6 @@
   var PLOT = { left: 10, right: 470, top: 14, bottom: 104 };
   var PLOT_WIDTH = PLOT.right - PLOT.left;
   var PLOT_HEIGHT = PLOT.bottom - PLOT.top;
-  var bucketWidth = (count) => PLOT_WIDTH / Math.max(1, count);
-  var bucketLeft = (index, count) => PLOT.left + bucketWidth(count) * index;
-  var bucketCenter = (index, count) => bucketLeft(index, count) + bucketWidth(count) / 2;
   var makeYScale = (prices) => {
     const finite = prices.filter((p) => Number.isFinite(p));
     const min = Math.min(...finite);
@@ -1040,30 +1068,20 @@
     const span = max + pad - lo;
     return (price) => PLOT.bottom - (price - lo) / span * PLOT_HEIGHT;
   };
-  var hourLabel = (startsAtMs) => String(new Date(startsAtMs).getHours()).padStart(2, "0");
-  var scheduledRuns = (scheduledIndexes) => {
-    const sorted = [...scheduledIndexes].sort((a, b) => a - b);
-    const runs = [];
-    for (const index of sorted) {
-      const last = runs[runs.length - 1];
-      if (last && index === last.end + 1) last.end = index;
-      else runs.push({ start: index, end: index });
-    }
-    return runs;
-  };
-  var buildStepPath = (ys, count) => {
+  var hourLabel = (startsAtMs) => new Date(startsAtMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  var buildStepPath = (periods, xScale, yScale) => {
     let path = "";
-    let penDown = false;
-    ys.forEach((y, index) => {
-      if (y === null) {
-        penDown = false;
-        return;
+    let previousEnd = null;
+    for (const period of periods) {
+      if (period.price === null) {
+        previousEnd = null;
+        continue;
       }
-      const left = bucketLeft(index, count);
-      const right = left + bucketWidth(count);
-      path += `${penDown ? "L" : "M"}${left.toFixed(1)} ${y.toFixed(1)} L${right.toFixed(1)} ${y.toFixed(1)} `;
-      penDown = true;
-    });
+      const y = yScale(period.price).toFixed(1);
+      const command = previousEnd === period.startsAtMs ? "L" : "M";
+      path += `${command}${xScale(period.startsAtMs).toFixed(1)} ${y} L${xScale(period.endsAtMs).toFixed(1)} ${y} `;
+      previousEnd = period.endsAtMs;
+    }
     return path.trim();
   };
   var renderPreviewChart = (container, { priceSeries, scheduledHours }) => {
@@ -1073,18 +1091,19 @@
     const prices = priceSeries.map((point) => point.price).filter((p) => Number.isFinite(p));
     if (count < 2 || prices.length === 0) return false;
     const yScale = makeYScale(prices);
-    const ys = priceSeries.map((point) => Number.isFinite(point.price) ? yScale(point.price) : null);
-    const scheduledStarts = new Set(scheduledHours.map((hour) => hour.startsAtMs));
-    const scheduledIndexes = priceSeries.map((point, index) => scheduledStarts.has(point.startsAtMs) ? index : -1).filter((index) => index >= 0);
+    const startMs = priceSeries[0].startsAtMs;
+    const endMs = priceSeries[priceSeries.length - 1].endsAtMs;
+    const xScale = (atMs) => PLOT.left + (atMs - startMs) / (endMs - startMs) * PLOT_WIDTH;
+    const bands = resolveRunBands(scheduledHours, startMs, endMs);
     const svg = createSvg(doc, "svg", {
       class: "pchart",
       viewBox: `0 0 ${VIEW.width} ${VIEW.height}`,
       preserveAspectRatio: "none",
       role: "img"
     });
-    for (const run of scheduledRuns(scheduledIndexes)) {
-      const x1 = bucketLeft(run.start, count);
-      const x2 = bucketLeft(run.end, count) + bucketWidth(count);
+    for (const run of bands) {
+      const x1 = xScale(run.fromMs);
+      const x2 = xScale(run.toMs);
       svg.appendChild(createSvg(doc, "rect", {
         class: "pchart__band",
         x: x1,
@@ -1094,27 +1113,27 @@
         rx: 3
       }));
     }
-    const stepPath = buildStepPath(ys, count);
+    const stepPath = buildStepPath(priceSeries, xScale, yScale);
     if (stepPath) svg.appendChild(createSvg(doc, "path", { class: "pchart__line", d: stepPath }));
-    for (const index of scheduledIndexes) {
-      const y = ys[index];
-      if (y !== null) {
-        svg.appendChild(createSvg(doc, "circle", {
-          class: "pchart__dot",
-          cx: bucketCenter(index, count),
-          cy: y,
-          r: 4
-        }));
-      }
+    for (const period of scheduledHours) {
+      const centerMs = (period.startsAtMs + period.endsAtMs) / 2;
+      const price = priceSeries.find((point) => point.startsAtMs <= centerMs && point.endsAtMs > centerMs)?.price;
+      if (price === null || price === void 0) continue;
+      svg.appendChild(createSvg(doc, "circle", {
+        class: "pchart__dot",
+        cx: xScale(centerMs),
+        cy: yScale(price),
+        r: 4
+      }));
     }
     const axis = doc.createElement("div");
     axis.className = "pchart-axis";
     priceSeries.forEach((point, index) => {
-      const show = index === 0 || index === count - 1 || index % 3 === 0 && count - 1 - index >= 2;
+      const show = index === 0 || index === count - 1 || index % Math.ceil(count / 5) === 0 && count - 1 - index >= Math.ceil(count / 10);
       if (!show) return;
       const label = doc.createElement("span");
       label.className = "pchart__axis";
-      label.style.left = `${bucketCenter(index, count) / VIEW.width * 100}%`;
+      label.style.left = `${xScale((point.startsAtMs + point.endsAtMs) / 2) / VIEW.width * 100}%`;
       label.textContent = hourLabel(point.startsAtMs);
       axis.appendChild(label);
     });
@@ -1351,11 +1370,11 @@
   var C2 = STARVATION_RESCUE_WIDGET_COPY;
   var REFRESH_INTERVAL_MS = 10 * 1e3;
   var DONE_FLASH_MS = 1800;
-  var HOUR_MS2 = 60 * 60 * 1e3;
-  var PREVIEW_NEXT_HOUR_MS = Math.ceil(Date.now() / HOUR_MS2) * HOUR_MS2;
+  var HOUR_MS3 = 60 * 60 * 1e3;
+  var PREVIEW_NEXT_HOUR_MS = Math.ceil(Date.now() / HOUR_MS3) * HOUR_MS3;
   var PREVIEW_RESPONSE = {
     ok: true,
-    deadlineAtMs: PREVIEW_NEXT_HOUR_MS + 3 * HOUR_MS2,
+    deadlineAtMs: PREVIEW_NEXT_HOUR_MS + 3 * HOUR_MS3,
     deadlineLabel: "Today 17:00",
     scheduledWindowLabel: "13:00\u201315:00",
     estimate: {
@@ -1364,10 +1383,10 @@
       // Scheduled across the current hour + the next one, so the fixture can honestly
       // demonstrate the at-cap note (which is about running in the CURRENT clock hour).
       scheduledHours: [
-        { startsAtMs: PREVIEW_NEXT_HOUR_MS - HOUR_MS2, plannedKWh: 1.5 },
-        { startsAtMs: PREVIEW_NEXT_HOUR_MS, plannedKWh: 1.5 }
+        { startsAtMs: PREVIEW_NEXT_HOUR_MS - HOUR_MS3, endsAtMs: PREVIEW_NEXT_HOUR_MS, plannedKWh: 1.5 },
+        { startsAtMs: PREVIEW_NEXT_HOUR_MS, endsAtMs: PREVIEW_NEXT_HOUR_MS + HOUR_MS3, plannedKWh: 1.5 }
       ],
-      projectedFinishAtMs: PREVIEW_NEXT_HOUR_MS + HOUR_MS2,
+      projectedFinishAtMs: PREVIEW_NEXT_HOUR_MS + HOUR_MS3,
       energyEstimateKWh: 3,
       energyExpectedKWh: 2.7,
       costEstimate: 3.1,
@@ -1376,11 +1395,11 @@
       // preview / render-gate exercises the price chart + scheduled-hour highlight.
       // Ascending by startsAtMs; prices are unit-less shape values (no chart axis).
       priceSeries: [
-        { startsAtMs: PREVIEW_NEXT_HOUR_MS - HOUR_MS2, price: 38 },
-        { startsAtMs: PREVIEW_NEXT_HOUR_MS, price: 45 },
-        { startsAtMs: PREVIEW_NEXT_HOUR_MS + HOUR_MS2, price: 92 },
-        { startsAtMs: PREVIEW_NEXT_HOUR_MS + 2 * HOUR_MS2, price: 120 },
-        { startsAtMs: PREVIEW_NEXT_HOUR_MS + 3 * HOUR_MS2, price: 104 }
+        { startsAtMs: PREVIEW_NEXT_HOUR_MS - HOUR_MS3, endsAtMs: PREVIEW_NEXT_HOUR_MS, price: 38 },
+        { startsAtMs: PREVIEW_NEXT_HOUR_MS, endsAtMs: PREVIEW_NEXT_HOUR_MS + HOUR_MS3, price: 45 },
+        { startsAtMs: PREVIEW_NEXT_HOUR_MS + HOUR_MS3, endsAtMs: PREVIEW_NEXT_HOUR_MS + 2 * HOUR_MS3, price: 92 },
+        { startsAtMs: PREVIEW_NEXT_HOUR_MS + 2 * HOUR_MS3, endsAtMs: PREVIEW_NEXT_HOUR_MS + 3 * HOUR_MS3, price: 120 },
+        { startsAtMs: PREVIEW_NEXT_HOUR_MS + 3 * HOUR_MS3, endsAtMs: PREVIEW_NEXT_HOUR_MS + 4 * HOUR_MS3, price: 104 }
       ],
       // The candidate runs in the current hour while the measured whole-home draw is
       // already at the physical cap — surfaces the at-limit honesty note.

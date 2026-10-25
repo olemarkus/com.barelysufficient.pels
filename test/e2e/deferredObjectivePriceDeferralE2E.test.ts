@@ -33,7 +33,7 @@ import type {
   DeferredObjectiveHorizonPlan,
   DeferredObjectiveStep,
 } from '../../lib/objectives/deferredObjectives';
-import type { DeferredObjectiveActivePlanHourV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectivePlanInterval } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { PlanInputDevice } from '../../packages/planner-types/src/planInputDevice';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import { CAPACITY_ONLY_HORIZON_LIMIT } from '../helpers/powerLimitSettings';
@@ -88,9 +88,9 @@ const buildPriceBuckets = (
 // shape), so the test never hand-sets the ahead flag.
 const buildCommittedHours = (
   committedKWhByHour: Readonly<Record<number, number>>,
-): DeferredObjectiveActivePlanHourV1[] => (
+): DeferredObjectivePlanInterval[] => (
   Object.entries(committedKWhByHour).map(([hourIndex, plannedKWh]) => ({
-    startsAtMs: BASE_MS + Number(hourIndex) * HOUR_MS,
+    startsAtMs: BASE_MS + Number(hourIndex) * HOUR_MS, endsAtMs: (BASE_MS + Number(hourIndex) * HOUR_MS) + 3_600_000,
     plannedKWh,
   }))
 );

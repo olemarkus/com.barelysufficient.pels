@@ -406,13 +406,11 @@ export const starvationRowIsRescuable = (
 // basis the preview joins price/scheduled hours on), so we compare against the
 // epoch-hour floor of `nowMs` — never the plan's earliest hour, which is the
 // cheapest scheduled hour and is routinely in the future.
-const ONE_HOUR_MS = 60 * 60 * 1000;
 export const scheduledHoursIncludeCurrentHour = (
-  scheduledHours: readonly { startsAtMs: number }[],
+  scheduledHours: readonly { startsAtMs: number; endsAtMs: number }[],
   nowMs: number,
 ): boolean => {
-  const currentHourStartMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
-  return scheduledHours.some((hour) => hour.startsAtMs === currentHourStartMs);
+  return scheduledHours.some((hour) => hour.startsAtMs <= nowMs && nowMs < hour.endsAtMs);
 };
 
 // Map a rescue-create rejection reason to the user-facing widget error line.

@@ -1,5 +1,5 @@
 // Unit tests for `formatPlanHistoryObservedCoverage` — the v2.9.x rewrite that
-// flips the actionable "N=0 of M=5 scheduled hours" case from invisible (the old
+// flips the actionable "N=0 of M=5 scheduled periods" case from invisible (the old
 // time-based ≥99 %-of-window heuristic dropped to null) to visible. The string
 // feeds the past-tasks list card and the smart-task history-detail hero.
 import {
@@ -18,11 +18,11 @@ const buildSnapshot = (
   overrides: Partial<DeferredObjectivePlanHistoryRevisionSnapshot> = {},
 ): DeferredObjectivePlanHistoryRevisionSnapshot => ({
   hours: [
-    { startsAtMs: STARTED_MS, plannedKWh: 2 },
-    { startsAtMs: STARTED_MS + HOUR_MS, plannedKWh: 2 },
-    { startsAtMs: STARTED_MS + 2 * HOUR_MS, plannedKWh: 2 },
-    { startsAtMs: STARTED_MS + 3 * HOUR_MS, plannedKWh: 2 },
-    { startsAtMs: STARTED_MS + 4 * HOUR_MS, plannedKWh: 2 },
+    { startsAtMs: STARTED_MS, endsAtMs: (STARTED_MS) + 3_600_000, plannedKWh: 2 },
+    { startsAtMs: STARTED_MS + HOUR_MS, endsAtMs: (STARTED_MS + HOUR_MS) + 3_600_000, plannedKWh: 2 },
+    { startsAtMs: STARTED_MS + 2 * HOUR_MS, endsAtMs: (STARTED_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
+    { startsAtMs: STARTED_MS + 3 * HOUR_MS, endsAtMs: (STARTED_MS + 3 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
+    { startsAtMs: STARTED_MS + 4 * HOUR_MS, endsAtMs: (STARTED_MS + 4 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
   ],
   energyNeededKWh: 10,
   planStatus: 'on_track',
@@ -58,16 +58,16 @@ const buildEntry = (
 });
 
 describe('formatPlanHistoryObservedCoverage', () => {
-  it('emits "Observed 0 of 5 scheduled hours" when the planner allocated active hours but no observation was recorded', () => {
+  it('emits "Observed 0 of 5 scheduled periods" when the planner allocated active hours but no observation was recorded', () => {
     // The canonical actionable case: planner thought the device was active across 5 hours
     // but it never drew power. Pre-rewrite, this collapsed to null (the window was fully
     // "observed" because the diagnostic stream was up); the hour-bucket rewrite makes the
     // planner-vs-reality mismatch visible so the user can see something went wrong.
     const line = formatPlanHistoryObservedCoverage(buildEntry({ observedIntervals: [] }));
-    expect(line).toBe('Observed 0 of 5 scheduled hours');
+    expect(line).toBe('Observed 0 of 5 scheduled periods');
   });
 
-  it('counts a scheduled hour as observed when any observed interval overlaps the hour bucket', () => {
+  it('counts a scheduled period as observed when any observed interval overlaps the hour bucket', () => {
     // 2 of 5 buckets overlap an observed interval — the matched buckets are
     // [start, start+1h] and [start+1h, start+2h], both touched by the single interval.
     const line = formatPlanHistoryObservedCoverage(buildEntry({
@@ -75,31 +75,31 @@ describe('formatPlanHistoryObservedCoverage', () => {
         { fromMs: STARTED_MS, toMs: STARTED_MS + 2 * HOUR_MS },
       ],
     }));
-    expect(line).toBe('Observed 2 of 5 scheduled hours');
+    expect(line).toBe('Observed 2 of 5 scheduled periods');
   });
 
-  it('emits "Observed 5 of 5 scheduled hours" when every planned bucket overlaps observation', () => {
+  it('emits "Observed 5 of 5 scheduled periods" when every planned bucket overlaps observation', () => {
     const line = formatPlanHistoryObservedCoverage(buildEntry({
       observedIntervals: [
         { fromMs: STARTED_MS, toMs: STARTED_MS + 5 * HOUR_MS },
       ],
     }));
-    expect(line).toBe('Observed 5 of 5 scheduled hours');
+    expect(line).toBe('Observed 5 of 5 scheduled periods');
   });
 
-  it('singularizes the noun when the plan carries exactly one active hour ("of 1 scheduled hour")', () => {
+  it('singularizes the noun when the plan carries exactly one active period ("of 1 scheduled period")', () => {
     // Single-hour plans are common (short EV top-ups, water-heater boost runs scheduled into
-    // one cheap slot). The plural-as-default would read "of 1 scheduled hours" — wrong, and
+    // one cheap slot). The plural-as-default would read "of 1 scheduled periods" — wrong, and
     // the only string-shape edge case in the helper.
     const snapshot = buildSnapshot({
-      hours: [{ startsAtMs: STARTED_MS, plannedKWh: 2 }],
+      hours: [{ startsAtMs: STARTED_MS, endsAtMs: (STARTED_MS) + 3_600_000, plannedKWh: 2 }],
     });
     const line = formatPlanHistoryObservedCoverage(buildEntry({
       originalPlan: snapshot,
       finalPlan: snapshot,
       observedIntervals: [],
     }));
-    expect(line).toBe('Observed 0 of 1 scheduled hour');
+    expect(line).toBe('Observed 0 of 1 scheduled period');
   });
 
   it('ignores plan hours whose plannedKWh is zero (counts only active-allocation buckets)', () => {
@@ -107,11 +107,11 @@ describe('formatPlanHistoryObservedCoverage', () => {
     // are observed; the third is unobserved.
     const snapshot = buildSnapshot({
       hours: [
-        { startsAtMs: STARTED_MS, plannedKWh: 2 },
-        { startsAtMs: STARTED_MS + HOUR_MS, plannedKWh: 0 },
-        { startsAtMs: STARTED_MS + 2 * HOUR_MS, plannedKWh: 2 },
-        { startsAtMs: STARTED_MS + 3 * HOUR_MS, plannedKWh: 0 },
-        { startsAtMs: STARTED_MS + 4 * HOUR_MS, plannedKWh: 2 },
+        { startsAtMs: STARTED_MS, endsAtMs: (STARTED_MS) + 3_600_000, plannedKWh: 2 },
+        { startsAtMs: STARTED_MS + HOUR_MS, endsAtMs: (STARTED_MS + HOUR_MS) + 3_600_000, plannedKWh: 0 },
+        { startsAtMs: STARTED_MS + 2 * HOUR_MS, endsAtMs: (STARTED_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
+        { startsAtMs: STARTED_MS + 3 * HOUR_MS, endsAtMs: (STARTED_MS + 3 * HOUR_MS) + 3_600_000, plannedKWh: 0 },
+        { startsAtMs: STARTED_MS + 4 * HOUR_MS, endsAtMs: (STARTED_MS + 4 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
       ],
     });
     const line = formatPlanHistoryObservedCoverage(buildEntry({
@@ -120,7 +120,7 @@ describe('formatPlanHistoryObservedCoverage', () => {
       // Cover the first two active buckets [start, start+3h], skip the third (start+4h).
       observedIntervals: [{ fromMs: STARTED_MS, toMs: STARTED_MS + 3 * HOUR_MS }],
     }));
-    expect(line).toBe('Observed 2 of 3 scheduled hours');
+    expect(line).toBe('Observed 2 of 3 scheduled periods');
   });
 
   it('returns null when no plan was ever recorded (legacy entry, no plan snapshot to count against)', () => {
@@ -134,8 +134,8 @@ describe('formatPlanHistoryObservedCoverage', () => {
   it('returns null when the plan exists but carries no active-allocation hours (M === 0)', () => {
     const snapshot = buildSnapshot({
       hours: [
-        { startsAtMs: STARTED_MS, plannedKWh: 0 },
-        { startsAtMs: STARTED_MS + HOUR_MS, plannedKWh: 0 },
+        { startsAtMs: STARTED_MS, endsAtMs: (STARTED_MS) + 3_600_000, plannedKWh: 0 },
+        { startsAtMs: STARTED_MS + HOUR_MS, endsAtMs: (STARTED_MS + HOUR_MS) + 3_600_000, plannedKWh: 0 },
       ],
     });
     const line = formatPlanHistoryObservedCoverage(buildEntry({
@@ -164,18 +164,18 @@ describe('formatPlanHistoryObservedCoverage', () => {
     // last word) so the count denominator reflects the actually-committed schedule.
     const originalPlan = buildSnapshot({
       hours: [
-        { startsAtMs: STARTED_MS, plannedKWh: 2 },
-        { startsAtMs: STARTED_MS + HOUR_MS, plannedKWh: 2 },
-        { startsAtMs: STARTED_MS + 2 * HOUR_MS, plannedKWh: 2 },
-        { startsAtMs: STARTED_MS + 3 * HOUR_MS, plannedKWh: 2 },
-        { startsAtMs: STARTED_MS + 4 * HOUR_MS, plannedKWh: 2 },
+        { startsAtMs: STARTED_MS, endsAtMs: (STARTED_MS) + 3_600_000, plannedKWh: 2 },
+        { startsAtMs: STARTED_MS + HOUR_MS, endsAtMs: (STARTED_MS + HOUR_MS) + 3_600_000, plannedKWh: 2 },
+        { startsAtMs: STARTED_MS + 2 * HOUR_MS, endsAtMs: (STARTED_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
+        { startsAtMs: STARTED_MS + 3 * HOUR_MS, endsAtMs: (STARTED_MS + 3 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
+        { startsAtMs: STARTED_MS + 4 * HOUR_MS, endsAtMs: (STARTED_MS + 4 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
       ],
     });
     const finalPlan = buildSnapshot({
       hours: [
-        { startsAtMs: STARTED_MS + 2 * HOUR_MS, plannedKWh: 2 },
-        { startsAtMs: STARTED_MS + 3 * HOUR_MS, plannedKWh: 2 },
-        { startsAtMs: STARTED_MS + 4 * HOUR_MS, plannedKWh: 2 },
+        { startsAtMs: STARTED_MS + 2 * HOUR_MS, endsAtMs: (STARTED_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
+        { startsAtMs: STARTED_MS + 3 * HOUR_MS, endsAtMs: (STARTED_MS + 3 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
+        { startsAtMs: STARTED_MS + 4 * HOUR_MS, endsAtMs: (STARTED_MS + 4 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
       ],
     });
     const line = formatPlanHistoryObservedCoverage(buildEntry({
@@ -183,7 +183,7 @@ describe('formatPlanHistoryObservedCoverage', () => {
       finalPlan,
       observedIntervals: [{ fromMs: STARTED_MS + 2 * HOUR_MS, toMs: STARTED_MS + 4 * HOUR_MS }],
     }));
-    expect(line).toBe('Observed 2 of 3 scheduled hours');
+    expect(line).toBe('Observed 2 of 3 scheduled periods');
   });
 
   // Owner decision 2026-10-03: a booking is captured only on a tick that also
@@ -192,8 +192,8 @@ describe('formatPlanHistoryObservedCoverage', () => {
   it('hides the line on an entry that records each hour\'s booking at its start', () => {
     const line = formatPlanHistoryObservedCoverage(buildEntry({
       hourStartBookings: [
-        { atMs: STARTED_MS, bookedKWh: 2 },
-        { atMs: STARTED_MS + HOUR_MS, bookedKWh: 2.5 },
+        { atMs: STARTED_MS, endsAtMs: (STARTED_MS) + 3_600_000, bookedKWh: 2 },
+        { atMs: STARTED_MS + HOUR_MS, endsAtMs: (STARTED_MS + HOUR_MS) + 3_600_000, bookedKWh: 2.5 },
       ],
       observedIntervals: [{ fromMs: STARTED_MS, toMs: STARTED_MS + 2 * HOUR_MS }],
     }));

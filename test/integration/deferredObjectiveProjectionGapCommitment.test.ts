@@ -22,7 +22,7 @@ import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
-import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectiveActivePlansV2 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
@@ -231,7 +231,7 @@ const buildSettings = () => objectiveRosterFor({
 const buildDiagnostic = (
   nowMs: number,
   device: MeteredPlanInputDevice & { thermalDirection: 'heating' },
-  activePlans: DeferredObjectiveActivePlansV1,
+  activePlans: DeferredObjectiveActivePlansV2,
 ): DeferredObjectiveDiagnostic | undefined => buildFixtureDiagnostics({
   hasSolarProduction: false,
   resolveDeviceExclusion: noDeviceExclusion,
@@ -255,8 +255,8 @@ const buildDiagnostic = (
 // Phase 1 (pre-restart): bootstrap-commit the plan with the step ladder present,
 // and capture what the recorder persists to the settings store — the payload
 // that survives the restart.
-const commitPlanAndPersist = (): DeferredObjectiveActivePlansV1 => {
-  let persisted: DeferredObjectiveActivePlansV1 | null = null;
+const commitPlanAndPersist = (): DeferredObjectiveActivePlansV2 => {
+  let persisted: DeferredObjectiveActivePlansV2 | null = null;
   const recorder = new DeferredObjectiveActivePlanRecorder({
     load: () => null,
     save: (payload) => { persisted = payload; return true; },
@@ -341,17 +341,17 @@ describe('committed smart task through a planner-input projection gap', () => {
     // loop across the gap — through the 18:58 settle and the 19:00 hour rollover —
     // and assert the persisted commitment envelope and its per-hour control
     // stamps (unit milestones, cheaperHourAhead) come out byte-identical.
-    let reloaded: DeferredObjectiveActivePlansV1 | null = persisted;
+    let reloaded: DeferredObjectiveActivePlansV2 | null = persisted;
     const recorder = new DeferredObjectiveActivePlanRecorder({
       load: () => persisted,
       save: (payload) => { reloaded = payload; return true; },
     });
-    const stampsOf = (plans: DeferredObjectiveActivePlansV1 | null) => {
+    const stampsOf = (plans: DeferredObjectiveActivePlansV2 | null) => {
       const plan = plans?.plansByDeviceId[DEVICE_ID];
       return {
-        commitment: plan?.commitment?.hours.map((h) => ({ startsAtMs: h.startsAtMs, plannedKWh: h.plannedKWh })),
+        commitment: plan?.commitment?.hours.map((h) => ({ startsAtMs: h.startsAtMs, endsAtMs: (h.startsAtMs) + 3_600_000, plannedKWh: h.plannedKWh })),
         control: plan?.latest?.hours.map((h) => ({
-          startsAtMs: h.startsAtMs,
+          startsAtMs: h.startsAtMs, endsAtMs: (h.startsAtMs) + 3_600_000,
           plannedKWh: h.plannedKWh,
           plannedUnitMilestone: h.plannedUnitMilestone,
           cheaperHourAhead: h.cheaperHourAhead,

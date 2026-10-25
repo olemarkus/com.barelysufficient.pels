@@ -27,6 +27,7 @@ import type {
   PriceSetupSuggestion,
   SettingsUiHubMarketRead,
   SettingsUiPriceSourcePayloads,
+  SettingsUiTaskPricePeriod,
 } from '../../packages/contracts/src/settingsUiApi';
 import {
   NO_NORWAY_PRICE_SETUP_SUGGESTION,
@@ -39,6 +40,7 @@ import { readPriceSetup } from './priceSetupRead';
 import type { PriceSourceSwitch } from './priceSchemeResolution';
 import type { BudgetPriceInputs } from './budgetPrice';
 import { type CombinedHourlyPrice, isCombinedPricesV1 } from './priceTypes';
+import type { MeteredPricePeriod, PriceHorizonEntry } from '../../packages/planner-types/src/priceHorizon';
 import { shouldCatchUpCombinedPricesRotation } from './priceServiceCombined';
 import type {
   PriceOptimizationDeviceSettings,
@@ -463,6 +465,18 @@ export class PriceCoordinator {
 
   getCombinedHourlyPrices(): CombinedHourlyPrice[] {
     return this.priceService.getCombinedHourlyPrices();
+  }
+
+  buildPriceHorizon(startMs: number, endMs: number): PriceHorizonEntry[] {
+    return this.priceService.buildPriceHorizon(startMs, endMs);
+  }
+
+  getTaskPricePeriodsForUi(): SettingsUiTaskPricePeriod[] {
+    return this.priceService.getTaskPricePeriodsForUi();
+  }
+
+  getMeteredPricePeriods(startMs: number, endMs: number): MeteredPricePeriod[] {
+    return this.priceService.getMeteredPricePeriods(startMs, endMs);
   }
 
   /** Inject (or clear) the forecast-surplus inputs that derive the planning price. */

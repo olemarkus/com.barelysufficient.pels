@@ -73,7 +73,7 @@ const OK_PREVIEW = {
   estimate: {
     budgetRole: 'none' as const,
     status: 'on_track' as const,
-    scheduledHours: [{ startsAtMs: Date.now(), plannedKWh: 2 }],
+    scheduledHours: [{ startsAtMs: Date.now(), endsAtMs: (Date.now()) + 3_600_000, plannedKWh: 2 }],
     projectedFinishAtMs: Date.now() + 2 * 60 * 60 * 1000,
     energyEstimateKWh: 2,
     energyExpectedKWh: 1.8,
@@ -210,7 +210,7 @@ describe('create smart task widget browser', () => {
         estimate: {
           budgetRole: 'none' as const,
           status: 'on_track' as const,
-          scheduledHours: [{ startsAtMs: Date.now(), plannedKWh: 2 }],
+          scheduledHours: [{ startsAtMs: Date.now(), endsAtMs: (Date.now()) + 3_600_000, plannedKWh: 2 }],
           projectedFinishAtMs: Date.now() + 2 * 60 * 60 * 1000,
           energyEstimateKWh: 2,
           energyExpectedKWh: 1.8,

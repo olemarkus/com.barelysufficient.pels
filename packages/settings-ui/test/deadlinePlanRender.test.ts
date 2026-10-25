@@ -521,17 +521,17 @@ describe('DeadlinePlan on-track hero status row', () => {
   });
 });
 
-describe('DeadlinePlan cheapest-hours caption', () => {
+describe('DeadlinePlan scheduled-duration caption', () => {
   it('renders the producer-resolved caption above the chart-key caption', () => {
     const payload = buildReadyPayloadWithDeviceRecourse('dev_heater_42');
     payload.timeline.cheapestHoursCaption =
-      'Picked 2 of the 4 hours it can use · avg 0.15 kr/kWh';
+      'Scheduled 30m · avg 0.15 kr/kWh';
     const mount = mountIntoBody();
     renderDeadlinePlan(mount, { status: 'ready', payload });
     const captions = [...mount.querySelectorAll('.deadline-horizon-caption')];
     expect(captions.map((node) => node.textContent)).toEqual([
-      'Picked 2 of the 4 hours it can use · avg 0.15 kr/kWh',
-      'Filled bars are the picked hours · dimmed bars were not picked',
+      'Scheduled 30m · avg 0.15 kr/kWh',
+      'Filled bars are scheduled · dimmed bars are not scheduled',
     ]);
   });
 
@@ -544,7 +544,7 @@ describe('DeadlinePlan cheapest-hours caption', () => {
     // The one-line key decodes the filled/dimmed bar encoding and renders
     // unconditionally — the chart never ships an unexplained encoding.
     expect(captions.map((node) => node.textContent)).toEqual([
-      'Filled bars are the picked hours · dimmed bars were not picked',
+      'Filled bars are scheduled · dimmed bars are not scheduled',
     ]);
   });
 });

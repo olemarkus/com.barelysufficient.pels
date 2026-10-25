@@ -16,7 +16,7 @@
  */
 import type {
   DeferredObjectivePlanHistoryRecord,
-  DeferredObjectivePlanHistoryV6,
+  DeferredObjectivePlanHistoryV7,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import { getLogger } from '../../logging/logger';
 import type { SettingsPort } from '../../ports/homeyRuntime';
@@ -51,9 +51,9 @@ const storeLogger = getLogger('deferred-objectives/plan-history-store');
 
 export type PlanHistoryStore = {
   /** The stored history, or `null` when the store holds nothing. Throws only on I/O. */
-  read(): DeferredObjectivePlanHistoryV6 | null;
+  read(): DeferredObjectivePlanHistoryV7 | null;
   /** Persist `history`, touching only the rows that differ from what the store holds. */
-  write(history: DeferredObjectivePlanHistoryV6): void;
+  write(history: DeferredObjectivePlanHistoryV7): void;
   readMeteredDelivery(): PersistedMeteredDeliveryState[];
   writeMeteredDelivery(states: readonly PersistedMeteredDeliveryState[]): void;
 };
@@ -63,7 +63,7 @@ export type PlanHistoryRepository = PlanHistoryStore & {
   /** Whether the legacy settings `key` was imported into the store. Throws only on I/O. */
   hasImportedLegacy(key: string): boolean;
   /** {@link PlanHistoryStore.write} what the legacy `key`'s import made, and mark it, in one transaction. */
-  writeLegacyImport(key: string, history: DeferredObjectivePlanHistoryV6): void;
+  writeLegacyImport(key: string, history: DeferredObjectivePlanHistoryV7): void;
 };
 
 const SCHEMA = `
@@ -90,17 +90,17 @@ const prepareStatements = (db: UserdataDatabase) => ({
  */
 const salvageLegacyPlanHistory = (
   raw: unknown,
-): { snapshot: DeferredObjectivePlanHistoryV6; dropped: number } | null => {
+): { snapshot: DeferredObjectivePlanHistoryV7; dropped: number } | null => {
   if (!raw || typeof raw !== 'object') return null;
   const candidate = raw as Record<string, unknown>;
   if (!Array.isArray(candidate.entries)) return null;
-  if (![3, 4, 5, DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION].includes(candidate.version as number)) return null;
+  if (![3, 4, 5, 6, DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION].includes(candidate.version as number)) return null;
   const snapshot = normalizeDeferredObjectivePlanHistory(raw);
   return { snapshot, dropped: candidate.entries.length - snapshot.entries.length };
 };
 
 type Held = Map<string, DeferredObjectivePlanHistoryRecord>;
-const heldOf = (history: DeferredObjectivePlanHistoryV6): Held => (
+const heldOf = (history: DeferredObjectivePlanHistoryV7): Held => (
   new Map(history.entries.map((entry) => [entry.id, entry]))
 );
 
@@ -123,14 +123,16 @@ export const createPlanHistoryStore = (db: UserdataDatabase): PlanHistoryReposit
    * Runs inside a transaction: a row that does not parse, fails the strict
    * parser, or disagrees with its own key columns is deleted as read.
    */
-  const load = (): DeferredObjectivePlanHistoryV6 | null => {
+  const load = (): DeferredObjectivePlanHistoryV7 | null => {
     const rows = s.load.all() as Array<{ id: string; finalized_at_ms: number; entry_json: string }>;
     if (rows.length === 0) return null;
     const entries = rows.flatMap((row) => {
-      const parsed = parseDeferredObjectivePlanHistory({
-        version: 5, entries: [parseJsonRow(row.entry_json)],
-      });
-      const entry = parsed.state === 'resolved' ? parsed.snapshot.entries[0] : undefined;
+      const raw = parseJsonRow(row.entry_json);
+      const envelope = raw && typeof raw === 'object' && 'version' in raw
+        ? raw : { version: 5, entries: [raw] };
+      const parsed = parseDeferredObjectivePlanHistory(envelope);
+      const entry = parsed.state === 'resolved' && parsed.snapshot.entries.length === 1
+        ? parsed.snapshot.entries[0] : undefined;
       if (entry !== undefined && entry.id === row.id && entry.finalizedAtMs === row.finalized_at_ms) return [entry];
       storeLogger.error({ event: 'deferred_objective_plan_history_row_quarantined', id: row.id });
       s.remove.run(row.id);
@@ -143,7 +145,8 @@ export const createPlanHistoryStore = (db: UserdataDatabase): PlanHistoryReposit
     for (const [id, entry] of next) {
       const before = previous?.get(id);
       if (before === undefined || !sameJson(before, entry)) {
-        s.upsert.run(id, entry.finalizedAtMs, JSON.stringify(entry));
+        const envelope = { version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION, entries: [entry] };
+        s.upsert.run(id, entry.finalizedAtMs, JSON.stringify(envelope));
       }
     }
     for (const id of previous?.keys() ?? []) {
@@ -152,7 +155,7 @@ export const createPlanHistoryStore = (db: UserdataDatabase): PlanHistoryReposit
   };
 
   /** Make the rows hold `history`, inside the caller's transaction; the diff base follows once it commits. */
-  const writeRows = (history: DeferredObjectivePlanHistoryV6): Held => {
+  const writeRows = (history: DeferredObjectivePlanHistoryV7): Held => {
     const next = heldOf(history);
     // A store that has neither read nor written diffs against its rows on
     // disk, so a write can always delete what `history` dropped.
@@ -194,9 +197,9 @@ export const createPlanHistoryStore = (db: UserdataDatabase): PlanHistoryReposit
  * entries by finalisation, as the recorder itself would trim.
  */
 const withLegacyUnder = (
-  stored: DeferredObjectivePlanHistoryV6,
-  legacy: DeferredObjectivePlanHistoryV6,
-): DeferredObjectivePlanHistoryV6 => {
+  stored: DeferredObjectivePlanHistoryV7,
+  legacy: DeferredObjectivePlanHistoryV7,
+): DeferredObjectivePlanHistoryV7 => {
   const storedIds = new Set(stored.entries.map((entry) => entry.id));
   const merged = [...stored.entries, ...legacy.entries.filter((entry) => !storedIds.has(entry.id))]
     .sort((a, b) => a.finalizedAtMs - b.finalizedAtMs);

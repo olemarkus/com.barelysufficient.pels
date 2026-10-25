@@ -1,3 +1,4 @@
+import { taskPricePeriodsFixture } from './taskPricePeriodsFixture.ts';
 import type { Mock } from 'vitest';
 import type { ContinuousBatteryPlanRead } from '../../../contracts/src/continuousBatteryPlan.ts';
 import { CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG,
@@ -53,7 +54,7 @@ import {
 } from '../../../contracts/src/settingsUiApi.ts';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../../../../lib/utils/settingsUiBootstrapKeys.ts';
 import { SETTINGS_UI_HOMES_PATH, SETTINGS_UI_HOMES_SAVE_PATH } from '../../../contracts/src/settingsUiHomes.ts';
-import type { DeferredObjectiveActivePlansV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
+import type { DeferredObjectiveActivePlansV2 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import {
   DAILY_BUDGET_CONTROLLED_WEIGHT,
   DAILY_BUDGET_ENABLED,
@@ -84,7 +85,7 @@ export type HomeyApiMethod = 'DELETE' | 'GET' | 'POST' | 'PUT';
 export type MockHomeyUiState = {
   continuousBatteryPlans?: Record<string, ContinuousBatteryPlanRead>;
   dailyBudget?: DailyBudgetUiPayload | null;
-  deferredObjectiveActivePlans?: DeferredObjectiveActivePlansV1 | null;
+  deferredObjectiveActivePlans?: DeferredObjectiveActivePlansV2 | null;
   deferredObjectiveHistory?: unknown;
   deferredObjectiveSettings?: unknown;
   deviceDiagnostics?: unknown;
@@ -336,6 +337,7 @@ const buildUiPrices = async (homey: MockHomeyClient) => {
   return {
     combinedPrices: await getHomeySetting(homey, 'combined_prices') || null,
     priceTimeline: { state: 'unavailable', reason: 'no_prices' },
+    taskPricePeriods: taskPricePeriodsFixture(await getHomeySetting(homey, 'combined_prices')),
     priceArea: await getHomeySetting(homey, 'price_area') || null,
     flowToday: await getHomeySetting(homey, 'flow_prices_today') || null,
     flowTomorrow: await getHomeySetting(homey, 'flow_prices_tomorrow') || null,

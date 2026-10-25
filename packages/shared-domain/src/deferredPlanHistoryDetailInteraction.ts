@@ -38,11 +38,6 @@ import { priceRateLabelToAmountUnit } from './price/priceUnitLabel';
 import { formatTimeInTimeZone } from './utils/dateUtils';
 import type { DeferredObjectiveUnit } from '../../contracts/src/deferredObjectiveSettings';
 
-const HOUR_MS = 60 * 60 * 1000;
-
-const floorToHour = (ms: number): number => Math.floor(ms / HOUR_MS) * HOUR_MS;
-const ceilToHour = (ms: number): number => Math.ceil(ms / HOUR_MS) * HOUR_MS;
-
 // `h23` keeps midnight as "00:00" (a bare `hour12: false` can pick `h24` →
 // "24:00" in some locales) and matches PELS's 24h labels.
 const formatClock = (atMs: number, timeZone: string): string => (
@@ -57,7 +52,7 @@ const formatClock = (atMs: number, timeZone: string): string => (
 
 // Strip card title — the promise the per-hour readout pays ("what did it
 // cost?" must surface a per-hour price + cost on tap).
-export const SMART_TASK_HISTORY_STRIP_TITLE = 'When did each hour run, and what did it cost?';
+export const SMART_TASK_HISTORY_STRIP_TITLE = 'When did it run, and what did it cost?';
 
 // Compact trajectory legend labels. The target item carries the value
 // ("Target 65.0 °C") via `formatSmartTaskTargetLabel` so the number can't
@@ -212,6 +207,7 @@ export const resolveHistoryRunBands = (
 export type HistoryHourReadoutRow = {
   // Hour-aligned start of the row's hour bucket.
   atMs: number;
+  endsAtMs: number;
   // "21:00 · Measured 56.1 °C · Planned 56.5 °C" — segments suppress
   // individually when no measured / planned value covers the hour.
   primary: string;
@@ -297,15 +293,22 @@ export const resolveHistoryTrajectoryReadout = (
   // the readout honest even if a caller hands it a raw payload.
   const measuredReadable = chartData.observed.length >= 2;
   const { windowStartMs, windowEndMs } = chartData;
-  const gridStartMs = floorToHour(windowStartMs);
-  const gridEndMs = Math.max(ceilToHour(windowEndMs), gridStartMs + HOUR_MS);
-  const markerHourMs = marker === null ? null : floorToHour(marker.atMs);
-  const metHourMs = chartData.metAtMs === null ? null : floorToHour(chartData.metAtMs);
+  const boundaries = [...new Set([
+    windowStartMs, windowEndMs,
+    ...(chartData.metAtMs === null ? [] : [chartData.metAtMs]),
+    ...(marker === null ? [] : [marker.atMs]),
+    ...chartData.plannedOriginal.map((point) => point.atMs),
+    ...visiblePlanned.map((point) => point.atMs),
+    ...chartData.runBands.flatMap((band) => [band.fromMs, band.toMs]),
+  ].filter((atMs) => atMs >= windowStartMs && atMs <= windowEndMs))].sort((a, b) => a - b);
   const rows: HistoryHourReadoutRow[] = [];
   let lastMeasuredIndex: number | null = null;
   let metIndex: number | null = null;
   let markerIndex: number | null = null;
-  for (let atMs = gridStartMs; atMs < gridEndMs; atMs += HOUR_MS) {
+  for (const [periodIndex, atMs] of boundaries.slice(0, -1).entries()) {
+    const endsAtMs = boundaries[periodIndex + 1]!;
+    const containsMarker = marker !== null && marker.atMs >= atMs && marker.atMs < endsAtMs;
+    const containsMet = chartData.metAtMs !== null && chartData.metAtMs >= atMs && chartData.metAtMs < endsAtMs;
     const probeMs = clampToWindow(atMs, windowStartMs, windowEndMs);
     const measured = measuredReadable ? observedValueAt(chartData.observed, probeMs) : null;
     // Hours before the re-anchored final staircase begins read the original
@@ -314,12 +317,12 @@ export const resolveHistoryTrajectoryReadout = (
       ?? stepValueAt(chartData.plannedOriginal, probeMs);
     const index = rows.length;
     if (measured !== null) lastMeasuredIndex = index;
-    if (metHourMs === atMs) metIndex = index;
-    if (markerHourMs === atMs) markerIndex = index;
+    if (containsMet) metIndex = index;
+    if (containsMarker) markerIndex = index;
     rows.push({
-      atMs,
+      atMs, endsAtMs,
       primary: formatTrajectoryReadoutPrimary(formatClock(atMs, timeZone), measured, planned, unit),
-      secondary: markerHourMs === atMs ? marker!.readoutLine : null,
+      secondary: containsMarker ? marker.readoutLine : null,
     });
   }
   return {
@@ -332,6 +335,7 @@ export const resolveHistoryTrajectoryReadout = (
 
 export type HistoryStripReadoutRow = {
   atMs: number;
+  endsAtMs: number;
   // "23:00 · 1.1 kWh · 0.48 kr/kWh ≈ 0.53 kr" (delivered) /
   // "22:00 · 0.8 kWh planned" (skipped) / "20:00" (gap).
   primary: string;
@@ -375,7 +379,7 @@ const snapshotHasHour = (
   atMs: number,
 ): boolean => (
   snapshot !== null && snapshot.hours.some((hour) => (
-    floorToHour(hour.startsAtMs) === atMs
+    (hour.coversFromMs ?? hour.startsAtMs) <= atMs && hour.endsAtMs > atMs
     && Number.isFinite(hour.plannedKWh)
     && hour.plannedKWh > 0
   ))
@@ -422,7 +426,7 @@ const formatStripPrimary = (
   entry: StripReadoutEntry,
   timeZone: string,
 ): string => {
-  const parts = [formatClock(bucket.atMs, timeZone)];
+  const parts = [`${formatClock(bucket.atMs, timeZone)}–${formatClock(bucket.endsAtMs, timeZone)}`];
   if (bucket.outlinePresent) {
     if (bucket.kwh > 0) parts.push(`${bucket.kwh.toFixed(1)} kWh planned`);
     return parts.join(' · ');
@@ -446,7 +450,8 @@ const formatStripPrimary = (
         // NBSP between the approx glyph and the cost figure so "≈ 0.53 kr"
         // reads as one unbreakable token at 320 px (the breaking space stays
         // before the glyph so the rate and cost halves may wrap apart).
-        parts.push(`${formatMoney(rate, unit)}/kWh ${APPROX_GLYPH}${RECEIPT_NBSP}${formatMoney(cost, unit)}`);
+        parts.push(`${bucket.priceIsAverage ? 'avg ' : ''}${formatMoney(rate, unit)}/kWh `
+          + `${APPROX_GLYPH}${RECEIPT_NBSP}${formatMoney(cost, unit)}`);
       }
     }
   }
@@ -468,14 +473,14 @@ const resolveStripAxisLabel = (
   const labelled = bucketCount <= STRIP_AXIS_DENSE_MAX_BUCKETS
     || index === 0
     || index === bucketCount - 1
-    || index % 2 === 0;
+    || index % Math.ceil(bucketCount / 6) === 0;
   if (!labelled) return null;
   // Bare zero-padded hour ("19" … "00") — the mock's per-bucket axis form;
   // the full HH:MM stays on the readout's primary line. `h23` keeps midnight
   // as "00" (a bare `hour12: false` can pick `h24` → "24" in some locales).
   return formatTimeInTimeZone(
     new Date(atMs),
-    { hour: '2-digit', hourCycle: 'h23' },
+    { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' },
     timeZone,
   );
 };
@@ -516,6 +521,7 @@ export const resolveHistoryStripReadout = (
     }
     rows.push({
       atMs: bucket.atMs,
+      endsAtMs: bucket.endsAtMs,
       primary: formatStripPrimary(bucket, entry, timeZone),
       secondary,
       axisLabel: resolveStripAxisLabel(bucket.atMs, index, strip.buckets.length, timeZone),

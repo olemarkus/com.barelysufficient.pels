@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { seedHourlyFlowPricesForTests } from '../helpers/smartTaskPriceSourceFixture';
 import api from '../../api';
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainPending } from '../utils/asyncDrain';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW,
-  COMBINED_PRICES, CONTROLLABLE_DEVICES, DAILY_BUDGET_ENABLED,
+  CONTROLLABLE_DEVICES, DAILY_BUDGET_ENABLED,
   MANAGED_DEVICES, OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
 
@@ -46,19 +47,7 @@ describe('relay energy cutoff through Homey SDK and the real control owner', () 
     settings.set(CONTROLLABLE_DEVICES, { [DEVICE_ID]: true });
     settings.set('capacity_priorities', { Home: { [DEVICE_ID]: 1 } });
     settings.set('price_optimization_enabled', true);
-    settings.set(COMBINED_PRICES, {
-      version: 2,
-      days: {
-        '2026-01-01': {
-          hours: Array.from({ length: 24 }, (_, hour) => ({
-            startsAt: new Date(Date.UTC(2026, 0, 1, hour)).toISOString(),
-            total: 10, isCheap: false, isExpensive: false,
-          })),
-        },
-      },
-      avgPrice: 10, lowThreshold: 5, highThreshold: 15,
-      priceScheme: 'norway', priceUnit: 'øre/kWh',
-    });
+    seedHourlyFlowPricesForTests(Date.UTC(2026, 0, 1), Array.from({ length: 24 }, () => 10));
     settings.set(`deferred_objective.${DEVICE_ID}`, {
       enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 6, deadlineAtMs: DEADLINE_MS,
     });

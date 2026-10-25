@@ -41,7 +41,7 @@ const plan: ActivePlanFixture = {
   deadlineAtMs: NOW + 5 * HOUR, startedAtMs: NOW - HOUR, pending: false, objectiveSignature: 'sig', original: null,
   latest: {
     revision: 1, revisedAtMs: NOW, computedFromPricesUpTo: null, reason: 'flow_card',
-    hours: [{ startsAtMs: NOW + 2 * HOUR, plannedKWh: 1 }], energyNeededKWh: 1, planStatus: 'on_track',
+    hours: [{ startsAtMs: NOW + 2 * HOUR, endsAtMs: (NOW + 2 * HOUR) + 3_600_000, plannedKWh: 1 }], energyNeededKWh: 1, planStatus: 'on_track',
   },
 };
 

@@ -82,7 +82,7 @@
     createButton: "Create task",
     createAnywayButton: "Create anyway",
     chartPrice: "Price",
-    chartScheduled: "Scheduled hours",
+    chartScheduled: "Scheduled",
     cannotMeetHint: "PELS will work toward this goal within your power limits, but it may not finish in time.",
     backButton: "Back",
     // Shown when the preview can't be projected and the backend did not provide a
@@ -244,7 +244,7 @@
     if (params.plannedWindowCheaperThanNow) {
       return `Cheaper than now \u2014 starts at ${params.firstPlannedTime}.`;
     }
-    return `Scheduled for the cheapest hours it can use \u2014 starts at ${params.firstPlannedTime}.`;
+    return `Scheduled for the cheapest times it can use \u2014 starts at ${params.firstPlannedTime}.`;
   };
   var CANNOT_MEET_RECOURSE = {
     openBudget: { label: "Open Budget", targetTab: "budget" },
@@ -269,7 +269,7 @@
     recourse: overviewDeviceRecourse(ctx.deviceId)
   });
   var notYetPlannedCopy = (kindNoun) => (() => ({
-    headline: "Choosing the cheapest hours",
+    headline: "Choosing when to run",
     body: `PELS is working out the ${kindNoun}. This normally lands within a minute.`,
     headlineReason: null,
     recourse: null
@@ -581,7 +581,6 @@
       planInputsRateBootstrapNote: null
     }
   };
-  var EV_CARD_HOUR_MS = 60 * 60 * 1e3;
   var SAMPLE_STALE_THRESHOLD_MS = 24 * 60 * 60 * 1e3;
   var ONE_MINUTE_MS = 60 * 1e3;
   var ONE_HOUR_MS = 60 * ONE_MINUTE_MS;

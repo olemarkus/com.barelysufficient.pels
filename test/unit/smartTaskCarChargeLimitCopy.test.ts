@@ -131,7 +131,7 @@ describe('the list status of a task held below target by the car\'s limit', () =
   it('reads at risk before the car gets to a known lower limit, even with a later first hour', () => {
     expect(resolveSmartTaskListStatus({
       ...base, carChargeLimit: charging,
-      latest: { planStatus: 'on_track', hours: [{ startsAtMs: 1000, plannedKWh: 1 }] },
+      latest: { planStatus: 'on_track', hours: [{ startsAtMs: 1000, endsAtMs: (1000) + 3_600_000, plannedKWh: 1 }] },
     }, 0)).toBe('at_risk');
   });
 

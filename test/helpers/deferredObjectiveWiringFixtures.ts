@@ -51,13 +51,13 @@ export const createInertEnergyDelivery = (): EnergyTaskDeliveryTracker => (
  */
 export const inertPlanHistoryDeps = (): Pick<
   PlanHistoryPersistDeps,
-  'endedBus' | 'resolveHourPrice' | 'getStallClassification' | 'getDeliveryControl' | 'isLiveMeasuredDraw' | 'getDeviceConstraint'
+  'endedBus' | 'getMeteredPricePeriods' | 'getStallClassification' | 'getDeliveryControl' | 'isLiveMeasuredDraw' | 'getDeviceConstraint'
 > => ({
   getDeviceConstraint: () => ({ kind: 'none' }),
   getDeliveryControl: () => ({ kind: 'permitted' }),
   isLiveMeasuredDraw: everyReadingLive,
   endedBus: createDeferredObjectiveEndedBus(),
-  resolveHourPrice: () => null,
+  getMeteredPricePeriods: () => [],
   getStallClassification: noStallEvidence,
 });
 

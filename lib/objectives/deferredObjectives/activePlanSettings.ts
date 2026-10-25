@@ -1,13 +1,13 @@
 import { isDeferredObjectiveLiveCompletion } from '../../../packages/shared-domain/src/deferredObjectiveLiveCompletion';
 import type {
   DeferredObjectiveActivePlanCommitmentV1,
-  DeferredObjectiveActivePlanHourV1,
+  DeferredObjectivePlanInterval,
   DeferredObjectiveActivePlanReservationSegmentV1,
   DeferredObjectiveActivePlanRevisionReason,
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanStatusV1,
   DeferredObjectiveActivePlanV1,
-  DeferredObjectiveActivePlansV1,
+  DeferredObjectiveActivePlansV2,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import {
   DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION,
@@ -16,16 +16,6 @@ import {
 import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
 import type { DeferredObjectiveSettingsKind } from '../../../packages/contracts/src/deferredObjectiveSettings';
 
-// Re-exported from shared-domain (its long-term home) so existing runtime
-// importers (`activePlanRecorder.ts`) keep their `./activePlanSettings` path.
-//
-// Bumping this version: the settings UI has its own leaner coercer
-// (`packages/settings-ui/src/ui/deferredObjectiveActivePlans.ts`) that hard-codes
-// `version: 1` and skips the version check entirely. It is benign only while the
-// version is 1 — on a bump, this normaliser rejects the old blob while the UI
-// guard stamps `version: 1` onto a v2-shaped payload and renders foreign fields.
-// Hoist the shape/version check into `packages/shared-domain/src/` and delegate
-// from both sides as part of the bump, not after it.
 export { DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION };
 
 const VALID_REASONS: ReadonlySet<DeferredObjectiveActivePlanRevisionReason> = new Set([
@@ -80,7 +70,7 @@ const isOptionalSpeedMode = (value: unknown): boolean => (
   value === undefined || value === 'auto' || value === 'learning'
 );
 
-export const createEmptyActivePlans = (): DeferredObjectiveActivePlansV1 => ({
+export const createEmptyActivePlans = (): DeferredObjectiveActivePlansV2 => ({
   version: DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION,
   plansByDeviceId: {},
 });
@@ -114,11 +104,14 @@ const isOptionalFinitePositive = (value: unknown): boolean => (
   value === undefined || (isFiniteNumber(value) && value > 0)
 );
 
-const isPlanHour = (value: unknown): value is DeferredObjectiveActivePlanHourV1 => {
+const isPlanHour = (value: unknown): value is DeferredObjectivePlanInterval => {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
   return isFiniteNumber(v.startsAtMs)
-    && isFiniteNumber(v.plannedKWh)
+    && isFiniteNumber(v.endsAtMs) && v.endsAtMs > v.startsAtMs
+    && (v.coversFromMs === undefined || (isFiniteNumber(v.coversFromMs)
+      && v.coversFromMs >= v.startsAtMs && v.coversFromMs < v.endsAtMs))
+    && isFiniteNumber(v.plannedKWh) && v.plannedKWh >= 0
     && isOptionalFinitePositive(v.plannedAdmissionPowerKw);
 };
 
@@ -411,7 +404,7 @@ const toLoadedPlan = (plan: StoredActivePlan): DeferredObjectiveActivePlanV1 | u
 
 export const normalizeDeferredObjectiveActivePlans = (
   raw: unknown,
-): DeferredObjectiveActivePlansV1 => {
+): DeferredObjectiveActivePlansV2 => {
   const normalized = normalizeDeferredObjectiveActivePlansShape(raw, {
     isValidPlan: isActivePlan,
     empty: createEmptyActivePlans,
