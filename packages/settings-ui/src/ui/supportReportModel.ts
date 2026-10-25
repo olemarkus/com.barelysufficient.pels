@@ -74,7 +74,7 @@ const REPORT_ERRORS: Record<SupportReportErrorCode, string> = {
   invalid_window: 'Choose how much activity to include.',
   report_expired: 'The report expired before it was sent. Your description is kept; send it again.',
   report_too_large: 'The report is too large to send. Choose one device or activity around the incident.',
-  report_busy: 'A report was just sent. Wait a minute before sending another.',
+  report_busy: 'Another report is being sent or was sent a moment ago. Wait a minute, then send yours.',
   consent_required: 'Use Send report to send the report.',
   app_store_required: 'Sending requires an App Store installation. You can copy the report instead.',
   sender_unavailable: 'Homey’s reporting service is unavailable. You can copy the report instead.',

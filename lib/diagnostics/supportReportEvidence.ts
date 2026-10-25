@@ -51,7 +51,10 @@ export type SupportReportReads = {
   /** Kept device events about any of `deviceIds` in the window, oldest first; every device without ids. */
   readDeviceEvents(deviceIds: readonly string[] | 'all', fromMs: number, toMs: number): SupportReportDeviceEvent[];
   /** PELS's kept log lines in the window (`logTailStore.ts`). */
-  readLogTail(fromMs: number, toMs: number): Pick<KeptLog, 'lines' | 'overflow'>;
+  readLogTail(fromMs: number, toMs: number, maxBytes: number): Pick<KeptLog, 'lines' | 'overflow'> & {
+    /** Kept lines in the window older than the newest that fit `maxBytes`. */
+    leftOut: number;
+  };
 };
 
 type ReportSubject = {
@@ -267,12 +270,18 @@ const readDeviceEvents = (
   };
 };
 
+/**
+ * The most kept log one report reads, newest first: about half the report's
+ * size limit, so a day of log is never built in memory only to be cut down.
+ */
+export const SUPPORT_REPORT_LOG_BUDGET_BYTES = 256 * 1024;
+
 const readLog = (host: SupportReportReads, request: SupportReportRequest, capturedAtMs: number): SupportReportLog => {
   const { fromMs, toMs } = supportReportWindow(request, capturedAtMs);
-  const read = readOptional(() => host.readLogTail(fromMs, toMs));
-  return read
-    ? { state: 'available', ...read, fromMs, toMs, leftOutForSize: 0 }
-    : { state: 'unavailable', reason: 'The kept log could not be read.' };
+  const read = readOptional(() => host.readLogTail(fromMs, toMs, SUPPORT_REPORT_LOG_BUDGET_BYTES));
+  return read ? {
+    state: 'available', lines: read.lines, overflow: read.overflow, fromMs, toMs, leftOutForSize: read.leftOut,
+  } : { state: 'unavailable', reason: 'The kept log could not be read.' };
 };
 
 const readCarLinkSection = (carLink: CarLinkRead): SectionRead[] => {

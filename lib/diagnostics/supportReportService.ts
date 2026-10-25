@@ -34,7 +34,9 @@ const toMessage = (document: SupportReportDocument): { json: string; message: st
 const withoutOldestLogLines = (document: SupportReportDocument, count: number): SupportReportDocument => (
   document.log.state === 'available' && count > 0 ? {
     ...document,
-    log: { ...document.log, lines: document.log.lines.slice(count), leftOutForSize: count },
+    log: {
+      ...document.log, lines: document.log.lines.slice(count), leftOutForSize: document.log.leftOutForSize + count,
+    },
   } : document
 );
 
@@ -88,9 +90,16 @@ export class SupportReportService {
 
   /**
    * The daily report: the whole app over the last day, prepared and sent in
-   * one step. Only the owner's switch calls this (`dailyReportSchedule.ts`).
+   * one step. Only the owner's switch calls this (`dailyReportSchedule.ts`);
+   * `stillWanted` asks it again once the report is prepared, so turning the
+   * switch off meanwhile sends nothing. An install that cannot send captures
+   * nothing.
    */
-  async sendDaily(): Promise<SupportReportResponse> {
+  async sendDaily(stillWanted: () => boolean): Promise<SupportReportResponse> {
+    const availability = await this.transport.availability();
+    if (availability !== 'available') {
+      return { ok: false, code: availability === 'app_store_required' ? 'app_store_required' : 'sender_unavailable' };
+    }
     const prepared = await this.prepareRequest({
       subject: { kind: 'app', homeId: MAIN_HOME_ID },
       problem: DAILY_REPORT_PROBLEM,
@@ -98,7 +107,9 @@ export class SupportReportService {
       occurredAtMs: Date.now(),
       historyWindow: 'day',
     }, 'daily');
-    return prepared.ok ? this.send(prepared.report.document.id, { consent: true }) : prepared;
+    if (!prepared.ok) return prepared;
+    if (!stillWanted()) return { ok: false, code: 'consent_required' };
+    return this.send(prepared.report.document.id, { consent: true });
   }
 
   private async prepareRequest(request: SupportReportRequest, trigger: SupportReportTrigger):

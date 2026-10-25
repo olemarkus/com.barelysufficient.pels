@@ -83,7 +83,7 @@ export type SupportReportLog =
     overflow: readonly SupportReportLogOverflow[];
     fromMs: number;
     toMs: number;
-    /** The oldest lines left out so the report fits its size limit. */
+    /** Kept lines in the window left out, the oldest first, so the report fits its size limit. */
     leftOutForSize: number;
   }
   | { state: 'unavailable'; reason: string };

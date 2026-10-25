@@ -97,7 +97,7 @@ describe('manual support reporting', () => {
     const delivery = transport();
     const source = { capture: vi.fn(async () => evidence()) };
     const service = new SupportReportService(source, delivery);
-    const sent = report(await service.sendDaily());
+    const sent = report(await service.sendDaily(() => true));
     expect(source.capture).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       subject: { kind: 'app', homeId: 'main' }, historyWindow: 'day', occurredAtMs: now,
     }), now);
@@ -116,6 +116,18 @@ describe('manual support reporting', () => {
     expect(report(await service.send(again.document.id, { consent: true })).submission.state).toBe('sent');
     const third = report(await service.prepare(request));
     expect(await service.send(third.document.id, { consent: true })).toEqual({ ok: false, code: 'report_busy' });
+  });
+
+  it('sends no daily report the owner turned off while it was prepared, and captures none it cannot send', async () => {
+    const delivery = transport();
+    const source = { capture: vi.fn(async () => evidence()) };
+    const service = new SupportReportService(source, delivery);
+    expect(await service.sendDaily(() => false)).toEqual({ ok: false, code: 'consent_required' });
+    expect(delivery.send).not.toHaveBeenCalled();
+    vi.mocked(delivery.availability).mockResolvedValue('app_store_required');
+    source.capture.mockClear();
+    expect(await service.sendDaily(() => true)).toEqual({ ok: false, code: 'app_store_required' });
+    expect(source.capture).not.toHaveBeenCalled();
   });
 
   it('marks a report the owner sent as theirs', async () => {

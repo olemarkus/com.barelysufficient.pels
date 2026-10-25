@@ -76,7 +76,8 @@ from outside PELS.
 
 Keys with owners so far: `mode_aliases`, `mode_device_targets`, `pv_forecast_source`,
 `ev_charge_target_settings`,
-`homey_price_formula`, `price_scheme` + `powerhour_device_id`, `web_app_cloud_host`.
+`homey_price_formula`, `price_scheme` + `powerhour_device_id`, `web_app_cloud_host`,
+`daily_diagnostics_report`.
 `price_optimization_settings` has one shared parser for device entries, legacy defaults,
 and provenance in `packages/shared-domain/src/settings/priceOptimization.ts`.
 The same owner defines the adjustment range and stored sign. The runtime and settings
