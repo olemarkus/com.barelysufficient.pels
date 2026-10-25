@@ -18,7 +18,6 @@ import {
   HOMES_CONFIG_INITIALIZED,
 } from '../../lib/utils/settingsKeys';
 import {
-  HOME_CONFIG_ACTIVATION_VERSION,
   HomeStoreWriteRefusedError,
   type HomeConfig,
 } from '../../lib/home/homeConfig';
@@ -66,19 +65,6 @@ describe('createHomesStore', () => {
     expect(store.read()).toEqual({ state: 'present', value: config });
   });
 
-  it('round-trips the atomic runtime activation marker', () => {
-    const store = createHomesStore(homey.settings);
-    const activeConfig: HomeConfig = {
-      activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
-      subHomes: config.subHomes,
-    };
-
-    store.write(activeConfig);
-
-    expect(mockHomeyInstance.settings.get(HOMES_CONFIG)).toEqual(activeConfig);
-    expect(store.read()).toEqual({ state: 'present', value: activeConfig });
-  });
-
   it('a deliberately emptied config reads present, not suspect', () => {
     const store = createHomesStore(homey.settings);
     store.write({ subHomes: [] });
@@ -112,14 +98,13 @@ describe('createHomesStore', () => {
     expect(createHomesStore(homey.settings).read()).toEqual({ state: 'suspect' });
   });
 
-  it('classifies an unknown activation marker as suspect instead of silently activating it', () => {
+  it('reads a config saved with the retired activation marker as present, without the marker', () => {
+    // Every config saved by 2.19.0 up to the marker's removal carries
+    // `activationVersion: 1`; it stays readable and drops out on the next write.
     mockHomeyInstance.settings.set(HOMES_CONFIG_INITIALIZED, true);
-    mockHomeyInstance.settings.set(HOMES_CONFIG, {
-      activationVersion: 2,
-      subHomes: config.subHomes,
-    });
+    mockHomeyInstance.settings.set(HOMES_CONFIG, { activationVersion: 1, subHomes: config.subHomes });
 
-    expect(createHomesStore(homey.settings).read()).toEqual({ state: 'suspect' });
+    expect(createHomesStore(homey.settings).read()).toEqual({ state: 'present', value: config });
   });
 
   it('backfills a missing marker on reading a plausible blob (pre-marker write / manual PUT)', () => {

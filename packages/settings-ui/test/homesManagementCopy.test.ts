@@ -4,10 +4,7 @@ import {
   composeDeleteConfirmBody,
   composeDraftErrorLine,
 } from '../src/ui/homesManagementCopy';
-import {
-  composeHomeLimitsInactiveNotice,
-  composeHomeLimitsSimulationNotice,
-} from '../src/ui/homeLimitsCopy';
+import { composeHomeLimitsSimulationNotice } from '../src/ui/homeLimitsCopy';
 
 describe('copy composers quoting an area name', () => {
   // Every composer that quotes an area name self-resolves the blank case, so
@@ -30,7 +27,6 @@ describe('copy composers quoting an area name', () => {
 
   it('limits notices never quote an empty area name', () => {
     expect(composeHomeLimitsSimulationNotice('')).toContain(`“${HOMES_UNNAMED_AREA_NAME}”`);
-    expect(composeHomeLimitsInactiveNotice('')).toContain(`“${HOMES_UNNAMED_AREA_NAME}”`);
     expect(composeHomeLimitsSimulationNotice('Annex')).toContain('“Annex”');
   });
 });

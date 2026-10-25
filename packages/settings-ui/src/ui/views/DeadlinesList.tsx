@@ -394,8 +394,8 @@ const BetweenRunsBody = () => (
 // Honest not-supported-yet notice (multi-home locked decision 4), shown on
 // every ready state while meter areas are in use: the surface's scope claim
 // covers the whole page, not one card, and it matters most before the user
-// composes a Flow card for an area device. A single-home install (or a held
-// pre-GA config) renders no notice DOM at all.
+// composes a Flow card for an area device. A single-home install renders no
+// notice DOM at all.
 const MainHomeOnlyNotice = () => (
   <p class="pels-notice-info deadlines-home-scope-notice" id="deadlines-home-scope-notice">
     {HOME_SCOPE_SMART_TASKS_MAIN_ONLY_NOTICE}

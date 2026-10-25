@@ -8,16 +8,9 @@ import { readingsAdmittedSince } from '../lib/power/trackerReadingsHistory';
 import type { TrackerStore } from '../lib/power/trackerStore';
 
 const adoptThroughSaveSeam = (homey: Homey.App['homey'], meterDeviceId: string): SoleMeterAdoptionWriteOutcome => {
-  // The Power meter arm of the seam never consults activation (only a switch
-  // TO Flow must know whether areas run), and no membership service is in
-  // this caller's hands: `unavailable` is the honest boot-window value.
   let saved;
   try {
-    saved = savePowerSourceSelection(
-      homey,
-      { op: 'set_power_source', source: 'homey_energy', meterDeviceId },
-      { state: 'unavailable' },
-    );
+    saved = savePowerSourceSelection(homey, { op: 'set_power_source', source: 'homey_energy', meterDeviceId });
   } catch {
     // A throwing settings write is a transient. The seam writes the meter
     // first, so a throw on the source half leaves an explicit meter with no

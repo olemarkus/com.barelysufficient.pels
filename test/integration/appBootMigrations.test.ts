@@ -7,12 +7,13 @@ import {
 } from '../../lib/utils/settingsKeys';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 
-const EV_SETTING_CLEANUP_MARKER = 'boot_migrations_v1_ev_setting_cleanup_done';
-const ORPHAN_EV_SUPPORT_KEY = 'experimental_ev_support_enabled';
 const UNUSABLE_STEPPED_CONFIG_MARKER = 'boot_migrations_v2_unusable_stepped_config_repaired';
+// An install that has run before always lists some key; a store that lists
+// none is indistinguishable from a transient read miss.
+const INSTALL_SETTINGS = { capacity_limit_kw: 5 };
 // Every marker-gated entry in `BOOT_MIGRATIONS` logs one `boot_migration_applied`
 // on a fresh install, whether or not it had anything to change.
-const BOOT_MIGRATION_COUNT = 2;
+const BOOT_MIGRATION_COUNT = 1;
 const USABLE_PROFILE = {
   steps: [{ id: 'off', planningPowerW: 0 }, { id: 'max', planningPowerW: 1200 }],
 };
@@ -58,34 +59,42 @@ describe('runBootMigrations', () => {
     capture.restore();
   });
 
-  it('unsets the orphan EV support key and writes the marker on first run', () => {
-    const env = createHomey({
-      [ORPHAN_EV_SUPPORT_KEY]: true,
-    });
+  it('writes each marker when there was nothing to change', () => {
+    const env = createHomey(INSTALL_SETTINGS);
 
     runBootMigrations({ homey: env.homey });
 
-    expect(env.unsetCalls).toEqual([ORPHAN_EV_SUPPORT_KEY]);
-    expect(env.store.has(ORPHAN_EV_SUPPORT_KEY)).toBe(false);
-    expect(env.store.get(EV_SETTING_CLEANUP_MARKER)).toBe(true);
+    expect(env.store.get(UNUSABLE_STEPPED_CONFIG_MARKER)).toBe(true);
     expect(capture.findEvents('boot_migration_applied')).toHaveLength(BOOT_MIGRATION_COUNT);
   });
 
+  it('defers on a store that lists no keys at all, and lands once it does', () => {
+    // A brand-new install's first boot looks like this, and so does a
+    // transient miss: nothing is lost by waiting one boot.
+    const env = createHomey();
+
+    runBootMigrations({ homey: env.homey });
+
+    expect(env.store.get(UNUSABLE_STEPPED_CONFIG_MARKER)).toBeUndefined();
+    expect(capture.findEvent('boot_migration_deferred')).toBeDefined();
+
+    env.store.set('capacity_limit_kw', 5);
+    runBootMigrations({ homey: env.homey });
+
+    expect(env.store.get(UNUSABLE_STEPPED_CONFIG_MARKER)).toBe(true);
+  });
+
   it('is a no-op on subsequent runs once the marker is set', () => {
-    const env = createHomey({
-      [ORPHAN_EV_SUPPORT_KEY]: true,
-    });
+    const env = createHomey(INSTALL_SETTINGS);
 
     runBootMigrations({ homey: env.homey });
     env.unsetCalls.length = 0;
     env.setCalls.length = 0;
     capture.events.length = 0;
 
-    // Simulate a stale write of the orphan key happening between boots
-    // (e.g. user re-imports settings backup). Migration must remain a no-op
-    // because the marker is already set — we don't re-clean keys we already
-    // cleaned once.
-    env.store.set(ORPHAN_EV_SUPPORT_KEY, true);
+    // A configuration the repair would drop, written after it ran once: the
+    // marker is set, so the migration stays a no-op.
+    env.store.set(DEVICE_CONTROL_PROFILES, { 'drop-empty': { steps: [] } });
 
     runBootMigrations({ homey: env.homey });
 
@@ -94,19 +103,9 @@ describe('runBootMigrations', () => {
     expect(capture.findEvent('boot_migration_applied')).toBeUndefined();
   });
 
-  it('still writes the marker on fresh installs where the orphan key was never set', () => {
-    const env = createHomey();
-
-    runBootMigrations({ homey: env.homey });
-
-    expect(env.unsetCalls).toEqual([ORPHAN_EV_SUPPORT_KEY]);
-    expect(env.store.get(EV_SETTING_CLEANUP_MARKER)).toBe(true);
-  });
-
   it('does not touch managed_devices', () => {
     const managedBefore = { 'device-a': true, 'device-b': false };
     const env = createHomey({
-      [ORPHAN_EV_SUPPORT_KEY]: true,
       [MANAGED_DEVICES]: managedBefore,
     });
 
@@ -119,7 +118,6 @@ describe('runBootMigrations', () => {
 
   it('drops stepped configurations with no usable ladder and keeps the rest', () => {
     const env = createHomey({
-      [ORPHAN_EV_SUPPORT_KEY]: true,
       [DEVICE_CONTROL_PROFILES]: {
         keep: USABLE_PROFILE,
         'drop-empty': { steps: [] },
@@ -263,7 +261,7 @@ describe('runBootMigrations', () => {
   });
 
   it('treats a key the list never mentions as nothing to repair', () => {
-    const env = createHomey();
+    const env = createHomey(INSTALL_SETTINGS);
 
     runBootMigrations({ homey: env.homey });
 

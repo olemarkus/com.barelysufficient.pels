@@ -1,5 +1,5 @@
 import { expect, test, type Page } from './fixtures/test';
-import { pickHomeScope, seedStubSetting } from './fixtures/homes';
+import { installAreaWithoutRuntime, pickHomeScope, seedStubSetting } from './fixtures/homes';
 
 /* -------------------------------------------------------------------------- *
  * Per-home Overview (multi-home 6b): the Overview honours the shell's home
@@ -15,17 +15,14 @@ import { pickHomeScope, seedStubSetting } from './fixtures/homes';
 const AREA_ID = 'h_11111111';
 
 // The rental area, pre-boot (a reload would wipe a post-boot store seed).
-// `activationVersion: 1` = live runtime; omitting it = the held posture whose
-// scoped reads answer `homeScope: unavailable`.
-const rentalAreaConfig = (activated: boolean) => ({
-  ...(activated ? { activationVersion: 1 } : {}),
+const RENTAL_AREA_CONFIG = {
   subHomes: [{
     homeId: AREA_ID,
     name: 'Rental unit',
     rootZoneId: 'z_rental',
     meterDeviceId: 'dev_rental_meter',
   }],
-});
+};
 
 const buildPlanFixture = (totalKw: number, device: { id: string; name: string }) => ({
   meta: {
@@ -93,7 +90,7 @@ const openOverview = async (page: Page) => {
 test.describe('Overview follows the shown home', () => {
   test('a meter area shows its own hero and cards, live on its suffixed stream', async ({ page }) => {
     await installStubSettings(page, {
-      homes_config: rentalAreaConfig(true),
+      homes_config: RENTAL_AREA_CONFIG,
       // Pin a real device into the area. The Overview renders the area's DEVICE
       // list joined to its plan, so the plan must be about a device that is
       // actually a member — a plan device with no device row is a shape the
@@ -153,11 +150,10 @@ test.describe('Overview follows the shown home', () => {
   });
 
   test('an area the runtime cannot serve shows the honest notice, not fabricated numbers', async ({ page }) => {
-    // Held posture: rostered, but not activated — the scoped read answers
-    // `homeScope: unavailable`.
     await installStubSettings(page, {
-      homes_config: rentalAreaConfig(false),
+      homes_config: RENTAL_AREA_CONFIG,
     });
+    await installAreaWithoutRuntime(page, AREA_ID);
     await openOverview(page);
     await pickHomeScope(page, AREA_ID);
 

@@ -7,9 +7,8 @@ invariants record for the whole v1 train (R1–R8 + R7b per-home bundles + U1/U3
 UI) **and the 2026-07 finishing train** (sampled-meter identity fence, config
 invariants, per-home read seam, the global scope bar, per-home Overview/Usage,
 home badges, runtime mode pinning, Flow/area mutual exclusion, the aggregate
-simulation posture, and the honest scope states). The feature is now generally
-available; the hidden `multi_home_enabled` release flag that formerly gated it
-has been removed. For the first
+simulation posture, and the honest scope states). The feature is generally
+available. For the first
 behavior-affecting slice — main becoming the membership complement — see
 [multi-home-complement](multi-home-complement.md);
 for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
@@ -31,7 +30,7 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   area can run and refuses assigning that meter to an area. There is no Automatic selection any
   more — the save seam cannot express one (`set_power_source` persists a named meter or the Flow
   source, nothing else) — so a valid current configuration cannot assign one explicit meter to
-  both Main and an area, and "Main with no resolvable meter plus active areas" is only a legacy
+  both Main and an area, and "Main with no resolvable meter plus meter areas" is only a legacy
   Automatic shape whose owner has not picked a meter yet: Main stays fenced, the boot-time
   sole-meter adoption fills the key when Homey Energy lists exactly one whole-home meter that no
   area owns (the seam refuses `meter_in_use`), and otherwise the no-readings banner names the
@@ -99,7 +98,7 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   stored-null any more.
 - Constructor defaults are not ownership evidence. Main and sub-home control
   stay fenced until both homes and pin stores have each produced a
-  non-suspect read; active meter areas additionally require a committed zone
+  non-suspect read; meter areas additionally require a committed zone
   tree. When Main authority recovers, the runtime builds a fresh plan and
   rechecks authority before reconciliation. An unavailable live Main-meter
   selection or a failed rebuild schedules bounded exponential retry, so
@@ -338,20 +337,18 @@ driver + device-scoped flow cards are a deferred follow-up train.
 enforced at the one serialized `ui_homes_save` seam: saving (creating or
 editing) an area is refused while the configured source resolves to Flow (a
 Flow sample carries no meter identity), and switching the source to Flow is
-refused while areas are RUNNING (a dormant pre-GA config does not block the
-switch; activation discrimination is shared with the unresolvable-meter
-refusal, `main_meter_required`).
-Deleting an area stays allowed on any source, and switching TO Homey Energy
-never consults the homes store — the remedy direction must always work. The
+refused while any area is configured.
+Deleting an area stays allowed on any source, and switching TO Homey Energy is
+refused only when its meter belongs to an area (or the homes store cannot be
+read) — the remedy direction must always work. The
 settings UI persists the Power source select through the seam (typed refusal →
 select rollback + remedy toast), never a bare settings write.
 
-**Aggregate simulation posture.** Main's `capacity_dry_run` and each active
+**Aggregate simulation posture.** Main's `capacity_dry_run` and each
 area's `capacity_dry_run:<homeId>` are independent, so the global simulation
 banner and the Settings hub chip render the aggregate posture — all live / all
 simulating / mixed — resolved in shared-domain (`simulationPosture.ts`) from
-Main's flag plus each ACTIVE area's flag. Held pre-GA areas never enter the
-posture (their devices still belong to Main); an unresolved flag keeps its
+Main's flag plus each area's flag; an unresolved flag keeps its
 last-good value and an unknown joins no aggregate claim. Main live + a
 simulating area gets an area-scoped banner line naming the area and the
 Limits & safety page that holds its control; the Main-flag button hides there
@@ -378,13 +375,12 @@ and Main-only elements (smart-task row, daily-budget hero elements) are
 omitted under an area, never zeroed.
 
 The **Devices** list stays whole-home and labels each row with a home badge
-(`homeBadges.ts`, gated on `runtimeActive`). **Modes** is filtered by the
+(`homeBadges.ts`). **Modes** is filtered by the
 global picker; priorities are safe to rank from its rendered rows because each
 home owns a separate catalog.
 
-Everything else states its scope honestly once meter areas are IN USE (active
-roster + `runtimeActive`; a held pre-GA config renders none of these because
-its devices still belong to Main). Copy in
+Everything else states its scope honestly once meter areas are IN USE (a
+resolved roster with at least one area). Copy in
 `packages/settings-ui/src/ui/homeScopeCopy.ts`:
 
 - **Budget tab** carries a Main-home scope line (the budget is Main's, above).
@@ -404,19 +400,8 @@ The Multiple meters UI is always available and there is no current feature
 switch. With no `homes_config` set, membership resolves every device to main,
 the registry reconciles to zero bundles, and the panel shows only its
 empty-state explainer — so a single-meter home is behaviourally unchanged. A
-new meter area written by the current UI atomically carries the
-`activationVersion` marker and activates its runtime bundle.
-
-Upgrade containment is intentionally stricter than "any populated config is
-live." The retired `multi_home_enabled` key remains a read-only evidence seam
-in `lib/home/homeConfigActivation.ts`: a legacy `true` config is migrated to the
-atomic activation marker at boot, while an unmarked populated pre-GA config
-without that evidence stays runtime-dormant until a successful current UI
-upsert marks it. This prevents an old experimental configuration from silently
-starting device control on upgrade. Membership still recomputes for
-diagnostics, `ui_homes` serves the full payload, and the nav card plus the
-shell's home scope bar remain visible (the bar appears once at least one meter
-area exists).
+saved meter area gets its runtime bundle on the registry's next reconcile, and
+the shell's home scope bar appears once at least one meter area exists.
 
 ## Reference implementations
 

@@ -27,7 +27,7 @@ const rowCount = (db: UserdataDatabase): number => (
 /** The settings of an install past its boot migrations, which set their markers first. */
 const installSettings = (): MockSettings => {
   const settings = new MockSettings();
-  settings.set('boot_migrations_v1_ev_setting_cleanup_done', true);
+  settings.set('boot_migrations_v2_unusable_stepped_config_repaired', true);
   return settings;
 };
 

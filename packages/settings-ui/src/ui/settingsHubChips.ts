@@ -44,7 +44,7 @@ const readPricesChipHidden = async (): Promise<boolean> => {
 // flip `hidden` after a fresher sync already committed (checking only before
 // the await would leave that window open).
 // The Simulation chip renders the AGGREGATE posture across Main and the
-// active meter areas (`On` = everything simulates, `Partly on` = split) —
+// meter areas (`On` = everything simulates, `Partly on` = split) —
 // both inputs are state maintained by `loadCapacitySettings` / the capacity
 // posture refresh, so this stays a synchronous DOM sync. An area flag with no
 // resolved value this session passes through as `null`; the shared resolver

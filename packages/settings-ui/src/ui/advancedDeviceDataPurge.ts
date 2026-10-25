@@ -62,11 +62,7 @@ export type PurgeableDeviceOption = {
 const runSerializedPurge = createSerializedAsyncRunner();
 
 const getPurgeHomeIds = (): string[] => {
-  const scope = getHomeScope();
-  return [
-    MAIN_HOME_ID,
-    ...(scope.runtimeActive ? scope.areas.map((area) => area.homeId) : []),
-  ];
+  return [MAIN_HOME_ID, ...getHomeScope().areas.map((area) => area.homeId)];
 };
 
 const collectDeviceIdsFromSettings = (): Set<string> => {

@@ -8,8 +8,6 @@ type BootMigrationsParams = {
   homey: Homey.App['homey'];
 };
 
-const EV_SETTING_CLEANUP_MARKER = 'boot_migrations_v1_ev_setting_cleanup_done';
-const ORPHAN_EV_SUPPORT_KEY = 'experimental_ev_support_enabled';
 const UNUSABLE_STEPPED_CONFIG_MARKER = 'boot_migrations_v2_unusable_stepped_config_repaired';
 
 /**
@@ -22,24 +20,15 @@ const UNUSABLE_STEPPED_CONFIG_MARKER = 'boot_migrations_v2_unusable_stepped_conf
  *
  * A migration that cannot tell "nothing to migrate" from "the read failed"
  * returns `'deferred'`, and the marker is withheld so the next boot retries —
- * the abandon-grace rule from `notes/persisted-settings-state.md`. Returning
- * nothing means applied, which is right for a migration whose work is
- * unconditional (an `unset` succeeds whether or not the key was there).
+ * the abandon-grace rule from `notes/persisted-settings-state.md`.
  */
 type BootMigration = {
   marker: string;
-  run: (homey: Homey.App['homey']) => 'applied' | 'deferred' | void;
+  run: (homey: Homey.App['homey']) => 'applied' | 'deferred';
   describe: string;
 };
 
 const BOOT_MIGRATIONS: ReadonlyArray<BootMigration> = [
-  {
-    marker: EV_SETTING_CLEANUP_MARKER,
-    describe: `unset orphan setting "${ORPHAN_EV_SUPPORT_KEY}" (removed in EV-by-default rollout)`,
-    run: (homey) => {
-      homey.settings.unset(ORPHAN_EV_SUPPORT_KEY);
-    },
-  },
   {
     marker: UNUSABLE_STEPPED_CONFIG_MARKER,
     describe: 'drop stepped profiles and target-power ranges that yield no usable step ladder',

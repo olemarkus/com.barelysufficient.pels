@@ -9,7 +9,7 @@ import {
 
 // Integration seam: the meter-scope fingerprint composed over the REAL
 // settings adapters (homes store, main-meter selection, power-source
-// classification, activation posture) against the mock SDK settings store —
+// classification) against the mock SDK settings store —
 // composition rules (producer-specific arms, area-meter exclusion) and the
 // unavailable classification of each branch's required reads. The end-to-end
 // forget flow lives in test/integration/weatherMeterScopeInvalidation.test.ts.
@@ -27,7 +27,6 @@ describe('readWholeHomeMeterScopeSignature', () => {
     const homey = buildHomey();
     homey.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'meter-main');
     homey.settings.set(HOMES_CONFIG, {
-      activationVersion: 1,
       subHomes: [area('h_b', 'meter-b'), area('h_a', 'meter-a'), area('h_c', null)],
     });
     expect(readWholeHomeMeterScopeSignature(homey)).toBe('source:flow');
@@ -44,24 +43,13 @@ describe('readWholeHomeMeterScopeSignature', () => {
     expect(readWholeHomeMeterScopeSignature(homey)).toBe('source:flow');
   });
 
-  it('composes Homey Energy with an explicit Main meter and no activation posture', () => {
+  it('composes Homey Energy with an explicit Main meter', () => {
     const homey = buildHomey();
     homey.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'meter-main');
     homey.settings.set(POWER_SOURCE, 'homey_energy');
     homey.settings.set(HOMES_CONFIG, { subHomes: [area('h_a', 'meter-a')] });
     expect(readWholeHomeMeterScopeSignature(homey)).toBe('source:homey_energy|main:meter-main');
   });
-
-  it('keeps an explicit Main fingerprint across roster activation', () => {
-    const homey = buildHomey();
-    homey.settings.set(POWER_SOURCE, 'homey_energy');
-    homey.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'meter-main');
-    homey.settings.set(HOMES_CONFIG, { subHomes: [area('h_a', 'meter-a')] });
-    const before = readWholeHomeMeterScopeSignature(homey);
-    homey.settings.set(HOMES_CONFIG, { activationVersion: 1, subHomes: [area('h_a', 'meter-a')] });
-    expect(readWholeHomeMeterScopeSignature(homey)).toBe(before);
-  });
-
 
   it('returns undefined while the Main selection is unavailable — no signature to compose', () => {
     // Stored null (the retired Automatic), a never-written key, and a
@@ -82,10 +70,10 @@ describe('readWholeHomeMeterScopeSignature', () => {
     const homey = buildHomey();
     homey.settings.set(POWER_SOURCE, 'homey_energy');
     homey.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'meter-main');
-    homey.settings.set(HOMES_CONFIG, { activationVersion: 1, subHomes: [area('h_a', 'meter-a')] });
+    homey.settings.set(HOMES_CONFIG, { subHomes: [area('h_a', 'meter-a')] });
     const before = readWholeHomeMeterScopeSignature(homey);
     expect(before).toBe('source:homey_energy|main:meter-main');
-    homey.settings.set(HOMES_CONFIG, { activationVersion: 1, subHomes: [area('h_a', 'meter-b')] });
+    homey.settings.set(HOMES_CONFIG, { subHomes: [area('h_a', 'meter-b')] });
     expect(readWholeHomeMeterScopeSignature(homey)).toBe(before);
   });
 

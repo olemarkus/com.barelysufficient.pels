@@ -25,10 +25,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
 import type { AppContext } from '../../lib/app/appContext';
 import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import {
-  HOME_CONFIG_ACTIVATION_VERSION,
-  type HomeConfig,
-} from '../../lib/home/homeConfig';
+import type { HomeConfig } from '../../lib/home/homeConfig';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { createHomeRuntimeRegistry, type HomeRuntimeRegistry } from '../../setup/homeRuntime/homeRuntimeRegistry';
 import { filterDevicesForHome } from '../../lib/home/homeMembershipService';
@@ -72,11 +69,8 @@ const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 
 const HOME_A = { homeId: 'h_a', name: 'Annex', rootZoneId: 'z2', meterDeviceId: 'm-a' };
 const HOME_B = { homeId: 'h_b', name: 'Cabin', rootZoneId: 'z3', meterDeviceId: 'm-b' };
-const writeActiveHomesConfig = (config: HomeConfig): void => {
-  createRawHomesStore(homeyLike.settings).write({
-    ...config,
-    activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
-  });
+const writeHomesConfig = (config: HomeConfig): void => {
+  createRawHomesStore(homeyLike.settings).write(config);
 };
 
 type Rig = {
@@ -85,7 +79,6 @@ type Rig = {
   setMembershipReady: (ready: boolean) => void;
   /** Make the injected membership authority THROW (a failing outward seam). */
   setMembershipAuthorityFailure: (failing: boolean) => void;
-  setRuntimeActive: (active: boolean) => void;
 };
 
 const buildRig = (): Rig => {
@@ -114,7 +107,6 @@ const buildRig = (): Rig => {
   });
   let membershipReady = true;
   let membershipAuthorityFailing = false;
-  let runtimeActive = true;
   const registry = createHomeRuntimeRegistry(
     ctx,
     getHomeModeCatalogForTest(ctx),
@@ -123,7 +115,6 @@ const buildRig = (): Rig => {
         if (membershipAuthorityFailing) throw new Error('membership authority unavailable');
         return membershipReady;
       },
-      isRuntimeActive: () => runtimeActive,
     },
     createRawHomesStore(ctx.homey.settings),
     createModeOwnershipTransfer(ctx, getHomeModeCatalogForTest(ctx)),
@@ -133,7 +124,6 @@ const buildRig = (): Rig => {
     registry,
     setMembershipReady: (ready) => { membershipReady = ready; },
     setMembershipAuthorityFailure: (failing) => { membershipAuthorityFailing = failing; },
-    setRuntimeActive: (active) => { runtimeActive = active; },
   };
 };
 
@@ -195,14 +185,14 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('reconciles bundles from the homes registry: create, replace meter identity, teardown removed', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    writeHomesConfig({ subHomes: [HOME_A, HOME_B] });
     rig.registry.reconcile();
     await drainPending();
     expect(rig.registry.getBundleHomeIds().sort()).toEqual(['h_a', 'h_b']);
     expect(rig.registry.getMeterDeviceIds().sort()).toEqual(['m-a', 'm-b']);
 
     // Meter identity change replaces the runtime under the same homeId.
-    writeActiveHomesConfig({
+    writeHomesConfig({
       subHomes: [{ ...HOME_A, meterDeviceId: 'm-a2' }, HOME_B],
     });
     rig.registry.reconcile();
@@ -210,7 +200,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     expect(rig.registry.getMeterDeviceIds().sort()).toEqual(['m-a2', 'm-b']);
 
     // Removal tears the bundle down and its home-scoped timers with it.
-    writeActiveHomesConfig({ subHomes: [HOME_B] });
+    writeHomesConfig({ subHomes: [HOME_B] });
     rig.registry.reconcile();
     await drainPending();
     expect(rig.registry.getBundleHomeIds()).toEqual(['h_b']);
@@ -219,7 +209,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('keeps running bundles on a SUSPECT homes-config read (never a destructive teardown)', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
@@ -232,10 +222,10 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('retries a transient homes-config read until the desired runtime is reconciled', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
-    writeActiveHomesConfig({
+    writeHomesConfig({
       subHomes: [{ ...HOME_A, meterDeviceId: 'm-a2' }],
     });
 
@@ -254,20 +244,8 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     expect(rig.registry.getMeterDeviceIds()).toEqual(['m-a2']);
   });
 
-  it('reconciles zero bundles while the membership producer holds runtime activation', async () => {
-    rig.setRuntimeActive(false);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
-    rig.registry.reconcile();
-    expect(rig.registry.getBundleHomeIds()).toEqual([]);
-
-    rig.setRuntimeActive(true);
-    rig.registry.reconcile();
-    await drainPending();
-    expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
-  });
-
   it('routes each meter reading to its own bundle; a missing reading yields NO sample', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    writeHomesConfig({ subHomes: [HOME_A, HOME_B] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -285,7 +263,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('readHome serves each home\'s OWN already-committed plan, tracker and diagnostics', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    writeHomesConfig({ subHomes: [HOME_A, HOME_B] });
     rig.registry.reconcile();
     await drainPending();
     const sampleTs = Date.now();
@@ -312,7 +290,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('readHome is a pure read: no rebuild, no snapshot decorate, stable commit stamp', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     rig.registry.routeMeterReadings({ 'm-a': 3000 }, Date.now());
@@ -334,7 +312,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     // effective flag reads true either way, and the value assertion below could
     // not tell the two source predicates apart.
     mockHomeyInstance.settings.set(`${CAPACITY_DRY_RUN}:h_a`, false);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     rig.registry.routeMeterReadings({ 'm-a': 3000 }, Date.now());
@@ -372,7 +350,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('readHome classifies a throwing assembly as unavailable instead of propagating it', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     expect(rig.registry.readHome('h_a').state).toBe('resolved');
@@ -394,7 +372,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('readHome reports unavailable for the main home, an unknown home, and after teardown', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -405,7 +383,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
     // A removed home is retained as a fenced tombstone until the next
     // reconcile clears it; it must never serve stale committed values.
-    writeActiveHomesConfig({ subHomes: [] });
+    writeHomesConfig({ subHomes: [] });
     rig.registry.reconcile();
     await drainPending();
     expect(rig.registry.readHome('h_a')).toEqual({ state: 'unavailable' });
@@ -415,7 +393,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('suffix hook reloads ONE bundle\'s capacity scalars; main\'s snapshot stays untouched', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    writeHomesConfig({ subHomes: [HOME_A, HOME_B] });
     rig.registry.reconcile();
     await drainPending();
     const mainCapacityBefore = { ...rig.ctx.capacitySettings };
@@ -432,7 +410,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('treats an unknown homeId as transient: one reconcile, no teardown, no throw', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -441,7 +419,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
     // A suffixed write racing ahead of the homes_config handler: the
     // dirty-mark reconcile picks the new home up from the registry.
-    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    writeHomesConfig({ subHomes: [HOME_A, HOME_B] });
     mockHomeyInstance.settings.set(`${CAPACITY_LIMIT_KW}:h_b`, 4);
     rig.registry.onHomeScopedSettingChanged(CAPACITY_LIMIT_KW, 'h_b');
     await drainPending();
@@ -459,7 +437,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     };
     rig.ctx.getTrackerStore().save('h_a', seededTracker);
     mockHomeyInstance.settings.set(`${DEVICE_LAST_CONTROLLED_MS}:h_a`, { 'dev-1': 123_456 });
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -478,7 +456,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     // identity in memory until its first persist establishes it. A legacy
     // last-controlled key holding junk imports nothing and resolves empty.
     mockHomeyInstance.settings.set(`${DEVICE_LAST_CONTROLLED_MS}:h_b`, ['not', 'a', 'map']);
-    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    writeHomesConfig({ subHomes: [HOME_A, HOME_B] });
     rig.registry.reconcile();
     await drainPending();
     expect(rig.registry.getBundleHomeIds().sort()).toEqual(['h_a', 'h_b']);
@@ -504,7 +482,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     };
     const store = rig.ctx.getTrackerStore();
     store.save('h_a', trackerState);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
 
     const originalLoad = store.load.bind(store);
     let readsFail = true;
@@ -543,7 +521,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     // Simulates a process death after homes_config committed the new meter but
     // before the previous process ran its in-memory reset.
     rig.ctx.getTrackerStore().save('h_a', oldState);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
 
     rig.registry.reconcile();
     await drainPending();
@@ -569,7 +547,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       dailyTotals: { '2026-01-14': 6.5 },
     };
     rig.ctx.getTrackerStore().save('h_a', oldState);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
 
     // The identity repair is the write that fails.
     const storeWrites = failTrackerStoreWrites(
@@ -598,7 +576,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   it('gates execution (dry-run) until membership has resolved from a committed zone tree', async () => {
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
     rig.setMembershipReady(false);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -611,7 +589,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('rebuilds each live sub-home plan when committed device ownership changes', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    writeHomesConfig({ subHomes: [HOME_A, HOME_B] });
     rig.registry.reconcile();
     await drainPending();
     const rebuild = vi.spyOn(PlanService.prototype, 'rebuildPlanFromCache');
@@ -624,7 +602,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('rebuilds every live sub-home plan after a global device-control policy change', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    writeHomesConfig({ subHomes: [HOME_A, HOME_B] });
     rig.registry.reconcile();
     await drainPending();
     const rebuild = vi.spyOn(PlanService.prototype, 'rebuildPlanFromCache');
@@ -665,7 +643,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       hasPendingOwnershipGeneration: () => false,
       getHomeIdForDevice: () => ownerHomeId,
     } as unknown as NonNullable<AppContext['homeMembership']>;
-    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    writeHomesConfig({ subHomes: [HOME_A, HOME_B] });
 
     expect(rig.registry.reconcile()).toBe(true);
     expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
@@ -707,7 +685,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       hasPendingOwnershipGeneration: () => false,
       getHomeIdForDevice: (deviceId: string) => owners.get(deviceId) ?? MAIN_HOME_ID,
     } as unknown as NonNullable<AppContext['homeMembership']>;
-    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    writeHomesConfig({ subHomes: [HOME_A, HOME_B] });
 
     expect(rig.registry.reconcile()).toBe(true);
     expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
@@ -744,7 +722,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       hasPendingOwnershipGeneration: () => false,
       getHomeIdForDevice: () => ownerHomeId,
     } as unknown as NonNullable<AppContext['homeMembership']>;
-    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    writeHomesConfig({ subHomes: [HOME_A, HOME_B] });
 
     expect(rig.registry.reconcile()).toBe(true);
     expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
@@ -781,7 +759,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       } as unknown as NonNullable<AppContext['homeMembership']>;
     };
     configureRig();
-    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    writeHomesConfig({ subHomes: [HOME_A, HOME_B] });
 
     expect(rig.registry.reconcile()).toBe(true);
     expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
@@ -826,7 +804,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       hasPendingOwnershipGeneration: () => false,
       getHomeIdForDevice: () => ownershipReady ? HOME_A.homeId : MAIN_HOME_ID,
     } as unknown as NonNullable<AppContext['homeMembership']>;
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
 
     expect(rig.registry.reconcile()).toBe(true);
     expect(mockHomeyInstance.settings.getKeys()).not.toContain(MODE_TARGET_OWNERSHIP_STATE);
@@ -857,7 +835,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       hasPendingOwnershipGeneration: () => generationPending,
       getHomeIdForDevice: () => ownerHomeId,
     } as unknown as NonNullable<AppContext['homeMembership']>;
-    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    writeHomesConfig({ subHomes: [HOME_A, HOME_B] });
 
     expect(rig.registry.reconcile()).toBe(true);
     expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
@@ -903,7 +881,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       hasPendingOwnershipGeneration: () => false,
       getHomeIdForDevice: () => ownerHomeId,
     } as unknown as NonNullable<AppContext['homeMembership']>;
-    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    writeHomesConfig({ subHomes: [HOME_A, HOME_B] });
     expect(rig.registry.reconcile()).toBe(true);
     expect(rig.registry.prepareModeCatalogsForOwnership()).toBe(true);
 
@@ -945,7 +923,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       hasPendingOwnershipGeneration: () => false,
       getHomeIdForDevice: () => HOME_A.homeId,
     } as unknown as NonNullable<AppContext['homeMembership']>;
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
 
     expect(rig.registry.reconcile()).toBe(false);
     expect(mockHomeyInstance.settings.get(MODE_TARGET_OWNERSHIP_STATE))
@@ -958,7 +936,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
     rig.setMembershipReady(false);
     rig.ctx.snapshotWarmupGate = new SnapshotWarmupGate({ timeoutMs: 0 });
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     // The area's meter has to have reported once before a plan is built for it,
     // so there is a status to publish at all.
@@ -985,7 +963,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       getUiPayload: vi.fn(),
       getOverviewStarvation: vi.fn(() => null),
     } as unknown as AppContext['deviceDiagnosticsService'];
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -1003,7 +981,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('teardownAll leaves suffixed persisted state in place and flushes a pending persist', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     const sampleTs = Date.now();
@@ -1061,7 +1039,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
   const armBundleGatedThenReady = async (): Promise<void> => {
     rig.setMembershipReady(false);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     rig.setMembershipReady(true);
@@ -1105,7 +1083,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     rig.registry.onMembershipReady();
     await drainPending();
     // Tear the bundle down WHILE its ready-edge rebuild is in flight.
-    writeActiveHomesConfig({ subHomes: [] });
+    writeHomesConfig({ subHomes: [] });
     rig.registry.reconcile();
     await drainPending();
     // The in-flight rebuild resolves (healthy) AFTER teardown — the edge's fence
@@ -1122,14 +1100,14 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     // A real warmup gate holds the initial rebuild in flight until released.
     const heldGate = new SnapshotWarmupGate({ timeoutMs: 10 * 60 * 1000 });
     rig.ctx.snapshotWarmupGate = heldGate;
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     // Held by the gate → no status published yet.
     expect(rig.ctx.planStatuses.read('h_a')).toEqual({ state: 'absent' });
 
     // Tear down while the rebuild is held, THEN let it resolve post-teardown.
-    writeActiveHomesConfig({ subHomes: [] });
+    writeHomesConfig({ subHomes: [] });
     rig.registry.reconcile();
     await drainPending();
     heldGate.release('snapshot_ready');
@@ -1139,7 +1117,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
     // A same-homeId recreate is a FRESH bundle with its own (open) fence: it persists.
     rig.ctx.snapshotWarmupGate = new SnapshotWarmupGate({ timeoutMs: 0 });
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     // Fresh bundle, fresh guard: the recreated home needs its meter to report
     // before it builds (and so persists) anything.
@@ -1174,7 +1152,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     // actuating case — both homes configured to actuate.
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
     mockHomeyInstance.settings.set('capacity_dry_run:h_b', false);
-    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    writeHomesConfig({ subHomes: [HOME_A, HOME_B] });
     rig.registry.reconcile();
     await drainPending();
     // Prime both meters so each has a live `lastTimestamp` (proving it was sampling).
@@ -1203,7 +1181,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
   it('R3#1a freshness heartbeat: a FAILED rebuild is NOT latched — the next tick retries', async () => {
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     // Live `lastTimestamp` so the bundle can go stale (it was sampling).
@@ -1238,7 +1216,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     // churn every tick) and the ready-edge escalation still finds it owed.
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
     rig.setMembershipReady(false);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     rig.registry.routeMeterReadings({ 'm-a': 1000 }, Date.now());
@@ -1277,7 +1255,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     const heldGate = new SnapshotWarmupGate({ timeoutMs: 10 * 60 * 1000 });
     rig.ctx.snapshotWarmupGate = heldGate;
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -1286,7 +1264,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     await drainPending();
 
     // Tear the bundle down, THEN release the held rebuild (resolves post-teardown).
-    writeActiveHomesConfig({ subHomes: [] });
+    writeHomesConfig({ subHomes: [] });
     rig.registry.reconcile();
     await drainPending();
     heldGate.release('snapshot_ready');
@@ -1305,7 +1283,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     const heldGate = new SnapshotWarmupGate({ timeoutMs: 10 * 60 * 1000 });
     rig.ctx.snapshotWarmupGate = heldGate;
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -1335,7 +1313,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
         : originalGetTriggerCard(cardId)
     ));
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -1405,11 +1383,11 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
         : originalGetTriggerCard(cardId)
     ));
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
-    writeActiveHomesConfig({ subHomes: [{ ...HOME_A, name: 'Loft' }] });
+    writeHomesConfig({ subHomes: [{ ...HOME_A, name: 'Loft' }] });
     rig.registry.reconcile();
     await drainPending();
     expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
@@ -1475,7 +1453,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       filterDevicesForHome: (devices: TargetDeviceSnapshot[]) => devices,
     } as unknown as NonNullable<AppContext['homeMembership']>;
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -1566,7 +1544,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('P2#6 poll-discard parity: routeMeterReadings drops readings when the source is not homey_energy', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -1593,7 +1571,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     ));
 
     mockHomeyInstance.settings.set(POWER_SOURCE, 'flow');
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     rig.registry.reconcile();
     await drainPending();
@@ -1613,7 +1591,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
   it('flow source forces effective dry-run even when this home has control enabled', async () => {
     mockHomeyInstance.settings.set(`${CAPACITY_DRY_RUN}:h_a`, false);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     expect(diagnosticsFor(rig.registry, 'h_a').dryRunEffective).toBe(false);
@@ -1627,7 +1605,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
   it('Flow to Homey Energy opens a fresh runtime only, before the restarted poll reports', async () => {
     mockHomeyInstance.settings.set(`${CAPACITY_DRY_RUN}:h_a`, false);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     rig.registry.routeMeterReadings({ 'm-a': 15_000 }, Date.now());
@@ -1667,7 +1645,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
   it('synchronously fences and replaces the runtime across a rapid un-awaited source ABA', async () => {
     mockHomeyInstance.settings.set(`${CAPACITY_DRY_RUN}:h_a`, false);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     rig.registry.routeMeterReadings({ 'm-a': 15_000 }, Date.now());
@@ -1702,7 +1680,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
   it('keeps a failed source-epoch reset fenced until its owned retry recovers it', async () => {
     mockHomeyInstance.settings.set(`${CAPACITY_DRY_RUN}:h_a`, false);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     rig.registry.routeMeterReadings({ 'm-a': 1500 }, Date.now());
@@ -1744,7 +1722,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
   it('rereads the authoritative source after a transient settings-read failure', async () => {
     mockHomeyInstance.settings.set(`${CAPACITY_DRY_RUN}:h_a`, false);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -1775,7 +1753,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
   it('keeps an exact-key undefined source transition fenced until the owned retry recovers', async () => {
     mockHomeyInstance.settings.set(`${CAPACITY_DRY_RUN}:h_a`, false);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     rig.registry.routeMeterReadings({ 'm-a': 1_500 }, Date.now());
@@ -1822,7 +1800,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('keeps a failed removal reset fenced before the same homeId can use a new meter', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -1835,7 +1813,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
     const storeWrites = failTrackerStoreWrites(rig.ctx);
 
-    writeActiveHomesConfig({ subHomes: [] });
+    writeHomesConfig({ subHomes: [] });
     rig.registry.reconcile();
 
     // Removal closes every live surface immediately, but keeps the failed
@@ -1844,7 +1822,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     expect(rig.registry.getMeterDeviceIds()).toEqual([]);
     expect(storedTrackerFor(rig.ctx, 'h_a').lastTimestamp).toBe(oldSampleTs);
 
-    writeActiveHomesConfig({
+    writeHomesConfig({
       subHomes: [{ ...HOME_A, meterDeviceId: 'm-a2' }],
     });
     rig.registry.reconcile();
@@ -1866,7 +1844,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('meter change force-persists the cleared freshness before a restart can rehydrate it', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -1877,7 +1855,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     await drainPending();
     expect(storedTrackerFor(rig.ctx, 'h_a').lastTimestamp).toBe(oldSampleTs);
 
-    writeActiveHomesConfig({
+    writeHomesConfig({
       subHomes: [{ ...HOME_A, meterDeviceId: 'm-a2' }],
     });
     rig.registry.reconcile();
@@ -1890,7 +1868,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('keeps a failed meter-reset replacement fenced until its owned retry recovers it', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -1900,7 +1878,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     await vi.advanceTimersByTimeAsync(VOLATILE_WRITE_THROTTLE_MS + 1000);
     await drainPending();
 
-    writeActiveHomesConfig({
+    writeHomesConfig({
       subHomes: [{ ...HOME_A, meterDeviceId: 'm-a2' }],
     });
     const storeWrites = failTrackerStoreWrites(rig.ctx);
@@ -1925,46 +1903,10 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBeNull();
   });
 
-  it('clears dormant freshness before held configuration activates and retries the safety write', async () => {
-    const accountingState: PowerTrackerState = {
-      lastTimestamp: Date.now() - 30_000,
-      lastPowerW: 4_200,
-      buckets: { '2026-01-15T12': 1.25 },
-      hourlySampleCounts: { '2026-01-15T12': 4 },
-    };
-    rig.ctx.getTrackerStore().save('h_a', accountingState);
-    rig.setRuntimeActive(false);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
-    rig.registry.reconcile();
-    expect(rig.registry.getBundleHomeIds()).toEqual([]);
-
-    // The freshness reset (the safety write) is what fails.
-    const storeWrites = failTrackerStoreWrites(rig.ctx, (next) => next.lastTimestamp === undefined);
-
-    rig.setRuntimeActive(true);
-    rig.registry.reconcile();
-    expect(rig.registry.getBundleHomeIds()).toEqual([]);
-    // The accounting is intact, its freshness still to be cleared by the
-    // owned retry.
-    expect(rig.ctx.getTrackerStore().load('h_a')).toEqual(accountingState);
-
-    storeWrites.recover();
-    await vi.advanceTimersByTimeAsync(1_000);
-    await drainPending();
-
-    expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
-    const reset = storedTrackerFor(rig.ctx, 'h_a');
-    expect(reset.lastTimestamp).toBeUndefined();
-    expect(reset.lastPowerW).toBeUndefined();
-    expect(reset.buckets).toEqual(accountingState.buckets);
-    expect(reset.hourlySampleCounts).toEqual(accountingState.hourlySampleCounts);
-    expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBeNull();
-  });
-
   it('meter change discards an old-meter coalesced rerun already in flight', async () => {
     const heldGate = new SnapshotWarmupGate({ timeoutMs: 10 * 60 * 1000 });
     rig.ctx.snapshotWarmupGate = heldGate;
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
 
     // The first sample adopts its tracker/guard state, then waits behind the
@@ -1974,7 +1916,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     rig.registry.routeMeterReadings({ 'm-a': 9000 }, Date.now() + 10_000);
     await drainPending();
 
-    writeActiveHomesConfig({
+    writeHomesConfig({
       subHomes: [{ ...HOME_A, meterDeviceId: 'm-a2' }],
     });
     rig.registry.reconcile();
@@ -1993,7 +1935,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('P2#3 meter change resets the bundle sample/freshness: no action on the OLD meter, waits for the NEW meter', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -2004,7 +1946,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
     // The meter device changes under the same homeId; the registry replaces
     // the runtime so accepted old-meter work remains behind teardown fences.
-    writeActiveHomesConfig({ subHomes: [{ ...HOME_A, meterDeviceId: 'm-a2' }] });
+    writeHomesConfig({ subHomes: [{ ...HOME_A, meterDeviceId: 'm-a2' }] });
     rig.registry.reconcile();
     // Guard last-total cleared: the bundle no longer holds the old meter's 15 kW,
     // so a rebuild before the new meter reports cannot shed/restore on stale load.
@@ -2024,7 +1966,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('P2#4 flow-mode: an aged prior sample does NOT escalate to a fail-closed shed (heartbeat gated on homey_energy)', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 

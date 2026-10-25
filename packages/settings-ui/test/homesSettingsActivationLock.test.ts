@@ -59,7 +59,6 @@ const readyPayload = (): SettingsUiHomesPayload => ({
     z2: { id: 'z2', name: 'Upstairs', parent: 'z1' },
   },
   hasSubHomes: true,
-  runtimeActive: true,
   configDegraded: false,
   mainMeterConflictAreaName: null,
 });

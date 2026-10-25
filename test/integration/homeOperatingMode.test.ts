@@ -38,10 +38,7 @@ import { createSampledMeterIdentityWithoutRestoredSample } from '../helpers/home
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
 import type { AppContext } from '../../lib/app/appContext';
-import {
-  HOME_CONFIG_ACTIVATION_VERSION,
-  type HomeConfig,
-} from '../../lib/home/homeConfig';
+import type { HomeConfig } from '../../lib/home/homeConfig';
 import { createHomeRuntimeRegistry, type HomeRuntimeRegistry } from '../../setup/homeRuntime/homeRuntimeRegistry';
 import { readGoverningModeDeviceTargetC } from '../../lib/home/modeDeviceTargetsRead';
 import { HomeMembershipService } from '../../lib/home/homeMembershipService';
@@ -76,11 +73,8 @@ const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 
 const HOME_A = { homeId: 'h_a', name: 'Annex', rootZoneId: 'z2', meterDeviceId: 'm-a' };
 const HOME_B = { homeId: 'h_b', name: 'Cabin', rootZoneId: 'z3', meterDeviceId: 'm-b' };
-const writeActiveHomesConfig = (config: HomeConfig): void => {
-  createRawHomesStore(homeyLike.settings).write({
-    ...config,
-    activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
-  });
+const writeHomesConfig = (config: HomeConfig): void => {
+  createRawHomesStore(homeyLike.settings).write(config);
 };
 
 type Rig = { ctx: AppContext; registry: HomeRuntimeRegistry };
@@ -126,7 +120,7 @@ const buildRig = (): Rig => {
   const registry = createHomeRuntimeRegistry(
     ctx,
     getHomeModeCatalogForTest(ctx),
-    { isSubHomeExecutionReady: () => true, isRuntimeActive: () => true },
+    { isSubHomeExecutionReady: () => true },
     createRawHomesStore(ctx.homey.settings),
     createModeOwnershipTransfer(ctx, getHomeModeCatalogForTest(ctx)),
   );
@@ -347,7 +341,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
   });
 
   it('initializes area catalogs before owner-aware mode resolution', () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     getHomeModeCatalogForTest(rig.ctx).setOperatingMode('Away');
     rig.ctx.homeMembership = {
       isOwnershipReady: () => true,
@@ -452,7 +446,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
   };
 
   it('routes a suffixed operating_mode write to ONE bundle; main\'s mode dispatch never runs', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    writeHomesConfig({ subHomes: [HOME_A, HOME_B] });
     rig.registry.reconcile();
     await drainPending();
     const rebuild = vi.spyOn(PlanService.prototype, 'rebuildPlanFromCache');
@@ -499,7 +493,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
   });
 
   it('rebuilds the owning bundle when a per-home operating mode pin is unset', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     mockHomeyInstance.settings.set(`${OPERATING_MODE_SETTING}:h_a`, 'Cooler');
     rig.registry.reconcile();
     await drainPending();
@@ -531,7 +525,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
   });
 
   it('keeps an area on a configured local mode when an invalid active mode is written', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -547,7 +541,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
   });
 
   it('an additive mode rename never rebuilds a pinned area through the global fallback', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -618,7 +612,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
   });
 
   it('an area priority reorder rebuilds only that area with its new order', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -667,7 +661,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
   });
 
   it('fails a malformed area active-mode value safe onto Home', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -684,7 +678,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
   });
 
   it('contains a THROWN pinned-mode read: last-known mode held, catalog reports unavailable, rebuild completes', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     mockHomeyInstance.settings.set(`${OPERATING_MODE_SETTING}:h_a`, 'Cooler');
@@ -735,7 +729,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     ['a fulfilled undefined for the existing key', false],
     ['a transient store-wide empty key list', true],
   ])('holds an established pin across %s', async (_label, emptyKeys) => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     const pinKey = `${OPERATING_MODE_SETTING}:h_a`;
@@ -771,7 +765,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
   });
 
   it('holds an established pin when a listed key reads null', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     const pinKey = `${OPERATING_MODE_SETTING}:h_a`;
@@ -793,7 +787,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
   });
 
   it('a global mode change leaves every initialized area catalog independent', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    writeHomesConfig({ subHomes: [HOME_A, HOME_B] });
     rig.registry.reconcile();
     await drainPending();
     mockHomeyInstance.settings.set(`${OPERATING_MODE_SETTING}:h_a`, 'Cooler');
@@ -814,7 +808,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
   });
 
   it('treats a pinned-mode write for an unknown homeId as transient (no throw, no teardown)', async () => {
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -854,7 +848,6 @@ describe('per-home operating mode (device-scoped mode target)', () => {
       getLogger: () => testLogger,
       getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
       getConfiguredPowerSource: () => ({ state: 'resolved', value: 'homey_energy' }),
-      legacyMultiHomeEnabled: true,
     })
   );
 
@@ -873,7 +866,7 @@ describe('per-home operating mode (device-scoped mode target)', () => {
     mockHomeyInstance.settings.set(MANAGED_DEVICES, { 'vt-1': true });
     mockHomeyInstance.settings.set(CONTROLLABLE_DEVICES, { 'vt-1': true });
     mockHomeyInstance.settings.set('mode_device_targets', MODE_TARGETS);
-    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    writeHomesConfig({ subHomes: [HOME_A] });
     mockHomeyInstance.settings.set(`${OPERATING_MODE_SETTING}:h_a`, 'Cooler');
 
     membership = buildMembership(() => ZONES);

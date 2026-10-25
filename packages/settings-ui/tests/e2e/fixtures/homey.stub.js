@@ -1685,9 +1685,6 @@
       membershipByDeviceId,
       zoneTree: HOMES_ZONE_TREE,
       hasSubHomes: subHomes.length > 0,
-      runtimeActive: subHomes.length === 0
-        || raw?.activationVersion === 1
-        || settings.multi_home_enabled === true,
       // Healthy stub default; degraded specs override the whole handler.
       configDegraded: false,
     };
@@ -1711,11 +1708,8 @@
         return { ok: false, reason: 'invalid' };
       }
       if (body.source === 'flow') {
-        // Flow and RUNNING meter areas are mutually exclusive. Same activation
-        // term as production; a dormant pre-GA config never blocks the switch.
-        const areasRunning = current.length > 0
-          && (raw?.activationVersion === 1 || settings.multi_home_enabled === true);
-        if (areasRunning) {
+        // Flow and configured meter areas are mutually exclusive.
+        if (current.length > 0) {
           return { ok: false, reason: 'homey_energy_required' };
         }
         settings.power_source = 'flow';
@@ -1740,7 +1734,6 @@
     }
     if (body.op === 'delete') {
       settings.homes_config = {
-        ...(raw?.activationVersion === 1 ? { activationVersion: 1 } : {}),
         subHomes: current.filter((area) => area.homeId !== body.homeId),
       };
       return { ok: true };
@@ -1770,7 +1763,6 @@
     };
     const exists = current.some((area) => area.homeId === homeId);
     settings.homes_config = {
-      activationVersion: 1,
       subHomes: exists
         ? current.map((area) => (area.homeId === homeId ? entry : area))
         : [...current, entry],
@@ -1787,18 +1779,21 @@
   // - a live meter area → THAT AREA'S data (its suffixed fixtures, its member
   //   devices), never the whole home's payload wearing a sub-home badge — a
   //   spec written against this stub must not pass on another home's values;
-  // - anything else — a refused id, an unknown area, or a rostered area whose
-  //   runtime is not active → the EMPTY shape plus an `unavailable` scope. The
+  // - anything else — a refused id, an unknown area, or an area the runtime
+  //   holds no committed reading for (production: its bundle is not built
+  //   yet; specs name these in `homesWithoutRuntime`) → the EMPTY shape plus
+  //   an `unavailable` scope. The
   //   refused ids need no hand-copied character rules here: they are never in
   //   the roster, so the membership check alone classifies them identically.
+  const homesWithoutRuntime = new Set(
+    Array.isArray(initialOverrides.homesWithoutRuntime) ? initialOverrides.homesWithoutRuntime : [],
+  );
   const resolveServableHomeId = (query) => {
     const homeId = query?.homeId;
     if (homeId === undefined) return { scoped: false };
     const isServable = typeof homeId === 'string'
       && (settings.homes_config?.subHomes ?? []).some((home) => home.homeId === homeId)
-      // The producer serves only a WIRED bundle; the stub's activation bit is
-      // the closest seam (`buildHomesPayload` derives it the same way).
-      && buildHomesPayload().runtimeActive;
+      && !homesWithoutRuntime.has(homeId);
     return { scoped: true, homeId: isServable ? homeId : null };
   };
 

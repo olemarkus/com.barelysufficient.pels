@@ -125,7 +125,6 @@ test.describe('Power source setting', () => {
           power_source: 'homey_energy',
           homey_energy_meter_device_id: 'dev_han',
           homes_config: {
-            activationVersion: 1,
             subHomes: [{
               homeId: 'h_rental',
               name: 'Rental unit',
@@ -199,7 +198,6 @@ test.describe('Power source setting', () => {
         settings: {
           power_source: 'homey_energy',
           homes_config: {
-            activationVersion: 1,
             subHomes: [{
               homeId: 'h_rental',
               name: 'Rental unit',

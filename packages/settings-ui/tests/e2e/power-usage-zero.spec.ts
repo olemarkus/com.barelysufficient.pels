@@ -1,5 +1,5 @@
 import { expect, test, type Page } from './fixtures/test';
-import { pickHomeScope, seedStubSetting } from './fixtures/homes';
+import { installAreaWithoutRuntime, pickHomeScope, seedStubSetting } from './fixtures/homes';
 
 const FIXED_NOW_MS = Date.UTC(2025, 0, 6, 12, 0, 0);
 
@@ -77,17 +77,15 @@ const AREA_ID = 'h_11111111';
 
 // The rental area, pre-boot (the Usage scenario is a home whose area already
 // exists — the reload inside `openUsageTab` would wipe a post-boot store
-// seed). `activationVersion: 1` = live runtime; omitting it = the held
-// posture whose scoped reads answer `homeScope: unavailable`.
-const rentalAreaConfig = (activated: boolean) => ({
-  ...(activated ? { activationVersion: 1 } : {}),
+// seed).
+const RENTAL_AREA_CONFIG = {
   subHomes: [{
     homeId: AREA_ID,
     name: 'Rental unit',
     rootZoneId: 'z_rental',
     meterDeviceId: 'dev_rental_meter',
   }],
-});
+};
 
 const buildScopedTracker = (kWh: number) => {
   const currentHourStartMs = FIXED_NOW_MS - (FIXED_NOW_MS % (60 * 60 * 1000));
@@ -112,7 +110,7 @@ const emitStubPowerTrackerPersisted = (page: Page, homeId: string) => page.evalu
 test.describe('Usage follows the shown home', () => {
   test('a meter area shows its own history, live on its suffixed stream', async ({ page }) => {
     await installFixedNowWithSettings(page, {
-      homes_config: rentalAreaConfig(true),
+      homes_config: RENTAL_AREA_CONFIG,
       power_tracker_state: buildScopedTracker(2),
       [`power_tracker_state:${AREA_ID}`]: buildScopedTracker(0.7),
     });
@@ -140,7 +138,7 @@ test.describe('Usage follows the shown home', () => {
 
   test('the Budget overage recourse lands Usage on the Main home', async ({ page }) => {
     await installFixedNowWithSettings(page, {
-      homes_config: rentalAreaConfig(true),
+      homes_config: RENTAL_AREA_CONFIG,
       power_tracker_state: buildScopedTracker(2),
       [`power_tracker_state:${AREA_ID}`]: buildScopedTracker(0.7),
     });
@@ -195,10 +193,9 @@ test.describe('Usage follows the shown home', () => {
   });
 
   test('an area the runtime cannot serve shows the honest notice, not zeros', async ({ page }) => {
-    // Held posture: rostered, but not activated — the scoped read answers
-    // `homeScope: unavailable`.
+    await installAreaWithoutRuntime(page, AREA_ID);
     await installFixedNowWithSettings(page, {
-      homes_config: rentalAreaConfig(false),
+      homes_config: RENTAL_AREA_CONFIG,
       power_tracker_state: buildScopedTracker(2),
     });
     await openUsageTab(page);

@@ -1,7 +1,7 @@
 /**
  * The wiring side of the per-home runtime registry (multi-home R7b). The
- * registry — its bundle map, recovery retry, stop latch, activation
- * bookkeeping, prepared ownership samples and every transition over them — is
+ * registry — its bundle map, recovery retry, stop latch, prepared ownership
+ * samples and every transition over them — is
  * `lib/home/homeRuntimeRegistry.ts`. This file builds what lib/home may not
  * import: the power owner's source-epoch fence, and each area's capacity
  * bundle, composed from the plan, power and price factories against the power
@@ -18,7 +18,7 @@ import {
 import type { ModeOwnershipTransfer } from '../../lib/home/modeOwnershipTransfer';
 import { SubHomeRuntime } from '../../lib/home/subHomeRuntime';
 import { PowerSourceEpochFence } from '../../lib/power/powerSourceEpochFence';
-import { requireTrackerForMeter, resetDormantTrackerFreshness } from '../../lib/power/trackerMeterIdentity';
+import { requireTrackerForMeter } from '../../lib/power/trackerMeterIdentity';
 import type { PowerTrackerMeterIdentity } from '../../lib/power/trackerTypes';
 import { requireHomeMembership } from '../appInit/contextGuards';
 import { readConfiguredPowerSource } from '../powerSourceSettings';
@@ -31,12 +31,8 @@ export type HomeRuntimeRegistry = SubHomeRegistry<OwningHomeHooks>;
 export function createHomeRuntimeRegistry(
   ctx: AppContext,
   mainModeCatalog: HomeModeCatalog,
-  /**
-   * The membership service's two answers the registry needs: the readiness
-   * signal handed to every bundle (execution gate), and the producer-resolved
-   * GA activation posture.
-   */
-  membership: Pick<HomeMembershipService, 'isSubHomeExecutionReady' | 'isRuntimeActive'>,
+  /** The readiness signal handed to every bundle (execution gate). */
+  membership: Pick<HomeMembershipService, 'isSubHomeExecutionReady'>,
   homesStore: HomesStore,
   modeOwnershipTransfer: ModeOwnershipTransfer,
 ): HomeRuntimeRegistry {
@@ -58,17 +54,11 @@ export function createHomeRuntimeRegistry(
         meterIdentity,
       );
     },
-    resetDormantTrackerFreshness: (homeId) => resetDormantTrackerFreshness(
-      ctx.getTrackerStore(),
-      homeId,
-      () => ctx.getStructuredLogger('homes'),
-    ),
   };
   return new SubHomeRegistry(
     homesStore,
     modeOwnershipTransfer,
     {
-      isRuntimeActive: () => membership.isRuntimeActive(),
       // The registry exists only while membership does (built after
       // `initHomeMembership`, dropped before `runUninit` clears it).
       getHomeIdForDevice: (deviceId) => requireHomeMembership(ctx).getHomeIdForDevice(deviceId),

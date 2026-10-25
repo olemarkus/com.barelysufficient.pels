@@ -40,6 +40,12 @@ const RETIRED_SETTINGS_KEYS: ReadonlySet<string> = new Set([
   // no install ran a version that wrote the blob (2.7.0 to 2.10.x).
   'deferred_objectives',
   'deferred_objectives_perkey_migrated',
+  // A pre-release switch for meter areas (2.17.1 to 2.18.x) and the marker of
+  // the cleanup that unset the EV support switch EV-by-default replaced. Both
+  // were deleted once no install ran a version that needed them.
+  'multi_home_enabled',
+  'experimental_ev_support_enabled',
+  'boot_migrations_v1_ev_setting_cleanup_done',
 ]);
 
 export const unsetRetiredSettingsKeys = (settings: SettingsPort): void => {

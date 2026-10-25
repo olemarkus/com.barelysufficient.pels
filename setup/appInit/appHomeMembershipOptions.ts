@@ -29,7 +29,6 @@ export const buildAppHomeMembershipOptions = (
     }
   },
   onZoneTreeCommitReady: () => getRegistry()?.onMembershipReady(),
-  onRuntimeActiveChanged: () => getRegistry()?.reconcile(),
   onSubHomeMembershipChanged: () => getRegistry()?.onMembershipChanged() ?? true,
   ownershipGenerationRuntime: {
     getMainStableSampleRevision,

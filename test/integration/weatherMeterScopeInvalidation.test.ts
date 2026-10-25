@@ -40,12 +40,7 @@ const STAMPED_SIGNATURE = `source:homey_energy|main:${MAIN_METER}`;
 const AUTOMATIC_ACTIVE_SIGNATURE = 'source:homey_energy|main:automatic|areas:active';
 
 const areaConfig = (meterDeviceId: string, name = 'Annex') => ({
-  activationVersion: 1,
   subHomes: [{ homeId: 'h_area1', name, rootZoneId: 'z-annex', meterDeviceId }],
-});
-
-const dormantAreaConfig = (meterDeviceId: string) => ({
-  subHomes: [{ homeId: 'h_area1', name: 'Annex', rootZoneId: 'z-annex', meterDeviceId }],
 });
 
 const learnedHistory = (overrides: Partial<WeatherHistoryState> = {}): WeatherHistoryState => ({
@@ -219,30 +214,6 @@ describe('weather meter-scope invalidation through the settings-change seam', ()
     expect(memory.meterKwhBackfillDone).toBe(true);
     expect(memory.latestFit).toBeDefined();
     expect(memory.records[0].kwhTotal).toBe(30);
-    expect(harness.weatherLogger.info).not.toHaveBeenCalledWith(expect.objectContaining({
-      event: 'weather_meter_scope_invalidated',
-    }));
-    harness.stop();
-  });
-
-  it('preserves learned history when a dormant roster activates under an explicit Main meter', async () => {
-    const harness = buildHarness(
-      learnedHistory(),
-      {},
-      { homesConfig: dormantAreaConfig(AREA_METER) },
-    );
-    await vi.advanceTimersByTimeAsync(0);
-
-    harness.homey.settings.set(HOMES_CONFIG, areaConfig(AREA_METER));
-    await harness.handle(HOMES_CONFIG);
-
-    const memory = harness.collector.getHistoryStateSnapshot();
-    expect(memory.meterScopeSignature).toBe(STAMPED_SIGNATURE);
-    expect(memory.meterScopeSinceDateKey).toBeUndefined();
-    expect(memory.meterKwhBackfillDone).toBe(true);
-    expect(memory.latestFit).toBeDefined();
-    expect(memory.records[0].kwhTotal).toBe(30);
-    expect(persistedState(harness).records[0].kwhTotal).toBe(30);
     expect(harness.weatherLogger.info).not.toHaveBeenCalledWith(expect.objectContaining({
       event: 'weather_meter_scope_invalidated',
     }));

@@ -275,8 +275,8 @@ setBudgetAdjustRenderer(() => doRender());
 // Weather-insight data lands asynchronously (budget-tab fetch, settings.set
 // round-trips); re-render the Budget surface whenever the controller updates.
 setWeatherInsightRenderer(() => doRender());
-// The Main-home scope line's only inputs are the shell's roster + activation
-// posture; repaint a VISIBLE Budget panel when they change (an area added or
+// The Main-home scope line's only input is the shell's roster; repaint a
+// VISIBLE Budget panel when it changes (an area added or
 // removed from the Multiple-meters panel, or a second WebView). Scope PICKS
 // also fire this listener, but the picker never renders on the Budget panel,
 // so those only ever arrive while the panel is hidden. Visibility is checked

@@ -44,12 +44,11 @@ const flushAsync = async () => {
   await new Promise((resolve) => { setTimeout(resolve, 0); });
 };
 
-const homesPayload = (runtimeActive = true) => ({
+const homesPayload = () => ({
   homes: [{ homeId: AREA_ID, name: 'Utleie', rootZoneId: 'z1', meterDeviceId: 'dev_a' }],
   membershipByDeviceId: {},
   zoneTree: null,
   hasSubHomes: true,
-  runtimeActive,
   configDegraded: false,
 });
 
@@ -91,8 +90,8 @@ const selectArea = async (homeId: string) => {
 
 let homey: MockHomeyClient;
 
-const install = (settings: Record<string, unknown> = {}, runtimeActive = true) => {
-  homey = installHomeyMock({ settings, uiState: { homes: homesPayload(runtimeActive) } });
+const install = (settings: Record<string, unknown> = {}) => {
+  homey = installHomeyMock({ settings, uiState: { homes: homesPayload() } });
   setHomeyClient(homey as never);
 };
 
@@ -182,7 +181,6 @@ describe('scope bar + static-form visibility', () => {
           membershipByDeviceId: {},
           zoneTree: null,
           hasSubHomes: false,
-          runtimeActive: true,
           configDegraded: false,
         },
       },
@@ -232,7 +230,6 @@ describe('scope bar + static-form visibility', () => {
           membershipByDeviceId: {},
           zoneTree: null,
           hasSubHomes: false,
-          runtimeActive: true,
           configDegraded: false,
         },
       },
@@ -269,39 +266,6 @@ describe('control toggle — optimistic rollback + serialization', () => {
   };
 
   const controlSwitch = () => document.querySelector('#home-limits-simulation-switch') as HTMLElement & { selected: boolean };
-
-  it('does not claim or persist control for a legacy-held meter area', async () => {
-    const dryRunKey = `capacity_dry_run:${AREA_ID}`;
-    install({
-      [`capacity_limit_kw:${AREA_ID}`]: 7,
-      [`capacity_margin_kw:${AREA_ID}`]: 0.3,
-      [dryRunKey]: false,
-      [`power_tracker_state:${AREA_ID}`]: LATCHED_AREA_TRACKER,
-      [`pels_status:${AREA_ID}`]: {
-        controlledKw: 2.5,
-        uncontrolledKw: 1.5,
-        powerNowKw: 2,
-        devicesOff: 0,
-        limitReason: 'none',
-      },
-    }, false);
-    await refreshHomeLimitsOnLimitsPanel();
-    await flushAsync();
-    await selectArea(AREA_ID);
-
-    const sw = controlSwitch();
-    expect(sw.selected).toBe(false);
-    expect(sw.hasAttribute('disabled')).toBe(true);
-    expect(document.querySelector('#home-limits-status-chip')?.textContent).toBe('Not active');
-    expect(document.querySelector('#home-limits-status-power')?.textContent).toBe('—');
-    expect(document.querySelector('#home-limits-inactive-notice')?.textContent)
-      .toContain('open Multiple meters and save this area');
-
-    sw.selected = true;
-    sw.dispatchEvent(new Event('change'));
-    await flushAsync();
-    expect(homey.set.mock.calls.some(([key]: unknown[]) => key === dryRunKey)).toBe(false);
-  });
 
   it('rolls the toggle + posture back to the persisted value when the write is rejected', async () => {
     await seedSimulatingArea();
@@ -1143,7 +1107,6 @@ describe('homes_config change refreshes the scope roster', () => {
     membershipByDeviceId: {},
     zoneTree: null,
     hasSubHomes: true,
-    runtimeActive: true,
     configDegraded: false,
   });
   const emptyHomes = () => ({
@@ -1151,7 +1114,6 @@ describe('homes_config change refreshes the scope roster', () => {
     membershipByDeviceId: {},
     zoneTree: null,
     hasSubHomes: false,
-    runtimeActive: true,
     configDegraded: false,
   });
 

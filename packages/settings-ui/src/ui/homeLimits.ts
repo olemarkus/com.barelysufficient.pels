@@ -154,7 +154,6 @@ const setMainHardCapHint = (areasExist: boolean): void => {
 const buildAreaEditorView = (editor: AreaEditorState): HomeLimitsEditorView => {
   const hardCapKw = parseFiniteOrNull(editor.hardCapValue);
   const marginKw = parseFiniteOrNull(editor.marginValue);
-  const { runtimeActive } = getHomeScope();
   return {
     areaName: editor.areaName,
     hardCapValue: editor.hardCapValue,
@@ -162,16 +161,14 @@ const buildAreaEditorView = (editor: AreaEditorState): HomeLimitsEditorView => {
     periodMinutes: editor.periodMinutes,
     periodBusy: editor.periodWriteQueue.pendingCount > 0,
     dryRun: editor.dryRun,
-    runtimeActive,
     controlBusy: editor.dryRunWriteInFlight,
     marginError: marginVsCapError(hardCapKw, marginKw),
     reactionKw: reactionKwLabel(hardCapKw, marginKw),
     capacityPeak: editor.capacityPeak,
     // Resolve the status against the LIVE edited cap + simulation state so the
-    // card's Hard cap and posture track the inputs without a re-read. A held
-    // config is forced non-active even if its pre-GA dry-run value was false.
+    // card's Hard cap and posture track the inputs without a re-read.
     status: resolveHomeLimitsStatus(editor.statusRaw, {
-      dryRun: !runtimeActive || editor.dryRun,
+      dryRun: editor.dryRun,
       hardCapKw,
     }),
     onHardCapInput: handleHardCapInput,
@@ -565,10 +562,6 @@ const saveAreaCaps = async (): Promise<void> => {
 // or be lost. On failure the optimistic UI rolls back to the persisted value.
 const saveAreaControl = async (controlEnabled: boolean): Promise<void> => {
   if (areaEditor === null) return;
-  // A legacy-held homes config is activated only by the deliberate
-  // Multiple-meters save path. Never let this scalar toggle claim success
-  // while runtime still assigns every device to Main home.
-  if (!getHomeScope().runtimeActive) return;
   const editor = areaEditor;
   if (editor.dryRunWriteInFlight) return;
   const nextDryRun = !controlEnabled;
