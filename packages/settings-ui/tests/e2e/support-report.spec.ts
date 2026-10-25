@@ -5,6 +5,7 @@ import { readMdSelectHeadlineText, readMdValue, setMdValue } from './fixtures/ma
 
 type ReportStubWindow = Window & {
   __PELS_HOMEY_STUB__?: { apiHandlers: Record<string, (body: unknown) => unknown> };
+  Homey: { __stub: { setApiHandler: (key: string, handler: (body: unknown) => unknown) => void } };
   reportRequests: SupportReportRequest[];
   reportSends: unknown[];
   reportChecks: number;
@@ -119,13 +120,14 @@ test('keeps the latest navigation target when a previous report loads late', asy
   await page.goto('/?page=settings');
   await expect(page.locator('#settings-panel')).toBeVisible();
   await page.evaluate(() => {
+    // The stub copies `__PELS_HOMEY_STUB__.apiHandlers` once at load; a later
+    // handler goes through its runtime setter.
     const stub = window as unknown as ReportStubWindow;
-    const handlers = stub.__PELS_HOMEY_STUB__!.apiHandlers;
-    handlers['GET /support-report/report-old'] = () => new Promise((resolve) => {
+    stub.Homey.__stub.setApiHandler('GET /support-report/report-old', () => new Promise((resolve) => {
       window.addEventListener('finish-old-report', () => resolve({
         ok: false, code: 'report_expired',
       }), { once: true });
-    });
+    }));
     window.history.pushState({}, '', '/?page=settings/report-problem&reportId=report-old');
     window.dispatchEvent(new PopStateEvent('popstate'));
   });
