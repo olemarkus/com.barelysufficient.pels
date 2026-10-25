@@ -95,6 +95,7 @@ const buildRig = (): Rig => {
       hasWarmSnapshot: () => true,
       getBinaryCommandConfirmationSnapshot: () => [],
       getAssociatedCar: () => undefined,
+      getCarIdentificationState: () => 'not_waiting',
       // The mode catalog asks which devices are home batteries when it ranks.
       isBatteryDevice: () => false,
       requestBinaryControl: vi.fn(async () => undefined),
@@ -1424,6 +1425,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       hasWarmSnapshot: () => true,
       getBinaryCommandConfirmationSnapshot: () => [],
       getAssociatedCar: () => undefined,
+      getCarIdentificationState: () => 'not_waiting',
       isBatteryDevice: () => false,
       setCapability,
       requestBinaryControl: (deviceId: string, desired: boolean) => (

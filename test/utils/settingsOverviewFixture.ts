@@ -13,6 +13,7 @@ type OverviewReadModelWiring = Pick<SettingsOverviewReadModelDeps,
   | 'getOverviewStarvation'
   | 'getIdleClassification'
   | 'getAssociatedCarChargingState'
+  | 'getCarIdentificationState'
   | 'getSteppedLoadProfileById'
   | 'readStarvationRescuableDeviceIds'>;
 
@@ -27,6 +28,7 @@ export const overviewReadModelWiring = (): OverviewReadModelWiring => ({
   getOverviewStarvation: () => undefined,
   getIdleClassification: () => undefined,
   getAssociatedCarChargingState: () => undefined,
+  getCarIdentificationState: () => 'not_waiting',
   getSteppedLoadProfileById: () => new Map(),
   readStarvationRescuableDeviceIds: () => [],
 });

@@ -43,7 +43,8 @@ import type { PlanServiceDeps } from './planServiceDeps';
  * ladder (`buildOverviewSteppedLoad`).
  */
 export type SettingsOverviewReadModelDeps = Pick<PlanServiceDeps,
-  | 'homeId' | 'getObservedEvChargingState' | 'getAssociatedCarChargingState' | 'getObservedStateOfCharge'
+  | 'homeId' | 'getObservedEvChargingState' | 'getAssociatedCarChargingState' | 'getCarIdentificationState'
+  | 'getObservedStateOfCharge'
   | 'getObservedTemperature' | 'getThermalDirection' | 'getHomeBatteryCard' | 'getSteppedLoadProfileById'
   | 'readStarvationRescuableDeviceIds'> & {
   getDeviceExecutionState: (deviceId: string) => DeviceExecutionState;
@@ -241,6 +242,7 @@ function buildLoadOverviewDevice(
     binaryControllable: isBinaryPlanDevice(device),
     evChargingState: resolveOverviewEvChargingState(device.id, deps),
     carChargingState: deps.getAssociatedCarChargingState(device.id),
+    carIdentificationState: deps.getCarIdentificationState(device.id, deps.nowMs),
   };
   const presentation = buildDeviceStatus(overviewShape, deps.dryRun, reasonAnchorMs);
   const status = presentation.reason?.countdown ? { ...presentation, reason: { ...presentation.reason,

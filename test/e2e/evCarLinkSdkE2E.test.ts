@@ -583,6 +583,11 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     expect(of('ev_car_link_unmatched')).toEqual([expect.objectContaining({
       chargerId: CHARGER_ID, reason: 'no_connected_car', connection: expect.objectContaining({ seen: 'plug_in' }),
     })]);
+    const overview = await api.ui_plan({ homey: app.homey });
+    expect(overview.plan?.devices?.find((device) => device.id === CHARGER_ID)?.status).toMatchObject({
+      factText: 'Plugged in · no battery level',
+      reason: { text: 'Could not identify the connected car. Confirm it in the charger’s Car section.' },
+    });
 
     // Twelve hours later the car app finally says plugged in.
     await vi.advanceTimersByTimeAsync(12 * 60 * 60 * 1000);
@@ -597,6 +602,12 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     } });
     if (!prepared.ok) throw new Error(prepared.code);
     const { document } = prepared.report;
+    if (document.activity.state !== 'available') throw new Error('activity unavailable');
+    expect(document.activity.entries).toEqual(expect.arrayContaining([expect.objectContaining({
+      deviceId: CHARGER_ID,
+      usageMsg: 'Plugged in · no battery level',
+      statusMsg: 'Could not identify the connected car. Confirm it in the charger’s Car section.',
+    })]));
     expect(document.sections.find((section) => section.title === 'Current car link')?.values).toMatchObject({
       role: 'charger', selection: 'selected', cars: [expect.objectContaining({ carId: CAR_ID, state: 'plugged_in' })],
     });

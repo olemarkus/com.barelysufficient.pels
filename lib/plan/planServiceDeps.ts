@@ -1,4 +1,5 @@
 import type { SettingsPort, FlowPort, ApiPort } from '../ports/homeyRuntime';
+import type { CarIdentificationState } from '../../packages/contracts/src/evCarLink';
 import type { SteppedSettleDevice } from '../observer/steppedSettleSnapshot';
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/settingsUiApi';
@@ -92,6 +93,8 @@ export type PlanServiceDeps = {
    * card copy depends on the distinction (`notes/ev-charger-state-copy.md`).
    */
   getAssociatedCarChargingState: (deviceId: string) => EvChargingState | undefined;
+  /** Live device-owned wait state, used only for presentation and Activity. */
+  getCarIdentificationState: (deviceId: string, nowMs: number) => CarIdentificationState;
   /**
    * The charger's battery level for the settings-UI card, from the observer that
    * owns it. The plan device carries the boost DECISION (`boostActive`), never

@@ -1,5 +1,7 @@
 import { getSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import type { DeviceStatus, DeviceStatusCountdown } from '../../packages/contracts/src/deviceStatus';
+import type { CarIdentificationState } from '../../packages/contracts/src/evCarLink';
+import { WAITING_FOR_CAR_ASSOCIATION } from '../../packages/shared-domain/src/deadlineLabels';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
 import type { IdleClassification } from '../../packages/contracts/src/idleClassification';
@@ -11,7 +13,8 @@ import {
   displayStateLabel, displayStateTone, isHoldReasonCode, resolveDisplayStateKind, resolveIntentStateKind,
 } from '../../packages/shared-domain/src/planCardGrammar';
 import {
-  isSatisfiedTemperatureDevice, reportsSatisfiedTemperature, type PlanStateKind,
+  isSatisfiedTemperatureDevice, PLAN_STATE_AWAITING_BATTERY_LEVEL_STATUS, reportsSatisfiedTemperature,
+  type PlanStateKind,
 } from '../../packages/shared-domain/src/planStateLabels';
 import {
   resolveHeldCardReasonLine, resolveHeldCardReasonVerb, resolveHeldCardStepView,
@@ -33,6 +36,7 @@ import { resolveReportedLoadAfterPauseText, resolveSurplusHoldReportedLoadText,
   readDeviceReasonDetail } from '../../packages/shared-domain/src/planReasonFormatting';
 
 export type DeviceStatusInput = DeviceOverviewSnapshot & {
+  carIdentificationState: CarIdentificationState;
   execution: DeviceExecutionState;
   starvation?: SettingsUiPlanDeviceStarvation;
   idleClassification?: IdleClassification;
@@ -138,6 +142,8 @@ function buildReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number):
   const kind = resolveBaseKind(device);
   if (kind === 'unavailable' || kind === 'manual') return null;
   let text = resolveReason(device, dryRun);
+  const identification = resolveCarIdentificationReason(device, text);
+  if (identification) return identification;
   let idle;
   if (text === null && device.idleClassification && device.idleClassification !== 'near_target_idle') {
     idle = formatIdleClassificationCopy({ classification: device.idleClassification,
@@ -149,6 +155,21 @@ function buildReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number):
   text = toSimulationReasonLine(text, dryRun);
   const countdown = buildCountdown(device, text, nowMs);
   return { text, ...(idle ? { tone: idle.tone, detail: idle.detail } : {}), ...(countdown ? { countdown } : {}) };
+}
+
+// A charger still identifying its car says so only where nothing else explains
+// the card: no other reason, or the wait for a battery level it is itself. A
+// held or unconfirmed charger keeps that reason, since identifying the car would
+// not resume it.
+function resolveCarIdentificationReason(
+  device: DeviceStatusInput,
+  reasonText: string | null,
+): DeviceStatus['reason'] {
+  if (device.carIdentificationState === 'not_waiting') return null;
+  if (reasonText !== null && reasonText !== '' && reasonText !== PLAN_STATE_AWAITING_BATTERY_LEVEL_STATUS) return null;
+  return device.carIdentificationState === 'timed_out'
+    ? { text: 'Could not identify the connected car. Confirm it in the charger’s Car section.', tone: 'warning' }
+    : { text: WAITING_FOR_CAR_ASSOCIATION };
 }
 
 // The observed rung a held stepped device's state word names, if any.
@@ -206,12 +227,18 @@ function resolveFactText(
   kind: DeviceStatus['kind'],
   stateWordNamesLevel: boolean,
 ): string | null {
-  if (!device.steppedLoad) return resolveTemperatureLine(device);
+  // A charger still identifying its car has no battery level to show, so the
+  // card says so beside its plug state and level rather than instead of them.
+  const identifying = device.carIdentificationState !== 'not_waiting';
+  if (!device.steppedLoad) {
+    return resolveTemperatureLine(device) ?? (identifying ? 'Plugged in · no battery level' : null);
+  }
   const temperature = resolveSteppedTemperatureText(device);
   if (temperature !== null) return temperature;
   const exception = resolveSteppedEvExceptionLabel(device);
-  const echoesOff = kind === 'off' && exception === EV_CHARGING_STATE_LABELS.plugged_in;
-  const parts = [echoesOff ? null : exception, resolveSteppedLevelFact(device, stateWordNamesLevel)]
+  const lead = kind === 'off' && exception === EV_CHARGING_STATE_LABELS.plugged_in ? null : exception;
+  const noLevel = identifying ? `${lead === null ? 'No' : 'no'} battery level` : null;
+  const parts = [lead, noLevel, resolveSteppedLevelFact(device, stateWordNamesLevel)]
     .filter((part): part is string => part !== null);
   return parts.length > 0 ? parts.join(' · ') : null;
 }

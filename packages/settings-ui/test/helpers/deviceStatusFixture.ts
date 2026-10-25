@@ -1,6 +1,7 @@
 import type { DeviceOverviewSnapshot } from '../../../contracts/src/deviceOverview.ts';
 import type { DeviceStatus } from '../../../contracts/src/deviceStatus.ts';
 import type { SettingsUiPlanDeviceSnapshot } from '../../../contracts/src/settingsUiApi.ts';
+import type { CarIdentificationState } from '../../../contracts/src/evCarLink.ts';
 import { buildDeviceStatus } from '../../../../lib/plan/deviceStatusReadModel.ts';
 import { fixtureDeviceReason } from './fixtureDeviceReason.ts';
 
@@ -12,6 +13,7 @@ export type CardFixture = Partial<DeviceOverviewSnapshot> & Partial<SettingsUiPl
   surplusAbsorbActive?: boolean;
   carChargingState?: DeviceOverviewSnapshot['evChargingState'];
   idleClassification?: 'near_target_idle' | 'unresponsive' | 'capped_idle';
+  carIdentificationState?: CarIdentificationState;
 };
 
 export function uiDeviceFixture(raw: Record<string, unknown> | CardFixture = {}, dryRun = false,
@@ -28,6 +30,7 @@ export function uiDeviceFixture(raw: Record<string, unknown> | CardFixture = {},
   const isEvCharger = device.isEvCharger ?? false;
   const status = device.status ?? buildDeviceStatus({
     ...device, reason, controllable: device.controllable ?? true, available,
+    carIdentificationState: device.carIdentificationState ?? 'not_waiting',
     binaryControllable: device.binaryControllable ?? false, isEvCharger,
     expectedPowerKw: device.expectedPowerKw ?? 0,
     // No card scenario here moves a target for price.

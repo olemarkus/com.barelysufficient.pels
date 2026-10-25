@@ -1,5 +1,6 @@
 import { ChargingCurrentControl } from './chargingCurrentControl';
 import type { TaskDeviceConstraint } from '../../packages/contracts/src/taskDelivery';
+import type { CarIdentificationState } from '../../packages/contracts/src/evCarLink';
 /**
  * Device-layer hub: owns observed current device state and the device-specific
  * actuation transport behind one boundary. Reconcile/merge changes are
@@ -183,6 +184,10 @@ export class DeviceTransport {
     }
 
     isWaitingForCarAssociation(chargerId: string): boolean { return this.carAssociationControl.isWaiting(chargerId); }
+
+    getCarIdentificationState(chargerId: string, nowMs: number): CarIdentificationState {
+        return this.carAssociationControl.identificationState(chargerId, nowMs);
+    }
 
     /**
      * The car link as it stands for a charger or a car, for a problem report;
