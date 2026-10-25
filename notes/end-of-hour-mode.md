@@ -22,117 +22,117 @@ that high draw into the next period.
 
 In 15-minute mode the capacity safe pace is `min(burstRate, sustainable)`: it
 never rises above the sustainable rate, so there is no boundary burst to drain
-and the exponential below applies to hourly control only. A drain scaled to a
+and the drain below applies to hourly control only. A drain scaled to a
 quarter would last about a minute, shorter than the shed and restore cooldowns,
 and in a live run it ended every quarter in a batch shed in the final seconds.
 The safety margin is the quarter's buffer. See `notes/capacity-periods.md`
 § "Control rule" (owner ruling 2026-09-19).
 
-## The mechanism: an exponential drain toward the sustainable rate (hourly)
+## The mechanism: a ten-minute drain to the sustainable rate (hourly)
 
-The capacity safe pace (`allowedKw`, the capacity `softLimit`) caps the burst rate
-by a **ceiling that decays exponentially toward the steady sustainable rate** as
-the period ends:
+The goal is that the next hour starts at its target: the house enters `:00` at
+or below the sustainable rate, so the new hour does not open over its limit.
+Over the last `EOH_DRAIN_WINDOW_MIN` (10) minutes the capacity safe pace
+(`allowedKw`, the capacity `softLimit`) falls from what the house drew when the
+window opened to that rate at `:00` (owner, 2026-10-25):
 
 ```text
-sustainable   = limitKw - marginKw                       // steady kW == kWh/h
-drainCeiling  = sustainable * e^(minutesRemaining / TAU)  // TAU = EOH_DRAIN_TAU_MIN
-allowedKw     = min(burstRate, drainCeiling)
+sustainable = limitKw - marginKw                               // the next hour's average target
+start       = draw and minute of the first measured build at or after :50  // CapacityDrainStart
+share(m)    = 1 - expm1((10 - m) / TAU) / expm1(10 / TAU)      // 1 at :50, 0 at :00
+ceiling(m)  = sustainable + max(0, start.draw - sustainable) * share(m) / share(start.m)
+allowedKw   = m > 10 ? burstRate : min(burstRate, ceiling(m))
 ```
 
-Hourly `burstRate` uses the **actual time left**, without a minimum-time floor.
-The drain already bounds the allowed power as the hour ends. At exactly `:00`,
-`getCurrentHourContext` selects the new hour with 60 minutes remaining, so the
-hourly divisor never reaches zero.
+- **Before `:50`** the budget-driven `burstRate` governs, as it does all hour.
+- **At `:50`** the ceiling is the house's own draw, so nothing is limited when
+  the window opens. Starting from a fixed level instead would limit every device
+  above it at once, which is the cliff this replaced.
+- **Through the window** the ceiling falls, cutting least at first and most in
+  the final minutes (`TAU = EOH_DRAIN_TAU_MIN = 4`). Devices above it are limited
+  one at a time in priority order by the normal shedding lane
+  (`lib/plan/shedding`). A house drawing less than the sustainable rate at `:50`
+  keeps a flat ceiling at that rate.
+- **At `:00`** the ceiling is the sustainable rate.
+- **After a restart inside the window**, or with a meter that first reports
+  after `:50`, the drain starts at the first measured build's draw and minute
+  and falls from there, so it also opens at the house's draw.
 
-The former ten-minute divisor floor made a busy hour taper from `:50` even when
-the drain ceiling allowed more power. For example, 0.55 kWh left at `:59` became
-3.3 kW under that floor, below even a 4.8 kW sustainable rate. A shorter floor
-would keep the same competing taper over a shorter window. Hourly control now
-has only the two intended constraints: spend no more than the remaining energy
-allows, and follow the exponential ceiling toward the boundary.
+| minutes left | 10 | 5 | 2 | 1 | 0 |
+|---:|---:|---:|---:|---:|---:|
+| share of the starting excess | 1.00 | 0.78 | 0.43 | 0.24 | 0 |
+| ceiling, 7.8 kW at `:50`, 4.8 kW target | 7.8 | 7.1 | 6.1 | 5.5 | 4.8 |
 
-- **Far from the boundary** the ceiling sits far above any feasible burst
-  (`e^(minutesRemaining/TAU)` is large), so the budget-driven `burstRate`
-  governs — full freedom to use the budget.
-- **As the period ends** the ceiling collapses toward `sustainable`, pulling the
-  allowed pace down **gradually**. At `minutesRemaining → 0` the ceiling **is**
-  `sustainable`, so the planner target reaches the steady rate at the boundary.
-  Physical draw can still lag this target when a slow device app takes time to
-  apply the command; see the trade-off below.
+Hourly `burstRate` uses the actual time left, without a minimum-time floor. At
+exactly `:00`, `getCurrentHourContext` selects the new hour with 60 minutes
+remaining, so the hourly divisor never reaches zero. The former ten-minute
+divisor floor made a busy hour taper from `:50` below even the sustainable rate
+(0.55 kWh left at `:59` became 3.3 kW against a 4.8 kW rate); the drain never
+goes below the sustainable rate unless the remaining energy does.
 
-`allowedKw` is the capacity soft limit; `headroom = softLimit − measuredTotal`
-(`planContext.ts`). A negative headroom drives shedding, so the drain both blocks
-new turn-ons *and* trims devices already drawing above the (now lower) ceiling —
-priority-ordered, by the normal shedding lane (`lib/plan/shedding`).
+### Nothing new comes on in the drain unless the next hour can hold it
 
-### Why exponential, and not the old cliff
+A device turned on or stepped up in the window keeps running into the next hour.
+So restore and step-up admission spend only the room under the lower of the
+pace and the sustainable rate there (`resolveCapacityAdmissionHeadroomKw`,
+applied to the restore ledger's capacity axis), while shedding keeps reading the
+falling ceiling. Without this,
+a house that dropped below the ceiling (a thermostat resting, a household load
+ending) would turn devices on only to limit them again before `:00`: the
+restore lab on 2026-10-25 turned two heaters on at −9.7 and −4.7 minutes,
+limited them at −1.0 and −0.0, and turned them on again at +0.1.
 
-This replaced a hard binary cliff (`minutesRemaining <= 10 ? min(burst, sustainable) : burst`).
-The cliff cut everything to the sustainable rate the instant 10 minutes
-remained — a single, coordinated batch-shed at `:50`. The exponential drain
-smooths that into a gradual wind-down over the final minutes, so most managed
-devices keep running into the last few minutes and are trimmed progressively
-rather than all at once. Shed *ordering* is unchanged — it has always been
-priority-based; this only changes the *ceiling over time*, not which device goes
-first.
+The rule starts at `:50`, not earlier (owner, 2026-10-25: holding back
+increases from `:45` wastes too much of the hour). A device turned on just
+before `:50` whose draw only lands after it can still be limited in the window
+when the house is then above the falling ceiling.
 
-## TAU (`EOH_DRAIN_TAU_MIN`), and the trade-off
+### Large on/off devices
 
-`TAU` is the only tuning knob (a hardcoded constant — deliberately not a user
-setting; consistent with “the hard cap is the tariff step, don’t add capacity dials”).
-It applies to hourly control only; a quarter has no drain. The
-ceiling multiplier over the sustainable rate is `e^(minutesRemaining / TAU)`:
+An on/off device cannot run at part power, and shedding keeps its priority
+order. When the next device in that order is a large one, it is limited as soon
+as the ceiling has fallen below the house's draw by more than the shedding
+deadband, early in the window rather than in its final minutes (owner,
+2026-10-25). A single device that alone keeps the house above the sustainable
+rate is the plain case: it goes right after `:50`. The next hour then starts
+clean; the cost is the leftover allowance it could have used in those minutes. A
+stepped device steps down instead, and smaller devices are limited one at a
+time.
 
-| min left | TAU=2 | TAU=3 | **TAU=4** | TAU=5 |
-|---------:|------:|------:|---------:|------:|
-| 10       | 148×  | 28×   | **12.2×** | 7.4× |
-| 5        | 12.2× | 5.3×  | **3.5×**  | 2.7× |
-| 3        | 4.5×  | 2.7×  | **2.1×**  | 1.8× |
-| 1        | 1.65× | 1.40× | **1.28×** | 1.22×|
-| 0        | 1.0×  | 1.0×  | **1.0×**  | 1.0× |
+### Why not the old exponential ceiling
 
-Current value: **`TAU = 4`**. The drain pinches to the sustainable rate at the
-boundary. Larger `TAU` → tighter/earlier wind-down
-(closer to the old cliff); smaller `TAU` → devices run later, more headroom near
-the boundary. (`TAU` must
-stay well above ~0.085 min: `Math.exp` overflows to `Infinity` once
-`minutesRemaining / TAU` exceeds ~709. Even then the `min(burstRate, …)` keeps
-`allowedKw` finite, but don’t rely on that — keep `TAU` in single-digit minutes.)
+Until 2026-10-25 the ceiling was `sustainable * e^(minutesRemaining / 4)`:
+12.2x the sustainable rate with 10 minutes left, 3.5x at 5, 1.28x at 1. In an
+under-used hour it bound only in the last two or three minutes. It let devices
+come on late (all four lab heaters ran at `:56`, against a 10.7 kW ceiling) and
+then pinched so steeply at the end that slow devices still drew across `:00`:
+the lab's 14:00 hour opened at 5.35 kW against 4.8 kW, and the house lab cut its
+EV charger just after `:00`. A device that takes one to two minutes to apply a
+command could not follow it.
 
-**The trade you are accepting:** the old cliff pinned the pace to exactly
-`sustainable` for a full 10 minutes, so the boundary was crossed at the steady
-rate with margin to spare. The exponential sits *above* `sustainable` until the
-final minutes, so the carryover into the next hour is governed by how far the
-shed lags the falling ceiling — i.e. by command latency in the last 1–2 minutes,
-not by the `:00` instant itself (where `e^0 = 1`). With a slow (cloud-mediated)
-device and a realistic 60–120 s shed-to-effect lag, the device can cross `:00`
-still drawing roughly `1.3–1.65×` the sustainable rate (the ceiling ~1–2 min
-earlier) and persist for that lag into the new hour. Worst case that inflates the
-new hour’s tariff-measured average by ≈ 0.1–0.2 kWh on a 10 kW system — small
-(1–2 % of a ~10 kWh hourly budget) and self-correcting, since the new hour’s
-ceiling reopens to full burst at `:00` and its own headroom goes negative
-immediately, re-shedding the carry. This is a deliberate softening of a
-previously hard guarantee, in exchange for gentler, progressive shedding. **Do
-not “fix” it back to a cliff** without revisiting this note; if the carryover
-ever proves to matter in production, raise `TAU` (tighter wind-down) rather than
-restoring the step.
+### Why not the old cliff
+
+Before that, `minutesRemaining <= 10 ? min(burst, sustainable) : burst` cut
+everything to the sustainable rate at `:50` in one coordinated batch. Starting
+the drain from the house's draw keeps that from happening.
 
 ## Invariants
 
 - **`min(burstRate, …)` is load-bearing.** `burstRate` is the most you can draw
   and still land within *this* period’s budget; the drain may only pull the
-  allowance *below* burst, never above. This also handles a nearly-spent budget:
-  when `burstRate < sustainable`, the `min` collapses to `burstRate` and the
-  drain ceiling is irrelevant.
+  allowance *below* burst, never above. When `burstRate < sustainable`, the `min`
+  collapses to `burstRate` and the drain is irrelevant.
+- **The drain starts from the house's draw.** The first measured build inside
+  the window records its draw and minute (`CapacityDrainStart`, written only by
+  the plan build from its reading; the silent-meter pass records nothing). A
+  read before then starts from the draw now.
+- **The ceiling reaches the sustainable rate at `:00`** and never goes below it.
+- **Admission in the window fits the next hour.** Restores and step-ups spend
+  only the room under the lower of the pace and the sustainable rate; shedding
+  reads the drain ceiling.
 - **A quarter's pace never exceeds the sustainable rate.** `min(burstRate,
   sustainable)` from the first minute; the burst rate can only pull it lower.
-- **Planner ceiling reaches the sustainable rate at the hour boundary.** `e^0 = 1`,
-  so at `minutesRemaining = 0` the ceiling is exactly `sustainable`; actual
-  device draw can lag if command/effect latency spans the boundary.
-- **Hourly pacing uses actual remaining time.** There is no hourly divisor
-  floor. A nearly-spent allowance can still bind below the drain; the drain
-  never raises the pace above what the remaining energy permits.
+- **Hourly pacing uses actual remaining time.** There is no hourly divisor floor.
 - **The quarter keeps its ten-second divisor floor** (one meter poll), with
   its pace capped at the sustainable rate. A longer floor understates the pace
   in the final minute.
@@ -147,25 +147,32 @@ hard-cap side needs boundary protection. See `docs/daily-budget.md`.
 
 ## Tests
 
-`test/integration/planBudget.test.ts` covers the drain near hour end, no cliff
-at the 10-minute mark, the remaining-energy guard below the drain, a fresh
-allowance at exactly `:00`, monotone taper over the final minutes, and a quarter
-never above sustainable. Its busy-hour regression feeds allowed consumption
-back every ten seconds from 3.5 kWh used at `:50` against a 4.8 kWh allowance:
-the energy limit governs first, then the drain, with more than 4.7 kWh used by
-the boundary. This models pacing without device latency or discrete load steps.
-`test/unit/endOfHourDailyBudget.test.ts` checks the unchanged daily divisor floor
-and absence of a drain. `test/integration/app.test.ts` covers the physical limit
-through the app (`computePhysicalPowerLimit`).
+`test/integration/planBudget.test.ts` covers the drain opening at the house's
+draw at `:50`, the budget-driven pace before the window, the fall to the
+sustainable rate at `:00` with cuts growing toward the end, a flat ceiling for a
+house below the sustainable rate, a drain first seen after a restart, the start
+recorded once an hour from a reading, the remaining-energy guard below the drain, a
+busy hour that never goes below the sustainable rate, a fresh allowance at
+exactly `:00`, a quarter never above sustainable, and the admission headroom in
+and out of the window. `test/unit/endOfHourDailyBudget.test.ts` checks the
+unchanged daily divisor floor and absence of a drain.
+`test/integration/app.test.ts` covers the physical limit through the app
+(`computePhysicalPowerLimit`) inside the window: from the draw now before a
+build records the start, the remaining budget binding below it, and a house
+below the target at `:59`.
 
 `test/e2e/capacityEndOfHourDrain.e2e.test.ts` drives the full SDK-boundary stack
 (energy poll → planner → executor → `api.put`) with the faked clock stepped toward
-`:00`: a heterogeneous fleet (on/off + thermostat, distinct priorities) is left
-running past the 10-minute mark and then wound down to the sustainable rate in
-priority order. It starts late in an unused hour so the burst budget stays above
-the fleet draw — the drain ceiling is the binding constraint — and uses a feedback
-energy model (the reported home total reflects each device's commanded state) so
-the wind-down self-limits.
+`:00`, using a feedback energy model (the reported home total reflects each
+device's commanded state):
+
+- a heterogeneous fleet (on/off + thermostat, distinct priorities) is not limited
+  at `:50` and is wound down to the sustainable rate in priority order;
+- a single 8 kW device runs until `:50` and is limited once the drain falls below
+  it; a Flow-reported reading opens the drain at `:50` and replans the same way;
+- the restore lab's 12:00 hour: limited heaters are not turned back on after the
+  household load drops at `:50`, and the next hour starts at its target with
+  nothing limited at the boundary.
 
 `test/e2e/capacityQuarterPace.e2e.test.ts` is the quarter counterpart: an
 under-used quarter whose load jumps above hard cap minus margin at `:08` is

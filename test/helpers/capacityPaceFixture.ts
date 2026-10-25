@@ -1,4 +1,5 @@
 import { computeDynamicSoftLimit } from '../../lib/plan/planBudget';
+import { CapacityDrainStart } from '../../lib/plan/capacityDrainStart';
 import { resolveUsableCapacityKWh } from '../../lib/power/capacityModel';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { getHourBucketKey } from '../../lib/utils/hourBuckets';
@@ -27,7 +28,9 @@ export const withCapacityPace = (
   const bucketKey = getHourBucketKey(nowMs);
   const emptyHour = { ...tracker, buckets: { ...tracker.buckets, [bucketKey]: 0 } };
   const budgetKWh = resolveUsableCapacityKWh(settings);
-  const emptyPaceKw = computeDynamicSoftLimit(settings, emptyHour, nowMs).allowedKw;
+  // As a fresh build resolves it: from the tracker's latched draw.
+  const drainStart = new CapacityDrainStart().startFor(settings, tracker, nowMs);
+  const emptyPaceKw = computeDynamicSoftLimit(settings, emptyHour, nowMs, drainStart).allowedKw;
   if (paceKw > emptyPaceKw + 1e-9) {
     throw new Error(`A ${paceKw} kW pace is out of reach at this clock (an empty hour allows ${emptyPaceKw} kW)`);
   }
@@ -35,8 +38,9 @@ export const withCapacityPace = (
   const usedKWh = landOnPace(
     Math.max(0, budgetKWh - paceKw * remainingHours),
     paceKw,
-    (used) => computeDynamicSoftLimit(settings, { ...tracker, buckets: { ...tracker.buckets, [bucketKey]: used } }, nowMs)
-      .allowedKw,
+    (used) => computeDynamicSoftLimit(
+      settings, { ...tracker, buckets: { ...tracker.buckets, [bucketKey]: used } }, nowMs, drainStart,
+    ).allowedKw,
   );
   return { ...tracker, buckets: { ...tracker.buckets, [bucketKey]: usedKWh } };
 };
@@ -50,7 +54,8 @@ const paceHours = (settings: PowerLimitSettings, tracker: PowerTrackerState, now
   const budgetKWh = resolveUsableCapacityKWh(settings);
   const usedKWh = budgetKWh * (1 - 1e-3);
   const nearlySpent = { ...tracker, buckets: { ...tracker.buckets, [getHourBucketKey(nowMs)]: usedKWh } };
-  return (budgetKWh - usedKWh) / computeDynamicSoftLimit(settings, nearlySpent, nowMs).allowedKw;
+  const drainStart = new CapacityDrainStart().startFor(settings, tracker, nowMs);
+  return (budgetKWh - usedKWh) / computeDynamicSoftLimit(settings, nearlySpent, nowMs, drainStart).allowedKw;
 };
 
 /**
@@ -96,7 +101,10 @@ export const capacitySettingsForPace = (
   const limitKw = landOnPace(
     base.marginKw + usedKWh + paceKw * remainingHours,
     paceKw,
-    (limit) => computeDynamicSoftLimit({ ...base, limitKw: limit }, tracker, nowMs).allowedKw,
+    (limit) => computeDynamicSoftLimit(
+      { ...base, limitKw: limit }, tracker, nowMs,
+      new CapacityDrainStart().startFor({ ...base, limitKw: limit }, tracker, nowMs),
+    ).allowedKw,
   );
   return { ...base, limitKw };
 };

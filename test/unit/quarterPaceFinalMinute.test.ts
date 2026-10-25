@@ -16,6 +16,8 @@ describe('computeDynamicSoftLimit in a quarter', () => {
           capacityQuarter: { startMs: quarterStartMs, energyKWh, trackedMs: nowMs - quarterStartMs },
         },
         nowMs,
+        // A quarter has no drain, so its start is never read.
+        { drawKw: 0, minutesRemaining: 10 },
       );
     };
 

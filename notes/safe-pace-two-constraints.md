@@ -119,6 +119,10 @@ an exhausted daily pace (prod 2026-08-03). Deliberate tradeoff: an admitted exem
 device's draw can make capacity the binding axis and keep the latch — and the
 non-exempt holds — alive longer; that is the boost/exemption priority working as
 intended, not a spiral (the lane closes as soon as the source flips to `capacity`).
+Inside the hourly end-of-hour drain the capacity axis an admission spends is cut to
+the room under the lower of the pace and `sustainableRateKw`
+(`resolveCapacityAdmissionHeadroomKw`): a device turned on then runs into the next
+hour, while shedding keeps reading the falling pace.
 
 `hardCapKw` is a partial exception: the name is already in wide use across the
 settings UI, so adopting it in the capacity and plan paths is a rename onto a
@@ -137,7 +141,7 @@ UI, so that half is a genuinely new name everywhere else.
 dimensions: kWh over the hour, and the kW that spends it evenly. One owner, two
 named readings, because `computeDynamicSoftLimit` subtracts it as energy
 (`remainingKWh = allowance - usedKWh`) while it multiplies the same value as a rate
-(`drainCeilingKw = sustainableRateKw * exp(...)`). A single `...KWh` name that gets
+(`drainCeilingKw = sustainableRateKw + excess * share`, falling to `sustainableRateKw` at :00). A single `...KWh` name that gets
 multiplied as kW is exactly the ambiguity this table exists to remove. Note that
 `notes/units.md` prefers integer watts internally with kW only at the UI boundary;
 this family is float kW today, and moving it is a wider change than this note
@@ -333,9 +337,10 @@ PELS paces against two independent things, and they do not measure the same load
 
 ### Only one of the two paces drains at the selected-period boundary
 
-For an hour, `capacityPaceKw` is `min(burstRate, sustainableRateKw * e^(minutesRemaining / TAU))`
-(`computeDynamicSoftLimit`, TAU 4 min), so it collapses toward
-`sustainableRateKw` over the last minutes of the hour. For a quarter it is
+For an hour, `capacityPaceKw` is `burstRate` until ten minutes remain, then
+`min(burstRate, ceiling)` where the ceiling falls from the house's draw at `:50`
+to `sustainableRateKw` at `:00` (`computeDynamicSoftLimit`,
+`notes/end-of-hour-mode.md`). For a quarter it is
 `min(burstRate, sustainableRateKw)` from the first minute, so it never decays at
 the boundary and the hand-over below applies to hourly control only
 (`notes/capacity-periods.md` § "Control rule"). `budgetPaceKw` applies no

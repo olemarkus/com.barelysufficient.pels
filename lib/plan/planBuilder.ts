@@ -201,7 +201,8 @@ export class PlanBuilder {
     remainingKWh: number;
     hourlyBudgetExhausted: boolean;
   } {
-    const result = computeDynamicSoftLimit(settings, this.powerTracker, nowTs);
+    const drainStart = this.state.capacityDrainStart.startFor(settings, this.powerTracker, nowTs);
+    const result = computeDynamicSoftLimit(settings, this.powerTracker, nowTs, drainStart);
     return {
       paceKw: result.allowedKw,
       remainingKWh: result.remainingKWh,
@@ -301,6 +302,10 @@ export class PlanBuilder {
     if (!reading.isMeasured) {
       return this.silentMeter.build(context, reading, decoration, settings, shortfallBudgetThresholdKw, nowTs);
     }
+    // The first measured build inside this hour's drain keeps what the house
+    // drew as the level the drain falls from (`CapacityDrainStart`). Before
+    // that, this build's pace already started from the same draw.
+    this.state.capacityDrainStart.record(settings, this.powerTracker, nowTs, reading.totalKw);
     const power = resolveMeasuredPower(reading, context, admittedDevices);
     // Smart-task precedence for the standing postures, shared by the
     // allocator and the hold so the two can never disagree.

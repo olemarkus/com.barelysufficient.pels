@@ -21,6 +21,7 @@ import { applyBudgetExemptRestorePass } from './exemptRestoreLane';
 import { resolveHeadroomReserves, resolveRestoreDecisionPhase } from '../admission';
 import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './headroomLedger';
 import { buildDisabledRestoreBatchState, buildRestoreBatchState } from './batch';
+import { resolveCapacityAdmissionHeadroomKw } from '../planBudget';
 import {
   markOffDevicesStayOff,
   markRestoreCandidatesHeld,
@@ -84,7 +85,7 @@ export function applyRestorePlan(
 
   const restoredThisCycle = new Set<string>();
   const storageHandedBack = new Set<string>();
-  const ledger = buildCycleHeadroomLedger(power);
+  const ledger = buildCycleHeadroomLedger(power, context);
   let restoredOneThisCycle = false;
   const batchState = context.gridImportLimitKw !== null ? buildDisabledRestoreBatchState() : buildRestoreBatchState({
     timing: effectiveTiming,
@@ -160,7 +161,10 @@ function resolveEffectiveTiming(timing: RestoreTiming, context: PlanContext): Re
 // represent physical draw about to arrive, so they debit every admission axis
 // equally (the shortfall guard skips the reservation exactly as it skipped the
 // old binding-scalar path).
-function buildCycleHeadroomLedger(power: MeasuredPower): RestoreHeadroomLedger {
+// Inside the end-of-hour drain the capacity axis is the room under the next
+// hour's target only (`resolveCapacityAdmissionHeadroomKw`): an increase then
+// runs into the next hour, and shedding keeps the drain pace itself.
+function buildCycleHeadroomLedger(power: MeasuredPower, context: PlanContext): RestoreHeadroomLedger {
   // No pending-restore reservation. It existed to hold back headroom for a restore
   // the meter had not seen yet — but a rebuild is TRIGGERED by a reading
   // (`planRebuildTrigger.ts`), and the reservation was released by
@@ -170,7 +174,7 @@ function buildCycleHeadroomLedger(power: MeasuredPower): RestoreHeadroomLedger {
   // `maxNeedKw`. OWNER RULING 2026-08-28: assume new plan = new power sample and
   // drop it (`notes/state-management/actuation-clocks-and-settle.md`).
   return buildRestoreHeadroomLedger({
-    capacityAvailableKw: power.capacityHeadroomKw,
+    capacityAvailableKw: resolveCapacityAdmissionHeadroomKw(context, power.capacityHeadroomKw),
     gridAvailableKw: power.gridHeadroomKw,
     budgetAvailableKw: power.budgetHeadroomKw,
   });
