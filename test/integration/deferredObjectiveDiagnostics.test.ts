@@ -50,8 +50,8 @@ import {
   withFixtureResidualKw,
   withMaterializedEvPlugState,
 } from '../utils/planTestUtils';
-import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
-import type { DeferredObjectivePlanHistoryV6 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
+import type { DeferredObjectiveActivePlansV2 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectivePlanHistoryV7 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import { buildObjectiveSignature } from '../../lib/objectives/deferredObjectives/activePlanSignature';
 import { buildPriorityReservations } from '../../lib/objectives/deferredObjectives/priorityAllocation';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
@@ -218,13 +218,13 @@ const buildPowerTracker = (overrides: Partial<PowerTrackerState> = {}): PowerTra
 
 const buildHistoryRecorder = (): {
   recorder: DeferredObjectivePlanHistoryRecorder;
-  saved: () => DeferredObjectivePlanHistoryV6 | null;
+  saved: () => DeferredObjectivePlanHistoryV7 | null;
 } => {
-  let saved: DeferredObjectivePlanHistoryV6 | null = null;
+  let saved: DeferredObjectivePlanHistoryV7 | null = null;
   return {
     recorder: new DeferredObjectivePlanHistoryRecorder({
       ...inertPlanHistoryDeps(),
-      load: () => ({ snapshot: { version: 6, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
+      load: () => ({ snapshot: { version: 7, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
       save: (next) => { saved = next; return true; },
     }),
     saved: () => saved,
@@ -820,8 +820,8 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
       priceOptimizationEnabled: true,
       exemptFromBudget: false,
       priceHorizon: [
-        { startMs: sourceStartMs, price: 5 },
-        { startMs: sourceStartMs + HOUR_MS, price: 5 },
+        { startMs: sourceStartMs, endMs: (sourceStartMs) + 3_600_000, moneyPrice: 5, price: 5 },
+        { startMs: sourceStartMs + HOUR_MS, endMs: (sourceStartMs + HOUR_MS) + 3_600_000, moneyPrice: 5, price: 5 },
       ],
       dailyBudgetSnapshot: null,
       powerLimits: capacityOnlyPowerLimits(10),
@@ -1070,8 +1070,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       allocationContextSignature: firstLow.allocationContextSignature,
       devicePriority: 2,
     };
-    const activePlans: DeferredObjectiveActivePlansV1 = {
-      version: 1,
+    const activePlans: DeferredObjectiveActivePlansV2 = {
+      version: 2,
       plansByDeviceId: {
         'ev-2': {
           liveCompletion: { kind: 'unavailable' as const },
@@ -1132,7 +1132,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const settings = objectiveRosterFor({
       objectivesByDeviceId: { 'ev-1': objective, 'ev-2': objective },
     });
-    const hours = [{ startsAtMs: NOW_MS + HOUR_MS, plannedKWh: 1, plannedAdmissionPowerKw: 1 }];
+    const hours = [{ startsAtMs: NOW_MS + HOUR_MS, endsAtMs: (NOW_MS + HOUR_MS) + 3_600_000, plannedKWh: 1, plannedAdmissionPowerKw: 1 }];
     const latest = {
       revision: 1,
       revisedAtMs: NOW_MS,
@@ -1171,7 +1171,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
       powerLimits: capacityOnlyPowerLimits(1.5),
       activePlans: {
-        version: 1,
+        version: 2,
         plansByDeviceId: {
           'ev-1': buildPlan('ev-1', 'Driveway EV', 1),
           'ev-2': buildPlan('ev-2', 'Second EV', 2),
@@ -1193,8 +1193,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       objectivesByDeviceId: { 'z-high': objective, 'a-low': objective },
     });
     const committedHours = [
-      { startsAtMs: NOW_MS, plannedKWh: 1, plannedAdmissionPowerKw: 1 },
-      { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1, plannedAdmissionPowerKw: 1 },
+      { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1, plannedAdmissionPowerKw: 1 },
+      { startsAtMs: NOW_MS + 2 * HOUR_MS, endsAtMs: (NOW_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1, plannedAdmissionPowerKw: 1 },
     ];
     const latest = {
       revision: 1,
@@ -1205,8 +1205,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       energyNeededKWh: 2,
       planStatus: 'on_track' as const,
     };
-    const activePlans: DeferredObjectiveActivePlansV1 = {
-      version: 1,
+    const activePlans: DeferredObjectiveActivePlansV2 = {
+      version: 2,
       plansByDeviceId: {
         'z-high': {
           liveCompletion: { kind: 'unavailable' as const },
@@ -1308,7 +1308,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       deviceId: string;
       deviceName: string;
       priority: number;
-      hours: { startsAtMs: number; plannedKWh: number; plannedAdmissionPowerKw: number }[];
+      hours: { startsAtMs: number; endsAtMs: number; plannedKWh: number; plannedAdmissionPowerKw: number }[];
     }) => {
       const latest = {
         revision: 1,
@@ -1356,19 +1356,19 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       powerLimits: capacityOnlyPowerLimits(1.5),
       priorityAllocationTracker: tracker,
       activePlans: {
-        version: 1,
+        version: 2,
         plansByDeviceId: {
           'ev-1': buildPlan({
             deviceId: 'ev-1',
             deviceName: 'Driveway EV',
             priority: 1,
-            hours: [{ startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1, plannedAdmissionPowerKw: 1 }],
+            hours: [{ startsAtMs: NOW_MS + 2 * HOUR_MS, endsAtMs: (NOW_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1, plannedAdmissionPowerKw: 1 }],
           }),
           'ev-2': buildPlan({
             deviceId: 'ev-2',
             deviceName: 'Second EV',
             priority: 2,
-            hours: [{ startsAtMs: NOW_MS + HOUR_MS, plannedKWh: 1, plannedAdmissionPowerKw: 1 }],
+            hours: [{ startsAtMs: NOW_MS + HOUR_MS, endsAtMs: (NOW_MS + HOUR_MS) + 3_600_000, plannedKWh: 1, plannedAdmissionPowerKw: 1 }],
           }),
         },
       },
@@ -1391,7 +1391,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       objectivesByDeviceId: { 'ev-1': rawObjective },
     });
     const objective = settings.objectivesByDeviceId['ev-1']!;
-    const hours = [{ startsAtMs: NOW_MS, plannedKWh: 1 }];
+    const hours = [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 }];
     const latest = {
       revision: 1,
       revisedAtMs: NOW_MS - HOUR_MS,
@@ -1402,8 +1402,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       planStatus: 'on_track' as const,
       devicePriority: 1,
     };
-    const activePlans: DeferredObjectiveActivePlansV1 = {
-      version: 1,
+    const activePlans: DeferredObjectiveActivePlansV2 = {
+      version: 2,
       plansByDeviceId: {
         'ev-1': {
           liveCompletion: { kind: 'unavailable' as const },
@@ -1462,9 +1462,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const objective = settings.objectivesByDeviceId['ev-1']!;
     const targetPercent = objective.kind === 'ev_soc' ? objective.targetPercent : 0;
     const hours = [
-      { startsAtMs: NOW_MS, plannedKWh: 0.25 },
-      { startsAtMs: NOW_MS + HOUR_MS, plannedKWh: 0.5 },
-      { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1.5 },
+      { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 0.25 },
+      { startsAtMs: NOW_MS + HOUR_MS, endsAtMs: (NOW_MS + HOUR_MS) + 3_600_000, plannedKWh: 0.5 },
+      { startsAtMs: NOW_MS + 2 * HOUR_MS, endsAtMs: (NOW_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
     ];
     const latest = {
       revision: 1,
@@ -1482,8 +1482,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         },
       ],
     };
-    const activePlans: DeferredObjectiveActivePlansV1 = {
-      version: 1,
+    const activePlans: DeferredObjectiveActivePlansV2 = {
+      version: 2,
       plansByDeviceId: {
         'ev-1': {
           liveCompletion: { kind: 'unavailable' as const },
@@ -1597,9 +1597,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       rescue: { exemptFromBudget: 'always' },
     }));
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
-    const oldCommitment = [{ startsAtMs: NOW_MS, plannedKWh: 1 }];
-    const activePlans: DeferredObjectiveActivePlansV1 = {
-      version: 1,
+    const oldCommitment = [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 }];
+    const activePlans: DeferredObjectiveActivePlansV2 = {
+      version: 2,
       plansByDeviceId: {
         'ev-1': {
           liveCompletion: { kind: 'unavailable' as const },
@@ -1661,8 +1661,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       targetPercent: 50,
     }));
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
-    const activePlans: DeferredObjectiveActivePlansV1 = {
-      version: 1,
+    const activePlans: DeferredObjectiveActivePlansV2 = {
+      version: 2,
       plansByDeviceId: {
         'ev-1': {
           liveCompletion: { kind: 'unavailable' as const },
@@ -1677,8 +1677,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           commitment: {
             committedAtMs: NOW_MS - HOUR_MS,
             hours: [
-              { startsAtMs: NOW_MS, plannedKWh: 1 },
-              { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1 },
+              { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 },
+              { startsAtMs: NOW_MS + 2 * HOUR_MS, endsAtMs: (NOW_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
             ],
           },
           original: {
@@ -1687,8 +1687,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
             computedFromPricesUpTo: NOW_MS + 2 * HOUR_MS,
             reason: 'flow_card',
             hours: [
-              { startsAtMs: NOW_MS, plannedKWh: 1 },
-              { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1 },
+              { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 },
+              { startsAtMs: NOW_MS + 2 * HOUR_MS, endsAtMs: (NOW_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
             ],
             energyNeededKWh: 2,
             planStatus: 'on_track',
@@ -1699,8 +1699,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
             computedFromPricesUpTo: NOW_MS + 2 * HOUR_MS,
             reason: 'flow_card',
             hours: [
-              { startsAtMs: NOW_MS, plannedKWh: 1 },
-              { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1 },
+              { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 },
+              { startsAtMs: NOW_MS + 2 * HOUR_MS, endsAtMs: (NOW_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
             ],
             energyNeededKWh: 2,
             planStatus: 'on_track',
@@ -1731,11 +1731,11 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   const buildCommittedEvPlans = (
     deadlineAtMs: number,
     latestOverrides: Record<string, unknown> = {},
-    hourOverrides: Array<{ startsAtMs: number; plannedKWh: number }> | null = null,
-  ): DeferredObjectiveActivePlansV1 => {
+    hourOverrides: Array<{ startsAtMs: number; endsAtMs: number; plannedKWh: number }> | null = null,
+  ): DeferredObjectiveActivePlansV2 => {
     const hours = hourOverrides ?? [
-      { startsAtMs: NOW_MS, plannedKWh: 1 },
-      { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1 },
+      { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 },
+      { startsAtMs: NOW_MS + 2 * HOUR_MS, endsAtMs: (NOW_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
     ];
     const latest = {
       revision: 1,
@@ -1748,7 +1748,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       ...latestOverrides,
     };
     return {
-      version: 1,
+      version: 2,
       plansByDeviceId: {
         'ev-1': {
           liveCompletion: { kind: 'unavailable' as const },
@@ -1806,7 +1806,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const activePlans = buildCommittedEvPlans(
       deadlineAtMs,
       { floorShortfallCause: cause },
-      [{ startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1 }],
+      [{ startsAtMs: NOW_MS + 2 * HOUR_MS, endsAtMs: (NOW_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 }],
     );
     return buildDeferredObjectiveDiagnostics({
       settings,
@@ -1888,10 +1888,10 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
     // A :58 kWh refinement (e.g. measured_deviation) on the SAME hour set updates
     // `latest` but not `commitment` (the merge only re-commits on a schedule change).
-    const commitmentHours = [{ startsAtMs: NOW_MS, plannedKWh: 1 }];
-    const latestHours = [{ startsAtMs: NOW_MS, plannedKWh: 3 }]; // refined up
-    const activePlans: DeferredObjectiveActivePlansV1 = {
-      version: 1,
+    const commitmentHours = [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 }];
+    const latestHours = [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 3 }]; // refined up
+    const activePlans: DeferredObjectiveActivePlansV2 = {
+      version: 2,
       plansByDeviceId: {
         'ev-1': {
           liveCompletion: { kind: 'unavailable' as const },
@@ -1940,9 +1940,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   it('does not serve a frozen read from a committed plan with no latest revision', () => {
     const settings = objectiveRosterFor(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
-    const hours = [{ startsAtMs: NOW_MS, plannedKWh: 1 }];
-    const activePlans: DeferredObjectiveActivePlansV1 = {
-      version: 1,
+    const hours = [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 }];
+    const activePlans: DeferredObjectiveActivePlansV2 = {
+      version: 2,
       plansByDeviceId: {
         'ev-1': {
           liveCompletion: { kind: 'unavailable' as const },
@@ -1978,15 +1978,15 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const settings = objectiveRosterFor(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
     const commitmentHours = [
-      { startsAtMs: NOW_MS, plannedKWh: 1, plannedUnitMilestone: 46, cheaperHourAhead: true },
-      { startsAtMs: NOW_MS + HOUR_MS, plannedKWh: 1, plannedUnitMilestone: 48 },
+      { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1, plannedUnitMilestone: 46, cheaperHourAhead: true },
+      { startsAtMs: NOW_MS + HOUR_MS, endsAtMs: (NOW_MS + HOUR_MS) + 3_600_000, plannedKWh: 1, plannedUnitMilestone: 48 },
     ];
     const latestHours = [
-      { startsAtMs: NOW_MS, plannedKWh: 1, plannedUnitMilestone: 42, cheaperHourAhead: true },
-      { startsAtMs: NOW_MS + HOUR_MS, plannedKWh: 1, plannedUnitMilestone: 48 },
+      { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1, plannedUnitMilestone: 42, cheaperHourAhead: true },
+      { startsAtMs: NOW_MS + HOUR_MS, endsAtMs: (NOW_MS + HOUR_MS) + 3_600_000, plannedKWh: 1, plannedUnitMilestone: 48 },
     ];
-    const activePlans: DeferredObjectiveActivePlansV1 = {
-      version: 1,
+    const activePlans: DeferredObjectiveActivePlansV2 = {
+      version: 2,
       plansByDeviceId: {
         'ev-1': {
           liveCompletion: { kind: 'unavailable' as const },
@@ -2031,15 +2031,15 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const settings = objectiveRosterFor(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
     const commitmentHours = [
-      { startsAtMs: NOW_MS, plannedKWh: 1, plannedUnitMilestone: 46, cheaperHourAhead: true },
-      { startsAtMs: NOW_MS + HOUR_MS, plannedKWh: 1, plannedUnitMilestone: 48 },
+      { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1, plannedUnitMilestone: 46, cheaperHourAhead: true },
+      { startsAtMs: NOW_MS + HOUR_MS, endsAtMs: (NOW_MS + HOUR_MS) + 3_600_000, plannedKWh: 1, plannedUnitMilestone: 48 },
     ];
     const latestHours = [
-      { startsAtMs: NOW_MS, plannedKWh: 1, plannedUnitMilestone: 42, cheaperHourAhead: true },
-      { startsAtMs: NOW_MS + HOUR_MS, plannedKWh: 1, plannedUnitMilestone: 48 },
+      { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1, plannedUnitMilestone: 42, cheaperHourAhead: true },
+      { startsAtMs: NOW_MS + HOUR_MS, endsAtMs: (NOW_MS + HOUR_MS) + 3_600_000, plannedKWh: 1, plannedUnitMilestone: 48 },
     ];
-    const activePlans: DeferredObjectiveActivePlansV1 = {
-      version: 1,
+    const activePlans: DeferredObjectiveActivePlansV2 = {
+      version: 2,
       plansByDeviceId: {
         'ev-1': {
           liveCompletion: { kind: 'unavailable' as const },
@@ -2109,8 +2109,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const settings = objectiveRosterFor(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
     const elapsedHours = [
-      { startsAtMs: NOW_MS - 2 * HOUR_MS, plannedKWh: 1 },
-      { startsAtMs: NOW_MS - HOUR_MS, plannedKWh: 1 },
+      { startsAtMs: NOW_MS - 2 * HOUR_MS, endsAtMs: (NOW_MS - 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+      { startsAtMs: NOW_MS - HOUR_MS, endsAtMs: (NOW_MS - HOUR_MS) + 3_600_000, plannedKWh: 1 },
     ];
     const latest = {
       revision: 1,
@@ -2121,8 +2121,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       energyNeededKWh: 2,
       planStatus: 'on_track' as const,
     };
-    const activePlans: DeferredObjectiveActivePlansV1 = {
-      version: 1,
+    const activePlans: DeferredObjectiveActivePlansV2 = {
+      version: 2,
       plansByDeviceId: {
         'ev-1': {
           liveCompletion: { kind: 'unavailable' as const },
@@ -2158,10 +2158,10 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   it('serves a behind-temperature committed device frozen mid-hour (no cold-start routing)', () => {
     const settings = objectiveRosterFor(buildTemperatureSettings());
     const deadlineAtMs = settings.objectivesByDeviceId['heater-1']!.deadlineAtMs;
-    const buildTempPlans = (currentHourBooked: boolean): DeferredObjectiveActivePlansV1 => {
+    const buildTempPlans = (currentHourBooked: boolean): DeferredObjectiveActivePlansV2 => {
       const hours = [
-        ...(currentHourBooked ? [{ startsAtMs: NOW_MS, plannedKWh: 2 }] : []),
-        { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 2 },
+        ...(currentHourBooked ? [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 2 }] : []),
+        { startsAtMs: NOW_MS + 2 * HOUR_MS, endsAtMs: (NOW_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
       ];
       const latest = {
         revision: 1,
@@ -2173,7 +2173,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         planStatus: 'on_track' as const,
       };
       return {
-        version: 1,
+        version: 2,
         plansByDeviceId: {
           'heater-1': {
             liveCompletion: { kind: 'unavailable' as const },
@@ -2195,7 +2195,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         },
       };
     };
-    const run = (plans: DeferredObjectiveActivePlansV1) => buildDeferredObjectiveDiagnostics({
+    const run = (plans: DeferredObjectiveActivePlansV2) => buildDeferredObjectiveDiagnostics({
       devices: [buildTemperatureDevice()],
       settings,
       powerTracker: buildTemperaturePowerTracker(),
@@ -3617,7 +3617,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       });
     });
 
-    const buildCommittedHigherTaskPlans = (deadlineAtMs: number): DeferredObjectiveActivePlansV1 => {
+    const buildCommittedHigherTaskPlans = (deadlineAtMs: number): DeferredObjectiveActivePlansV2 => {
       // Mirror the prior-cycle commitment shape that `activePlanRecorder`
       // would persist for a fully-reserved top-priority EV: a 5-hour
       // schedule at the (then-current) min-step floor. The exact hour
@@ -3626,7 +3626,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       // (kind/deadline/signature all match the live objective) so the
       // committed-replan path actually engages.
       const committedHours = Array.from({ length: 5 }, (_, index) => ({
-        startsAtMs: NOW_MS + index * HOUR_MS,
+        startsAtMs: NOW_MS + index * HOUR_MS, endsAtMs: (NOW_MS + index * HOUR_MS) + 3_600_000,
         plannedKWh: 1,
       }));
       // Signature must match `buildObjectiveSignature` for the live
@@ -3642,7 +3642,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         ['rescue', 'always', 'always'],
       ]);
       return {
-        version: 1,
+        version: 2,
         plansByDeviceId: {
           'ev-1': {
             liveCompletion: { kind: 'unavailable' as const },

@@ -46,8 +46,8 @@ const PREVIEW_RESPONSE: StarvationRescuePreviewResponse = {
     // Scheduled across the current hour + the next one, so the fixture can honestly
     // demonstrate the at-cap note (which is about running in the CURRENT clock hour).
     scheduledHours: [
-      { startsAtMs: PREVIEW_NEXT_HOUR_MS - HOUR_MS, plannedKWh: 1.5 },
-      { startsAtMs: PREVIEW_NEXT_HOUR_MS, plannedKWh: 1.5 },
+      { startsAtMs: PREVIEW_NEXT_HOUR_MS - HOUR_MS, endsAtMs: PREVIEW_NEXT_HOUR_MS, plannedKWh: 1.5 },
+      { startsAtMs: PREVIEW_NEXT_HOUR_MS, endsAtMs: PREVIEW_NEXT_HOUR_MS + HOUR_MS, plannedKWh: 1.5 },
     ],
     projectedFinishAtMs: PREVIEW_NEXT_HOUR_MS + HOUR_MS,
     energyEstimateKWh: 3,
@@ -58,11 +58,11 @@ const PREVIEW_RESPONSE: StarvationRescuePreviewResponse = {
     // preview / render-gate exercises the price chart + scheduled-hour highlight.
     // Ascending by startsAtMs; prices are unit-less shape values (no chart axis).
     priceSeries: [
-      { startsAtMs: PREVIEW_NEXT_HOUR_MS - HOUR_MS, price: 38 },
-      { startsAtMs: PREVIEW_NEXT_HOUR_MS, price: 45 },
-      { startsAtMs: PREVIEW_NEXT_HOUR_MS + HOUR_MS, price: 92 },
-      { startsAtMs: PREVIEW_NEXT_HOUR_MS + 2 * HOUR_MS, price: 120 },
-      { startsAtMs: PREVIEW_NEXT_HOUR_MS + 3 * HOUR_MS, price: 104 },
+      { startsAtMs: PREVIEW_NEXT_HOUR_MS - HOUR_MS, endsAtMs: PREVIEW_NEXT_HOUR_MS, price: 38 },
+      { startsAtMs: PREVIEW_NEXT_HOUR_MS, endsAtMs: PREVIEW_NEXT_HOUR_MS + HOUR_MS, price: 45 },
+      { startsAtMs: PREVIEW_NEXT_HOUR_MS + HOUR_MS, endsAtMs: PREVIEW_NEXT_HOUR_MS + 2 * HOUR_MS, price: 92 },
+      { startsAtMs: PREVIEW_NEXT_HOUR_MS + 2 * HOUR_MS, endsAtMs: PREVIEW_NEXT_HOUR_MS + 3 * HOUR_MS, price: 120 },
+      { startsAtMs: PREVIEW_NEXT_HOUR_MS + 3 * HOUR_MS, endsAtMs: PREVIEW_NEXT_HOUR_MS + 4 * HOUR_MS, price: 104 },
     ],
     // The candidate runs in the current hour while the measured whole-home draw is
     // already at the physical cap — surfaces the at-limit honesty note.

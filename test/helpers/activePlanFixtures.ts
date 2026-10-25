@@ -3,7 +3,7 @@ import type {
   DeferredObjectiveActivePlanV1,
   DeliveredEnergyReader,
   ResolvedDeferredObjectiveActivePlanV1,
-  ResolvedDeferredObjectiveActivePlansV1,
+  ResolvedDeferredObjectiveActivePlansV2,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import { toResolvedActivePlan } from '../../packages/shared-domain/src/deferredActivePlanResolvedView';
 
@@ -31,8 +31,8 @@ export const resolveActivePlanFixture = (
 export const resolveActivePlanFixtures = (
   plansByDeviceId: Record<string, ActivePlanFixture>,
   readDeliveredEnergy: DeliveredEnergyReader = nothingDelivered,
-): ResolvedDeferredObjectiveActivePlansV1 => ({
-  version: 1,
+): ResolvedDeferredObjectiveActivePlansV2 => ({
+  version: 2,
   plansByDeviceId: Object.fromEntries(
     Object.entries(plansByDeviceId).map(([deviceId, plan]) => [
       deviceId,

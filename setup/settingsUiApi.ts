@@ -373,6 +373,7 @@ const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => 
     return {
       combinedPrices: null,
       priceTimeline: { state: 'unavailable', reason: 'no_prices' },
+      taskPricePeriods: [],
       priceArea,
       ...NO_PRICE_SOURCE_PAYLOADS,
       pvForecastSource: { kind: 'unknown' },
@@ -391,6 +392,7 @@ const getSettingsUiPrices = ({ homey }: ApiContext): SettingsUiPricesPayload => 
   return {
     combinedPrices: host.getCombinedPricesForUi(),
     priceTimeline: host.getPriceTimelineForUi(),
+    taskPricePeriods: host.getTaskPricePeriodsForUi(),
     priceArea,
     ...host.getPriceSourcePayloadsForUi(),
     pvForecastSource: host.getPvForecastSourceUiStatus(),

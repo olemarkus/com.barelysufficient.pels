@@ -1,3 +1,4 @@
+import { taskPricePeriodsFixture } from './helpers/taskPricePeriodsFixture.ts';
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -532,7 +533,7 @@ describe('Overview under a selected meter area', () => {
     });
     const { state } = await import('../src/ui/state.ts');
     const activePlans: OverviewDeferredObjectiveActivePlans = {
-      version: 1,
+      version: 2,
       plansByDeviceId: {
         dev_main_heater: {
           liveCompletion: { kind: 'unavailable' },
@@ -785,7 +786,12 @@ describe('values a Main refresh read, after a plan push overtook it', () => {
         startsAt: new Date(baseHourMs + hour * HOUR_MS).toISOString(),
         total: hour === hoursAhead ? 10 : 50,
       })),
-    },
+    }, taskPricePeriods: taskPricePeriodsFixture({
+      prices: [1, 2, 3, 4, 5, 6].map((hour) => ({
+        startsAt: new Date(baseHourMs + hour * HOUR_MS).toISOString(),
+        total: hour === hoursAhead ? 10 : 50,
+      })),
+    }),
   });
   const clockAt = (hoursAhead: number): string => {
     const date = new Date(baseHourMs + hoursAhead * HOUR_MS);

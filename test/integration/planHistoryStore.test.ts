@@ -52,6 +52,7 @@ describe('planHistoryStore', () => {
   it('round-trips and removes in-progress metered delivery independently of finalized history', () => {
     const { db, store } = open();
     const state: PersistedMeteredDeliveryState = {
+      version: 1,
       deliveryEvidence: { explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' } },
       // A run still learning (undelivered, with a trusted start) round-trips
       // as learning with its anchor, not frozen as unknown.
@@ -64,9 +65,9 @@ describe('planHistoryStore', () => {
       totalCost: 0,
       costDisplay: { unit: 'kr', divisor: 100 },
       deliveryPriceComplete: true,
-      hourlyContributions: [{ atMs: 0, deliveredKWh: 0, priceValue: 0.4, tone: 'cheap' }],
+      hourlyContributions: [{ atMs: 0, endsAtMs: (0) + 3_600_000, deliveredKWh: 0, priceValue: 0.4, tone: 'cheap' }],
       // Hours whose start the run saw, zero bookings included, round-trip as saved.
-      hourStartBookings: [{ atMs: 0, bookedKWh: 2 }, { atMs: 3_600_000, bookedKWh: 0 }],
+      hourStartBookings: [{ atMs: 0, endsAtMs: (0) + 3_600_000, bookedKWh: 2 }, { atMs: 3_600_000, endsAtMs: (3_600_000) + 3_600_000, bookedKWh: 0 }],
     };
 
     expect(store.readMeteredDelivery()).toEqual([]);
@@ -89,6 +90,7 @@ describe('planHistoryStore', () => {
       .run('dev|10000', JSON.stringify(legacy));
     expect(store.readMeteredDelivery()).toEqual([{
       ...legacy,
+      version: 1,
       commitment: { kind: 'unknown' },
       deliveryEvidence: { explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' } },
       // A row saved before these fields existed: no trusted start, no
@@ -104,7 +106,7 @@ describe('planHistoryStore', () => {
       deliveryEvidence: { explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' } },
       commitment: { kind: 'unknown' }, deviceId: 'dev', deadlineAtMs: 10_000, startedAtMs: 1_000,
       deliveredKWh: 0, totalCost: 0, costDisplay: null, deliveryPriceComplete: true, hourlyContributions: [],
-      hourStartBookings: [{ atMs: 0, bookedKWh: -1 }],
+      hourStartBookings: [{ atMs: 0, endsAtMs: (0) + 3_600_000, bookedKWh: -1 }],
     };
     db.prepare('INSERT INTO deferred_objective_metered_delivery (run_key, state_json) VALUES (?, ?)')
       .run('dev|10000', JSON.stringify(row));
@@ -116,7 +118,7 @@ describe('planHistoryStore', () => {
     expect(store.read()).toBeNull();
     const history = v5(entry('b', 2_000), entry('a', 1_000));
     store.write(history);
-    expect(store.read()).toEqual({ version: 6, entries: [history.entries[1], history.entries[0]] });
+    expect(store.read()).toEqual({ version: 7, entries: [history.entries[1], history.entries[0]] });
     expect((db.prepare('SELECT COUNT(*) AS n FROM deferred_objective_plan_history').get() as { n: number }).n).toBe(2);
   });
 
@@ -299,5 +301,43 @@ describe('importLegacyPlanHistory', () => {
     expect(createPlanHistoryStore(db).read()?.entries.map((e) => e.id)).toEqual(['a', 'b']);
     expect(store.hasImportedLegacy(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING)).toBe(true);
     expect(settings.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING)).toBeNull();
+  });
+});
+
+describe('planHistoryStore interval schema', () => {
+  it('reloads native quarters from a versioned row without applying hourly migration', () => {
+    const { db, store } = open();
+    const snapshot = v5(entry('quarter', 7_200_000));
+    const current = {
+      ...snapshot.entries[0]!,
+      totalCost: 1.25,
+      hourlyContributions: [{
+        atMs: 3_600_000, endsAtMs: 4_500_000, deliveredKWh: 0.5, priceValue: 2.5, tone: 'normal' as const,
+      }],
+      hourStartBookings: [{ atMs: 3_600_000, endsAtMs: 4_500_000, bookedKWh: 0.5 }],
+      originalPlan: {
+        hours: [{ startsAtMs: 3_600_000, endsAtMs: 4_500_000, plannedKWh: 0.5 }],
+        energyNeededKWh: 0.5, planStatus: 'on_track' as const, revisedAtMs: 3_600_000,
+      },
+    };
+    store.write({ version: 7, entries: [current] });
+    expect(createPlanHistoryStore(db).read()).toEqual({ version: 7, entries: [current] });
+  });
+
+  it('reads a legacy unversioned SQL row with its recorded hourly cost intact', () => {
+    const { db, store } = open();
+    const legacy = {
+      ...v5(entry('legacy-hour', 7_200_000)).entries[0]!,
+      totalCost: -2,
+      hourlyContributions: [{ atMs: 3_600_000, endsAtMs: (3_600_000) + 3_600_000, deliveredKWh: 1, priceValue: -2, tone: 'cheap' }],
+      hourStartBookings: [{ atMs: 3_600_000, endsAtMs: (3_600_000) + 3_600_000, bookedKWh: 1 }],
+    };
+    db.prepare('INSERT INTO deferred_objective_plan_history (id, finalized_at_ms, entry_json) VALUES (?, ?, ?)')
+      .run(legacy.id, legacy.finalizedAtMs, JSON.stringify(legacy));
+    expect(store.read()!.entries[0]).toMatchObject({
+      totalCost: -2,
+      hourlyContributions: [{ atMs: 3_600_000, endsAtMs: 7_200_000 }],
+      hourStartBookings: [{ atMs: 3_600_000, endsAtMs: 7_200_000 }],
+    });
   });
 });

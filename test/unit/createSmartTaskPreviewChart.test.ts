@@ -5,7 +5,7 @@ import { renderPreviewChart } from '../../widgets/_shared/smartTaskCreate/previe
 const HOUR_MS = 60 * 60 * 1000;
 const container = (): HTMLElement => document.createElement('div');
 const hours = (count: number, priceAt: (index: number) => number | null) => (
-  Array.from({ length: count }, (_value, index) => ({ startsAtMs: index * HOUR_MS, price: priceAt(index) }))
+  Array.from({ length: count }, (_value, index) => ({ startsAtMs: index * HOUR_MS, endsAtMs: (index * HOUR_MS) + HOUR_MS, price: priceAt(index) }))
 );
 
 describe('renderPreviewChart', () => {
@@ -33,7 +33,7 @@ describe('renderPreviewChart', () => {
     const el = container();
     renderPreviewChart(el, {
       priceSeries: hours(10, (index) => 40 + index),
-      scheduledHours: [{ startsAtMs: 7 * HOUR_MS, plannedKWh: 2 }, { startsAtMs: 8 * HOUR_MS, plannedKWh: 2 }],
+      scheduledHours: [{ startsAtMs: 7 * HOUR_MS, endsAtMs: (7 * HOUR_MS) + HOUR_MS, plannedKWh: 2 }, { startsAtMs: 8 * HOUR_MS, endsAtMs: (8 * HOUR_MS) + HOUR_MS, plannedKWh: 2 }],
     });
     expect(el.querySelectorAll('.pchart__band').length).toBe(1);
     expect(el.querySelectorAll('.pchart__dot').length).toBe(2);
@@ -43,7 +43,7 @@ describe('renderPreviewChart', () => {
     const el = container();
     renderPreviewChart(el, {
       priceSeries: hours(10, (index) => 40 + index),
-      scheduledHours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 2 }, { startsAtMs: 8 * HOUR_MS, plannedKWh: 2 }],
+      scheduledHours: [{ startsAtMs: 2 * HOUR_MS, endsAtMs: (2 * HOUR_MS) + HOUR_MS, plannedKWh: 2 }, { startsAtMs: 8 * HOUR_MS, endsAtMs: (8 * HOUR_MS) + HOUR_MS, plannedKWh: 2 }],
     });
     expect(el.querySelectorAll('.pchart__band').length).toBe(2);
   });

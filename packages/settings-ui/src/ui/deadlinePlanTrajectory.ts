@@ -27,33 +27,9 @@ import {
   type DeadlinePlanSchedule,
   type ObjectivePayloadReady,
 } from './deadlinePlanData.ts';
-import { buildCoverStartByStartMs } from './deadlinePlanHourMaps.ts';
+import { resolveRunBands } from '../../../shared-domain/src/deferredPlanHistoryChartData.ts';
 import type { DeadlineTrajectoryPayload } from './views/DeadlinePlan.tsx';
 import type { DeferredObjectiveUnit } from '../../../contracts/src/deferredObjectiveSettings.ts';
-
-// Contiguous true-ranges over an hour grid, feeding the trajectory chart's
-// scheduled-run bands (ms coordinates, mapped by the caller). Only the first
-// range carries the label — repeating it on every band reads as clutter at
-// 320 px. (The schedule chart no longer draws a band: its filled bars carry
-// chosen-ness.)
-export const collectPlannedRanges = (
-  planned: readonly boolean[],
-  label: string,
-): Array<{ from: number; to: number; label: string | null }> => {
-  const ranges: Array<{ from: number; to: number; label: string | null }> = [];
-  let start: number | null = null;
-  for (let i = 0; i <= planned.length; i += 1) {
-    if (i < planned.length && planned[i]) {
-      start = start ?? i;
-      continue;
-    }
-    if (start !== null) {
-      ranges.push({ from: start, to: i - 1, label: ranges.length === 0 ? label : null });
-      start = null;
-    }
-  }
-  return ranges;
-};
 
 // Measured-so-far series: the run's start anchor (when known), the recorder's
 // observed samples, then the live "now" reading. Sorted + deduped so a sample
@@ -128,7 +104,6 @@ const remainingTowardTarget = (
 
 const buildPlannedStaircase = (
   input: ObjectivePayloadReady,
-  currentChargeByStartMs: Map<number, number>,
 ): { points: Array<[number, number]>; projected: number; readyAtMs: number | null } => {
   const { ctx, progress, energy } = input;
   const { nowMs, deadlineAtMs } = ctx;
@@ -137,13 +112,12 @@ const buildPlannedStaircase = (
   const progressPerKWh = energyNeededKWh > 0 ? progress.remainingUnits / energyNeededKWh : 0;
   // Actual coverage start (`coversFromMs`) per booked hour, present only for
   // buckets the planner already trimmed at a mid-hour revision.
-  const currentCoverStartByStartMs = buildCoverStartByStartMs(ctx.activePlan.latest);
   const points: Array<[number, number]> = [[nowMs, currentValue]];
   let projected = currentValue;
   let readyAtMs: number | null = null;
-  for (const hour of input.hours) {
-    if (hour.endMs <= nowMs) continue;
-    const plannedKwh = currentChargeByStartMs.get(hour.startsAtMs) ?? 0;
+  for (const hour of ctx.activePlan.latest.hours) {
+    if (hour.endsAtMs <= nowMs) continue;
+    const plannedKwh = hour.plannedKWh;
     if (plannedKwh <= 0) continue;
     // The staircase anchors at `currentValue`, which already includes the
     // progress made so far in the current hour — adding the in-progress
@@ -162,8 +136,8 @@ const buildPlannedStaircase = (
     //   • hour fully ahead → fraction 1; hour fully elapsed → skipped above.
     // The span end clamps to the deadline, mirroring how the planner only
     // books energy up to `deadlineAtMs` within the final hour.
-    const coverStartMs = currentCoverStartByStartMs.get(hour.startsAtMs) ?? hour.startsAtMs;
-    const coverEndMs = Math.min(hour.endMs, deadlineAtMs);
+    const coverStartMs = hour.coversFromMs ?? hour.startsAtMs;
+    const coverEndMs = Math.min(hour.endsAtMs, deadlineAtMs);
     const coveredSpanMs = coverEndMs - coverStartMs;
     const remainingFraction = coveredSpanMs > 0
       ? Math.max(0, Math.min(1, (coverEndMs - Math.max(nowMs, coverStartMs)) / coveredSpanMs))
@@ -173,13 +147,13 @@ const buildPlannedStaircase = (
     const step = remainingKwh * progressPerKWh;
     const next = applyDirectionalStep(progressDirection, projected, step, targetValue);
     if (!movedInDirection(progressDirection, projected, next)) continue;
-    const riserX = Math.max(hour.startsAtMs, nowMs);
+    const riserX = Math.max(coverStartMs, nowMs);
     points.push([riserX, projected], [riserX, next]);
     projected = next;
     if (readyAtMs === null
       && remainingTowardTarget(progressDirection, targetValue, projected)
         < SHORTFALL_DISPLAY_EPSILON[unit]) {
-      readyAtMs = Math.min(hour.endMs, deadlineAtMs);
+      readyAtMs = Math.min(hour.endsAtMs, deadlineAtMs);
     }
   }
   return { points, projected, readyAtMs };
@@ -192,9 +166,9 @@ export const buildTrajectory = (
   const { ctx, progress } = input;
   const { nowMs, deadlineAtMs } = ctx;
   const { currentValue, targetValue, unit } = progress;
-  const { planStatus, currentChargeByStartMs } = schedule;
+  const { planStatus } = schedule;
   const measuredPoints = collectMeasuredPoints(ctx.activePlan, nowMs, currentValue);
-  const staircase = buildPlannedStaircase(input, currentChargeByStartMs);
+  const staircase = buildPlannedStaircase(input);
   const { projected, readyAtMs } = staircase;
   const xMaxMs = deadlineAtMs + 30 * 60 * 1000;
   // `collectMeasuredPoints` always ends with the now-point, so the first entry
@@ -202,25 +176,8 @@ export const buildTrajectory = (
   const earliestMeasuredMs = measuredPoints[0]?.[0] ?? nowMs;
   const xMinMs = Math.min(earliestMeasuredMs, nowMs - 30 * 60 * 1000);
   const plannedPoints = [...staircase.points, [xMaxMs, projected] as [number, number]];
-  const runBands = collectPlannedRanges(
-    input.hours.map((hour) => (
-      hour.endMs > xMinMs && (currentChargeByStartMs.get(hour.startsAtMs) ?? 0) > 0
-    )),
-    // Same kind verb as the schedule chart's planned band — the two cards'
-    // bands speak one word ("Heating" / "Charging").
-    schedule.labels.deviceSeriesName,
-  ).flatMap((range) => {
-    const fromHour = input.hours[range.from];
-    const toHour = input.hours[range.to];
-    // Ranges are indexes into `input.hours`, so both ends resolve; a band with
-    // no hour at either end has nothing to draw.
-    if (fromHour === undefined || toHour === undefined) return [];
-    return [{
-      fromMs: Math.max(fromHour.startsAtMs, xMinMs),
-      toMs: Math.min(toHour.endMs, xMaxMs),
-      label: range.label,
-    }];
-  });
+  const runBands = resolveRunBands(ctx.activePlan.latest.hours, xMinMs, xMaxMs)
+    .map((band, index) => ({ ...band, label: index === 0 ? schedule.labels.deviceSeriesName : null }));
   const observedValues = measuredPoints.map((point) => point[1]);
   const minValue = Math.min(targetValue, ...observedValues, currentValue);
   const pad = unit === '%' ? 5 : 2;

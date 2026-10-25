@@ -1,6 +1,6 @@
 import { reportTaskDeliveryStatus, type TaskDeliveryReader } from './deliveryEvidence';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
-import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectiveActivePlansV2 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { ObjectiveDeviceSource } from '../types';
 import { getDebugEmitter, isDebugTopicEnabled } from '../../logging/logger';
 import type { EnergyTaskDeliveryTracker } from './energyDelivery';
@@ -95,7 +95,7 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
   observeDeferredObjectivePlanHistory: (
     diagnostics: DeferredObjectiveDiagnostic[],
     nowMs: number,
-    activePlans: DeferredObjectiveActivePlansV1,
+    activePlans: DeferredObjectiveActivePlansV2,
   ) => void;
   /**
    * Active-plan commitment RECORD. Settles replan revisions on the clock — the

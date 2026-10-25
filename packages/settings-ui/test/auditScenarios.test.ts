@@ -128,7 +128,7 @@ describe('audit scenarios', () => {
       expect(['live', 'unavailable']).toContain(statusRead.state);
     }
     if (scenario.deferredObjectiveActivePlans) {
-      expect(scenario.deferredObjectiveActivePlans.version).toBe(1);
+      expect(scenario.deferredObjectiveActivePlans.version).toBe(2);
       expect(typeof scenario.deferredObjectiveActivePlans.plansByDeviceId).toBe('object');
     }
     if (scenario.deferredObjectiveHistory) {

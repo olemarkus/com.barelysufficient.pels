@@ -102,7 +102,7 @@ const OK_PREVIEW = {
   estimate: {
     budgetRole: 'none' as const,
     status: 'on_track' as const,
-    scheduledHours: [{ startsAtMs: HOUR_FLOOR, plannedKWh: 1.5 }],
+    scheduledHours: [{ startsAtMs: HOUR_FLOOR, endsAtMs: (HOUR_FLOOR) + 3_600_000, plannedKWh: 1.5 }],
     projectedFinishAtMs: Date.now() + 2 * 60 * 60 * 1000,
     energyEstimateKWh: 1.5,
     energyExpectedKWh: 1.4,
@@ -110,8 +110,8 @@ const OK_PREVIEW = {
     costUnit: 'kr',
     // A two-point price curve so the shared chart has something to draw.
     priceSeries: [
-      { startsAtMs: HOUR_FLOOR, price: 0.9 },
-      { startsAtMs: HOUR_FLOOR + 60 * 60 * 1000, price: 1.4 },
+      { startsAtMs: HOUR_FLOOR, endsAtMs: (HOUR_FLOOR) + 3_600_000, price: 0.9 },
+      { startsAtMs: HOUR_FLOOR + 60 * 60 * 1000, endsAtMs: (HOUR_FLOOR + 60 * 60 * 1000) + 3_600_000, price: 1.4 },
     ],
     // The default fixture is an eligible (stepped-load, top-priority) device, so
     // both rescue permissions survive the backend gate.

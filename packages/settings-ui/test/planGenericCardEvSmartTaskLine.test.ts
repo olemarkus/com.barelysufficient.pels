@@ -23,10 +23,10 @@ const seedEvTask = (
     },
   };
   state.deferredObjectiveActivePlans = {
-    version: 1,
+    version: 2,
     plansByDeviceId: {
       [CHARGER_ID]: {
-        latest: { hours: hours.map((startsAtMs) => ({ startsAtMs, plannedKWh: options.plannedKWh?.(startsAtMs) ?? 1 })) },
+        latest: { hours: hours.map((startsAtMs) => ({ startsAtMs, endsAtMs: (startsAtMs) + 3_600_000, plannedKWh: options.plannedKWh?.(startsAtMs) ?? 1 })) },
         ...(options.diagnosticReasonCode ? { diagnosticReasonCode: options.diagnosticReasonCode } : {}),
       },
     },

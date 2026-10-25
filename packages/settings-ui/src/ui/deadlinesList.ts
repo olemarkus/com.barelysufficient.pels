@@ -12,7 +12,7 @@ import {
 import { normalizeDeferredObjectiveRoster } from './deferredObjectiveRoster.ts';
 import type { DeferredObjectiveRoster } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type {
-  ResolvedDeferredObjectiveActivePlansV1,
+  ResolvedDeferredObjectiveActivePlansV2,
   ResolvedDeferredObjectiveActivePlanV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../contracts/src/deferredObjectivePlanHistory.ts';
@@ -115,7 +115,7 @@ const buildCard = (
 };
 
 export const resolveDeadlinesListCards = (
-  activePlans: ResolvedDeferredObjectiveActivePlansV1 | null,
+  activePlans: ResolvedDeferredObjectiveActivePlansV2 | null,
   objectiveSettings: DeferredObjectiveRoster,
   devices: readonly ObservedDeviceState[],
   nowMs: number,

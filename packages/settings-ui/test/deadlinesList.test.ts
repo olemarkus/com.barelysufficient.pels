@@ -10,7 +10,7 @@ import {
 } from '../../contracts/src/settingsUiApi.ts';
 import type {
   DeferredObjectiveActivePlanV1,
-  ResolvedDeferredObjectiveActivePlansV1,
+  ResolvedDeferredObjectiveActivePlansV2,
 } from '../../contracts/src/deferredObjectiveActivePlans.ts';
 import type {
   DeferredObjectiveRoster,
@@ -54,8 +54,8 @@ const buildPlan = (overrides: Partial<DeferredObjectiveActivePlanV1>): DeferredO
     computedFromPricesUpTo: T0 + 24 * HOUR_MS,
     reason: 'flow_card',
     hours: [
-      { startsAtMs: T0 + 3 * HOUR_MS, plannedKWh: 2 },
-      { startsAtMs: T0 + 4 * HOUR_MS, plannedKWh: 2 },
+      { startsAtMs: T0 + 3 * HOUR_MS, endsAtMs: (T0 + 3 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
+      { startsAtMs: T0 + 4 * HOUR_MS, endsAtMs: (T0 + 4 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
     ],
     energyNeededKWh: 4,
     planStatus: 'on_track',
@@ -68,8 +68,8 @@ const nothingDelivered = () => 0;
 // Resolve stored plans the way the runtime's UI assembler does, keyed as given.
 const resolvePlans = (
   plansByDeviceId: Record<string, DeferredObjectiveActivePlanV1>,
-): ResolvedDeferredObjectiveActivePlansV1 => ({
-  version: 1,
+): ResolvedDeferredObjectiveActivePlansV2 => ({
+  version: 2,
   plansByDeviceId: Object.fromEntries(Object.entries(plansByDeviceId).map(([deviceId, plan]) => [
     deviceId,
     toResolvedActivePlan(plan, nothingDelivered, null),
@@ -78,7 +78,7 @@ const resolvePlans = (
 
 const buildActivePlans = (
   plans: DeferredObjectiveActivePlanV1[],
-): ResolvedDeferredObjectiveActivePlansV1 => resolvePlans(
+): ResolvedDeferredObjectiveActivePlansV2 => resolvePlans(
   Object.fromEntries(plans.map((plan) => [plan.deviceId, plan])),
 );
 
@@ -118,7 +118,7 @@ const devices: (TargetDeviceSnapshot & TemperatureObservedProbe & ObservedStateO
 describe('resolveDeadlinesListCards', () => {
   it('returns an empty list when no plans exist', () => {
     const cards = resolveDeadlinesListCards(
-      { version: 1, plansByDeviceId: {} },
+      { version: 2, plansByDeviceId: {} },
       buildObjectiveSettings({}),
       devices,
       T0,
@@ -353,7 +353,7 @@ describe('resolveDeadlinesListCards', () => {
             revisedAtMs: T0,
             computedFromPricesUpTo: T0 + 24 * HOUR_MS,
             reason: 'flow_card',
-            hours: [{ startsAtMs: T0 + HOUR_MS, plannedKWh: 1 }],
+            hours: [{ startsAtMs: T0 + HOUR_MS, endsAtMs: (T0 + HOUR_MS) + 3_600_000, plannedKWh: 1 }],
             energyNeededKWh: 2,
             planStatus: 'at_risk',
           },
@@ -663,7 +663,7 @@ const HISTORY_DEVICE_FILTER_STORAGE_KEY = 'pels.smart-tasks.history.deviceFilter
 const emptyBootstrap = {
   settings: {},
   deferredObjectives: { objectivesByDeviceId: {} },
-  deferredObjectiveActivePlans: { version: 1, plansByDeviceId: {} },
+  deferredObjectiveActivePlans: { version: 2, plansByDeviceId: {} },
 };
 
 const installDeadlinesSurfaces = (): void => {

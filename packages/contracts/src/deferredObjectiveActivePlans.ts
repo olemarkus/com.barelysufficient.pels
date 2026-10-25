@@ -70,61 +70,28 @@ export type DeferredObjectiveActivePlanFloorShortfallCause =
   | 'time_capacity'
   | 'none';
 
-// One BOOKING of the plan: an hour the task holds. `plannedKWh` is what the booking
-// promises and may be 0 — an hour wanted on price, or needed because the task falls
-// short, that the forecast left no room for. The task claims such an hour and runs
-// there if capacity turns out to be free. Readers that mean "the hours the device is
-// planned to run" (counts, first start, run bands) read only the hours with energy
-// (`hoursWithPlannedEnergy`, packages/shared-domain/src/deferredPlanBookedHours.ts);
-// only those are commitment floors.
-export type DeferredObjectiveActivePlanHourV1 = {
+// One booked time interval. The historical `hours` array name is retained in
+// the wire format; every element now carries explicit source/coverage bounds.
+// Zero-energy bookings claim free capacity only and are never energy floors.
+export type DeferredObjectivePlanInterval = {
   startsAtMs: number;
+  endsAtMs: number;
   plannedKWh: number;
-  // Physical step draw reserved for this booked source hour. Distinct from
-  // `plannedKWh`: calibrated admission power protects lower-priority smart-task
-  // planning even when useful delivery power is lower. Optional for persisted
-  // plans written before priority-aware allocation shipped.
+  // Physical draw, separate from useful energy. Legacy records can lack it.
   plannedAdmissionPowerKw?: number;
-  // Actual coverage start of this hour's booked energy, when it is a sub-hour
-  // span `[coversFromMs, hourEnd]` rather than the full hour. Set only for the
-  // current hour at a mid-hour revision: the horizon planner trims that
-  // bucket's start to `nowMs` (see `buildHoursFromHorizonPlan`), so its
-  // `plannedKWh` is already only the post-revision remainder. Absent ⇒ the
-  // energy covers the full hour `[startsAtMs, startsAtMs+1h]` (a freshly-booked
-  // full hour or a full-hour commitment floor). Consumed by the history-detail
-  // chart to decide whether the revised-trajectory riser is prorated
-  // (full-hour floor) or added whole (already-trimmed). Optional/back-compatible:
-  // legacy entries persisted without it read as full-hour. Added 2026-06-01.
+  // Legacy partial coverage; absent means startsAtMs. New bookings use their
+  // exact covered start directly. Energy always covers [coverageStart, endsAtMs).
   coversFromMs?: number;
-  // Cumulative target progress in the objective's own unit (°C for temperature,
-  // % for ev_soc) the committed plan expects to have reached by the END of this
-  // hour. Computed ONCE at the revision that booked the hour, anchored at the
-  // measured value at that revision plus the cumulative booked energy through
-  // this hour converted at the revision's rate — i.e. the persisted unit
-  // trajectory. The mid-execution milestone gate (`isAheadOfHourMilestone`)
-  // compares the live measured value against this directly, so the "ahead of
-  // plan" decision never divides committed energy by a drifting live rate (kWh
-  // and units diverge under leakage / a wrong learned rate). Frozen with the
-  // hour like `coversFromMs`. Optional/back-compatible: legacy entries (or hours
-  // booked when the rate/measured anchor was unavailable) omit it, and the gate
-  // falls back to the energy comparison. Added 2026-06-03.
+  // Frozen cumulative unit target at this interval's end. A migrated/regridded
+  // interval without its own saved target uses the energy milestone instead.
   plannedUnitMilestone?: number;
-  // Whether, at the revision that booked this hour, a meaningfully-cheaper
-  // (relative `isMeaningfullyCheaper` band), booked, non-reserve hour existed
-  // strictly LATER in the plan than this one. Frozen with the hour like
-  // `plannedUnitMilestone` (computed ONCE at the booking revision), so the
-  // mid-execution price-deferral release can read "is there a cheaper hour
-  // ahead?" straight off the current hour without re-scanning a live price
-  // series each cycle (the per-power-cycle clock stays a pure read of frozen
-  // state; only the `:58` settle re-plans). Optional/back-compatible: legacy
-  // entries (or hours booked when the plan carried no comparable prices) omit
-  // it, and the consumer treats absence as `false`. Added 2026-06-03.
+  // Frozen planning-price comparison against later booked intervals.
   cheaperHourAhead?: boolean;
 };
 
 export type DeferredObjectiveActivePlanCommitmentV1 = {
   committedAtMs: number;
-  hours: DeferredObjectiveActivePlanHourV1[];
+  hours: DeferredObjectivePlanInterval[];
 };
 
 // Mirrors `DeferredObjectiveHorizonStatus` in `lib/objectives/deferredObjectives/types`.
@@ -137,12 +104,10 @@ export type DeferredObjectiveActivePlanStatusV1 =
   | 'on_track'
   | 'satisfied';
 
-// Exact source-bucket claim made by a priority-aware allocation. Unlike the
-// hour-aligned `hours` presentation/commitment shape, these segments retain a
-// fractional-offset price grid (for example 01:30–02:30) and deadline clipping.
-// Lower-priority tasks consume this shape after a freeze or restart so the
-// original physical and useful-energy reservation cannot move to a synthetic
-// epoch hour. Optional on revisions for backward compatibility.
+// Exact physical reservation for a booked allocation segment. A booking may
+// combine adjacent pieces of one source period; these retain the individual
+// step draw and source identity for lower-priority tasks and frozen replay.
+// Legacy revisions may omit the segments and resolve them from their bookings.
 export type DeferredObjectiveActivePlanReservationSegmentV1 = {
   startMs: number;
   endMs: number;
@@ -164,7 +129,7 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   // Direction used to produce this revision. Missing only on historical
   // heating-only records written before directional thermostat planning.
   progressDirection?: 'increasing' | 'decreasing' | 'unknown';
-  hours: DeferredObjectiveActivePlanHourV1[];
+  hours: DeferredObjectivePlanInterval[];
   reservationSegments?: DeferredObjectiveActivePlanReservationSegmentV1[];
   // Total energy the planner thinks is required to meet the deadline. Lets the
   // UI render a meaningful timeline even when allocated hours sum to zero
@@ -427,8 +392,8 @@ export type DeferredObjectiveActivePlanV1 = {
   history?: DeferredObjectiveActivePlanRevisionV1[];
 };
 
-export type DeferredObjectiveActivePlansV1 = {
-  version: 1;
+export type DeferredObjectiveActivePlansV2 = {
+  version: 2;
   plansByDeviceId: Record<string, DeferredObjectiveActivePlanV1>;
 };
 
@@ -437,7 +402,7 @@ export type DeferredObjectiveActivePlansV1 = {
 // `ResolvedDeferredObjectivePlanHistoryProgressSample` in
 // `deferredObjectivePlanHistory.ts`, but duplicated here on purpose:
 // `deferredObjectivePlanHistory.ts` already imports from THIS file
-// (`DeferredObjectiveActivePlanHourV1` / `…StatusV1`), so importing the history
+// (`DeferredObjectivePlanInterval` / `…StatusV1`), so importing the history
 // sample type back here would close a circular dependency (rejected by the
 // `no-circular` dep-cruiser rule). The shapes are identical so values flow
 // between the two structurally.
@@ -484,8 +449,8 @@ export type ResolvedDeferredObjectiveActivePlanV1 =
 /** Energy fed to `deviceId` under its task ending at `deadlineAtMs`, in kWh. */
 export type DeliveredEnergyReader = (deviceId: string, deadlineAtMs: number) => number;
 
-export type ResolvedDeferredObjectiveActivePlansV1 = {
-  version: 1;
+export type ResolvedDeferredObjectiveActivePlansV2 = {
+  version: 2;
   plansByDeviceId: Record<string, ResolvedDeferredObjectiveActivePlanV1>;
 };
 
@@ -509,6 +474,6 @@ export type OverviewDeferredObjectiveActivePlan = Pick<
 >;
 
 export type OverviewDeferredObjectiveActivePlans = {
-  version: 1;
+  version: 2;
   plansByDeviceId: Record<string, OverviewDeferredObjectiveActivePlan>;
 };

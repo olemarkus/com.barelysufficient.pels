@@ -19,7 +19,7 @@ const buildRevision = (
   revisedAtMs: BASE_MS,
   computedFromPricesUpTo: null,
   reason: 'objective_changed',
-  hours: [{ startsAtMs: BASE_MS + HOUR_MS, plannedKWh: 2 }],
+  hours: [{ startsAtMs: BASE_MS + HOUR_MS, endsAtMs: (BASE_MS + HOUR_MS) + 3_600_000, plannedKWh: 2 }],
   energyNeededKWh: 24.14,
   planStatus: 'cannot_meet',
   ...overrides,

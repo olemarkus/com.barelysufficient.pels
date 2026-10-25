@@ -1,6 +1,8 @@
 import { allocatedTaskPlan } from './taskEvaluation';
 import { resolveLiveCompletion, sameLiveCompletion } from './activePlanDiagnosticReason';
-import { hoursWithPlannedEnergy } from '../../../packages/shared-domain/src/deferredPlanBookedHours';
+import {
+  hoursWithPlannedEnergy, plannedDurationHours,
+} from '../../../packages/shared-domain/src/deferredPlanBookedHours';
 /**
  * Persisted record-keeper for deferred-objective active plans — the slow clock
  * in this module's two-clock design (governed by
@@ -25,11 +27,11 @@ import { hoursWithPlannedEnergy } from '../../../packages/shared-domain/src/defe
  * Preserve that property when changing load/drop paths.
  */
 import type {
-  DeferredObjectiveActivePlanHourV1,
+  DeferredObjectivePlanInterval,
   DeferredObjectiveActivePlanRevisionReason,
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanV1,
-  DeferredObjectiveActivePlansV1,
+  DeferredObjectiveActivePlansV2,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import {
   resolvePlanLevelDurationSnapshot,
@@ -381,7 +383,7 @@ export class DeferredObjectiveActivePlanRecorder {
   private writeFirstRevision(
     diag: DeferredObjectiveDiagnostic,
     signature: string,
-    rawHours: DeferredObjectiveActivePlanHourV1[],
+    rawHours: DeferredObjectivePlanInterval[],
     reason: DeferredObjectiveActivePlanRevisionReason,
     nowMs: number,
   ): void {
@@ -389,7 +391,7 @@ export class DeferredObjectiveActivePlanRecorder {
     // (the first hour seeds at the measured anchor; cumulative is correct). Stamp
     // the frozen `cheaperHourAhead` flag here too so the first committed hours
     // carry it from the start.
-    const hours = stampCheaperHourAhead(stampUnitMilestones(rawHours, diag, nowMs), diag);
+    const hours = stampCheaperHourAhead(stampUnitMilestones(rawHours, diag, nowMs, []), diag);
     const revision = buildRevision(diag, hours, 1, reason, nowMs);
     const firstDiagnosticReasonCode = resolveDiagnosticReasonCode(diag);
     const previous = this.plans[diag.deviceId];
@@ -443,7 +445,7 @@ export class DeferredObjectiveActivePlanRecorder {
       deviceId: diag.deviceId,
       revision: 1,
       reason,
-      hourCount: hoursWithPlannedEnergy(hours).length,
+      intervalCount: hoursWithPlannedEnergy(hours).length,
       ...buildActivePlanLifecycleFields(diag, startedAtMs),
     });
     if (previousWasPending) {
@@ -504,7 +506,7 @@ export class DeferredObjectiveActivePlanRecorder {
   private maybeWriteReplanRevision(
     diag: DeferredObjectiveDiagnostic,
     signature: string,
-    hours: DeferredObjectiveActivePlanHourV1[],
+    hours: DeferredObjectivePlanInterval[],
     current: DeferredObjectiveActivePlanV1,
     nowMs: number,
     previousEffective: DeferredObjectiveActivePlanStatusV1 | null,
@@ -661,14 +663,14 @@ export class DeferredObjectiveActivePlanRecorder {
       deviceId: diag.deviceId,
       revision: revision.revision,
       reason,
-      hourCount: hoursWithPlannedEnergy(effectiveHours).length,
+      intervalCount: hoursWithPlannedEnergy(effectiveHours).length,
       ...buildActivePlanLifecycleFields(diag, current.startedAtMs),
     });
-    // Counts the hours the device is planned to run: a 0 kWh booking entering or
+    // Measures the duration the device is planned to run: a 0 kWh booking entering or
     // leaving the plan changes nothing an automation should hear about.
     const allocationChanged = shouldFireNotification(
-      hoursWithPlannedEnergy(latest.hours).length,
-      hoursWithPlannedEnergy(effectiveHours).length,
+      plannedDurationHours(latest.hours),
+      plannedDurationHours(effectiveHours),
       reportedPlanStatus(diag, horizonPlan),
     );
     const event = resolvePublicRevisionWrittenEvent(
@@ -735,7 +737,7 @@ export class DeferredObjectiveActivePlanRecorder {
     return this.plans[deviceId];
   }
 
-  getActivePlansSnapshot(): DeferredObjectiveActivePlansV1 {
+  getActivePlansSnapshot(): DeferredObjectiveActivePlansV2 {
     return {
       version: DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION,
       plansByDeviceId: { ...this.plans },

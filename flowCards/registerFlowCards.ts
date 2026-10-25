@@ -5,7 +5,7 @@ import type {
   DeviceDescriptorRead,
   HomeBatteryControlCapability,
 } from '../packages/contracts/src/types';
-import type { DeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectiveActivePlansV2 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { FlowHomeyLike, HomeyDeviceLike } from '../lib/utils/types';
 import type { ReportSteppedLoadActualStepResult } from '../lib/executor/steppedCommandState';
 import { registerExpectedPowerCard } from './expectedPower';
@@ -159,7 +159,7 @@ export type FlowCardDeps = {
   // unresolved authority read returns false so a new task is not offered
   // while its enforcing write would be refused.
   hasMainHomeSmartTaskAuthority: (deviceId: string) => boolean;
-  getDeferredObjectiveActivePlans: () => DeferredObjectiveActivePlansV1 | null;
+  getDeferredObjectiveActivePlans: () => DeferredObjectiveActivePlansV2 | null;
   deferredObjectiveStatusBus: DeferredObjectiveStatusBus;
   deferredObjectivePlanRevisionBus: DeferredObjectivePlanRevisionBus;
   deferredObjectiveEndedBus: DeferredObjectiveEndedBus;

@@ -1441,27 +1441,27 @@ The live smart-task detail page renders two question-titled chart cards. All str
 
 **Pinned readout** (under the schedule chart) — primary line grammar is `time · price · third segment`:
 
-- Time segment: `Now` for the current hour (canonical `NOW_MARKER_WORD`, also the axis label at the now column), else `HH:MM`.
+- Time segment: `Now` for the current period (canonical `NOW_MARKER_WORD`), else `HH:MM–HH:MM`.
 - Price segment: `0.62 kr/kWh` (two decimals, display-scaled unit).
 - Third segment, one of:
-  - `{Kind verb} N kWh planned` — planned hour (`Heating 2.0 kWh planned` / `Cooling 2.0 kWh planned`), optionally suffixed `· Measured N kWh` when the tracker saw real energy that hour.
-  - `Idle — {kind verb} starts HH:MM` — idle current hour with a later run scheduled (`heating` / `cooling`). Capitalized `Idle` like its sibling segments; the embedded kind verb stays lowercase mid-sentence. Never claims the kind verb as active while the hero says it starts later.
-  - `Idle` — idle current hour, nothing scheduled.
-  - `Not scheduled` — idle non-current hour.
-- Secondary line: at rest (no explicit selection) it is always the scrub hint `Drag across the chart to read any hour`; once the user actively selects an hour (including re-selecting Now) it shows that hour's revision-reason sentence (e.g. `Updated as new prices arrived`) when one exists, else the hint.
+  - `{Kind verb} N kWh planned` — planned period (`Heating 2.0 kWh planned` / `Cooling 2.0 kWh planned`), optionally suffixed `· Measured N kWh` only for an exact hourly tracker observation within the task; prorated quarters never claim measured energy.
+  - `Idle — {kind verb} starts HH:MM` — idle current period with a later run scheduled (`heating` / `cooling`). Capitalized `Idle` like its sibling segments; the embedded kind verb stays lowercase mid-sentence. Never claims the kind verb as active while the hero says it starts later.
+  - `Idle` — idle current period, nothing scheduled.
+  - `Not scheduled` — idle non-current period.
+- Secondary line: at rest (no explicit selection) it is always the scrub hint `Drag across the chart to read each period`; once the user actively selects a period (including re-selecting Now) it shows that period's revision-reason sentence (e.g. `Updated as new prices arrived`) when one exists, else the hint.
 
 **Trajectory stateline** (under the trajectory chart), two variants:
 
 - On-track: `{X} now · on track — projected ready ≈ {T}, {N} hours before the deadline` (full word `hours`, singular-aware `1 hour`; `just before the deadline` under one hour). Whole hours round down so the safety margin never overstates the available time: 1 hour 40 minutes reads `1 hour before the deadline`. The status word is the lowercase mid-sentence form of the chip vocabulary (`on track` / `at risk`); plan status `invalid` renders no status word at all.
 - Danger: `Projected {X} at the deadline · {Y} short` (e.g. `Projected 58.0 °C at the deadline · 7 °C short`). The shortfall amount label (`7 °C short` / `12% short`) is shared with the on-chart gap annotation.
 
-**Picked hours / run band**: the schedule chart encodes picked hours directly in its bars — filled mint = picked, the same hue dimmed/outlined = eligible but not picked — decoded by the one-line caption key `SMART_TASK_SCHEDULE_CHART_KEY` (`Filled bars are the picked hours · dimmed bars were not picked`); it carries no band. The trajectory chart keeps its labelled run band with the kind verb — `Heating`, `Cooling`, or `Charging` (`deviceSeriesName`); never a different word (the old trajectory `runs` label is retired). Only the first contiguous band carries the label.
+**Scheduled periods / run band**: the schedule chart encodes scheduled periods directly in its bars — filled mint = picked, the same hue dimmed/outlined = eligible but not picked — decoded by the one-line caption key `SMART_TASK_SCHEDULE_CHART_KEY` (`Filled bars are scheduled · dimmed bars are not scheduled`); it carries no band. The trajectory chart keeps its labelled run band with the kind verb — `Heating`, `Cooling`, or `Charging` (`deviceSeriesName`); never a different word (the old trajectory `runs` label is retired). Only the first contiguous band carries the label.
 
 **Deadline marker**: the marker word is `deadline` on both charts. The schedule chart appends the full form (`deadline Sun 09:00`); the trajectory chart uses the bare word on-track and appends the clock time (`deadline 16:00`) only on the danger variant. The trajectory target line is labelled `Target {value}` (`formatSmartTaskTargetLabel`).
 
-**Trust caption** (under the schedule chart): `Picked {N} of the {M} hours it can use · avg {P} {unit}`. "the M hours it can use" names the chart's eligible pool; it intentionally does not reuse the hero's "hours left" figure, which counts from now and can differ by one. No window-average comparison — the muted unplanned bars carry the baseline visually.
+**Trust caption** (under the schedule chart): `Scheduled {duration} · avg {P} {unit}`. Duration follows the booked intervals (for example `30m` or `2h 15m`); average planning price is weighted by their duration. The muted unplanned bars show the other available periods.
 
-**Queued "why" subline** (hero, below the headline): `Cheaper than now — starts at HH:MM.` may only render when the producer-verified comparison holds (planned-hours average price strictly below the current hour's price). Otherwise the non-comparative form `Scheduled for the cheapest hours it can use — starts at HH:MM.` renders — "it can use" is the trust caption's eligibility vocabulary, and the claim is true by construction (the planner fills cheapest-first among eligible hours) without comparing to now. Never state "cheaper than now" unverified — the schedule chart below would show the disproof.
+**Queued "why" subline** (hero, below the headline): `Cheaper than now — starts at HH:MM.` may only render when the producer-verified comparison holds (planned-hours average price strictly below the current hour's price). Otherwise the non-comparative form `Scheduled for the cheapest times it can use — starts at HH:MM.` renders — the claim is true by construction (the planner fills cheapest-first among eligible periods) without comparing to now. Never state "cheaper than now" unverified — the schedule chart below would show the disproof.
 
 ### Smart task history detail (receipt-first)
 
@@ -1472,7 +1472,7 @@ The finalized-run detail page (chart-overhaul Phase 1B). All strings live in `pa
 - Trajectory card: `Did it heat up as planned?` / `Did it charge as planned?` / `Was the energy delivered as planned?` (kind-aware; replaces the retired `Progress history`). Legacy v3 entries keep `Scheduled vs observed`.
 - Hourly strip: `When did each hour run, and what did it cost?` — and the title's promise is paid by the strip's pinned readout (per-hour cost on tap), never left rhetorical.
 
-**Hero (Succeeded, receipt-first)**: outcome chip + headline + the 3-row receipt timeline (`Started` / `Largest planned hour` / `Ready`) + the cost narrative line `≈ 3.10 kr · 0.52 kr/kWh on average · 6.0 kWh delivered` (fragments suppress individually when data is missing; minor-unit currencies render whole integers). `View details` expands the trajectory chart AND the hourly strip together. Missed keeps the diagnosis-first shape (charts expanded, shortfall chip + Why + recourse) and the whole-kr `≈ 12 kr spent` cost chip — `spent` names what the figure is (money already spent on the failed run), and the shortfall chip already carries the delivered figure.
+**Hero (Succeeded, receipt-first)**: outcome chip + headline + the 3-row receipt timeline (`Started` / `Largest planned period` / `Ready`) + the cost narrative line `≈ 3.10 kr · 0.52 kr/kWh on average · 6.0 kWh delivered` (fragments suppress individually when data is missing; minor-unit currencies render whole integers). `View details` expands the trajectory chart AND the hourly strip together. Missed keeps the diagnosis-first shape (charts expanded, shortfall chip + Why + recourse) and the whole-kr `≈ 12 kr spent` cost chip — `spent` names what the figure is (money already spent on the failed run), and the shortfall chip already carries the delivered figure.
 
 **Trajectory legend** (compact DOM row, not an ECharts legend): `Measured` / `Planned` / `Target {value}` (`formatSmartTaskTargetLabel`). The y-axis labels only the floor and mid ticks — the target value is carried by the legend item, never an axis tick (the 67.0/65.0 collision fix).
 

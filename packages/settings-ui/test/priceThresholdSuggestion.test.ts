@@ -1,3 +1,4 @@
+import { taskPricePeriodsFixture } from './helpers/taskPricePeriodsFixture.ts';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 // The priceConfig orchestrator end to end, with the Homey bridge mocked: a fresh
@@ -46,7 +47,7 @@ describe('Use the suggested threshold', () => {
     (homeyMocks.setSetting as Mock).mockImplementation(async (key: string, value: unknown) => { stored[key] = value; });
     (homeyMocks.getApiReadModel as Mock).mockImplementation(async (path: string) => (
       path === SETTINGS_UI_PRICES_PATH
-        ? { combinedPrices: null, priceLevelSummary: summaryAt(stored.price_threshold_percent as number) }
+        ? { combinedPrices: null, taskPricePeriods: taskPricePeriodsFixture(null), priceLevelSummary: summaryAt(stored.price_threshold_percent as number) }
         : null
     ));
     const { initElectricityPricesView } = await import('../src/ui/priceConfig.ts');
@@ -89,7 +90,7 @@ describe('Use the suggested threshold', () => {
     (homeyMocks.setSetting as Mock).mockImplementation(async (key: string, value: unknown) => { stored[key] = value; });
     (homeyMocks.getApiReadModel as Mock).mockImplementation(async (path: string) => (
       path === SETTINGS_UI_PRICES_PATH
-        ? { combinedPrices: null, priceLevelSummary: ownerSummary(stored.price_min_diff_ore as number) }
+        ? { combinedPrices: null, taskPricePeriods: taskPricePeriodsFixture(null), priceLevelSummary: ownerSummary(stored.price_min_diff_ore as number) }
         : null
     ));
     const { initElectricityPricesView } = await import('../src/ui/priceConfig.ts');

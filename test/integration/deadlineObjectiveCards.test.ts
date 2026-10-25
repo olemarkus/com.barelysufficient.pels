@@ -28,7 +28,7 @@ import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredO
 import type {
   DeferredObjectiveActivePlanStatusV1,
   DeferredObjectiveActivePlanV1,
-  DeferredObjectiveActivePlansV1,
+  DeferredObjectiveActivePlansV2,
   DeferredObjectiveActivePlanRevisionV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
@@ -169,8 +169,8 @@ const buildActivePlan = (overrides: {
 
 const buildActivePlans = (
   plans: DeferredObjectiveActivePlanV1[],
-): DeferredObjectiveActivePlansV1 => ({
-  version: 1,
+): DeferredObjectiveActivePlansV2 => ({
+  version: 2,
   plansByDeviceId: Object.fromEntries(plans.map((plan) => [plan.deviceId, plan])),
 });
 
@@ -269,7 +269,7 @@ const buildDeps = (overrides: {
   endedBus?: DeferredObjectiveEndedBus;
   hoursRemainingBus?: DeferredObjectiveHoursRemainingBus;
   hoursRemainingTracker?: DeferredObjectiveHoursRemainingTracker;
-  activePlans?: DeferredObjectiveActivePlansV1 | null;
+  activePlans?: DeferredObjectiveActivePlansV2 | null;
   isDeviceInMainHome?: (deviceId: string) => boolean;
   hasMainHomeSmartTaskAuthority?: (deviceId: string) => boolean;
   resolveDeviceHomeScope?: (deviceId: string) => SmartTaskHomeScope;
@@ -1434,9 +1434,9 @@ describe('deadline objective flow cards', () => {
         planStatus: 'on_track',
         energyNeededKWh: 6.5,
         hours: [
-          { startsAtMs: hourStartA, plannedKWh: 2.5 },
-          { startsAtMs: hourStartB, plannedKWh: 2.5 },
-          { startsAtMs: hourStartC, plannedKWh: 1.5 },
+          { startsAtMs: hourStartA, endsAtMs: (hourStartA) + 3_600_000, plannedKWh: 2.5 },
+          { startsAtMs: hourStartB, endsAtMs: (hourStartB) + 3_600_000, plannedKWh: 2.5 },
+          { startsAtMs: hourStartC, endsAtMs: (hourStartC) + 3_600_000, plannedKWh: 1.5 },
         ],
       },
     });
@@ -1473,13 +1473,34 @@ describe('deadline objective flow cards', () => {
         planStatus: 'on_track',
         energyNeededKWh: 6.5,
         hours: [
-          { startsAtMs: hourStartA, plannedKWh: 2.5 },
-          { startsAtMs: hourStartB, plannedKWh: 2.5 },
-          { startsAtMs: hourStartC, plannedKWh: 1.5 },
+          { startsAtMs: hourStartA, endsAtMs: (hourStartA) + 3_600_000, plannedKWh: 2.5 },
+          { startsAtMs: hourStartB, endsAtMs: (hourStartB) + 3_600_000, plannedKWh: 2.5 },
+          { startsAtMs: hourStartC, endsAtMs: (hourStartC) + 3_600_000, plannedKWh: 1.5 },
         ],
       },
     });
     expect(trigger.trigger).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits fractional planned_hours for native quarter-hour bookings', () => {
+    const planRevisionBus = createDeferredObjectivePlanRevisionBus();
+    const { deps, mock } = buildDeps({ snapshot: [], planRevisionBus });
+    registerDeadlineObjectiveCards(deps);
+    const startsAtMs = MOCK_NOW_MS;
+    planRevisionBus.publish(buildPlanRevisionEvent({
+      allocationChanged: true,
+      revision: {
+        hours: [
+          { startsAtMs, endsAtMs: startsAtMs + 900_000, plannedKWh: 0.5 },
+          { startsAtMs: startsAtMs + 1_800_000, endsAtMs: startsAtMs + 2_700_000, plannedKWh: 0.5 },
+          { startsAtMs: startsAtMs + 2_700_000, endsAtMs: startsAtMs + 3_600_000, plannedKWh: 0 },
+        ],
+      },
+    }));
+    expect(mock.triggers.get('deadline_plan_changed')!.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ planned_hours: 0.5 }),
+      expect.any(Object),
+    );
   });
 
   it('emits planned_hours that drops as the schedule shrinks', async () => {
@@ -1514,9 +1535,9 @@ describe('deadline objective flow cards', () => {
         planStatus: 'on_track',
         energyNeededKWh: 5.0,
         hours: [
-          { startsAtMs: hourStartA, plannedKWh: 2.0 },
-          { startsAtMs: hourStartB, plannedKWh: 2.0 },
-          { startsAtMs: hourStartC, plannedKWh: 1.0 },
+          { startsAtMs: hourStartA, endsAtMs: (hourStartA) + 3_600_000, plannedKWh: 2.0 },
+          { startsAtMs: hourStartB, endsAtMs: (hourStartB) + 3_600_000, plannedKWh: 2.0 },
+          { startsAtMs: hourStartC, endsAtMs: (hourStartC) + 3_600_000, plannedKWh: 1.0 },
         ],
       },
     });
@@ -1543,7 +1564,7 @@ describe('deadline objective flow cards', () => {
         planStatus: 'on_track',
         energyNeededKWh: 1.0,
         hours: [
-          { startsAtMs: hourStartC, plannedKWh: 1.0 },
+          { startsAtMs: hourStartC, endsAtMs: (hourStartC) + 3_600_000, plannedKWh: 1.0 },
         ],
       },
     });

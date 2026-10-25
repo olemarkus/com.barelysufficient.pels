@@ -26,6 +26,7 @@ const encodeHTML = echarts.format?.encodeHTML ?? fallbackEncodeHtml;
 export const format = { encodeHTML };
 
 export const BarChart = noopInstaller;
+export const CustomChart = noopInstaller;
 export const HeatmapChart = noopInstaller;
 export const LineChart = noopInstaller;
 export const ScatterChart = noopInstaller;

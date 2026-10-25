@@ -298,6 +298,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     hasEnabledContinuousBatteryPlan: () => false,
     forecastBatteryBackgroundKWh: () => undefined,
     batterySolarScope: { mainDevices: () => [], allDevices: () => [] },
+    getTaskPricePeriodsForUi: () => [],
     deviceManager: partialDouble<NonNullable<AppContext['deviceManager']>>({
       isWaitingForCarAssociation: () => false,
     }),

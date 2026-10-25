@@ -6,7 +6,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import type {
-  DeferredObjectivePlanHistoryV6,
+  DeferredObjectivePlanHistoryV7,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../../contracts/src/deferredObjectivePlanHistory';
 import type { DeferredObjectiveSettingsKind } from '../../../contracts/src/deferredObjectiveSettings';
@@ -78,11 +78,11 @@ type PlanHistoryRuntimeModule = {
   createEmptyActivePlans: () => ActivePlansLike;
   DeferredObjectivePlanHistoryRecorder: new (deps: {
     load: () => {
-      snapshot: DeferredObjectivePlanHistoryV6;
+      snapshot: DeferredObjectivePlanHistoryV7;
       persistenceSafe: boolean;
       meteredDeliveryStates: readonly unknown[];
     };
-    save: (history: DeferredObjectivePlanHistoryV6) => boolean;
+    save: (history: DeferredObjectivePlanHistoryV7) => boolean;
     endedBus: { publish: (event: unknown) => void; onEnded: (listener: unknown) => () => void };
     resolveHourPrice: (hourStartMs: number) => null;
     getStallClassification: (deviceId: string) => undefined;
@@ -177,12 +177,12 @@ const buildTemperatureDiag = (overrides: TemperatureDiagOverrides): DeferredObje
   expectedStepId: null,
 });
 
-const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV6> => {
+const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV7> => {
   const { DeferredObjectivePlanHistoryRecorder, createEmptyActivePlans } = await loadPlanHistoryRuntime();
   const activePlans = createEmptyActivePlans();
-  let saved: DeferredObjectivePlanHistoryV6 | null = null;
+  let saved: DeferredObjectivePlanHistoryV7 | null = null;
   const recorder = new DeferredObjectivePlanHistoryRecorder({
-    load: () => ({ snapshot: { version: 6, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
+    load: () => ({ snapshot: { version: 7, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [] }),
     save: (history) => { saved = history; return true; },
     endedBus: { publish: () => undefined, onEnded: () => () => undefined },
     resolveHourPrice: () => null,
@@ -242,7 +242,7 @@ const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV6> => {
 };
 
 const groupByDevice = (
-  history: DeferredObjectivePlanHistoryV6,
+  history: DeferredObjectivePlanHistoryV7,
 ): Record<string, ResolvedDeferredObjectivePlanHistoryEntry[]> => {
   const grouped: Record<string, ResolvedDeferredObjectivePlanHistoryEntry[]> = {};
   for (const entry of history.entries) {
@@ -360,12 +360,12 @@ test.describe('Deadline recorder → history UI round-trip', () => {
         // values the live walk reported being clipped to `.2`/`.9`/etc.
         originalPlan: {
           hours: [
-            { startsAtMs: T0, plannedKWh: 1.2 },
-            { startsAtMs: T0 + HOUR, plannedKWh: 0.9 },
-            { startsAtMs: T0 + 2 * HOUR, plannedKWh: 0.6 },
-            { startsAtMs: T0 + 3 * HOUR, plannedKWh: 0.3 },
-            { startsAtMs: T0 + 4 * HOUR, plannedKWh: 0.6 },
-            { startsAtMs: T0 + 5 * HOUR, plannedKWh: 0.4 },
+            { startsAtMs: T0, endsAtMs: (T0) + 3_600_000, plannedKWh: 1.2 },
+            { startsAtMs: T0 + HOUR, endsAtMs: (T0 + HOUR) + 3_600_000, plannedKWh: 0.9 },
+            { startsAtMs: T0 + 2 * HOUR, endsAtMs: (T0 + 2 * HOUR) + 3_600_000, plannedKWh: 0.6 },
+            { startsAtMs: T0 + 3 * HOUR, endsAtMs: (T0 + 3 * HOUR) + 3_600_000, plannedKWh: 0.3 },
+            { startsAtMs: T0 + 4 * HOUR, endsAtMs: (T0 + 4 * HOUR) + 3_600_000, plannedKWh: 0.6 },
+            { startsAtMs: T0 + 5 * HOUR, endsAtMs: (T0 + 5 * HOUR) + 3_600_000, plannedKWh: 0.4 },
           ],
           energyNeededKWh: 4.0,
           planStatus: 'on_track' as const,
@@ -466,8 +466,8 @@ test.describe('Deadline recorder → history UI round-trip', () => {
         // kwhPerUnitMean present → trajectory mode (the Phase 1B surface).
         originalPlan: {
           hours: [
-            { startsAtMs: T0, plannedKWh: 1.0 },
-            { startsAtMs: T0 + HOUR, plannedKWh: 0.8 },
+            { startsAtMs: T0, endsAtMs: (T0) + 3_600_000, plannedKWh: 1.0 },
+            { startsAtMs: T0 + HOUR, endsAtMs: (T0 + HOUR) + 3_600_000, plannedKWh: 0.8 },
           ],
           energyNeededKWh: 4.0,
           planStatus: 'on_track' as const,
@@ -478,9 +478,9 @@ test.describe('Deadline recorder → history UI round-trip', () => {
         // detection fires and the marker + toggle render.
         finalPlan: {
           hours: [
-            { startsAtMs: T0 + 2 * HOUR, plannedKWh: 1.2 },
-            { startsAtMs: T0 + 3 * HOUR, plannedKWh: 1.0 },
-            { startsAtMs: T0 + 4 * HOUR, plannedKWh: 0.9 },
+            { startsAtMs: T0 + 2 * HOUR, endsAtMs: (T0 + 2 * HOUR) + 3_600_000, plannedKWh: 1.2 },
+            { startsAtMs: T0 + 3 * HOUR, endsAtMs: (T0 + 3 * HOUR) + 3_600_000, plannedKWh: 1.0 },
+            { startsAtMs: T0 + 4 * HOUR, endsAtMs: (T0 + 4 * HOUR) + 3_600_000, plannedKWh: 0.9 },
           ],
           energyNeededKWh: 4.5,
           planStatus: 'on_track' as const,
@@ -497,8 +497,8 @@ test.describe('Deadline recorder → history UI round-trip', () => {
         })),
         // Raw øre prices; the readout scales by the recorded ÷100 divisor.
         hourlyContributions: [
-          { atMs: T0 + 2 * HOUR, deliveredKWh: 1.2, priceValue: 42, tone: 'cheap' as const },
-          { atMs: T0 + 4 * HOUR, deliveredKWh: 0.9, priceValue: 55, tone: 'normal' as const },
+          { atMs: T0 + 2 * HOUR, endsAtMs: (T0 + 2 * HOUR) + 3_600_000, deliveredKWh: 1.2, priceValue: 42, tone: 'cheap' as const },
+          { atMs: T0 + 4 * HOUR, endsAtMs: (T0 + 4 * HOUR) + 3_600_000, deliveredKWh: 0.9, priceValue: 55, tone: 'normal' as const },
         ],
         totalCost: 100,
         deliveredKWh: 2.1,

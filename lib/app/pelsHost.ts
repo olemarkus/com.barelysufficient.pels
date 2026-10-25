@@ -60,6 +60,7 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
   | 'getCapacityScalars'
   | 'getCurrentMonthCapacityPeakKw'
   | 'getPriceSourcePayloadsForUi'
+  | 'getTaskPricePeriodsForUi'
   | 'getPvForecastSourceUiStatus'
   | 'getHomeyPriceFormulaUiStatus'
   | 'getPowerhourSourceUiStatus'

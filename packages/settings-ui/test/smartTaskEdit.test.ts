@@ -80,7 +80,7 @@ const okPreview = {
   estimate: {
     budgetRole: 'none',
     status: 'on_track',
-    scheduledHours: [{ startsAtMs: 1, plannedKWh: 1 }],
+    scheduledHours: [{ startsAtMs: 1, endsAtMs: (1) + 3_600_000, plannedKWh: 1 }],
     projectedFinishAtMs: 2,
     energyEstimateKWh: 1,
     energyExpectedKWh: 1,

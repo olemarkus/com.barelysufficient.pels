@@ -1,6 +1,6 @@
 import type { AppContext } from '../lib/app/appContext';
 import type { DeferredObjectivePlanHistoryRecord } from '../packages/contracts/src/deferredObjectivePlanHistory';
-import type { ResolvedDeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
+import type { ResolvedDeferredObjectiveActivePlansV2 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../packages/contracts/src/settingsUiApi';
 import { toResolvedPlanHistoryEntry } from '../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import { assembleActivePlansUiView } from '../lib/objectives/deferredObjectives/activePlansUiView';
@@ -29,7 +29,7 @@ export type SmartTaskPayloadsContext = Pick<
 export class AppSmartTaskPayloads {
   constructor(private readonly ctx: SmartTaskPayloadsContext) {}
 
-  public getDeferredObjectiveActivePlansUiPayload(): ResolvedDeferredObjectiveActivePlansV1 | null {
+  public getDeferredObjectiveActivePlansUiPayload(): ResolvedDeferredObjectiveActivePlansV2 | null {
     const snapshot = this.ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null;
     if (snapshot === null) return null;
     // UI-only view: never persisted (see `assembleActivePlansUiView`).

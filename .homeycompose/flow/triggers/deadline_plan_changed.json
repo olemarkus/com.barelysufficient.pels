@@ -6,15 +6,13 @@
     "en": "Smart task schedule changed for [[device]]"
   },
   "hint": {
-    "en": "Fires when the smart task is rescheduled with a different number of hours — for example when new prices arrive, or when the device runs faster than estimated. Hour swaps that keep the same total and kWh-only redistributions stay quiet."
+    "en": "Fires when the smart task is rescheduled with a different total duration. The Planned hours token includes fractions: two 15-minute periods count as 0.5 hours. Swaps with the same duration and energy-only changes stay quiet."
   },
   "args": [
     {
       "name": "device",
       "type": "autocomplete",
-      "title": {
-        "en": "Device"
-      },
+      "title": { "en": "Device" },
       "placeholder": {
         "en": "Select device"
       }

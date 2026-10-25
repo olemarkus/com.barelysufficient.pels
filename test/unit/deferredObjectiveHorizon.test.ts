@@ -80,7 +80,7 @@ describe('planDeferredObjectiveHorizon', () => {
           commitment: {
             kind: 'committed' as const,
             hours: allocationKind === 'committed'
-              ? [{ startsAtMs: NOW_MS, plannedKWh: 0.6 }]
+              ? [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 0.6 }]
               : [],
           },
         }),
@@ -188,8 +188,8 @@ describe('planDeferredObjectiveHorizon', () => {
       commitment: {
         kind: 'committed',
         hours: [
-          { startsAtMs: NOW_MS, plannedKWh: 1 },
-          { startsAtMs: NOW_MS + (2 * HOUR_MS), plannedKWh: 1 },
+          { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: NOW_MS + (2 * HOUR_MS), endsAtMs: (NOW_MS + (2 * HOUR_MS)) + 3_600_000, plannedKWh: 1 },
         ],
       },
     });
@@ -305,7 +305,7 @@ describe('planDeferredObjectiveHorizon', () => {
       commitment: {
         kind: 'committed',
         hours: [
-          { startsAtMs: NOW_MS + (2 * HOUR_MS), plannedKWh: 1 },
+          { startsAtMs: NOW_MS + (2 * HOUR_MS), endsAtMs: (NOW_MS + (2 * HOUR_MS)) + 3_600_000, plannedKWh: 1 },
         ],
       },
     });
@@ -340,7 +340,7 @@ describe('planDeferredObjectiveHorizon', () => {
       commitment: {
         kind: 'committed',
         hours: [
-          { startsAtMs: NOW_MS, plannedKWh: 1 },
+          { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 },
         ],
       },
     });
@@ -385,7 +385,7 @@ describe('planDeferredObjectiveHorizon', () => {
       commitment: {
         kind: 'committed',
         hours: [
-          { startsAtMs: NOW_MS, plannedKWh: 1 },
+          { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 },
         ],
       },
     });
@@ -421,7 +421,7 @@ describe('planDeferredObjectiveHorizon', () => {
       commitment: {
         kind: 'committed',
         hours: [
-          { startsAtMs: NOW_MS, plannedKWh: 0.5 },
+          { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 0.5 },
         ],
       },
     });
@@ -461,7 +461,7 @@ describe('planDeferredObjectiveHorizon', () => {
       commitment: {
         kind: 'committed',
         hours: [
-          { startsAtMs: NOW_MS, plannedKWh: 0.5 },
+          { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 0.5 },
         ],
       },
     });
@@ -684,7 +684,7 @@ describe('planDeferredObjectiveHorizon', () => {
       commitment: {
         kind: 'committed',
         hours: [
-          { startsAtMs: NOW_MS, plannedKWh: 1 },
+          { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 },
         ],
       },
     });
@@ -718,7 +718,7 @@ describe('planDeferredObjectiveHorizon', () => {
       commitment: {
         kind: 'committed',
         hours: [
-          { startsAtMs: NOW_MS, plannedKWh: 1 },
+          { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 },
         ],
       },
     });
@@ -1585,7 +1585,7 @@ describe('planDeferredObjectiveHorizon', () => {
       objective: objective({ energyNeededKWh: 2 }), // deadline NOW + 4h
       steps: defaultSteps,
       buckets: deferralBuckets([100, 90, 90, 90]),
-      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }] },
+      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 }] },
       aheadOfHourMilestone: true,
     });
 
@@ -1604,7 +1604,7 @@ describe('planDeferredObjectiveHorizon', () => {
       objective: objective({ energyNeededKWh: 20 }),
       steps: defaultSteps,
       buckets: deferralBuckets([100, 50, 50, 50]),
-      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }] },
+      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 }] },
       aheadOfHourMilestone: true,
     });
 
@@ -1620,7 +1620,7 @@ describe('planDeferredObjectiveHorizon', () => {
       objective: objective({ energyNeededKWh: 2 }),
       steps: defaultSteps,
       buckets: [bucket(0, 'avoid'), bucket(1, 'preferred'), bucket(2, 'preferred')],
-      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }] },
+      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 }] },
       aheadOfHourMilestone: true,
     });
 
@@ -1638,7 +1638,7 @@ describe('planDeferredObjectiveHorizon', () => {
       objective: objective({ energyNeededKWh: 2 }),
       steps: defaultSteps,
       buckets: deferralBuckets([100, 50, 50, 50]),
-      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }] },
+      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 }] },
       aheadOfHourMilestone: false,
     });
 
@@ -1655,7 +1655,7 @@ describe('planDeferredObjectiveHorizon', () => {
       objective: objective({ energyNeededKWh: 2 }),
       steps: defaultSteps,
       buckets: deferralBuckets([100, 96, 98, 97]),
-      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }] },
+      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 }] },
       aheadOfHourMilestone: true,
     });
 
@@ -1672,7 +1672,7 @@ describe('planDeferredObjectiveHorizon', () => {
       objective: objective({ energyNeededKWh: 2, deadlineMarginMs: HOUR_MS }),
       steps: defaultSteps,
       buckets: deferralBuckets([100, 100, 100, 50]),
-      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }] },
+      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 }] },
       aheadOfHourMilestone: true,
     });
 
@@ -1688,7 +1688,7 @@ describe('planDeferredObjectiveHorizon', () => {
       objective: objective({ energyNeededKWh: 2 }),
       steps: defaultSteps,
       buckets: deferralBuckets([0, -5, -5, -5]),
-      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }] },
+      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 }] },
       aheadOfHourMilestone: true,
     });
 
@@ -1703,7 +1703,7 @@ describe('planDeferredObjectiveHorizon', () => {
       objective: objective({ energyNeededKWh: 2 }),
       steps: defaultSteps,
       buckets: deferralBuckets([100, -2, 100, 100]),
-      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }] },
+      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 }] },
       aheadOfHourMilestone: true,
     });
 
@@ -1727,7 +1727,7 @@ describe('planDeferredObjectiveHorizon', () => {
         bucket(2, 'neutral', { price: 100 }),
         bucket(3, 'neutral', { price: 100 }),
       ],
-      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }] },
+      commitment: { kind: 'committed', hours: [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1 }] },
       aheadOfHourMilestone: true,
     });
 
@@ -1934,7 +1934,7 @@ describe('booking hours by price', () => {
         bucket(2, 'neutral', { price: 40 }), bucket(3, 'neutral', { price: 90 })],
       commitment: {
         kind: 'committed',
-        hours: [{ startsAtMs: NOW_MS, plannedKWh: 0 }, { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1 }],
+        hours: [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 0 }, { startsAtMs: NOW_MS + 2 * HOUR_MS, endsAtMs: (NOW_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 }],
       },
       aheadOfHourMilestone: false,
     });

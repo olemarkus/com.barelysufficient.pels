@@ -1,3 +1,4 @@
+import { isFiniteNumber } from '../../../shared-domain/src/numberGuards';
 import { readDeferredObjectiveLiveCompletion } from '../../../shared-domain/src/deferredObjectiveLiveCompletion';
 import type {
   DeferredObjectiveActivePlanStatusV1,
@@ -25,9 +26,11 @@ import { state } from './state.ts';
 // malformed deadline, a missing `latest`, a revision with no known verdict, or
 // malformed hours.
 const isOverviewHour = (hour: unknown): boolean => (
-  typeof hour === 'object' && hour !== null
-  && Number.isFinite((hour as { startsAtMs?: unknown }).startsAtMs)
-  && Number.isFinite((hour as { plannedKWh?: unknown }).plannedKWh)
+  isUnknownRecord(hour)
+  && isFiniteNumber(hour.startsAtMs)
+  && isFiniteNumber(hour.endsAtMs)
+  && hour.endsAtMs > hour.startsAtMs
+  && isFiniteNumber(hour.plannedKWh) && hour.plannedKWh >= 0
 );
 
 const PLAN_STATUSES: Record<DeferredObjectiveActivePlanStatusV1, true> = {

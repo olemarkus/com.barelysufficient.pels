@@ -1131,6 +1131,17 @@
     return {
       combinedPrices: settings.combined_prices ?? null,
       priceTimeline: buildPriceTimeline(),
+      taskPricePeriods: settings.task_price_periods ?? (
+        settings.combined_prices?.prices
+          ?? Object.values(settings.combined_prices?.days ?? {}).flatMap((day) => day.hours)
+      ).map((period) => ({
+        startsAtMs: Date.parse(period.startsAt),
+        endsAtMs: Date.parse(period.startsAt) + 60 * 60 * 1000,
+        price: period.total,
+        planningPrice: period.budgetPrice ?? period.total,
+        isCheap: period.isCheap === true,
+        isExpensive: period.isExpensive === true,
+      })),
       priceArea: typeof settings.price_area === 'string' ? settings.price_area : null,
       flowToday: settings.flow_prices_today ?? null,
       flowTomorrow: settings.flow_prices_tomorrow ?? null,
@@ -1377,7 +1388,7 @@
 
   const buildSampleActivePlans = () => {
     const objective = settings['deferred_objective.dev_connected300'];
-    if (!objective?.enabled) return { version: 1, plansByDeviceId: {} };
+    if (!objective?.enabled) return { version: 2, plansByDeviceId: {} };
     const nowMs = Date.now();
     const startsAtMs = startOfUtcHourMs(new Date(nowMs));
     const deadlineAtMs = typeof objective.deadlineAtMs === 'number'
@@ -1389,10 +1400,10 @@
     const plannedHourCount = Math.min(6, totalHoursAvailable);
     const hours = [];
     for (let i = 0; i < plannedHourCount; i += 1) {
-      hours.push({ startsAtMs: startsAtMs + i * hourMs, plannedKWh: 2 });
+      hours.push({ startsAtMs: startsAtMs + i * hourMs, endsAtMs: (startsAtMs + i * hourMs) + 3_600_000, plannedKWh: 2 });
     }
     const latestHours = plannedHourCount < totalHoursAvailable
-      ? hours.slice(1).concat([{ startsAtMs: startsAtMs + plannedHourCount * hourMs, plannedKWh: 2 }])
+      ? hours.slice(1).concat([{ startsAtMs: startsAtMs + plannedHourCount * hourMs, endsAtMs: (startsAtMs + plannedHourCount * hourMs) + 3_600_000, plannedKWh: 2 }])
       : hours;
     const revision = {
       revision: 1,
@@ -1419,7 +1430,7 @@
       hours: latestHours,
     };
     return {
-      version: 1,
+      version: 2,
       plansByDeviceId: {
         dev_connected300: {
           deviceId: 'dev_connected300',
@@ -2465,7 +2476,7 @@
     }),
     'empty-history': () => ({
       description: 'No smart-task history yet; active plans empty.',
-      deferredObjectiveActivePlans: { version: 1, plansByDeviceId: {} },
+      deferredObjectiveActivePlans: { version: 2, plansByDeviceId: {} },
       deferredObjectiveHistory: { version: 1, entriesByDeviceId: {} },
     }),
     'dense-device': () => ({

@@ -71,7 +71,7 @@ describe('logged planned total', () => {
   // The final revision of a run re-planned hourly: one hour, shrunk to its
   // last two minutes.
   const finalPlan = {
-    hours: [{ startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 0.03, coversFromMs: DEADLINE_MS - 2 * 60_000 }],
+    hours: [{ startsAtMs: DEADLINE_MS - HOUR_MS, endsAtMs: (DEADLINE_MS - HOUR_MS) + 3_600_000, plannedKWh: 0.03, coversFromMs: DEADLINE_MS - 2 * 60_000 }],
     energyNeededKWh: 0.03,
     planStatus: 'cannot_meet' as const,
     revisedAtMs: DEADLINE_MS - 2 * 60_000,
@@ -86,10 +86,10 @@ describe('logged planned total', () => {
       ...entry(clear, 9.1),
       finalPlan,
       hourStartBookings: [
-        { atMs: DEADLINE_MS - 4 * HOUR_MS, bookedKWh: 3.2 },
-        { atMs: DEADLINE_MS - 3 * HOUR_MS, bookedKWh: 0 },
-        { atMs: DEADLINE_MS - 2 * HOUR_MS, bookedKWh: 3.4 },
-        { atMs: DEADLINE_MS - HOUR_MS, bookedKWh: 2.9 },
+        { atMs: DEADLINE_MS - 4 * HOUR_MS, endsAtMs: (DEADLINE_MS - 4 * HOUR_MS) + 3_600_000, bookedKWh: 3.2 },
+        { atMs: DEADLINE_MS - 3 * HOUR_MS, endsAtMs: (DEADLINE_MS - 3 * HOUR_MS) + 3_600_000, bookedKWh: 0 },
+        { atMs: DEADLINE_MS - 2 * HOUR_MS, endsAtMs: (DEADLINE_MS - 2 * HOUR_MS) + 3_600_000, bookedKWh: 3.4 },
+        { atMs: DEADLINE_MS - HOUR_MS, endsAtMs: (DEADLINE_MS - HOUR_MS) + 3_600_000, bookedKWh: 2.9 },
       ],
     };
     expect(resolveDeferredPlanHistoryMissAttribution(run).plannedKWh).toBeCloseTo(9.5);

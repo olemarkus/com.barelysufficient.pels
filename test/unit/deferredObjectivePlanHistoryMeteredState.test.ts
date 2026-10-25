@@ -11,6 +11,7 @@ import {
 const HOUR_MS = 60 * 60 * 1000;
 
 const state = (overrides: Partial<PersistedMeteredDeliveryState> = {}): PersistedMeteredDeliveryState => ({
+  version: 1,
   deliveryEvidence: { explanation: { kind: 'legacy_unrecorded' }, nonDelivery: { kind: 'none' } },
   commitment: { kind: 'known', kwh: 5 },
   deviceId: 'dev',
@@ -22,7 +23,7 @@ const state = (overrides: Partial<PersistedMeteredDeliveryState> = {}): Persiste
   costDisplay: null,
   deliveryPriceComplete: true,
   hourlyContributions: [],
-  hourStartBookings: [{ atMs: 0, bookedKWh: 2 }, { atMs: HOUR_MS, bookedKWh: 0 }],
+  hourStartBookings: [{ atMs: 0, endsAtMs: (0) + HOUR_MS, bookedKWh: 2 }, { atMs: HOUR_MS, endsAtMs: (HOUR_MS) + HOUR_MS, bookedKWh: 0 }],
   ...overrides,
 });
 
@@ -36,10 +37,10 @@ describe('isPersistedMeteredDeliveryState hour-start bookings', () => {
   });
 
   it.each<[string, Record<string, unknown>]>([
-    ['a negative booking', { hourStartBookings: [{ atMs: 0, bookedKWh: -0.5 }] }],
-    ['a non-finite booked hour', { hourStartBookings: [{ atMs: Number.NaN, bookedKWh: 1 }] }],
+    ['a negative booking', { hourStartBookings: [{ atMs: 0, endsAtMs: (0) + HOUR_MS, bookedKWh: -0.5 }] }],
+    ['a non-finite booked hour', { hourStartBookings: [{ atMs: Number.NaN, endsAtMs: (Number.NaN) + HOUR_MS, bookedKWh: 1 }] }],
     // The same guard as the finalized entry's (`isHourStartBooking`).
-    ['a negative booked hour', { hourStartBookings: [{ atMs: -HOUR_MS, bookedKWh: 1 }] }],
+    ['a negative booked hour', { hourStartBookings: [{ atMs: -HOUR_MS, endsAtMs: (-HOUR_MS) + HOUR_MS, bookedKWh: 1 }] }],
     ['hour-start bookings that are not a list', { hourStartBookings: {} }],
     ['missing hour-start bookings', { hourStartBookings: undefined }],
   ])('rejects %s', (_label, overrides) => {
@@ -49,9 +50,9 @@ describe('isPersistedMeteredDeliveryState hour-start bookings', () => {
 
 describe('migrateMeteredDeliveryState hour-start bookings', () => {
   it('resolves a row saved before hour-start bookings existed to none captured', () => {
-    const { hourStartBookings: _bookings, ...legacy } = state();
+    const { version: _version, hourStartBookings: _bookings, ...legacy } = state();
     const migrated = migrateMeteredDeliveryState(legacy);
-    expect(migrated).toEqual({ ...legacy, hourStartBookings: [] });
+    expect(migrated).toEqual({ ...legacy, version: 1, hourStartBookings: [] });
     expect(isPersistedMeteredDeliveryState(migrated)).toBe(true);
   });
 
@@ -92,9 +93,9 @@ describe('isPersistedMeteredDeliveryState commitment and start progress', () => 
 
 describe('migrateMeteredDeliveryState commitment and start progress', () => {
   it('resolves a row saved before start progress existed to an untrusted start', () => {
-    const { startProgressValue: _start, ...legacy } = state();
+    const { version: _version, startProgressValue: _start, ...legacy } = state();
     const migrated = migrateMeteredDeliveryState(legacy);
-    expect(migrated).toEqual({ ...legacy, startProgressValue: null });
+    expect(migrated).toEqual({ ...legacy, version: 1, startProgressValue: null });
     expect(isPersistedMeteredDeliveryState(migrated)).toBe(true);
   });
 
@@ -104,5 +105,40 @@ describe('migrateMeteredDeliveryState commitment and start progress', () => {
       .toEqual({ kind: 'unknown' });
     expect(asState(migrateMeteredDeliveryState(state({ commitment: { kind: 'learning', startProgressValue: 50 } })))
       .commitment).toEqual({ kind: 'learning', startProgressValue: 50 });
+  });
+});
+
+describe('metered delivery interval migration', () => {
+  it('upgrades an unversioned hourly row without changing its energy or paid cost', () => {
+    const { version: _version, ...current } = state();
+    const legacy = {
+      ...current,
+      deliveredKWh: 1.25,
+      totalCost: -0.75,
+      hourlyContributions: [{ atMs: HOUR_MS, deliveredKWh: 1.25, priceValue: -0.6, tone: 'cheap' }],
+      hourStartBookings: [{ atMs: HOUR_MS, bookedKWh: 2 }],
+    };
+    const migrated = migrateMeteredDeliveryState(legacy);
+    expect(isPersistedMeteredDeliveryState(migrated)).toBe(true);
+    expect(migrated).toMatchObject({
+      version: 1, deliveredKWh: 1.25, totalCost: -0.75,
+      hourlyContributions: [{ atMs: HOUR_MS, endsAtMs: 2 * HOUR_MS }],
+      hourStartBookings: [{ atMs: HOUR_MS, endsAtMs: 2 * HOUR_MS }],
+    });
+  });
+
+  it('keeps native quarter bounds and rejects missing current endpoints or an unknown version', () => {
+    const current = state({
+      hourlyContributions: [{
+        atMs: HOUR_MS, endsAtMs: HOUR_MS * 1.25, deliveredKWh: 0.5, priceValue: 1, tone: 'normal',
+      }],
+      hourStartBookings: [{ atMs: HOUR_MS, endsAtMs: HOUR_MS * 1.25, bookedKWh: 0.5 }],
+    });
+    expect(migrateMeteredDeliveryState(current)).toEqual(current);
+    expect(isPersistedMeteredDeliveryState(current)).toBe(true);
+    expect(isPersistedMeteredDeliveryState(migrateMeteredDeliveryState({ ...current, version: 2 }))).toBe(false);
+    expect(isPersistedMeteredDeliveryState(migrateMeteredDeliveryState({
+      ...current, hourStartBookings: [{ atMs: HOUR_MS, bookedKWh: 0.5 }],
+    }))).toBe(false);
   });
 });

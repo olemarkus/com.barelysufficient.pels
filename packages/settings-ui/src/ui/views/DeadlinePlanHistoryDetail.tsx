@@ -1,3 +1,5 @@
+import { buildChargeByStartMs } from '../deadlinePlanHourMaps.ts';
+import { renderDeadlineIntervalBar } from '../deadlineIntervalBar.ts';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type {
   ResolvedDeferredObjectivePlanHistoryEntry,
@@ -81,6 +83,7 @@ type HourRow = {
   // string used only for chart axis rendering — keep them separate so the
   // dedupe logic can never accidentally key off a localized string.
   startsAtMs: number;
+  endsAtMs: number;
   displayLabel: string;
   originalKWh: number;
   finalKWh: number;
@@ -98,9 +101,6 @@ const formatHourLabel = (startsAtMs: number, timeZone: string): string => (
   })
 );
 
-const floorToHour = (ms: number): number => Math.floor(ms / ONE_HOUR_MS) * ONE_HOUR_MS;
-const ceilToHour = (ms: number): number => Math.ceil(ms / ONE_HOUR_MS) * ONE_HOUR_MS;
-
 export const buildHistoryDetailRows = (
   original: DeferredObjectivePlanHistoryRevisionSnapshot | null,
   final: DeferredObjectivePlanHistoryRevisionSnapshot | null,
@@ -116,42 +116,23 @@ export const buildHistoryDetailRows = (
   // cleanly and the overlay series stays suppressed.
   const primary = final ?? original;
   const overlay = final ? original : null;
-  const byStart = new Map<number, { original: number; final: number }>();
-  const upsert = (startsAtMs: number, key: 'original' | 'final', kwh: number): void => {
-    const existing = byStart.get(startsAtMs) ?? { original: 0, final: 0 };
-    existing[key] = kwh;
-    byStart.set(startsAtMs, existing);
-  };
-  primary?.hours.forEach((hour) => {
-    upsert(hour.startsAtMs, 'final', hour.plannedKWh);
-    if (!overlay) upsert(hour.startsAtMs, 'original', hour.plannedKWh);
-  });
-  overlay?.hours.forEach((hour) => upsert(hour.startsAtMs, 'original', hour.plannedKWh));
-  // Seed every hour in the deadline window so the chart x-axis spans
-  // `[startedAtMs, deadlineAtMs]` even when the recorded plan only covers a
-  // subset. Without this, a degenerate 1-hour plan renders as a single
-  // floating bar with no temporal context. Iterate in absolute ms so DST
-  // 23/25-hour windows produce the right hour count automatically.
-  const windowStart = floorToHour(window.startedAtMs);
-  const windowEnd = Math.max(ceilToHour(window.deadlineAtMs), windowStart + ONE_HOUR_MS);
-  for (let ms = windowStart; ms < windowEnd; ms += ONE_HOUR_MS) {
-    if (!byStart.has(ms)) byStart.set(ms, { original: 0, final: 0 });
-  }
-  const starts = [...byStart.keys()].sort((a, b) => a - b);
-  return starts.map((startsAtMs) => {
-    const values = byStart.get(startsAtMs)!;
-    const hourEnd = startsAtMs + ONE_HOUR_MS;
-    const observed = observedIntervals.some((interval) => (
-      interval.fromMs < hourEnd && interval.toMs > startsAtMs
-    ));
-    return {
-      startsAtMs,
-      displayLabel: formatHourLabel(startsAtMs, timeZone),
-      originalKWh: values.original,
-      finalKWh: values.final,
-      observed,
-    };
-  });
+  const boundaries = [...new Set([
+    window.startedAtMs, window.deadlineAtMs,
+    ...(primary?.hours ?? []).flatMap((hour) => [hour.coversFromMs ?? hour.startsAtMs, hour.endsAtMs]),
+    ...(overlay?.hours ?? []).flatMap((hour) => [hour.coversFromMs ?? hour.startsAtMs, hour.endsAtMs]),
+  ])].filter((atMs) => atMs >= window.startedAtMs && atMs <= window.deadlineAtMs)
+    .sort((a, b) => a - b);
+  const periods = boundaries.slice(0, -1).map((startsAtMs, index) => ({ startsAtMs, endMs: boundaries[index + 1]! }));
+  const primaryEnergy = buildChargeByStartMs(primary, periods);
+  const originalEnergy = buildChargeByStartMs(overlay ?? primary, periods);
+  return periods.map((period) => ({
+    startsAtMs: period.startsAtMs,
+    endsAtMs: period.endMs,
+    displayLabel: `${formatHourLabel(period.startsAtMs, timeZone)}–${formatHourLabel(period.endMs, timeZone)}`,
+    originalKWh: originalEnergy.get(period.startsAtMs) ?? 0,
+    finalKWh: primaryEnergy.get(period.startsAtMs) ?? 0,
+    observed: observedIntervals.some((interval) => interval.fromMs < period.endMs && interval.toMs > period.startsAtMs),
+  }));
 };
 
 type Palette = {
@@ -226,9 +207,19 @@ export const buildHistoryDetailChartOption = (
   hasOriginalSeries: boolean,
   hasFinalSeries: boolean,
   observedSeriesName: string,
+  timeZone = 'UTC',
+  chartWidth = 480,
 ): EChartsOption => {
-  const labels = rows.map((row) => row.displayLabel);
   const hasObservedSeries = rows.some((row) => row.observed);
+  const windowStart = rows[0]?.startsAtMs ?? 0;
+  const span = (rows[rows.length - 1]?.endsAtMs ?? windowStart) - windowStart;
+  // Time-axis splitNumber is only a hint; ECharts can add crowded ticks at
+  // calendar boundaries. Label an explicit cadence, including short runs.
+  const tickCount = chartWidth <= 360 ? 2 : 4;
+  const tickUnit = [ONE_HOUR_MS, 60_000, 1000]
+    .find((unit) => unit <= span / tickCount) ?? 1;
+  const tickInterval = Math.max(1, Math.ceil(span / tickUnit / tickCount)) * tickUnit;
+  const tickAnchor = Math.ceil(windowStart / tickUnit) * tickUnit;
   return {
     animation: false,
     backgroundColor: 'transparent',
@@ -290,20 +281,20 @@ export const buildHistoryDetailChartOption = (
       formatter: buildTooltip(rows, hasOriginalSeries, hasFinalSeries, observedSeriesName),
     },
     xAxis: {
-      type: 'category',
-      data: labels,
+      type: 'time',
+      min: rows[0]?.startsAtMs,
+      max: rows[rows.length - 1]?.endsAtMs,
+      maxInterval: tickUnit,
       axisTick: { show: false },
       axisLine: { lineStyle: { color: palette.grid } },
       axisLabel: {
         color: palette.muted,
         fontSize: 11,
-        // Show roughly every-other-hour label for short windows and every third
-        // for long windows so the axis stays readable at 480px. Always keep
-        // the first and last labels so the chart's temporal extent is obvious.
-        interval: (index: number) => (
-          index === 0
-          || index === labels.length - 1
-          || index % (labels.length > 12 ? 3 : 2) === 0
+        hideOverlap: true,
+        formatter: (atMs: number) => (
+          atMs >= tickAnchor && (atMs - tickAnchor) % tickInterval === 0
+            ? formatTrajectoryClock(atMs, timeZone)
+            : ''
         ),
       },
     },
@@ -323,9 +314,9 @@ export const buildHistoryDetailChartOption = (
     series: [
       ...(hasOriginalSeries ? [{
         name: INITIAL_SERIES_NAME,
-        type: 'bar' as const,
-        barMaxWidth: 18,
-        barGap: '-100%',
+        type: 'custom' as const,
+        renderItem: renderDeadlineIntervalBar,
+        encode: { x: [0, 1], y: 2 },
         itemStyle: {
           color: 'transparent',
           borderColor: palette.device,
@@ -333,17 +324,24 @@ export const buildHistoryDetailChartOption = (
           borderType: 'dashed' as const,
           borderRadius: [3, 3, 0, 0] as [number, number, number, number],
         },
-        data: rows.map((row) => row.originalKWh),
+        data: rows.map((row) => ({
+          value: [row.startsAtMs, row.endsAtMs, row.originalKWh],
+          itemStyle: { opacity: row.originalKWh > 0 ? 1 : 0 },
+        })),
       }] : []),
       ...(hasFinalSeries ? [{
         name: REVISED_SERIES_NAME,
-        type: 'bar' as const,
-        barMaxWidth: 18,
+        type: 'custom' as const,
+        renderItem: renderDeadlineIntervalBar,
+        encode: { x: [0, 1], y: 2 },
         itemStyle: {
           color: palette.device,
           borderRadius: [3, 3, 0, 0] as [number, number, number, number],
         },
-        data: rows.map((row) => row.finalKWh),
+        data: rows.map((row) => ({
+          value: [row.startsAtMs, row.endsAtMs, row.finalKWh],
+          itemStyle: { opacity: row.finalKWh > 0 ? 1 : 0 },
+        })),
       }] : []),
       {
         name: observedSeriesName,
@@ -352,7 +350,8 @@ export const buildHistoryDetailChartOption = (
         symbolSize: [12, 4],
         symbolOffset: [0, 16],
         itemStyle: { color: palette.observed },
-        data: rows.map((row, index) => (row.observed ? [index, 0] : null)).filter(Boolean),
+        // Keep row indices aligned with the tooltip, including empty gaps.
+        data: rows.map((row) => [(row.startsAtMs + row.endsAtMs) / 2, row.observed ? 0 : null]),
       },
     ],
   };
@@ -485,7 +484,7 @@ export const buildHistoryDetailTrajectoryOption = (
   const xSpanMs = data.windowEndMs - data.windowStartMs;
   const targetTickCount = chartWidth > 0 && chartWidth <= 360 ? 3 : 5;
   const tickIntervalMs = Math.max(1, Math.ceil(xSpanMs / ONE_HOUR_MS / targetTickCount)) * ONE_HOUR_MS;
-  const tickAnchorMs = ceilToHour(data.windowStartMs);
+  const tickAnchorMs = Math.ceil(data.windowStartMs / ONE_HOUR_MS) * ONE_HOUR_MS;
   return {
     animation: false,
     backgroundColor: 'transparent',
@@ -664,11 +663,12 @@ export const buildHistoryDetailTrajectoryOption = (
 // closure captures the fresh palette read off the live container at mount time;
 // `resolveChartSize` is this view's container-specific sizer.
 
-const LegacyKwhChart = ({ rows, hasOriginalSeries, hasFinalSeries, observedSeriesName }: {
+const LegacyKwhChart = ({ rows, hasOriginalSeries, hasFinalSeries, observedSeriesName, timeZone }: {
   rows: HourRow[];
   hasOriginalSeries: boolean;
   hasFinalSeries: boolean;
   observedSeriesName: string;
+  timeZone: string;
 }) => {
   const chartRef = useEchartsMount({
     buildOption: (container) => buildHistoryDetailChartOption(
@@ -677,9 +677,11 @@ const LegacyKwhChart = ({ rows, hasOriginalSeries, hasFinalSeries, observedSerie
       hasOriginalSeries,
       hasFinalSeries,
       observedSeriesName,
+      timeZone,
+      resolveChartSize(container).width,
     ),
     resolveSize: resolveChartSize,
-    deps: [rows, hasOriginalSeries, hasFinalSeries, observedSeriesName],
+    deps: [rows, hasOriginalSeries, hasFinalSeries, observedSeriesName, timeZone],
   });
   return (
     <div
@@ -709,7 +711,7 @@ const HistoryTrajectoryChart = ({
   showInitialPlan: boolean;
   timeZone: string;
   // Hour-bucket grid backing the pinned readout; the scrub snaps to it.
-  hours: ReadonlyArray<{ startsAtMs: number }>;
+  hours: ReadonlyArray<{ startsAtMs: number; endsAtMs: number }>;
   // Hour-start ms of an EXPLICIT selection; null at the default state so the
   // hairline doesn't crowd the chart at rest (live-page contract).
   selectedHourMs: number | null;
@@ -802,7 +804,7 @@ const HistoryTrajectorySection = ({ data, entry, timeZone, ariaLabel }: {
     ? selected
     : readout.defaultIndex;
   const row = readout.rows[effectiveIndex];
-  const hours = readout.rows.map((readoutRow) => ({ startsAtMs: readoutRow.atMs }));
+  const hours = readout.rows.map((readoutRow) => ({ startsAtMs: readoutRow.atMs, endsAtMs: readoutRow.endsAtMs }));
   // The hour's own narrative (the plan-change sentence) wins when present;
   // otherwise the scrub hint keeps the row two lines tall and teaches the
   // gesture. The default selection is the plan-change hour, so the marker's
@@ -825,7 +827,7 @@ const HistoryTrajectorySection = ({ data, entry, timeZone, ariaLabel }: {
         showInitialPlan={showInitialPlan}
         timeZone={timeZone}
         hours={hours}
-        selectedHourMs={selected !== null ? (row?.atMs ?? null) : null}
+        selectedHourMs={selected !== null && row ? (row.atMs + row.endsAtMs) / 2 : null}
         onSelect={setSelected}
         ariaLabel={ariaLabel}
       />
@@ -1193,6 +1195,7 @@ const HourlyStripSection = ({ data, entry, chart, timeZone }: {
               <li
                 key={bucket.atMs}
                 class="hourly-strip__bucket"
+                style={{ flexGrow: bucket.endsAtMs - bucket.atMs }}
                 data-tone={bucket.tone ?? 'gap'}
                 data-outline={bucket.outlinePresent ? 'true' : 'false'}
                 data-cheapest={bucket.cheapestDeliveredHighlight ? 'true' : 'false'}
@@ -1225,7 +1228,7 @@ const HourlyStripSection = ({ data, entry, chart, timeZone }: {
           * HH:MM for assistive tech. */}
         <div class="hourly-strip__axis" aria-hidden="true">
           {readout.rows.map((axisRow) => (
-            <span key={axisRow.atMs} class="hourly-strip__axis-label">
+            <span key={axisRow.atMs} class="hourly-strip__axis-label" style={{ flexGrow: axisRow.endsAtMs - axisRow.atMs }}>
               {axisRow.axisLabel ?? ''}
             </span>
           ))}
@@ -1341,7 +1344,7 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone }: Props) => {
       {hero.quietAbandoned ? null : !hasChartData ? (
         <section class="pels-surface-card">
           <p class="pels-card-supporting">
-            No hourly schedule was saved for this run.
+            No schedule was saved for this run.
           </p>
           {/* When no schedule was recorded but the runtime did feed
             * hourly delivery contributions, the postmortem still has a
@@ -1381,6 +1384,7 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone }: Props) => {
           {!chartCollapsed && chartData.mode === 'legacy_kwh' && (
             <LegacyKwhChart
               rows={rows}
+              timeZone={timeZone}
               hasOriginalSeries={hasOriginalSeries}
               hasFinalSeries={hasFinalSeries}
               observedSeriesName={observedSeriesName}

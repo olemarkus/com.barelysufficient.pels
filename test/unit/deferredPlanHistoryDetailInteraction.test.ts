@@ -32,9 +32,9 @@ const buildSnapshot = (
   overrides: Partial<DeferredObjectivePlanHistoryRevisionSnapshot> = {},
 ): DeferredObjectivePlanHistoryRevisionSnapshot => ({
   hours: [
-    { startsAtMs: START_MS, plannedKWh: 1.0 },
-    { startsAtMs: START_MS + HOUR_MS, plannedKWh: 0.8 },
-    { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 0.6 },
+    { startsAtMs: START_MS, endsAtMs: (START_MS) + 3_600_000, plannedKWh: 1.0 },
+    { startsAtMs: START_MS + HOUR_MS, endsAtMs: (START_MS + HOUR_MS) + 3_600_000, plannedKWh: 0.8 },
+    { startsAtMs: START_MS + 3 * HOUR_MS, endsAtMs: (START_MS + 3 * HOUR_MS) + 3_600_000, plannedKWh: 0.6 },
   ],
   energyNeededKWh: 2.4,
   planStatus: 'on_track',
@@ -82,9 +82,9 @@ const revisedEntry = (
 ): ResolvedDeferredObjectivePlanHistoryEntry => buildEntry({
   finalPlan: buildSnapshot({
     hours: [
-      { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1.2 },
-      { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1.0 },
-      { startsAtMs: START_MS + 4 * HOUR_MS, plannedKWh: 0.9 },
+      { startsAtMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1.2 },
+      { startsAtMs: START_MS + 3 * HOUR_MS, endsAtMs: (START_MS + 3 * HOUR_MS) + 3_600_000, plannedKWh: 1.0 },
+      { startsAtMs: START_MS + 4 * HOUR_MS, endsAtMs: (START_MS + 4 * HOUR_MS) + 3_600_000, plannedKWh: 0.9 },
     ],
     revisedAtMs: START_MS + 2 * HOUR_MS,
   }),
@@ -184,6 +184,20 @@ describe('resolveHistoryTrajectoryReadout', () => {
     }
   });
 
+  it('anchors the completion readout to the recorded event inside an unbooked gap', () => {
+    const metAtMs = START_MS + 4 * HOUR_MS + 7 * 60_000;
+    const entry = buildEntry({
+      metAtMs,
+      progressSamples: [
+        { atMs: START_MS, valueC: 50, valuePercent: null },
+        { atMs: metAtMs, valueC: 65, valuePercent: null },
+      ],
+    });
+    const readout = resolveHistoryTrajectoryReadout(resolveHistoryDetailChartData(entry), null, 'UTC');
+    expect(readout.rows[readout.defaultIndex]!.atMs).toBe(metAtMs);
+    expect(readout.rows[readout.defaultIndex]!.primary).toMatch(/^23:07 · Measured 65\.0 °C/);
+  });
+
   it('never fabricates a Measured segment from the echoed start reading alone', () => {
     // Sample-less entry with no final reading either: the chart payload
     // carries no measured series, so every readout row must suppress the
@@ -235,8 +249,8 @@ describe('resolveHistoryStripReadout', () => {
     // Raw øre prices (the recorder's accumulation unit under the default
     // øre→kr scheme); display scaling happens in the readout producer.
     hourlyContributions: [
-      { atMs: START_MS + 2 * HOUR_MS, deliveredKWh: 1.2, priceValue: 42, tone: 'cheap' },
-      { atMs: START_MS + 4 * HOUR_MS, deliveredKWh: 1.1, priceValue: 48, tone: 'normal' },
+      { atMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, deliveredKWh: 1.2, priceValue: 42, tone: 'cheap' },
+      { atMs: START_MS + 4 * HOUR_MS, endsAtMs: (START_MS + 4 * HOUR_MS) + 3_600_000, deliveredKWh: 1.1, priceValue: 48, tone: 'normal' },
     ],
     costDisplay: { unit: 'kr', divisor: 100 },
     ...overrides,
@@ -251,7 +265,7 @@ describe('resolveHistoryStripReadout', () => {
   it('pays the title promise: per-hour kWh · rate ≈ cost, scaled by the recorded divisor', () => {
     const readout = resolveRows(stripEntry());
     // 23:00 bucket (index 4): 1.1 kWh at raw 48 øre → 0.48 kr/kWh ≈ 0.53 kr.
-    expect(readout.rows[4]!.primary).toBe('23:00 · 1.1 kWh · 0.48 kr/kWh ≈ 0.53 kr');
+    expect(readout.rows[4]!.primary).toBe('23:00–00:00 · 1.1 kWh · 0.48 kr/kWh ≈ 0.53 kr');
     expect(readout.rows[4]!.secondary).toBe(HISTORY_STRIP_RAN_AS_PLANNED);
   });
 
@@ -265,7 +279,7 @@ describe('resolveHistoryStripReadout', () => {
     const readout = resolveRows(stripEntry());
     // 19:00 was planned in the original, absent from the final plan, and the
     // run has exactly one revision → attributable skip.
-    expect(readout.rows[0]!.primary).toBe('19:00 · 1.0 kWh planned');
+    expect(readout.rows[0]!.primary).toBe('19:00–20:00 · 1.0 kWh planned');
     expect(readout.rows[0]!.secondary).toBe('Skipped at the 21:00 plan change — tomorrow’s prices published');
   });
 
@@ -293,12 +307,12 @@ describe('resolveHistoryStripReadout', () => {
     // absence from the final plan only means it had passed by the last re-plan.
     const readout = resolveRows(stripEntry({
       hourStartBookings: [
-        { atMs: START_MS, bookedKWh: 1.0 },
-        { atMs: START_MS + HOUR_MS, bookedKWh: 0.8 },
-        { atMs: START_MS + 2 * HOUR_MS, bookedKWh: 1.2 },
+        { atMs: START_MS, endsAtMs: (START_MS) + 3_600_000, bookedKWh: 1.0 },
+        { atMs: START_MS + HOUR_MS, endsAtMs: (START_MS + HOUR_MS) + 3_600_000, bookedKWh: 0.8 },
+        { atMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, bookedKWh: 1.2 },
       ],
     }));
-    expect(readout.rows[0]!.primary).toBe('19:00 · 1.0 kWh planned');
+    expect(readout.rows[0]!.primary).toBe('19:00–20:00 · 1.0 kWh planned');
     expect(readout.rows[0]!.secondary).toBe(HISTORY_STRIP_PLANNED_NOT_RUN);
   });
 
@@ -314,27 +328,36 @@ describe('resolveHistoryStripReadout', () => {
       costDisplay: { unit: '', divisor: 1 },
     }));
     // 00:00 (index 5): neither planned nor delivered → gap bucket.
-    expect(readout.rows[5]!.primary).toBe('00:00');
+    expect(readout.rows[5]!.primary).toBe('00:00–01:00');
     expect(readout.rows[5]!.secondary).toBe('Not scheduled');
     // Empty recorded unit → kWh only, no fabricated currency.
-    expect(readout.rows[4]!.primary).toBe('23:00 · 1.1 kWh');
+    expect(readout.rows[4]!.primary).toBe('23:00–00:00 · 1.1 kWh');
   });
 
-  it('labels every bucket with its bare hour on a short window', () => {
+  it('labels every period with its start time on a short window', () => {
     const readout = resolveRows(stripEntry());
-    // 6 buckets ≤ the dense ceiling → every bucket carries its hour label.
-    expect(readout.rows.map((row) => row.axisLabel)).toEqual(['19', '20', '21', '22', '23', '00']);
+    // 6 periods ≤ the dense ceiling → every period carries its start time.
+    expect(readout.rows.map((row) => row.axisLabel)).toEqual(['19:00', '20:00', '21:00', '22:00', '23:00', '00:00']);
   });
 
-  it('thins the axis cadence to first/last/every-2nd when the buckets get narrow', () => {
-    // 24-hour window → 24 buckets, well past the dense ceiling.
-    const readout = resolveRows(stripEntry({ deadlineAtMs: START_MS + 24 * HOUR_MS }));
+  it('thins dense quarter-period labels while keeping the first and last', () => {
+    const quarterMs = HOUR_MS / 4;
+    const readout = resolveRows(stripEntry({
+      hourlyContributions: Array.from({ length: 24 }, (_, index) => ({
+        atMs: START_MS + index * quarterMs,
+        endsAtMs: START_MS + (index + 1) * quarterMs,
+        deliveredKWh: 0.25,
+        priceValue: 48,
+        tone: 'normal',
+      })),
+    }));
     expect(readout.rows).toHaveLength(24);
-    expect(readout.rows[0]!.axisLabel).toBe('19');
+    expect(readout.rows[0]!.axisLabel).toBe('19:00');
     expect(readout.rows[1]!.axisLabel).toBeNull();
-    expect(readout.rows[2]!.axisLabel).toBe('21');
-    // Last bucket always keeps its label so the strip's extent stays legible.
-    expect(readout.rows[23]!.axisLabel).toBe('18');
+    expect(readout.rows[2]!.axisLabel).toBeNull();
+    expect(readout.rows[4]!.axisLabel).toBe('20:00');
+    // Last period always keeps its label so the strip's extent stays legible.
+    expect(readout.rows[23]!.axisLabel).toBe('00:45');
   });
 
   it('renders minor-unit display currencies as whole integers', () => {
@@ -342,6 +365,6 @@ describe('resolveHistoryStripReadout', () => {
       costDisplay: { unit: 'øre', divisor: 1 },
     }));
     // 48 øre/kWh × 1.1 kWh ≈ 53 øre — integers per the money convention.
-    expect(readout.rows[4]!.primary).toBe('23:00 · 1.1 kWh · 48 øre/kWh ≈ 53 øre');
+    expect(readout.rows[4]!.primary).toBe('23:00–00:00 · 1.1 kWh · 48 øre/kWh ≈ 53 øre');
   });
 });

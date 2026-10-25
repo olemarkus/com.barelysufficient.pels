@@ -1,5 +1,5 @@
 import type {
-  ResolvedDeferredObjectiveActivePlansV1,
+  ResolvedDeferredObjectiveActivePlansV2,
   ResolvedDeferredObjectiveActivePlanV1,
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveKwhPerUnitProvenanceV1,
@@ -106,7 +106,7 @@ const toWidgetChart = (chart: DeferredPlanHistoryChartData): DeferredPlanHistory
 const resolvePlannerEtaMs = (plan: ResolvedDeferredObjectiveActivePlanV1): number | null => {
   // The last hour the device is planned to run; a trailing 0 kWh booking promises nothing.
   const last = hoursWithPlannedEnergy(plan.latest?.hours ?? []).at(-1);
-  return last === undefined ? null : last.startsAtMs + 60 * 60 * 1000;
+  return last === undefined ? null : last.endsAtMs;
 };
 
 const formatDurationFromHours = (hours: number): string => {
@@ -183,7 +183,7 @@ const resolveConfidenceLabel = (
 );
 
 export type SmartTasksWidgetInput = {
-  activePlans: ResolvedDeferredObjectiveActivePlansV1 | null;
+  activePlans: ResolvedDeferredObjectiveActivePlansV2 | null;
   // Finalized plan history (all devices). The "Recently ended" section is built
   // from entries that finalized within `ENDED_WINDOW_MS`. Null/absent when the
   // recorder isn't wired — the section is simply empty.
@@ -443,13 +443,10 @@ export type SmartTaskDeviceView = {
   endedToday: SmartTasksWidgetEndedRow | null;
 };
 
-// Smart-task allocation books whole hours (`lib/plan/AGENTS.md`), so a booked
-// entry covers the hour from its start.
-const HOUR_MS = 60 * 60 * 1000;
-
+// The settled booking bounds decide whether the task is scheduled now.
 const resolveRunTiming = (plan: ResolvedDeferredObjectiveActivePlanV1, nowMs: number): SmartTaskRunTiming => {
   const booked = hoursWithPlannedEnergy(plan.latest?.hours ?? []);
-  if (booked.some((hour) => hour.startsAtMs <= nowMs && nowMs < hour.startsAtMs + HOUR_MS)) {
+  if (booked.some((hour) => (hour.coversFromMs ?? hour.startsAtMs) <= nowMs && nowMs < hour.endsAtMs)) {
     return { kind: 'running_now' };
   }
   const next = booked

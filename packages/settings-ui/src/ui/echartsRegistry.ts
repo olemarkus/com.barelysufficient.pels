@@ -1,4 +1,4 @@
-import { BarChart, HeatmapChart, LineChart, ScatterChart } from 'echarts/charts';
+import { BarChart, CustomChart, HeatmapChart, LineChart, ScatterChart } from 'echarts/charts';
 import {
   GridComponent,
   LegendComponent,
@@ -58,6 +58,7 @@ const ensureRegistry = () => {
   if (isRegistered) return;
   use([
     BarChart,
+    CustomChart,
     HeatmapChart,
     LineChart,
     ScatterChart,

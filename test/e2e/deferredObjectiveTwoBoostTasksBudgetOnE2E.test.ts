@@ -5,7 +5,7 @@
 //
 // THE RULE THIS TEST FOLLOWS (notes/testing-taxonomy.md): nothing internal is
 // mocked, the scenario is driven ONLY at the Homey SDK boundary (mock devices,
-// `combined_prices`, the daily-budget settings, the clock, the energy poll, the
+// Flow prices, the daily-budget settings, the clock, the energy poll, the
 // persisted learned rate), the cycle is driven by the SDK timers, and the
 // behaviour is OBSERVED ONLY through structured logs at the Homey logging seam.
 //
@@ -14,18 +14,18 @@
 // only against later residual slots and honestly reports that it needs its
 // deadline reserve to meet this deliberately tight deadline.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { seedHourlyFlowPricesForTests } from '../helpers/smartTaskPriceSourceFixture';
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import { drainUntil } from '../utils/asyncDrain';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW,
-  COMBINED_PRICES, CONTROLLABLE_DEVICES, DAILY_BUDGET_ENABLED, DAILY_BUDGET_KWH,
+  CONTROLLABLE_DEVICES, DAILY_BUDGET_ENABLED, DAILY_BUDGET_KWH,
   DEBUG_LOGGING_TOPICS, DEVICE_TARGET_POWER_CONFIGS, MANAGED_DEVICES,
 } from '../../lib/utils/settingsKeys';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY = Date.UTC(2026, 4, 10, 0, 0, 0);
-const TODAY_KEY = new Date(DAY).toISOString().slice(0, 10);
 const TANK_A = 'tank_a';
 const TANK_B = 'tank_b';
 const LOWER = 'lower';
@@ -54,25 +54,6 @@ const boostExemptTask = () => ({
   targetTemperatureC: TARGET_C,
   deadlineAtMs: DAY + 6 * HOUR_MS,
   rescue: { limitLowerPriorityDevices: 'always' as const, exemptFromBudget: 'always' as const },
-});
-
-const buildCombinedPrices = () => ({
-  version: 2,
-  days: {
-    [TODAY_KEY]: {
-      hours: PRICES.map((total, i) => ({
-        startsAt: new Date(DAY + i * HOUR_MS).toISOString(),
-        total,
-        isCheap: false,
-        isExpensive: false,
-      })),
-    },
-  },
-  avgPrice: 0,
-  lowThreshold: 0,
-  highThreshold: 0,
-  priceScheme: 'norway',
-  priceUnit: 'øre/kWh',
 });
 
 const trackerProfile = (nowMs: number) => ({
@@ -147,7 +128,7 @@ describe('two boost+exempt smart tasks, narrow headroom, daily budget ON (SDK-bo
       [TANK_A]: { enabled: true, min: 0, max: 3000, step: 500 },
       [TANK_B]: { enabled: true, min: 0, max: 3000, step: 500 },
     });
-    mockHomeyInstance.settings.set(COMBINED_PRICES, buildCombinedPrices());
+    seedHourlyFlowPricesForTests(DAY, PRICES);
     seedStoredPowerTrackerForTests({
       lastTimestamp: DAY,
       objectiveProfiles: { [TANK_A]: trackerProfile(DAY), [TANK_B]: trackerProfile(DAY) },

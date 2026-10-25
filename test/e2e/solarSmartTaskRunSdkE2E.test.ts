@@ -4,8 +4,8 @@
 // THE RULE THIS TEST FOLLOWS (lib/objectives/deferredObjectives/AGENTS.md): nothing
 // internal is mocked. The whole app boots through `createApp().onInit()`; only the
 // Homey SDK boundary is simulated — the energy poll (`manager/energy/live`: a NET
-// `cumulative.W` plus a `totalGenerated.W` production term), the `combined_prices`
-// setting, the device's observed temperature, the clock, and the persisted
+// `cumulative.W` plus a `totalGenerated.W` production term), the Flow price source
+// settings, the device's observed temperature, the clock, and the persisted
 // learned-rate datum. The real planner, the real deferred bridge + recorder +
 // admission, and the real executor all run. The smart task is OBSERVED only through
 // the `deferred_objective_horizon_planned` structured log; the managed/unmanaged
@@ -21,18 +21,18 @@
 //     sees only the 0.5 kW NET. (This is the gross-up fix exercised on the smart-task
 //     path: a stale clamp would have mis-attributed the heater to ~0.5 kW.)
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { seedHourlyFlowPricesForTests } from '../helpers/smartTaskPriceSourceFixture';
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp, getStoredPowerTrackerForTests, seedStoredPowerTrackerForTests } from '../utils/appTestUtils';
 import { drainUntil } from '../utils/asyncDrain';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW,
-  COMBINED_PRICES, CONTROLLABLE_DEVICES, DAILY_BUDGET_ENABLED,
+  CONTROLLABLE_DEVICES, DAILY_BUDGET_ENABLED,
   DEBUG_LOGGING_TOPICS, DEVICE_TARGET_POWER_CONFIGS, MANAGED_DEVICES,
 } from '../../lib/utils/settingsKeys';
 
 const HOUR_MS = 60 * 60 * 1000;
-const DAY = Date.UTC(2026, 4, 10, 0, 0, 0); // midnight UTC: price day-key == clock day
-const TODAY_KEY = new Date(DAY).toISOString().slice(0, 10);
+const DAY = Date.UTC(2026, 4, 10, 0, 0, 0); // price indexes are elapsed hours from midnight UTC
 const TANK = 'tank';
 
 const NOON_HOUR = 12; // sunny midday — also the single cheapest price hour
@@ -61,24 +61,6 @@ type PlanRebuildEvent = { event?: string; totalKw?: number; hardCapHeadroomKw?: 
 const buildPrices = (cheapHour: number): number[] => (
   Array.from({ length: 24 }, (_, h) => (h === cheapHour ? 5 : 50))
 );
-const buildCombinedPrices = (cheapHour: number) => ({
-  version: 2,
-  days: {
-    [TODAY_KEY]: {
-      hours: buildPrices(cheapHour).map((total, i) => ({
-        startsAt: new Date(DAY + i * HOUR_MS).toISOString(),
-        total,
-        isCheap: false,
-        isExpensive: false,
-      })),
-    },
-  },
-  avgPrice: 0,
-  lowThreshold: 0,
-  highThreshold: 0,
-  priceScheme: 'norway',
-  priceUnit: 'øre/kWh',
-});
 
 // Persisted learned-rate datum (temperature objectives have no bootstrap rate).
 const buildPowerTracker = (nowMs: number) => ({
@@ -154,7 +136,7 @@ describe('smart task running during a sunny hour (SDK-boundary e2e via createApp
     mockHomeyInstance.settings.set(CONTROLLABLE_DEVICES, { [TANK]: true });
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { [TANK]: 1 } });
     mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, { [TANK]: { enabled: true, min: 0, max: 3000, step: 500 } });
-    mockHomeyInstance.settings.set(COMBINED_PRICES, buildCombinedPrices(NOON_HOUR)); // now is cheapest
+    seedHourlyFlowPricesForTests(DAY, buildPrices(NOON_HOUR)); // now is cheapest
     seedStoredPowerTrackerForTests(buildPowerTracker(hourStartMs));
     // A plain "heat to 53 degC by 18:00" task — no rescue permissions.
     mockHomeyInstance.settings.set(`deferred_objective.${TANK}`, {

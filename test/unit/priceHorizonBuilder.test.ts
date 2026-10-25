@@ -46,8 +46,8 @@ describe('buildPriceHorizonFromCombined', () => {
     );
 
     expect(horizon).toEqual([
-      { startMs: rawInstant, price: 42 },
-      { startMs: rawInstant + HOUR_MS, price: 43 },
+      { startMs: rawInstant, endMs: rawInstant + HOUR_MS, price: 42, moneyPrice: 42 },
+      { startMs: rawInstant + HOUR_MS, endMs: rawInstant + 2 * HOUR_MS, price: 43, moneyPrice: 43 },
     ]);
   });
 
@@ -61,8 +61,8 @@ describe('buildPriceHorizonFromCombined', () => {
       base + 2 * HOUR_MS + 30 * 60 * 1000,
     );
     expect(horizon).toEqual([
-      { startMs: base + HOUR_MS, price: 11 },
-      { startMs: base + 2 * HOUR_MS, price: 12 },
+      { startMs: base + HOUR_MS, endMs: base + 2 * HOUR_MS, price: 11, moneyPrice: 11 },
+      { startMs: base + 2 * HOUR_MS, endMs: base + 3 * HOUR_MS, price: 12, moneyPrice: 12 },
     ]);
   });
 
@@ -73,7 +73,7 @@ describe('buildPriceHorizonFromCombined', () => {
       base,
       base + HOUR_MS,
     );
-    expect(horizon).toEqual([{ startMs: base, price: 50 }]);
+    expect(horizon).toEqual([{ startMs: base, endMs: base + HOUR_MS, price: 50, moneyPrice: 50 }]);
   });
 
   describe('planning price (budgetPrice ?? total)', () => {
@@ -87,8 +87,8 @@ describe('buildPriceHorizonFromCombined', () => {
         base + 2 * HOUR_MS,
       );
       expect(horizon).toEqual([
-        { startMs: base, price: -2.5 },
-        { startMs: base + HOUR_MS, price: 100 },
+        { startMs: base, endMs: base + HOUR_MS, price: -2.5, moneyPrice: 100 },
+        { startMs: base + HOUR_MS, endMs: base + 2 * HOUR_MS, price: 100, moneyPrice: 100 },
       ]);
     });
 
@@ -98,16 +98,16 @@ describe('buildPriceHorizonFromCombined', () => {
         base,
         base + HOUR_MS,
       );
-      expect(horizon).toEqual([{ startMs: base, price: 42 }]);
+      expect(horizon).toEqual([{ startMs: base, endMs: base + HOUR_MS, price: 42, moneyPrice: 42 }]);
     });
 
-    it('keeps an hour whose total is junk but whose budgetPrice is finite (resolved-value gate)', () => {
+    it('skips an hour whose import price is malformed even with a finite planning price', () => {
       const horizon = buildPriceHorizonFromCombined(
         store([entry(iso(0), Number.NaN, 7)]),
         base,
         base + HOUR_MS,
       );
-      expect(horizon).toEqual([{ startMs: base, price: 7 }]);
+      expect(horizon).toEqual([]);
     });
 
     it('skips an hour with no finite price at all (as before)', () => {
@@ -116,7 +116,7 @@ describe('buildPriceHorizonFromCombined', () => {
         base,
         base + 2 * HOUR_MS,
       );
-      expect(horizon).toEqual([{ startMs: base + HOUR_MS, price: 10 }]);
+      expect(horizon).toEqual([{ startMs: base + HOUR_MS, endMs: base + 2 * HOUR_MS, price: 10, moneyPrice: 10 }]);
     });
 
     it('invariance: budgetPrice === total is byte-identical to entries without budgetPrice', () => {
@@ -132,8 +132,8 @@ describe('buildPriceHorizonFromCombined', () => {
       );
       expect(withEqual).toEqual(without);
       expect(withEqual).toEqual([
-        { startMs: base, price: 42 },
-        { startMs: base + HOUR_MS, price: 43 },
+        { startMs: base, endMs: base + HOUR_MS, price: 42, moneyPrice: 42 },
+        { startMs: base + HOUR_MS, endMs: base + 2 * HOUR_MS, price: 43, moneyPrice: 43 },
       ]);
     });
   });

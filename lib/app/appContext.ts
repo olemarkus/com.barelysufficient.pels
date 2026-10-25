@@ -1,3 +1,4 @@
+import type { SettingsUiTaskPricePeriod } from '../../packages/contracts/src/settingsUiApi';
 import type { AcceptedFlowConflictSlice } from '../flowApi/acceptedFlowConflictStore';
 import type { BatterySolarScopeSource } from '../battery/batterySolarScope';
 import type {
@@ -366,6 +367,7 @@ export type AppContext = {
   /** The payload-fed price sources' stored days and currencies, for the settings UI. */
   getPriceSourcePayloadsForUi: () => SettingsUiPriceSourcePayloads;
   /** The stored combined prices as they are, for the settings UI and the plan widget. */
+  getTaskPricePeriodsForUi: () => SettingsUiTaskPricePeriod[];
   getCombinedPricesForUi: () => unknown;
   planService?: PlanService;
   // Released after the first device snapshot refresh succeeds, or after the

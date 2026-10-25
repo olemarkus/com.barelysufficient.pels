@@ -43,6 +43,9 @@ export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
   // only the coordinator reaches.
   // eslint-disable-next-line functional/immutable-data, no-param-reassign
   ctx.getPriceSourcePayloadsForUi = () => coordinator.getPriceSourcePayloadsForUi();
+  // Native task periods alongside the hourly combined-prices view.
+  // eslint-disable-next-line functional/immutable-data, no-param-reassign
+  ctx.getTaskPricePeriodsForUi = () => coordinator.getTaskPricePeriodsForUi();
   // And the combined prices, for the settings UI and the plan widget.
   // eslint-disable-next-line functional/immutable-data, no-param-reassign
   ctx.getCombinedPricesForUi = () => coordinator.getCombinedPricesForUi();

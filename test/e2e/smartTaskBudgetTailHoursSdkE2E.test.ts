@@ -25,6 +25,7 @@
 // and the behaviour is OBSERVED ONLY through structured logs at the Homey
 // logging seam.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { seedHourlyFlowPricesForTests } from '../helpers/smartTaskPriceSourceFixture';
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import {
   cleanupApps,
@@ -38,7 +39,6 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
-  COMBINED_PRICES,
   CONTROLLABLE_DEVICES,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
@@ -54,7 +54,6 @@ const HOUR_MS = 60 * 60 * 1000;
 const DAY_START_UTC_MS = Date.UTC(2026, 6, 24, 22, 0, 0);
 const OSLO_OFFSET_MS = 2 * HOUR_MS;
 const TODAY_KEY = '2026-07-25';
-const TOMORROW_KEY = '2026-07-26';
 // The task is created 21:54 local, six minutes before the last hour of the day.
 const BOOT_MS = DAY_START_UTC_MS + 21 * HOUR_MS + 54 * 60 * 1000;
 // 07:00 local the next morning — nine hours of runway: the tail of 21:00, then
@@ -150,31 +149,6 @@ const seedPowerTracker = (): void => {
   });
 };
 
-// Flat price across both local days: the fill order is then plain
-// earliest-first, so price ordering cannot explain a skipped hour. Coverage must
-// be continuous from the current hour to the deadline or `coversHorizon` rejects
-// the horizon outright and no plan is built at all.
-const flatDay = (dayStartMs: number) => ({
-  hours: Array.from({ length: 24 }, (_, index) => ({
-    startsAt: new Date(dayStartMs + index * HOUR_MS).toISOString(),
-    total: 70,
-    isCheap: false,
-    isExpensive: false,
-  })),
-});
-const buildCombinedPrices = () => ({
-  version: 2,
-  days: {
-    [TODAY_KEY]: flatDay(DAY_START_UTC_MS),
-    [TOMORROW_KEY]: flatDay(DAY_START_UTC_MS + 24 * HOUR_MS),
-  },
-  avgPrice: 70,
-  lowThreshold: 60,
-  highThreshold: 80,
-  priceScheme: 'norway',
-  priceUnit: 'øre/kWh',
-});
-
 type PlannedBucket = {
   id: string;
   startMs: number;
@@ -241,7 +215,8 @@ const seedSettings = (): void => {
   mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, {
     [TANK]: { enabled: true, min: 0, max: 3000, step: 500 },
   });
-  mockHomeyInstance.settings.set(COMBINED_PRICES, buildCombinedPrices());
+  // Flat published prices across both local days keep allocation earliest-first.
+  seedHourlyFlowPricesForTests(DAY_START_UTC_MS, Array.from({ length: 48 }, () => 70));
   // No rescue permissions — the production task had all three off, so the
   // allocator has no licence to schedule past the budget slice.
   mockHomeyInstance.settings.set(`deferred_objective.${TANK}`, {

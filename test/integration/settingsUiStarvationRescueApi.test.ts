@@ -41,7 +41,7 @@ const buildEstimate = (
 ): DeferredObjectivePlanPreviewEstimate => ({
   budgetRole: 'none',
   status: 'on_track',
-  scheduledHours: [{ startsAtMs: NOW_MS, plannedKWh: 1.5 }],
+  scheduledHours: [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1.5 }],
   projectedFinishAtMs: NOW_MS + 2 * 60 * 60 * 1000,
   energyEstimateKWh: 1.5,
   energyExpectedKWh: 1.4,
@@ -189,7 +189,7 @@ describe('createSettingsUiStarvationRescue', () => {
 
   it('commits the rescue and reports runsCurrentHour from the just-persisted plan', () => {
     const previewStarvationRescuePlan = freshPreviewPlan(
-      buildEstimate({ scheduledHours: [{ startsAtMs: NOW_MS, plannedKWh: 1.2 }] }),
+      buildEstimate({ scheduledHours: [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1.2 }] }),
     );
     const rescueDeviceWithBudgetExemption = vi.fn(
       (_deviceId: string, _candidate: DeferredObjectivePlanPreviewCandidate) => ({ ok: true }),

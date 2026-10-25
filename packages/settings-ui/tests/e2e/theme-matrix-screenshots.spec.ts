@@ -29,7 +29,7 @@ const seedSmartTasks = (nowMs: number) => {
       finalProgressC: outcome === 'met' ? targetC : targetC - 4, finalProgressPercent: null, initialEnergyNeededKWh: 4,
       outcome, metAtMs: outcome === 'met' ? deadlineAtMs - HOUR : null, usedDeadlineReserve: false,
       observedIntervals: [{ fromMs: startedAtMs, toMs: deadlineAtMs }], discoveredFrom: 'observation',
-      originalPlan: { hours: [{ startsAtMs: startedAtMs, plannedKWh: 1 }], energyNeededKWh: 4, planStatus: 'on_track', revisedAtMs: startedAtMs },
+      originalPlan: { hours: [{ startsAtMs: startedAtMs, endsAtMs: (startedAtMs) + 3_600_000, plannedKWh: 1 }], energyNeededKWh: 4, planStatus: 'on_track', revisedAtMs: startedAtMs },
       finalPlan: null, revisionCount: 1,
     };
   };

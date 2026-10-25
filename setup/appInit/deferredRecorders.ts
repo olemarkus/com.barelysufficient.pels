@@ -1,13 +1,4 @@
 import { createCurrentTaskEvaluationReader } from '../../lib/objectives/deferredObjectives/currentTaskEvaluation';
-import { flattenAllHours } from '../../lib/price/priceStore';
-import {
-  resolvePostmortemTone,
-  type PostmortemTone,
-} from '../../packages/shared-domain/src/postmortemTone';
-import { resolvePlanPriceCostDisplay } from '../../packages/shared-domain/src/planPriceWidgetCopy';
-import type {
-  DeferredObjectivePlanHistoryCostDisplay,
-} from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import {
   DeferredObjectiveActivePlanRecorder,
   DeferredObjectivePlanHistoryRecorder,
@@ -160,13 +151,7 @@ export function createDeferredObjectivePlanHistoryRecorder(
       }
     },
     endedBus: ctx.deferredObjectiveEndedBus,
-    // Resolve hourly spot price + tone for the internal hour-rollover
-    // detector. Reads the persisted V2 combined-prices store directly so
-    // the postmortem consumes the producer's already-resolved
-    // `isCheap`/`isExpensive` flags (per `feedback_layering_resolution_in_producer`).
-    // Missing entries / unloaded payload return `null` so the postmortem
-    // skips that hour rather than fabricating a contribution.
-    resolveHourPrice: (hourStartMs) => resolveHourPriceFromContext(ctx, hourStartMs),
+    getMeteredPricePeriods: (startMs, endMs) => requirePriceCoordinator(ctx).getMeteredPricePeriods(startMs, endMs),
     // Read lazily on the lifecycle clock, after the plan service exists.
     getStallClassification: (deviceId) => requirePlanService(ctx).getStallEvidence(deviceId),
     getDeviceConstraint: (deviceId) => requireDeviceManager(ctx).getTaskDeliveryConstraint(deviceId),
@@ -176,45 +161,6 @@ export function createDeferredObjectivePlanHistoryRecorder(
   runStartupBackfill(ctx, recorder);
   return recorder;
 }
-
-// Look up the persisted V2 combined-prices entry whose hour-aligned
-// `startsAt` equals `hourStartMs` and map its already-resolved
-// `isCheap`/`isExpensive` flags onto the postmortem tone enum (via the
-// shared-domain `resolvePostmortemTone` helper). Returns `null` when no
-// entry covers the hour, when `total` is non-finite, or when the payload
-// hasn't loaded yet — all three are best-effort skip cases.
-const resolveHourPriceFromContext = (
-  ctx: AppContext,
-  hourStartMs: number,
-): {
-  priceValue: number;
-  tone: PostmortemTone;
-  costDisplay: DeferredObjectivePlanHistoryCostDisplay;
-} | null => {
-  const store = requirePriceCoordinator(ctx).combinedPricesReader.readStore(ctx.getNow(), ctx.getTimeZone());
-  if (!store) return null;
-  for (const entry of flattenAllHours(store)) {
-    const entryStart = new Date(entry.startsAt).getTime();
-    if (!Number.isFinite(entryStart) || entryStart !== hourStartMs) continue;
-    if (!Number.isFinite(entry.total)) return null;
-    // Capture the display the per-hour `total` is denominated in (øre @ divisor
-    // 100 for the default Norwegian scheme; the scheme's own unit @ divisor 1
-    // for Flow/Homey) so the recorder can persist it on the run's history entry
-    // and the archive renders the cost in its RECORDED currency after a later
-    // scheme switch. Single-sourced from the same shared-domain resolver the
-    // widget uses (`resolvePlanPriceCostDisplay`).
-    const { costUnit, costDivisor } = resolvePlanPriceCostDisplay({
-      priceScheme: store.priceScheme,
-      priceUnit: store.priceUnit,
-    });
-    return {
-      priceValue: entry.total,
-      tone: resolvePostmortemTone(entry),
-      costDisplay: { unit: costUnit, divisor: costDivisor },
-    };
-  }
-  return null;
-};
 
 function runStartupBackfill(
   ctx: AppContext,

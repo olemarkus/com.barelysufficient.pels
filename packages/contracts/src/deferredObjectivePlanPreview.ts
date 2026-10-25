@@ -10,6 +10,7 @@
 // future measurements, re-plans, or device response, so it is not a guarantee.
 // Legacy callers that omit the roster retain the isolated projection mode.
 
+import type { DeferredObjectivePlanInterval } from './deferredObjectiveActivePlans.js';
 import type { PowerLimitAxis } from './capacitySettings.js';
 import type { DeferredObjectiveSettingsEntry } from './deferredObjectiveSettings.js';
 
@@ -56,27 +57,15 @@ export type DeferredObjectivePlanPreviewUnavailableReason =
   | 'settings_unavailable'
   | 'unknown';
 
-// One scheduled charging hour in the projected plan. `startsAtMs` is an
-// hour-aligned UTC timestamp; `plannedKWh` is the energy the planner would
-// book into that hour. Shape mirrors `DeferredObjectiveActivePlanHourV1` so a
-// preview row renders identically to an active-plan row.
-export type DeferredObjectivePlanPreviewHour = {
-  startsAtMs: number;
-  plannedKWh: number;
-};
+// Preview and persisted schedules share the same interval booking contract.
+export type DeferredObjectivePlanPreviewInterval = DeferredObjectivePlanInterval;
 
-// One hour on the preview's price curve. `startsAtMs` is an EPOCH-hour-aligned
-// UTC timestamp on the SAME basis as `scheduledHours[].startsAtMs`, so the widget
-// can join the two by `startsAtMs` and highlight the chosen hours against the
-// line. `price` is that hour's per-kWh rate (the same per-bucket price the cost
-// estimate sums), or `null` for an interior hour with no published price — the
-// series is DENSE (one slot per hour across its span), so a gap is a `null` slot
-// the chart breaks the line across, never a dropped element (dropping would skew
-// the index-laid-out x-axis). Intentionally carries no `scheduled` flag: the
-// widget intersects by `startsAtMs` with `scheduledHours`, keeping this a pure
-// price curve with no duplicated state to drift.
+// One native price interval, or an explicit unpublished gap (`price: null`).
+// Both edges are absolute instants. Consumers position it by elapsed time and
+// intersect scheduled intervals by coverage, so source-grid changes stay honest.
 export type DeferredObjectivePlanPreviewPricePoint = {
   startsAtMs: number;
+  endsAtMs: number;
   price: number | null;
 };
 
@@ -92,10 +81,10 @@ export type DeferredObjectivePlanPreviewEstimate = {
   // the real missing input instead of blaming every unavailable preview on
   // missing prices.
   unavailableReason?: DeferredObjectivePlanPreviewUnavailableReason;
-  // Hour-aligned charging hours the planner would schedule, ascending by
+  // Scheduled intervals the planner would book, ascending by
   // `startsAtMs`. Empty when nothing is scheduled (e.g. already-satisfied,
   // deadline passed, or `unavailable`).
-  scheduledHours: DeferredObjectivePlanPreviewHour[];
+  scheduledHours: DeferredObjectivePlanPreviewInterval[];
   // Projected finish/ETA in UTC ms, estimated from the last planned bucket's
   // fill ratio. Null when nothing is scheduled or the projection is
   // `unavailable`.
@@ -120,7 +109,7 @@ export type DeferredObjectivePlanPreviewEstimate = {
   // pairing it with a rate label would mislabel the value. Absent when the unit
   // is unknown or `costEstimate` is null.
   costUnit?: string;
-  // Hourly price curve across the preview window (now → deadline), ascending by
+  // Native-period price curve across the preview window (now → deadline), ascending by
   // `startsAtMs`. Lets the widget draw the price line and highlight the
   // `scheduledHours` against it. Absent when no price horizon is available
   // (the projection is then `unavailable`, or has no priced buckets to show).

@@ -20,6 +20,7 @@
 // class `car` device out of the raw fetch itself, which is the path that keeps
 // working when the live feed is down.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { seedHourlyFlowPricesForTests } from '../helpers/smartTaskPriceSourceFixture';
 import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
 import { createActivePlanStore } from '../../lib/objectives/deferredObjectives/activePlanStore';
@@ -439,15 +440,7 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     const settings = mockHomeyInstance.settings;
     settings.set('price_optimization_enabled', true);
     settings.set('native_ev_wiring_devices', { [CHARGER_ID]: true });
-    settings.set('combined_prices', {
-      version: 2,
-      days: { '2026-01-15': { hours: Array.from({ length: 24 }, (_, hour) => ({
-        startsAt: new Date(Date.UTC(2026, 0, 15, hour)).toISOString(),
-        total: 50, isCheap: false, isExpensive: false,
-      })) } },
-      avgPrice: 50, lowThreshold: 40, highThreshold: 60,
-      priceScheme: 'norway', priceUnit: 'øre/kWh',
-    });
+    seedHourlyFlowPricesForTests(Date.UTC(2026, 0, 15), Array.from({ length: 24 }, () => 50));
     settings.set(EV_CAR_ASSOCIATIONS, { [CHARGER_ID]: { carIds: [CAR_ID] } });
     settings.set(`deferred_objective.${CHARGER_ID}`, {
       enabled: true, kind: 'ev_soc', enforcement: 'soft', targetPercent: 80,

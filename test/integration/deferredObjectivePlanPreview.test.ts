@@ -43,7 +43,7 @@ import {
   withMaterializedEvPlugState,
 } from '../utils/planTestUtils';
 import type {
-  DeferredObjectiveActivePlansV1,
+  DeferredObjectiveActivePlansV2,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -288,9 +288,9 @@ const buildDeferredObjectiveDiagnostics = (
 
 const buildRecorder = (): {
   recorder: DeferredObjectiveActivePlanRecorder;
-  saved: () => DeferredObjectiveActivePlansV1 | null;
+  saved: () => DeferredObjectiveActivePlansV2 | null;
 } => {
-  let saved: DeferredObjectiveActivePlansV1 | null = null;
+  let saved: DeferredObjectiveActivePlansV2 | null = null;
   const deps: ActivePlanPersistDeps = {
     load: () => null,
     save: (next) => { saved = next; },
@@ -312,7 +312,7 @@ type PreviewContext = {
   device: MeteredPlanInputDevice | undefined;
   devices?: MeteredPlanInputDevice[];
   settings?: DeferredObjectiveRoster;
-  activePlans?: DeferredObjectiveActivePlansV1;
+  activePlans?: DeferredObjectiveActivePlansV2;
   getPrioritiesForDevices?: ReturnType<typeof createFixturePriorityQuery>;
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
@@ -1224,7 +1224,7 @@ describe('previewDeferredObjectivePlan fidelity vs activePlanRecorder', () => {
 describe('buildDeferredObjectivePolicyWindowPrices', () => {
   // The price layer's horizon: epoch-hour starts with the hour's planning price.
   const horizon = (fromHour: number, prices: (number | null)[]) => prices.flatMap((price, index) => (
-    price === null ? [] : [{ startMs: Date.UTC(2026, 0, 1, fromHour + index, 0), price }]
+    price === null ? [] : [{ startMs: Date.UTC(2026, 0, 1, fromHour + index, 0), endMs: (Date.UTC(2026, 0, 1, fromHour + index, 0)) + 3_600_000, moneyPrice: price, price }]
   ));
 
   it('emits a dense, ascending, epoch-hour series across the window', () => {
@@ -1239,15 +1239,15 @@ describe('buildDeferredObjectivePolicyWindowPrices', () => {
     expect(series.map((point) => point.price)).toEqual([12, 13, 14, 15, 16, 17]);
   });
 
-  it('keeps the in-progress hour, keyed to the hour now falls in, matching scheduledHours', () => {
+  it('clips the in-progress period to now, matching scheduled coverage', () => {
     const series = buildDeferredObjectivePolicyWindowPrices(
       horizon(0, [10, 11, 12, 13]),
       Date.UTC(2026, 0, 1, 2, 5),
       Date.UTC(2026, 0, 1, 4, 0),
     );
     expect(series).toEqual([
-      { startMs: Date.UTC(2026, 0, 1, 2, 0), price: 12 },
-      { startMs: Date.UTC(2026, 0, 1, 3, 0), price: 13 },
+      { startMs: Date.UTC(2026, 0, 1, 2, 5), endMs: Date.UTC(2026, 0, 1, 3, 0), price: 12 },
+      { startMs: Date.UTC(2026, 0, 1, 3, 0), endMs: Date.UTC(2026, 0, 1, 4, 0), price: 13 },
     ]);
   });
 

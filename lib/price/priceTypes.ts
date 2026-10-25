@@ -40,7 +40,7 @@ export type CombinedPriceFields = {
 
 /**
  * One whole hour's price. The shape every hour-shaped consumer takes — the
- * daily budget's buckets, a smart task's claims, the owner's lowest-price Flow
+ * daily budget's buckets, the owner's lowest-price Flow
  * cards, the price charts.
  *
  * `durationMinutes?: never` is load-bearing: without it a period series would
@@ -57,9 +57,8 @@ export type CombinedHourlyPrice = CombinedPriceFields & {
  * Norwegian spot feed and on owner-fed Flow prices, a quarter-hour on a Homey
  * Energy zone that has moved to the 15-minute market.
  *
- * Only the price level reads this series (and the price widget's timeline,
- * which draws those levels) — the level answers "what is the price right now",
- * and now is a period. Everything that reasons in whole hours takes
+ * Price levels, Smart-task schedules and metered task costs read this series.
+ * Everything that reasons in whole hours takes
  * {@link CombinedHourlyPrice} from `getCombinedHourlyPrices()` instead.
  */
 export type CombinedPricePeriod = CombinedPriceFields & {

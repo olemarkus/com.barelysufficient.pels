@@ -20,7 +20,7 @@ import type {
   StarvationRescuePlanPreview,
 } from './starvationRescue.js';
 import type { DailyBudgetUiRead } from './dailyBudgetTypes.js';
-import type { ResolvedDeferredObjectiveActivePlansV1 } from './deferredObjectiveActivePlans.js';
+import type { ResolvedDeferredObjectiveActivePlansV2 } from './deferredObjectiveActivePlans.js';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from './settingsUiApi.js';
 import type { SmartTaskHomeScope } from './smartTaskHomeScope.js';
 import type { PriceTimelineRead } from './priceTimeline.js';
@@ -113,7 +113,7 @@ export type PriceWidgetHostApi = {
 
 /** smart_tasks widget host surface. */
 export type SmartTaskHistoryHostApi = {
-  getDeferredObjectiveActivePlansUiPayload(): ResolvedDeferredObjectiveActivePlansV1 | null;
+  getDeferredObjectiveActivePlansUiPayload(): ResolvedDeferredObjectiveActivePlansV2 | null;
   getDeferredObjectivePlanHistoryRecentUiPayload(sinceMs: number): SettingsUiDeferredObjectivePlanHistoryPayload;
   getDeferredObjectivePlanHistoryUiPayload(): SettingsUiDeferredObjectivePlanHistoryPayload;
   getUiPickerDevices(): DecoratedDeviceSnapshot[];

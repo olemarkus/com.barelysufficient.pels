@@ -4,7 +4,7 @@ import {
   POWERHOUR_PRICES_TODAY, POWERHOUR_PRICES_TOMORROW, PRICE_THRESHOLD_PERCENT, PRICE_MIN_DIFF_ORE,
 } from '../utils/settingsKeys';
 import type {
-  PriceLevelSummaryRead, ResolvedPriceScheme, SettingsUiHubMarketRead,
+  PriceLevelSummaryRead, ResolvedPriceScheme, SettingsUiHubMarketRead, SettingsUiTaskPricePeriod,
 } from '../../packages/contracts/src/settingsUiApi';
 import {
   addDays,
@@ -48,8 +48,9 @@ import {
 import {
   mirrorPowerhourPrices, resolvePowerhourSeries, type PowerhourPresence, type PowerhourSourceUiStatus,
 } from './powerhourScheme';
-import { applyExportPrices, type ExportPriceConfig } from './exportPrice';
-import { applyBudgetPrices, type BudgetPriceInputs } from './budgetPrice';
+import type { ExportPriceConfig } from './exportPrice';
+import type { BudgetPriceInputs } from './budgetPrice';
+import { applyPlanningPriceDecorations } from './pricePlanningSeries';
 import { buildPriceTimeline } from './priceTimeline';
 import { summarizePriceLevels } from './priceLevelSummary';
 import { fetchSpotPricesForDate } from './spotPriceFetch';
@@ -72,6 +73,10 @@ import type { PriceDataStore } from './priceDataStore';
 import type { PricePayloadKey } from './priceCacheStore';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 import type { PriceTimelineRead } from '../../packages/contracts/src/priceTimeline';
+import type { MeteredPricePeriod, PriceHorizonEntry } from '../../packages/planner-types/src/priceHorizon';
+import {
+  buildMeteredPricePeriodsForScheme, buildPriceHorizonFromPeriods, buildTaskPricePeriodsForUi,
+} from './priceHorizon';
 
 export default class PriceService {
   constructor(
@@ -335,12 +340,34 @@ export default class PriceService {
     return this.withExportAndPlanningPrices(this.buildImportHourlyPrices());
   }
 
+  /** Native periods with the import, export and solar-adjusted planning prices. */
+  private getPlanningPricePeriods(): CombinedPricePeriod[] {
+    return this.withExportAndPlanningPrices(this.buildImportPricePeriods());
+  }
+
+  buildPriceHorizon(startMs: number, endMs: number): PriceHorizonEntry[] {
+    return buildPriceHorizonFromPeriods(this.getPlanningPricePeriods(), startMs, endMs);
+  }
+
+  getTaskPricePeriodsForUi(): SettingsUiTaskPricePeriod[] {
+    return buildTaskPricePeriodsForUi(this.getPlanningPricePeriods(), this.priceLevelBand);
+  }
+
+  /** Import-price periods intersecting a delivery slice, with recorded currency. */
+  getMeteredPricePeriods(startMs: number, endMs: number): MeteredPricePeriod[] {
+    return buildMeteredPricePeriodsForScheme(
+      this.buildImportPricePeriods(),
+      this.priceLevelBand,
+      this.getPriceScheme(),
+      this.getPriceUnitLabel(),
+    ).filter((period) => period.endMs > startMs && period.startMs < endMs);
+  }
+
   /**
    * The same prices as {@link buildImportPricePeriods}, as whole hours.
    *
-   * Everything but the price level reasons in hours — the capacity tariff is an
-   * hourly peak, the daily budget fills hourly buckets, a smart task claims
-   * hours — so sub-hourly periods are projected here, in the producer, rather
+   * The daily budget and lowest-price Flow cards reason in hours, so
+   * sub-hourly periods are projected here, in the producer, rather
    * than each consumer guessing how long a period lasts. The Norwegian series
    * is hourly at the source and carries the whole cost stack (spot price, grid
    * tariff, taxes, VAT) that the money surfaces read, so it is served as it is
@@ -379,13 +406,14 @@ export default class PriceService {
   }
 
   /**
-   * The two decorations the hourly import series carries, in order: the feed-in
+   * The two decorations the planning series carries, in order: the feed-in
    * price, then the planning price derived on top of it. The period series the
    * price level reads stays on the import price alone.
    */
   private withExportAndPlanningPrices<T extends CombinedPriceFields>(series: T[]): T[] {
-    return applyBudgetPrices(
-      applyExportPrices(series, this.resolveExportConfig()),
+    return applyPlanningPriceDecorations(
+      series,
+      this.resolveExportConfig(),
       this.budgetPriceInputs,
       this.getTimeZone(),
     );

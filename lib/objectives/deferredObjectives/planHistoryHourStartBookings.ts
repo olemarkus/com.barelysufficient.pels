@@ -1,3 +1,4 @@
+import type { MeteredPricePeriod } from '../../../packages/planner-types/src/priceHorizon';
 import type {
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanV1,
@@ -6,29 +7,22 @@ import type {
   DeferredObjectivePlanHistoryHourStartBooking,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { InProgressRecord } from './planHistoryInProgressState';
-import { hourBucketMs } from './planHistoryV4Helpers';
 
-/**
- * Hour-start bookings: what a smart task's plan had booked for each clock hour
- * when that hour began. History reads these rather than the final revision,
- * whose elapsed hours the hourly re-plan has already dropped. The recorder
- * (`planHistory.ts`) calls `captureHourStartBooking` on every tick of a run, and
- * merges the bookings a restart saved back in with `mergeHourStartBookings`.
- */
+/** What the schedule booked when an actual interval became current. Saved
+ * captures win after restart and are never rewritten by a later settle. */
 
-// The useful energy a revision booked for one clock hour. Revision hours are
-// hour-aligned by `buildHoursFromHorizonPlan`: the current bucket, whose
-// `startMs` the planner trims to "now", is floored to its hour and keeps the
-// trim point as `coversFromMs`. So the hour starting at `hourMs` is the entry
-// whose `startsAtMs` floors to it, and its `plannedKWh` is the booking — a
-// full hour when the revision was written before the hour, the remainder from
-// `coversFromMs` when the run's first plan arrived inside it. The floor and
-// the sum are defensive: persisted revisions are input.
-export const bookedKWhForHour = (revision: DeferredObjectiveActivePlanRevisionV1, hourMs: number): number => {
+// Sum only the booking's actual overlap with this period. A commitment from
+// an earlier source grid keeps its energy density when prices change cadence.
+export const bookedKWhForInterval = (
+  revision: DeferredObjectiveActivePlanRevisionV1,
+  startMs: number,
+  endMs: number,
+): number => {
   let total = 0;
-  for (const hour of revision.hours) {
-    if (hourBucketMs(hour.startsAtMs) !== hourMs) continue;
-    if (Number.isFinite(hour.plannedKWh) && hour.plannedKWh > 0) total += hour.plannedKWh;
+  for (const interval of revision.hours) {
+    const coverageStartMs = interval.coversFromMs ?? interval.startsAtMs;
+    const overlapMs = Math.max(0, Math.min(endMs, interval.endsAtMs) - Math.max(startMs, coverageStartMs));
+    total += interval.plannedKWh * overlapMs / (interval.endsAtMs - coverageStartMs);
   }
   return total;
 };
@@ -61,49 +55,60 @@ export const revisionInForceAt = (
   return inForce;
 };
 
-/**
- * Record the current hour's booking the first time the run sees the hour, from
- * the revision in force when the hour began (`revisionInForceAt`). Called once
- * per tick after the record is merged (and, for a restored run, after its saved
- * bookings are merged back in).
- *
- * An hour with no revision in force at its start has no entry: a plan rebuilt
- * after the hour began (a restart that lost the persisted plan) is not what it
- * started under. The one exception is the run's first plan: when nothing has
- * been recorded yet there is no earlier plan the hour could have started under,
- * so the hour the first plan arrives in records that plan's booking. Only the
- * current hour is recorded, so an hour with no tick inside it (an outage
- * spanning the whole hour) has no entry either; its delivery was not metered.
- * An hour whose start fell in an outage is recorded from the revision still in
- * force when PELS came back, which is what it began under.
- */
+/** Capture only the interval observed on this tick. A whole period crossed
+ * during an outage remains unobserved; the first plan may arrive mid-period. */
 export const captureHourStartBooking = (
   record: InProgressRecord,
   plan: DeferredObjectiveActivePlanV1 | undefined,
   nowMs: number,
+  periods: readonly MeteredPricePeriod[],
 ): InProgressRecord => {
-  // The deadline tick still merges the record before it finalizes; the hour
-  // the deadline falls in is not part of the run.
   if (nowMs >= record.deadlineAtMs) return record;
-  const hourMs = hourBucketMs(nowMs);
   const recorded = record.hourStartBookings;
-  if (recorded.some((booking) => booking.atMs === hourMs)) return record;
-  const revision = revisionInForceAt(plan, hourMs)
+  if (recorded.some((booking) => booking.atMs <= nowMs && booking.endsAtMs > nowMs)) return record;
+  const period = periods.find((candidate) => candidate.startMs <= nowMs && candidate.endMs > nowMs);
+  if (period === undefined) return record;
+  const revision = revisionInForceAt(plan, period.startMs)
     ?? (recorded.length === 0 ? plan?.latest ?? plan?.original ?? null : null);
   if (revision === null) return record;
+  // Keep booking geometry, including a first period trimmed to task creation,
+  // and never overlay a previously captured span after a source-grid change.
+  const boundaries = [period.startMs, Math.min(period.endMs, record.deadlineAtMs),
+    ...revision.hours.flatMap((interval) => [interval.coversFromMs ?? interval.startsAtMs, interval.endsAtMs]),
+    ...recorded.flatMap((booking) => [booking.atMs, booking.endsAtMs]),
+  ];
+  const startMs = Math.max(period.startMs, ...boundaries.filter((atMs) => atMs <= nowMs));
+  const endMs = Math.min(period.endMs, record.deadlineAtMs, ...boundaries.filter((atMs) => atMs > nowMs));
   return {
     ...record,
-    hourStartBookings: [...recorded, { atMs: hourMs, bookedKWh: bookedKWhForHour(revision, hourMs) }],
+    hourStartBookings: [...recorded, {
+      atMs: startMs,
+      endsAtMs: endMs,
+      bookedKWh: bookedKWhForInterval(revision, startMs, endMs),
+    }],
   };
 };
 
-// Saved bookings first: they were captured at their hours' starts, before the
-// restart. A live booking only fills an hour the saved list does not have.
+// Saved coverage wins after restart, including a change of source resolution.
+// A live segment may fill only time the saved list never captured.
 export const mergeHourStartBookings = (
   saved: readonly DeferredObjectivePlanHistoryHourStartBooking[],
   live: readonly DeferredObjectivePlanHistoryHourStartBooking[],
 ): DeferredObjectivePlanHistoryHourStartBooking[] => {
-  const savedHours = new Set(saved.map((booking) => booking.atMs));
-  return [...saved, ...live.filter((booking) => !savedHours.has(booking.atMs))]
-    .sort((a, b) => a.atMs - b.atMs);
+  let remaining = [...live];
+  for (const previous of saved) {
+    remaining = remaining.flatMap((segment) => {
+      if (previous.endsAtMs <= segment.atMs || previous.atMs >= segment.endsAtMs) return [segment];
+      const pieces = [
+        { atMs: segment.atMs, endsAtMs: Math.min(previous.atMs, segment.endsAtMs) },
+        { atMs: Math.max(previous.endsAtMs, segment.atMs), endsAtMs: segment.endsAtMs },
+      ];
+      return pieces.filter((piece) => piece.endsAtMs > piece.atMs).map((piece) => ({
+        atMs: piece.atMs,
+        endsAtMs: piece.endsAtMs,
+        bookedKWh: segment.bookedKWh * (piece.endsAtMs - piece.atMs) / (segment.endsAtMs - segment.atMs),
+      }));
+    });
+  }
+  return [...saved, ...remaining].sort((a, b) => a.atMs - b.atMs);
 };

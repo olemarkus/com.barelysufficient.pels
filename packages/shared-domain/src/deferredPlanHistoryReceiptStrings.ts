@@ -33,7 +33,7 @@ export const RECEIPT_NBSP = ' ';
 // no trailing punctuation; the view renders these as the leading text in each
 // row.
 export const RECEIPT_ROW_LABEL_STARTED = 'Started';
-export const RECEIPT_ROW_LABEL_LARGEST_PLANNED_HOUR = 'Largest planned hour';
+export const RECEIPT_ROW_LABEL_LARGEST_PLANNED_HOUR = 'Largest planned period';
 export const RECEIPT_ROW_LABEL_READY = 'Ready';
 
 // "from 18.5 °C" / "from 45 %" start-reading detail tail on the Started row.

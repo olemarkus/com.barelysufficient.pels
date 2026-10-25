@@ -1,3 +1,4 @@
+import { taskPricePeriodsFixture } from './helpers/taskPricePeriodsFixture.ts';
 import { stateOfChargeFixture } from './stateOfChargeFixture';
 import { withDescriptorIdentities } from './helpers/deviceSnapshotFixture.ts';
 import { describe, expect, it } from 'vitest';
@@ -8,7 +9,7 @@ import type { DecoratedDeviceSnapshot, ObservedStateOfChargeProbe, TemperatureOb
 import type {
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanV1,
-  ResolvedDeferredObjectiveActivePlansV1,
+  ResolvedDeferredObjectiveActivePlansV2,
 } from '../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { DeferredObjectiveRoster } from '../../contracts/src/deferredObjectiveSettings.ts';
 import {
@@ -36,6 +37,7 @@ const hourlyPrices = (start: Date, totals: readonly number[]) => ({
 // source is empty and no source status or setup has been read.
 const pricesPayload = (combinedPrices: unknown): SettingsUiPricesPayload => ({
   combinedPrices,
+  taskPricePeriods: taskPricePeriodsFixture(combinedPrices),
   priceArea: null,
   flowToday: null,
   flowTomorrow: null,
@@ -71,8 +73,8 @@ const nothingDelivered = () => 0;
 // Resolve stored plans the way the runtime's UI assembler does, keyed as given.
 const resolvePlans = (
   plansByDeviceId: Record<string, DeferredObjectiveActivePlanV1>,
-): ResolvedDeferredObjectiveActivePlansV1 => ({
-  version: 1,
+): ResolvedDeferredObjectiveActivePlansV2 => ({
+  version: 2,
   plansByDeviceId: Object.fromEntries(Object.entries(plansByDeviceId).map(([deviceId, plan]) => [
     deviceId,
     toResolvedActivePlan(plan, nothingDelivered, null),
@@ -81,7 +83,7 @@ const resolvePlans = (
 
 const buildActivePlans = (
   plan: DeferredObjectiveActivePlanV1 | null,
-): ResolvedDeferredObjectiveActivePlansV1 => resolvePlans(plan ? { [plan.deviceId]: plan } : {});
+): ResolvedDeferredObjectiveActivePlansV2 => resolvePlans(plan ? { [plan.deviceId]: plan } : {});
 
 const buildHeaterActivePlan = (params: {
   now: Date;
@@ -107,7 +109,7 @@ const buildHeaterActivePlan = (params: {
 }): DeferredObjectiveActivePlanV1 & { latest: DeferredObjectiveActivePlanRevisionV1 } => {
   const revisedAtMs = params.now.getTime();
   const buildHours = (offsets: number[]) => offsets.map((offset) => ({
-    startsAtMs: atLocalHour(params.now, offset).getTime(),
+    startsAtMs: atLocalHour(params.now, offset).getTime(), endsAtMs: (atLocalHour(params.now, offset).getTime()) + 3_600_000,
     plannedKWh: params.plannedKWhPerHour,
   }));
   const originalHours = buildHours(params.plannedHourOffsets);
@@ -379,7 +381,7 @@ describe('deadline plan page payload', () => {
     // in the window; the picked hour is the lone 0.10 kr/kWh cheap one.
     // Confirms the producer reads the already-scaled display price (øre→kr).
     expect(payload.timeline.cheapestHoursCaption).toBe(
-      'Picked 1 of the 6 hours it can use · avg 0.10 kr/kWh',
+      'Scheduled 1h · avg 0.10 kr/kWh',
     );
   });
 
@@ -436,7 +438,7 @@ describe('deadline plan page payload', () => {
     // A record with no reason has no known blocker, so the hero must not name
     // one. It said "Waiting for tomorrow's prices" on a freshly created task
     // whose prices were already in (prod 2026-07-26).
-    expect(renderInput.pending.hero.headline).toBe('Choosing the cheapest hours');
+    expect(renderInput.pending.hero.headline).toBe('Choosing when to run');
     expect(renderInput.pending.hero.headline).not.toContain('prices');
     expect(renderInput.pending.hero.subline).toContain('Connected 300');
   });
@@ -508,7 +510,7 @@ describe('deadline plan page payload', () => {
       deviceId: 'heater',
       devices,
       prices,
-      nowMs: now.getTime(),
+      nowMs: atLocalHour(now, 2).getTime(),
     }));
 
     // Measured energy surfaces on the planned hour's readout line, not as a
@@ -517,6 +519,19 @@ describe('deadline plan page payload', () => {
     expect(payload.timeline.hours[1]?.readout.primary).toContain('Heating 2.0 kWh planned');
     expect(payload.timeline.hours[1]?.readout.primary).toContain('Measured 1.3 kWh');
     expect(payload.timeline.hours[0]?.readout.primary).not.toContain('Measured');
+    const quarterPrices = {
+      ...prices,
+      taskPricePeriods: prices.taskPricePeriods.flatMap((period) => [0, 1, 2, 3].map((quarter) => ({
+        ...period,
+        startsAtMs: period.startsAtMs + quarter * 900_000,
+        endsAtMs: period.startsAtMs + (quarter + 1) * 900_000,
+      }))),
+    };
+    const quarterPayload = expectReady(resolveRenderInput({
+      bootstrap, deviceId: 'heater', devices, prices: quarterPrices, nowMs: atLocalHour(now, 2).getTime(),
+    }));
+    expect(quarterPayload.timeline.hours.every((period) => !period.readout.primary.includes('Measured'))).toBe(true);
+
   });
 
   it('surfaces planInputs for a temperature device using the learned rate and the lowest step', () => {
@@ -1061,7 +1076,7 @@ describe('deadline plan page payload', () => {
       revisedAtMs: now.getTime(),
       computedFromPricesUpTo: deadline.getTime(),
       reason: 'flow_card' as const,
-      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 7 }],
+      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), endsAtMs: (atLocalHour(now, 0).getTime()) + 3_600_000, plannedKWh: 7 }],
       energyNeededKWh: 14,
       planStatus: 'on_track' as const,
       kwhPerUnitSource: 'bootstrap' as const,
@@ -1269,7 +1284,7 @@ describe('deadline plan page payload', () => {
         revisedAtMs: now.getTime(),
         computedFromPricesUpTo: deadline.getTime(),
         reason: 'flow_card',
-        hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 5 }],
+        hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), endsAtMs: (atLocalHour(now, 0).getTime()) + 3_600_000, plannedKWh: 5 }],
         energyNeededKWh: 5,
         planStatus: 'on_track',
       },
@@ -1278,7 +1293,7 @@ describe('deadline plan page payload', () => {
         revisedAtMs: now.getTime(),
         computedFromPricesUpTo: deadline.getTime(),
         reason: 'flow_card',
-        hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 5 }],
+        hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), endsAtMs: (atLocalHour(now, 0).getTime()) + 3_600_000, plannedKWh: 5 }],
         energyNeededKWh: 5,
         planStatus: 'on_track',
       },
@@ -1306,9 +1321,9 @@ describe('deadline plan page payload', () => {
       computedFromPricesUpTo: deadline.getTime(),
       reason: 'flow_card' as const,
       hours: [
-        { startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 7 },
-        { startsAtMs: atLocalHour(now, 1).getTime(), plannedKWh: 7 },
-        { startsAtMs: atLocalHour(now, 2).getTime(), plannedKWh: 6 },
+        { startsAtMs: atLocalHour(now, 0).getTime(), endsAtMs: (atLocalHour(now, 0).getTime()) + 3_600_000, plannedKWh: 7 },
+        { startsAtMs: atLocalHour(now, 1).getTime(), endsAtMs: (atLocalHour(now, 1).getTime()) + 3_600_000, plannedKWh: 7 },
+        { startsAtMs: atLocalHour(now, 2).getTime(), endsAtMs: (atLocalHour(now, 2).getTime()) + 3_600_000, plannedKWh: 6 },
       ],
       energyNeededKWh: 20,
       planStatus: 'on_track' as const,
@@ -1363,9 +1378,9 @@ describe('deadline plan page payload', () => {
       computedFromPricesUpTo: deadline.getTime(),
       reason: 'flow_card' as const,
       hours: [
-        { startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 7 },
-        { startsAtMs: atLocalHour(now, 1).getTime(), plannedKWh: 7 },
-        { startsAtMs: atLocalHour(now, 2).getTime(), plannedKWh: 6 },
+        { startsAtMs: atLocalHour(now, 0).getTime(), endsAtMs: (atLocalHour(now, 0).getTime()) + 3_600_000, plannedKWh: 7 },
+        { startsAtMs: atLocalHour(now, 1).getTime(), endsAtMs: (atLocalHour(now, 1).getTime()) + 3_600_000, plannedKWh: 7 },
+        { startsAtMs: atLocalHour(now, 2).getTime(), endsAtMs: (atLocalHour(now, 2).getTime()) + 3_600_000, plannedKWh: 6 },
       ],
       energyNeededKWh: 20,
       planStatus: 'on_track' as const,
@@ -1524,7 +1539,7 @@ describe('deadline plan page payload', () => {
       revisedAtMs: now.getTime(),
       computedFromPricesUpTo: deadline.getTime(),
       reason: 'rate_refined' as const,
-      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 3 }],
+      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), endsAtMs: (atLocalHour(now, 0).getTime()) + 3_600_000, plannedKWh: 3 }],
       energyNeededKWh: 3,
       planStatus: 'on_track' as const,
       kwhPerUnitSource: 'learned' as const,
@@ -1578,7 +1593,7 @@ describe('deadline plan page payload', () => {
       revisedAtMs: now.getTime(),
       computedFromPricesUpTo: deadline.getTime(),
       reason: 'rate_refined' as const,
-      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 3 }],
+      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), endsAtMs: (atLocalHour(now, 0).getTime()) + 3_600_000, plannedKWh: 3 }],
       energyNeededKWh: 3,
       planStatus: 'on_track' as const,
       kwhPerUnitSource: 'learned' as const,
@@ -1636,7 +1651,7 @@ describe('deadline plan page payload', () => {
       revisedAtMs: now.getTime(),
       computedFromPricesUpTo: deadline.getTime(),
       reason: 'flow_card' as const,
-      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 7 }],
+      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), endsAtMs: (atLocalHour(now, 0).getTime()) + 3_600_000, plannedKWh: 7 }],
       energyNeededKWh: 20,
       planStatus: 'on_track' as const,
       kwhPerUnitSource: 'bootstrap' as const,
@@ -1683,7 +1698,7 @@ describe('deadline plan page payload', () => {
       revisedAtMs: now.getTime(),
       computedFromPricesUpTo: deadline.getTime(),
       reason: 'rate_refined' as const,
-      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 3 }],
+      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), endsAtMs: (atLocalHour(now, 0).getTime()) + 3_600_000, plannedKWh: 3 }],
       energyNeededKWh: 3,
       planStatus: 'on_track' as const,
       kwhPerUnitSource: 'learned' as const,
@@ -1740,7 +1755,7 @@ describe('deadline plan page payload', () => {
       revisedAtMs: now.getTime(),
       computedFromPricesUpTo: deadline.getTime(),
       reason: 'flow_card' as const,
-      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 7 }],
+      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), endsAtMs: (atLocalHour(now, 0).getTime()) + 3_600_000, plannedKWh: 7 }],
       energyNeededKWh: 7,
       planStatus: 'on_track' as const,
       kwhPerUnitSource: 'bootstrap' as const,
@@ -1790,7 +1805,7 @@ describe('deadline plan page payload', () => {
       revisedAtMs: now.getTime(),
       computedFromPricesUpTo: deadline.getTime(),
       reason: 'rate_refined' as const,
-      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 3 }],
+      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), endsAtMs: (atLocalHour(now, 0).getTime()) + 3_600_000, plannedKWh: 3 }],
       energyNeededKWh: 3,
       planStatus: 'on_track' as const,
       kwhPerUnitSource: 'learned' as const,
@@ -1837,9 +1852,9 @@ describe('deadline plan page payload', () => {
       reason: 'flow_card' as const,
       // Two past hours (at planStart and planStart+1h) and one future hour, 1.5 kWh each.
       hours: [
-        { startsAtMs: planStart.getTime(), plannedKWh: 1.5 },
-        { startsAtMs: planStart.getTime() + 60 * 60 * 1000, plannedKWh: 1.5 },
-        { startsAtMs: atLocalHour(now, 1).getTime(), plannedKWh: 1.5 },
+        { startsAtMs: planStart.getTime(), endsAtMs: (planStart.getTime()) + 3_600_000, plannedKWh: 1.5 },
+        { startsAtMs: planStart.getTime() + 60 * 60 * 1000, endsAtMs: (planStart.getTime() + 60 * 60 * 1000) + 3_600_000, plannedKWh: 1.5 },
+        { startsAtMs: atLocalHour(now, 1).getTime(), endsAtMs: (atLocalHour(now, 1).getTime()) + 3_600_000, plannedKWh: 1.5 },
       ],
       energyNeededKWh: 4.5,
       planStatus: 'on_track' as const,
@@ -2045,7 +2060,7 @@ describe('deadline plan page payload', () => {
       revisedAtMs: now.getTime(),
       computedFromPricesUpTo: deadline.getTime(),
       reason: 'flow_card' as const,
-      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 4 }],
+      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), endsAtMs: (atLocalHour(now, 0).getTime()) + 3_600_000, plannedKWh: 4 }],
       energyNeededKWh: 4,
       planStatus: 'on_track' as const,
       kwhPerUnitSource: 'learned' as const,
@@ -2333,10 +2348,9 @@ describe('deadline plan page payload', () => {
     );
     expect(timeline.hours).toEqual([]);
     expect(timeline.nowIndex).toBe(0);
-    // Markers park at the first category edge — the shape the chart builder
-    // tolerates for an empty bar series.
-    expect(timeline.nowAxisX).toBe(-0.5);
-    expect(timeline.deadlineAxisX).toBe(-0.5);
+    // Empty data keeps the same timestamp coordinates as a populated chart.
+    expect(timeline.nowAxisX).toBe(now.getTime());
+    expect(timeline.deadlineAxisX).toBe(plan.deadlineAtMs);
     expect(timeline.deadlineMarkLabel).toMatch(/^deadline /);
     expect(timeline.cheapestHoursCaption).toBeNull();
   });
@@ -2348,8 +2362,8 @@ describe('deadline plan page payload', () => {
     // Import 100 øre, planning 20 øre (a surplus hour). The displayed price must
     // follow planning; a non-diverging control hour keeps import === planning.
     const hours = [
-      { startsAtMs: hourStartMs, endMs: hourStartMs + HOUR, price: 100, planningPrice: 20 },
-      { startsAtMs: hourStartMs + HOUR, endMs: hourStartMs + 2 * HOUR, price: 80, planningPrice: 80 },
+      { startsAtMs: hourStartMs, endsAtMs: (hourStartMs) + 3_600_000, endMs: hourStartMs + HOUR, price: 100, planningPrice: 20 },
+      { startsAtMs: hourStartMs + HOUR, endsAtMs: (hourStartMs + HOUR) + 3_600_000, endMs: hourStartMs + 2 * HOUR, price: 80, planningPrice: 80 },
     ];
     const plan = buildHeaterActivePlan({
       now: new Date(hourStartMs), deadline: new Date(hourStartMs + 2 * HOUR), plannedHourOffsets: [0], plannedKWhPerHour: 2,
@@ -2373,8 +2387,8 @@ describe('deadline plan page payload', () => {
     const HOUR = 60 * 60 * 1000;
     // Non-prosumer: planning === import on every hour (byte-identical).
     const hours = [
-      { startsAtMs: hourStartMs, endMs: hourStartMs + HOUR, price: 100, planningPrice: 100 },
-      { startsAtMs: hourStartMs + HOUR, endMs: hourStartMs + 2 * HOUR, price: 80, planningPrice: 80 },
+      { startsAtMs: hourStartMs, endsAtMs: (hourStartMs) + 3_600_000, endMs: hourStartMs + HOUR, price: 100, planningPrice: 100 },
+      { startsAtMs: hourStartMs + HOUR, endsAtMs: (hourStartMs + HOUR) + 3_600_000, endMs: hourStartMs + 2 * HOUR, price: 80, planningPrice: 80 },
     ];
     const plan = buildHeaterActivePlan({
       now: new Date(hourStartMs), deadline: new Date(hourStartMs + 2 * HOUR), plannedHourOffsets: [0], plannedKWhPerHour: 2,
@@ -2397,7 +2411,7 @@ describe('deadline plan page payload', () => {
     const deadline = atLocalHour(hourStart, 4);
     const hourMs = (offset: number) => atLocalHour(hourStart, offset).getTime();
     const hours = Array.from({ length: 4 }, (_, offset) => ({
-      startsAtMs: hourMs(offset),
+      startsAtMs: hourMs(offset), endsAtMs: (hourMs(offset)) + 3_600_000,
       endMs: hourMs(offset + 1),
       price: 100 + offset,
       planningPrice: 100 + offset,
@@ -2415,7 +2429,11 @@ describe('deadline plan page payload', () => {
         plannedHourOffsets: [0],
         plannedKWhPerHour: 2,
       });
-      if (overrides.coversFromMs !== undefined) plan.latest.hours[0]!.coversFromMs = overrides.coversFromMs;
+      plan.latest.hours = [...overrides.currentChargeByStartMs].map(([startsAtMs, plannedKWh]) => ({
+        startsAtMs, endsAtMs: startsAtMs + 3_600_000, plannedKWh,
+        ...(startsAtMs === hourMs(0) && overrides.coversFromMs !== undefined
+          ? { coversFromMs: overrides.coversFromMs } : {}),
+      }));
       const input = readyHeaterPayload(plan, hours, overrides.nowMs, heatingProgress(overrides.currentValue ?? 18));
       if (overrides.progressSamples) input.ctx.activePlan.progressSamples = overrides.progressSamples;
       return [input, heaterSchedule(overrides.currentChargeByStartMs)];
@@ -2694,10 +2712,10 @@ describe('deadline plan page payload', () => {
     expect(cheaper.hero.headlineReason).toMatch(/^Cheaper than now — starts at \d{2}:\d{2}\.$/);
 
     // Current hour is the cheapest bar → the claim would be false; the
-    // non-comparative "cheapest hours it can use" line renders instead.
+    // non-comparative "cheapest times it can use" line renders instead.
     const nowCheapest = buildPayload(buildPrices((offset) => (offset === 0 ? 10 : 100)));
     expect(nowCheapest.hero.headlineReason).toMatch(
-      /^Scheduled for the cheapest hours it can use — starts at \d{2}:\d{2}\.$/,
+      /^Scheduled for the cheapest times it can use — starts at \d{2}:\d{2}\.$/,
     );
   });
 });
@@ -2951,7 +2969,7 @@ describe('resolveHeroHeadline', () => {
   // matches a deterministic 16:00 regardless of host timezone.
   const queuedHourStartsAtMs = new Date(2026, 0, 1, 16, 0, 0, 0).getTime();
   const queuedHour = {
-    startsAtMs: queuedHourStartsAtMs,
+    startsAtMs: queuedHourStartsAtMs, endsAtMs: (queuedHourStartsAtMs) + 3_600_000,
     endMs: queuedHourStartsAtMs + HOUR_MS,
     price: 0,
     planningPrice: 0,
@@ -3051,7 +3069,7 @@ describe('resolveQueuedHeadlineReason', () => {
   const HOUR_MS = 60 * 60 * 1000;
   const firstHourStart = Date.UTC(2026, 0, 1, 8, 0);
   const baseHour = {
-    startsAtMs: firstHourStart,
+    startsAtMs: firstHourStart, endsAtMs: (firstHourStart) + 3_600_000,
     endMs: firstHourStart + HOUR_MS,
     price: 0,
     planningPrice: 0,
@@ -3115,7 +3133,7 @@ describe('resolveQueuedHeadlineReason', () => {
   it('falls back to the non-comparative cheapest-hours line when the current hour is the cheapest', async () => {
     // The schedule chart renders the disproof when the current hour is the
     // cheapest bar — the resolver must not claim "Cheaper than now" then.
-    // The fallback ("cheapest hours it can use") makes no comparison to now,
+    // The fallback ("cheapest times it can use") makes no comparison to now,
     // so no bar arrangement can contradict it.
     const { resolveQueuedHeadlineReason } = await import('../src/ui/deadlinePlanHero.ts');
     const out = resolveQueuedHeadlineReason(
@@ -3128,7 +3146,7 @@ describe('resolveQueuedHeadlineReason', () => {
       false,
     );
     expect(out).toMatch(
-      /^Scheduled for the cheapest hours it can use — starts at \d{2}:\d{2}\.$/,
+      /^Scheduled for the cheapest times it can use — starts at \d{2}:\d{2}\.$/,
     );
   });
 });
@@ -3354,7 +3372,7 @@ describe('schedule + trajectory chart option builders', () => {
       timeline: {
         ariaLabel: 'EV smart task',
         hours: hours.map((h, i) => ({
-          startsAtMs: i * 3_600_000,
+          startsAtMs: i * 3_600_000, endsAtMs: (i * 3_600_000) + 3_600_000,
           time: `${13 + i}:00`,
           price: (priceValues[i] ?? 100).toFixed(2),
           priceValue: priceValues[i] ?? 100,
@@ -3363,8 +3381,8 @@ describe('schedule + trajectory chart option builders', () => {
           readout: { primary: `${13 + i}:00 · 1.00 øre/kWh · Not scheduled`, secondary: null },
         })),
         nowIndex: 0,
-        nowAxisX: -0.5,
-        deadlineAxisX: hours.length - 0.5,
+        nowAxisX: 0,
+        deadlineAxisX: hours.length * 3_600_000,
         deadlineMarkLabel: 'deadline Mon 06:00',
         cheapestHoursCaption: null,
         planningPriceNote: null,
@@ -3388,7 +3406,7 @@ describe('schedule + trajectory chart option builders', () => {
   type ScheduleOptionShape = {
     legend?: unknown;
     tooltip?: unknown;
-    xAxis: { axisLabel?: { interval?: (index: number) => boolean } };
+    xAxis: { type: string; min: number; max: number; splitNumber: number; axisLabel?: { hideOverlap?: boolean } };
     yAxis: {
       min?: number;
       max?: number;
@@ -3398,7 +3416,7 @@ describe('schedule + trajectory chart option builders', () => {
     };
     series: Array<{
       type: string;
-      data: Array<{ value: number; itemStyle: { color?: string; opacity?: number; borderWidth?: number } }>;
+      data: Array<{ value: [number, number, number]; itemStyle: { color?: string; opacity?: number; borderWidth?: number } }>;
       markArea?: { data: Array<Array<{ name?: string; xAxis: number }>> };
       markPoint: { data: Array<{ coord: [number, number] }> };
       markLine: { data: Array<{ xAxis: number; label?: { formatter?: string } }> };
@@ -3412,7 +3430,8 @@ describe('schedule + trajectory chart option builders', () => {
     expect(option.legend).toBeUndefined();
     expect(option.tooltip).toBeUndefined();
     expect(option.series).toHaveLength(1);
-    expect(option.series[0]?.type).toBe('bar');
+    expect(option.series[0]?.type).toBe('custom');
+    expect(option.series[0]?.data[0]?.value).toEqual([payload.timeline.hours[0]!.startsAtMs, payload.timeline.hours[0]!.endsAtMs, 100]);
   });
 
   it('encodes picked hours as filled mint and other hours as the same hue dimmed/outlined', async () => {
@@ -3443,12 +3462,12 @@ describe('schedule + trajectory chart option builders', () => {
     expect(option.yAxis.axisLabel?.formatter?.(1.31)).toBe('1.3 øre/kWh');
     // Halved interval ⇒ a mid gridline between the zero baseline and the max.
     expect(option.yAxis.interval).toBeCloseTo(0.655, 5);
-    // Even cadence anchored at the Now column (nowIndex 0, 12 hours ⇒ every
-    // 4th): 0, 4, 8 — never the old "always label the last column" special.
-    const interval = option.xAxis.axisLabel?.interval;
-    expect([0, 1, 2, 3, 4, 11].map((i) => interval?.(i))).toEqual(
-      [true, false, false, false, true, false],
-    );
+    // Actual timestamps preserve the width of quarters and hours on one axis.
+    expect(option.xAxis.type).toBe('time');
+    expect(option.xAxis.min).toBe(payload.timeline.hours[0]!.startsAtMs);
+    expect(option.xAxis.max).toBe(payload.timeline.hours[11]!.endsAtMs);
+    expect(option.xAxis.splitNumber).toBe(4);
+    expect(option.xAxis.axisLabel?.hideOverlap).toBe(true);
   });
 
   it('marks changed hours with a dot markPoint instead of a border', async () => {
@@ -3460,7 +3479,7 @@ describe('schedule + trajectory chart option builders', () => {
     const option = buildScheduleChartOption(payload, stubPalette, stubTypography) as ScheduleOptionShape;
     const dots = option.series[0]?.markPoint.data ?? [];
     expect(dots).toHaveLength(1);
-    expect(dots[0]?.coord[0]).toBe(1);
+    expect(dots[0]?.coord[0]).toBe((payload.timeline.hours[1]!.startsAtMs + payload.timeline.hours[1]!.endsAtMs) / 2);
     expect(dots[0]?.coord[1]).toBeGreaterThan(0.8);
   });
 
@@ -3469,7 +3488,7 @@ describe('schedule + trajectory chart option builders', () => {
     const payload = buildMinimalPayload([{ planned: true }, { planned: false }]);
     const option = buildScheduleChartOption(payload, stubPalette, stubTypography) as ScheduleOptionShape;
     const lines = option.series[0]?.markLine.data ?? [];
-    expect(lines.map((line) => line.xAxis)).toEqual([-0.5, 1.5]);
+    expect(lines.map((line) => line.xAxis)).toEqual([0, 2 * 3_600_000]);
     expect(lines[1]?.label?.formatter).toBe('deadline Mon 06:00');
   });
 
@@ -3511,7 +3530,7 @@ describe('schedule + trajectory chart option builders', () => {
     const { resolveScrubHourIndex } = await import('../src/ui/deadlineChartScrub.ts');
     const HOUR = 3_600_000;
     // Gapped grid: 00:00, 01:00, then 03:00 (the 02:00 bucket is missing).
-    const hours = [{ startsAtMs: 0 }, { startsAtMs: HOUR }, { startsAtMs: 3 * HOUR }];
+    const hours = [{ startsAtMs: 0, endsAtMs: (0) + 3_600_000 }, { startsAtMs: HOUR, endsAtMs: (HOUR) + 3_600_000 }, { startsAtMs: 3 * HOUR, endsAtMs: (3 * HOUR) + 3_600_000 }];
     // Containing bucket wins — with the old contiguous arithmetic a position
     // inside the 03:00 bucket would have resolved to index 3 (out of range).
     expect(resolveScrubHourIndex(hours, 30 * 60 * 1000)).toBe(0);
@@ -4117,13 +4136,13 @@ describe('shared-domain pending-hero copy', () => {
     const { resolvePendingPriceContext } = await import('../src/ui/deadlinePlanPending.ts');
     const nowMs = Date.parse('2026-10-11T12:30:00Z');
     const pricesCovering = (startsAt: string) => ({
-      combinedPrices: { priceScheme: 'homey', prices: [{ startsAt, total: 0.2 }] },
+      combinedPrices: { priceScheme: 'homey', prices: [{ startsAt, total: 0.2 }] }, taskPricePeriods: taskPricePeriodsFixture({ priceScheme: 'homey', prices: [{ startsAt, total: 0.2 }] }),
     }) as unknown as Parameters<typeof resolvePendingPriceContext>[0];
 
     expect(resolvePendingPriceContext(pricesCovering('2026-10-11T12:00:00Z'), nowMs).hasCurrentPrice).toBe(true);
     expect(resolvePendingPriceContext(pricesCovering('2026-10-10T12:00:00Z'), nowMs).hasCurrentPrice).toBe(false);
     expect(resolvePendingPriceContext(
-      { combinedPrices: null } as unknown as Parameters<typeof resolvePendingPriceContext>[0],
+      { combinedPrices: null, taskPricePeriods: taskPricePeriodsFixture(null) } as unknown as Parameters<typeof resolvePendingPriceContext>[0],
       nowMs,
     ).hasCurrentPrice).toBe(false);
   });

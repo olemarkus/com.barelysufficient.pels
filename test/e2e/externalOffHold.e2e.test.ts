@@ -13,13 +13,13 @@
 // end-to-end through the app in test/integration/externalOffHoldRealtime.test.ts,
 // which delivers the device.update on the live feed's socket.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { seedHourlyFlowPricesForTests } from '../helpers/smartTaskPriceSourceFixture';
 import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
-  COMBINED_PRICES,
   EXTERNAL_OFF_HOLDS,
   PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX,
   OPERATING_MODE_SETTING,
@@ -182,24 +182,7 @@ describe('Leave off until turned on again (SDK-boundary e2e)', () => {
 
   // 4 kWh by 14:00 on a 2 kW element needs every hour left, this one included.
   const seedBookedSmartTask = () => {
-    mockHomeyInstance.settings.set(COMBINED_PRICES, {
-      version: 2,
-      days: {
-        '2026-07-25': {
-          hours: Array.from({ length: 24 }, (_, hour) => ({
-            startsAt: new Date(Date.UTC(2026, 6, 25, hour)).toISOString(),
-            total: 70,
-            isCheap: false,
-            isExpensive: false,
-          })),
-        },
-      },
-      avgPrice: 70,
-      lowThreshold: 60,
-      highThreshold: 80,
-      priceScheme: 'norway',
-      priceUnit: 'øre/kWh',
-    });
+    seedHourlyFlowPricesForTests(Date.UTC(2026, 6, 25), Array.from({ length: 24 }, () => 70));
     mockHomeyInstance.settings.set(`deferred_objective.${DEVICE}`, {
       enabled: true,
       kind: 'energy',

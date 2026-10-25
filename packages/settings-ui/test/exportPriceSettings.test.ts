@@ -1,3 +1,4 @@
+import { taskPricePeriodsFixture } from './helpers/taskPricePeriodsFixture.ts';
 import type { SettingsUiDeviceView } from '../src/ui/state.ts';
 import { withDescriptorIdentities } from './helpers/deviceSnapshotFixture.ts';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
@@ -589,6 +590,7 @@ describe('handleSchemeChange export transition (via priceConfig)', () => {
     getApiReadModelMock.mockImplementation(async (path: string) => {
       if (path === '/ui_prices') return {
         combinedPrices,
+        taskPricePeriods: taskPricePeriodsFixture(combinedPrices),
         priceTimeline: {
           state: 'ready', priceUnit: 'øre/kWh', hasExportPrice: true,
           periods: [{ startsAt, durationMinutes: 60, importPrice: 1, exportPrice: -0.05, level: 'normal' }],

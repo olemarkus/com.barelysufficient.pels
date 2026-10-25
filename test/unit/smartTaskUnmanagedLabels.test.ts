@@ -22,7 +22,7 @@ describe('un-managed device: list status', () => {
       liveCompletion: { kind: 'unavailable' },
       pending: false,
       diagnosticReasonCode: 'objective_device_unmanaged',
-      latest: { planStatus: 'on_track', hours: [{ startsAtMs: 1, plannedKWh: 1 }] },
+      latest: { planStatus: 'on_track', hours: [{ startsAtMs: 1, endsAtMs: (1) + 3_600_000, plannedKWh: 1 }] },
       targetValue: 55,
     }, 0)).toBe('paused_unmanaged');
   });

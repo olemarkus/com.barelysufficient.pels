@@ -48,7 +48,7 @@ const DEADLINE_MS = Date.UTC(2026, 4, 6, 6, 0, 0);
 const buildRevision = (
   overrides: Partial<DeferredObjectivePlanHistoryRevisionSnapshot> = {},
 ): DeferredObjectivePlanHistoryRevisionSnapshot => ({
-  hours: [{ startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 2 }],
+  hours: [{ startsAtMs: DEADLINE_MS - 2 * HOUR_MS, endsAtMs: (DEADLINE_MS - 2 * HOUR_MS) + 3_600_000, plannedKWh: 2 }],
   energyNeededKWh: 2,
   planStatus: 'on_track',
   revisedAtMs: DEADLINE_MS - 3 * HOUR_MS,
@@ -160,7 +160,7 @@ describe('DeadlinePlanHistoryDetail', () => {
 
   it('renders the "no hourly schedule was saved" fallback when both plan snapshots are null', async () => {
     const root = await mount(buildEntry({ originalPlan: null, finalPlan: null }));
-    expect(root.textContent).toContain('No hourly schedule was saved for this run');
+    expect(root.textContent).toContain('No schedule was saved for this run');
     expect(root.querySelector('.deadline-horizon-chart')).toBeNull();
   });
 
@@ -217,7 +217,7 @@ describe('DeadlinePlanHistoryDetail', () => {
 
   it('falls back to the original snapshot when no final revision was recorded', async () => {
     const original = buildRevision({
-      hours: [{ startsAtMs: DEADLINE_MS - 3 * HOUR_MS, plannedKWh: 2 }],
+      hours: [{ startsAtMs: DEADLINE_MS - 3 * HOUR_MS, endsAtMs: (DEADLINE_MS - 3 * HOUR_MS) + 3_600_000, plannedKWh: 2 }],
     });
     const { buildHistoryDetailRows } =
       await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
@@ -237,11 +237,11 @@ describe('DeadlinePlanHistoryDetail', () => {
     const { buildHistoryDetailRows, buildHistoryDetailChartOption } =
       await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
     const original = buildRevision({
-      hours: [{ startsAtMs: DEADLINE_MS - 4 * HOUR_MS, plannedKWh: 1 }],
+      hours: [{ startsAtMs: DEADLINE_MS - 4 * HOUR_MS, endsAtMs: (DEADLINE_MS - 4 * HOUR_MS) + 3_600_000, plannedKWh: 1 }],
       energyNeededKWh: 1,
     });
     const final = buildRevision({
-      hours: [{ startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 3 }],
+      hours: [{ startsAtMs: DEADLINE_MS - 2 * HOUR_MS, endsAtMs: (DEADLINE_MS - 2 * HOUR_MS) + 3_600_000, plannedKWh: 3 }],
       energyNeededKWh: 3,
     });
     const rows = buildHistoryDetailRows(
@@ -276,24 +276,124 @@ describe('DeadlinePlanHistoryDetail', () => {
     expect(legendNames).toContain('Measured Charging');
   });
 
-  it('seeds every hour in the deadline window even when the plan covers only one', async () => {
+  it('keeps the full deadline window around an isolated scheduled period', async () => {
     // Regression: a one-hour plan would previously render as a single floating
     // bar with no temporal context. The chart must span [startedAtMs, deadlineAtMs)
     // so the user sees the full window with the planned hour in context.
     const { buildHistoryDetailRows } =
       await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
     const onlyHour = buildRevision({
-      hours: [{ startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 0.6 }],
+      hours: [{ startsAtMs: DEADLINE_MS - HOUR_MS, endsAtMs: (DEADLINE_MS - HOUR_MS) + 3_600_000, plannedKWh: 0.6 }],
       energyNeededKWh: 0.6,
     });
     const rows = buildHistoryDetailRows(onlyHour, onlyHour, [], 'UTC', {
       startedAtMs: DEADLINE_MS - 8 * HOUR_MS,
       deadlineAtMs: DEADLINE_MS,
     });
-    expect(rows).toHaveLength(8);
-    // The planned hour sits at the end of the window; every earlier hour is zero.
-    expect(rows.slice(0, 7).every((row) => row.finalKWh === 0)).toBe(true);
-    expect(rows[7]!.finalKWh).toBeCloseTo(0.6);
+    expect(rows).toHaveLength(2);
+    // The unplanned seven-hour gap retains its real bounds without inventing
+    // hourly observations. The scheduled hour remains at the window's end.
+    expect(rows[0]).toMatchObject({
+      startsAtMs: DEADLINE_MS - 8 * HOUR_MS,
+      endsAtMs: DEADLINE_MS - HOUR_MS,
+      originalKWh: 0,
+      finalKWh: 0,
+      observed: false,
+    });
+    expect(rows[1]).toMatchObject({
+      startsAtMs: DEADLINE_MS - HOUR_MS,
+      endsAtMs: DEADLINE_MS,
+      originalKWh: 0.6,
+      finalKWh: 0.6,
+      observed: false,
+    });
+  });
+
+  it('clips migrated full-hour bookings to a nonaligned task window', async () => {
+    const { buildHistoryDetailRows } = await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
+    const start = DEADLINE_MS - 2 * HOUR_MS;
+    // Legacy snapshots acquire one-hour ends during migration and may have
+    // no coversFromMs; neither snapshot's price-hour edge is the task edge.
+    const original = buildRevision({
+      hours: [{ startsAtMs: start, endsAtMs: start + HOUR_MS, plannedKWh: 3 }],
+    });
+    const final = buildRevision({
+      hours: [{ startsAtMs: start + HOUR_MS, endsAtMs: DEADLINE_MS, plannedKWh: 6 }],
+    });
+    const rows = buildHistoryDetailRows(original, final, [], 'UTC', {
+      startedAtMs: start + HOUR_MS / 3,
+      deadlineAtMs: DEADLINE_MS - HOUR_MS / 3,
+    });
+    expect(rows.map(({ startsAtMs, endsAtMs, originalKWh, finalKWh }) => (
+      [startsAtMs, endsAtMs, originalKWh, finalKWh]
+    ))).toEqual([
+      [start + HOUR_MS / 3, start + HOUR_MS, 2, 0],
+      [start + HOUR_MS, DEADLINE_MS - HOUR_MS / 3, 0, 4],
+    ]);
+  });
+
+  it('draws thin-data history intervals at their actual widths across a long gap', async () => {
+    const { buildHistoryDetailRows, buildHistoryDetailChartOption } =
+      await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
+    const start = DEADLINE_MS - 8 * HOUR_MS;
+    const revision = buildRevision({
+      hours: [
+        { startsAtMs: start, endsAtMs: start + HOUR_MS / 4, plannedKWh: 0.5 },
+        { startsAtMs: DEADLINE_MS - HOUR_MS, endsAtMs: DEADLINE_MS, plannedKWh: 2 },
+      ],
+    });
+    const rows = buildHistoryDetailRows(revision, revision, [], 'UTC', {
+      startedAtMs: start, deadlineAtMs: DEADLINE_MS,
+    });
+    type BarDatum = { value: number[]; itemStyle: { opacity: number } };
+    type GeometryApi = {
+      value: (index: number) => number;
+      coord: (value: [number, number]) => [number, number];
+      style: () => Record<string, unknown>;
+    };
+    const option = buildHistoryDetailChartOption(rows, stubPalette, false, true, 'Measured Heating') as {
+      xAxis: { type: string; min: number; max: number };
+      series: Array<{
+        name: string; type: string; data: BarDatum[];
+        renderItem: (params: unknown, api: GeometryApi) => { shape: { x: number; width: number } };
+      }>;
+    };
+    expect(option.xAxis).toMatchObject({ type: 'time', min: start, max: DEADLINE_MS });
+    const series = option.series.find((item) => item.name === 'Revised schedule')!;
+    expect(series.type).toBe('custom');
+    expect(series.data.map((item) => item.value)).toEqual([
+      [start, start + HOUR_MS / 4, 0.5],
+      [start + HOUR_MS / 4, DEADLINE_MS - HOUR_MS, 0],
+      [DEADLINE_MS - HOUR_MS, DEADLINE_MS, 2],
+    ]);
+    // A synthetic 80 px/hour axis makes the quarter 20 px wide and the
+    // final hour 80 px wide, with the six-hour-and-45-minute gap intact.
+    const geometry = (datum: BarDatum) => series.renderItem({}, {
+      value: (index) => datum.value[index]!,
+      coord: ([atMs, kwh]) => [(atMs - start) / HOUR_MS * 80, 100 - kwh * 10],
+      style: () => ({}),
+    }).shape;
+    expect(geometry(series.data[0]!)).toMatchObject({ x: 1, width: 18 });
+    expect(geometry(series.data[2]!)).toMatchObject({ x: 561, width: 78 });
+    expect(series.data[1]!.itemStyle.opacity).toBe(0);
+  });
+
+  it('labels a short history run entirely between quarter-hour boundaries', async () => {
+    const { buildHistoryDetailRows, buildHistoryDetailChartOption } =
+      await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
+    const start = DEADLINE_MS + 60_000;
+    const end = DEADLINE_MS + 10 * 60_000;
+    const revision = buildRevision({ hours: [{ startsAtMs: start, endsAtMs: end, plannedKWh: 0.3 }] });
+    const rows = buildHistoryDetailRows(revision, revision, [], 'UTC', {
+      startedAtMs: start, deadlineAtMs: end,
+    });
+    const option = buildHistoryDetailChartOption(rows, stubPalette, false, true, 'Measured Heating') as {
+      xAxis: { axisLabel: { formatter: (atMs: number) => string } };
+    };
+    const labels = Array.from({ length: 10 }, (_, minute) => (
+      option.xAxis.axisLabel.formatter(start + minute * 60_000)
+    )).filter(Boolean);
+    expect(labels).toEqual(['06:01', '06:04', '06:07', '06:10']);
   });
 
   it('omits the observed-series legend item when no hour was observed', async () => {
@@ -765,8 +865,8 @@ describe('DeadlinePlanHistoryDetail', () => {
       const revision = trajectoryRevision({
         progressDirection: 'decreasing',
         hours: [
-          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 5 },
-          { startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 5 },
+          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, endsAtMs: (DEADLINE_MS - 2 * HOUR_MS) + 3_600_000, plannedKWh: 5 },
+          { startsAtMs: DEADLINE_MS - HOUR_MS, endsAtMs: (DEADLINE_MS - HOUR_MS) + 3_600_000, plannedKWh: 5 },
         ],
       });
       const root = await mount(buildEntry({
@@ -845,8 +945,8 @@ describe('DeadlinePlanHistoryDetail', () => {
         await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
       const revision = trajectoryRevision({
         hours: [
-          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 1 },
-          { startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, endsAtMs: (DEADLINE_MS - 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: DEADLINE_MS - HOUR_MS, endsAtMs: (DEADLINE_MS - HOUR_MS) + 3_600_000, plannedKWh: 1 },
         ],
       });
       const entry = buildEntry({
@@ -893,8 +993,8 @@ describe('DeadlinePlanHistoryDetail', () => {
       const original = trajectoryRevision();
       const revised = trajectoryRevision({
         hours: [
-          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 1 },
-          { startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 1.5 },
+          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, endsAtMs: (DEADLINE_MS - 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: DEADLINE_MS - HOUR_MS, endsAtMs: (DEADLINE_MS - HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
         ],
       });
       const entry = buildEntry({
@@ -1025,8 +1125,8 @@ describe('DeadlinePlanHistoryDetail', () => {
       const original = trajectoryRevision();
       const revised = trajectoryRevision({
         hours: [
-          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 1 },
-          { startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 1.5 },
+          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, endsAtMs: (DEADLINE_MS - 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+          { startsAtMs: DEADLINE_MS - HOUR_MS, endsAtMs: (DEADLINE_MS - HOUR_MS) + 3_600_000, plannedKWh: 1.5 },
         ],
       });
       const revisedRoot = await mount(buildEntry({
@@ -1098,7 +1198,7 @@ describe('DeadlinePlanHistoryDetail', () => {
     });
   });
 
-  describe('per-hour bar strip (Phase 1B pinned readout)', () => {
+  describe('per-period bar strip (Phase 1B pinned readout)', () => {
     const stripEntry = (overrides: Partial<DeferredObjectivePlanHistoryEntry> = {}) => {
       const startedAtMs = DEADLINE_MS - 4 * HOUR_MS;
       // Missed outcome so the chart card defaults expanded — the postmortem
@@ -1113,27 +1213,27 @@ describe('DeadlinePlanHistoryDetail', () => {
         // (where the strip lives) renders rather than the empty-state card.
         originalPlan: buildRevision({
           hours: [
-            { startsAtMs: startedAtMs, plannedKWh: 2 },
-            { startsAtMs: startedAtMs + 2 * HOUR_MS, plannedKWh: 1 },
+            { startsAtMs: startedAtMs, endsAtMs: (startedAtMs) + 3_600_000, plannedKWh: 2 },
+            { startsAtMs: startedAtMs + 2 * HOUR_MS, endsAtMs: (startedAtMs + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
           ],
         }),
         // Raw øre prices; the readout scales by the recorded divisor.
         hourlyContributions: [
-          { atMs: startedAtMs, deliveredKWh: 1.5, priceValue: 20, tone: 'cheap' },
-          { atMs: startedAtMs + HOUR_MS, deliveredKWh: 1.2, priceValue: 55, tone: 'normal' },
+          { atMs: startedAtMs, endsAtMs: (startedAtMs) + 3_600_000, deliveredKWh: 1.5, priceValue: 20, tone: 'cheap' },
+          { atMs: startedAtMs + HOUR_MS, endsAtMs: (startedAtMs + HOUR_MS) + 3_600_000, deliveredKWh: 1.2, priceValue: 55, tone: 'normal' },
         ],
         costDisplay: { unit: 'kr', divisor: 100 },
         ...overrides,
       });
     };
 
-    it('renders the question title, one bucket per hour, and no floating tooltips', async () => {
+    it('renders the question title, recorded periods and gaps, and no floating tooltips', async () => {
       const root = await mount(stripEntry());
-      expect(root.textContent).toContain('When did each hour run, and what did it cost?');
+      expect(root.textContent).toContain('When did it run, and what did it cost?');
       const strip = root.querySelector('.hourly-strip');
       expect(strip).not.toBeNull();
-      // 4-hour window → 4 buckets, regardless of how many contributions
-      // landed (gap buckets are emitted to keep the time axis intact).
+      // Two recorded hourly contributions, one skipped booking, and the
+      // remaining gap retain their exact bounds across this four-hour window.
       const buckets = strip!.querySelectorAll('.hourly-strip__bucket');
       expect(buckets.length).toBe(4);
       expect(buckets[0]!.getAttribute('data-tone')).toBe('cheap');
@@ -1168,12 +1268,12 @@ describe('DeadlinePlanHistoryDetail', () => {
       const stripReadout = readouts[readouts.length - 1]!;
       // 20 raw øre at divisor 100 → 0.20 kr/kWh; × 1.5 kWh ≈ 0.30 kr.
       expect(stripReadout.querySelector('.deadline-readout__primary')?.textContent)
-        .toBe('02:00 · 1.5 kWh · 0.20 kr/kWh ≈ 0.30 kr');
+        .toBe('02:00–03:00 · 1.5 kWh · 0.20 kr/kWh ≈ 0.30 kr');
       expect(stripReadout.querySelector('.deadline-readout__secondary')?.textContent)
         .toBe('Ran as planned');
     });
 
-    it('moves the readout + selection outline on tap and explains skipped hours', async () => {
+    it('moves the readout + selection outline on tap and explains skipped periods', async () => {
       const root = await mount(stripEntry());
       const buckets = root.querySelectorAll<HTMLElement>('.hourly-strip__bucket');
       // Index 2 (04:00) was planned but never delivered → outline bucket.
@@ -1186,7 +1286,7 @@ describe('DeadlinePlanHistoryDetail', () => {
       const readouts = root.querySelectorAll('.deadline-readout');
       const stripReadout = readouts[readouts.length - 1]!;
       expect(stripReadout.querySelector('.deadline-readout__primary')?.textContent)
-        .toBe('04:00 · 1.0 kWh planned');
+        .toBe('04:00–05:00 · 1.0 kWh planned');
       // No replan recorded → the neutral skip line, never a guessed reason.
       expect(stripReadout.querySelector('.deadline-readout__secondary')?.textContent)
         .toBe('Planned, didn’t run');
@@ -1212,7 +1312,7 @@ describe('DeadlinePlanHistoryDetail', () => {
       // Succeeded outcome → receipt shape, chart card collapsed by default.
       const revision = buildRevision({
         kwhPerUnitMean: 0.5,
-        hours: [{ startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 2 }],
+        hours: [{ startsAtMs: DEADLINE_MS - 2 * HOUR_MS, endsAtMs: (DEADLINE_MS - 2 * HOUR_MS) + 3_600_000, plannedKWh: 2 }],
       });
       const root = await mount(buildEntry({
         outcome: 'met',
@@ -1224,7 +1324,7 @@ describe('DeadlinePlanHistoryDetail', () => {
           { atMs: DEADLINE_MS - HOUR_MS, valueC: 65, valuePercent: null },
         ],
         hourlyContributions: [
-          { atMs: DEADLINE_MS - 2 * HOUR_MS, deliveredKWh: 1.8, priceValue: 30, tone: 'cheap' },
+          { atMs: DEADLINE_MS - 2 * HOUR_MS, endsAtMs: (DEADLINE_MS - 2 * HOUR_MS) + 3_600_000, deliveredKWh: 1.8, priceValue: 30, tone: 'cheap' },
         ],
         costDisplay: { unit: 'kr', divisor: 100 },
       }));

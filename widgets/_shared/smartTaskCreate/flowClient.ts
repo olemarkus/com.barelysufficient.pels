@@ -59,6 +59,7 @@ const PREVIEW_RESPONSE: CreateSmartTaskPreviewResponse = {
     status: 'on_track',
     scheduledHours: PREVIEW_SCHEDULED_INDEX.map((index) => ({
       startsAtMs: PREVIEW_NEXT_HOUR_MS + index * HOUR_MS,
+      endsAtMs: PREVIEW_NEXT_HOUR_MS + (index + 1) * HOUR_MS,
       plannedKWh: 2,
     })),
     projectedFinishAtMs: PREVIEW_NEXT_HOUR_MS + 9 * HOUR_MS,
@@ -68,6 +69,7 @@ const PREVIEW_RESPONSE: CreateSmartTaskPreviewResponse = {
     costUnit: 'kr',
     priceSeries: PREVIEW_PRICE_CURVE.map((price, index) => ({
       startsAtMs: PREVIEW_NEXT_HOUR_MS + index * HOUR_MS,
+      endsAtMs: PREVIEW_NEXT_HOUR_MS + (index + 1) * HOUR_MS,
       price,
     })),
   },

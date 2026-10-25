@@ -1,3 +1,4 @@
+import type { MeteredPricePeriod } from '../../../packages/planner-types/src/priceHorizon';
 import type { TaskEvaluation } from './taskEvaluation';
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { resolveObjectiveTargetValue } from '../../../packages/shared-domain/src/deferredObjectiveValues';
@@ -9,14 +10,14 @@ import type {
   TaskDeviceConstraint, TaskDeliveryControl, TaskDeliveryEvidence,
 } from '../../../packages/contracts/src/taskDelivery';
 import type {
-  DeferredObjectiveActivePlansV1,
+  DeferredObjectiveActivePlansV2,
   DeferredObjectiveActivePlanTrajectory,
   DeferredObjectiveActivePlanV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   BudgetOnlyMissRecord,
   DeferredObjectivePlanHistoryRecord,
-  DeferredObjectivePlanHistoryV6,
+  DeferredObjectivePlanHistoryV7,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import { getDebugEmitter } from '../../logging/logger';
@@ -28,8 +29,6 @@ import {
   appendHourlyContribution,
   buildFinalizedAttributionEvent,
   drainProgressSamples,
-  hourBucketMs,
-  type HourPriceResolver,
 } from './planHistoryV4Helpers';
 import {
   buildKey,
@@ -120,7 +119,7 @@ export type PlanHistoryPersistDeps = {
   // so a later flush retries, and lets callers gate side-effects (like advancing the
   // observation watermark) on real persistence success.
   save: (
-    history: DeferredObjectivePlanHistoryV6,
+    history: DeferredObjectivePlanHistoryV7,
     meteredDeliveryStates: readonly PersistedMeteredDeliveryState[],
   ) => boolean;
   // Optional bus the recorder publishes ended events to as runs finalize. The
@@ -128,14 +127,9 @@ export type PlanHistoryPersistDeps = {
   // (`met`/`missed`/`abandoned`) before publishing — backfill and replaced
   // entries never reach the bus.
   endedBus: DeferredObjectiveEndedBus;
-  // Resolve the spot price and price tone (cheap/normal/expensive) for an
-  // hour-aligned timestamp. The internal hour-rollover detector calls this
-  // when it closes an hour so per-hour `hourlyContributions` carry a stable
-  // band even if cheap/normal/expensive thresholds shift in a later
-  // version. Returning `null` (no price data yet, hour outside the
-  // published horizon) causes that hour's contribution to be skipped
-  // rather than fabricated.
-  resolveHourPrice: HourPriceResolver;
+  // Native import-price periods overlapping the requested window. Gaps stay
+  // absent so delivered energy can be retained without inventing its cost.
+  getMeteredPricePeriods: (startMs: number, endMs: number) => MeteredPricePeriod[];
   // Observer evidence for the operational completion verdict.
   getStallClassification: DeferredObjectiveStallClassificationReader;
   getDeviceConstraint: (deviceId: string) => TaskDeviceConstraint;
@@ -144,7 +138,7 @@ export type PlanHistoryPersistDeps = {
 };
 
 export type PlanHistoryLoadResult = {
-  snapshot: DeferredObjectivePlanHistoryV6;
+  snapshot: DeferredObjectivePlanHistoryV7;
   persistenceSafe: boolean;
   meteredDeliveryStates: readonly PersistedMeteredDeliveryState[];
 };
@@ -208,7 +202,7 @@ export class DeferredObjectivePlanHistoryRecorder {
   observe(
     diagnostics: readonly DeferredObjectiveDiagnostic[],
     nowMs: number,
-    activePlans: DeferredObjectiveActivePlansV1,
+    activePlans: DeferredObjectiveActivePlansV2,
   ): void {
     const seenKeys = new Set<InProgressKey>();
     for (const diag of diagnostics) {
@@ -263,7 +257,7 @@ export class DeferredObjectivePlanHistoryRecorder {
     diag: DeferredObjectiveDiagnostic,
     key: InProgressKey,
     nowMs: number,
-    activePlans: DeferredObjectiveActivePlansV1,
+    activePlans: DeferredObjectiveActivePlansV2,
   ): void {
     const existing = this.inProgress.get(key);
     const plan = findPlanForRecord(activePlans, {
@@ -320,7 +314,7 @@ export class DeferredObjectivePlanHistoryRecorder {
   private storeWithHourStartBooking(
     key: InProgressKey, record: InProgressRecord, plan: DeferredObjectiveActivePlanV1 | undefined, nowMs: number,
   ): void {
-    const captured = captureHourStartBooking(record, plan, nowMs);
+    const captured = captureHourStartBooking(record, plan, nowMs, this.deps.getMeteredPricePeriods(nowMs, nowMs + 1));
     if (captured !== record) this.dirty = true;
     this.inProgress.set(key, captured);
   }
@@ -451,32 +445,29 @@ export class DeferredObjectivePlanHistoryRecorder {
     currentDrawKw: number,
   ): InProgressRecord {
     let cursorMs = startMs;
-    let deliveredKWh = record.deliveredKWh;
+    const deliveredKWh = record.deliveredKWh + currentDrawKw * ((endMs - startMs) / ONE_HOUR_MS);
     let totalCost = record.totalCost;
     let costDisplay = record.costDisplay;
     let hourlyContributions = record.hourlyContributions;
     let deliveryPriceComplete = record.deliveryPriceComplete;
-    while (cursorMs < endMs) {
-      const hourMs = hourBucketMs(cursorMs);
-      const sliceEndMs = Math.min(endMs, hourMs + ONE_HOUR_MS);
-      const sliceDeliveredKWh = currentDrawKw * ((sliceEndMs - cursorMs) / ONE_HOUR_MS);
-      const price = this.deps.resolveHourPrice(hourMs);
-      if (price === null) {
-        deliveredKWh += sliceDeliveredKWh;
-        deliveryPriceComplete = deliveryPriceComplete && sliceDeliveredKWh === 0;
-      } else {
-        deliveredKWh += sliceDeliveredKWh;
-        totalCost += sliceDeliveredKWh * price.priceValue;
-        costDisplay ??= price.costDisplay;
-        hourlyContributions = appendHourlyContribution(hourlyContributions, {
-          atMs: hourMs,
-          deliveredKWh: sliceDeliveredKWh,
-          priceValue: price.priceValue,
-          tone: price.tone,
-        });
-      }
+    for (const price of this.deps.getMeteredPricePeriods(startMs, endMs)) {
+      const sliceStartMs = Math.max(startMs, cursorMs, price.startMs);
+      const sliceEndMs = Math.min(endMs, price.endMs);
+      if (sliceEndMs <= sliceStartMs) continue;
+      if (sliceStartMs > cursorMs && currentDrawKw > 0) deliveryPriceComplete = false;
+      const sliceDeliveredKWh = currentDrawKw * ((sliceEndMs - sliceStartMs) / ONE_HOUR_MS);
+      totalCost += sliceDeliveredKWh * price.priceValue;
+      costDisplay ??= price.costDisplay;
+      hourlyContributions = appendHourlyContribution(hourlyContributions, {
+        atMs: price.startMs,
+        endsAtMs: price.endMs,
+        deliveredKWh: sliceDeliveredKWh,
+        priceValue: price.priceValue,
+        tone: price.tone,
+      });
       cursorMs = sliceEndMs;
     }
+    if (cursorMs < endMs && currentDrawKw > 0) deliveryPriceComplete = false;
     return {
       ...record,
       hasDeliveryContribution: true,
@@ -567,7 +558,7 @@ export class DeferredObjectivePlanHistoryRecorder {
     return this.dirty;
   }
 
-  getHistorySnapshot(): DeferredObjectivePlanHistoryV6 {
+  getHistorySnapshot(): DeferredObjectivePlanHistoryV7 {
     return {
       version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
       entries: this.entries.slice(),

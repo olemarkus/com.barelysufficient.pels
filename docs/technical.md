@@ -431,6 +431,37 @@ PELS enforces the hard cap on the selected **capacity period**: a clock hour for
 
 PELS controls devices through Homey's local API where it's available — no cloud round-trip on the PELS side of the control path. Device apps that bridge to the cloud add their own latency on top.
 
+## Smart task scheduling
+
+Charging, temperature and energy Smart tasks follow the electricity-price source's actual periods.
+With 15-minute prices, PELS can choose individual quarters within an hour; hourly prices retain
+hourly scheduling. Each scheduled interval has explicit start and end times, including a partial
+first period or a ready-by time between price boundaries. This scheduling resolution is independent
+of the **Capacity period** used to enforce the hard cap.
+
+The schedule is normally reconsidered once per hour at the existing `:58` settle, with the existing
+initial-planning and explicit-change paths. Between settles, each whole-home meter reading uses
+the saved interval covering the current time. Crossing a quarter boundary changes which interval
+is active on the next meter-driven plan; it does not trigger another schedule calculation or add a
+separate control timer. Normal power limits, priorities, cooldowns and task-completion rules apply.
+
+Daily-budget learning and its allocations remain hourly. Smart tasks receive the share of each
+hour's background usage and managed-device allowance that overlaps their interval: a full quarter
+receives one quarter of the hourly allowance. Higher-priority task reservations are subtracted
+only where their time spans overlap.
+
+Scheduling uses the price after the configured solar and export adjustments. Cost estimates and
+recorded task costs use the import price. Metered energy is integrated across each actual price
+boundary; missing prices leave the energy recorded and the total cost unavailable. A restart
+keeps previously recorded energy and cost and starts measuring again when observations resume.
+Old history keeps its recorded hourly costs.
+
+The **Smart task schedule changed** Flow trigger compares total scheduled duration. Its
+`planned_hours` tag includes fractions, so two 15-minute periods count as `0.5` hours. Changes to
+energy alone or to the chosen periods without changing total duration stay quiet. The
+**Current price is one of today's lowest** and **Current price is one of the lowest before a time**
+Flow cards continue to compare hourly prices.
+
 ## Pricing Model
 
 PELS supports four price schemes:

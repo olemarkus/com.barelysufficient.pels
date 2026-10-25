@@ -11,6 +11,7 @@ import { classifyPriceLevelSummaryRead } from './priceLevelSummaryRead.ts';
 const EMPTY_PRICES_PAYLOAD: SettingsUiPricesPayload = {
   combinedPrices: null,
   priceTimeline: { state: 'unavailable', reason: 'no_prices' },
+  taskPricePeriods: [],
   priceArea: null,
   flowToday: null,
   flowTomorrow: null,

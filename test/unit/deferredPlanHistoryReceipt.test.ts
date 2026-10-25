@@ -32,9 +32,9 @@ const buildSnapshot = (
   overrides: Partial<DeferredObjectivePlanHistoryRevisionSnapshot> = {},
 ): DeferredObjectivePlanHistoryRevisionSnapshot => ({
   hours: [
-    { startsAtMs: DEADLINE_MS - 4 * HOUR_MS, plannedKWh: 1 },
-    { startsAtMs: DEADLINE_MS - 3 * HOUR_MS, plannedKWh: 4 },
-    { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 2 },
+    { startsAtMs: DEADLINE_MS - 4 * HOUR_MS, endsAtMs: (DEADLINE_MS - 4 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
+    { startsAtMs: DEADLINE_MS - 3 * HOUR_MS, endsAtMs: (DEADLINE_MS - 3 * HOUR_MS) + 3_600_000, plannedKWh: 4 },
+    { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, endsAtMs: (DEADLINE_MS - 2 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
   ],
   energyNeededKWh: 7,
   planStatus: 'on_track',
@@ -70,7 +70,7 @@ const buildEntry = (
 });
 
 describe('formatPlanHistoryReceiptTimeline (Succeeded)', () => {
-  it('composes a 3-row Started → Largest planned hour → Ready timeline', () => {
+  it('composes a 3-row Started → Largest planned period → Ready timeline', () => {
     const rows = formatPlanHistoryReceiptTimeline(
       buildEntry({
         progressSamples: [
@@ -81,9 +81,9 @@ describe('formatPlanHistoryReceiptTimeline (Succeeded)', () => {
       'UTC',
     );
     expect(rows).not.toBeNull();
-    expect(rows!.map((row) => row.label)).toEqual(['Started', 'Largest planned hour', 'Ready']);
-    // Largest planned hour points at the 4 kWh peak hour (DEADLINE_MS - 3h = 04:00 UTC).
-    const peak = rows!.find((row) => row.label === 'Largest planned hour');
+    expect(rows!.map((row) => row.label)).toEqual(['Started', 'Largest planned period', 'Ready']);
+    // Largest planned period points at the 4 kWh peak hour (DEADLINE_MS - 3h = 04:00 UTC).
+    const peak = rows!.find((row) => row.label === 'Largest planned period');
     expect(peak?.time).toBe('04:00');
     expect(peak?.detail).toContain('4.0 kWh');
     const ready = rows!.find((row) => row.label === 'Ready');
@@ -140,12 +140,12 @@ describe('formatPlanHistoryReceiptTimeline (Succeeded)', () => {
   // "0.0 kWh planned".
   it('names the hour with the largest booking at its start, not the final revision\'s remainder', () => {
     const rows = formatPlanHistoryReceiptTimeline(buildEntry({
-      finalPlan: buildSnapshot({ hours: [{ startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 0.03 }] }),
+      finalPlan: buildSnapshot({ hours: [{ startsAtMs: DEADLINE_MS - HOUR_MS, endsAtMs: (DEADLINE_MS - HOUR_MS) + 3_600_000, plannedKWh: 0.03 }] }),
       hourStartBookings: [
-        { atMs: DEADLINE_MS - 4 * HOUR_MS, bookedKWh: 1.5 },
-        { atMs: DEADLINE_MS - 3 * HOUR_MS, bookedKWh: 6.2 },
-        { atMs: DEADLINE_MS - 2 * HOUR_MS, bookedKWh: 0 },
-        { atMs: DEADLINE_MS - HOUR_MS, bookedKWh: 2 },
+        { atMs: DEADLINE_MS - 4 * HOUR_MS, endsAtMs: (DEADLINE_MS - 4 * HOUR_MS) + 3_600_000, bookedKWh: 1.5 },
+        { atMs: DEADLINE_MS - 3 * HOUR_MS, endsAtMs: (DEADLINE_MS - 3 * HOUR_MS) + 3_600_000, bookedKWh: 6.2 },
+        { atMs: DEADLINE_MS - 2 * HOUR_MS, endsAtMs: (DEADLINE_MS - 2 * HOUR_MS) + 3_600_000, bookedKWh: 0 },
+        { atMs: DEADLINE_MS - HOUR_MS, endsAtMs: (DEADLINE_MS - HOUR_MS) + 3_600_000, bookedKWh: 2 },
       ],
     }), 'UTC');
     const peak = rows!.find((row) => row.label === RECEIPT_ROW_LABEL_LARGEST_PLANNED_HOUR);
@@ -172,9 +172,9 @@ describe('formatPlanHistoryShortfallChip (Missed)', () => {
       initialEnergyExpectedKWh: 24,
       finalPlan: buildSnapshot({
         hours: [
-          { startsAtMs: DEADLINE_MS - 4 * HOUR_MS, plannedKWh: 8 },
-          { startsAtMs: DEADLINE_MS - 3 * HOUR_MS, plannedKWh: 8 },
-          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 8 },
+          { startsAtMs: DEADLINE_MS - 4 * HOUR_MS, endsAtMs: (DEADLINE_MS - 4 * HOUR_MS) + 3_600_000, plannedKWh: 8 },
+          { startsAtMs: DEADLINE_MS - 3 * HOUR_MS, endsAtMs: (DEADLINE_MS - 3 * HOUR_MS) + 3_600_000, plannedKWh: 8 },
+          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, endsAtMs: (DEADLINE_MS - 2 * HOUR_MS) + 3_600_000, plannedKWh: 8 },
         ],
       }),
     }));
@@ -198,8 +198,8 @@ describe('formatPlanHistoryShortfallChip (Missed)', () => {
       initialEnergyExpectedKWh: 9.9,
       finalPlan: buildSnapshot({
         hours: [
-          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 5 },
-          { startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 4.9 },
+          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, endsAtMs: (DEADLINE_MS - 2 * HOUR_MS) + 3_600_000, plannedKWh: 5 },
+          { startsAtMs: DEADLINE_MS - HOUR_MS, endsAtMs: (DEADLINE_MS - HOUR_MS) + 3_600_000, plannedKWh: 4.9 },
         ],
       }),
     }));
@@ -217,13 +217,13 @@ describe('formatPlanHistoryShortfallChip (Missed)', () => {
       deliveredKWh: 4,
       initialEnergyExpectedKWh: 10,
       finalPlan: buildSnapshot({
-        hours: [{ startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 0.03 }],
+        hours: [{ startsAtMs: DEADLINE_MS - HOUR_MS, endsAtMs: (DEADLINE_MS - HOUR_MS) + 3_600_000, plannedKWh: 0.03 }],
       }),
       hourStartBookings: [
-        { atMs: DEADLINE_MS - 4 * HOUR_MS, bookedKWh: 3 },
-        { atMs: DEADLINE_MS - 3 * HOUR_MS, bookedKWh: 3 },
-        { atMs: DEADLINE_MS - 2 * HOUR_MS, bookedKWh: 4 },
-        { atMs: DEADLINE_MS - HOUR_MS, bookedKWh: 7 },
+        { atMs: DEADLINE_MS - 4 * HOUR_MS, endsAtMs: (DEADLINE_MS - 4 * HOUR_MS) + 3_600_000, bookedKWh: 3 },
+        { atMs: DEADLINE_MS - 3 * HOUR_MS, endsAtMs: (DEADLINE_MS - 3 * HOUR_MS) + 3_600_000, bookedKWh: 3 },
+        { atMs: DEADLINE_MS - 2 * HOUR_MS, endsAtMs: (DEADLINE_MS - 2 * HOUR_MS) + 3_600_000, bookedKWh: 4 },
+        { atMs: DEADLINE_MS - HOUR_MS, endsAtMs: (DEADLINE_MS - HOUR_MS) + 3_600_000, bookedKWh: 7 },
       ],
     }));
     expect(line).toMatch(/Delivered 4\.0 of 10\.0 kWh/);
@@ -237,9 +237,9 @@ describe('formatPlanHistoryShortfallChip (Missed)', () => {
       deliveredKWh: 17,
       finalPlan: buildSnapshot({
         hours: [
-          { startsAtMs: DEADLINE_MS - 4 * HOUR_MS, plannedKWh: 8 },
-          { startsAtMs: DEADLINE_MS - 3 * HOUR_MS, plannedKWh: 8 },
-          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 8 },
+          { startsAtMs: DEADLINE_MS - 4 * HOUR_MS, endsAtMs: (DEADLINE_MS - 4 * HOUR_MS) + 3_600_000, plannedKWh: 8 },
+          { startsAtMs: DEADLINE_MS - 3 * HOUR_MS, endsAtMs: (DEADLINE_MS - 3 * HOUR_MS) + 3_600_000, plannedKWh: 8 },
+          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, endsAtMs: (DEADLINE_MS - 2 * HOUR_MS) + 3_600_000, plannedKWh: 8 },
         ],
       }),
     }));
@@ -903,9 +903,9 @@ describe('receipt strings are sourced from the shared strings module', () => {
       initialEnergyExpectedKWh: 24,
       finalPlan: buildSnapshot({
         hours: [
-          { startsAtMs: DEADLINE_MS - 4 * HOUR_MS, plannedKWh: 8 },
-          { startsAtMs: DEADLINE_MS - 3 * HOUR_MS, plannedKWh: 8 },
-          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 8 },
+          { startsAtMs: DEADLINE_MS - 4 * HOUR_MS, endsAtMs: (DEADLINE_MS - 4 * HOUR_MS) + 3_600_000, plannedKWh: 8 },
+          { startsAtMs: DEADLINE_MS - 3 * HOUR_MS, endsAtMs: (DEADLINE_MS - 3 * HOUR_MS) + 3_600_000, plannedKWh: 8 },
+          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, endsAtMs: (DEADLINE_MS - 2 * HOUR_MS) + 3_600_000, plannedKWh: 8 },
         ],
       }),
     }));

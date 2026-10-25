@@ -1,5 +1,5 @@
 // Producer for the smart-task live page's schedule timeline ("When will it
-// run, and at what price?"): per-hour bars + pinned-readout lines +
+// run, and at what price?"): per-period bars + pinned-readout lines +
 // now/deadline marker coordinates + the trust caption.
 // Split out of `deadlinePlan.ts` (payload assembly) to keep that file under
 // the max-lines ceiling; this module owns every timeline-side resolution so
@@ -18,7 +18,6 @@ import {
 } from '../../../shared-domain/src/price/planningPrice.ts';
 import { formatDeadlineFull, formatHourLabel } from './deadlinePlanFormatters.ts';
 import {
-  ONE_HOUR_MS,
   type DeadlinePlanSchedule,
   type HorizonHour,
   type ObjectivePayloadReady,
@@ -51,19 +50,6 @@ const resolveNowIndex = (hours: HorizonHour[], nowMs: number): number => {
   return 0;
 };
 
-// Fractional category-axis coordinate for a timestamp. With `boundaryGap:
-// true` category `i` spans `[i - 0.5, i + 0.5]`, so an in-hour fraction maps
-// the timestamp to its true x-position (the deadline markLine must sit at the
-// real deadline, not the centre of the last bar).
-const toCategoryAxisX = (hours: HorizonHour[], index: number, atMs: number): number => {
-  const hour = hours[index];
-  // No hour at that slot: park at the category's left edge, where the
-  // empty-window branch below already puts its markLines.
-  if (hour === undefined) return index - 0.5;
-  const fraction = Math.min(1, Math.max(0, (atMs - hour.startsAtMs) / ONE_HOUR_MS));
-  return index - 0.5 + fraction;
-};
-
 export const buildTimeline = (
   input: ObjectivePayloadReady,
   schedule: DeadlinePlanSchedule,
@@ -73,20 +59,15 @@ export const buildTimeline = (
   const { labels, originalChargeByStartMs, currentChargeByStartMs } = schedule;
   const latestRevisionReason = ctx.activePlan.latest.reason;
   const ariaLabel = `Smart task schedule for ${formatDisplayDeviceName(ctx.device.name)}`;
-  // Empty price window: `lastIndex` would be -1 and `toCategoryAxisX` would
-  // index `hours[-1]` (TypeError). The normal path can't reach here —
-  // `prepareObjectivePayload` routes zero-hour windows to `awaiting_prices` —
-  // but direct callers get the same flat shape the view already tolerates for
-  // an absent selection (`hours[effectiveIndex]` is optional-chained and the
-  // chart builders handle empty arrays), with the markLines parked at the
-  // first category edge and the caption suppressed.
+  // Direct callers with no price periods keep the same empty view shape,
+  // with exact marker timestamps and no scheduled-duration caption.
   if (horizon.length === 0) {
     return {
       ariaLabel,
       hours: [],
       nowIndex: 0,
-      nowAxisX: -0.5,
-      deadlineAxisX: -0.5,
+      nowAxisX: nowMs,
+      deadlineAxisX: deadlineAtMs,
       deadlineMarkLabel: `${DEADLINE_MARKER_WORD} ${formatDeadlineFull(deadlineAtMs)}`,
       cheapestHoursCaption: null,
       planningPriceNote: null,
@@ -111,10 +92,16 @@ export const buildTimeline = (
     const displayPrice = hour.planningPrice / Math.max(1, costDisplay.divisor);
     const hourChanged = Math.abs(originalKwh - currentKwh) > 0.001;
     const planned = currentKwh > 0;
-    const measuredKwh = resolveActualDeviceKwh(input.bootstrap, ctx.deviceId, hour.startsAtMs);
+    // Device energy is tracked hourly. A prorated quarter is an estimate, not
+    // a measured observation, so only an exact tracked hour gets that label.
+    const measuredKwh = hour.startsAtMs % 3_600_000 === 0
+      && hour.endMs - hour.startsAtMs === 3_600_000
+      && input.ctx.activePlan.startedAtMs <= hour.startsAtMs
+      ? resolveActualPeriodKwh(input, hour) : null;
     const revisionLine = hourChanged ? (labels.revisionReasonTooltipLine[latestRevisionReason] ?? null) : null;
     return {
       startsAtMs: hour.startsAtMs,
+      endsAtMs: hour.endMs,
       time: formatHourLabel(hour.startsAtMs),
       price: formatPrice(displayPrice),
       priceValue: displayPrice,
@@ -122,7 +109,7 @@ export const buildTimeline = (
       changed: hourChanged,
       readout: {
         primary: formatSmartTaskHourReadoutPrimary(
-          index === nowIndex ? NOW_MARKER_WORD : formatHourLabel(hour.startsAtMs),
+          index === nowIndex ? NOW_MARKER_WORD : `${formatHourLabel(hour.startsAtMs)}–${formatHourLabel(hour.endMs)}`,
           `${formatPrice(displayPrice)} ${priceUnitLabel}`,
           currentKwh,
           labels.deviceSeriesName,
@@ -134,26 +121,20 @@ export const buildTimeline = (
       },
     };
   });
-  const lastIndex = horizon.length - 1;
   return {
     ariaLabel,
     hours,
     nowIndex,
-    nowAxisX: toCategoryAxisX(horizon, nowIndex, nowMs),
-    deadlineAxisX: toCategoryAxisX(horizon, lastIndex, deadlineAtMs),
+    nowAxisX: nowMs,
+    deadlineAxisX: deadlineAtMs,
     deadlineMarkLabel: `${DEADLINE_MARKER_WORD} ${formatDeadlineFull(deadlineAtMs)}`,
-    // Trust caption read from the same already-scaled per-hour display prices
-    // (the PLANNING price, øre→kr handled upstream by the CostDisplay divisor)
-    // the chart renders. Every hour in the window is eligible (the window ends
-    // at the deadline), so "Picked N of the M hours it can use · avg P"
-    // reconciles with the bars the user sees. It does NOT reuse the hero's
-    // planned-cost figure — that stays on the import price
-    // (`resolveLiveCostAndDelivery`), so for a prosumer the caption's planning
-    // average and the hero's money cost legitimately differ. Averaging +
-    // phrasing live in shared-domain so this stays a thin projection.
+    // The caption sums scheduled duration and weights planning prices by
+    // duration, using the same display periods as the bars. The hero's money
+    // cost remains based on import prices, so the two can differ for a solar
+    // home. Shared-domain owns the duration, average and wording.
     cheapestHoursCaption: formatCheapestHoursCaption(
-      hours.filter((hour) => hour.planned).map((hour) => hour.priceValue),
-      hours.map((hour) => hour.priceValue),
+      hours.filter((hour) => hour.planned),
+      hours,
       priceUnitLabel,
     ),
     // Bridge the planning-vs-import gap: the schedule readout shows the planning
@@ -166,4 +147,23 @@ export const buildTimeline = (
       (hour) => planningPriceDivergesFromImport(hour.planningPrice, hour.price, costDisplay.divisor),
     ) ? PLANNING_PRICE_REASON_LINE : null,
   };
+};
+
+// Whole-home tracking remains hourly. Allocate each measured bucket's elapsed
+// energy once across the displayed periods, including fractional-offset grids.
+export const resolveActualPeriodKwh = (input: ObjectivePayloadReady, period: HorizonHour): number | null => {
+  const hourMs = 60 * 60 * 1000;
+  const fromMs = Math.max(period.startsAtMs, input.ctx.activePlan.startedAtMs);
+  const toMs = Math.min(period.endMs, input.ctx.nowMs);
+  let energy = 0;
+  let observed = false;
+  for (let atMs = Math.floor(fromMs / hourMs) * hourMs; atMs < toMs; atMs += hourMs) {
+    const endMs = Math.min(atMs + hourMs, input.ctx.nowMs);
+    const overlapMs = Math.max(0, Math.min(toMs, endMs) - Math.max(fromMs, atMs));
+    const actual = resolveActualDeviceKwh(input.bootstrap, input.ctx.deviceId, atMs);
+    if (actual === null || overlapMs <= 0) continue;
+    observed = true;
+    energy += actual * overlapMs / (endMs - atMs);
+  }
+  return observed ? energy : null;
 };

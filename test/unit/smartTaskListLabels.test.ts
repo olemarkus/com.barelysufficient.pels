@@ -117,6 +117,10 @@ describe('formatEnergyEstimateKWh', () => {
   });
 });
 
+const pricedPeriods = (prices: number[]) => prices.map((priceValue, index) => ({
+  startsAtMs: index * 3600000, endsAtMs: (index + 1) * 3600000, priceValue,
+}));
+
 describe('formatCheapestHoursCaption', () => {
   it('averages the picked prices and names the eligible-hour pool', () => {
     // 2 planned hours at 0.10 + 0.20 → avg 0.15 out of the 4 eligible hours.
@@ -125,18 +129,18 @@ describe('formatCheapestHoursCaption', () => {
     // caption reconciles count + picked average only. "of the N hours it can
     // use" names the chart's eligible pool without colliding with the hero's
     // hours-left figure (counted from now, can differ by one).
-    expect(formatCheapestHoursCaption([0.1, 0.2], [0.1, 0.2, 0.8, 0.9], 'kr/kWh'))
-      .toBe('Picked 2 of the 4 hours it can use · avg 0.15 kr/kWh');
+    expect(formatCheapestHoursCaption(pricedPeriods([0.1, 0.2]), pricedPeriods([0.1, 0.2, 0.8, 0.9]), 'kr/kWh'))
+      .toBe('Scheduled 2h · avg 0.15 kr/kWh');
   });
 
   it('suppresses the caption when there are no planned hours or only one hour in the window', () => {
-    expect(formatCheapestHoursCaption([], [0.1, 0.2, 0.8, 0.9], 'kr/kWh')).toBeNull();
-    expect(formatCheapestHoursCaption([0.1], [0.1], 'kr/kWh')).toBeNull();
+    expect(formatCheapestHoursCaption(pricedPeriods([]), pricedPeriods([0.1, 0.2, 0.8, 0.9]), 'kr/kWh')).toBeNull();
+    expect(formatCheapestHoursCaption(pricedPeriods([0.1]), pricedPeriods([0.1]), 'kr/kWh')).toBeNull();
   });
 
   it('suppresses the caption when the price unit is missing or the neutral placeholder', () => {
-    expect(formatCheapestHoursCaption([0.1, 0.2], [0.1, 0.2, 0.8, 0.9], '')).toBeNull();
-    expect(formatCheapestHoursCaption([0.1, 0.2], [0.1, 0.2, 0.8, 0.9], 'Price')).toBeNull();
+    expect(formatCheapestHoursCaption(pricedPeriods([0.1, 0.2]), pricedPeriods([0.1, 0.2, 0.8, 0.9]), '')).toBeNull();
+    expect(formatCheapestHoursCaption(pricedPeriods([0.1, 0.2]), pricedPeriods([0.1, 0.2, 0.8, 0.9]), 'Price')).toBeNull();
   });
 });
 
@@ -541,7 +545,7 @@ describe('resolveSmartTaskListStatus — blocked charger and plan-verdict preced
     pending: false,
     liveCompletion: { kind: 'unavailable' as const },
     targetValue: 55,
-    latest: { planStatus, hours: firstHourMs === null ? [] : [{ startsAtMs: firstHourMs, plannedKWh: 1 }] },
+    latest: { planStatus, hours: firstHourMs === null ? [] : [{ startsAtMs: firstHourMs, endsAtMs: (firstHourMs) + 3_600_000, plannedKWh: 1 }] },
   });
 
   it('maps objective_invalid_session to paused_unplugged, overriding an on_track plan', () => {
@@ -573,7 +577,7 @@ describe('resolveSmartTaskListStatus — blocked charger and plan-verdict preced
 
   it('reads the first action off the first hour that promises energy', () => {
     const zeroKWhFirst = plan('on_track', null);
-    zeroKWhFirst.latest.hours = [{ startsAtMs: 5_000, plannedKWh: 0 }, { startsAtMs: 10_000, plannedKWh: 1 }];
+    zeroKWhFirst.latest.hours = [{ startsAtMs: 5_000, endsAtMs: (5_000) + 3_600_000, plannedKWh: 0 }, { startsAtMs: 10_000, endsAtMs: (10_000) + 3_600_000, plannedKWh: 1 }];
     expect(resolveSmartTaskListStatus(zeroKWhFirst, 7_000)).toBe('queued');
     expect(resolveSmartTaskListStatus(zeroKWhFirst, 10_000)).toBe('on_track');
   });

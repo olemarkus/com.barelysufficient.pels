@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildFrozenHorizonPlan } from '../../lib/objectives/deferredObjectives/frozenHorizonPlan';
-import type { DeferredObjectiveActivePlanFloorShortfallCause, DeferredObjectiveActivePlanHourV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectiveActivePlanFloorShortfallCause, DeferredObjectivePlanInterval } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { FrozenDrawWindow } from '../../lib/objectives/deferredObjectives/frozenHorizonPlan';
 import type { DeferredObjectiveStep } from '../../lib/objectives/deferredObjectives/types';
 import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
@@ -14,7 +14,7 @@ const STEPS: DeferredObjectiveStep[] = [
 ];
 
 const build = (overrides: {
-  committedHours: DeferredObjectiveActivePlanHourV1[];
+  committedHours: DeferredObjectivePlanInterval[];
   aheadOfHourMilestone?: boolean;
   objectiveKind?: 'temperature' | 'ev_soc';
   planStatus?: 'on_track' | 'at_risk' | 'cannot_meet';
@@ -52,8 +52,8 @@ describe('buildFrozenHorizonPlan', () => {
     const plan = build({
       planStatus: 'at_risk',
       committedHours: [
-        { startsAtMs: NOW_MS, plannedKWh: 2, plannedAdmissionPowerKw: 2.4 },
-        { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1 },
+        { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 2, plannedAdmissionPowerKw: 2.4 },
+        { startsAtMs: NOW_MS + 2 * HOUR_MS, endsAtMs: (NOW_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 },
       ],
     });
     expect(plan.status).toBe('at_risk');
@@ -76,7 +76,7 @@ describe('buildFrozenHorizonPlan', () => {
   // energy in its own window only, so admission does not boost it while the
   // heater draws (`admission.resolveDecision`).
   it('promises a shared hour\'s energy only inside the task\'s own saved window', () => {
-    const committedHours = [{ startsAtMs: NOW_MS, plannedKWh: 1.2 }];
+    const committedHours = [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1.2 }];
     const ownWindow = { startMs: NOW_MS + 24 * 60 * 1000, endMs: NOW_MS + HOUR_MS, plannedKWh: 1.2 };
     const beforeWindow = build({ committedHours, drawWindows: [ownWindow], nowMs: NOW_MS + 10 * 60 * 1000 });
     expect(beforeWindow.currentBucket?.plannedUsefulEnergyKWh).toBe(0);
@@ -91,7 +91,7 @@ describe('buildFrozenHorizonPlan', () => {
   });
 
   it('reads the step off the saved window, not the whole hour', () => {
-    const committedHours = [{ startsAtMs: NOW_MS, plannedKWh: 1.5 }];
+    const committedHours = [{ startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1.5 }];
     // 1.5 kWh in a 30-minute window needs 3 kW: 'high' (4 kW), where the whole hour
     // would read 1.5 kW and pick 'low'.
     const plan = build({
@@ -103,7 +103,7 @@ describe('buildFrozenHorizonPlan', () => {
   });
 
   it('releases (currentBucket null) when the current hour is not in the commitment', () => {
-    const plan = build({ committedHours: [{ startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1 }] });
+    const plan = build({ committedHours: [{ startsAtMs: NOW_MS + 2 * HOUR_MS, endsAtMs: (NOW_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 1 }] });
     expect(plan.currentBucket).toBeNull();
     expect(plan.currentHourFacts.cheaperHourAhead).toBe(false);
     expect(plan.currentHourFacts.coldStartFeasible).toBe(false);
@@ -111,9 +111,9 @@ describe('buildFrozenHorizonPlan', () => {
   });
 
   it('price-defers a booked hour only when ahead AND the settle stamped cheaperHourAhead', () => {
-    const hoursAheadCheaper: DeferredObjectiveActivePlanHourV1[] = [
-      { startsAtMs: NOW_MS, plannedKWh: 1, cheaperHourAhead: true },
-      { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 2 },
+    const hoursAheadCheaper: DeferredObjectivePlanInterval[] = [
+      { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1, cheaperHourAhead: true },
+      { startsAtMs: NOW_MS + 2 * HOUR_MS, endsAtMs: (NOW_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
     ];
     const deferred = build({ committedHours: hoursAheadCheaper, aheadOfHourMilestone: true });
     expect(deferred.currentHourFacts.cheaperHourAhead).toBe(true);
@@ -121,8 +121,8 @@ describe('buildFrozenHorizonPlan', () => {
     // Not ahead ⇒ no price deferral (cold-start is handled on the fresh path, not here).
     expect(build({ committedHours: hoursAheadCheaper, aheadOfHourMilestone: false }).currentHourClaim).toBe('claimed');
     // cheaperHourAhead false ⇒ no deferral even when ahead.
-    const noCheaper: DeferredObjectiveActivePlanHourV1[] = [
-      { startsAtMs: NOW_MS, plannedKWh: 1, cheaperHourAhead: false },
+    const noCheaper: DeferredObjectivePlanInterval[] = [
+      { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1, cheaperHourAhead: false },
     ];
     const kept = build({ committedHours: noCheaper, aheadOfHourMilestone: true });
     expect(kept.currentHourFacts.cheaperHourAhead).toBe(false);
@@ -136,8 +136,8 @@ describe('buildFrozenHorizonPlan', () => {
       floorShortfallCause: 'time_capacity',
       aheadOfHourMilestone: true,
       committedHours: [
-        { startsAtMs: NOW_MS, plannedKWh: 1, cheaperHourAhead: true },
-        { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 2 },
+        { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1, cheaperHourAhead: true },
+        { startsAtMs: NOW_MS + 2 * HOUR_MS, endsAtMs: (NOW_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
       ],
     });
     expect(plan.currentHourFacts).toMatchObject({ aheadOfHourMilestone: true, cheaperHourAhead: true });
@@ -149,8 +149,8 @@ describe('buildFrozenHorizonPlan', () => {
     // the task claims it and runs on capacity that turns out to be free.
     const plan = build({
       committedHours: [
-        { startsAtMs: NOW_MS, plannedKWh: 0 },
-        { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 2 },
+        { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 0 },
+        { startsAtMs: NOW_MS + 2 * HOUR_MS, endsAtMs: (NOW_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
       ],
     });
     expect(plan.currentBucket).toMatchObject({ plannedUsefulEnergyKWh: 0, booked: true, expectedStepId: null });
@@ -166,8 +166,8 @@ describe('buildFrozenHorizonPlan', () => {
       floorShortfallCause: 'budget',
       aheadOfHourMilestone: true,
       committedHours: [
-        { startsAtMs: NOW_MS, plannedKWh: 0, cheaperHourAhead: true },
-        { startsAtMs: NOW_MS + 3 * HOUR_MS, plannedKWh: 2 },
+        { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 0, cheaperHourAhead: true },
+        { startsAtMs: NOW_MS + 3 * HOUR_MS, endsAtMs: (NOW_MS + 3 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
       ],
     });
     expect(plan.currentHourFacts).toMatchObject({ aheadOfHourMilestone: true, cheaperHourAhead: true });
@@ -175,9 +175,9 @@ describe('buildFrozenHorizonPlan', () => {
   });
 
   it('never states coldStartFeasible — cold-start candidates run the fresh allocator instead', () => {
-    const hours: DeferredObjectiveActivePlanHourV1[] = [
-      { startsAtMs: NOW_MS, plannedKWh: 1, cheaperHourAhead: true },
-      { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 2 },
+    const hours: DeferredObjectivePlanInterval[] = [
+      { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 1, cheaperHourAhead: true },
+      { startsAtMs: NOW_MS + 2 * HOUR_MS, endsAtMs: (NOW_MS + 2 * HOUR_MS) + 3_600_000, plannedKWh: 2 },
     ];
     // The frozen read cannot prove "full need fits the cheaper future at the climbed
     // step", so it never claims cold-start release; the diagnostics build routes such
@@ -192,8 +192,8 @@ describe('buildFrozenHorizonPlan', () => {
       objectiveKind: 'ev_soc',
       aheadOfHourMilestone: true,
       committedHours: [
-        { startsAtMs: NOW_MS, plannedKWh: 0.0003, cheaperHourAhead: true },
-        { startsAtMs: NOW_MS + HOUR_MS, plannedKWh: 2 },
+        { startsAtMs: NOW_MS, endsAtMs: (NOW_MS) + 3_600_000, plannedKWh: 0.0003, cheaperHourAhead: true },
+        { startsAtMs: NOW_MS + HOUR_MS, endsAtMs: (NOW_MS + HOUR_MS) + 3_600_000, plannedKWh: 2 },
       ],
     });
     expect(plan.currentHourFacts.cheaperHourAhead).toBe(true);

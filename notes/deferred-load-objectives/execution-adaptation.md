@@ -8,6 +8,29 @@ clock-driven recorder. WI-3 (draw-down/reheat anchor) generalizes WI-1's re-anch
 primary + live staircases so charts read correctly when the device starts above target. Builds on
 the active-plan replan policy in [`README.md`](./README.md) §"Active plan persistence and replan policy".
 
+## Current interval model
+
+The hourly incidents and implementation snapshots below record why the release and trajectory
+rules exist. Scheduling now follows native price intervals for EV SoC, temperature and energy
+tasks. An interval carries explicit start/end bounds, planned energy, admission power and its
+milestone; an hourly source still produces hourly intervals. Existing internal names such as
+`currentHourClaim`, `isAheadOfHourMilestone` and `hours` now refer to the selected interval.
+
+The two clocks are unchanged: ordinary allocation settles hourly at `:58`, with bootstrap and
+existing explicit-change paths; the frozen read selects `start <= now < end` between settles.
+The next normal meter-driven rebuild follows a quarter boundary without a separate control timer
+or quarter-hour settle. Live releases still do not rewrite commitments. Duration-proportional
+floors preserve coverage and energy if a source changes its period grid, and schedule equality
+compares covered time. Milestones at retained endpoints remain frozen.
+
+Trajectory and run-band producers read `[coversFromMs ?? startsAtMs, endsAtMs)` rather than adding
+an hour to every start. Active v1 bookings migrate to v2 with explicit 60-minute ends; history v7
+also migrates legacy snapshots and measured contributions while retaining their recorded costs.
+The `planned_hours` Flow token measures positive-energy coverage duration in fractional hours;
+equal-duration rescheduling and energy-only revisions do not fire **Smart task schedule changed**.
+The **Capacity period** setting, hourly daily-budget learning and the existing safety gates remain
+independent of the native price interval length.
+
 ## Motivating evidence (prod, Connected 300, night of 2026-05-31)
 
 A soft `reach 65 °C by 06:00` objective on a stepped water heater. From the prod logs
@@ -48,7 +71,7 @@ element power regardless of the hour's price tier. Combined with the cold-start
 
 ## Governing invariant — no revision hysteresis
 
-The commitment floor (`mergeHoursPreservingCommitment` = `Math.max`) and the `sameHourSchedule`
+The commitment floor (`mergeHoursPreservingCommitment` = proportional floors followed by `Math.max`) and the `sameHourSchedule`
 diff gate exist specifically to stop the active-plan record from churning revisions as
 estimates drift (README §"Replan policy"). **Nothing in this note may reintroduce that churn.**
 Both work items live entirely in the **advisory per-cycle layer** — control + render. Neither
@@ -98,7 +121,7 @@ computed.
   `plannedKWh` is only the post-`nowMs` remainder (`buildHoursFromHorizonPlan` trims the current
   bucket's start to `nowMs`). The chart cannot tell these apart from `{startsAtMs, plannedKWh}`
   alone, so we persist the disambiguator: a new optional `coversFromMs` on
-  `DeferredObjectiveActivePlanHourV1` (contract), set by `buildHoursFromHorizonPlan` when the
+  `DeferredObjectivePlanInterval` (contract), set by `buildHoursFromHorizonPlan` when the
   earliest folded bucket starts after the hour boundary. The chart prorates each straddling hour
   over its **covered span** `[coverStart, hourEnd]` (`coverStart = coversFromMs ?? startsAtMs`):
   a full-hour floor is prorated by the post-anchor fraction of the whole hour; a trimmed hour
@@ -107,10 +130,11 @@ computed.
   revision's floor) is prorated over its covered span, dropping the pre-anchor sliver.
   `mergeHoursPreservingCommitment` carries the winning entry's coverage so a full-hour floor that
   wins the `Math.max` clears a stale trimmed `coversFromMs`. `coversFromMs` survives into the
-  history snapshot via the existing `{ ...hour }` copy; `sameHourSchedule` ignores it (no
-  revision churn). This touches **persisted state** (active-plan / history snapshot) but is
-  back-compatible: legacy entries without the field read as full-hour (today's behavior).
-- The **Initial schedule** (`originalPlan`) stays anchored at the start progress (`startProgressValue`) — the
+  history snapshot via the existing `{ ...hour }` copy. In the original hourly implementation,
+  `sameHourSchedule` ignored this trim marker; the current interval model compares effective
+  coverage and preserves the winning floor's bounds. Legacy bookings without the marker retain
+  their full-hour coverage during migration.
+- The **Initial schedule** (`originalPlan`) stays anchored at `startProgressValue` — the
   original-intent reference, unchanged.
 - The recorded `startProgress` is seeded as the first interpolation bracket, so a replan in the
   task's first hour (whose seeded start sample the recorder may have overwritten) still
@@ -191,7 +215,7 @@ the cheaper hours at the next `:58` settle — one honest revision, not churn.
 
    **Update (2026-06-03) — persisted unit trajectory (was: energy expressing units).** The gate now
    PREFERS a real unit comparison and keeps the energy form above only as a back-compat fallback.
-   Each committed hour persists `plannedUnitMilestone` (contract `DeferredObjectiveActivePlanHourV1`)
+   Each committed hour persists `plannedUnitMilestone` (contract `DeferredObjectivePlanInterval`)
    — the cumulative target value in the objective's own unit (°C / %) by the END of that hour,
    computed ONCE at the booking revision as `measuredAtRevision + Σ(plannedKWh≤H) ÷ rate` and frozen
    (`buildHoursFromHorizonPlan` → `stampUnitMilestones`). `isAheadOfHourMilestone` then does a

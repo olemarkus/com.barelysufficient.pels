@@ -1,8 +1,8 @@
 import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
 import type {
-  DeferredObjectiveActivePlanHourV1,
+  DeferredObjectivePlanInterval,
   DeferredObjectiveActivePlanReservationSegmentV1,
-  DeferredObjectiveActivePlansV1,
+  DeferredObjectiveActivePlansV2,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import {
   resolveObjectiveProgressDirectionRead,
@@ -157,7 +157,7 @@ export const orderDeferredObjectives = (
   /** See `PriorityAllocationTracker.observe`: durably out of the main lane. */
   isDeviceExcluded: (deviceId: string) => boolean,
   tracker: PriorityAllocationTracker,
-  activePlans: DeferredObjectiveActivePlansV1,
+  activePlans: DeferredObjectiveActivePlansV2,
   nowMs: number,
   // The catalog owner orders the complete visible-plus-grace roster; callers
   // receive only resolved ranks, including temporarily missing devices.
@@ -246,12 +246,12 @@ export const buildTaskAllocationContextSignature = (params: {
   ]);
 };
 
-type ReservationHour = DeferredObjectiveActivePlanHourV1 & {
+type ReservationHour = DeferredObjectivePlanInterval & {
   energySegments: Array<{ startMs: number; endMs: number; plannedKWh: number }>;
 };
 
 const resolveLegacyAdmissionPowerKw = (
-  hour: DeferredObjectiveActivePlanHourV1,
+  hour: DeferredObjectivePlanInterval,
   device: ObjectiveDeviceInput | undefined,
   planningCeilingKw: number | null,
   deadlineAtMs: number,
@@ -263,7 +263,7 @@ const resolveLegacyAdmissionPowerKw = (
     Math.max(
       Number.EPSILON,
       (
-        Math.min(hour.startsAtMs + HOUR_MS, deadlineAtMs)
+        Math.min(hour.endsAtMs, deadlineAtMs)
         - (hour.coversFromMs ?? hour.startsAtMs)
       ) / HOUR_MS,
     ),
@@ -319,7 +319,7 @@ const reservationsFromSegments = (
 ): DeferredObjectivePriorityReservation[] => segments.map((segment) => ({
   deviceId,
   topologyKey: segment.sourceBucketId ?? `segment:${segment.startMs}:${segment.endMs}`,
-  startsAtMs: Math.floor(segment.startMs / HOUR_MS) * HOUR_MS,
+  startsAtMs: segment.startMs,
   plannedKWh: segment.plannedKWh,
   admissionPowerKw: segment.plannedAdmissionPowerKw,
   exemptFromBudget,
@@ -368,7 +368,7 @@ export const buildPriorityReservations = (
   evaluation: TaskEvaluation,
   objective: DeferredObjectiveSettingsEntry,
   device: ObjectiveDeviceInput | undefined,
-  activePlans: DeferredObjectiveActivePlansV1,
+  activePlans: DeferredObjectiveActivePlansV2,
   powerLimits: PowerLimitSettings,
   nowMs: number,
 ): DeferredObjectivePriorityReservation[] => {
@@ -398,7 +398,7 @@ export const buildPriorityReservations = (
   );
   const persistedHours = (activePlan?.latest.hours ?? []).flatMap((hour): ReservationHour[] => {
     const startMs = hour.coversFromMs ?? hour.startsAtMs;
-    const endMs = Math.min(hour.startsAtMs + HOUR_MS, objective.deadlineAtMs);
+    const endMs = Math.min(hour.endsAtMs, objective.deadlineAtMs);
     if (endMs <= startMs) return [];
     return [{
     ...hour,

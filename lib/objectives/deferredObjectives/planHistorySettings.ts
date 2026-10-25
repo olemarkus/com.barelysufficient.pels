@@ -1,7 +1,9 @@
+import { migrateLegacyHistoryIntervals } from './planHistoryIntervals';
+import { migrateLegacyRevisionIntervals } from '../../../packages/shared-domain/src/deferredObjectiveActivePlanShape';
 import { isTaskDeliveryExplanation } from './taskDeliveryValidation';
 import type {
   DeferredObjectiveActivePlanFloorShortfallCause,
-  DeferredObjectiveActivePlanHourV1,
+  DeferredObjectivePlanInterval,
   DeferredObjectiveActivePlanStatusV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
@@ -15,21 +17,19 @@ import type {
   DeferredObjectivePlanHistoryRecord,
   DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
-  DeferredObjectivePlanHistoryV6,
+  DeferredObjectivePlanHistoryV7,
   DeferredObjectivePlanMetReason,
   DeferredObjectivePlanOutcome,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import { toPlanHistoryRecord } from '../../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import { isFiniteNumber } from '../../../packages/shared-domain/src/numberGuards';
 
-// v6 records delivery explanations. v3-v5 keep their recorded measurements and
-// outcomes and explicitly mark causal evidence as unrecorded; no ratio-based
-// cause is reconstructed during migration.
-// `hourStartBookings` is an additive optional field on v6 (no bump): it is
-// validated when present and absent on every entry recorded before it.
-export const DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION = 6 as const;
+// v7 records explicit schedule, booking and contribution interval ends. Legacy
+// history keeps its measured cost and hourly geometry; v3-v5 additionally mark
+// causal evidence as unrecorded rather than reconstructing an explanation.
+export const DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION = 7 as const;
 
-const createEmptyDeferredObjectivePlanHistory = (): DeferredObjectivePlanHistoryV6 => ({
+const createEmptyDeferredObjectivePlanHistory = (): DeferredObjectivePlanHistoryV7 => ({
   version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
   entries: [],
 });
@@ -76,10 +76,12 @@ const isProgressDirection = (value: unknown): boolean => (
   value === 'increasing' || value === 'decreasing' || value === 'unknown'
 );
 
-const isPlanHour = (value: unknown): value is DeferredObjectiveActivePlanHourV1 => {
+const isPlanHour = (value: unknown): value is DeferredObjectivePlanInterval => {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
-  return isFiniteNumber(v.startsAtMs) && isFiniteNumber(v.plannedKWh);
+  return isFiniteNumber(v.startsAtMs)
+    && isFiniteNumber(v.endsAtMs) && v.endsAtMs > v.startsAtMs
+    && isFiniteNumber(v.plannedKWh);
 };
 
 const isRevisionSnapshot = (
@@ -204,6 +206,7 @@ const isHourlyContribution = (
   const v = value as Record<string, unknown>;
   return isFiniteNumber(v.atMs)
     && v.atMs > 0
+    && isFiniteNumber(v.endsAtMs) && v.endsAtMs > v.atMs
     && isFiniteNumber(v.deliveredKWh)
     && v.deliveredKWh >= 0
     && isFiniteNumber(v.priceValue)
@@ -221,7 +224,9 @@ const isHourlyContribution = (
 export const isHourStartBooking = (value: unknown): value is DeferredObjectivePlanHistoryHourStartBooking => {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
-  return isFiniteNumber(v.atMs) && v.atMs >= 0 && isFiniteNumber(v.bookedKWh) && v.bookedKWh >= 0;
+  return isFiniteNumber(v.atMs) && v.atMs >= 0
+    && isFiniteNumber(v.endsAtMs) && v.endsAtMs > v.atMs
+    && isFiniteNumber(v.bookedKWh) && v.bookedKWh >= 0;
 };
 
 const hasValidHourStartBookings = (v: Record<string, unknown>): boolean => (
@@ -409,6 +414,22 @@ const lacksDeliveryExplanation = (entry: unknown): boolean => (
   !entry || typeof entry !== 'object' || !('deliveryExplanation' in entry)
 );
 
+const migrateLegacyRecordIntervals = (raw: unknown): unknown => {
+  if (!raw || typeof raw !== 'object') return raw;
+  const record = raw as Record<string, unknown>;
+  return {
+    ...record,
+    originalPlan: migrateLegacyRevisionIntervals(record.originalPlan),
+    finalPlan: migrateLegacyRevisionIntervals(record.finalPlan),
+    ...(record.hourStartBookings === undefined ? {} : {
+      hourStartBookings: migrateLegacyHistoryIntervals(record.hourStartBookings),
+    }),
+    ...(record.hourlyContributions === undefined ? {} : {
+      hourlyContributions: migrateLegacyHistoryIntervals(record.hourlyContributions),
+    }),
+  };
+};
+
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 const normalizeV3OrV4 = (entries: unknown[]): DeferredObjectivePlanHistoryRecord[] => {
   const normalized: DeferredObjectivePlanHistoryRecord[] = [];
@@ -425,19 +446,21 @@ const normalizeV3OrV4 = (entries: unknown[]): DeferredObjectivePlanHistoryRecord
 
 export const normalizeDeferredObjectivePlanHistory = (
   raw: unknown,
-): DeferredObjectivePlanHistoryV6 => {
+): DeferredObjectivePlanHistoryV7 => {
   if (!raw || typeof raw !== 'object') return createEmptyDeferredObjectivePlanHistory();
   const r = raw as Record<string, unknown>;
-  if (r.version === 6 && Array.isArray(r.entries) && r.entries.some(lacksDeliveryExplanation)) {
+  if ((r.version === 6 || r.version === DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION)
+    && Array.isArray(r.entries) && r.entries.some(lacksDeliveryExplanation)) {
     return createEmptyDeferredObjectivePlanHistory();
   }
   if (!Array.isArray(r.entries)) return createEmptyDeferredObjectivePlanHistory();
   // v3/v4 reads upgrade to compact v5 in-place. New fields stay absent on
   // legacy entries (graceful degrade per `feedback_homey_sdk_unreliable`).
-  if (r.version === DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION || r.version === 5 || r.version === 4 || r.version === 3) {
+  if ([3, 4, 5, 6, DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION].includes(r.version as number)) {
     return {
       version: DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
-      entries: normalizeV3OrV4(r.entries),
+      entries: normalizeV3OrV4(r.version === DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION
+        ? r.entries : r.entries.map(migrateLegacyRecordIntervals)),
     };
   }
   return createEmptyDeferredObjectivePlanHistory();
@@ -446,7 +469,7 @@ export const normalizeDeferredObjectivePlanHistory = (
 /** Strict persistence parser. One malformed row makes the SDK read
  * unavailable so a partial snapshot can never be written over full history. */
 export type DeferredObjectivePlanHistoryParseResult =
-  | { state: 'resolved'; snapshot: DeferredObjectivePlanHistoryV6 }
+  | { state: 'resolved'; snapshot: DeferredObjectivePlanHistoryV7 }
   | { state: 'unavailable' };
 
 export const parseDeferredObjectivePlanHistory = (
@@ -455,7 +478,7 @@ export const parseDeferredObjectivePlanHistory = (
   if (!raw || typeof raw !== 'object') return { state: 'unavailable' };
   const candidate = raw as Record<string, unknown>;
   if (!Array.isArray(candidate.entries)) return { state: 'unavailable' };
-  if (![3, 4, 5, DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION].includes(candidate.version as number)) {
+  if (![3, 4, 5, 6, DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION].includes(candidate.version as number)) {
     return { state: 'unavailable' };
   }
   const normalized = normalizeDeferredObjectivePlanHistory(raw);

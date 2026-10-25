@@ -93,46 +93,24 @@ export const formatSmartTaskDeadlineLong = (
   }
 };
 
-// One scheduled hour as the create-smart-task preview projects it.
-export type ScheduledHourLike = { startsAtMs: number };
+export type ScheduledHourLike = { startsAtMs: number; endsAtMs: number };
 
-// Whether every hour starts exactly one hour after the previous (a single
-// contiguous block we can render as a clean "HH:MM–HH:MM" range). One-hour and
-// empty lists are trivially contiguous. Non-contiguous lists fall back to a
-// comma-separated start list so a "02:00, 03:00, 14:00" plan isn't misdrawn as
-// "02:00–15:00".
-const hoursAreContiguous = (hours: readonly ScheduledHourLike[]): boolean => {
-  let previousStartsAtMs: number | null = null;
-  for (const hour of hours) {
-    if (previousStartsAtMs !== null && hour.startsAtMs - previousStartsAtMs !== HOUR_MS) return false;
-    previousStartsAtMs = hour.startsAtMs;
-  }
-  return true;
-};
-
-// The clock-hour window the preview would run, e.g. "02:00–04:00" (contiguous;
-// last start + 1h is the end edge) or "02:00, 03:00, 14:00" (non-contiguous).
-// Returns null when there are no scheduled hours. Caller sorts ascending (the
-// preview contract guarantees ascending `startsAtMs`); this does not re-sort.
+// Merge touching periods into ranges; separated quarters remain separate ranges.
 export const formatScheduledHoursWindow = (
   scheduledHours: readonly ScheduledHourLike[],
   timeZone: string | null,
 ): string | null => {
-  const firstHour = scheduledHours[0];
-  // ES2020-safe last-element access (no Array#at): shared-domain is bundled
-  // into the settings UI, which esbuild targets at es2020.
-  const lastHour = scheduledHours[scheduledHours.length - 1];
-  // Both are absent only for an empty list — there is no window to name.
-  if (firstHour === undefined || lastHour === undefined) return null;
-  if (scheduledHours.length === 1) {
-    return formatLocalHHMM(firstHour.startsAtMs, timeZone);
+  const ranges: ScheduledHourLike[] = [];
+  for (const period of scheduledHours) {
+    const previous = ranges[ranges.length - 1];
+    if (previous && period.startsAtMs <= previous.endsAtMs) {
+      previous.endsAtMs = Math.max(previous.endsAtMs, period.endsAtMs);
+    }
+    else ranges.push({ ...period });
   }
-  if (hoursAreContiguous(scheduledHours)) {
-    const first = formatLocalHHMM(firstHour.startsAtMs, timeZone);
-    const end = formatLocalHHMM(lastHour.startsAtMs + HOUR_MS, timeZone);
-    return `${first}–${end}`; // en-dash window
-  }
-  return scheduledHours.map((hour) => formatLocalHHMM(hour.startsAtMs, timeZone)).join(', ');
+  return ranges.length === 0 ? null : ranges.map((range) => (
+    `${formatLocalHHMM(range.startsAtMs, timeZone)}–${formatLocalHHMM(range.endsAtMs, timeZone)}`
+  )).join(', ');
 };
 
 // Stitch a pre-formatted scheduled-hours window (already localised by the
@@ -161,5 +139,5 @@ export const composeSmartTaskScheduledLine = (params: {
 export const formatCheapestHoursSubtext = (deadlineLabel: string): string => {
   const timePart = deadlineLabel.match(/(\d{1,2}:\d{2})\s*$/);
   const tail = timePart ? `before ${timePart[1]}` : 'before the deadline';
-  return `cheapest hours ${tail}`;
+  return `lowest prices ${tail}`;
 };

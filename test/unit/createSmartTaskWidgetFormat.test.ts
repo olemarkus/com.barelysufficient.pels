@@ -88,23 +88,23 @@ describe('formatScheduledHoursWindow', () => {
     expect(formatScheduledHoursWindow([], UTC)).toBeNull();
   });
 
-  it('renders a single hour as its start time', () => {
-    expect(formatScheduledHoursWindow([{ startsAtMs: at(2) }], UTC)).toBe('02:00');
+  it('renders a single period as its full range', () => {
+    expect(formatScheduledHoursWindow([{ startsAtMs: at(2), endsAtMs: (at(2)) + HOUR_MS }], UTC)).toBe('02:00–03:00');
   });
 
   it('renders a contiguous block as a start–end range (last start + 1h)', () => {
-    const hours = [{ startsAtMs: at(2) }, { startsAtMs: at(3) }, { startsAtMs: at(4) }];
+    const hours = [{ startsAtMs: at(2), endsAtMs: (at(2)) + HOUR_MS }, { startsAtMs: at(3), endsAtMs: (at(3)) + HOUR_MS }, { startsAtMs: at(4), endsAtMs: (at(4)) + HOUR_MS }];
     // Three contiguous hours 02:00,03:00,04:00 → window 02:00–05:00.
     expect(formatScheduledHoursWindow(hours, UTC)).toBe('02:00–05:00');
   });
 
-  it('renders non-contiguous hours as a comma-separated start list', () => {
-    const hours = [{ startsAtMs: at(2) }, { startsAtMs: at(3) }, { startsAtMs: at(14) }];
-    expect(formatScheduledHoursWindow(hours, UTC)).toBe('02:00, 03:00, 14:00');
+  it('renders non-contiguous periods as separate ranges', () => {
+    const hours = [{ startsAtMs: at(2), endsAtMs: (at(2)) + HOUR_MS }, { startsAtMs: at(3), endsAtMs: (at(3)) + HOUR_MS }, { startsAtMs: at(14), endsAtMs: (at(14)) + HOUR_MS }];
+    expect(formatScheduledHoursWindow(hours, UTC)).toBe('02:00–04:00, 14:00–15:00');
   });
 
   it('treats a two-hour contiguous pair as a range', () => {
-    const hours = [{ startsAtMs: at(2) }, { startsAtMs: at(2) + HOUR_MS }];
+    const hours = [{ startsAtMs: at(2), endsAtMs: (at(2)) + HOUR_MS }, { startsAtMs: at(2) + HOUR_MS, endsAtMs: (at(2) + HOUR_MS) + HOUR_MS }];
     expect(formatScheduledHoursWindow(hours, UTC)).toBe('02:00–04:00');
   });
 });
@@ -122,7 +122,7 @@ describe('composeSmartTaskScheduledLine', () => {
   it('pairs the window with the resolved ready-by', () => {
     const line = composeSmartTaskScheduledLine({
       scheduledWindowLabel: formatScheduledHoursWindow(
-        [{ startsAtMs: at(2) }, { startsAtMs: at(3) }],
+        [{ startsAtMs: at(2), endsAtMs: (at(2)) + HOUR_MS }, { startsAtMs: at(3), endsAtMs: (at(3)) + HOUR_MS }],
         UTC,
       ),
       deadlineLabel: 'Tomorrow 07:00',
@@ -143,11 +143,11 @@ describe('composeSmartTaskScheduledLine', () => {
 
 describe('formatCheapestHoursSubtext', () => {
   it('extracts the time half of the deadline label', () => {
-    expect(formatCheapestHoursSubtext('Tomorrow 07:00')).toBe('cheapest hours before 07:00');
-    expect(formatCheapestHoursSubtext('Today 16:00')).toBe('cheapest hours before 16:00');
+    expect(formatCheapestHoursSubtext('Tomorrow 07:00')).toBe('lowest prices before 07:00');
+    expect(formatCheapestHoursSubtext('Today 16:00')).toBe('lowest prices before 16:00');
   });
 
   it('falls back to a generic tail when no time is present', () => {
-    expect(formatCheapestHoursSubtext('soon')).toBe('cheapest hours before the deadline');
+    expect(formatCheapestHoursSubtext('soon')).toBe('lowest prices before the deadline');
   });
 });

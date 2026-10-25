@@ -1,3 +1,4 @@
+import { migrateLegacyHistoryIntervals } from './planHistoryIntervals';
 import { isTaskDeliveryEvidence } from './taskDeliveryValidation';
 import type { TaskDeliveryEvidence } from '../../../packages/contracts/src/taskDelivery';
 import { LEGACY_DELIVERY_EVIDENCE } from './deliveryEvidence';
@@ -25,6 +26,7 @@ export type MeteredRunCommitment =
   | { kind: 'learning'; startProgressValue: number };
 
 export type PersistedMeteredDeliveryState = {
+  version: 1;
   deliveryEvidence: TaskDeliveryEvidence;
   commitment: MeteredRunCommitment;
   deviceId: string;
@@ -67,13 +69,16 @@ const isCommitment = (value: unknown): value is MeteredRunCommitment => {
  * records from its first hour.
  */
 export const migrateMeteredDeliveryState = (raw: unknown): unknown => {
-  if (!raw || typeof raw !== 'object') return raw;
+  if (!raw || typeof raw !== 'object' || 'version' in raw) return raw;
   return {
     ...raw,
+    version: 1,
     ...('commitment' in raw ? {} : { commitment: { kind: 'unknown' } }),
     ...('deliveryEvidence' in raw ? {} : { deliveryEvidence: LEGACY_DELIVERY_EVIDENCE }),
     ...('startProgressValue' in raw ? {} : { startProgressValue: null }),
-    ...('hourStartBookings' in raw ? {} : { hourStartBookings: [] }),
+    hourStartBookings: 'hourStartBookings' in raw ? migrateLegacyHistoryIntervals(raw.hourStartBookings) : [],
+    ...('hourlyContributions' in raw
+      ? { hourlyContributions: migrateLegacyHistoryIntervals(raw.hourlyContributions) } : {}),
   };
 };
 
@@ -94,6 +99,7 @@ const isHourlyContribution = (value: unknown): value is DeferredObjectivePlanHis
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Record<string, unknown>;
   return isFiniteNumber(candidate.atMs)
+    && isFiniteNumber(candidate.endsAtMs) && candidate.endsAtMs > candidate.atMs
     && isFiniteNumber(candidate.deliveredKWh)
     && candidate.deliveredKWh >= 0
     && isFiniteNumber(candidate.priceValue)
@@ -123,7 +129,8 @@ export const isPersistedMeteredDeliveryState = (
 ): value is PersistedMeteredDeliveryState => {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Record<string, unknown>;
-  return isTaskDeliveryEvidence(candidate.deliveryEvidence)
+  return candidate.version === 1
+    && isTaskDeliveryEvidence(candidate.deliveryEvidence)
     && isCommitment(candidate.commitment)
     && typeof candidate.deviceId === 'string'
     && candidate.deviceId.length > 0

@@ -291,14 +291,14 @@ test.describe('Settings UI chart layout', () => {
       observedIntervals: Array<{ fromMs: number; toMs: number }>;
       discoveredFrom: 'observation';
       originalPlan: {
-        hours: Array<{ startsAtMs: number; plannedKWh: number }>;
+        hours: Array<{ startsAtMs: number; endsAtMs: number; plannedKWh: number }>;
         energyNeededKWh: number;
         planStatus: 'on_track';
         revisedAtMs: number;
         kwhPerUnitMean: number;
       };
       finalPlan: {
-        hours: Array<{ startsAtMs: number; plannedKWh: number }>;
+        hours: Array<{ startsAtMs: number; endsAtMs: number; plannedKWh: number }>;
         energyNeededKWh: number;
         planStatus: 'on_track';
         revisedAtMs: number;
@@ -326,10 +326,10 @@ test.describe('Settings UI chart layout', () => {
     // into trajectory mode.
     const buildPlan = (): HistoryEntryFixture['originalPlan'] => ({
       hours: [
-        { startsAtMs: T0, plannedKWh: 1.0 },
-        { startsAtMs: T0 + HOUR, plannedKWh: 1.0 },
-        { startsAtMs: T0 + 2 * HOUR, plannedKWh: 1.0 },
-        { startsAtMs: T0 + 3 * HOUR, plannedKWh: 1.0 },
+        { startsAtMs: T0, endsAtMs: (T0) + 3_600_000, plannedKWh: 1.0 },
+        { startsAtMs: T0 + HOUR, endsAtMs: (T0 + HOUR) + 3_600_000, plannedKWh: 1.0 },
+        { startsAtMs: T0 + 2 * HOUR, endsAtMs: (T0 + 2 * HOUR) + 3_600_000, plannedKWh: 1.0 },
+        { startsAtMs: T0 + 3 * HOUR, endsAtMs: (T0 + 3 * HOUR) + 3_600_000, plannedKWh: 1.0 },
       ],
       energyNeededKWh: 4.0,
       planStatus: 'on_track',
@@ -338,10 +338,10 @@ test.describe('Settings UI chart layout', () => {
     });
     const buildRevisedPlan = (): HistoryEntryFixture['finalPlan'] => ({
       hours: [
-        { startsAtMs: T0, plannedKWh: 0.5 },
-        { startsAtMs: T0 + HOUR, plannedKWh: 1.5 },
-        { startsAtMs: T0 + 2 * HOUR, plannedKWh: 1.5 },
-        { startsAtMs: T0 + 3 * HOUR, plannedKWh: 0.5 },
+        { startsAtMs: T0, endsAtMs: (T0) + 3_600_000, plannedKWh: 0.5 },
+        { startsAtMs: T0 + HOUR, endsAtMs: (T0 + HOUR) + 3_600_000, plannedKWh: 1.5 },
+        { startsAtMs: T0 + 2 * HOUR, endsAtMs: (T0 + 2 * HOUR) + 3_600_000, plannedKWh: 1.5 },
+        { startsAtMs: T0 + 3 * HOUR, endsAtMs: (T0 + 3 * HOUR) + 3_600_000, plannedKWh: 0.5 },
       ],
       energyNeededKWh: 4.0,
       planStatus: 'on_track',

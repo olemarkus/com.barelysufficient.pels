@@ -2,8 +2,8 @@
 
 This note defines the intended model for deadline-aware loads. It is design guidance for active and
 future implementation work. The soft temperature slice is current shipped behavior: PELS can plan
-deadline hours, make cap-off temperature devices visible during planned hours, keep them idle
-outside planned hours, and raise the planned setpoint to the deadline target while still respecting
+deadline intervals, make cap-off temperature devices visible during scheduled intervals, keep them idle
+outside those intervals, and raise the planned setpoint to the deadline target while still respecting
 normal budget, capacity, priority, cooldown, and admission gates. EV planned resume and idle-bucket
 pause are also shipped (`admission.ts` emits their plan intents); deadline fallback is
 requested by the lifecycle clock and converged in `lib/executor/lifecycleFallbackDispatcher.ts` — see
@@ -18,6 +18,45 @@ already had native SoC snapshots and learned kWh-per-percent profiling. Connecte
 water-heater support adds the same settings and horizon-planning path for temperature objectives
 using learned kWh per degree. The abstractions must serve both without making the planner
 EV-percent-centric.
+
+## Current scheduling resolution and clocks
+
+All three objective kinds (`ev_soc`, `temperature`, `energy`) schedule the price source's actual
+intervals. `PriceHorizonEntry` carries `startMs`, `endMs`, the solar/export-adjusted planning
+`price`, and the import `moneyPrice`. Hourly sources remain hourly; quarter-hour sources can book
+separate quarters within one hour. Missing price coverage still blocks a fresh allocation through
+the deadline. Capacity-period configuration is independent of the task's scheduling resolution.
+
+Schedule resolution does not change the allocation clock: ordinary reoptimization remains at the
+hourly `:58` settle, with bootstrap and existing explicit-change exceptions. Between settles,
+`frozenHorizonPlan.ts` selects the saved interval with `start <= now < end`. A period transition
+takes effect on the next normal meter-driven plan rebuild. It neither reruns allocation nor starts
+an independent timer; the usual actuation, cooldown, satisfaction and deadline rules still apply.
+
+The legacy-named `hours` arrays now contain `DeferredObjectivePlanInterval` bookings with explicit
+`startsAtMs` and `endsAtMs`. Coverage, energy floors, admission power and milestone endpoints travel
+together through commitment, revision and replay. Schedule equality compares covered time rather
+than clock-hour starts. Elapsed history stays intact; a source-grid change prorates an existing
+energy floor across overlapping intervals without losing its total or coverage. Zero-energy
+bookings retain their existing free-capacity-only behavior.
+
+Daily-budget learning and allocation remain hourly. The policy horizon splits at hourly-budget
+boundaries and distributes each hour's background forecast and managed-energy allowance by overlap
+duration. It subtracts higher-priority reservations only over their actual overlap. The step-energy
+ceiling remains `usefulPowerKw × durationHours`; a quarter has `durationHours = 0.25`.
+
+Active-plan schema v2 and history schema v7 store interval ends. Known legacy hourly bookings become
+60-minute intervals, retaining `coversFromMs`, energy and milestones. Archived money is retained,
+not reconstructed from today's finer prices. In-progress metered rows have their own version and
+migrate legacy hourly contributions once. Metered delivery crosses native import-price boundaries;
+a missing price keeps the energy and marks the cost incomplete. Restarted runs retain saved totals
+and re-anchor measurement after startup, without billing downtime.
+
+`planned_hours` remains a number token, now the union duration of positive-energy bookings in
+hours. Two full quarters give `0.5`. **Smart task schedule changed** compares that duration;
+equal-duration moves and energy-only changes stay quiet. UI schedules, previews and history use
+actual time spans. The worked hourly examples below remain examples of this interval model;
+`currentHourClaim` and similar internal names retain their existing identifiers.
 
 ## Current Baseline
 
@@ -117,7 +156,7 @@ remain the user-facing surface for managing deadlines. For soft temperature obje
 planner uses the evaluation to decide planned/idle participation and deadline target overrides.
 
 Price gating is deliberate. The bridge only plans when price optimization is enabled and the
-daily-budget price payload covers every hour from now through the objective deadline. If the
+native price horizon covers the whole interval from now through the objective deadline. If the
 deadline is far enough in the future that tomorrow's prices are required, planning may remain
 `unknown` with `objective_missing_price_horizon` until those prices are available. It must not
 fall back to neutral or whole-range planning when the price horizon is incomplete.
@@ -155,18 +194,18 @@ Runtime admission for the cap-off case is produced by
 `lib/objectives/deferredObjectives/admission.ts` and applied at the planner boundary; terminal
 fallback actuation stays on the independent lifecycle clock:
 
-- The horizon planner computes the planned hours per cycle.
+- The allocator settles the schedule hourly; each meter-driven cycle reads the current saved interval between settles.
 - Only future-deadline objectives enter admission. At expiry, the objective controller drops
   all task claims immediately, even before the lifecycle clock disarms the setting. The clock
   still finalizes history and retries terminal fallback, but stops publishing live task status
   and diagnostics; the recorded terminal outcome remains authoritative.
 - For each live objective whose status is `on_track`, `at_risk`, or `cannot_meet`, an admission
-  decision maps the resolved hour claim: `claimed` becomes `planned`, `released` becomes `idle`,
-  and a claimed hour booked at 0 kWh is driven on free capacity only. Only an evaluation whose
+  decision maps the resolved interval claim: `claimed` becomes `planned`, `released` becomes `idle`,
+  and a claimed interval booked at 0 kWh is driven on free capacity only. Only an evaluation whose
   planning is `inactive` (an `unknown` or `invalid` objective, or any task while price optimization
   is off) resolves to `inactive`, returning the device to its normal behavior. A `satisfied` task
-  keeps governing its device until the deadline: its booked hours stay as top-ups and every
-  unbooked hour holds the device off (`holdCause: 'task_done'`, owner ruling 2026-10-17).
+  keeps governing its device until the deadline: its booked intervals stay as top-ups and every
+  unbooked interval holds the device off (`holdCause: 'task_done'`, owner ruling 2026-10-17).
 - Capacity-based control on/off is treated purely as device visibility for the planner: cap-on
   devices are always managed; a device the owner has not opted into power limiting is
   normally invisible to PELS (an externally toggled one runs undisturbed). When such a
@@ -188,12 +227,11 @@ fallback actuation stays on the independent lifecycle clock:
 - During planned hours of an active deferred temperature objective, the planner commands
   `max(modeTarget + priceOptDelta, deadlineTargetC)` to the device so the device's own
   thermostat can actually reach the deadline. The price-opt cheap/expensive delta combines only
-  with the mode side; the deadline target is never further modulated. Outside claimed hours, or
-  once the task is `satisfied`, the override drops out: the setpoint reverts to the regular mode
-  target, except in a released hour, where the task holds the device as above. The override
-  applies regardless of the
-  capacity-based control toggle (cap-on and cap-off devices both pick it up).
-  The temperature floor travels on the `planned` admission decision and is applied with that
+  with the mode side; the deadline target is never further modulated. The task's setpoint floor
+  remains on claimed and released decisions until its deadline, including after satisfaction;
+  a released interval still uses its configured limiting posture. The floor applies regardless
+  of the capacity-based control toggle (cap-on and cap-off devices both pick it up).
+  The temperature floor travels on the governing admission decision and is applied with that
   decision's other decorations in `lib/objectives/deferredObjectives/admission.ts`.
   `resolvePlannedTarget` in
   `lib/plan/planDevices.ts` consumes it after applying the price-opt delta and before the
@@ -219,49 +257,28 @@ recorder captures sealed outcomes (met/missed/abandoned), the active-plan record
 captures the plan that is *being executed right now* so the Settings UI and any
 downstream consumer reads a stable allocation rather than re-deriving one on every load.
 
-Persisted shape (V1, one row per device in the userdata store's
+Persisted shape (schema v2, one row per device in the userdata store's
 `deferred_objective_active_plans` table, `lib/objectives/deferredObjectives/activePlanStore.ts`,
-which imports the legacy `deferred_objective_active_plans` settings key once at boot; the
-settings UI hears each save as the `deferred_objective_active_plans_updated` push). This is an abbreviated
-sketch; `DeferredObjectiveActivePlanV1` in `packages/contracts/src/deferredObjectiveActivePlans.ts`
-is the full contract:
+which imports legacy v1/v2 settings once at boot; the settings UI hears each save as the
+`deferred_objective_active_plans_updated` push). The shared contract in
+`packages/contracts/src/deferredObjectiveActivePlans.ts` owns the complete shape. Commitments,
+original/latest revisions and revision history all carry the same interval booking:
 
 ```ts
-type ActivePlan = {
-  deviceId: string;
-  deviceName: string | null;
-  objectiveKind: 'temperature' | 'ev_soc' | 'energy';
-  targetValue: number;         // in the task's own unit (°C, % or kWh)
-  deadlineAtMs: number;
-  startedAtMs: number;
-  liveCompletion: DeferredObjectiveLiveCompletion;
-  pending: boolean;            // task created or edited, no revision yet
-  pendingReason?: 'not_yet_planned' | 'awaiting_horizon_plan' | 'price_feature_disabled'
-                | 'device_data_missing' | 'waiting_for_car' | 'invalid_session'
-                | 'missing_capacity' | 'device_in_sub_home' | 'device_unmanaged';
-  objectiveSignature: string;  // hash of (kind, targets, deadline, enforcement, rescue permissions)
-  commitment?: {               // first full-horizon allocation accepted for runtime execution
-    committedAtMs: number;
-    hours: { startsAtMs: number; plannedKWh: number }[];
-  };
-  original: Revision | null;   // first non-pending revision
-  latest:   Revision | null;   // current revision (== original until replanned)
-  history?: Revision[];         // bounded revision log
-};
-
-type Revision = {
-  revision: number;
-  revisedAtMs: number;
-  computedFromPricesUpTo: number | null;
-  reason: 'flow_card' | 'prices_arrived' | 'objective_changed' | 'direction_changed'
-        | 'prices_revised' | 'schedule_revised' | 'rate_refined'
-        | 'device_unavailable' | 'measured_deviation' | 'flow_permission_changed';
-  hours: { startsAtMs: number; plannedKWh: number }[];
-  energyNeededKWh: number;
-  planStatus: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied';
-  kwhPerUnitSource?: 'learned' | 'bootstrap' | 'exact';
+type DeferredObjectivePlanInterval = {
+  startsAtMs: number;
+  endsAtMs: number;
+  plannedKWh: number;
+  plannedAdmissionPowerKw?: number;
+  coversFromMs?: number;
+  plannedUnitMilestone?: number;
+  cheaperHourAhead?: boolean;
 };
 ```
+
+The persisted array name remains `hours`; an entry's duration comes from its bounds, never an
+assumed hour. `coversFromMs` retains legacy partial coverage. The shared envelope normalizer
+upgrades v1 to v2 before runtime or browser consumers validate the plan.
 
 The recorder is fed two events: `markPending` (called from the
 `set_temperature_deadline` / `set_ev_charge_deadline` flow cards) and `observe` (called
@@ -293,9 +310,9 @@ milestones. Same-schedule revisions may refine kWh or unit milestones in `latest
 rewriting the commitment envelope; falling back from `latest` to `commitment` would make
 mid-hour and `:58` release decisions stale.
 
-The per-hour `plannedKWh` on each committed hour is a **floor** — the minimum kWh the
-recorder will guarantee for that hour against future optimizer churn — not a ceiling on
-how much the allocator may schedule into the hour on later cycles. The per-hour ceiling
+The `plannedKWh` on each committed interval is a **floor** — the minimum kWh the
+recorder preserves for that coverage against future optimizer churn — not a ceiling on
+how much the allocator may schedule into the interval on later cycles. The interval ceiling
 the allocator actually applies stacks three caps via `Math.min`:
 
 - **Step capacity** — `step.usefulPowerKw × durationHours`, where `step` is the
@@ -306,9 +323,9 @@ the allocator actually applies stacks three caps via `Math.min`:
   the min step exceeds the forecast). For non-fully-reserved tasks and single-step
   devices every bucket stays at `activeSteps[0]`. Bounded by the device's calibrated
   useful-power profile.
-- **Daily-budget pacing slice** — `bucket.dailyBudgetCapKWh`, the hour's OWN controlled
-  share as the budget layer allocated it (`plannedControlledKWh`, read through
-  `policyHorizon.resolveMaxUsefulEnergyKWh`; Infinity for `exemptFromBudget` tasks).
+- **Daily-budget pacing slice** — `bucket.dailyBudgetCapKWh`, the duration-proportional share
+  of each overlapping budget hour's `plannedControlledKWh`, read through
+  `policyHorizon.resolveMaxUsefulEnergyKWh` (Infinity for `exemptFromBudget` tasks).
   Deliberately not derived by differencing the day-total-clamped `allowedCumKWh` — that
   used to unbook the tail of any day whose plan sums past its budget. This term can
   legitimately be 0 for an hour, which is a forecast of no room rather than a physical
@@ -363,8 +380,8 @@ carries no energy; whether it is still booked (at 0 kWh) is the price rule in
 "Booking is decided by price, not by forecast room" below. Explicit price releases
 still apply, to hours with energy only.
 `mergeHoursPreservingCommitment` (`activePlanSchedule.ts`) preserves the floor by taking
-`Math.max(committed.plannedKWh, live.plannedKWh)` on overlap, so a transient shrink in
-`live.plannedKWh` cannot rewrite the persisted floor downward. Phase-2 expansion adds
+`Math.max` of the duration-proportional committed and live energy on each overlapping span,
+so a transient shrink in `live.plannedKWh` cannot rewrite the persisted floor downward. Phase-2 expansion adds
 uncommitted hours — future hours, and the current hour when it is uncommitted — when even
 the committed hours filled to the stacked ceiling cannot absorb the demand (e.g. a hot-water
 draw drops the tank ~38 °C and the remaining horizon at the floor step cannot cover the new
@@ -397,8 +414,8 @@ booked: on a flat price curve that would claim every hour of the horizon. The de
 booked only when it carries energy.
 
 The saved plan's `hours` are the bookings, and `plannedKWh` is what each promises, possibly 0.
-Readers that mean "the hours the device is planned to run" (counts, the first start, the revision
-log, the preview, the "allocation changed" Flow event) read only the hours with energy
+Readers of scheduled operation (duration, first start, revision log, preview and
+"allocation changed" Flow event) read only the intervals with energy
 (`hoursWithPlannedEnergy`, `packages/shared-domain/src/deferredPlanBookedHours.ts`). Only hours with
 energy are commitment floors: the merge neither keeps a 0 kWh booking the live plan dropped nor
 treats it as churn, and the committed allocator does not fill it ahead of cheaper committed hours.
@@ -584,35 +601,29 @@ as an in-page route off `index.html`.):
   History and the current-plan hero now
   both treat a target/deadline edit as abandoning the committed schedule and starting a new
   run.
-- Each hour's booking is recorded once, on the run's first tick in the hour, as
-  `hourStartBookings` (`captureHourStartBooking` in `planHistoryHourStartBookings.ts`). The
-  source is the revision in force at the hour's start: the newest of the plan's `latest`,
-  `history` and `original` written at or before it (normally the previous hour's `:58`
-  settle). Revisions written before the run's history record started still count, because
-  they normally belong to the run: a Flow objective change restarts the plan with none
-  (`markPending`). The rarer in-place `objective_changed` revision clears `history` but keeps
-  `original`, so the hour that change lands in can be booked from that pre-change revision;
-  later hours read the new `latest`. Otherwise the run's first plan books the hour it arrives
-  in. An hour with no revision in
-  force at its start (a plan rebuilt after the hour began) has no entry, and neither has an
-  hour with no tick inside it. The bookings are saved with the in-progress metered state and
-  merged back after a restart, the saved booking winning for an hour both hold. The final
-  revision cannot answer "what was scheduled": every hourly re-plan drops the elapsed hours,
-  so it ends holding the last hour's remainder (an overnight EV run once logged
-  `plannedKWh: 0.03` against 29.6 kWh delivered). The chart run bands, hourly strip,
-  receipt's largest planned hour and the logged `plannedKWh` read the record through
-  `pickScheduledHours` (`packages/shared-domain/src/deferredPlanHistoryShared.ts`); entries
-  without it keep the final-revision reading. The record is per hour, not the run's need: a
-  `:58` re-plan books an under-delivered hour's shortfall into later hours, so `plannedKWh`
-  includes that re-booked energy and is telemetry only. The Missed shortfall chip divides by
-  `initialEnergyExpectedKWh` instead (an energy task's target; the bare delivered figure when
-  neither is known), and the "Observed N of M scheduled hours" line is hidden on entries
-  that carry the record: every booked hour is observed by construction, and after a restart
-  the bookings are restored while `observedIntervals` are not. Accepted one-time artifact: a
-  run in flight when a device first upgrades to this build restores with no bookings (the
-  migration default), so its entry holds only post-upgrade hours and the readers take that
-  list as complete (earlier hours read "Not scheduled", `plannedKWh` runs low, the coverage
-  line is hidden).
+- Each observed interval's booking is recorded once in `hourStartBookings`
+  (`captureHourStartBooking` in `planHistoryHourStartBookings.ts`), retaining explicit start/end
+  bounds. The source is the revision in force at the native price period's start, or the run's
+  first plan when it arrives mid-period. Booking coverage and the deadline can split that period
+  further. A whole interval with no tick remains unobserved. Saved captures win after restart;
+  when a new price grid overlaps an old capture, only uncovered spans may be added.
+  The motivating hourly incident remains relevant: an overnight EV run's final revision held
+  only `plannedKWh: 0.03` against 29.6 kWh delivered, so a final revision cannot reconstruct what
+  earlier intervals had scheduled. The chart bands, delivery strip, receipt and logged
+  `plannedKWh` read these captures through
+  `pickScheduledHours`; older entries without them retain the final-revision fallback.
+  This is planning telemetry, not the run's initial need: the hourly `:58` settle can rebook an
+  under-delivered interval's energy later. The Missed shortfall chip uses
+  `initialEnergyExpectedKWh` instead (an energy task's target; the delivered figure when neither
+  is known). Coverage copy stays hidden when captures exist, because saved captures survive a
+  restart while `observedIntervals` do not. Only rows predating booking capture itself migrate
+  to no captures; existing hourly captures migrate to explicit 60-minute intervals.
+- History v7 retains import-price contributions with interval endpoints and their recorded cost.
+  Integration splits held meter readings at actual price boundaries; unpriced spans still add
+  energy and leave total cost incomplete. A source correction within the same period retains the
+  energy-weighted price actually accumulated. Legacy coarse contributions are not reconstructed
+  as historical quarter prices. New SQL rows have a versioned envelope so their native intervals
+  are not mistaken for legacy hourly records on the next read.
 - The run's committed need, `initialEnergyExpectedKWh`, is captured once, on the first cycle
   that can state it while nothing has been delivered (`backfillCommitment`); after delivery a
   stated figure is a remainder. Its readers set it against delivery: budget-damage sizing of a
@@ -1237,13 +1248,13 @@ Every deferred objective creates a planning horizon:
 now -> deadline
 ```
 
-Within that horizon, PELS allocates the required useful energy into hourly buckets, filling the
-cheapest hours first (a currency-relative price comparison; hours within ~5% tie and the earlier
-one wins) while preserving deadline margin. Status resolves from the result using the reason codes
+Within that horizon, PELS allocates the required useful energy into native price intervals, filling
+the cheapest periods first (a currency-relative price comparison; periods within ~5% tie and the
+earlier one wins) while preserving deadline margin. Status resolves from the result using the reason codes
 `planned_with_margin`, `planned_using_deadline_reserve`, `target_cannot_be_met`,
-`no_bucket_capacity`, or `energy_already_met` (see §"Reason Codes"). The horizon planner recomputes
-on every relevant plan cycle and emits its current-bucket recommendation as
-`expectedStepId`.
+`no_bucket_capacity`, or `energy_already_met` (see §"Reason Codes"). Allocation runs at the hourly settle or an existing explicit-change/bootstrap path. Between
+settles, the frozen read selects the current interval and emits its recommendation as
+`expectedStepId` on each meter-driven cycle.
 
 Priority-adjusted horizon allocation is shipped: governing higher-priority tasks reserve their
 booked physical step and useful-energy intervals, while higher-ranked devices outside task control
@@ -1253,7 +1264,7 @@ energy-based milestone framework remains tracked in
 existing price behavior covers the same intent ("let soft objectives wait through expensive hours"): the
 cheapest-first allocation simply books no energy into the relatively expensive current hour, so the
 device idles there, and the status stays `on_track` — running in a comparatively pricier hour was
-never a risk. The deadline-reserve margin still guards the final hour.
+never a risk. The deadline-reserve margin still guards the end of the horizon.
 
 ### Rate Bootstrap (EV SoC only)
 
@@ -1291,11 +1302,12 @@ For EV chargers, the page should make the plan answer concrete questions from is
 - what assumptions affect backup hours and confidence
 
 The shipped page draws two ECharts charts (`packages/settings-ui/src/ui/views/DeadlinePlan.tsx`).
-The schedule chart (`buildScheduleChartOption`) is one grid of hourly price bars: picked hours are
-filled, other hours are the same hue dimmed, a dot marks hours the plan changed, and now/deadline
-lines sit at their true positions. The trajectory chart (`buildTrajectoryChartOption`) shows the
-measured progress so far, the planned staircase ahead, scheduled-run bands, a dashed target line in
-the device's display unit (°C, % or kWh) and the deadline line. This keeps the behavior recognizable as cheapest-hour EV planning while showing the
+The schedule chart (`buildScheduleChartOption`) draws native price periods at their actual bounds:
+scheduled intervals are filled, others dimmed, a dot marks changed bookings, and now/deadline
+lines sit at their true positions. Separated quarters retain their gaps. The trajectory chart
+(`buildTrajectoryChartOption`) shows measured progress, the planned staircase, scheduled-run
+bands, a dashed target in the device's unit (°C, % or kWh), and the deadline line. This shows the
+selected periods while preserving the
 PELS difference: priority and background usage risk widen the plan or add backup hours, but
 they do not make expensive hours look cheap.
 
@@ -1435,8 +1447,10 @@ Four trigger cards registered in `flowCards/deadlineObjectiveCards.ts`:
   (number, 0 when succeeded; flow UI label "Gap to target"), `shortfall_known` (false when the
   device-side delta was not observable and `shortfall` fell back to 0). `replaced` and `unknown`
   outcomes are intentionally suppressed.
-- **`deadline_plan_changed`** — fires when a replan changes the number of planned hours.
-  Tokens: `device_name`, `remaining_kwh`, `planned_hours`, `projected_finish_local_time`.
+- **`deadline_plan_changed`** — fires when a replan changes total scheduled duration.
+  Equal-duration moves and energy-only changes are quiet; a satisfied collapse stays suppressed.
+  `planned_hours` is the union duration of positive-energy bookings in hours, including fractions
+  (two full 15-minute intervals = `0.5`). Tokens: `device_name`, `remaining_kwh`, `planned_hours`, `projected_finish_local_time`.
   Trigger title is "Smart task schedule changed".
 - **`smart_task_hours_remaining`** — "Smart task time is running low". Args `device`, `hours`;
   tokens `device_name`, `hours_remaining`.

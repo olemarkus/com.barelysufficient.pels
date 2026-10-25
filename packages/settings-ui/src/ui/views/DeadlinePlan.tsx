@@ -17,7 +17,6 @@ import {
   SMART_TASK_BANNER_RECORD_NOT_FOUND_BODY,
   SMART_TASK_BANNER_RECORD_NOT_FOUND_TITLE,
   SMART_TASK_BANNER_UNAVAILABLE_TITLE,
-  NOW_MARKER_WORD,
   formatGrantedRescuePermissionsLine,
   SMART_TASK_EXTRA_PERMISSION_HINTS,
   SMART_TASK_EXTRA_PERMISSION_LABELS,
@@ -36,12 +35,11 @@ import {
 import { useEchartsMount, type EChartsOption, type EChartsType, type SeriesOption } from '../echartsRegistry.ts';
 import { readChartPalette, readCssNumber, readCssVar } from '../dayViewChart.ts';
 import {
-  attachHourScrub,
   attachTimeAxisHourScrub,
   selectionHairlineSeries,
   setSelectionHairline,
 } from '../deadlineChartScrub.ts';
-import { resolveCategoryIndexFromPixel } from '../chartReadout.ts';
+import { renderDeadlineIntervalBar } from '../deadlineIntervalBar.ts';
 import { formatAcceptedAt, formatHourLabel } from '../deadlinePlanFormatters.ts';
 import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
@@ -90,10 +88,10 @@ type DeadlinePlanChip = {
 };
 
 type DeadlinePlanHour = {
-  // Hour-start timestamp. The trajectory chart's scrub handler maps time-axis
-  // pixel positions back onto this hour grid, and the selection hairline sits
-  // at `startsAtMs + 30 min`.
+  // Exact period bounds. Scrubbing maps timestamps onto these intervals,
+  // and the selection hairline sits at the selected interval's midpoint.
   startsAtMs: number;
+  endsAtMs: number;
   time: string;
   price: string;
   priceValue: number;
@@ -211,19 +209,14 @@ export type DeadlinePlanPayload = {
     // selection and the position of the "Now" axis label + now markLine.
     // Not necessarily 0: the window opens at the plan's original revision.
     nowIndex: number;
-    // Fractional category-axis coordinates (category `i` spans
-    // `[i-0.5, i+0.5]`) so the now/deadline markLines sit at their TRUE
-    // positions instead of snapping to a bar centre.
+    // Exact timestamps for the now/deadline marks on the continuous time axis.
     nowAxisX: number;
     deadlineAxisX: number;
     // "deadline Sun 09:00" markLine label, producer-composed.
     deadlineMarkLabel: string;
-    // "Picked N of M hours before the deadline · avg P kr/kWh" trust
-    // caption rendered under the chart. Resolved producer-side from the
-    // per-hour `priceValue` + `planned` flag via `formatCheapestHoursCaption`
-    // so the view never re-derives the averages or branches on price unit.
-    // Null when the summary can't be stated honestly (no planned hours, a
-    // single-hour window, or a missing price unit).
+    // Scheduled duration and duration-weighted average price, resolved from
+    // period bounds, prices and planned flags by `formatCheapestHoursCaption`.
+    // Null when no scheduled duration or price unit is available.
     cheapestHoursCaption: string | null;
     // The registered `using your solar` reason line, present only when a
     // prosumer's per-hour PLANNING price (what the schedule chart + readout
@@ -512,7 +505,10 @@ const TRAJECTORY_CHART_HEIGHT = 160;
 const resolveScheduleChartSize = resolveChartSizeWithFallback(SCHEDULE_CHART_HEIGHT);
 const resolveTrajectoryChartSize = resolveChartSizeWithFallback(TRAJECTORY_CHART_HEIGHT);
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
+// Compact 24-hour labels need fewer ticks on narrow Homey cards. Let the
+// time scale choose aligned ticks; filtering by a separate timestamp modulus
+// can erase every label when its cadence differs from ECharts' tick cadence.
+const resolveTimeAxisSplitNumber = (chartWidth: number): number => (chartWidth <= 360 ? 2 : 4);
 
 // Schedule chart ("When will it run, and at what price?"): one grid, one
 // zero-baselined price axis on the right, one-hue-two-states price bars —
@@ -530,11 +526,10 @@ export const buildScheduleChartOption = (
   payload: DeadlinePlanPayload,
   palette: DeadlineChartPalette,
   typography: ChartTypography,
+  chartWidth = 480,
 ): EChartsOption => {
   const { timeline } = payload;
-  const hourCount = timeline.hours.length;
-  const labels = timeline.hours.map((hour) => hour.time);
-  const showLabelEvery = hourCount > 10 ? 4 : 3;
+
   // Keep the price axis anchored at zero for normal non-negative prices so
   // bar heights are honest. Nord Pool can go negative; in that case the lower
   // bound follows the data so those hours remain visible instead of being
@@ -553,22 +548,15 @@ export const buildScheduleChartOption = (
     textStyle: { color: palette.text, fontFamily: 'inherit' },
     grid: { left: 8, right: 12, top: 24, bottom: 24, containLabel: true },
     xAxis: {
-      type: 'category',
-      data: labels,
-      boundaryGap: true,
+      type: 'time',
+      min: timeline.hours[0]?.startsAtMs,
+      max: timeline.hours[timeline.hours.length - 1]?.endsAtMs,
+      splitNumber: resolveTimeAxisSplitNumber(chartWidth),
       axisTick: { show: false },
       axisLine: { lineStyle: { color: palette.grid } },
-      axisLabel: {
-        color: palette.muted,
-        fontSize: typography.labelFontSize,
-        // Evenly spaced hour ticks, anchored at the "Now" column so the
-        // cadence includes it — never the old mixed rule that also forced
-        // the final column and produced adjacent-label crowding (20:00 21:00).
-        interval: (index: number) => (
-          (index - timeline.nowIndex) % showLabelEvery === 0
-        ),
-        formatter: (value: string, index: number) => (
-          index === timeline.nowIndex ? NOW_MARKER_WORD : value
+      axisLabel: { color: palette.muted, fontSize: typography.labelFontSize, hideOverlap: true,
+        formatter: (value: number, index: number) => (
+          chartWidth <= 360 && index % 2 !== 0 ? '' : formatHourLabel(value)
         ),
       },
     },
@@ -604,15 +592,15 @@ export const buildScheduleChartOption = (
       {
         id: 'price',
         name: 'Price',
-        type: 'bar',
-        barCategoryGap: '25%',
-        barMinHeight: 3,
+        type: 'custom',
+        renderItem: renderDeadlineIntervalBar,
+        encode: { x: [0, 1], y: 2 },
         // One hue, two states: picked hours are filled mint; hours the task
         // can use but didn't pick keep the same hue as a dim outlined shell,
         // so "which hours run" is answerable at a glance without a colour
         // code for price levels (the bar height is the price).
         data: timeline.hours.map((hour) => ({
-          value: hour.priceValue,
+          value: [hour.startsAtMs, hour.endsAtMs, hour.priceValue],
           itemStyle: hour.planned
             ? {
               color: palette.picked,
@@ -640,9 +628,9 @@ export const buildScheduleChartOption = (
           symbolSize: 5,
           itemStyle: { color: palette.text },
           label: { show: false },
-          data: timeline.hours.flatMap((hour, index) => (
+          data: timeline.hours.flatMap((hour) => (
             hour.changed
-              ? [{ coord: [index, Math.max(hour.priceValue, 0) + changedDotOffset] }]
+              ? [{ coord: [(hour.startsAtMs + hour.endsAtMs) / 2, Math.max(hour.priceValue, 0) + changedDotOffset] }]
               : []
           )),
         },
@@ -688,14 +676,6 @@ export const buildTrajectoryChartOption = (
 ): EChartsOption => {
   const deadlineColor = trajectory.deadlineDanger ? palette.danger : palette.muted;
   const xSpanMs = trajectory.xMaxMs - trajectory.xMinMs;
-  // Explicit, width-aware tick cadence: ~5 hour-aligned labels at full card
-  // width, ~3 at narrow (≤360 px) widths where five "HH:MM" labels fuse into
-  // one unreadable run. ECharts' time axis ignores `interval` and its default
-  // ticks + `hideOverlap` still crowd at 320–480 px, so the formatter blanks
-  // every label that doesn't sit on the chosen hour cadence (the signed-off
-  // mock's idiom).
-  const targetTickCount = chartWidth > 0 && chartWidth <= 360 ? 3 : 5;
-  const tickIntervalMs = Math.max(1, Math.ceil(xSpanMs / ONE_HOUR_MS / targetTickCount)) * ONE_HOUR_MS;
   return {
     animation: false,
     backgroundColor: 'transparent',
@@ -705,6 +685,7 @@ export const buildTrajectoryChartOption = (
       type: 'time',
       min: trajectory.xMinMs,
       max: trajectory.xMaxMs,
+      splitNumber: resolveTimeAxisSplitNumber(chartWidth),
       axisTick: { show: false },
       axisLine: { lineStyle: { color: palette.grid } },
       splitLine: { show: false },
@@ -712,9 +693,7 @@ export const buildTrajectoryChartOption = (
         color: palette.muted,
         fontSize: typography.labelFontSize,
         hideOverlap: true,
-        formatter: (ms: number): string => (
-          ms % tickIntervalMs === 0 ? formatHourLabel(ms) : ''
-        ),
+        formatter: formatHourLabel,
       },
     },
     yAxis: {
@@ -874,7 +853,6 @@ const ScheduleChart = ({ payload, selectedIndex, onSelect }: {
   selectedIndex: number;
   onSelect: (index: number | null) => void;
 }) => {
-  const hourCount = payload.timeline.hours.length;
   const chartHandle = useRef<EChartsType | null>(null);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
@@ -883,18 +861,13 @@ const ScheduleChart = ({ payload, selectedIndex, onSelect }: {
       payload,
       resolvePalette(container),
       resolveTypography(container),
+      resolveScheduleChartSize(container).width,
     ),
     resolveSize: resolveScheduleChartSize,
     deps: [payload],
     onChartInit: (chart) => {
       chartHandle.current = chart;
-      attachHourScrub(
-        chart,
-        // Column-tolerant pixel→hour resolution shared with the Usage-tab
-        // pinned readouts (`chartReadout.ts`).
-        (x, y) => resolveCategoryIndexFromPixel(chart, x, y, hourCount),
-        (index) => onSelectRef.current(index),
-      );
+      attachTimeAxisHourScrub(chart, payload.timeline.hours, (index) => onSelectRef.current(index));
     },
   });
   // Imperative highlight of the selected bar. Runs after the mount effect on
@@ -929,7 +902,7 @@ const TrajectoryChart = ({ payload, selectedHourMs, onSelect }: {
       // Now-dot ring colour = the card surface behind the chart, so the dot
       // reads as punched out of the measured line.
       readCssVar(container, '--pels-surface-container-lowest', 'transparent'),
-      // Width drives the time-axis label cadence (~3 labels at ≤360 px).
+      // Width drives the time-axis label density.
       // Same sizer the mount hook uses, so the cadence matches the rendered
       // width even on a cold mount inside a hidden panel.
       resolveTrajectoryChartSize(container).width,
@@ -996,7 +969,8 @@ const ScheduleQuestionCards = ({ payload }: { payload: DeadlinePlanPayload }) =>
         </div>
         <TrajectoryChart
           payload={payload}
-          selectedHourMs={selected !== null ? (hours[effectiveIndex]?.startsAtMs ?? null) : null}
+          selectedHourMs={selected !== null && hours[effectiveIndex]
+            ? (hours[effectiveIndex]!.startsAtMs + hours[effectiveIndex]!.endsAtMs) / 2 : null}
           onSelect={setSelected}
         />
         <p class={stateline.tone === 'danger' ? 'deadline-stateline deadline-stateline--danger' : 'deadline-stateline'}>

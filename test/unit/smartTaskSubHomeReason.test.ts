@@ -47,7 +47,7 @@ describe('device_in_sub_home active-task presentation', () => {
       liveCompletion: { kind: 'unavailable' },
       pending: false,
       diagnosticReasonCode: 'objective_device_in_sub_home',
-      latest: { planStatus: 'on_track', hours: [{ startsAtMs: 1, plannedKWh: 1 }] },
+      latest: { planStatus: 'on_track', hours: [{ startsAtMs: 1, endsAtMs: (1) + 3_600_000, plannedKWh: 1 }] },
       targetValue: 55,
     }, 0)).toBe('unavailable');
   });

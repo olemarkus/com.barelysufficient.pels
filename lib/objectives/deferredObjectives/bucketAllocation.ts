@@ -1,5 +1,5 @@
 import type {
-  DeferredObjectiveCommittedHour,
+  DeferredObjectiveCommittedInterval,
   DeferredObjectiveHorizonBucket,
   DeferredObjectiveAllocatedBucket,
   DeferredObjectiveStep,
@@ -144,19 +144,19 @@ export const allocateCommittedEnergyToBuckets = (
   stepForBucket: StepForBucket,
   energyNeededKWh: number,
   epsilonKWh: number,
-  committedHours: readonly DeferredObjectiveCommittedHour[],
+  committedHours: readonly DeferredObjectiveCommittedInterval[],
 ): BucketAllocationResult => {
-  const committedHourSet = buildCommittedHourSet(committedHours);
+  const committedIntervals = committedHours.filter(hasPlannedEnergy);
   const plannedByBucketId = new Map<string, number>();
   let remainingKWh = Math.max(0, energyNeededKWh);
   let plannedUsefulEnergyKWh = 0;
   let usesDeadlineReserve = false;
-  const bucketsByTime = sortBucketsByTime(buckets);
+  const splitBuckets = splitAtCommitmentBoundaries(buckets, committedIntervals);
+  const bucketsByTime = sortBucketsByTime(splitBuckets);
 
   for (const bucket of bucketsByTime) {
     if (remainingKWh <= epsilonKWh) break;
-    const hourStartMs = Math.floor(bucket.startMs / HOUR_MS) * HOUR_MS;
-    if (!committedHourSet.has(hourStartMs)) continue;
+    if (!isCommittedBucket(bucket, committedIntervals)) continue;
     const usefulEnergyCapacityKWh = resolveBucketStepCapacityKWh(bucket, stepForBucket(bucket));
     const plannedKWh = Math.min(remainingKWh, usefulEnergyCapacityKWh);
     if (plannedKWh <= 0) continue;
@@ -186,7 +186,7 @@ export const allocateCommittedEnergyToBuckets = (
   //        Expansion adds the missing hours; commitment grows on persist.
   if (remainingKWh > epsilonKWh) {
     const expansion = expandCommittedAllocation(
-      buckets, stepForBucket, epsilonKWh, remainingKWh, plannedByBucketId, committedHours,
+      splitBuckets, stepForBucket, epsilonKWh, remainingKWh, plannedByBucketId, committedHours,
     );
     plannedUsefulEnergyKWh += expansion.plannedUsefulEnergyKWh;
     remainingKWh = expansion.remainingKWh;
@@ -194,7 +194,7 @@ export const allocateCommittedEnergyToBuckets = (
   }
 
   return {
-    plannedBuckets: buildPlannedBuckets(buckets, stepForBucket, plannedByBucketId),
+    plannedBuckets: buildPlannedBuckets(splitBuckets, stepForBucket, plannedByBucketId),
     plannedUsefulEnergyKWh,
     unplannedUsefulEnergyKWh: Math.max(0, remainingKWh),
     usesDeadlineReserve,
@@ -230,10 +230,8 @@ export const allocateCommittedEnergyToBuckets = (
 //       (`activePlanRecorder.isReplanDueThisCycle`); until that settle it
 //       re-fills via this phase-2 path each cycle rather than being served from
 //       phase-1 (committed). Live control is identical either way.
-//   (c) Policy buckets stay hour-aligned. The committed-hour skip set is
-//       keyed by `floor(startMs / HOUR_MS)`; relaxing the hour alignment
-//       (sub-hour segments outside the existing reserve split) would
-//       require revisiting both this skip and the per-bucket cap maths.
+//   (c) Source periods split at commitment edges before phase one. Expansion
+//       skips actual committed coverage, even when a source changes its grid.
 //
 // Operationally: spill the residual into uncommitted future buckets using
 // the fresh-allocator sort. Resizing WITHIN a committed hour up to step
@@ -250,7 +248,7 @@ const expandCommittedAllocation = (
   epsilonKWh: number,
   residualKWh: number,
   plannedByBucketId: Map<string, number>,
-  committedHours: readonly DeferredObjectiveCommittedHour[],
+  committedHours: readonly DeferredObjectiveCommittedInterval[],
 ): {
   plannedUsefulEnergyKWh: number;
   remainingKWh: number;
@@ -259,7 +257,7 @@ const expandCommittedAllocation = (
   let remainingKWh = residualKWh;
   let plannedUsefulEnergyKWh = 0;
   let usesDeadlineReserve = false;
-  const committedHourSet = buildCommittedHourSet(committedHours);
+  const committedIntervals = committedHours.filter(hasPlannedEnergy);
   for (const bucket of sortBucketsForAllocation(buckets)) {
     if (remainingKWh <= epsilonKWh) break;
     if (plannedByBucketId.has(bucket.id)) continue;
@@ -270,7 +268,7 @@ const expandCommittedAllocation = (
     // phase-1's; invariant (a)). An *uncommitted* current hour is NOT skipped:
     // it has no settled budget, so expansion fills it cheapest-first like any
     // other hour rather than stranding it at 0 kWh (invariant (a)).
-    if (committedHourSet.has(Math.floor(bucket.startMs / HOUR_MS) * HOUR_MS)) continue;
+    if (isCommittedBucket(bucket, committedIntervals)) continue;
     const plannedKWh = Math.min(
       remainingKWh,
       resolveBucketStepCapacityKWh(bucket, stepForBucket(bucket)),
@@ -286,21 +284,36 @@ const expandCommittedAllocation = (
   };
 };
 
-// Shared between phase-1 and phase-2: the hour-aligned set of timestamps that
-// carry a committed energy floor. A saved hour booked at 0 kWh promises nothing,
-// so it is not in the set: phase-1 must not fill it ahead of cheaper committed
-// hours just because it is earlier, and phase-2 may fill it cheapest-first like
-// any other uncommitted hour when the need grows.
-const buildCommittedHourSet = (
-  committedHours: readonly DeferredObjectiveCommittedHour[],
-): Set<number> => {
-  const set = new Set<number>();
-  for (const hour of committedHours) {
-    if (!Number.isFinite(hour.startsAtMs) || !hasPlannedEnergy(hour)) continue;
-    set.add(Math.floor(hour.startsAtMs / HOUR_MS) * HOUR_MS);
-  }
-  return set;
-};
+const isCommittedBucket = (
+  bucket: NormalizedBucket,
+  intervals: readonly DeferredObjectiveCommittedInterval[],
+): boolean => intervals.some((interval) => (
+  (interval.coversFromMs ?? interval.startsAtMs) <= bucket.startMs && interval.endsAtMs >= bucket.endMs
+));
+
+// A new source grid may cross old commitment edges. Split before allocation so
+// only actual committed coverage receives phase-one priority, never its neighbour.
+const splitAtCommitmentBoundaries = (
+  buckets: readonly NormalizedBucket[],
+  intervals: readonly DeferredObjectiveCommittedInterval[],
+): NormalizedBucket[] => buckets.flatMap((bucket) => {
+  const edges = [...new Set([bucket.startMs, bucket.endMs, ...intervals.flatMap((interval) => [
+    interval.coversFromMs ?? interval.startsAtMs, interval.endsAtMs,
+  ]).filter((edge) => edge > bucket.startMs && edge < bucket.endMs)])].sort((left, right) => left - right);
+  if (edges.length === 2) return [bucket];
+  return edges.slice(0, -1).flatMap((startMs, index) => {
+    const endMs = edges[index + 1];
+    if (endMs === undefined) return [];
+    const fraction = (endMs - startMs) / (bucket.endMs - bucket.startMs);
+    return [{
+      ...bucket, id: `${bucket.id}:commit:${startMs}`, startMs, endMs,
+      current: bucket.current && startMs === bucket.startMs,
+      durationHours: (endMs - startMs) / HOUR_MS,
+      dailyBudgetCapKWh: bucket.dailyBudgetCapKWh * fraction,
+      higherPriorityReservedKWh: bucket.higherPriorityReservedKWh * fraction,
+    }];
+  });
+});
 
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 const appendNormalizedBucketSegments = (

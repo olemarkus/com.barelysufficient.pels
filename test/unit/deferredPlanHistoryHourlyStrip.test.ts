@@ -55,7 +55,7 @@ describe('resolveHistoryDetailHourlyStrip', () => {
     // has no honest answer without delivery data — suppress it.
     const entry = buildEntry({
       originalPlan: {
-        hours: [{ startsAtMs: START_MS, plannedKWh: 2.0 }],
+        hours: [{ startsAtMs: START_MS, endsAtMs: (START_MS) + 3_600_000, plannedKWh: 2.0 }],
         energyNeededKWh: 2,
         planStatus: 'on_track',
         revisedAtMs: START_MS,
@@ -67,9 +67,9 @@ describe('resolveHistoryDetailHourlyStrip', () => {
 
   it('produces one bucket per hour in [startedAtMs, deadlineAtMs] from contributions', () => {
     const hourlyContributions: DeferredObjectivePlanHistoryHourlyContribution[] = [
-      { atMs: START_MS, deliveredKWh: 2.4, priceValue: 0.15, tone: 'cheap' },
-      { atMs: START_MS + HOUR_MS, deliveredKWh: 3.6, priceValue: 0.45, tone: 'normal' },
-      { atMs: START_MS + 2 * HOUR_MS, deliveredKWh: 1.2, priceValue: 0.95, tone: 'expensive' },
+      { atMs: START_MS, endsAtMs: (START_MS) + 3_600_000, deliveredKWh: 2.4, priceValue: 0.15, tone: 'cheap' },
+      { atMs: START_MS + HOUR_MS, endsAtMs: (START_MS + HOUR_MS) + 3_600_000, deliveredKWh: 3.6, priceValue: 0.45, tone: 'normal' },
+      { atMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, deliveredKWh: 1.2, priceValue: 0.95, tone: 'expensive' },
     ];
     const entry = buildEntry({ hourlyContributions });
     const data = resolveHistoryDetailHourlyStrip(entry);
@@ -87,11 +87,11 @@ describe('resolveHistoryDetailHourlyStrip', () => {
   it('marks only the lowest-priced cheap delivered hour with the cheapest highlight', () => {
     const hourlyContributions: DeferredObjectivePlanHistoryHourlyContribution[] = [
       // Two cheap hours: the second one is cheaper.
-      { atMs: START_MS, deliveredKWh: 1.0, priceValue: 0.20, tone: 'cheap' },
-      { atMs: START_MS + HOUR_MS, deliveredKWh: 1.5, priceValue: 0.12, tone: 'cheap' },
+      { atMs: START_MS, endsAtMs: (START_MS) + 3_600_000, deliveredKWh: 1.0, priceValue: 0.20, tone: 'cheap' },
+      { atMs: START_MS + HOUR_MS, endsAtMs: (START_MS + HOUR_MS) + 3_600_000, deliveredKWh: 1.5, priceValue: 0.12, tone: 'cheap' },
       // A normal-tone hour with an even lower price is ignored — the highlight
       // is reserved for the tier the design synthesis calls out.
-      { atMs: START_MS + 2 * HOUR_MS, deliveredKWh: 2.0, priceValue: 0.05, tone: 'normal' },
+      { atMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, deliveredKWh: 2.0, priceValue: 0.05, tone: 'normal' },
     ];
     const entry = buildEntry({ hourlyContributions });
     const data = resolveHistoryDetailHourlyStrip(entry);
@@ -105,8 +105,8 @@ describe('resolveHistoryDetailHourlyStrip', () => {
     const entry = buildEntry({
       originalPlan: {
         hours: [
-          { startsAtMs: START_MS, plannedKWh: 2.0 },
-          { startsAtMs: START_MS + HOUR_MS, plannedKWh: 2.0 },
+          { startsAtMs: START_MS, endsAtMs: (START_MS) + 3_600_000, plannedKWh: 2.0 },
+          { startsAtMs: START_MS + HOUR_MS, endsAtMs: (START_MS + HOUR_MS) + 3_600_000, plannedKWh: 2.0 },
         ],
         energyNeededKWh: 4,
         planStatus: 'on_track',
@@ -114,7 +114,7 @@ describe('resolveHistoryDetailHourlyStrip', () => {
       },
       finalPlan: null,
       hourlyContributions: [
-        { atMs: START_MS, deliveredKWh: 2.0, priceValue: 0.30, tone: 'cheap' },
+        { atMs: START_MS, endsAtMs: (START_MS) + 3_600_000, deliveredKWh: 2.0, priceValue: 0.30, tone: 'cheap' },
       ],
     });
     const data = resolveHistoryDetailHourlyStrip(entry);
@@ -130,32 +130,69 @@ describe('resolveHistoryDetailHourlyStrip', () => {
     expect(data.buckets[1]!.kwh).toBe(2.0); // Falls back to plannedKWh for tooltip context.
   });
 
+  it('keeps dropped original periods and prefers final energy only where intervals overlap', () => {
+    const quarterMs = HOUR_MS / 4;
+    const entry = buildEntry({
+      deadlineAtMs: START_MS + HOUR_MS,
+      originalPlan: {
+        hours: [{ startsAtMs: START_MS, endsAtMs: START_MS + HOUR_MS, plannedKWh: 4 }],
+        energyNeededKWh: 4,
+        planStatus: 'on_track',
+        revisedAtMs: START_MS,
+      },
+      finalPlan: {
+        hours: [{
+          startsAtMs: START_MS + quarterMs,
+          endsAtMs: START_MS + 2 * quarterMs,
+          plannedKWh: 0.5,
+        }],
+        energyNeededKWh: 0.5,
+        planStatus: 'on_track',
+        revisedAtMs: START_MS + quarterMs,
+      },
+      hourlyContributions: [{
+        atMs: START_MS + 3 * quarterMs,
+        endsAtMs: START_MS + HOUR_MS,
+        deliveredKWh: 0.8,
+        priceValue: 0.3,
+        tone: 'cheap',
+      }],
+    });
+    const data = resolveHistoryDetailHourlyStrip(entry);
+    if (data.mode !== 'present') throw new Error('expected present');
+    expect(data.buckets.map((bucket) => [bucket.atMs, bucket.endsAtMs])).toEqual(
+      Array.from({ length: 4 }, (_, index) => [START_MS + index * quarterMs, START_MS + (index + 1) * quarterMs]),
+    );
+    expect(data.buckets.map((bucket) => bucket.kwh)).toEqual([1, 0.5, 1, 0.8]);
+    expect(data.buckets.map((bucket) => bucket.outlinePresent)).toEqual([true, true, true, false]);
+  });
+
   // Regression, prod 2026-10-01/02: hourly re-plans drop elapsed hours, so an
   // EV run's final revision held one hour shrunk to 0.03 kWh. The strip must
   // read each hour's booking at its start instead.
   it('marks the hours booked when each began as planned, not the final revision\'s hours', () => {
     const entry = buildEntry({
       originalPlan: {
-        hours: [{ startsAtMs: START_MS + HOUR_MS, plannedKWh: 9 }],
+        hours: [{ startsAtMs: START_MS + HOUR_MS, endsAtMs: (START_MS + HOUR_MS) + 3_600_000, plannedKWh: 9 }],
         energyNeededKWh: 9,
         planStatus: 'on_track',
         revisedAtMs: START_MS,
       },
       finalPlan: {
-        hours: [{ startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 0.03, coversFromMs: DEADLINE_MS - 2 * 60_000 }],
+        hours: [{ startsAtMs: START_MS + 3 * HOUR_MS, endsAtMs: (START_MS + 3 * HOUR_MS) + 3_600_000, plannedKWh: 0.03, coversFromMs: DEADLINE_MS - 2 * 60_000 }],
         energyNeededKWh: 0.03,
         planStatus: 'cannot_meet',
         revisedAtMs: DEADLINE_MS - 2 * 60_000,
       },
       hourStartBookings: [
-        { atMs: START_MS, bookedKWh: 3 },
-        { atMs: START_MS + HOUR_MS, bookedKWh: 0 },
-        { atMs: START_MS + 2 * HOUR_MS, bookedKWh: 2.5 },
-        { atMs: START_MS + 3 * HOUR_MS, bookedKWh: 2 },
+        { atMs: START_MS, endsAtMs: (START_MS) + 3_600_000, bookedKWh: 3 },
+        { atMs: START_MS + HOUR_MS, endsAtMs: (START_MS + HOUR_MS) + 3_600_000, bookedKWh: 0 },
+        { atMs: START_MS + 2 * HOUR_MS, endsAtMs: (START_MS + 2 * HOUR_MS) + 3_600_000, bookedKWh: 2.5 },
+        { atMs: START_MS + 3 * HOUR_MS, endsAtMs: (START_MS + 3 * HOUR_MS) + 3_600_000, bookedKWh: 2 },
       ],
       hourlyContributions: [
-        { atMs: START_MS, deliveredKWh: 2.8, priceValue: 0.3, tone: 'cheap' },
-        { atMs: START_MS + 3 * HOUR_MS, deliveredKWh: 1.9, priceValue: 0.5, tone: 'normal' },
+        { atMs: START_MS, endsAtMs: (START_MS) + 3_600_000, deliveredKWh: 2.8, priceValue: 0.3, tone: 'cheap' },
+        { atMs: START_MS + 3 * HOUR_MS, endsAtMs: (START_MS + 3 * HOUR_MS) + 3_600_000, deliveredKWh: 1.9, priceValue: 0.5, tone: 'normal' },
       ],
     });
     const data = resolveHistoryDetailHourlyStrip(entry);
@@ -171,8 +208,8 @@ describe('resolveHistoryDetailHourlyStrip', () => {
   it('suppresses the cheapest highlight when no cheap hour was delivered', () => {
     const hourlyContributions: DeferredObjectivePlanHistoryHourlyContribution[] = [
       // A cheap hour with zero delivered → not "actually charged in".
-      { atMs: START_MS, deliveredKWh: 0, priceValue: 0.10, tone: 'cheap' },
-      { atMs: START_MS + HOUR_MS, deliveredKWh: 1.5, priceValue: 0.60, tone: 'normal' },
+      { atMs: START_MS, endsAtMs: (START_MS) + 3_600_000, deliveredKWh: 0, priceValue: 0.10, tone: 'cheap' },
+      { atMs: START_MS + HOUR_MS, endsAtMs: (START_MS + HOUR_MS) + 3_600_000, deliveredKWh: 1.5, priceValue: 0.60, tone: 'normal' },
     ];
     const entry = buildEntry({ hourlyContributions });
     const data = resolveHistoryDetailHourlyStrip(entry);

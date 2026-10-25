@@ -12,7 +12,7 @@ import type {
 } from './profileEnergyResolution';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
 import type {
-  DeferredObjectiveActivePlansV1,
+  DeferredObjectiveActivePlansV2,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import {
   resolveObjectiveDeviceInputs,
@@ -106,7 +106,7 @@ export type TaskEvaluationSnapshot = {
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   priceOptimizationEnabled: boolean;
-  activePlans: DeferredObjectiveActivePlansV1;
+  activePlans: DeferredObjectiveActivePlansV2;
   // The house's power-limit settings; the policy horizon and the reservation
   // ledger resolve the planning ceiling from them.
   powerLimits: PowerLimitSettings;
@@ -149,7 +149,7 @@ export type TaskEvaluationSource = TaskEvaluationReaders & {
   getThermalDirection: (deviceId: string) => ThermalDirection;
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
-  getDeferredObjectiveActivePlans: () => DeferredObjectiveActivePlansV1;
+  getDeferredObjectiveActivePlans: () => DeferredObjectiveActivePlansV2;
   // The persisted power-limit settings. The planning ceiling is derived in the
   // domain from them: `lib/power` owns the ceiling, and `setup/` answers no
   // power question.

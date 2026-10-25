@@ -5,8 +5,6 @@
 // already imports the history view).
 import type { EChartsType, SeriesOption } from './echartsRegistry.ts';
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
-
 // Pointer-down + drag scrubbing that snaps to hour columns. 26 bars at 320 px
 // are too thin for individual taps, so the listener sits at the zr level and
 // resolves any plot-area position to an hour via `convertFromPixel`. A tap
@@ -46,13 +44,14 @@ export const attachHourScrub = (
 // listed hours snaps to the nearest bucket (clamping to the ends). Exported
 // for unit tests.
 export const resolveScrubHourIndex = (
-  hours: ReadonlyArray<{ startsAtMs: number }>,
+  hours: ReadonlyArray<{ startsAtMs: number; endsAtMs: number }>,
   ms: number,
 ): number | null => {
   let best: number | null = null;
   let bestDistance = Number.POSITIVE_INFINITY;
   for (const [index, hour] of hours.entries()) {
-    const endMs = hour.startsAtMs + ONE_HOUR_MS;
+    const endMs = hour.endsAtMs;
+    if (ms >= hour.startsAtMs && ms < endMs) return index;
     const distance = ms < hour.startsAtMs
       ? hour.startsAtMs - ms
       : Math.max(0, ms - endMs);
@@ -69,7 +68,7 @@ export const resolveScrubHourIndex = (
 // a tap outside the grid to null.
 export const attachTimeAxisHourScrub = (
   chart: EChartsType,
-  hours: ReadonlyArray<{ startsAtMs: number }>,
+  hours: ReadonlyArray<{ startsAtMs: number; endsAtMs: number }>,
   onSelect: (index: number | null) => void,
 ): void => attachHourScrub(
   chart,
@@ -110,7 +109,7 @@ export const setSelectionHairline = (chart: EChartsType | null, selectedHourMs: 
     series: [{
       id: 'selection-hairline',
       markLine: {
-        data: selectedHourMs === null ? [] : [{ xAxis: selectedHourMs + ONE_HOUR_MS / 2 }],
+        data: selectedHourMs === null ? [] : [{ xAxis: selectedHourMs }],
       },
     }],
   });
