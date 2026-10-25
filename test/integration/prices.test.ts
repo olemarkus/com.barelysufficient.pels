@@ -1109,6 +1109,77 @@ describe('Grid tariff fetching', () => {
     }
   });
 
+  describe('Lnett weekend correction', () => {
+    // NVE serves Lnett's day rate (06-22) every day, weekends included.
+    const lnettNveDay = (date: string) => Array.from({ length: 24 }, (_, time) => ({
+      datoId: `${date}T00:00:00`,
+      time,
+      energileddEks: time >= 6 && time < 22 ? 26.6 : 14.6,
+      energileddInk: time >= 6 && time < 22 ? 33.25 : 18.25,
+    }));
+
+    // `forced` is the settings page's refresh; otherwise the refresh at startup.
+    const refreshLnettAt = async (now: Date, answer: (date: string) => unknown[], forced = true) => {
+      mockHomeyInstance.settings.set('nettleie_fylke', '11');
+      mockHomeyInstance.settings.set('nettleie_orgnr', '980038408');
+      mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
+      const originalDate = global.Date;
+      global.Date = mockDateAt(now);
+      try {
+        (global.fetch as Mock).mockImplementation((url: string) => {
+          const date = new URL(url).searchParams.get('ValgtDato') ?? '';
+          return Promise.resolve({ ok: true, json: async () => answer(date) });
+        });
+        const app = createApp();
+        await app.onInit();
+        if (forced) mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
+        await flushPromises();
+      } finally {
+        global.Date = originalDate;
+      }
+      return getStoredPriceCacheForTests('grid_tariff') as Array<{ dateKey: string; time: number; energyFeeExVat: number }>;
+    };
+
+    const feeAt = (rows: Array<{ dateKey: string; time: number; energyFeeExVat: number }>, date: string, time: number) => (
+      rows.find((row) => row.dateKey.startsWith(date) && row.time === time)?.energyFeeExVat
+    );
+
+    it('prices Saturday at the night rate and Friday as NVE serves it', async () => {
+      // Friday 2026-10-23, with Saturday's tariff fetched as tomorrow.
+      const rows = await refreshLnettAt(new Date(2026, 9, 23, 14, 0, 0), lnettNveDay);
+      expect(feeAt(rows, '2026-10-23', 12)).toBe(26.6);
+      expect(feeAt(rows, '2026-10-24', 12)).toBe(14.6);
+    });
+
+    it('keeps an earlier day standing in for today uncorrected', async () => {
+      // Monday with nothing from NVE for Monday: Sunday's tariff stands in, and
+      // flattening it as a Sunday would price Monday's day hours at the night rate.
+      const rows = await refreshLnettAt(
+        new Date(2026, 9, 26, 14, 0, 0),
+        (date) => (date === '2026-10-26' ? [] : lnettNveDay(date)),
+      );
+      expect(feeAt(rows, '2026-10-25', 12)).toBe(26.6);
+    });
+
+    it('keeps the cached tariff for today over an earlier day standing in for it', async () => {
+      const cachedMonday = Array.from({ length: 24 }, (_, time) => ({
+        time,
+        energyFeeExVat: time >= 6 && time < 22 ? 26.6 : 14.6,
+        energyFeeIncVat: time >= 6 && time < 22 ? 33.25 : 18.25,
+        dateKey: '2026-10-26T00:00:00',
+      }));
+      mockHomeyInstance.settings.set('nettleie_data', cachedMonday);
+      const rows = await refreshLnettAt(
+        new Date(2026, 9, 26, 14, 0, 0),
+        (date) => (date === '2026-10-26' ? [] : lnettNveDay(date)),
+        false,
+      );
+      expect(rows.filter((row) => row.dateKey.startsWith('2026-10-26'))).toEqual(cachedMonday);
+      expect(rows.some((row) => row.dateKey.startsWith('2026-10-25'))).toBe(false);
+      expect(feeAt(rows, '2026-10-27', 12)).toBe(26.6);
+    });
+  });
+
   it('keeps real cached tariff data when all NVE attempts are empty', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
