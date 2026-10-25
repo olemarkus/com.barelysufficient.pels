@@ -2,7 +2,11 @@ import type { PlanEngineState } from '../planState';
 import type { RestoreBackoff, RestoreCooldownState } from '../restoreBackoff';
 import type { PlanContext, MeasuredPower } from '../planContext';
 import { resolveSheddingClearThresholdKw } from '../powerLimitMath';
-import type { PowerTrackerState } from '../../power/tracker';
+import type { RestoreDeps } from './types';
+import type { DevicePlanDevice } from '../planTypes';
+import { isSteppedLoadDevice } from '../planSteppedLoad';
+import { MIN_ACTIVE_MEASURED_POWER_KW } from '../../observer/observedPower';
+import { resolveReadingValueSinceMs } from '../../power/heldReading';
 import {
   RESTORE_COOLDOWN_MS,
   RESTORE_COOLDOWN_BACKOFF_MULTIPLIER,
@@ -45,27 +49,33 @@ const ceilSecondsOrNull = (ms: number | null): number | null =>
 export const buildRestoreTiming = (
   state: PlanEngineState,
   headroomRaw: number | null,
-  powerTracker: PowerTrackerState,
+  deps: RestoreDeps,
+  planDevices: readonly DevicePlanDevice[],
   nowTs: number,
 ): RestoreTiming => {
-  const measurementTs = powerTracker.lastTimestamp ?? null;
+  const measurementTs = deps.powerTracker.lastTimestamp ?? null;
   const cooldownState = resolveRestoreCooldown(state, nowTs);
   const sinceRestore = state.actuation.lastRestoreMs ? nowTs - state.actuation.lastRestoreMs : null;
   const cooldown = getShedCooldownState(state.restoreBackoff, nowTs, SHED_COOLDOWN_MS);
   const cooldownRemainingMs = cooldown.cooldownRemainingMs;
   const inCooldown = cooldown.inCooldown;
-  const inRestoreCooldown = sinceRestore !== null && sinceRestore < cooldownState.restoreCooldownMs;
+  const releasedByPower = cooldownState.restoreCooldownMs === RESTORE_COOLDOWN_MS
+    && recentRestoresHavePowerEvidence(state, deps, planDevices, nowTs);
+  const inRestoreCooldown = sinceRestore !== null && sinceRestore < cooldownState.restoreCooldownMs
+    && !releasedByPower;
   const startupBlockRemainingMs = state.restoreBackoff.startupBlockRemainingMs(nowTs);
   const inStartupStabilization = startupBlockRemainingMs !== null && startupBlockRemainingMs > 0;
   const activeOvershoot = headroomRaw !== null && headroomRaw < 0;
+  const restoreRemainingMs = inRestoreCooldown && sinceRestore !== null
+    ? cooldownState.restoreCooldownMs - sinceRestore : 0;
   const restoreCooldownSeconds = sinceRestore !== null
-    ? Math.max(0, Math.ceil((cooldownState.restoreCooldownMs - sinceRestore) / 1000))
+    ? Math.ceil(restoreRemainingMs / 1000)
     : Math.ceil(cooldownState.restoreCooldownMs / 1000);
   const shedCooldownRemainingSec = ceilSecondsOrNull(cooldownRemainingMs);
   const shedCooldownStartedAtMs = cooldown.cooldownStartedAtMs;
   const shedCooldownTotalSec = ceilSecondsOrNull(cooldown.cooldownTotalMs);
   const restoreCooldownRemainingMs = sinceRestore !== null
-    ? Math.max(0, cooldownState.restoreCooldownMs - sinceRestore)
+    ? restoreRemainingMs
     : null;
   const restoreCooldownRemainingSec = ceilSecondsOrNull(restoreCooldownRemainingMs);
   const restoreCooldownStartedAtMs = state.actuation.lastRestoreMs;
@@ -92,6 +102,45 @@ export const buildRestoreTiming = (
     ...cooldownState,
   };
 };
+
+/** How much of its expected draw a restored device must reach before the next increase is admitted. */
+const STARTED_DRAW_FRACTION = 0.5;
+
+/**
+ * Pacing evidence, not command confirmation or attribution of the household
+ * watts. Every restore still inside the ordinary window needs its device to
+ * have started from idle after the restore and reached half its expected draw
+ * before the whole-home reading last changed, so the meter has reported since
+ * that draw arrived. A running device that steps up or has its setpoint raised
+ * never started, so it keeps the timer, as does a restore whose own step or
+ * target command is unconfirmed, or any in-flight or pending on/off command.
+ */
+function recentRestoresHavePowerEvidence(
+  state: PlanEngineState,
+  deps: RestoreDeps,
+  planDevices: readonly DevicePlanDevice[],
+  nowTs: number,
+): boolean {
+  const readingSinceMs = resolveReadingValueSinceMs(deps.powerTracker);
+  if (readingSinceMs === null || state.actuation.hasInFlight()
+    || planDevices.some((device) => device.binaryCommandPending)) return false;
+  const { lastInstabilityMs } = state.restoreBackoff;
+  const recentRestores = Object.entries(state.actuation.lastDeviceRestoreMs)
+    .filter(([, restoredAtMs]) => nowTs - restoredAtMs < RESTORE_COOLDOWN_MS);
+  return recentRestores.length > 0 && recentRestores.every(([deviceId, restoredAtMs]) => {
+    const device = planDevices.find((candidate) => candidate.id === deviceId);
+    return device !== undefined && device.stepCommandPending !== true
+      && state.pendingTargetCommands[deviceId] === undefined
+      && (lastInstabilityMs === null || lastInstabilityMs < restoredAtMs)
+      && deps.hasStartedDrawingSince(deviceId, restoredAtMs, readingSinceMs,
+        Math.max(MIN_ACTIVE_MEASURED_POWER_KW, resolveExpectedDrawKw(device) * STARTED_DRAW_FRACTION));
+  });
+}
+
+/** The step it runs at for a stepped load, its running draw otherwise. */
+function resolveExpectedDrawKw(device: DevicePlanDevice): number {
+  return isSteppedLoadDevice(device) ? device.planningPowerKw : device.expectedPowerKw;
+}
 
 export const shouldPlanRestores = (
   sheddingActive: boolean,

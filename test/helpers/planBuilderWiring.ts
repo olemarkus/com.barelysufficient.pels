@@ -26,6 +26,7 @@ export const planBuilderWiring = (): PlanBuilderWiring => ({
   getPriceOptimizationSettings: () => ({}),
   getDailyBudgetSnapshot: () => null,
   getShedBehavior: () => ({ action: 'turn_off' }),
+  hasStartedDrawingSince: () => false,
   pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
   decorateDeferredObjectives: decorateWithoutDeferredObjectives,
   resolveTemperatureSetpoints: fixtureTemperatureSetpoints(),

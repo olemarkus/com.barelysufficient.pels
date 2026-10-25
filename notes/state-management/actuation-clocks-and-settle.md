@@ -177,8 +177,8 @@ fixed window for a 20 s-to-never distribution. Two timers for one question is wh
 both-ends-wrong behaviour the P1 recorded: under-hold at the tail, over-hold for a car that never
 draws.
 
-**What protects now:** the planner's restore cooldown, alone. This is pacing policy,
-not evidence that a specific device started drawing.
+**What protects now:** the planner's restore cooldown. It is pacing policy: a timer, with
+one evidence-based early exit (below) that only shortens the ordinary window.
 
 ### Restore pacing policy
 
@@ -188,6 +188,38 @@ The recorded 62 EV turn-ons (2026-08-11–13) had p50 19.7 s, p90 129.7 s and ma
 it is a finite policy bound, not a guarantee for every future start. The ten-minute
 ceiling preserves an instability response above the new base. Stable operation
 returns to the base under the existing five-minute stability rule.
+
+The ordinary five-minute wait may end early once every restore still inside its
+window has visibly landed:
+
+- **The device started drawing.** Its live, direct power reading went from idle
+  (below 50 W) to active in a reading measured and received after its restore
+  stamp, and it is still active. A device already running when it was restored,
+  such as a step-up or a setpoint raise on a heating load, never starts, so it
+  keeps the timer: a rise on a running load cannot be told from fluctuation.
+- **It reached half its expected draw**: the running step's planning power for a
+  stepped load, its expected power otherwise. The observer keeps the run's highest
+  level, re-dated only by a further rise of at least 50 W, so a climb moves the
+  date and fluctuation does not.
+- **The meter has reported since.** The whole-home reading must have taken its
+  current value after that level arrived (`resolveReadingValueSinceMs`,
+  `lib/power/heldReading.ts`). The tracker stamps every sample when PELS takes
+  it, and a Homey Energy poll, or a meter that reports on an interval, can repeat
+  a value measured before the device moved; only a reading that has changed since
+  is known to include it. The change says nothing about which load moved: it
+  supplies current headroom, not attribution. A reading of exactly 0 W counts as
+  changed on every sample, since it never holds.
+- **Nothing is unconfirmed.** An in-flight or pending on/off command on any
+  device keeps the timer, and so does a pending step command or target
+  temperature on a restored device, or instability noted after a restore in the
+  window. A step or target another device keeps retrying does not hold the
+  others. Power reported before a restore was confirmed does not count either: a
+  binary restore is stamped at the observed time of its on/off confirmation, so
+  draw that arrived first never starts a run after it.
+
+The observer owns the run; the planner applies its existing restore clocks and each
+device's expected draw. Without that evidence the timer expires normally. Device
+observations never trigger a rebuild themselves.
 
 The stamp deliberately remains **home-wide**, including active step increases,
 setpoint restores and battery hand-backs. Making it per-device would permit

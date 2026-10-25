@@ -1,3 +1,4 @@
+import type { ObservedDeviceReads } from '../../observer/observedDeviceStateProjection';
 import type { Logger as PinoLogger } from '../../logging/logger';
 import type { HeadroomReserve, resolveRestoreDecisionPhase } from '../admission';
 import type { DevicePlanDevice, MeteredDevicePlanDevice, ShedBehavior } from '../planTypes';
@@ -11,6 +12,7 @@ import type { TemperatureSetpointsByDevice } from '../../../packages/planner-typ
 export type RestoreDeps = {
   powerTracker: PowerTrackerState;
   getShedBehavior: (deviceId: string) => ShedBehavior;
+  hasStartedDrawingSince: ObservedDeviceReads['hasStartedDrawingSince'];
   /** This build's resolved setpoints per temperature device (`PlanContext.temperatureSetpoints`);
    * the swap lane reads whether limiting a device still releases demand from it. */
   temperatureSetpoints: TemperatureSetpointsByDevice;

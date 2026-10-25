@@ -77,6 +77,7 @@ export class PlanMaterializationStages {
     return trackPlanStage('plan_restore_ms', () => {
       const restoreResult = applyRestorePlan(planDevices, context, power, this.state, storageLevers, sheddingPlan, {
         powerTracker: this.deps.getPowerTracker(),
+        hasStartedDrawingSince: this.deps.hasStartedDrawingSince,
         getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
         temperatureSetpoints: context.temperatureSetpoints,
         deviceDiagnostics: this.deps.deviceDiagnostics,

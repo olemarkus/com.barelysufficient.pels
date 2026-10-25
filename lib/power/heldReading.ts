@@ -156,6 +156,18 @@ export function resolveManagedLoadKey(deviceIds: readonly string[]): number {
   return hash;
 }
 
+/**
+ * When the whole-home reading took its current value: the meter's latest report
+ * of a change. The tracker stamps every sample when PELS takes it, and a poll or
+ * a meter reporting on an interval can repeat a value measured before a device
+ * moved, so only a reading that has since changed is known to include it. A
+ * reading of exactly 0 W counts as new on every sample, since it never holds.
+ * `null` before the first sample and after a freshness reset.
+ */
+export function resolveReadingValueSinceMs(tracker: PowerTrackerState): number | null {
+  return tracker.heldReading?.sinceMs ?? null;
+}
+
 /** When the frozen reading took its value, or `null` while the reading is not frozen. */
 export function resolveFrozenSinceMs(tracker: PowerTrackerState): number | null {
   const held = tracker.heldReading;

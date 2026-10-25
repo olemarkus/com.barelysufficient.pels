@@ -94,6 +94,7 @@ const buildHarness = (scenario: Scenario) => {
     buckets: { [HOUR_KEY]: scenario.hourUsedKWh },
   };
   const builder = new PlanBuilder({
+    hasStartedDrawingSince: () => false,
     structuredLog: testLogger,
     leaveOffOnRelease: () => 'released',
     getInferredSurplusKw: () => 0,

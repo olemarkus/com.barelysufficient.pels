@@ -57,6 +57,7 @@ import {
   type DeviceTransportParseDeps,
 } from '../../lib/device/transport/managerParseDevice';
 import { DeviceMeasuredPowerResolver } from '../../lib/device/measuredPowerResolver';
+import { testLogger } from '../utils/testLogger';
 import { buildRestoreTiming, shouldPlanRestores } from '../../lib/plan/restore/timing';
 import { fixtureDeviceReason } from '../utils/deviceReasonTestUtils';
 import { fixtureControlPosture, buildPlanMeta, withFixtureResidualKw } from '../utils/planTestUtils';
@@ -364,7 +365,11 @@ describe('EV charger shed re-assert freezing all restores (executor-loop repro)'
     // house reports `cooldown (shedding)` with a countdown that resets instead
     // of expiring, which is exactly the prod freeze.
     const powerTracker = { lastTimestamp: Date.now() } as PowerTrackerState;
-    const timing = buildRestoreTiming(state, 6.5, powerTracker, Date.now());
+    const timing = buildRestoreTiming(state, 6.5, {
+      powerTracker, hasStartedDrawingSince: () => false,
+      getShedBehavior: () => ({ action: 'turn_off' }),
+      temperatureSetpoints: new Map(), structuredLog: testLogger,
+    }, [], Date.now());
     expect(timing.inCooldown).toBe(false);
     expect(shouldPlanRestores(false, timing, false)).toBe(true);
   });

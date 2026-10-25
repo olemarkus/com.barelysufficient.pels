@@ -16,6 +16,7 @@ import type {
     ObservedStateRefreshEvent,
 } from '../ports/observedStateEvents';
 import { resolveThermalDirection } from './thermalDirection';
+import { MIN_ACTIVE_MEASURED_POWER_KW } from './observedPower';
 import { hasLiveMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 
 /**
@@ -245,6 +246,15 @@ export type ObservedDeviceReads = {
      * count, which books only live readings.
      */
     isLiveMeasuredDraw(deviceId: string): boolean;
+    /**
+     * Whether this device started drawing after `sinceMs` and is still drawing:
+     * its live reading went from idle to active in a reading measured and
+     * received after `sinceMs`, and it has since reached at least `minKw` in a
+     * reading received before `reachedBeforeMs`. A running device that only
+     * draws more never started, so it has no answer here; a reading that falls
+     * back to idle or stops being live withdraws the answer.
+     */
+    hasStartedDrawingSince(deviceId: string, sinceMs: number, reachedBeforeMs: number, minKw: number): boolean;
     /** The accepted-write counter; see `ObservedDeviceStateProjection.getRevision`. */
     getRevision(): number;
 };
@@ -253,6 +263,19 @@ type ProjectionEntry = {
     value: ProjectedObservedDeviceState;
     seq?: number;
     observedAtMs?: number;
+    drawingRun?: DrawingRun;
+};
+
+/**
+ * One stretch of live draw since the device left idle. `levelKw` is the highest
+ * level it reached, re-dated only by a rise of at least the active threshold,
+ * so ordinary fluctuation leaves `levelReceivedAtMs` alone while a climb moves it.
+ */
+type DrawingRun = {
+    startMeasuredAtMs: number;
+    startReceivedAtMs: number;
+    levelKw: number;
+    levelReceivedAtMs: number;
 };
 
 /**
@@ -425,6 +448,13 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
         return entry !== undefined && hasLiveMeasuredPower(entry.value);
     }
 
+    hasStartedDrawingSince(deviceId: string, sinceMs: number, reachedBeforeMs: number, minKw: number): boolean {
+        const run = this.byId.get(deviceId)?.drawingRun;
+        return run !== undefined
+            && run.startMeasuredAtMs > sinceMs && run.startReceivedAtMs > sinceMs
+            && run.levelKw >= minKw && run.levelReceivedAtMs < reachedBeforeMs;
+    }
+
     /**
      * Narrow, like `getObservedState`, and with no wide sibling: it has no
      * production caller at all — only the projection's own specs. Closing it
@@ -455,7 +485,10 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
     ): void {
         const prev = this.byId.get(value.id);
         if (prev && this.shouldDrop(prev, seq, observedAtMs)) return;
-        this.byId.set(value.id, { value: freezeObserved(value), seq, observedAtMs });
+        this.byId.set(value.id, {
+            value: freezeObserved(value), seq, observedAtMs,
+            drawingRun: trackDrawingRun(prev, value, observedAtMs),
+        });
         this.revision += 1;
     }
 
@@ -471,4 +504,38 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
         // Equal/absent timestamps → accept (last-writer-wins).
         return false;
     }
+}
+
+/**
+ * The run continues through unrelated updates and repeats of the same reading.
+ * Only a new live reading after a live idle one starts it, so a first reading,
+ * a delayed one measured before the last, or a running device's rise never does.
+ */
+function trackDrawingRun(
+    previous: ProjectionEntry | undefined,
+    value: ProjectedObservedDeviceState,
+    receivedAtMs: number | undefined,
+): DrawingRun | undefined {
+    const reading = readLivePower(value);
+    if (reading === null) return undefined;
+    if (reading.kw < MIN_ACTIVE_MEASURED_POWER_KW) return undefined;
+    const before = previous ? readLivePower(previous.value) : null;
+    const run = previous?.drawingRun;
+    if (receivedAtMs === undefined || before === null || reading.measuredAtMs <= before.measuredAtMs) return run;
+    if (run) {
+        return reading.kw >= run.levelKw + MIN_ACTIVE_MEASURED_POWER_KW
+            ? { ...run, levelKw: reading.kw, levelReceivedAtMs: receivedAtMs }
+            : run;
+    }
+    if (before.kw >= MIN_ACTIVE_MEASURED_POWER_KW) return undefined;
+    return {
+        startMeasuredAtMs: reading.measuredAtMs, startReceivedAtMs: receivedAtMs,
+        levelKw: reading.kw, levelReceivedAtMs: receivedAtMs,
+    };
+}
+
+function readLivePower(value: ProjectedObservedDeviceState): { kw: number; measuredAtMs: number } | null {
+    if (value.available === false || !hasLiveMeasuredPower(value)
+        || value.measuredPowerKw === undefined || value.measuredPowerObservedAtMs === undefined) return null;
+    return { kw: value.measuredPowerKw, measuredAtMs: value.measuredPowerObservedAtMs };
 }
