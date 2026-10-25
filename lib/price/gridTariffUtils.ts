@@ -1,5 +1,4 @@
 import { getDebugEmitter, type StructuredDebugEmitter } from '../logging/logger';
-import { correctNveGridTariffDay } from './nveTariffCorrections';
 
 const emitPriceDebug = getDebugEmitter('price', 'price');
 
@@ -156,11 +155,7 @@ export const fetchAndNormalizeGridTariff = async (params: {
   });
   const gridTariffData = await fetchGridTariffData(url, errorLog);
   if (!gridTariffData) return null;
-  const normalized = correctNveGridTariffDay(
-    normalizeGridTariffData(gridTariffData, date),
-    settings.organizationNumber,
-    date,
-  );
+  const normalized = normalizeGridTariffData(gridTariffData, date);
   if (normalized.length === 0) {
     errorLog?.(
       'Grid tariff: NVE API returned 0 hourly tariff entries',

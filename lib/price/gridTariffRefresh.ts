@@ -2,6 +2,7 @@ import { getDateKeyInTimeZone, shiftDateKey } from '../../packages/shared-domain
 import { fetchGridTariffWithDateFallback } from './priceServiceUtils';
 import { fetchAndNormalizeGridTariff, shouldUseGridTariffCache } from './gridTariffUtils';
 import { NETTLEIE_FALLBACK_GENERATED_AT, resolveGridTariffFallback } from './staticGridTariffFallback';
+import { correctNveGridTariffDay } from './nveTariffCorrections';
 import type { PriceDataStore } from './priceDataStore';
 import type { PriceServiceLoggingSinks } from './priceServiceLoggingSinks';
 
@@ -19,6 +20,15 @@ export type GridTariffRequest = {
 };
 
 type GridTariffStore = Pick<PriceDataStore, 'readNettleie' | 'writeNettleie'>;
+
+type StoredGridTariffRow = { dateKey?: string; datoId?: string; source?: unknown };
+
+const rowsDated = <Row extends StoredGridTariffRow>(rows: Row[] | null, dateKey: string): Row[] => (
+  (rows ?? []).filter((row) => (
+    row.source === undefined
+    && (typeof row.dateKey === 'string' ? row.dateKey : row.datoId)?.startsWith(dateKey)
+  ))
+);
 
 /** Whether the combined prices need rebuilding on the stored tariff. */
 export type GridTariffRefreshOutcome = 'rebuild' | 'unchanged';
@@ -62,7 +72,7 @@ export const refreshGridTariff = async (
   const today = getDateKeyInTimeZone(todayDate, timeZone);
   const tomorrow = shiftDateKey(today, 1);
   const existingData = store.readNettleie() as
-    Array<{ dateKey?: string; datoId?: string; source?: unknown }> | null;
+    Array<Record<string, unknown> & StoredGridTariffRow> | null;
   if (!forceRefresh && shouldUseGridTariffCache(existingData, { today, tomorrow })) return 'rebuild';
 
   const { data, attempts, logContext } = await fetchGridTariffWithDateFallback({
@@ -79,7 +89,21 @@ export const refreshGridTariff = async (
       structuredInfo: (payload) => sinks.structuredLog.info(payload),
       errorLog: sinks.errorLog,
     });
-    return storeGridTariff([...data, ...(tomorrowData ?? [])], logContext, request, readCurrentCompany, store, sinks);
+    // NVE's own answer for today is corrected like any day's. An earlier day's
+    // tariff, served when NVE had nothing for today, stands in for today as it
+    // is: correcting it for its own weekday would price today on the wrong day
+    // type. It loses to a real tariff already cached for today, unless the
+    // refresh was forced, which a change of grid company does.
+    const fetchedForToday = attempts.at(-1)?.date === today;
+    const cachedToday = fetchedForToday || forceRefresh ? [] : rowsDated(existingData, today);
+    const standInRows = cachedToday.length > 0 ? cachedToday : data;
+    const todayRows = fetchedForToday
+      ? correctNveGridTariffDay(data, request.organizationNumber, today)
+      : standInRows;
+    const tomorrowRows = tomorrowData
+      ? correctNveGridTariffDay(tomorrowData, request.organizationNumber, tomorrow)
+      : [];
+    return storeGridTariff([...todayRows, ...tomorrowRows], logContext, request, readCurrentCompany, store, sinks);
   }
 
   const outcome = resolveGridTariffFallback({
