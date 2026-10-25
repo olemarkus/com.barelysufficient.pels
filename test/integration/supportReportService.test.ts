@@ -141,6 +141,25 @@ describe('manual support reporting', () => {
     expect(delivery.send).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('"trigger":"daily"'));
   });
 
+  it('sends a report on an event as asked, named as such, and trims its activity like the daily one', async () => {
+    const live = evidence();
+    live.activity = {
+      state: 'available', fromMs: now - 3_600_000, toMs: now, retentionDays: 7, maxEntries: 1_000,
+      maxEntriesPerDevice: 100, persistence: 'stored', leftOutForSize: 0,
+      entries: Array.from({ length: 1_000 }, (_, index) => reportActivityFixture({
+        id: `activity-${index}`, atMs: now - index, statusMsg: 'Waiting for a car to be identified. '.repeat(12),
+      })),
+    };
+    const delivery = transport();
+    const source = { capture: vi.fn(async () => live) };
+    const service = new SupportReportService(source, delivery);
+    const sent = report(await service.sendOnEvent(request, () => true));
+    expect(source.capture).toHaveBeenCalledExactlyOnceWith(request, now);
+    expect(sent.document.trigger).toBe('event');
+    expect(sent.document.activity.state === 'available' && sent.document.activity.leftOutForSize).toBeGreaterThan(0);
+    expect(delivery.send).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('"trigger":"event"'));
+  });
+
   it('lets a report Homey refused be sent again at once', async () => {
     const delivery = transport();
     vi.mocked(delivery.send).mockResolvedValueOnce({ state: 'rejected' });

@@ -115,6 +115,9 @@ export const WEB_APP_CLOUD_HOST = 'web_app_cloud_host';
 // The owner's switch for the daily diagnostics report (Settings → Advanced);
 // read policy in packages/shared-domain/src/settings/dailyDiagnosticsReport.ts.
 export const DAILY_DIAGNOSTICS_REPORT = 'daily_diagnostics_report';
+// The owner's switch for reports sent on specific events (Settings → Advanced);
+// read policy in packages/shared-domain/src/settings/eventDiagnosticsReports.ts.
+export const EVENT_DIAGNOSTICS_REPORTS = 'event_diagnostics_reports';
 // Realtime push the runtime emits after every tracker persist, for every home
 // (`{ homeId }`; `MAIN_HOME_ID` for the whole home). The tracker lives in the
 // userdata store, under no settings key, so this push is the UI's freshness

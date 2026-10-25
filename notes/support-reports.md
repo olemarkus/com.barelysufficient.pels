@@ -5,12 +5,13 @@ when the user selects **Send report**, and the settings UI sends it straight awa
 The UI shows the user's own description, not the captured report, which is not
 written for people to read.
 
-The only other sender is the daily report, and only when the owner turned it on
-(Settings → Advanced → Diagnostics reports, the `daily_diagnostics_report` setting;
-off by default, offered on every install). Homey files every report as submitted by
-the user, and the switch is what makes that true of a report nobody pressed Send for
-(owner, 2026-10-25). No incident sends a report on its own, and there is no analytics
-collection. A report says which it is: `trigger` is `owner` or `daily`.
+The only other senders are the daily report and reports on specific events, each only
+when the owner turned it on (Settings → Advanced → Diagnostics reports: the
+`daily_diagnostics_report` and `event_diagnostics_reports` settings; off by default,
+offered on every install). Homey files every report as submitted by the user, and the
+switch is what makes that true of a report nobody pressed Send for (owner, 2026-10-25).
+There is no analytics collection. A report says which it is: `trigger` is `owner`,
+`daily` or `event`.
 
 Reports contain the description, incident time, selected home/device, an explicitly
 selected slice of persisted device activity, the device events PELS kept, PELS's
@@ -77,7 +78,8 @@ together about 190 KiB. The kept log comes on top. A report that would
 outgrow the limit leaves out the oldest log lines first and says how many. An owner's
 report still too large without any log is rejected, and no other evidence is cut: the
 owner can choose one device or a shorter window. Nobody can do that for the daily
-report, so it then leaves out its oldest activity too, and says how many. A versioned opening marker and a closing
+report or a report on an event, so they then leave out their oldest activity too, and
+say how many. A versioned opening marker and a closing
 marker containing the report identifier let received content be checked for truncation.
 
 At most four reports are retained in memory for 15 minutes. Preparing another
@@ -106,3 +108,21 @@ day, and an uncertain one is never sent again. One Homey refused or that could n
 prepared tries again 3 hours later. An install that cannot send at all (anything but
 an App Store install) captures nothing and checks again a day later. The switch is
 read again once the report is prepared, so turning it off meanwhile sends nothing.
+
+## Reports on specific events
+
+A report about the device an event concerns, from an hour before the event through
+capture, saying what happened (`SupportReportService.sendOnEvent`). The events that send
+one, and what each report is about, are listed in `REPORTED_EVENTS` in
+`lib/diagnostics/eventReportSchedule.ts`; a new event is one entry there. Today that is
+`ev_car_link_unmatched`, a charger whose window closed with no car identified, reported
+about the charger as of its plug-in.
+
+The schedule checks every 5 minutes from 17 minutes after start (two minutes off the daily
+report's hourly check), over the device events kept in the last 30 minutes, so a report
+also carries what followed its event. One report per event and device a day, and at most
+6 attempts a day in all. What was sent lives in the
+userdata database and is written before sending, so a restart or a charger that keeps
+failing never sends one twice; one that could not go out (busy, refused, unprepared) is
+tried again on a later check while its event is in the lookback. An uncertain one is
+never sent again. The switch is read again once the report is prepared.

@@ -104,8 +104,11 @@ export type SupportReportEvidence = {
   omissions: readonly string[];
 };
 
-/** `owner`: the owner sent it; `daily`: the daily report the owner turned on. */
-export type SupportReportTrigger = 'owner' | 'daily';
+/**
+ * `owner`: the owner sent it; `daily`: the daily report the owner turned on;
+ * `event`: a report on a specific event, which the owner also turned on.
+ */
+export type SupportReportTrigger = 'owner' | 'daily' | 'event';
 
 /** Immutable snapshot prepared for one submission. */
 export type SupportReportDocument = SupportReportEvidence & {

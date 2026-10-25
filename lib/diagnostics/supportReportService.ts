@@ -47,10 +47,11 @@ const countToLeaveOut = (items: readonly unknown[], excessBytes: number): number
 };
 
 /**
- * The document with the oldest of its log lines and, in a daily report, of its
- * activity left out, the fewest that make the message fit, each saying how
- * many; `null` when it is too large without them. An owner's report keeps all
- * its activity: the owner can choose one device or a shorter window instead.
+ * The document with the oldest of its log lines and, in a report nobody pressed
+ * Send for, of its activity left out, the fewest that make the message fit,
+ * each saying how many; `null` when it is too large without them. An owner's
+ * report keeps all its activity: the owner can choose one device or a shorter
+ * window instead.
  */
 const fitToSize = (document: SupportReportDocument): FittedMessage | null => {
   const whole = toMessage(document);
@@ -61,7 +62,7 @@ const fitToSize = (document: SupportReportDocument): FittedMessage | null => {
   const logLeftOut = countToLeaveOut(logLines, whole.bytes - SUPPORT_REPORT_MAX_BYTES);
   const stillExcess = whole.bytes - SUPPORT_REPORT_MAX_BYTES
     - logLines.slice(0, logLeftOut).reduce((sum, line) => sum + jsonBytes(line), 0);
-  const activityLeftOut = document.trigger === 'daily' && activity.state === 'available' && stillExcess > 0
+  const activityLeftOut = document.trigger !== 'owner' && activity.state === 'available' && stillExcess > 0
     ? countToLeaveOut([...activity.entries].reverse(), stillExcess) : 0;
   const trimmed: SupportReportDocument = {
     ...document,
@@ -79,8 +80,9 @@ const fitToSize = (document: SupportReportDocument): FittedMessage | null => {
 
 /**
  * Owns prepared snapshots and dispatch outcomes. A submission starts only from
- * the owner's Send, or from the daily report the owner turned on
- * (`dailyReportSchedule.ts`); no incident starts one on its own.
+ * the owner's Send, or from a report the owner turned on: the daily report
+ * (`dailyReportSchedule.ts`) or reports on specific events
+ * (`eventReportSchedule.ts`).
  */
 export class SupportReportService {
   private readonly reports = new Map<string, PreparedSupportReport>();
@@ -106,17 +108,34 @@ export class SupportReportService {
    * nothing.
    */
   async sendDaily(stillWanted: () => boolean): Promise<SupportReportResponse> {
-    const availability = await this.transport.availability();
-    if (availability !== 'available') {
-      return { ok: false, code: availability === 'app_store_required' ? 'app_store_required' : 'sender_unavailable' };
-    }
-    const prepared = await this.prepareRequest({
+    return this.sendUnattended({
       subject: { kind: 'app', homeId: MAIN_HOME_ID },
       problem: DAILY_REPORT_PROBLEM,
       expected: '',
       occurredAtMs: Date.now(),
       historyWindow: 'day',
-    }, 'daily');
+    }, 'daily', stillWanted);
+  }
+
+  /**
+   * A report on a specific event the owner asked to be told about, prepared and
+   * sent in one step, like the daily report. Only the owner's switch calls this
+   * (`eventReportSchedule.ts`), which also says what the report is about.
+   */
+  async sendOnEvent(request: SupportReportRequest, stillWanted: () => boolean): Promise<SupportReportResponse> {
+    return this.sendUnattended(request, 'event', stillWanted);
+  }
+
+  private async sendUnattended(
+    request: SupportReportRequest,
+    trigger: Exclude<SupportReportTrigger, 'owner'>,
+    stillWanted: () => boolean,
+  ): Promise<SupportReportResponse> {
+    const availability = await this.transport.availability();
+    if (availability !== 'available') {
+      return { ok: false, code: availability === 'app_store_required' ? 'app_store_required' : 'sender_unavailable' };
+    }
+    const prepared = await this.prepareRequest(request, trigger);
     if (!prepared.ok) return prepared;
     if (!stillWanted()) return { ok: false, code: 'consent_required' };
     return this.send(prepared.report.document.id, { consent: true });
