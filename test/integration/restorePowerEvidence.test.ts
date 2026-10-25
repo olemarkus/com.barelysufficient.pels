@@ -24,18 +24,20 @@ function observe(projection: ObservedDeviceStateProjection, value: ProjectedObse
   });
 }
 
-// The whole-home reading, holding the value it took at `sinceMs` as of a sample at `atMs`.
-const homeReading = (sinceMs: number, atMs = sinceMs): PowerTrackerState => ({
+// The whole-home reading, holding since `sinceMs` a value that replaced one first taken at
+// `replacedSinceMs`, as of a sample at `atMs`. The current value was measured after `replacedSinceMs`.
+const homeReading = (replacedSinceMs: number | null, sinceMs: number, atMs = sinceMs): PowerTrackerState => ({
   lastTimestamp: atMs, lastPowerW: 2000,
   heldReading: {
     powerW: 2000, sinceMs, atMs, baseline: { totalW: 0, loadKey: 0 }, contradictedAtMs: null, longHoldEndedAtMs: null,
+    replacedSinceMs,
   },
 });
 
 const restoredHeater = (id: string): DevicePlanDevice => buildPlanDevice({ id, expectedPowerKw: 1.5 });
 
-// `first` restored at 1000, idle at 500, drawing 1.5 kW from 2000 (received 2100);
-// the home reading changed at 2500.
+// `first` restored at 1000, idle at 500, drawing 1.5 kW from 2000 (received 2100); the
+// home reading changed at 2300, after the draw arrived, and again at 2500.
 function poweredRestore() {
   const observer = new ObservedDeviceStateProjection();
   const state = createPlanEngineState(1);
@@ -44,7 +46,7 @@ function poweredRestore() {
   observe(observer, reading('first', 0, 500), 500);
   observe(observer, reading('first', 1.5, 2000), 2100);
   const deps: RestoreDeps = {
-    powerTracker: homeReading(2500, 3000),
+    powerTracker: homeReading(2300, 2500, 3000),
     hasStartedDrawingSince: observer.hasStartedDrawingSince.bind(observer),
     getShedBehavior: () => ({ action: 'turn_off' }),
     temperatureSetpoints: new Map(), structuredLog: testLogger,
@@ -160,10 +162,11 @@ describe('observer drawing-start evidence', () => {
 });
 
 describe('restore cooldown early release', () => {
-  it('releases only once the home reading has changed since the device reached its draw', () => {
+  it('releases only on a home value measured after the device reached its draw', () => {
     const { state, deps, nowTs, devices } = poweredRestore();
-    // A reading that took its value with the device's draw, or before it and repeated since.
-    for (const unchanged of [homeReading(2100, 3000), homeReading(900, 3900)]) {
+    // The first value after the draw arrived may have been measured before it, as may one
+    // repeated since; a value with nothing before it says nothing.
+    for (const unchanged of [homeReading(2000, 2500, 3000), homeReading(400, 900, 3900), homeReading(null, 2500, 3000)]) {
       expect(buildRestoreTiming(state, 8, { ...deps, powerTracker: unchanged }, devices, nowTs).inRestoreCooldown)
         .toBe(true);
     }
@@ -227,7 +230,7 @@ describe('restore cooldown early release', () => {
     expect(buildRestoreTiming(state, 8, deps, batch, 4000).inRestoreCooldown).toBe(true);
     state.actuation.markRestore('second', 302000);
     state.actuation.lastDeviceRestoreMs.first = 1000;
-    deps.powerTracker = homeReading(302800);
+    deps.powerTracker = homeReading(302700, 302800);
     expect(buildRestoreTiming(state, 8, deps, batch, 303000).inRestoreCooldown).toBe(true);
     observe(observer, reading('second', 0, 301000), 301000);
     observe(observer, reading('second', 1, 302500), 302600);
@@ -310,7 +313,7 @@ describe('restore cooldown early release', () => {
 
   it.each([false, true])('temperature restores use the same evidence verdict (%s)', (hasEvidence) => {
     const { state, deps, nowTs, devices } = poweredRestore();
-    if (!hasEvidence) deps.powerTracker = homeReading(2000);
+    if (!hasEvidence) deps.powerTracker = homeReading(2000, 2500);
     deps.temperatureSetpoints = fixtureLimitedSetpoints({ waiting: 16 });
     deps.getShedBehavior = () => ({ action: 'set_temperature', temperature: 16 });
     const device = buildPlanDevice({

@@ -162,6 +162,9 @@ const SMART_TASK_WIDGET_WHY_BY_STATUS: Record<SmartTaskListStatusId, string | nu
 };
 
 export const WAITING_FOR_CAR_ASSOCIATION = 'Waiting to identify the connected car';
+/** The device card's reason once the matching window from the plug-in has closed with no car. */
+export const CAR_ASSOCIATION_TIMED_OUT = 'Could not identify the connected car. '
+  + 'Confirm it in the charger’s Car section.';
 
 // EV device-card variant of the unplugged/invalid-session pause line: a card-slot phrasing with no
 // terminal punctuation, promoted to a named constant so the card surface shares

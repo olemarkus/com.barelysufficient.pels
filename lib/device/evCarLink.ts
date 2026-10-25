@@ -532,10 +532,11 @@ type LinkDecisionParams = {
  * `not_enough_past_matches` — no plugged-in car has the past matches the prior needs;
  * `several_cars_with_past_matches` — more than one has them;
  * `rival_with_past_matches` — one has them, but another plugged-in car has some;
- * `car_reported_too_late` — the one car first reported connected after the window closed;
- * `car_linked_elsewhere` — past matches picked it, but it is linked at another
- *   charger by a connection no older than this one;
- * `car_confirmed_elsewhere` — the one car is confirmed on another charger.
+ * `car_confirmed_elsewhere` — the one car is confirmed on another charger;
+ * `car_reported_too_late` — past matches picked it, but it first reported connected
+ *   after the window closed;
+ * `car_linked_elsewhere` — past matches picked it, but another charger that still
+ *   reports plugged in holds it.
  */
 export type EvLinkRefusalReason = 'no_connected_car' | 'not_enough_past_matches'
     | 'several_cars_with_past_matches' | 'rival_with_past_matches' | 'car_confirmed_elsewhere'

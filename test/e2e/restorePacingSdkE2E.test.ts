@@ -99,7 +99,14 @@ describe('restore pacing at the SDK boundary', () => {
     await drainPending();
     expect(putSpy).not.toHaveBeenCalledWith(secondPath, { value: true });
 
-    // The later home reading includes the first heater and still leaves room.
+    // The first changed home value after the draw arrived may have been measured before it.
+    setHomePower(1950);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await drainPending();
+    expect(putSpy).not.toHaveBeenCalledWith(secondPath, { value: true });
+
+    // The meter's next value was measured after that one reached PELS, so it includes the
+    // first heater, and it still leaves room.
     setHomePower(2000);
     await vi.advanceTimersByTimeAsync(90_000);
     await drainUntilCalledWith(putSpy, secondPath, { value: true });

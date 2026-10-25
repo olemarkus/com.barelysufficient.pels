@@ -67,6 +67,14 @@ export type HeldReading = {
    * its holds are not judged.
    */
   longHoldEndedAtMs: number | null;
+  /**
+   * When the value this one replaced was first taken, or `null` when the hold
+   * began from no value: the first sample, a reset of sampling, or a row stored
+   * before this was kept. A meter's later report reaches PELS only after its
+   * earlier one did, so this value was measured after that time
+   * (`resolveReadingMeasuredAfterMs`).
+   */
+  replacedSinceMs: number | null;
 };
 
 /** The contract's tracker state, plus the runtime's own freshness and capacity state. */

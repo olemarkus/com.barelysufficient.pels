@@ -406,6 +406,25 @@ describe('settingsOverviewReadModel', () => {
     expect(wire.status.factText).toBe(factText);
   });
 
+  it.each([
+    ['charging', 'plugged_in_charging', 'on', 'Charging · no battery level · level Low'],
+    ['connected but not charging', 'plugged_in', 'on', 'Waiting for car · no battery level · Level Low'],
+    ['switched off', 'plugged_in', 'off', 'No battery level'],
+  ] as const)('says a %s charger identifying its car has no battery level, in its place', (
+    _case, evChargingState, currentState, factText,
+  ) => {
+    const off = currentState === 'off';
+    const device = steppedPlanDevice({ id: 'ev-1', isEvCharger: true, currentState,
+      binaryCapabilityId: 'evcharger_charging', reportedStepId: off ? 'off' : 'low',
+      ...(off ? { plannedState: 'inactive' as const, selectedStepId: 'off', desiredStepId: 'off' } : {}) });
+    const wire = buildDeviceCard(device, {
+      ...absentTemperature,
+      getObservedEvChargingState: () => ({ kind: 'observed', value: evChargingState } as const),
+      getCarIdentificationState: () => 'waiting',
+    });
+    expect(wire.status.factText).toBe(factText);
+  });
+
   it('keeps the cooldown ring when the reported-load line replaces the timed reason', () => {
     const device = buildPlanDevice({ id: 'heater', currentState: 'on', plannedState: 'shed', currentDrawKw: 1.2,
       reason: { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: 30, countdownStartedAtMs: 0,

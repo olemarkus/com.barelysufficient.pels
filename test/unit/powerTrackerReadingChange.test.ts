@@ -7,8 +7,10 @@ import {
   HELD_READING_SETTLE_MS,
   HELD_READING_SUSPECT_MS,
   resolveManagedLoadKey,
+  resolveReadingMeasuredAfterMs,
   withHeldReadingAfterRestart,
 } from '../../lib/power/heldReading';
+import { isPlausiblePowerTrackerState } from '../../lib/power/trackerStateGuards';
 import { MAX_POWER_SAMPLE_GAP_MS } from '../../lib/power/trackerTypes';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 
@@ -189,6 +191,7 @@ describe('a whole-home reading that stops changing', () => {
         baseline: { totalW: 0, loadKey: LOADS },
         contradictedAtMs: null,
         longHoldEndedAtMs,
+        replacedSinceMs: null,
       },
     });
     const exempt = await hold(heldSince(atMs - HELD_READING_LONG_HOLD_MEMORY_MS + 3_600_000), 3000, 2 * SUSPECT_POLLS, 2500);
@@ -240,5 +243,41 @@ describe('a whole-home reading that stops changing', () => {
 
   it('ages a tracker stored before the hold existed from its last sample', () => {
     expectLive({ lastPowerW: 1100, lastTimestamp: T0 });
+  });
+});
+
+describe('the time a whole-home value was measured after', () => {
+  it('is when the value it replaced was first taken, and nothing before two values', async () => {
+    const first = await sample({}, 1000, T0);
+    expect(resolveReadingMeasuredAfterMs(first)).toBeNull();
+    const repeated = await hold(first, 1000, 2);
+    expect(resolveReadingMeasuredAfterMs(repeated)).toBeNull();
+    const moved = await sample(repeated, 1500, nextPollMs(repeated));
+    expect(resolveReadingMeasuredAfterMs(moved)).toBe(T0);
+    const movedAgain = await sample(moved, 1700, nextPollMs(moved));
+    expect(resolveReadingMeasuredAfterMs(movedAgain)).toBe(moved.lastTimestamp);
+    expect(resolveReadingMeasuredAfterMs(await hold(movedAgain, 1700, 3))).toBe(moved.lastTimestamp);
+  });
+
+  it('starts over after a gap long enough to reset sampling', async () => {
+    const moved = await sample(await sample({}, 1000, T0), 1500, T0 + POLL_MS);
+    const afterGap = await sample(moved, 1700, T0 + POLL_MS + MAX_POWER_SAMPLE_GAP_MS + 1);
+    expect(resolveReadingMeasuredAfterMs(afterGap)).toBeNull();
+  });
+
+  it('keeps a row stored before the bound was kept, which then says nothing', () => {
+    const stored = {
+      lastPowerW: 1000, lastTimestamp: T0,
+      heldReading: {
+        powerW: 1000, sinceMs: T0 - 60_000, atMs: T0, baseline: { totalW: 0, loadKey: LOADS },
+        contradictedAtMs: null, longHoldEndedAtMs: null,
+      },
+    };
+    expect(isPlausiblePowerTrackerState(stored)).toBe(true);
+    const restored = withHeldReadingAfterRestart(stored as PowerTrackerState);
+    expect(restored.heldReading?.replacedSinceMs).toBeNull();
+    expect(resolveReadingMeasuredAfterMs(restored)).toBeNull();
+    expect(isPlausiblePowerTrackerState({ ...stored, heldReading: { ...stored.heldReading, replacedSinceMs: T0 } }))
+      .toBe(false);
   });
 });

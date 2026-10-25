@@ -100,7 +100,7 @@ This step is optional. Basic capacity control does not need battery reporting.
 
 Choose one of these battery-reporting paths for boost mode and Smart tasks:
 
-- **Selected car:** open the charger's **Car** section and select the supported cars that charge there. PELS uses the battery level of the car it matches to the charger. Selecting a car alone does not establish a match; while the page says **Waiting to match a car**, the charger has no battery level. PELS matches cars whether or not they are selected, and each car in the list says whether it has been matched to this charger, so you can check that matching works before you rely on it. When a car selected for another charger plugs in there, PELS matches it to that charger, not this one.
+- **Selected car:** open the charger's **Car** section and select the supported cars that charge there. PELS uses the battery level of the car it matches to the charger. Selecting a car alone does not establish a match; while the page says **Waiting to identify the connected car**, the charger has no battery level, and its card on Overview says **no battery level**. PELS matches cars whether or not they are selected, and each car in the list says whether it has been matched to this charger, so you can check that matching works before you rely on it. When a car selected for another charger plugs in there, PELS matches it to that charger, not this one.
 - **Charger reading:** leave the car selection empty. If the charger exposes a supported battery-percentage capability, PELS reads it directly.
 - **Flow reporting:** leave the car selection empty and report a battery-percentage tag from the car or charger app using the Flow below.
 
@@ -109,8 +109,12 @@ with the charger's report and uses the battery level only after it finds a match
 PELS matches a car as soon as its plug-in report arrives, even when the car's app
 reports up to 20 minutes after the charger. If another car or charger reports within
 the next 20 minutes and could match too, PELS drops that match and leaves the car
-unmatched. Selecting a car does not force a match, and updates delayed beyond
-20 minutes may not match at all.
+unmatched. Selecting a car does not force a match. A car whose plug-in report arrives
+more than 20 minutes after the charger's is never matched automatically, even if it
+is the only car selected, because it could have plugged in anywhere in that time.
+After those 20 minutes the charger's card says **Could not identify the connected
+car**; use **Confirm connected car** in the charger's **Car** section to match it by
+hand.
 
 While any car is selected, PELS ignores both the battery-reporting Flow and the charger's own reading, even before a match is available. They do not provide fallback readings. Clear the car selection to return to those sources.
 **Setup & recommendations** flags an enabled **Report battery level for charger** action for a charger with a selected car, so the ignored action can be removed or its Flow disabled when it is no longer needed. If no selected car has been matched to that charger yet, it instead suggests clearing the car selection so the Flow keeps working until the car shows as matched.

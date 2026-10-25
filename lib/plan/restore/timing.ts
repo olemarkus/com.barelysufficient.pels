@@ -6,7 +6,7 @@ import type { RestoreDeps } from './types';
 import type { DevicePlanDevice } from '../planTypes';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { MIN_ACTIVE_MEASURED_POWER_KW } from '../../observer/observedPower';
-import { resolveReadingValueSinceMs } from '../../power/heldReading';
+import { resolveReadingMeasuredAfterMs } from '../../power/heldReading';
 import {
   RESTORE_COOLDOWN_MS,
   RESTORE_COOLDOWN_BACKOFF_MULTIPLIER,
@@ -110,10 +110,11 @@ const STARTED_DRAW_FRACTION = 0.5;
  * Pacing evidence, not command confirmation or attribution of the household
  * watts. Every restore still inside the ordinary window needs its device to
  * have started from idle after the restore and reached half its expected draw
- * before the whole-home reading last changed, so the meter has reported since
- * that draw arrived. A running device that steps up or has its setpoint raised
- * never started, so it keeps the timer, as does a restore whose own step or
- * target command is unconfirmed, or any in-flight or pending on/off command.
+ * before the time the whole-home reading's current value was measured after,
+ * so that value includes the draw. A running device that steps up or has its
+ * setpoint raised never started, so it keeps the timer, as does a restore whose
+ * own step or target command is unconfirmed, or any in-flight or pending on/off
+ * command.
  */
 function recentRestoresHavePowerEvidence(
   state: PlanEngineState,
@@ -121,8 +122,8 @@ function recentRestoresHavePowerEvidence(
   planDevices: readonly DevicePlanDevice[],
   nowTs: number,
 ): boolean {
-  const readingSinceMs = resolveReadingValueSinceMs(deps.powerTracker);
-  if (readingSinceMs === null || state.actuation.hasInFlight()
+  const measuredAfterMs = resolveReadingMeasuredAfterMs(deps.powerTracker);
+  if (measuredAfterMs === null || state.actuation.hasInFlight()
     || planDevices.some((device) => device.binaryCommandPending)) return false;
   const { lastInstabilityMs } = state.restoreBackoff;
   const recentRestores = Object.entries(state.actuation.lastDeviceRestoreMs)
@@ -132,7 +133,7 @@ function recentRestoresHavePowerEvidence(
     return device !== undefined && device.stepCommandPending !== true
       && state.pendingTargetCommands[deviceId] === undefined
       && (lastInstabilityMs === null || lastInstabilityMs < restoredAtMs)
-      && deps.hasStartedDrawingSince(deviceId, restoredAtMs, readingSinceMs,
+      && deps.hasStartedDrawingSince(deviceId, restoredAtMs, measuredAfterMs,
         Math.max(MIN_ACTIVE_MEASURED_POWER_KW, resolveExpectedDrawKw(device) * STARTED_DRAW_FRACTION));
   });
 }

@@ -201,15 +201,19 @@ window has visibly landed:
   stepped load, its expected power otherwise. The observer keeps the run's highest
   level, re-dated only by a further rise of at least 50 W, so a climb moves the
   date and fluctuation does not.
-- **The meter has reported since.** The whole-home reading must have taken its
-  current value after that level arrived (`resolveReadingValueSinceMs`,
-  `lib/power/heldReading.ts`). The tracker stamps every sample when PELS takes
-  it, and a Homey Energy poll, or a meter that reports on an interval, can repeat
-  a value measured before the device moved; only a reading that has changed since
-  is known to include it. The change says nothing about which load moved: it
-  supplies current headroom, not attribution. A reading of exactly 0 W counts as
-  changed on every sample, since it never holds.
-- **Nothing is unconfirmed.** An in-flight or pending on/off command on any
+- **The whole-home value was measured after it.** The tracker stamps a sample
+  when PELS takes it, never when the meter measured it, and a Homey Energy poll
+  returns the meter's last report, so even a value that just changed can predate
+  the device's draw. What a value cannot predate is the value it replaced: the
+  meter's report of it reached PELS after that one did. So the value the
+  decision uses must have replaced one first taken after the level arrived
+  (`resolveReadingMeasuredAfterMs`, `lib/power/heldReading.ts`), whatever the
+  meter's or the poll's cadence: in practice the second value after the draw.
+  This says nothing about which load moved: it supplies current headroom, not
+  attribution. A reading of exactly 0 W starts a new hold on every sample, since
+  it is never treated as a repeat (a feed that cannot show export sits at 0 W
+  while the home exports), so there the bound is the sample before.
+- **Nothing is unconfirmed, and nothing was unstable.** An in-flight or pending on/off command on any
   device keeps the timer, and so does a pending step command or target
   temperature on a restored device, or instability noted after a restore in the
   window. A step or target another device keeps retrying does not hold the

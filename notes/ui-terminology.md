@@ -300,7 +300,9 @@ level in the slot a temperature device uses for its measured value — that is
 the number the owner is asking the card for, not only the amps PELS set. It
 appears only when PELS actually has a level; when it does not there is no number
 to show and nothing to qualify, so the line is dropped (device detail says why,
-in one of two plain sentences). **Retired 2026-08-08: `N % - stale`,
+in one of two plain sentences). The one exception is a charger still identifying
+its car: its fact line says `no battery level` in that slot until the car is
+matched or confirmed (see "Car battery recommendations"). **Retired 2026-08-08: `N % - stale`,
 `Invalid report`, and `EV battery: N %, stale`.** A qualified number invited the
 reader to use it anyway, and PELS itself does not — the producer either stands
 behind a level or reports none. Device detail now reads `Not reported` or
@@ -331,6 +333,8 @@ in `resolveFactText` in `lib/plan/deviceStatusReadModel.ts`): `Paused`,
 decided, also for a charger with Power-limit control off and beside a hold reason;
 the reason slot stays with what the device needs. Routine charging folds into the
 same line as `Charging · level 16 A` (lower-case level after the charging word).
+A charger without charging levels shows no plug label, except while it identifies
+its car: `Plugged in · no battery level`.
 
 The plugged-in-idle state (`plugged_in`) discriminates on the charger's own
 on/off capability (`evcharger_charging`), because the plug state only states a
@@ -2366,17 +2370,19 @@ named `Set the limited temperature for {device name}`.
   local warning on the charger page. An unmatched car keeps the more specific
   `Waiting to identify the connected car` state in charger settings, Smart task
   previews and widgets. An unplugged charger instead says `No car connected`.
-- On a device card, a connected charger waiting for a selected car adds `no
-  battery level` to its fact line beside its plug state and level, for example
-  `Plugged in · no battery level`. When nothing else explains the card (no other
-  reason, or the wait for a battery level), its reason starts as `Waiting to
-  identify the connected car`; once the 20-minute matching window from the
-  plug-in has closed, it says `Could not identify the connected car. Confirm it
-  in the charger’s Car section.` A held or unconfirmed charger keeps
-  its own reason, since identifying the car would not resume it. A charger linked
-  to a car outside its selection, or whose selected cars have all been removed
-  from Homey, shows neither. Activity records the same reason. Matching or
-  explicit confirmation ends this message.
+- On a device card, a connected charger that has not yet identified which selected
+  car is plugged in says `no battery level` in the battery level's place on its fact
+  line: `Charging · no battery level · level 16 A`, `Waiting for car · no battery
+  level · Level 16 A`, `No battery level` while off, or `Plugged in · no battery
+  level` on a charger without charging levels. When nothing else explains the card
+  (no other reason, or the wait for a battery level), its reason starts as `Waiting
+  to identify the connected car`; once the 20-minute matching window from the
+  plug-in has closed, it says `Could not identify the connected car. Confirm it in
+  the charger’s Car section.` Any other reason on the card (a hold for power or
+  cheaper hours, a level change not confirmed) stays, since identifying the car
+  would not change it. A charger linked to a car outside its selection, or whose
+  selected cars have all been removed from Homey, shows none of this. Activity
+  records the same reason. Matching or explicit confirmation ends this message.
 
 ## Mode label
 

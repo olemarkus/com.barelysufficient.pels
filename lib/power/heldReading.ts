@@ -117,6 +117,7 @@ function resolveNextHold(
       baseline: managedDraw,
       contradictedAtMs: null,
       longHoldEndedAtMs: resolveLongHoldEndedAtMs(held, nowMs),
+      replacedSinceMs: resetSampling || held === undefined ? null : held.sinceMs,
     };
   }
   if (resolveVerdict(held) === 'frozen') return { ...held, atMs: nowMs };
@@ -157,15 +158,20 @@ export function resolveManagedLoadKey(deviceIds: readonly string[]): number {
 }
 
 /**
- * When the whole-home reading took its current value: the meter's latest report
- * of a change. The tracker stamps every sample when PELS takes it, and a poll or
- * a meter reporting on an interval can repeat a value measured before a device
- * moved, so only a reading that has since changed is known to include it. A
- * reading of exactly 0 W counts as new on every sample, since it never holds.
- * `null` before the first sample and after a freshness reset.
+ * A time the whole-home reading's current value was measured after, or `null`
+ * when nothing says so yet: before two values, and after a freshness reset.
+ *
+ * The tracker stamps a sample when PELS takes it, never when the meter measured
+ * it, and a poll returns the meter's last report, so a value that just changed
+ * can still have been measured before a device moved. What it cannot be is older
+ * than the value it replaced: the meter's report of it reached PELS after that
+ * one did. So the time the replaced value was first taken is a bound the current
+ * one was measured after, whatever the meter's or the poll's cadence. A reading
+ * of exactly 0 W starts a new hold on every sample, so there the bound is the
+ * sample before.
  */
-export function resolveReadingValueSinceMs(tracker: PowerTrackerState): number | null {
-  return tracker.heldReading?.sinceMs ?? null;
+export function resolveReadingMeasuredAfterMs(tracker: PowerTrackerState): number | null {
+  return tracker.heldReading?.replacedSinceMs ?? null;
 }
 
 /** When the frozen reading took its value, or `null` while the reading is not frozen. */
@@ -230,8 +236,14 @@ function resolveSuspectStretchStartMs(held: HeldReading): number | null {
  * towards the run could freeze a reading on the first sample after boot.
  */
 export function withHeldReadingAfterRestart(state: PowerTrackerState): PowerTrackerState {
-  const held = state.heldReading;
-  if (held === undefined || held.contradictedAtMs === null || resolveVerdict(held) === 'frozen') return state;
+  const stored = state.heldReading;
+  if (stored === undefined) return state;
+  // A row stored before `replacedSinceMs` was kept lacks it; it says nothing yet.
+  const legacy: Partial<Pick<HeldReading, 'replacedSinceMs'>> = stored;
+  const held = legacy.replacedSinceMs === undefined ? { ...stored, replacedSinceMs: null } : stored;
+  if (held.contradictedAtMs === null || resolveVerdict(held) === 'frozen') {
+    return held === stored ? state : { ...state, heldReading: held };
+  }
   return { ...state, heldReading: { ...held, contradictedAtMs: null } };
 }
 

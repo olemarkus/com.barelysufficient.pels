@@ -291,6 +291,7 @@ describe('power tracker solar accounting', () => {
           baseline: { totalW: 0, loadKey: 0 },
           contradictedAtMs: null,
           longHoldEndedAtMs: null,
+          replacedSinceMs: null,
         },
         capacityQuarter: {
           startMs: start + 30 * 60 * 1000,
@@ -332,6 +333,7 @@ describe('power tracker solar accounting', () => {
             baseline: { totalW: 0, loadKey: 0 },
             contradictedAtMs: null,
             longHoldEndedAtMs: null,
+            replacedSinceMs: null,
           },
           unreliablePeriods: [],
           capacityQuarter: {
