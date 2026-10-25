@@ -68,14 +68,16 @@ describe('manual report through the app API and Homey boundary', () => {
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
   });
 
-  it('sends the daily report once a day after the owner turns it on, with the log PELS kept', async () => {
+  it.each([200, 400, 408])('sends the daily report only once a day even after HTTP %s', async (status) => {
     const device = new MockDevice('heater', 'Hall heater', ['onoff', 'measure_power'], 'socket');
     await device.setCapabilityValue('onoff', true);
     setMockDrivers({ sockets: new MockDriver('sockets', [device]) });
     mockHomeyInstance.settings.set('managed_devices', { heater: true });
     mockHomeyInstance.settings.set('daily_diagnostics_report', true);
     const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (_url, options) => (
-      httpResponse(options?.method === 'POST' ? 'daily-reference' : { origin: 'appstore' })
+      options?.method === 'POST'
+        ? httpResponse(status === 200 ? 'daily-reference' : 'Request failed', status)
+        : httpResponse({ origin: 'appstore' })
     ));
     vi.stubGlobal('fetch', fetchMock);
     const app = createApp({ withoutPowerMeasurement: true });

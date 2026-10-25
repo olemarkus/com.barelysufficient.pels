@@ -1,5 +1,6 @@
 import type { SupportReportAvailability } from '../../packages/contracts/src/supportReport';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
+import { getLogger } from '../logging/logger';
 
 export type SupportReportDelivery =
   | { state: 'accepted'; reference: string }
@@ -17,6 +18,7 @@ export type HomeyReportRuntime = {
 };
 
 const SEND_TIMEOUT_MS = 45_000;
+const logger = getLogger('diagnostics/report-transport');
 
 /** Homey's manager API requires the owner token; the app-session API cannot submit diagnostics. */
 export class HomeyReportTransport implements SupportReportTransport {
@@ -37,9 +39,12 @@ export class HomeyReportTransport implements SupportReportTransport {
   async send(message: string): Promise<SupportReportDelivery> {
     try {
       const response = await this.request('/crashlog', 'POST', message, SEND_TIMEOUT_MS);
-      // An explicit 4xx is a refusal. A lost/5xx response may follow an accepted submission.
-      if (response.status >= 400 && response.status < 500) return { state: 'rejected' };
-      if (!response.ok) return { state: 'unknown' };
+      // Homey can return an error after forwarding the report. Even a 4xx
+      // cannot prove non-delivery, so it must not authorize an early retry.
+      if (!response.ok) {
+        logger.warn({ event: 'support_report_delivery_uncertain', status: response.status });
+        return { state: 'unknown' };
+      }
       const result = response.body;
       if (result === false || (isUnknownRecord(result) && result.error)) return { state: 'unknown' };
       return { state: 'accepted', reference: readReportReference(result) };
