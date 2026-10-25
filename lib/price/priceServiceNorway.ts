@@ -85,6 +85,7 @@ type SpotEntry = {
 
 type GridTariffEntry = {
   time?: number | string;
+  dateKey?: string;
   energyFeeExVat?: number | null;
   energyFeeIncVat?: number | null;
   energileddEks?: number | null;
@@ -94,6 +95,7 @@ type GridTariffEntry = {
 type ZonedTimeInfo = {
   startsAtMs: number;
   hour: number;
+  dateKey: string;
   monthKey: string;
 };
 
@@ -107,19 +109,22 @@ const formatMonthKey = (year: number, month: number): string => (
 
 const getZonedTimeInfo = (startsAt: string, timeZone: string): ZonedTimeInfo => {
   const startsAtMs = Date.parse(startsAt);
-  if (!Number.isFinite(startsAtMs)) return { startsAtMs, hour: 0, monthKey: '' };
+  if (!Number.isFinite(startsAtMs)) return { startsAtMs, hour: 0, dateKey: '', monthKey: '' };
   const date = new Date(startsAtMs);
   try {
     const parts = getZonedParts(date, timeZone);
+    const monthKey = formatMonthKey(parts.year, parts.month);
     return {
       startsAtMs,
       hour: parts.hour,
-      monthKey: formatMonthKey(parts.year, parts.month),
+      dateKey: `${monthKey}-${parts.day.toString().padStart(2, '0')}`,
+      monthKey,
     };
   } catch {
     return {
       startsAtMs,
       hour: date.getUTCHours(),
+      dateKey: date.toISOString().slice(0, 10),
       monthKey: formatMonthKey(date.getUTCFullYear(), date.getUTCMonth() + 1),
     };
   }
@@ -143,13 +148,16 @@ const normalizeSpotList = (
     .sort((a, b) => sortByStartsAtMs(a.timeInfo.startsAtMs, b.timeInfo.startsAtMs));
 };
 
-const buildGridTariffByHour = (params: {
+/** The stored grid tariff, by local day (`YYYY-MM-DD`) and then hour of day. */
+type GridTariffByDay = Map<string, Map<number, number>>;
+
+const buildGridTariffByDay = (params: {
   gridTariffData: unknown;
   vatMultiplier: number;
-}): Map<number, number> => {
+}): GridTariffByDay => {
   const { gridTariffData, vatMultiplier } = params;
   const gridTariffList = Array.isArray(gridTariffData) ? gridTariffData as GridTariffEntry[] : [];
-  const gridTariffByHour = new Map<number, number>();
+  const gridTariffByDay: GridTariffByDay = new Map();
 
   for (const entry of gridTariffList) {
     const hourValue = typeof entry.time === 'number' ? entry.time : parseInt(String(entry.time ?? ''), 10);
@@ -157,10 +165,30 @@ const buildGridTariffByHour = (params: {
     const energyFeeExVat = getNumber(entry.energyFeeExVat ?? entry.energileddEks);
     const energyFeeIncVat = getNumber(entry.energyFeeIncVat ?? entry.energileddInk);
     const resolvedExVat = energyFeeExVat ?? (energyFeeIncVat !== null ? energyFeeIncVat / vatMultiplier : null);
-    if (resolvedExVat !== null) gridTariffByHour.set(hourValue, resolvedExVat);
+    if (resolvedExVat === null) continue;
+    const dayKey = typeof entry.dateKey === 'string' ? entry.dateKey.slice(0, 10) : '';
+    const byHour = gridTariffByDay.get(dayKey) ?? new Map<number, number>();
+    byHour.set(hourValue, resolvedExVat);
+    gridTariffByDay.set(dayKey, byHour);
   }
 
-  return gridTariffByHour;
+  return gridTariffByDay;
+};
+
+/**
+ * The tariff for a spot hour's local day: that day's own, else the latest
+ * stored day before it (tomorrow on today's tariff when NVE had no tariff for
+ * tomorrow), else the earliest stored day.
+ */
+const resolveGridTariffForDay = (
+  gridTariffByDay: GridTariffByDay,
+  dateKey: string,
+): Map<number, number> | undefined => {
+  const own = gridTariffByDay.get(dateKey);
+  if (own) return own;
+  const days = [...gridTariffByDay.keys()].sort();
+  const earlier = days.filter((day) => day < dateKey).at(-1);
+  return gridTariffByDay.get(earlier ?? days[0] ?? '');
 };
 
 const resolveSpotPriceExVat = (entry: SpotEntry, vatMultiplier: number): number => {
@@ -252,7 +280,7 @@ export const buildCombinedHourlyPricesNorway = (params: {
   const norgesprisTargetIncVat = NORGESPRIS_TARGET_EX_VAT * vatMultiplier;
 
   const normalizedSpotList = normalizeSpotList(spotPrices, normalizedTimeZone);
-  const gridTariffByHour = buildGridTariffByHour({
+  const gridTariffByDay = buildGridTariffByDay({
     gridTariffData,
     vatMultiplier,
   });
@@ -270,9 +298,9 @@ export const buildCombinedHourlyPricesNorway = (params: {
   });
 
   return normalizedSpotList.reduce<CombinedHourlyPrice[]>((prices, { spot, timeInfo }) => {
-    const { hour, monthKey, startsAtMs } = timeInfo;
+    const { hour, dateKey, monthKey, startsAtMs } = timeInfo;
     const spotPriceExVat = resolveSpotPriceExVat(spot, vatMultiplier);
-    const gridTariffExVat = gridTariffByHour.get(hour) || 0;
+    const gridTariffExVat = resolveGridTariffForDay(gridTariffByDay, dateKey)?.get(hour) || 0;
     const consumptionTaxExVat = rules.consumptionTaxExVat;
     const enovaFeeExVat = rules.enovaFeeExVat;
     const totalExVat = spotPriceExVat + gridTariffExVat + providerSurchargeExVat + consumptionTaxExVat + enovaFeeExVat;

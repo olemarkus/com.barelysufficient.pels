@@ -116,7 +116,10 @@ const buildExpectedGridTariffDates = (baseDate: Date): {
   yesterday: string;
   week: string;
   month: string;
+  tomorrow: string;
 } => {
+  const tomorrowDate = new Date(baseDate);
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
   const yesterdayDate = new Date(baseDate);
   yesterdayDate.setDate(yesterdayDate.getDate() - 1);
   const weekDate = new Date(baseDate);
@@ -127,6 +130,7 @@ const buildExpectedGridTariffDates = (baseDate: Date): {
     yesterday: formatDateInOslo(yesterdayDate),
     week: formatDateInOslo(weekDate),
     month: formatDateInOslo(monthDate),
+    tomorrow: formatDateInOslo(tomorrowDate),
   };
 };
 
@@ -819,9 +823,11 @@ describe('Grid tariff fetching', () => {
     await flushPromises();
 
     // Check that grid tariff data was stored
+    // Today's and tomorrow's tariff, each dated with the day it was asked for.
     const gridTariffData = getStoredPriceCacheForTests('grid_tariff') as Array<Record<string, unknown>>;
     expect(Array.isArray(gridTariffData)).toBe(true);
-    expect(gridTariffData.length).toBe(3);
+    expect(gridTariffData.length).toBe(6);
+    expect(new Set(gridTariffData.map((entry) => entry.dateKey)).size).toBe(2);
 
     // Check data structure
     const firstEntry = gridTariffData[0];
@@ -844,7 +850,7 @@ describe('Grid tariff fetching', () => {
     await app.onInit();
     mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
     await flushPromises();
-    expect(getStoredPriceCacheForTests('grid_tariff')).toHaveLength(3);
+    expect(getStoredPriceCacheForTests('grid_tariff')).toHaveLength(6);
 
     mockHomeyInstance.settings.set('nettleie_fylke', '55');
     mockHomeyInstance.settings.set('nettleie_orgnr', '');
@@ -873,6 +879,8 @@ describe('Grid tariff fetching', () => {
     // The settings page refreshes the tariff after clearing the company.
     mockHomeyInstance.settings.set('refresh_nettleie', Date.now() + 1);
     await flushPromises();
+    // Tomorrow's tariff, asked for once today's arrives, is answered at once.
+    (global.fetch as Mock).mockResolvedValue({ ok: true, json: async () => mockNveGridTariffResponse });
     answerNve({ ok: true, json: async () => mockNveGridTariffResponse });
     await flushPromises();
 
@@ -931,12 +939,12 @@ describe('Grid tariff fetching', () => {
       setAllowConsoleError(false);
     }
 
-    // A full day of static fallback data is seeded so prices still work.
+    // Today and tomorrow of static fallback data are seeded so prices still work.
     const gridTariffData = getStoredPriceCacheForTests('grid_tariff') as GridTariffEntryWithSource[];
     expect(Array.isArray(gridTariffData)).toBe(true);
-    expect(gridTariffData).toHaveLength(24);
+    expect(gridTariffData).toHaveLength(48);
     expect(gridTariffData.map((e: { time: number }) => e.time)).toEqual(
-      Array.from({ length: 24 }, (_, h) => h),
+      [...Array.from({ length: 24 }, (_, h) => h), ...Array.from({ length: 24 }, (_, h) => h)],
     );
     for (const entry of gridTariffData) {
       // Flagged as fallback so it never suppresses the next NVE retry.
@@ -1071,7 +1079,7 @@ describe('Grid tariff fetching', () => {
     global.Date = MockDate;
 
     try {
-      const { today, yesterday, week } = buildExpectedGridTariffDates(now);
+      const { today, yesterday, week, tomorrow } = buildExpectedGridTariffDates(now);
       const requestedDates: string[] = [];
       (global.fetch as Mock).mockImplementation((url: string) => {
         const date = new URL(url).searchParams.get('ValgtDato') ?? '';
@@ -1091,7 +1099,8 @@ describe('Grid tariff fetching', () => {
       mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
       await flushPromises();
 
-      expect(requestedDates).toEqual([today, yesterday, week]);
+      // Tomorrow is asked for once, with no earlier-date fallback of its own.
+      expect(requestedDates).toEqual([today, yesterday, week, tomorrow]);
       const gridTariffData = getStoredPriceCacheForTests('grid_tariff') as Array<Record<string, unknown>>;
       expect(Array.isArray(gridTariffData)).toBe(true);
       expect(gridTariffData.length).toBe(mockNveGridTariffResponse.length);

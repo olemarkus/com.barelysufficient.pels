@@ -1,6 +1,6 @@
-import { getDateKeyInTimeZone } from '../../packages/shared-domain/src/utils/dateUtils';
+import { getDateKeyInTimeZone, shiftDateKey } from '../../packages/shared-domain/src/utils/dateUtils';
 import { fetchGridTariffWithDateFallback } from './priceServiceUtils';
-import { shouldUseGridTariffCache } from './gridTariffUtils';
+import { fetchAndNormalizeGridTariff, shouldUseGridTariffCache } from './gridTariffUtils';
 import { NETTLEIE_FALLBACK_GENERATED_AT, resolveGridTariffFallback } from './staticGridTariffFallback';
 import type { PriceDataStore } from './priceDataStore';
 import type { PriceServiceLoggingSinks } from './priceServiceLoggingSinks';
@@ -41,8 +41,11 @@ const storeGridTariff = (
 };
 
 /**
- * Fetch the grid company's tariff from NVE, or keep the cached one while it
- * still covers today. When every NVE attempt fails, keep real cached data;
+ * Fetch the grid company's tariff for today and tomorrow from NVE, or keep the
+ * cached one while it still covers both: tomorrow's spot prices are priced on
+ * tomorrow's tariff, which differs from today's across a weekend. Tomorrow is
+ * asked for once, with no earlier-date fallback; without it, tomorrow is priced
+ * on today's tariff. When every NVE attempt for today fails, keep real cached data;
  * with nothing cached, seed the static fallback so prices still work until NVE
  * recovers. The fallback is flagged so it never suppresses the next NVE retry
  * (see `shouldUseGridTariffCache`).
@@ -57,9 +60,10 @@ export const refreshGridTariff = async (
 ): Promise<GridTariffRefreshOutcome> => {
   const todayDate = new Date();
   const today = getDateKeyInTimeZone(todayDate, timeZone);
+  const tomorrow = shiftDateKey(today, 1);
   const existingData = store.readNettleie() as
     Array<{ dateKey?: string; datoId?: string; source?: unknown }> | null;
-  if (!forceRefresh && shouldUseGridTariffCache(existingData, today)) return 'rebuild';
+  if (!forceRefresh && shouldUseGridTariffCache(existingData, { today, tomorrow })) return 'rebuild';
 
   const { data, attempts, logContext } = await fetchGridTariffWithDateFallback({
     settings: request,
@@ -68,7 +72,15 @@ export const refreshGridTariff = async (
     structuredInfo: (payload) => sinks.structuredLog.info(payload),
     errorLog: sinks.errorLog,
   });
-  if (data) return storeGridTariff(data, logContext, request, readCurrentCompany, store, sinks);
+  if (data) {
+    const tomorrowData = await fetchAndNormalizeGridTariff({
+      date: tomorrow,
+      settings: request,
+      structuredInfo: (payload) => sinks.structuredLog.info(payload),
+      errorLog: sinks.errorLog,
+    });
+    return storeGridTariff([...data, ...(tomorrowData ?? [])], logContext, request, readCurrentCompany, store, sinks);
+  }
 
   const outcome = resolveGridTariffFallback({
     existingData,

@@ -1,4 +1,4 @@
-import { getDateKeyInTimeZone } from '../../packages/shared-domain/src/utils/dateUtils';
+import { getDateKeyInTimeZone, shiftDateKey } from '../../packages/shared-domain/src/utils/dateUtils';
 import { VAT_MULTIPLIER_STANDARD } from './priceComponents';
 import {
   GRID_TARIFF_SOURCE_FALLBACK,
@@ -23,11 +23,11 @@ export { NETTLEIE_FALLBACK_GENERATED_AT } from './nettleieFallbackData.generated
 // Last-resort static grid-tariff fallback. Used only when the NVE API is
 // unreachable AND no live tariff has been cached yet (new user). The shape it
 // produces matches the normalized grid-tariff entries cached from NVE, so
-// the rest of the price pipeline consumes it unchanged — only the per-hour
-// `energyFeeExVat` is actually read downstream (see priceServiceNorway.ts).
+// the rest of the price pipeline consumes it unchanged — only the per-day,
+// per-hour `energyFeeExVat` is actually read downstream (see priceServiceNorway.ts).
 //
 // Fidelity is intentionally limited (decided with the maintainer): we expand the
-// real day-of-week × hour-of-day shape for *today*, but model neither public
+// real day-of-week × hour-of-day shape for today and tomorrow, but model neither public
 // holidays nor future tariff periods. Holidays are treated as their ordinary
 // weekday; the snapshot only carries the tariff that was current when generated.
 
@@ -104,19 +104,16 @@ const selectTariff = (
   return tariffs.Husholdning ?? tariffs['Hytter og fritidshus'];
 };
 
-export const buildStaticGridTariffFallback = (params: {
-  organizationNumber: string;
-  tariffGroup: string;
-  date: Date;
-  timeZone: string;
-}): GridTariffEntryWithSource[] | null => {
-  const { organizationNumber, tariffGroup, date, timeZone } = params;
+const buildStaticGridTariffFallbackForDateKey = (
+  organizationNumber: string,
+  tariffGroup: string,
+  dateKey: string,
+): GridTariffEntryWithSource[] | null => {
   const operator = NETTLEIE_FALLBACK_BY_ORGNR[organizationNumber];
   if (!operator) return null;
   const tariff = selectTariff(operator.tariffs, tariffGroup);
   if (!tariff) return null;
 
-  const dateKey = getDateKeyInTimeZone(date, timeZone);
   const [year, month, day] = dateKey.split('-').map((part) => Number.parseInt(part, 10));
   // A date key that does not split into three parts names no day, so there is no
   // fallback tariff to build for it.
@@ -135,6 +132,28 @@ export const buildStaticGridTariffFallback = (params: {
       source: GRID_TARIFF_SOURCE_FALLBACK,
     };
   });
+};
+
+/**
+ * The static fallback for the local day of `date` and the day after it, so
+ * tomorrow's spot prices are priced on tomorrow's day type.
+ */
+export const buildStaticGridTariffFallback = (params: {
+  organizationNumber: string;
+  tariffGroup: string;
+  date: Date;
+  timeZone: string;
+}): GridTariffEntryWithSource[] | null => {
+  const { organizationNumber, tariffGroup, date, timeZone } = params;
+  const today = getDateKeyInTimeZone(date, timeZone);
+  const todayEntries = buildStaticGridTariffFallbackForDateKey(organizationNumber, tariffGroup, today);
+  if (!todayEntries) return null;
+  const tomorrowEntries = buildStaticGridTariffFallbackForDateKey(
+    organizationNumber,
+    tariffGroup,
+    shiftDateKey(today, 1),
+  );
+  return [...todayEntries, ...(tomorrowEntries ?? [])];
 };
 
 export type GridTariffFallbackOutcome =
