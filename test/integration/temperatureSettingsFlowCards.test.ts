@@ -12,6 +12,7 @@ import {
   PRICE_OPTIMIZATION_SETTINGS,
   TEMPERATURE_CONTROL_MODES,
 } from '../../lib/utils/settingsKeys';
+import type { HomeMembershipPort } from '../../lib/home/membership';
 import type { DeviceDescriptorRead } from '../../packages/contracts/src/types';
 import type { SmartTaskInProgressRead } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import { partialDouble } from '../helpers/partialDouble';
@@ -35,13 +36,22 @@ const DEVICES = [
   descriptor({ id: 'switch', name: 'Lamp', deviceType: 'onoff' }),
 ];
 
-const register = (smartTask: SmartTaskInProgressRead = 'none') => {
+// A home without meter areas, or one with an area: every device lists under Main here.
+// `pending` is the window after a meter area is saved, before membership recomputes.
+const membership = (hasSubHomes: boolean, pending: boolean) => partialDouble<HomeMembershipPort>({
+  isOwnershipReady: () => true,
+  hasPendingOwnershipGeneration: () => pending,
+  hasSubHomes: () => hasSubHomes,
+  getHomeIdForDevice: () => MAIN_HOME_ID,
+});
+
+const register = (smartTask: SmartTaskInProgressRead = 'none', hasSubHomes = false, pending = false) => {
   const catalog = createHomeModeCatalog(
     MAIN_HOME_ID,
     settings,
     () => { throw new Error('Main reads its own catalog'); },
     () => ({ heater: true }),
-    () => undefined,
+    () => membership(hasSubHomes, pending),
     () => testLogger,
     () => ({ status: 'resolved', deviceIds: new Set() }),
   );
@@ -127,6 +137,37 @@ describe('set_device_mode_temperature', () => {
     ]);
     await expect(autocomplete('set_device_mode_temperature', 'mode', 'aw', { device: HEATER }))
       .resolves.toEqual([{ id: 'Away', name: 'Away' }]);
+  });
+
+  it('offers the home\'s modes before a device is picked when there are no meter areas', async () => {
+    const { autocomplete } = register();
+
+    await expect(autocomplete('set_device_mode_temperature', 'mode', '', {})).resolves.toEqual([
+      expect.objectContaining({ id: 'active-mode', activeMode: true }),
+      { id: 'Away', name: 'Away' },
+      { id: 'Home', name: 'Home' },
+    ]);
+  });
+
+  it('waits for membership to settle after a meter area is saved', async () => {
+    const { autocomplete } = register('none', false, true);
+
+    await expect(autocomplete('set_device_mode_temperature', 'mode', '', {})).resolves.toEqual([
+      expect.objectContaining({ id: 'active-mode', activeMode: true }),
+    ]);
+  });
+
+  it('waits for the device before offering modes when meter areas have their own', async () => {
+    const { autocomplete } = register('none', true);
+
+    await expect(autocomplete('set_device_mode_temperature', 'mode', '', {})).resolves.toEqual([
+      expect.objectContaining({ id: 'active-mode', activeMode: true }),
+    ]);
+    await expect(autocomplete('set_device_mode_temperature', 'mode', '', { device: HEATER })).resolves.toEqual([
+      expect.objectContaining({ id: 'active-mode', activeMode: true }),
+      { id: 'Away', name: 'Away' },
+      { id: 'Home', name: 'Home' },
+    ]);
   });
 
   it('offers only managed temperature devices', async () => {

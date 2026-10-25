@@ -78,7 +78,7 @@ function registerModeTemperatureCard(deps: FlowCardDeps): void {
   ));
   card.registerArgumentAutocompleteListener('mode', async (query: string, args?: Record<string, unknown>) => {
     const deviceId = readFlowDeviceArg(args);
-    const modes = (deviceId ? deps.listDeviceTargetModes(deviceId) : null) ?? [];
+    const modes = deps.listDeviceTargetModes(deviceId) ?? [];
     const normalizedQuery = query.trim().toLowerCase();
     return [
       ACTIVE_MODE_OPTION,
