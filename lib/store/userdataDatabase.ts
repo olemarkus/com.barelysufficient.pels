@@ -48,6 +48,8 @@ export type UserdataDatabase = {
   exec(sql: string): void;
   /** Run `work` inside one transaction; a throw rolls it back and rethrows. */
   transaction<T>(work: () => T): T;
+  /** Whether a transaction is open: a write that needs its own must wait until it closes. */
+  inTransaction(): boolean;
   /**
    * How many transactions have rolled back since the database opened. A
    * repository that keeps what its rows hold notes this with its copy and
@@ -129,6 +131,7 @@ export const openUserdataDatabase = (location: string): UserdataDatabase => {
   }
   let closed = false;
   let rollbacks = 0;
+  let transactionOpen = false;
   const open = (): DatabaseSync => {
     if (closed) throw new Error(`userdata database at ${location} is closed`);
     return db;
@@ -140,6 +143,7 @@ export const openUserdataDatabase = (location: string): UserdataDatabase => {
     transaction: (work) => {
       const live = open();
       live.exec('BEGIN');
+      transactionOpen = true;
       try {
         const result = work();
         live.exec('COMMIT');
@@ -148,8 +152,11 @@ export const openUserdataDatabase = (location: string): UserdataDatabase => {
         rollbacks += 1;
         live.exec('ROLLBACK');
         throw error;
+      } finally {
+        transactionOpen = false;
       }
     },
+    inTransaction: () => transactionOpen,
     rollbacks: () => rollbacks,
     close: () => {
       if (closed) return;

@@ -1,6 +1,6 @@
 import type { AppContext } from '../../lib/app/appContext';
 import {
-  createDailyReportStateStore, DailyReportSchedule,
+  createDailyReportStateStore, DAILY_REPORT_CHECK_INTERVAL_MS, DAILY_REPORT_FIRST_CHECK_DELAY_MS, DailyReportSchedule,
 } from '../../lib/diagnostics/dailyReportSchedule';
 import { LogTailRecorder } from '../../lib/diagnostics/logTailRecorder';
 import { createLogTailStore } from '../../lib/diagnostics/logTailStore';
@@ -8,10 +8,6 @@ import type { SupportReportService } from '../../lib/diagnostics/supportReportSe
 import { createHomeyDestination, type HomeyLogCallbacks } from '../../lib/logging/homeyDestination';
 import { createRootLogger, setRootLogger, type Logger as PinoLogger } from '../../lib/logging/logger';
 import type { TimerRegistry } from '../../lib/utils/timerRegistry';
-
-const HOUR_MS = 60 * 60 * 1000;
-/** The first check waits for the app to settle, so a report never captures a half-started app. */
-const FIRST_CHECK_DELAY_MS = 15 * 60 * 1000;
 
 /**
  * The process-wide structured logger, writing to Homey's log and to the log
@@ -43,6 +39,6 @@ export const startDailyReport = (
     ctx.homey.settings, createDailyReportStateStore(ctx.getUserdataDatabase()), reports,
   );
   const check = (): void => { void schedule.check(Date.now()); };
-  timers.registerTimeout('dailyReportFirstCheck', setTimeout(check, FIRST_CHECK_DELAY_MS));
-  timers.registerInterval('dailyReportCheck', setInterval(check, HOUR_MS));
+  timers.registerTimeout('dailyReportFirstCheck', setTimeout(check, DAILY_REPORT_FIRST_CHECK_DELAY_MS));
+  timers.registerInterval('dailyReportCheck', setInterval(check, DAILY_REPORT_CHECK_INTERVAL_MS));
 };

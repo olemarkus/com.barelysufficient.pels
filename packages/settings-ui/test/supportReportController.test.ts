@@ -162,7 +162,8 @@ describe('support report controller', () => {
     const { controller, api, current } = setup();
     vi.mocked(api.get).mockResolvedValueOnce({ ok: false, code: 'report_expired' });
     await controller.restore('report-gone');
-    expect(current().notice).toBe('This report is no longer available. Start another report and describe the problem again.');
+    expect(current().notice).toBe('PELS no longer has this report and cannot tell whether it was sent. '
+      + 'If it was not, start another report and describe the problem again.');
   });
 
   it('retains a failed recovery identifier until a status check succeeds', async () => {

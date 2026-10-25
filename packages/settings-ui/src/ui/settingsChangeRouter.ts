@@ -30,6 +30,7 @@ import {
   NATIVE_EV_WIRING_DEVICES,
   RESPECT_EXTERNAL_OFF_DEVICES,
   DEVICE_START_POLICIES,
+  DAILY_DIAGNOSTICS_REPORT,
   DEBUG_LOGGING_TOPICS,
   DEVICE_HOME_ASSIGNMENTS,
   CAPACITY_PRIORITIES,
@@ -62,6 +63,7 @@ import {
 import { refreshCurrentModes } from './currentModes.ts';
 import { loadSetupPrices } from './setupPricesLoad.ts';
 import { loadAdvancedSettings, loadCapacitySettings, notifyAreaSimulationSettingChanged } from './capacity.ts';
+import { loadDailyReportSwitch } from './dailyReportSwitch.ts';
 import { notifyHomeLimitsSettingChanged, notifyHomeLimitsStatusPublished } from './homeLimits.ts';
 import { getHomeScope, notifyHomeScopeSettingChanged } from './homeScope.ts';
 import {
@@ -563,6 +565,9 @@ export const createSettingsSetHandler = () => (key: string) => {
   notifyHomeScopedControllers(key);
   if (ADVANCED_SETTINGS_KEYS.has(key)) {
     runLoggedTask(loadAdvancedSettings(), 'Failed to load advanced settings', 'settings.set');
+  }
+  if (key === DAILY_DIAGNOSTICS_REPORT) {
+    runLoggedTask(loadDailyReportSwitch(), 'Failed to load the daily report setting', 'settings.set');
   }
   refreshModeCatalogSurfaces(key, 'settings.set');
   if (PLAN_REFRESH_KEYS.has(key) || DEVICE_CONTROL_KEYS.has(key)) {

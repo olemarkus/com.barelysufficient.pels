@@ -172,7 +172,8 @@ export class SupportReportController {
       if (!response.ok && response.code === 'report_expired') {
         this.state = {
           ...this.state,
-          notice: 'This report is no longer available. Start another report and describe the problem again.',
+          notice: 'PELS no longer has this report and cannot tell whether it was sent. '
+            + 'If it was not, start another report and describe the problem again.',
         };
       }
     } catch {

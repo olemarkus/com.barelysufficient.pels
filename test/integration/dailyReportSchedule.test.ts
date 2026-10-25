@@ -26,9 +26,10 @@ describe('the daily diagnostics report the owner turned on', () => {
       get: (key) => values.get(key), set: (key, value) => { values.set(key, value); },
       unset: (key) => { values.delete(key); }, getKeys: () => [...values.keys()],
     };
-    const sendDaily = vi.fn(async () => responses.shift() ?? sent('sent'));
-    const schedule = () => new DailyReportSchedule(settings, createDailyReportStateStore(db), { sendDaily });
-    return { values, sendDaily, schedule };
+    const sendDaily = vi.fn(async (_stillWanted: () => boolean) => responses.shift() ?? sent('sent'));
+    const state = createDailyReportStateStore(db);
+    const schedule = () => new DailyReportSchedule(settings, state, { sendDaily });
+    return { values, sendDaily, schedule, state };
   };
 
   it('sends nothing until the owner turns it on', async () => {
@@ -63,6 +64,35 @@ describe('the daily diagnostics report the owner turned on', () => {
     const { sendDaily, schedule } = setup(true, [{ ok: false, code: 'app_store_required' }]);
     await schedule().check(NOW);
     await schedule().check(NOW + DAILY_REPORT_RETRY_MS);
+    expect(sendDaily).toHaveBeenCalledTimes(1);
+  });
+
+  it('never sends twice after a send that did not finish', async () => {
+    const { sendDaily, schedule } = setup(true, []);
+    sendDaily.mockImplementationOnce(async () => { throw new Error('the app stopped mid-send'); });
+    await schedule().check(NOW);
+    await schedule().check(NOW + DAILY_REPORT_RETRY_MS);
+    expect(sendDaily).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends nothing when it cannot record that a report is going out', async () => {
+    const { sendDaily, state } = setup(true, []);
+    const failing = { ...state, writeNextAttemptAtMs: () => { throw new Error('disk full'); } };
+    const values = new Map<string, unknown>([['daily_diagnostics_report', true]]);
+    const settings: SettingsPort = {
+      get: (key) => values.get(key), set: vi.fn(), unset: vi.fn(), getKeys: () => [...values.keys()],
+    };
+    await new DailyReportSchedule(settings, failing, { sendDaily }).check(NOW);
+    expect(sendDaily).not.toHaveBeenCalled();
+  });
+
+  it('asks again whether the owner still wants it once the report is prepared', async () => {
+    const { sendDaily, schedule, values } = setup(true, []);
+    sendDaily.mockImplementationOnce(async (stillWanted) => {
+      values.set('daily_diagnostics_report', false);
+      return stillWanted() ? sent('sent') : { ok: false, code: 'consent_required' };
+    });
+    await schedule().check(NOW);
     expect(sendDaily).toHaveBeenCalledTimes(1);
   });
 });
