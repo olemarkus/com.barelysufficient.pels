@@ -7,10 +7,11 @@
 // writes back through the SDK (`api.put` capability commands). The clock is the
 // other SDK input (faked `Date`), so the drain's `minutesRemaining` is real.
 //
-// WHAT IT EXERCISES: `computeDynamicSoftLimit`'s exponential end-of-hour drain
-// (lib/plan/planBudget.ts) — the allowed pace decays toward the sustainable rate as
-// the hour ends, so an above-sustainable fleet is wound down *gradually and in
-// priority order* before the boundary instead of cliff-shed at a fixed 10-minute mark.
+// WHAT IT EXERCISES: `computeDynamicSoftLimit`'s end-of-hour drain
+// (lib/plan/planBudget.ts) — over the last ten minutes the allowed pace falls from
+// what the house drew at :50 to the sustainable rate at :00, cutting most near the
+// end, so an above-sustainable fleet is wound down *gradually and in priority
+// order* before the boundary instead of cliff-shed at :50.
 //
 // FEEDBACK ENERGY MODEL: the `manager/energy/live` stub reports the *sum of each
 // device's commanded draw* (off / setback → 0). So when PELS sheds a device the home
@@ -207,9 +208,9 @@ describe('End-of-hour drain across the hour boundary (SDK-boundary e2e)', () => 
       }
     };
 
-    // One poll at :50. Burst (~30 kW, empty bucket) and the drain ceiling (~61 kW) are
-    // both far above the 15.5 kW fleet, so nothing is shed — even though the fleet is
-    // 3x the sustainable rate. The OLD cliff would have clamped to sustainable here.
+    // One poll at :50. The drain opens at the 15.5 kW the fleet draws and burst
+    // (~30 kW, empty bucket) is above it, so nothing is shed — even though the fleet
+    // is 3x the sustainable rate. The OLD cliff would have clamped to sustainable here.
     await stepTo(hourStartMs + 50 * MIN_MS + POLL_MS);
     await flushDetached(20);
     expect(FLEET.some((s) => wasShed(s.id))).toBe(false);
@@ -284,13 +285,16 @@ describe('End-of-hour drain across the hour boundary (SDK-boundary e2e)', () => 
     }
   });
 
-  it('keeps a single above-sustainable device running past the 10-minute mark and sheds it only near the boundary (no cliff)', async () => {
+  it('runs a single above-sustainable device until :50 and limits it once the drain falls below it', async () => {
     const hourStartMs = Date.UTC(2026, 0, 15, 9, 0, 0);
-    let nowMs = hourStartMs + 50 * MIN_MS;
+    let nowMs = hourStartMs + 49 * MIN_MS;
     vi.setSystemTime(nowMs);
 
-    // One 8 kW on/off device, sustainable 5 kW. Burst stays high (empty bucket); the
-    // drain ceiling crosses 8 kW only at ~1.9 minutes remaining.
+    // One 8 kW on/off device, sustainable 5 kW. Burst stays high (empty bucket), so
+    // nothing limits it before the drain window. The drain opens at its 8 kW and
+    // falls from there; an on/off device cannot run at part power, so it is limited
+    // as soon as the drain passes below it (owner, 2026-10-25), and the next hour
+    // starts at its target.
     const device = new MockDevice('solo', 'Workshop heater', ['onoff', 'measure_power', 'meter_power'], 'socket');
     await device.setCapabilityValue('onoff', true);
     await device.setCapabilityValue('measure_power', 8000);
@@ -324,30 +328,26 @@ describe('End-of-hour drain across the hour boundary (SDK-boundary e2e)', () => 
     };
     const soloShed = (): boolean => putSpy.mock.calls.some((call: unknown[]) => isOnoffShed('solo', call));
 
-    // :55 — 5 minutes left, ceiling ~3.5x sustainable: still running (a cliff at the
-    // 10-minute mark would already have shed it). Nothing has been written at all.
-    await stepTo(hourStartMs + 55 * MIN_MS);
+    // :49:50 — before the drain window the leftover allowance governs: running.
+    await stepTo(hourStartMs + 49 * MIN_MS + 50 * 1000);
     await flushDetached(20);
     expect(soloShed()).toBe(false);
 
-    // :57:50 — still ~20 s before the ceiling crosses 8 kW (ceiling ~8.6 kW here).
-    // Asserting "still not shed" this close to the crossing catches an overly
-    // aggressive drain (or any regression that starts limiting earlier in the hour),
-    // which a bare jump to the boundary would let pass.
-    await stepTo(hourStartMs + 57 * MIN_MS + 50 * 1000);
-    await flushDetached(20);
-    expect(soloShed()).toBe(false);
-
-    // Step to the boundary: the drain ceiling drops below 8 kW at ~1.9 minutes
-    // remaining and the device is shed.
-    await stepTo(hourStartMs + 60 * MIN_MS - POLL_MS);
+    // Inside the window the drain falls below the device's 8 kW and it is limited.
+    await stepTo(hourStartMs + 51 * MIN_MS);
     await drainUntil(() => soloShed());
     expect(soloShed()).toBe(true);
+
+    // The next hour starts at its target, and the device is not turned back on just
+    // to be limited again: the new hour's 5 kW does not fit 8 kW.
+    await stepTo(hourStartMs + 60 * MIN_MS + POLL_MS);
+    await flushDetached(20);
+    expect(await device.getCapabilityValue('onoff')).toBe(false);
   });
 
   it('replans on the next Flow report as the end-of-hour drain falls', async () => {
     const hourStartMs = Date.UTC(2026, 0, 15, 10, 0, 0);
-    let nowMs = hourStartMs + 57 * MIN_MS + 50 * 1000;
+    let nowMs = hourStartMs + 49 * MIN_MS + 50 * 1000;
     vi.setSystemTime(nowMs);
 
     const device = new MockDevice('solo', 'Workshop heater', ['onoff', 'measure_power', 'meter_power'], 'socket');
@@ -387,18 +387,109 @@ describe('End-of-hour drain across the hour boundary (SDK-boundary e2e)', () => 
     await flushDetached(20);
     expect(soloShed()).toBe(false);
 
-    // :58:00 — the ceiling is still above 8 kW, so the same draw is not shed.
-    await stepTo(hourStartMs + 58 * MIN_MS);
+    // :50 — the first report inside the window opens the drain at its 8 kW.
+    await stepTo(hourStartMs + 50 * MIN_MS);
     await reportPowerUsage({ power: 8000 });
     await flushDetached(20);
     expect(soloShed()).toBe(false);
 
-    // :58:10 — the drain has taken the ceiling below 8 kW: the Flow's next report
-    // replans and sheds.
-    await stepTo(hourStartMs + 58 * MIN_MS + POLL_MS);
+    // :51 — the drain has fallen below 8 kW by more than the shedding deadband:
+    // the Flow's next report replans and sheds.
+    await stepTo(hourStartMs + 51 * MIN_MS);
     await reportPowerUsage({ power: 8000 });
     await drainUntil(() => soloShed());
     expect(soloShed()).toBe(true);
     expect(getSpy.mock.calls.some((call: unknown[]) => call[0] === 'manager/energy/live')).toBe(false);
+  });
+  it('does not turn a heater back on in the drain only to limit it before :00 (restore lab, 12:00)', async () => {
+    // The restore lab on SHS1 (2026-10-25, PELS 3.23.3): a 4.8 kWh hour, four
+    // 1.5 kW heaters and a household load. In an under-used hour two limited
+    // heaters were turned back on at -9.7 and -4.7 minutes, limited again at -1.0
+    // and -0.0, and back on at +0.1. Here the household load drops just after :50,
+    // leaving the leftover allowance free: nothing may come on in the drain that
+    // the next hour's 4.8 kW cannot hold.
+    const hourStartMs = Date.UTC(2026, 0, 15, 11, 0, 0);
+    let nowMs = hourStartMs + 44 * MIN_MS;
+    vi.setSystemTime(nowMs);
+
+    const heaters = ['h1', 'h2', 'h3', 'h4'];
+    const devices = new Map<string, MockDevice>();
+    for (const id of heaters) {
+      const device = new MockDevice(id, `Heater ${id}`, ['onoff', 'measure_power', 'meter_power'], 'socket');
+      await device.setCapabilityValue('onoff', true);
+      await device.setCapabilityValue('measure_power', 1500);
+      await device.setCapabilityValue('meter_power', 100);
+      devices.set(id, device);
+    }
+    setMockDrivers({ driverA: new MockDriver('driverA', [...devices.values()]) });
+
+    mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 5);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0.2);
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
+    mockHomeyInstance.settings.set('controllable_devices', Object.fromEntries(heaters.map((id) => [id, true])));
+    mockHomeyInstance.settings.set('managed_devices', Object.fromEntries(heaters.map((id) => [id, true])));
+    // h4 is the least important, so it is limited first and resumed last.
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { h1: 1, h2: 2, h3: 3, h4: 4 } });
+    mockHomeyInstance.settings.set(
+      OVERSHOOT_BEHAVIORS, Object.fromEntries(heaters.map((id) => [id, { action: 'turn_off' }])),
+    );
+
+    let householdW = 14000;
+    const heatersOnW = async (): Promise<number> => {
+      let totalW = 0;
+      for (const device of devices.values()) {
+        if ((await device.getCapabilityValue('onoff')) === true) totalW += 1500;
+      }
+      return totalW;
+    };
+    reportHomePower(async () => householdW + await heatersOnW());
+    putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+
+    const app = createApp();
+    await app.onInit();
+
+    const stepTo = async (targetMs: number): Promise<void> => {
+      while (nowMs < targetMs) {
+        const delta = Math.min(POLL_MS, targetMs - nowMs);
+        await vi.advanceTimersByTimeAsync(delta);
+        nowMs += delta;
+        await flushDetached();
+      }
+    };
+    const turnedOnSince = (callIndex: number, id: string): boolean => putSpy.mock.calls.slice(callIndex)
+      .some((call: unknown[]) => call[0] === cap(id, 'onoff') && (call[1] as { value?: unknown })?.value === true);
+
+    // A heavy household load: PELS limits the two least important heaters.
+    await stepTo(hourStartMs + 46 * MIN_MS);
+    await drainUntil(() => putSpy.mock.calls.some((call: unknown[]) => isOnoffShed('h3', call)));
+    expect(putSpy.mock.calls.some((call: unknown[]) => isOnoffShed('h4', call))).toBe(true);
+
+    // Just after :50 the household load drops to 1 kW: the house draws 4 kW with
+    // most of the hour's allowance left.
+    await stepTo(hourStartMs + 50 * MIN_MS);
+    householdW = 1000;
+    const drainStartCall = putSpy.mock.calls.length;
+
+    // The drain opened at the house's heavy :50 draw, so at :52 its pace still
+    // has room for a heater: only the next hour's 4.8 kW keeps them off.
+    await stepTo(hourStartMs + 52 * MIN_MS);
+    expect(app.computePhysicalPowerLimit()).toBeGreaterThan(5.5 + 1.5);
+
+    await stepTo(hourStartMs + 60 * MIN_MS - POLL_MS); // :59:50, last in-hour poll
+    await flushDetached(20);
+    expect(turnedOnSince(drainStartCall, 'h3')).toBe(false);
+    expect(turnedOnSince(drainStartCall, 'h4')).toBe(false);
+    expect((householdW + await heatersOnW()) / 1000).toBeLessThanOrEqual(4.8);
+
+    // The next hour starts at its target, and nothing was limited at its boundary.
+    await stepTo(hourStartMs + 60 * MIN_MS + POLL_MS);
+    await flushDetached(20);
+    expect((householdW + await heatersOnW()) / 1000).toBeLessThanOrEqual(4.8);
+    expect(putSpy.mock.calls.slice(drainStartCall).some((call: unknown[]) => (
+      heaters.some((id) => isOnoffShed(id, call))
+    ))).toBe(false);
   });
 });

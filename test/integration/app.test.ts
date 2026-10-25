@@ -2499,7 +2499,7 @@ describe('computePhysicalPowerLimit', () => {
     vi.clearAllTimers();
   });
 
-  it('drains the soft limit toward sustainable near hour end even when burst is higher', async () => {
+  it('starts the drain from the house\'s draw when no build has recorded one yet', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     await heater.setCapabilityValue('onoff', true);
     await heater.setCapabilityValue('measure_power', 1000);
@@ -2514,10 +2514,8 @@ describe('computePhysicalPowerLimit', () => {
     const app = createApp();
     await initApp(app);
 
-    // Simulate end of hour scenario (last 10 minutes) where burst rate would be high:
-    // 5 minutes left, only 0.5 kWh used, remaining = 4.5 kWh;
-    // burstRate = 4.5 / (5/60) = 54 kW. The exponential drain ceiling
-    // pulls the allowed pace below that as the hour ends.
+    // Inside the end-of-hour drain where burst would be high: 5 minutes left,
+    // only 0.5 kWh used, remaining = 4.5 kWh, burstRate = 4.5 / (5/60) = 54 kW.
 
     // Mock Date.now to be at :55 (5 minutes left - within last 10 minutes)
     const now = new Date();
@@ -2529,18 +2527,15 @@ describe('computePhysicalPowerLimit', () => {
     // Mock the power tracker to simulate some usage
     app.powerTracker = {
       buckets: { [hourStart.toISOString()]: 0.5 },
+      lastPowerW: 8000,
     };
 
     const softLimit = app.computePhysicalPowerLimit();
 
-    // With 5 kWh budget, 0.5 used, 4.5 remaining, 5 minutes left:
-    // - burstRate = 54 kW (using the actual five minutes remaining)
-    // - drain ceiling = 5 * e^(5/4) = 17.45 kW; allowed = min(54, 17.45) = 17.45 kW.
-    // The end-of-hour drain pulls the pace below burst but well above the steady
-    // sustainable rate (5 kW) — a smooth taper rather than a cliff to sustainable.
-    expect(softLimit).toBeCloseTo(17.45, 1);
-    expect(softLimit).toBeGreaterThan(5);
-    expect(softLimit).toBeLessThan(54);
+    // No build has recorded this hour's drain start, so a read starts it from
+    // the 8 kW the house draws now, as the next build will: the pace is held at
+    // that draw, below the 54 kW burst, and falls from there to 5 kW at :00.
+    expect(softLimit).toBeCloseTo(8, 6);
 
     vi.restoreAllMocks();
   });
@@ -2661,9 +2656,9 @@ describe('computePhysicalPowerLimit', () => {
     vi.restoreAllMocks();
   });
 
-  it('does not cap at 8 minutes left — burst still governs until the drain binds', async () => {
-    // Test: At :52 (8 minutes left), the exponential drain ceiling is still far
-    // above burst, so the budget-driven burst rate governs (no early cliff).
+  it('lets the remaining budget bind below the drain at 8 minutes left', async () => {
+    // Test: At :52 (8 minutes left) with the house above what the remaining
+    // budget allows, the budget-driven burst rate governs inside the drain.
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     await heater.setCapabilityValue('onoff', true);
     await heater.setCapabilityValue('measure_power', 1000);
@@ -2688,22 +2683,22 @@ describe('computePhysicalPowerLimit', () => {
     // Mock the power tracker - only used 3 kWh (under budget)
     app.powerTracker = {
       buckets: { [hourStart.toISOString()]: 3 },
+      lastPowerW: 30000,
     };
 
     const softLimit = app.computePhysicalPowerLimit();
 
     // With 6.7 kWh budget, 3 used, 3.7 remaining, and 8 minutes left:
-    // burstRate = 3.7 / (8/60) = 27.75 kW.
-    // drain ceiling = 6.7 * e^(8/4) ≈ 49.5 kW, so burst governs: allowed = 27.75 kW.
-    // (The legacy hard cliff would have clamped this to 6.7 kW at 8 minutes left.)
+    // burstRate = 3.7 / (8/60) = 27.75 kW, below the 30 kW drain start, so
+    // burst governs. (The legacy hard cliff would have clamped this to 6.7 kW.)
     expect(softLimit).toBeCloseTo(27.75, 2);
     expect(softLimit).toBeGreaterThan(6.7);
 
     vi.restoreAllMocks();
   });
 
-  it('drains close to the sustainable rate at :59 to protect the next hour', async () => {
-    // Test: At :59 (1 minute left), the drain ceiling pulls the pace down near sustainable
+  it('holds the next hour\'s target at :59 when the house draws less than it', async () => {
+    // Test: At :59 (1 minute left), a house below the sustainable rate keeps a flat drain at that rate
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     await heater.setCapabilityValue('onoff', true);
     await heater.setCapabilityValue('measure_power', 1000);
@@ -2728,17 +2723,15 @@ describe('computePhysicalPowerLimit', () => {
     // Mock the power tracker - only used 2 kWh (lots of remaining budget)
     app.powerTracker = {
       buckets: { [hourStart.toISOString()]: 2 },
+      lastPowerW: 4000,
     };
 
     const softLimit = app.computePhysicalPowerLimit();
 
-    // With 6.7 kWh budget, 2 used, 4.7 remaining, and 1 minute left:
-    // burstRate = 4.7 / (1/60) = 282 kW.
-    // drain ceiling = 6.7 * e^(1/4) = 8.60 kW; allowed = min(282, 8.60) = 8.60 kW —
-    // approaching the sustainable rate (6.7 kW) so the next hour starts clean.
-    expect(softLimit).toBeCloseTo(8.6, 1);
-    expect(softLimit).toBeGreaterThan(6.7);
-    expect(softLimit).toBeLessThan(10);
+    // With 6.7 kWh budget, 2 used, 4.7 remaining, and 1 minute left, burst is
+    // 282 kW, but the house draws 4 kW: the drain holds the 6.7 kW sustainable
+    // rate so the next hour starts at its target.
+    expect(softLimit).toBeCloseTo(6.7, 6);
 
     vi.restoreAllMocks();
   });

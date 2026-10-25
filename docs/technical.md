@@ -74,7 +74,7 @@ Rather than simply comparing instantaneous power against your hard cap, PELS cal
 
 ### End-of-Period Drain
 
-On the hourly period, PELS gradually tightens the capacity safe pace down to the sustainable rate as the hour ends, so devices are not ramped up to spend a leftover allowance right before the boundary. Slow device apps may still carry some load briefly across the boundary, and the next measured sample corrects the plan.
+On the hourly period, the last ten minutes bring the house down to the sustainable rate (hard cap minus safety margin), so the next hour starts at its target rather than over it. At :50 the capacity safe pace is what the house is drawing. It then falls to the sustainable rate at :00, cutting a little at first and the most in the final minutes, and devices are limited one at a time in priority order. In those ten minutes nothing is turned on or stepped up unless the house would still be within the sustainable rate with it, because it would keep running into the next hour. An on/off device cannot run at part power, so when it is next in priority order it is limited as soon as the falling pace passes below the house's draw, which can be early in the window.
 
 A 15-minute quarter is too short to wind down gradually, so it never bursts in the first place: the safe pace never goes above the hard cap minus the safety margin. Energy you did not use early in a quarter is not spent later in it. The safety margin is your buffer, so size it for your slowest device. The pace still drops below that level after a heavy start, so the quarter's average stays under the hard cap.
 
@@ -405,7 +405,7 @@ Heaters and chargers on local protocols respond within seconds; cloud-mediated d
 
 ### Capacity-period enforcement
 
-PELS enforces the hard cap on the selected **capacity period**: a clock hour for hourly tariffs or an aligned 15-minute quarter for quarter-hour peak tariffs. In hourly mode, the period-end drain tightens the safe pace toward the sustainable rate as the hour ends. In 15-minute mode the safe pace never rises above that rate. Either way the planner aims to cross into the next period near that steady rate. Slow device response can briefly carry some load across the boundary, and the next planning cycle corrects that if needed.
+PELS enforces the hard cap on the selected **capacity period**: a clock hour for hourly tariffs or an aligned 15-minute quarter for quarter-hour peak tariffs. In hourly mode, the period-end drain brings the safe pace down to the sustainable rate over the last ten minutes of the hour. In 15-minute mode the safe pace never rises above that rate. Either way the house enters the next period at that steady rate.
 
 ### Local Control
 

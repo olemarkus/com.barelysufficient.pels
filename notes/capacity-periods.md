@@ -29,7 +29,7 @@ conservatively, and monthly reporting waits for the next fully tracked quarter.
 A quarter does not burst. Its safe pace is the burst rate (energy left over
 time left) capped at the sustainable rate, hard cap minus safety margin. Energy
 saved early in a quarter is not spent later in it, so the margin is the buffer.
-The hourly exponential drain does not carry over: scaled to a quarter it would
+The hourly end-of-hour drain does not carry over: scaled to a quarter it would
 last about a minute, shorter than the shed and restore cooldowns, and in a live
 run it let the house step a heater up with 1.6 minutes left and then shed three
 devices in the final 30 seconds, every quarter (owner ruling 2026-09-19). The

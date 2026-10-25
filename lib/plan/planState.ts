@@ -2,6 +2,7 @@ import type { PendingBinaryCommand } from '../observer/pendingBinaryCommandTypes
 import type { PlanRebuildTrigger } from './planRebuildTrigger';
 import type { PlanLimits } from './planContext';
 import { OvershootIncident } from './overshootIncident';
+import { CapacityDrainStart } from './capacityDrainStart';
 import { ActuationRecord } from './actuationRecord';
 import { RestoreBackoff } from './restoreBackoff';
 import { ShedDecisions } from './shedDecisions';
@@ -482,6 +483,12 @@ export class PlanEngineState {
    * retained local alias from the terminology note.
    */
   hourlyRemainingKWh: number = 0;
+
+  /**
+   * What the house drew when this hour's end-of-hour drain opened. Written
+   * only by the plan build, from its measured reading (`PlanBuilder`).
+   */
+  readonly capacityDrainStart = new CapacityDrainStart();
 
   /**
    * Whether the spent period acts on this cycle: the stamped fact

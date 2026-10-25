@@ -4,8 +4,14 @@ import {
   computeDynamicSoftLimit,
   computeShortfallThreshold,
   isDailyBudgetBelowPlanningCeiling,
+  resolveCapacityAdmissionHeadroomKw,
 } from '../../lib/plan/planBudget';
+import { CapacityDrainStart, type DrainStart } from '../../lib/plan/capacityDrainStart';
 import { capacityOnlyPowerLimits, powerLimits } from '../helpers/powerLimitSettings';
+
+// What the house drew when the hour's drain window opened at :50. Read only inside the window.
+const HOUSE_DRAW_KW = 8;
+const DRAIN_START: DrainStart = { drawKw: HOUSE_DRAW_KW, minutesRemaining: 10 };
 import type { DailyBudgetUiPayload } from '../../packages/contracts/src/dailyBudgetTypes';
 
 const budgetSnapshot = (dailyBudgetKWh: number, hours: number, enabled = true): DailyBudgetUiPayload => {
@@ -99,7 +105,7 @@ describe('planBudget', () => {
       const result = computeDynamicSoftLimit(
         { limitKw: 5, marginKw: 5, periodMinutes: 60 },
         {},
-        Date.now(),
+        Date.now(), DRAIN_START,
       );
       expect(result).toEqual({ allowedKw: 0, hourlyBudgetExhausted: false, remainingKWh: 0 });
     });
@@ -113,7 +119,7 @@ describe('planBudget', () => {
       const result = computeDynamicSoftLimit(
         { limitKw: 7, marginKw: 0.3, periodMinutes: 60 },
         { buckets: { [bucketKey]: 1.5 } },
-        Date.now(),
+        Date.now(), DRAIN_START,
       );
 
       // Soft budget = 6.7 kWh. Remaining = 5.2 kWh over 0.5h => 10.4 kW burst.
@@ -133,7 +139,7 @@ describe('planBudget', () => {
           lastTimestamp: nowMs,
           capacityQuarter: { startMs: quarterStartMs, energyKWh: 0.75, trackedMs: nowMs - quarterStartMs },
         },
-        Date.now(),
+        Date.now(), DRAIN_START,
       );
 
       // Quarter allowance = 1.25 kWh. 0.5 kWh remains over 10 minutes => 3 kW.
@@ -155,7 +161,7 @@ describe('planBudget', () => {
             lastTimestamp: nowMs,
             capacityQuarter: { startMs: quarterStartMs, energyKWh, trackedMs: nowMs - quarterStartMs },
           },
-          nowMs,
+          nowMs, DRAIN_START,
         );
         expect(result.allowedKw).toBeCloseTo(4.8, 6);
         expect(result.remainingKWh).toBeCloseTo(1.0, 6);
@@ -180,7 +186,7 @@ describe('planBudget', () => {
             trackedMs: lastTimestamp - quarterStartMs,
           },
         },
-        Date.now(),
+        Date.now(), DRAIN_START,
       );
 
       // The held 3 kW sample contributes another 0.15 kWh from :07 to :10.
@@ -209,7 +215,7 @@ describe('planBudget', () => {
             trackedMs: lastTimestamp - previousQuarterStartMs,
           },
         },
-        Date.now(),
+        Date.now(), DRAIN_START,
       );
 
       // The held 9 kW sample covers :15–:17 in the new quarter: 0.3 kWh used,
@@ -236,7 +242,7 @@ describe('planBudget', () => {
       };
       const capacitySettings = { limitKw: 5, marginKw: 0, periodMinutes: 15 } as const;
 
-      const pace = computeDynamicSoftLimit(capacitySettings, powerTracker, buildNowMs);
+      const pace = computeDynamicSoftLimit(capacitySettings, powerTracker, buildNowMs, DRAIN_START);
       const shortfallThreshold = computeShortfallThreshold(
         capacitySettings,
         powerTracker,
@@ -259,7 +265,7 @@ describe('planBudget', () => {
           lastTimestamp: nowMs,
           capacityQuarter: { startMs: quarterStartMs, energyKWh: 1.25, trackedMs: nowMs - quarterStartMs },
         },
-        Date.now(),
+        Date.now(), DRAIN_START,
       );
 
       expect(result.allowedKw).toBe(0);
@@ -278,133 +284,143 @@ describe('planBudget', () => {
           lastTimestamp: nowMs,
           capacityQuarter: { startMs: quarterStartMs, energyKWh: 0.2, trackedMs: 5 * 60 * 1000 },
         },
-        Date.now(),
+        Date.now(), DRAIN_START,
       );
 
       expect(result).toEqual({ allowedKw: 0, hourlyBudgetExhausted: false, remainingKWh: 0 });
     });
 
-    it('drains burst toward sustainable via the exponential ceiling near hour end', () => {
+    it('falls from the draw the drain opened at toward the sustainable rate', () => {
       const nowMs = Date.UTC(2025, 0, 15, 12, 55, 0); // 5 minutes remaining
-      vi.useFakeTimers();
-      vi.setSystemTime(nowMs);
-
       const bucketKey = getHourBucketKey(nowMs);
       const result = computeDynamicSoftLimit(
         { limitKw: 5, marginKw: 0, periodMinutes: 60 },
         { buckets: { [bucketKey]: 0.5 } },
-        Date.now(),
+        nowMs,
+        DRAIN_START,
       );
 
-      // Remaining = 4.5 kWh over 5 minutes => burst 54 kW.
-      // Drain ceiling at 5 min = 5 * e^(5/4) = 17.4517 kW; allowed = min(54, 17.4517).
-      // The pace is pulled below the raw burst but stays well above the steady
-      // sustainable rate (5 kW) — a smooth taper, not a cliff to sustainable.
-      expect(result.allowedKw).toBeCloseTo(17.4517, 3);
-      expect(result.allowedKw).toBeGreaterThan(5);
-      expect(result.allowedKw).toBeLessThan(54);
+      // Remaining 4.5 kWh over 5 minutes would allow 54 kW. The drain allows
+      // 5 + 3 × (1 − expm1(5/4) / expm1(10/4)) = 7.33 kW: below the 8 kW the
+      // house drew at :50, still above the 5 kW target.
+      expect(result.allowedKw).toBeCloseTo(7.3319, 3);
       expect(result.hourlyBudgetExhausted).toBe(false);
     });
 
-    it('does not cliff to sustainable at the 10-minute mark (drain barely binds there)', () => {
+    it('opens the drain at the house\'s draw, so nothing is limited at :50', () => {
       const nowMs = Date.UTC(2025, 0, 15, 12, 50, 0); // exactly 10 minutes remaining
-      vi.useFakeTimers();
-      vi.setSystemTime(nowMs);
-
       const bucketKey = getHourBucketKey(nowMs);
       const result = computeDynamicSoftLimit(
         { limitKw: 5, marginKw: 0, periodMinutes: 60 },
         { buckets: { [bucketKey]: 0.5 } },
-        Date.now(),
+        nowMs,
+        DRAIN_START,
       );
 
-      // Drain ceiling at 10 min = 5 * e^(10/4) ≈ 60.9 kW, far above the 27 kW burst,
-      // so the burst rate governs. Regression guard: the legacy hard cliff would
-      // have clamped this to 5 kW at exactly 10 minutes.
-      expect(result.allowedKw).toBeCloseTo(27, 6);
+      // The old hard cliff clamped this to 5 kW at exactly 10 minutes and shed
+      // every device above it at once.
+      expect(result.allowedKw).toBeCloseTo(HOUSE_DRAW_KW, 6);
+    });
+
+    it('leaves the budget-driven pace alone before the drain window', () => {
+      const nowMs = Date.UTC(2025, 0, 15, 12, 49, 0); // 11 minutes remaining
+      const bucketKey = getHourBucketKey(nowMs);
+      const result = computeDynamicSoftLimit(
+        { limitKw: 5, marginKw: 0, periodMinutes: 60 },
+        { buckets: { [bucketKey]: 0.5 } },
+        nowMs,
+        DRAIN_START,
+      );
+
+      expect(result.allowedKw).toBeCloseTo(4.5 / (11 / 60), 6);
     });
 
     it('crosses the hour boundary at the sustainable rate', () => {
       const nowMs = Date.UTC(2025, 0, 15, 12, 59, 59, 999); // ~0 minutes remaining
-      vi.useFakeTimers();
-      vi.setSystemTime(nowMs);
-
       const bucketKey = getHourBucketKey(nowMs);
       const result = computeDynamicSoftLimit(
         { limitKw: 5, marginKw: 0, periodMinutes: 60 },
         { buckets: { [bucketKey]: 0.5 } }, // budget remaining, burst would be high
-        Date.now(),
+        nowMs,
+        DRAIN_START,
       );
 
-      // At the boundary the drain ceiling collapses to the sustainable rate (5 kW),
-      // so even with budget left the pace is the steady rate — the next hour starts clean.
+      // The next hour starts at its 5 kW target, even with budget left in this one.
       expect(result.allowedKw).toBeCloseTo(5, 2);
     });
 
-    it('tapers smoothly down to the sustainable rate over the final minutes', () => {
-      vi.useFakeTimers();
+    it('holds the sustainable rate through the window when the house draws less', () => {
+      const nowMs = Date.UTC(2025, 0, 15, 12, 55, 0);
+      const bucketKey = getHourBucketKey(nowMs);
+      const result = computeDynamicSoftLimit(
+        { limitKw: 5, marginKw: 0, periodMinutes: 60 },
+        { buckets: { [bucketKey]: 0.5 } },
+        nowMs,
+        { drawKw: 3, minutesRemaining: 10 },
+      );
+
+      expect(result.allowedKw).toBeCloseTo(5, 6);
+    });
+
+    it('cuts least at the start of the window and most near :00', () => {
       const sample = (minute: number): number => {
         const nowMs = Date.UTC(2025, 0, 15, 12, minute, 0);
-        vi.setSystemTime(nowMs);
-        const bucketKey = getHourBucketKey(nowMs);
         return computeDynamicSoftLimit(
           { limitKw: 5, marginKw: 0, periodMinutes: 60 }, // sustainable = 5 kW
-          { buckets: { [bucketKey]: 0.5 } }, // remaining budget keeps burst above the drain
-          Date.now(),
+          { buckets: { [getHourBucketKey(nowMs)]: 0.5 } }, // remaining budget keeps burst above the drain
+          nowMs,
+          DRAIN_START,
         ).allowedKw;
       };
 
-      // minutesRemaining 6,5,4,3,2,1 — same usage, so the drain ceiling governs the
-      // whole tail and the pace falls strictly and continuously toward sustainable.
-      const series = [54, 55, 56, 57, 58, 59].map((m) => sample(m));
-      for (let i = 1; i < series.length; i += 1) {
-        expect(series[i]).toBeLessThan(series[i - 1]);
+      const series = [50, 51, 52, 53, 54, 55, 56, 57, 58, 59].map((m) => sample(m));
+      const cuts = series.slice(1).map((pace, index) => series[index] - pace);
+      for (let i = 1; i < cuts.length; i += 1) {
+        expect(cuts[i]).toBeGreaterThan(cuts[i - 1]);
       }
-      expect(series[0]).toBeCloseTo(22.4084, 3); // 6 min: 5 * e^(6/4)
-      expect(series[series.length - 1]).toBeCloseTo(6.4201, 3); // 1 min: 5 * e^(1/4)
-      expect(series[series.length - 1]).toBeGreaterThan(5); // never below the sustainable rate
+      expect(series[0]).toBeCloseTo(HOUSE_DRAW_KW, 6);
+      expect(series.at(-1)).toBeCloseTo(5.7229, 3); // 1 min: 5 + 3 × (1 − expm1(9/4) / expm1(10/4))
+      expect(series.at(-1)).toBeGreaterThan(5);
     });
 
     it('uses the actual time left when the remaining budget binds below the drain', () => {
       const nowMs = Date.UTC(2025, 0, 15, 12, 59, 0);
-      vi.useFakeTimers();
-      vi.setSystemTime(nowMs);
-
       const bucketKey = getHourBucketKey(nowMs);
       const result = computeDynamicSoftLimit(
         { limitKw: 5, marginKw: 0, periodMinutes: 60 },
         { buckets: { [bucketKey]: 4.95 } },
-        Date.now(),
+        nowMs,
+        DRAIN_START,
       );
 
-      // 0.05 kWh over the final minute permits 3 kW, below the 6.42 kW drain ceiling.
+      // 0.05 kWh over the final minute permits 3 kW, below the 5.72 kW drain.
       expect(result.allowedKw).toBeCloseTo(3, 6);
       expect(result.hourlyBudgetExhausted).toBe(false);
     });
 
-    it('uses the remaining allowance in a busy hour before the drain takes over', () => {
+    it('drains a busy hour from its draw at :50 without going below the sustainable rate', () => {
       const hourStartMs = Date.UTC(2025, 0, 15, 12);
       const bucketKey = getHourBucketKey(hourStartMs);
       const paces: number[] = [];
       let usedKWh = 3.5;
+      // An 8 kW demand follows the allowed pace. At :50, 1.3 kWh remains out of
+      // the 4.8 kWh allowance, which allows 7.8 kW: what the house draws then.
+      const drainStart: DrainStart = { drawKw: 7.8, minutesRemaining: 10 };
 
-      // An 8 kW demand follows the allowed pace, feeding consumption back every
-      // 10 seconds. At :50, 1.3 kWh remains out of the 4.8 kWh allowance.
       for (let elapsedSeconds = 50 * 60; elapsedSeconds < 60 * 60; elapsedSeconds += 10) {
         const { allowedKw } = computeDynamicSoftLimit(
           { limitKw: 5, marginKw: 0.2, periodMinutes: 60 },
           { buckets: { [bucketKey]: usedKWh } },
           hourStartMs + elapsedSeconds * 1000,
+          drainStart,
         );
         paces.push(allowedKw);
         usedKWh += Math.min(8, allowedKw) * (10 / 3600);
       }
 
-      expect(paces[30]).toBeCloseTo(7.8, 6); // :55: spend remaining energy over actual time left
-      expect(paces[54]).toBeCloseTo(6.1633, 3); // :59: the exponential drain now binds
-      expect(paces.at(-1)).toBeGreaterThanOrEqual(4.8);
+      expect(paces[0]).toBeCloseTo(7.8, 6);
+      expect(Math.min(...paces)).toBeGreaterThanOrEqual(4.8 - 1e-9);
       expect(paces.at(-1)).toBeLessThan(5.1);
-      expect(usedKWh).toBeGreaterThan(4.7);
       expect(usedKWh).toBeLessThanOrEqual(4.8);
     });
 
@@ -414,7 +430,7 @@ describe('planBudget', () => {
       const result = computeDynamicSoftLimit(
         { limitKw: 5, marginKw: 0.2, periodMinutes: 60 },
         { buckets: { [previousBucketKey]: 4.8 } },
-        nowMs,
+        nowMs, DRAIN_START,
       );
 
       expect(result).toEqual({ allowedKw: 4.8, hourlyBudgetExhausted: false, remainingKWh: 4.8 });
@@ -429,11 +445,70 @@ describe('planBudget', () => {
       const result = computeDynamicSoftLimit(
         { limitKw: 5, marginKw: 0, periodMinutes: 60 },
         { buckets: { [bucketKey]: 6 } },
-        Date.now(),
+        Date.now(), DRAIN_START,
       );
 
       expect(result.allowedKw).toBe(0);
       expect(result.hourlyBudgetExhausted).toBe(true);
+    });
+  });
+
+  describe('the drain start', () => {
+    const settings = { limitKw: 5, marginKw: 0, periodMinutes: 60 as const };
+    const at = (minute: number) => Date.UTC(2025, 0, 15, 12, minute, 0);
+    const tracker = (lastPowerW?: number) => ({ buckets: {}, ...(lastPowerW === undefined ? {} : { lastPowerW }) });
+
+    it('keeps the draw and minute of the first measured build in the window for the rest of the hour', () => {
+      const start = new CapacityDrainStart();
+      start.record(settings, tracker(3000), at(49), 3); // before the window
+      start.record(settings, tracker(9000), at(50), 9);
+      start.record(settings, tracker(4000), at(55), 4);
+      expect(start.startFor(settings, tracker(4000), at(56))).toEqual({ drawKw: 9, minutesRemaining: 10 });
+      // The next hour has no start yet: its draw and minute now.
+      expect(start.startFor(settings, tracker(4000), Date.UTC(2025, 0, 15, 13, 55)))
+        .toEqual({ drawKw: 4, minutesRemaining: 5 });
+    });
+
+    it('reads the target until a reading arrives', () => {
+      expect(new CapacityDrainStart().startFor(settings, tracker(), at(51)))
+        .toEqual({ drawKw: 5, minutesRemaining: 9 });
+    });
+
+    it('opens a drain first seen after a restart at the house\'s draw', () => {
+      const nowMs = at(57);
+      const result = computeDynamicSoftLimit(
+        settings, { buckets: { [getHourBucketKey(nowMs)]: 0.5 } }, nowMs, { drawKw: 8, minutesRemaining: 3 },
+      );
+      expect(result.allowedKw).toBeCloseTo(8, 6);
+    });
+  });
+
+  describe('resolveCapacityAdmissionHeadroomKw', () => {
+    // An hour's 5 kWh allowance is a 5 kW sustainable rate.
+    const hour = { capacityPeriodMinutes: 60 as const, budgetKWh: 5 };
+
+    it('lets an increase in the drain spend only the room under the next hour\'s target', () => {
+      // Drain pace 7.3 kW, house at 6 kW: 1.3 kW left to shed against, but an
+      // increase would run into the next hour, which allows 5 kW.
+      expect(resolveCapacityAdmissionHeadroomKw(
+        { ...hour, capacitySoftLimit: 7.3, minutesRemaining: 5 }, 1.3,
+      )).toBeCloseTo(-1, 6);
+      expect(resolveCapacityAdmissionHeadroomKw(
+        { ...hour, capacitySoftLimit: 7.3, minutesRemaining: 5 }, 3.3,
+      )).toBeCloseTo(1, 6);
+    });
+
+    it('leaves headroom as it is before the window, in a quarter, and with Capacity limit off', () => {
+      expect(resolveCapacityAdmissionHeadroomKw({ ...hour, capacitySoftLimit: 20, minutesRemaining: 11 }, 4)).toBe(4);
+      expect(resolveCapacityAdmissionHeadroomKw(
+        { capacityPeriodMinutes: 15, budgetKWh: 1.25, capacitySoftLimit: 5, minutesRemaining: 2 }, 1,
+      )).toBe(1);
+      expect(resolveCapacityAdmissionHeadroomKw({ ...hour, capacitySoftLimit: null, minutesRemaining: 5 }, null)).toBeNull();
+    });
+
+    it('never adds room when the drain pace is already below the target', () => {
+      // A nearly spent hour: the remaining budget binds at 3 kW, below 5 kW.
+      expect(resolveCapacityAdmissionHeadroomKw({ ...hour, capacitySoftLimit: 3, minutesRemaining: 1 }, 0.5)).toBe(0.5);
     });
   });
 

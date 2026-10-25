@@ -18,11 +18,13 @@ import type CapacityGuard from '../power/capacityGuard';
 import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { PowerTrackerState } from '../power/tracker';
-import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
+import type { CapacityPeriodMinutes, CapacitySettings } from '../../packages/contracts/src/capacitySettings';
+import type { PlanContext } from './planContext';
 import {
   resolveHardCapacityKWh, resolvePlanningCeilingKw, resolveUsableCapacityKWh, resolveUsableCapacityKw,
 } from '../power/capacityModel';
 import { getCurrentCapacityPeriodContext } from './planHourContext';
+import type { DrainStart } from './capacityDrainStart';
 import type { DailySoftLimitBucket } from './planDailyBudgetWindow';
 import type { DailyBudgetUiPayload } from '../../packages/contracts/src/dailyBudgetTypes';
 
@@ -37,16 +39,30 @@ const DAILY_BURST_RATE_MIN_REMAINING_HOURS = 10 / 60;
 // act on.
 const QUARTER_BURST_RATE_MIN_REMAINING_HOURS = 10 / 3600;
 
-// Base period-end drain time-constant (minutes). The capacity safe pace is capped by
-// an exponential ceiling that decays toward the steady sustainable rate as the
-// period ends — `sustainable · e^(minutesRemaining / TAU)` — so managed devices
-// are wound down gradually over the final minutes instead of cliff-shed at a
-// fixed threshold. The ceiling is ~sustainable at :00 and far above any feasible
-// burst earlier in the period (so the budget-driven burst rate governs then).
-// Hourly control only: a quarter never bursts above the sustainable rate, so it
-// has nothing to drain. See notes/end-of-hour-mode.md for the rationale and the
-// TAU trade-off.
+// End-of-hour drain (hourly control only; a quarter never bursts above the
+// sustainable rate, so it has nothing to drain). Over the last
+// EOH_DRAIN_WINDOW_MIN minutes the capacity safe pace falls from what the house
+// drew when the window opened to the sustainable rate at :00, the average the
+// next hour must hold, so the next hour does not start over its limit. The
+// curve is exponential with time constant EOH_DRAIN_TAU_MIN: small cuts first,
+// the largest near the end. See notes/end-of-hour-mode.md.
+const EOH_DRAIN_WINDOW_MIN = 10;
 const EOH_DRAIN_TAU_MIN = 4;
+const EOH_DRAIN_SPAN = Math.expm1(EOH_DRAIN_WINDOW_MIN / EOH_DRAIN_TAU_MIN);
+
+/** Whether the hourly end-of-hour drain is in force with this many minutes left. */
+export function isInEndOfHourDrain(periodMinutes: CapacityPeriodMinutes, minutesRemaining: number): boolean {
+  return periodMinutes === 60 && minutesRemaining <= EOH_DRAIN_WINDOW_MIN;
+}
+
+/**
+ * The share of the window's starting excess over the sustainable rate still
+ * allowed with `minutesRemaining` left: 1 when the window opens, 0 at :00, and
+ * falling fastest in the final minutes.
+ */
+function drainShare(minutesRemaining: number): number {
+  return 1 - Math.expm1((EOH_DRAIN_WINDOW_MIN - minutesRemaining) / EOH_DRAIN_TAU_MIN) / EOH_DRAIN_SPAN;
+}
 
 /**
  * Whether the daily budget sits below the home's planning ceiling
@@ -77,6 +93,8 @@ export function computeDynamicSoftLimit(
   capacitySettings: CapacitySettings,
   powerTracker: PowerTrackerState,
   nowMs: number,
+  /** Where this hour's drain falls from (`CapacityDrainStart`); read only inside the window. */
+  drainStart: DrainStart,
 ): {
   allowedKw: number;
   hourlyBudgetExhausted: boolean;
@@ -111,18 +129,42 @@ export function computeDynamicSoftLimit(
     return { allowedKw: Math.min(burstRateKw, sustainableRateKw), hourlyBudgetExhausted, remainingKWh };
   }
 
-  // Period-end drain: cap the burst rate by an exponential ceiling that decays
-  // toward the steady sustainable rate as the hour ends. This prevents a
-  // boundary burst (devices ramping up to spend remaining budget then carrying
-  // that draw into the next period) while winding devices down gradually.
-  // Earlier in the hour the ceiling sits far above any feasible burst, so the
-  // budget-driven burst rate governs and there is time to recover.
-  const drainCeilingKw = sustainableRateKw * Math.exp(periodContext.minutesRemaining / EOH_DRAIN_TAU_MIN);
+  // End-of-hour drain: from the draw the window opened at down to the
+  // sustainable rate at :00, so the house enters the next hour at its target
+  // rather than spending a leftover allowance and carrying that draw across.
+  // Before the window the budget-driven burst rate governs.
+  if (!isInEndOfHourDrain(capacitySettings.periodMinutes, periodContext.minutesRemaining)) {
+    return { allowedKw: burstRateKw, hourlyBudgetExhausted, remainingKWh };
+  }
+  // Scaled from the minute the drain started, so a drain first seen after :50
+  // (a restart inside the window) also opens at the house's draw.
+  const excessKw = Math.max(0, drainStart.drawKw - sustainableRateKw);
+  const startShare = drainShare(drainStart.minutesRemaining);
+  const shareLeft = startShare > 0 ? Math.min(1, drainShare(periodContext.minutesRemaining) / startShare) : 0;
+  const drainCeilingKw = sustainableRateKw + excessKw * shareLeft;
   const allowedKw = Math.min(burstRateKw, drainCeilingKw);
 
   // `remainingKWh` travels out because it is the only honest price of waiting:
   // the shed grace spends it, and it is already computed here.
   return { allowedKw, hourlyBudgetExhausted, remainingKWh };
+}
+
+/**
+ * The capacity headroom an increase (a restore or a step up) may spend, given
+ * the cycle's `capacityHeadroomKw`. Inside the end-of-hour drain that is the
+ * room under the lower of the pace and the sustainable rate: a device turned
+ * on then keeps running into the next hour, so it has to fit that hour's
+ * target, and anything more would be limited again before :00. Shedding keeps
+ * reading the drain pace itself. `null` with Capacity limit off. The window is
+ * hourly only, so `budgetKWh` is the sustainable rate in kW.
+ */
+export function resolveCapacityAdmissionHeadroomKw(
+  context: Pick<PlanContext, 'capacitySoftLimit' | 'capacityPeriodMinutes' | 'minutesRemaining' | 'budgetKWh'>,
+  capacityHeadroomKw: number | null,
+): number | null {
+  if (capacityHeadroomKw === null || context.capacitySoftLimit === null) return capacityHeadroomKw;
+  if (!isInEndOfHourDrain(context.capacityPeriodMinutes, context.minutesRemaining)) return capacityHeadroomKw;
+  return capacityHeadroomKw - Math.max(0, context.capacitySoftLimit - context.budgetKWh);
 }
 
 /**

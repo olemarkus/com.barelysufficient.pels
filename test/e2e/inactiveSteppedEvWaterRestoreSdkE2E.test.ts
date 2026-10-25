@@ -111,7 +111,8 @@ describe('inactive stepped EV and water-heater restore (SDK-boundary e2e)', () =
         'performance',
       ],
     });
-    vi.setSystemTime(Date.UTC(2026, 6, 24, 5, 55, 0));
+    // Mid-hour, outside the end-of-hour drain, so the restores compete for room only.
+    vi.setSystemTime(Date.UTC(2026, 6, 24, 5, 25, 0));
     resetMockHomey();
   });
 
