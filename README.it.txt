@@ -10,6 +10,6 @@ In Smart tasks indichi l'obiettivo e quando deve essere raggiunto: l'auto all'80
 
 Quando i pannelli producono più di quanto la casa consuma, il surplus viene usato per l'acqua calda, il riscaldamento, il raffrescamento o la ricarica dell'auto. La potenza di ricarica si adatta al surplus disponibile. Anche il prezzo dell'energia immessa in rete, compresi i valori negativi, rientra nella pianificazione. Con una batteria domestica come Sessy o Marstek Venus, PELS accumula il surplus rimasto, limita la carica quando altri apparecchi hanno la precedenza e usa l'energia accumulata per rispettare il limite di potenza.
 
-Home, Away e Night definiscono temperature e priorità per le diverse abitudini di casa.
+Modalità come Home, Away o Night definiscono temperature e priorità per le diverse abitudini di casa.
 
-Simulation mode mostra in anteprima come verrebbero gestiti gli apparecchi.
+Simulation mode mostra in anteprima come verrebbero gestiti gli apparecchi, finché non scegli Start managing alla fine della configurazione.

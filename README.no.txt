@@ -2,14 +2,14 @@ PELS reduserer effekttoppene ved å senke ladestrømmen, justere varmen eller pa
 
 Etter installasjonen åpner du Homey > Mer > Apper > PELS > Innstillinger for å fullføre oppsettet. Her velger du enheter, setter opp PELS og ser hva appen gjør.
 
-Med Capacity limit setter du en grense for gjennomsnittlig effekt per time eller kvarter for å holde nettleien nede. Grid import limit gjelder effekten du henter fra nettet her og nå. Grensene kan brukes hver for seg eller sammen. Målingene kommer fra Homey Energy, en HAN-leser eller en Flow. Hytta eller sokkelleiligheten kan ha egen måler og effektgrense. Effektstyringen er like nyttig med fast strømpris.
+Med Capacity limit setter du en grense for gjennomsnittlig effekt per time, så du holder deg på et lavere effekttrinn i nettleien. De siste ti minuttene av timen trapper PELS ned forbruket, så neste time ikke starter over grensen. Grid import limit gjelder effekten du henter fra nettet her og nå. Grensene kan brukes hver for seg eller sammen. Målingene kommer fra Homey Energy, en HAN-leser eller en Flow. Hytta eller sokkelleiligheten kan ha egen måler og effektgrense. Med Norgespris eller fast strømpris holder effektstyringen deg fortsatt på et lavere effekttrinn.
 
 Med Smart tasks kan bilen være ladet til 80 % innen klokka 07, stua varm ved hjemkomst eller varmtvannsberederen ha fått en bestemt energimengde. PELS velger de billigste timene fram til fristen. Når batterinivået er tilgjengelig i Homey, bruker PELS det i ladeplanen. Temperaturstyringen tar også hensyn til kvarterpriser.
 
-PELS beregner norsk spotpris med nettleie og strømstøtte, eller bruker priser fra Homey Energy, Power by the Hour eller Flows. Tidsavhengige priser og nettleie som er lagt inn i den valgte priskilden, tas med i planleggingen. I et Enova-støttet anlegg kan PELS stå for pris- og effektstyringen.
+Med priskilden Norway (spot + grid tariff) regner PELS ut strømprisen med nettleien fra nettselskapet ditt og strømstøtte eller Norgespris. Du kan også bruke priser fra Homey Energy, Power by the Hour eller Flows. Tidsavhengige priser og nettleie som er lagt inn i den valgte priskilden, tas med i planleggingen. I et Enova-støttet anlegg kan PELS stå for pris- og effektstyringen.
 
-Soloverskudd kan brukes til varmtvann, oppvarming og elbillading. PELS tilpasser ladestrømmen til produksjonen. Et hjemmebatteri som Sessy eller Marstek Venus kan lagre overskuddet som de andre enhetene ikke bruker. PELS reduserer batteriladingen når enheter med høyere prioritet trenger effekt, og bruker batteriet til å holde forbruket under effektgrensen.
+Har du solceller eller hjemmebatteri, bruker PELS soloverskuddet til varmtvann, oppvarming og elbillading, og batteriet til å holde forbruket under effektgrensen.
 
-Home, Away og Night har egne temperaturer og prioriteringer. Flows kan bytte modus når du drar hjemmefra eller legger deg.
+Moduser som Home, Away og Night har egne temperaturer og prioriteringer. Flows kan bytte modus når du drar hjemmefra eller legger deg.
 
-Simulation mode viser hvordan PELS ville styrt enhetene før du slår på automatisk styring.
+Simulation mode viser hvordan PELS ville styrt enhetene, helt til du velger Start managing til slutt i oppsettet.

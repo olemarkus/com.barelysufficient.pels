@@ -10,6 +10,6 @@ Saunan lämmitys voi nostaa kulutusta juuri auton latautuessa. Grid import limit
 
 Aurinkopaneelien ylijäämällä voi lämmittää käyttövettä ja huoneita tai ladata autoa. PELS säätää lataustehoa tuotannon mukaan ja huomioi myös verkkoon myydyn sähkön hinnan, vaikka se olisi negatiivinen. PELS varastoi kotiakkuun aurinkosähkön, jota kodin muut laitteet eivät käytä. Akku voi syöttää sähköä kodin laitteille kulutushuippujen aikana, ja sen latausta rajoitetaan kodin tehorajan mukaan.
 
-Home, Away ja Night ovat tiloja, joille voi määrittää omat lämpötilat ja laitteiden tärkeysjärjestykset. Flow-automaatiolla tilaa voi vaihtaa esimerkiksi kotoa lähtiessä.
+Tiloille, kuten Home, Away ja Night, voi määrittää omat lämpötilat ja laitteiden tärkeysjärjestykset. Flow-automaatiolla tilaa voi vaihtaa esimerkiksi kotoa lähtiessä.
 
-Simulation mode näyttää, miten PELS ohjaisi laitteita, ennen kuin käynnistät automaattisen ohjauksen.
+Simulation mode näyttää, miten PELS ohjaisi laitteita, kunnes valitset käyttöönoton lopussa Start managing.
