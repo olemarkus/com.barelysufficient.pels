@@ -63,6 +63,38 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
     expect(captured[0]).toMatchObject({ deviceId: 'thermostat', stateKind: 'idle' });
   });
 
+  it('adds no row while a thermostat at its target switches its own element on and off', () => {
+    // Prod 2026-10-25: 0.8 kW for 3.5 min, idle for 6.6 min, all night, two rows a cycle.
+    const recorder = createTestDeviceActivityRecorder();
+    const transitions = new DeviceOverviewTransitions();
+    const atTarget = (measuredPowerKw: number) => {
+      const thermostat = buildPlanDevice({
+        id: 'thermostat', name: 'Termostat', deviceType: 'temperature', binaryControllable: true,
+        currentState: 'on', plannedState: 'keep', currentTemperature: 21, currentTarget: 21, plannedTarget: 21,
+        measuredPowerKw, expectedPowerKw: 0.8,
+      });
+      return buildSettingsOverviewReadModel({ ...satisfiedTemperaturePlan(), devices: [thermostat] }, {
+        ...overviewReadModelWiring(),
+        getDeviceExecutionState: () => executionStateFixture(thermostat), dryRun: false, nowMs: 0,
+        getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
+        getHomeBatteryCard: () => ({ kind: 'none' } as const),
+        getObservedEvChargingState: () => ({ kind: 'absent' } as const),
+        getThermalDirection: () => 'heating' as const,
+        getObservedTemperature: () => ({ kind: 'observed' as const,
+          value: { currentTarget: 21, currentTemperature: 21 } }),
+      })!;
+    };
+    const running = atTarget(0.8);
+    const resting = atTarget(0);
+    // The producer really flips the card, ease-off control included.
+    expect(running.devices?.[0]?.status).toMatchObject({ kind: 'active', canEaseOff: true });
+    expect(resting.devices?.[0]?.status).toMatchObject({ kind: 'idle', canEaseOff: false });
+    for (const snapshot of [running, resting, running, resting]) {
+      expect(transitions.capture(snapshot, recorder, describeNoDecision)).toBe(true);
+    }
+    expect(recorder.getUiPayload().entries).toHaveLength(1);
+  });
+
   it('reads a satisfied thermostat that reports on as Idle on its card, not Running at 0 kW', () => {
     const onThermostat = buildPlanDevice({
       id: 'thermostat',
