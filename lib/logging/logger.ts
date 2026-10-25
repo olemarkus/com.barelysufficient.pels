@@ -79,15 +79,16 @@ const childByRoot = new WeakMap<PinoLogger, Map<string, PinoLogger>>();
 /**
  * Soft cap on distinct `module` strings seen by {@link getLogger}. Today every
  * production caller passes a string literal, so the cache is bounded by the
- * static set of callsites (≈38 as of 2026-05). The threshold is set well above
- * that to leave headroom for new modules and incidental test churn — crossing
+ * static set of callsites (≈67 as of 2026-10; 64 was crossed on every boot of
+ * 3.24.x). The threshold is set well above that to leave headroom for new
+ * modules and incidental test churn — crossing
  * it is a strong signal that something is interpolating runtime values (e.g.
  * `getLogger(`device-${id}`)`) and will grow the cache unboundedly. We only
  * warn once so the caller sees the issue without flooding the log; the cache
  * itself is unbounded by design (a hard cap could break call paths that
  * legitimately reach the threshold during tests).
  */
-export const MAX_LOGGER_CACHE_SIZE = 64;
+export const MAX_LOGGER_CACHE_SIZE = 256;
 let cacheGrowthWarningEmitted = false;
 
 /**
