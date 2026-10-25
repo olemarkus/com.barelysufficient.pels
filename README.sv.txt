@@ -1,5 +1,7 @@
 Elbilsladdning och uppvärmning står ofta för en stor del av elräkningen. PELS använder styrfunktionerna i enheternas Homey-appar för att flytta laddning och uppvärmning till billigare timmar. Appen kan bland annat styra laddboxar från Easee och Zaptec, värmepumpar, termostater och varmvattenberedare. Du väljer temperaturer och vilka enheter som ska prioriteras. Appen kan styra utrustning från olika tillverkare.
 
+Efter installationen öppnar du Homey > Mer > Appar > PELS > Inställningar för att slutföra konfigurationen. Här väljer du enheter, ställer in PELS och ser vad appen gör.
+
 Elpriserna kommer från Homey Energy, Power by the Hour eller dina Flows. När tidsberoende nätavgifter ingår i den valda priskällan tar PELS med dem i planeringen. Temperaturstyrningen kan även följa kvartspriser och anpassa både värme och kyla.
 
 Med Smart tasks kan målet vara 80 % i bilbatteriet klockan 07, ett varmt vardagsrum när du kommer hem eller en viss mängd energi till varmvattenberedaren. PELS väljer de billigaste timmarna fram till sluttiden. PELS kan också använda batterinivån i laddplanen när den finns i Homey.
@@ -10,4 +12,4 @@ PELS använder solöverskott till varmvatten, uppvärmning, kyla och billaddning
 
 Home, Away och Night har egna temperaturer och prioriteringar och kan växlas med Flows. Smart tasks kan också startas direkt från Homey-dashboarden.
 
-Den guidade konfigurationen finns under Homey > Mer > Appar > PELS > Inställningar. Simulation mode visar hur PELS skulle styra enheterna innan du slår på automatisk styrning.
+Simulation mode visar hur PELS skulle styra enheterna innan du slår på automatisk styrning.

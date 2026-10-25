@@ -37,6 +37,11 @@ export type HomeyRuntime = {
   settings: SettingsPort;
 };
 
+/** Homey's app notification API, used for the one-time setup reminder. */
+export type NotificationsPort = {
+  createNotification(options: { excerpt: string }): Promise<unknown>;
+};
+
 export type FlowTriggerCard = {
   trigger(tokens: Record<string, unknown>, state?: Record<string, unknown>): Promise<unknown>;
 };

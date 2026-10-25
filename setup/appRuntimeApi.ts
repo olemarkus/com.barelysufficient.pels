@@ -1,4 +1,5 @@
 import { temperaturePolicyPriceSettings } from '../packages/shared-domain/src/settings/temperatureControl';
+import { notifySetupOnce } from '../lib/app/setupNotification';
 import { emitPowerTrackerPersistedForApp, emitSettingsUiDevicesUpdatedForApp } from './settingsUiAppRuntime';
 import { openAppUserdataDatabase, type UserdataDatabase } from '../lib/store/userdataDatabase';
 import type { AppContext } from '../lib/app/appContext';
@@ -76,7 +77,10 @@ abstract class AppRuntimeApi extends Base {
   public getPowerCalibrationSnapshot(): PowerCalibrationSnapshot {
     return this.getPowerCalibrationStore().getSnapshot();
   }
-  public async onInit(): Promise<void> { await this.serviceWiring.runInit(this.supportReports); }
+  public async onInit(): Promise<void> {
+    await this.serviceWiring.runInit(this.supportReports);
+    await notifySetupOnce(this.homey.settings, this.homey.notifications);
+  }
   public refreshFlowConflictsForUi(): Promise<FlowConflictRefreshResult> {
     return this.builtInControlFlowConflicts.refreshForUi();
   }
