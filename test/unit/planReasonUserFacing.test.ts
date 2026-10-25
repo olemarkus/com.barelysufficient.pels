@@ -44,6 +44,11 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
       expected: PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS,
     },
     {
+      label: 'an end-of-hour drain hold names the ending hour, the same line as the card',
+      reason: { code: PLAN_REASON_CODES.endOfHourDrain },
+      expected: 'Waiting to resume — this hour is ending',
+    },
+    {
       label: 'deferred objective avoid maps to the waiting-for-cheaper-hours label',
       reason: { code: PLAN_REASON_CODES.deferredObjectiveAvoid },
       expected: PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,

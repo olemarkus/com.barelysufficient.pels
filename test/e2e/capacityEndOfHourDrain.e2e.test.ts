@@ -477,6 +477,12 @@ describe('End-of-hour drain across the hour boundary (SDK-boundary e2e)', () => 
     // has room for a heater: only the next hour's 4.8 kW keeps them off.
     await stepTo(hourStartMs + 52 * MIN_MS);
     expect(app.computePhysicalPowerLimit()).toBeGreaterThan(5.5 + 1.5);
+    // Their cards say why, rather than a kW gap the Overview's room contradicts.
+    const plan = app.planService.getLatestPlanSnapshot();
+    for (const id of ['h3', 'h4']) {
+      expect(plan?.devices.find((device: { id: string }) => device.id === id)?.reason)
+        .toEqual({ code: 'end_of_hour_drain' });
+    }
 
     await stepTo(hourStartMs + 60 * MIN_MS - POLL_MS); // :59:50, last in-hour poll
     await flushDetached(20);

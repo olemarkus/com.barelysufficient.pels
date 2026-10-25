@@ -6,6 +6,12 @@ export const PLAN_REASON_CODES = {
   swappedOut: 'swapped_out',
   hourlyBudget: 'hourly_budget',
   dailyBudget: 'daily_budget',
+  // Held only by the hourly end-of-hour drain's admission rule: in the last ten
+  // minutes nothing is turned on or stepped up unless the next hour's target
+  // can hold it (`resolveCapacityAdmissionHeadroomKw`, notes/end-of-hour-mode.md).
+  // Like `hourlyBudget` it carries NO numbers: the card states the condition and
+  // promises nothing about the next hour.
+  endOfHourDrain: 'end_of_hour_drain',
   shortfall: 'shortfall',
   cooldownShedding: 'cooldown_shedding',
   cooldownRestore: 'cooldown_restore',
@@ -191,6 +197,7 @@ export type DeviceReason =
   // "deliberately carries NO detail" above while declaring one; it now matches
   // `externalOffHold`, which never had a slot.
   | { code: typeof PLAN_REASON_CODES.hourlyBudget }
+  | { code: typeof PLAN_REASON_CODES.endOfHourDrain }
   | ({ code: typeof PLAN_REASON_CODES.dailyBudget } & AdmissionShortfall & ReserveHolder)
   // The capacity guard is in shortfall: PELS is out of levers. Its gap is this
   // device's own admission gap, attached at reason normalization like every

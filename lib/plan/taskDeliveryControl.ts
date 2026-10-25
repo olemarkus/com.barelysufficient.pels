@@ -14,6 +14,7 @@ const RESTRICTIONS: Record<DevicePlanDevice['reason']['code'], TaskDeliveryContr
   meter_silent: { kind: 'restricted', cause: 'capacity_limited' },
   shortfall: { kind: 'restricted', cause: 'capacity_limited' },
   hourly_budget: { kind: 'restricted', cause: 'capacity_limited' },
+  end_of_hour_drain: { kind: 'restricted', cause: 'capacity_limited' },
   insufficient_headroom: { kind: 'restricted', cause: 'capacity_limited' },
   reserved_for_start: { kind: 'restricted', cause: 'priority_limited' },
   swap_pending: { kind: 'restricted', cause: 'priority_limited' },

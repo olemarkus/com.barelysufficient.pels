@@ -105,6 +105,16 @@ export const PLAN_STATE_HOURLY_BUDGET_SPENT = "This capacity period's budget is 
 export const PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS = 'Waiting to resume — '
   + `${PLAN_STATE_HOURLY_BUDGET_SPENT.charAt(0).toLowerCase()}${PLAN_STATE_HOURLY_BUDGET_SPENT.slice(1)}`;
 
+// Status for `endOfHourDrain` holds: in the last ten minutes of the hour PELS
+// turns nothing on or up that the next hour's target cannot hold
+// (notes/end-of-hour-mode.md). Like the spent-period line it states the
+// condition and carries no kW: the device is not short of power the house could
+// free, and it promises nothing about the next hour (notes/ui-terminology.md,
+// "Never promise the next hour will be roomier").
+export const PLAN_STATE_HOUR_ENDING = 'This hour is ending';
+export const PLAN_STATE_HOUR_ENDING_STATUS = 'Waiting to resume — '
+  + `${PLAN_STATE_HOUR_ENDING.charAt(0).toLowerCase()}${PLAN_STATE_HOUR_ENDING.slice(1)}`;
+
 // Status line for `meterSilent` holds: the whole-home meter stopped reporting
 // for over 10 minutes and the fail-closed pass limited every managed device. It
 // states what the device needs — a new reading, which is also the only thing

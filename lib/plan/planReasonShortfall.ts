@@ -191,6 +191,52 @@ export function isBudgetReleasableHold(params: {
 }
 
 /**
+ * Whether the end-of-hour drain's admission rule alone holds this device back
+ * (`notes/end-of-hour-mode.md`): it has an admission gap on the ledger, which
+ * carries the drain's cut, and the gap closes once the capacity axis gets back
+ * the `drainCutKw` the rule withheld (`resolveCapacityAdmissionCutKw`). The
+ * counterpart of `isBudgetReleasableHold`, judged the same way.
+ */
+export function isDrainReleasableHold(
+  dev: DevicePlanDevice,
+  inputs: CeilingShortfallInputs,
+  drainCutKw: number,
+): boolean {
+  const axes = inputs.ledger.axes();
+  if (drainCutKw <= 0 || axes.capacityAvailableKw === null) return false;
+  const withoutCut = buildRestoreHeadroomLedger({
+    ...axes, capacityAvailableKw: axes.capacityAvailableKw + drainCutKw,
+  });
+  // A running stepped device denied a step-up: its own gate's need decides,
+  // as in `isBudgetReleasableHold`.
+  const { reason } = dev;
+  if (isSteppedLoadDevice(dev) && dev.currentState === 'on' && reason.code === PLAN_REASON_CODES.insufficientHeadroom) {
+    const availableKw = withoutCut.availableFor(dev);
+    return availableKw === null || availableKw >= reason.availableKw - reason.admissionMarginKw;
+  }
+  if (resolveCeilingShortfall({ dev, inputs }).kind !== 'gap') return false;
+  return resolveCeilingShortfall({ dev, inputs: { ...inputs, ledger: withoutCut } }).kind === 'no_gap';
+}
+
+/**
+ * The devices whose headroom-blocked increase the end-of-hour drain alone holds
+ * this cycle (`isDrainReleasableHold`), resolved once for the reason fold. None
+ * while a physical limit is breached, as for `resolveBudgetHeldDeviceIds`.
+ */
+export function resolveDrainHeldDeviceIds(
+  devices: readonly DevicePlanDevice[],
+  inputs: CeilingShortfallInputs,
+  drainCutKw: number,
+  physicalLimitBreached: boolean,
+): ReadonlySet<string> {
+  if (physicalLimitBreached || drainCutKw <= 0) return new Set();
+  return new Set(devices
+    .filter((dev) => dev.reason.code === PLAN_REASON_CODES.insufficientHeadroom)
+    .filter((dev) => isDrainReleasableHold(dev, inputs, drainCutKw))
+    .map((dev) => dev.id));
+}
+
+/**
  * The devices whose headroom-blocked restore the budget alone holds this cycle
  * (`isBudgetReleasableHold`), resolved once for the reason fold and the device
  * diagnostics, which must agree about it. Every plan device with a headroom

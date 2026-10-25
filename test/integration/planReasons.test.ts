@@ -2,7 +2,7 @@ import { SwapLedger } from '../../lib/plan/swap';
 import { fixtureLimitedSetpoints, fixtureSetpointLimit, fixtureTemperatureSetpointsEntry } from '../helpers/temperatureSetpointsFixture';
 import { finalizePlanDevices, normalizeShedReasons } from '../../lib/plan/planReasons';
 import {
-  resolveBudgetHeldDeviceIds, resolveCeilingShortfall, type CeilingShortfallInputs,
+  resolveBudgetHeldDeviceIds, resolveCeilingShortfall, resolveDrainHeldDeviceIds, type CeilingShortfallInputs,
 } from '../../lib/plan/planReasonShortfall';
 import { computeRestoreRequirementKw, estimateRestorePower } from '../../lib/plan/restore/accounting';
 import { getRestoreNeed } from '../../lib/plan/restore/support';
@@ -440,6 +440,8 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     physicalLimitBreached?: boolean;
     lastDeviceShedMsById?: Readonly<Record<string, number>>;
     guardInShortfall?: boolean;
+    /** The capacity room the end-of-hour drain withheld this cycle (`resolveCapacityAdmissionCutKw`). */
+    drainCutKw?: number;
   }) => {
     const admissionInputs = {
       ledger: buildRestoreHeadroomLedger({
@@ -465,6 +467,9 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       physicalLimitBreached,
       // Resolved from the same inputs, as the materialization stage does.
       budgetHeldDeviceIds: resolveBudgetHeldDeviceIds(params.devices, admissionInputs, physicalLimitBreached),
+      drainHeldDeviceIds: resolveDrainHeldDeviceIds(
+        params.devices, admissionInputs, params.drainCutKw ?? 0, physicalLimitBreached,
+      ),
       admissionInputs,
       hourlyBudgetExhausted: params.hourlyBudgetExhausted ?? false,
     }));
@@ -634,6 +639,53 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       capacityAvailableKw: 0.5,
     });
     expect(device?.reason).toEqual({ code: 'swap_pending', targetName: null });
+  });
+
+  // In the end-of-hour drain an increase spends only the room under the next
+  // hour's target. A hold that the withheld room alone causes names the ending
+  // hour instead of a kW gap the Overview's room would contradict.
+  describe('end-of-hour drain holds', () => {
+    // Need 1.2 kW (1.0 restore + 0.2 buffer).
+    const headroomHold = () => heldDevice({ reason: buildRestoreHeadroomReason(1.2, 0.5, -0.7, null, null, null) });
+
+    it('folds to endOfHourDrain when the drain\'s cut alone turns the device down', () => {
+      // 0.5 kW under the next hour's target; 2 kW more under the drain pace.
+      const [device] = normalize({ devices: [headroomHold()], capacityAvailableKw: 0.5, drainCutKw: 2 });
+      expect(device?.reason).toEqual({ code: 'end_of_hour_drain' });
+    });
+
+    it('stays a headroom hold when the device would not fit the drain pace either', () => {
+      const [device] = normalize({ devices: [headroomHold()], capacityAvailableKw: 0.2, drainCutKw: 0.5 });
+      expect(device?.reason.code).toBe('insufficient_headroom');
+    });
+
+    it('stays a headroom hold outside the drain, and while a physical limit is breached', () => {
+      expect(normalize({ devices: [headroomHold()], capacityAvailableKw: 0.5 })[0]?.reason.code)
+        .toBe('insufficient_headroom');
+      expect(normalize({
+        devices: [headroomHold()], capacityAvailableKw: 0.5, drainCutKw: 2, physicalLimitBreached: true,
+      })[0]?.reason.code).toBe('insufficient_headroom');
+    });
+
+    it('stays a headroom hold when the daily budget would turn the device down as well', () => {
+      const [device] = normalize({
+        devices: [headroomHold()], capacityAvailableKw: 0.5, budgetAvailableKw: 0.2, drainCutKw: 2,
+      });
+      expect(device?.reason.code).toBe('insufficient_headroom');
+    });
+
+    // A running stepped device denied a step-up stays `keep`, and is judged on
+    // the step its own gate rejected: an EV charger wanting 2.4 kW more.
+    it('folds a running stepped device\'s denied step-up too', () => {
+      const charger = steppedPlanDevice({
+        id: 'charger', currentState: 'on', plannedState: 'keep',
+        reason: buildRestoreHeadroomReason(2.4, 0.5, -1.9, null, null, null),
+      });
+      expect(normalize({ devices: [charger], capacityAvailableKw: 0.5, drainCutKw: 3 })[0]?.reason)
+        .toEqual({ code: 'end_of_hour_drain' });
+      expect(normalize({ devices: [charger], capacityAvailableKw: 0.5, drainCutKw: 1 })[0]?.reason.code)
+        .toBe('insufficient_headroom');
+    });
   });
 
   // Parity with the restore gate, stated without repeating its arithmetic: the

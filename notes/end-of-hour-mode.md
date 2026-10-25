@@ -82,6 +82,15 @@ ending) would turn devices on only to limit them again before `:00`: the
 restore lab on 2026-10-25 turned two heaters on at −9.7 and −4.7 minutes,
 limited them at −1.0 and −0.0, and turned them on again at +0.1.
 
+A device held only by this rule reads `Waiting to resume — this hour is ending`
+on its card and in Activity (`Waiting to increase — …` for a running stepped
+device; `endOfHourDrain`, `isDrainReleasableHold` in
+`lib/plan/planReasonShortfall.ts`), not a power gap: the gap would be measured
+against the next hour's target while the Overview shows room under the falling
+pace. A device that would be short against the pace too keeps its kW line, and
+as the pace falls through the window a device can move from the one to the
+other.
+
 The rule starts at `:50`, not earlier (owner, 2026-10-25: holding back
 increases from `:45` wastes too much of the hour). A device turned on just
 before `:50` whose draw only lands after it can still be limited in the window
