@@ -563,6 +563,51 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     expect(socOf(getLatestTargetSnapshotForTests())?.level).toMatchObject({ kind: 'known', percent: 70 });
   });
 
+  it('keeps what the charger waited for and a hours-late car report for a problem report', async () => {
+    vi.setSystemTime(Date.UTC(2026, 9, 24, 14, 30, 0));
+    const car = await buildCar();
+    const charger = await buildCharger();
+    setMockDrivers({ driverA: new MockDriver('driverA', [car, charger]) });
+    seedSettings();
+    mockHomeyInstance.settings.set(EV_CAR_ASSOCIATIONS, { [CHARGER_ID]: { carIds: [CAR_ID] } });
+    driveHomeEnergy(liveHomeW(3_000));
+    const app = createApp();
+    spyLogs(app);
+    await app.onInit();
+    await pumpMinutes(2);
+
+    // The charger reports the plug-in; the car app keeps saying unplugged.
+    await charger.setCapabilityValue('evcharger_charging_state', 'plugged_in');
+    const pluggedInAtMs = Date.now();
+    await pumpMinutes(45);
+    expect(of('ev_car_link_unmatched')).toEqual([expect.objectContaining({
+      chargerId: CHARGER_ID, reason: 'no_connected_car', connection: expect.objectContaining({ seen: 'plug_in' }),
+    })]);
+
+    // Twelve hours later the car app finally says plugged in.
+    await vi.advanceTimersByTimeAsync(12 * 60 * 60 * 1000);
+    await car.setCapabilityValue('ev_charging_state', 'plugged_in');
+    await pumpMinutes(45);
+    expect(of('ev_car_link_late_car_report')).toEqual([expect.objectContaining({ chargerId: CHARGER_ID, carId: CAR_ID })]);
+    expect((await chargerFromUi()).associatedCar).toBeUndefined();
+
+    const prepared = await api.support_report_prepare({ homey: app.homey, body: {
+      subject: { kind: 'device', homeId: 'main', deviceId: CHARGER_ID },
+      problem: 'The car was never linked.', expected: 'Link the car.', occurredAtMs: pluggedInAtMs, historyWindow: 'day',
+    } });
+    if (!prepared.ok) throw new Error(prepared.code);
+    const { document } = prepared.report;
+    expect(document.sections.find((section) => section.title === 'Current car link')?.values).toMatchObject({
+      role: 'charger', selection: 'selected', cars: [expect.objectContaining({ carId: CAR_ID, state: 'plugged_in' })],
+    });
+    if (document.deviceEvents.state !== 'available') throw new Error('kept device events unavailable');
+    const kept = document.deviceEvents.entries.map((entry) => entry.event);
+    expect(kept).toEqual(expect.arrayContaining([
+      'ev_car_link_plug_edge', 'ev_car_link_waiting_started', 'ev_car_link_unmatched', 'ev_car_link_late_car_report',
+    ]));
+    expect(kept.indexOf('ev_car_link_unmatched')).toBeLessThan(kept.indexOf('ev_car_link_late_car_report'));
+  });
+
   it('serves the associated car to the settings UI only for a car the user ticked', async () => {
     vi.setSystemTime(Date.UTC(2026, 0, 15, 22, 15, 0));
     const car = await buildCar();

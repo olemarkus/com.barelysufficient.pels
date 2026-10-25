@@ -35,11 +35,40 @@ export type SupportReportActivity =
   }
   | { state: 'unavailable'; reason: string };
 
+/**
+ * Something PELS observed or decided about a device, as its structured-log
+ * event recorded it, such as a car link it waited for and gave up on.
+ */
+export type SupportReportDeviceEvent = {
+  id: string;
+  atMs: number;
+  /** Every device the event is about. */
+  deviceIds: readonly string[];
+  event: string;
+  details: { readonly [key: string]: SupportReportValue };
+};
+
+export type SupportReportDeviceEvents =
+  | {
+    state: 'available';
+    entries: readonly SupportReportDeviceEvent[];
+    /** The reported device and the devices related to it, such as a charger's selected cars. */
+    deviceIds: readonly string[];
+    fromMs: number;
+    toMs: number;
+    retentionDays: number;
+    maxEntriesPerDevice: number;
+    /** Kept events left out, the furthest from the incident first, so the report stays within its size. */
+    leftOut: number;
+  }
+  | { state: 'unavailable'; reason: string };
+
 export type SupportReportEvidence = {
   subjectName: string;
   appVersion: string;
   homeyVersion: string;
   activity: SupportReportActivity;
+  deviceEvents: SupportReportDeviceEvents;
   sections: readonly SupportReportSection[];
   omissions: readonly string[];
 };

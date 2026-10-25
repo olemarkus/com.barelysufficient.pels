@@ -9,11 +9,31 @@ import { resolveEvCarChargeLimit } from './evCarLinkSnapshot';
 export type PendingSocShadow = { previousSocPct?: number; socPct: number; socAtMs: number };
 
 export class EvCarLinkSocShadowReporter {
+    /** Charge readings awaiting link resolution, by car. */
+    readonly pending = new Map<string, PendingSocShadow>();
+
     constructor(
         private readonly deps: EvCarLinkProducerDeps,
         private readonly selfStop: EvCarSelfStopWatcher,
         private readonly carName: (carId: string) => string,
     ) {}
+
+    /** Reports each held reading against the chargers its car is linked to now, then drops it. */
+    flush(
+        chargers: readonly EvCarLinkChargerView[],
+        links: ReadonlyMap<string, { carId: string; sinceMs: number }>,
+    ): void {
+        if (this.pending.size === 0) return;
+        const pending = [...this.pending];
+        this.pending.clear();
+        for (const [carId, reading] of pending) {
+            for (const [chargerId, link] of links) {
+                if (link.carId !== carId) continue;
+                const charger = chargers.find((entry) => entry.id === chargerId);
+                if (charger) this.emit(carId, charger, reading, link.sinceMs);
+            }
+        }
+    }
 
     emit(
         carId: string,

@@ -4,12 +4,13 @@ import {
   SupportReportEvidenceSource, type SupportReportHomey, type SupportReportReads,
 } from '../../lib/diagnostics/supportReportEvidence';
 import { SupportReportService } from '../../lib/diagnostics/supportReportService';
+import { createDeviceEventStore } from '../../lib/diagnostics/deviceEventStore';
 import { requireDeviceManager, requireHomeMembership, requirePlanService } from './contextGuards';
 
 export type SupportReportApp = Pick<PelsHost,
   | 'deviceManager' | 'homeMembership' | 'planService' | 'homeRuntimeRead' | 'getDeviceLogUiPayload'
   | 'getLatestPlanSnapshotForUi' | 'getCapacityScalars' | 'getDailyBudgetUiPayload' | 'readPriceSetup'
-  | 'getPriceTimelineForUi'>;
+  | 'getPriceTimelineForUi' | 'getUserdataDatabase'>;
 
 // Each read reaches the app when a report is captured. A service that is not
 // running yet throws its guard's error, which capture records as unavailable.
@@ -24,6 +25,10 @@ export const createSupportReportReads = (app: SupportReportApp): SupportReportRe
   getDailyBudgetUiPayload: () => app.getDailyBudgetUiPayload(),
   readPriceSetup: () => app.readPriceSetup(),
   getPriceTimelineForUi: () => app.getPriceTimelineForUi(),
+  getCarLinkDiagnostics: (deviceId) => requireDeviceManager(app).getCarLinkDiagnostics(deviceId),
+  // Built per capture: the database opens after the report service is constructed.
+  readDeviceEvents: (deviceIds, fromMs, toMs) => (
+    createDeviceEventStore(app.getUserdataDatabase()).read(deviceIds, fromMs, toMs)),
 });
 
 export const createSupportReports = (

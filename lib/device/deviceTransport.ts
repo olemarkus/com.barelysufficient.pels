@@ -184,6 +184,18 @@ export class DeviceTransport {
 
     isWaitingForCarAssociation(chargerId: string): boolean { return this.carAssociationControl.isWaiting(chargerId); }
 
+    /**
+     * The car link as it stands for a charger or a car, for a problem report;
+     * `undefined` for a device that is neither a charger PELS reads nor a car
+     * the probe tracks or a charger selected.
+     */
+    getCarLinkDiagnostics(deviceId: string) {
+        return this.carAssociationControl.diagnostics(deviceId, {
+            associatedCar: (chargerId) => this.getAssociatedCar(chargerId),
+            confirmedCar: (chargerId) => this.getCarConfirmation(chargerId),
+        });
+    }
+
     getCarAssociationCarIds(chargerId: string): readonly string[] {
         return this.sources.settings.getEvCarAssociationCarIds(chargerId);
     }
@@ -225,6 +237,7 @@ export class DeviceTransport {
         );
         this.observationProducers = createObservationProducers(
             (p) => this.logger.structuredLog.info(p),
+            options.deviceJournal,
             () => this.snapshotStore.getSnapshot(),
             options.evCarLinkSnapshotAccess,
             // The probe reports; this decides whether anything is written.
@@ -245,7 +258,7 @@ export class DeviceTransport {
         );
         this.carAssociationControl = createEvCarAssociationControl(
             this.observationProducers.evCarLink, this.sources.settings, this.snapshotStore,
-            this.getFlowTriggerCard, this.logger,
+            this.getFlowTriggerCard, this.observationProducers.carLinkEvents,
         );
         this.observationBridge = new ObservationBridge(
             this.snapshotStore,

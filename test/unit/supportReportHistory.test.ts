@@ -12,7 +12,7 @@ const request: SupportReportRequest = {
 };
 
 describe('support report incident activity selection', () => {
-  it('includes both incident boundaries and the nearest preceding state for the selected device', () => {
+  it('includes the hour before the incident through capture, and the nearest preceding state', () => {
     const entries = [
       reportActivityFixture({ id: 'older', atMs: now - 5 * hour }),
       reportActivityFixture({ id: 'previous', atMs: now - 4 * hour }),
@@ -25,11 +25,11 @@ describe('support report incident activity selection', () => {
     const before = structuredClone(entries);
     const result = selectSupportReportActivity(reportHistoryFixture(entries), request, now);
     expect(result).toMatchObject({
-      state: 'available', fromMs: now - 3 * hour, toMs: now - hour,
+      state: 'available', fromMs: now - 3 * hour, toMs: now,
       retentionDays: 7, maxEntries: 1000, maxEntriesPerDevice: 100, persistence: 'stored',
     });
     if (result.state !== 'available') throw new Error('Expected available activity');
-    expect(result.entries.map((entry) => entry.id)).toEqual(['end', 'incident', 'start', 'previous']);
+    expect(result.entries.map((entry) => entry.id)).toEqual(['after', 'end', 'incident', 'start', 'previous']);
     expect(entries).toEqual(before);
   });
 
@@ -66,7 +66,7 @@ describe('support report incident activity selection', () => {
     expect(result.entries.find((entry) => entry.deviceId === 'removed')?.deviceName).toBe('Old heater');
   });
 
-  it('selects the prior 24 hours as instants across a local daylight-saving boundary', () => {
+  it('selects the prior 24 hours as instants across a local daylight-saving boundary, through capture', () => {
     const incident = Date.parse('2026-10-25T02:30:00+01:00');
     const entries = [
       reportActivityFixture({ id: 'prior', atMs: incident - 24 * hour - 1 }),
@@ -78,9 +78,9 @@ describe('support report incident activity selection', () => {
     const result = selectSupportReportActivity(reportHistoryFixture(entries), {
       ...request, occurredAtMs: incident, historyWindow: 'day',
     }, incident + hour);
-    expect(result).toMatchObject({ state: 'available', fromMs: incident - 24 * hour, toMs: incident });
+    expect(result).toMatchObject({ state: 'available', fromMs: incident - 24 * hour, toMs: incident + hour });
     if (result.state !== 'available') throw new Error('Expected available activity');
-    expect(result.entries.map((entry) => entry.id)).toEqual(['incident', 'first-0230', 'start', 'prior']);
+    expect(result.entries.map((entry) => entry.id)).toEqual(['after', 'incident', 'first-0230', 'start', 'prior']);
   });
 
   it('retains persistence metadata and projects only disclosed history fields', () => {
@@ -95,7 +95,7 @@ describe('support report incident activity selection', () => {
     expect(selectSupportReportActivity(reportHistoryFixture(), {
       ...request, occurredAtMs: 1, historyWindow: 'day',
     }, now)).toEqual({
-      state: 'available', entries: [], fromMs: 0, toMs: 1,
+      state: 'available', entries: [], fromMs: 0, toMs: now,
       retentionDays: 7, maxEntries: 1000, maxEntriesPerDevice: 100, persistence: 'stored',
     });
   });

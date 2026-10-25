@@ -16,7 +16,9 @@ import { TemperatureAdjustmentObserver } from './temperatureAdjustmentObserver';
 import { BatteryStateProducer } from './batteryStateProducer';
 import { createObservationEmitGate } from './observationEmitGate';
 import { SolarProductionProducer } from './solarProductionProducer';
-import type { EvCarLinkProducer, EvCarLinkProducerDeps } from './evCarLinkProducer';
+import type { EvCarLinkEventEmitter, EvCarLinkProducer, EvCarLinkProducerDeps } from './evCarLinkProducer';
+import { carLinkEventDeviceIds, isJournalledCarLinkEvent } from './evCarLinkEvents';
+import type { DeviceJournal } from '../ports/deviceJournal';
 import {
     createEvCarLinkProducer,
     type ChargerViewInput,
@@ -28,6 +30,8 @@ export type ObservationProducers = {
     battery: BatteryStateProducer;
     solar: SolarProductionProducer;
     evCarLink: EvCarLinkProducer;
+    /** Where car-link events go: the structured log and the device journal (`createCarLinkEventEmitter`). */
+    carLinkEvents: EvCarLinkEventEmitter;
 };
 
 /**
@@ -39,8 +43,23 @@ export type ObservationProducers = {
  * charger's associated car and for a charger's car session ending (see the
  * probe deps).
  */
+/**
+ * Car-link events go to the structured log and to the device journal: a problem
+ * report made hours after a missed link needs them, and by then Homey's
+ * attached log has rolled over.
+ */
+const createCarLinkEventEmitter = (
+    emit: (payload: Record<string, unknown>) => void,
+    journal: DeviceJournal,
+): EvCarLinkEventEmitter => (event) => {
+    emit({ ...event });
+    if (isJournalledCarLinkEvent(event)) journal.record(carLinkEventDeviceIds(event), event);
+};
+
 export const createObservationProducers = (
     emit: (payload: Record<string, unknown>) => void,
+    /** Where the car-link probe's events are also kept, for problem reports. */
+    deviceJournal: DeviceJournal,
     getSnapshots: () => readonly ChargerViewInput[],
     evCarLinkSnapshotAccess: EvCarLinkSnapshotAccess | undefined,
     onAssociatedCarStateOfCharge: EvCarLinkProducerDeps['onAssociatedCarStateOfCharge'],
@@ -60,17 +79,19 @@ export const createObservationProducers = (
     // second occurrence. It is also not a volume problem. See the caller
     // contract in `observationEmitGate.ts`.
     const observationEmit = createObservationEmitGate({ emit });
+    const carLinkEvents = createCarLinkEventEmitter(emit, deviceJournal);
     return ({
     temperature: new TemperatureAdjustmentObserver(),
     battery: new BatteryStateProducer((payload) => observationEmit({ ...payload })),
     solar: new SolarProductionProducer((payload) => observationEmit({ ...payload })),
     evCarLink: createEvCarLinkProducer(
-        (payload) => emit({ ...payload }),
+        carLinkEvents,
         getSnapshots,
         evCarLinkSnapshotAccess,
         onAssociatedCarStateOfCharge,
         onAssociationEnded,
         getSelectedCarIds,
     ),
+    carLinkEvents,
     });
 };

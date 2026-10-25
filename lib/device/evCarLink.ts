@@ -206,6 +206,12 @@ export type EvLinkMatchResult = {
      * or the fallback would quietly overturn the ambiguity rule.
      */
     unmatchedChargerEdges: EvLinkEdge[];
+    /**
+     * Settled charger edges whose only fitting car edges were set aside for a
+     * charger that selected those cars: explained, so no prior runs on them, but
+     * this charger still got no car.
+     */
+    setAsideChargerEdges: EvLinkEdge[];
 };
 
 /**
@@ -335,6 +341,12 @@ export const matchCoincidentEdges = (params: {
                 entry.candidates.length === 0
                 && !entry.setAside
                 && !entry.chargerEdge.ambiguous
+                && isSettled(entry.chargerEdge)
+            ))
+            .map((entry) => entry.chargerEdge),
+        setAsideChargerEdges: scored
+            .filter((entry) => (
+                entry.candidates.length === 0 && entry.setAside && !entry.chargerEdge.ambiguous
                 && isSettled(entry.chargerEdge)
             ))
             .map((entry) => entry.chargerEdge),
@@ -515,21 +527,46 @@ export type EvLinkResolution = {
  * prior that merely leads is not enough: the point of the threshold is that a
  * second car in the household must never inherit the first car's history.
  */
-export const resolveLinkForCharger = (params: {
+export const resolveLinkForCharger = (params: LinkDecisionParams): EvLinkResolution | null => {
+    const decision = decideLinkForCharger(params);
+    return decision.kind === 'linked' ? decision.resolution : null;
+};
+
+type LinkDecisionParams = {
     coincidentCarId?: string;
     candidateCarIds: readonly string[];
     votesFor: (carId: string) => number;
-}): EvLinkResolution | null => {
+};
+
+/**
+ * Why a charger got no car, in the order the rules are checked:
+ * `no_connected_car` — no candidate car reports plugged in;
+ * `not_enough_past_matches` — no plugged-in car has the past matches the prior needs;
+ * `several_cars_with_past_matches` — more than one has them;
+ * `rival_with_past_matches` — one has them, but another plugged-in car has some;
+ * `car_confirmed_elsewhere` — the one car is confirmed on another charger.
+ */
+export type EvLinkRefusalReason = 'no_connected_car' | 'not_enough_past_matches'
+    | 'several_cars_with_past_matches' | 'rival_with_past_matches' | 'car_confirmed_elsewhere';
+
+/** {@link resolveLinkForCharger}, with the reason when it links nothing. */
+export const decideLinkForCharger = (params: LinkDecisionParams):
+    { kind: 'linked'; resolution: EvLinkResolution } | { kind: 'refused'; reason: EvLinkRefusalReason } => {
     const { coincidentCarId, candidateCarIds, votesFor } = params;
     if (coincidentCarId !== undefined) {
-        return { carId: coincidentCarId, source: 'coincidence', votes: votesFor(coincidentCarId) };
+        return {
+            kind: 'linked',
+            resolution: { carId: coincidentCarId, source: 'coincidence', votes: votesFor(coincidentCarId) },
+        };
     }
+    if (candidateCarIds.length === 0) return { kind: 'refused', reason: 'no_connected_car' };
     const qualified = candidateCarIds.filter((carId) => votesFor(carId) >= EV_CAR_LINK_MIN_PRIOR_VOTES);
     const [carId, ...alsoQualified] = qualified;
-    if (carId === undefined || alsoQualified.length > 0) return null;
+    if (carId === undefined) return { kind: 'refused', reason: 'not_enough_past_matches' };
+    if (alsoQualified.length > 0) return { kind: 'refused', reason: 'several_cars_with_past_matches' };
     const contested = candidateCarIds.some((other) => other !== carId && votesFor(other) > 0);
-    if (contested) return null;
-    return { carId, source: 'affinity_prior', votes: votesFor(carId) };
+    if (contested) return { kind: 'refused', reason: 'rival_with_past_matches' };
+    return { kind: 'linked', resolution: { carId, source: 'affinity_prior', votes: votesFor(carId) } };
 };
 
 /**

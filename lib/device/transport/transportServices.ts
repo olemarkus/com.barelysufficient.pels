@@ -1,7 +1,9 @@
 import { isEvObserved } from '../../../packages/shared-domain/src/evObservedState';
 import { isEvPlugStateConnected } from '../../../packages/shared-domain/src/evPlugState';
-import type { Logger } from '../../utils/types';
-import type { EvCarLinkProducer } from '../evCarLinkProducer';
+import type { EvCarLinkEventEmitter, EvCarLinkProducer } from '../evCarLinkProducer';
+import type { EvCarLinkWaitEndReason } from '../evCarLinkEvents';
+import type { AssociatedCarSnapshot, CarConfirmation } from '../../../packages/contracts/src/types';
+import type { CarLinkDiagnostics } from '../../ports/carLinkDiagnostics';
 import type { DeviceParseSettings } from './managerParseDevice';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
 import type { DeviceTransportOptions } from './transportTypes';
@@ -94,9 +96,57 @@ export function createEvCarAssociationControl(
     settings: DeviceParseSettings,
     snapshots: TransportSnapshotStore,
     getTrigger: DeviceTransportOptions['getFlowTriggerCard'],
-    logger: Logger,
+    emit: EvCarLinkEventEmitter,
 ) {
     const waiting = new Map<string, { sinceMs: number; elapsedMinutes: number }>();
+
+    function chargerName(chargerId: string): string {
+        return snapshots.getSnapshotByDeviceId(chargerId)?.name ?? chargerId;
+    }
+
+    /** Why `hasUnmatchedConnection` no longer holds, with the car that ended the wait. */
+    function resolveWaitEnd(chargerId: string): { reason: EvCarLinkWaitEndReason; carId?: string; carName?: string } {
+        const charger = snapshots.getSnapshotByDeviceId(chargerId);
+        if (!charger) return { reason: 'charger_removed' };
+        if (!isEvObserved(charger)) return { reason: 'plug_state_unknown' };
+        if (!isEvPlugStateConnected(charger.evChargingState)) return { reason: 'unplugged' };
+        const selected = settings.getEvCarAssociationCarIds(chargerId);
+        if (selected.length === 0) return { reason: 'selection_cleared' };
+        const confirmation = probe.getCarConfirmation(chargerId);
+        if (confirmation && selected.includes(confirmation.carId)) {
+            return { reason: 'confirmed', carId: confirmation.carId, carName: confirmation.carName };
+        }
+        // Every other way `hasUnmatchedConnection` stops holding is an associated selected car.
+        const car = probe.getAssociatedCarForCharger(chargerId);
+        return car ? { reason: 'linked', carId: car.carId, carName: car.carName } : { reason: 'selection_cleared' };
+    }
+
+    function startWaiting(chargerId: string, nowMs: number): void {
+        waiting.set(chargerId, { sinceMs: nowMs, elapsedMinutes: 0 });
+        const connection = probe.waitReports.connection(chargerId);
+        emit({
+            component: 'devices',
+            event: 'ev_car_link_waiting_started',
+            chargerId,
+            chargerName: chargerName(chargerId),
+            ...(connection === undefined ? {} : { connection }),
+            cars: probe.waitReports.describeCars(chargerId, settings.getEvCarAssociationCarIds(chargerId)),
+        });
+    }
+
+    function endWaiting(chargerId: string, nowMs: number): void {
+        const episode = waiting.get(chargerId);
+        if (!episode) return;
+        waiting.delete(chargerId);
+        emit({
+            component: 'devices',
+            event: 'ev_car_link_waiting_ended',
+            chargerId,
+            chargerName: chargerName(chargerId),
+            waitedMs: Math.max(0, nowMs - episode.sinceMs),
+            ...resolveWaitEnd(chargerId),
+        });
+    }
 
     function hasUnmatchedConnection(chargerId: string): boolean {
         const charger = snapshots.getSnapshotByDeviceId(chargerId);
@@ -121,10 +171,11 @@ export function createEvCarAssociationControl(
             if (!snapshots.getSnapshotByDeviceId(chargerId)?.available) {
                 throw new Error('The charger is unavailable.');
             }
-            probe.confirmAssociation(chargerId, carId, Date.now());
-            waiting.delete(chargerId);
+            const nowMs = Date.now();
+            probe.confirmAssociation(chargerId, carId, nowMs);
+            endWaiting(chargerId, nowMs);
         } catch (error) {
-            logger.structuredLog.info({
+            emit({
                 component: 'devices', event: 'ev_car_link_confirmation_rejected', chargerId, carId,
                 reason: error instanceof Error ? error.message : String(error),
             });
@@ -144,11 +195,10 @@ export function createEvCarAssociationControl(
             && snapshots.getDeviceMembership(carId) !== 'removed'
             && !connectionEnded(chargerId)
             && settings.getEvCarAssociationCarIds(chargerId).includes(carId));
-        for (const id of waiting.keys()) if (!hasUnmatchedConnection(id)) waiting.delete(id);
+        const ended = [...waiting.keys()].filter((id) => !hasUnmatchedConnection(id));
+        for (const id of ended) endWaiting(id, nowMs);
         for (const charger of snapshots.getSnapshot()) {
-            if (isWaiting(charger.id) && !waiting.has(charger.id)) {
-                waiting.set(charger.id, { sinceMs: nowMs, elapsedMinutes: 0 });
-            }
+            if (isWaiting(charger.id) && !waiting.has(charger.id)) startWaiting(charger.id, nowMs);
         }
     }
 
@@ -160,14 +210,69 @@ export function createEvCarAssociationControl(
             const previousMinutes = episode.elapsedMinutes;
             waiting.set(chargerId, { sinceMs: episode.sinceMs, elapsedMinutes });
             if (Math.floor(previousMinutes) === Math.floor(elapsedMinutes) || previousMinutes >= 60) continue;
-            const chargerName = snapshots.getSnapshotByDeviceId(chargerId)?.name ?? chargerId;
             void Promise.resolve().then(() => getTrigger?.('ev_car_association_waiting')?.trigger(
-                { charger_name: chargerName }, { chargerId, previousMinutes, elapsedMinutes },
-            )).catch((error: unknown) => logger.structuredLog.info({
+                { charger_name: chargerName(chargerId) }, { chargerId, previousMinutes, elapsedMinutes },
+            )).catch((error: unknown) => emit({
                 component: 'devices', event: 'ev_car_link_waiting_trigger_failed', chargerId,
                 reason: error instanceof Error ? error.message : String(error),
             }));
         }
     }
-    return { isWaiting, confirm, observe, tick };
+    function diagnostics(deviceId: string, reads: CarLinkAssociationReads): CarLinkDiagnostics | undefined {
+        return resolveCarLinkDiagnostics(deviceId, probe, settings, snapshots, waiting.get(deviceId)?.sinceMs, reads);
+    }
+    return { isWaiting, diagnostics, confirm, observe, tick };
+}
+
+/** The association and confirmation for a charger, as the transport narrows them to its selected cars. */
+type CarLinkAssociationReads = {
+    associatedCar: (chargerId: string) => AssociatedCarSnapshot | undefined;
+    confirmedCar: (chargerId: string) => CarConfirmation | undefined;
+};
+
+/**
+ * The car link as it stands for a charger or a car, for a problem report;
+ * `undefined` for a device that is neither a charger nor a car the probe tracks
+ * or a charger selected.
+ */
+function resolveCarLinkDiagnostics(
+    deviceId: string,
+    probe: EvCarLinkProducer,
+    settings: DeviceParseSettings,
+    snapshots: TransportSnapshotStore,
+    waitingSinceMs: number | undefined,
+    reads: CarLinkAssociationReads,
+): CarLinkDiagnostics | undefined {
+    if (snapshots.getSnapshotByDeviceId(deviceId)?.isEvCharger) {
+        return resolveChargerCarLink(deviceId, probe, settings, waitingSinceMs, reads);
+    }
+    const chargerIds = snapshots.getSnapshot()
+        .filter((charger) => charger.isEvCharger && settings.getEvCarAssociationCarIds(charger.id).includes(deviceId))
+        .map((charger) => charger.id);
+    if (chargerIds.length === 0 && !probe.getObservedCarDeviceIds().includes(deviceId)) return undefined;
+    const associatedChargerId = chargerIds.find((chargerId) => reads.associatedCar(chargerId)?.carId === deviceId);
+    return { role: 'car', chargerIds, ...(associatedChargerId === undefined ? {} : { associatedChargerId }) };
+}
+
+function resolveChargerCarLink(
+    chargerId: string,
+    probe: EvCarLinkProducer,
+    settings: DeviceParseSettings,
+    waitingSinceMs: number | undefined,
+    reads: CarLinkAssociationReads,
+): CarLinkDiagnostics {
+    const connection = probe.waitReports.connection(chargerId);
+    const associated = reads.associatedCar(chargerId);
+    const confirmed = reads.confirmedCar(chargerId);
+    const selected = settings.getEvCarAssociationCarIds(chargerId);
+    return {
+        role: 'charger',
+        selection: selected.length > 0 ? 'selected' : 'any_car',
+        cars: probe.waitReports.describeCars(
+            chargerId, selected.length > 0 ? selected : probe.getObservedCarDeviceIds()),
+        ...(connection === undefined ? {} : { connection }),
+        ...(associated ? { associatedCar: { carId: associated.carId, carName: associated.carName } } : {}),
+        ...(confirmed ? { confirmedCar: { carId: confirmed.carId, carName: confirmed.carName } } : {}),
+        ...(waitingSinceMs === undefined ? {} : { waitingSinceMs }),
+    };
 }
