@@ -604,9 +604,10 @@ written for it:
   that may pair with the charger plus every plugged-in car the decision weighed, and the
   reason: from `decideLinkForCharger`, no candidate car plugged in, not enough past
   matches, more than one car with them, or a rival with some; from the producer after
-  it, the one car first reported connected after the window (`car_reported_too_late`),
-  linked at another charger by a connection no older than this one
-  (`car_linked_elsewhere`), or confirmed on another charger.
+  it, the one car confirmed on another charger, or a car past matches picked that first
+  reported connected after the window (`car_reported_too_late`) or that another charger
+  still reporting plugged in holds (`car_linked_elsewhere`), a resumed session
+  included.
   `explained_at_another_charger` covers a plug-in whose only fitting car plug-ins belong
   to a charger that selected those cars. A device card says the car could not be
   identified once the window from the charger's current connection has closed, whether

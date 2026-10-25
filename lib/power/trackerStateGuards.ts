@@ -267,6 +267,11 @@ const isStampWithin = (value: unknown, fromMs: number, toMs: number): boolean =>
   isFiniteNumber(value) && value >= fromMs && value <= toMs
 );
 
+// Absent on a row stored before it was kept (`withHeldReadingAfterRestart`).
+const isOptionalReplacedSince = (replacedSinceMs: unknown, sinceMs: number): boolean => (
+  replacedSinceMs === undefined || replacedSinceMs === null || isStampWithin(replacedSinceMs, 0, sinceMs)
+);
+
 /**
  * A held reading describes the latch it was written with: the same watts and
  * the same sample. A row left behind by a build that sampled without writing
@@ -279,7 +284,8 @@ const isHeldReadingOnLatch = (value: unknown, lastPowerW: unknown, lastTimestamp
   return isFiniteNumber(value.powerW) && value.powerW === lastPowerW && atMs === lastTimestamp && sinceMs <= atMs
     && isPlainObjectRecord(baseline) && isFiniteNumber(baseline.totalW) && isFiniteNumber(baseline.loadKey)
     && (value.contradictedAtMs === null || isStampWithin(value.contradictedAtMs, sinceMs, atMs))
-    && (value.longHoldEndedAtMs === null || isStampWithin(value.longHoldEndedAtMs, 0, atMs));
+    && (value.longHoldEndedAtMs === null || isStampWithin(value.longHoldEndedAtMs, 0, atMs))
+    && isOptionalReplacedSince(value.replacedSinceMs, sinceMs);
 };
 
 /** The records written beside the sample latch: the open quarter, the month's peak, the held reading. */

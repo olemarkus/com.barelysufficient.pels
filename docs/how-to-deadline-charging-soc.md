@@ -95,7 +95,7 @@ PELS needs battery percentage for the charger it is planning. Choose one of the 
 
 Open the charger's **Car** section in **More -> Apps -> PELS -> Settings -> Devices** and select the cars that charge there. PELS reads the battery level from the car it matches to the charger. If the car is not listed, use its battery-percentage tag through Path C instead.
 
-Selecting a car does not itself establish a match. While the page says **Waiting to match a car**, this charger has no battery level. While any car is selected, PELS ignores both the charger's own reading and the **Report battery level for charger** Flow card, including before a match. Clear the selection if you want to use either of those sources instead.
+Selecting a car does not itself establish a match. While the page says **Waiting to identify the connected car**, this charger has no battery level. While any car is selected, PELS ignores both the charger's own reading and the **Report battery level for charger** Flow card, including before a match. Clear the selection if you want to use either of those sources instead.
 
 PELS matches cars to chargers whether or not they are selected; when a car selected for another charger plugs in there, it is matched there, not here. Under each car, the **Car** section shows `Matched to this charger now` for the car on it now, `Last matched to this charger on <date>`, `Not matched to this charger` when the car has matched a different charger that is still in Homey, or `Not matched to this charger yet`. If you already report the battery level through a Flow, wait until the car shows as matched before you select it.
 

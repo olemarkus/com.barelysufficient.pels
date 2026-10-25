@@ -2320,6 +2320,21 @@ describe('what a charger waited for, and what arrived late', () => {
     expect(h.of('ev_car_link_resolved')).not.toContainEqual(expect.objectContaining({ chargerId: 'charger-1' }));
   });
 
+  it('never lets past matches take a car from a session another charger resumed after a restart', () => {
+    h.snapshot = recordEvCarLinkVote(h.snapshot, 'car-1', 'charger-1', 1);
+    h.snapshot = recordEvCarLinkVote(h.snapshot, 'car-1', 'charger-1', 2);
+    h.snapshot = { ...h.snapshot, sessions: { 'charger-2': { carId: 'car-1', sinceMs: plugIn - HOUR_MS } } };
+    h.chargers = [
+      charger({ evChargingState: 'plugged_in' }),
+      charger({ id: 'charger-2', name: 'Carport', evChargingState: 'plugged_in_charging' }),
+    ];
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 55, observedAtMs: plugIn }), plugIn);
+    h.tick(plugIn + 60_000);
+    expect(h.producer.getAssociatedCarForCharger('charger-2')).toMatchObject({ carId: 'car-1' });
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
+    expect(h.snapshot.sessions?.['charger-2']).toMatchObject({ carId: 'car-1' });
+  });
+
   it('keeps retrying a charger found plugged in at start through a pass that misses it', () => {
     h.snapshot = recordEvCarLinkVote(h.snapshot, 'car-1', 'charger-1', 1);
     h.snapshot = recordEvCarLinkVote(h.snapshot, 'car-1', 'charger-1', 2);

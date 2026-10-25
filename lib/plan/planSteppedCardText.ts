@@ -4,6 +4,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
 import type { DeviceOverviewSnapshot } from '../../packages/contracts/src/deviceOverview';
+import type { CarIdentificationState } from '../../packages/contracts/src/evCarLink';
 import {
   isHoldReasonCode,
   resolveDisplayStateKind,
@@ -283,7 +284,7 @@ export const resolveSteppedTemperatureText = (device: {
 export const resolveSteppedLevelFact = (
   device: Pick<
     DeviceOverviewSnapshot, 'currentState' | 'steppedLoad' | 'evChargingState' | 'isEvCharger' | 'stateOfCharge'
-  >,
+  > & { carIdentificationState: CarIdentificationState },
   stateWordNamesLevel = false,
 ): string | null => {
   if (device.currentState === 'off') return null;
@@ -297,7 +298,7 @@ export const resolveSteppedLevelFact = (
   // the rail marks it; the fact line keeps only what they do not say.
   const levelText = stateWordNamesLevel ? null : `level ${formatStepDisplayLabel(stepId)}`;
   const { isEvCharger } = device;
-  const batteryText = isEvCharger ? resolveBatteryFact(device.stateOfCharge) : null;
+  const batteryText = isEvCharger ? resolveBatteryFact(device.stateOfCharge, device.carIdentificationState) : null;
   const isRoutineEvCharge = isEvCharger && isRoutineEvChargingState(device.evChargingState);
   const segments = isRoutineEvCharge
     ? [EV_ROUTINE_CHARGING_LABEL, batteryText, levelText]
@@ -314,13 +315,17 @@ export const resolveSteppedLevelFact = (
  * PELS set.
  *
  * Shown only when the producer has a level. When it has none there is no number
- * to show and nothing to qualify — the device-detail readout says why.
+ * to show and nothing to qualify — the device-detail readout says why. The one
+ * exception is a charger still identifying its car, which says `no battery level`
+ * in that slot until the car is matched or confirmed.
  */
 const resolveBatteryFact = (
   stateOfCharge: ObservedStateOfCharge | undefined,
+  carIdentificationState: CarIdentificationState,
 ): string | null => {
   const level = stateOfCharge?.level;
-  return level?.kind === 'known' ? `${Math.round(level.percent)} %` : null;
+  if (level?.kind === 'known') return `${Math.round(level.percent)} %`;
+  return carIdentificationState === 'not_waiting' ? null : 'no battery level';
 };
 
 /**

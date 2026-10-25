@@ -749,11 +749,12 @@ export class EvCarLinkProducer {
         if (decision.kind === 'refused') return { ...decision, weighed };
         const { resolution } = decision;
         // A late car stays a rival above; past matches only refuse to pick it.
-        const refusal = resolvePastMatchRefusal(this.cars, this.activeLinks, chargerId, resolution, sessionStartedAtMs);
-        if (refusal !== null) return { kind: 'refused', reason: refusal, weighed };
         if (isCarConfirmedElsewhere(snapshot.sessions, chargerId, resolution.carId)) {
             return { kind: 'refused', reason: 'car_confirmed_elsewhere', weighed };
         }
+        const refusal = resolvePastMatchRefusal(
+            this.cars, this.activeLinks, this.lastChargerState, chargerId, resolution, sessionStartedAtMs);
+        if (refusal !== null) return { kind: 'refused', reason: refusal, weighed };
         const existing = this.activeLinks.get(chargerId);
         if (existing?.carId === resolution.carId && existing.source === resolution.source && !existing.provisional) {
             return { kind: 'linked' };

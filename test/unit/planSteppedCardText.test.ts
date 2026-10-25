@@ -53,6 +53,7 @@ const baseDevice = {
   // has a commandable binary axis, which is what the optional field used to mean.
   isEvCharger: false,
   binaryControllable: false,
+  carIdentificationState: 'not_waiting' as const,
 };
 
 // The stepped cluster — its presence is what makes a fixture stepped-controlled.
@@ -896,6 +897,7 @@ describe('resolveSteppedStatusLine — held-back hold vs active recovery', () =>
 describe('battery level on the EV charger fact line', () => {
   const evCard = (overrides: Record<string, unknown> = {}) => ({
     currentState: 'on' as const,
+    carIdentificationState: 'not_waiting' as const,
     isEvCharger: true,
     steppedLoad: steppedLoad({ reportedStepId: '16a', targetStepId: '16a' }),
     ...overrides,

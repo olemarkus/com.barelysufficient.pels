@@ -1,7 +1,9 @@
 import { getSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import type { DeviceStatus, DeviceStatusCountdown } from '../../packages/contracts/src/deviceStatus';
 import type { CarIdentificationState } from '../../packages/contracts/src/evCarLink';
-import { WAITING_FOR_CAR_ASSOCIATION } from '../../packages/shared-domain/src/deadlineLabels';
+import {
+  CAR_ASSOCIATION_TIMED_OUT, WAITING_FOR_CAR_ASSOCIATION,
+} from '../../packages/shared-domain/src/deadlineLabels';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
 import type { IdleClassification } from '../../packages/contracts/src/idleClassification';
@@ -158,9 +160,9 @@ function buildReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number):
 }
 
 // A charger still identifying its car says so only where nothing else explains
-// the card: no other reason, or the wait for a battery level it is itself. A
-// held or unconfirmed charger keeps that reason, since identifying the car would
-// not resume it.
+// the card: no other reason, or the wait for a battery level it is itself. Any
+// other reason (a hold for power or cheaper hours, a level change not confirmed)
+// stays, since identifying the car would not change it.
 function resolveCarIdentificationReason(
   device: DeviceStatusInput,
   reasonText: string | null,
@@ -168,7 +170,7 @@ function resolveCarIdentificationReason(
   if (device.carIdentificationState === 'not_waiting') return null;
   if (reasonText !== null && reasonText !== '' && reasonText !== PLAN_STATE_AWAITING_BATTERY_LEVEL_STATUS) return null;
   return device.carIdentificationState === 'timed_out'
-    ? { text: 'Could not identify the connected car. Confirm it in the charger’s Car section.', tone: 'warning' }
+    ? { text: CAR_ASSOCIATION_TIMED_OUT, tone: 'warning' }
     : { text: WAITING_FOR_CAR_ASSOCIATION };
 }
 
@@ -228,7 +230,8 @@ function resolveFactText(
   stateWordNamesLevel: boolean,
 ): string | null {
   // A charger still identifying its car has no battery level to show, so the
-  // card says so beside its plug state and level rather than instead of them.
+  // card says so in the battery level's place (`resolveSteppedLevelFact`), or on
+  // its own where no level fact shows, as on an off charger.
   const identifying = device.carIdentificationState !== 'not_waiting';
   if (!device.steppedLoad) {
     return resolveTemperatureLine(device) ?? (identifying ? 'Plugged in · no battery level' : null);
@@ -237,10 +240,9 @@ function resolveFactText(
   if (temperature !== null) return temperature;
   const exception = resolveSteppedEvExceptionLabel(device);
   const lead = kind === 'off' && exception === EV_CHARGING_STATE_LABELS.plugged_in ? null : exception;
-  const noLevel = identifying ? `${lead === null ? 'No' : 'no'} battery level` : null;
-  const parts = [lead, noLevel, resolveSteppedLevelFact(device, stateWordNamesLevel)]
-    .filter((part): part is string => part !== null);
-  return parts.length > 0 ? parts.join(' · ') : null;
+  const levelFact = resolveSteppedLevelFact(device, stateWordNamesLevel) ?? (identifying ? 'no battery level' : null);
+  const fact = [lead, levelFact].filter((part): part is string => part !== null).join(' · ');
+  return fact === '' ? null : `${fact.charAt(0).toUpperCase()}${fact.slice(1)}`;
 }
 
 // The device's measure as numbers: the temperature against the target PELS

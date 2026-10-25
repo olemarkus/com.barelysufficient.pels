@@ -131,6 +131,7 @@ describe('MeterSilenceMonitor — the 10-minute silence policy', () => {
       baseline: { totalW: 0, loadKey: 1 },
       contradictedAtMs,
       longHoldEndedAtMs: null,
+      replacedSinceMs: null,
     },
   });
 

@@ -6,6 +6,8 @@
  * `correlate` in `evCarLinkProducer.ts`; split out to keep that file within its
  * size ceiling.
  */
+import type { EvChargingState } from '../../packages/contracts/src/types';
+import { isEvPlugStateConnected } from '../../packages/shared-domain/src/evPlugState';
 import { EV_CAR_LINK_COINCIDENCE_WINDOW_MS, type EvLinkCoincidence, type EvLinkResolution } from './evCarLink';
 import type { ActiveLinkView } from './evCarLinkReadModel';
 import type { EvCarLinkRoster } from './evCarLinkRoster';
@@ -39,14 +41,17 @@ export const mayOpenProvisionalLink = (
  *   connection's window closed, so it could have plugged in anywhere meanwhile
  *   (owner, 2026-10-25). It still counts as a rival, since it may be the car on
  *   this charger.
- * - `car_linked_elsewhere`: another charger holds it by a connection no older
- *   than this one, which is newer evidence of where the car is than this
- *   charger's history. An older link elsewhere is a disconnect PELS missed,
- *   which a newer session supersedes.
+ * - `car_linked_elsewhere`: another charger that still reports plugged in
+ *   holds it, by a plug-in, a match or a session resumed after a restart. That
+ *   is better evidence of where the car is than this charger's history, and a
+ *   charger found plugged in at start dates its connection from PELS starting,
+ *   so the age of the two links says nothing. A link at a charger now reporting
+ *   unplugged is a disconnect PELS missed, which this session supersedes.
  */
 export const resolvePastMatchRefusal = (
     cars: Pick<EvCarLinkRoster, 'wasConnectedBy'>,
     activeLinks: ReadonlyMap<string, Link>,
+    chargerStates: ReadonlyMap<string, EvChargingState>,
     chargerId: string,
     resolution: EvLinkResolution,
     sessionStartedAtMs: number,
@@ -56,8 +61,11 @@ export const resolvePastMatchRefusal = (
     if (!cars.wasConnectedBy(carId, sessionStartedAtMs + EV_CAR_LINK_COINCIDENCE_WINDOW_MS)) {
         return 'car_reported_too_late';
     }
-    const linkedElsewhere = [...activeLinks].some(([otherChargerId, link]) => (
-        otherChargerId !== chargerId && link.carId === carId && link.sinceMs >= sessionStartedAtMs));
+    const linkedElsewhere = [...activeLinks].some(([otherChargerId, link]) => {
+        const otherState = chargerStates.get(otherChargerId);
+        return otherChargerId !== chargerId && link.carId === carId
+            && otherState !== undefined && isEvPlugStateConnected(otherState);
+    });
     return linkedElsewhere ? 'car_linked_elsewhere' : null;
 };
 
