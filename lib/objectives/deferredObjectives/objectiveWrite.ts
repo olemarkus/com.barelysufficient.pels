@@ -5,7 +5,6 @@ import type { DeferredObjectiveActivePlanRecorder } from './activePlanRecorder';
 import type { DeferredObjectivePlanHistoryRecorder } from './planHistory';
 import {
   clearObjectiveForDevice as clearObjectiveKey,
-  migrateBlobToPerKeyIfNeeded,
   objectiveAbsenceIsTrustworthy,
   readObjectiveForDevice,
   writeObjectiveForDevice,
@@ -14,21 +13,8 @@ import {
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { isSmartTaskOpen } from '../../../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import { getDebugEmitter } from '../../logging/logger';
-import { DEFERRED_OBJECTIVES_PERKEY_MIGRATED } from '../../utils/settingsKeys';
 import type { SmartTaskHomeScope } from '../../../packages/contracts/src/smartTaskHomeScope';
 import type { CurrentTaskEvaluationReader } from './currentTaskEvaluation';
-
-// Device-scoped writes only proceed once the per-key migration is COMPLETE. Until
-// then a device's objective may still live only in the un-migrated legacy blob, so
-// per-key absence isn't trustworthy — a write would fork a fresh per-key the
-// absent-only migration then skips, losing the blob copy's target/deadline/rescue.
-// Run the (idempotent, cheap-once-done) migration first; if it's still deferred (a
-// transient empty-getKeys flake), refuse so the caller retries rather than write
-// against an un-migrated device. Returns true when it's safe to proceed.
-const ensureMigrated = (deps: DeferredObjectiveDeviceWriteDeps): boolean => {
-  migrateBlobToPerKeyIfNeeded(deps.store);
-  return Boolean(deps.store.get(DEFERRED_OBJECTIVES_PERKEY_MIGRATED));
-};
 
 // ─── Device-scoped operations (per-device-key storage) ───────────────────────
 //
@@ -44,9 +30,9 @@ const ensureMigrated = (deps: DeferredObjectiveDeviceWriteDeps): boolean => {
 // and self-heals on the next clean read.
 
 // The outcome of a device-scoped write. A write either PERSISTED, or REFUSED.
-// Two refusal reasons are retryable transients (an un-confirmable per-key
-// migration, or an untrustworthy absence read — see the guards below); both map
-// to the same user-facing "couldn't save just now, retry" framing.
+// Two refusal reasons are retryable transients (an untrustworthy absence read —
+// see the guard below — or an unavailable home-scope read); both map to the
+// same user-facing "couldn't save just now, retry" framing.
 // `device_in_sub_home` and `device_not_planned` are hard scope rejections, NOT
 // retryable: smart tasks are planned against the MAIN home's meter budget, and
 // an active meter source is never a planned load. Callers surface these as
@@ -57,8 +43,7 @@ export type ObjectiveWriteOutcome =
   | { persisted: true }
   | {
     persisted: false;
-    reason: 'migration_deferred' | 'untrusted_absence' | 'device_in_sub_home'
-      | 'device_not_planned' | 'ownership_unavailable';
+    reason: 'untrusted_absence' | 'device_in_sub_home' | 'device_not_planned' | 'ownership_unavailable';
   };
 
 /** `createObjectiveForDevice`'s outcome: an upsert's, plus the open-task refusal. */
@@ -95,11 +80,6 @@ const readPreviousEvaluation = (
   return deps.readCurrentTaskEvaluation(deviceId, objective);
 };
 
-// A device-scoped write op = 'upsert' | 'rescue' | 'clear', carried on the
-// refusal event so a `deferred_objectives`-debug trace can tell which lane
-// refused.
-type ObjectiveWriteOp = 'upsert' | 'rescue' | 'clear';
-
 const emitObjectiveDebug = getDebugEmitter('deferred_objectives', 'deferred_objectives');
 
 // Emit a topic-gated debug breadcrumb for a refused write and return the
@@ -110,12 +90,10 @@ const emitObjectiveDebug = getDebugEmitter('deferred_objectives', 'deferred_obje
 // Without this, a transient refusal was visible only as the user-facing card
 // error and left no server-side trace to correlate against.
 const refuse = (
-  op: ObjectiveWriteOp,
   deviceId: string,
-  reason: 'migration_deferred' | 'untrusted_absence' | 'device_in_sub_home'
-    | 'device_not_planned' | 'ownership_unavailable',
+  reason: 'untrusted_absence' | 'device_in_sub_home' | 'device_not_planned' | 'ownership_unavailable',
 ): ObjectiveWriteOutcome => {
-  emitObjectiveDebug({ event: 'objective_write_refused', op, deviceId, reason });
+  emitObjectiveDebug({ event: 'objective_write_refused', deviceId, reason });
   return { persisted: false, reason };
 };
 
@@ -175,9 +153,9 @@ const refuseForHomeScope = (
   deviceId: string,
 ): ObjectiveWriteOutcome | null => {
   const homeScope = deps.resolveDeviceHomeScope?.(deviceId) ?? 'main';
-  if (homeScope === 'sub_home') return refuse('upsert', deviceId, 'device_in_sub_home');
-  if (homeScope === 'source_device') return refuse('upsert', deviceId, 'device_not_planned');
-  if (homeScope === 'unavailable') return refuse('upsert', deviceId, 'ownership_unavailable');
+  if (homeScope === 'sub_home') return refuse(deviceId, 'device_in_sub_home');
+  if (homeScope === 'source_device') return refuse(deviceId, 'device_not_planned');
+  if (homeScope === 'unavailable') return refuse(deviceId, 'ownership_unavailable');
   return null;
 };
 
@@ -207,17 +185,16 @@ function writeObjective(
   // ungated so a task on a relocated device can always be removed.
   const scopeRefusal = refuseForHomeScope(deps, deviceId);
   if (scopeRefusal !== null) return scopeRefusal;
-  if (!ensureMigrated(deps)) return refuse('upsert', deviceId, 'migration_deferred');
   const prevEntry = readObjectiveForDevice(deps.store, deviceId);
   // Flaky-read guard: only proceed as a genuine create when the absence is
   // TRUSTWORTHY (key list readable AND key absent). A present-but-unreadable key
   // OR a store-wide empty `getKeys()` both mean "can't trust this is objective-less",
   // so refuse rather than overwrite the user's objective / drop a preserved rescue.
   if (prevEntry === undefined && !objectiveAbsenceIsTrustworthy(deps.store, deviceId)) {
-    return refuse('upsert', deviceId, 'untrusted_absence');
+    return refuse(deviceId, 'untrusted_absence');
   }
   if (openTask === 'refuse' && prevEntry !== undefined && isSmartTaskOpen(prevEntry, deps.nowMs)) {
-    emitObjectiveDebug({ event: 'objective_write_refused', op: 'upsert', deviceId, reason: 'open_task_exists' });
+    emitObjectiveDebug({ event: 'objective_write_refused', deviceId, reason: 'open_task_exists' });
     return { persisted: false, reason: 'open_task_exists' };
   }
   // Preserve a standing rescue permission unless the caller is authoritative
@@ -235,31 +212,25 @@ function writeObjective(
 }
 
 /**
- * Clear a device's deferred objective.
- *
- * Returns the same `ObjectiveWriteOutcome` as the write primitives. Two distinct
- * `persisted: true` outcomes collapse into one: the key was unset, OR it was a
- * genuine trustworthy-absent no-op (nothing to clear). Both leave the user's
- * intent satisfied, so both report success. Only the un-confirmable migration
- * guard is a retryable refusal.
+ * Clear a device's deferred objective. A clear never refuses: the key is
+ * unset, or a trustworthy absence means there was nothing to clear. Both leave
+ * the user's intent satisfied.
  */
 export const clearObjectiveForDevice = (
   deps: DeferredObjectiveDeviceWriteDeps,
   params: { deviceId: string; deviceName: string | null },
-): ObjectiveWriteOutcome => {
-  if (!ensureMigrated(deps)) return refuse('clear', params.deviceId, 'migration_deferred');
+): void => {
   const { deviceId, deviceName } = params;
   // Skip ONLY when the absence is TRUSTWORTHY (key list readable AND key absent) —
   // a genuine no-op worth skipping the notify for. A present key OR a
   // store-wide empty `getKeys()` flake both fall through to the (idempotent) unset,
   // so a transient/malformed read can't make the clear silently no-op while the
   // objective stays persisted and reappears on the next clean cycle.
-  if (objectiveAbsenceIsTrustworthy(deps.store, deviceId)) return { persisted: true };
+  if (objectiveAbsenceIsTrustworthy(deps.store, deviceId)) return;
   const prevEntry = readObjectiveForDevice(deps.store, deviceId);
   const previousEvaluation = readPreviousEvaluation(deps, deviceId, prevEntry);
   clearObjectiveKey(deps.store, deviceId);
   notifyAndFlush(deps, {
     deviceId, deviceName, prevEntry, nextEntry: undefined, nowMs: deps.nowMs, previousEvaluation,
   });
-  return { persisted: true };
 };

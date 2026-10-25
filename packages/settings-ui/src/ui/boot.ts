@@ -24,6 +24,7 @@ import {
 } from './dom.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
+  SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH,
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
@@ -417,6 +418,7 @@ const loadBootstrapData = async (): Promise<SettingsUiBootstrap | null> => {
     // on PR #884; chatgpt-codex finding).
     updateBudgetPower(liveStatusOrNull(bootstrap.power?.status));
     primeApiCache(SETTINGS_UI_PRICES_PATH, bootstrap.prices);
+    primeApiCache(SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH, bootstrap.deferredObjectives);
     // Persist active plans so device cards can read EV schedule state without
     // re-fetching the full bootstrap on every render cycle. Realtime replans
     // refresh this same state via `reloadDeferredObjectiveActivePlans` on the

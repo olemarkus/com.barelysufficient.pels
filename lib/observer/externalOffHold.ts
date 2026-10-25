@@ -336,9 +336,7 @@ export const createExternalOffHoldPolicy = (
 
 /**
  * One-shot migration of the legacy `external_off_holds` blob into per-device
- * keys. Mirrors `migrateBlobToPerKeyIfNeeded` in
- * `lib/objectives/deferredObjectives/objectiveStore.ts`; the decision order is
- * load-bearing for data safety:
+ * keys. The decision order is load-bearing for data safety:
  *
  *  1. Marker truthy → return (already migrated).
  *  2. `getKeys()` unusable or empty → return WITHOUT the marker. PELS always has

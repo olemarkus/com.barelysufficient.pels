@@ -19,7 +19,7 @@ import {
 } from '../../lib/objectives/deferredObjectives/lifecycleEmitter';
 import type { TaskEvaluationSource } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { DeferredObjectiveSettingsV1 } from '../../packages/contracts/src/deferredObjectiveSettings';
+import type { DeferredObjectiveRoster } from '../../packages/contracts/src/deferredObjectiveSettings';
 import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import {
   createDeferredObjectiveStatusBus,
@@ -61,8 +61,7 @@ const buildEvDevice = (
   ...overrides,
 }) as ObjectiveDeviceInput;
 
-const buildEvSettings = (deadlineAtMs: number): DeferredObjectiveSettingsV1 => ({
-  version: 1,
+const buildEvSettings = (deadlineAtMs: number): DeferredObjectiveRoster => ({
   objectivesByDeviceId: {
     'ev-1': {
       enabled: true,
@@ -116,7 +115,7 @@ const buildDeps = (overrides: LifecycleFixture = {}): DeferredObjectiveLifecycle
       getDeliveredEnergyKWh,
     },
     energyDelivery,
-    getDeferredObjectiveSettings: () => ({ version: 1, objectivesByDeviceId: {} } as DeferredObjectiveSettingsV1),
+    getDeferredObjectiveSettings: () => ({ objectivesByDeviceId: {} } as DeferredObjectiveRoster),
     getDevices: () => [],
     getDailyBudgetSnapshot: () => null,
     getDeliveryEvidence: noDeliveryEvidence,
@@ -177,7 +176,6 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
     } as ObjectiveDeviceInput;
     const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
       getDeferredObjectiveSettings: () => ({
-        version: 1,
         objectivesByDeviceId: {
           relay: { enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 6, deadlineAtMs },
         },
@@ -431,7 +429,7 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
     emitter.tick(NOW_MS + 30_000);
     expect(onFallbackInactive).toHaveBeenCalledTimes(2);
 
-    settings = { version: 1, objectivesByDeviceId: {} };
+    settings = { objectivesByDeviceId: {} };
     devices = [];
     emitter.tick(NOW_MS + 60_000);
     expect(onFallbackInactive).toHaveBeenCalledTimes(3);

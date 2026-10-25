@@ -241,8 +241,8 @@ test.describe('Onboarding links', () => {
       (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
         settings: {
           price_optimization_settings: {},
-          deferred_objectives: { version: 1, objectivesByDeviceId: {} },
         },
+        unsetSettings: ['deferred_objective.dev_connected300'],
       };
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -278,11 +278,11 @@ test.describe('Onboarding links', () => {
       (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
         settings: {
           price_optimization_settings: {},
-          deferred_objectives: { version: 1, objectivesByDeviceId: {} },
           ui_devices_has_managed_solar: false,
           ui_devices_has_exhibited_export: false,
           ui_devices_surplus_pool_reachable: false,
         },
+        unsetSettings: ['deferred_objective.dev_connected300'],
       };
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -341,8 +341,8 @@ test.describe('Onboarding links', () => {
           settings: {
             ui_hub_market_country: seeded,
             price_optimization_settings: {},
-            deferred_objectives: { version: 1, objectivesByDeviceId: {} },
           },
+          unsetSettings: ['deferred_objective.dev_connected300'],
         };
       }, country);
       await page.goto('/', { waitUntil: 'domcontentloaded' });

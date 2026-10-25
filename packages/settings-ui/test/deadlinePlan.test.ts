@@ -10,7 +10,7 @@ import type {
   DeferredObjectiveActivePlanV1,
   ResolvedDeferredObjectiveActivePlansV1,
 } from '../../contracts/src/deferredObjectiveActivePlans.ts';
-import type { DeferredObjectiveSettingsV1 } from '../../contracts/src/deferredObjectiveSettings.ts';
+import type { DeferredObjectiveRoster } from '../../contracts/src/deferredObjectiveSettings.ts';
 import {
   deadlineLabels,
   resolveSmartTaskLiveCause,
@@ -164,12 +164,15 @@ const buildHeaterActivePlan = (params: {
   };
 };
 
+const EMPTY_ROSTER: DeferredObjectiveRoster = { objectivesByDeviceId: {} };
+
 const buildBootstrap = (
-  settings: SettingsUiBootstrap['settings'],
+  deferredObjectives: DeferredObjectiveRoster,
   activePlan: DeferredObjectiveActivePlanV1 | null = null,
 ): SettingsUiBootstrap => ({
-  settings,
+  settings: { capacity_limit_kw: 8 },
   dailyBudget: { kind: 'unavailable' },
+  deferredObjectives,
   deferredObjectiveActivePlans: buildActivePlans(activePlan),
   plan: null,
   power: {
@@ -206,7 +209,7 @@ const readyHeaterPayload = (
     activePlan: { ...buildActivePlans(plan).plansByDeviceId.heater!, latest: plan.latest },
     nowMs,
   },
-  bootstrap: buildBootstrap({ capacity_limit_kw: 8 }),
+  bootstrap: buildBootstrap(EMPTY_ROSTER),
   progress,
   hours,
   energy: {
@@ -234,9 +237,8 @@ const heatingProgress = (currentValue: number): DeadlineProgress => ({
   unit: '°C',
 });
 
-// The saved `deferred_objectives` setting for one soft smart task on the heater.
-const heaterObjectiveSettings = (deadline: Date, targetTemperatureC: number): DeferredObjectiveSettingsV1 => ({
-  version: 1,
+// The roster for one soft smart task on the heater.
+const heaterObjectiveSettings = (deadline: Date, targetTemperatureC: number): DeferredObjectiveRoster => ({
   objectivesByDeviceId: {
     heater: {
       enabled: true,
@@ -248,9 +250,8 @@ const heaterObjectiveSettings = (deadline: Date, targetTemperatureC: number): De
   },
 });
 
-// The saved `deferred_objectives` setting for one soft smart task on the EV.
-const evObjectiveSettings = (deadline: Date, targetPercent: number): DeferredObjectiveSettingsV1 => ({
-  version: 1,
+// The roster for one soft smart task on the EV.
+const evObjectiveSettings = (deadline: Date, targetPercent: number): DeferredObjectiveRoster => ({
   objectivesByDeviceId: {
     ev: {
       enabled: true,
@@ -308,10 +309,7 @@ describe('deadline plan page payload', () => {
     const devices = heaterDevices({ temperature: heaterTemperature(26, 22), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, buildHeaterActivePlan({
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
         now,
         deadline,
         plannedHourOffsets: [0],
@@ -349,10 +347,7 @@ describe('deadline plan page payload', () => {
       })),
     });
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, buildHeaterActivePlan({
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
         now,
         deadline,
         // Cheap hour is at offset 5 in the prices fixture; runtime planner
@@ -397,10 +392,7 @@ describe('deadline plan page payload', () => {
     })));
 
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, buildHeaterActivePlan({
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
         now,
         deadline,
         plannedHourOffsets: [0, 1],
@@ -429,10 +421,7 @@ describe('deadline plan page payload', () => {
     };
 
     const renderInput = resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, pendingPlan),
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), pendingPlan),
       deviceId: 'heater',
       devices,
       prices,
@@ -457,10 +446,7 @@ describe('deadline plan page payload', () => {
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload({ prices: [] });
     const renderInput = resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, null),
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), null),
       deviceId: 'heater',
       devices,
       prices,
@@ -476,10 +462,7 @@ describe('deadline plan page payload', () => {
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, buildHeaterActivePlan({
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
         now,
         deadline,
         plannedHourOffsets: [1],
@@ -506,10 +489,7 @@ describe('deadline plan page payload', () => {
     const actualHour = atLocalHour(now, 1).toISOString();
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103]));
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: heaterObjectiveSettings(deadline, 22),
-    }, buildHeaterActivePlan({
+    const bootstrap = buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
       now,
       deadline,
       plannedHourOffsets: [1],
@@ -544,10 +524,7 @@ describe('deadline plan page payload', () => {
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, buildHeaterActivePlan({
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
         now,
         deadline,
         plannedHourOffsets: [0, 1],
@@ -580,10 +557,7 @@ describe('deadline plan page payload', () => {
     });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, buildHeaterActivePlan({
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
         now,
         deadline,
         plannedHourOffsets: [0],
@@ -603,10 +577,7 @@ describe('deadline plan page payload', () => {
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 1.3 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, buildHeaterActivePlan({
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
         now,
         deadline,
         plannedHourOffsets: [0],
@@ -626,10 +597,7 @@ describe('deadline plan page payload', () => {
     const now = new Date(2026, 0, 1, 13);
     const deadline = atLocalHour(now, 6);
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, buildHeaterActivePlan({
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
         now, deadline, plannedHourOffsets: [0], plannedKWhPerHour: 2, planningSpeedKw: 2,
       })),
       deviceId: 'heater',
@@ -653,13 +621,9 @@ describe('deadline plan page payload', () => {
     });
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: { enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 4,
-              deadlineAtMs: deadline.getTime() },
-          },
+        objectivesByDeviceId: {
+          heater: { enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 4,
+            deadlineAtMs: deadline.getTime() },
         },
       }, { ...plan, objectiveKind: 'energy', targetValue: 4,
         kwhPerUnitProvenance: { source: 'exact', kWhPerUnit: 1, acceptedSamples: 0,
@@ -682,20 +646,16 @@ describe('deadline plan page payload', () => {
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-              rescue: {
-                exemptFromBudget: 'always',
-                limitLowerPriorityDevices: 'at_risk',
-              },
+        objectivesByDeviceId: {
+          heater: {
+            enabled: true,
+            kind: 'temperature',
+            enforcement: 'soft',
+            targetTemperatureC: 22,
+            deadlineAtMs: deadline.getTime(),
+            rescue: {
+              exemptFromBudget: 'always',
+              limitLowerPriorityDevices: 'at_risk',
             },
           },
         },
@@ -725,10 +685,7 @@ describe('deadline plan page payload', () => {
     const deadline = atLocalHour(now, 6);
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: heaterObjectiveSettings(deadline, 22),
-    }, buildHeaterActivePlan({
+    const bootstrap = buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
       now,
       deadline,
       plannedHourOffsets: [0, 1, 2],
@@ -776,10 +733,7 @@ describe('deadline plan page payload', () => {
       displayConfidence: 'low',
       lastAcceptedAtMs: now.getTime(),
     };
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: heaterObjectiveSettings(deadline, 65),
-    }, activePlan);
+    const bootstrap = buildBootstrap(heaterObjectiveSettings(deadline, 65), activePlan);
 
     const payload = expectReady(resolveRenderInput({
       bootstrap,
@@ -832,10 +786,7 @@ describe('deadline plan page payload', () => {
     const deadline = atLocalHour(now, 3);
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2, targets: waterHeaterTargets() });
     const prices = pricesPayload(hourlyPrices(now, [50, 51, 52]));
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: heaterObjectiveSettings(deadline, 22),
-    }, buildHeaterActivePlan({
+    const bootstrap = buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
       now,
       deadline,
       plannedHourOffsets: [],
@@ -881,10 +832,7 @@ describe('deadline plan page payload', () => {
     const deadline = atLocalHour(now, 3);
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2, targets: waterHeaterTargets() });
     const prices = pricesPayload(hourlyPrices(now, [50, 51, 52]));
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: heaterObjectiveSettings(deadline, 22),
-    }, buildHeaterActivePlan({
+    const bootstrap = buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
       now,
       deadline,
       plannedHourOffsets: [],
@@ -928,10 +876,7 @@ describe('deadline plan page payload', () => {
     const deadline = atLocalHour(now, 3);
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2, targets: waterHeaterTargets() });
     const prices = pricesPayload(hourlyPrices(now, [50, 51, 52]));
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: heaterObjectiveSettings(deadline, 22),
-    }, buildHeaterActivePlan({
+    const bootstrap = buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
       now,
       deadline,
       plannedHourOffsets: [],
@@ -967,10 +912,7 @@ describe('deadline plan page payload', () => {
     const deadline = atLocalHour(now, 3);
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2, targets: waterHeaterTargets() });
     const prices = pricesPayload(hourlyPrices(now, [50, 51, 52]));
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: heaterObjectiveSettings(deadline, 22),
-    }, buildHeaterActivePlan({
+    const bootstrap = buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
       now,
       deadline,
       plannedHourOffsets: [1],
@@ -1017,10 +959,7 @@ describe('deadline plan page payload', () => {
     const deadline = atLocalHour(now, 4);
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2, targets: waterHeaterTargets() });
     const prices = pricesPayload(hourlyPrices(now, [50, 51, 52, 53]));
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: heaterObjectiveSettings(deadline, 65),
-    }, buildHeaterActivePlan({
+    const bootstrap = buildBootstrap(heaterObjectiveSettings(deadline, 65), buildHeaterActivePlan({
       now,
       deadline,
       // Two scheduled hours starting at offset 2 — the live `Heating from
@@ -1065,10 +1004,7 @@ describe('deadline plan page payload', () => {
     const devices = heaterDevices({ temperature: heaterTemperature(21, 20), planningPowerKw: 2 });
     const prices = pricesPayload({ prices: [] });
     const renderInput = resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, null),
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), null),
       deviceId: 'heater',
       devices,
       prices,
@@ -1089,10 +1025,7 @@ describe('deadline plan page payload', () => {
     const deadline = atLocalHour(now, 6);
     const devices = heaterDevices({ planningPowerKw: 2 });
     const prices = pricesPayload({ prices: [] });
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: heaterObjectiveSettings(deadline, 22),
-    }, buildHeaterActivePlan({
+    const bootstrap = buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
       now,
       deadline,
       plannedHourOffsets: [0],
@@ -1145,10 +1078,7 @@ describe('deadline plan page payload', () => {
       original: evRevision,
       latest: evRevision,
     };
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: evObjectiveSettings(deadline, 60),
-    }, activePlan);
+    const bootstrap = buildBootstrap(evObjectiveSettings(deadline, 60), activePlan);
 
     const result = resolveRenderInput({
       bootstrap,
@@ -1170,10 +1100,7 @@ describe('deadline plan page payload', () => {
     const deadline = atLocalHour(now, 6);
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20) });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: heaterObjectiveSettings(deadline, 22),
-    }, buildHeaterActivePlan({
+    const bootstrap = buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
       now,
       deadline,
       plannedHourOffsets: [0],
@@ -1195,10 +1122,7 @@ describe('deadline plan page payload', () => {
     const deadline = atLocalHour(now, 6);
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload({ prices: [] });
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: heaterObjectiveSettings(deadline, 22),
-    }, buildHeaterActivePlan({
+    const bootstrap = buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
       now,
       deadline,
       plannedHourOffsets: [0],
@@ -1230,10 +1154,7 @@ describe('deadline plan page payload', () => {
       latest: null,
     };
     const renderInput = resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, pendingPlan),
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), pendingPlan),
       deviceId: 'heater',
       devices,
       prices,
@@ -1252,10 +1173,7 @@ describe('deadline plan page payload', () => {
     const deadline = atLocalHour(now, 6);
     const devices = heaterDevices({ temperature: heaterTemperature(23, 20), planningPowerKw: 2 }); // > target 22
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: heaterObjectiveSettings(deadline, 22),
-    }, buildHeaterActivePlan({
+    const bootstrap = buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
       now,
       deadline,
       plannedHourOffsets: [0],
@@ -1288,10 +1206,7 @@ describe('deadline plan page payload', () => {
       latest: null,
     };
     const renderInput = resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, pendingPlan),
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), pendingPlan),
       deviceId: 'heater',
       devices,
       prices,
@@ -1322,10 +1237,7 @@ describe('deadline plan page payload', () => {
       latest: null,
     };
     const renderInput = resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: evObjectiveSettings(deadline, 80),
-      }, pendingPlan),
+      bootstrap: buildBootstrap(evObjectiveSettings(deadline, 80), pendingPlan),
       deviceId: 'ev',
       devices,
       prices,
@@ -1371,10 +1283,7 @@ describe('deadline plan page payload', () => {
       },
     };
     const renderInput = resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: evObjectiveSettings(deadline, 80),
-      }, activePlan),
+      bootstrap: buildBootstrap(evObjectiveSettings(deadline, 80), activePlan),
       deviceId: 'ev',
       devices,
       prices,
@@ -1419,10 +1328,7 @@ describe('deadline plan page payload', () => {
       original: bootstrapRevision,
       latest: bootstrapRevision,
     };
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: evObjectiveSettings(deadline, 60),
-    }, activePlan);
+    const bootstrap = buildBootstrap(evObjectiveSettings(deadline, 60), activePlan);
 
     const payload = expectReady(resolveRenderInput({
       bootstrap,
@@ -1481,10 +1387,7 @@ describe('deadline plan page payload', () => {
       original: bootstrapRevision,
       latest: bootstrapRevision,
     };
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: evObjectiveSettings(deadline, 80),
-    }, activePlan);
+    const bootstrap = buildBootstrap(evObjectiveSettings(deadline, 80), activePlan);
 
     return { bootstrap, deviceId: 'ev', devices, prices, nowMs: now.getTime() };
   };
@@ -1647,10 +1550,7 @@ describe('deadline plan page payload', () => {
       },
       latest: learnedRevision,
     };
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: evObjectiveSettings(deadline, 60),
-    }, activePlan);
+    const bootstrap = buildBootstrap(evObjectiveSettings(deadline, 60), activePlan);
 
     const payload = expectReady(resolveRenderInput({
       bootstrap,
@@ -1708,10 +1608,7 @@ describe('deadline plan page payload', () => {
       original: revision,
       latest: revision,
     };
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: evObjectiveSettings(deadline, 60),
-    }, activePlan);
+    const bootstrap = buildBootstrap(evObjectiveSettings(deadline, 60), activePlan);
 
     const payload = expectReady(resolveRenderInput({
       bootstrap,
@@ -1760,10 +1657,7 @@ describe('deadline plan page payload', () => {
       original: revision,
       latest: revision,
     };
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: evObjectiveSettings(deadline, 60),
-    }, activePlan);
+    const bootstrap = buildBootstrap(evObjectiveSettings(deadline, 60), activePlan);
 
     const payload = expectReady(resolveRenderInput({
       bootstrap,
@@ -1813,10 +1707,7 @@ describe('deadline plan page payload', () => {
       original: learnedRevision,
       latest: learnedRevision,
     };
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: evObjectiveSettings(deadline, 60),
-    }, activePlan);
+    const bootstrap = buildBootstrap(evObjectiveSettings(deadline, 60), activePlan);
 
     const payload = expectReady(resolveRenderInput({
       bootstrap,
@@ -1873,10 +1764,7 @@ describe('deadline plan page payload', () => {
       original: bootstrapRevision,
       latest: bootstrapRevision,
     };
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: evObjectiveSettings(deadline, 60),
-    }, activePlan);
+    const bootstrap = buildBootstrap(evObjectiveSettings(deadline, 60), activePlan);
 
     const payload = expectReady(resolveRenderInput({
       bootstrap,
@@ -1920,10 +1808,7 @@ describe('deadline plan page payload', () => {
       original: learnedRevision,
       latest: learnedRevision,
     };
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: evObjectiveSettings(deadline, 60),
-    }, activePlan);
+    const bootstrap = buildBootstrap(evObjectiveSettings(deadline, 60), activePlan);
 
     const payload = expectReady(resolveRenderInput({
       bootstrap,
@@ -1972,10 +1857,7 @@ describe('deadline plan page payload', () => {
       latest: allocatedRevision,
     };
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, activePlan),
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), activePlan),
       deviceId: 'heater',
       devices,
       prices,
@@ -1990,10 +1872,7 @@ describe('deadline plan page payload', () => {
     const deadline = atLocalHour(now, 6);
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload({ prices: [], priceScheme: 'flow', lastFetched: now.toISOString() });
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: heaterObjectiveSettings(deadline, 22),
-    }, buildHeaterActivePlan({
+    const bootstrap = buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
       now,
       deadline,
       plannedHourOffsets: [0],
@@ -2019,10 +1898,7 @@ describe('deadline plan page payload', () => {
     const deadline = atLocalHour(now, 6);
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload({ prices: [], priceScheme: 'norway', lastFetched: now.toISOString() });
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: heaterObjectiveSettings(deadline, 22),
-    }, buildHeaterActivePlan({
+    const bootstrap = buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
       now,
       deadline,
       plannedHourOffsets: [0],
@@ -2048,10 +1924,7 @@ describe('deadline plan page payload', () => {
     const deadline = atLocalHour(now, 6);
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload({ prices: [], priceScheme: 'norway' });
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: heaterObjectiveSettings(deadline, 22),
-    }, buildHeaterActivePlan({
+    const bootstrap = buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
       now,
       deadline,
       plannedHourOffsets: [0],
@@ -2082,10 +1955,7 @@ describe('deadline plan page payload', () => {
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, buildHeaterActivePlan({
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
         now,
         deadline,
         plannedHourOffsets: [2],
@@ -2111,10 +1981,7 @@ describe('deadline plan page payload', () => {
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, buildHeaterActivePlan({
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
         now,
         deadline,
         plannedHourOffsets: [2],
@@ -2144,10 +2011,7 @@ describe('deadline plan page payload', () => {
     const prices = pricesPayload(hourlyPrices(now, [100, 100]));
 
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, buildHeaterActivePlan({
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
         now,
         deadline,
         plannedHourOffsets: [0, 1],
@@ -2202,10 +2066,7 @@ describe('deadline plan page payload', () => {
     };
 
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, activePlan),
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), activePlan),
       deviceId: 'heater',
       devices,
       prices,
@@ -2235,10 +2096,7 @@ describe('deadline plan page payload', () => {
       latest: null,
     };
     const renderInput = resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: evObjectiveSettings(deadline, 80),
-      }, pendingPlan),
+      bootstrap: buildBootstrap(evObjectiveSettings(deadline, 80), pendingPlan),
       deviceId: 'ev',
       devices,
       prices,
@@ -2265,10 +2123,7 @@ describe('deadline plan page payload', () => {
     };
 
     const renderInput = resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, pendingPlan),
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), pendingPlan),
       deviceId: 'heater',
       devices,
       prices,
@@ -2288,10 +2143,7 @@ describe('deadline plan page payload', () => {
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103]));
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, buildHeaterActivePlan({
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
         now,
         deadline,
         plannedHourOffsets: [1],
@@ -2314,10 +2166,7 @@ describe('deadline plan page payload', () => {
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, buildHeaterActivePlan({
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
         now,
         deadline,
         plannedHourOffsets: [1],
@@ -2346,10 +2195,7 @@ describe('deadline plan page payload', () => {
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, buildHeaterActivePlan({
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
         now,
         deadline,
         // 2 planned hours × 2 kWh = energyNeededKWh 4 over a 4 °C climb →
@@ -2407,10 +2253,7 @@ describe('deadline plan page payload', () => {
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103]));
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, buildHeaterActivePlan({
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
         now,
         deadline,
         // Needs 4 kWh for the 4 °C climb but only 2 kWh is booked → the
@@ -2449,10 +2292,7 @@ describe('deadline plan page payload', () => {
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(hourStart, [100, 101, 102, 103]));
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, buildHeaterActivePlan({
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
         now: hourStart,
         deadline,
         plannedHourOffsets: [2],
@@ -2738,10 +2578,7 @@ describe('deadline plan page payload', () => {
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(hourStart, [100, 101, 102, 103]));
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, plan),
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), plan),
       deviceId: 'heater',
       devices,
       prices,
@@ -2778,10 +2615,7 @@ describe('deadline plan page payload', () => {
     // Zero out the first allocated hour (offset 1); offset 2 keeps 2 kWh.
     plan.latest.hours[0] = { ...plan.latest.hours[0], plannedKWh: 0 };
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, plan),
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), plan),
       deviceId: 'heater',
       devices,
       prices,
@@ -2809,10 +2643,7 @@ describe('deadline plan page payload', () => {
     const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2 });
     const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
     const payload = expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, buildHeaterActivePlan({
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
         now,
         deadline,
         plannedHourOffsets: [1, 2],
@@ -2843,12 +2674,9 @@ describe('deadline plan page payload', () => {
         total: totalsByOffset(offset),
       })),
     });
-    const settings = {
-      capacity_limit_kw: 8,
-      deferred_objectives: heaterObjectiveSettings(deadline, 22),
-    };
+    const roster = heaterObjectiveSettings(deadline, 22);
     const buildPayload = (prices: SettingsUiPricesPayload) => expectReady(resolveRenderInput({
-      bootstrap: buildBootstrap(settings, buildHeaterActivePlan({
+      bootstrap: buildBootstrap(roster, buildHeaterActivePlan({
         now,
         deadline,
         plannedHourOffsets: [5],
@@ -3044,10 +2872,7 @@ describe('energy estimate range (expected…planned, end-to-end through resolveR
         lastAcceptedAtMs: null,
       };
     }
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: heaterObjectiveSettings(deadline, 65),
-    }, activePlan);
+    const bootstrap = buildBootstrap(heaterObjectiveSettings(deadline, 65), activePlan);
     return expectReady(resolveRenderInput({
       bootstrap, deviceId: 'heater', devices, prices, nowMs: now.getTime(),
     }));
@@ -3772,10 +3597,7 @@ describe('cost + delivered-so-far hero lines', () => {
     targetTemperatureC: number,
     deviceBuckets?: Record<string, number>,
   ): SettingsUiBootstrap => {
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: heaterObjectiveSettings(deadline, targetTemperatureC),
-    }, plan);
+    const bootstrap = buildBootstrap(heaterObjectiveSettings(deadline, targetTemperatureC), plan);
     if (deviceBuckets) {
       bootstrap.power.tracker = { ...bootstrap.power.tracker, deviceBuckets: { heater: deviceBuckets } };
     }
@@ -4475,10 +4297,7 @@ describe('pending hero producer wiring', () => {
       diagnosticReasonCode: 'objective_device_in_sub_home',
     };
     const renderInput = resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, relocatedPlan),
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), relocatedPlan),
       deviceId: 'heater',
       devices,
       prices,
@@ -4513,10 +4332,7 @@ describe('pending hero producer wiring', () => {
       diagnosticReasonCode: 'objective_device_unmanaged',
     };
     const renderInput = resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, unmanagedPlan),
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), unmanagedPlan),
       deviceId: 'heater',
       devices,
       prices,
@@ -4546,10 +4362,7 @@ describe('pending hero producer wiring', () => {
       latest: null,
     };
     const renderInput = resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: heaterObjectiveSettings(deadline, 22),
-      }, pendingPlan),
+      bootstrap: buildBootstrap(heaterObjectiveSettings(deadline, 22), pendingPlan),
       deviceId: 'heater',
       devices,
       prices,
@@ -4583,10 +4396,7 @@ describe('pending hero producer wiring', () => {
       latest: null,
     };
     const renderInput = resolveRenderInput({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: evObjectiveSettings(deadline, 80),
-      }, pendingPlan),
+      bootstrap: buildBootstrap(evObjectiveSettings(deadline, 80), pendingPlan),
       deviceId: 'ev',
       devices,
       prices,

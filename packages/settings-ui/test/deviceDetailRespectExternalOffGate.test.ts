@@ -201,7 +201,6 @@ const openPanel = async (params: OpenPanelParams) => {
   state.surplusPoolReachable = params.surplusPoolReachable ?? true;
   if (params.activeSmartTask) {
     state.deferredObjectiveSettings = {
-      version: 1,
       objectivesByDeviceId: {
         [deviceId]: {
           enabled: true,
@@ -675,7 +674,6 @@ describe('device detail "Disable temperature control"', () => {
     expect(temperatureControlToggle()?.disabled).toBe(false);
 
     state.deferredObjectiveSettings = {
-      version: 1,
       objectivesByDeviceId: {
         'heater-1': {
           enabled: true,
@@ -689,7 +687,7 @@ describe('device detail "Disable temperature control"', () => {
     document.dispatchEvent(new CustomEvent('deferred-objectives-updated'));
     expect(temperatureControlToggle()?.querySelector('[value="external"]')?.hasAttribute('disabled')).toBe(true);
 
-    state.deferredObjectiveSettings = { version: 1, objectivesByDeviceId: {} };
+    state.deferredObjectiveSettings = { objectivesByDeviceId: {} };
     document.dispatchEvent(new CustomEvent('deferred-objectives-updated'));
     expect(temperatureControlToggle()?.disabled).toBe(false);
   });

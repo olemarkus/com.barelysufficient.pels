@@ -6,7 +6,7 @@ import {
   SETTINGS_UI_SMART_TASK_DEVICES_PATH,
 } from '../../contracts/src/settingsUiApi.ts';
 import type { SmartTaskCandidateDevice } from '../../contracts/src/smartTaskEdit.ts';
-import { createEmptyDeferredObjectiveSettings } from '../../shared-domain/src/settings/deferredObjectiveSettings.ts';
+import { createEmptyDeferredObjectiveRoster } from '../../shared-domain/src/settings/deferredObjectiveSettings.ts';
 import type { SmartTaskCreateSnapshot } from '../src/ui/smartTaskCreate.ts';
 
 const callApiMock = vi.fn();
@@ -85,7 +85,7 @@ describe('New smart task flow', () => {
     openPanel.mockReset();
     storedTasksLoaded = true;
     loadStoredTasksMock.mockClear();
-    state.deferredObjectiveSettings = createEmptyDeferredObjectiveSettings();
+    state.deferredObjectiveSettings = createEmptyDeferredObjectiveRoster();
     state.devicesLoaded = true;
     controller.registerSmartTaskCreateRenderer((snapshot) => { paints.push(snapshot); });
     controller.initSmartTaskCreateController(openPanel);

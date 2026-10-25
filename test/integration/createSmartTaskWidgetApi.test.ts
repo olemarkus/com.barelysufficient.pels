@@ -362,8 +362,8 @@ describe('createCreateSmartTask', () => {
   });
 
   it('maps a refused write to the retryable write_conflict reason (no false success)', async () => {
-    // The app primitive refused to persist on a transient un-confirmable
-    // migration / untrustworthy read. The widget must surface the retryable
+    // The app primitive refused to persist on a transient untrustworthy read.
+    // The widget must surface the retryable
     // write_conflict reason rather than reporting `ok: true` while nothing wrote.
     const createDeferredObjective = vi.fn(() => ({ ok: false as const, reason: 'write_refused' }));
     const result = await createCreateSmartTask({

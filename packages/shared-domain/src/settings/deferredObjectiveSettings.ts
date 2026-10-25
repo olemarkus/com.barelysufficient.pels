@@ -5,36 +5,14 @@ import type {
   DeferredObjectiveRescueMode,
   DeferredObjectiveRescuePermissions,
   DeferredObjectiveSettingsEntry,
-  DeferredObjectiveSettingsV1,
+  DeferredObjectiveRoster,
   DeferredObjectiveTemperatureGoal,
 } from '../../../contracts/src/deferredObjectiveSettings';
 import { isUnknownRecord } from '../recordGuards';
 
-const DEFERRED_OBJECTIVES_SETTINGS_VERSION: DeferredObjectiveSettingsV1['version'] = 1;
-
-export const createEmptyDeferredObjectiveSettings = (): DeferredObjectiveSettingsV1 => ({
-  version: DEFERRED_OBJECTIVES_SETTINGS_VERSION,
+export const createEmptyDeferredObjectiveRoster = (): DeferredObjectiveRoster => ({
   objectivesByDeviceId: {},
 });
-
-export const normalizeDeferredObjectiveSettings = (raw: unknown): DeferredObjectiveSettingsV1 => {
-  if (!isUnknownRecord(raw)) return createEmptyDeferredObjectiveSettings();
-  const candidate = raw as Partial<DeferredObjectiveSettingsV1>;
-  if (candidate.version !== DEFERRED_OBJECTIVES_SETTINGS_VERSION) return createEmptyDeferredObjectiveSettings();
-  const entries = candidate.objectivesByDeviceId;
-  if (!isUnknownRecord(entries)) return createEmptyDeferredObjectiveSettings();
-
-  return {
-    version: DEFERRED_OBJECTIVES_SETTINGS_VERSION,
-    objectivesByDeviceId: Object.fromEntries(
-      Object.entries(entries).flatMap(([deviceId, entry]) => {
-        const normalizedDeviceId = deviceId.trim();
-        const normalized = normalizeDeferredObjectiveSettingsEntry(entry);
-        return normalizedDeviceId && normalized ? [[normalizedDeviceId, normalized]] : [];
-      }),
-    ),
-  };
-};
 
 // One goal normalizer per kind: each checks its own enforcement and target and
 // rebuilds the goal from those fields only, so nothing unexpected survives.

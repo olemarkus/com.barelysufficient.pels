@@ -18,7 +18,7 @@ import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import {
   DeferredObjectiveDecorationController,
-  type DeferredObjectiveSettingsV1,
+  type DeferredObjectiveRoster,
   type DeferredObjectiveRescuePermissions,
 } from '../../lib/objectives/deferredObjectives';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
@@ -181,8 +181,7 @@ const buildDevice = (nowMs: number): PlanInputDevice => withTemperatureDiscrimin
   targets: [{ id: 'target_temperature', value: TARGET_C, unit: '°C', min: 30, max: 75, step: 1 }],
 }))) as PlanInputDevice;
 
-const buildSettings = (rescue?: DeferredObjectiveRescuePermissions): DeferredObjectiveSettingsV1 => ({
-  version: 1,
+const buildSettings = (rescue?: DeferredObjectiveRescuePermissions): DeferredObjectiveRoster => ({
   objectivesByDeviceId: {
     [DEVICE_ID]: {
       enabled: true,

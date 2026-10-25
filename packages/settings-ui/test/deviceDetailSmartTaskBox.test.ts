@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createEmptyDeferredObjectiveSettings } from '../../shared-domain/src/settings/deferredObjectiveSettings.ts';
+import { createEmptyDeferredObjectiveRoster } from '../../shared-domain/src/settings/deferredObjectiveSettings.ts';
 import { SETTINGS_UI_SMART_TASK_DEVICES_PATH } from '../../contracts/src/settingsUiApi.ts';
 
 const callApiMock = vi.fn();
@@ -28,7 +28,7 @@ describe('device Smart task box', () => {
     callApiMock.mockReset();
     settingsLoaded = true;
     createOpenFor = null;
-    state.deferredObjectiveSettings = createEmptyDeferredObjectiveSettings();
+    state.deferredObjectiveSettings = createEmptyDeferredObjectiveRoster();
     state.managedMap = { heater: true };
     hideDeviceSmartTaskBox();
   });

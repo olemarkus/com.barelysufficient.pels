@@ -18,7 +18,7 @@ import {
   resolveBrowserTimeZone,
   type DeadlinePlanHistoryView,
 } from './deadlinePlanHistoryFetch.ts';
-import { normalizeDeferredObjectiveSettings } from '../../../shared-domain/src/settings/deferredObjectiveSettings.ts';
+import { normalizeDeferredObjectiveRoster } from './deferredObjectiveRoster.ts';
 import { resolveSmartTaskGoalBounds } from '../../../shared-domain/src/smartTaskDeviceKind.ts';
 import { formatLocalHHMM } from '../../../shared-domain/src/smartTaskDeadlineFormat.ts';
 import { isSteppedLoadSnapshot } from '../../../shared-domain/src/steppedLoadObservedState.ts';
@@ -290,9 +290,7 @@ let runtimeRefreshBound = false;
 const buildSmartTaskEditContext = (m: ActiveMount): SmartTaskEditContext | undefined => {
   const { deviceId, lastBoot } = m;
   if (deviceId === null || !lastBoot) return undefined;
-  const entry = normalizeDeferredObjectiveSettings(
-    lastBoot.bootstrap.settings.deferred_objectives,
-  ).objectivesByDeviceId[deviceId];
+  const entry = normalizeDeferredObjectiveRoster(lastBoot.bootstrap.deferredObjectives).objectivesByDeviceId[deviceId];
   if (!entry || !entry.enabled) return undefined;
   // No device in the payload (deleted, or a transient read gap) → no editor:
   // the goal bounds would be generic fallbacks and a save would only bounce

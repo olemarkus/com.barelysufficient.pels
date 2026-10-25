@@ -131,18 +131,13 @@ describe('device-scoped objective ops (per-device-key)', () => {
     expect(h.activePlanRecorder.flushIfDirty).toHaveBeenCalledOnce();
   });
 
-  it('clear REFUSES on a store-wide empty getKeys() flake (migration unconfirmable → retry, no wrong-place unset)', () => {
-    // On an empty getKeys() read the migration can't be confirmed complete, so the
-    // device's objective could still live only in an un-migrated blob. Acting (unset
-    // of the per-key) would be the wrong place AND a later migration could resurrect
-    // it. The write refuses instead; the per-key is left intact and the user retries.
+  it('clear STILL unsets the key on a store-wide empty getKeys() flake (absence unconfirmable)', () => {
     const store = buildStore({ 'ev-1': evEntry });
     const flaky = { ...store, getKeys: () => [] }; // store-wide getKeys flake
     const h = buildDeviceDeps(flaky);
-    const outcome = clearObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway' });
-    expect(outcome).toEqual({ persisted: false, reason: 'migration_deferred' });
-    expect(store.raw.has(keyFor('ev-1'))).toBe(true); // NOT unset — refused
-    expect(h.activePlanRecorder.flushIfDirty).not.toHaveBeenCalled();
+    clearObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway' });
+    expect(store.raw.has(keyFor('ev-1'))).toBe(false); // genuinely cleared
+    expect(h.activePlanRecorder.flushIfDirty).toHaveBeenCalledOnce();
   });
 
   it('upsert REFUSES (no write) when the key exists but its value reads as undefined — never clobber on a flaky read', () => {
@@ -205,7 +200,6 @@ describe('device-scoped objective ops (per-device-key)', () => {
   it('does not finalize history when persisting the edit throws', () => {
     const store = buildStore({ 'ev-1': evEntry });
     const h = buildDeviceDeps(store);
-    store.raw.set('deferred_objectives_perkey_migrated', true);
     const set = vi.fn(() => { throw new Error('write failed'); });
     expect(() => upsertObjectiveForDevice(
       { ...h.deps, store: { ...store, set } },
@@ -286,21 +280,15 @@ describe('device-scoped objective ops (per-device-key)', () => {
     expect(outcome).toEqual({ persisted: true });
   });
 
-  it('clear returns { persisted: true } for a trustworthy-absent no-op', () => {
-    const store = buildStore();
-    const h = buildDeviceDeps(store);
-    const outcome = clearObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway' });
-    expect(outcome).toEqual({ persisted: true });
-  });
-
-  it('upsert REFUSES with migration_deferred on an empty-getKeys flake (marker unconfirmable)', () => {
-    // Empty getKeys() leaves the one-shot migration unable to complete, so the
-    // marker stays unset and the write must refuse rather than fork a per-key.
+  it('upsert REFUSES with untrusted_absence on an empty-getKeys flake', () => {
+    // An empty key list cannot prove the device has no task, so a create must
+    // refuse rather than write over one it could not read.
     const store = buildStore({ 'ev-1': evEntry });
     const flaky = { ...store, getKeys: () => [] };
     const h = buildDeviceDeps(flaky);
     const outcome = upsertObjectiveForDevice(h.deps, 'ev-2', 'Garage', evEntry);
-    expect(outcome).toEqual({ persisted: false, reason: 'migration_deferred' });
+    expect(outcome).toEqual({ persisted: false, reason: 'untrusted_absence' });
+    expect(store.raw.has(keyFor('ev-2'))).toBe(false);
     expect(h.activePlanRecorder.flushIfDirty).not.toHaveBeenCalled();
   });
 
@@ -315,17 +303,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const h = buildDeviceDeps(store);
     upsertObjectiveForDevice(h.deps, 'ev-1', 'Driveway', evEntry);
     expect(objectiveDebug.events()).toContainEqual(expect.objectContaining({
-      event: 'objective_write_refused', op: 'upsert', deviceId: 'ev-1', reason: 'untrusted_absence',
-    }));
-  });
-
-  it('clear emits objective_write_refused on a migration-deferred refusal', () => {
-    const objectiveDebug = captureDebugTopic('deferred_objectives');
-    const store = buildStore({ 'ev-1': evEntry });
-    const h = buildDeviceDeps({ ...store, getKeys: () => [] });
-    clearObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway' });
-    expect(objectiveDebug.events()).toContainEqual(expect.objectContaining({
-      event: 'objective_write_refused', op: 'clear', deviceId: 'ev-1', reason: 'migration_deferred',
+      event: 'objective_write_refused', deviceId: 'ev-1', reason: 'untrusted_absence',
     }));
   });
 

@@ -20,7 +20,7 @@ import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helper
 // 1.25 kW; the real element is 5 kW.
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { describe, expect, it } from 'vitest';
-import { normalizeDeferredObjectiveSettings } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
+import { objectiveRosterFor } from '../utils/objectiveRoster';
 import { resolveDeferredObjectiveDeadline } from '../../lib/objectives/deferredObjectives';
 import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
@@ -178,8 +178,7 @@ const resolveDeadline = (): number => {
   return r.deadlineAtMs;
 };
 
-const buildSettings = () => normalizeDeferredObjectiveSettings({
-  version: 1,
+const buildSettings = () => objectiveRosterFor({
   objectivesByDeviceId: {
     [DEVICE_ID]: { enabled: true, kind: 'temperature', enforcement: 'soft', targetTemperatureC: TARGET_C, deadlineAtMs: resolveDeadline() },
   },

@@ -46,7 +46,6 @@ export {
   DEVICE_CONTROL_PROFILES,
   DEVICE_TARGET_POWER_CONFIGS,
   DEVICE_EXPECTED_POWER_OVERRIDES,
-  DEFERRED_OBJECTIVES_SETTINGS,
   PER_DEVICE_OBJECTIVE_KEY_PREFIX,
   DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
   OVERSHOOT_BEHAVIORS,
@@ -168,11 +167,6 @@ export const PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX = 'battery_control_claim.';
  * by the one-shot import into the userdata store (`lib/device/learnedPowerPeakStore.ts`).
  */
 export const DEVICE_POWER_PEAKS = 'device_power_peaks';
-// Marker set once the blob → per-device-key migration has run. Per-device
-// objectives live under `deferred_objective.<deviceId>` keys (see
-// `lib/objectives/deferredObjectives/objectiveStore.ts`); the plural
-// DEFERRED_OBJECTIVES_SETTINGS blob is a frozen fallback read only by that migration.
-export const DEFERRED_OBJECTIVES_PERKEY_MIGRATED = 'deferred_objectives_perkey_migrated';
 export const DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING = 'deferred_objective_plan_history';
 export const DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING = 'deferred_objective_plan_history_v5';
 export const DEFERRED_OBJECTIVE_PLAN_HISTORY_INITIALIZED = 'deferred_objective_plan_history_v5_initialized';

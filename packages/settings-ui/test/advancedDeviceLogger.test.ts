@@ -39,8 +39,8 @@ vi.mock('../src/ui/homey.ts', () => ({
   // The purge edits each stored map read fresh; `seedState` serves the seeded maps.
   getSettingFresh: vi.fn().mockResolvedValue(undefined),
   setSetting: vi.fn(),
-  // The purge loads the smart-task map before cancelling; no cache, no tasks.
-  hasSettingCache: vi.fn().mockReturnValue(false),
+  // The purge loads the smart-task map before cancelling; no tasks.
+  getApiReadModel: vi.fn().mockResolvedValue({ objectivesByDeviceId: {} }),
 }));
 
 vi.mock('../src/ui/devices.ts', () => ({

@@ -11,7 +11,7 @@
 // lifecycle clock drives them (see `lib/objectives/deferredObjectives/AGENTS.md`);
 // nothing inside the smart-task stack is mocked.
 import { describe, expect, it } from 'vitest';
-import { normalizeDeferredObjectiveSettings } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
+import { objectiveRosterFor } from '../utils/objectiveRoster';
 import { resolveDeferredObjectiveDeadline } from '../../lib/objectives/deferredObjectives';
 import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
 import { EnergyTaskDeliveryTracker } from '../../lib/objectives/deferredObjectives/energyDelivery';
@@ -132,8 +132,7 @@ type Scenario = {
 // The relay still switches as commanded.
 const runScenario = (tankFullAfterKWh: number, meterOnlyHourOfDay: number | null = null): Scenario => {
   const deadlineAtMs = resolveDeadline();
-  const settings = normalizeDeferredObjectiveSettings({
-    version: 1,
+  const settings = objectiveRosterFor({
     objectivesByDeviceId: {
       [DEVICE_ID]: { enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: TARGET_KWH, deadlineAtMs },
     },

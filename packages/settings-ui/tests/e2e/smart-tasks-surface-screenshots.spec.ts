@@ -203,7 +203,7 @@ const seed = (data: { clearActive: boolean; history: unknown }) => {
   if (data.clearActive) {
     // No enabled objectives -> buildSampleActivePlans returns {} -> the active
     // list renders its empty stanza ("Add your first smart task").
-    stub.settings = { deferred_objectives: { version: 1, objectivesByDeviceId: {} } };
+    stub.unsetSettings = ['deferred_objective.dev_connected300'];
   }
   (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = stub;
 };

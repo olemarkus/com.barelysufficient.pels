@@ -14,7 +14,6 @@ import {
 } from './smartTaskHomeScope';
 import {
   clearObjectiveForDevice,
-  migrateBlobToPerKeyIfNeeded,
   readAllObjectives,
   readSmartTaskInProgress,
   upsertObjectiveForDevice,
@@ -97,14 +96,7 @@ export function registerAppFlowCards(
     ),
     setExpectedOverride: (deviceId, kw) => ctx.flowBacked.setExpectedOverride(deviceId, kw),
     storeFlowPriceData: (kind, raw) => requirePriceCoordinator(ctx).storeFlowPriceData(kind, raw),
-    getDeferredObjectiveSettings: () => {
-      // Self-heal a boot-time empty-`getKeys()` flake that skipped the one-shot
-      // migration: idempotent + marker-gated (a cheap single `get` once done), so
-      // retrying on the plan cycle makes legacy objectives visible within seconds
-      // instead of staying invisible (planner + UI) until the next app restart.
-      migrateBlobToPerKeyIfNeeded(ctx.homey.settings);
-      return readAllObjectives(ctx.homey.settings);
-    },
+    getDeferredObjectiveSettings: () => readAllObjectives(ctx.homey.settings),
     // Both writes route through the device-scoped ops over the hardened
     // settings-mutation primitive (see buildDeferredObjectiveDeviceWriteDeps),
     // so the Flow cards and the create-smart-task widget share one

@@ -16,7 +16,7 @@ import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helper
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { resolvedTrajectoryStatus } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
 import { describe, expect, it } from 'vitest';
-import { normalizeDeferredObjectiveSettings } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
+import { objectiveRosterFor } from '../utils/objectiveRoster';
 import { resolveDeferredObjectiveDeadline } from '../../lib/objectives/deferredObjectives';
 import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
@@ -215,8 +215,7 @@ const resolveDeadline = (): number => {
 
 // Exempt-from-budget is granted up front: the prod task ran with
 // `rescueExemptMode: "always"`, and the exemption surviving the gap is the point.
-const buildSettings = () => normalizeDeferredObjectiveSettings({
-  version: 1,
+const buildSettings = () => objectiveRosterFor({
   objectivesByDeviceId: {
     [DEVICE_ID]: {
       enabled: true,

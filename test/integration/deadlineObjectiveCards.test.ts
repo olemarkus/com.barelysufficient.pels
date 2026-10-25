@@ -20,7 +20,7 @@ import {
   type DeferredObjectivePlanHistoryRecorder,
   type DeferredObjectivePlanRevisionEvent,
   type DeferredObjectivePlanRevisionBus,
-  type DeferredObjectiveSettingsV1,
+  type DeferredObjectiveRoster,
   type DeferredObjectiveStatusBus,
 } from '../../lib/objectives/deferredObjectives';
 import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../../lib/utils/settingsKeys';
@@ -92,7 +92,7 @@ const createMockHomey = () => {
 // Per-device-key helpers. Objectives now live under `deferred_objective.<id>`.
 const seedObjectives = (
   settings: Map<string, unknown>,
-  byDeviceId: DeferredObjectiveSettingsV1['objectivesByDeviceId'],
+  byDeviceId: DeferredObjectiveRoster['objectivesByDeviceId'],
 ): void => {
   for (const [deviceId, entry] of Object.entries(byDeviceId)) {
     settings.set(`${PER_DEVICE_OBJECTIVE_KEY_PREFIX}${deviceId}`, entry);
@@ -104,8 +104,8 @@ const readObjective = (
 ): unknown => settings.get(`${PER_DEVICE_OBJECTIVE_KEY_PREFIX}${deviceId}`);
 const readObjectivesMap = (
   settings: Map<string, unknown>,
-): DeferredObjectiveSettingsV1['objectivesByDeviceId'] => {
-  const out: DeferredObjectiveSettingsV1['objectivesByDeviceId'] = {};
+): DeferredObjectiveRoster['objectivesByDeviceId'] => {
+  const out: DeferredObjectiveRoster['objectivesByDeviceId'] = {};
   for (const [key, value] of settings.entries()) {
     if (!key.startsWith(PER_DEVICE_OBJECTIVE_KEY_PREFIX)) continue;
     out[key.slice(PER_DEVICE_OBJECTIVE_KEY_PREFIX.length)] = value as never;
@@ -429,7 +429,7 @@ describe('deadline objective flow cards', () => {
     expect(readObjective(mock.settings, 'meter-1')).toBeUndefined();
   });
 
-  it('clear_deadline THROWS (retryable) when the clear refuses on an empty-getKeys flake', async () => {
+  it('clear_deadline still clears through an empty-getKeys flake', async () => {
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
     });
@@ -439,8 +439,8 @@ describe('deadline objective flow cards', () => {
     mock.homey.settings.getKeys = () => []; // transient store-wide flake
     registerDeadlineObjectiveCards(deps);
     const card = mock.actions.get('clear_deadline')!;
-    await expect(card.run!({ device: 'heater-1' })).rejects.toThrow(/try again/i);
-    expect(readObjective(mock.settings, 'heater-1')).toBeDefined(); // still persisted — not falsely cleared
+    await card.run!({ device: 'heater-1' });
+    expect(readObjective(mock.settings, 'heater-1')).toBeUndefined();
   });
 
   it('writes an EV objective on set_ev_charge_deadline with normal task behavior', async () => {
@@ -624,8 +624,7 @@ describe('deadline objective flow cards', () => {
   });
 
   it('notifies the recorders (replace + reseed) on a set_temperature_deadline update', async () => {
-    const initial: DeferredObjectiveSettingsV1 = {
-      version: 1,
+    const initial: DeferredObjectiveRoster = {
       objectivesByDeviceId: {
         'heater-1': {
           enabled: true,
@@ -657,8 +656,7 @@ describe('deadline objective flow cards', () => {
   });
 
   it('preserves a granted rescue permission when the deadline is updated', async () => {
-    const initial: DeferredObjectiveSettingsV1 = {
-      version: 1,
+    const initial: DeferredObjectiveRoster = {
       objectivesByDeviceId: {
         'heater-1': {
           enabled: true,
@@ -691,8 +689,7 @@ describe('deadline objective flow cards', () => {
   });
 
   it('notifies the recorders (abandon + drop) on clear_deadline', async () => {
-    const initial: DeferredObjectiveSettingsV1 = {
-      version: 1,
+    const initial: DeferredObjectiveRoster = {
       objectivesByDeviceId: {
         'heater-1': {
           enabled: true,
@@ -739,8 +736,7 @@ describe('deadline objective flow cards', () => {
   });
 
   it('removes the entry on clear_deadline', async () => {
-    const initial: DeferredObjectiveSettingsV1 = {
-      version: 1,
+    const initial: DeferredObjectiveRoster = {
       objectivesByDeviceId: {
         'heater-1': {
           enabled: true,

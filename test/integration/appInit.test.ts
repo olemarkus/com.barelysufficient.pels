@@ -50,10 +50,7 @@ import {
 import { DeferredObjectivePlanHistoryRecorder, normalizeDeferredObjectivePlanHistory } from '../../lib/objectives/deferredObjectives';
 import { createPlanHistoryStore } from '../../lib/objectives/deferredObjectives/planHistoryStore';
 import { disableDeferredObjectiveInSettings } from '../../setup/appInit/deferredRecorders';
-import {
-  DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
-  DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
-} from '../../lib/utils/settingsKeys';
+import { DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK } from '../../lib/utils/settingsKeys';
 import type { AppContext } from '../../lib/app/appContext';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import {
@@ -411,16 +408,13 @@ describe('app init plan service wiring', () => {
     const oldWatermark = Date.now() - 24 * 60 * 60 * 1000;
     getSpy.mockImplementation((key: string) => {
       if (key === DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK) return oldWatermark;
-      if (key === DEFERRED_OBJECTIVES_PERKEY_MIGRATED) return true; // migration completed
       return undefined;
     });
-    // A genuinely-migrated store ALWAYS has settings keys (the watermark and the
-    // migration marker themselves), so getKeys() is non-empty even with zero
-    // objectives. An empty getKeys() here would be the transient flake the
-    // back-fill correctly defers on — not this "migrated, zero objectives" case.
+    // A real store ALWAYS has settings keys (the watermark itself), so getKeys() is
+    // non-empty even with zero objectives. An empty getKeys() here would be the
+    // transient flake the back-fill correctly defers on — not this "zero objectives" case.
     (ctx.homey.settings.getKeys as unknown as ReturnType<typeof vi.fn>).mockReturnValue([
       DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
-      DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
     ]);
     setSpy.mockClear();
 
@@ -433,19 +427,19 @@ describe('app init plan service wiring', () => {
     expect((watermarkSets[0]![1] as number)).toBeGreaterThan(oldWatermark);
   });
 
-  it('does NOT advance the watermark when the per-key migration has not completed', () => {
-    // A boot-time empty getKeys() flake can skip the one-shot migration AND make
-    // readAllObjectives empty. Advancing the watermark then would permanently skip
-    // the back-fill window for tasks that ARE persisted. With the marker unset, the
-    // back-fill must leave the watermark untouched and let a later (migrated) startup
-    // back-fill the full window.
+  it('does NOT advance the watermark when getKeys() flakes empty at boot', () => {
+    // A boot-time empty getKeys() flake makes readAllObjectives empty. Advancing the
+    // watermark then would permanently skip the back-fill window for tasks that ARE
+    // persisted, so the back-fill must leave the watermark untouched and let a later
+    // read back-fill the full window.
     const ctx = createAppContextMock();
     const getSpy = ctx.homey.settings.get as unknown as ReturnType<typeof vi.fn>;
     const setSpy = ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>;
     const oldWatermark = Date.now() - 24 * 60 * 60 * 1000;
     getSpy.mockImplementation((key: string) => (
-      key === DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK ? oldWatermark : undefined // marker undefined
+      key === DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK ? oldWatermark : undefined
     ));
+    (ctx.homey.settings.getKeys as unknown as ReturnType<typeof vi.fn>).mockReturnValue([]);
     setSpy.mockClear();
 
     createDeferredObjectivePlanHistoryRecorder(ctx);
@@ -718,7 +712,7 @@ describe('app init plan service wiring', () => {
   });
 
   it('does not advance the watermark when startup back-fill save fails', () => {
-    // Existing watermark + enabled objective + plan-history settings.set throws.
+    // Existing watermark + enabled objective + the plan-history write fails.
     // The save callback returns false, flushIfDirty returns false, and runStartupBackfill
     // must leave the watermark in place so the next restart retries.
     const ctx = createAppContextMock();
@@ -743,7 +737,17 @@ describe('app init plan service wiring', () => {
     });
     (ctx.homey.settings.getKeys as unknown as ReturnType<typeof vi.fn>)
       .mockReturnValue(['deferred_objective.dev_a']);
-    vi.spyOn(createPlanHistoryStore(ctx.getUserdataDatabase()), 'write').mockImplementation(() => { throw new Error('disk full'); });
+    // The recorder's own store writes through the history upsert it prepares:
+    // fail that statement as a full disk would.
+    const database = ctx.getUserdataDatabase();
+    const prepare = database.prepare.bind(database);
+    vi.spyOn(database, 'prepare').mockImplementation((sql: string) => {
+      const statement = prepare(sql);
+      if (sql.startsWith('INSERT INTO deferred_objective_plan_history ')) {
+        vi.spyOn(statement, 'run').mockImplementation(() => { throw new Error('disk full'); });
+      }
+      return statement;
+    });
 
     createDeferredObjectivePlanHistoryRecorder(ctx);
 

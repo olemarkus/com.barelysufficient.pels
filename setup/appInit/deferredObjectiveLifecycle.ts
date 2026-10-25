@@ -182,13 +182,7 @@ export function createDeferredObjectiveLifecycleEmitter(
   const readTrustedObjectiveSettings = createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings);
   return new DeferredObjectiveLifecycleEmitter({
     source: taskEvaluationSource,
-    getDeferredObjectiveSettings: () => {
-      // Self-heal a boot-time empty-`getKeys()` flake that skipped the one-shot
-      // migration: idempotent + marker-gated (a cheap single `get` once done),
-      // so retrying on the clock tick makes legacy objectives visible within
-      // seconds instead of staying invisible until the next app restart.
-      return readTrustedObjectiveSettings();
-    },
+    getDeferredObjectiveSettings: readTrustedObjectiveSettings,
     getDevices: () => requirePlanService(ctx).getPlanDevices(),
     getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,
     deferredObjectiveStatusBus: ctx.deferredObjectiveStatusBus,
@@ -200,12 +194,10 @@ export function createDeferredObjectiveLifecycleEmitter(
     ),
     observeDeferredObjectivePlanHistory: (diagnostics, nowMs, activePlans) => {
       const recorder = requireDeferredObjectivePlanHistoryRecorder(ctx);
-      // Run the offline-window back-fill that an earlier boot deferred because the per-key
-      // migration marker was still unset (an empty-`getKeys()` flake). `getDeferredObjectiveSettings`
-      // above already retried `migrateBlobToPerKeyIfNeeded` on this same tick, so the marker is
-      // now set when the retry succeeded — back-fill the pending `(watermark, now]` window HERE,
-      // before the watermark-advance below jumps it to `now` and silently skips the migrated
-      // legacy task's elapsed deadline. No-op once back-fill completed for this session.
+      // Run the offline-window back-fill that an earlier attempt deferred (an empty-`getKeys()`
+      // flake) — back-fill the pending `(watermark, now]` window HERE,
+      // before the watermark-advance below jumps it to `now` and silently skips an elapsed
+      // deadline in it. No-op once back-fill completed for this session.
       runPendingDeferredObjectiveBackfill(ctx, recorder);
       recorder.observe(diagnostics, nowMs, activePlans);
       // Advance the watermark only once the recorder is clean: a failed save leaves it
@@ -216,8 +208,8 @@ export function createDeferredObjectiveLifecycleEmitter(
       // behind costs nothing: back-fill skips any deadline that already has an entry.
       recorder.flushIfDirty();
       if (recorder.isDirty()) return;
-      // A still-pending back-fill (a boot flake deferred the migration and this tick's retry
-      // didn't complete it — e.g. getKeys() flaked empty again) means the (watermark, now]
+      // A still-pending back-fill (this tick's retry didn't complete it — e.g. getKeys()
+      // flaked empty again) means the (watermark, now]
       // offline window is still owed. The idle-refresh advance must NOT jump the watermark
       // past it, or the owed window is permanently skipped — the same silent-history-loss the
       // back-fill path itself guards against. Leave the watermark; a later healthy tick

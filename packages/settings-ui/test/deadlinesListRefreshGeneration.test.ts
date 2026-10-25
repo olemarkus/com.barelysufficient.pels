@@ -40,7 +40,8 @@ const T0 = Date.UTC(2026, 4, 11, 0, 0, 0);
 // zero-card empty state, which is exactly where `historyPresent` is
 // observable in the DOM (first-run copy vs between-runs copy).
 const emptyBootstrap = {
-  settings: { deferred_objectives: { version: 1, objectivesByDeviceId: {} } },
+  settings: {},
+  deferredObjectives: { objectivesByDeviceId: {} },
   deferredObjectiveActivePlans: { version: 1, plansByDeviceId: {} },
 };
 const emptyDevices = { devices: [] };

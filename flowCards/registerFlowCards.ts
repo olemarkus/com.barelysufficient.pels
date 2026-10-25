@@ -47,7 +47,7 @@ import type {
   DeferredObjectiveHoursRemainingTracker,
   DeferredObjectivePlanRevisionBus,
   DeferredObjectiveSettingsEntry,
-  DeferredObjectiveSettingsV1,
+  DeferredObjectiveRoster,
   DeferredObjectiveStatusBus,
   ObjectiveWriteOutcome,
 } from '../lib/objectives/deferredObjectives';
@@ -56,10 +56,10 @@ import type {
 // target device's OWN settings key + run the shared notify/flush
 // chokepoint in `lib/objectives/deferredObjectives/objectiveWrite.ts` (wired with the
 // app's recorders in appInit). A per-key write touches only that one device, so
-// it cannot clobber a sibling task. It can still REFUSE on a transient
-// un-confirmable migration or untrustworthy absence read, so the wrappers
-// forward the `ObjectiveWriteOutcome`; the Flow cards throw on a refusal so
-// Homey surfaces a retryable failure rather than a silent (false) success.
+// it cannot clobber a sibling task. An upsert can still REFUSE (an untrustworthy
+// absence read, or a device outside the main home), so it forwards the
+// `ObjectiveWriteOutcome`; the Flow cards throw on a refusal so Homey surfaces
+// it rather than a silent (false) success. A clear never refuses.
 export type UpsertDeferredObjectiveForDevice = (
   deviceId: string,
   deviceName: string | null,
@@ -69,7 +69,7 @@ export type UpsertDeferredObjectiveForDevice = (
 export type ClearDeferredObjectiveForDevice = (params: {
   deviceId: string;
   deviceName: string | null;
-}) => ObjectiveWriteOutcome;
+}) => void;
 
 export type FlowCardDeps = {
   homey: FlowHomeyLike;
@@ -143,7 +143,7 @@ export type FlowCardDeps = {
     storedCount: number;
     missingHours: number[];
   };
-  getDeferredObjectiveSettings: () => DeferredObjectiveSettingsV1;
+  getDeferredObjectiveSettings: () => DeferredObjectiveRoster;
   // Required — the deadline / clear / rescue cards write each device's own
   // settings key through these (a per-key write cannot clobber a sibling).
   // Non-optional so a missing wiring is a build error, not a silent no-op.

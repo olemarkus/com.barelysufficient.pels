@@ -24,7 +24,6 @@ import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/sr
 import {
   DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
   DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
-  DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
 } from '../../lib/utils/settingsKeys';
 import { resolveSmartTaskHomeScope } from './smartTaskHomeScope';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
@@ -74,7 +73,7 @@ const readWatermark = (ctx: AppContext): number | null => {
  *    flush attempt didn't actually persist) — advancing would skip the window containing
  *    the entries that never made it to disk.
  *  - A startup back-fill is still PENDING (`ctx.deferredObjectiveBackfillPending`). This
- *    happens when a boot-time `getKeys()` flake deferred the per-key migration and the
+ *    happens when a boot-time `getKeys()` flake deferred it and the
  *    first lifecycle tick (~30s out) hasn't yet run the pending back-fill. If the app
  *    restarts in that window the in-memory latch is lost; advancing the watermark on
  *    uninit would make the next boot's startup back-fill skip the still-owed offline
@@ -233,19 +232,18 @@ function runStartupBackfill(
 }
 
 /**
- * Run the marker-gated offline-window back-fill for the `(watermark, now]` window.
+ * Run the offline-window back-fill for the `(watermark, now]` window.
  *
- * Returns `'deferred'` (and latches `ctx.deferredObjectiveBackfillPending`) when the
- * per-key migration marker is still unset: until it is set, `readAllObjectives` may be
- * empty/partial (a boot-time empty `getKeys()` flake that also skipped the migration), so
- * advancing the watermark would PERMANENTLY skip the back-fill window for tasks that ARE
- * persisted. The watermark is left untouched so a later attempt — the FIRST observe tick
- * after the in-session migration retry completes — back-fills the full window before any
- * tick advances the watermark past it. Otherwise the offline window is silently dropped.
+ * Returns `'deferred'` when the key list is untrustworthy (latching
+ * `ctx.deferredObjectiveBackfillPending`) or the back-filled entries did not persist (the
+ * dirty recorder keeps them for a later flush): advancing the watermark then would
+ * PERMANENTLY skip the back-fill window for tasks that ARE persisted. The watermark is left
+ * untouched so a later attempt back-fills the full window before any tick advances the
+ * watermark past it.
  *
  * Returns `'completed'` once the back-fill has run (watermark advanced on a successful
- * persist) and clears the latch, so it runs AT MOST once per session after a deferred
- * migration rather than re-scanning every tick.
+ * persist) and clears the latch, so it runs AT MOST once per session after a deferral
+ * rather than re-scanning every tick.
  */
 function attemptDeferredObjectiveBackfill(
   ctx: AppContext,
@@ -253,21 +251,15 @@ function attemptDeferredObjectiveBackfill(
   watermark: number,
 ): 'completed' | 'deferred' {
   const log = ctx.getStructuredLogger('deferred_objectives');
-  if (!ctx.homey.settings.get(DEFERRED_OBJECTIVES_PERKEY_MIGRATED)) {
-    setBackfillPending(ctx, true);
-    log.info({ event: 'deferred_objective_backfill_deferred', reason: 'migration_pending' });
-    return 'deferred';
-  }
-  // The marker is set, but `readAllObjectives` runs an INDEPENDENT `getKeys()` that can flake
-  // empty (it returns an empty map on a transient-empty key list by design — see
+  // `readAllObjectives` returns an empty map on a transient-empty key list by design (see
   // objectiveStore.readAllObjectives). An empty result is therefore ambiguous: it is either a
   // genuine zero-enabled-objectives store OR a flaky read. Only the trustworthy (non-empty)
   // key-list case may advance the watermark / clear the latch. On a flaky empty read, leave
   // both untouched and retry next tick — otherwise the `configs.length === 0` branch below
   // would PERMANENTLY skip the offline window (the exact silent-history-loss this guards).
-  // Mirrors the abandon-grace shape of objectiveAbsenceIsTrustworthy / the migration's empty
-  // step (2). Closes the asymmetry vs `runPendingDeferredObjectiveBackfill`'s null-watermark
-  // grace, which already refuses to clear the latch on an untrustworthy read.
+  // Mirrors the abandon-grace shape of objectiveAbsenceIsTrustworthy, and
+  // `runPendingDeferredObjectiveBackfill`'s null-watermark grace, which also refuses to
+  // clear the latch on an untrustworthy read.
   if (!objectiveKeyListIsTrustworthy(ctx.homey.settings)) {
     setBackfillPending(ctx, true);
     log.info({ event: 'deferred_objective_backfill_deferred', reason: 'key_list_untrustworthy' });
@@ -319,12 +311,11 @@ function attemptDeferredObjectiveBackfill(
 }
 
 /**
- * Run the back-fill that an earlier boot deferred because the per-key migration marker was
- * not yet set (`ctx.deferredObjectiveBackfillPending`). Invoked at the TOP of each observe
- * tick, BEFORE the tick advances the watermark — so once an in-session `migrateBlobToPerKeyIfNeeded`
- * retry sets the marker, the still-pending `(watermark, now]` offline window is back-filled
- * before the watermark jumps to `now` and the migrated legacy task's elapsed deadline is
- * silently skipped. No-op (and no re-scan) once the back-fill has completed for this session.
+ * Run the back-fill that an earlier attempt deferred (`ctx.deferredObjectiveBackfillPending`).
+ * Invoked at the TOP of each observe tick, BEFORE the tick advances the watermark — so the
+ * still-pending `(watermark, now]` offline window is back-filled before the watermark jumps
+ * to `now` and an elapsed deadline in it is silently skipped. No-op (and no re-scan) once
+ * the back-fill has completed for this session.
  */
 export function runPendingDeferredObjectiveBackfill(
   ctx: AppContext,

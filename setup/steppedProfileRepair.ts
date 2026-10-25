@@ -117,8 +117,8 @@ const repairSetting = (params: {
  * classified on both `null` and `undefined` and then confirmed against the key
  * list — the rule in `setup/AGENTS.md`. A throw is a failed read, not an empty
  * one, and an EMPTY key list is not proof of a pristine install: a Homey that
- * momentarily reports no keys at all is the miss `migrateBlobToPerKeyIfNeeded`
- * already guards against, so it defers rather than declaring absence.
+ * momentarily reports no keys at all is a transient miss, so it defers rather
+ * than declaring absence.
  */
 const readSettingEntries = (settings: RepairSettingsPort, key: string): SettingRead => {
   try {

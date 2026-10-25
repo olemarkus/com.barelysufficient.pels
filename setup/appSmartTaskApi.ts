@@ -18,7 +18,6 @@ import {
   hasOpenDeferredObjective,
   buildTaskEvaluationSnapshot,
   buildUnavailableDeferredObjectivePlanEstimate,
-  migrateBlobToPerKeyIfNeeded,
   readDeferredObjectiveRoster,
   previewDeferredObjectivePlan,
   previewSmartTaskQuickTargetsForDevice,
@@ -373,8 +372,8 @@ export class AppSmartTaskApi {
     // persisted as-is. When it does not, the default `preserve` policy keeps a
     // standing permission set elsewhere (e.g. by the budget-exempt rescue lane,
     // `rescueDeviceWithBudgetExemption`) intact rather than wiping it. The write
-    // can still REFUSE on a transient un-confirmable migration or an untrustworthy
-    // absence read; surface that as a retryable failure instead of a false
+    // can still REFUSE on an untrustworthy absence read; surface that as a
+    // retryable failure instead of a false
     // success so the widget can re-offer the create.
     const outcome = upsertObjectiveForDevice(
       buildDeferredObjectiveDeviceWriteDeps(this.ctx, this.ctx.getNow().getTime()),
@@ -443,14 +442,6 @@ export class AppSmartTaskApi {
     if (candidate.rescue?.exemptFromBudget !== 'always') {
       return { ok: false, reason: 'invalid_candidate' };
     }
-    // Migrate any legacy-blob objective to per-keys BEFORE the eligibility check:
-    // a task still only in the un-migrated blob is invisible to the per-key
-    // `hasDeferredObjectiveForDevice`, so without this the delegated create would
-    // migrate-then-REPLACE it, losing the user's target/deadline. (A transient-
-    // empty store defers the migration; the device then still looks task-free
-    // here, but `createDeferredObjective`'s own `ensureMigrated` guard refuses the
-    // write rather than clobbering — so the user's task is safe either way.)
-    migrateBlobToPerKeyIfNeeded(this.ctx.homey.settings);
     // A device that already has an open smart task is not rescuable. Re-assert
     // here (the list already excludes it) so this lane can never REPLACE a user's
     // active or paused future task: the rescue is strictly a fresh create.

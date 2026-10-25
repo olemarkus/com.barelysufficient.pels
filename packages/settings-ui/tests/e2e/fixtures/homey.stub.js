@@ -849,17 +849,13 @@
 
     // Power tracking
     power_tracker_state: buildSamplePowerTracker(),
-    deferred_objectives: {
-      version: 1,
-      objectivesByDeviceId: {
-        dev_connected300: {
-          enabled: true,
-          kind: 'temperature',
-          enforcement: 'soft',
-          targetTemperatureC: 65,
-          deadlineAtMs: deadlineMsAfterHours(8),
-        },
-      },
+    // Smart tasks, one per-device key each, as the runtime stores them.
+    'deferred_objective.dev_connected300': {
+      enabled: true,
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC: 65,
+      deadlineAtMs: deadlineMsAfterHours(8),
     },
 
     // Daily budget settings
@@ -1330,8 +1326,18 @@
   // then suppress editing while retaining the clear action.
   const deadlinePlanSeparateMeter = initialOverrides.deadlinePlanSeparateMeter === true;
 
+  // The roster the runtime assembles from the per-device task keys
+  // (`readAllObjectives`), for the bootstrap and `/ui_deferred_objective_settings`.
+  const buildDeferredObjectiveRoster = () => ({
+    objectivesByDeviceId: Object.fromEntries(
+      Object.entries(settings)
+        .filter(([key, value]) => key.startsWith('deferred_objective.') && value)
+        .map(([key, value]) => [key.slice('deferred_objective.'.length), value]),
+    ),
+  });
+
   const buildSampleActivePlans = () => {
-    const objective = settings.deferred_objectives?.objectivesByDeviceId?.dev_connected300;
+    const objective = settings['deferred_objective.dev_connected300'];
     if (!objective?.enabled) return { version: 1, plansByDeviceId: {} };
     const nowMs = Date.now();
     const startsAtMs = startOfUtcHourMs(new Date(nowMs));
@@ -1440,7 +1446,6 @@
     debug_logging_enabled: settings.debug_logging_enabled,
     overview_redesign_enabled: settings.overview_redesign_enabled,
     device_control_profiles: settings.device_control_profiles,
-    deferred_objectives: settings.deferred_objectives,
     weather_advisor_settings: settings.weather_advisor_settings,
   });
 
@@ -1975,6 +1980,7 @@
     'GET /ui_bootstrap': () => ({
       settings: buildBootstrapSettings(),
       dailyBudget: resolveDailyBudgetRead(),
+      deferredObjectives: buildDeferredObjectiveRoster(),
       deferredObjectiveActivePlans: resolveActivePlansPayload(),
       devices: settings.target_devices_snapshot,
       plan: buildPlanPayload(),
@@ -2006,13 +2012,7 @@
     'GET /ui_device_diagnostics': () => resolveDeviceDiagnosticsPayload(),
     'GET /ui_device_log': () => resolveDeviceLogPayload(),
     'GET /ui_deferred_objective_history': () => resolveDeferredObjectiveHistoryPayload(),
-    // Objectives moved to per-device keys; the UI's loadDeferredObjectiveSettings
-    // now reads this endpoint (the legacy blob is consumed by the migration). The
-    // stub doesn't model per-key storage, so serve the same assembled map the
-    // bootstrap exposes.
-    'GET /ui_deferred_objective_settings': () => (
-      settings.deferred_objectives ?? { version: 1, objectivesByDeviceId: {} }
-    ),
+    'GET /ui_deferred_objective_settings': () => buildDeferredObjectiveRoster(),
     'GET /ui_weather_advisor_readout': () => {
       // `inactive` = the feature is off; the producer's structural-absence member.
       const payload = buildWeatherReadoutPayload();

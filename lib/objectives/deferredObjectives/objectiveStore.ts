@@ -1,11 +1,6 @@
+import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../../utils/settingsKeys';
 import {
-  DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
-  DEFERRED_OBJECTIVES_SETTINGS,
-  PER_DEVICE_OBJECTIVE_KEY_PREFIX,
-} from '../../utils/settingsKeys';
-import {
-  createEmptyDeferredObjectiveSettings,
-  normalizeDeferredObjectiveSettings,
+  createEmptyDeferredObjectiveRoster,
   isSmartTaskInProgress,
   isSmartTaskOpen,
   normalizeDeferredObjectiveSettingsEntry,
@@ -13,9 +8,8 @@ import {
 } from '../../../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import type {
   DeferredObjectiveSettingsEntry,
-  DeferredObjectiveSettingsV1,
+  DeferredObjectiveRoster,
 } from '../../../packages/contracts/src/deferredObjectiveSettings';
-import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuards';
 
 // ─── Per-device-key objective store ─────────────────────────────────────────
 //
@@ -26,11 +20,11 @@ import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuard
 // touches only that device's key, so a transient-empty/malformed read of one
 // key can never drop a SIBLING device's task. There is no shared map to guard.
 //
-// The legacy plural blob key (`deferred_objectives`, value
-// `DeferredObjectiveSettingsV1`) is read ONLY by the one-shot migration below.
-// Whole-map consumers read `readAllObjectives`, which assembles the V1 map
-// shape from the per-key entries so their iteration logic is unchanged — only
-// their source moves from the blob to per-key.
+// These keys are the only place a task is stored. Whole-map consumers read
+// `readAllObjectives` or `readDeferredObjectiveRoster`, which assemble the
+// in-memory roster from them; the roster itself is never persisted. Anything
+// outside PELS creates and ends tasks through the smart-task routes, never by
+// writing these keys.
 
 // The minimal settings surface this store needs. Structurally matches the
 // `homey.settings` manager (and the test `MockSettings`), so callers pass
@@ -105,10 +99,10 @@ export const readSmartTaskInProgress = (
 /**
  * Whether we can TRUST that the device has no objective. True only when the key
  * list is readable (non-empty) AND does not contain the device's key. Both a
- * store-wide transient-empty `getKeys()` (the same flake `migrateBlobToPerKeyIfNeeded`
- * refuses on) and a key that exists but whose value read back `undefined` return
- * false — so a guarded merge refuses rather than treating a flaky read as proof
- * the device is objective-less and overwriting the user's objective.
+ * store-wide transient-empty `getKeys()` and a key that exists but whose value
+ * read back `undefined` return false — so a guarded merge refuses rather than
+ * treating a flaky read as proof the device is objective-less and overwriting
+ * the user's objective.
  */
 export const objectiveAbsenceIsTrustworthy = (
   store: ObjectiveSettingsStore,
@@ -121,8 +115,7 @@ export const objectiveAbsenceIsTrustworthy = (
 /**
  * Whether the store-wide key list is trustworthy right now. PELS always has
  * settings keys, so an empty `getKeys()` is the transient-empty-store flake
- * (the same signal `migrateBlobToPerKeyIfNeeded` step (2) and
- * `objectiveAbsenceIsTrustworthy` refuse on). Callers that interpret an empty
+ * (the same signal `objectiveAbsenceIsTrustworthy` refuses on). Callers that interpret an empty
  * `readAllObjectives` result as "genuinely zero enabled objectives" must gate
  * on this first — otherwise a flaky empty read is mistaken for real emptiness.
  */
@@ -131,19 +124,16 @@ export const objectiveKeyListIsTrustworthy = (store: ObjectiveSettingsStore): bo
 );
 
 /**
- * Assemble the legacy V1 map shape from the per-device keys, so whole-map
- * consumers keep iterating `objectivesByDeviceId` unchanged. Enumerates only
- * keys carrying the per-device prefix; skips malformed/empty entries.
- *
- * NEVER falls back to the frozen blob — that is read ONLY by the migration.
- * Reading the blob here would let a cleared device's frozen entry resurrect
- * itself. A transient-empty `getKeys()` therefore yields an empty map for one
- * cycle (no objectives shown) with NO persisted damage; the next read recovers
- * once the SDK returns the real key list.
+ * Assemble the roster from the per-device keys. Enumerates only keys carrying
+ * the per-device prefix; skips malformed/empty entries. A transient-empty
+ * `getKeys()` therefore yields an empty roster for one cycle (no objectives
+ * shown) with NO persisted damage; the next read recovers once the SDK returns
+ * the real key list. A decision that must not read that gap as an empty home
+ * uses `readDeferredObjectiveRoster` instead.
  */
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
-export const readAllObjectives = (store: ObjectiveSettingsStore): DeferredObjectiveSettingsV1 => {
-  const result = createEmptyDeferredObjectiveSettings();
+export const readAllObjectives = (store: ObjectiveSettingsStore): DeferredObjectiveRoster => {
+  const result = createEmptyDeferredObjectiveRoster();
   for (const key of store.getKeys()) {
     if (!key.startsWith(PER_DEVICE_OBJECTIVE_KEY_PREFIX)) continue;
     const deviceId = deviceIdFromKey(key).trim();
@@ -158,7 +148,7 @@ export const readAllObjectives = (store: ObjectiveSettingsStore): DeferredObject
 
 export type DeferredObjectiveRosterRead = {
   status: 'resolved';
-  settings: DeferredObjectiveSettingsV1;
+  settings: DeferredObjectiveRoster;
 } | {
   status: 'unavailable';
 };
@@ -187,11 +177,7 @@ export const readDeferredObjectiveRoster = (
   }
   const keys = rawKeys;
   if (keys.length === 0) return { status: 'unavailable' };
-  // The plural blob is the unconsumed source of the per-key migration. A
-  // read-only caller must not migrate it, but it also must not report a partial
-  // per-key roster that silently omits tasks still waiting in that blob.
-  if (keys.includes(DEFERRED_OBJECTIVES_SETTINGS)) return { status: 'unavailable' };
-  const settings = createEmptyDeferredObjectiveSettings();
+  const settings = createEmptyDeferredObjectiveRoster();
   try {
     for (const key of keys) {
       if (!key.startsWith(PER_DEVICE_OBJECTIVE_KEY_PREFIX)) continue;
@@ -221,11 +207,6 @@ export const readSmartTaskOpen = (
   nowMs: number,
 ): 'open' | 'none' | 'unavailable' => {
   try {
-    // A task may still live only in the legacy blob the per-key migration has
-    // not consumed; this read-only caller must not migrate it, and must not
-    // report the device free while it may hold one.
-    const keys: unknown = store.getKeys();
-    if (Array.isArray(keys) && keys.includes(DEFERRED_OBJECTIVES_SETTINGS)) return 'unavailable';
     const raw = store.get(perDeviceKey(deviceId));
     const entry = normalizeDeferredObjectiveSettingsEntry(raw);
     if (entry) return isSmartTaskOpen(entry, nowMs) ? 'open' : 'none';
@@ -253,106 +234,6 @@ export const clearObjectiveForDevice = (
   store.unset(perDeviceKey(deviceId));
 };
 
-// A present `deferred_objectives` blob value is trustworthy only when it reads back
-// as a structurally-valid V1 (an object carrying an `objectivesByDeviceId` object).
-// A flaky Homey read of a present key returns `undefined`/malformed; distinguishing
-// that from a genuinely-empty-but-valid blob is what lets the migration consume a
-// truly-empty blob WITHOUT erasing a real one on a transient empty/malformed read.
-const legacyBlobReadIsTrustworthy = (raw: unknown): boolean => (
-  isUnknownRecord(raw)
-  && typeof raw.objectivesByDeviceId === 'object'
-  && raw.objectivesByDeviceId !== null
-);
-
-/**
- * One-shot, idempotent, abandon-grace-SAFE migration from the legacy plural
- * blob (`deferred_objectives`) to per-device keys.
- *
- * The key safety property is NO-RESURRECTION: a device the user clears *after*
- * migrating must never reappear. The only way to guarantee that against a flaky
- * single SDK read of the done-marker (per feedback_homey_sdk_unreliable) is to
- * CONSUME the source — once the blob's entries are copied, the blob is unset, so
- * "blob present + no per-key + marker-absent" (which is indistinguishable from a
- * post-clear marker misread while the blob is frozen) can no longer occur.
- *
- * Two safety properties, resolved by CONSUMING the source — the blob is unset
- * once fully copied, so its mere PRESENCE means "migration not yet complete":
- *
- *  - NO-RESURRECTION: a device the user clears *after* migrating must never
- *    reappear. After a full migration the blob is gone, so step 3 (blob absent)
- *    marks done and never re-reads a source — even if the done-marker `get`
- *    flakes to falsy (per feedback_homey_sdk_unreliable) and zero per-device
- *    keys survive (the user cleared their only task).
- *  - NO-PARTIAL-LOSS: if a prior boot crashed mid-copy (some per-keys written,
- *    blob not yet unset, marker not set), the blob is still present, so this
- *    runs again and the ABSENT-ONLY copy finishes the remaining entries instead
- *    of marking done with tasks left behind.
- *
- * Decision order (load-bearing for data safety):
- *
- *  1. Marker truthy → return (already migrated).
- *  2. `getKeys()` empty → return WITHOUT the marker. PELS always has settings
- *     keys, so an empty list is the transient-empty-store signal; retry next
- *     boot rather than record a false "migrated" against an unreadable store.
- *  3. Blob key ABSENT → nothing to migrate: a fresh install, or the blob was
- *     consumed by a completed migration (whose marker-set may have flaked). Set
- *     the marker and return — there is no source to copy or resurrect from.
- *  4. Blob present but normalizes to ZERO entries → either a genuinely-empty
- *     blob or a flaky single-key read. Return WITHOUT consuming or marking, so a
- *     flaky read can never lose tasks; retry next boot. (`readAllObjectives` is
- *     per-key-only, so the user sees correct empty state meanwhile.)
- *  5. ABSENT-ONLY copy each blob entry whose per-device key does not yet exist
- *     (so a never-overwrite a newer per-key, and a partial prior copy resumes
- *     cleanly), then UNSET the blob (consume the source), then set the marker.
- */
-export const migrateBlobToPerKeyIfNeeded = (store: ObjectiveSettingsStore): void => {
-  if (store.get(DEFERRED_OBJECTIVES_PERKEY_MIGRATED)) return;
-  const keys = store.getKeys();
-  // (2) Abandon-grace: an empty key list means the store read is untrustworthy
-  // right now. Retry next boot rather than commit "migrated" against it.
-  if (keys.length === 0) return;
-
-  // (3) No source blob → fresh install, or a completed migration already
-  // consumed it (so a marker-flake boot lands here and re-asserts the marker
-  // without resurrecting a since-cleared task — the blob is gone).
-  if (!keys.includes(DEFERRED_OBJECTIVES_SETTINGS)) {
-    store.set(DEFERRED_OBJECTIVES_PERKEY_MIGRATED, true);
-    return;
-  }
-
-  // (4) Read the RAW blob and require it to be STRUCTURALLY VALID before trusting
-  // it. The blob key is listed (step 3), but a present key whose value transiently
-  // reads `undefined`/malformed is the same Homey-settings flake the per-key write
-  // guards refuse on — consuming on that would erase the only legacy copy before any
-  // per-key is written (data loss). So:
-  //  - undefined/malformed (no `objectivesByDeviceId` object) → flaky read → return
-  //    WITHOUT consuming or marking; retry next boot.
-  //  - a structurally-valid V1 (an `objectivesByDeviceId` object) → trustworthy. Its
-  //    entries (possibly zero — a genuinely-empty blob the user cleared pre-upgrade)
-  //    are migrated + the source consumed + marked below, so the migration completes
-  //    (otherwise the marker stays unset forever and the marker-gated back-fill never
-  //    runs).
-  const rawBlob = store.get(DEFERRED_OBJECTIVES_SETTINGS);
-  if (!legacyBlobReadIsTrustworthy(rawBlob)) return;
-  const blob = normalizeDeferredObjectiveSettings(rawBlob);
-  const entries = Object.entries(blob.objectivesByDeviceId);
-
-  // (5) Absent-only copy: skip any device whose per-key already EXISTS — decided
-  // by key PRESENCE (`getKeys`), not a value read, so a transient/malformed read
-  // of an already-copied key on a resumed migration can't make it look absent and
-  // re-copy (overwrite) it from the blob. A resumed partial copy finishes the
-  // remaining devices without clobbering. (No-op when the blob is empty.) Then
-  // consume the source + mark done.
-  const presentKeys = new Set(keys.filter((key) => key.startsWith(PER_DEVICE_OBJECTIVE_KEY_PREFIX)));
-  for (const [deviceId, entry] of entries) {
-    if (!presentKeys.has(perDeviceKey(deviceId))) {
-      writeObjectiveForDevice(store, deviceId, entry);
-    }
-  }
-  store.unset(DEFERRED_OBJECTIVES_SETTINGS);
-  store.set(DEFERRED_OBJECTIVES_PERKEY_MIGRATED, true);
-};
-
 /**
  * Runtime roster reader for control decisions. A healthy read replaces the
  * cached semantic settings snapshot; a thrown/malformed/partial SDK read keeps
@@ -364,10 +245,10 @@ export const migrateBlobToPerKeyIfNeeded = (store: ObjectiveSettingsStore): void
  */
 export const createTrustedDeferredObjectiveSettingsReader = (
   store: ObjectiveSettingsStore,
-): (() => DeferredObjectiveSettingsV1 | undefined) => {
-  let lastTrusted: DeferredObjectiveSettingsV1 | undefined;
+): (() => DeferredObjectiveRoster | undefined) => {
+  let lastTrusted: DeferredObjectiveRoster | undefined;
   let lastTrustedAtMs: number | undefined;
-  const readUnavailable = (): DeferredObjectiveSettingsV1 | undefined => {
+  const readUnavailable = (): DeferredObjectiveRoster | undefined => {
     if (lastTrusted === undefined || lastTrustedAtMs === undefined) return undefined;
     const nowMs = Date.now();
     if (!Number.isFinite(nowMs)) return undefined;
@@ -376,11 +257,6 @@ export const createTrustedDeferredObjectiveSettingsReader = (
       : undefined;
   };
   return () => {
-    try {
-      migrateBlobToPerKeyIfNeeded(store);
-    } catch {
-      return readUnavailable();
-    }
     const roster = readDeferredObjectiveRoster(store);
     if (roster.status === 'unavailable') return readUnavailable();
     const nowMs = Date.now();

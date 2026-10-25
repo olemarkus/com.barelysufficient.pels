@@ -426,25 +426,17 @@ describe('settingsUiApi', () => {
       .toEqual({ state: 'unavailable', reason: 'no_status_recorded' });
   });
 
-  it('serves the assembled per-device objectives under deferred_objectives (not the legacy blob)', async () => {
-    // The runtime moved objectives to per-device keys and the migration consumes
-    // the blob, so the bootstrap must assemble the V1 map from per-device keys —
-    // otherwise the deadline views + PlanDeviceCards (which read this slot, the
-    // latter via the settings-cache `applySettingsPatch` primes) would go empty.
+  it('serves the smart tasks assembled from the per-device keys', async () => {
     const objective = { enabled: true, kind: 'temperature', enforcement: 'soft', targetTemperatureC: 21, deadlineAtMs: 9_999_999_999_999 };
     const homey = createHomey({
       settings: {
-        deferred_objectives: { version: 1, objectivesByDeviceId: { 'stale-blob-device': objective } }, // legacy blob — must be ignored
-        'deferred_objective.heater-1': objective, // per-device key — the source of truth
+        'deferred_objective.heater-1': objective,
       },
     });
 
     const result = await buildSettingsUiBootstrap({ homey: homey as never });
 
-    expect(result.settings.deferred_objectives).toEqual({
-      version: 1,
-      objectivesByDeviceId: { 'heater-1': objective },
-    });
+    expect(result.deferredObjectives).toEqual({ objectivesByDeviceId: { 'heater-1': objective } });
   });
 
   it('returns refreshed devices from the app wrapper', async () => {

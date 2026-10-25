@@ -149,7 +149,7 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
         ({ info: structuredInfo, warn: structuredWarn, error: structuredError }) as unknown as ReturnType<FlowCardDeps['getStructuredLogger']>,
     ),
     upsertDeferredObjectiveForDevice: vi.fn(() => ({ persisted: true }) as const),
-    clearDeferredObjectiveForDevice: vi.fn(() => ({ persisted: true }) as const),
+    clearDeferredObjectiveForDevice: vi.fn(),
     deferredObjectiveStatusBus: createDeferredObjectiveStatusBus(),
     deferredObjectivePlanRevisionBus: createDeferredObjectivePlanRevisionBus(),
     deferredObjectiveEndedBus: createDeferredObjectiveEndedBus(),

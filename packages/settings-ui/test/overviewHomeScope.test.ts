@@ -5,7 +5,7 @@ import {
   HOME_SCOPE_OVERVIEW_UNAVAILABLE_HEADLINE,
 } from '../src/ui/homeScopeCopy.ts';
 import type { OverviewDeferredObjectiveActivePlans } from '../../contracts/src/deferredObjectiveActivePlans.ts';
-import type { DeferredObjectiveSettingsV1 } from '../../contracts/src/deferredObjectiveSettings.ts';
+import type { DeferredObjectiveRoster } from '../../contracts/src/deferredObjectiveSettings.ts';
 import type { SettingsUiHomesPayload } from '../../contracts/src/settingsUiHomes.ts';
 import type { HomeyCallback, HomeySettingsClient } from '../src/ui/homey.ts';
 import type { SettingsUiDeviceView } from '../src/ui/state.ts';
@@ -553,8 +553,7 @@ describe('Overview under a selected meter area', () => {
         },
       },
     };
-    const objectives: DeferredObjectiveSettingsV1 = {
-      version: 1,
+    const objectives: DeferredObjectiveRoster = {
       objectivesByDeviceId: {
         dev_main_heater: {
           enabled: true,

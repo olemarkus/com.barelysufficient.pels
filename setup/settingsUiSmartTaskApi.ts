@@ -14,9 +14,7 @@ import {
   buildSmartTaskCandidateDevices,
   buildValidSmartTaskCandidate,
   mapSmartTaskAppReason,
-  migrateBlobToPerKeyIfNeeded,
   parseSmartTaskCandidateRequest,
-  readDeferredObjectiveRoster,
   readObjectiveForDevice,
   resolveSmartTaskRequestDeadline,
   resolveSmartTaskWriteDeadline,
@@ -78,39 +76,26 @@ const updateReject = (reason: SettingsUiSmartTaskRejectReason): SettingsUiSmartT
 //   store's write guards refuse on) maps to the retryable `write_conflict`
 //   lane instead: one flaky read must never make the UI discard an open
 //   draft and declare a still-live task "ended"
-//   (`feedback_homey_sdk_unreliable`).
-//
-// Write callers migrate first. Preview callers use the trusted roster reader
-// instead: an unconsumed legacy blob becomes retryable `write_conflict`, never
-// a false absence and never a migration write from a read-only endpoint.
+//   (`feedback_homey_sdk_unreliable`). A read that throws is the same unknown.
 const gateEditableTask = (
   homey: Homey.App['homey'],
   deviceId: string,
-  migrate: boolean,
 ): { editable: true; entry: DeferredObjectiveSettingsEntry }
   | { editable: false; reason: 'task_not_found' | 'write_conflict' } => {
-  if (!migrate) {
-    const roster = readDeferredObjectiveRoster(homey.settings);
-    if (roster.status === 'unavailable') return { editable: false, reason: 'write_conflict' };
-    const entry = roster.settings.objectivesByDeviceId[deviceId];
+  try {
+    const entry = readObjectiveForDevice(homey.settings, deviceId);
     if (entry !== undefined) {
       return entry.enabled && entry.deadlineAtMs > Date.now()
         ? { editable: true, entry }
         : { editable: false, reason: 'task_not_found' };
     }
-    return { editable: false, reason: 'task_not_found' };
+    return {
+      editable: false,
+      reason: objectiveAbsenceIsTrustworthy(homey.settings, deviceId) ? 'task_not_found' : 'write_conflict',
+    };
+  } catch {
+    return { editable: false, reason: 'write_conflict' };
   }
-  migrateBlobToPerKeyIfNeeded(homey.settings);
-  const entry = readObjectiveForDevice(homey.settings, deviceId);
-  if (entry !== undefined) {
-    return entry.enabled && entry.deadlineAtMs > Date.now()
-      ? { editable: true, entry }
-      : { editable: false, reason: 'task_not_found' };
-  }
-  return {
-    editable: false,
-    reason: objectiveAbsenceIsTrustworthy(homey.settings, deviceId) ? 'task_not_found' : 'write_conflict',
-  };
 };
 
 export const previewSettingsUiSmartTask = (
@@ -122,9 +107,7 @@ export const previewSettingsUiSmartTask = (
   // Call the app's methods on the host (never a detached reference): they rely
   // on their `this` (`this.getPlanInputSnapshot()`, …).
   if (!host) return previewReject('unavailable');
-  // Preview is read-only all the way to the public handler. In particular it
-  // does not opportunistically migrate settings or write the migration marker.
-  const gate = gateEditableTask(homey, request.deviceId, false);
+  const gate = gateEditableTask(homey, request.deviceId);
   if (!gate.editable) return previewReject(gate.reason);
   const scopeReject = rejectForSmartTaskHomeScope(host.resolveSmartTaskHomeScope(request.deviceId));
   if (scopeReject !== null) return previewReject(scopeReject);
@@ -164,7 +147,7 @@ export const updateSettingsUiSmartTask = (
   if (!request) return updateReject('invalid_request');
   const host = readPelsHost(homey);
   if (!host) return updateReject('unavailable');
-  const gate = gateEditableTask(homey, request.deviceId, true);
+  const gate = gateEditableTask(homey, request.deviceId);
   if (!gate.editable) return updateReject(gate.reason);
   const scopeReject = rejectForSmartTaskHomeScope(host.resolveSmartTaskHomeScope(request.deviceId));
   if (scopeReject !== null) return updateReject(scopeReject);
@@ -206,9 +189,7 @@ export const cancelSettingsUiSmartTask = (
   if (!deviceId) return { ok: false, reason: 'invalid_request' };
   const host = readPelsHost(homey);
   if (!host) return { ok: false, reason: 'unavailable' };
-  const result = host.cancelDeferredObjective(deviceId);
-  if (result.ok) return { ok: true };
-  return { ok: false, reason: result.reason === 'task_not_found' ? 'task_not_found' : 'write_conflict' };
+  return host.cancelDeferredObjective(deviceId);
 };
 
 export const getSettingsUiSmartTaskDevices = (

@@ -17,10 +17,7 @@ import {
   PriorityAllocationTracker,
   resolveDeferredObjectiveDeadline,
 } from '../../lib/objectives/deferredObjectives';
-import {
-  createEmptyDeferredObjectiveSettings,
-  normalizeDeferredObjectiveSettings,
-} from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
+import { objectiveRosterFor } from '../utils/objectiveRoster';
 import { reportTaskCompletionDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
@@ -168,7 +165,6 @@ const buildSettings = (overrides: Record<string, unknown> = {}) => {
   const { deadlineLocalTime, ...rest } = overrides as { deadlineLocalTime?: string };
   const deadlineAtMs = resolveDeadlineAtMsFor(deadlineLocalTime ?? '21:00');
   return {
-    version: 1,
     objectivesByDeviceId: {
       'ev-1': {
         enabled: true,
@@ -186,7 +182,6 @@ const buildTemperatureSettings = (overrides: Record<string, unknown> = {}) => {
   const { deadlineLocalTime, ...rest } = overrides as { deadlineLocalTime?: string };
   const deadlineAtMs = resolveDeadlineAtMsFor(deadlineLocalTime ?? '21:00');
   return {
-    version: 1,
     objectivesByDeviceId: {
       'heater-1': {
         enabled: true,
@@ -405,7 +400,7 @@ const buildDeferredObjectiveDiagnostics = (
     nowMs: NOW_MS,
     timeZone: 'UTC',
     devices: [buildDevice()],
-    settings: normalizeDeferredObjectiveSettings(buildSettings()),
+    settings: objectiveRosterFor(buildSettings()),
     powerTracker: buildPowerTracker(),
     dailyBudgetSnapshot: buildSnapshot(),
     priceOptimizationEnabled: true,
@@ -473,14 +468,13 @@ const plannedBySourceBucket = (
     .reduce((sum, bucket) => sum + bucket.plannedUsefulEnergyKWh, 0)
 );
 
-describe('deferred objective settings', () => {
+describe('deferred objective roster read', () => {
   const evDeadlineAtMs = resolveDeadlineAtMsFor('07:30');
   const tempDeadlineAtMs = resolveDeadlineAtMsFor('08:00');
   const evPadDeadlineAtMs = resolveDeadlineAtMsFor('08:15');
 
   it('keeps valid enabled EV SoC objectives and drops invalid entries', () => {
-    expect(normalizeDeferredObjectiveSettings({
-      version: 1,
+    expect(objectiveRosterFor({
       objectivesByDeviceId: {
         'ev-1': {
           enabled: true,
@@ -498,7 +492,6 @@ describe('deferred objective settings', () => {
         },
       },
     })).toEqual({
-      version: 1,
       objectivesByDeviceId: {
         'ev-1': {
           enabled: true,
@@ -512,8 +505,7 @@ describe('deferred objective settings', () => {
   });
 
   it('stores whitespace-padded device ids under their trimmed key', () => {
-    expect(normalizeDeferredObjectiveSettings({
-      version: 1,
+    expect(objectiveRosterFor({
       objectivesByDeviceId: {
         ' ev-1 ': {
           enabled: true,
@@ -524,7 +516,6 @@ describe('deferred objective settings', () => {
         },
       },
     })).toEqual({
-      version: 1,
       objectivesByDeviceId: {
         'ev-1': {
           enabled: true,
@@ -538,8 +529,7 @@ describe('deferred objective settings', () => {
   });
 
   it('keeps valid temperature objectives', () => {
-    expect(normalizeDeferredObjectiveSettings({
-      version: 1,
+    expect(objectiveRosterFor({
       objectivesByDeviceId: {
         'heater-1': {
           enabled: true,
@@ -550,7 +540,6 @@ describe('deferred objective settings', () => {
         },
       },
     })).toEqual({
-      version: 1,
       objectivesByDeviceId: {
         'heater-1': {
           enabled: true,
@@ -564,15 +553,11 @@ describe('deferred objective settings', () => {
   });
 
   it('drops hard temperature objectives until hard thermal semantics exist', () => {
-    expect(normalizeDeferredObjectiveSettings(buildTemperatureSettings({ enforcement: 'hard' }))).toEqual({
-      version: 1,
+    expect(objectiveRosterFor(buildTemperatureSettings({ enforcement: 'hard' }))).toEqual({
       objectivesByDeviceId: {},
     });
   });
 
-  it('returns an empty versioned settings object for unsupported payloads', () => {
-    expect(normalizeDeferredObjectiveSettings({ version: 1 })).toEqual(createEmptyDeferredObjectiveSettings());
-  });
 });
 
 describe('resolveDeferredObjectiveDeadline', () => {
@@ -974,8 +959,7 @@ describe('PriorityAllocationTracker', () => {
 describe('buildDeferredObjectiveDiagnostics', () => {
   it('allocates smart tasks in priority order and marks residual contention as at risk', () => {
     const deadlineAtMs = NOW_MS + 5 * HOUR_MS;
-    const settings = normalizeDeferredObjectiveSettings({
-      version: 1,
+    const settings = objectiveRosterFor({
       objectivesByDeviceId: {
         'ev-1': { ...buildSettings().objectivesByDeviceId['ev-1'], deadlineAtMs },
         'ev-2': { ...buildSettings().objectivesByDeviceId['ev-1'], deadlineAtMs },
@@ -1025,8 +1009,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('allows lower-priority tasks to share hours when both admission powers fit', () => {
     const deadlineAtMs = NOW_MS + 5 * HOUR_MS;
-    const settings = normalizeDeferredObjectiveSettings({
-      version: 1,
+    const settings = objectiveRosterFor({
       objectivesByDeviceId: {
         'ev-1': { ...buildSettings().objectivesByDeviceId['ev-1'], deadlineAtMs },
         'ev-2': { ...buildSettings().objectivesByDeviceId['ev-1'], deadlineAtMs },
@@ -1054,8 +1037,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   it('coordinates a settled lower task when a pending higher task bootstraps its first claim', () => {
     const deadlineAtMs = NOW_MS + 5 * HOUR_MS;
     const objective = { ...buildSettings().objectivesByDeviceId['ev-1'], deadlineAtMs };
-    const settings = normalizeDeferredObjectiveSettings({
-      version: 1,
+    const settings = objectiveRosterFor({
       objectivesByDeviceId: { 'ev-1': objective, 'ev-2': objective },
     });
     const highPending = buildDevice({ priority: 1, evChargingState: 'plugged_out' });
@@ -1147,8 +1129,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   it('immediately coordinates a legacy lower commitment with no allocation signature', () => {
     const deadlineAtMs = NOW_MS + 5 * HOUR_MS;
     const objective = { ...buildSettings().objectivesByDeviceId['ev-1'], deadlineAtMs };
-    const settings = normalizeDeferredObjectiveSettings({
-      version: 1,
+    const settings = objectiveRosterFor({
       objectivesByDeviceId: { 'ev-1': objective, 'ev-2': objective },
     });
     const hours = [{ startsAtMs: NOW_MS + HOUR_MS, plannedKWh: 1, plannedAdmissionPowerKw: 1 }];
@@ -1208,8 +1189,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       ...buildSettings({ targetPercent: 50 }).objectivesByDeviceId['ev-1'],
       deadlineAtMs,
     };
-    const settings = normalizeDeferredObjectiveSettings({
-      version: 1,
+    const settings = objectiveRosterFor({
       objectivesByDeviceId: { 'z-high': objective, 'a-low': objective },
     });
     const committedHours = [
@@ -1321,8 +1301,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       ...buildSettings({ targetPercent: 50 }).objectivesByDeviceId['ev-1'],
       deadlineAtMs,
     };
-    const settings = normalizeDeferredObjectiveSettings({
-      version: 1,
+    const settings = objectiveRosterFor({
       objectivesByDeviceId: { 'ev-1': objective, 'ev-2': objective },
     });
     const buildPlan = (params: {
@@ -1408,8 +1387,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       ...buildSettings({ targetPercent: 45 }).objectivesByDeviceId['ev-1'],
       deadlineAtMs,
     };
-    const settings = normalizeDeferredObjectiveSettings({
-      version: 1,
+    const settings = objectiveRosterFor({
       objectivesByDeviceId: { 'ev-1': rawObjective },
     });
     const objective = settings.objectivesByDeviceId['ev-1']!;
@@ -1478,8 +1456,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   // ~3 kW and the EV task below it was handed nothing for that whole hour.
   it('holds a booking only for as long as its energy takes at the booked rung', () => {
     const deadlineAtMs = NOW_MS + 4 * HOUR_MS;
-    const settings = normalizeDeferredObjectiveSettings({
-      version: 1,
+    const settings = objectiveRosterFor({
       objectivesByDeviceId: { 'ev-1': { ...buildSettings().objectivesByDeviceId['ev-1'], deadlineAtMs } },
     });
     const objective = settings.objectivesByDeviceId['ev-1']!;
@@ -1569,7 +1546,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // adds one more hour, so deadline at 22:00 (5 hours after NOW_MS=17:00)
     // keeps the plan on_track with the reserve untouched.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' })),
+      settings: objectiveRosterFor(buildSettings({ deadlineLocalTime: '22:00' })),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
     });
 
@@ -1592,7 +1569,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       plannedControlledKWh: Array.from({ length: 24 }, () => 0),
       plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
     };
-    const baseSettings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' }));
+    const baseSettings = objectiveRosterFor(buildSettings({ deadlineLocalTime: '22:00' }));
     const exemptSettings = {
       ...baseSettings,
       objectivesByDeviceId: {
@@ -1614,7 +1591,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   });
 
   it('re-solves a committed schedule when budget rescue is enabled after the first plan', () => {
-    const settings = normalizeDeferredObjectiveSettings(buildSettings({
+    const settings = objectiveRosterFor(buildSettings({
       deadlineLocalTime: '20:00',
       targetPercent: 50,
       rescue: { exemptFromBudget: 'always' },
@@ -1679,7 +1656,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   });
 
   it('uses a committed active-plan schedule instead of moving to newly preferred hours', () => {
-    const settings = normalizeDeferredObjectiveSettings(buildSettings({
+    const settings = objectiveRosterFor(buildSettings({
       deadlineLocalTime: '20:00',
       targetPercent: 50,
     }));
@@ -1792,7 +1769,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   };
 
   it('serves a frozen read mid-hour (no allocator) and re-allocates in the :58 settle window', () => {
-    const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
+    const settings = objectiveRosterFor(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
     const activePlans = buildCommittedEvPlans(deadlineAtMs);
     const run = (nowMs: number) => buildDeferredObjectiveDiagnostics({
@@ -1822,7 +1799,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   // unrecognised string can only ever read as the release posture — never as a claim
   // on the hour.
   const frozenClaimForCause = (cause: unknown): string | undefined => {
-    const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
+    const settings = objectiveRosterFor(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
     // Commit only a LATER hour, so the current hour is one the commitment skipped —
     // the case where the cause decides between `claimed` and `released`.
@@ -1858,7 +1835,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('discards an expired frozen commitment at the exact deadline boundary', () => {
     const deadlineAtMs = NOW_MS;
-    const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineAtMs, targetPercent: 50 }));
+    const settings = objectiveRosterFor(buildSettings({ deadlineAtMs, targetPercent: 50 }));
     const device = buildDevice({
       controllable: false,
       controlModel: 'binary_power',
@@ -1881,7 +1858,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   it('runs the allocator at bootstrap when no commitment covers the active hour', () => {
     // No activePlans ⇒ resolveCommittedHours undefined ⇒ fresh allocation even mid-hour.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 })),
+      settings: objectiveRosterFor(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 })),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
       activePlans: createEmptyActivePlans(),
     });
@@ -1891,7 +1868,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   });
 
   it('goes inactive (not frozen) when price optimization is OFF, even with a commitment', () => {
-    const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
+    const settings = objectiveRosterFor(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       settings,
@@ -1907,7 +1884,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   });
 
   it('frozen read uses the settled latest.hours kWh, not the stale commitment floor', () => {
-    const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
+    const settings = objectiveRosterFor(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
     // A :58 kWh refinement (e.g. measured_deviation) on the SAME hour set updates
     // `latest` but not `commitment` (the merge only re-commits on a schedule change).
@@ -1961,7 +1938,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   });
 
   it('does not serve a frozen read from a committed plan with no latest revision', () => {
-    const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
+    const settings = objectiveRosterFor(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
     const hours = [{ startsAtMs: NOW_MS, plannedKWh: 1 }];
     const activePlans: DeferredObjectiveActivePlansV1 = {
@@ -1998,7 +1975,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   });
 
   it('frozen milestone deferral uses latest.hours, not stale commitment.hours', () => {
-    const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
+    const settings = objectiveRosterFor(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
     const commitmentHours = [
       { startsAtMs: NOW_MS, plannedKWh: 1, plannedUnitMilestone: 46, cheaperHourAhead: true },
@@ -2051,7 +2028,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('settle milestone deferral uses latest.hours, not stale commitment.hours', () => {
     const settleNowMs = NOW_MS + 58 * 60 * 1000;
-    const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
+    const settings = objectiveRosterFor(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
     const commitmentHours = [
       { startsAtMs: NOW_MS, plannedKWh: 1, plannedUnitMilestone: 46, cheaperHourAhead: true },
@@ -2129,7 +2106,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   });
 
   it('runs the allocator mid-hour when the commitment has no current-or-future hour (all elapsed)', () => {
-    const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
+    const settings = objectiveRosterFor(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
     const elapsedHours = [
       { startsAtMs: NOW_MS - 2 * HOUR_MS, plannedKWh: 1 },
@@ -2179,7 +2156,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   });
 
   it('serves a behind-temperature committed device frozen mid-hour (no cold-start routing)', () => {
-    const settings = normalizeDeferredObjectiveSettings(buildTemperatureSettings());
+    const settings = objectiveRosterFor(buildTemperatureSettings());
     const deadlineAtMs = settings.objectivesByDeviceId['heater-1']!.deadlineAtMs;
     const buildTempPlans = (currentHourBooked: boolean): DeferredObjectiveActivePlansV1 => {
       const hours = [
@@ -2246,7 +2223,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   it('plans a persisted temperature objective from learned kWh per degree', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       devices: [buildTemperatureDevice()],
-      settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
+      settings: objectiveRosterFor(buildTemperatureSettings()),
       powerTracker: buildTemperaturePowerTracker(),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
     });
@@ -2270,7 +2247,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         [buildTemperatureDevice({ currentTemperature: 26 })],
         () => 'cooling',
       ),
-      settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings({ targetTemperatureC: 22 })),
+      settings: objectiveRosterFor(buildTemperatureSettings({ targetTemperatureC: 22 })),
       powerTracker: {
         objectiveProfiles: {
           'heater-1': {
@@ -2333,7 +2310,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
     const run = (m2: number) => buildDeferredObjectiveDiagnostics({
       devices: [buildTemperatureDevice()],
-      settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
+      settings: objectiveRosterFor(buildTemperatureSettings()),
       powerTracker: buildVarianceTracker(m2),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
     })[0];
@@ -2366,7 +2343,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       },
     });
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ enforcement: 'hard' })),
+      settings: objectiveRosterFor(buildSettings({ enforcement: 'hard' })),
       powerTracker: tracker,
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
     });
@@ -2390,7 +2367,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           ],
         },
       })],
-      settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings({ deadlineAtMs })),
+      settings: objectiveRosterFor(buildTemperatureSettings({ deadlineAtMs })),
       powerTracker: buildTemperaturePowerTracker({
         objectiveProfiles: {
           'heater-1': {
@@ -2446,7 +2423,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // Use a 22:00 deadline so the 4 kWh need at 1 kW fits inside the primary
     // window without dipping into the 1-hour deadline reserve.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' })),
+      settings: objectiveRosterFor(buildSettings({ deadlineLocalTime: '22:00' })),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
     });
 
@@ -2463,7 +2440,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // doctrine and `diagnosticProgress.ts` for the gate.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       devices: [buildTemperatureDevice()],
-      settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
+      settings: objectiveRosterFor(buildTemperatureSettings()),
       powerTracker: buildTemperaturePowerTracker(),
     });
 
@@ -2476,7 +2453,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   it('does not plan a temperature objective for a device that has never reported a value', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       devices: [buildTemperatureDevice({ currentTemperature: undefined })],
-      settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
+      settings: objectiveRosterFor(buildTemperatureSettings()),
       powerTracker: buildTemperaturePowerTracker(),
     });
 
@@ -2497,7 +2474,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // left here to refuse a reading over.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       devices: [buildTemperatureDevice({ currentTemperature: 55 })],
-      settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
+      settings: objectiveRosterFor(buildTemperatureSettings()),
       powerTracker: buildTemperaturePowerTracker(),
     });
 
@@ -2522,7 +2499,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('rolls a past local deadline to tomorrow and waits when tomorrow prices are missing', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '16:00' })),
+      settings: objectiveRosterFor(buildSettings({ deadlineLocalTime: '16:00' })),
       dailyBudgetSnapshot: buildSnapshot({ includeTomorrow: false }),
     });
 
@@ -2538,7 +2515,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('plans a next-day objective once tomorrow price horizon is available', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '16:00' })),
+      settings: objectiveRosterFor(buildSettings({ deadlineLocalTime: '16:00' })),
       dailyBudgetSnapshot: buildSnapshot({ includeTomorrow: true }),
     });
 
@@ -2603,7 +2580,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       devices: [buildDevice({
         stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS }),
       })],
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineAtMs })),
+      settings: objectiveRosterFor(buildSettings({ deadlineAtMs })),
       priceOptimizationEnabled: false,
     });
     const [staleBelowTarget] = buildDeferredObjectiveDiagnostics({
@@ -2611,7 +2588,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       devices: [buildDevice({
         stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: NOW_MS, unavailable: 'not_reported' }),
       })],
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineAtMs })),
+      settings: objectiveRosterFor(buildSettings({ deadlineAtMs })),
       priceOptimizationEnabled: false,
     });
 
@@ -2636,7 +2613,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       devices: [buildDevice({
         stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS }),
       })],
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
+      settings: objectiveRosterFor(buildSettings({ targetPercent: 60 })),
       powerTracker: {},
       priceOptimizationEnabled: false,
     });
@@ -2657,7 +2634,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       devices: [buildDevice({
         stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS }),
       })],
-      settings: normalizeDeferredObjectiveSettings(buildSettings({
+      settings: objectiveRosterFor(buildSettings({
         targetPercent: 60,
         rescue: {
           exemptFromBudget: 'always',
@@ -2689,7 +2666,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         evChargingState: 'plugged_in',
         stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS }),
       })],
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
+      settings: objectiveRosterFor(buildSettings({ targetPercent: 60 })),
       powerTracker: {},
     });
 
@@ -2707,7 +2684,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       devices: [buildDevice({
         stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS }),
       })],
-      settings: normalizeDeferredObjectiveSettings(buildSettings({
+      settings: objectiveRosterFor(buildSettings({
         deadlineLocalTime: '16:00',
         targetPercent: 60,
       })),
@@ -2733,7 +2710,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     ]) {
       const [diagnostic] = buildDeferredObjectiveDiagnostics({
         devices: [buildTemperatureDevice({ currentTemperature: 66 })],
-        settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings({
+        settings: objectiveRosterFor(buildTemperatureSettings({
           deadlineLocalTime: '16:00',
           targetTemperatureC: 65,
         })),
@@ -2756,7 +2733,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   it('returns from satisfied to tracking when progress falls below target before the deadline', () => {
     // Deadline at 22:00 keeps the 4 kWh / 1 kW EV plan on_track when progress
     // drops back below target, with the 1-hour deadline reserve untouched.
-    const trackingSettings = normalizeDeferredObjectiveSettings(buildSettings({
+    const trackingSettings = objectiveRosterFor(buildSettings({
       targetPercent: 60,
       deadlineLocalTime: '22:00',
     }));
@@ -2792,7 +2769,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // Target = current + 2% so a bootstrap of 1.0 kWh/% yields a feasible 2 kWh
     // within the ~4h horizon of the default test deadline.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 42 })),
+      settings: objectiveRosterFor(buildSettings({ targetPercent: 42 })),
       powerTracker: {},
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
     });
@@ -2811,7 +2788,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
   it('uses the learned profile (not bootstrap) when kWh-per-percent is known', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
+      settings: objectiveRosterFor(buildSettings({ targetPercent: 60 })),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
     });
 
@@ -2828,7 +2805,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // plan time — neither was in the debug payload before. A learned profile
     // populates both on the diagnostic.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
+      settings: objectiveRosterFor(buildSettings({ targetPercent: 60 })),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
     });
 
@@ -2847,7 +2824,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // The configured mode (`*Mode`) and whether the producer engaged it
     // (`*Applied`) must both be visible at plan time.
     const [withoutRescue] = buildDeferredObjectiveDiagnostics({
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
+      settings: objectiveRosterFor(buildSettings({ targetPercent: 60 })),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
     });
     expect(buildDeferredObjectiveDebugPayload(withoutRescue)).toMatchObject({
@@ -2858,7 +2835,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     const [withRescue] = buildDeferredObjectiveDiagnostics({
-      settings: normalizeDeferredObjectiveSettings(
+      settings: objectiveRosterFor(
         buildSettings({ targetPercent: 60, rescue: { exemptFromBudget: 'always' } }),
       ),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
@@ -2874,7 +2851,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       devices: [heaterDevice],
       settings: {
-        version: 1,
         objectivesByDeviceId: {
           'heater-1': {
             enabled: true,
@@ -2959,7 +2935,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       devices: [heater],
       settings: {
-        version: 1,
         objectivesByDeviceId: {
           'heater-1': {
             enabled: true,
@@ -3043,7 +3018,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       devices: [heater],
       settings: {
-        version: 1,
         objectivesByDeviceId: {
           'heater-1': {
             enabled: true,
@@ -3117,7 +3091,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       devices: [heater],
       settings: {
-        version: 1,
         objectivesByDeviceId: {
           'heater-1': {
             enabled: true,
@@ -3173,7 +3146,6 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       devices: [tank],
       settings: {
-        version: 1,
         objectivesByDeviceId: {
           'heater-1': {
             enabled: true,
@@ -3212,7 +3184,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         stateOfCharge: stateOfChargeFixture({ percent: 70, observedAtMs: NOW_MS }),
         steppedLoadProfile: undefined,
       })],
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
+      settings: objectiveRosterFor(buildSettings({ targetPercent: 60 })),
       powerTracker: {},
     });
 
@@ -3229,7 +3201,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // leaves the final hour (21:00 → 22:00) as reserve. The plan lands in
     // the four primary hours, so the reserve stays untouched.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' })),
+      settings: objectiveRosterFor(buildSettings({ deadlineLocalTime: '22:00' })),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
     });
 
@@ -3246,7 +3218,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // hours can carry 3 kWh, so the final hour (the reserve) must absorb the
     // remaining 1 kWh. That dip is exactly what at_risk should announce.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '21:00' })),
+      settings: objectiveRosterFor(buildSettings({ deadlineLocalTime: '21:00' })),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
     });
 
@@ -3268,7 +3240,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // would fit the full 4 kWh, so the verdict is at_risk, not a flat cannot_meet
     // false negative. The floor commitment still leaves 1 kWh unplanned.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00' })),
+      settings: objectiveRosterFor(buildSettings({ deadlineLocalTime: '20:00' })),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
     });
 
@@ -3286,7 +3258,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // exists. 0.2 kWh fits in 0.5 h of reserve at 1 kW.
     const deadlineAtMs = NOW_MS + HOUR_MS / 2;
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
-      settings: normalizeDeferredObjectiveSettings(buildSettings({
+      settings: objectiveRosterFor(buildSettings({
         deadlineAtMs,
         targetPercent: 41,
       })),
@@ -3412,8 +3384,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       // → 3 kW × 4 h primary = 12 kWh fits 6 kWh need → on_track.
       const [diagnostic] = buildDeferredObjectiveDiagnostics({
         devices: [buildPromotableDevice('ev-1')],
-        settings: normalizeDeferredObjectiveSettings({
-          version: 1,
+        settings: objectiveRosterFor({
           objectivesByDeviceId: {
             ...buildPromotableSettings('ev-1', fullyReservedRescue),
           },
@@ -3439,8 +3410,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       const belowTop = { ...buildPromotableDevice('ev-1'), priority: 2 };
       const [diagnostic] = buildDeferredObjectiveDiagnostics({
         devices: [higherDevice, belowTop],
-        settings: normalizeDeferredObjectiveSettings({
-          version: 1,
+        settings: objectiveRosterFor({
           objectivesByDeviceId: {
             ...buildPromotableSettings('ev-1', fullyReservedRescue),
           },
@@ -3480,8 +3450,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       const lowerTaskAdmissionPowers = (higherDevice: ReturnType<typeof buildPlainHigherDevice>) => {
         const diagnostic = buildDeferredObjectiveDiagnostics({
           devices: [higherDevice, { ...buildPromotableDevice('ev-1'), priority: 2 }],
-          settings: normalizeDeferredObjectiveSettings({
-            version: 1,
+          settings: objectiveRosterFor({
             objectivesByDeviceId: { ...buildPromotableSettings('ev-1', fullyReservedRescue) },
           }),
           powerTracker: buildPromotableTracker(['ev-1']),
@@ -3515,8 +3484,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       const deadlineAtMs = resolveDeadlineAtMsFor('22:00');
       const diagnostics = buildDeferredObjectiveDiagnostics({
         devices: [{ ...buildPromotableDevice('ev-1'), objectiveSessionInactive: true }, buildPromotableDevice('ev-2')],
-        settings: normalizeDeferredObjectiveSettings({
-          version: 1,
+        settings: objectiveRosterFor({
           objectivesByDeviceId: {
             ...buildPromotableSettings('ev-1', fullyReservedRescue),
             ...buildPromotableSettings('ev-2', fullyReservedRescue),
@@ -3554,8 +3522,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       const lower = { ...buildPromotableDevice('ev-1'), priority: 2 };
       const diagnostics = buildDeferredObjectiveDiagnostics({
         devices: [higher, lower],
-        settings: normalizeDeferredObjectiveSettings({
-          version: 1,
+        settings: objectiveRosterFor({
           objectivesByDeviceId: {
             'heater-1': {
               enabled: true, kind: 'temperature', enforcement: 'soft',
@@ -3585,8 +3552,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           buildPromotableDevice('ev-1'),
           buildPromotableDevice('ev-2'),
         ],
-        settings: normalizeDeferredObjectiveSettings({
-          version: 1,
+        settings: objectiveRosterFor({
           objectivesByDeviceId: {
             ...buildPromotableSettings('ev-1', fullyReservedRescue),
             ...buildPromotableSettings('ev-2', fullyReservedRescue),
@@ -3629,8 +3595,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           buildPromotableDevice('ev-1'),
           buildPromotableDevice('ev-2'),
         ],
-        settings: normalizeDeferredObjectiveSettings({
-          version: 1,
+        settings: objectiveRosterFor({
           objectivesByDeviceId: {
             ...buildPromotableSettings('ev-1', fullyReservedRescue),
             ...buildPromotableSettings('ev-2'),
@@ -3724,8 +3689,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           buildPromotableDevice('ev-1'),
           buildPromotableDevice('ev-2'),
         ],
-        settings: normalizeDeferredObjectiveSettings({
-          version: 1,
+        settings: objectiveRosterFor({
           objectivesByDeviceId: {
             ...buildPromotableSettings('ev-1', fullyReservedRescue),
             ...buildPromotableSettings('ev-2', fullyReservedRescue),
@@ -3764,8 +3728,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       const deadlineAtMs = resolveDeadlineAtMsFor('22:00');
       const diagnostics = buildDeferredObjectiveDiagnostics({
         devices: [buildPromotableDevice('ev-1'), buildPromotableDevice('ev-2')],
-        settings: normalizeDeferredObjectiveSettings({
-          version: 1,
+        settings: objectiveRosterFor({
           objectivesByDeviceId: {
             ...buildPromotableSettings('ev-1', fullyReservedRescue),
             ...buildPromotableSettings('ev-2', fullyReservedRescue),
@@ -3804,8 +3767,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           buildPromotableDevice('ev-1'),
           buildPromotableDevice('ev-2'),
         ],
-        settings: normalizeDeferredObjectiveSettings({
-          version: 1,
+        settings: objectiveRosterFor({
           objectivesByDeviceId: {
             ...buildPromotableSettings('ev-1', fullyReservedRescue),
             ...buildPromotableSettings('ev-2', fullyReservedRescue),
@@ -3867,7 +3829,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     nowMs: NOW_MS,
     timeZone: 'UTC',
     devices: [buildDevice()],
-    settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' })),
+    settings: objectiveRosterFor(buildSettings({ deadlineLocalTime: '22:00' })),
     powerTracker: buildPowerTracker(),
     dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
     priceOptimizationEnabled: true,
@@ -3882,7 +3844,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     nowMs: NOW_MS,
     timeZone: 'UTC',
     devices: [buildDevice()],
-    settings: normalizeDeferredObjectiveSettings(buildSettings()),
+    settings: objectiveRosterFor(buildSettings()),
     powerTracker: buildPowerTracker(),
     dailyBudgetSnapshot: buildSnapshot({
       prices: Array.from({ length: 24 }, () => 5),
@@ -3977,7 +3939,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     const plannedHours = (rescue: Record<string, string> | undefined) => {
       const [diagnostic] = buildDeferredObjectiveDiagnostics({
         devices: [buildTemperatureDevice({ currentTemperature: 64.5 })],
-        settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings(rescue ? { rescue } : {})),
+        settings: objectiveRosterFor(buildTemperatureSettings(rescue ? { rescue } : {})),
         powerTracker: buildTemperaturePowerTracker(),
         dailyBudgetSnapshot: buildSnapshot({
           prices: Array.from({ length: 24 }, () => 5),
@@ -4036,7 +3998,7 @@ describe('emitDeferredObjectiveDiagnostics — announces on change, not on tick'
 
   const unpluggedDiagnostics = (): DeferredObjectiveDiagnostic[] => buildDeferredObjectiveDiagnostics({
     devices: [buildDevice({ evChargingState: 'plugged_out' })],
-    settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' })),
+    settings: objectiveRosterFor(buildSettings({ deadlineLocalTime: '22:00' })),
     dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
   });
 
@@ -4096,7 +4058,7 @@ describe('emitDeferredObjectiveDiagnostics — announces on change, not on tick'
   });
 
   const plannedDiagnostics = (): DeferredObjectiveDiagnostic[] => buildDeferredObjectiveDiagnostics({
-    settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' })),
+    settings: objectiveRosterFor(buildSettings({ deadlineLocalTime: '22:00' })),
     dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
   });
 

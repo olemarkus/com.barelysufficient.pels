@@ -2,7 +2,7 @@ import { EnergyTaskDeliveryTracker } from '../../lib/objectives/deferredObjectiv
 import type { EnergyDeliveryStore } from '../../lib/objectives/deferredObjectives/energyDelivery';
 import type {
   DeferredObjectiveSettingsEntry,
-  DeferredObjectiveSettingsV1,
+  DeferredObjectiveRoster,
 } from '../../packages/contracts/src/deferredObjectiveSettings';
 import { createMemoryEnergyDeliveryStore, everyReadingLive } from '../helpers/deferredObjectiveWiringFixtures';
 
@@ -22,14 +22,14 @@ const energyTask = (overrides: Partial<DeferredObjectiveSettingsEntry> = {}): De
 
 const settingsWith = (
   objectivesByDeviceId: Record<string, DeferredObjectiveSettingsEntry>,
-): DeferredObjectiveSettingsV1 => ({ version: 1, objectivesByDeviceId });
+): DeferredObjectiveRoster => ({ objectivesByDeviceId });
 
 const heater = (currentDrawKw: number) => ({ id: 'heater', currentDrawKw });
 
 // The lifecycle clock ticks every 30 s; a minute is well inside the gap cap.
 const tickEach = (
   tracker: EnergyTaskDeliveryTracker,
-  settings: DeferredObjectiveSettingsV1,
+  settings: DeferredObjectiveRoster,
   device: ReturnType<typeof heater> | null,
   fromMs: number,
   toMs: number,

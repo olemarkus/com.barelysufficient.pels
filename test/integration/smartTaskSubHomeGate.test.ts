@@ -34,7 +34,7 @@ import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { AppContext } from '../../lib/app/appContext';
 import { DeferredObjectiveDecorationController } from '../../lib/objectives/deferredObjectives';
 import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
-import { normalizeDeferredObjectiveSettings } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
+import { objectiveRosterFor } from '../utils/objectiveRoster';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import {
   clearObjectiveForDevice,
@@ -139,7 +139,6 @@ describe('device-scoped write op: sub-home gate', () => {
     // The refusal leaves a topic-gated debug breadcrumb like the transient ones.
     expect(objectiveDebug.events()).toContainEqual(expect.objectContaining({
       event: 'objective_write_refused',
-      op: 'upsert',
       deviceId: 'heater-sub',
       reason: 'device_in_sub_home',
     }));
@@ -160,8 +159,7 @@ describe('device-scoped write op: sub-home gate', () => {
   it('clear stays UNGATED: a task on a device relocated to a sub-home can still be removed', () => {
     const store = buildStore({ 'heater-sub': heaterEntry });
     const h = buildDeviceDeps(store, () => 'sub_home');
-    const outcome = clearObjectiveForDevice(h.deps, { deviceId: 'heater-sub', deviceName: 'Cabin heater' });
-    expect(outcome).toEqual({ persisted: true });
+    clearObjectiveForDevice(h.deps, { deviceId: 'heater-sub', deviceName: 'Cabin heater' });
     expect(readObjectiveForDevice(store, 'heater-sub')).toBeUndefined();
   });
 
@@ -175,7 +173,6 @@ describe('device-scoped write op: sub-home gate', () => {
     expect(h.activePlanRecorder.flushIfDirty).not.toHaveBeenCalled();
     expect(objectiveDebug.events()).toContainEqual(expect.objectContaining({
       event: 'objective_write_refused',
-      op: 'upsert',
       deviceId: 'heater-main',
       reason: 'ownership_unavailable',
     }));
@@ -191,7 +188,6 @@ describe('device-scoped write op: sub-home gate', () => {
     expect(h.activePlanRecorder.flushIfDirty).not.toHaveBeenCalled();
     expect(objectiveDebug.events()).toContainEqual(expect.objectContaining({
       event: 'objective_write_refused',
-      op: 'upsert',
       deviceId: 'meter-main',
       reason: 'device_not_planned',
     }));
@@ -233,8 +229,7 @@ const buildDiagnosticsParams = (overrides: {
   timeZone: 'UTC',
   devices: overrides.devices,
   getPrioritiesForDevices: createFixturePriorityQuery(overrides.devices),
-  settings: normalizeDeferredObjectiveSettings({
-    version: 1,
+  settings: objectiveRosterFor({
     objectivesByDeviceId: { 'heater-sub': heaterEntry },
   }),
   powerTracker: { lastTimestamp: NOW_MS },
@@ -837,8 +832,7 @@ describe('decoration controller: resolveDeviceExclusion dep threading', () => {
       hasObservedTask: () => false,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
-    }, () => normalizeDeferredObjectiveSettings({
-      version: 1,
+    }, () => objectiveRosterFor({
       objectivesByDeviceId: { 'heater-sub': heaterEntry },
     }));
     const bundle = controller.decorate({

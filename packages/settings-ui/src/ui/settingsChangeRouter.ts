@@ -1,5 +1,6 @@
 import { syncSettingsHubChips } from './settingsHubChips.ts';
 import {
+  SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH,
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
@@ -18,7 +19,6 @@ import {
   BATTERY_CONTROL_DEVICES,
   BUDGET_EXEMPT_DEVICES,
   DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
-  DEFERRED_OBJECTIVES_SETTINGS,
   PER_DEVICE_OBJECTIVE_KEY_PREFIX,
   DEVICE_CONTROL_PROFILES,
   DEVICE_TARGET_POWER_CONFIGS,
@@ -386,15 +386,15 @@ const refreshAreaPowerTracker = (homeId: string, context: string) => {
   refreshOverviewPlanIfVisible(context);
 };
 
-// A per-device objective change (`deferred_objective.<id>`) — or a legacy-alias
-// change — feeds the assembled `deferred_objectives` alias the UI reads (primed by
-// the bootstrap). The exact changed key is invalidated by the caller, but the alias
-// must be dropped + reloaded too, or the deadline list + PlanDeviceCards chips keep
-// showing the pre-change state for the rest of the WebView session. Fires for BOTH
-// `settings.set` (create/change) and `settings.unset` (clear).
+// A per-device objective change (`deferred_objective.<id>`) changes the roster
+// the runtime assembles from those keys (primed by the bootstrap). The exact
+// changed key is invalidated by the caller, but the roster read model must be
+// dropped + reloaded too, or the deadline list + PlanDeviceCards chips keep
+// showing the pre-change state for the rest of the WebView session. Fires for
+// BOTH `settings.set` (create/change) and `settings.unset` (clear).
 const reloadObjectivesIfObjectiveKey = (key: string, context: string): void => {
-  if (key !== DEFERRED_OBJECTIVES_SETTINGS && !key.startsWith(PER_DEVICE_OBJECTIVE_KEY_PREFIX)) return;
-  invalidateSettingCache(DEFERRED_OBJECTIVES_SETTINGS);
+  if (!key.startsWith(PER_DEVICE_OBJECTIVE_KEY_PREFIX)) return;
+  invalidateApiCache(SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH);
   runLoggedTask(loadDeferredObjectiveSettings(), 'Failed to reload deferred objectives', context);
   // The list re-reads three payloads, so a hidden Smart tasks panel waits for
   // its activation hook, which refreshes it on open.
