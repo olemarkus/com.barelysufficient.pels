@@ -1,4 +1,4 @@
-PELS programme la recharge de votre voiture, le chauffage et l'eau chaude en fonction des prix de l'électricité. Il s'appuie sur les commandes des applications Homey pour piloter notamment les bornes Easee et Zaptec, les pompes à chaleur, les thermostats et les chauffe-eau. Les appareils peuvent être de marques différentes ; vous choisissez leurs priorités.
+PELS pilote le chauffage électrique, le chauffe-eau et la recharge de votre voiture selon les heures creuses, les prix de l'électricité et la puissance de votre abonnement. Il s'appuie sur les commandes des applications Homey pour piloter notamment les bornes Easee et Zaptec, les pompes à chaleur, les thermostats et les chauffe-eau. Les appareils peuvent être de marques différentes ; vous choisissez leurs priorités.
 
 Après l’installation, ouvrez Homey > Plus > Apps > PELS > Paramètres pour terminer la configuration. Vous y choisissez les appareils, configurez PELS et voyez ce que l’application fait.
 
@@ -10,6 +10,6 @@ Avec Grid import limit, vous réglez la limite de puissance prélevée sur le r�
 
 Avec des panneaux solaires, le surplus sert à chauffer l'eau, préchauffer ou rafraîchir la maison et recharger la voiture. PELS adapte la puissance de recharge au surplus disponible. Le prix de vente au réseau est pris en compte, y compris s'il est négatif. Avec une batterie domestique comme Sessy ou Marstek Venus, PELS stocke le surplus restant, réduit sa recharge au profit d'un autre appareil ou la décharge pour respecter la limite de puissance.
 
-Home, Away et Night définissent les températures et les priorités pour chaque situation.
+Des modes comme Home, Away ou Night définissent les températures et les priorités pour chaque situation.
 
-Simulation mode permet de voir les décisions de PELS avant d'activer le pilotage automatique.
+Simulation mode permet de voir les décisions de PELS jusqu'à ce que vous choisissiez Start managing à la fin de la configuration.

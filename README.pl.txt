@@ -10,6 +10,6 @@ W Smart tasks ustawiasz cel i termin: na przykład auto naładowane do 80% przed
 
 Grid import limit ogranicza bieżący pobór mocy z sieci. Gdy pobór zbliża się do ustawionego limitu, PELS zmniejsza moc ładowania auta lub wstrzymuje urządzenia o niższym priorytecie. Wznawia ich pracę, gdy można je uruchomić w ramach ustawionego limitu.
 
-PELS obsługuje urządzenia różnych producentów, w tym ładowarki Easee i Zaptec. Zakres sterowania zależy od funkcji udostępnionych przez ich aplikacje Homey.
+PELS obsługuje urządzenia różnych producentów, w tym ładowarki Easee i Zaptec. PELS steruje nimi za pomocą funkcji ich aplikacji Homey.
 
-Simulation mode pokazuje, jak PELS sterowałby urządzeniami, zanim włączysz automatyczne sterowanie.
+Simulation mode pokazuje, jak PELS sterowałby urządzeniami, dopóki na końcu konfiguracji nie wybierzesz Start managing.

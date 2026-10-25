@@ -1,6 +1,6 @@
 PELS controls EV chargers such as Easee and Zaptec, heating, hot water and home batteries using the controls provided by their Homey apps. When several appliances need power at once, it lowers charging current, adjusts heating or pauses devices you have given a lower priority. PELS raises the charging current and resumes paused devices when more power is available. Equipment from different manufacturers can be controlled from the same app.
 
-After installing, open Homey > More > Apps > PELS > Settings to finish setup. This is where you choose devices, configure PELS and see what it is doing.
+After installing, open Homey > More > Apps > PELS > Settings to finish setup. A guided setup connects your meter, picks a first device and shows the settings that apply to your home. This is also where you choose devices, configure PELS and see what it is doing.
 
 Capacity limit manages average power over an hour or 15 minutes to reduce tariff peaks. Grid import limit controls the power drawn from the grid right now. Either limit can be used independently, or both together. Measurements come from Homey Energy, a meter reader or Flows.
 
@@ -10,6 +10,6 @@ Solar surplus can heat water, warm or cool your home and charge your car. PELS a
 
 A home battery, such as a Sessy or Marstek Venus, stores the solar surplus left after other devices have used what they need. PELS reduces battery charging when a higher-priority appliance needs power and discharges the battery to keep consumption within your chosen limit.
 
-Home, Away and Night have their own temperatures and device priorities. Flows can switch between them as your routine changes. Daily budget spreads energy use across the day.
+Modes such as Home, Away or Night each keep their own temperatures and device priorities. Flows can switch between them as your routine changes. Daily budget spreads energy use across the day.
 
-Simulation mode previews how devices would be controlled before you enable automatic control.
+Simulation mode previews how devices would be controlled until you choose Start managing at the end of setup.
