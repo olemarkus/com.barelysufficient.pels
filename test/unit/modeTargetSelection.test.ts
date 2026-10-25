@@ -25,7 +25,7 @@ const CATALOG = catalogWith('Home', {
 
 describe('listTargetModes', () => {
   it('lists the modes with a target record, sorted, and not a priorities-only mode', () => {
-    expect(listTargetModes(CATALOG)).toEqual(['Away', 'Home', 'Night']);
+    expect(listTargetModes(CATALOG.catalog)).toEqual(['Away', 'Home', 'Night']);
   });
 });
 

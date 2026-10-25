@@ -4,6 +4,7 @@ import { isWritableModeDeviceTargets } from '../../packages/shared-domain/src/se
 import { resolveModeName } from '../utils/capacityHelpers';
 import { readModeDeviceTargets } from './modeDeviceTargetsRead';
 import type { DeviceModeCatalogOutcome } from './homeModeDeviceRead';
+import type { HomeModeCatalogSnapshot } from './homeModeCatalog';
 
 /**
  * An owner's explicit edit to one device's temperature in one mode, as a Flow
@@ -33,8 +34,8 @@ export type DeviceModeTargetEdit =
  * target record for. A mode with only priorities is not one, because a target
  * saved there would create a mode the owner never made.
  */
-export const listTargetModes = (catalog: ResolvedDeviceModeCatalog): string[] => (
-  Object.keys(catalog.catalog.targets).sort((left, right) => left.localeCompare(right))
+export const listTargetModes = (catalog: Pick<HomeModeCatalogSnapshot, 'targets'>): string[] => (
+  Object.keys(catalog.targets).sort((left, right) => left.localeCompare(right))
 );
 
 /**
@@ -48,7 +49,7 @@ export const resolveTargetMode = (
 ): string | null => {
   const requested = selection.kind === 'active' ? catalog.activeMode : selection.name;
   if (requested === null) return null;
-  const modes = new Set(listTargetModes(catalog));
+  const modes = new Set(listTargetModes(catalog.catalog));
   const resolved = resolveModeName(requested, catalog.catalog.aliases, modes);
   return modes.has(resolved) ? resolved : null;
 };

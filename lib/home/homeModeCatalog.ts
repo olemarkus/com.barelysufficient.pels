@@ -61,6 +61,10 @@ export type HomeModeCatalog = {
    * The modes a device's target temperature can be set in, from the catalog
    * its mode targets live in, which may be a meter area's. `null` when that
    * catalog cannot be read.
+   *
+   * Without meter areas every device's modes are Main's, so the answer does not
+   * wait for the device: a Flow card asks before its device is picked, and
+   * `deviceId` is then empty.
    */
   listDeviceTargetModes: (deviceId: string) => string[] | null;
   /**
@@ -399,8 +403,18 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
   );
 
   listDeviceTargetModes = (deviceId: string): string[] | null => {
+    const membership = this.getMembership();
+    if (
+      this.homeId === MAIN_HOME_ID
+      && membership?.isOwnershipReady()
+      && !membership.hasPendingOwnershipGeneration()
+      && !membership.hasSubHomes()
+    ) {
+      return listTargetModes(this.getSnapshot());
+    }
+    if (deviceId === '') return null;
     const catalog = this.deviceModeResolver.resolveCatalog(deviceId);
-    return catalog.state === 'resolved' ? listTargetModes(catalog) : null;
+    return catalog.state === 'resolved' ? listTargetModes(catalog.catalog) : null;
   };
 
   readGoverningModeDeviceTargetC = (deviceId: string): number | null => {
