@@ -129,6 +129,7 @@ export function createPlanEngineComposition(
     getPowerTracker: scope.getPowerTracker,
     getDailyBudgetSnapshot: scope.getDailyBudgetSnapshot,
     getShedBehavior,
+    hasStartedDrawingSince: ctx.observer.hasStartedDrawingSince.bind(ctx.observer),
     deviceDiagnostics,
     structuredLog,
     // Smart-task decoration seam, owned by the scope (`buildMainHomeScope`

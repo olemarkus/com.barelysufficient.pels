@@ -53,7 +53,7 @@ export function applyRestorePlan(
   const { sheddingActive, guardInShortfall } = sheddingPlan;
   const deviceMap = new Map(planDevices.map((dev) => [dev.id, dev]));
   const swapLedger = state.swapLedger;
-  const timing = buildRestoreTiming(state, power.headroomKw, deps.powerTracker, context.nowTs);
+  const timing = buildRestoreTiming(state, power.headroomKw, deps, planDevices, context.nowTs);
   const effectiveTiming = resolveEffectiveTiming(timing, context);
   // Resolved BEFORE the ledger reconcile and reused by the branch below, so the
   // one thing that decides whether restores happen this cycle also decides

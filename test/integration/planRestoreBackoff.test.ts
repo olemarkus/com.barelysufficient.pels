@@ -116,6 +116,7 @@ const buildContext = (overrides: PlanCycleSpec = {}): { context: PlanContext; po
 // The restore deps a case is not about: no temperature setpoints, and every
 // device sheds by turning off. A case states when the power tracker last read.
 const restoreDeps = (lastTimestamp: number): RestoreDeps => ({
+  hasStartedDrawingSince: () => false,
   structuredLog: testLogger,
   powerTracker: partialDouble<PowerTrackerState>({ lastTimestamp }),
   temperatureSetpoints: new Map(),

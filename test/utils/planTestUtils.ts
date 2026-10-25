@@ -1446,6 +1446,7 @@ export const restoreCycleFixture = (
   deps: {
     structuredLog: testLogger,
     powerTracker: {} as PowerTrackerState,
+    hasStartedDrawingSince: () => false,
     getShedBehavior: () => ({ action: 'turn_off' }),
     temperatureSetpoints: new Map(),
   },
@@ -1583,7 +1584,8 @@ export const applyRestorePlanForSpec = (spec: {
   storageLevers?: Readonly<Record<string, StorageLeverState>>;
   sheddingActive: boolean;
   guardInShortfall?: boolean;
-  deps: RestoreDeps;
+  deps: Omit<RestoreDeps, 'hasStartedDrawingSince'>
+    & Partial<Pick<RestoreDeps, 'hasStartedDrawingSince'>>;
 }): RestorePlanResult => applyRestorePlan(
   spec.planDevices,
   spec.context,
@@ -1591,5 +1593,5 @@ export const applyRestorePlanForSpec = (spec: {
   spec.state,
   spec.storageLevers ?? {},
   sheddingPlanFixture({ sheddingActive: spec.sheddingActive, guardInShortfall: spec.guardInShortfall ?? false }),
-  spec.deps,
+  { hasStartedDrawingSince: () => false, ...spec.deps },
 );
