@@ -2366,6 +2366,17 @@ named `Set the limited temperature for {device name}`.
   local warning on the charger page. An unmatched car keeps the more specific
   `Waiting to identify the connected car` state in charger settings, Smart task
   previews and widgets. An unplugged charger instead says `No car connected`.
+- On a device card, a connected charger waiting for a selected car adds `no
+  battery level` to its fact line beside its plug state and level, for example
+  `Plugged in · no battery level`. When nothing else explains the card (no other
+  reason, or the wait for a battery level), its reason starts as `Waiting to
+  identify the connected car`; once the 20-minute matching window from the
+  plug-in has closed, it says `Could not identify the connected car. Confirm it
+  in the charger’s Car section.` A held or unconfirmed charger keeps
+  its own reason, since identifying the car would not resume it. A charger linked
+  to a car outside its selection, or whose selected cars have all been removed
+  from Homey, shows neither. Activity records the same reason. Matching or
+  explicit confirmation ends this message.
 
 ## Mode label
 

@@ -58,6 +58,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     // Read live from the transport, not off a snapshot: the association is
     // resolved per read and moves within seconds of a plug edge.
     getAssociatedCarChargingState: (deviceId) => deviceManager.getAssociatedCar(deviceId)?.chargingState,
+    getCarIdentificationState: (deviceId, nowMs) => deviceManager.getCarIdentificationState(deviceId, nowMs),
     // The card's battery level. Same seam and same reason as the plug-state
     // above: the plan device carries the boost DECISION, not the reading it was
     // made from.

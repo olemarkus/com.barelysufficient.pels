@@ -4,6 +4,8 @@ import type { EvCarLinkEventEmitter, EvCarLinkProducer } from '../evCarLinkProdu
 import type { EvCarLinkEvent } from '../evCarLinkEvents';
 import type { AssociatedCarSnapshot, CarConfirmation } from '../../../packages/contracts/src/types';
 import type { CarLinkDiagnostics } from '../../ports/carLinkDiagnostics';
+import type { CarIdentificationState } from '../../../packages/contracts/src/evCarLink';
+import { EV_CAR_LINK_COINCIDENCE_WINDOW_MS } from '../evCarLink';
 import type { DeviceParseSettings } from './managerParseDevice';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
 import type { DeviceTransportOptions } from './transportTypes';
@@ -103,9 +105,7 @@ export function createEvCarAssociationControl(
 ) {
     const waiting = new Map<string, { sinceMs: number; elapsedMinutes: number }>();
 
-    function chargerName(chargerId: string): string {
-        return snapshots.getSnapshotByDeviceId(chargerId)?.name ?? chargerId;
-    }
+    const chargerName = (chargerId: string): string => snapshots.getSnapshotByDeviceId(chargerId)?.name ?? chargerId;
 
     /**
      * Whether a charger is plugged in with no car from its selection, linked or
@@ -163,6 +163,23 @@ export function createEvCarAssociationControl(
         return snapshots.getSnapshotByDeviceId(chargerId)?.available === true && readWait(chargerId).waiting;
     }
 
+    /**
+     * The wait as a device card states it. A charger linked to a car outside its
+     * selection has a car, and one whose selected cars have all left Homey has
+     * nothing to confirm, so neither is said to be identifying one. It times out
+     * when the window from the connection the probe saw has closed: whether the
+     * plug-in went unmatched, matched two cars or lost its link, past matches are
+     * all that is left, and the probe tries those only until then.
+     */
+    function identificationState(chargerId: string, nowMs: number): CarIdentificationState {
+        if (!isWaiting(chargerId) || probe.getAssociatedCarForCharger(chargerId) !== undefined) return 'not_waiting';
+        if (settings.getEvCarAssociationCarIds(chargerId)
+            .every((carId) => snapshots.getDeviceMembership(carId) === 'removed')) return 'not_waiting';
+        const sinceMs = probe.waitReports.connection(chargerId)?.atMs ?? waiting.get(chargerId)?.sinceMs;
+        return sinceMs !== undefined && nowMs - sinceMs >= EV_CAR_LINK_COINCIDENCE_WINDOW_MS
+            ? 'timed_out' : 'waiting';
+    }
+
     function confirm(chargerId: string, carId: string): void {
         try {
             if (!settings.getEvCarAssociationCarIds(chargerId).includes(carId)) {
@@ -184,17 +201,12 @@ export function createEvCarAssociationControl(
         }
     }
 
-    function connectionEnded(chargerId: string): boolean {
-        const charger = snapshots.getSnapshotByDeviceId(chargerId);
-        return charger !== undefined && (!isEvObserved(charger) || !isEvPlugStateConnected(charger.evChargingState));
-    }
-
     /** Observation calls start/end episodes; only the heartbeat emits elapsed crossings. */
     function observe(nowMs: number): void {
         probe.retainConfirmedAssociations((chargerId, carId) =>
             snapshots.getDeviceMembership(chargerId) !== 'removed'
             && snapshots.getDeviceMembership(carId) !== 'removed'
-            && !connectionEnded(chargerId)
+            && !connectionEnded(snapshots, chargerId)
             && settings.getEvCarAssociationCarIds(chargerId).includes(carId));
         const ended = [...waiting.keys()].flatMap((id): Array<[string, WaitEnd]> => {
             const read = readWait(id);
@@ -225,7 +237,12 @@ export function createEvCarAssociationControl(
     function diagnostics(deviceId: string, reads: CarLinkAssociationReads): CarLinkDiagnostics | undefined {
         return resolveCarLinkDiagnostics(deviceId, probe, settings, snapshots, waiting.get(deviceId)?.sinceMs, reads);
     }
-    return { isWaiting, diagnostics, confirm, observe, tick };
+    return { isWaiting, identificationState, diagnostics, confirm, observe, tick };
+}
+
+function connectionEnded(snapshots: TransportSnapshotStore, chargerId: string): boolean {
+    const charger = snapshots.getSnapshotByDeviceId(chargerId);
+    return charger !== undefined && (!isEvObserved(charger) || !isEvPlugStateConnected(charger.evChargingState));
 }
 
 /** The association and confirmation for a charger, as the transport narrows them to its selected cars. */

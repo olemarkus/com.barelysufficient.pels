@@ -38,11 +38,13 @@ import {
     type ActiveLinkView,
     type AssociatedCarLevel,
 } from './evCarLinkReadModel';
-import { isCarConfirmedElsewhere, resolveResumableSessions } from './evCarLinkSessionResume';
+import { isCarConfirmedElsewhere, isSavedCarUnobserved, resolveResumableSessions } from './evCarLinkSessionResume';
 import { EvCarLinkSocShadowReporter } from './evCarLinkSocShadowReporter';
 import { EvCarSelfStopWatcher } from './evCarLinkSelfStop';
 import { EvCarLinkReportKeys } from './evCarLinkReportKeys';
-import { finalLinks, findUnsupportedProvisionalLinks, mayOpenProvisionalLink } from './evCarLinkProvisional';
+import {
+    finalLinks, findOtherLinksTo, findUnsupportedProvisionalLinks, mayOpenProvisionalLink, resolvePastMatchRefusal,
+} from './evCarLinkProvisional';
 import { admitsCar, type EvCarLinkChargerView } from './evCarLinkChargerView';
 import { EvCarLinkRoster } from './evCarLinkRoster';
 import {
@@ -282,7 +284,7 @@ export class EvCarLinkProducer {
         merged: CarObservation,
         nowMs: number,
     ): void {
-        this.cars.observe(deviceId, merged);
+        this.cars.observe(deviceId, merged, nowMs);
         const edgeKind = previous ? resolveEvLinkEdge(previous.state, merged.state) : null;
         if (edgeKind !== null) {
             this.edges = appendEvLinkHistory(
@@ -427,7 +429,7 @@ export class EvCarLinkProducer {
         // BEFORE cold start: a persisted session is direct evidence about this
         // charger, where the cold-start path only has vote history to guess from.
         this.resumePersistedSessions(chargers);
-        this.resolveColdStartSessions(chargers);
+        this.resolveColdStartSessions(chargers, nowMs);
         // Only edges the matcher could not explain, and only after their window
         // has closed. Matching runs BEFORE the prune below, so an edge always gets
         // at least one matched pass at every age up to retention — there is no
@@ -539,8 +541,8 @@ export class EvCarLinkProducer {
     private openProvisionalLink(pairing: EvLinkCoincidence, chargers: readonly EvCarLinkChargerView[]): void {
         const { chargerId, carId, atMs } = pairing;
         const charger = chargers.find((entry) => entry.id === chargerId);
-        if (!mayOpenProvisionalLink(this.activeLinks, pairing) || !this.canOpenSession(charger, carId)
-            || this.chargerConnectedAtMs.get(chargerId) !== atMs) return;
+        if (!charger || !mayOpenProvisionalLink(this.activeLinks, pairing)
+            || !this.canOpenSession(charger, atMs, carId)) return;
         this.activeLinks.set(chargerId, { carId, source: 'coincidence', sinceMs: atMs, provisional: true });
         this.deps.emit({
             component: 'devices',
@@ -548,7 +550,7 @@ export class EvCarLinkProducer {
             carId,
             carName: this.carName(carId),
             chargerId,
-            chargerName: charger?.name ?? chargerId,
+            chargerName: charger.name,
             deltaMs: pairing.deltaMs,
         });
     }
@@ -590,8 +592,9 @@ export class EvCarLinkProducer {
             if (edge.kind !== 'connect') continue;
             // The first settled pass decides whether the timeout is said, whatever
             // it finds; later passes retry the link, so a car update missed at the
-            // plug-in can still link through past matches, never one reported after
-            // the window (`resolveSession`), and the timeout is never said again.
+            // plug-in can still link through past matches, never one that first
+            // reported connected after the window (`resolveSession`), and the
+            // timeout is never said again.
             const firstPass = this.reportKeys.claim(`unmatched|${edge.deviceId}|${edge.atMs}`);
             if (this.activeLinks.has(edge.deviceId)) continue;
             const charger = chargers.find((entry) => entry.id === edge.deviceId);
@@ -623,23 +626,15 @@ export class EvCarLinkProducer {
      * charge readings against a car that has left. The prior path filters
      * candidates on connectedness; a live coincidence clears the same bar.
      */
-    private canOpenSession(charger: EvCarLinkChargerView | undefined, coincidentCarId?: string): boolean {
-        if (!charger || !isEvPlugStateConnected(charger.evChargingState)) return false;
+    private canOpenSession(charger: EvCarLinkChargerView, startedAtMs: number, coincidentCarId?: string): boolean {
+        if (!isEvPlugStateConnected(charger.evChargingState)) return false;
+        // A settled historical edge cannot identify a different connection.
+        if (this.chargerConnectedAtMs.get(charger.id) !== startedAtMs) return false;
         if (this.deps.getSnapshot().sessions[charger.id]?.confirmed) return false;
         if (coincidentCarId === undefined) return true;
         if (isCarConfirmedElsewhere(this.deps.getSnapshot().sessions, charger.id, coincidentCarId)) return false;
         const coincidentCar = this.cars.observed.get(coincidentCarId);
         return coincidentCar !== undefined && isEvPlugStateConnected(coincidentCar.state);
-    }
-
-    /**
-     * A charger first observed mid-session produces no connect edge, so the
-     * edge-driven paths never see it. Resolve it from the persisted affinity
-     * instead — no edge, no vote, so this can only ever recover a session that
-     * history already explains.
-     */
-    private persistSession(chargerId: string, carId: string, sinceMs: number): void {
-        this.deps.setSnapshot(recordEvCarLinkSession(this.deps.getSnapshot(), chargerId, { carId, sinceMs }));
     }
 
     /** Applies whatever `resolveResumableSessions` says may be picked back up. */
@@ -678,7 +673,16 @@ export class EvCarLinkProducer {
         }
     }
 
-    private resolveColdStartSessions(chargers: readonly EvCarLinkChargerView[]): void {
+    /**
+     * A charger first observed mid-session has no connect edge; history may
+     * identify it without earning a vote. A refusal is retried on every pass
+     * until the window closes, since the car on it may still be recovering from
+     * an outage while another car reads; only then is the timeout said, as for a
+     * charger whose plug-in PELS saw. While its saved session's car is still
+     * unobserved it waits for that car instead, so the resume can take it back,
+     * and a charger missing from one pass is kept rather than dropped.
+     */
+    private resolveColdStartSessions(chargers: readonly EvCarLinkChargerView[], nowMs: number): void {
         if (this.coldStartChargerIds.size === 0) return;
         // Drain into a plain array first: the house rule bans spread allocations
         // inside loops, and `resolveSession` mutates the set via `clearSession`.
@@ -692,10 +696,16 @@ export class EvCarLinkProducer {
             // Car availability can defer cold-start resolution beyond the pass
             // that first observed this charger already connected.
             const charger = chargers.find((entry) => entry.id === chargerId);
-            const outcome = this.resolveSession(chargerId, charger, connectedAtMs);
-            if (outcome.kind === 'refused' && charger) {
-                this.waitReports.unmatched(charger, outcome.reason, outcome.weighed);
+            const inWindow = nowMs - connectedAtMs < EV_CAR_LINK_COINCIDENCE_WINDOW_MS;
+            if (inWindow && (!charger
+                || isSavedCarUnobserved(this.deps.getSnapshot().sessions, chargerId, this.cars.observed))) {
+                this.coldStartChargerIds.add(chargerId);
+                continue;
             }
+            const outcome = this.resolveSession(chargerId, charger, connectedAtMs);
+            if (outcome.kind !== 'refused' || !charger) continue;
+            if (inWindow) this.coldStartChargerIds.add(chargerId);
+            else this.waitReports.unmatched(charger, outcome.reason, outcome.weighed);
         }
     }
 
@@ -724,22 +734,13 @@ export class EvCarLinkProducer {
         sessionStartedAtMs: number,
         coincidentCarId?: string,
     ): SessionOutcome {
-        if (!this.canOpenSession(charger, coincidentCarId)) return { kind: 'skipped' };
-        // A settled historical connect can earn a vote, but cannot identify a
-        // different session that began after that charger disconnected/replugged.
-        if (this.chargerConnectedAtMs.get(chargerId) !== sessionStartedAtMs) return { kind: 'skipped' };
+        if (!charger || !this.canOpenSession(charger, sessionStartedAtMs, coincidentCarId)) return { kind: 'skipped' };
         const snapshot = this.deps.getSnapshot();
         // Only cars currently reporting connected. A disconnected household
         // car with history would otherwise be the "unique qualified prior"
         // for a charger a guest car is actually on, and its later charge
         // updates would be attributed to a charger it is not attached to.
-        // Nor a car whose plug-in reached PELS after this connection's window
-        // closed: it could have plugged in anywhere meanwhile (owner, 2026-10-25).
-        const windowClosedAtMs = sessionStartedAtMs + EV_CAR_LINK_COINCIDENCE_WINDOW_MS;
-        const weighed = [...this.cars.observed.entries()]
-            .filter(([carId, car]) => isEvPlugStateConnected(car.state) && !this.edges.carEdges.some((edge) => (
-                edge.deviceId === carId && edge.kind === 'connect' && edge.atMs > windowClosedAtMs)))
-            .map(([carId]) => carId);
+        const weighed = this.cars.connectedCarIds();
         const decision = decideLinkForCharger({
             coincidentCarId,
             candidateCarIds: weighed,
@@ -747,6 +748,9 @@ export class EvCarLinkProducer {
         });
         if (decision.kind === 'refused') return { ...decision, weighed };
         const { resolution } = decision;
+        // A late car stays a rival above; past matches only refuse to pick it.
+        const refusal = resolvePastMatchRefusal(this.cars, this.activeLinks, chargerId, resolution, sessionStartedAtMs);
+        if (refusal !== null) return { kind: 'refused', reason: refusal, weighed };
         if (isCarConfirmedElsewhere(snapshot.sessions, chargerId, resolution.carId)) {
             return { kind: 'refused', reason: 'car_confirmed_elsewhere', weighed };
         }
@@ -758,13 +762,9 @@ export class EvCarLinkProducer {
         // charger's entry behind, and without this the same car would be linked
         // to both — charge readings attributed twice and self-stop reported
         // against a charger the car left. Collect first, then clear.
-        const supersededChargerIds: string[] = [];
-        for (const [otherChargerId, link] of this.activeLinks) {
-            if (otherChargerId !== chargerId && link.carId === resolution.carId) {
-                supersededChargerIds.push(otherChargerId);
-            }
+        for (const otherChargerId of findOtherLinksTo(this.activeLinks, chargerId, resolution.carId)) {
+            this.clearSession(otherChargerId);
         }
-        for (const otherChargerId of supersededChargerIds) this.clearSession(otherChargerId);
         this.activeLinks.set(chargerId, {
             carId: resolution.carId,
             source: resolution.source,
@@ -773,14 +773,15 @@ export class EvCarLinkProducer {
         });
         // Persisted so a restart mid-session can offer to resume it; cleared on
         // every normal session end, so a stale entry can only survive an outage.
-        this.persistSession(chargerId, resolution.carId, sessionStartedAtMs);
+        this.deps.setSnapshot(recordEvCarLinkSession(this.deps.getSnapshot(), chargerId,
+            { carId: resolution.carId, sinceMs: sessionStartedAtMs }));
         this.deps.emit({
             component: 'devices',
             event: 'ev_car_link_resolved',
             carId: resolution.carId,
             carName: this.carName(resolution.carId),
             chargerId,
-            chargerName: charger?.name ?? chargerId,
+            chargerName: charger.name,
             votes: resolution.votes,
             source: resolution.source,
         });

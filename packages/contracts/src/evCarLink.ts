@@ -94,3 +94,5 @@ export type EvCarLinkSnapshot = {
     /** Keyed by charger device id. */
     sessions: Record<string, EvCarLinkSession>;
 };
+/** The device owner's current identification wait, for card and Activity copy. */
+export type CarIdentificationState = 'not_waiting' | 'waiting' | 'timed_out';

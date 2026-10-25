@@ -20,12 +20,15 @@
  * counted two misses per read.
  */
 import type { CarObservation } from './evCarLinkObservation';
+import { isEvPlugStateConnected } from '../../packages/shared-domain/src/evPlugState';
 
 type UnobservedCar = { reason: 'outage' | 'unread'; name: string };
 
 export class EvCarLinkRoster {
     private readonly observedCars = new Map<string, CarObservation>();
     private readonly unobservedCars = new Map<string, UnobservedCar>();
+    /** Arrival of the first connected observation in this car's current session. */
+    private readonly connectedSinceMs = new Map<string, number>();
 
     /** The observed cars: the only ones correlation sees. */
     get observed(): ReadonlyMap<string, CarObservation> {
@@ -65,24 +68,40 @@ export class EvCarLinkRoster {
         return this.observedCars.get(carId)?.name ?? this.unobservedCars.get(carId)?.name;
     }
 
-    observe(carId: string, observation: CarObservation): void {
+    observe(carId: string, observation: CarObservation, nowMs: number): void {
+        if (!isEvPlugStateConnected(observation.state)) this.connectedSinceMs.delete(carId);
+        else if (!this.connectedSinceMs.has(carId)) this.connectedSinceMs.set(carId, nowMs);
         this.unobservedCars.delete(carId);
         this.observedCars.set(carId, observation);
     }
 
+    /** The observed cars reporting plugged in, in roster order. */
+    connectedCarIds(): string[] {
+        return [...this.observedCars].flatMap(([carId, car]) => (isEvPlugStateConnected(car.state) ? [carId] : []));
+    }
+
+    /** Source timestamps cannot backdate evidence that first arrived after a match deadline. */
+    wasConnectedBy(carId: string, deadlineMs: number): boolean {
+        const sinceMs = this.connectedSinceMs.get(carId);
+        return sinceMs !== undefined && sinceMs <= deadlineMs;
+    }
+
     markUnavailable(carId: string, name: string): void {
+        this.connectedSinceMs.delete(carId);
         this.observedCars.delete(carId);
         this.unobservedCars.set(carId, { reason: 'outage', name });
     }
 
     /** Homey reports the car with no readable plug state; an outage lasts until one reads. */
     markUnread(carId: string, name: string): void {
+        this.connectedSinceMs.delete(carId);
         const reason = this.unobservedCars.get(carId)?.reason ?? 'unread';
         this.observedCars.delete(carId);
         this.unobservedCars.set(carId, { reason, name });
     }
 
     forget(carId: string): void {
+        this.connectedSinceMs.delete(carId);
         this.observedCars.delete(carId);
         this.unobservedCars.delete(carId);
     }

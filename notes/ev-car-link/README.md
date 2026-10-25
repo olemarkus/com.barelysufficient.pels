@@ -283,6 +283,18 @@ exactly one candidate has cleared the vote threshold *and* every other candidate
 A prior that merely leads is not enough, so a second household car can never inherit the
 first car's history.
 
+**Past matches never link a car whose connection reached PELS after the window.** The
+prior's winner must have first reported connected, in its current connection, by the
+charger's connection time plus the coincidence window (owner, 2026-10-25: it could have
+plugged in anywhere meanwhile). The roster stamps when that report arrived, not the
+capability's own timestamp, so a car that first appears already connected, for example
+after an outage, is held to the same deadline as one that reports a plug-in, and a late
+retry pass changes nothing. A late car still counts as a rival, since it may be the car
+on this charger. For a charger PELS found already plugged in when it started, the window
+counts from that start, so a car whose first readable report comes more than 20 minutes
+after PELS started is not linked through past matches either. An established session
+still resumes after a restart, and the owner can confirm the car by hand.
+
 **An older observation never rolls a car's state backward, and an unreadable one never
 overwrites.** A device fetch can start before a realtime update and land after it, so a
 fetched payload may be staler than what is already held. Applying it would manufacture a
@@ -583,13 +595,22 @@ written for it:
   its past matches; and why the wait ended (`linked`, `confirmed`, `unplugged`,
   `selection_cleared`, `charger_removed`, `plug_state_unknown`).
 - `ev_car_link_unmatched`: the timeout, said once per plug-in. The charger's window
-  closed with no car plug-in to pair, or PELS found the charger already plugged in at
-  start, and past matches did not decide. It lists the cars that may pair with the
-  charger plus every plugged-in car the decision weighed, and the reason
-  (`decideLinkForCharger`): no candidate car plugged in, not enough past matches, more
-  than one car with them, a rival with some, or the one car confirmed on another
-  charger. `explained_at_another_charger` covers a plug-in whose only fitting car
-  plug-ins belong to a charger that selected those cars.
+  closed with no car plug-in to pair, or with PELS having found the charger already
+  plugged in at start, and past matches did not decide. A charger found plugged in at
+  start is retried on every pass until its window closes, counted from when PELS
+  started, so a car recovering from an outage while another reads can still link. While
+  its saved session's car is still unobserved, it waits for that car so the resume can
+  take it back, and a pass that misses the charger does not drop it. It lists the cars
+  that may pair with the charger plus every plugged-in car the decision weighed, and the
+  reason: from `decideLinkForCharger`, no candidate car plugged in, not enough past
+  matches, more than one car with them, or a rival with some; from the producer after
+  it, the one car first reported connected after the window (`car_reported_too_late`),
+  linked at another charger by a connection no older than this one
+  (`car_linked_elsewhere`), or confirmed on another charger.
+  `explained_at_another_charger` covers a plug-in whose only fitting car plug-ins belong
+  to a charger that selected those cars. A device card says the car could not be
+  identified once the window from the charger's current connection has closed, whether
+  the plug-in went unmatched, matched two cars or lost its link.
 - `ev_car_link_late_car_report`: a car that may pair with the charger reported a
   plug-in after the window closed, while the charger was still plugged in with no car.
   Neither plug-in timing nor past matches pair it: it could have plugged in anywhere

@@ -136,6 +136,11 @@ const ReportCopy = ({ report, actions }: { report: PreparedSupportReport; action
   };
   return (
     <div class="support-report__copy">
+      <p class="pels-text-supporting">Copy the report and email it to the PELS developer at{' '}
+        <a class="support-report__link" href="mailto:olemarkus@gmail.com?subject=PELS%20problem%20report"
+          target="_blank" rel="noopener noreferrer">
+          olemarkus@gmail.com</a>.
+      </p>
       <MdOutlinedButton type="button" onClick={() => { void copy(); }} data-report-action="copy">Copy report</MdOutlinedButton>
       {manual && <textarea ref={textRef} readOnly rows={6} class="support-report__text" aria-label="Report text"
         value={report.message} />}

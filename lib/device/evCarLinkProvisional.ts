@@ -1,11 +1,14 @@
 /**
- * The rules for a provisional car-to-charger link: the one car a charger's
- * unsettled plug-in pairs with, linked before the rival window has closed so its
- * battery level reaches the charger at once. See `correlate` in
- * `evCarLinkProducer.ts`; split out to keep that file within its size ceiling.
+ * The rules for which car a charger's link may hold. Mostly the provisional
+ * link: the one car a charger's unsettled plug-in pairs with, linked before the
+ * rival window has closed so its battery level reaches the charger at once. Also
+ * what bars past matches from a car, and which other links a new one ends. See
+ * `correlate` in `evCarLinkProducer.ts`; split out to keep that file within its
+ * size ceiling.
  */
-import type { EvLinkCoincidence } from './evCarLink';
+import { EV_CAR_LINK_COINCIDENCE_WINDOW_MS, type EvLinkCoincidence, type EvLinkResolution } from './evCarLink';
 import type { ActiveLinkView } from './evCarLinkReadModel';
+import type { EvCarLinkRoster } from './evCarLinkRoster';
 
 type Link = ActiveLinkView & { provisional: boolean };
 
@@ -28,6 +31,44 @@ export const mayOpenProvisionalLink = (
     }
     return true;
 };
+
+/**
+ * Why past matches may not give their pick the connection that began at
+ * `sessionStartedAtMs`, or `null` when they may or did not pick it:
+ * - `car_reported_too_late`: the car's connection first reached PELS after this
+ *   connection's window closed, so it could have plugged in anywhere meanwhile
+ *   (owner, 2026-10-25). It still counts as a rival, since it may be the car on
+ *   this charger.
+ * - `car_linked_elsewhere`: another charger holds it by a connection no older
+ *   than this one, which is newer evidence of where the car is than this
+ *   charger's history. An older link elsewhere is a disconnect PELS missed,
+ *   which a newer session supersedes.
+ */
+export const resolvePastMatchRefusal = (
+    cars: Pick<EvCarLinkRoster, 'wasConnectedBy'>,
+    activeLinks: ReadonlyMap<string, Link>,
+    chargerId: string,
+    resolution: EvLinkResolution,
+    sessionStartedAtMs: number,
+): 'car_reported_too_late' | 'car_linked_elsewhere' | null => {
+    if (resolution.source !== 'affinity_prior') return null;
+    const { carId } = resolution;
+    if (!cars.wasConnectedBy(carId, sessionStartedAtMs + EV_CAR_LINK_COINCIDENCE_WINDOW_MS)) {
+        return 'car_reported_too_late';
+    }
+    const linkedElsewhere = [...activeLinks].some(([otherChargerId, link]) => (
+        otherChargerId !== chargerId && link.carId === carId && link.sinceMs >= sessionStartedAtMs));
+    return linkedElsewhere ? 'car_linked_elsewhere' : null;
+};
+
+/** The other chargers `carId` is linked at, collected before any is cleared. */
+export const findOtherLinksTo = (
+    activeLinks: ReadonlyMap<string, Link>,
+    chargerId: string,
+    carId: string,
+): string[] => [...activeLinks].flatMap(([otherChargerId, link]) => (
+    otherChargerId !== chargerId && link.carId === carId ? [otherChargerId] : []
+));
 
 /** Chargers whose provisional link no longer matches a current pairing for that charger, car and plug-in. */
 export const findUnsupportedProvisionalLinks = (

@@ -78,6 +78,20 @@ export const resolveResumableSessions = (
 };
 /* eslint-enable functional/immutable-data */
 
+/**
+ * Whether this charger's saved session names a car PELS does not observe yet,
+ * such as one still recovering from an outage: the resume may still take that
+ * car back, so past matches must not give the charger another first.
+ */
+export const isSavedCarUnobserved = (
+    sessions: Readonly<Record<string, EvCarLinkSession>>,
+    chargerId: string,
+    observed: ReadonlyMap<string, CarObservation>,
+): boolean => {
+    const savedCarId = sessions[chargerId]?.carId;
+    return savedCarId !== undefined && !observed.has(savedCarId);
+};
+
 /** A confirmed connection cannot be displaced by a later automatic match elsewhere. */
 export const isCarConfirmedElsewhere = (
     sessions: Readonly<Record<string, EvCarLinkSession>>,

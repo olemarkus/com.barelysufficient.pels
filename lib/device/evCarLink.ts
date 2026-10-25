@@ -525,15 +525,21 @@ type LinkDecisionParams = {
 };
 
 /**
- * Why a charger got no car, in the order the rules are checked:
+ * Why a charger got no car, in the order the rules are checked. The first four
+ * come from `decideLinkForCharger`; the producer checks the last three on the car
+ * it picked:
  * `no_connected_car` — no candidate car reports plugged in;
  * `not_enough_past_matches` — no plugged-in car has the past matches the prior needs;
  * `several_cars_with_past_matches` — more than one has them;
  * `rival_with_past_matches` — one has them, but another plugged-in car has some;
+ * `car_reported_too_late` — the one car first reported connected after the window closed;
+ * `car_linked_elsewhere` — past matches picked it, but it is linked at another
+ *   charger by a connection no older than this one;
  * `car_confirmed_elsewhere` — the one car is confirmed on another charger.
  */
 export type EvLinkRefusalReason = 'no_connected_car' | 'not_enough_past_matches'
-    | 'several_cars_with_past_matches' | 'rival_with_past_matches' | 'car_confirmed_elsewhere';
+    | 'several_cars_with_past_matches' | 'rival_with_past_matches' | 'car_confirmed_elsewhere'
+    | 'car_reported_too_late' | 'car_linked_elsewhere';
 
 /**
  * Decide which car a charger is serving, with the reason when it links nothing.

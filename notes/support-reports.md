@@ -62,7 +62,8 @@ The authenticated prepare/read/send endpoints operate on report identifiers. Sen
 requires explicit consent and transmits the saved message, without recapturing
 state. Homey's owner-authenticated manager API receives `{message}` at the app's
 `crashlog` endpoint. Only App Store installations can submit; for others the UI
-offers Copy report, which shows the text only when the clipboard is unavailable. No new Homey API key is required. The public
+offers Copy report, naming the developer's support address (the manifest's `support`
+email) as its destination. It shows the text only when the clipboard is unavailable. No new Homey API key is required. The public
 [Homey manager API](https://athombv.github.io/node-homey-api/HomeyAPIV2.ManagerApps.html#getAppStd)
 documents the optional `message` string, without a size limit.
 
