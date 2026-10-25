@@ -18,6 +18,7 @@ import { createCalibrationSnapshotMutationHook } from '../../lib/device/devicePo
 import type { Logger as PinoLogger } from '../../lib/logging/logger';
 import { createExternalOffHoldPolicy } from '../externalOffHoldAdapter';
 import { createEvCarLinkAccessForApp } from './evCarLinkAccess';
+import { createDeviceEventStore } from '../../lib/diagnostics/deviceEventStore';
 import type { AppContext } from '../../lib/app/appContext';
 
 // The probe's decisions are time-based; mirrors the pre-extraction constant in
@@ -95,6 +96,7 @@ export function buildDeviceTransport(
     observedStateDispatcher,
     evCarLinkSnapshotAccess: createEvCarLinkAccessForApp(ctx),
     retainedPowerStore: createRetainedPowerStore(ctx.getUserdataDatabase()),
+    deviceJournal: createDeviceEventStore(ctx.getUserdataDatabase()),
     acceptedFlowWrites: ctx.getChargingFlowWritesStore(),
     settings: ctx.deviceControlSettings,
     nativeWiring: ctx.builtInControlFlowConflicts,

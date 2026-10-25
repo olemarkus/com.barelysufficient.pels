@@ -2,7 +2,6 @@ import { createEvCarAssociationControl } from '../../lib/device/transport/transp
 import { TransportSnapshotStore } from '../../lib/device/transport/transportSnapshotStore';
 import type { DeviceParseSettings } from '../../lib/device/transport/managerParseDevice';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
-import type { Logger } from '../../lib/utils/types';
 import { partialDouble } from '../helpers/partialDouble';
 import { conformingRead } from '../helpers/deviceListRead';
 import { TARGETED_DEVICE_MISS_GRACE_MS } from '../../lib/device/transport/targetedSnapshotMerge';
@@ -10,10 +9,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   EvCarLinkProducer,
   type EvCarLinkEvent,
+  type EvCarLinkEventEmitter,
 } from '../../lib/device/evCarLinkProducer';
 import type { EvCarLinkChargerView } from '../../lib/device/evCarLinkChargerView';
+import { isJournalledCarLinkEvent } from '../../lib/device/evCarLinkEvents';
 import { EV_CAR_LINK_LINGER_CONFIRM_MS } from '../../lib/device/evCarLinkSelfStop';
-import { createEmptyEvCarLinkSnapshot, getEvCarLinkVotes } from '../../lib/device/evCarLinkSnapshot';
+import { createEmptyEvCarLinkSnapshot, getEvCarLinkVotes, recordEvCarLinkVote } from '../../lib/device/evCarLinkSnapshot';
 import {
   EV_CAR_LINK_AWAY_VERDICT_MS,
   EV_CAR_LINK_COINCIDENCE_WINDOW_MS,
@@ -2001,8 +2002,8 @@ describe('car association waiting episodes and inventory', () => {
     const selected = ['car-1'];
     const settings = partialDouble<DeviceParseSettings>({ getEvCarAssociationCarIds: () => selected });
     const trigger = vi.fn();
-    const logger = partialDouble<Logger>({ structuredLog: partialDouble<Logger['structuredLog']>({ info: vi.fn() }) });
-    const control = createEvCarAssociationControl(h.producer, settings, snapshots, () => ({ trigger }), logger);
+    const emit = vi.fn<EvCarLinkEventEmitter>();
+    const control = createEvCarAssociationControl(h.producer, settings, snapshots, () => ({ trigger }), emit);
     const connected = partialDouble<TransportDeviceSnapshot>({
       id: 'charger-1', name: 'Garage', isEvCharger: true, available: true, evChargingState: 'plugged_in_paused',
     });
@@ -2134,5 +2135,208 @@ describe('car association waiting episodes and inventory', () => {
     snapshots.replaceSnapshot([connected]);
     expect(() => control.confirm('charger-1', 'guest')).toThrow('Select this car');
     expect(h.snapshot.sessions).toEqual({});
+  });
+});
+
+describe('what a charger waited for, and what arrived late', () => {
+  const HOUR_MS = 60 * 60 * 1000;
+  const plugIn = 10 * HOUR_MS;
+  const seedSelected = (atMs: number, carState = 'plugged_out') => {
+    h.setCharger({ selectedCarIds: ['car-1'] });
+    h.car(carDevice({ state: carState, socPct: 55, observedAtMs: atMs }), atMs);
+    h.tick(atMs);
+  };
+  const pluggedOutCar = (atMs: number) => ({
+    availability: 'observed', carId: 'car-1', carName: 'Polestar', state: 'plugged_out',
+    stateReportedAtMs: atMs, pastMatches: 0,
+  });
+
+  it('says what the charger waited for when its window closes with no car, once', () => {
+    seedSelected(plugIn - 25 * 60_000);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.tick(plugIn);
+    expect(h.of('ev_car_link_plug_edge')).toEqual([{
+      component: 'devices', event: 'ev_car_link_plug_edge', role: 'charger', deviceId: 'charger-1',
+      deviceName: 'Elbillader', kind: 'connect', state: 'plugged_in',
+    }]);
+    h.tick(plugIn + SETTLE_MS);
+    h.tick(plugIn + SETTLE_MS + 60_000);
+    expect(h.of('ev_car_link_unmatched')).toEqual([{
+      component: 'devices', event: 'ev_car_link_unmatched', chargerId: 'charger-1', chargerName: 'Elbillader',
+      connection: { atMs: plugIn, seen: 'plug_in' }, windowMs: EV_CAR_LINK_COINCIDENCE_WINDOW_MS,
+      reason: 'no_connected_car', cars: [pluggedOutCar(plugIn - 25 * 60_000)],
+    }]);
+  });
+
+  it('records a selected car reporting its plug-in hours later, without linking it', () => {
+    seedSelected(plugIn - 25 * 60_000);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.tick(plugIn);
+    h.tick(plugIn + SETTLE_MS);
+    h.tick(plugIn + 2 * HOUR_MS);
+    const lateAt = plugIn + 12 * HOUR_MS + 35 * 60_000;
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', lateAt);
+    expect(h.of('ev_car_link_plug_edge').at(-1)).toEqual({
+      component: 'devices', event: 'ev_car_link_plug_edge', role: 'car', deviceId: 'car-1', deviceName: 'Polestar',
+      kind: 'connect', state: 'plugged_in', reportedAtMs: lateAt,
+    });
+    expect(h.of('ev_car_link_late_car_report')).toEqual([{
+      component: 'devices', event: 'ev_car_link_late_car_report', chargerId: 'charger-1', chargerName: 'Elbillader',
+      carId: 'car-1', carName: 'Polestar', connection: { atMs: plugIn, seen: 'plug_in' }, lateByMs: lateAt - plugIn,
+    }]);
+    h.tick(lateAt + SETTLE_MS);
+    expect(h.of('ev_car_link_provisional')).toEqual([]);
+    expect(h.of('ev_car_link_resolved')).toEqual([]);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toBeUndefined();
+  });
+
+  it('reports a late plug-in to a charger that selects no car, and none to one that selects another', () => {
+    h.chargers = [charger(), charger({ id: 'charger-2', name: 'Carport', selectedCarIds: ['car-2'] })];
+    h.car(carDevice({ state: 'plugged_out', socPct: 55, observedAtMs: plugIn - 25 * 60_000 }), plugIn - 25 * 60_000);
+    h.tick(plugIn - 25 * 60_000);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.setCharger({ evChargingState: 'plugged_in' }, 'charger-2');
+    h.tick(plugIn);
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', plugIn + HOUR_MS);
+    expect(h.of('ev_car_link_late_car_report').map((event) => 'chargerId' in event && event.chargerId))
+      .toEqual(['charger-1']);
+  });
+
+  it('says past matches decided nothing when the car was already plugged in, too long before', () => {
+    seedSelected(plugIn - 2 * HOUR_MS);
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', plugIn - HOUR_MS);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.tick(plugIn);
+    h.tick(plugIn + SETTLE_MS);
+    expect(h.of('ev_car_link_unmatched')).toEqual([expect.objectContaining({
+      reason: 'not_enough_past_matches',
+      cars: [expect.objectContaining({ carId: 'car-1', state: 'plugged_in', pastMatches: 0 })],
+    })]);
+  });
+
+  it('lists a plugged-in car the decision weighed even when the charger did not select it', () => {
+    h.chargers = [charger({ selectedCarIds: ['car-1'] })];
+    h.car(carDevice({ state: 'plugged_out', socPct: 55, observedAtMs: plugIn - 2 * HOUR_MS }), plugIn - 2 * HOUR_MS);
+    h.car(carDevice({
+      id: 'car-2', name: 'Guest', state: 'plugged_in', socPct: 30, observedAtMs: plugIn - 2 * HOUR_MS,
+    }), plugIn - 2 * HOUR_MS);
+    h.tick(plugIn - 2 * HOUR_MS);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.tick(plugIn);
+    h.tick(plugIn + SETTLE_MS);
+    const [unmatched] = h.of('ev_car_link_unmatched');
+    expect(unmatched && 'cars' in unmatched ? unmatched.cars.map((car) => car.carId) : []).toEqual(['car-1', 'car-2']);
+  });
+
+  it('says no timeout for a plug-in its past matches linked, even after that car leaves', () => {
+    for (let vote = 0; vote < EV_CAR_LINK_MIN_PRIOR_VOTES; vote += 1) {
+      h.snapshot = recordEvCarLinkVote(h.snapshot, 'car-1', 'charger-1', plugIn - 3 * HOUR_MS + vote);
+    }
+    seedSelected(plugIn - 2 * HOUR_MS);
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', plugIn - HOUR_MS);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.tick(plugIn);
+    h.tick(plugIn + SETTLE_MS);
+    expect(h.of('ev_car_link_resolved')).toHaveLength(1);
+    h.cap('car-1', 'ev_charging_state', 'plugged_out', plugIn + SETTLE_MS + 60_000);
+    h.tick(plugIn + SETTLE_MS + 2 * 60_000);
+    expect(h.of('ev_car_link_unmatched')).toEqual([]);
+  });
+
+  it('says a plug-in got no car when its only fitting car belongs to a charger that selected it', () => {
+    h.chargers = [
+      charger({ selectedCarIds: ['car-1'] }),
+      charger({ id: 'charger-2', name: 'Carport', selectedCarIds: ['car-2'] }),
+    ];
+    h.car(carDevice({ state: 'plugged_out', socPct: 55, observedAtMs: plugIn - HOUR_MS }), plugIn - HOUR_MS);
+    h.car(carDevice({ id: 'car-2', name: 'Ioniq', state: 'plugged_out', socPct: 30, observedAtMs: plugIn - HOUR_MS }),
+      plugIn - HOUR_MS);
+    h.tick(plugIn - HOUR_MS);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.setCharger({ evChargingState: 'plugged_in' }, 'charger-2');
+    h.tick(plugIn);
+    h.cap('car-2', 'ev_charging_state', 'plugged_in', plugIn + 60_000);
+    h.tick(plugIn + 2 * SETTLE_MS);
+    h.tick(plugIn + 2 * SETTLE_MS + 60_000);
+    expect(h.of('ev_car_link_unmatched')).toEqual([expect.objectContaining({
+      chargerId: 'charger-1', reason: 'explained_at_another_charger',
+    })]);
+  });
+
+  it('says what it could not tell when it finds the charger already plugged in at start', () => {
+    h.chargers = [charger({ evChargingState: 'plugged_in', selectedCarIds: ['car-1'] })];
+    h.car(carDevice({ state: 'plugged_out', socPct: 55, observedAtMs: plugIn }), plugIn);
+    expect(h.of('ev_car_link_unmatched')).toEqual([expect.objectContaining({
+      chargerId: 'charger-1', connection: { atMs: plugIn, seen: 'already_plugged_in_at_start' },
+      reason: 'no_connected_car',
+    })]);
+  });
+});
+
+describe('waiting to identify the connected car, as the journal records it', () => {
+  const setup = () => {
+    const snapshots = new TransportSnapshotStore();
+    const selected = ['car-1'];
+    const settings = partialDouble<DeviceParseSettings>({ getEvCarAssociationCarIds: () => selected });
+    const emit = vi.fn<EvCarLinkEventEmitter>();
+    const control = createEvCarAssociationControl(h.producer, settings, snapshots, () => undefined, emit);
+    const connected = partialDouble<TransportDeviceSnapshot>({
+      id: 'charger-1', name: 'Garage', isEvCharger: true, available: true, evChargingState: 'plugged_in',
+    });
+    const events = (name: EvCarLinkEvent['event']) => emit.mock.calls.map(([event]) => event)
+      .filter((event) => event.event === name);
+    return { snapshots, selected, control, connected, events };
+  };
+
+  it('records when a charger starts waiting, for which cars, and why it stops', () => {
+    const { snapshots, control, connected, events } = setup();
+    snapshots.replaceSnapshot([connected]);
+    control.observe(1_000);
+    control.observe(2_000);
+    expect(events('ev_car_link_waiting_started')).toEqual([{
+      component: 'devices', event: 'ev_car_link_waiting_started', chargerId: 'charger-1', chargerName: 'Garage',
+      cars: [{ availability: 'unknown', carId: 'car-1', pastMatches: 0 }],
+    }]);
+    snapshots.replaceSnapshot([{ ...connected, evChargingState: 'plugged_out' }]);
+    control.observe(61_000);
+    expect(events('ev_car_link_waiting_ended')).toEqual([{
+      component: 'devices', event: 'ev_car_link_waiting_ended', chargerId: 'charger-1', chargerName: 'Garage',
+      waitedMs: 60_000, reason: 'unplugged',
+    }]);
+  });
+
+  it.each([
+    ['selection_cleared', (_s: TransportSnapshotStore, selected: string[]) => { selected.splice(0); }],
+    ['charger_removed', (snapshots: TransportSnapshotStore) => { snapshots.replaceSnapshot([]); }],
+  ] as const)('says the wait ended with %s', (reason, change) => {
+    const { snapshots, control, connected, selected, events } = setup();
+    snapshots.replaceSnapshot([connected]);
+    control.observe(1_000);
+    change(snapshots, selected);
+    control.observe(5_000);
+    expect(events('ev_car_link_waiting_ended')).toEqual([expect.objectContaining({ reason, waitedMs: 4_000 })]);
+  });
+
+  it('reports the car link for a charger and for a car it selected', () => {
+    const { snapshots, control, connected } = setup();
+    snapshots.replaceSnapshot([connected]);
+    control.observe(1_000);
+    const reads = { associatedCar: () => undefined, confirmedCar: () => undefined };
+    expect(control.diagnostics('charger-1', reads)).toEqual({
+      role: 'charger', selection: 'selected', waitingSinceMs: 1_000,
+      cars: [{ availability: 'unknown', carId: 'car-1', pastMatches: 0 }],
+    });
+    expect(control.diagnostics('car-1', reads)).toEqual({ role: 'car', chargerIds: ['charger-1'] });
+    expect(control.diagnostics('heater', reads)).toBeUndefined();
+  });
+
+  it('keeps repeating events out of the journal', () => {
+    expect(isJournalledCarLinkEvent({
+      component: 'devices', event: 'ev_car_link_waiting_trigger_failed', chargerId: 'charger-1', reason: 'boom',
+    })).toBe(false);
+    expect(isJournalledCarLinkEvent({
+      component: 'devices', event: 'ev_car_link_confirmation_rejected', chargerId: 'charger-1', carId: 'car-1',
+      reason: 'boom',
+    })).toBe(true);
   });
 });

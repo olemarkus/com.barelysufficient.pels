@@ -17,6 +17,7 @@ import type { RetainedPowerStore } from '../retainedPowerStore';
 import type { BinaryControlObservation, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { EvCarLinkSnapshotAccess } from '../evCarLinkWiring';
+import type { DeviceJournal } from '../../ports/deviceJournal';
 import type { PowerEstimateState } from '../devicePowerEstimate';
 import type { ObservedStateEmitterDispatcher } from '../../ports/observedStateEvents';
 
@@ -88,6 +89,14 @@ export type DeviceTransportOptions = {
      * still runs, it just forgets across restarts.
      */
     evCarLinkSnapshotAccess?: EvCarLinkSnapshotAccess;
+    /**
+     * Where the transport keeps device events for problem reports
+     * (`lib/diagnostics/deviceEventStore.ts`). REQUIRED: a report about a missed
+     * car link hours ago has nothing else to go on, since Homey attaches only the
+     * last 100 log lines. Wiring builds it on the userdata database; specs build
+     * it on an in-memory one through the harness.
+     */
+    deviceJournal: DeviceJournal;
     getFlowTriggerCard?: (cardId: string) => SteppedLoadFlowTriggerCard | undefined;
     /**
      * Fired after a snapshot mutation that may yield a new calibration sample

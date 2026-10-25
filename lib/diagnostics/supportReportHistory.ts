@@ -24,14 +24,26 @@ const activityEntry = (entry: SettingsUiDeviceActivityEntry): SettingsUiDeviceAc
   statusMsg: entry.statusMsg,
 });
 
-/** Select observations around the incident, retaining one preceding state per included device. */
+/**
+ * The history a report covers: an hour or a day before the incident, through
+ * capture. Owners report after the fact, and what followed the incident, such
+ * as a car reporting its plug-in hours late, is often what explains it.
+ */
+export const supportReportWindow = (
+  request: SupportReportRequest,
+  capturedAtMs: number,
+): { fromMs: number; toMs: number } => ({
+  fromMs: Math.max(0, request.occurredAtMs - (request.historyWindow === 'day' ? 24 : 1) * HOUR_MS),
+  toMs: capturedAtMs,
+});
+
+/** Select observations in the report window, retaining one preceding state per included device. */
 export function selectSupportReportActivity(
   history: SettingsUiDeviceLogPayload,
   request: SupportReportRequest,
   capturedAtMs: number,
 ): SupportReportActivity {
-  const fromMs = Math.max(0, request.occurredAtMs - (request.historyWindow === 'day' ? 24 : 1) * HOUR_MS);
-  const toMs = Math.min(capturedAtMs, request.occurredAtMs + (request.historyWindow === 'day' ? 0 : HOUR_MS));
+  const { fromMs, toMs } = supportReportWindow(request, capturedAtMs);
   const deviceId = request.subject.kind === 'device' ? request.subject.deviceId : undefined;
   const candidates = history.entries.filter((entry) => (
     entry.atMs <= toMs && (deviceId === undefined || entry.deviceId === deviceId)

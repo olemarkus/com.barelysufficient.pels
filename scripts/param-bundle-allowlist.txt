@@ -29,7 +29,7 @@ lib/dailyBudget/dailyBudgetState.ts 1
 lib/dailyBudget/dailyBudgetStatePersistence.ts 1
 lib/device/devicePowerEstimate.ts 4
 lib/device/deviceResidualKw.ts 2
-lib/device/evCarLink.ts 3
+lib/device/evCarLink.ts 2
 lib/device/evCarLinkObservation.ts 2
 lib/device/evCarLinkReadModel.ts 1
 lib/device/learnedPowerPeakState.ts 1

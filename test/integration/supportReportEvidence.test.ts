@@ -11,6 +11,10 @@ import {
 } from '../helpers/supportReportEvidenceFixtures';
 import { transportSnapshotFixture } from '../utils/deviceSnapshotFixture';
 import { buildPlanDevice, buildPlanMeta, buildSettingsUiPlanMeta } from '../utils/planTestUtils';
+import { createDeviceEventStore } from '../../lib/diagnostics/deviceEventStore';
+import { SUPPORT_REPORT_MAX_DEVICE_EVENTS } from '../../lib/diagnostics/supportReportEvidence';
+import { IN_MEMORY_DATABASE, openUserdataDatabase, type UserdataDatabase } from '../../lib/store/userdataDatabase';
+import type { CarLinkDiagnostics } from '../../lib/ports/carLinkDiagnostics';
 
 const request: SupportReportRequest = {
   subject: { kind: 'device', homeId: 'main', deviceId: 'heater' },
@@ -220,5 +224,118 @@ describe('support report evidence capture', () => {
     expect(settings.get).not.toHaveBeenCalled();
     expect(settings.getKeys).not.toHaveBeenCalled();
     expect(settings.set).not.toHaveBeenCalled();
+  });
+});
+
+describe('support report car link evidence', () => {
+  const chargerRequest: SupportReportRequest = {
+    subject: { kind: 'device', homeId: 'main', deviceId: 'charger' },
+    problem: 'The car was not linked.', expected: 'Link the car.', occurredAtMs: now - hour, historyWindow: 'incident',
+  };
+  const chargerSnapshot = () => transportSnapshotFixture({
+    id: 'charger', name: 'Elbillader', available: true, isEvCharger: true, deviceClass: 'evcharger',
+    expectedPowerKw: 7, expectedPowerSource: 'measured-peak', lastUpdated: now - hour, targets: [],
+  });
+  const carLink = (): CarLinkDiagnostics => ({
+    role: 'charger', selection: 'selected', waitingSinceMs: now - 13 * hour,
+    connection: { atMs: now - 13 * hour, seen: 'plug_in' },
+    cars: [{
+      availability: 'observed', carId: 'car', carName: 'Polestar 3', state: 'plugged_in',
+      stateReportedAtMs: now - 30 * 60_000, pastMatches: 3,
+    }],
+  });
+  const chargerHost = (db: UserdataDatabase) => pelsHostDouble({
+    homeMembership: membership(),
+    deviceManager: partialDouble<NonNullable<PelsHost['deviceManager']>>({
+      getSnapshotByDeviceId: (id: string) => id === 'charger' ? chargerSnapshot() : undefined,
+      getCarLinkDiagnostics: () => carLink(),
+    }),
+    getDeviceLogUiPayload: () => reportHistoryFixture(),
+    getUserdataDatabase: () => db,
+  });
+
+  it('includes the car link and every event kept about the charger and its cars, before the window too', async () => {
+    const db = openUserdataDatabase(IN_MEMORY_DATABASE);
+    try {
+      const journal = createDeviceEventStore(db);
+      vi.useFakeTimers({ now: now - 13 * hour });
+      journal.record(['charger'], { component: 'devices', event: 'ev_car_link_plug_edge', role: 'charger' });
+      vi.setSystemTime(now - 13 * hour + 20 * 60_000);
+      journal.record(['charger'], { component: 'devices', event: 'ev_car_link_unmatched', reason: 'no_connected_car' });
+      vi.setSystemTime(now - 30 * 60_000);
+      journal.record(['charger', 'car'], { component: 'devices', event: 'ev_car_link_late_car_report', lateByMs: 5 });
+      journal.record(['car'], { component: 'devices', event: 'ev_car_link_plug_edge', role: 'car' });
+      journal.record(['heater'], { component: 'devices', event: 'unrelated' });
+      vi.useRealTimers();
+      const report = await source(chargerHost(db)).capture(chargerRequest, now);
+      expect(values(report, 'Current car link')).toEqual({
+        role: 'charger', selection: 'selected', waitingSinceMs: now - 13 * hour,
+        connection: { atMs: now - 13 * hour, seen: 'plug_in' },
+        cars: [{
+          availability: 'observed', carId: 'car', carName: 'Polestar 3', state: 'plugged_in',
+          stateReportedAtMs: now - 30 * 60_000, pastMatches: 3,
+        }],
+      });
+      expect(report.deviceEvents).toMatchObject({ state: 'available', deviceIds: ['charger', 'car'], toMs: now, leftOut: 0 });
+      if (report.deviceEvents.state !== 'available') throw new Error('Expected kept device events');
+      expect(report.deviceEvents.entries.map((entry) => entry.event)).toEqual([
+        'ev_car_link_plug_edge', 'ev_car_link_unmatched', 'ev_car_link_late_car_report', 'ev_car_link_plug_edge',
+      ]);
+      expect(report.omissions).not.toContain('Current car link is unavailable.');
+    } finally {
+      vi.useRealTimers();
+      db.close();
+    }
+  });
+
+  it('keeps the kept events nearest the incident and says how many it left out', async () => {
+    const db = openUserdataDatabase(IN_MEMORY_DATABASE);
+    try {
+      const journal = createDeviceEventStore(db);
+      const total = SUPPORT_REPORT_MAX_DEVICE_EVENTS + 40;
+      for (let index = 0; index < total; index += 1) {
+        vi.useFakeTimers({ now: now - 6 * hour + index * 60_000 });
+        journal.record([index % 2 ? 'charger' : 'car'], { component: 'devices', event: `event-${index}` });
+      }
+      vi.useRealTimers();
+      const report = await source(chargerHost(db)).capture({ ...chargerRequest, occurredAtMs: now - 6 * hour }, now);
+      if (report.deviceEvents.state !== 'available') throw new Error('Expected kept device events');
+      expect(report.deviceEvents.leftOut).toBe(40);
+      expect(report.deviceEvents.entries).toHaveLength(SUPPORT_REPORT_MAX_DEVICE_EVENTS);
+      expect(report.deviceEvents.entries[0]?.event).toBe('event-0');
+      expect(report.deviceEvents.entries.at(-1)?.event).toBe(`event-${SUPPORT_REPORT_MAX_DEVICE_EVENTS - 1}`);
+    } finally {
+      vi.useRealTimers();
+      db.close();
+    }
+  });
+
+  it('leaves out the current car link of a charger that moved to another home', async () => {
+    const db = openUserdataDatabase(IN_MEMORY_DATABASE);
+    try {
+      const getCarLinkDiagnostics = vi.fn(() => carLink());
+      const host = pelsHostDouble({
+        homeMembership: membership('cabin'),
+        deviceManager: partialDouble<NonNullable<PelsHost['deviceManager']>>({
+          getSnapshotByDeviceId: (id: string) => id === 'charger' ? chargerSnapshot() : undefined,
+          getCarLinkDiagnostics,
+        }),
+        getDeviceLogUiPayload: () => reportHistoryFixture([reportActivityFixture({ deviceId: 'charger' })]),
+        getUserdataDatabase: () => db,
+      });
+      const report = await source(host).capture(chargerRequest, now);
+      expect(values(report, 'Current car link')).toBeUndefined();
+      expect(getCarLinkDiagnostics).not.toHaveBeenCalled();
+      expect(report.deviceEvents).toMatchObject({ state: 'available', deviceIds: ['charger'] });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('says when kept device events cannot be read, and keeps the rest of the report', async () => {
+    const host = currentHost();
+    const report = await source(host).capture(request, now);
+    expect(report.deviceEvents).toEqual({ state: 'unavailable', reason: 'Kept device events could not be read.' });
+    expect(values(report, 'Current device observation and configuration')).toMatchObject({ measuredPowerKw: 0.7 });
   });
 });

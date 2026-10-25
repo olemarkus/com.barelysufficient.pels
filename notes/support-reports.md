@@ -6,15 +6,33 @@ The UI shows the user's own description, not the captured report, which is not
 written for people to read. It has no automatic triggers or analytics collection.
 
 Reports contain the description, incident time, selected home/device, an explicitly
-selected slice of persisted device activity, and allowlisted current readouts.
+selected slice of persisted device activity, the device events PELS kept, and
+allowlisted current readouts.
 Activity is the state and reason PELS presented; it is not an actuator audit trail.
-The default window is an hour either side of the incident, with the preceding
-recorded state for each device. The wider window is the preceding 24 hours.
+The default window starts an hour before the incident, the wider one 24 hours
+before it, and both run to capture: owners report after the fact, and what followed
+the incident, such as a car reporting its plug-in hours late, is often what explains
+it. Activity keeps the preceding recorded state for each device.
 Current readouts retain their timestamps and are separate from incident history.
+
+Device events (`lib/diagnostics/deviceEventStore.ts`) are what PELS observed and
+decided about a device, in its structured-log event's shape, kept beside the
+activity history in the userdata database for 7 days and 200 events per device. A
+device report includes every kept event about the device and its related devices
+(the cars that may pair with a charger, or the chargers that selected a car),
+whatever the report window: a missed car link is explained by a plug-in and a timeout
+that may lie hours before the reported time. A report carries at most 300 of them,
+about 150 KiB, keeping those nearest the incident and stating how many it left out. The car link records
+plug-ins and unplugs on both sides, each wait to identify the connected car, the
+timeout with the cars it waited for and why past matches did not decide, and a
+selected car that reported its plug-in after the window. A charger or car report
+also carries the current car link (`Current car link`).
 Unavailable history or current sections remain visible omissions. Area reports
 never substitute Main's data where the selected area's read is unavailable.
 
-The message is PELS-authored. Homey also attaches its normal app logs.
+The message is PELS-authored. Homey also attaches the app's log, but only its last
+100 stdout and 100 stderr lines (seen on a Homey Pro, 2026-10-25), a few minutes on
+a busy install. Evidence for anything older has to be in the message.
 The current collector does not dump settings, credentials, raw Homey devices, or
 ordinary stdout/stderr into the message. New sections require explicit field
 selection at their diagnostic projection, rather than serializing an owner object.
@@ -31,7 +49,9 @@ The description is limited to 1,500 characters and expected behavior to 800.
 The message limit is 512 KiB of UTF-8 bytes. Homey documents no limit, but on
 2026-10-24 it delivered 256 KiB and 512 KiB reports intact while a 1 MiB report got
 a log id and was never delivered, so a larger report would look sent and be lost.
-The largest realistic report, 1,000 activity entries, is about 400 KiB. Oversized
+The largest realistic report, an app report with 1,000 activity entries, is about
+400 KiB. A device report carries at most 100 activity entries and 300 kept events,
+together about 190 KiB. Oversized
 reports are rejected without silently removing evidence. A versioned opening marker and a closing
 marker containing the report identifier let received content be checked for truncation.
 

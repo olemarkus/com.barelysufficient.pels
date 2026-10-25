@@ -13,6 +13,7 @@ import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedL
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 import { isTemperaturePlanDevice } from '../plan/planTemperatureDevice';
 import type { DevicePlanDevice } from '../plan/planTypes';
+import type { CarLinkCarStatus, CarLinkDiagnostics } from '../ports/carLinkDiagnostics';
 
 const present = (key: string, value: SupportReportValue | undefined): Record<string, SupportReportValue> => (
   value === undefined ? {} : { [key]: value }
@@ -140,5 +141,39 @@ export const reportDailyBudget = (day: DailyBudgetDayPayload): SupportReportSect
     priceShapingEnabled: day.budget.priceShapingEnabled,
     usedKWh: day.state.usedNowKWh, allowedKWh: day.state.allowedNowKWh,
     remainingKWh: day.state.remainingKWh, exceeded: day.state.exceeded,
+  },
+});
+
+const reportCarStatus = (car: CarLinkCarStatus): Record<string, SupportReportValue> => {
+  switch (car.availability) {
+    case 'observed': return {
+      availability: car.availability, carId: car.carId, carName: car.carName, state: car.state,
+      stateReportedAtMs: car.stateReportedAtMs, pastMatches: car.pastMatches,
+    };
+    case 'outage':
+    case 'unread': return {
+      availability: car.availability, carId: car.carId, carName: car.carName, pastMatches: car.pastMatches,
+    };
+    case 'unknown': return { availability: car.availability, carId: car.carId, pastMatches: car.pastMatches };
+    default: return car satisfies never;
+  }
+};
+
+export const reportCarLink = (link: CarLinkDiagnostics): SupportReportSection => ({
+  title: 'Current car link',
+  values: link.role === 'charger' ? {
+    role: 'charger',
+    selection: link.selection,
+    cars: link.cars.map(reportCarStatus),
+    ...present('connection', link.connection && { atMs: link.connection.atMs, seen: link.connection.seen }),
+    ...present('associatedCar', link.associatedCar
+      && { carId: link.associatedCar.carId, carName: link.associatedCar.carName }),
+    ...present('confirmedCar', link.confirmedCar
+      && { carId: link.confirmedCar.carId, carName: link.confirmedCar.carName }),
+    ...present('waitingSinceMs', link.waitingSinceMs),
+  } : {
+    role: 'car',
+    chargerIds: [...link.chargerIds],
+    ...present('associatedChargerId', link.associatedChargerId),
   },
 });

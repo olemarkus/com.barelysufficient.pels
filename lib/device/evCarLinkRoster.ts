@@ -52,6 +52,15 @@ export class EvCarLinkRoster {
         return false;
     }
 
+    /** Which state a car is in; `undefined` when it is not tracked at all. */
+    status(carId: string):
+        { kind: 'observed'; observation: CarObservation } | ({ kind: 'unobserved' } & UnobservedCar) | undefined {
+        const observation = this.observedCars.get(carId);
+        if (observation) return { kind: 'observed', observation };
+        const unobserved = this.unobservedCars.get(carId);
+        return unobserved ? { kind: 'unobserved', ...unobserved } : undefined;
+    }
+
     name(carId: string): string | undefined {
         return this.observedCars.get(carId)?.name ?? this.unobservedCars.get(carId)?.name;
     }

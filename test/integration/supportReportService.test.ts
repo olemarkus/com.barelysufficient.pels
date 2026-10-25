@@ -14,6 +14,7 @@ const request: SupportReportRequest = {
 const evidence = (): SupportReportEvidence => ({
   subjectName: 'Hall heater', appVersion: '3.21.0', homeyVersion: '12.3.0',
   activity: { state: 'unavailable', reason: 'No retained history for this home.' },
+  deviceEvents: { state: 'unavailable', reason: 'No kept device events.' },
   sections: [{ title: 'Current device state', values: { target: 22 } }], omissions: [],
 });
 const transport = (): SupportReportTransport => ({

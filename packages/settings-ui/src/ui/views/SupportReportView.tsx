@@ -102,11 +102,11 @@ const ReportForm = ({ state, actions, homeName }: SupportReportViewProps) => {
           ...draft, historyWindow: fieldValue(event) === 'day' ? 'day' : 'incident',
         })}>
         <MdSelectOption value="incident"><div slot="headline">Around the incident</div></MdSelectOption>
-        <MdSelectOption value="day"><div slot="headline">Previous 24 hours</div></MdSelectOption>
+        <MdSelectOption value="day"><div slot="headline">From 24 hours before</div></MdSelectOption>
       </MdFilledSelect>
       <p class="pels-text-supporting muted">{draft.historyWindow === 'incident'
-        ? 'Includes available activity one hour before and after the incident, plus the preceding recorded state.'
-        : 'Includes available activity in the 24 hours before the incident, plus the preceding recorded state.'}</p>
+        ? 'Includes available activity from one hour before the incident until now, plus the preceding recorded state.'
+        : 'Includes available activity from 24 hours before the incident until now, plus the preceding recorded state.'}</p>
       <MdFilledButton type="submit" disabled={disabled} data-report-action="send">
         {state.operation === 'sending' ? 'Sending…' : 'Send report'}
       </MdFilledButton>

@@ -39,6 +39,7 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     homeRuntimeRead: { readHome: () => ({ state: 'unavailable' }) },
     powerTracker: {},
     getTrackerStore: notWired('getTrackerStore'),
+    getUserdataDatabase: notWired('getUserdataDatabase'),
     observer: observedDeviceReadsDouble(),
     isSurplusPoolReachable: () => false,
     getLatestPlanSnapshotForUi: () => null,

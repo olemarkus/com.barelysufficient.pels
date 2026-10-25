@@ -563,3 +563,39 @@ A Yes response can run the association action directly; No requires no action.
 There are no opaque session tokens. A delayed response applies to the connection
 active when the action runs. Confirmation publishes the car battery observation;
 normal meter-driven planning consumes it on the next meter reading.
+
+## What a problem report can see
+
+Every probe event goes to the structured log and to the device journal
+(`lib/ports/deviceJournal.ts`, stored by `lib/diagnostics/deviceEventStore.ts`), except the
+battery-level shadow that repeats with every percent and a failing waiting trigger that
+repeats every minute. Homey attaches only the last 100 log lines to a report, so a link
+missed hours before the report is explained only by what the journal kept
+(`notes/support-reports.md`). A charger's report includes the events of the cars that may
+pair with it: its selected cars, or every tracked car when it selects none. The events
+written for it:
+
+- `ev_car_link_plug_edge`: a charger or car reported a plug-in or unplug. A car's event
+  carries its device's own timestamp for the plug state beside the time PELS received
+  it, which shows a car app reporting late.
+- `ev_car_link_waiting_started` / `ev_car_link_waiting_ended`: a charger with selected
+  cars is plugged in with no car, with each selected car's state, its last report and
+  its past matches; and why the wait ended (`linked`, `confirmed`, `unplugged`,
+  `selection_cleared`, `charger_removed`, `plug_state_unknown`).
+- `ev_car_link_unmatched`: the timeout, said once per plug-in. The charger's window
+  closed with no car plug-in to pair, or PELS found the charger already plugged in at
+  start, and past matches did not decide. It lists the cars that may pair with the
+  charger plus every plugged-in car the decision weighed, and the reason
+  (`decideLinkForCharger`): no candidate car plugged in, not enough past matches, more
+  than one car with them, a rival with some, or the one car confirmed on another
+  charger. `explained_at_another_charger` covers a plug-in whose only fitting car
+  plug-ins belong to a charger that selected those cars.
+- `ev_car_link_late_car_report`: a car that may pair with the charger reported a
+  plug-in after the window closed, while the charger was still plugged in with no car.
+  Plug-in timing never pairs it. While the charger's plug-in is kept (an hour), its past
+  matches can still link it, and `ev_car_link_resolved` then follows. On 2026-10-24 a
+  Polestar's app reported its plug-in 12 h 35 min after the charger did.
+
+Connection times say how they were seen: `plug_in`, or `already_plugged_in_at_start`
+when the charger was plugged in when PELS started, so the time is the start, not the
+plug-in, and a lateness measured from it is too short.
