@@ -1,4 +1,5 @@
 import { getDebugEmitter, type StructuredDebugEmitter } from '../logging/logger';
+import { correctNveGridTariffDay } from './nveTariffCorrections';
 
 const emitPriceDebug = getDebugEmitter('price', 'price');
 
@@ -33,20 +34,20 @@ export const isGridTariffFallbackData = (
 
 export const shouldUseGridTariffCache = (
   existingData: Array<{ dateKey?: string; datoId?: string; source?: unknown }> | null,
-  today: string,
+  dates: { today: string; tomorrow: string },
 ): boolean => {
   // Fallback data serves prices but must not suppress NVE retries — keep trying
   // the API every cycle until a real tariff comes back.
   if (isGridTariffFallbackData(existingData)) return false;
-  if (existingData && Array.isArray(existingData) && existingData.length > 0) {
-    const firstEntry = existingData[0];
-    const dateKey = typeof firstEntry?.dateKey === 'string' ? firstEntry.dateKey : firstEntry?.datoId;
-    if (dateKey?.startsWith(today)) {
-      emitPriceDebug({ event: 'grid_tariff_cache_used', date: today, entryCount: existingData.length });
-      return true;
-    }
-  }
-  return false;
+  if (!existingData || !Array.isArray(existingData) || existingData.length === 0) return false;
+  // Tomorrow's spot prices are priced on tomorrow's tariff, so a cache that
+  // holds only today is refetched for tomorrow's rows.
+  const storedDates = new Set(existingData.map((entry) => (
+    (typeof entry?.dateKey === 'string' ? entry.dateKey : entry?.datoId)?.slice(0, 10)
+  )));
+  if (!storedDates.has(dates.today) || !storedDates.has(dates.tomorrow)) return false;
+  emitPriceDebug({ event: 'grid_tariff_cache_used', date: dates.today, entryCount: existingData.length });
+  return true;
 };
 
 export const buildGridTariffUrl = (params: {
@@ -97,11 +98,11 @@ const hasEnergyFee = (entry: Record<string, unknown>): boolean => (
 );
 
 /**
- * One tariff entry per hour: the last one that carries an energy fee, or the
- * last one given when none does. NVE answers with one row per hour per capacity
+ * One tariff entry per day and hour: the last one that carries an energy fee,
+ * or the last one given when none does. NVE answers with one row per hour per capacity
  * step, and the energy fee does not depend on the step, so a day came back as
- * 360 rows carrying 24 prices. Only the energy fee per hour is read, by
- * `buildGridTariffByHour`, which lets the last row of an hour with a fee win;
+ * 360 rows carrying 24 prices. Only the energy fee per day and hour is read, by
+ * `buildGridTariffByDay`, which lets the last row of an hour with a fee win;
  * keeping that row changes no price and drops the rest.
  */
 export const oneGridTariffEntryPerHour = (
@@ -109,7 +110,7 @@ export const oneGridTariffEntryPerHour = (
 ): Array<Record<string, unknown>> => {
   const byHour = new Map<string, Record<string, unknown>>();
   for (const entry of entries) {
-    const hour = String(entry.time);
+    const hour = `${String(entry.dateKey ?? entry.datoId)}|${String(entry.time)}`;
     const held = byHour.get(hour);
     if (held === undefined || hasEnergyFee(entry) || !hasEnergyFee(held)) byHour.set(hour, entry);
   }
@@ -117,16 +118,20 @@ export const oneGridTariffEntryPerHour = (
 };
 
 /**
- * The NVE rows in the shape the price module stores. The fixed fee is per
- * capacity step and nothing reads it, so it is not carried once the rows are
- * one per hour.
+ * The NVE rows for `date` in the shape the price module stores, dated with the
+ * day they were requested for, since that is the day they price. The fixed fee
+ * is per capacity step and nothing reads it, so it is not carried once the
+ * rows are one per hour.
  */
-export const normalizeGridTariffData = (data: Array<Record<string, unknown>>): Array<Record<string, unknown>> => (
+export const normalizeGridTariffData = (
+  data: Array<Record<string, unknown>>,
+  date: string,
+): Array<Record<string, unknown>> => (
   oneGridTariffEntryPerHour(data.map((entry) => ({
     time: entry.time,
     energyFeeExVat: entry.energileddEks,
     energyFeeIncVat: entry.energileddInk,
-    dateKey: entry.datoId,
+    dateKey: `${date}T00:00:00`,
   })))
 );
 
@@ -151,7 +156,11 @@ export const fetchAndNormalizeGridTariff = async (params: {
   });
   const gridTariffData = await fetchGridTariffData(url, errorLog);
   if (!gridTariffData) return null;
-  const normalized = normalizeGridTariffData(gridTariffData);
+  const normalized = correctNveGridTariffDay(
+    normalizeGridTariffData(gridTariffData, date),
+    settings.organizationNumber,
+    date,
+  );
   if (normalized.length === 0) {
     errorLog?.(
       'Grid tariff: NVE API returned 0 hourly tariff entries',

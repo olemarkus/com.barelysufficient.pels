@@ -38,9 +38,12 @@ vi.mock('../../lib/price/nettleieFallbackData.generated', () => ({
 
 import { buildStaticGridTariffFallback, resolveGridTariffFallback } from '../../lib/price/staticGridTariffFallback';
 
-const feesByHour = (entries: Array<{ time: number; energyFeeExVat: number }>): number[] => {
+// The fees for the first day the fallback covers: the day of the given date.
+const feesByHour = (entries: Array<{ time: number; energyFeeExVat: number; dateKey: string }>): number[] => {
   const fees = new Array<number>(24).fill(Number.NaN);
-  for (const entry of entries) fees[entry.time] = entry.energyFeeExVat;
+  for (const entry of entries) {
+    if (entry.dateKey === entries[0]?.dateKey) fees[entry.time] = entry.energyFeeExVat;
+  }
   return fees;
 };
 
@@ -54,8 +57,10 @@ describe('buildStaticGridTariffFallback', () => {
       timeZone: 'UTC',
     });
     expect(entries).not.toBeNull();
-    expect(entries).toHaveLength(24);
-    expect(entries!.map((e) => e.time)).toEqual(Array.from({ length: 24 }, (_, h) => h));
+    // Today and tomorrow, a full day each.
+    expect(entries).toHaveLength(48);
+    expect(entries!.map((e) => e.time)).toEqual([...Array.from({ length: 24 }, (_, h) => h), ...Array.from({ length: 24 }, (_, h) => h)]);
+    expect(entries![24]?.dateKey).toBe('2026-01-06T00:00:00');
 
     const fees = feesByHour(entries!);
     expect(fees[6]).toBe(20); // weekday peak
@@ -81,6 +86,19 @@ describe('buildStaticGridTariffFallback', () => {
     })!);
     expect(fees[6]).toBe(10); // virkedag exception does not apply on Sunday
     expect(fees[22]).toBe(5); // months-only exception still applies
+  });
+
+  it('prices tomorrow on its own day type', () => {
+    // 2026-01-04 is a Sunday, so tomorrow is a Monday with the weekday peak.
+    const entries = buildStaticGridTariffFallback({
+      organizationNumber: '111',
+      tariffGroup: 'Husholdning',
+      date: new Date('2026-01-04T10:00:00Z'),
+      timeZone: 'UTC',
+    })!;
+    const monday = entries.filter((entry) => entry.dateKey === '2026-01-05T00:00:00');
+    expect(feesByHour(monday)[6]).toBe(20);
+    expect(feesByHour(entries)[6]).toBe(10);
   });
 
   it('drops the winter surcharge outside its months', () => {
@@ -172,12 +190,17 @@ describe('isGridTariffFallbackData', () => {
 describe('shouldUseGridTariffCache with fallback data', () => {
   it('never short-circuits NVE retries when the cache is fallback-sourced', () => {
     const fallback = [{ dateKey: '2026-01-05T00:00:00', source: GRID_TARIFF_SOURCE_FALLBACK }];
-    expect(shouldUseGridTariffCache(fallback, '2026-01-05')).toBe(false);
+    expect(shouldUseGridTariffCache(fallback, { today: '2026-01-05', tomorrow: '2026-01-06' })).toBe(false);
   });
 
-  it('still uses a real cache for today and rejects stale real data', () => {
-    const real = [{ dateKey: '2026-01-05T00:00:00' }];
-    expect(shouldUseGridTariffCache(real, '2026-01-05')).toBe(true);
-    expect(shouldUseGridTariffCache(real, '2026-01-06')).toBe(false);
+  it('uses a real cache covering today and tomorrow and rejects stale real data', () => {
+    const real = [{ dateKey: '2026-01-05T00:00:00' }, { dateKey: '2026-01-06T00:00:00' }];
+    expect(shouldUseGridTariffCache(real, { today: '2026-01-05', tomorrow: '2026-01-06' })).toBe(true);
+    expect(shouldUseGridTariffCache(real, { today: '2026-01-06', tomorrow: '2026-01-07' })).toBe(false);
+  });
+
+  it('refetches a real cache that holds only today', () => {
+    const todayOnly = [{ dateKey: '2026-01-05T00:00:00' }];
+    expect(shouldUseGridTariffCache(todayOnly, { today: '2026-01-05', tomorrow: '2026-01-06' })).toBe(false);
   });
 });
