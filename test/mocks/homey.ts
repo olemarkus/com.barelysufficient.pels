@@ -446,6 +446,12 @@ export const mockHomeyInstance = {
     return mockHomeyInstance;
   },
   settings: new MockSettings(),
+  notifications: {
+    _notifications: [] as Array<{ excerpt: string }>,
+    async createNotification(options: { excerpt: string }): Promise<void> {
+      mockHomeyInstance.notifications._notifications.push({ ...options });
+    },
+  },
   // The one `any` left in this file, and deliberately so. Typing this slot makes
   // `getLatestPlanSnapshotForTests` return a real `DevicePlan | null`, which surfaces 154 errors
   // across 7 specs: ~89 unguarded `plan.devices` reads, ~45 possibly-undefined array indexes,
@@ -766,6 +772,7 @@ export const setMockApiApp = (
 export const resetMockHomey = (): void => {
   mockHomeyInstance.settings.removeAllListeners();
   mockHomeyInstance.settings.clear();
+  mockHomeyInstance.notifications._notifications = [];
   const { flow } = mockHomeyInstance;
   flow._actionCardListeners = {};
   flow._conditionCardListeners = {};

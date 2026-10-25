@@ -1,5 +1,7 @@
 Das Auto muss morgens geladen sein, die Wärmepumpe soll das Haus warm halten – möglichst dann, wenn der Strom günstig ist. PELS plant das Laden deines Autos und die Heizzeiten anhand deiner Strompreise und steuert unter anderem Wallboxen von Easee und Zaptec, Wärmepumpen, Thermostate und Warmwasserspeicher über die Steuerungsfunktionen ihrer Homey-Apps. Du legst fest, welche Geräte Vorrang haben, auch wenn sie von verschiedenen Herstellern stammen.
 
+Öffne nach der Installation Homey > Mehr > Apps > PELS > Einstellungen, um die Einrichtung abzuschließen. Hier wählst du Geräte aus, richtest PELS ein und siehst, was die App macht.
+
 In Smart tasks legst du zum Beispiel fest, dass das Auto um 7 Uhr zu 80 % geladen oder das Wohnzimmer bei deiner Rückkehr warm sein soll. PELS wählt dafür die günstigsten Stunden. Ist der Akkustand in Homey verfügbar, berücksichtigt PELS ihn bei der Ladeplanung.
 
 Die Preise kommen aus Homey Energy, Power by the Hour oder deinen Flows. In der gewählten Preisquelle hinterlegte Tarifzeiten und Netzentgelte gehen in die Planung ein. Für Heizung und Kühlung berücksichtigt PELS auch Viertelstundenpreise.
@@ -12,4 +14,4 @@ Mit Grid import limit reduziert PELS bei hohem Netzbezug die Ladeleistung, passt
 
 Mit Home, Away und Night sind Temperaturen und Prioritäten für unterschiedliche Tagesabläufe hinterlegt.
 
-Die geführte Einrichtung findest du unter Homey > Mehr > Apps > PELS > Einstellungen. In Simulation mode siehst du zunächst, wie PELS deine Geräte steuern würde.
+In Simulation mode siehst du zunächst, wie PELS deine Geräte steuern würde.

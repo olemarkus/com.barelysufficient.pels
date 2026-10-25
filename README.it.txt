@@ -1,5 +1,7 @@
 Il forno è acceso, l'auto è in carica e serve acqua calda. PELS regola ricarica, riscaldamento e scaldacqua in base ai consumi di casa, dando precedenza agli apparecchi che scegli tu. La ricarica rallenta quando accendi il forno e riprende automaticamente quando c'è più potenza disponibile. I comandi delle app Homey permettono a PELS di gestire apparecchi di marche diverse, come le wallbox Easee e Zaptec.
 
+Dopo l’installazione, apri Homey > Altro > App > PELS > Impostazioni per completare la configurazione. Qui scegli gli apparecchi, configuri PELS e vedi cosa sta facendo.
+
 Con Grid import limit imposti la potenza da prelevare dalla rete in base alle esigenze della casa e al tuo contratto. PELS segue il consumo totale misurato da Homey Energy, da un lettore del contatore o da un Flow, tenendo conto del fotovoltaico. Se necessario, mette in pausa gli apparecchi meno prioritari.
 
 PELS programma ricarica, riscaldamento e acqua calda nelle fasce orarie più convenienti. I prezzi arrivano da Power by the Hour o dai tuoi Flow. Le tariffe orarie e i costi di rete impostati nella fonte scelta vengono inclusi nella pianificazione. Per riscaldamento e raffrescamento, PELS tiene conto anche dei prezzi aggiornati ogni 15 minuti.
@@ -10,4 +12,4 @@ Quando i pannelli producono più di quanto la casa consuma, il surplus viene usa
 
 Home, Away e Night definiscono temperature e priorità per le diverse abitudini di casa.
 
-Simulation mode mostra in anteprima come verrebbero gestiti gli apparecchi. La configurazione guidata si trova in Homey > Altro > App > PELS > Impostazioni.
+Simulation mode mostra in anteprima come verrebbero gestiti gli apparecchi.
