@@ -12,6 +12,7 @@ import {
   PLAN_STATE_CAPACITY_STATUS,
   PLAN_STATE_GRID_IMPORT_STATUS,
   PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS,
+  PLAN_STATE_HOUR_ENDING_STATUS,
   PLAN_STATE_METER_SILENT_STATUS,
   formatChargeTargetReachedStatus,
   formatReservedForStartStatus,
@@ -51,6 +52,7 @@ type StaticReason = Extract<
   | { code: typeof PLAN_REASON_CODES.startupStabilization }
   | { code: typeof PLAN_REASON_CODES.capacityControlOff }
   | { code: typeof PLAN_REASON_CODES.hourlyBudget }
+  | { code: typeof PLAN_REASON_CODES.endOfHourDrain }
   | { code: typeof PLAN_REASON_CODES.dailyBudget }
   | { code: typeof PLAN_REASON_CODES.gridImport }
   | { code: typeof PLAN_REASON_CODES.capacity }
@@ -81,6 +83,7 @@ const STATIC_REASON_CODES = new Set<string>([
   PLAN_REASON_CODES.startupStabilization,
   PLAN_REASON_CODES.capacityControlOff,
   PLAN_REASON_CODES.hourlyBudget,
+  PLAN_REASON_CODES.endOfHourDrain,
   PLAN_REASON_CODES.dailyBudget,
   PLAN_REASON_CODES.gridImport,
   PLAN_REASON_CODES.capacity,
@@ -105,6 +108,7 @@ const STATIC_REASON_TEXT: Record<StaticReason['code'], string> = {
   [PLAN_REASON_CODES.startupStabilization]: 'startup stabilization',
   [PLAN_REASON_CODES.capacityControlOff]: 'capacity control off',
   [PLAN_REASON_CODES.hourlyBudget]: 'shed due to capacity-period budget',
+  [PLAN_REASON_CODES.endOfHourDrain]: 'held for the end-of-hour drain',
   [PLAN_REASON_CODES.dailyBudget]: 'shed due to daily budget',
   [PLAN_REASON_CODES.gridImport]: 'shed due to grid import limit',
   [PLAN_REASON_CODES.capacity]: 'shed due to capacity',
@@ -458,6 +462,7 @@ const STATIC_REASON_USER_TEXT: Record<StaticReason['code'], string> = {
   // Same strings as the card ladder (`resolveHeldCardReasonLine`) so the
   // activity log and the card cannot drift.
   [PLAN_REASON_CODES.hourlyBudget]: PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS,
+  [PLAN_REASON_CODES.endOfHourDrain]: PLAN_STATE_HOUR_ENDING_STATUS,
   [PLAN_REASON_CODES.dailyBudget]: PLAN_STATE_DAILY_BUDGET_STATUS,
   [PLAN_REASON_CODES.gridImport]: PLAN_STATE_GRID_IMPORT_STATUS,
   [PLAN_REASON_CODES.capacity]: PLAN_STATE_CAPACITY_STATUS,

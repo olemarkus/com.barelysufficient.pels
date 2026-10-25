@@ -1,5 +1,8 @@
 import { buildRestoreHeadroomLedger, type RestoreHeadroomAxes } from './restore/headroomLedger';
-import { resolveBudgetHeldDeviceIds, type CeilingShortfallInputs } from './planReasonShortfall';
+import {
+  resolveBudgetHeldDeviceIds, resolveDrainHeldDeviceIds, type CeilingShortfallInputs,
+} from './planReasonShortfall';
+import { resolveCapacityAdmissionCutKw } from './planBudget';
 /**
  * Post-shedding materialization stages of the plan pipeline, sliced out of
  * `planBuilder.ts` to keep that entry point under the line budget (and under
@@ -156,6 +159,11 @@ export class PlanMaterializationStages {
       const budgetHeldDeviceIds = resolveBudgetHeldDeviceIds(
         planDevices, admissionInputs, power.physicalLimitBreached,
       );
+      // Whose increase the end-of-hour drain alone holds: their card names the
+      // ending hour instead of a power gap.
+      const drainHeldDeviceIds = resolveDrainHeldDeviceIds(
+        planDevices, admissionInputs, resolveCapacityAdmissionCutKw(context), power.physicalLimitBreached,
+      );
       const reasoned = rank(normalizeShedReasons(planDevices, {
         shedReasons: sheddingPlan.shedReasons,
         guardInShortfall: sheddingPlan.guardInShortfall,
@@ -167,6 +175,7 @@ export class PlanMaterializationStages {
         // PELS could not observe.
         physicalLimitBreached: power.physicalLimitBreached,
         budgetHeldDeviceIds,
+        drainHeldDeviceIds,
         admissionInputs,
         hourlyBudgetExhausted: this.state.capacityPeriodSpentFor(context),
       }));

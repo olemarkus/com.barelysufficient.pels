@@ -17,6 +17,7 @@ import {
   formatDeviceReasonUserFacing, resolveRestoreShortfallKw,
 } from '../../packages/shared-domain/src/planReasonFormatting';
 import {
+  formatHourEndingLine,
   formatHourlyExhaustedLine,
   formatShortfallLine,
   resolveHeldCardReasonLine,
@@ -181,6 +182,9 @@ const resolveBlockedStatusLine = (device: SteppedDevice, profile: SteppedLoadPro
     // recourse would be the only one the card cannot explain.
     if (device.reason.code === PLAN_REASON_CODES.hourlyBudget) {
       return formatHourlyExhaustedLine('increase', device.starvation);
+    }
+    if (device.reason.code === PLAN_REASON_CODES.endOfHourDrain) {
+      return formatHourEndingLine('increase', device.starvation);
     }
     const gap = resolveRestoreShortfallKw(device.reason);
     return gap !== null ? formatShortfallLine(gap, 'increase', device.starvation) : null;

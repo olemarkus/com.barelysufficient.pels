@@ -388,6 +388,7 @@ shared by all three card variants):
 | Held on power, shortfall known | `Waiting to resume — 0.8 kW more needed` (stepped step-up: `Waiting to increase — …`) |
 | …and held long enough to count as held back | `Held 2 h — 0.8 kW more needed` |
 | Held because the selected capacity period's energy budget is spent | `Waiting to resume — this capacity period's budget is spent` (held back: `Held 2 h — this capacity period's budget is spent`) |
+| Held in the last ten minutes of the hour only because the next hour's target cannot hold the device (`endOfHourDrain`, `notes/end-of-hour-mode.md`; short against the drain pace too keeps the kW line) | `Waiting to resume — this hour is ending` (stepped step-up: `Waiting to increase — …`; held back: `Held 2 h — this hour is ending`). No kW: the gap would be against the next hour's target while the Overview shows room against the falling drain pace. Promises nothing about the next hour |
 | Held because power is reserved for a named device about to start | `Waiting so Water heater can start` (no elapsed-hold stem — it is a cause, not a need) |
 | First to resume once the global resume cooldown ends | `Waiting to resume — 55s` (active stepped step-up: `Waiting to increase — 55s`) |
 | Held by the same cooldown, behind that device | `Waiting to resume — other devices are ahead` (active stepped step-up: `Waiting to increase — other devices are ahead`) |

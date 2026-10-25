@@ -116,6 +116,20 @@ describe('resolveHeldCardReasonLine', () => {
       expect(line).not.toMatch(/kW more needed/);
     });
 
+    // The end-of-hour drain holds what the next hour's target cannot hold. The
+    // line states the condition: no kW, and no promise about the next hour.
+    it('names the ending hour for an end-of-hour drain hold, never a kW', () => {
+      const line = resolveHeldCardReasonLine({ code: PLAN_REASON_CODES.endOfHourDrain });
+      expect(line).toBe('Waiting to resume — this hour is ending');
+      expect(line).not.toContain('kW');
+      expect(resolveHeldCardReasonLine(
+        { code: PLAN_REASON_CODES.endOfHourDrain }, undefined, 'increase',
+      )).toBe('Waiting to increase — this hour is ending');
+      expect(resolveHeldCardReasonLine(
+        { code: PLAN_REASON_CODES.endOfHourDrain }, starvation(75 * 60 * 1000),
+      )).toBe(`Held 1${NBSP}h${NBSP}15${NBSP}min — this hour is ending`);
+    });
+
     // Verb-aware like the shortfall line: a running stepped device denied a
     // step-up is not waiting to "resume".
     it('says "increase" for the hourly line on a step-up denial', () => {

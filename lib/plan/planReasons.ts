@@ -53,7 +53,7 @@ function buildBaseReason(ctx: ReasonContext, dev: DevicePlanDevice): DeviceReaso
     resolved.code,
     resolveRestoreShortfallKw(resolved),
     shedReasons.has(dev.id),
-  );
+  ) ?? resolveDrainHoldReattribution(ctx, dev, resolved.code);
   return reattributed ?? resolved;
 }
 
@@ -96,6 +96,8 @@ export type ReasonContext = {
   readonly physicalLimitBreached: boolean;
   /** Devices whose headroom hold the budget alone holds (`resolveBudgetHeldDeviceIds`). Producer-resolved. */
   readonly budgetHeldDeviceIds: ReadonlySet<string>;
+  /** Devices whose increase the end-of-hour drain alone holds (`resolveDrainHeldDeviceIds`). Producer-resolved. */
+  readonly drainHeldDeviceIds: ReadonlySet<string>;
   /** The hour's energy budget is spent; folds every ceiling hold to `hourlyBudget`. */
   readonly hourlyBudgetExhausted: boolean;
   /** Post-hold per-axis availability + startup reservations, for ceiling shortfalls. */
@@ -350,7 +352,13 @@ function attachShortfall(reason: DeviceReason, shortfallKw: number): DeviceReaso
 function normalizeDeviceReason(ctx: ReasonContext, dev: DevicePlanDevice): DevicePlanDevice {
   const { shedReasons, deferredHoldCauseByDeviceId } = ctx;
 
-  if (dev.plannedState !== 'shed') return dev;
+  // A running stepped device denied a step-up stays `keep`. The end-of-hour
+  // drain hold is the one fold that reaches it, so its card names the ending
+  // hour like an off device's would.
+  if (dev.plannedState !== 'shed') {
+    const drainHold = resolveDrainHoldReattribution(ctx, dev, dev.reason.code);
+    return drainHold ? { ...dev, reason: drainHold } : dev;
+  }
 
   const currentReason = classifyPlanReason(dev.reason);
   const baseReason = buildBaseReason(ctx, dev);
@@ -395,7 +403,7 @@ function normalizeDeviceReason(ctx: ReasonContext, dev: DevicePlanDevice): Devic
     currentReason.code,
     resolveRestoreShortfallKw(currentReason.reason),
     shedReasons.has(dev.id),
-  );
+  ) ?? resolveDrainHoldReattribution(ctx, dev, currentReason.code);
   if (dailyReattribution) return { ...dev, reason: dailyReattribution };
 
   if (shouldNormalizeReason(currentReason)) {
@@ -485,6 +493,27 @@ function resolveDailyBindingReattribution(
     code: PLAN_REASON_CODES.dailyBudget,
     ...(sourceShortfallKw === null ? {} : { shortfallKw: sourceShortfallKw }),
   };
+}
+
+// End-of-hour drain holds: an `insufficientHeadroom` hold the drain's admission
+// rule alone causes (`drainHeldDeviceIds`, `isDrainReleasableHold`) reads
+// `endOfHourDrain`. In the last ten minutes nothing is turned on or up unless
+// the next hour's target can hold it, so the gap the hold would otherwise
+// state is against that target while the Overview shows room against the
+// falling drain pace: the honest line is the condition, with no kW. Only a hold
+// the cut alone causes folds: one the device would face against the pace too
+// keeps its kW line. Never while a physical limit is breached, where that limit
+// holds every device.
+// Mutually exclusive with the daily fold by construction: a gap the budget
+// alone holds already fits the cut capacity axis.
+function resolveDrainHoldReattribution(
+  ctx: ReasonContext,
+  dev: DevicePlanDevice,
+  reasonCode: PlanReasonCode,
+): DeviceReason | null {
+  // `drainHeldDeviceIds` is empty while a physical limit is breached.
+  if (reasonCode !== PLAN_REASON_CODES.insufficientHeadroom || !ctx.drainHeldDeviceIds.has(dev.id)) return null;
+  return { code: PLAN_REASON_CODES.endOfHourDrain };
 }
 
 // Standing-posture framing: a device that a POSTURE kept off this cycle — the

@@ -162,9 +162,22 @@ export function resolveCapacityAdmissionHeadroomKw(
   context: Pick<PlanContext, 'capacitySoftLimit' | 'capacityPeriodMinutes' | 'minutesRemaining' | 'budgetKWh'>,
   capacityHeadroomKw: number | null,
 ): number | null {
-  if (capacityHeadroomKw === null || context.capacitySoftLimit === null) return capacityHeadroomKw;
-  if (!isInEndOfHourDrain(context.capacityPeriodMinutes, context.minutesRemaining)) return capacityHeadroomKw;
-  return capacityHeadroomKw - Math.max(0, context.capacitySoftLimit - context.budgetKWh);
+  return capacityHeadroomKw === null ? null : capacityHeadroomKw - resolveCapacityAdmissionCutKw(context);
+}
+
+/**
+ * The capacity room the end-of-hour drain withholds from an increase
+ * (`resolveCapacityAdmissionHeadroomKw`): the pace above the sustainable rate
+ * inside the window, 0 outside it, in a quarter and with Capacity limit off.
+ * A hold that this room alone would lift reads `endOfHourDrain`
+ * (`isDrainReleasableHold`).
+ */
+export function resolveCapacityAdmissionCutKw(
+  context: Pick<PlanContext, 'capacitySoftLimit' | 'capacityPeriodMinutes' | 'minutesRemaining' | 'budgetKWh'>,
+): number {
+  if (context.capacitySoftLimit === null) return 0;
+  if (!isInEndOfHourDrain(context.capacityPeriodMinutes, context.minutesRemaining)) return 0;
+  return Math.max(0, context.capacitySoftLimit - context.budgetKWh);
 }
 
 /**

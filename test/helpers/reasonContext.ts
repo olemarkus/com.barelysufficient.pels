@@ -36,6 +36,7 @@ export const reasonContext = (
     softLimitSource: null,
     physicalLimitBreached: false,
     budgetHeldDeviceIds: new Set<string>(),
+    drainHeldDeviceIds: new Set<string>(),
     hourlyBudgetExhausted: false,
     admissionInputs: null,
     ...contextOverrides,

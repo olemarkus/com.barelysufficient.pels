@@ -2511,6 +2511,11 @@ describe('computePhysicalPowerLimit', () => {
     mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 5);
     mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
 
+    // Boot mid-hour, outside the end-of-hour drain, so the boot build records
+    // no drain start for this hour whatever minute the real clock is at.
+    const bootAt = new Date();
+    bootAt.setMinutes(30, 0, 0);
+    vi.spyOn(Date, 'now').mockReturnValue(bootAt.getTime());
     const app = createApp();
     await initApp(app);
 
@@ -2670,6 +2675,11 @@ describe('computePhysicalPowerLimit', () => {
     mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 7);
     mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0.3);
 
+    // Boot mid-hour, outside the end-of-hour drain, so the boot build records
+    // no drain start for this hour whatever minute the real clock is at.
+    const bootAt = new Date();
+    bootAt.setMinutes(30, 0, 0);
+    vi.spyOn(Date, 'now').mockReturnValue(bootAt.getTime());
     const app = createApp();
     await initApp(app);
 
@@ -2710,6 +2720,11 @@ describe('computePhysicalPowerLimit', () => {
     mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 7);
     mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0.3);
 
+    // Boot mid-hour, outside the end-of-hour drain, so the boot build records
+    // no drain start for this hour whatever minute the real clock is at.
+    const bootAt = new Date();
+    bootAt.setMinutes(30, 0, 0);
+    vi.spyOn(Date, 'now').mockReturnValue(bootAt.getTime());
     const app = createApp();
     await initApp(app);
 

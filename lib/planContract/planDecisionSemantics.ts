@@ -58,6 +58,9 @@ const DEFERRED_RESTORE_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.cooldownRestore,
   PLAN_REASON_CODES.cooldownShedding,
   PLAN_REASON_CODES.insufficientHeadroom,
+  // The same headroom hold read with the end-of-hour drain's cut; it rides
+  // keep-state stepped devices too, so it blocks a deferred restore the same way.
+  PLAN_REASON_CODES.endOfHourDrain,
   PLAN_REASON_CODES.meterSettling,
   PLAN_REASON_CODES.restorePending,
   PLAN_REASON_CODES.restoreThrottled,
@@ -125,6 +128,8 @@ const COUNTING_SUPPRESSION_CAUSES: Partial<Record<PlanReasonCode, DeviceDiagnost
   [PLAN_REASON_CODES.swapPending]: 'swap_pending',
   [PLAN_REASON_CODES.swappedOut]: 'swapped_out',
   [PLAN_REASON_CODES.insufficientHeadroom]: 'insufficient_headroom',
+  // The same admission hold, read with the end-of-hour drain's cut.
+  [PLAN_REASON_CODES.endOfHourDrain]: 'insufficient_headroom',
   // The three timers PELS runs against itself. They are its own pacing, not a reprieve for
   // the device — it stays off across them.
   [PLAN_REASON_CODES.cooldownShedding]: 'cooldown',

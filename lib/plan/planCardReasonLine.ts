@@ -6,6 +6,7 @@ import { formatStarvationDurationLabel, formatStarvationReason } from '../../pac
 import {
   PLAN_STATE_HELD_FALLBACK_STATUS,
   PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS,
+  PLAN_STATE_HOUR_ENDING_STATUS,
   formatReservedForStartStatus,
 } from '../../packages/shared-domain/src/planStateLabels';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemanticsCore';
@@ -181,6 +182,7 @@ const formatShortfallNeed = (shortfallKw: number): string => (
 );
 
 const HOURLY_EXHAUSTED_NEED = "this capacity period's budget is spent";
+const HOUR_ENDING_NEED = 'this hour is ending';
 
 // The starved form of a ceiling hold: "Held 2 h — 0.7 kW more needed". Same need
 // clause, but the stem states how long PELS has been holding the device below
@@ -245,6 +247,43 @@ export const formatHourlyExhaustedLine = (
     : formatHeldNeedLine(HOURLY_EXHAUSTED_NEED, verb, starvation)
 );
 
+/**
+ * The end-of-hour drain hold (`endOfHourDrain`): the condition, no kW and no
+ * promise about the next hour, verb-aware like the spent-period line.
+ */
+export const formatHourEndingLine = (
+  verb: HeldCardReasonVerb,
+  starvation?: SettingsUiPlanDeviceStarvation | null,
+): string => (
+  verb === 'resume' && resolveStarvedForMs(starvation) === null
+    ? PLAN_STATE_HOUR_ENDING_STATUS
+    : formatHeldNeedLine(HOUR_ENDING_NEED, verb, starvation)
+);
+
+// Holds whose honest line is a condition, not a gap, and names no recourse.
+// - `hourlyBudget`: the hour's energy budget is spent, and freeing power does
+//   not put kWh back into the hour. See `PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS`
+//   for why "more budget next hour" was a promise PELS could not keep.
+// - `endOfHourDrain`: the device waits for the next hour's target, which the
+//   Overview's room against the falling drain pace would contradict as a kW.
+// Verb-aware like the shortfall line: a running stepped device denied a step-up
+// is not waiting to "resume".
+const CONDITION_HOLD_LINES: ReadonlyMap<string, (
+  verb: HeldCardReasonVerb,
+  starvation?: SettingsUiPlanDeviceStarvation | null,
+) => string> = new Map([
+  [PLAN_REASON_CODES.hourlyBudget, formatHourlyExhaustedLine],
+  [PLAN_REASON_CODES.endOfHourDrain, formatHourEndingLine],
+]);
+
+const resolveConditionHoldLine = (
+  code: string | undefined,
+  verb: HeldCardReasonVerb,
+  starvation: SettingsUiPlanDeviceStarvation | null | undefined,
+): string | null => {
+  const line = code === undefined ? undefined : CONDITION_HOLD_LINES.get(code);
+  return line ? line(verb, starvation) : null;
+};
 
 // A named reservation is the MORE SPECIFIC cause, so it is read before the gap —
 // same shape as the hourly branch. The two never co-occur: the reserve carve-out
@@ -300,15 +339,10 @@ export const resolveHeldCardReasonLine = (
     return `Waiting to ${verb} — other devices are ahead`;
   }
 
-  // The one ceiling hold that must NOT show a kW: the hour's energy budget is
-  // spent, and freeing power does not put kWh back into the hour, so the honest
-  // line names the condition instead of a gap. It names no recourse either —
-  // see `PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS` for why "more budget next
-  // hour" was a promise PELS could not keep. Verb-aware like the shortfall line:
-  // a running stepped device denied a step-up is not waiting to "resume".
-  if (code === PLAN_REASON_CODES.hourlyBudget) {
-    return formatHourlyExhaustedLine(verb, starvation);
-  }
+  // The two ceiling holds that must NOT show a kW name their condition instead
+  // (`CONDITION_HOLD_LINES`).
+  const conditionLine = resolveConditionHoldLine(code, verb, starvation);
+  if (conditionLine !== null) return conditionLine;
 
   // A device held while PELS is out of levers still needs a known amount to
   // resume, which is the card's line (notes/ui-terminology.md, "Held on power"),

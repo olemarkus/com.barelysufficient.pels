@@ -73,16 +73,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Shed and restore control
 
-- [ ] **P1: Say why a device waits in the end-of-hour drain.** In the last ten minutes of an
-  hour, restore admission spends only the room under the next hour's target
-  (`resolveCapacityAdmissionHeadroomKw`, `lib/plan/planBudget.ts`), but the waiting device's
-  reason (`lib/plan/planReasonShortfall.ts`) reads as plain shortfall while the Overview shows
-  room against the falling drain pace. A 1.5 kW heater with 1.8 kW of shown room reads "about
-  2.4 kW more needed". Give the drain hold its own reason line, worded per
-  `notes/ui-terminology.md`, naming that the device resumes in the next hour. Done when a device
-  held only by that rule shows the new line on its card and Activity, and a focused spec in
-  `test/integration/` pins it.
-
 ## Smart tasks
 
 
