@@ -20,7 +20,7 @@ import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredOb
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import type { CombinedPricesV2 } from '../../lib/price/priceTypes';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
-import type { DeferredObjectiveSettingsV1 } from '../../packages/contracts/src/deferredObjectiveSettings';
+import type { DeferredObjectiveRoster } from '../../packages/contracts/src/deferredObjectiveSettings';
 import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectivePlanRevisionEvent } from '../../lib/objectives/deferredObjectives/planRevisionBus';
 import type { TaskDeliveryControl } from '../../packages/contracts/src/taskDelivery';
@@ -29,7 +29,7 @@ import {
   resolveSmartTaskListStatus,
   resolveSmartTaskWidgetDetailCopy,
 } from '../../packages/shared-domain/src/deadlineLabels';
-import { normalizeDeferredObjectiveSettings } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
+import { objectiveRosterFor } from '../utils/objectiveRoster';
 import { resolveDeferredPlanHistoryMissAttribution } from '../../packages/shared-domain/src/deferredPlanHistoryAttribution';
 import { type MeteredPlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { buildPlanDevice, fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
@@ -88,8 +88,7 @@ const prices: CombinedPricesV2 = {
 const priceHorizon = (nowMs: number, deadlineMs: number) => buildPriceHorizonFromCombined(prices, nowMs, deadlineMs);
 const priorities = createFixturePriorityQuery([{ id: HIGH_ID, priority: 1 }, { id: LOW_ID, priority: 2 }]);
 
-const energySettings = (): DeferredObjectiveSettingsV1 => normalizeDeferredObjectiveSettings({
-  version: 1,
+const energySettings = (): DeferredObjectiveRoster => objectiveRosterFor({
   objectivesByDeviceId: {
     [HIGH_ID]: { enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 6, deadlineAtMs: DEADLINE_MS },
     [LOW_ID]: { enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 4, deadlineAtMs: DEADLINE_MS },
@@ -97,14 +96,12 @@ const energySettings = (): DeferredObjectiveSettingsV1 => normalizeDeferredObjec
 });
 // One task, half the window's room: the earliest hours are claimed (flat
 // prices tie-break earlier first) and the plan has margin.
-const claimedEnergySettings = (): DeferredObjectiveSettingsV1 => normalizeDeferredObjectiveSettings({
-  version: 1,
+const claimedEnergySettings = (): DeferredObjectiveRoster => objectiveRosterFor({
   objectivesByDeviceId: {
     [HIGH_ID]: { enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 4, deadlineAtMs: DEADLINE_MS },
   },
 });
-const evSettings = (): DeferredObjectiveSettingsV1 => normalizeDeferredObjectiveSettings({
-  version: 1,
+const evSettings = (): DeferredObjectiveRoster => objectiveRosterFor({
   objectivesByDeviceId: {
     [HIGH_ID]: { enabled: true, kind: 'ev_soc', enforcement: 'soft', targetPercent: 80, deadlineAtMs: DEADLINE_MS },
   },
@@ -112,7 +109,7 @@ const evSettings = (): DeferredObjectiveSettingsV1 => normalizeDeferredObjective
 
 // Stores are the external persistence seam. Restart constructs fresh owners
 // against the same durable rows; no observation/time anchor is injected.
-const createScenario = (settings: DeferredObjectiveSettingsV1) => {
+const createScenario = (settings: DeferredObjectiveRoster) => {
   const energyStore = createMemoryEnergyDeliveryStore();
   let persistedHistory: PlanHistoryLoadResult = {
     snapshot: { version: 6, entries: [] }, persistenceSafe: true, meteredDeliveryStates: [],

@@ -50,7 +50,6 @@ export {
 export {
   createTrustedDeferredObjectiveSettingsReader,
   hasOpenDeferredObjective,
-  migrateBlobToPerKeyIfNeeded,
   objectiveKeyListIsTrustworthy,
   readDeferredObjectiveRoster,
   readAllObjectives,
@@ -99,7 +98,7 @@ export type {
   DeferredObjectiveRescueMode,
   DeferredObjectiveRescuePermissions,
   DeferredObjectiveSettingsEntry,
-  DeferredObjectiveSettingsV1,
+  DeferredObjectiveRoster,
 } from '../../../packages/contracts/src/deferredObjectiveSettings';
 export type {
   DeferredObjective,

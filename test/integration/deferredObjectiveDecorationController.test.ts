@@ -6,7 +6,7 @@ import { DeferredObjectiveDecorationController } from '../../lib/objectives/defe
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
-import type { DeferredObjectiveSettingsV1 } from '../../packages/contracts/src/deferredObjectiveSettings';
+import type { DeferredObjectiveRoster } from '../../packages/contracts/src/deferredObjectiveSettings';
 import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 
 const buildDevice = (): PlanInputDevice => withBinaryDiscriminant(withFixtureResidualKw({ available: true, currentDrawKw: 0,
@@ -40,8 +40,7 @@ describe('DeferredObjectiveDecorationController', () => {
     { controllable: false, delayMs: 1 },
   ])('drops all task claims at expiry before the clock disarms it (control=$controllable, delay=$delayMs)', ({ controllable, delayMs }) => {
     const deadlineAtMs = Date.UTC(2026, 9, 2, 4);
-    const settings: DeferredObjectiveSettingsV1 = {
-      version: 1,
+    const settings: DeferredObjectiveRoster = {
       objectivesByDeviceId: {
         dev: { enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 6, deadlineAtMs },
       },
@@ -78,7 +77,6 @@ describe('DeferredObjectiveDecorationController', () => {
 
   it('reads deferred objective settings every decoration cycle so admission can run', () => {
     const getDeferredObjectiveSettings = vi.fn(() => ({
-      version: 1,
       objectivesByDeviceId: {},
     } as const));
     const controller = new DeferredObjectiveDecorationController({
@@ -125,7 +123,6 @@ describe('DeferredObjectiveDecorationController', () => {
       getDeferredObjectiveActivePlans: createEmptyActivePlans,
       resolveDeviceExclusion: noDeviceExclusion,
     }, () => ({
-      version: 1,
       objectivesByDeviceId: {
         dev: {
           enabled: true,

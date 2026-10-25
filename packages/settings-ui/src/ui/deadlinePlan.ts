@@ -2,7 +2,7 @@ import type {
   SettingsUiBootstrap,
   SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
-import { normalizeDeferredObjectiveSettings } from '../../../shared-domain/src/settings/deferredObjectiveSettings.ts';
+import { normalizeDeferredObjectiveRoster } from './deferredObjectiveRoster.ts';
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
 import {
@@ -68,7 +68,7 @@ const resolveObjectiveContext = (params: ObjectivePlanInput): ResolvedContextRes
   const nowMs = params.nowMs ?? Date.now();
   const deviceId = params.deviceId?.trim();
   if (!deviceId) return { kind: 'absent' };
-  const settings = normalizeDeferredObjectiveSettings(params.bootstrap.settings.deferred_objectives);
+  const settings = normalizeDeferredObjectiveRoster(params.bootstrap.deferredObjectives);
   const objective = settings.objectivesByDeviceId[deviceId];
   const device = params.devices.find((candidate) => candidate.id === deviceId);
   if (!objective || !device) return { kind: 'absent' };

@@ -25,7 +25,7 @@ import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
   DeferredObjectiveDecorationController,
-  type DeferredObjectiveSettingsV1,
+  type DeferredObjectiveRoster,
 } from '../../lib/objectives/deferredObjectives';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DevicePlanDevice, PlanInputDevice } from '../../lib/plan/planTypes';
@@ -240,8 +240,7 @@ const buildLowerPriorityDevice = (nowMs: number): PlanInputDevice => withBinaryD
   targets: [],
 })) as PlanInputDevice;
 
-const buildSettings = (): DeferredObjectiveSettingsV1 => ({
-  version: 1,
+const buildSettings = (): DeferredObjectiveRoster => ({
   objectivesByDeviceId: {
     [STEP_DEVICE_ID]: {
       enabled: true,

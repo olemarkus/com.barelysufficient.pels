@@ -39,7 +39,7 @@ const SMART_TASK: DeferredObjectiveSettingsEntry = {
   deadlineAtMs: Date.UTC(2030, 0, 1),
 };
 
-const TASKS = { version: 1, objectivesByDeviceId: { [DEVICE_ID]: SMART_TASK } };
+const TASKS = { objectivesByDeviceId: { [DEVICE_ID]: SMART_TASK } };
 
 const perDeviceMap = <T>(value: T): Record<string, T> => ({
   [DEVICE_ID]: value,
@@ -253,7 +253,7 @@ describe('advanced device data purge', () => {
         [DEVICE_CONTROL_PROFILES]: perDeviceMap(CONTROL_PROFILE),
         [RESPECT_EXTERNAL_OFF_DEVICES]: perDeviceMap(true),
       },
-      apiHandlers: { [`GET ${SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH}`]: () => ({ version: 1, objectivesByDeviceId: {} }) },
+      apiHandlers: { [`GET ${SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH}`]: () => ({ objectivesByDeviceId: {} }) },
     });
     const { setHomeyClient } = await import('../src/ui/homey.ts');
     const { state } = await import('../src/ui/state.ts');
@@ -273,7 +273,7 @@ describe('advanced device data purge', () => {
     // writing the page's stale or default copy would release other devices' holds.
     const homey = createHomeyMock({
       settings: { [RESPECT_EXTERNAL_OFF_DEVICES]: perDeviceMap(true) },
-      apiHandlers: { [`GET ${SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH}`]: () => ({ version: 1, objectivesByDeviceId: {} }) },
+      apiHandlers: { [`GET ${SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH}`]: () => ({ objectivesByDeviceId: {} }) },
     });
     const { setHomeyClient } = await import('../src/ui/homey.ts');
     const { state } = await import('../src/ui/state.ts');
@@ -298,7 +298,7 @@ describe('advanced device data purge', () => {
     const malformed = ['not', 'a', 'map'];
     const homey = createHomeyMock({
       settings: { [RESPECT_EXTERNAL_OFF_DEVICES]: malformed, managed_devices: perDeviceMap(true) },
-      apiHandlers: { [`GET ${SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH}`]: () => ({ version: 1, objectivesByDeviceId: {} }) },
+      apiHandlers: { [`GET ${SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH}`]: () => ({ objectivesByDeviceId: {} }) },
     });
     const originalSet = homey.set.getMockImplementation();
     let failManagedWrite = true;

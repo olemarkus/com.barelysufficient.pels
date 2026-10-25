@@ -424,7 +424,7 @@ pass before implementation.
 Per-charger automation profile (enabled, target percent or kWh, ready-by
 time, enforcement, speed mode, optional manual kW and derating) plus a
 hook on the `sessionStartedAtMs` boundary that materializes the defaults
-into a `DeferredObjectiveSettingsV1` entry. Open shape questions: exact
+into a `DeferredObjectiveSettingsEntry`. Open shape questions: exact
 field set on the defaults; UI placement of the per-charger form; how the
 auto-materialization interacts with an already-existing flow-card-fired
 objective for the same device; whether re-plug after a partial session

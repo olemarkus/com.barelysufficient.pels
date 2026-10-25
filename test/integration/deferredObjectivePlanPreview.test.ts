@@ -23,7 +23,7 @@ import {
 } from '../../lib/objectives/deferredObjectives/activePlanSchedule';
 import { buildDeferredObjectivePolicyWindowPrices } from '../../lib/objectives/deferredObjectives/policyHorizon';
 import type { ActivePlanPersistDeps } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
-import type { DeferredObjectiveSettingsV1 } from '../../packages/contracts/src/deferredObjectiveSettings';
+import type { DeferredObjectiveRoster } from '../../packages/contracts/src/deferredObjectiveSettings';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
@@ -302,8 +302,7 @@ const buildRecorder = (): {
 const buildSettings = (params: {
   deviceId: string;
   candidate: DeferredObjectivePlanPreviewCandidate;
-}): DeferredObjectiveSettingsV1 => ({
-  version: 1,
+}): DeferredObjectiveRoster => ({
   objectivesByDeviceId: {
     [params.deviceId]: { ...params.candidate, enabled: true },
   },
@@ -312,7 +311,7 @@ const buildSettings = (params: {
 type PreviewContext = {
   device: MeteredPlanInputDevice | undefined;
   devices?: MeteredPlanInputDevice[];
-  settings?: DeferredObjectiveSettingsV1;
+  settings?: DeferredObjectiveRoster;
   activePlans?: DeferredObjectiveActivePlansV1;
   getPrioritiesForDevices?: ReturnType<typeof createFixturePriorityQuery>;
   powerTracker: PowerTrackerState;
@@ -369,7 +368,7 @@ const runPreview = (params: {
     source,
     NOW_MS,
     devices,
-    params.ctx.settings ?? { version: 1, objectivesByDeviceId: {} },
+    params.ctx.settings ?? { objectivesByDeviceId: {} },
     params.ctx.dailyBudgetSnapshot,
   );
   return previewDeferredObjectivePlan(

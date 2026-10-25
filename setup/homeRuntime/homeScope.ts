@@ -222,10 +222,6 @@ export function buildMainHomeScope(
   // services exist is safe.
   const deferredObjectiveController = new DeferredObjectiveDecorationController(
     taskEvaluationSource,
-    // Self-heal a boot-time empty-`getKeys()` flake that skipped the one-shot
-    // migration: idempotent + marker-gated (a cheap single `get` once done), so
-    // retrying on the plan cycle makes legacy objectives visible within seconds
-    // instead of staying invisible (planner + UI) until the next app restart.
     createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings),
   );
   const binaryCommandReachability = createHomeCommandReachability(ctx, homeId, (trigger) => {

@@ -99,9 +99,8 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   // that must not act on a stopping app reads it.
   private readonly shutdown = new ShutdownLatch();
   public startupBootstrap?: StartupBootstrapConfig;
-  // Latched when startup back-fill bailed because the per-key migration marker
-  // was not yet set; consumed by the deferred-objective back-fill (see
-  // `setup/appInit/deferredRecorders.ts`).
+  // Latched when startup back-fill was deferred on an untrustworthy key list;
+  // consumed by the deferred-objective back-fill (see `setup/appInit/deferredRecorders.ts`).
   public deferredObjectiveBackfillPending?: boolean;
   public get powerTracker(): PowerTrackerState { return this.mainTracker.getState(); }
   public set powerTracker(value: PowerTrackerState) { this.mainTracker.adopt(value); }

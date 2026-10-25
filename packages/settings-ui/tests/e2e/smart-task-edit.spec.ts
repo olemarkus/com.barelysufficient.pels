@@ -248,18 +248,13 @@ test.describe('Smart task edit', () => {
       stubWindow.__PELS_HOMEY_STUB__ = {
         ...(stubWindow.__PELS_HOMEY_STUB__ ?? {}),
         settings: {
-          deferred_objectives: {
-            version: 1,
-            objectivesByDeviceId: {
-              dev_connected300: {
-                enabled: true,
-                kind: 'temperature',
-                enforcement: 'soft',
-                targetTemperatureC: 65,
-                deadlineAtMs: Date.now() + 8 * 60 * 60 * 1000,
-                rescue: { exemptFromBudget: 'always' },
-              },
-            },
+          'deferred_objective.dev_connected300': {
+            enabled: true,
+            kind: 'temperature',
+            enforcement: 'soft',
+            targetTemperatureC: 65,
+            deadlineAtMs: Date.now() + 8 * 60 * 60 * 1000,
+            rescue: { exemptFromBudget: 'always' },
           },
         },
       };

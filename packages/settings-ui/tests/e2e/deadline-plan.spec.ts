@@ -1,13 +1,13 @@
 import { expect, test, type Locator, type Page } from './fixtures/test';
-import type { DeferredObjectiveSettingsV1 } from '../../../contracts/src/deferredObjectiveSettings.ts';
+import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
 
 type DeadlinePlanStubWindow = Window & {
   Homey: {
     __stub: {
       emitHomeyEvent: (event: string, ...args: unknown[]) => void;
       getApiCallCount: (key: string) => number;
-      getSetting: (key: 'deferred_objectives') => DeferredObjectiveSettingsV1;
-      setSetting: (key: 'deferred_objectives', value: DeferredObjectiveSettingsV1) => void;
+      getSetting: (key: `deferred_objective.${string}`) => DeferredObjectiveSettingsEntry | undefined;
+      setSetting: (key: `deferred_objective.${string}`, value: DeferredObjectiveSettingsEntry) => void;
     };
   };
 };
@@ -146,21 +146,11 @@ test.describe('Deadline plan', () => {
 
     await page.evaluate(() => {
       const homey = (window as unknown as DeadlinePlanStubWindow).Homey;
-      const current = homey.__stub.getSetting('deferred_objectives');
-      const objective = current.objectivesByDeviceId.dev_connected300;
+      const objective = homey.__stub.getSetting('deferred_objective.dev_connected300');
       if (!objective || objective.kind !== 'temperature') {
         throw new Error('Expected Connected 300 temperature objective in Homey stub');
       }
-      homey.__stub.setSetting('deferred_objectives', {
-        ...current,
-        objectivesByDeviceId: {
-          ...current.objectivesByDeviceId,
-          dev_connected300: {
-            ...objective,
-            targetTemperatureC: 70,
-          },
-        },
-      });
+      homey.__stub.setSetting('deferred_objective.dev_connected300', { ...objective, targetTemperatureC: 70 });
       homey.__stub.emitHomeyEvent('plan_updated', { plan: null });
       homey.__stub.emitHomeyEvent('devices_updated');
     });
@@ -263,9 +253,7 @@ test.describe('Deadline plan', () => {
   test('shows the error state when the device has no objective', async ({ page }) => {
     await page.addInitScript(() => {
       (window as typeof window & { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = {
-        settings: {
-          deferred_objectives: { version: 1, objectivesByDeviceId: {} },
-        },
+        unsetSettings: ['deferred_objective.dev_connected300'],
       };
     });
     await page.goto('/?page=deadline-plan&deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });

@@ -40,7 +40,7 @@ import {
 import { resolveHorizonPlanWithRescue } from './rescueReplan';
 import type {
   DeferredObjectiveSettingsEntry,
-  DeferredObjectiveSettingsV1,
+  DeferredObjectiveRoster,
 } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import {
   buildAllocationContextSignature,
@@ -102,7 +102,7 @@ export type TaskEvaluationSnapshot = {
   nowMs: number;
   timeZone: string;
   devices: ObjectiveDeviceInput[];
-  settings: DeferredObjectiveSettingsV1;
+  settings: DeferredObjectiveRoster;
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   priceOptimizationEnabled: boolean;
@@ -167,7 +167,7 @@ export const buildTaskEvaluationSnapshot = (
   source: TaskEvaluationSource,
   nowMs: number,
   devices: readonly ObjectiveDeviceSource[],
-  settings: DeferredObjectiveSettingsV1,
+  settings: DeferredObjectiveRoster,
   dailyBudgetSnapshot: DailyBudgetUiPayload | null,
 ): TaskEvaluationSnapshot => ({
   nowMs,
@@ -375,7 +375,7 @@ export const buildDeferredObjectiveTaskResults = (
 // manages) remain visible as explicit unknown diagnostics but do not
 // participate in the main home's allocation context or reservation ledger.
 const buildExcludedObjectiveDiagnostics = (
-  settings: DeferredObjectiveSettingsV1,
+  settings: DeferredObjectiveRoster,
   resolveDeviceExclusion: ResolveObjectiveDeviceExclusion,
   deviceById: ReadonlyMap<string, ObjectiveDeviceInput>,
   timeZone: string,

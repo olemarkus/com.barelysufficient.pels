@@ -2,7 +2,7 @@ import { h, render } from 'preact';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DeadlineChip } from '../src/ui/views/PlanDeviceCards.tsx';
 import { state } from '../src/ui/state.ts';
-import { createEmptyDeferredObjectiveSettings } from '../../shared-domain/src/settings/deferredObjectiveSettings.ts';
+import { createEmptyDeferredObjectiveRoster } from '../../shared-domain/src/settings/deferredObjectiveSettings.ts';
 
 const NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 
@@ -20,7 +20,7 @@ const futureDeadline = (): number => NOW_MS + 6 * 60 * 60 * 1000;
 const pastDeadline = (): number => NOW_MS - 60 * 1000;
 
 afterEach(() => {
-  state.deferredObjectiveSettings = createEmptyDeferredObjectiveSettings();
+  state.deferredObjectiveSettings = createEmptyDeferredObjectiveRoster();
 });
 
 describe('DeadlineChip', () => {
@@ -31,7 +31,6 @@ describe('DeadlineChip', () => {
 
   it('renders a link to the deadline page when an entry exists', () => {
     state.deferredObjectiveSettings = {
-      version: 1,
       objectivesByDeviceId: {
         'connected-300': {
           enabled: true,
@@ -52,7 +51,6 @@ describe('DeadlineChip', () => {
 
   it('renders nothing when the entry exists but is disabled', () => {
     state.deferredObjectiveSettings = {
-      version: 1,
       objectivesByDeviceId: {
         'connected-300': {
           enabled: false,
@@ -69,7 +67,6 @@ describe('DeadlineChip', () => {
 
   it('does not render when the deadline has already passed', () => {
     state.deferredObjectiveSettings = {
-      version: 1,
       objectivesByDeviceId: {
         'connected-300': {
           enabled: true,
@@ -87,7 +84,6 @@ describe('DeadlineChip', () => {
   describe('with the chip mounted inside a parent card', () => {
     const seedEnabledObjective = (): void => {
       state.deferredObjectiveSettings = {
-        version: 1,
         objectivesByDeviceId: {
           'connected-300': {
             enabled: true,

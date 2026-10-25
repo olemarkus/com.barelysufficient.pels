@@ -8,8 +8,8 @@ import {
   type SettingsUiDeferredObjectivePlanHistoryPayload,
   type SettingsUiDevicesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
-import { normalizeDeferredObjectiveSettings } from '../../../shared-domain/src/settings/deferredObjectiveSettings.ts';
-import type { DeferredObjectiveSettingsV1 } from '../../../contracts/src/deferredObjectiveSettings.ts';
+import { normalizeDeferredObjectiveRoster } from './deferredObjectiveRoster.ts';
+import type { DeferredObjectiveRoster } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type {
   ResolvedDeferredObjectiveActivePlansV1,
   ResolvedDeferredObjectiveActivePlanV1,
@@ -80,7 +80,7 @@ const resolveListCauseLine = (
 const buildCard = (
   deviceId: string,
   plan: ResolvedDeferredObjectiveActivePlanV1,
-  objective: DeferredObjectiveSettingsV1['objectivesByDeviceId'][string] | undefined,
+  objective: DeferredObjectiveRoster['objectivesByDeviceId'][string] | undefined,
   device: ObservedDeviceState | undefined,
   nowMs: number,
 ): DeadlinesListCard => {
@@ -115,7 +115,7 @@ const buildCard = (
 
 export const resolveDeadlinesListCards = (
   activePlans: ResolvedDeferredObjectiveActivePlansV1 | null,
-  objectiveSettings: DeferredObjectiveSettingsV1,
+  objectiveSettings: DeferredObjectiveRoster,
   devices: readonly ObservedDeviceState[],
   nowMs: number,
 ): DeadlinesListCard[] => {
@@ -328,9 +328,7 @@ export const refreshDeadlinesList = async (): Promise<void> => {
       callApi<SettingsUiBootstrap>('GET', SETTINGS_UI_BOOTSTRAP_PATH),
       callApi<SettingsUiDevicesPayload>('GET', SETTINGS_UI_DEVICES_PATH),
     ]);
-    const objectiveSettings = normalizeDeferredObjectiveSettings(
-      bootstrap.settings.deferred_objectives,
-    );
+    const objectiveSettings = normalizeDeferredObjectiveRoster(bootstrap.deferredObjectives);
     latestCards = resolveDeadlinesListCards(
       bootstrap.deferredObjectiveActivePlans,
       objectiveSettings,

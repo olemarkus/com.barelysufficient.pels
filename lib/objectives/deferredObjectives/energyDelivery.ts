@@ -46,7 +46,7 @@
  * Runs on the lifecycle clock only (`lifecycleEmitter.ts`), so there is one
  * booking clock; the decoration and preview paths read the result.
  */
-import type { DeferredObjectiveSettingsV1 } from '../../../packages/contracts/src/deferredObjectiveSettings';
+import type { DeferredObjectiveRoster } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { DeliveredEnergyReader } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import { getLogger } from '../../logging/logger';
 import { normalizeError } from '../../utils/errorUtils';
@@ -129,7 +129,7 @@ export class EnergyTaskDeliveryTracker {
 
   observe(
     devices: readonly EnergyDeliveryDevice[],
-    settings: DeferredObjectiveSettingsV1,
+    settings: DeferredObjectiveRoster,
     nowMs: number,
   ): void {
     this.loadAttemptedThisTick = false;
@@ -204,7 +204,7 @@ export class EnergyTaskDeliveryTracker {
     this.loaded = true;
   }
 
-  private openRuns(settings: DeferredObjectiveSettingsV1, nowMs: number): Set<string> {
+  private openRuns(settings: DeferredObjectiveRoster, nowMs: number): Set<string> {
     const activeKeys = new Set<string>();
     for (const [deviceId, objective] of Object.entries(settings.objectivesByDeviceId)) {
       if (!objective.enabled || objective.kind !== 'energy') continue;

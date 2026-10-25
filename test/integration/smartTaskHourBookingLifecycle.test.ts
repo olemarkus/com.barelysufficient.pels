@@ -36,7 +36,7 @@ import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helper
 // while the task is short and again once it is covered.
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { describe, expect, it } from 'vitest';
-import { normalizeDeferredObjectiveSettings } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
+import { objectiveRosterFor } from '../utils/objectiveRoster';
 import { resolveDeferredObjectiveDeadline } from '../../lib/objectives/deferredObjectives';
 import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
@@ -218,8 +218,7 @@ const resolveDeadline = (): number => {
   return r.deadlineAtMs;
 };
 
-const buildSettings = () => normalizeDeferredObjectiveSettings({
-  version: 1,
+const buildSettings = () => objectiveRosterFor({
   objectivesByDeviceId: {
     [DEVICE_ID]: {
       enabled: true,

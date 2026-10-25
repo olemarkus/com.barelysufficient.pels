@@ -129,8 +129,8 @@ export const buildRescueCandidate = (
 });
 
 // Map a `rescueDeviceWithBudgetExemption` rejection reason onto the surfaces'
-// reject-reason union. The per-key write refused to persist (transient
-// un-confirmable migration / untrustworthy settings read) → map onto the
+// reject-reason union. The per-key write refused to persist (a transient
+// untrustworthy settings read) → map onto the
 // retryable `write_conflict` lane so the user gets the "try again" copy.
 export const mapAppRescueReason = (reason: string): StarvationRescueRejectReason => {
   if (reason === 'device_not_found') return 'device_not_found';

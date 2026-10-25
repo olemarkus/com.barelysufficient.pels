@@ -21,7 +21,7 @@ import {
   type SmartTaskStatusId,
 } from './smartTaskTokens';
 import type { FlowCardDeps } from './registerFlowCards';
-import { registerSetDeadlineCard, throwIfWriteRefused, validateNumberInRange } from './deadlineCardWrites';
+import { registerSetDeadlineCard, validateNumberInRange } from './deadlineCardWrites';
 
 type SmartTaskActiveFlowStatus = SmartTaskStatusId;
 
@@ -230,13 +230,10 @@ function registerClearDeadlineCard(deps: FlowCardDeps): void {
     // Device-scoped op unsets this device's own settings key plus runs the
     // shared notify/flush chokepoint. A per-key unset cannot drop a
     // sibling task, so there is no refusal branch.
-    // Throw on a refused clear BEFORE the forget side effects below — dropping
-    // the bus / hours-tracker memory while the objective is still persisted
-    // would desync the UI from a task that never actually cleared.
-    throwIfWriteRefused(deps.clearDeferredObjectiveForDevice({
+    deps.clearDeferredObjectiveForDevice({
       deviceId,
       deviceName: hadEntry ? await resolveDeviceName(deps, deviceId) : null,
-    }));
+    });
     // Flow-card-only side effects of forgetting a task: drop the live status bus
     // / hours-tracker memory so lifecycle-only surfaces do not keep stale state.
     // The public status-change trigger is active-plan-revision backed, so it no

@@ -54,7 +54,6 @@ const BOOTSTRAP_KEYS: Record<SettingsUiBootstrapKey, true> = {
   daily_budget_price_flex_share: true,
   debug_logging_topics: true,
   debug_logging_enabled: true,
-  deferred_objectives: true,
   weather_advisor_settings: true,
   web_app_cloud_host: true,
   export_price_source: true,

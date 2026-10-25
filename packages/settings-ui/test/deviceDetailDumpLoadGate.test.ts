@@ -135,7 +135,6 @@ const openPanel = async (params: OpenPanelParams) => {
   state.editingMode = 'Home';
   if (params.activeSmartTask) {
     state.deferredObjectiveSettings = {
-      version: 1,
       objectivesByDeviceId: {
         [deviceId]: {
           enabled: true,

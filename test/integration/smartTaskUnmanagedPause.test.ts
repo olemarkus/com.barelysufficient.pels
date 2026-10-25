@@ -20,7 +20,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { handleDeferredDeadlineReached } from '../../setup/appInit/deferredObjectiveLifecycle';
 import type { AppContext } from '../../lib/app/appContext';
 import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
-import { normalizeDeferredObjectiveSettings } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
+import { objectiveRosterFor } from '../utils/objectiveRoster';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import {
   ELIGIBILITY_ABANDON_GRACE_MS,
@@ -97,8 +97,7 @@ const buildDiagnosticsParams = (overrides: {
   timeZone: 'UTC',
   devices: overrides.devices,
   getPrioritiesForDevices: createFixturePriorityQuery(overrides.devices),
-  settings: normalizeDeferredObjectiveSettings({
-    version: 1,
+  settings: objectiveRosterFor({
     objectivesByDeviceId: Object.fromEntries(
       (overrides.deviceIds ?? ['heater-1']).map((id) => [id, heaterEntry]),
     ),
@@ -168,8 +167,7 @@ describe('smart task on an un-managed device', () => {
     const tracker = new PriorityAllocationTracker();
     tracker.observe([missing, survivor], NOW_MS, () => false);
     tracker.observe([survivor], NOW_MS + 30_000, () => false);
-    const settings = normalizeDeferredObjectiveSettings({
-      version: 1,
+    const settings = objectiveRosterFor({
       objectivesByDeviceId: { [missing.id]: heaterEntry, [survivor.id]: heaterEntry },
     });
     const orderAt = (nowMs: number) => orderDeferredObjectives(
@@ -201,8 +199,7 @@ describe('smart task on an un-managed device', () => {
     // it is purged from the roster outright instead of holding its share
     // through the missing-device grace window.
     const ordered = orderDeferredObjectives(
-      normalizeDeferredObjectiveSettings({
-        version: 1,
+      objectiveRosterFor({
         objectivesByDeviceId: { 'heater-1': heaterEntry, 'heater-running': heaterEntry },
       }),
       new Map([[running.id, running]]),

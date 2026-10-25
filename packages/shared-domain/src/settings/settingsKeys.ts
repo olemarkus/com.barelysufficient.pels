@@ -68,13 +68,11 @@ export const DEVICE_TARGET_POWER_CONFIGS = 'device_target_power_configs';
 // The owner's manual "Power when running" figures: `Record<deviceId, { kw, ts }>`
 // (absent entry = PELS resolves the figure itself).
 export const DEVICE_EXPECTED_POWER_OVERRIDES = 'device_expected_power_overrides';
-export const DEFERRED_OBJECTIVES_SETTINGS = 'deferred_objectives';
-// Per-device objective key prefix (`deferred_objective.<deviceId>`), owned by
-// `lib/objectives/deferredObjectives/objectiveStore.ts`. Singular + dot,
-// deliberately DISTINCT from the plural blob key `deferred_objectives` so a
-// prefix scan never collides with the frozen blob (the blob key has no trailing
-// dot, so it is not matched by the prefix). The settings UI detects per-device
-// objective changes through it.
+// Smart tasks: one key per device (`deferred_objective.<deviceId>`), each
+// holding one `DeferredObjectiveSettingsEntry`. Owned by
+// `lib/objectives/deferredObjectives/objectiveStore.ts`, the only writer; the
+// settings UI watches the prefix to reload, and creates and ends tasks through
+// the smart-task routes.
 export const PER_DEVICE_OBJECTIVE_KEY_PREFIX = 'deferred_objective.';
 export const DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING = 'deferred_objective_active_plans';
 export const OVERSHOOT_BEHAVIORS = 'overshoot_behaviors';

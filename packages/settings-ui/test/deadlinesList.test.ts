@@ -13,7 +13,7 @@ import type {
   ResolvedDeferredObjectiveActivePlansV1,
 } from '../../contracts/src/deferredObjectiveActivePlans.ts';
 import type {
-  DeferredObjectiveSettingsV1,
+  DeferredObjectiveRoster,
   DeferredObjectiveSettingsEntry,
 } from '../../contracts/src/deferredObjectiveSettings.ts';
 import type { ObservedStateOfChargeProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../contracts/src/types.ts';
@@ -84,8 +84,7 @@ const buildActivePlans = (
 
 const buildObjectiveSettings = (
   entries: Record<string, DeferredObjectiveSettingsEntry>,
-): DeferredObjectiveSettingsV1 => ({
-  version: 1,
+): DeferredObjectiveRoster => ({
   objectivesByDeviceId: entries,
 });
 
@@ -662,7 +661,8 @@ const HISTORY_DEVICE_FILTER_STORAGE_KEY = 'pels.smart-tasks.history.deviceFilter
 
 // An empty active list, so only the history surface carries entries.
 const emptyBootstrap = {
-  settings: { deferred_objectives: { version: 1, objectivesByDeviceId: {} } },
+  settings: {},
+  deferredObjectives: { objectivesByDeviceId: {} },
   deferredObjectiveActivePlans: { version: 1, plansByDeviceId: {} },
 };
 

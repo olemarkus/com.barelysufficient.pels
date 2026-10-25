@@ -1,7 +1,15 @@
-// The persisted `deferred_objectives` setting's shape. Its parse boundary
-// (`normalizeDeferredObjectiveSettings`) lives in
-// `packages/shared-domain/src/settings/deferredObjectiveSettings.ts`, which the
-// runtime and the settings UI both read it through.
+// Smart-task shapes. Each device's task is stored under its own settings key,
+// `deferred_objective.<deviceId>`, as one `DeferredObjectiveSettingsEntry`;
+// `lib/objectives/deferredObjectives/objectiveStore.ts` owns those keys and is
+// their only writer. `DeferredObjectiveRoster` is the in-memory map the store
+// assembles from them and the settings UI receives; it is never persisted.
+// Outside PELS (the settings UI, widgets, scripts, a lab), tasks are created
+// and ended through the smart-task routes, never by writing settings keys.
+//
+// The entry parse boundary (`normalizeDeferredObjectiveSettingsEntry`) lives in
+// `packages/shared-domain/src/settings/deferredObjectiveSettings.ts`; the
+// settings UI parses the roster it receives in
+// `packages/settings-ui/src/ui/deferredObjectiveRoster.ts`.
 export type DeferredObjectiveEnforcement = 'soft' | 'hard';
 
 /**
@@ -87,7 +95,6 @@ export type DeferredObjectiveSettingsEntry =
   | DeferredObjectiveTemperatureSettingsEntry
   | DeferredObjectiveEnergySettingsEntry;
 
-export type DeferredObjectiveSettingsV1 = {
-  version: 1;
+export type DeferredObjectiveRoster = {
   objectivesByDeviceId: Record<string, DeferredObjectiveSettingsEntry>;
 };

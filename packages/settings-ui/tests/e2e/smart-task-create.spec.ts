@@ -9,7 +9,7 @@ const installCreateStub = async (page: Page): Promise<void> => {
       __LAST_SMART_TASK_CREATE__?: unknown;
     };
     stubWindow.__PELS_HOMEY_STUB__ = {
-      settings: { deferred_objectives: { version: 1, objectivesByDeviceId: {} } },
+      unsetSettings: ['deferred_objective.dev_connected300'],
       apiHandlers: {
         'GET /ui_smart_task_devices': () => ({
           state: 'ready', devices: [{

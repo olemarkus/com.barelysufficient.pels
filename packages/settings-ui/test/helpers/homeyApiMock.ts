@@ -380,6 +380,8 @@ const buildUiBootstrap = async (homey: MockHomeyClient) => ({
     SETTINGS_UI_BOOTSTRAP_KEYS.map(async (key) => [key, await getHomeySetting(homey, key)]),
   )),
   dailyBudget: getDailyBudgetRead(homey),
+  // The same roster the runtime serves at `SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH`.
+  deferredObjectives: getUiOverride(homey, 'deferredObjectiveSettings') ?? { objectivesByDeviceId: {} },
   // Seed the contract-required `deferredObjectiveActivePlans` field. Without
   // this the bootstrap response is missing a field declared on
   // `SettingsUiBootstrap`, which masks consumer regressions (the boot path in
@@ -434,7 +436,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
     getUiOverride(homey, 'deferredObjectiveHistory') ?? { version: 1, entriesByDeviceId: {} }
   ),
   [buildRouteKey('GET', SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH)]: (homey) => async () => (
-    getUiOverride(homey, 'deferredObjectiveSettings') ?? { version: 1, objectivesByDeviceId: {} }
+    getUiOverride(homey, 'deferredObjectiveSettings') ?? { objectivesByDeviceId: {} }
   ),
   [buildRouteKey('GET', DAILY_BUDGET_PATH)]: (homey) => async () => getDailyBudgetRead(homey),
   // `inactive` = weather flag off (the production handler's structural-absence member).

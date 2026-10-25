@@ -25,10 +25,7 @@ import type { PelsWidgetHostApi, WidgetObjectiveWriteResult } from '../../packag
 import type { NewSmartTaskWriteResult } from '../../packages/contracts/src/smartTaskEdit';
 
 /** The settings UI's clear of a device's smart task, as the app answers it. */
-export type CancelDeferredObjectiveOutcome = { ok: true } | {
-  ok: false;
-  reason: 'task_not_found' | 'write_refused';
-};
+export type CancelDeferredObjectiveOutcome = { ok: true } | { ok: false; reason: 'task_not_found' };
 
 /**
  * The running app as the settings-UI and app API handlers reach it through

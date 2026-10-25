@@ -90,11 +90,10 @@ export const readCreateSmartTaskCandidateDevices = (
 // Map a refused device-scoped write outcome onto the app create-lane reject
 // union: the write op's durable sub-home/source-device gates (defence-in-depth
 // — normally caught earlier by `resolveValidatedObjectiveEntry`) keep their
-// honest typed reasons, while transient refusals (un-confirmable migration /
-// untrustworthy absence read) collapse to the retryable `write_refused` lane.
+// honest typed reasons, while transient refusals (untrustworthy absence or
+// home-scope read) collapse to the retryable `write_refused` lane.
 export const mapObjectiveWriteRefusalReason = (
-  reason: 'device_in_sub_home' | 'device_not_planned'
-    | 'migration_deferred' | 'untrusted_absence' | 'ownership_unavailable',
+  reason: 'device_in_sub_home' | 'device_not_planned' | 'untrusted_absence' | 'ownership_unavailable',
 ): 'device_in_sub_home' | 'device_not_planned' | 'write_refused' => (
   reason === 'device_in_sub_home' || reason === 'device_not_planned'
     ? reason

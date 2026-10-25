@@ -2,6 +2,7 @@ import type { CapacityPeriodMinutes, CapacityScalarSettings } from './capacitySe
 import type { DailyBudgetUiRead } from './dailyBudgetTypes.js';
 import type { ResolvedDeferredObjectiveActivePlansV1 } from './deferredObjectiveActivePlans.js';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from './deferredObjectivePlanHistory.js';
+import type { DeferredObjectiveRoster } from './deferredObjectiveSettings.js';
 import type { SettingsUiDeviceDiagnosticsPayload } from './deviceDiagnosticsTypes.js';
 import type { SettingsUiPowerTracker } from './powerTrackerTypes.js';
 import type { PriceOptimizationSetupRead } from './priceOptimizationSettings.js';
@@ -209,7 +210,6 @@ export type SettingsUiBootstrapKey =
   | 'daily_budget_price_flex_share'
   | 'debug_logging_topics'
   | 'debug_logging_enabled'
-  | 'deferred_objectives'
   | 'weather_advisor_settings'
   | 'web_app_cloud_host'
   | 'export_price_source'
@@ -232,6 +232,9 @@ export type SettingsUiSettingsPatch = {
 
 export type SettingsUiBootstrap = SettingsUiSettingsPatch & {
   dailyBudget: DailyBudgetUiRead;
+  // The smart tasks, assembled from the per-device keys; the same read model
+  // as `SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH`.
+  deferredObjectives: DeferredObjectiveRoster;
   deferredObjectiveActivePlans: ResolvedDeferredObjectiveActivePlansV1 | null;
   plan: SettingsUiPlanSnapshot | null;
   power: SettingsUiPowerPayload;

@@ -6,12 +6,12 @@ import { DeadlineChip } from '../src/ui/views/PlanDeviceCards.tsx';
 import { appendDeviceStateChips } from '../src/ui/deviceListPresentation.ts';
 import type { SettingsUiDeviceListItem } from '../src/ui/deviceUtils.ts';
 import { state } from '../src/ui/state.ts';
-import { createEmptyDeferredObjectiveSettings } from '../../shared-domain/src/settings/deferredObjectiveSettings.ts';
+import { createEmptyDeferredObjectiveRoster } from '../../shared-domain/src/settings/deferredObjectiveSettings.ts';
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import { styleRule } from './helpers/primitiveStyles.ts';
 
 afterEach(() => {
-  state.deferredObjectiveSettings = createEmptyDeferredObjectiveSettings();
+  state.deferredObjectiveSettings = createEmptyDeferredObjectiveRoster();
 });
 
 describe('chip primitive', () => {
@@ -38,7 +38,6 @@ describe('chip primitive', () => {
   it('uses the informational link chip for a smart task', () => {
     const nowMs = Date.UTC(2026, 4, 24, 12);
     state.deferredObjectiveSettings = {
-      version: 1,
       objectivesByDeviceId: {
         'connected-300': {
           enabled: true,

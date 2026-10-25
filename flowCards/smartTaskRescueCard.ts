@@ -95,10 +95,10 @@ export function registerAllowSmartTaskRescueCard(deps: FlowCardDeps): void {
       deviceId, null, withRescuePermission(prevEntry, key, mode), 'replace',
     );
     // A refused write must surface as a failure, not a silent success that
-    // leaves the rescue permission unchanged. Transient refusals (un-confirmable
-    // migration / untrustworthy settings read) get the retry framing; the
-    // Durable scope refusals cannot be cleared by retrying, so they throw their
-    // own honest lines (shared with the other smart-task surfaces).
+    // leaves the rescue permission unchanged. Transient refusals (an
+    // untrustworthy settings read) get the retry framing; durable scope
+    // refusals cannot be cleared by retrying, so they throw their own honest
+    // lines (shared with the other smart-task surfaces).
     if (!outcome.persisted) {
       throw new Error(resolveObjectiveWriteRefusalMessage(outcome.reason));
     }

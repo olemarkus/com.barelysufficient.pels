@@ -144,8 +144,8 @@ describe('allow_smart_task_rescue flow card', () => {
 
   it('THROWS (retryable) when the underlying write refuses (no silent success)', async () => {
     // The read finds the device's task (so the card reaches the write), but the
-    // device-scoped write refuses to persist (transient un-confirmable migration
-    // / untrustworthy settings read). The card must throw a retryable error so
+    // device-scoped write refuses to persist (a transient untrustworthy settings
+    // read). The card must throw a retryable error so
     // Homey surfaces the failure instead of reporting success while the rescue
     // permission never changed.
     const existing: DeferredObjectiveSettingsEntry = {
@@ -163,7 +163,7 @@ describe('allow_smart_task_rescue flow card', () => {
         },
         settings: { get: () => undefined, set: () => {}, unset: () => {}, getKeys: () => [] },
       },
-      getDeferredObjectiveSettings: () => ({ version: 1 as const, objectivesByDeviceId: { 'dev-1': existing } }),
+      getDeferredObjectiveSettings: () => ({ objectivesByDeviceId: { 'dev-1': existing } }),
       getSnapshot: async () => [],
       upsertDeferredObjectiveForDevice,
     } as unknown as Parameters<typeof registerAllowSmartTaskRescueCard>[0];

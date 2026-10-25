@@ -239,8 +239,8 @@ export const buildValidSmartTaskCandidate = (
 };
 
 // Map a `createDeferredObjective` rejection onto the shared UI reject
-// vocabulary. The per-key write's refusal (transient un-confirmable migration /
-// untrustworthy settings read) maps onto the retryable `write_conflict` lane so
+// vocabulary. The per-key write's refusal (a transient untrustworthy settings
+// read) maps onto the retryable `write_conflict` lane so
 // the user gets the "try again" copy rather than a false success.
 export const mapSmartTaskAppReason = (reason: string): SmartTaskWriteRejectReason => {
   if (reason === 'device_not_found') return 'device_not_found';

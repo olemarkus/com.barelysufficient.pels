@@ -4,12 +4,10 @@ import { cleanupApps, createApp } from '../utils/appTestUtils';
 import {
   readAllObjectives,
   type DeferredObjectivePlanPreviewCandidate,
-  type DeferredObjectiveSettingsV1,
+  type DeferredObjectiveRoster,
 } from '../../lib/objectives/deferredObjectives';
 import {
   CAPACITY_PRIORITIES,
-  DEFERRED_OBJECTIVES_SETTINGS,
-  DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
   DEVICE_CONTROL_PROFILES,
   MANAGED_DEVICES,
 } from '../../lib/utils/settingsKeys';
@@ -63,7 +61,7 @@ const rescueCandidate = (targetTemperatureC: number): DeferredObjectivePlanPrevi
   rescue: { exemptFromBudget: 'always' },
 });
 
-const readStored = (): DeferredObjectiveSettingsV1 => (
+const readStored = (): DeferredObjectiveRoster => (
   readAllObjectives(mockHomeyInstance.settings)
 );
 
@@ -491,33 +489,6 @@ describe('createDeferredObjective (app)', () => {
       await app.onUninit?.();
     });
 
-    it('REJECTS (no clobber) a device whose task is still only in the unmigrated legacy blob', async () => {
-      const app = await initApp();
-      // Simulate the un-migrated state Codex flagged: the user's task lives ONLY in
-      // the legacy blob, the per-key migration marker is unset, and no per-key
-      // exists. The per-key `hasDeferredObjectiveForDevice` would miss it — so the
-      // rescue must migrate FIRST, then see the task and refuse, never clobber it.
-      const ownDeadline = Date.now() + 6 * 60 * 60 * 1000;
-      const existing = {
-        enabled: true, kind: 'temperature', enforcement: 'soft', targetTemperatureC: 70, deadlineAtMs: ownDeadline,
-      };
-      mockHomeyInstance.settings.set(DEFERRED_OBJECTIVES_SETTINGS, {
-        version: 1, objectivesByDeviceId: { 'heater-1': existing },
-      });
-      mockHomeyInstance.settings.unset(DEFERRED_OBJECTIVES_PERKEY_MIGRATED);
-
-      const result = app.rescueDeviceWithBudgetExemption('heater-1', rescueCandidate(65));
-      expect(result).toEqual({ ok: false, reason: 'device_not_eligible' });
-      // The user's task survived (migrated to per-key, target/deadline intact, no
-      // rescue grant written over it).
-      expect(readStored().objectivesByDeviceId['heater-1']).toMatchObject({
-        targetTemperatureC: 70,
-        deadlineAtMs: ownDeadline,
-      });
-      expect(readStored().objectivesByDeviceId['heater-1'].rescue).toBeUndefined();
-      await app.onUninit?.();
-    });
-
     it('DEFENCE-IN-DEPTH: rejects a candidate that does not carry the budget exemption', async () => {
       const app = await initApp();
       // A plain create candidate (no rescue) must never reach this lane.
@@ -599,9 +570,8 @@ describe('createDeferredObjective (app)', () => {
   });
 
   // Settings-UI clear lane. The ordering contract mirrors the `clear_deadline`
-  // Flow card: the status-bus / hours-tracker memory is forgotten only AFTER a
-  // confirmed persist, so a refused clear never desyncs lifecycle surfaces
-  // from a task that is still stored.
+  // Flow card: the status-bus / hours-tracker memory is forgotten only AFTER
+  // the task is cleared.
   describe('cancelDeferredObjective', () => {
     it('clears the stored task, then forgets the status-bus and hours-tracker memory', async () => {
       const app = await initApp();
@@ -627,21 +597,18 @@ describe('createDeferredObjective (app)', () => {
       await app.onUninit?.();
     });
 
-    it('GUARDRAIL: a refused clear leaves the task stored and the bus memory intact', async () => {
+    it('GUARDRAIL: a transient-empty key list never reads as "already ended"; the clear lands', async () => {
       const app = await initApp();
       expect(app.createDeferredObjective('heater-1', tempCandidate(60))).toEqual({ ok: true });
       const forgetStatus = vi.spyOn(app.deferredObjectiveStatusBus, 'forgetDevice');
       const forgetHours = vi.spyOn(app.deferredObjectiveHoursRemainingTracker, 'forgetDevice');
-      // Simulate the boot-time transient-empty `getKeys()` flake with the
-      // migration marker unset: `ensureMigrated` then refuses the write.
-      mockHomeyInstance.settings.unset(DEFERRED_OBJECTIVES_PERKEY_MIGRATED);
       const getKeysSpy = vi.spyOn(mockHomeyInstance.settings, 'getKeys').mockReturnValue([]);
 
-      expect(app.cancelDeferredObjective('heater-1')).toEqual({ ok: false, reason: 'write_refused' });
+      expect(app.cancelDeferredObjective('heater-1')).toEqual({ ok: true });
       getKeysSpy.mockRestore();
-      expect(readStored().objectivesByDeviceId['heater-1']).toMatchObject({ targetTemperatureC: 60 });
-      expect(forgetStatus).not.toHaveBeenCalled();
-      expect(forgetHours).not.toHaveBeenCalled();
+      expect(readStored().objectivesByDeviceId['heater-1']).toBeUndefined();
+      expect(forgetStatus).toHaveBeenCalledWith('heater-1');
+      expect(forgetHours).toHaveBeenCalledWith('heater-1');
       await app.onUninit?.();
     });
   });

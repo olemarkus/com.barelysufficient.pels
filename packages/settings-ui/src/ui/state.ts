@@ -22,11 +22,11 @@ import type {
   TemperatureBoostSettings,
 } from '../../../contracts/src/types.ts';
 import {
-  createEmptyDeferredObjectiveSettings,
+  createEmptyDeferredObjectiveRoster,
   isSmartTaskInProgress,
   isSmartTaskOpen,
 } from '../../../shared-domain/src/settings/deferredObjectiveSettings.ts';
-import type { DeferredObjectiveSettingsV1 } from '../../../contracts/src/deferredObjectiveSettings.ts';
+import type { DeferredObjectiveRoster } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { OverviewDeferredObjectiveActivePlans } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { ChargerPhasePresets, SettingsUiBatteryState } from '../../../contracts/src/settingsUiApi.ts';
 import { DEFAULT_MODE_NAME } from '../../../shared-domain/src/modeLabels.ts';
@@ -121,7 +121,7 @@ export type UiState = {
   evChargeTargetSettings: EvChargeTargetSettings;
   evCarAssociations: EvCarAssociations;
   evCarAssociationsLoaded: boolean;
-  deferredObjectiveSettings: DeferredObjectiveSettingsV1;
+  deferredObjectiveSettings: DeferredObjectiveRoster;
   deferredObjectiveActivePlans: OverviewDeferredObjectiveActivePlans | null;
   priceOptimizationSettings: Record<string, PriceOptimizationConfig>;
   // Whether `priceOptimizationSettings` holds a read: it starts empty, which
@@ -216,7 +216,7 @@ export const state: UiState = {
   evChargeTargetSettings: {},
   evCarAssociations: {},
   evCarAssociationsLoaded: false,
-  deferredObjectiveSettings: createEmptyDeferredObjectiveSettings(),
+  deferredObjectiveSettings: createEmptyDeferredObjectiveRoster(),
   deferredObjectiveActivePlans: null,
   priceOptimizationSettings: {},
   priceOptimizationSettingsLoaded: false,

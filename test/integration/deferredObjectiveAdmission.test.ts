@@ -15,7 +15,7 @@ import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import {
   DeferredObjectiveDecorationController,
-  type DeferredObjectiveSettingsV1,
+  type DeferredObjectiveRoster,
 } from '../../lib/objectives/deferredObjectives';
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
@@ -180,8 +180,7 @@ const buildDevice = (params: {
 
 const DEADLINE_AT_MS = Date.UTC(2026, 4, 10, 6, 0, 0);
 
-const buildSettings = (): DeferredObjectiveSettingsV1 => ({
-  version: 1,
+const buildSettings = (): DeferredObjectiveRoster => ({
   objectivesByDeviceId: {
     [DEVICE_ID]: {
       enabled: true,
@@ -617,7 +616,6 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
     }, () => ({
-      version: 1,
       objectivesByDeviceId: {
         [DEVICE_ID]: {
           enabled: false,

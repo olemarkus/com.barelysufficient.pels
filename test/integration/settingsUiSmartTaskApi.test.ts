@@ -131,6 +131,15 @@ describe('previewSettingsUiSmartTask', () => {
     expect(previewDeferredObjectivePlan).not.toHaveBeenCalled();
   });
 
+  it('GUARDRAIL: a settings read that throws is a retryable conflict, not a handler failure', () => {
+    const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
+    const { homey, settings } = buildContext({ previewDeferredObjectivePlan });
+    vi.spyOn(settings, 'get').mockImplementation(() => { throw new Error('settings read failed'); });
+    const result = previewSettingsUiSmartTask({ homey, body: updateBody() });
+    expect(result).toEqual({ ok: false, reason: 'write_conflict' });
+    expect(previewDeferredObjectivePlan).not.toHaveBeenCalled();
+  });
+
   it('GUARDRAIL: a stored-but-disabled task is not editable', () => {
     const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
     const { homey, settings } = buildContext({ previewDeferredObjectivePlan });
@@ -164,7 +173,7 @@ describe('previewSettingsUiSmartTask', () => {
     expect(candidate.rescue).toBeUndefined();
   });
 
-  it('does not migrate settings or write markers through the public preview handler', () => {
+  it('writes no settings through the public preview handler', () => {
     const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
     const { homey, settings } = buildContext({ previewDeferredObjectivePlan });
     const writes: string[] = [];
@@ -475,16 +484,11 @@ describe('cancelSettingsUiSmartTask', () => {
     expect(cancelDeferredObjective).not.toHaveBeenCalled();
   });
 
-  it('passes task_not_found through and maps a refused clear to write_conflict', () => {
+  it('passes task_not_found through', () => {
     const notFound = vi.fn(() => ({ ok: false, reason: 'task_not_found' }));
     const { homey } = buildContext({ cancelDeferredObjective: notFound });
     expect(cancelSettingsUiSmartTask({ homey, body: { deviceId: DEVICE_ID } }))
       .toEqual({ ok: false, reason: 'task_not_found' });
-
-    const refused = vi.fn(() => ({ ok: false, reason: 'write_refused' }));
-    const { homey: refusedHomey } = buildContext({ cancelDeferredObjective: refused });
-    expect(cancelSettingsUiSmartTask({ homey: refusedHomey, body: { deviceId: DEVICE_ID } }))
-      .toEqual({ ok: false, reason: 'write_conflict' });
   });
 });
 
@@ -561,13 +565,13 @@ describe('settings UI smart task creation', () => {
     expect(previewSettingsUiNewSmartTask({ homey, body: updateBody() })).toMatchObject({ ok: true });
   });
 
-  it('GUARDRAIL: a preview while tasks may still sit in the unmigrated legacy blob is a retryable conflict', () => {
+  it('previews from the per-device keys alone, whatever else the settings hold', () => {
+    // An outside writer once stored a roster under the retired plural key; that
+    // must neither read as an open task nor block the preview.
     const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
     const { homey, settings } = buildContext({ previewDeferredObjectivePlan }, false);
-    settings.set('deferred_objectives', { version: 1, objectivesByDeviceId: { [DEVICE_ID]: storedEntry() } });
-    expect(previewSettingsUiNewSmartTask({ homey, body: updateBody() }))
-      .toEqual({ ok: false, reason: 'write_conflict' });
-    expect(previewDeferredObjectivePlan).not.toHaveBeenCalled();
+    settings.set('deferred_objectives', { objectivesByDeviceId: { [DEVICE_ID]: storedEntry() } });
+    expect(previewSettingsUiNewSmartTask({ homey, body: updateBody() })).toMatchObject({ ok: true });
   });
 
   it('GUARDRAIL: a preview over an unreadable task store is a retryable conflict, never a free device', () => {

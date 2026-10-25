@@ -13,8 +13,8 @@ import type { FlowCardDeps } from './registerFlowCards';
 
 const LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
-// A device-scoped write can refuse to persist on a transient un-confirmable
-// migration / untrustworthy settings read / provisional ownership fence. The Flow-card run listeners are
+// A device-scoped write can refuse to persist on a transient untrustworthy
+// settings read / provisional ownership fence. The Flow-card run listeners are
 // async, so throwing here lets Homey surface a retryable failure to the user
 // instead of the card reporting a (false) success while nothing was written.
 // Durable scope refusals (`device_in_sub_home` / `device_not_planned`) throw

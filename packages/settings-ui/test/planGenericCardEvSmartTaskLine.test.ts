@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { PlanGenericCard } from '../src/ui/views/PlanDeviceCards.tsx';
 import { resolveEvCardStateLines } from '../src/ui/evCardStateLine.ts';
 import { state } from '../src/ui/state.ts';
-import { createEmptyDeferredObjectiveSettings } from '../../shared-domain/src/settings/deferredObjectiveSettings.ts';
+import { createEmptyDeferredObjectiveRoster } from '../../shared-domain/src/settings/deferredObjectiveSettings.ts';
 import type { OverviewDeferredObjectiveActivePlans } from '../../contracts/src/deferredObjectiveActivePlans.ts';
 import { PLAN_REASON_CODES } from '../../shared-domain/src/planReasonSemantics.ts';
 import { uiDeviceFixture } from './helpers/deviceStatusFixture.ts';
@@ -17,7 +17,6 @@ const seedEvTask = (
   options: { diagnosticReasonCode?: string; enabled?: boolean; plannedKWh?: (startsAtMs: number) => number } = {},
 ): void => {
   state.deferredObjectiveSettings = {
-    version: 1,
     objectivesByDeviceId: {
       [CHARGER_ID]: { enabled: options.enabled ?? true, kind: 'ev_soc', enforcement: 'soft', targetPercent: 80,
         deadlineAtMs: NOW_MS + 6 * HOUR_MS },
@@ -39,7 +38,7 @@ const formatTime = (ms: number): string => (
 );
 
 afterEach(() => {
-  state.deferredObjectiveSettings = createEmptyDeferredObjectiveSettings();
+  state.deferredObjectiveSettings = createEmptyDeferredObjectiveRoster();
   state.deferredObjectiveActivePlans = null;
 });
 

@@ -21,7 +21,7 @@ import {
 import type { DeferredObjectiveStatusBus } from './statusBus';
 import type { DeferredObjectiveHoursRemainingBus } from './hoursRemainingBus';
 import type { DeferredObjectiveHoursRemainingTracker } from './hoursRemainingCrossings';
-import type { DeferredObjectiveSettingsV1 } from '../../../packages/contracts/src/deferredObjectiveSettings';
+import type { DeferredObjectiveRoster } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { isDeferredObjectiveExpired } from './diagnosticTypes';
 import { PriorityAllocationTracker } from './priorityAllocation';
 
@@ -66,7 +66,7 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
   // of the main planning lane, and keeps an excluded task out of the
   // priority-allocation roster so it cannot shrink the runnable tasks' shares.
   source: TaskEvaluationSource;
-  getDeferredObjectiveSettings: () => DeferredObjectiveSettingsV1 | undefined;
+  getDeferredObjectiveSettings: () => DeferredObjectiveRoster | undefined;
   /** Live device inputs (the same source the plan loop reads via getPlanDevices). */
   getDevices: () => ObjectiveDeviceSource[];
   // The budget overlay; the allocation horizon's prices come from the source.

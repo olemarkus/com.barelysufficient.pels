@@ -17,7 +17,7 @@ import type {
 } from './policyHorizon';
 import type {
   DeferredObjectiveSettingsEntry,
-  DeferredObjectiveSettingsV1,
+  DeferredObjectiveRoster,
 } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import {
   selectMinimumStepForEnergy,
@@ -152,7 +152,7 @@ const compareDeviceIdAsc = (left: string, right: string): number => {
 };
 
 export const orderDeferredObjectives = (
-  settings: DeferredObjectiveSettingsV1,
+  settings: DeferredObjectiveRoster,
   deviceById: ReadonlyMap<string, ObjectiveDeviceInput>,
   /** See `PriorityAllocationTracker.observe`: durably out of the main lane. */
   isDeviceExcluded: (deviceId: string) => boolean,

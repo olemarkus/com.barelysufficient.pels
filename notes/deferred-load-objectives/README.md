@@ -46,48 +46,50 @@ before the broader objective UX is ready.
 
 ## Persisted Settings Slice
 
-The persisted objective format is one-shot and datetime-bound:
+Each device's objective is stored under its own settings key,
+`deferred_objective.<deviceId>`, owned by
+`lib/objectives/deferredObjectives/objectiveStore.ts`. The value is one-shot and datetime-bound
+(`DeferredObjectiveSettingsEntry` in `packages/contracts/src/deferredObjectiveSettings.ts`):
 
 ```ts
-type DeferredObjectiveSettingsV1 = {
-  version: 1;
-  objectivesByDeviceId: Record<string, (
-    {
-      enabled: boolean;
-      kind: 'ev_soc';
-      enforcement: 'soft' | 'hard'; // soft-only to users; no card sets 'hard' (still tweaks the planner buffer if persisted)
-      targetPercent: number;
-      deadlineAtMs: number; // absolute UTC timestamp
-    }
-    | {
-      enabled: boolean;
-      kind: 'temperature';
-      enforcement: 'soft';
-      targetTemperatureC: number;
-      deadlineAtMs: number; // absolute UTC timestamp
-    }
-    | {
-      enabled: boolean;
-      kind: 'energy';
-      enforcement: 'soft';
-      targetEnergyKWh: number; // 0.1..200, the Flow card's range
-      deadlineAtMs: number; // absolute UTC timestamp
-    }
-  )>;
-};
+type DeferredObjectiveSettingsEntry =
+  | {
+    enabled: boolean;
+    kind: 'ev_soc';
+    enforcement: 'soft' | 'hard'; // soft-only to users; no card sets 'hard' (still tweaks the planner buffer if persisted)
+    targetPercent: number;
+    deadlineAtMs: number; // absolute UTC timestamp
+  }
+  | {
+    enabled: boolean;
+    kind: 'temperature';
+    enforcement: 'soft';
+    targetTemperatureC: number;
+    deadlineAtMs: number; // absolute UTC timestamp
+  }
+  | {
+    enabled: boolean;
+    kind: 'energy';
+    enforcement: 'soft';
+    targetEnergyKWh: number; // 0.1..200, the Flow card's range
+    deadlineAtMs: number; // absolute UTC timestamp
+  };
 ```
+
+The store assembles the entries into a `DeferredObjectiveRoster`
+(`{ objectivesByDeviceId }`) for the planner and the settings UI. The roster is never persisted.
 
 Storage rules:
 
 - Keep configured objective facts in settings and derived planning output out of settings.
-- One v1 objective is keyed by device id. Multiple objectives per device require a later schema.
+- One objective per device. Multiple objectives per device require a later schema.
 - Invalid or unsupported settings entries are ignored rather than interpreted with defaults.
 - `targetPercent` must be at least 1 and at or below 100 (the EV flow card enforces this range;
   the contract normalizer rejects sub-1% values).
 - `targetTemperatureC` must be finite and within the bounded settings range. The Settings UI should
   further constrain it to the device target capability range when that range is available.
-- Clearing a deadline for a device that has no objective is a safe no-op: `removeObjective`
-  returns settings unchanged, and the status bus / hours-tracker forget paths both no-op cleanly.
+- Clearing a deadline for a device that has no objective is a safe no-op: the store leaves the
+  settings unchanged, and the status bus / hours-tracker forget paths both no-op cleanly.
   Public status-change Flow cards are revision-backed and have no separate trigger cache.
 - `deadlineAtMs` is an absolute UTC timestamp. Flow cards take a `HH:mm` local-time argument and
   resolve it to the next future local moment **once at write time**; the persisted value never
@@ -104,8 +106,8 @@ Storage rules:
   rather than treat the field as dead. The "push past the daily budget" need is met by rescue /
   exempt-from-budget, not by promoting `'hard'`.
 
-The bridge reads this settings payload during plan construction, normalizes it, evaluates each
-enabled objective, and emits structured `deferred_objectives` debug diagnostics. The bridge also
+The bridge reads the roster during plan construction (each entry normalized as the store reads
+its key), evaluates each enabled objective, and emits structured `deferred_objectives` debug diagnostics. The bridge also
 publishes live status transitions before expiry to an in-process status bus. History and the
 ended-event bus own terminal outcomes. Public status Flow cards read the settled active-plan
 status instead; create/clear Flow cards
@@ -694,7 +696,7 @@ the state-management rule that observed, planned, commanded, and effective plann
 be collapsed into one object.
 
 > **Note:** the types below are forward-design types capturing the eventual planner contract.
-> The shipped persisted shape is `DeferredObjectiveSettingsV1` (see §"Persisted Settings Slice")
+> The shipped persisted shape is `DeferredObjectiveSettingsEntry` (see §"Persisted Settings Slice")
 > and the shipped evaluation type is `DeferredObjectiveDiagnostic` in
 > `lib/objectives/deferredObjectives/diagnosticTypes.ts`, produced by `taskEvaluationCoordinator.ts`.
 > Fields below that don't appear on the
@@ -708,7 +710,7 @@ The original forward-design `DeviceObjectiveState` / `DeviceObjectiveEvaluation`
 `ObjectiveRateEstimate` type sketches have been removed from this note — they never shipped as
 named and were drifting from reality. The shipped equivalents are:
 
-- **Persisted state**: `DeferredObjectiveSettingsV1` (`packages/contracts/src/deferredObjectiveSettings.ts`).
+- **Persisted state**: `DeferredObjectiveSettingsEntry`, one per device key (`packages/contracts/src/deferredObjectiveSettings.ts`).
 - **Evaluation**: `DeferredObjectiveDiagnostic` (`lib/objectives/deferredObjectives/diagnosticTypes.ts`,
   produced by `taskEvaluationCoordinator.ts`), status enum `unknown | on_track | at_risk | cannot_meet`.
 - **Rate estimate**: the learned-profile model in `lib/objectives/` (see §"Learned Profiling First").

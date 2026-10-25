@@ -35,6 +35,11 @@ const RETIRED_SETTINGS_KEYS: ReadonlySet<string> = new Set([
   // store has no such miss to tell.
   'power_calibration_initialized',
   'ev_car_link_state_initialized',
+  // The smart-task blob that per-device `deferred_objective.<deviceId>` keys
+  // replaced in 2.11.0, and the marker of that move. The move was deleted once
+  // no install ran a version that wrote the blob (2.7.0 to 2.10.x).
+  'deferred_objectives',
+  'deferred_objectives_perkey_migrated',
 ]);
 
 export const unsetRetiredSettingsKeys = (settings: SettingsPort): void => {

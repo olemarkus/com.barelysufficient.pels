@@ -20,7 +20,7 @@ import {
   type TaskEvaluationSource,
 } from './diagnosticsBridge';
 import type { TaskEvaluation } from './taskEvaluation';
-import type { DeferredObjectiveSettingsV1 } from '../../../packages/contracts/src/deferredObjectiveSettings';
+import type { DeferredObjectiveRoster } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { PriorityAllocationTracker } from './priorityAllocation';
 
 /**
@@ -44,7 +44,7 @@ export class DeferredObjectiveDecorationController {
 
   constructor(
     private readonly source: TaskEvaluationSource,
-    private readonly getDeferredObjectiveSettings: () => DeferredObjectiveSettingsV1 | undefined,
+    private readonly getDeferredObjectiveSettings: () => DeferredObjectiveRoster | undefined,
   ) {}
 
   public decorate(input: DeferredDecorationInput): DeferredDecorationBundle {

@@ -512,19 +512,15 @@ test.describe('settings shell layout regressions', () => {
       await page.addInitScript(() => {
         (window as Window & { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = {
           settings: {
-            deferred_objectives: {
-              version: 1,
-              objectivesByDeviceId: {
-                dev_zaptec: {
-                  enabled: true,
-                  kind: 'ev_soc',
-                  enforcement: 'soft',
-                  targetPercent: 80,
-                  deadlineAtMs: Date.now() + 12 * 3600_000,
-                },
-              },
+            'deferred_objective.dev_zaptec': {
+              enabled: true,
+              kind: 'ev_soc',
+              enforcement: 'soft',
+              targetPercent: 80,
+              deadlineAtMs: Date.now() + 12 * 3600_000,
             },
           },
+          unsetSettings: ['deferred_objective.dev_connected300'],
         };
       });
       await openApp(page, width);
