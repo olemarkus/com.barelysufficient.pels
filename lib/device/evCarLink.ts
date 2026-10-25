@@ -518,20 +518,6 @@ export type EvLinkResolution = {
     votes: number;
 };
 
-/**
- * Decide which car a charger is serving.
- *
- * A live coincidence always wins — it is same-session evidence. The persisted
- * affinity prior only breaks a tie, and only when exactly one candidate has
- * cleared `EV_CAR_LINK_MIN_PRIOR_VOTES` while every other candidate has none. A
- * prior that merely leads is not enough: the point of the threshold is that a
- * second car in the household must never inherit the first car's history.
- */
-export const resolveLinkForCharger = (params: LinkDecisionParams): EvLinkResolution | null => {
-    const decision = decideLinkForCharger(params);
-    return decision.kind === 'linked' ? decision.resolution : null;
-};
-
 type LinkDecisionParams = {
     coincidentCarId?: string;
     candidateCarIds: readonly string[];
@@ -549,7 +535,15 @@ type LinkDecisionParams = {
 export type EvLinkRefusalReason = 'no_connected_car' | 'not_enough_past_matches'
     | 'several_cars_with_past_matches' | 'rival_with_past_matches' | 'car_confirmed_elsewhere';
 
-/** {@link resolveLinkForCharger}, with the reason when it links nothing. */
+/**
+ * Decide which car a charger is serving, with the reason when it links nothing.
+ *
+ * A live coincidence always wins — it is same-session evidence. The persisted
+ * affinity prior only breaks a tie, and only when exactly one candidate has
+ * cleared `EV_CAR_LINK_MIN_PRIOR_VOTES` while every other candidate has none. A
+ * prior that merely leads is not enough: the point of the threshold is that a
+ * second car in the household must never inherit the first car's history.
+ */
 export const decideLinkForCharger = (params: LinkDecisionParams):
     { kind: 'linked'; resolution: EvLinkResolution } | { kind: 'refused'; reason: EvLinkRefusalReason } => {
     const { coincidentCarId, candidateCarIds, votesFor } = params;

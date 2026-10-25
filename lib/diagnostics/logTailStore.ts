@@ -14,9 +14,9 @@
  * another store holds a transaction waits in memory for the next write outside
  * one, because SQLite opens no transaction inside another.
  */
-import type { SupportReportLogLine, SupportReportLogOverflow, SupportReportValue }
-  from '../../packages/contracts/src/supportReport';
+import type { SupportReportLogLine, SupportReportLogOverflow } from '../../packages/contracts/src/supportReport';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
+import { isSupportReportValue } from './supportReportValue';
 import { parseJsonRow } from '../store/jsonRowTable';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 
@@ -26,6 +26,12 @@ export const LOG_TAIL_MAX_LINES_PER_EVENT_HOUR = 20;
 export const LOG_TAIL_MAX_ROWS = 6_000;
 /** Lines held while another store's transaction is open; that is a few at most. */
 const MAX_HELD_LINES = 200;
+/**
+ * Expiry and the row ceiling run once per this many writes, not with every
+ * line: at the ceiling each line would otherwise delete a row as it inserts one.
+ * The table can hold this many rows over {@link LOG_TAIL_MAX_ROWS} meanwhile.
+ */
+const TRIM_EVERY_WRITES = 100;
 const HOUR_MS = 60 * 60 * 1000;
 
 /** One kept line. `key` is what the per-hour cap counts: the event, and its device when it names one. */
@@ -73,17 +79,10 @@ const levelName = (level: number): SupportReportLogLine['level'] => {
   return 'info';
 };
 
-const isReportValue = (value: unknown): value is SupportReportValue => {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
-  if (typeof value === 'number') return Number.isFinite(value);
-  if (Array.isArray(value)) return value.every(isReportValue);
-  return isUnknownRecord(value) && Object.values(value).every(isReportValue);
-};
-
 const toLine = (row: Record<string, unknown>): SupportReportLogLine[] => {
   const entry = typeof row.line === 'string' ? parseJsonRow(row.line) : undefined;
   if (typeof row.at_ms !== 'number' || typeof row.level !== 'number'
-    || !isUnknownRecord(entry) || !isReportValue(entry)) return [];
+    || !isUnknownRecord(entry) || !isSupportReportValue(entry)) return [];
   return [{ atMs: row.at_ms, level: levelName(row.level), entry }];
 };
 
@@ -108,11 +107,16 @@ export const createLogTailStore = (db: UserdataDatabase): LogTailStore => {
   const loadOverflow = db.prepare('SELECT hour_ms, key, dropped FROM log_tail_overflow '
     + 'WHERE hour_ms >= ? AND hour_ms <= ? ORDER BY hour_ms, key');
   let held: LogTailEntry[] = [];
+  // The first write trims: the app may have been down longer than retention.
+  let writesSinceTrim = TRIM_EVERY_WRITES;
   const quietly = <T>(work: () => T, fallback: T): T => {
     try { return work(); } catch { return fallback; } // See the note above.
   };
   const write = (entries: readonly LogTailEntry[]): void => db.transaction(() => {
     for (const entry of entries) insert.run(entry.atMs, entry.level, entry.key, entry.line);
+    writesSinceTrim += 1;
+    if (writesSinceTrim < TRIM_EVERY_WRITES) return;
+    writesSinceTrim = 0;
     const newestAtMs = entries.at(-1)?.atMs ?? 0;
     expire.run(newestAtMs - LOG_TAIL_RETENTION_HOURS * HOUR_MS);
     cap.run(LOG_TAIL_MAX_ROWS);
@@ -137,16 +141,19 @@ export const createLogTailStore = (db: UserdataDatabase): LogTailStore => {
     countSince: (fromMs) => quietly(() => new Map(counts.all(fromMs).flatMap((row): Array<[string, number]> => (
       typeof row.key === 'string' && typeof row.lines === 'number' ? [[row.key, row.lines]] : []
     ))), new Map<string, number>()),
-    read: (fromMs, toMs, maxBytes) => {
-      const lines = newest.all(fromMs, toMs, maxBytes).flatMap(toLine);
+    read: (windowFromMs, toMs, maxBytes) => {
+      // Expiry runs only every so many writes, so a read leaves out what it would have removed.
+      const fromMs = Math.max(windowFromMs, toMs - LOG_TAIL_RETENTION_HOURS * HOUR_MS);
+      const rows = newest.all(fromMs, toMs, maxBytes);
       const total = inWindow.get(fromMs, toMs)?.lines;
       return {
-        lines,
+        // A damaged row is left out of the report, not counted as left out for size.
+        lines: rows.flatMap(toLine),
         overflow: loadOverflow.all(fromMs - HOUR_MS, toMs).flatMap((row): SupportReportLogOverflow[] => (
           typeof row.hour_ms === 'number' && typeof row.key === 'string' && typeof row.dropped === 'number'
-            ? [{ hourStartMs: row.hour_ms, event: row.key, dropped: row.dropped }] : []
+            ? [{ hourStartMs: row.hour_ms, key: row.key, dropped: row.dropped }] : []
         )),
-        leftOut: typeof total === 'number' ? Math.max(0, total - lines.length) : 0,
+        leftOut: typeof total === 'number' ? Math.max(0, total - rows.length) : 0,
       };
     },
   };

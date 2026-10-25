@@ -13,6 +13,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import type { SupportReportDeviceEvent, SupportReportValue } from '../../packages/contracts/src/supportReport';
+import { isSupportReportValue } from './supportReportValue';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import { getLogger } from '../logging/logger';
 import { normalizeError } from '../utils/errorUtils';
@@ -43,17 +44,10 @@ CREATE INDEX IF NOT EXISTS device_event_history_age ON device_event_history(at_m
 CREATE INDEX IF NOT EXISTS device_event_history_id ON device_event_history(id);
 `;
 
-const isReportValue = (value: unknown): value is SupportReportValue => {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
-  if (typeof value === 'number') return Number.isFinite(value);
-  if (Array.isArray(value)) return value.every(isReportValue);
-  return isUnknownRecord(value) && Object.values(value).every(isReportValue);
-};
-
 /** A stored row's event: a JSON object with an event name; anything else is the store's own damage. */
 const parseStoredEvent = (json: unknown): { event: string; details: { [key: string]: SupportReportValue } } | null => {
   const parsed = typeof json === 'string' ? parseJsonRow(json) : undefined;
-  if (!isUnknownRecord(parsed) || typeof parsed.event !== 'string' || !isReportValue(parsed)) return null;
+  if (!isUnknownRecord(parsed) || typeof parsed.event !== 'string' || !isSupportReportValue(parsed)) return null;
   const { event, component: _component, ...details } = parsed;
   return { event, details };
 };
@@ -65,11 +59,14 @@ export const createDeviceEventStore = (db: UserdataDatabase): DeviceEventStore =
   const expire = db.prepare('DELETE FROM device_event_history WHERE at_ms < ?');
   const capDevice = db.prepare('DELETE FROM device_event_history WHERE device_id = ? AND id IN ('
     + 'SELECT id FROM device_event_history WHERE device_id = ? ORDER BY at_ms DESC, id DESC LIMIT -1 OFFSET ?)');
-  const load = db.prepare('SELECT rowid, id, device_id, at_ms, event_json FROM device_event_history '
-    + 'WHERE device_id = ? AND at_ms >= ? AND at_ms <= ?');
-  const loadAll = db.prepare('SELECT rowid, id, device_id, at_ms, event_json FROM device_event_history '
-    + 'WHERE at_ms >= ? AND at_ms <= ?');
-  const devicesOf = db.prepare('SELECT device_id FROM device_event_history WHERE id = ?');
+  // One row per event with every device it is about. Its rows share their time and
+  // JSON; the first rowid keeps events of one millisecond in the order they happened.
+  const grouped = 'SELECT id, MIN(at_ms) AS at_ms, MIN(event_json) AS event_json, MIN(rowid) AS first_rowid, '
+    + 'json_group_array(device_id) AS device_ids FROM device_event_history ';
+  const order = ' GROUP BY id ORDER BY at_ms, first_rowid';
+  const load = db.prepare(`${grouped}WHERE id IN (SELECT id FROM device_event_history `
+    + `WHERE device_id IN (SELECT value FROM json_each(?)) AND at_ms >= ? AND at_ms <= ?)${order}`);
+  const loadAll = db.prepare(`${grouped}WHERE at_ms >= ? AND at_ms <= ?${order}`);
   const remove = db.prepare('DELETE FROM device_event_history WHERE id = ?');
   // Repeated write failures are said once, until a write succeeds again.
   let writeFailing = false;
@@ -96,29 +93,24 @@ export const createDeviceEventStore = (db: UserdataDatabase): DeviceEventStore =
       }
     },
     read: (deviceIds, fromMs, toMs) => {
-      const byId = new Map<string, SupportReportDeviceEvent>();
-      // Insertion order breaks a tie in time, so events of one millisecond keep the order they happened in.
-      const recordedAt = new Map<string, number>();
-      const batches = deviceIds === 'all'
-        ? [loadAll.all(fromMs, toMs)]
-        : [...new Set(deviceIds)].map((deviceId) => load.all(deviceId, fromMs, toMs));
-      for (const rows of batches) {
-        for (const row of rows) {
-          if (typeof row.id !== 'string' || byId.has(row.id)) continue;
-          const stored = parseStoredEvent(row.event_json);
-          if (!stored || typeof row.at_ms !== 'number') {
-            logger.error({ event: 'device_event_row_quarantined', id: row.id });
-            try { remove.run(row.id); } catch { /* left for the next read; this one goes on */ }
-            continue;
-          }
-          const related = devicesOf.all(row.id).flatMap((entry) => (
-            typeof entry.device_id === 'string' ? [entry.device_id] : []));
-          byId.set(row.id, { id: row.id, atMs: row.at_ms, deviceIds: related, ...stored });
-          recordedAt.set(row.id, Number(row.rowid));
+      const rows = deviceIds === 'all'
+        ? loadAll.all(fromMs, toMs)
+        : load.all(JSON.stringify([...new Set(deviceIds)]), fromMs, toMs);
+      return rows.flatMap((row): SupportReportDeviceEvent[] => {
+        if (typeof row.id !== 'string') return [];
+        const stored = parseStoredEvent(row.event_json);
+        const related = typeof row.device_ids === 'string' ? parseJsonRow(row.device_ids) : undefined;
+        if (!stored || typeof row.at_ms !== 'number' || !Array.isArray(related)) {
+          logger.error({ event: 'device_event_row_quarantined', id: row.id });
+          try { remove.run(row.id); } catch { /* left for the next read; this one goes on */ }
+          return [];
         }
-      }
-      return [...byId.values()].sort((a, b) => (
-        a.atMs - b.atMs || (recordedAt.get(a.id) ?? 0) - (recordedAt.get(b.id) ?? 0)));
+        return [{
+          id: row.id, atMs: row.at_ms,
+          deviceIds: related.filter((deviceId): deviceId is string => typeof deviceId === 'string'),
+          ...stored,
+        }];
+      });
     },
   };
 };

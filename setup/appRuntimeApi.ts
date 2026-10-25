@@ -36,6 +36,7 @@ import type { AppPowerTracker } from './appPowerTracker';
 import type { AppServiceWiring } from './appServiceWiring';
 import type { PowerCalibrationStore } from '../lib/device/devicePowerCalibrationStore';
 import type { PowerSamplePipeline } from './powerSamplePipeline';
+import type { SupportReportService } from '../lib/diagnostics/supportReportService';
 import { withAppHostApi } from './appHostApi';
 
 
@@ -49,6 +50,7 @@ abstract class AppRuntimeApi extends Base {
   protected abstract readonly powerSamplePipeline: PowerSamplePipeline;
   public abstract getPowerCalibrationStore(): PowerCalibrationStore;
   protected abstract readonly serviceWiring: AppServiceWiring;
+  public abstract readonly supportReports: SupportReportService;
   public abstract readonly builtInControlFlowConflicts: BuiltInControlFlowConflicts;
   protected abstract readonly powerTrackerHelpers: AppPowerTracker;
   protected abstract overheadToken?: Homey.FlowToken;
@@ -74,7 +76,7 @@ abstract class AppRuntimeApi extends Base {
   public getPowerCalibrationSnapshot(): PowerCalibrationSnapshot {
     return this.getPowerCalibrationStore().getSnapshot();
   }
-  public async onInit(): Promise<void> { await this.serviceWiring.runInit(); }
+  public async onInit(): Promise<void> { await this.serviceWiring.runInit(this.supportReports); }
   public refreshFlowConflictsForUi(): Promise<FlowConflictRefreshResult> {
     return this.builtInControlFlowConflicts.refreshForUi();
   }

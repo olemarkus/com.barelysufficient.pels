@@ -30,41 +30,51 @@ const toMessage = (document: SupportReportDocument): { json: string; message: st
   return { json, message, bytes: Buffer.byteLength(message, 'utf8') };
 };
 
-/** The document with its oldest log lines left out so the message fits; the log says how many. */
-const withoutOldestLogLines = (document: SupportReportDocument, count: number): SupportReportDocument => (
-  document.log.state === 'available' && count > 0 ? {
-    ...document,
-    log: {
-      ...document.log, lines: document.log.lines.slice(count), leftOutForSize: document.log.leftOutForSize + count,
-    },
-  } : document
-);
+type FittedMessage = ReturnType<typeof toMessage> & { document: SupportReportDocument };
+
+/** What an element adds to its array's JSON, the comma after it aside: never more than removing it frees. */
+const jsonBytes = (value: unknown): number => Buffer.byteLength(JSON.stringify(value), 'utf8');
+
+/** How many of `items`, from the first, to leave out to free `excessBytes`: all of them when that is not enough. */
+const countToLeaveOut = (items: readonly unknown[], excessBytes: number): number => {
+  let freed = 0;
+  let count = 0;
+  while (count < items.length && freed < excessBytes) {
+    freed += jsonBytes(items[count]);
+    count += 1;
+  }
+  return count;
+};
 
 /**
- * The largest message for this document that fits, leaving out the fewest of
- * the oldest log lines; `null` when the report is too large without any.
+ * The document with the oldest of its log lines and, in a daily report, of its
+ * activity left out, the fewest that make the message fit, each saying how
+ * many; `null` when it is too large without them. An owner's report keeps all
+ * its activity: the owner can choose one device or a shorter window instead.
  */
-const fitToSize = (document: SupportReportDocument): ReturnType<typeof toMessage> & {
-  document: SupportReportDocument;
-} | null => {
+const fitToSize = (document: SupportReportDocument): FittedMessage | null => {
   const whole = toMessage(document);
   if (whole.bytes <= SUPPORT_REPORT_MAX_BYTES) return { ...whole, document };
-  const lineCount = document.log.state === 'available' ? document.log.lines.length : 0;
-  let fitting: (ReturnType<typeof toMessage> & { document: SupportReportDocument }) | null = null;
-  let low = 1;
-  let high = lineCount;
-  while (low <= high) {
-    const leftOut = Math.floor((low + high) / 2);
-    const trimmed = withoutOldestLogLines(document, leftOut);
-    const candidate = toMessage(trimmed);
-    if (candidate.bytes <= SUPPORT_REPORT_MAX_BYTES) {
-      fitting = { ...candidate, document: trimmed };
-      high = leftOut - 1;
-    } else {
-      low = leftOut + 1;
-    }
-  }
-  return fitting;
+  const { log, activity } = document;
+  // Log lines are oldest first, activity newest first.
+  const logLines = log.state === 'available' ? log.lines : [];
+  const logLeftOut = countToLeaveOut(logLines, whole.bytes - SUPPORT_REPORT_MAX_BYTES);
+  const stillExcess = whole.bytes - SUPPORT_REPORT_MAX_BYTES
+    - logLines.slice(0, logLeftOut).reduce((sum, line) => sum + jsonBytes(line), 0);
+  const activityLeftOut = document.trigger === 'daily' && activity.state === 'available' && stillExcess > 0
+    ? countToLeaveOut([...activity.entries].reverse(), stillExcess) : 0;
+  const trimmed: SupportReportDocument = {
+    ...document,
+    log: log.state === 'available' && logLeftOut > 0
+      ? { ...log, lines: log.lines.slice(logLeftOut), leftOutForSize: log.leftOutForSize + logLeftOut } : log,
+    activity: activity.state === 'available' && activityLeftOut > 0 ? {
+      ...activity,
+      entries: activity.entries.slice(0, activity.entries.length - activityLeftOut),
+      leftOutForSize: activity.leftOutForSize + activityLeftOut,
+    } : activity,
+  };
+  const fitted = toMessage(trimmed);
+  return fitted.bytes <= SUPPORT_REPORT_MAX_BYTES ? { ...fitted, document: trimmed } : null;
 };
 
 /**

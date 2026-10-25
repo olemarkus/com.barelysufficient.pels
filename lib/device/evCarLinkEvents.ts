@@ -127,8 +127,8 @@ export type EvCarLinkEvent =
     | {
         // A car that may pair with this charger reported plugging in after the
         // charger's window closed, while the charger was still plugged in with no
-        // car. Not paired by plug-in timing; within an hour of the charger's
-        // plug-in its past matches can still link it.
+        // car. Never linked automatically, by plug-in timing or past matches: it
+        // could have plugged in anywhere meanwhile. The owner can confirm it.
         component: 'devices'; event: 'ev_car_link_late_car_report';
         chargerId: string; chargerName: string; carId: string; carName: string;
         connection: CarLinkConnection; lateByMs: number;

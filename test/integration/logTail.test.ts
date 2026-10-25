@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LogTailRecorder } from '../../lib/diagnostics/logTailRecorder';
-import { createLogTailStore, LOG_TAIL_MAX_LINES_PER_EVENT_HOUR } from '../../lib/diagnostics/logTailStore';
+import {
+  createLogTailStore, LOG_TAIL_MAX_LINES_PER_EVENT_HOUR, LOG_TAIL_MAX_ROWS,
+} from '../../lib/diagnostics/logTailStore';
 import { createHomeyDestination } from '../../lib/logging/homeyDestination';
 import { createRootLogger } from '../../lib/logging/logger';
 import { IN_MEMORY_DATABASE, openUserdataDatabase, type UserdataDatabase } from '../../lib/store/userdataDatabase';
@@ -73,7 +75,7 @@ describe('the log PELS keeps for problem reports', () => {
     expect(devices.filter((device) => device === 'heater')).toHaveLength(LOG_TAIL_MAX_LINES_PER_EVENT_HOUR + 1);
     expect(devices).toContain('charger');
     expect(read.overflow).toEqual([
-      { hourStartMs: NOW - (NOW % HOUR_MS), event: 'binary_command_applied|heater', dropped: 7 },
+      { hourStartMs: NOW - (NOW % HOUR_MS), key: 'binary_command_applied|heater', dropped: 7 },
     ]);
   });
 
@@ -106,6 +108,20 @@ describe('the log PELS keeps for problem reports', () => {
     logger.info({ event: 'after' });
     expect(store.read(NOW - HOUR_MS, NOW, BUDGET).lines.map((line) => line.entry.event))
       .toEqual(['userdata_row_quarantined', 'after']);
+  });
+
+  it('keeps the row ceiling, trimming in batches rather than with every line', () => {
+    vi.useFakeTimers({ now: NOW });
+    const db = open();
+    const store = createLogTailStore(db);
+    const rows = () => db.prepare('SELECT COUNT(*) AS rows FROM log_tail').get()?.rows;
+    for (let index = 0; index < LOG_TAIL_MAX_ROWS + 250; index += 1) {
+      store.append({ atMs: NOW, level: 30, key: 'line', line: `{"event":"line","index":${index}}` });
+    }
+    expect(rows()).toBeGreaterThan(LOG_TAIL_MAX_ROWS);
+    expect(rows()).toBeLessThanOrEqual(LOG_TAIL_MAX_ROWS + 100);
+    const newest = store.read(0, NOW, BUDGET).lines.at(-1)?.entry;
+    expect(newest).toEqual({ event: 'line', index: LOG_TAIL_MAX_ROWS + 249 });
   });
 
   it('keeps two days, and survives the database closing under it', () => {

@@ -86,6 +86,14 @@ describe('the daily diagnostics report the owner turned on', () => {
     expect(sendDaily).not.toHaveBeenCalled();
   });
 
+  it('does not wait for a due time written while the clock ran days ahead', async () => {
+    const { sendDaily, schedule, state } = setup(true, []);
+    state.writeNextAttemptAtMs(NOW + 3 * DAILY_REPORT_INTERVAL_MS);
+    await schedule().check(NOW);
+    expect(sendDaily).toHaveBeenCalledTimes(1);
+    expect(state.readNextAttemptAtMs()).toBe(NOW + DAILY_REPORT_INTERVAL_MS);
+  });
+
   it('asks again whether the owner still wants it once the report is prepared', async () => {
     const { sendDaily, schedule, values } = setup(true, []);
     sendDaily.mockImplementationOnce(async (stillWanted) => {

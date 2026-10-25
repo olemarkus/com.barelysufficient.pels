@@ -95,7 +95,10 @@ export class DailyReportSchedule {
     try {
       if (!this.isOn()) return;
       const nextAttemptAtMs = this.state.readNextAttemptAtMs();
-      if (nextAttemptAtMs !== undefined && nowMs < nextAttemptAtMs) return;
+      // Never more than a day ahead, unless it was written while the clock ran
+      // ahead; then waiting for it could hold the report back for days.
+      if (nextAttemptAtMs !== undefined && nowMs < nextAttemptAtMs
+        && nextAttemptAtMs - nowMs <= DAILY_REPORT_INTERVAL_MS) return;
       this.state.writeNextAttemptAtMs(nowMs + DAILY_REPORT_INTERVAL_MS);
       const { delayMs, outcome } = resolveNextAttempt(await this.reports.sendDaily(() => this.isOn()));
       if (delayMs !== DAILY_REPORT_INTERVAL_MS) this.state.writeNextAttemptAtMs(nowMs + delayMs);

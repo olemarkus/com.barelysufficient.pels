@@ -4,7 +4,6 @@ import type { HomeRuntimeRegistry } from './homeRuntime/homeRuntimeRegistry';
 import type { createHomeCapacityGuard } from './homeRuntime/createHomeCapacityGuard';
 import type { BackgroundCollectors } from './appInit/startBackgroundCollectors';
 import type { LogTailRecorder } from '../lib/diagnostics/logTailRecorder';
-import type { SupportReportService } from '../lib/diagnostics/supportReportService';
 
 /**
  * Handles to the services ordered startup constructs, held by `PelsApp` — the
@@ -16,8 +15,6 @@ export type AppRuntimeHandles = {
   structuredLogger?: PinoLogger;
   /** What the structured logger also keeps for problem reports; attached once the database opens. */
   logTail?: LogTailRecorder;
-  /** The problem-report service the app exposes to its API, also sending the owner's daily report. */
-  supportReports?: SupportReportService;
   homeMembershipService?: HomeMembershipWiring['service'];
   homeRuntimeRegistry?: HomeRuntimeRegistry;
   /** The Main-home shortfall gate, as the wiring hands it over and reads it back. */

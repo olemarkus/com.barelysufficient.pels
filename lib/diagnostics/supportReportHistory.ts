@@ -61,5 +61,6 @@ export function selectSupportReportActivity(
     maxEntries: history.maxEntries,
     maxEntriesPerDevice: history.maxEntriesPerDevice,
     persistence: history.persistence,
+    leftOutForSize: 0,
   };
 }

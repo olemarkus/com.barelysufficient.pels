@@ -10,6 +10,7 @@ import type {
 } from '../../packages/contracts/src/supportReport';
 import type { CarLinkDiagnostics } from '../ports/carLinkDiagnostics';
 import { DEVICE_EVENT_MAX_ENTRIES_PER_DEVICE, DEVICE_EVENT_RETENTION_DAYS } from './deviceEventStore';
+import type { LogTailRead } from './logTailStore';
 import { MAIN_HOME_ID } from '../home/homeConfig';
 import type { HomeRuntimeReadPort, HomeRuntimeReading } from '../home/homeRuntimeRead';
 import type { HomeMembershipPort } from '../home/membership';
@@ -51,10 +52,7 @@ export type SupportReportReads = {
   /** Kept device events about any of `deviceIds` in the window, oldest first; every device without ids. */
   readDeviceEvents(deviceIds: readonly string[] | 'all', fromMs: number, toMs: number): SupportReportDeviceEvent[];
   /** PELS's kept log lines in the window (`logTailStore.ts`). */
-  readLogTail(fromMs: number, toMs: number, maxBytes: number): Pick<KeptLog, 'lines' | 'overflow'> & {
-    /** Kept lines in the window older than the newest that fit `maxBytes`. */
-    leftOut: number;
-  };
+  readLogTail(fromMs: number, toMs: number, maxBytes: number): LogTailRead;
 };
 
 type ReportSubject = {
@@ -200,8 +198,6 @@ const readDeviceSections = (
     }),
   ];
 };
-
-type KeptLog = Extract<SupportReportLog, { state: 'available' }>;
 
 type CarLinkRead = { state: 'read'; link: CarLinkDiagnostics | undefined } | { state: 'failed' };
 

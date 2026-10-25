@@ -41,8 +41,8 @@ export class EvCarLinkWaitReporter {
     }
 
     /** The cars that may pair with a charger: its selected cars, or every car the probe tracks. */
-    carIdsFor(charger: EvCarLinkChargerView): readonly string[] {
-        return charger.selectedCarIds.length > 0 ? charger.selectedCarIds : this.cars.ids();
+    carIdsFor(selectedCarIds: readonly string[]): readonly string[] {
+        return selectedCarIds.length > 0 ? selectedCarIds : this.cars.ids();
     }
 
     /** These cars as the probe holds them, with their past matches to `chargerId`. */
@@ -126,7 +126,7 @@ export class EvCarLinkWaitReporter {
             connection,
             windowMs: EV_CAR_LINK_COINCIDENCE_WINDOW_MS,
             reason,
-            cars: this.describeCars(charger.id, [...this.carIdsFor(charger), ...weighed]),
+            cars: this.describeCars(charger.id, [...this.carIdsFor(charger.selectedCarIds), ...weighed]),
         });
     }
 }
