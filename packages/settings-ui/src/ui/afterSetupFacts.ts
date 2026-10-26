@@ -1,5 +1,6 @@
 import type { PriceOptimizationSetup } from '../../../contracts/src/priceOptimizationSettings.ts';
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
+import { supportsSmartTaskKind } from '../../../shared-domain/src/smartTaskDeviceKind.ts';
 import type { NorwayPriceSetup, SettingsUiPricesPayload } from '../../../contracts/src/settingsUiApi.ts';
 import type { AfterSetupDevice, AfterSetupFacts, AfterSetupPriceSource } from './afterSetupRecommendations.ts';
 import { hasLoadedDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
@@ -97,7 +98,7 @@ const resolveDevices = (
       return {
         temperature,
         limitable: supportsPowerDevice(device) && state.controllableMap[device.id] === true,
-        taskCapable: temperature || device.isEvCharger,
+        taskCapable: temperature || device.isEvCharger || supportsSmartTaskKind(device, 'energy'),
         priceConfigured: configuredDeviceIds.has(device.id),
         usesSolarSurplus: solarSurplusDeviceIds.has(device.id),
       };

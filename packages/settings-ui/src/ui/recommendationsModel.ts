@@ -60,6 +60,8 @@ export type SetupRecommendation = {
   body: string;
   actionLabel: string;
   target: RecommendationTarget;
+  /** Optional supporting documentation; the primary action stays in settings. */
+  guideLink?: { label: string; href: string };
 };
 
 export type RecommendationGroups = {

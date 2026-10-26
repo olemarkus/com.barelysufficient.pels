@@ -13,7 +13,7 @@ export type AfterSetupDevice = {
   temperature: boolean;
   /** Has Limit on, so PELS may command it (solar surplus needs that). */
   limitable: boolean;
-  /** Could take a Smart task: a charger, or anything with a temperature target. */
+  /** Could take a temperature, charging or supported relay energy task. */
   taskCapable: boolean;
   /** The owner made an explicit per-device Price choice, including Off. */
   priceConfigured: boolean;
@@ -82,7 +82,7 @@ const FLANDERS_PERIOD: SetupRecommendation = {
 
 const suggestion = (
   id: string,
-  copy: Pick<SetupRecommendation, 'title' | 'body' | 'actionLabel'>,
+  copy: Pick<SetupRecommendation, 'title' | 'body' | 'actionLabel' | 'guideLink'>,
   target: SetupRecommendation['target'],
 ): SetupRecommendation => ({
   id: `after-setup:${id}`,
@@ -143,10 +143,15 @@ const SOLAR = suggestion('solar', {
 
 const SMART_TASKS = suggestion('smart-tasks', {
   title: 'Have something ready by a set time',
-  body: 'A Smart task charges the car or heats water to the level you choose by the time you need it, in '
-    + 'the cheapest hours before then. Add one from a Flow with the Add charging task or Add heating task '
-    + 'action, or from the New smart task widget on a dashboard.',
+  body: 'Set a temperature, battery level or energy goal and a ready-by time. PELS chooses the cheapest '
+    + 'available hours before then. For a water heater on a relay, use an energy goal in kWh. '
+    + 'Start with New smart task on the Smart tasks page. For a nightly relay routine, '
+    + 'use the Add energy task Flow action.',
   actionLabel: 'Open Smart tasks',
+  guideLink: {
+    label: 'Heat a water heater overnight',
+    href: 'https://pels.barelysufficient.org/smart-tasks#heat-a-water-heater-on-a-relay-overnight',
+  },
 }, panel('deadlines'));
 
 const usesAny = (devices: readonly AfterSetupDevice[], flag: 'priceConfigured' | 'usesSolarSurplus'): boolean => (
