@@ -81,6 +81,13 @@ const RecommendationCard = (props: RecommendationCardProps) => {
           {dismissed ? 'Show again' : 'Dismiss'}
         </MdTextButton>}
       </div>
+      {!dismissed && recommendation.guideLink && (
+        <div class="setup-recommendation-card__actions">
+          <MdTextButton href={recommendation.guideLink.href} target="_blank">
+            {recommendation.guideLink.label}
+          </MdTextButton>
+        </div>
+      )}
     </article>
   );
 };
