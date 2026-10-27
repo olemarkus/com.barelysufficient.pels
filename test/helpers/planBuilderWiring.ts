@@ -1,3 +1,4 @@
+import { NO_INVERTER_PLANNER } from '../../lib/ports/inverterControl';
 import { vi } from 'vitest';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
@@ -22,6 +23,7 @@ export const planBuilderWiring = (): PlanBuilderWiring => ({
   setCapacityInShortfall: vi.fn(),
   getCapacityDryRun: () => false,
   getInferredSurplusKw: () => 0,
+  inverterCurtailment: NO_INVERTER_PLANNER,
   leaveOffOnRelease: () => 'released',
   getPriceOptimizationSettings: () => ({}),
   getDailyBudgetSnapshot: () => null,

@@ -48,6 +48,11 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Project
         ...projectMeasuredPowerObservation(snapshot),
         ...projectSteppedLoadProfile(snapshot),
         ...projectHomeBatteryObservation(snapshot),
+        ...(snapshot.inverterObservation ? { inverterObservation: {
+            production: { ...snapshot.inverterObservation.production },
+            limit: { ...snapshot.inverterObservation.limit },
+            mode: { ...snapshot.inverterObservation.mode },
+        } } : {}),
     };
     if (snapshot.binaryControl !== undefined) projected.binaryControl = { on: snapshot.binaryControl.on };
     if (snapshot.evCharging !== undefined) projected.evCharging = snapshot.evCharging;

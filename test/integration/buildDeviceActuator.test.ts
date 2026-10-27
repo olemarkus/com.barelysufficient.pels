@@ -19,6 +19,7 @@ describe('buildDeviceActuator', () => {
     ));
     const ctx = {
       deviceManager: {
+requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
         setCapability: vi.fn(async () => undefined),
         applyDeviceTargets: vi.fn(async () => undefined),
         requestBinaryControl: vi.fn(async () => undefined),
@@ -70,6 +71,7 @@ describe('buildDeviceActuator', () => {
     const applyDeviceTargets = vi.fn(async () => undefined);
     const ctx = {
       deviceManager: {
+requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
         setCapability: vi.fn(async () => undefined),
         applyDeviceTargets,
         requestBinaryControl: vi.fn(async () => undefined),

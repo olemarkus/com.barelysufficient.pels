@@ -1,3 +1,4 @@
+import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
 import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
 import { hasPlanExecutionDriftAgainstIntent } from '../../lib/executor/executorConvergence';
 import type Homey from 'homey';
@@ -49,7 +50,7 @@ describe('executorConvergence stepped device drift', () => {
   it('finds release work in an empty plan without requiring a live device', () => {
     const intent = { deviceId: 'battery', reason: 'not_admissible' as const };
     const hasStorageReleaseDrift = vi.fn(() => true);
-    expect(hasPlanExecutionDriftAgainstIntent({ ...buildPlan([]), storageReleases: [intent] }, {
+    expect(hasPlanExecutionDriftAgainstIntent({ ...buildPlan([]), inverterDecisions: [], storageReleases: [intent] }, {
       getObservedState: () => undefined,
       getCommandState: () => ({ binary: { kind: 'none' }, step: { kind: 'none' } }),
       isExternalOffHeld: () => false,
@@ -794,6 +795,7 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
   const buildPlanWith = (device: DevicePlan['devices'][number]): DevicePlan => ({
     meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
     devices: [device],
+    inverterDecisions: [],
     storageReleases: [],
   });
 
@@ -975,6 +977,7 @@ describe('executor drift through PlanExecutor.driftObservationDeps', () => {
       getObservationRevision: () => 0,
       getObservedState: (deviceId) => observedById.get(deviceId),
       actuator: createDeviceActuator({
+requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
         canTurnOnDevice: () => true,
         resolveTemperatureTarget: (_deviceId, desired) => desired,
         requestBinaryControl: vi.fn(async () => undefined),
@@ -997,6 +1000,7 @@ describe('executor drift through PlanExecutor.driftObservationDeps', () => {
       }),
       pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       storageLane: { kind: 'none' },
+    inverterLane: NO_INVERTER_EXECUTION,
     };
     return new PlanExecutor(deps, state);
   };

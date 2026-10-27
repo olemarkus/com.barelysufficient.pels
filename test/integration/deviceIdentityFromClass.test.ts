@@ -219,6 +219,7 @@ describe('class-resolved identity through the plan build', () => {
     const overview = buildSettingsOverviewReadModel({
       meta: buildPlanMeta({ totalKw: 2, softLimitKw: 10, headroomKw: 8 }),
       devices: planDevices,
+      inverterDecisions: [],
       storageReleases: [],
     }, {
       ...overviewReadModelWiring(),

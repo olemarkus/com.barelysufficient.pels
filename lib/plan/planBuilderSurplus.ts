@@ -1,3 +1,5 @@
+import type { InverterDecision } from '../planContract/inverterDecision';
+import type { DevicePlanDevice } from './planTypes';
 /**
  * Standing-posture pass for the plan builder (PR-7): one call that (1)
  * resolves the standing "Run on solar surplus" dump-load hold
@@ -385,4 +387,22 @@ function releaseAbandonedSurplusPosture(
     shedDecisions.clearPostureStamp(id);
   }
   return heldOffIds;
+}
+
+/** Useful loads get their normal surplus settle and activation before PV is reduced. */
+export function retainSolarWhileDemandSettles(
+  decisions: InverterDecision[], state: PlanEngineState, devices: DevicePlanDevice[],
+  restoredThisCycle: ReadonlySet<string>,
+): InverterDecision[] {
+  if (decisions.length === 0) return decisions;
+  const settling = restoredThisCycle.size > 0
+    || Object.values(state.surplusEligibilityByDevice).some((entry) => (
+      entry.eligible !== true && entry.pendingSinceMs !== undefined
+    ))
+    || Object.values(state.pendingBinaryCommands).some((command) => command.desired)
+    || Object.keys(state.pendingTargetCommands).length > 0
+    || devices.some((device) => device.stepCommandPending === true);
+  if (!settling) return decisions;
+  return decisions.filter((decision) => decision.kind === 'release'
+    || decision.limitW >= decision.observation.limit.value);
 }

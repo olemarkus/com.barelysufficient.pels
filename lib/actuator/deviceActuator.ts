@@ -79,6 +79,9 @@ const applyStorageRelease = async (
 
 const applyCommand = (transport: ActuatorTransport, command: DeviceCommand): Promise<ActuatorOutcome> => {
   switch (command.kind) {
+    case 'production_limit':
+    case 'production_release':
+      return transport.requestProductionControl(command).then(() => ({ requested: true, kind: command.kind }));
     case 'binary':
       return applyBinary(transport, command);
     case 'target':

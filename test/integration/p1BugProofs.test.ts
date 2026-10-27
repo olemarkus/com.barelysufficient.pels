@@ -1,3 +1,4 @@
+import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
 import { withDeviceConfiguration, buildInitialPlanDevicesForSpec } from '../utils/planTestUtils';
 import { NO_STORAGE_RELIEF } from '../../lib/plan/battery/storageRelief';
 import { recordPowerSampleForApp } from '../../lib/power/sampleIngest';
@@ -82,6 +83,7 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
     // This proof never drives a step write; supply an actuator over the device
     // manager's writes so the executor's stepped binding has a seam to call.
       actuator: createDeviceActuator({
+requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
         canTurnOnDevice: () => true,
         resolveTemperatureTarget: (_deviceId, desired) => desired,
         requestSteppedLoadStep: async () => ({ requested: false }),
@@ -106,6 +108,7 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
     }),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
     storageLane: { kind: 'none' },
+    inverterLane: NO_INVERTER_EXECUTION,
   };
   return {
     executor: new PlanExecutor(deps, state),
@@ -380,6 +383,7 @@ describe('P1 bug proofs', () => {
         binaryCapabilityId: 'onoff',
         reason: fixtureDeviceReason('shed due to capacity'),
       })],
+      inverterDecisions: [],
       storageReleases: [],
     });
 

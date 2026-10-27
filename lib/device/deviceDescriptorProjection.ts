@@ -26,6 +26,7 @@ import type { DeviceDescriptorRead } from '../../packages/contracts/src/types';
 // key of `DeviceDescriptorRead` is missing, and refuses an extra key it does not
 // have, so this object is the complete key set and nothing else can be.
 const DESCRIPTOR_KEY_RECORD: Record<keyof DeviceDescriptorRead, true> = {
+    inverterControl: true,
     id: true,
     name: true,
     deviceClass: true,

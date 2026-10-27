@@ -18,9 +18,9 @@ const SNAPSHOT_SOURCE = { summarySource: 'plan_snapshot', summarySourceAtMs: 123
 
 describe('plan logging helpers', () => {
   it('includes an absent battery release in both signatures even for an empty plan', () => {
-    const empty = { devices: [], storageReleases: [] } as unknown as DevicePlan;
+    const empty = { devices: [], inverterDecisions: [], storageReleases: [] } as unknown as DevicePlan;
     const released: DevicePlan = {
-      ...empty, storageReleases: [{ deviceId: 'battery', reason: 'not_admissible' }],
+      ...empty, inverterDecisions: [], storageReleases: [{ deviceId: 'battery', reason: 'not_admissible' }],
     };
     expect(buildPlanSignature(released)).not.toBe(buildPlanSignature(empty));
     expect(buildPlanDetailSignature(released)).not.toBe(buildPlanDetailSignature(empty));
@@ -28,6 +28,7 @@ describe('plan logging helpers', () => {
   it('builds a deterministic plan signature', () => {
     const plan = {
       meta: { headroomKw: 0 },
+      inverterDecisions: [],
       storageReleases: [],
       devices: [
         {

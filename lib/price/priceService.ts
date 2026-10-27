@@ -368,6 +368,16 @@ export default class PriceService {
     return this.buildImportPricePeriods();
   }
 
+  /** Current marginal export value, preserving the source's quarter-hour periods. */
+  isExportCostly(nowMs: number): boolean {
+    const periods = applyExportPrices(this.buildImportPricePeriods(), this.resolveExportConfig());
+    return periods.some((period) => {
+      const start = Date.parse(period.startsAt);
+      return start <= nowMs && nowMs < start + period.durationMinutes * 60_000
+        && typeof period.exportPrice === 'number' && Number.isFinite(period.exportPrice) && period.exportPrice < 0;
+    });
+  }
+
   /**
    * The two decorations the hourly import series carries, in order: the feed-in
    * price, then the planning price derived on top of it. The period series the

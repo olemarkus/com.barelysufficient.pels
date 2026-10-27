@@ -216,6 +216,7 @@ const buildExecutorCtx = (held: boolean) => {
     readDevice: observation.getSnapshotByDeviceId,
     getObservedState: observation.getSnapshotByDeviceId,
     actuator: createDeviceActuator({
+requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
       canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId, desired) => desired,
       requestSteppedLoadStep: async () => ({ requested: false }),

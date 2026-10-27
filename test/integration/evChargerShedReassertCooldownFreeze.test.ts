@@ -1,3 +1,4 @@
+import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
 import { withDeviceConfiguration } from '../utils/planTestUtils';
 /**
  * Integration repro of the charger re-shed cooldown deadlock
@@ -197,6 +198,7 @@ const buildHeldShedPlan = (snapshot: TransportDeviceSnapshot): DevicePlan => ({
     desiredStepId: 'off',
     reason: SHED_REASON,
   })))) as DevicePlan['devices'][number]],
+  inverterDecisions: [],
   storageReleases: [],
 });
 
@@ -230,6 +232,7 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
     getObservationRevision: () => 0,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     actuator: createDeviceActuator({
+requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
       canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId, desired) => desired,
       requestBinaryControl: async (deviceId, desired) => {
@@ -255,6 +258,7 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
     }),
     pendingBinaryCommandStore,
     storageLane: { kind: 'none' },
+    inverterLane: NO_INVERTER_EXECUTION,
   };
   const executor = new PlanExecutor(deps, state);
   return {

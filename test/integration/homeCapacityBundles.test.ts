@@ -90,6 +90,7 @@ const buildRig = (): Rig => {
     // the raw snapshot via `deviceManager.getSnapshot()`); without it the rebuild
     // throws and resolves `{ failed: true }`, masking the ready-edge/status paths.
     deviceManager: {
+requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
       getSnapshot: () => [],
       // The silent-meter escalation spends its pass only on a committed full read.
       hasWarmSnapshot: () => true,
@@ -1421,6 +1422,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     } as TargetDeviceSnapshot & MeasuredPowerObservedProbe;
     const setCapability = vi.fn(async (..._args: unknown[]) => undefined);
     const deviceManager = withGetSnapshotByDeviceId({
+requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
       getSnapshot: () => [load],
       hasWarmSnapshot: () => true,
       getBinaryCommandConfirmationSnapshot: () => [],

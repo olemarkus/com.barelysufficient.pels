@@ -36,6 +36,7 @@ const recordingFlow = (fired: TriggerRecord[]): FlowPort => ({
 const plan = (totalKw: number): DevicePlan => ({
   meta: buildPlanMeta({ totalKw, softLimitKw: 6, headroomKw: 6 - totalKw }),
   devices: [],
+  inverterDecisions: [],
   storageReleases: [],
 });
 
@@ -131,7 +132,7 @@ describe('PlanStatusWriter posture-flip persist', () => {
     expect(h.writeSpy.mock.calls[0][0]).toMatchObject({ powerKnown: true, headroomKw: 3 });
 
     nowSpy.mockReturnValue(BASE_MS + 5000);
-    h.writer.update({ meta: buildUnmeasuredPlanMeta({ totalKw: 3, softLimitKw: 6 }), devices: [], storageReleases: [] }, CHANGES);
+    h.writer.update({ meta: buildUnmeasuredPlanMeta({ totalKw: 3, softLimitKw: 6 }), devices: [], inverterDecisions: [], storageReleases: [] }, CHANGES);
     expect(h.writeSpy).toHaveBeenCalledTimes(2);
     expect(h.writeSpy.mock.calls[1][0]).toMatchObject({ powerKnown: false, powerNowKw: null });
     expect(h.writeSpy.mock.calls[1][0]).not.toHaveProperty('headroomKw');

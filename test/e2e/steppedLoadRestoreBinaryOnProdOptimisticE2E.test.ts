@@ -1,3 +1,4 @@
+import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
 import { withDeviceConfiguration } from '../utils/planTestUtils';
 /**
  * Prod-EXACT-sequence SDK-boundary e2e for the "stepped load never gets binary
@@ -219,6 +220,7 @@ const buildExecutor = (initialSnapshot: TargetDeviceSnapshot, device: HomeyDevic
     // Route step writes through the actuator over the SAME device-manager stepped
     // method, preserving the prod restore behavior this e2e asserts.
     actuator: createDeviceActuator({
+requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
       canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId, desired) => desired,
       requestBinaryControl: async (deviceId, desired) => {
@@ -244,6 +246,7 @@ const buildExecutor = (initialSnapshot: TargetDeviceSnapshot, device: HomeyDevic
     }),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
     storageLane: { kind: 'none' },
+    inverterLane: NO_INVERTER_EXECUTION,
   };
   return {
     executor: new PlanExecutor(deps, state),
@@ -284,6 +287,7 @@ const buildRestoreToLowPlan = (selectedStepId: 'max' | 'low'): DevicePlan => ({
       binaryControl: { on: false },
     }),
   ],
+  inverterDecisions: [],
   storageReleases: [],
 });
 

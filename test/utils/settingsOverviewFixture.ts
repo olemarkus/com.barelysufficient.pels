@@ -44,7 +44,7 @@ export const buildOverviewDeviceCard = (
   steppedLoadProfile?: SteppedLoadProfile,
 ): SettingsUiPlanDeviceSnapshot => {
   const overview = buildSettingsOverviewReadModel(
-    { generatedAtMs: 0, meta: buildPlanMeta(), devices: [device], storageReleases: [] },
+    { generatedAtMs: 0, meta: buildPlanMeta(), devices: [device], inverterDecisions: [], storageReleases: [] },
     steppedLoadProfile
       ? { ...deps, getSteppedLoadProfileById: () => new Map([[device.id, steppedLoadProfile]]) }
       : deps,

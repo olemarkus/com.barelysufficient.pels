@@ -67,7 +67,7 @@ describe('support report evidence capture', () => {
       currentTemperature: 18, currentTarget: 21, plannedTarget: 22,
     });
     host.planService = partialDouble<NonNullable<PelsHost['planService']>>({
-      getLatestPlanSnapshot: () => ({ generatedAtMs: now, meta: buildPlanMeta(), devices: [decision], storageReleases: [] }),
+      getLatestPlanSnapshot: () => ({ generatedAtMs: now, meta: buildPlanMeta(), devices: [decision], inverterDecisions: [], storageReleases: [] }),
     });
     const report = await source(host).capture(request, now);
     expect(report).toMatchObject({

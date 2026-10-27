@@ -2,6 +2,7 @@ import type { DeviceDescriptorRead, SteppedLoadProfile } from '../../packages/co
 
 /** Resolved configuration needed by planner and executor runtime inputs. */
 type DeviceConfigurationFields = {
+  inverterControl?: DeviceDescriptorRead['inverterControl'];
   id: string;
   name: string;
   controlAdapter?: DeviceDescriptorRead['controlAdapter'];

@@ -308,6 +308,12 @@ function freezeObserved(value: ProjectedObservedDeviceState): ProjectedObservedD
         Object.freeze(value.stateOfCharge.source);
         Object.freeze(value.stateOfCharge);
     }
+    if (value.inverterObservation) {
+        Object.freeze(value.inverterObservation.production);
+        Object.freeze(value.inverterObservation.limit);
+        Object.freeze(value.inverterObservation.mode);
+        Object.freeze(value.inverterObservation);
+    }
     if (value.batteryPower) Object.freeze(value.batteryPower);
     if (value.batteryClaim) Object.freeze(value.batteryClaim);
     if (value.batteryLevel) Object.freeze(value.batteryLevel);

@@ -30,6 +30,9 @@ const withoutNonPlanInputFields = (device: ToPlanDeviceInput) => {
     batteryPower: _batteryPower,
     batteryClaim: _batteryClaim,
     batteryLevel: _batteryLevel,
+    // The production-cap lane has its own planner input and never controls a load.
+    inverterControl: _inverterControl,
+    inverterObservation: _inverterObservation,
     // Identification metadata stays with the device; planning uses the resolved waiting fact.
     carConfirmation: _carConfirmation,
     ...deviceFields

@@ -1,3 +1,4 @@
+import { NO_INVERTER_PLANNER } from '../../lib/ports/inverterControl';
 /**
  * The shed grace across the power-limit modes, driven through the plan build.
  *
@@ -98,6 +99,7 @@ const buildHarness = (scenario: Scenario) => {
     structuredLog: testLogger,
     leaveOffOnRelease: () => 'released',
     getInferredSurplusKw: () => 0,
+  inverterCurtailment: NO_INVERTER_PLANNER,
     getCapacityDryRun: () => false,
     setCapacityInShortfall: vi.fn(),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),

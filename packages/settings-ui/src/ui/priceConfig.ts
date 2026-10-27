@@ -1,3 +1,4 @@
+import { InverterCurtailmentSettingsController } from './inverterCurtailmentSettings.ts';
 import {
   encodePriceAdjustment,
   type PriceAdjustmentKind,
@@ -132,9 +133,15 @@ const buildPriceOptDevices = (devices: SettingsUiDeviceView[]): PriceOptDevice[]
     })
 );
 
+const inverterControl = new InverterCurtailmentSettingsController(() => renderElectricityPrices());
+
+export const notifyInverterCurtailmentSettingChanged = (key: string): void => inverterControl.settingChanged(key);
+
 const renderElectricityPrices = () => {
   if (!electricityPricesSurface) return;
+  if (configState.exportPriceEnabled) inverterControl.ensureLoaded();
   const props: ElectricityPricesViewProps = {
+    inverterControl: inverterControl.props(),
     config: configState,
     market: readSetupMarket(),
     handlers: electricityPricesHandlers,

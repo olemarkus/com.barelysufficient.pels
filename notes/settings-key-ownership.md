@@ -288,3 +288,17 @@ Charging setup is backend-owned: `charging_current_control` belongs to
 `lib/device/transport/chargingAccess.ts`. The settings UI uses their dedicated
 API endpoints and receives resolved setup/access status. The saved key is never
 returned by those endpoints or included in the settings bootstrap or diagnostics.
+
+## Inverter curtailment
+
+`inverter_curtailment_devices` is an explicit opt-in map owned by
+`packages/shared-domain/src/settings/inverterCurtailment.ts`; an absent entry
+is off. Runtime reads retain their last accepted map across unavailable reads.
+The Electricity prices page writes this key. A later owner mode change in the
+inverter app turns its entry off through the runtime settings owner.
+
+`inverter_curtailment_claim.<deviceId>` belongs to
+`lib/executor/inverterClaimStore.ts`. It records the previous production limit
+and mode before the first command. These small, mission-critical hand-back
+records stay in Homey settings until the observer confirms release. A restarted
+executor recovers them before admitting new curtailment.

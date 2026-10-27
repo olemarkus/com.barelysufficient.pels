@@ -2044,6 +2044,9 @@
       plan: buildPlanPayload(),
     }),
     'GET /ui_power': (_body, query) => scopedPowerHandler(query, buildPowerPayload()),
+    'GET /ui_inverter_curtailment': () => ({
+      devices: [], selected: settings.inverter_curtailment_devices ?? {},
+    }),
     'GET /ui_prices': () => buildPricesPayload(),
     'GET /ui_device_diagnostics': () => resolveDeviceDiagnosticsPayload(),
     'GET /ui_device_log': () => resolveDeviceLogPayload(),

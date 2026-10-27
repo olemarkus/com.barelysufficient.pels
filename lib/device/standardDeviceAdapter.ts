@@ -25,7 +25,7 @@ export const standardDeviceAdapter: Omit<DeviceAdapter, 'readsAsReported'> = {
   finalizeObservation: (_control, _capabilities, values) => values,
   readRules: () => ({}), retainsPlugObservation: () => false,
   phaseReport: () => ({ kind: 'not_reported' }), currentBindings: () => [],
-  nativeCurrentControls: [], readBackAfterWrite: true,
+  nativeCurrentControls: [], readBackAfterWrite: true, supportsProductionLimits: true,
   switchWrite: (snapshot, request): SwitchWrite => ({
     write: { ...request, capabilityId: snapshot.binaryWriteCapabilityId ?? request.capabilityId },
     readBackAsWritten: true,

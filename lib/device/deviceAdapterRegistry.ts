@@ -4,13 +4,16 @@ import { teslaAdapter } from './tesla';
 import { easeeAdapter } from './easee';
 import { zaptecAdapter } from './zaptec';
 import { futurehomeAdapter } from './futurehome';
+import { smaAdapter } from './sma';
 import { osoAdapter } from './oso';
 import { plainDeviceAdapter } from './standardDeviceAdapter';
 import type { DeviceAdapter, AdapterObservation, AdapterControlTarget, DeviceAdapterSession } from './deviceAdapter';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../utils/types';
 
-const adapters: readonly DeviceAdapter[] = [teslaAdapter, easeeAdapter, zaptecAdapter, futurehomeAdapter, osoAdapter];
+const adapters: readonly DeviceAdapter[] = [
+  teslaAdapter, easeeAdapter, zaptecAdapter, futurehomeAdapter, osoAdapter, smaAdapter,
+];
 
 export function getDeviceAdapter(device: HomeyDeviceLike): DeviceAdapter {
   return adapters.find((adapter) => adapter.matches(device)) ?? plainDeviceAdapter;

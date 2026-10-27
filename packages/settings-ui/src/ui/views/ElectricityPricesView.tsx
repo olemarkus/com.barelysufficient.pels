@@ -28,6 +28,7 @@ import {
   MdSelectOption,
   MdSwitch,
 } from './materialWebJSX.tsx';
+import { InverterCurtailmentSettings, type InverterCurtailmentSettingsProps } from './InverterCurtailmentSettings.tsx';
 import { AppBar } from './AppBar.tsx';
 import {
   NORWAY_PRICE_MODEL_NAMES,
@@ -100,6 +101,7 @@ export type ElectricityPricesHandlers = {
 };
 
 export type ElectricityPricesViewProps = {
+  inverterControl: InverterCurtailmentSettingsProps;
   market: SettingsUiHubMarketRead;
   config: PriceConfigState;
   handlers: ElectricityPricesHandlers;
@@ -978,10 +980,7 @@ const resolveSourceExportOption = (scheme: PriceConfigState['priceScheme']): {
 // spot plus the user's feed-in contract terms, never from the import price
 // (`lib/price/exportPrice.ts`). Labels follow `notes/ui-terminology.md`
 // § "Solar and export price vocabulary".
-const ExportPriceForm = ({ config, handlers }: {
-  config: PriceConfigState;
-  handlers: ElectricityPricesHandlers;
-}) => {
+const ExportPriceForm = ({ config, handlers, inverterControl }: ElectricityPricesViewProps) => {
   const {
     priceScheme, exportPriceEnabled, exportPriceSource, exportSpotFactor, exportFixed,
   } = config;
@@ -1102,6 +1101,7 @@ const ExportPriceForm = ({ config, handlers }: {
           </label>
         </>
       )}
+      {exportPriceEnabled && <InverterCurtailmentSettings {...inverterControl} />}
     </form>
   );
 };
@@ -1245,7 +1245,7 @@ const ElectricityPricesRoot = (props: ElectricityPricesViewProps) => (
     <LiveSummaryCard config={props.config} />
     <SourceForm {...props} />
     {props.showSolarForecastSection && <SolarForecastForm config={props.config} handlers={props.handlers} />}
-    {props.showExportSection && <ExportPriceForm config={props.config} handlers={props.handlers} />}
+    {props.showExportSection && <ExportPriceForm {...props} />}
     <ThresholdForm config={props.config} handlers={props.handlers} />
     <PriceAwareDevicesLink />
   </>

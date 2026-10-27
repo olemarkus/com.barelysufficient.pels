@@ -47,6 +47,7 @@ export type PlanEngineComposition = {
     | 'handleShortfallCleared'
     | 'applyPlanActions'
     | 'hasStablePlanActuation'
+    | 'hasInverterWork'
     | 'handleConfirmedBinaryCommand'
     | 'driftObservationDeps'
     | 'getObservationRevision'
@@ -131,7 +132,8 @@ export class ComposedPlanEngine implements PlanEngine {
     // the hard cap (`inc_26449fb9`). Decline; the next whole-home reading
     // re-decides against the observation that moved, which is the honest answer.
     if (this.executor.getObservationRevision() !== observationRevisionAtBuild) return false;
-    return hasPlanExecutionDriftAgainstIntent(plannedSnapshot, this.executor.driftObservationDeps());
+    return this.executor.hasInverterWork(plannedSnapshot)
+      || hasPlanExecutionDriftAgainstIntent(plannedSnapshot, this.executor.driftObservationDeps());
   }
 
   public syncPendingTargetCommands(

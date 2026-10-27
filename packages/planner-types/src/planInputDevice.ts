@@ -909,7 +909,7 @@ export type PlanDeviceCarriedKey =
  * projected surfaces, which never carried them.)
  */
 export type PlanDeviceStrippedKey =
-  'batteryClaim' | 'batteryLevel' | 'batteryPower'
+  'batteryClaim' | 'batteryLevel' | 'batteryPower' | 'inverterControl' | 'inverterObservation'
   | 'binaryControl' | 'binaryControlObservation' | 'carConfirmation' | 'evChargingState' | 'measuredPowerKw'
   | 'measuredPowerIsDirectMeasurement' | 'setpointShedFloorC' | 'steppedLoadProfile' | 'targetPowerConfig'
   | 'temperature' | 'temperatureAdjustmentsDisabled' | 'temperatureControlDisabled' | 'thermostatMode';

@@ -46,6 +46,7 @@ const setup = async () => {
   await initWithLiveFeed(transport);
   await seedTransportDevices(transport, [device.toHomeyApiDevice() as HomeyDeviceLike]);
   const actuator = createDeviceActuator({
+requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
     canTurnOnDevice: () => false,
     resolveTemperatureTarget: (_deviceId, desired) => desired,
     requestBinaryControl: unusedWrite,

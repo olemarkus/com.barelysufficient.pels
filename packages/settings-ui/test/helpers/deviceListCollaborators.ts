@@ -12,6 +12,7 @@ export const mockDeviceListCollaborators = (): void => {
   }));
   vi.doMock('../../src/ui/priceConfig.ts', () => ({
     renderPriceConfigDevices: vi.fn(),
+    notifyInverterCurtailmentSettingChanged: vi.fn(),
   }));
   vi.doMock('../../src/ui/priceOptimization.ts', () => ({
     savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),

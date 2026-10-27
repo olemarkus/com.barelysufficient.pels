@@ -37,6 +37,7 @@ const buildCtx = (snapshot: TargetDeviceSnapshot) => {
     // Binary writes route through the actuator over a recording `setCapability`,
     // so the native-path assertions still observe the onoff/evcharger writes.
     actuator: createDeviceActuator({
+requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
       canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId, desired) => desired,
       requestSteppedLoadStep: async () => ({ requested: false }),

@@ -60,6 +60,7 @@ type SetCapabilityCall = {
 const buildActuatorTransport = (
   setCapability: (deviceId: string, capabilityId: string, value: unknown) => Promise<unknown>,
 ): ActuatorTransport => ({
+requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
   canTurnOnDevice: () => true,
   resolveTemperatureTarget: (_deviceId, desired) => desired,
   requestBinaryControl: async (deviceId, desired) => {

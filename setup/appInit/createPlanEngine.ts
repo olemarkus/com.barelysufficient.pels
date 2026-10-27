@@ -1,3 +1,4 @@
+import { createInverterCurtailment } from '../homeRuntime/createInverterCurtailment';
 import { buildDeviceActuator } from './buildDeviceActuator';
 import { requireDeviceManager } from './contextGuards';
 import { isExternalOffHeldForObservedDevice } from '../../lib/planInput/externalOffHoldProjection';
@@ -116,7 +117,9 @@ export function createPlanEngineComposition(
   // which home it serves. The two mode members are the exception — every home
   // binds them live, because the mode target is the restore anchor (see
   // `homeScope.ts`).
+  const inverters = createInverterCurtailment(ctx, scope, actuator);
   const builder = new PlanBuilder({
+    inverterCurtailment: inverters.planner,
     setCapacityInShortfall: scope.setCapacityInShortfall,
     getCapacityDryRun: scope.getCapacityDryRun,
     capacityGuard: options.capacityGuard,
@@ -176,6 +179,7 @@ export function createPlanEngineComposition(
     deviceDiagnostics,
     pendingBinaryCommandStore,
     storageLane: options.storageLane,
+    inverterLane: inverters.executor,
   }, state);
   return {
     planEngine: new ComposedPlanEngine({

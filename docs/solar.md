@@ -112,6 +112,36 @@ Three honest edges to know about:
 - **A meter without a production reading** (your export is visible but no solar device reports production): the card falls back to an export-only view and never pretends to know your production. This applies on either power source — what decides it is whether a solar device reports production, not how your meter reading reaches PELS.
 - **A Flow that reports on a timer:** on the Flow power source, PELS counts your export from the readings your Flow sends, and between two readings it assumes the last one still holds, exactly as it does for the power you import. If your Flow reports only every few minutes, export in the Solar card is only as precise as that: a cloud that stops your export right after a reading is not seen until the next one. Your production is not affected, because PELS reads it from Homey every 10 seconds. For accurate export, send your meter reading whenever it changes rather than on a fixed interval.
 
+### Avoid paying to export
+
+If your contract charges you for exported electricity during some periods, turn
+on **Use an export price** under **Settings > Electricity prices**, enter your
+contract's per-kWh export value, and select compatible inverters under **Avoid
+paying to export**. Include export fees and credits that change with each kWh.
+Monthly fees do not belong in this amount.
+
+PELS reduces excess production while the export price is below zero and lets
+production rise when household demand increases. Solar-surplus loads get time to
+start before PELS reduces the remaining excess. When the export price is zero,
+positive, or unavailable, or you turn the inverter's switch off, PELS returns it
+to its previous limit and mode. An existing production limit remains the ceiling.
+It also returns control on meter silence, and recovers an interrupted hand-back
+after a restart. Simulation mode never starts curtailment.
+
+If you change the inverter's control mode in its own app while PELS holds it,
+PELS turns its switch off and leaves your chosen mode in charge.
+
+The inverter's Homey app needs to offer the standard writable `target_power`
+production limit, a maximum output, and production readings. PELS uses these
+controls directly; no Flows are needed. Inverters whose app offers only
+proprietary actions are not listed. The SMA Modbus app's persistent power
+setting is excluded from live control.
+
+This follows the **export price**, not the spot price or import price. Annual
+net metering and export-fee bands can change the value of an extra exported kWh;
+use the value your contract actually settles. Control follows meter readings
+and inverter response, so brief export can occur.
+
 ### Home batteries
 
 PELS makes your home battery part of your priority list. Your sun goes to your devices and the battery in the order you choose, and when your home nears its limit, the battery takes its turn: PELS caps its charge, then has it discharge to cover the peak. Left last in the list, the default, the battery covers your whole home before a single device is turned down. For a full walkthrough with a sunny day and an evening, see [Solar and a home battery](./use-cases/homey-solar-home-battery.md).

@@ -77,6 +77,7 @@ describe('app init plan service wiring', () => {
     let fenced = false;
     const engineCtx = createAppContextMock({
       deviceManager: {
+requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
         setCapability,
         applyDeviceTargets: vi.fn(async () => undefined),
         requestBinaryControl: vi.fn(async () => undefined),

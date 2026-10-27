@@ -80,6 +80,8 @@ export type DeviceAdapter = {
    * declares, so it reads all-or-nothing.
    */
   readsAsReported: boolean;
+  /** Whether standard production-cap writes are suitable for repeated live control. */
+  supportsProductionLimits: boolean;
   switchWrite(snapshot: TransportDeviceSnapshot, request: CapabilityWrite): SwitchWrite;
   recoverSwitchWrite(snapshot: TransportDeviceSnapshot, raw: HomeyDeviceLike, request: CapabilityWrite): SwitchWrite;
   createSession(home: HubHomeLocation): DeviceAdapterSession;
