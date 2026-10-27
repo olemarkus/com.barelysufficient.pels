@@ -783,12 +783,16 @@ export default tseslint.config(
   // device/UI reads need its complete-order query from field initialization,
   // before settings and device discovery finish; its immutable preference source
   // is replaced by admitted reads. Setup must not hold this state. This
-  // exact-current 34 ceiling is the single backend exception over 20.
+  // Raised 34 -> 36 for continuous battery planning: the composition root owns
+  // the battery-neutral demand forecaster from field initialization, before the
+  // main meter pipeline can sample, and the shared form defaults give the
+  // pre-wiring API an explicit waiting read. Setup retains neither domain state.
+  // This exact-current 36 ceiling is the single backend exception over 20.
   {
     files: ['app.ts'],
     plugins: { 'import-x': importX },
     rules: {
-      'import-x/max-dependencies': ['error', { max: 34, ignoreTypeImports: true }],
+      'import-x/max-dependencies': ['error', { max: 36, ignoreTypeImports: true }],
     },
   },
   // lib/store is the one place `node:sqlite` is named (dependency-cruiser's

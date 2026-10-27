@@ -212,7 +212,9 @@ export type StorageLeverState = {
    * `STORAGE_SURPLUS_RELEASE_DWELL_MS` without a device needing the cap). A
    * surplus hold that shedding chooses becomes a limit hold.
    */
-  purpose: 'limit' | 'surplus';
+  purpose: 'limit' | 'surplus' | 'continuous';
+  /** Present on the continuous strategy's own holds. */
+  continuousReason?: 'charge_grid' | 'store_solar' | 'supply_house' | 'hold_energy';
   /**
    * When the current discharge increase was decided: its credit's settle
    * window runs from here. A hold that only caps the charge has no discharge

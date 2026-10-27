@@ -213,6 +213,13 @@ export type ObservedStorageInput = {
    * charge stopped short of what it asked (a full battery stops at 0 W).
    */
   chargeCeilingW: number;
+  /** Present only while the owner has an executable continuous strategy. Its absence
+   * means the battery's own schedule remains the routine policy. */
+  continuousPlan?: {
+    setpointW: number;
+    validUntilMs: number;
+    reason: 'charge_grid' | 'store_solar' | 'supply_house' | 'hold_energy';
+  };
 };
 
 /**

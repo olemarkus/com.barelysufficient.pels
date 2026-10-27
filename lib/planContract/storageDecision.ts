@@ -31,7 +31,7 @@ export type StorageReleaseReason =
   | 'sign_inverted';
 
 export type StorageDecision =
-  | { kind: 'setpoint'; setpointW: number; stepW: number }
+  | { kind: 'setpoint'; setpointW: number; stepW: number; restored?: true }
   | { kind: 'release'; reason: StorageReleaseReason };
 
 /** Hand-back remains executable when its battery no longer has a plan device. */

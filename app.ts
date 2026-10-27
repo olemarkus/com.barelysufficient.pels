@@ -1,4 +1,9 @@
 import { createHomeModeCatalog } from './lib/home/homeModeCatalog';
+import type {
+  ContinuousBatteryPlanConfig,
+  ContinuousBatteryPlanRead,
+} from './packages/contracts/src/continuousBatteryPlan';
+import { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } from './packages/shared-domain/src/settings/continuousBatteryPlan';
 import Homey from 'homey';
 import type { LearnedPeaksByDeviceId } from './lib/device/devicePowerPeak';
 import type { DeviceExpectedPowerOverrides } from './packages/contracts/src/types';
@@ -45,6 +50,8 @@ import type { AppContext, StartupBootstrapConfig } from './lib/app/appContext';
 import type { PelsHost } from './lib/app/pelsHost';
 import { createCapacitySettingsReloader, createCapacitySettingsStore } from './lib/power/capacitySettingsStore';
 import { BatteryManagedSettings } from './lib/battery/batteryControlSettings';
+import { BatteryDemandForecaster } from './lib/battery/batteryDemandForecast';
+import type { BatterySolarScopeSource } from './lib/battery/batterySolarScope';
 import type {
   HomeyPriceFormulaUiStatus, PowerhourSourceUiStatus, PvForecastSourceUiStatus, SettingsUiPriceSourcePayloads,
 } from './packages/contracts/src/settingsUiApi';
@@ -288,6 +295,23 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     structuredLog: () => this.getStructuredLogger('power'),
   });
 
+  public readonly batterySolarScope: BatterySolarScopeSource = {
+    mainDevices: () => (
+      this.context.homeMembership?.filterDevicesForHome(this.deviceReads.descriptors(), MAIN_HOME_ID) ?? []
+    ),
+    allDevices: () => this.deviceReads.descriptors(),
+  };
+
+  private readonly batteryDemandForecaster = new BatteryDemandForecaster(
+    () => this.context.homeMembership?.filterDevicesForHome(this.getDeviceSurfaces(), MAIN_HOME_ID) ?? [],
+    () => this.getTimeZone(),
+    this.batterySolarScope,
+  );
+
+  public forecastBatteryBackgroundKWh(hourStartMs: number): number | undefined {
+    return this.batteryDemandForecaster.forecast(hourStartMs);
+  }
+
   protected readonly powerSamplePipeline = createHomePowerPipeline({
     ctx: this,
     homeId: MAIN_HOME_ID,
@@ -315,6 +339,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     // Optional AppContext member assigned by wireCurtailmentSurplus post-startup;
     // main-home tap only (sub-home pipelines omit it — see the pipeline factory).
     recordCurtailmentSample: (netW, genW, nowMs) => this.recordCurtailmentSample?.(netW, genW, nowMs),
+    recordBatteryDemandSample: (netW, genW, nowMs) => this.batteryDemandForecaster.recordNetSample(netW, genW, nowMs),
     // Production for samples that do not carry their own; the factory bounds its
     // freshness. Main home only — a sub-home must not adopt this production.
     observedHomePower: this.observedHomePower,
@@ -323,6 +348,12 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   // source selector. Until then the seam still answers — `unknown` is the
   // status union's own member for "no provenance to report yet".
   public getPvForecastSourceUiStatus: () => PvForecastSourceUiStatus = () => ({ kind: 'unknown' });
+  public readContinuousBatteryPlan: (deviceId: string) => ContinuousBatteryPlanRead = () => ({
+    status: 'waiting', config: DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, reason: 'settings_unavailable',
+  });
+  public saveContinuousBatteryPlan: (deviceId: string, config: unknown) => ContinuousBatteryPlanConfig = () => {
+    throw new Error('Battery planning is starting. Try again.');
+  };
 
   // Whether the owner's Homey price setup can be read — the settings UI's only
   // account of why a Homey-priced home shows no prices. Replaced when the price

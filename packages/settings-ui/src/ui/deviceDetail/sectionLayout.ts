@@ -24,14 +24,15 @@ import { resolveDeviceDetailKind, type DeviceDetailKind } from '../deviceKind.ts
 //   after installation; the limiting choice follows it.
 // - Binary: almost nothing to configure — the limiting statement up top and
 //   Setup auto-expanded (see autoExpandSetupWhenBare).
-// - Battery: its Managed and Power-limit control switches and its place in
-//   the priority order; none of a load's sections apply, so they are hidden
+// - Battery: continuous planning, its Managed and Power-limit control switches,
+//   and its place in the priority order; none of a load's sections apply, so they are hidden
 //   here rather than by their own gates (`applyBatteryKindVisibility`).
 // - Smart task: after Setup for every kind. Most homes never use Smart tasks,
 //   and the page is about power limiting.
-// Every list carries all twelve sections so hidden, inapplicable ones keep a
+// Every list carries all sections so hidden, inapplicable ones keep a
 // stable DOM position (their own gates keep them hidden).
 const SECTION_IDS = {
+  batteryPlan: 'device-detail-battery-plan-section',
   battery: 'device-detail-battery-section',
   modes: 'device-detail-modes-section',
   delta: 'device-detail-delta-section',
@@ -56,7 +57,7 @@ const ALL_SECTION_KEYS = Object.keys(SECTION_IDS) as SectionKey[];
 // gates hide) is derived, so an omitted key can never strand a section at the
 // previous kind's position.
 const SECTION_HEAD: Record<DeviceDetailKind, readonly SectionKey[]> = {
-  battery: ['battery', 'activityLog', 'diagnostics'],
+  battery: ['batteryPlan', 'battery', 'activityLog', 'diagnostics'],
   ev_charger: ['charging', 'car', 'shedding', 'setup', 'stepped', 'smartTask', 'activityLog', 'diagnostics'],
   temperature: [
     'modes', 'delta', 'surplus', 'stepped', 'shedding', 'setup', 'smartTask', 'activityLog', 'diagnostics',

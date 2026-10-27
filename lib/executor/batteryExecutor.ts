@@ -321,6 +321,7 @@ export class BatteryExecutor {
         event: 'battery_storage_setpoint_sent', deviceId: device.id, deviceName: device.name,
         setpointW: outcome.setpointW, observedPowerW: power.signedW, verdict: control.verdict,
       });
+      if (decision.restored) this.recordRestore(device.id, device.name, Date.now());
       return true;
     } catch (error) {
       // Keep a rejected send's baseline: verification bounds retries rather

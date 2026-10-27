@@ -123,6 +123,17 @@ planner input's storage cluster, never through `isCapacityControlEnabled`, which
 vetoes every battery; the settings UI's switch and the capacity-control Flow
 cards write it.
 
+`continuous_battery_plan` is owned by `lib/battery/continuousBatteryPlanService.ts`.
+Its per-device settings schema and browser-used form validation live in
+`packages/shared-domain/src/settings/continuousBatteryPlan.ts`; the settings UI
+reads and saves through `/ui_battery_plan/:deviceId`, rather than merging raw
+settings maps. Never written means continuous planning is off. The owner retains
+the last accepted map after a transient read failure and refuses a save without
+a complete current map. Each enabled configuration records its usable capacity,
+reserve, efficiency, wear allowance and price unit. A changed price unit requires
+reviewing and saving the allowance again. Only one battery can have continuous
+planning enabled; other batteries keep their existing control policy.
+
 `ev_charge_target_settings` (a charger's target battery level) belongs to
 `packages/shared-domain/src/settings/evChargeTarget.ts`. Its reader sanitizes and
 keeps per entry: an entry without a whole percent in 1..100 is dropped (no target),

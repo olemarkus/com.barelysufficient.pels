@@ -35,6 +35,8 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     planService: undefined,
     priceCoordinator: undefined,
     batteryControl: undefined,
+    readContinuousBatteryPlan: notWired('readContinuousBatteryPlan'),
+    saveContinuousBatteryPlan: notWired('saveContinuousBatteryPlan'),
     homeMembership: undefined,
     homeRuntimeRead: { readHome: () => ({ state: 'unavailable' }) },
     powerTracker: {},

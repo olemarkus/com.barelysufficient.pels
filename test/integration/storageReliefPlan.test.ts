@@ -253,6 +253,33 @@ const storageDecision = (plan: DevicePlan): StorageDecision | undefined => {
 };
 
 describe('storage relief in the plan build', () => {
+  it('counts a stopped continuous charge before selecting extra capacity relief', async () => {
+    const { build, state } = buildHarness({ paceKw: null, capacityEnabled: false, gridImportLimitKw: 4 });
+    const continuousPlan = (setpointW: number) => ({
+      setpointW, validUntilMs: START_MS + HOUR_MS, reason: 'charge_grid' as const,
+    });
+    await build(3000, [heater(true, 1), battery({ signedPowerW: 2000, continuousPlan: continuousPlan(2000) })]);
+    const plan = await build(5000, [heater(true, 3), battery({
+      signedPowerW: 2000, claimHeld: true, continuousPlan: continuousPlan(0),
+    })], 60_000);
+    expect(storageDecision(plan)).toMatchObject({ kind: 'setpoint', setpointW: 0 });
+    expect(plannedState(plan, 'heater')).toBe('keep');
+    expect(state.storageLeverByDevice.battery.purpose).toBe('continuous');
+  });
+
+  it('credits new economic discharge after an established zero hold before limiting another device', async () => {
+    const { build } = buildHarness({ paceKw: null, capacityEnabled: false, gridImportLimitKw: 4 });
+    const continuousPlan = (setpointW: number) => ({
+      setpointW, validUntilMs: START_MS + HOUR_MS, reason: 'supply_house' as const,
+    });
+    await build(3000, [heater(true, 3), battery({ continuousPlan: continuousPlan(0) })]);
+    const plan = await build(5000, [heater(true, 5), battery({
+      claimHeld: true, continuousPlan: continuousPlan(-1500),
+    })], 60_000);
+    expect(storageDecision(plan)).toMatchObject({ kind: 'setpoint', setpointW: -1500 });
+    expect(plannedState(plan, 'heater')).toBe('keep');
+  });
+
   it('caps battery charging on the first grid-only breach despite a recent restore', async () => {
     const { build, state } = buildHarness({ paceKw: null, capacityEnabled: false, gridImportLimitKw: 3.3 });
     state.actuation.markRestore('battery', START_MS - 1000);

@@ -46,6 +46,8 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
   | 'planService'
   | 'priceCoordinator'
   | 'batteryControl'
+  | 'readContinuousBatteryPlan'
+  | 'saveContinuousBatteryPlan'
   | 'homeMembership'
   | 'homeRuntimeRead'
   | 'powerTracker'

@@ -53,7 +53,7 @@ const decidedAt = (decidedAtMs: number): Partial<ShedPlanLatch> => ({
 
 const decide = (state: ReturnType<typeof shedState>, atMs: number, powerW: number) => (
   resolveSameMeasurementSheddingDecision(
-    state, devices, { atMs, powerW }, NOW, buildMeasuredPower({ capacityBreached: true }), {},
+    state, devices, { atMs, powerW }, NOW, buildMeasuredPower({ capacityBreached: true }), {}, state.shedPlanLatch,
   )
 );
 
@@ -126,13 +126,15 @@ describe('resolveSameMeasurementSheddingDecision', () => {
     });
 
     it('never escalates the same sample when escalation is not allowed', () => {
+      const state = shedState({ overshootMitigatedAtMs: NOW - 30_000 });
       const decision = resolveSameMeasurementSheddingDecision(
-        shedState({ overshootMitigatedAtMs: NOW - 30_000 }),
+        state,
         devices,
         { atMs: SAMPLE_TS, powerW: READING_W },
         NOW,
         buildMeasuredPower(),
         {},
+        state.shedPlanLatch,
       );
 
       expect(decision.kind).toBe('skip_same_sample');

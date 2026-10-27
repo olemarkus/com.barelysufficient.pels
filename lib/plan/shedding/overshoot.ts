@@ -1,7 +1,7 @@
 import type CapacityGuard from '../../power/capacityGuard';
 import type { LatchedMeterReading } from '../../power/lastTotalPower';
 import type { Logger as PinoLogger } from '../../logging/logger';
-import type { PlanEngineState, StorageLeverState } from '../planState';
+import type { PlanEngineState, ShedPlanLatch, StorageLeverState } from '../planState';
 import type { MeasuredPower } from '../planContext';
 import type { PlanInputDevice } from '../planTypes';
 import {
@@ -37,10 +37,11 @@ export function resolveSameMeasurementSheddingDecision(
   power: MeasuredPower,
   /** The holds this cycle's storage stage left (`StorageRelief.levers`). */
   storageLevers: Readonly<Record<string, StorageLeverState>>,
+  latch: ShedPlanLatch | null,
 ): SameMeasurementSheddingDecision {
   const alreadyShedThisSample = measurement.atMs === state.lastShedPlanMeasurementTs;
   const pending = resolvePendingShedRelief(
-    state.shedPlanLatch, devices, measurement.powerW, nowTs, storageLevers, !power.gridBreached,
+    latch, devices, measurement.powerW, nowTs, storageLevers, !power.gridBreached,
   );
   if (!alreadyShedThisSample) {
     // With nothing outstanding the reading is believed as it stands; the pending
