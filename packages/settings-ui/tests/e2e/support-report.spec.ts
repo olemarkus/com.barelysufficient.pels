@@ -20,10 +20,18 @@ const installReportStub = async (page: Page, uncertain = false, expired = false)
     stub.reportChecks = 0;
     let report: PreparedSupportReport = template;
     stub.__PELS_HOMEY_STUB__ = { apiHandlers: {
-      'GET /ui_device_log': () => ({
-        version: 2, entries: template.document.activity.state === 'available' ? template.document.activity.entries : [],
-        retentionDays: 7, maxEntries: 1000, maxEntriesPerDevice: 100, persistence: 'stored',
-      }),
+      // The stored rows behind the report's activity: a report row leaves out the id, session and tone.
+      'GET /ui_device_log': () => {
+        const { activity } = template.document;
+        return {
+          version: 2,
+          entries: activity.state === 'available' ? activity.entries.map((entry, index) => ({
+            ...entry, id: `activity-${index + 1}`, stateTone: 'held',
+            recordingStartedAtMs: activity.recordingsStartedAtMs[0] ?? entry.atMs,
+          })) : [],
+          retentionDays: 7, maxEntries: 1000, maxEntriesPerDevice: 100, persistence: 'stored',
+        };
+      },
       'POST /support-report/prepare': (body) => {
         const request = body as SupportReportRequest;
         stub.reportRequests.push(request);

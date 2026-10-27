@@ -30,7 +30,8 @@ export const createSupportReportReads = (app: SupportReportApp): SupportReportRe
   // Built per capture: the database opens after the report service is constructed.
   readDeviceEvents: (deviceIds, fromMs, toMs) => (
     createDeviceEventStore(app.getUserdataDatabase()).read(deviceIds, fromMs, toMs)),
-  readLogTail: (fromMs, toMs, maxBytes) => createLogTailStore(app.getUserdataDatabase()).read(fromMs, toMs, maxBytes),
+  readLogTail: (fromMs, toMs, maxBytes, omittedEvents) => (
+    createLogTailStore(app.getUserdataDatabase()).read(fromMs, toMs, maxBytes, omittedEvents)),
 });
 
 export const createSupportReports = (

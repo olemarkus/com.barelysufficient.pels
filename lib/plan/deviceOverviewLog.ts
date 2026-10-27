@@ -3,6 +3,7 @@ import type {
   SettingsUiDeviceLogEntry,
   SettingsUiPlanDeviceSnapshot,
 } from '../../packages/contracts/src/settingsUiApi';
+import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemanticsCore';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
 import type { DevicePlanDevice } from './planTypes';
 
@@ -28,7 +29,11 @@ export function buildPresentationSignatureForDevice(device: OverviewLogDevice): 
 // tracks the pace every cycle ("0.8" → "0.9 kW more needed"), an idle detail
 // quotes the drifting temperature, and a running device's draw wobbles across a
 // 0.1 kW display boundary on most reports. The UI still receives the new text.
-const toSentenceShape = (text: string): string => text.replace(/\d+(?:[.,]\d+)?/gu, '#');
+// A hold's length is one figure however it is worded: "Held 1 h 59 min" and
+// "Held 2 h" are the same sentence.
+const toSentenceShape = (text: string): string => text
+  .replace(/\d+(?:[.,]\d+)?/gu, '#')
+  .replace(/#\s+h\b(?:\s+#\s+min\b)?|#\s+min\b/gu, '#');
 const toNullableSentenceShape = (text: string | null): string | null => (text === null ? null : toSentenceShape(text));
 
 type OverviewStatusReason = OverviewLogDevice['status']['reason'];
@@ -48,14 +53,61 @@ const withoutCountdown = (prefix: string, suffix: string): string => [
   suffix.replace(/^\s*\)/u, '').trim(),
 ].filter((part) => part !== '').join(' ').trim();
 
-/** The reason as the log compares it: its sentence without figures or countdown. */
-export function buildLoggedReasonShape(reason: OverviewStatusReason): string | null {
-  if (!reason) return null;
+type PlanReasonCode = DevicePlanDevice['reason']['code'];
+
+/**
+ * Every way of saying a device waits for power to resume or step up: a
+ * shortfall, other devices ahead, the hour ending, a new reading, a swap. The
+ * planner moves between them every few minutes while the device stays where it
+ * is, so the activity log keeps them as one state (owner, 2026-10-27); the card
+ * still names the current one. A silent meter and a failed start are not waits
+ * for power, and neither is a smart task's or the owner's own hold.
+ */
+const WAITING_FOR_POWER_REASON_CODES: ReadonlySet<PlanReasonCode> = new Set<PlanReasonCode>([
+  PLAN_REASON_CODES.swapPending,
+  PLAN_REASON_CODES.swappedOut,
+  PLAN_REASON_CODES.hourlyBudget,
+  PLAN_REASON_CODES.dailyBudget,
+  PLAN_REASON_CODES.endOfHourDrain,
+  PLAN_REASON_CODES.shortfall,
+  PLAN_REASON_CODES.cooldownShedding,
+  PLAN_REASON_CODES.cooldownRestore,
+  PLAN_REASON_CODES.meterSettling,
+  PLAN_REASON_CODES.restorePending,
+  PLAN_REASON_CODES.restoreThrottled,
+  PLAN_REASON_CODES.waitingForOtherDevices,
+  PLAN_REASON_CODES.insufficientHeadroom,
+  PLAN_REASON_CODES.capacity,
+  PLAN_REASON_CODES.gridImport,
+  PLAN_REASON_CODES.reservedForStart,
+]);
+
+const WAITING_FOR_POWER_SHAPE = JSON.stringify({ waitingForPower: true });
+
+/**
+ * The reason as the log compares it: its sentence without figures or
+ * countdown, with the hold cause that comes and goes with it. A countdown wait
+ * has no hold cause of its own, so the log carries both through one together.
+ * A wait for power is one shape, and on a device PELS leaves on (one that
+ * waits to step up) it is no reason at all: the level it runs at is the fact.
+ * A step command the device never answered replaces that line on the card, and
+ * stays a reason of its own.
+ */
+export function buildLoggedReasonShape(
+  status: OverviewLogDevice['status'],
+  decision: Pick<OverviewDecisionFacts, 'reasonCode' | 'stepCommandUnanswered'>,
+): string | null {
+  const { reason, holdCause } = status;
+  if (WAITING_FOR_POWER_REASON_CODES.has(decision.reasonCode) && !decision.stepCommandUnanswered) {
+    return status.kind === 'active' || status.kind === 'idle' ? null : WAITING_FOR_POWER_SHAPE;
+  }
+  if (!reason) return holdCause === null ? null : JSON.stringify({ holdCause });
   const { countdown, detail, text, ...rest } = reason;
   return JSON.stringify({
     ...rest,
     text: toSentenceShape(countdown?.kind === 'in_text' ? withoutCountdown(countdown.prefix, countdown.suffix) : text),
     ...(detail === undefined ? {} : { detail: toSentenceShape(detail) }),
+    holdCause,
   });
 }
 
@@ -70,11 +122,11 @@ export function buildLoggedReasonShape(reason: OverviewStatusReason): string | n
  * A device PELS leaves on is one state whether it is running or resting: a
  * thermostat holding its target switches its own element every few minutes,
  * and those switches would fill a busy device's history in hours. `reason` is
- * the reason as the log keeps it (`buildLoggedReasonShape`), or the one the log
- * carries through a countdown wait (`DeviceOverviewTransitions`).
+ * the reason and hold cause as the log keeps them (`buildLoggedReasonShape`),
+ * or the ones the log carries through a countdown wait (`DeviceOverviewTransitions`).
  */
 export function buildOverviewSignatureForDevice(device: OverviewLogDevice, reason: string | null): string {
-  const { kind, label, tone, canEaseOff, reason: _reason, ...status } = device.status;
+  const { kind, label, tone, canEaseOff, reason: _reason, holdCause: _holdCause, ...status } = device.status;
   const leftOn = kind === 'active' || kind === 'idle';
   return JSON.stringify({
     ...status,
@@ -112,12 +164,14 @@ export function buildDeviceLogEntry(device: OverviewLogDevice, atMs = Date.now()
 /**
  * What the planner decided and the executor holds for a device, beside what it
  * presented: observed, planned, commanded and pending stay distinct in the log
- * (`lib/device/AGENTS.md`). Debug-only; never on the UI wire.
+ * (`lib/device/AGENTS.md`). The activity log reads the reason code and whether
+ * a step command went unanswered (`buildLoggedReasonShape`); the debug event
+ * carries all of them. Never on the UI wire.
  */
 export type OverviewDecisionFacts = Pick<DevicePlanDevice, 'plannedState'> & {
   reasonCode: DevicePlanDevice['reason']['code'];
-} & Pick<DeviceExecutionState,
-  'desiredStepId' | 'observedStepId' | 'binaryProgress' | 'stepProgress' | 'targetProgress'>;
+} & Pick<DeviceExecutionState, 'desiredStepId' | 'observedStepId' | 'binaryProgress' | 'stepProgress'
+  | 'targetProgress' | 'stepCommandUnanswered'>;
 
 export function buildOverviewEventForDevice(
   device: OverviewLogDevice,

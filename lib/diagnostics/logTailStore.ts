@@ -33,6 +33,8 @@ const MAX_HELD_LINES = 200;
  */
 const TRIM_EVERY_WRITES = 100;
 const HOUR_MS = 60 * 60 * 1000;
+/** A key's event is the key up to its device (`event` or `event|device`); `?` is a JSON array of events. */
+const EVENT_NOT_OMITTED = "substr(key, 1, instr(key || '|', '|') - 1) NOT IN (SELECT value FROM json_each(?))";
 
 /** One kept line. `key` is what the per-hour cap counts: the event, and its device when it names one. */
 export type LogTailEntry = { atMs: number; level: number; key: string; line: string };
@@ -50,8 +52,8 @@ export type LogTailStore = {
   recordOverflow(hourStartMs: number, key: string, dropped: number): void;
   /** How many lines of each key are kept since `fromMs`, to resume the per-hour cap after a restart. */
   countSince(fromMs: number): Map<string, number>;
-  /** The newest kept lines in the window whose JSON fits `maxBytes`, oldest first. */
-  read(fromMs: number, toMs: number, maxBytes: number): LogTailRead;
+  /** The newest kept lines in the window whose JSON fits `maxBytes`, oldest first, without lines of `omittedEvents`. */
+  read(fromMs: number, toMs: number, maxBytes: number, omittedEvents: readonly string[]): LogTailRead;
 };
 
 const SCHEMA = `
@@ -99,13 +101,14 @@ export const createLogTailStore = (db: UserdataDatabase): LogTailStore => {
     + 'ON CONFLICT (hour_ms, key) DO UPDATE SET dropped = MAX(dropped, excluded.dropped)');
   const expireOverflow = db.prepare('DELETE FROM log_tail_overflow WHERE hour_ms < ?');
   const counts = db.prepare('SELECT key, COUNT(*) AS lines FROM log_tail WHERE at_ms >= ? GROUP BY key');
+  const inReadWindow = `at_ms >= ? AND at_ms <= ? AND ${EVENT_NOT_OMITTED}`;
   // The newest lines first, with the running size of every line up to each.
   const newest = db.prepare('SELECT at_ms, level, line FROM (SELECT seq, at_ms, level, line, '
-    + 'SUM(length(line)) OVER (ORDER BY seq DESC) AS running FROM log_tail WHERE at_ms >= ? AND at_ms <= ?) '
+    + `SUM(length(line)) OVER (ORDER BY seq DESC) AS running FROM log_tail WHERE ${inReadWindow}) `
     + 'WHERE running <= ? ORDER BY seq');
-  const inWindow = db.prepare('SELECT COUNT(*) AS lines FROM log_tail WHERE at_ms >= ? AND at_ms <= ?');
+  const inWindow = db.prepare(`SELECT COUNT(*) AS lines FROM log_tail WHERE ${inReadWindow}`);
   const loadOverflow = db.prepare('SELECT hour_ms, key, dropped FROM log_tail_overflow '
-    + 'WHERE hour_ms >= ? AND hour_ms <= ? ORDER BY hour_ms, key');
+    + `WHERE hour_ms >= ? AND hour_ms <= ? AND ${EVENT_NOT_OMITTED} ORDER BY hour_ms, key`);
   let held: LogTailEntry[] = [];
   // The first write trims: the app may have been down longer than retention.
   let writesSinceTrim = TRIM_EVERY_WRITES;
@@ -141,15 +144,16 @@ export const createLogTailStore = (db: UserdataDatabase): LogTailStore => {
     countSince: (fromMs) => quietly(() => new Map(counts.all(fromMs).flatMap((row): Array<[string, number]> => (
       typeof row.key === 'string' && typeof row.lines === 'number' ? [[row.key, row.lines]] : []
     ))), new Map<string, number>()),
-    read: (windowFromMs, toMs, maxBytes) => {
+    read: (windowFromMs, toMs, maxBytes, omittedEvents) => {
       // Expiry runs only every so many writes, so a read leaves out what it would have removed.
       const fromMs = Math.max(windowFromMs, toMs - LOG_TAIL_RETENTION_HOURS * HOUR_MS);
-      const rows = newest.all(fromMs, toMs, maxBytes);
-      const total = inWindow.get(fromMs, toMs)?.lines;
+      const omitted = JSON.stringify(omittedEvents);
+      const rows = newest.all(fromMs, toMs, omitted, maxBytes);
+      const total = inWindow.get(fromMs, toMs, omitted)?.lines;
       return {
         // A damaged row is left out of the report, not counted as left out for size.
         lines: rows.flatMap(toLine),
-        overflow: loadOverflow.all(fromMs - HOUR_MS, toMs).flatMap((row): SupportReportLogOverflow[] => (
+        overflow: loadOverflow.all(fromMs - HOUR_MS, toMs, omitted).flatMap((row): SupportReportLogOverflow[] => (
           typeof row.hour_ms === 'number' && typeof row.key === 'string' && typeof row.dropped === 'number'
             ? [{ hourStartMs: row.hour_ms, key: row.key, dropped: row.dropped }] : []
         )),

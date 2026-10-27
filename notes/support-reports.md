@@ -20,7 +20,10 @@ Activity is the state and reason PELS presented; it is not an actuator audit tra
 The default window starts an hour before the incident, the wider one 24 hours
 before it, and both run to capture: owners report after the fact, and what followed
 the incident, such as a car reporting its plug-in hours late, is often what explains
-it. Activity keeps the preceding recorded state for each device.
+it. Activity keeps the preceding recorded state for each device. A report's
+activity row leaves out the row id, the recording session and the tone, which
+follows the state: the section lists each recording session once, so a restart
+still shows.
 Current readouts retain their timestamps and are separate from incident history.
 
 Device events (`lib/diagnostics/deviceEventStore.ts`) are what PELS observed and
@@ -52,9 +55,14 @@ the hour ends, so a flood costs a handful of writes and a report still says the 
 happened. Lines are written as they happen, because Homey exits the process before
 `onUninit` runs; lines from the start of a boot wait in memory until the database
 opens, and a line logged while another store holds a transaction waits for the next
-write. A report carries the newest kept lines of its window that fit 256 KiB, read
+write. A report carries the newest kept lines of its window that fit 448 KiB, read
 newest first so a day of log is never built in memory only to be cut, and says how
-many older ones it left out.
+many older ones it left out. A day's report about the whole app also leaves out each
+command PELS sent, its acknowledgement and a stepped device's reported level
+(`DAY_REPORT_OMITTED_LOG_EVENTS`): its activity already records the states they led
+to, and on a busy home those lines alone pushed the morning out of the daily report
+(2026-10-26). It names the events it left out; a change nobody commanded stays. A
+report about one device, or the hour before an incident, keeps them all.
 The current collector does not dump settings, credentials or raw Homey devices into
 the message, and of stdout only the structured lines it kept. New sections require explicit field
 selection at their diagnostic projection, rather than serializing an owner object.

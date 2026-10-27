@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { DeviceOverviewLogRecorder } from '../../lib/diagnostics/deviceActivityRecorder';
+import { DEVICE_ACTIVITY_SETTLE_MS, DeviceOverviewLogRecorder } from '../../lib/diagnostics/deviceActivityRecorder';
 import { createDeviceActivityStore } from '../../lib/diagnostics/deviceActivityStore';
 import { DEVICE_ACTIVITY_RETENTION_MS } from '../../lib/diagnostics/deviceActivityHistory';
 import { IN_MEMORY_DATABASE, openUserdataDatabase, type UserdataDatabase } from '../../lib/store/userdataDatabase';
@@ -51,13 +51,15 @@ describe('persistent device activity', () => {
     const location = path.join(dir, 'pels.sqlite');
     const db = open(location);
     const before = new DeviceOverviewLogRecorder(createDeviceActivityStore(db, 'main'));
-    before.record(device(), entry());
+    before.record(device(), entry(), 'signature');
+    vi.advanceTimersByTime(DEVICE_ACTIVITY_SETTLE_MS);
     before.flush();
     db.close();
 
     vi.setSystemTime(NOW + 60_000);
     const after = new DeviceOverviewLogRecorder(createDeviceActivityStore(open(location), 'main'));
-    after.record(device(), entry({ atMs: NOW + 60_000, stateMsg: 'Running' }));
+    after.record(device(), entry({ atMs: NOW + 60_000, stateMsg: 'Running' }), 'signature');
+    vi.advanceTimersByTime(DEVICE_ACTIVITY_SETTLE_MS);
     const payload = after.getUiPayload();
     expect(payload.persistence).toBe('stored');
     expect(payload.entries.map((e) => e.stateMsg)).toEqual(['Running', 'Limited']);
@@ -109,7 +111,8 @@ describe('persistent device activity', () => {
       throw new Error('save acknowledgement failed');
     });
     const recorder = new DeviceOverviewLogRecorder({ append, read: store.read });
-    recorder.record(device(), entry());
+    recorder.record(device(), entry(), 'signature');
+    vi.advanceTimersByTime(DEVICE_ACTIVITY_SETTLE_MS);
     expect(() => recorder.flush()).not.toThrow();
     expect(recorder.getUiPayload().persistence).toBe('pending');
     expect(recorder.getUiPayload().entries).toHaveLength(1);
@@ -120,17 +123,49 @@ describe('persistent device activity', () => {
     expect(store.read(NOW)).toHaveLength(1);
   });
 
-  it('bounds the pending queue during an outage and preserves same-millisecond ordering', () => {
+  it('bounds the pending queue during an outage', () => {
     const append = vi.fn(() => { throw new Error('disk full'); });
     const recorder = new DeviceOverviewLogRecorder({ append, read: () => [] });
-    for (let i = 0; i < 110; i += 1) recorder.record(device(), entry({ statusMsg: `Reason ${i}` }));
+    for (let i = 0; i < 110; i += 1) {
+      recorder.record(device(), entry({ atMs: Date.now(), statusMsg: `Reason ${i}` }), `reason-${i}`);
+      vi.advanceTimersByTime(DEVICE_ACTIVITY_SETTLE_MS);
+      recorder.flush();
+    }
     const pending = recorder.getUiPayload();
     expect(pending.entries).toHaveLength(100);
     expect(pending.entries[0].statusMsg).toBe('Reason 109');
     expect(pending.entries.at(-1)?.statusMsg).toBe('Reason 10');
     expect(pending.persistence).toBe('pending');
-    vi.setSystemTime(NOW + DEVICE_ACTIVITY_RETENTION_MS + 1);
+    vi.setSystemTime(Date.now() + DEVICE_ACTIVITY_RETENTION_MS + 1);
     expect(recorder.getUiPayload()).toMatchObject({ entries: [], persistence: 'stored' });
+  });
+
+  it('replaces a row the device leaves within moments, keeping when the change began', () => {
+    // Prod 2026-10-26: "Limited 1.1 kW", then "Limited · Off" a second later as
+    // the device reported off; "Resuming", then "Running" as it drew.
+    const store = createDeviceActivityStore(open(), 'main');
+    const recorder = new DeviceOverviewLogRecorder(store);
+    recorder.record(device(), entry({ atMs: NOW, stateMsg: 'Limited', powerMsg: '1.1 kW' }), 'limited');
+    vi.advanceTimersByTime(4_000);
+    recorder.record(device(), entry({ atMs: NOW + 4_000, stateMsg: 'Limited · Off', powerMsg: '0.0 kW' }), 'off');
+    vi.advanceTimersByTime(DEVICE_ACTIVITY_SETTLE_MS);
+    recorder.flush();
+    expect(store.read(Date.now()).map((e) => [e.atMs, e.stateMsg, e.powerMsg]))
+      .toEqual([[NOW, 'Limited · Off', '0.0 kW']]);
+    // A row longer than that stays, and one back where it was within moments leaves none.
+    recorder.record(device(), entry({ atMs: Date.now(), stateKind: 'resuming', stateMsg: 'Resuming' }), 'resuming');
+    vi.advanceTimersByTime(2_000);
+    recorder.record(device(), entry({ atMs: Date.now(), stateMsg: 'Limited · Off', powerMsg: '0.0 kW' }), 'off');
+    vi.advanceTimersByTime(DEVICE_ACTIVITY_SETTLE_MS);
+    recorder.flush();
+    expect(store.read(Date.now())).toHaveLength(1);
+    // A return that differs in what the log records, such as the charger now unplugged, is a row.
+    recorder.record(device(), entry({ atMs: Date.now(), stateKind: 'resuming', stateMsg: 'Resuming' }), 'resuming');
+    vi.advanceTimersByTime(2_000);
+    recorder.record(device(), entry({ atMs: Date.now(), stateMsg: 'Limited · Off', usageMsg: 'Unplugged' }), 'off-unplugged');
+    vi.advanceTimersByTime(DEVICE_ACTIVITY_SETTLE_MS);
+    recorder.flush();
+    expect(store.read(Date.now()).map((e) => e.usageMsg)).toEqual(['Unplugged', '18 °C · target 22 °C']);
   });
 
   it('surfaces a failed read as unavailable, while later saves preserve old history', () => {
@@ -139,7 +174,7 @@ describe('persistent device activity', () => {
     const read = vi.fn(store.read).mockImplementationOnce(() => { throw new Error('read failed'); });
     const recorder = new DeviceOverviewLogRecorder({ append: store.append, read });
     expect(() => recorder.getUiPayload()).toThrow('read failed');
-    recorder.record(device(), entry({ atMs: NOW + 1 }));
+    recorder.record(device(), entry({ atMs: NOW + 1 }), 'signature');
     expect(recorder.getUiPayload().entries).toHaveLength(2);
   });
 });

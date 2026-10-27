@@ -127,10 +127,11 @@ const buildOverviewPublication = (
   return snapshot ? { snapshot, plan, execution } : null;
 };
 
-// The decision and executor facts behind a presentation change, for the debug
-// event only; the UI wire carries none of them. Every published device has both
+// The decision and executor facts behind a presentation change: the activity
+// log reads the reason code (a wait for power is one state there) and whether a
+// step command went unanswered, the debug event all of them; the UI wire carries none. Every published device has both
 // (the publication is built from this plan and its execution map), and the
-// lookup is only built when a debug event asks for it.
+// lookup is only built when a presentation changes.
 const describeOverviewDecision = (
   publication: OverviewPublication,
 ): ((deviceId: string) => OverviewDecisionFacts) => {
@@ -144,6 +145,7 @@ const describeOverviewDecision = (
       reasonCode: device.reason.code, plannedState: device.plannedState,
       desiredStepId: state.desiredStepId, observedStepId: state.observedStepId,
       binaryProgress: state.binaryProgress, stepProgress: state.stepProgress, targetProgress: state.targetProgress,
+      stepCommandUnanswered: state.stepCommandUnanswered,
     };
   };
 };

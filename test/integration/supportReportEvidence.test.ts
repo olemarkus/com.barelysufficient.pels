@@ -12,7 +12,10 @@ import {
 import { transportSnapshotFixture } from '../utils/deviceSnapshotFixture';
 import { buildPlanDevice, buildPlanMeta, buildSettingsUiPlanMeta } from '../utils/planTestUtils';
 import { createDeviceEventStore } from '../../lib/diagnostics/deviceEventStore';
-import { SUPPORT_REPORT_MAX_DEVICE_EVENTS } from '../../lib/diagnostics/supportReportEvidence';
+import {
+  DAY_REPORT_OMITTED_LOG_EVENTS, SUPPORT_REPORT_MAX_DEVICE_EVENTS,
+} from '../../lib/diagnostics/supportReportEvidence';
+import { createLogTailStore } from '../../lib/diagnostics/logTailStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase, type UserdataDatabase } from '../../lib/store/userdataDatabase';
 import type { CarLinkDiagnostics } from '../../lib/ports/carLinkDiagnostics';
 
@@ -337,5 +340,32 @@ describe('support report car link evidence', () => {
     const report = await source(host).capture(request, now);
     expect(report.deviceEvents).toEqual({ state: 'unavailable', reason: 'Kept device events could not be read.' });
     expect(values(report, 'Current device observation and configuration')).toMatchObject({ measuredPowerKw: 0.7 });
+  });
+});
+
+describe('support report log', () => {
+  it('leaves the commands its activity records out of a day report about the whole app, and says so', async () => {
+    const db = openUserdataDatabase(IN_MEMORY_DATABASE);
+    try {
+      const store = createLogTailStore(db);
+      const line = (event: string) => ({ atMs: now - hour, level: 30, key: `${event}|heater`,
+        line: JSON.stringify({ event, deviceId: 'heater' }) });
+      store.append(line('binary_command_applied'));
+      store.append(line('overshoot_entered'));
+      const host = pelsHostDouble({ ...currentHost(), getUserdataDatabase: () => db });
+      const day = await source(host).capture({
+        ...request, subject: { kind: 'app', homeId: 'main' }, historyWindow: 'day', occurredAtMs: now,
+      }, now);
+      expect(day.log).toMatchObject({ state: 'available', omittedEvents: DAY_REPORT_OMITTED_LOG_EVENTS, leftOutForSize: 0 });
+      if (day.log.state !== 'available') throw new Error('Expected the log');
+      expect(day.log.lines.map((kept) => kept.entry.event)).toEqual(['overshoot_entered']);
+      // A report about one device keeps every line: its activity covers only that device.
+      const device = await source(host).capture({ ...request, historyWindow: 'day', occurredAtMs: now }, now);
+      if (device.log.state !== 'available') throw new Error('Expected the log');
+      expect(device.log.omittedEvents).toEqual([]);
+      expect(device.log.lines.map((kept) => kept.entry.event)).toEqual(['binary_command_applied', 'overshoot_entered']);
+    } finally {
+      db.close();
+    }
   });
 });

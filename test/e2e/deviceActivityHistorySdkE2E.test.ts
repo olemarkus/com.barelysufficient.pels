@@ -2,6 +2,7 @@ import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriv
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
 import { getSettingsUiDeviceLogPayload } from '../../setup/settingsUiApi';
+import { DEVICE_ACTIVITY_SETTLE_MS } from '../../lib/diagnostics/deviceActivityRecorder';
 
 describe('device activity history through app startup and SDK observations', () => {
   beforeEach(() => {
@@ -48,6 +49,8 @@ describe('device activity history through app startup and SDK observations', () 
     vi.setSystemTime(Date.now() + 60_000);
     const second = createApp({ withoutPowerMeasurement: true });
     await second.onInit();
+    // The new boot's own rows are stored once they settle.
+    await vi.advanceTimersByTimeAsync(DEVICE_ACTIVITY_SETTLE_MS);
     const restored = getSettingsUiDeviceLogPayload(second);
     for (const previous of saved.entries) expect(restored.entries).toContainEqual(previous);
     expect(restored.persistence).toBe('stored');

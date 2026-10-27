@@ -39,11 +39,11 @@ export class DeviceOverviewTransitions {
     let presentationChanged = false;
     for (const device of snapshot.devices ?? []) {
       retained.add(device.id);
-      const change = this.observe(device);
+      const change = this.observe(device, describeDecision);
       if (change === 'unchanged') continue;
       presentationChanged = true;
       if (change !== 'state_changed') continue;
-      logRecorder.record(device, buildDeviceLogEntry(device));
+      logRecorder.record(device, buildDeviceLogEntry(device), this.loggedById.get(device.id) ?? '');
       if (debugEnabled) events.push(buildOverviewEventForDevice(device, describeDecision(device.id)));
     }
     this.forgetDevicesNotIn(retained);
@@ -53,12 +53,15 @@ export class DeviceOverviewTransitions {
     return presentationChanged;
   }
 
-  private observe(device: SettingsUiPlanDevice): 'unchanged' | 'presentation_changed' | 'state_changed' {
+  private observe(
+    device: SettingsUiPlanDevice,
+    describeDecision: (deviceId: string) => OverviewDecisionFacts,
+  ): 'unchanged' | 'presentation_changed' | 'state_changed' {
     const presentation = buildPresentationSignatureForDevice(device);
     if (this.presentationById.get(device.id) === presentation) return 'unchanged';
     this.presentationById.set(device.id, presentation);
     const { reason } = device.status;
-    const shape = buildLoggedReasonShape(reason);
+    const shape = buildLoggedReasonShape(device.status, describeDecision(device.id));
     const wait = isCountdownWait(reason);
     const carried = wait && this.steadyReasonById.has(device.id) ? this.steadyReasonById.get(device.id) ?? null : shape;
     if (!wait) this.steadyReasonById.set(device.id, shape);

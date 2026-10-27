@@ -200,10 +200,17 @@ Every runtime file is clean, so the guard allows no site at all. `api.ts`'s pre-
   `DeviceStatus`. Settings UI renders that status, and `lib/plan/deviceOverviewLog.ts` copies its
   label, power, fact, and reason text into activity history and structured transition events.
   Activity history records a row only for a change of state: a device PELS leaves on running or
-  resting by itself, a figure moving inside the same sentence, and a countdown wait (`Waiting after
-  limiting a device`, `Waiting to resume — 270s`) never add one, and a stored row names a countdown
+  resting by itself, a figure moving inside the same sentence (a hold's length counts as one
+  figure, so `Held 1 h 59 min` and `Held 2 h` are the same sentence), and a countdown wait
+  (`Waiting after limiting a device`, `Waiting to resume — 270s`) never add one. A countdown wait
+  carries the device's last reason and hold cause through it, and a stored row names a countdown
   wait without its countdown. The card, and the event's `cardReasonText`, keep the countdown
-  (owner, 2026-10-25).
+  (owner, 2026-10-25). Every way of waiting for power (a shortfall, other devices ahead, a new
+  reading, the hour ending, a budget) is one state, so moving between them adds no row, and on a
+  device PELS leaves on it is no reason at all; a step command the device never answered stays a
+  reason of its own (owner, 2026-10-27). A row the device leaves within ten seconds of its start
+  is replaced by the next and keeps that start (`DEVICE_ACTIVITY_SETTLE_MS`), and one back where
+  it was within that time leaves none.
   Device-log and diagnostics surfaces should render those recorded fields without reconstructing
   status from raw runtime state or calling a separate overview formatter.
 - Shared-domain wording helpers remain appropriate where both browser and runtime consumers need

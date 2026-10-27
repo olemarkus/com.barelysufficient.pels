@@ -51,8 +51,8 @@ export type SupportReportReads = {
   getCarLinkDiagnostics(deviceId: string): CarLinkDiagnostics | undefined;
   /** Kept device events about any of `deviceIds` in the window, oldest first; every device without ids. */
   readDeviceEvents(deviceIds: readonly string[] | 'all', fromMs: number, toMs: number): SupportReportDeviceEvent[];
-  /** PELS's kept log lines in the window (`logTailStore.ts`). */
-  readLogTail(fromMs: number, toMs: number, maxBytes: number): LogTailRead;
+  /** PELS's kept log lines in the window, without lines of `omittedEvents` (`logTailStore.ts`). */
+  readLogTail(fromMs: number, toMs: number, maxBytes: number, omittedEvents: readonly string[]): LogTailRead;
 };
 
 type ReportSubject = {
@@ -267,16 +267,40 @@ const readDeviceEvents = (
 };
 
 /**
- * The most kept log one report reads, newest first: about half the report's
- * size limit, so a day of log is never built in memory only to be cut down.
+ * The most kept log one report reads, newest first: what the report's size
+ * limit leaves beside a day of activity, so a day of log is never built in
+ * memory only to be cut down.
  */
-export const SUPPORT_REPORT_LOG_BUDGET_BYTES = 256 * 1024;
+export const SUPPORT_REPORT_LOG_BUDGET_BYTES = 448 * 1024;
+
+/**
+ * What a day's report about the whole app leaves out of its log: each command
+ * PELS sent, its acknowledgement, and the level a stepped device reported,
+ * which its activity rows already record as the states they led to. On a busy
+ * home these lines alone would push the morning out of a daily report. A change
+ * nobody commanded (`realtime_capability_drift`) stays. A report about one
+ * device, or about the hour before an incident, keeps them all: its activity
+ * covers less.
+ */
+export const DAY_REPORT_OMITTED_LOG_EVENTS: readonly string[] = [
+  'binary_command_applied',
+  'binary_command_succeeded',
+  'target_command_applied',
+  'target_waiting_for_confirmation',
+  'stepped_load_report_received',
+];
+
+const omittedLogEvents = (request: SupportReportRequest): readonly string[] => (
+  request.historyWindow === 'day' && request.subject.kind === 'app' ? DAY_REPORT_OMITTED_LOG_EVENTS : []
+);
 
 const readLog = (host: SupportReportReads, request: SupportReportRequest, capturedAtMs: number): SupportReportLog => {
   const { fromMs, toMs } = supportReportWindow(request, capturedAtMs);
-  const read = readOptional(() => host.readLogTail(fromMs, toMs, SUPPORT_REPORT_LOG_BUDGET_BYTES));
+  const omittedEvents = omittedLogEvents(request);
+  const read = readOptional(() => host.readLogTail(fromMs, toMs, SUPPORT_REPORT_LOG_BUDGET_BYTES, omittedEvents));
   return read ? {
     state: 'available', lines: read.lines, overflow: read.overflow, fromMs, toMs, leftOutForSize: read.leftOut,
+    omittedEvents,
   } : { state: 'unavailable', reason: 'The kept log could not be read.' };
 };
 
