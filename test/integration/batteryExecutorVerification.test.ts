@@ -479,4 +479,31 @@ describe('battery storage lane', () => {
     expect(await lane.apply(decided({ kind: 'release', reason: 'idle' }))).toBe(true);
     expect(recordRestore).toHaveBeenCalledTimes(1);
   });
+
+  it('records a continuous hand-back at the existing setpoint without resending it', async () => {
+    const { lane, send, apply, recordRestore } = buildLane();
+    await send(0, 0);
+    const restored = decided({ kind: 'setpoint', setpointW: 0, stepW: 5, restored: true });
+    expect(lane.hasDrift(restored)).toBe(false);
+    expect(await lane.apply(restored)).toBe(false);
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(recordRestore).toHaveBeenCalledExactlyOnceWith(BATTERY, 'Battery', START_MS);
+  });
+
+  it('does not record an equivalent restore when control is unavailable or inadmissible', async () => {
+    const { lane, send, owner, apply, recordRestore } = buildLane();
+    await send(0, 0);
+    const restored = decided({ kind: 'setpoint', setpointW: 0, stepW: 5, restored: true });
+    const control = owner.readControl(BATTERY);
+    if (control.kind !== 'setpoint') throw new Error('Expected a setpoint battery');
+    for (const unavailable of [
+      { kind: 'none' as const }, { ...control, admissible: false },
+      { ...control, verdict: 'not_responding' as const },
+    ]) {
+      vi.mocked(owner.readControl).mockReturnValue(unavailable);
+      expect(await lane.apply(restored)).toBe(false);
+    }
+    expect(recordRestore).not.toHaveBeenCalled();
+    expect(apply).toHaveBeenCalledTimes(1);
+  });
 });

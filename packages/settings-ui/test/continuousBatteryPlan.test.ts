@@ -98,6 +98,30 @@ test('explains a power-limit gate and allows disabling an already configured pla
   expect(callApi).toHaveBeenCalledWith('PUT', '/ui_battery_plan/battery', { ...config, enabled: false });
 });
 
+test('keeps a successful save clean when reloading its preview fails', async () => {
+  await openBattery();
+  await act(async () => {
+    field('Minimum reserve (%)').value = '35';
+    field('Minimum reserve (%)').dispatchEvent(new Event('input'));
+  });
+  callApi.mockImplementation(async (method: string, _path: string, body: unknown) => {
+    if (method === 'PUT') return body;
+    throw new Error('Preview unavailable');
+  });
+  await act(async () => button('Save battery plan').click());
+  await vi.waitFor(() => expect(document.body.textContent).toContain('Battery plan saved.'));
+  expect(document.body.textContent).toContain('Preview unavailable');
+  expect(document.querySelector('.battery-plan-chart')).toBeNull();
+  expect(document.querySelector('.battery-plan-windows')).toBeNull();
+  expect(document.body.textContent).toContain('Refresh plan to load the updated battery plan.');
+  expect(field('Minimum reserve (%)').value).toBe('35');
+  expect(button('Save battery plan').hasAttribute('disabled')).toBe(true);
+  callApi.mockResolvedValue({ ...read, config: { ...config, minimumReservePercent: 35 } });
+  await act(async () => button('Refresh plan').click());
+  await vi.waitFor(() => expect(document.querySelector('.battery-plan-windows')).not.toBeNull());
+  expect(document.body.textContent).toContain('Reserve line: 35%');
+});
+
 test.each(['EUR', 'price units'])('disabling preserves accepted economics when the current unit is %s', async (currentUnit) => {
   priceUnit = currentUnit;
   const saved = { ...config, priceUnit: 'øre', wearCostPerKWh: 3 };

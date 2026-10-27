@@ -69,6 +69,7 @@ export const continuousLever = (
 
 export function resumeContinuousStorage(
   relief: StorageRelief,
+  beforeHandBack: StorageRelief,
   devices: readonly PlanInputDevice[],
   power: MeasuredPower,
   offers: ReadonlyMap<string, StorageSurplusOffer>,
@@ -87,7 +88,11 @@ export function resumeContinuousStorage(
     const offer = offers.get(device.id);
     if (storage.continuousPlan === undefined || storage.continuousPlan.validUntilMs <= nowTs
       || resolveStorageHoldBlock(storage) !== 'holdable' || offer === undefined) return [];
-    const lever = continuousLever(storage, undefined, balance, offer, nowTs);
+    const fresh = continuousLever(storage, undefined, balance, offer, nowTs);
+    const lever = {
+      ...fresh,
+      preClaimSignedW: beforeHandBack.levers[device.id]?.preClaimSignedW ?? fresh.preClaimSignedW,
+    };
     const summary: StorageStateSummary = {
       ...summarizeHold(device.id, storage, lever, 0),
       decision: { kind: 'setpoint', setpointW: lever.setpointW, stepW: lever.stepW, restored: true },
