@@ -678,6 +678,7 @@ describe('DeviceTransport', () => {
             expect(dm.getSnapshot().map((d) => d.id)).toEqual([]);
             expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual([]);
             expect([...dm.getHomeyDeviceIds()]).toEqual(['dev1']);
+            expect(dm.isDeviceConfirmedRemoved('dev1')).toBe(false);
 
             mockApiGet.mockResolvedValue({ dev1: buildDevice('dev1', true) });
             await dm.refreshSnapshot({ meterDeviceIds: [] });
@@ -687,6 +688,27 @@ describe('DeviceTransport', () => {
     });
 
     describe('refreshSnapshot', () => {
+        it('confirms removal only from a warm accepted full inventory', async () => {
+            expect(deviceManager.isDeviceConfirmedRemoved('dev1')).toBe(false);
+            await deviceManager.init();
+            mockApiGet.mockResolvedValue({});
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+            expect(deviceManager.isDeviceConfirmedRemoved('dev1')).toBe(false);
+            mockApiGet.mockResolvedValue(buildRealtimeDevices());
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+            expect(deviceManager.isDeviceConfirmedRemoved('dev1')).toBe(false);
+            mockApiGet.mockResolvedValue({});
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+            expect(deviceManager.isDeviceConfirmedRemoved('dev1')).toBe(false);
+            mockApiGet.mockResolvedValue({
+                dev2: homeyDevice({ id: 'dev2', name: 'Other heater', class: 'heater' }, {
+                    measure_power: 1000, onoff: true,
+                }, stampedNow()),
+            });
+            await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+            expect(deviceManager.isDeviceConfirmedRemoved('dev1')).toBe(true);
+        });
+
         /**
          * The reported mode across `device.update`.
          *
