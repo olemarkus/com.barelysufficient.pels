@@ -26,6 +26,7 @@
     "docs:promote:live": "node scripts/promote-docs-channel.mjs live",
     "docs:promote:test": "node scripts/promote-docs-channel.mjs test",
     "bench:settings-ui:boot": "node scripts/benchmark-settings-ui-boot.mjs",
+    "bench:battery-plan": "node scripts/benchmark-battery-plan.mjs",
     "watch:settings": "npm run build:settings && esbuild packages/settings-ui/src/script.ts --bundle --outfile=settings/script.js --format=iife --target=es2020 --watch",
     "measure:settings-ui:homey": "node scripts/measure-settings-ui-homey.mjs",
     "start": "zsh -lc 'log_dir=${PELS_LOG_DIR:-/tmp/pels}; mkdir -p \"$log_dir\"; branch=$(git branch --show-current 2>/dev/null || true); branch=${branch:-${PWD:t}}; branch=$(printf \"%s\" \"$branch\" | tr -cs \"A-Za-z0-9._-\" \"-\"); homey_id=$(node scripts/resolve-homey-id.mjs 2>/dev/null || echo unknown); commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown); git diff --quiet 2>/dev/null || commit=\"${commit}-dirty\"; out=\"$log_dir/start.${branch}.${homey_id}.stdout.log\"; err=\"$log_dir/start.${branch}.${homey_id}.stderr.log\"; printf \"===== PELS START %s commit=%s branch=%s =====\\n\" \"$(date -u +%FT%TZ)\" \"$commit\" \"$branch\" | tee -a \"$out\" \"$err\" >/dev/null; { npm run build:settings && npm run build:widgets && homey app run --remote; } > >(tee -a \"$out\") 2> >(tee -a \"$err\" >&2)'",

@@ -1,4 +1,5 @@
 import { hideDeviceDetailLiveStatus, renderDeviceDetailLiveStatus } from './liveStatus.ts';
+import { initContinuousBatteryPlanRefresh, setContinuousBatteryPlanDevice } from './continuousBatteryPlan.tsx';
 import { hideDeviceSmartTaskBox, renderDeviceSmartTaskBox } from './smartTaskBox.ts';
 import type { SteppedLoadProfile } from '../../../../contracts/src/types.ts';
 import {
@@ -212,6 +213,7 @@ const setDeviceDetailControlStates = (deviceId: string, device: SettingsUiDevice
   setDeviceDetailNativeWiringState(device);
   renderManagedControl(device, controlState);
   renderDeviceDetailBattery(device);
+  setContinuousBatteryPlanDevice(device);
 
   setPowerLimitSwitch(deviceDetailControllable, controlState, deviceId);
   const priceConfig = state.priceOptimizationSettings[deviceId];
@@ -359,6 +361,7 @@ export const openDeviceDetail = (deviceId: string) => {
 };
 
 export const closeDeviceDetail = () => {
+  setContinuousBatteryPlanDevice(null);
   resetDeviceDetailDiagnosticsRequests();
   resetDeviceDetailDiagnosticsView();
   resetDeviceDetailActivityLogRequests();
@@ -429,6 +432,7 @@ export const openDeviceDetailAt = (deviceId: string, focus: DeviceDetailFocus): 
 };
 
 export const initDeviceDetailHandlers = () => {
+  initContinuousBatteryPlanRefresh();
   const overlayContext = {
     getCurrentDetailDeviceId,
     openDeviceDetailAt,

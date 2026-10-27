@@ -55,6 +55,7 @@ import {
   collectAbsentStorageReleases,
   decideStorageRelief,
   resolveStorageSurplus,
+  resumeContinuousStorage,
   type StorageRelief,
 } from './battery/storageRelief';
 import { applyStorageHandBacks, applyStorageLimits, withoutStorageWithheld } from './battery/storageLimit';
@@ -338,7 +339,9 @@ export class PlanBuilder {
       this.stages.buildPlanDevices(heldContext, sheddingPlan),
       heldContext, admissionPower, sheddingPlan, limitedStorage.levers,
     );
-    const storageRelief = this.handBackStorage(limitedStorage, restoreResult, power, surplusOffers);
+    const storageRelief = this.handBackStorage(
+      limitedStorage, restoreResult, power, surplusOffers, heldContext.devices, nowTs,
+    );
 
     const holdResult = this.stages.applyHoldPlan(
       restoreResult,
@@ -392,7 +395,7 @@ export class PlanBuilder {
       devices: decidedDevices,
       inverterDecisions: retainSolarWhileDemandSettles(
         this.deps.inverterCurtailment.decide(power.drawKw * 1000, nowTs),
-        this.state, decidedDevices, restoreResult.restoredThisCycle,
+        this.state, decidedDevices, restoreResult.restoredThisCycle, storageRelief,
       ),
       storageReleases: collectAbsentStorageReleases(decidedDevices, storageRelief),
     };
@@ -514,8 +517,12 @@ export class PlanBuilder {
     restoreResult: RestorePlanResult,
     power: MeasuredPower,
     surplusOffers: ReadonlyMap<string, StorageSurplusOffer>,
+    devices: readonly PlanInputDevice[],
+    nowTs: number,
   ): StorageRelief {
-    const storageRelief = applyStorageHandBacks(limitedStorage, restoreResult.storageHandedBack);
+    const storageRelief = resumeContinuousStorage(
+      applyStorageHandBacks(limitedStorage, restoreResult.storageHandedBack), devices, power, surplusOffers, nowTs,
+    );
     this.state.storageLeverByDevice = storageRelief.levers;
     this.logStorageRelief(storageRelief, power, surplusOffers);
     return storageRelief;

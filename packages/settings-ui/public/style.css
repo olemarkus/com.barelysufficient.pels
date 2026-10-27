@@ -1174,6 +1174,96 @@ md-primary-tab.tab[active] {
   min-width: 0;
 }
 
+.continuous-battery-plan {
+  display: grid;
+  gap: var(--spacing-3);
+  min-width: 0;
+}
+
+.continuous-battery-plan > *,
+.battery-plan-fields > * {
+  min-width: 0;
+}
+
+.battery-plan-fields {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+}
+
+.battery-plan-fields md-filled-text-field {
+  width: 100%;
+}
+
+.battery-plan-advanced summary {
+  padding-block: var(--spacing-3);
+}
+
+.battery-plan-chart {
+  margin: var(--spacing-3) 0;
+}
+
+.battery-plan-chart svg {
+  display: block;
+  width: 100%;
+  height: 120px;
+  overflow: visible;
+}
+
+.battery-plan-chart__plot {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--spacing-2);
+}
+
+.battery-plan-chart__axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  text-align: end;
+}
+
+.battery-plan-chart__times {
+  grid-column: 2;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+  flex-wrap: wrap;
+}
+
+.battery-plan-chart :is(path, polyline) {
+  vector-effect: non-scaling-stroke;
+}
+
+.battery-plan-chart__grid {
+  stroke: var(--panel-border);
+  fill: none;
+}
+
+.battery-plan-chart__line {
+  stroke: var(--accent);
+  stroke-width: 2;
+  fill: none;
+  stroke-dasharray: 4 3;
+}
+
+.battery-plan-chart__reserve {
+  stroke: var(--text-secondary);
+  stroke-dasharray: 2 3;
+  fill: none;
+}
+
+.battery-plan-windows {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.battery-plan-windows li {
+  display: grid;
+  gap: var(--spacing-1);
+  border-top: 1px solid var(--panel-border);
+  padding-block: var(--spacing-3);
+}
+
 .charging-current-setup md-filled-text-field {
   width: 100%;
   min-width: 0;

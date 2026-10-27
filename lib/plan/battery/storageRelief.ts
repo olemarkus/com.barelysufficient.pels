@@ -109,7 +109,7 @@ import type {
   SurplusDemand,
 } from '../planSurplusAbsorb';
 import type { DevicePlanDevice, PlanInputDevice, StorageHold } from '../planTypes';
-import { NO_STORAGE_SHED_TERM, type StorageShedTerm } from '../shedding/types';
+import { NO_STORAGE_SHED_TERM } from '../shedding/types';
 import {
   STORAGE_RELIEF_SETTLE_WINDOW_MS,
   deadbandWFor,
@@ -119,10 +119,20 @@ import {
   isRaiseVisible,
   ownChargeWOf,
   ownDischargeWOf,
-  resolveOwnModeChargeAboveHoldW,
   resolveStorageHoldBlock,
   toSetpointW,
 } from './storageLadder';
+
+import type {
+  StorageBalance, StorageRelief, StorageStateSummary,
+} from './storageReliefTypes';
+import {
+  claimSurplusLever, resolveClaimReason, resolveOwnModeChargeW, summarizeHold, toSetpointDecision,
+} from './storageHold';
+import { continuousLever } from './storageContinuous';
+export type { StorageRelief, StorageStateSummary } from './storageReliefTypes';
+export { resumeContinuousStorage } from './storageContinuous';
+export { resolveOwnModeChargeW, summarizeHold } from './storageHold';
 
 const logger = getLogger('plan/battery');
 
@@ -132,56 +142,6 @@ export const STORAGE_SURPLUS_RELEASE_DWELL_MS = 2 * 60 * 1000;
 export const STORAGE_DECREASE_MIN_INTERVAL_MS = 60 * 1000;
 /** How long a held battery may go unread before it is handed back. */
 export const STORAGE_INPUT_MISSING_RELEASE_MS = 2 * 60 * 1000;
-
-/**
- * Why the plan holds a battery this cycle, for the state log and the
- * overview: `relief`, a limit hold discharging to hold the limit;
- * `charge_limit`, a limit hold capping its charge (0 W included);
- * `cap_for_device`, a surplus hold keeping its charge below what its own mode
- * charged so a device ranked above it gets that power; `raise_charge`, a
- * surplus hold charging past that from what its offer leaves; or `none` (not
- * held).
- */
-export type StorageClaimReason = 'none' | 'relief' | 'charge_limit' | 'cap_for_device' | 'raise_charge';
-
-/** One battery as this cycle left it, for the state log. */
-export type StorageStateSummary = {
-  deviceId: string;
-  reading: 'observed' | 'missing' | 'absent';
-  claimHeld: boolean;
-  /**
-   * Its Power-limit control is off: PELS never takes it over, and its own app
-   * is in charge. False for a battery this cycle could not read.
-   */
-  powerLimitOff: boolean;
-  claim: StorageClaimReason;
-  /** What the plan carries to the battery this cycle; `none` when it decides nothing for it. */
-  decision: StorageDecision | { kind: 'none' };
-  /** The signed power this cycle decided to hold, W: negative discharges, positive charges. */
-  setpointW: number;
-  /** Under a charge limit, the charge its own mode would take that the cap holds back, W; else 0. */
-  heldBackChargeW: number;
-  creditW: number;
-  /**
-   * What restore and admission may not spend for this battery, W: the
-   * discharge PELS holds or is handing back (stored energy, not room), and a
-   * charge increase decided this cycle that the measurement does not show yet
-   * (`withoutStorageWithheld`).
-   */
-  withheldW: number;
-};
-
-/**
- * What the stage decided this cycle. `batteries` is the one list of what was
- * decided for each battery; its decisions and withheld power are read from it.
- */
-export type StorageRelief = {
-  /** What shedding counts against the measured deficit. */
-  shed: StorageShedTerm;
-  /** The stage's holds after this cycle: the next `PlanEngineState.storageLeverByDevice`. */
-  levers: Readonly<Record<string, StorageLeverState>>;
-  batteries: readonly StorageStateSummary[];
-};
 
 /**
  * No battery decided, held or credited: capacity simulation (which writes
@@ -201,34 +161,13 @@ export const NO_STORAGE_RELIEF: StorageRelief = Object.freeze({
  */
 type UnreadCarrier = 'absent' | 'no_input' | MissingStorageInput;
 
-/**
- * The headroom still to give back, W, as each battery takes its share; and the
- * deficit, which keeps a surplus hold where it is for shedding to decide.
- */
-type StorageBalance = { deficitW: number; headroomW: number | null };
-
 /** What the plan does with an observed battery this cycle. */
 type ObservedStep = { kind: 'release'; reason: StorageReleaseReason } | { kind: 'hold'; lever: StorageLeverState };
-
-/**
- * The charge its own mode takes once handed back, W
- * (`StorageLeverState.ownModeChargeW`): what it charged when PELS claimed it,
- * within its charge ceiling; nothing when it was discharging then (its own
- * mode was covering the house, and gets that back); or its charge ceiling when
- * it was doing neither. One sample of a battery idle or ramping at the claim
- * is no evidence its own mode will not charge hard once handed back, and a
- * hand-back sized on it would recreate the deficit every restore cooldown.
- */
-export const resolveOwnModeChargeW = (storage: ObservedStorageInput, preClaimSignedW: number): number => {
-  const deadbandW = deadbandWFor(storage);
-  if (preClaimSignedW <= -deadbandW) return 0;
-  return preClaimSignedW >= deadbandW ? Math.min(preClaimSignedW, storage.chargeCeilingW) : storage.chargeCeilingW;
-};
 
 /** Whether the battery takes charge at all: a full one has a charge ceiling of about 0 W. */
 const takesCharge = (storage: ObservedStorageInput): boolean => storage.chargeCeilingW >= deadbandWFor(storage);
 
-const isCreditable = (storage: ObservedStorageInput): boolean => (
+export const isStorageReliefCreditable = (storage: ObservedStorageInput): boolean => (
   storage.verdict === 'unverified' || storage.verdict === 'responding'
 );
 
@@ -386,21 +325,6 @@ const resolvePacedChargeW = (
   return nowTs - lever.chargeRaisedAtMs < SURPLUS_TRACK_STEP_MIN_INTERVAL_MS ? heldW : fundedW;
 };
 
-/** A new surplus hold at this charge: it caps a charge, so it has no discharge to settle. */
-const claimSurplusLever = (storage: ObservedStorageInput, setpointW: number, nowTs: number): StorageLeverState => ({
-  setpointW,
-  purpose: 'surplus',
-  increaseDecidedAtMs: nowTs - STORAGE_RELIEF_SETTLE_WINDOW_MS,
-  creditBaseW: 0,
-  lastDecreaseAtMs: nowTs,
-  chargeRaisedAtMs: nowTs,
-  lastNeedAtMs: nowTs,
-  preClaimSignedW: storage.signedPowerW,
-  ownModeChargeW: resolveOwnModeChargeW(storage, storage.signedPowerW),
-  stepW: storage.range.stepW,
-  reading: { kind: 'read' },
-});
-
 /**
  * Whether a surplus hold still does its job: a device ranked above the battery
  * wants surplus, and the charge is capped below the own mode's.
@@ -463,7 +387,7 @@ const keepLimitLever = (
   if (heldDischargeW <= 0) return { kind: 'hold', lever: reading };
   const keptW = balance.deficitW > 0 ? heldDischargeW : resolveLoweredDischargeW(storage, lever, balance, nowTs);
   const dischargeW = Math.min(keptW, storage.deliveryCeilingW);
-  const ownModeDischargeW = Math.max(0, -lever.preClaimSignedW);
+  const ownModeDischargeW = storage.continuousPlan === undefined ? Math.max(0, -lever.preClaimSignedW) : 0;
   if (ownModeDischargeW >= deadbandWFor(storage) && dischargeW <= ownModeDischargeW) {
     return { kind: 'release', reason: 'idle' };
   }
@@ -511,61 +435,13 @@ const advanceSurplusLever = (
  * charge it has not stopped yet is pending relief's credit, never this one.
  */
 export const resolveCreditW = (storage: ObservedStorageInput, lever: StorageLeverState, nowTs: number): number => {
-  if (!isCreditable(storage) || !isSettling(lever, nowTs)) return 0;
+  if (!isStorageReliefCreditable(storage) || !isSettling(lever, nowTs)) return 0;
   return Math.max(0, -lever.setpointW - Math.max(ownDischargeWOf(storage), lever.creditBaseW));
 };
-
-/** Why the plan holds the battery this cycle, for the state log and the overview. */
-export const resolveClaimReason = (lever: StorageLeverState): StorageClaimReason => {
-  if (lever.purpose === 'limit') return lever.setpointW < 0 ? 'relief' : 'charge_limit';
-  return lever.setpointW < Math.max(0, lever.preClaimSignedW) ? 'cap_for_device' : 'raise_charge';
-};
-
-/** Under a charge limit, the charge it holds back, W; 0 under any other hold. */
-export const resolveHeldBackChargeW = (lever: StorageLeverState): number => (
-  resolveClaimReason(lever) === 'charge_limit' ? resolveOwnModeChargeAboveHoldW(lever) : 0
-);
-
-/**
- * What restore and admission may not spend for a battery held at this
- * setpoint, W: the discharge it holds or still delivers, and a charge increase
- * the measurement does not show yet.
- */
-export const resolveWithheldW = (storage: ObservedStorageInput, setpointW: number): number => (
-  Math.max(0, -setpointW, ownDischargeWOf(storage)) + Math.max(0, setpointW - ownChargeWOf(storage))
-);
 
 const NO_DECISION = {
   claim: 'none', decision: { kind: 'none' }, setpointW: 0, heldBackChargeW: 0, creditW: 0, withheldW: 0,
 } as const;
-
-/** The setpoint decision that carries a hold to the battery. */
-export const toSetpointDecision = (lever: StorageLeverState): StorageDecision => (
-  { kind: 'setpoint', setpointW: lever.setpointW, stepW: lever.stepW }
-);
-
-/**
- * An observed battery as a hold leaves it this cycle, for the state log, the
- * overview and the plan: the hold's setpoint decision, why it is held, and
- * what restore and admission may not spend for it.
- */
-export const summarizeHold = (
-  deviceId: string,
-  storage: ObservedStorageInput,
-  lever: StorageLeverState,
-  creditW: number,
-): StorageStateSummary => ({
-  deviceId,
-  reading: 'observed',
-  claimHeld: storage.claimHeld,
-  powerLimitOff: !storage.powerLimitControl,
-  claim: resolveClaimReason(lever),
-  decision: toSetpointDecision(lever),
-  setpointW: lever.setpointW,
-  heldBackChargeW: resolveHeldBackChargeW(lever),
-  creditW,
-  withheldW: resolveWithheldW(storage, lever.setpointW),
-});
 
 /** One cycle's decisions, accumulated battery by battery, and the relief they add up to. */
 class StorageReliefCycle {
@@ -621,13 +497,21 @@ class StorageReliefCycle {
     this.levers[deviceId] = next;
     const nextDischargeW = -next.setpointW;
     const previousDischargeW = previous === undefined ? observedDischargeW : -previous.setpointW;
+    const continuousChange = previous?.purpose === 'continuous' || next.purpose === 'continuous';
+    const headroomDebitW = continuousChange
+      ? Math.max(0, next.setpointW - storage.signedPowerW)
+      : Math.max(0, previousDischargeW - nextDischargeW);
     const creditW = resolveCreditW(storage, next, nowTs);
     this.balance = {
       deficitW: this.balance.deficitW,
+      netImportW: this.balance.netImportW + next.setpointW - storage.signedPowerW,
       headroomW: this.balance.headroomW === null
         ? null
-        : Math.max(0, this.balance.headroomW - Math.max(0, previousDischargeW - nextDischargeW)),
+        : Math.max(0, this.balance.headroomW - headroomDebitW),
     };
+    if (continuousChange) {
+      this.releasedDischargeW += Math.max(0, observedDischargeW - Math.max(0, nextDischargeW));
+    }
     this.creditW += creditW;
     if (nextDischargeW > 0) this.drawMarginW = Math.max(this.drawMarginW, drawMarginWFor(storage));
     return summarizeHold(deviceId, storage, next, creditW);
@@ -717,8 +601,12 @@ class StorageReliefCycle {
     const blocked = resolveStorageHoldBlock(storage);
     if (blocked !== 'holdable') return { kind: 'release', reason: blocked };
     const offer = this.offerFor(deviceId);
+    if (previous?.purpose === 'limit') return keepLimitLever(storage, previous, this.balance, this.nowTs);
+    if (storage.continuousPlan !== undefined && storage.continuousPlan.validUntilMs > this.nowTs) {
+      return { kind: 'hold', lever: continuousLever(storage, previous, this.balance, offer, this.nowTs) };
+    }
+    if (previous?.purpose === 'continuous') return { kind: 'release', reason: 'idle' };
     if (previous === undefined) return startSurplusLever(storage, this.balance, offer, this.nowTs);
-    if (previous.purpose === 'limit') return keepLimitLever(storage, previous, this.balance, this.nowTs);
     if (!takesCharge(storage)) return { kind: 'release', reason: 'full' };
     const next = advanceSurplusLever(storage, previous, this.balance, offer, this.nowTs);
     const dwelled = this.nowTs - next.lastNeedAtMs >= STORAGE_SURPLUS_RELEASE_DWELL_MS;
@@ -750,6 +638,7 @@ export function decideStorageRelief(
   const cycle = new StorageReliefCycle({
     deficitW: power.headroomKw === null ? 0 : Math.max(0, -power.headroomKw * 1000),
     headroomW: power.headroomKw === null ? null : Math.max(0, power.headroomKw * 1000),
+    netImportW: power.drawKw * 1000,
   }, offers, nowTs);
   const seen = new Set<string>();
   for (const device of devices) {

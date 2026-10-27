@@ -1,4 +1,6 @@
 import type { InverterDecision } from '../planContract/inverterDecision';
+import { storageSetpointToleranceW } from '../planContract/storageDecision';
+import type { StorageRelief } from './battery/storageRelief';
 import type { DevicePlanDevice } from './planTypes';
 /**
  * Standing-posture pass for the plan builder (PR-7): one call that (1)
@@ -393,6 +395,7 @@ function releaseAbandonedSurplusPosture(
 export function retainSolarWhileDemandSettles(
   decisions: InverterDecision[], state: PlanEngineState, devices: DevicePlanDevice[],
   restoredThisCycle: ReadonlySet<string>,
+  storage: StorageRelief,
 ): InverterDecision[] {
   if (decisions.length === 0) return decisions;
   const settling = restoredThisCycle.size > 0
@@ -401,7 +404,12 @@ export function retainSolarWhileDemandSettles(
     ))
     || Object.values(state.pendingBinaryCommands).some((command) => command.desired)
     || Object.keys(state.pendingTargetCommands).length > 0
-    || devices.some((device) => device.stepCommandPending === true);
+    || devices.some((device) => device.stepCommandPending === true)
+    // The storage owner withholds a charge increase until measured demand
+    // includes it. Curtailing against the earlier grid reading would remove
+    // the solar that this battery has just been asked to store.
+    || storage.batteries.some((battery) => battery.decision.kind === 'setpoint' && battery.setpointW > 0
+      && battery.withheldW > storageSetpointToleranceW(battery.setpointW, battery.decision.stepW));
   if (!settling) return decisions;
   return decisions.filter((decision) => decision.kind === 'release'
     || decision.limitW >= decision.observation.limit.value);

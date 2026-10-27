@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { retainSolarWhileDemandSettles } from '../../lib/plan/planBuilderSurplus';
 import { InverterCurtailmentPlanner } from '../../lib/plan/inverterCurtailment';
+import { NO_STORAGE_RELIEF, type StorageRelief } from '../../lib/plan/battery/storageRelief';
 import type { InverterControllableInput, InverterPlanInput } from '../../lib/ports/inverterControl';
 import type { PlanEngineState } from '../../lib/plan/planState';
 import { partialDouble } from '../helpers/partialDouble';
@@ -21,6 +22,15 @@ const held = (input = inverter()): InverterControllableInput => ({ ...input,
 });
 const planner = (inputs: InverterPlanInput[], costly = true) => new InverterCurtailmentPlanner({
   inputs: () => inputs, exportCostly: () => costly,
+});
+
+const batteryCharge = (setpointW: number, withheldW: number): StorageRelief => ({
+  ...NO_STORAGE_RELIEF,
+  batteries: [{
+    deviceId: 'battery', reading: 'observed', claimHeld: true, powerLimitOff: false,
+    claim: 'plan_solar', decision: { kind: 'setpoint', setpointW, stepW: 5 },
+    setpointW, withheldW, heldBackChargeW: 0, creditW: 0,
+  }],
 });
 
 describe('price-driven solar production limits', () => {
@@ -93,9 +103,30 @@ describe('price-driven solar production limits', () => {
       pendingBinaryCommands: {}, pendingTargetCommands: {},
     });
     const decisions = planner([inverter()]).decide(-3000, NOW);
-    expect(retainSolarWhileDemandSettles(decisions, state, [], new Set())).toEqual([]);
+    expect(retainSolarWhileDemandSettles(decisions, state, [], new Set(), NO_STORAGE_RELIEF)).toEqual([]);
     state.surplusEligibilityByDevice = {};
-    expect(retainSolarWhileDemandSettles(decisions, state, [], new Set())).toEqual(decisions);
-    expect(retainSolarWhileDemandSettles(decisions, state, [], new Set(['tank']))).toEqual([]);
+    expect(retainSolarWhileDemandSettles(decisions, state, [], new Set(), NO_STORAGE_RELIEF)).toEqual(decisions);
+    expect(retainSolarWhileDemandSettles(decisions, state, [], new Set(['tank']), NO_STORAGE_RELIEF)).toEqual([]);
+  });
+
+  it('keeps solar available until a planned battery charge is observed, then curtails the remainder', () => {
+    const state = partialDouble<PlanEngineState>({
+      surplusEligibilityByDevice: {}, pendingBinaryCommands: {}, pendingTargetCommands: {},
+    });
+    const decisions = planner([inverter()]).decide(-3000, NOW);
+    expect(retainSolarWhileDemandSettles(decisions, state, [], new Set(), batteryCharge(2000, 2000))).toEqual([]);
+    // Within the storage owner's confirmation tolerance, the charge has landed.
+    expect(retainSolarWhileDemandSettles(decisions, state, [], new Set(), batteryCharge(2000, 100)))
+      .toEqual(decisions);
+    // Stored-energy supply is withheld from admission, but is not pending charging demand.
+    expect(retainSolarWhileDemandSettles(decisions, state, [], new Set(), batteryCharge(-2000, 2000)))
+      .toEqual(decisions);
+    // Hand-back and production increases must remain executable while charging settles.
+    const reopening = planner([held()]).decide(1000, NOW);
+    const release = planner([held()], false).decide(-3000, NOW);
+    expect(retainSolarWhileDemandSettles(reopening, state, [], new Set(), batteryCharge(2000, 2000)))
+      .toEqual(reopening);
+    expect(retainSolarWhileDemandSettles(release, state, [], new Set(), batteryCharge(2000, 2000)))
+      .toEqual(release);
   });
 });

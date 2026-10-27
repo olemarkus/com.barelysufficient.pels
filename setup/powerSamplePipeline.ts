@@ -81,6 +81,8 @@ export type PowerSamplePipelineDeps = {
    *  undefined for flow-source samples) to the curtailment-surplus estimator;
    *  no-op when absent. */
   recordCurtailmentSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
+  /** Main meter tap for the battery-neutral demand forecast; meter areas omit it. */
+  recordBatteryDemandSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
   /**
    * Publish the identity of the meter an INGESTED whole-home sample came from
    * (multi-home: membership's sampled-meter ownership fence). Called only after
@@ -278,6 +280,7 @@ export class PowerSamplePipeline {
     // carried into `recordSample` first. The PV forecast tap above has no such
     // contract (it trains on hourly buckets) and takes the merged value.
     this.deps.recordCurtailmentSample?.(currentPowerW, request.coTemporalGenerationW, nowMs);
+    this.deps.recordBatteryDemandSample?.(currentPowerW, generationW, nowMs);
     const powerTracker = this.deps.getPowerTracker();
     const previousSampleTs = powerTracker.lastTimestamp;
     try {

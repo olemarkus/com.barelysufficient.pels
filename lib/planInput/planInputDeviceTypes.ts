@@ -21,6 +21,7 @@ import type { StorageLaneBinding } from '../ports/batteryControlOwner';
 import type { PlanInputSnapshotDevice } from './runtimeDeviceRead';
 import type { ShedBehavior, SteppedClusterFields } from '../plan/planTypes';
 import type { PlanInputDevice } from '../plan/planTypes';
+import type { ContinuousBatteryPlanRead } from '../../packages/contracts/src/continuousBatteryPlan';
 
 /** Required owner reads used by the planner-input projection. */
 export type PlanInputProjectionSource = {
@@ -46,6 +47,7 @@ export type PlanInputProjectionSource = {
    * `isCapacityControlEnabled`, which vetoes every battery.
    */
   getControllableDevices: () => Readonly<Record<string, boolean>>;
+  readContinuousBatteryPlan: (deviceId: string) => ContinuousBatteryPlanRead;
   resolveManagedState: (deviceId: string) => boolean;
   isBudgetExempt: (deviceId: string) => boolean;
   isExternalOffHoldActive: (deviceId: string, device: ObservedCurrentStateInput) => boolean;

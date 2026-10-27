@@ -76,6 +76,14 @@ const isLimitUnanswered = (
   && isLowerVisible(storage, storage.signedPowerW, lever.setpointW)
 );
 
+const storageBaseW = (storage: ObservedStorageInput, lever: StorageLeverState | undefined): number => {
+  if (lever === undefined) return storage.signedPowerW;
+  if (lever.purpose === 'continuous' && storage.signedPowerW < 0 && lever.setpointW > storage.signedPowerW) {
+    return lever.setpointW;
+  }
+  return Math.min(storage.signedPowerW, lever.setpointW);
+};
+
 /** The battery's candidate, or why it offers nothing this cycle. */
 export function buildStorageCandidate(
   device: LimitableStorageDevice,
@@ -90,7 +98,10 @@ export function buildStorageCandidate(
   if (!isStorageDrivable(storage)) return 'storage_not_drivable';
   // A hold already decided is credited (pending relief for a stopped charge,
   // the storage term for a discharge still settling): the ladder starts below it.
-  const baseW = lever === undefined ? storage.signedPowerW : Math.min(storage.signedPowerW, lever.setpointW);
+  // A continuous strategy may be withdrawing observed discharge. The storage
+  // term already debits that pending import, so selection prices relief from
+  // the proposed target rather than spending the old discharge a second time.
+  const baseW = storageBaseW(storage, lever);
   // The draw once the held part lands, less the margin the limit leaves under it.
   const drawAfterHeldW = drawKw * 1000 - (storage.signedPowerW - baseW);
   const maxReliefW = Math.max(0, Math.min(baseW + storage.deliveryCeilingW, drawAfterHeldW - drawMarginWFor(storage)));

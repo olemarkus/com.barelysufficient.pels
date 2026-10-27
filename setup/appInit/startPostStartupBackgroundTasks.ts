@@ -9,6 +9,7 @@ import { getLogger } from '../../lib/logging/logger';
 import { createDeferredObjectiveLifecycleEmitter } from './deferredObjectiveLifecycle';
 import { startBackgroundCollectors } from './startBackgroundCollectors';
 import { wireBudgetPrice } from './wireBudgetPrice';
+import { wireContinuousBatteryPlan } from './wireContinuousBatteryPlan';
 import { wireCurtailmentSurplus } from './wireCurtailmentSurplus';
 import { startSoleMeterAdoption } from '../soleMeterAdoption';
 
@@ -55,6 +56,7 @@ export const startPostStartupBackgroundTasks = (
     logger: getLogger('solar'),
   });
   wireBudgetPrice(ctx, (ms) => getSelectedPvForecast().forecast([ms])[0]?.generationKwh);
+  wireContinuousBatteryPlan(ctx, () => taskEvaluationSource.getDeferredObjectiveActivePlans(), getSelectedPvForecast);
   // Provenance for the settings UI's Solar forecast section — read from the
   // live selector so the UI can never disagree with what planning consumes.
   // Both availability flags ask the producer whether it can answer for the

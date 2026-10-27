@@ -1,4 +1,7 @@
 import type { Mock } from 'vitest';
+import type { ContinuousBatteryPlanRead } from '../../../contracts/src/continuousBatteryPlan.ts';
+import { CONTINUOUS_BATTERY_PLAN_PATH, CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG,
+  parseContinuousBatteryPlanConfig, parseContinuousBatteryPlanConfigs } from '../../../shared-domain/src/settings/continuousBatteryPlan.ts';
 import { CHARGING_ACCESS_PATH, CHARGING_ACCESS_CHECK_PATH, CHARGING_CURRENT_PATH } from '../../../contracts/src/chargingControl.ts';
 import { fixtureDeviceReason } from './fixtureDeviceReason.ts';
 import type {
@@ -79,6 +82,7 @@ const ALLOWED_HOMEY_API_ROUTES = new Set(
 export type HomeyApiMethod = 'DELETE' | 'GET' | 'POST' | 'PUT';
 
 export type MockHomeyUiState = {
+  continuousBatteryPlans?: Record<string, ContinuousBatteryPlanRead>;
   dailyBudget?: DailyBudgetUiPayload | null;
   deferredObjectiveActivePlans?: DeferredObjectiveActivePlansV1 | null;
   deferredObjectiveHistory?: unknown;
@@ -399,6 +403,22 @@ const buildUiBootstrap = async (homey: MockHomeyClient) => ({
 });
 
 const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFactory> = {
+  [buildRouteKey('GET', `${CONTINUOUS_BATTERY_PLAN_PATH}/:deviceId`)]: (homey) => async ({ uri }) => {
+    const deviceId = decodeURIComponent(uri.split('?')[0]!.split('/').at(-1)!);
+    const explicit = homey.__uiState.continuousBatteryPlans?.[deviceId];
+    if (explicit) return explicit;
+    const configs = parseContinuousBatteryPlanConfigs(homey.__settingsStore[CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]);
+    const config = configs?.[deviceId] ?? DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG;
+    return config.enabled ? { status: 'waiting', config, reason: 'battery_unavailable' } : { status: 'disabled', config };
+  },
+  [buildRouteKey('PUT', `${CONTINUOUS_BATTERY_PLAN_PATH}/:deviceId`)]: (homey) => async ({ uri, body }) => {
+    const deviceId = decodeURIComponent(uri.split('?')[0]!.split('/').at(-1)!);
+    const config = parseContinuousBatteryPlanConfig(body);
+    if (!config) throw new Error('Check the battery plan settings.');
+    const current = parseContinuousBatteryPlanConfigs(homey.__settingsStore[CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]) ?? {};
+    homey.__settingsStore[CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY] = { ...current, [deviceId]: config };
+    return config;
+  },
   // Report scenarios supply apiHandlers; the default has no prepared report.
   [buildRouteKey('POST', '/support-report/prepare')]: () => async () => ({ ok: false, code: 'capture_failed' }),
   [buildRouteKey('GET', '/support-report/:id')]: () => async () => ({ ok: false, code: 'report_expired' }),

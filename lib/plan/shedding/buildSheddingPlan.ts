@@ -32,6 +32,7 @@ import {
   resolveExhaustedHourAnswer,
 } from './candidates';
 import { isDrivableLimitScope } from './storageCandidate';
+import { resolveContinuousChargeRelief } from './continuousChargeRelief';
 import { resolveSheddingLatch } from './sheddingLatch';
 import { reportShortfallToGuard } from './shortfallVerdict';
 
@@ -115,8 +116,10 @@ function planShedding(
   storage: StorageRelief,
 ): PlanSheddingResult {
   const { nowTs } = context;
+  const measurement = requireLatchedMeterReading(deps.powerTracker);
+  const pendingCharge = resolveContinuousChargeRelief(state, context.devices, storage, power, measurement, nowTs);
   const entry = resolveShedEntry(context, power, state, overshoot, storage.shed);
-  if (entry.kind === 'none') return emptySheddingResult(NO_SHEDDING_OUTCOME);
+  if (entry.kind === 'none') return emptySheddingResult(retainPendingLatch(pendingCharge));
   const { hourlyBudgetExhausted, shedsEverything, leadingStorageOnly } = entry;
 
   const candidateParams = buildShedCandidateParams(context, power, state, deps, storage);
@@ -125,12 +128,14 @@ function planShedding(
   const walked = restrictToLeadingStorage(gathered, leadingStorageOnly);
   // The grace defers every device: with no battery ranked ahead of them there
   // is nothing to decide, exactly as without a battery.
-  if (leadingStorageOnly && walked.candidates.length === 0) return emptySheddingResult(NO_SHEDDING_OUTCOME);
+  if (leadingStorageOnly && walked.candidates.length === 0) {
+    return emptySheddingResult(retainPendingLatch(pendingCharge));
+  }
   const needed = candidateParams.deficitKw;
 
-  const measurement = requireLatchedMeterReading(deps.powerTracker);
   const measurementDecision = resolveSameMeasurementSheddingDecision(
     state, context.devices, measurement, nowTs, power, storage.levers,
+    pendingCharge === null ? null : pendingCharge.retained,
   );
   // Shedding every candidate goes on every cycle regardless of the sample: the
   // deficit is the whole hour's, not this reading's. An hour a battery answers

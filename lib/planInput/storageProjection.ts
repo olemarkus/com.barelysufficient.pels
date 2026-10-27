@@ -1,9 +1,23 @@
 import { isBatteryPowerLimitEnabled } from '../../packages/shared-domain/src/settings/batteryPowerLimit';
+import type { ContinuousBatteryPlanRead } from '../../packages/contracts/src/continuousBatteryPlan';
+import type { HomeBatteryLevelObservation } from '../../packages/contracts/src/types';
 import type {
   PlanInputProjectionSource, StorageClusterFields, ToPlanDeviceInput, ToPlanDeviceOptions,
 } from './planInputDeviceTypes';
 
 const NO_STORAGE_CLUSTER: StorageClusterFields = {};
+
+/** A configured reserve constrains both economic and capacity discharge. */
+const reserveCeilingWFor = (
+  continuous: ContinuousBatteryPlanRead,
+  level: HomeBatteryLevelObservation | undefined,
+  deliveryCeilingW: number,
+): number => {
+  if (!continuous.config.enabled) return deliveryCeilingW;
+  if (level === undefined) return 0;
+  return Math.max(0, level.percent - continuous.config.minimumReservePercent)
+    * continuous.config.usableCapacityKWh * 10 * Math.sqrt(continuous.config.roundTripEfficiency);
+};
 
 /**
  * A home battery's storage cluster (`StoragePlanInputKind`), or none when the
@@ -50,6 +64,16 @@ export const resolveStorageCluster = (
       } }
       : NO_STORAGE_CLUSTER;
   }
+  const continuous = source.readContinuousBatteryPlan(device.id);
+  const nowMs = source.getNow().getTime();
+  // An unread level cannot authorize stored-energy use. The conservative one-hour
+  // energy bound also limits capacity discharge, not just the economic target.
+  const reserveCeilingW = reserveCeilingWFor(continuous, device.batteryLevel, control.deliveryCeilingW);
+  const currentPeriod = continuous.status === 'planned'
+    ? continuous.plan.periods.find(period => (
+      period.startsAtMs <= nowMs && nowMs < period.startsAtMs + period.durationMs
+    ))
+    : undefined;
   return {
     storage: {
       reading: 'observed',
@@ -60,8 +84,15 @@ export const resolveStorageCluster = (
       admissible: control.admissible,
       powerLimitControl: isBatteryPowerLimitEnabled(source.getControllableDevices(), device.id),
       verdict: control.verdict,
-      deliveryCeilingW: control.deliveryCeilingW,
+      deliveryCeilingW: Math.min(control.deliveryCeilingW, reserveCeilingW),
       chargeCeilingW: control.chargeCeilingW,
+      ...(currentPeriod === undefined ? {} : {
+        continuousPlan: {
+          setpointW: currentPeriod.batteryPowerKW * 1000,
+          validUntilMs: currentPeriod.startsAtMs + currentPeriod.durationMs,
+          reason: currentPeriod.reason,
+        },
+      }),
     },
   };
 };

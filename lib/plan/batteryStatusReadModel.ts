@@ -31,7 +31,7 @@ import { MAIN_HOME_ID, type HomeId } from '../utils/settingsKeys';
 
 export type HomeBatteryCard = Extract<HomeBatteryCardRead, { kind: 'battery' }>;
 type StorageHoldKind = StorageHold['kind'];
-type Direction = 'supplying' | 'charging';
+type Direction = 'supplying' | 'charging' | 'waiting';
 /** The holds of a battery PELS does not hold: it runs its own mode. */
 type OwnModeHoldKind = 'none' | 'power_limit_off';
 const isOwnModeHold = (hold: StorageHold): hold is Extract<StorageHold, { kind: OwnModeHoldKind }> => (
@@ -61,6 +61,7 @@ export const BATTERY_STATE_LABELS = {
   supplying: 'Supplying',
   charging: 'Charging',
   own_mode: 'Own mode',
+  waiting: 'Waiting',
 } as const;
 
 /** The state word while PELS caps the battery's charge: the load's `Limited`, and what it limits. */
@@ -73,6 +74,10 @@ export const BATTERY_REASON_LINES = {
   cap_for_device: 'Charging less so a device can use the solar',
   none: 'PELS takes over when your limit or solar needs it',
   power_limit_off: 'Power-limit control is off: its own app is in charge',
+  plan_charge: 'Buying lower-priced electricity for later',
+  plan_solar: 'Storing solar for later household use',
+  plan_supply: 'Using stored energy during higher prices',
+  plan_wait: 'Keeping stored energy for later',
 } as const satisfies Record<StorageHoldKind, string>;
 
 /** Below this, the charge a cap holds back is not worth naming, kW. */
@@ -84,6 +89,10 @@ const INTENDED_DIRECTION = {
   charge_limit: 'charging',
   surplus: 'charging',
   cap_for_device: 'charging',
+  plan_charge: 'charging',
+  plan_solar: 'charging',
+  plan_supply: 'supplying',
+  plan_wait: 'waiting',
 } as const satisfies Record<Exclude<StorageHoldKind, OwnModeHoldKind>, Direction>;
 
 /** What the battery itself reports doing, or `null` when it reports too little to name. */
@@ -183,7 +192,7 @@ export function buildHomeBatteryStatus(
       reason: resolveReason(battery, hold, dryRun),
     };
   }
-  const kind = activity === 'own_mode' ? 'idle' : 'active';
+  const kind = activity === 'own_mode' || activity === 'waiting' ? 'idle' : 'active';
   return {
     ...common,
     kind,

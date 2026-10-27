@@ -1,4 +1,8 @@
 import type { AcceptedFlowConflictSlice } from '../flowApi/acceptedFlowConflictStore';
+import type { BatterySolarScopeSource } from '../battery/batterySolarScope';
+import type {
+  ContinuousBatteryPlanConfig, ContinuousBatteryPlanRead,
+} from '../../packages/contracts/src/continuousBatteryPlan';
 import type { FlowCapabilityWrites } from '../flowApi/userFlows';
 import type { ObservedTemperatureModeUpdates } from '../home/observedTemperatureModeUpdates';
 import type { DeviceControlSettings } from '../device/deviceControlSettings';
@@ -312,6 +316,8 @@ export type AppContext = {
   // The owner's Managed map per home battery: one answer from app start, before
   // the battery control owner exists, which delegates to it once it does.
   batteryManaged: BatteryManagedSettings;
+  readContinuousBatteryPlan(deviceId: string): ContinuousBatteryPlanRead;
+  saveContinuousBatteryPlan(deviceId: string, config: unknown): ContinuousBatteryPlanConfig;
   // "Leave off until turned on again": the opt-in config plus the per-device
   // hold state recording that a device was turned off outside PELS, independent
   // of the current plan. ASSIGNED by `AppServiceWiring.initDeviceManager`
@@ -347,6 +353,9 @@ export type AppContext = {
   // Always answerable: before the forecast controllers exist the seam answers
   // the status union's own `unknown` member, so no consumer holds a nullable.
   getPvForecastSourceUiStatus: () => PvForecastSourceUiStatus;
+  /** Battery-neutral background forecast; no prediction before the first accepted observation. */
+  forecastBatteryBackgroundKWh: (hourStartMs: number) => number | undefined;
+  readonly batterySolarScope: BatterySolarScopeSource;
   /** Why a Homey-priced home has no prices, for the settings UI to explain. */
   getHomeyPriceFormulaUiStatus: () => HomeyPriceFormulaUiStatus;
   /**

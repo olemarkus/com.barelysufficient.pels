@@ -246,7 +246,11 @@ export type StorageHold =
   | { kind: 'relief' }
   | { kind: 'charge_limit'; heldBackKw: number }
   | { kind: 'cap_for_device' }
-  | { kind: 'surplus' };
+  | { kind: 'surplus' }
+  | { kind: 'plan_charge' }
+  | { kind: 'plan_solar' }
+  | { kind: 'plan_supply' }
+  | { kind: 'plan_wait' };
 
 export type DevicePlanDevice = SteppedPlanDevice | NonSteppedPlanDevice;
 

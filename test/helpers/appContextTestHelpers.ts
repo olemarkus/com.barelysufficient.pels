@@ -1,5 +1,6 @@
 import { createChargingFlowWritesStore } from '../../lib/flowApi/acceptedFlowConflictStore';
 import { BatteryManagedSettings } from '../../lib/battery/batteryControlSettings';
+import { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } from '../../packages/shared-domain/src/settings/continuousBatteryPlan';
 import { withSmartTaskTemperatureIntent } from '../../lib/objectives/deferredObjectives/smartTaskQuickTargetValues';
 import { SurplusPoolReachability } from '../../lib/power/surplusPoolReachable';
 import { deviceControlSettingsFixture } from './deviceControlSettingsFixture';
@@ -293,6 +294,10 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     () => context.readHomeBatteryDevices(),
   );
   const context: AppContext = {
+    readContinuousBatteryPlan: () => ({ status: 'disabled', config: DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG }),
+    saveContinuousBatteryPlan: () => { throw new Error('Battery planning is not wired in this fixture'); },
+    forecastBatteryBackgroundKWh: () => undefined,
+    batterySolarScope: { mainDevices: () => [], allDevices: () => [] },
     deviceManager: partialDouble<NonNullable<AppContext['deviceManager']>>({
       isWaitingForCarAssociation: () => false,
     }),

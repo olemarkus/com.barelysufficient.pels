@@ -23,6 +23,7 @@ export function createPlanInputProjectionSource(ctx: AppContext): PlanInputProje
     getDeviceStartPolicies: () => ctx.deviceControlSettings.deviceStartPolicies,
     isCapacityControlEnabled: (deviceId) => ctx.isCapacityControlEnabled(deviceId),
     getControllableDevices: () => ctx.deviceControlSettings.controllableDevices,
+    readContinuousBatteryPlan: (deviceId) => ctx.readContinuousBatteryPlan(deviceId),
     resolveManagedState: (deviceId) => ctx.resolveManagedState(deviceId),
     isBudgetExempt: (deviceId) => ctx.deviceControlSettings.isBudgetExempt(deviceId),
     isExternalOffHoldActive: (deviceId, device) => (
