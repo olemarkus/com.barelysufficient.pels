@@ -453,7 +453,12 @@ export class PriceCoordinator {
   }
 
   isExportCostly(nowMs: number): boolean {
-    try { return this.priceService.isExportCostly(nowMs); } catch { return false; }
+    try {
+      return this.priceService.isExportCostly(nowMs);
+    } catch (error) {
+      moduleLogger.warn({ event: 'export_costly_read_failed', err: normalizeError(error) });
+      return false;
+    }
   }
 
   getCombinedHourlyPrices(): CombinedHourlyPrice[] {
