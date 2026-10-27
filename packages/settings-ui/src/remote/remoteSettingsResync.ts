@@ -11,46 +11,69 @@ import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 type SettingsSnapshot = Map<string, string>;
 
+const snapshot = (settings: Record<string, unknown>): SettingsSnapshot => (
+  new Map(Object.entries(settings).map(([key, value]) => [key, JSON.stringify(value)]))
+);
+
 const readSnapshot = async (request: RemoteRequest): Promise<SettingsSnapshot | null> => {
   const settings = await request('GET', SETTINGS_PATH).catch(() => null);
   if (!isUnknownRecord(settings)) return null;
-  return new Map(Object.entries(settings).map(([key, value]) => [key, JSON.stringify(value)]));
+  return snapshot(settings);
 };
 
 export const createSettingsResync = (
   request: RemoteRequest,
   dispatch: (event: string, data: unknown) => void,
+  bootstrapped: Promise<unknown>,
 ) => {
+  const initial = bootstrapped.then((bootstrap) => (
+    isUnknownRecord(bootstrap) && isUnknownRecord(bootstrap.settings)
+      ? snapshot(bootstrap.settings)
+      : new Map<string, string>()
+  )).catch(() => new Map<string, string>());
   let known: SettingsSnapshot | null = null;
   // Keys Homey announced while live: the copy no longer vouches for them.
   let announced = new Set<string>();
   let live = false;
+  let connectionGeneration = 0;
 
-  const catchUp = async () => {
+  const catchUp = async (generation: number) => {
+    const seeded = await initial;
+    if (generation !== connectionGeneration) return;
     const current = await readSnapshot(request);
-    if (!current) return;
+    if (!current || generation !== connectionGeneration) return;
     const previous = known;
     const touched = announced;
     known = current;
     announced = new Set();
-    if (!previous) return;
-    for (const key of new Set([...previous.keys(), ...current.keys(), ...touched])) {
-      if (!touched.has(key) && previous.get(key) === current.get(key)) continue;
+    // Bootstrap contains only the settings the UI loaded. Other keys in the
+    // first full snapshot are baseline data, not newly added settings.
+    const keys = previous
+      ? new Set([...previous.keys(), ...current.keys(), ...touched])
+      : new Set([...seeded.keys(), ...touched]);
+    for (const key of keys) {
+      // Bootstrap reads absent settings as null; the full snapshot omits them.
+      const unchanged = previous
+        ? previous.get(key) === current.get(key)
+        : seeded.get(key) === (current.get(key) ?? 'null');
+      if (!touched.has(key) && unchanged) continue;
       dispatch(current.has(key) ? 'settings.set' : 'settings.unset', key);
     }
   };
 
   return {
-    // The first live status only takes the copy. A change in the moment between
-    // the page's first reads and that first subscription is not caught here.
+    // The first live snapshot reconciles the bootstrap after boot completes;
+    // later snapshots cover changes missed while the socket was disconnected.
     onStatus: (status: RealtimeStatus): void => {
       if (status !== 'live') {
         live = false;
+        connectionGeneration += 1;
         return;
       }
       if (live) return;
       live = true;
-      void catchUp();
+      connectionGeneration += 1;
+      void catchUp(connectionGeneration);
     },
     // A key announced while live is announced again after the next reconnect,
     // whatever it holds by then, so a value changed live and changed back or

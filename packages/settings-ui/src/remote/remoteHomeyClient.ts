@@ -169,18 +169,19 @@ export type RemoteRequest = ReturnType<typeof createRemoteRequest>;
 // Start the first bootstrap read alongside the version check. Consume it once
 // so retries and later refreshes reach Homey normally. A redirect may leave
 // the prefetch unused, so own its rejection before any UI consumer attaches.
-export const prefetchRemoteBootstrap = (request: RemoteRequest): RemoteRequest => {
+export const prefetchRemoteBootstrap = (request: RemoteRequest) => {
   const path = `/api/app/${PELS_APP_ID}${SETTINGS_UI_BOOTSTRAP_PATH}`;
   const bootstrap = request('GET', path);
   void bootstrap.catch(() => {});
   let consumed = false;
-  return (method, uri, body) => {
+  const bootRequest: RemoteRequest = (method, uri, body) => {
     if (!consumed && method === 'GET' && uri === path) {
       consumed = true;
       return bootstrap;
     }
     return request(method, uri, body);
   };
+  return { request: bootRequest, bootstrap };
 };
 
 export const SETTINGS_PATH = `/api/manager/apps/app/${PELS_APP_ID}/setting`;

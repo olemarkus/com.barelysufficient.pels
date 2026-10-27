@@ -95,7 +95,7 @@ const start = async () => {
   const request = createRemoteRequest(target, fetchImpl, (busy) => {
     busyLine.hidden = !busy;
   });
-  const bootRequest = prefetchRemoteBootstrap(request);
+  const prefetch = prefetchRemoteBootstrap(request);
   // Only this build's own version opens here. A Homey that did not answer
   // still opens, to the UI's own connection errors and retries; anything else
   // (PELS updated since, removed, stopped, or the key deleted) goes back to the
@@ -123,16 +123,24 @@ const start = async () => {
   document.getElementById('web-app-nav-card')?.remove();
 
   const events = createRemoteEventHub();
-  const client = createRemoteHomeyClient(
-    bootRequest,
-    events,
-    // A Homey that did not answer opens to the UI's own connection errors;
-    // until it answers, the browser's zone is the only one known.
-    read.state === 'version' ? read.timeZone : Intl.DateTimeFormat().resolvedOptions().timeZone,
+  (window as WindowWithReady).onHomeyReady?.(
+    createRemoteHomeyClient(
+      prefetch.request,
+      events,
+      // A Homey that did not answer opens to the UI's own connection errors;
+      // until it answers, the browser's zone is the only one known.
+      read.state === 'version' ? read.timeZone : Intl.DateTimeFormat().resolvedOptions().timeZone,
+    ),
   );
-  followRealtime(target, events, createSettingsResync(request, events.dispatch));
-  (window as WindowWithReady).onHomeyReady?.(client);
-  await boot();
+  const bootComplete = boot();
+  // Catch up settings after the bootstrap has been consumed and UI listeners
+  // are ready, without adding another read to the initial loading path.
+  followRealtime(target, events, createSettingsResync(
+    request,
+    events.dispatch,
+    bootComplete.then(() => prefetch.bootstrap),
+  ));
+  await bootComplete;
 };
 
 // Homey's live events, from wherever the page's calls go. Leaving the home
