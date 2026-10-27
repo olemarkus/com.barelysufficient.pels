@@ -1,4 +1,5 @@
 import type { HomeyCallback, HomeySettingsClient } from '../ui/homey.ts';
+import { SETTINGS_UI_BOOTSTRAP_PATH } from '../../../contracts/src/settingsUiApi.ts';
 import { PELS_APP_ID } from './remoteConnection.ts';
 import type { RemoteTarget } from './remoteTarget.ts';
 
@@ -164,6 +165,23 @@ export const createRemoteRequest = (target: RemoteTarget, fetchImpl: RemoteFetch
 };
 
 export type RemoteRequest = ReturnType<typeof createRemoteRequest>;
+
+// Start the first bootstrap read alongside the version check. Consume it once
+// so retries and later refreshes reach Homey normally. A redirect may leave
+// the prefetch unused, so own its rejection before any UI consumer attaches.
+export const prefetchRemoteBootstrap = (request: RemoteRequest): RemoteRequest => {
+  const path = `/api/app/${PELS_APP_ID}${SETTINGS_UI_BOOTSTRAP_PATH}`;
+  const bootstrap = request('GET', path);
+  void bootstrap.catch(() => {});
+  let consumed = false;
+  return (method, uri, body) => {
+    if (!consumed && method === 'GET' && uri === path) {
+      consumed = true;
+      return bootstrap;
+    }
+    return request(method, uri, body);
+  };
+};
 
 export const SETTINGS_PATH = `/api/manager/apps/app/${PELS_APP_ID}/setting`;
 

@@ -15,6 +15,7 @@ import {
   createRemoteEventHub,
   createRemoteHomeyClient,
   createRemoteRequest,
+  prefetchRemoteBootstrap,
   type RemoteEventHub,
 } from './remoteHomeyClient.ts';
 import { connectRemoteRealtime } from './remoteRealtime.ts';
@@ -94,6 +95,7 @@ const start = async () => {
   const request = createRemoteRequest(target, fetchImpl, (busy) => {
     busyLine.hidden = !busy;
   });
+  const bootRequest = prefetchRemoteBootstrap(request);
   // Only this build's own version opens here. A Homey that did not answer
   // still opens, to the UI's own connection errors and retries; anything else
   // (PELS updated since, removed, stopped, or the key deleted) goes back to the
@@ -122,7 +124,7 @@ const start = async () => {
 
   const events = createRemoteEventHub();
   const client = createRemoteHomeyClient(
-    request,
+    bootRequest,
     events,
     // A Homey that did not answer opens to the UI's own connection errors;
     // until it answers, the browser's zone is the only one known.

@@ -2,6 +2,7 @@ import {
   createRemoteEventHub,
   createRemoteHomeyClient,
   createRemoteRequest,
+  prefetchRemoteBootstrap,
   RemoteHomeyError,
   type RemoteFetch,
 } from '../src/remote/remoteHomeyClient.ts';
@@ -62,6 +63,30 @@ describe('remote Homey client', () => {
     expect(fetchImpl.mock.calls.map(([url, init]) => [init.method, url, init.body])).toEqual([
       ['GET', 'https://homey.example/api/app/com.barelysufficient.pels/ui_plan', undefined],
       ['POST', 'https://homey.example/api/app/com.barelysufficient.pels/ui_smart_task_cancel', '{"id":"task-1"}'],
+    ]);
+  });
+
+  it.each(['success', 'failure'] as const)('consumes a prefetched bootstrap %s once', async (outcome) => {
+    let finish!: (value: unknown) => void;
+    let fail!: (error: Error) => void;
+    const bootstrap = new Promise((resolve, reject) => { finish = resolve; fail = reject; });
+    const request = vi.fn().mockReturnValueOnce(bootstrap)
+      .mockResolvedValue({ settings: { operating_mode: 'Away' } });
+    const client = createRemoteHomeyClient(prefetchRemoteBootstrap(request), createRemoteEventHub(), 'Europe/Oslo');
+    const initial = callApi(client, 'GET', '/ui_bootstrap');
+    expect(request).toHaveBeenCalledTimes(1);
+    if (outcome === 'success') {
+      finish({ settings: { operating_mode: 'Home' } });
+      await expect(initial).resolves.toEqual({ settings: { operating_mode: 'Home' } });
+    } else {
+      fail(new Error('Network request failed'));
+      await expect(initial).rejects.toThrow('Network request failed');
+    }
+    await expect(callApi(client, 'GET', '/ui_bootstrap'))
+      .resolves.toEqual({ settings: { operating_mode: 'Away' } });
+    expect(request.mock.calls).toEqual([
+      ['GET', '/api/app/com.barelysufficient.pels/ui_bootstrap'],
+      ['GET', '/api/app/com.barelysufficient.pels/ui_bootstrap', undefined],
     ]);
   });
 
