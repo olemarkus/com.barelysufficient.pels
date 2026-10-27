@@ -62,7 +62,7 @@ describe('native inverter settings through existing channels', () => {
 
   it('keeps the last visible read and reports a refused scoped roster', async () => {
     const controller = await loaded();
-    homey.getApiReadModel.mockResolvedValue({ inverterDevices: [], homeScope: { state: 'unavailable' } });
+    homey.getApiReadModel.mockResolvedValue({ inverterDevices: [], continuousBatteryPlans: {}, homeScope: { state: 'unavailable' } });
     controller.props().onRetry();
     await vi.waitFor(() => expect(controller.props().error).toContain('could not be loaded'));
     expect(controller.props().read?.devices).toEqual([{ id: 'pv', name: 'Roof inverter' }]);

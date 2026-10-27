@@ -9,13 +9,15 @@ for (const width of [320, 480]) {
 
       test('shows a real plan and saves a reserve without changing battery control permissions', async ({ page }, testInfo) => {
         await page.addInitScript(() => {
-          let config = { enabled: true, usableCapacityKWh: 10, minimumReservePercent: 20, roundTripEfficiency: 0.9, wearCostPerKWh: 0.03, priceUnit: 'EUR' };
+          const initialConfig = { enabled: true, usableCapacityKWh: 10, minimumReservePercent: 20, roundTripEfficiency: 0.9, wearCostPerKWh: 0.03, priceUnit: 'EUR' };
           const startsAtMs = Date.parse('2026-10-27T01:00:00Z');
           const battery = { id: 'battery-plan-test', name: 'Sessy battery', available: true,
             deviceClass: 'battery', isBatteryOrSolar: true, batteryControl: 'drivable', batteryTakenOver: false,
             capabilities: ['measure_power', 'measure_battery'], targets: [], canSetControl: true,
             powerCapable: true, expectedPowerKw: 2.5, expectedPowerSource: 'default' };
           const read = () => {
+            const config = (window as unknown as { Homey: { __stub: { getSetting: (key: string) => Record<string, typeof initialConfig> } } })
+              .Homey.__stub.getSetting('continuous_battery_plan')['battery-plan-test'];
             if (!config.enabled) return { status: 'disabled', config };
             const terminal = Math.max(3, config.usableCapacityKWh * config.minimumReservePercent / 100);
             const common = { durationMs: 3_600_000, gridExportKWh: 0, exportRevenue: 0, wearCost: 0 };
@@ -35,10 +37,11 @@ for (const width of [320, 480]) {
             settings: {
               target_devices_snapshot: [battery], battery_control_devices: {},
               controllable_devices: { [battery.id]: true }, capacity_dry_run: false,
+              continuous_battery_plan: { [battery.id]: initialConfig },
             },
+            continuousBatteryPlans: () => ({ [battery.id]: read() }),
             apiHandlers: {
-              'GET /ui_battery_plan/battery-plan-test': read,
-              'PUT /ui_battery_plan/battery-plan-test': (body: typeof config) => { config = body; return config; },
+              'GET /ui_prices': () => ({ combinedPrices: { priceUnit: 'EUR' }, priceTimeline: { state: 'ready', priceUnit: 'EUR' } }),
             },
           };
         });

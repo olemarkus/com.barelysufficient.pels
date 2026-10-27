@@ -257,7 +257,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
         // The solar flags are OMITTED, not fabricated `false` — absence is the
         // only honest value an unservable home can carry.
         expect(getSettingsUiDevicesPayload({ homey, query })).toEqual({
-          inverterDevices: [],
+          inverterDevices: [], continuousBatteryPlans: {},
           devices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
         });
 
@@ -332,7 +332,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
       // absence meaning.
       const { homey } = installBoundary({ hasMembership: false });
       expect(getSettingsUiDevicesPayload({ homey, query: { homeId: AREA_ID } })).toEqual({
-        inverterDevices: [],
+        inverterDevices: [], continuousBatteryPlans: {},
         devices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
       });
       expect(getSettingsUiPowerPayload({ homey, query: { homeId: AREA_ID } })).toEqual({
@@ -356,7 +356,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
       const { homey } = installBoundary(provisional);
       const query = { homeId: AREA_ID };
       expect(getSettingsUiDevicesPayload({ homey, query })).toEqual({
-        inverterDevices: [],
+        inverterDevices: [], continuousBatteryPlans: {},
         devices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
       });
       expect(getSettingsUiPowerPayload({ homey, query })).toEqual({

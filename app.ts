@@ -1,6 +1,5 @@
 import { createHomeModeCatalog } from './lib/home/homeModeCatalog';
 import type {
-  ContinuousBatteryPlanConfig,
   ContinuousBatteryPlanRead,
 } from './packages/contracts/src/continuousBatteryPlan';
 import { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } from './packages/shared-domain/src/settings/continuousBatteryPlan';
@@ -351,9 +350,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   public readContinuousBatteryPlan: (deviceId: string) => ContinuousBatteryPlanRead = () => ({
     status: 'waiting', config: DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, reason: 'settings_unavailable',
   });
-  public saveContinuousBatteryPlan: (deviceId: string, config: unknown) => ContinuousBatteryPlanConfig = () => {
-    throw new Error('Battery planning is starting. Try again.');
-  };
+
 
   // Whether the owner's Homey price setup can be read — the settings UI's only
   // account of why a Homey-priced home shows no prices. Replaced when the price

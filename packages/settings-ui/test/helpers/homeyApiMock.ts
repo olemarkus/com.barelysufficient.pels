@@ -1,7 +1,7 @@
 import type { Mock } from 'vitest';
 import type { ContinuousBatteryPlanRead } from '../../../contracts/src/continuousBatteryPlan.ts';
-import { CONTINUOUS_BATTERY_PLAN_PATH, CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG,
-  parseContinuousBatteryPlanConfig, parseContinuousBatteryPlanConfigs } from '../../../shared-domain/src/settings/continuousBatteryPlan.ts';
+import { CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG,
+  parseContinuousBatteryPlanConfigs } from '../../../shared-domain/src/settings/continuousBatteryPlan.ts';
 import { CHARGING_ACCESS_PATH, CHARGING_ACCESS_CHECK_PATH, CHARGING_CURRENT_PATH } from '../../../contracts/src/chargingControl.ts';
 import { fixtureDeviceReason } from './fixtureDeviceReason.ts';
 import type {
@@ -383,7 +383,7 @@ const resolveUiDevices = async (homey: MockHomeyClient): Promise<TargetDeviceSna
 const buildUiBootstrap = async (homey: MockHomeyClient) => ({
   settings: Object.fromEntries(await Promise.all(
     SETTINGS_UI_BOOTSTRAP_KEYS.map(async (key) => [key,
-      key === 'inverter_curtailment_devices' && !(key in homey.__settingsStore)
+      (key === 'inverter_curtailment_devices' || key === CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY) && !(key in homey.__settingsStore)
         ? {} : await getHomeySetting(homey, key)]),
   )),
   dailyBudget: getDailyBudgetRead(homey),
@@ -402,23 +402,20 @@ const buildUiBootstrap = async (homey: MockHomeyClient) => ({
   prices: await buildUiPrices(homey),
 });
 
+const buildUiBatteryPlans = async (homey: MockHomeyClient): Promise<Record<string, ContinuousBatteryPlanRead>> => {
+  if (homey.__uiState.continuousBatteryPlans) return homey.__uiState.continuousBatteryPlans;
+  const raw = homey.__settingsStore[CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY];
+  const configs = raw === undefined ? {} : parseContinuousBatteryPlanConfigs(raw);
+  return Object.fromEntries((await resolveUiDevices(homey)).filter(device => device.deviceClass === 'battery').map(device => {
+    const config = configs?.[device.id] ?? DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG;
+    const read: ContinuousBatteryPlanRead = configs === null
+      ? { status: 'waiting', config, reason: 'settings_unavailable' }
+      : config.enabled ? { status: 'waiting', config, reason: 'battery_unavailable' } : { status: 'disabled', config };
+    return [device.id, read];
+  }));
+};
+
 const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFactory> = {
-  [buildRouteKey('GET', `${CONTINUOUS_BATTERY_PLAN_PATH}/:deviceId`)]: (homey) => async ({ uri }) => {
-    const deviceId = decodeURIComponent(uri.split('?')[0]!.split('/').at(-1)!);
-    const explicit = homey.__uiState.continuousBatteryPlans?.[deviceId];
-    if (explicit) return explicit;
-    const configs = parseContinuousBatteryPlanConfigs(homey.__settingsStore[CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]);
-    const config = configs?.[deviceId] ?? DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG;
-    return config.enabled ? { status: 'waiting', config, reason: 'battery_unavailable' } : { status: 'disabled', config };
-  },
-  [buildRouteKey('PUT', `${CONTINUOUS_BATTERY_PLAN_PATH}/:deviceId`)]: (homey) => async ({ uri, body }) => {
-    const deviceId = decodeURIComponent(uri.split('?')[0]!.split('/').at(-1)!);
-    const config = parseContinuousBatteryPlanConfig(body);
-    if (!config) throw new Error('Check the battery plan settings.');
-    const current = parseContinuousBatteryPlanConfigs(homey.__settingsStore[CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]) ?? {};
-    homey.__settingsStore[CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY] = { ...current, [deviceId]: config };
-    return config;
-  },
   // Report scenarios supply apiHandlers; the default has no prepared report.
   [buildRouteKey('POST', '/support-report/prepare')]: () => async () => ({ ok: false, code: 'capture_failed' }),
   [buildRouteKey('GET', '/support-report/:id')]: () => async () => ({ ok: false, code: 'report_expired' }),
@@ -442,7 +439,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('GET', SETTINGS_UI_BOOTSTRAP_PATH)]: (homey) => async () => buildUiBootstrap(homey),
   [buildRouteKey('GET', SETTINGS_UI_DEVICES_PATH)]: (homey) => async () => ({
     devices: await resolveUiDevices(homey),
-    inverterDevices: [],
+    inverterDevices: [], continuousBatteryPlans: await buildUiBatteryPlans(homey),
     chargerPhasePresets: { state: 'resolved', presets: {} },
     hasManagedSolarDevice: false,
     hasExhibitedExport: false,
@@ -524,7 +521,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   },
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_DEVICES_PATH)]: (homey) => async () => ({
     devices: await resolveUiDevices(homey),
-    inverterDevices: [],
+    inverterDevices: [], continuousBatteryPlans: await buildUiBatteryPlans(homey),
     chargerPhasePresets: { state: 'resolved', presets: {} },
     hasManagedSolarDevice: false,
     hasExhibitedExport: false,

@@ -1,18 +1,13 @@
 import type {
-  ContinuousBatteryPlanConfig,
   ContinuousBatteryPlanConfigs,
   ContinuousBatteryPlanRead,
 } from '../../packages/contracts/src/continuousBatteryPlan';
 import {
-  parseContinuousBatteryPlanConfig,
-  parseContinuousBatteryPlanConfigs,
-  CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY,
   DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG,
 } from '../../packages/shared-domain/src/settings/continuousBatteryPlan';
 import type { ContinuousBatteryPlanSource } from '../ports/continuousBatteryPlan';
 import type { SettingsPort } from '../ports/homeyRuntime';
-import { readSettingsKeyList } from '../utils/settingsKeyList';
-import { ApiRequestError } from '../utils/apiRequestError';
+import { readContinuousBatteryPlanConfigs } from './continuousBatteryPlanSettings';
 import { planBatteryEnergy } from './planning/planBatteryEnergy';
 
 type SettingsRead = { kind: 'resolved'; configs: ContinuousBatteryPlanConfigs } | { kind: 'unavailable' };
@@ -48,13 +43,8 @@ export class ContinuousBatteryPlanService {
   constructor(private readonly settings: SettingsPort, private readonly source: ContinuousBatteryPlanSource) {}
 
   private readSettings(): SettingsRead {
-    const keys = readSettingsKeyList(this.settings);
-    if (keys.status !== 'resolved') return { kind: 'unavailable' };
-    if (!keys.keys.includes(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY)) return { kind: 'resolved', configs: {} };
-    try {
-      const configs = parseContinuousBatteryPlanConfigs(this.settings.get(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY));
-      return configs === null ? { kind: 'unavailable' } : { kind: 'resolved', configs };
-    } catch { return { kind: 'unavailable' }; }
+    const configs = readContinuousBatteryPlanConfigs(this.settings);
+    return configs === null ? { kind: 'unavailable' } : { kind: 'resolved', configs };
   }
 
   private acceptedSettings(): SettingsRead {
@@ -78,10 +68,6 @@ export class ContinuousBatteryPlanService {
     if (!config.enabled) {
       this.plans.delete(deviceId);
       return { status: 'disabled', config };
-    }
-    if (Object.values(accepted.configs).filter(candidate => candidate.enabled).length > 1) {
-      this.plans.delete(deviceId);
-      return { status: 'waiting', config, reason: 'control_unavailable' };
     }
     const input = this.source.readHorizon(deviceId, config);
     if (input.kind === 'waiting') {
@@ -108,32 +94,4 @@ export class ContinuousBatteryPlanService {
     return read;
   }
 
-  save(deviceId: string, raw: unknown): ContinuousBatteryPlanConfig {
-    if (!deviceId) throw new ApiRequestError('A battery device is required.');
-    const config = parseContinuousBatteryPlanConfig(raw);
-    if (config === null) {
-      throw new ApiRequestError('Enter valid battery capacity, reserve, efficiency and wear allowance.');
-    }
-    if (config.enabled && config.priceUnit === 'price units') {
-      throw new ApiRequestError('Set up electricity prices before enabling the battery plan.');
-    }
-    if (config.enabled) {
-      const horizon = this.source.readHorizon(deviceId, config);
-      if (horizon.kind === 'waiting' && horizon.reason === 'price_unit_changed') {
-        throw new ApiRequestError('The electricity price unit changed. Review the wear allowance and save again.');
-      }
-    }
-    const stored = this.readSettings();
-    if (stored.kind === 'unavailable') throw new ApiRequestError('Battery settings could not be read. Try again.');
-    if (config.enabled && Object.entries(stored.configs).some(([id, other]) => id !== deviceId && other.enabled)) {
-      throw new ApiRequestError(
-        'This prototype plans one home battery at a time. Turn off its plan before enabling another battery.',
-      );
-    }
-    const configs = { ...stored.configs, [deviceId]: config };
-    this.settings.set(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, configs);
-    this.lastSettings = { kind: 'resolved', configs };
-    this.plans.delete(deviceId);
-    return config;
-  }
 }

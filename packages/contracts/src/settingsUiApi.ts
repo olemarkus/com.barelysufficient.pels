@@ -1,3 +1,4 @@
+import type { ContinuousBatteryPlanRead } from './continuousBatteryPlan.js';
 import type { CapacityPeriodMinutes, CapacityScalarSettings } from './capacitySettings.js';
 import type { DailyBudgetUiRead } from './dailyBudgetTypes.js';
 import type { ResolvedDeferredObjectiveActivePlansV1 } from './deferredObjectiveActivePlans.js';
@@ -217,6 +218,7 @@ export type SettingsUiBootstrapKey =
   | 'power_source'
   | 'battery_control_devices'
   | 'inverter_curtailment_devices'
+  | 'continuous_battery_plan'
   | 'mode_catalog_initialized'
   | 'homes_config'
   | 'homes_config_initialized'
@@ -492,6 +494,8 @@ export type SettingsUiDevicesPayload = {
   devices: SettingsUiDeviceSnapshot[];
   /** Main-home native solar controls; solar telemetry stays outside `devices`. */
   inverterDevices: { id: string; name: string }[];
+  /** Owner-resolved plans for visible Main-home batteries; empty for scoped/unavailable rosters. */
+  continuousBatteryPlans: Record<string, ContinuousBatteryPlanRead>;
   // Read from the same device list `devices` comes from, unmanaged chargers
   // included (the opt-in it serves happens before a charger is managed). The
   // tagged read keeps an unavailable device snapshot distinct from a trusted

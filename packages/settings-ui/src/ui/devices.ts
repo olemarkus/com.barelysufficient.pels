@@ -512,6 +512,9 @@ export const refreshDevices = async (options?: { render?: boolean }) => {
       invalidateApiCacheForScopedHomes(SETTINGS_UI_DEVICES_PATH);
       const chargerPhasePresets = applyChargerPhasePresetsRead(response.chargerPhasePresets);
       primeApiCache(SETTINGS_UI_DEVICES_PATH, {
+        // Keep the owner readouts with this roster: device-detail settings
+        // consume the same cache as the device list.
+        ...response,
         devices: refreshedDevices,
         chargerPhasePresets,
         hasManagedSolarDevice: response.hasManagedSolarDevice === true,

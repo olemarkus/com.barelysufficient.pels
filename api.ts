@@ -67,9 +67,6 @@ type ApiContext = {
   homey: Homey.App['homey'];
 };
 
-type BatteryPlanApiContext = ApiContext & { params: { deviceId: string } };
-type BatteryPlanSaveApiContext = BatteryPlanApiContext & { body: unknown };
-
 const hasDeviceId = (device: HomeyDeviceLike): device is HomeyDeviceLike & { id: string } => (
   typeof device.id === 'string'
 );
@@ -210,26 +207,6 @@ export = {
   ui_plan: withApiLogging('ui_plan', ({ homey, query }: ApiContext & { query?: unknown }) => (
     getSettingsUiPlanPayload({ homey, query })
   )),
-  ui_battery_plan: withApiLogging('ui_battery_plan', (
-    { homey, params }: BatteryPlanApiContext,
-  ) => {
-    const host = readPelsHost(homey);
-    if (!host) throw new Error('PELS is starting.');
-    if (typeof params.deviceId !== 'string' || params.deviceId.length === 0) {
-      throw new ApiRequestError('Choose a battery.');
-    }
-    return host.readContinuousBatteryPlan(params.deviceId);
-  }),
-  ui_battery_plan_save: withApiLogging('ui_battery_plan_save', (
-    { homey, params, body }: BatteryPlanSaveApiContext,
-  ) => {
-    const host = readPelsHost(homey);
-    if (!host) throw new Error('PELS is starting.');
-    if (typeof params.deviceId !== 'string' || params.deviceId.length === 0) {
-      throw new ApiRequestError('Choose a battery.');
-    }
-    return host.saveContinuousBatteryPlan(params.deviceId, body);
-  }),
   ui_homes: withApiLogging('ui_homes', ({ homey }: ApiContext) => (
     getSettingsUiHomesPayload({ homey })
   )),

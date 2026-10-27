@@ -67,17 +67,17 @@ describe('continuous battery plan owner', () => {
     expect(plan.status).toBe('planned');
     store.loseReads();
     expect(owner.read('battery')).toBe(plan);
-    expect(() => owner.save('battery', { ...config, enabled: false })).toThrow('could not be read');
     expect(store.values.get(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY)).toEqual({ battery: config });
   });
 
-  it('merges a valid owner save with the actual map and refuses a second continuous battery', () => {
-    const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { other: { ...config, enabled: false } } });
+  it('accepts settings-channel updates and retains the last complete single-battery map', () => {
+    const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { battery: config } });
     const owner = new ContinuousBatteryPlanService(store.settings, source);
-    owner.save('battery', config);
-    expect(store.values.get(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY)).toEqual({ other: { ...config, enabled: false }, battery: config });
-    expect(() => owner.save('other', config)).toThrow('one home battery');
-    owner.save('battery', { ...config, enabled: false });
+    const accepted = owner.read('battery');
+    store.settings.set(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, { battery: config, other: config });
+    expect(owner.read('battery')).toBe(accepted);
+    expect(owner.read('other').status).toBe('disabled');
+    store.settings.set(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, { battery: { ...config, enabled: false } });
     expect(owner.read('battery').status).toBe('disabled');
   });
 

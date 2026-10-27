@@ -61,6 +61,7 @@ const BOOTSTRAP_KEYS: Record<SettingsUiBootstrapKey, true> = {
   power_source: true,
   battery_control_devices: true,
   inverter_curtailment_devices: true,
+  continuous_battery_plan: true,
   mode_catalog_initialized: true,
   homes_config: true,
   homes_config_initialized: true,

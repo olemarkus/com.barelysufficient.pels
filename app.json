@@ -404,14 +404,6 @@
       "method": "GET",
       "path": "/ui_plan"
     },
-    "ui_battery_plan": {
-      "method": "GET",
-      "path": "/ui_battery_plan/:deviceId"
-    },
-    "ui_battery_plan_save": {
-      "method": "PUT",
-      "path": "/ui_battery_plan/:deviceId"
-    },
     "ui_homes": {
       "method": "GET",
       "path": "/ui_homes"

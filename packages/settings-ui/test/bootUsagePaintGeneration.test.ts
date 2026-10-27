@@ -69,7 +69,7 @@ const IMMEDIATE_GET_RESPONSES: Record<string, unknown> = {
   '/ui_plan': { plan: null },
   '/ui_devices': {
     devices: [],
-    inverterDevices: [],
+    inverterDevices: [], continuousBatteryPlans: {},
     chargerPhasePresets: { state: 'resolved', presets: {} },
     hasManagedSolarDevice: false,
     hasExhibitedExport: false,
