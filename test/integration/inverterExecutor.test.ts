@@ -27,7 +27,8 @@ describe('inverter convergence and durable hand-back', () => {
       ? { maxW: 6000, stepW: 1, mode: 'direct', authority: 'limit_and_release' }
       : { maxW: 6000, stepW: 1, mode: 'switchable', modeValues: ['device', 'homey', 'eco'],
         authority: 'limit_and_release' };
-    const source: InverterExecutionSource = { exists: () => true, control, observation: () => observed,
+    const source: InverterExecutionSource = { exists: () => true, confirmedRemoved: () => false,
+      control, observation: () => observed,
       simulation: () => false, canLimit: () => true, onExternalControl };
     const store = new InverterClaimStore(settings);
     const actuator = partialDouble<Actuator>({ apply });
@@ -303,6 +304,20 @@ describe('inverter convergence and durable hand-back', () => {
     h.source.exists = () => true;
     await h.executor.apply([{ kind: 'release', deviceId: 'pv' }]);
     expect(h.apply).toHaveBeenCalledWith(expect.objectContaining({ kind: 'production_release' }));
+  });
+
+  it('clears durable ownership on a fresh release for a confirmed removed device without writing', async () => {
+    const h = setup();
+    await h.executor.apply([{ kind: 'limit', deviceId: 'pv', limitW: 2050,
+      binding: h.control(), observation: h.observed() }]);
+    h.source.exists = () => false;
+    h.source.confirmedRemoved = () => true;
+    h.apply.mockClear();
+    expect(await h.executor.apply([{ kind: 'release', deviceId: 'pv' }]))
+      .toEqual({ commandRequestCount: 0, failureCount: 0, pendingInverterReleaseCount: 0 });
+    expect(h.executor.heldDeviceIds()).toEqual([]);
+    expect(h.saved.has(`${INVERTER_CLAIM_PREFIX}pv`)).toBe(false);
+    expect(h.apply).not.toHaveBeenCalled();
   });
 
   it('does not confirm an autonomous dormant zero after a binding change', async () => {

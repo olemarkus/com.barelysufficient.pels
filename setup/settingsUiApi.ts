@@ -8,6 +8,7 @@ import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTy
 import { hasMaterialExhibitedExport } from '../packages/shared-domain/src/solar/exhibitedExport';
 import { getLogger } from '../lib/logging/logger';
 import { readSettingsUiBootstrapSettings } from '../lib/app/settingsUiBootstrapSettings';
+import { readSettingsUiInverterDevices } from '../lib/app/settingsUiInverterDevices';
 import { MAIN_HOME_ID } from '../lib/utils/settingsKeys';
 import {
   SettingsUiHomeScopeAdapter,
@@ -288,15 +289,6 @@ const readSettingsUiBatteryState = (
 const getRawSettingsUiDeviceCandidates = (host: PelsHost): SettingsUiDeviceSnapshot[] => (
   buildSettingsUiDeviceList(host, [...host.getSettingsUiManagedDevices(), ...host.getUiPickerDevices()])
 );
-
-const readSettingsUiInverterDevices = (host: PelsHost): SettingsUiDevicesPayload['inverterDevices'] => {
-  const { deviceManager, homeMembership } = host;
-  if (!deviceManager || !deviceManager.hasWarmSnapshot()) throw appNotReadyError('Inverter controls');
-  const devices = deviceManager.readInverterControlOptions();
-  if (devices.length === 0) return devices;
-  if (!homeMembership) throw appNotReadyError('Home membership');
-  return homeMembership.filterDevicesForHome(devices, MAIN_HOME_ID);
-};
 
 // The stepped branch of the decorator is the only one that resolves
 // `binaryControl`, and it is the only branch that stamps this control model —

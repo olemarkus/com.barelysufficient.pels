@@ -435,6 +435,10 @@ export class DeviceTransport {
     }
     getUiPickerDevices(): TransportDeviceSnapshot[] { return this.reader.getUiPickerDevices(); }
     getHomeyDeviceIds(): ReadonlySet<string> { return this.snapshotStore.getHomeyDeviceIds(); }
+    /** Only a warm accepted full inventory proves removal; a missing snapshot does not. */
+    isDeviceConfirmedRemoved(deviceId: string): boolean {
+        return this.hasWarmSnapshot() && this.snapshotStore.getDeviceMembership(deviceId) === 'removed';
+    }
     /** Reported charger wiring, over the same raw list the picker parses, so unmanaged chargers count. */
     getChargerPhasePresets() { return resolveChargerPhasePresets(this.snapshotStore.getLatestRawDevices()); }
     /** Reported charger wiring after the first trusted full device read. */

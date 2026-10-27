@@ -24,6 +24,7 @@ function sameControlReports(left: InverterObservation, right: InverterObservatio
 
 export type InverterExecutionSource = {
   exists(deviceId: string): boolean;
+  confirmedRemoved(deviceId: string): boolean;
   observation(deviceId: string): InverterObservation | undefined;
   control(deviceId: string): InverterControlSurface | undefined;
   simulation(): boolean;
@@ -110,7 +111,10 @@ export class InverterExecutor implements InverterExecution {
 
   private async applyOne(decision: InverterDecision): Promise<boolean> {
     const { deviceId } = decision;
-    if (!this.source.exists(deviceId)) return false;
+    if (!this.source.exists(deviceId)) {
+      if (decision.kind === 'release') this.forgetRemovedClaim(deviceId);
+      return false;
+    }
     const observed = this.source.observation(deviceId);
     const claim = this.claims.get(deviceId);
     // A later explicit mode change belongs to the owner. Never overwrite it.
@@ -145,6 +149,10 @@ export class InverterExecutor implements InverterExecution {
     if (claim.restoration.kind === 'native' && !inverterBindingsMatch(claim.restoration.binding, control)) return false;
     if (this.recovering.has(deviceId) && sameMode(observed.mode, claim.previousMode)) return false;
     return !(this.releaseRequests.has(deviceId) && sameMode(observed.mode, claim.previousMode));
+  }
+
+  private forgetRemovedClaim(deviceId: string): void {
+    if (this.claims.has(deviceId) && this.source.confirmedRemoved(deviceId)) this.forgetClaim(deviceId);
   }
 
   private forgetClaim(deviceId: string): void {

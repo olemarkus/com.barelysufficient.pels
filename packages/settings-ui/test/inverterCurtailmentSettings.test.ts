@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const homey = vi.hoisted(() => ({
   callApi: vi.fn(), getApiReadModel: vi.fn(), getSetting: vi.fn(), getSettingFresh: vi.fn(),
-  invalidateApiCache: vi.fn(), setSetting: vi.fn(),
+  invalidateApiCache: vi.fn(), invalidateSettingCache: vi.fn(), setSetting: vi.fn(),
 }));
 vi.mock('../src/ui/homey.ts', () => homey);
 import { InverterCurtailmentSettingsController } from '../src/ui/inverterCurtailmentSettings.ts';
@@ -67,5 +67,19 @@ describe('native inverter settings through existing channels', () => {
     await vi.waitFor(() => expect(controller.props().error).toContain('could not be loaded'));
     expect(controller.props().read?.devices).toEqual([{ id: 'pv', name: 'Roof inverter' }]);
     expect(homey.setSetting).not.toHaveBeenCalled();
+  });
+
+  it('invalidates malformed cached settings before retrying the read', async () => {
+    homey.getSetting.mockResolvedValue({ pv: 'invalid' });
+    const controller = new InverterCurtailmentSettingsController(vi.fn());
+    controller.ensureLoaded();
+    await vi.waitFor(() => expect(controller.props().error).toContain('could not be loaded'));
+    homey.invalidateSettingCache.mockImplementation(() => {
+      homey.getSetting.mockResolvedValue({ pv: true });
+    });
+    controller.props().onRetry();
+    await vi.waitFor(() => expect(controller.props().read?.selected).toEqual({ pv: true }));
+    expect(homey.invalidateSettingCache).toHaveBeenCalledWith(KEY);
+    expect(controller.props().error).toBe('');
   });
 });

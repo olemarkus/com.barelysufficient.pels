@@ -2,7 +2,9 @@ import { asUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 import {
   INVERTER_CURTAILMENT_DEVICES, parseInverterCurtailmentDevices, type InverterCurtailmentDevices,
 } from '../../../shared-domain/src/settings/inverterCurtailment.ts';
-import { callApi, getApiReadModel, getSetting, getSettingFresh, invalidateApiCache, setSetting } from './homey.ts';
+import {
+  callApi, getApiReadModel, getSetting, getSettingFresh, invalidateApiCache, invalidateSettingCache, setSetting,
+} from './homey.ts';
 import { SETTINGS_UI_BOOTSTRAP_PATH, SETTINGS_UI_DEVICES_PATH } from '../../../contracts/src/settingsUiApi.ts';
 import type { InverterCurtailmentSettingsProps, InverterSettingsRead } from './views/InverterCurtailmentSettings.tsx';
 
@@ -58,7 +60,11 @@ export class InverterCurtailmentSettingsController {
     return {
       read: this.read, busy: this.busy, error: this.writeError || this.readError,
       onEnabledChange: (id, enabled) => { void this.save(id, enabled); },
-      onRetry: () => { invalidateApiCache(SETTINGS_UI_DEVICES_PATH); void this.reload(); },
+      onRetry: () => {
+        invalidateApiCache(SETTINGS_UI_DEVICES_PATH);
+        invalidateSettingCache(INVERTER_CURTAILMENT_DEVICES);
+        void this.reload();
+      },
     };
   }
 
