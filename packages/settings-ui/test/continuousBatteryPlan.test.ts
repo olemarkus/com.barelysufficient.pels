@@ -5,11 +5,25 @@ import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 
 const callApi = vi.fn();
+const getSettingFresh = vi.fn();
+const setSetting = vi.fn();
 let managed = true;
 let powerLimit = true;
 let priceUnit = 'EUR';
+let cachedDevices: unknown = null;
 vi.mock('../src/ui/homey.ts', () => ({
-  callApi: (...args: unknown[]) => callApi(...args), getHomeyTimezone: () => 'Europe/Amsterdam',
+  callApi: async (method: string, path: string) => path === '/ui_prices'
+    ? { priceTimeline: { state: 'ready', priceUnit } }
+    : callApi(method, path),
+  getApiReadModel: async (path: string) => {
+    if (cachedDevices !== null) return cachedDevices;
+    const result = await callApi('GET', path);
+    cachedDevices = { inverterDevices: [], continuousBatteryPlans: { battery: result, first: result, second: result } };
+    return cachedDevices;
+  },
+  getSettingFresh: (...args: unknown[]) => getSettingFresh(...args),
+  setSetting: (...args: unknown[]) => setSetting(...args),
+  invalidateApiCache: () => { cachedDevices = null; }, getHomeyTimezone: () => 'Europe/Amsterdam',
 }));
 vi.mock('../src/ui/prices.ts', () => ({ getPricesReadModel: async () => ({ combinedPrices: { priceUnit } }) }));
 vi.mock('../src/ui/state.ts', () => ({
@@ -61,8 +75,11 @@ beforeEach(() => {
   managed = true;
   powerLimit = true;
   priceUnit = 'EUR';
+  cachedDevices = null;
   callApi.mockReset();
   callApi.mockResolvedValue(read);
+  getSettingFresh.mockReset().mockResolvedValue({ battery: config });
+  setSetting.mockReset().mockResolvedValue(undefined);
 });
 afterEach(() => act(() => setContinuousBatteryPlanDevice(null)));
 
@@ -75,7 +92,7 @@ test('renders the real trajectory and combines adjacent charge periods into one 
   expect(document.getElementById('device-detail-managed-hint')?.textContent).toContain('PELS plans charging and household supply');
 });
 
-test('a plan refresh keeps an unsaved reserve edit and saves through the owning API', async () => {
+test('a plan refresh keeps an unsaved reserve edit and saves through the settings channel', async () => {
   await openBattery();
   await act(async () => { field('Minimum reserve (%)').value = '35'; field('Minimum reserve (%)').dispatchEvent(new Event('input')); });
   callApi.mockResolvedValueOnce({ ...read, config: { ...config, minimumReservePercent: 45 } });
@@ -84,7 +101,7 @@ test('a plan refresh keeps an unsaved reserve edit and saves through the owning 
   expect(field('Minimum reserve (%)').value).toBe('35');
   callApi.mockImplementation(async (method: string, _path: string, body: unknown) => method === 'PUT' ? body : read);
   await act(async () => button('Save battery plan').click());
-  expect(callApi).toHaveBeenCalledWith('PUT', '/ui_battery_plan/battery', { ...config, minimumReservePercent: 35 });
+  await vi.waitFor(() => expect(setSetting).toHaveBeenCalledWith('continuous_battery_plan', { battery: { ...config, minimumReservePercent: 35 } }));
 });
 
 test('explains a power-limit gate and allows disabling an already configured plan', async () => {
@@ -95,7 +112,15 @@ test('explains a power-limit gate and allows disabling an already configured pla
   await act(async () => { toggle.selected = false; toggle.dispatchEvent(new Event('change')); });
   expect(button('Save battery plan').hasAttribute('disabled')).toBe(false);
   await act(async () => button('Save battery plan').click());
-  expect(callApi).toHaveBeenCalledWith('PUT', '/ui_battery_plan/battery', { ...config, enabled: false });
+  await vi.waitFor(() => expect(setSetting).toHaveBeenCalledWith('continuous_battery_plan', { battery: { ...config, enabled: false } }));
+});
+
+test('manual refresh replaces a cached trajectory with the current owner wait reason', async () => {
+  await openBattery();
+  callApi.mockResolvedValue({ status: 'waiting', config, reason: 'prices_unavailable' });
+  await act(async () => button('Refresh plan').click());
+  await vi.waitFor(() => expect(document.body.textContent).toContain('Waiting for electricity prices'));
+  expect(document.querySelector('.battery-plan-windows')).toBeNull();
 });
 
 test('keeps a successful save clean when reloading its preview fails', async () => {
@@ -132,7 +157,7 @@ test.each(['EUR', 'price units'])('disabling preserves accepted economics when t
   await act(async () => { toggle.selected = false; toggle.dispatchEvent(new Event('change')); });
   expect(button('Save battery plan').hasAttribute('disabled')).toBe(false);
   await act(async () => button('Save battery plan').click());
-  expect(callApi).toHaveBeenCalledWith('PUT', '/ui_battery_plan/battery', { ...saved, enabled: false });
+  await vi.waitFor(() => expect(setSetting).toHaveBeenCalledWith('continuous_battery_plan', { battery: { ...saved, enabled: false } }));
 });
 
 test('enabling a saved disabled plan explains a changed wear-cost unit before saving', async () => {
@@ -147,9 +172,8 @@ test('enabling a saved disabled plan explains a changed wear-cost unit before sa
 
 test('a slow response for a previous battery cannot paint the newly opened one', async () => {
   let completePrevious!: (value: ContinuousBatteryPlanRead) => void;
-  callApi.mockImplementation((_method: string, path: string) => path.endsWith('/first')
-    ? new Promise<ContinuousBatteryPlanRead>(resolve => { completePrevious = resolve; })
-    : Promise.resolve({ status: 'waiting', config, reason: 'prices_unavailable' }));
+  callApi.mockImplementationOnce(() => new Promise<ContinuousBatteryPlanRead>(resolve => { completePrevious = resolve; }))
+    .mockResolvedValue({ status: 'waiting', config, reason: 'prices_unavailable' });
   await act(async () => setContinuousBatteryPlanDevice(battery('first')));
   await act(async () => setContinuousBatteryPlanDevice(battery('second')));
   await act(async () => completePrevious(read));
@@ -194,7 +218,7 @@ test('binds a reviewed wear allowance to the current price unit on save', async 
   expect(document.body.textContent).toContain('The electricity price unit changed. Review the wear allowance');
   await act(async () => { field('Wear allowance (øre/kWh)').value = '3'; field('Wear allowance (øre/kWh)').dispatchEvent(new Event('input')); });
   await act(async () => button('Save battery plan').click());
-  await vi.waitFor(() => expect(callApi).toHaveBeenCalledWith('PUT', '/ui_battery_plan/battery', { ...config, wearCostPerKWh: 3, priceUnit: 'øre' }));
+  await vi.waitFor(() => expect(setSetting).toHaveBeenCalledWith('continuous_battery_plan', { battery: { ...config, wearCostPerKWh: 3, priceUnit: 'øre' } }));
 });
 
 test('names the next day in a charging window, expected target and chart axis', async () => {

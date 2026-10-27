@@ -5,7 +5,6 @@ import type {
 import { isUnknownRecord } from '../recordGuards';
 
 export const CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY = 'continuous_battery_plan';
-export const CONTINUOUS_BATTERY_PLAN_PATH = '/ui_battery_plan';
 
 /** Form defaults only: an absent setting never authorizes a plan or invents a battery capacity. */
 export const DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG: ContinuousBatteryPlanConfig = {
@@ -29,7 +28,8 @@ export function parseContinuousBatteryPlanConfig(value: unknown): ContinuousBatt
     || !inRange(value.minimumReservePercent, 0, 95)
     || !inRange(value.roundTripEfficiency, 0.5, 1)
     || !inRange(value.wearCostPerKWh, 0, 1000)
-    || typeof value.priceUnit !== 'string' || !value.priceUnit.trim() || value.priceUnit.length > 64) return null;
+    || typeof value.priceUnit !== 'string' || !value.priceUnit.trim() || value.priceUnit.length > 64
+    || (value.enabled && value.priceUnit.trim().toLowerCase() === 'price units')) return null;
   return {
     enabled: value.enabled,
     usableCapacityKWh: value.usableCapacityKWh,
@@ -43,9 +43,12 @@ export function parseContinuousBatteryPlanConfig(value: unknown): ContinuousBatt
 export function parseContinuousBatteryPlanConfigs(value: unknown): ContinuousBatteryPlanConfigs | null {
   if (!isUnknownRecord(value)) return null;
   const result: ContinuousBatteryPlanConfigs = {};
+  let enabledCount = 0;
   for (const [deviceId, raw] of Object.entries(value)) {
     const config = parseContinuousBatteryPlanConfig(raw);
     if (!deviceId || config === null) return null;
+    if (config.enabled) enabledCount += 1;
+    if (enabledCount > 1) return null;
     Object.defineProperty(result, deviceId, { value: config, enumerable: true, configurable: true, writable: true });
   }
   return result;

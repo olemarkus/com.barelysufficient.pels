@@ -884,7 +884,7 @@ describe('recommendation loading', () => {
     expect(refreshAttempts).toBe(0);
     primeApiCache(SETTINGS_UI_DEVICES_PATH, {
       devices: [conflictedDevice],
-      inverterDevices: [],
+      inverterDevices: [], continuousBatteryPlans: {},
       chargerPhasePresets: { state: 'resolved', presets: {} },
       hasManagedSolarDevice: false,
       hasExhibitedExport: false,
@@ -908,7 +908,7 @@ describe('recommendation loading', () => {
       expect(surface?.textContent).toContain('Built-in device control is paused for Connected 300');
       primeApiCache(SETTINGS_UI_DEVICES_PATH, {
         devices: [conflictedDevice],
-        inverterDevices: [],
+        inverterDevices: [], continuousBatteryPlans: {},
         chargerPhasePresets: { state: 'resolved', presets: {} },
         hasManagedSolarDevice: false,
         hasExhibitedExport: false,

@@ -295,7 +295,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
   );
   const context: AppContext = {
     readContinuousBatteryPlan: () => ({ status: 'disabled', config: DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG }),
-    saveContinuousBatteryPlan: () => { throw new Error('Battery planning is not wired in this fixture'); },
     forecastBatteryBackgroundKWh: () => undefined,
     batterySolarScope: { mainDevices: () => [], allDevices: () => [] },
     deviceManager: partialDouble<NonNullable<AppContext['deviceManager']>>({

@@ -34,6 +34,7 @@ import { buildPlanDevice, buildPlanMeta } from '../utils/planTestUtils';
 import { executionStateFixture } from '../utils/deviceStatusFixture';
 import { overviewReadModelWiring } from '../utils/settingsOverviewFixture';
 import { captureLogger } from '../utils/loggerCapture';
+import { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } from '../../packages/shared-domain/src/settings/continuousBatteryPlan';
 
 describe('settingsUiApi', () => {
   const overviewFixture = (
@@ -238,6 +239,7 @@ describe('settingsUiApi', () => {
     });
     const capacitySettings = options.capacitySettings ?? { limitKw: 12, marginKw: 0.5, periodMinutes: 60 as const };
     const app = pelsHostDouble({
+      readContinuousBatteryPlan: () => ({ status: 'disabled' as const, config: DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG }),
       getModePrioritiesForUi: createFixturePriorityQuery(),
       // The price caches live in the userdata store, which the app serves;
       // they are not settings keys.
@@ -375,6 +377,21 @@ describe('settingsUiApi', () => {
       homey: createHomey({ settings: { [key]: { pv: true, invisible: false } } }) as never,
     });
     expect(valid.settings.inverter_curtailment_devices).toEqual({ pv: true, invisible: false });
+  });
+
+  it('bootstraps authoritative battery maps and refuses malformed or multiple-enabled settings', async () => {
+    const key = 'continuous_battery_plan';
+    const absent = await buildSettingsUiBootstrap({ homey: createHomey() as never });
+    expect(absent.settings.continuous_battery_plan).toEqual({});
+    const config = { ...DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, enabled: true, priceUnit: 'EUR' };
+    for (const value of [null, { battery: { enabled: true } }, { first: config, second: config }]) {
+      const invalid = await buildSettingsUiBootstrap({ homey: createHomey({ settings: { [key]: value } }) as never });
+      expect(invalid.settings.continuous_battery_plan).toBeNull();
+    }
+    const valid = await buildSettingsUiBootstrap({
+      homey: createHomey({ settings: { [key]: { battery: config, invisible: { ...config, enabled: false } } } }) as never,
+    });
+    expect(valid.settings.continuous_battery_plan).toEqual({ battery: config, invisible: { ...config, enabled: false } });
   });
 
   it('carries Main inverter controls on ui_devices without adding solar devices to the managed list', () => {
@@ -664,7 +681,7 @@ describe('settingsUiApi', () => {
         },
       ],
       // The fixture's trusted app seam reports a warm snapshot with no charger wiring.
-      inverterDevices: [],
+      inverterDevices: [], continuousBatteryPlans: {},
       chargerPhasePresets: { state: 'resolved', presets: {} },
       hasManagedSolarDevice: false,
       hasExhibitedExport: false,
@@ -839,7 +856,9 @@ describe('settingsUiApi', () => {
       },
     });
 
-    const { devices } = getSettingsUiDevicesPayload({ homey: homey as never });
+    const payload = getSettingsUiDevicesPayload({ homey: homey as never });
+    const { devices } = payload;
+    expect(Object.keys(payload.continuousBatteryPlans)).toEqual(['batt-main']);
 
     expect(devices.map((device) => device.id)).toEqual(['batt-main']);
     expect(devices[0]).toMatchObject({ batteryTakenOver: true, batteryControl: 'drivable' });

@@ -1,11 +1,11 @@
 import { render } from 'preact';
 import type { ContinuousBatteryPlanConfig, ContinuousBatteryPlanRead } from '../../../../contracts/src/continuousBatteryPlan.ts';
-import { CONTINUOUS_BATTERY_PLAN_PATH } from '../../../../shared-domain/src/settings/continuousBatteryPlan.ts';
+import { SETTINGS_UI_DEVICES_PATH } from '../../../../contracts/src/settingsUiApi.ts';
 import { isHomeBatteryClassKey } from '../../../../shared-domain/src/batteryOrSolarRole.ts';
 import { MAIN_HOME_ID } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { isUnknownRecord } from '../../../../shared-domain/src/recordGuards.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
-import { callApi, getHomeyTimezone } from '../homey.ts';
+import { getHomeyTimezone, invalidateApiCache } from '../homey.ts';
 import { getPricesReadModel } from '../prices.ts';
 import { getHomeIdForUiDevice } from '../homeScopeMembership.ts';
 import { resolveBatteryPowerLimitOn, resolveManagedState, state } from '../state.ts';
@@ -13,6 +13,7 @@ import { formatSettingsError } from '../toast.ts';
 import { createSerializedAsyncRunner } from './settingsWrite.ts';
 import { BATTERY_MANAGED_HINT } from './batterySection.ts';
 import { ContinuousBatteryPlanLoading, ContinuousBatteryPlanView } from '../views/ContinuousBatteryPlan.tsx';
+import { loadContinuousBatteryPlan, saveContinuousBatteryPlanConfig } from './continuousBatteryPlanTransport.ts';
 
 type BatteryPlanSession = {
   deviceId: string;
@@ -31,7 +32,6 @@ let session: BatteryPlanSession | null = null;
 const saveSerialized = createSerializedAsyncRunner();
 
 const container = () => document.getElementById('device-detail-battery-plan');
-const pathFor = (deviceId: string) => `${CONTINUOUS_BATTERY_PLAN_PATH}/${encodeURIComponent(deviceId)}`;
 
 function display(current: BatteryPlanSession): void {
   const mount = container();
@@ -43,13 +43,18 @@ function display(current: BatteryPlanSession): void {
       : BATTERY_MANAGED_HINT;
   }
   if (current.read === null) {
-    render(<ContinuousBatteryPlanLoading failed={current.error !== ''} onRetry={() => load(current)} />, mount);
+    render(<ContinuousBatteryPlanLoading failed={current.error !== ''} onRetry={() => refresh(current)} />, mount);
     return;
   }
   render(<ContinuousBatteryPlanView key={current.deviceId} read={current.read} priceUnit={current.priceUnit}
     timeZone={getHomeyTimezone()} blockedReason={current.blockedReason} busy={current.busy}
     error={current.error} previewAvailable={current.previewAvailable}
-    onSave={config => save(current, config)} onRefresh={() => load(current)} />, mount);
+    onSave={config => save(current, config)} onRefresh={() => refresh(current)} />, mount);
+}
+
+async function refresh(current: BatteryPlanSession): Promise<void> {
+  invalidateApiCache(SETTINGS_UI_DEVICES_PATH);
+  await load(current);
 }
 
 async function load(current: BatteryPlanSession): Promise<void> {
@@ -57,7 +62,7 @@ async function load(current: BatteryPlanSession): Promise<void> {
   current.loading = true;
   try {
     const [read, prices] = await Promise.all([
-      callApi<ContinuousBatteryPlanRead>('GET', pathFor(current.deviceId)),
+      loadContinuousBatteryPlan(current.deviceId),
       getPricesReadModel().catch(() => null),
     ]);
     if (session !== current || generation !== current.generation) return;
@@ -87,7 +92,7 @@ const save = (current: BatteryPlanSession, config: ContinuousBatteryPlanConfig):
   current.error = '';
   display(current);
   try {
-    const saved = await callApi<ContinuousBatteryPlanConfig>('PUT', pathFor(current.deviceId), config);
+    const saved = await saveContinuousBatteryPlanConfig(current.deviceId, config);
     if (current.read !== null) current.read = { ...current.read, config: saved };
     current.previewAvailable = false;
     await load(current);
@@ -138,6 +143,6 @@ export function setContinuousBatteryPlanDevice(device: SettingsUiDeviceDetailIte
 
 export function initContinuousBatteryPlanRefresh(): void {
   document.addEventListener('plan-updated', () => {
-    if (session !== null && !session.busy && !session.loading) void load(session);
+    if (session !== null && !session.busy && !session.loading) void refresh(session);
   });
 }

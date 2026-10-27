@@ -8,6 +8,7 @@ import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTy
 import { hasMaterialExhibitedExport } from '../packages/shared-domain/src/solar/exhibitedExport';
 import { getLogger } from '../lib/logging/logger';
 import { readSettingsUiBootstrapSettings } from '../lib/app/settingsUiBootstrapSettings';
+import { readSettingsUiBatteryPlans } from '../lib/app/settingsUiBatteryPlans';
 import { readSettingsUiInverterDevices } from '../lib/app/settingsUiInverterDevices';
 import { MAIN_HOME_ID } from '../lib/utils/settingsKeys';
 import {
@@ -445,7 +446,8 @@ const UNAVAILABLE_POWER_PAYLOAD: SettingsUiPowerPayload = {
   homeScope: { state: 'unavailable' },
 };
 const UNAVAILABLE_DEVICES_PAYLOAD: SettingsUiDevicesPayload = {
-  devices: [], inverterDevices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
+  devices: [], inverterDevices: [], continuousBatteryPlans: {},
+  chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
 };
 
 const planPayloadForHome = (
@@ -523,7 +525,7 @@ const devicesPayloadForHome = (
     // A meter area's battery and solar devices are telemetry only: PELS does
     // not control a battery outside the Main home.
     devices: members.filter((device) => !device.isBatteryOrSolar),
-    inverterDevices: [],
+    inverterDevices: [], continuousBatteryPlans: {},
     // Keyed by device id and consulted only for a device the owner is looking
     // at, so the whole-home map serves a sub-home unchanged: a charger outside
     // this home is never looked up here.
@@ -561,7 +563,7 @@ const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPay
   if (!host) {
     return {
       devices: [],
-      inverterDevices: [],
+      inverterDevices: [], continuousBatteryPlans: {},
       chargerPhasePresets: readChargerPhasePresetsFromHomey(homey),
       hasManagedSolarDevice: false,
       hasExhibitedExport: false,
@@ -569,11 +571,13 @@ const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPay
     };
   }
   const candidates = getRawSettingsUiDeviceCandidates(host);
+  const devices = new SettingsUiHomeScopeAdapter(host).filterWholeHomeDevices(candidates);
   return {
     // A Main-home battery is an ordinary managed device the owner can see and
     // switch; a solar device and a meter area's battery ride the backend
     // snapshot for telemetry only.
-    devices: new SettingsUiHomeScopeAdapter(host).filterWholeHomeDevices(candidates),
+    devices,
+    continuousBatteryPlans: readSettingsUiBatteryPlans(host, devices),
     inverterDevices: readSettingsUiInverterDevices(host),
     chargerPhasePresets: readChargerPhasePresetsFromHomey(homey),
     // A solar/PV device is always read and excluded from `devices`, so its presence

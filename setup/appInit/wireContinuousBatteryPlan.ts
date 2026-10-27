@@ -30,6 +30,4 @@ export function wireContinuousBatteryPlan(
   const owner = new ContinuousBatteryPlanService(ctx.homey.settings, source);
   // eslint-disable-next-line no-param-reassign, functional/immutable-data -- composition-root owner reads
   ctx.readContinuousBatteryPlan = (deviceId) => owner.read(deviceId);
-  // eslint-disable-next-line no-param-reassign, functional/immutable-data -- composition-root owner command
-  ctx.saveContinuousBatteryPlan = (deviceId, config) => owner.save(deviceId, config);
 }

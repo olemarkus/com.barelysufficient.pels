@@ -4,6 +4,7 @@ import { SETTINGS_UI_HOMES_PATH } from '../../contracts/src/settingsUiHomes';
 import { DEVICE_HOME_ASSIGNMENTS, HOMES_CONFIG } from '../../shared-domain/src/settings/settingsKeys';
 import { createHomeyMock } from './helpers/homeyApiMock';
 import { mockDeviceListCollaborators } from './helpers/deviceListCollaborators.ts';
+import { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } from '../../shared-domain/src/settings/continuousBatteryPlan.ts';
 
 /* Meter-area badges on Devices, and owner filtering on the Modes list. */
 
@@ -406,7 +407,7 @@ describe('devices list home badges', () => {
       apiHandlers: {
         'GET /ui_devices': () => ({
           devices: THREE_DEVICES,
-          inverterDevices: [],
+          inverterDevices: [], continuousBatteryPlans: {},
           chargerPhasePresets: {
             state: 'resolved', presets: { 'easee-1': 'ev_charger_3_phase' },
           },
@@ -415,7 +416,7 @@ describe('devices list home badges', () => {
           refreshes += 1;
           return {
             devices: THREE_DEVICES,
-            inverterDevices: [],
+            inverterDevices: [], continuousBatteryPlans: {},
             chargerPhasePresets: refreshes === 1
               ? { state: 'unavailable' }
               : { state: 'resolved', presets: { 'easee-1': 'invalid-preset' } },
@@ -440,7 +441,7 @@ describe('devices list home badges', () => {
       apiHandlers: {
         'GET /ui_devices': () => ({
           devices: THREE_DEVICES,
-          inverterDevices: [],
+          inverterDevices: [], continuousBatteryPlans: {},
           chargerPhasePresets: { state: 'unavailable' },
         }),
       },
@@ -573,6 +574,25 @@ describe('devices list home badges', () => {
       .querySelector(`[data-device-id="${deviceId}"] .pels-home-badge`)?.textContent;
     expect(badgeFor('dev-rental')).toBe('Leilighet i underetasjen');
     expect(badgeFor('dev-main')).toBe('Main home');
+  });
+
+  it('keeps battery and inverter owner readouts in the shared cache after discovery', async () => {
+    const battery = buildDevice({ id: 'battery', name: 'Battery', deviceClass: 'battery', isBatteryOrSolar: true });
+    const plans = { battery: { status: 'disabled' as const, config: DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } };
+    const homey = createHomeyMock({
+      apiHandlers: {
+        'POST /ui_refresh_devices': () => ({ devices: [battery], inverterDevices: [{ id: 'pv', name: 'Roof' }],
+          continuousBatteryPlans: plans, chargerPhasePresets: { state: 'resolved', presets: {} } }),
+      },
+    });
+    const homeyModule = await import('../src/ui/homey.ts');
+    homeyModule.setHomeyClient(homey);
+    const { refreshDevices } = await import('../src/ui/devices.ts');
+    await refreshDevices({ render: false });
+    const { loadContinuousBatteryPlan } = await import('../src/ui/deviceDetail/continuousBatteryPlanTransport.ts');
+    expect(await loadContinuousBatteryPlan('battery')).toEqual(plans.battery);
+    expect(await homeyModule.getApiReadModel('/ui_devices')).toMatchObject({ inverterDevices: [{ id: 'pv', name: 'Roof' }] });
+    expect(homey.api.mock.calls.filter(([, uri]) => uri === '/ui_devices')).toHaveLength(0);
   });
 });
 

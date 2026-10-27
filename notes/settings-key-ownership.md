@@ -124,15 +124,18 @@ vetoes every battery; the settings UI's switch and the capacity-control Flow
 cards write it.
 
 `continuous_battery_plan` is owned by `lib/battery/continuousBatteryPlanService.ts`.
-Its per-device settings schema and browser-used form validation live in
-`packages/shared-domain/src/settings/continuousBatteryPlan.ts`; the settings UI
-reads and saves through `/ui_battery_plan/:deviceId`, rather than merging raw
-settings maps. Never written means continuous planning is off. The owner retains
-the last accepted map after a transient read failure and refuses a save without
-a complete current map. Each enabled configuration records its usable capacity,
-reserve, efficiency, wear allowance and price unit. A changed price unit requires
-reviewing and saving the allowance again. Only one battery can have continuous
-planning enabled; other batteries keep their existing control policy.
+`lib/battery/continuousBatteryPlanSettings.ts` resolves genuine absence and
+unavailable settings reads; the existing bootstrap uses that same boundary.
+The shared schema validates the complete map and permits one enabled battery.
+The UI saves through Homey settings after a fresh complete-map read, preserving
+entries for batteries outside the visible roster. A null WebView read requires
+an uncached bootstrap read; malformed or unavailable maps refuse the save rather
+than falling back to an earlier map. This browser read-modify-write is not atomic
+across clients. The owner retains its last accepted map through transient failures.
+The existing `ui_devices` response carries the owner's battery plan readout.
+Each enabled configuration records capacity, reserve, efficiency, wear allowance
+and price unit. Enabling checks the current price unit; the runtime also pauses
+execution when that unit changes until the allowance is reviewed and saved again.
 
 `ev_charge_target_settings` (a charger's target battery level) belongs to
 `packages/shared-domain/src/settings/evChargeTarget.ts`. Its reader sanitizes and

@@ -19,7 +19,7 @@ const CONFIG: ContinuousBatteryPlanConfig = {
   roundTripEfficiency: 0.9, wearCostPerKWh: 0.03,
   priceUnit: 'EUR',
 };
-const context = () => ({ homey: mockHomeyInstance as unknown as Homey.App['homey'], params: { deviceId: BATTERY } });
+const context = () => ({ homey: mockHomeyInstance as unknown as Homey.App['homey'] });
 
 function importPrice(hour: number, cheapLater: boolean): number {
   if (cheapLater) return hour >= 4 && hour < 7 ? 0.05 : 0.3;
@@ -119,7 +119,7 @@ describe('continuous battery plan through the Homey SDK', () => {
   it('plans from real prices and observed demand, claims and charges through the existing actuator', async () => {
     const home = await startHome();
     await home.advance(8);
-    const read = await api.ui_battery_plan(context());
+    const read = (await api.ui_devices(context())).continuousBatteryPlans[BATTERY];
     expect(read.status).toBe('planned');
     expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
     expect(setpoints(home).some(watts => watts > 0)).toBe(true);
@@ -129,19 +129,19 @@ describe('continuous battery plan through the Homey SDK', () => {
   it('holds control at zero while waiting for cheaper prices, without the native schedule taking over', async () => {
     const home = await startHome(true);
     await home.advance(8);
-    expect((await api.ui_battery_plan(context())).status).toBe('planned');
+    expect(((await api.ui_devices(context())).continuousBatteryPlans[BATTERY]).status).toBe('planned');
     expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
     expect(setpoints(home)).toContain(0);
     expect(setpoints(home).every(watts => watts === 0)).toBe(true);
   });
 
-  it('hands back after the owner disables continuous planning through the UI route', async () => {
+  it('hands back after the owner disables continuous planning through the settings channel', async () => {
     const home = await startHome(true);
     await home.advance(8);
     expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
-    await api.ui_battery_plan_save({ ...context(), body: { ...CONFIG, enabled: false } });
+    mockHomeyInstance.settings.set(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, { [BATTERY]: { ...CONFIG, enabled: false } });
     await home.advance(4);
-    expect((await api.ui_battery_plan(context())).status).toBe('disabled');
+    expect(((await api.ui_devices(context())).continuousBatteryPlans[BATTERY]).status).toBe('disabled');
     expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('anti_feed');
   });
 
@@ -161,7 +161,7 @@ describe('continuous battery plan through the Homey SDK', () => {
     mockHomeyInstance.settings.set('controllable_devices', { heater: true, [BATTERY]: false });
     await home.advance(4);
     expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('anti_feed');
-    expect(await api.ui_battery_plan(context())).toMatchObject({ status: 'waiting', reason: 'control_unavailable' });
+    expect((await api.ui_devices(context())).continuousBatteryPlans[BATTERY]).toMatchObject({ status: 'waiting', reason: 'control_unavailable' });
   });
 
   it('stops economic discharge when the house starts exporting', async () => {
@@ -193,7 +193,7 @@ describe('continuous battery plan through the Homey SDK', () => {
     const originalPut = mockHomeyInstance.api.put.bind(mockHomeyInstance.api);
     const home = await startHome(false, 20, solar);
     await home.advance(8);
-    const read = await api.ui_battery_plan(context());
+    const read = (await api.ui_devices(context())).continuousBatteryPlans[BATTERY];
     expect(read.status, JSON.stringify(read)).toBe('planned');
     expect(setpoints(home).some(watts => watts > 0)).toBe(true);
     const batteryReadingsAtCurtail: number[] = [];

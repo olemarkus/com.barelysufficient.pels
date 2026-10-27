@@ -1943,14 +1943,14 @@
   const scopedDevicesHandler = (query, wholeHomePayload) => {
     const scope = resolveServableHomeId(query);
     if (!scope.scoped) return wholeHomePayload;
-    if (scope.homeId === null) return { devices: [], inverterDevices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' } };
+    if (scope.homeId === null) return { devices: [], inverterDevices: [], continuousBatteryPlans: {}, chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' } };
     const members = devicesForHome(scope.homeId);
     return {
       // The real producer (`devicesPayloadForHome`, setup/settingsUiApi.ts)
       // removes every observe-only role member from the user-facing list while
       // computing the solar flag from the UNFILTERED member set — mirror both,
       // or scoped specs would render management controls production never offers.
-      inverterDevices: [],
+      inverterDevices: [], continuousBatteryPlans: {},
       devices: members
         .filter((device) => !BATTERY_OR_SOLAR_CLASS_KEYS.has(device.deviceClass))
         .map(withResolvedIdentity),
@@ -2028,6 +2028,8 @@
     }),
     'GET /ui_devices': (_body, query) => scopedDevicesHandler(query, {
       inverterDevices: [],
+      continuousBatteryPlans: typeof initialOverrides.continuousBatteryPlans === 'function'
+        ? initialOverrides.continuousBatteryPlans() : {},
       devices: settings.target_devices_snapshot?.map(withResolvedIdentity),
       // No fixture charger reports its wiring unless a spec seeds one.
       chargerPhasePresets: { state: 'resolved', presets: settings.ui_devices_charger_phase_presets ?? {} },
