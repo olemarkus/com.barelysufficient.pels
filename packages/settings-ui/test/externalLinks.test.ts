@@ -50,6 +50,23 @@ describe('links that open a new tab', () => {
     expect(client.openURL.mock.results.every((result) => result.value === client)).toBe(true);
   });
 
+  // Preact sets `target` on a Material button as a property, so only the
+  // button's own shadow `<a>` names it.
+  it('opens a Material link button whose target is only a property', () => {
+    const client = { openURL: vi.fn() };
+    getHomeyClient.mockReturnValue(client);
+    const button = document.createElement('md-text-button');
+    button.setAttribute('href', 'https://pels.barelysufficient.org/smart-tasks#relay');
+    const inner = document.createElement('a');
+    inner.setAttribute('href', 'https://pels.barelysufficient.org/smart-tasks#relay');
+    inner.setAttribute('target', '_blank');
+    button.attachShadow({ mode: 'open' }).append(inner);
+    document.body.append(button);
+
+    expect(click(inner).defaultPrevented).toBe(true);
+    expect(client.openURL.mock.calls).toEqual([['https://pels.barelysufficient.org/smart-tasks#relay']]);
+  });
+
   it('leaves them to the browser in the web app, which has no openURL', () => {
     getHomeyClient.mockReturnValue({});
 
