@@ -1,5 +1,3 @@
-import { INVERTER_CURTAILMENT_DEVICES } from '../packages/shared-domain/src/settings/inverterCurtailment';
-import { readInverterCurtailmentDevices } from '../lib/solar/inverterCurtailmentSettings';
 import type Homey from 'homey';
 import type {
   DailyBudgetModelPreviewResponse,
@@ -9,7 +7,7 @@ import type {
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
 import { hasMaterialExhibitedExport } from '../packages/shared-domain/src/solar/exhibitedExport';
 import { getLogger } from '../lib/logging/logger';
-import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys';
+import { readSettingsUiBootstrapSettings } from '../lib/app/settingsUiBootstrapSettings';
 import { MAIN_HOME_ID } from '../lib/utils/settingsKeys';
 import {
   SettingsUiHomeScopeAdapter,
@@ -107,14 +105,6 @@ type ApiContext = {
  * keeps the whole-home behaviour without naming it.
  */
 type HomeScopedApiContext = ApiContext & { query?: unknown };
-
-const pickSettings = (
-  homey: Homey.App['homey'],
-  keys: readonly string[],
-): Record<string, unknown> => Object.fromEntries(
-  keys.map((key) => [key, key === INVERTER_CURTAILMENT_DEVICES
-    ? readInverterCurtailmentDevices(homey.settings) : homey.settings.get(key) as unknown]),
-);
 
 const settingsUiLogger = getLogger('settings-ui');
 
@@ -428,7 +418,7 @@ const buildEmptyDeviceDiagnosticsPayload = (): SettingsUiDeviceDiagnosticsRespon
 export const buildSettingsUiBootstrap = async ({ homey }: ApiContext): Promise<SettingsUiBootstrap> => {
   const host = readPelsHost(homey);
   return {
-    settings: pickSettings(homey, SETTINGS_UI_BOOTSTRAP_KEYS),
+    settings: readSettingsUiBootstrapSettings(homey.settings),
     dailyBudget: host ? host.getDailyBudgetUiPayload() : NOT_READY_DAILY_BUDGET,
     deferredObjectives: readAllObjectives(homey.settings),
     deferredObjectiveActivePlans: host ? host.getDeferredObjectiveActivePlansUiPayload() : null,
