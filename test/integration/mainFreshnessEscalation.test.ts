@@ -20,7 +20,8 @@ import type { AppContext } from '../../lib/app/appContext';
 import type { PlanService } from '../../lib/plan/planService';
 
 const okOutcome = {
-  failed: false, isDryRun: false, gated: false, appliedActions: true, deviceApplyFailureCount: 0,
+  inverterReleaseRecoveryReady: true,
+  failed: false, isDryRun: false, gated: false, appliedActions: true, deviceApplyFailureCount: 0, pendingInverterReleaseCount: 0,
 };
 
 const buildCtx = (params: { lastTimestamp?: number; powerSource?: string } = {}) => {
@@ -105,6 +106,36 @@ describe('main silent-meter escalation', () => {
     rebuildPlanFromCache.mockResolvedValue(okOutcome);
     await vi.advanceTimersByTimeAsync(60_000);
     await drainPending();
+    expect(ctx.meterSilenceMonitor.isBlocked()).toBe(true);
+  });
+
+  it('keeps deciding fresh passes while an inverter hand-back is pending, then latches on confirmation', async () => {
+    const { ctx, rebuildPlanFromCache, install } = buildCtx();
+    rebuildPlanFromCache.mockResolvedValue({ ...okOutcome, pendingInverterReleaseCount: 1 });
+    install();
+    await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS + 60_000);
+    await drainPending();
+    expect(rebuildPlanFromCache.mock.calls.length).toBeGreaterThan(1);
+    expect(ctx.meterSilenceMonitor.isBlocked()).toBe(false);
+    rebuildPlanFromCache.mockResolvedValue(okOutcome);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await drainPending();
+    expect(ctx.meterSilenceMonitor.isBlocked()).toBe(true);
+    const completed = rebuildPlanFromCache.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(completed);
+  });
+
+  it('does not interpret unresolved inverter ownership as no pending hand-back', async () => {
+    const { ctx, rebuildPlanFromCache, install } = buildCtx();
+    rebuildPlanFromCache.mockResolvedValue({ ...okOutcome, inverterReleaseRecoveryReady: false });
+    install();
+    await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS + 60_000);
+    await drainPending();
+    expect(rebuildPlanFromCache.mock.calls.length).toBeGreaterThan(1);
+    expect(ctx.meterSilenceMonitor.isBlocked()).toBe(false);
+    rebuildPlanFromCache.mockResolvedValue(okOutcome);
+    await vi.advanceTimersByTimeAsync(60_000);
     expect(ctx.meterSilenceMonitor.isBlocked()).toBe(true);
   });
 

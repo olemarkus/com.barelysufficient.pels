@@ -7,6 +7,7 @@ import type { PlanRebuildTrigger } from './planRebuildTrigger';
 const SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS = 1500;
 
 export const createPlanRebuildOutcome = (isDryRun: boolean): PlanRebuildOutcome => ({
+  inverterReleaseRecoveryReady: true,
   buildMs: 0,
   changeMs: 0,
   snapshotMs: 0,
@@ -20,6 +21,7 @@ export const createPlanRebuildOutcome = (isDryRun: boolean): PlanRebuildOutcome 
   deviceWriteCount: 0,
   commandRequestCount: 0,
   deviceApplyFailureCount: 0,
+  pendingInverterReleaseCount: 0,
   hadShedding: false,
   isDryRun,
   failed: false,

@@ -296,9 +296,17 @@ returned by those endpoints or included in the settings bootstrap or diagnostics
 is off. Runtime reads retain their last accepted map across unavailable reads.
 The Electricity prices page writes this key. A later owner mode change in the
 inverter app turns its entry off through the runtime settings owner.
+The existing UI bootstrap resolves genuine key absence through that same owner;
+the device roster rides on `ui_devices`. A UI write merges into a fresh complete
+map, and a missing WebView value needs a fresh owner-resolved bootstrap read.
 
 `inverter_curtailment_claim.<deviceId>` belongs to
 `lib/executor/inverterClaimStore.ts`. It records the previous production limit
-and mode before the first command. These small, mission-critical hand-back
+and mode, plus the native binding, before the first command. These small, mission-critical hand-back
 records stay in Homey settings until the observer confirms release. A restarted
 executor recovers them before admitting new curtailment.
+An older record without binding metadata authorizes a saved-limit-only hand-back.
+After a binding change, PELS restores only watts, using the current range and step
+when the saved value no longer fits; it does not write the old mode enum. For a
+prior autonomous mode, its accepted native maximum is the production ceiling;
+a dormant zero setpoint does not mean that production should stop.

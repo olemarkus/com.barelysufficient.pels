@@ -34,6 +34,7 @@ type PlanServicePlanEngine = Pick<
   | 'handleShortfall'
   | 'handleShortfallCleared'
   | 'applyPlanActions'
+  | 'isInverterReleaseRecoveryReady'
   | 'shouldApplyStablePlanActions'
   | 'hasExecutionWorkOutstanding'
   | 'getObservationRevision'

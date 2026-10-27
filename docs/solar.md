@@ -125,8 +125,15 @@ production rise when household demand increases. Solar-surplus loads get time to
 start before PELS reduces the remaining excess. When the export price is zero,
 positive, or unavailable, or you turn the inverter's switch off, PELS returns it
 to its previous limit and mode. An existing production limit remains the ceiling.
-It also returns control on meter silence, and recovers an interrupted hand-back
-after a restart. Simulation mode never starts curtailment.
+It also returns control on meter silence and retries an interrupted hand-back.
+After a restart, hand-back resumes when PELS has a meter reading, including a
+reading restored from before the restart. Simulation mode never starts curtailment.
+
+If an inverter app changes its control range or mode options, PELS hands back
+production without writing an old mode value. It restores the prior production
+ceiling within the new range; an autonomous mode's dormant zero setpoint does
+not stop production. Small power changes stay inside a deadband to avoid
+repeated limit writes.
 
 If you change the inverter's control mode in its own app while PELS holds it,
 PELS turns its switch off and leaves your chosen mode in charge.

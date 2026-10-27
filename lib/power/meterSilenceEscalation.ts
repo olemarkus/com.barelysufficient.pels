@@ -31,6 +31,8 @@ export type MeterSilenceShedPassOutcome = {
   isDryRun: boolean;
   gated: boolean;
   deviceApplyFailureCount: number;
+  pendingInverterReleaseCount: number;
+  inverterReleaseRecoveryReady: boolean;
 };
 
 export type MeterSilenceEscalationDeps = {
@@ -164,6 +166,15 @@ export class MeterSilenceEscalation {
             homeId,
             deviceApplyFailureCount: outcome.deviceApplyFailureCount,
           });
+          return;
+        }
+        // An accepted, throttled or fenced request is not a completed hand-back.
+        // Leave the existing pass owed: the next tick decides a fresh fail-closed
+        // plan and converges its releases through the ordinary actuator lane.
+        if (!outcome.inverterReleaseRecoveryReady || outcome.pendingInverterReleaseCount > 0) {
+          debugEscalation({ event: 'home_freshness_heartbeat_release_pending', homeId,
+            pendingInverterReleaseCount: outcome.pendingInverterReleaseCount,
+            inverterReleaseRecoveryReady: outcome.inverterReleaseRecoveryReady });
           return;
         }
         // The preconditions are re-judged at completion: a fence that closed

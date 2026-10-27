@@ -20,16 +20,18 @@ function productionRange(cap: DeviceCapabilityMap[string] | undefined): { maxW: 
   return { maxW: cap.max, stepW };
 }
 
-function controlMode(entry: DeviceCapabilityMap[string] | undefined): InverterControlSurface['mode'] | null {
-  if (entry === undefined) return 'direct';
+function controlMode(entry: DeviceCapabilityMap[string] | undefined):
+  { mode: 'direct' } | { mode: 'switchable'; modeValues: readonly string[] } | null {
+  if (entry === undefined) return { mode: 'direct' };
   const values = asUnknownRecord(entry)?.values;
   const ids = Array.isArray(values) ? values.map((value: unknown) => asUnknownRecord(value)?.id) : [];
-  return entry.setable === true && ids.includes('device') && ids.includes('homey') ? 'switchable' : null;
+  return entry.setable === true && ids.every((id): id is string => typeof id === 'string' && id.length > 0)
+    && ids.includes('device') && ids.includes('homey') ? { mode: 'switchable', modeValues: ids } : null;
 }
 
 /** Accept only the standard production cap, with an explicit physical maximum. */
 export function resolveInverterControl(
-  device: HomeyDeviceLike, values: DeviceCapabilityMap,
+  device: HomeyDeviceLike, values: Readonly<Partial<DeviceCapabilityMap>>,
 ): InverterControlSurface | null {
   if (!isSolarPanelDevice(device) || !getDeviceAdapter(device).supportsProductionLimits) return null;
   const capabilities = device.capabilities;
@@ -39,7 +41,8 @@ export function resolveInverterControl(
   const hasMode = capabilities.includes('target_power_mode');
   if (hasMode && values.target_power_mode === undefined) return null;
   const mode = controlMode(hasMode ? values.target_power_mode : undefined);
-  return range && mode ? { ...range, mode } : null;
+  if (!range || !mode) return null;
+  return { ...range, ...mode, authority: 'limit_and_release' };
 }
 
 function modeReport(
@@ -67,22 +70,30 @@ function numericReport(
   return previous !== undefined && previous.observedAtMs > stamp ? previous : { value, observedAtMs: stamp };
 }
 
+function readInverterReports(
+  binding: InverterControlSurface | undefined, values: DeviceCapabilityMap, previous: InverterObservation | undefined,
+): InverterObservation | undefined {
+  const production = numericReport(values.measure_power, previous?.production, true);
+  const limit = numericReport(values.target_power, previous?.limit, false);
+  const mode = binding ? modeReport(binding, values.target_power_mode, previous?.mode) : previous?.mode;
+  return production && limit && mode ? { production, limit, mode } : previous;
+}
+
 export function withInverterParseFields(
   snapshot: TransportDeviceSnapshot, device: HomeyDeviceLike, values: DeviceCapabilityMap,
   previous: TransportDeviceSnapshot | undefined,
 ): TransportDeviceSnapshot {
-  const surface = resolveInverterControl(device, values);
-  if (surface === null) {
-    const retained = previous?.inverterObservation;
-    return retained && isSolarPanelDevice(device) ? { ...snapshot, inverterObservation: retained } : snapshot;
-  }
-  const kept = previous?.inverterObservation;
-  const production = numericReport(values.measure_power, kept?.production, true);
-  const limit = numericReport(values.target_power, kept?.limit, false);
-  const mode = modeReport(surface, values.target_power_mode, kept?.mode);
+  if (!isSolarPanelDevice(device) || !device.capabilities?.includes('target_power')) return snapshot;
+  const accepted = resolveInverterControl(device, values);
+  const binding = accepted ?? previous?.inverterControl;
+  // Metadata controls write authority; independently valid reports still confirm
+  // a hand-back while that metadata is incomplete.
+  const observation = readInverterReports(binding, values, previous?.inverterObservation);
+  const control = accepted ?? (binding ? { ...binding, authority: 'release_only' as const } : undefined);
   return {
-    ...snapshot, inverterControl: surface,
-    ...(production && limit && mode ? { inverterObservation: { production, limit, mode } } : {}),
+    ...snapshot,
+    ...(control ? { inverterControl: control } : {}),
+    ...(observation ? { inverterObservation: observation } : {}),
   };
 }
 

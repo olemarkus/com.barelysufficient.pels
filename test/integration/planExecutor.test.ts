@@ -516,7 +516,7 @@ describe('PlanExecutor declined actuator requests', () => {
       desired: false,
     });
     expect(result).toEqual({
-      deviceWriteCount: 0, commandRequestCount: 0, deviceApplyFailureCount: 0,
+      deviceWriteCount: 0, commandRequestCount: 0, deviceApplyFailureCount: 0, pendingInverterReleaseCount: 0,
     });
     expect(state.pendingBinaryCommands['dev-1']).toBeUndefined();
     expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
@@ -559,7 +559,7 @@ describe('PlanExecutor declined actuator requests', () => {
       value: 23,
     });
     expect(result).toEqual({
-      deviceWriteCount: 0, commandRequestCount: 0, deviceApplyFailureCount: 0,
+      deviceWriteCount: 0, commandRequestCount: 0, deviceApplyFailureCount: 0, pendingInverterReleaseCount: 0,
     });
     expect(state.pendingTargetCommands['dev-1']).toBeUndefined();
     expect(state.actuation.lastDeviceRestoreMs['dev-1']).toBeUndefined();
@@ -636,7 +636,7 @@ describe('PlanExecutor restore logging', () => {
       commandRequestCount: 0,
       // The thrown projection counts as an apply failure — the silence
       // escalation reads this to keep its fail-closed pass owed.
-      deviceApplyFailureCount: 1,
+      deviceApplyFailureCount: 1, pendingInverterReleaseCount: 0,
     });
 
     expect(logCapture.events).toContainEqual(expect.objectContaining({

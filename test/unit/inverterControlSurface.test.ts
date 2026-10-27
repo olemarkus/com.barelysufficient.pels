@@ -19,7 +19,7 @@ const values: DeviceCapabilityMap = {
 
 describe('standard Homey inverter control boundary', () => {
   it('accepts an explicit writable solar cap, never a battery or an unbounded target', () => {
-    expect(resolveInverterControl(device, values)).toEqual({ maxW: 6000, stepW: 1, mode: 'direct' });
+    expect(resolveInverterControl(device, values)).toEqual({ maxW: 6000, stepW: 1, mode: 'direct', authority: 'limit_and_release' });
     expect(resolveInverterControl({ ...device, class: 'battery' }, values)).toBeNull();
     expect(resolveInverterControl(device, { ...values, target_power: { value: 6000, setable: true } })).toBeNull();
     expect(resolveInverterControl({ ...device, driverId: 'homey:app:sma.modbus:pv' }, values)).toBeNull();
@@ -37,8 +37,22 @@ describe('standard Homey inverter control boundary', () => {
     expect(withInverterParseFields(snapshot, device, missing, parsed).inverterObservation?.production.value).toBe(5000);
     const unreadableCap = { ...values, target_power: { value: null } };
     const retained = withInverterParseFields(snapshot, device, unreadableCap, parsed);
-    expect(retained.inverterControl).toBeUndefined();
+    expect(retained.inverterControl).toEqual({ ...parsed.inverterControl, authority: 'release_only' });
+    expect(withInverterParseFields(snapshot, { ...device, capabilities: ['measure_power'] }, values, parsed)
+      .inverterControl).toBeUndefined();
     expect(retained.inverterObservation).toEqual(parsed.inverterObservation);
+  });
+
+  it('accepts newer cap telemetry with incomplete metadata while allowing only hand-back', () => {
+    const snapshot = partialDouble<TransportDeviceSnapshot>({ id: 'pv' });
+    const limited = withInverterParseFields(snapshot, device, { ...values,
+      target_power: { ...values.target_power, value: 2050 },
+    }, undefined);
+    const released = withInverterParseFields(snapshot, device, { ...values,
+      target_power: { value: 6000, lastUpdated: new Date(NOW + 1000).toISOString() },
+    }, limited);
+    expect(released.inverterControl?.authority).toBe('release_only');
+    expect(released.inverterObservation?.limit).toEqual({ value: 6000, observedAtMs: NOW + 1000 });
   });
 
   it('accepts a later pulled owner mode despite realtime receipt-time skew, retaining genuinely older reads', () => {

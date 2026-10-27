@@ -339,6 +339,8 @@ export class PlanExecutor {
     return this.deps.inverterLane.hasWork(plan.inverterDecisions);
   }
 
+  public isInverterReleaseRecoveryReady(): boolean { return this.deps.inverterLane.releaseRecoveryReady(); }
+
   public async handleShortfall(deficitKw: number): Promise<void> {
     await this.shortfallExecutor.handleShortfall(deficitKw);
   }
@@ -349,7 +351,8 @@ export class PlanExecutor {
 
   public async applyPlanActions(plan: DevicePlan): Promise<PlanActuationResult> {
     if (!plan || !Array.isArray(plan.devices)) {
-      return { deviceWriteCount: 0, commandRequestCount: 0, deviceApplyFailureCount: 0 };
+      return { deviceWriteCount: 0, commandRequestCount: 0,
+        deviceApplyFailureCount: 0, pendingInverterReleaseCount: 0 };
     }
 
     if (this.deps.getCapacityDryRun()) {
@@ -357,7 +360,8 @@ export class PlanExecutor {
         plan.inverterDecisions.filter((decision) => decision.kind === 'release'),
       );
       return { deviceWriteCount: 0, commandRequestCount: release.commandRequestCount,
-        deviceApplyFailureCount: release.failureCount };
+        deviceApplyFailureCount: release.failureCount,
+        pendingInverterReleaseCount: release.pendingInverterReleaseCount };
     }
 
     this.nonCapacityHoldShedIds = new Set(
@@ -370,6 +374,7 @@ export class PlanExecutor {
       return { ...result,
         commandRequestCount: result.commandRequestCount + inverterResult.commandRequestCount,
         deviceApplyFailureCount: result.deviceApplyFailureCount + inverterResult.failureCount,
+        pendingInverterReleaseCount: inverterResult.pendingInverterReleaseCount,
       };
     } finally {
       this.controlPersistenceBatchDepth = Math.max(0, this.controlPersistenceBatchDepth - 1);

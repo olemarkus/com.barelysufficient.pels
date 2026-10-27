@@ -1448,6 +1448,8 @@
   };
 
   const buildBootstrapSettings = () => ({
+    inverter_curtailment_devices: Object.hasOwn(settings, 'inverter_curtailment_devices')
+      ? settings.inverter_curtailment_devices : {},
     capacity_enabled: settings.capacity_enabled,
     grid_import_enabled: settings.grid_import_enabled,
     grid_import_limit_kw: settings.grid_import_limit_kw,
@@ -1941,13 +1943,14 @@
   const scopedDevicesHandler = (query, wholeHomePayload) => {
     const scope = resolveServableHomeId(query);
     if (!scope.scoped) return wholeHomePayload;
-    if (scope.homeId === null) return { devices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' } };
+    if (scope.homeId === null) return { devices: [], inverterDevices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' } };
     const members = devicesForHome(scope.homeId);
     return {
       // The real producer (`devicesPayloadForHome`, setup/settingsUiApi.ts)
       // removes every observe-only role member from the user-facing list while
       // computing the solar flag from the UNFILTERED member set — mirror both,
       // or scoped specs would render management controls production never offers.
+      inverterDevices: [],
       devices: members
         .filter((device) => !BATTERY_OR_SOLAR_CLASS_KEYS.has(device.deviceClass))
         .map(withResolvedIdentity),
@@ -2024,6 +2027,7 @@
       prices: buildPricesPayload(),
     }),
     'GET /ui_devices': (_body, query) => scopedDevicesHandler(query, {
+      inverterDevices: [],
       devices: settings.target_devices_snapshot?.map(withResolvedIdentity),
       // No fixture charger reports its wiring unless a spec seeds one.
       chargerPhasePresets: { state: 'resolved', presets: settings.ui_devices_charger_phase_presets ?? {} },
@@ -2044,9 +2048,7 @@
       plan: buildPlanPayload(),
     }),
     'GET /ui_power': (_body, query) => scopedPowerHandler(query, buildPowerPayload()),
-    'GET /ui_inverter_curtailment': () => ({
-      devices: [], selected: settings.inverter_curtailment_devices ?? {},
-    }),
+
     'GET /ui_prices': () => buildPricesPayload(),
     'GET /ui_device_diagnostics': () => resolveDeviceDiagnosticsPayload(),
     'GET /ui_device_log': () => resolveDeviceLogPayload(),

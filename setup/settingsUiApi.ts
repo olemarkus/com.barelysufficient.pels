@@ -1,3 +1,5 @@
+import { INVERTER_CURTAILMENT_DEVICES } from '../packages/shared-domain/src/settings/inverterCurtailment';
+import { readInverterCurtailmentDevices } from '../lib/solar/inverterCurtailmentSettings';
 import type Homey from 'homey';
 import type {
   DailyBudgetModelPreviewResponse,
@@ -110,7 +112,8 @@ const pickSettings = (
   homey: Homey.App['homey'],
   keys: readonly string[],
 ): Record<string, unknown> => Object.fromEntries(
-  keys.map((key) => [key, homey.settings.get(key) as unknown]),
+  keys.map((key) => [key, key === INVERTER_CURTAILMENT_DEVICES
+    ? readInverterCurtailmentDevices(homey.settings) : homey.settings.get(key) as unknown]),
 );
 
 const settingsUiLogger = getLogger('settings-ui');
@@ -296,6 +299,15 @@ const getRawSettingsUiDeviceCandidates = (host: PelsHost): SettingsUiDeviceSnaps
   buildSettingsUiDeviceList(host, [...host.getSettingsUiManagedDevices(), ...host.getUiPickerDevices()])
 );
 
+const readSettingsUiInverterDevices = (host: PelsHost): SettingsUiDevicesPayload['inverterDevices'] => {
+  const { deviceManager, homeMembership } = host;
+  if (!deviceManager || !deviceManager.hasWarmSnapshot()) throw appNotReadyError('Inverter controls');
+  const devices = deviceManager.readInverterControlOptions();
+  if (devices.length === 0) return devices;
+  if (!homeMembership) throw appNotReadyError('Home membership');
+  return homeMembership.filterDevicesForHome(devices, MAIN_HOME_ID);
+};
+
 // The stepped branch of the decorator is the only one that resolves
 // `binaryControl`, and it is the only branch that stamps this control model —
 // so this is the exact condition under which the stored value is a decision
@@ -451,7 +463,7 @@ const UNAVAILABLE_POWER_PAYLOAD: SettingsUiPowerPayload = {
   homeScope: { state: 'unavailable' },
 };
 const UNAVAILABLE_DEVICES_PAYLOAD: SettingsUiDevicesPayload = {
-  devices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
+  devices: [], inverterDevices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
 };
 
 const planPayloadForHome = (
@@ -529,6 +541,7 @@ const devicesPayloadForHome = (
     // A meter area's battery and solar devices are telemetry only: PELS does
     // not control a battery outside the Main home.
     devices: members.filter((device) => !device.isBatteryOrSolar),
+    inverterDevices: [],
     // Keyed by device id and consulted only for a device the owner is looking
     // at, so the whole-home map serves a sub-home unchanged: a charger outside
     // this home is never looked up here.
@@ -566,6 +579,7 @@ const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPay
   if (!host) {
     return {
       devices: [],
+      inverterDevices: [],
       chargerPhasePresets: readChargerPhasePresetsFromHomey(homey),
       hasManagedSolarDevice: false,
       hasExhibitedExport: false,
@@ -578,6 +592,7 @@ const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPay
     // switch; a solar device and a meter area's battery ride the backend
     // snapshot for telemetry only.
     devices: new SettingsUiHomeScopeAdapter(host).filterWholeHomeDevices(candidates),
+    inverterDevices: readSettingsUiInverterDevices(host),
     chargerPhasePresets: readChargerPhasePresetsFromHomey(homey),
     // A solar/PV device is always read and excluded from `devices`, so its presence
     // is the only home-level signal the settings UI gets that the home has solar. The

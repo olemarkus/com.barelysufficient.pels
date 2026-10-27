@@ -11,6 +11,7 @@ import { resolveChargingCurrentAdapter } from '../chargingCurrentAdapter';
 import type { SteppedLoadWrite, SteppedLoadStepRequestResult } from '../../ports/steppedLoadWrite';
 import type { StoragePowerCommand, StoragePowerWrite, StorageReleaseCommand } from '../../ports/storageCommand';
 import type { HomeBatteryControlSurface } from '../../../packages/contracts/src/types';
+import type { InverterControlBinding } from '../../../packages/contracts/src/inverterControl';
 import { getDebugEmitter } from '../../logging/logger';
 import { incPerfCounter } from '../../utils/perfCounters';
 import { normalizeError } from '../../utils/errorUtils';
@@ -32,6 +33,8 @@ import { HOME_BATTERY_SETPOINT_CAPABILITY_ID, toTargetPowerCapabilityValue } fro
 import { isHomeBatterySnapshot } from './homeBatteryObservation';
 import { TransportSnapshotStore } from './transportSnapshotStore';
 import { TransportObservationState } from './transportObservationState';
+import { resolveInverterControl } from './solarInverterObservation';
+import { inverterBindingsMatch, inverterRestorationLimitW } from '../../planContract/inverterDecision';
 
 const emitTransportDebug = getDebugEmitter('devices', 'devices');
 const FLOW_TRIGGER_ACCEPTANCE_TIMEOUT_MS = 10_000;
@@ -261,23 +264,38 @@ export class DeviceWriteService {
   /** Native solar production caps and their hand-back, without synthetic telemetry. */
   async requestProductionControl(command: import('../../ports/inverterControl').InverterCommand): Promise<void> {
     const snapshot = this.snapshotStore.getSnapshotByDeviceId(command.deviceId);
-    if (!snapshot?.inverterControl || snapshot.available === false) throw new Error('Inverter is unavailable.');
+    if (!snapshot) throw new Error('Inverter no longer exists.');
     const { deviceId } = command;
-    const surface = snapshot.inverterControl;
     if (command.kind === 'production_limit') {
+      const surface = snapshot.inverterControl;
+      if (!surface || surface.authority !== 'limit_and_release' || snapshot.available === false) {
+        throw new Error('Inverter is unavailable for production limits.');
+      }
       if (surface.mode === 'switchable' && snapshot.inverterObservation?.mode.kind !== 'controlled') {
         await this.setCapability(deviceId, 'target_power_mode', 'homey');
       }
       await this.setCapability(deviceId, 'target_power', command.limitW);
     } else {
-      const previousMode = command.claim.previousMode;
-      if ((surface.mode === 'direct') !== (previousMode.kind === 'direct')) {
-        throw new Error('The inverter control binding changed before hand-back.');
+      const { target } = command;
+      if (target.kind === 'watts_and_mode') this.requireInverterBinding(deviceId, target.binding);
+      const current = snapshot.inverterControl;
+      if (current?.authority === 'limit_and_release'
+        && inverterRestorationLimitW(target.limitW, current) !== target.limitW) {
+        throw new Error('The inverter production range changed before hand-back.');
       }
-      await this.setCapability(deviceId, 'target_power', command.claim.previousLimitW);
-      if (previousMode.kind !== 'direct') {
-        await this.setCapability(deviceId, 'target_power_mode', previousMode.value);
+      await this.setCapability(deviceId, 'target_power', target.limitW);
+      if (target.kind === 'watts_and_mode') {
+        this.requireInverterBinding(deviceId, target.binding);
+        await this.setCapability(deviceId, 'target_power_mode', target.mode.value);
       }
+    }
+  }
+
+  private requireInverterBinding(deviceId: string, expected: InverterControlBinding): void {
+    const raw = this.snapshotStore.getTrackedRawDevice(deviceId);
+    const current = raw?.capabilitiesObj ? resolveInverterControl(raw, raw.capabilitiesObj) : null;
+    if (!current || !inverterBindingsMatch(expected, current)) {
+      throw new Error('The inverter control binding changed before hand-back.');
     }
   }
 

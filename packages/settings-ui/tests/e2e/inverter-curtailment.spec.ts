@@ -9,10 +9,9 @@ const openSettings = async (page: Page) => {
     } };
     win.__PELS_HOMEY_STUB__ = {
       settings: { export_price_enabled: true },
-      apiHandlers: { 'GET /ui_inverter_curtailment': () => ({
-        devices: [{ id: 'pv', name: 'Roof inverter' }],
-        selected: (window as unknown as { Homey: { __stub: { getSetting(key: string): unknown } } })
-          .Homey.__stub.getSetting('inverter_curtailment_devices') ?? {},
+      apiHandlers: { 'GET /ui_devices': () => ({
+        devices: [], inverterDevices: [{ id: 'pv', name: 'Roof inverter' }],
+        chargerPhasePresets: { state: 'resolved', presets: {} }, hasManagedSolarDevice: true,
       }) },
     };
   });

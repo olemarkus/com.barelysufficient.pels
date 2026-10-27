@@ -8,7 +8,9 @@ export function createInverterExecutor(
   ctx: AppContext, actuator: InverterActuation, policy: InverterControlPolicy, simulation: () => boolean,
 ): InverterExecutor {
   return new InverterExecutor(new InverterClaimStore(ctx.homey.settings), actuator, {
+    exists: (id) => ctx.deviceConfiguration.get(id) !== undefined,
     observation: (id) => ctx.observer.getObservedRecord(id)?.inverterObservation,
+    control: (id) => ctx.deviceConfiguration.get(id)?.inverterControl,
     simulation,
     canLimit: (id) => policy.isEnabled(id),
     onExternalControl: (id) => policy.disable(id),

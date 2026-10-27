@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { retainSolarWhileDemandSettles } from '../../lib/plan/planBuilderSurplus';
 import { InverterCurtailmentPlanner } from '../../lib/plan/inverterCurtailment';
-import type { InverterPlanInput } from '../../lib/ports/inverterControl';
+import type { InverterControllableInput, InverterPlanInput } from '../../lib/ports/inverterControl';
 import type { PlanEngineState } from '../../lib/plan/planState';
 import { partialDouble } from '../helpers/partialDouble';
 
 const NOW = 1_800_000_000_000;
-const inverter = (deviceId = 'pv'): InverterPlanInput => ({
-  deviceId, surface: { maxW: 6000, stepW: 1, mode: 'direct' }, enabled: true, notBeforeMs: 0,
+const inverter = (deviceId = 'pv'): InverterControllableInput => ({
+  kind: 'controllable', deviceId, surface: { maxW: 6000, stepW: 1, mode: 'direct', authority: 'limit_and_release' }, enabled: true, notBeforeMs: 0,
   observation: {
     production: { value: 5000, observedAtMs: NOW },
     limit: { value: 6000, observedAtMs: NOW },
@@ -15,9 +15,9 @@ const inverter = (deviceId = 'pv'): InverterPlanInput => ({
   },
   ownership: { kind: 'free' },
 });
-const held = (input = inverter()): InverterPlanInput => ({ ...input,
+const held = (input = inverter()): InverterControllableInput => ({ ...input,
   ownership: { kind: 'held', recovering: false,
-    claim: { previousLimitW: 6000, previousMode: { kind: 'direct' }, claimedAtMs: NOW - 60_000 } },
+    claim: { previousLimitW: 6000, previousMode: { kind: 'direct' }, claimedAtMs: NOW - 60_000, restoration: { kind: 'native', binding: input.surface } } },
 });
 const planner = (inputs: InverterPlanInput[], costly = true) => new InverterCurtailmentPlanner({
   inputs: () => inputs, exportCostly: () => costly,
@@ -59,13 +59,13 @@ describe('price-driven solar production limits', () => {
   it('does not raise an existing owner limit', () => {
     const input = held();
     input.ownership = { kind: 'held', recovering: false,
-      claim: { previousLimitW: 2500, previousMode: { kind: 'direct' }, claimedAtMs: NOW - 60_000 } };
+      claim: { previousLimitW: 2500, previousMode: { kind: 'direct' }, claimedAtMs: NOW - 60_000, restoration: { kind: 'native', binding: input.surface } } };
     expect(planner([input]).decide(2000, NOW)).toMatchObject([{ limitW: 2500 }]);
   });
 
   it('uses the full native range while the inverter runs an autonomous custom mode', () => {
     const input = inverter();
-    input.surface = { ...input.surface, mode: 'switchable' };
+    input.surface = { ...input.surface, mode: 'switchable', modeValues: ['device', 'homey', 'eco'] };
     input.observation = { ...input.observation, limit: { value: 0, observedAtMs: NOW },
       mode: { kind: 'autonomous', value: 'eco', observedAtMs: NOW } };
     expect(planner([input]).decide(-3000, NOW)).toMatchObject([{ kind: 'limit', limitW: 2050 }]);
@@ -81,7 +81,7 @@ describe('price-driven solar production limits', () => {
   it('recovers old claims before allowing new curtailment and releases on meter silence', () => {
     const input = held();
     input.ownership = { kind: 'held', claim: {
-      previousLimitW: 6000, previousMode: { kind: 'direct' }, claimedAtMs: NOW - 60_000,
+      previousLimitW: 6000, previousMode: { kind: 'direct' }, claimedAtMs: NOW - 60_000, restoration: { kind: 'native', binding: input.surface },
     }, recovering: true };
     expect(planner([input]).decide(-3000, NOW)).toEqual([{ kind: 'release', deviceId: 'pv' }]);
     expect(planner([held(), inverter('free')]).releaseAll()).toEqual([{ kind: 'release', deviceId: 'pv' }]);

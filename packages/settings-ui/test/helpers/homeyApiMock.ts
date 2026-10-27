@@ -378,7 +378,9 @@ const resolveUiDevices = async (homey: MockHomeyClient): Promise<TargetDeviceSna
 
 const buildUiBootstrap = async (homey: MockHomeyClient) => ({
   settings: Object.fromEntries(await Promise.all(
-    SETTINGS_UI_BOOTSTRAP_KEYS.map(async (key) => [key, await getHomeySetting(homey, key)]),
+    SETTINGS_UI_BOOTSTRAP_KEYS.map(async (key) => [key,
+      key === 'inverter_curtailment_devices' && !(key in homey.__settingsStore)
+        ? {} : await getHomeySetting(homey, key)]),
   )),
   dailyBudget: getDailyBudgetRead(homey),
   // The same roster the runtime serves at `SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH`.
@@ -420,6 +422,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('GET', SETTINGS_UI_BOOTSTRAP_PATH)]: (homey) => async () => buildUiBootstrap(homey),
   [buildRouteKey('GET', SETTINGS_UI_DEVICES_PATH)]: (homey) => async () => ({
     devices: await resolveUiDevices(homey),
+    inverterDevices: [],
     chargerPhasePresets: { state: 'resolved', presets: {} },
     hasManagedSolarDevice: false,
     hasExhibitedExport: false,
@@ -428,9 +431,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
     plan: await buildUiPlan(homey),
   }),
   [buildRouteKey('GET', SETTINGS_UI_POWER_PATH)]: (homey) => async ({ uri }) => buildUiPower(homey, scopedHomeIdOf(uri)),
-  [buildRouteKey('GET', '/ui_inverter_curtailment')]: (homey) => async () => ({
-    devices: [], selected: homey.__settingsStore.inverter_curtailment_devices ?? {},
-  }),
+
   [buildRouteKey('GET', SETTINGS_UI_PRICES_PATH)]: (homey) => async () => buildUiPrices(homey),
   [buildRouteKey('GET', SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH)]: (homey) => async () => buildUiDiagnostics(homey),
   [buildRouteKey('GET', SETTINGS_UI_DEVICE_LOG_PATH)]: (homey) => async () => (
@@ -503,6 +504,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   },
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_DEVICES_PATH)]: (homey) => async () => ({
     devices: await resolveUiDevices(homey),
+    inverterDevices: [],
     chargerPhasePresets: { state: 'resolved', presets: {} },
     hasManagedSolarDevice: false,
     hasExhibitedExport: false,

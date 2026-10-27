@@ -60,6 +60,7 @@ const BOOTSTRAP_KEYS: Record<SettingsUiBootstrapKey, true> = {
   pv_forecast_source: true,
   power_source: true,
   battery_control_devices: true,
+  inverter_curtailment_devices: true,
   mode_catalog_initialized: true,
   homes_config: true,
   homes_config_initialized: true,

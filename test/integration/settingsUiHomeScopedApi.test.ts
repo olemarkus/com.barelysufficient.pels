@@ -1,3 +1,5 @@
+import { partialDouble } from '../helpers/partialDouble';
+import type { DeviceTransport } from '../../lib/device/deviceTransport';
 // Integration coverage for the `?homeId=` half of the per-home read seam: the
 // three settings-UI endpoints (`ui_plan` / `ui_power` / `ui_devices`) composed
 // against the shared Homey mock. Only the outward seams are mocked — the
@@ -99,6 +101,7 @@ const createMembershipPort = (options: {
 type ScopedApiApp = {
   getModePrioritiesForUi: ReturnType<typeof createFixturePriorityQuery>;
   settingsUiDeviceReads: SettingsUiDeviceReads;
+  deviceManager: DeviceTransport;
   latestTargetSnapshot: Record<string, unknown>[];
   getSettingsUiManagedDevices: () => Record<string, unknown>[];
   getUiPickerDevices: () => Record<string, unknown>[];
@@ -157,6 +160,7 @@ const installBoundary = (options: {
     getUiPickerDevices: () => [],
   });
   const app: ScopedApiApp = pelsHostDouble<ScopedApiApp>({
+    deviceManager: partialDouble<DeviceTransport>({ getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, hasWarmSnapshot: () => true, readInverterControlOptions: () => [] }),
     getModePrioritiesForUi: createFixturePriorityQuery(),
     settingsUiDeviceReads,
     latestTargetSnapshot: [
@@ -253,6 +257,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
         // The solar flags are OMITTED, not fabricated `false` — absence is the
         // only honest value an unservable home can carry.
         expect(getSettingsUiDevicesPayload({ homey, query })).toEqual({
+          inverterDevices: [],
           devices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
         });
 
@@ -327,6 +332,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
       // absence meaning.
       const { homey } = installBoundary({ hasMembership: false });
       expect(getSettingsUiDevicesPayload({ homey, query: { homeId: AREA_ID } })).toEqual({
+        inverterDevices: [],
         devices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
       });
       expect(getSettingsUiPowerPayload({ homey, query: { homeId: AREA_ID } })).toEqual({
@@ -350,6 +356,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
       const { homey } = installBoundary(provisional);
       const query = { homeId: AREA_ID };
       expect(getSettingsUiDevicesPayload({ homey, query })).toEqual({
+        inverterDevices: [],
         devices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
       });
       expect(getSettingsUiPowerPayload({ homey, query })).toEqual({

@@ -17,12 +17,17 @@ describe('native inverter curtailment through the Homey SDK', () => {
   });
   afterEach(async () => { await cleanupApps(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
-  async function boot(exportPrice: number, enabled = true, simulation = false, tank?: MockDevice) {
-    const solar = new MockDevice('pv', 'Roof inverter', ['measure_power', 'meter_power', 'target_power'], 'solarpanel');
+  function createSolar(mode: 'direct' | 'switchable' = 'direct'): MockDevice {
+    const solar = new MockDevice('pv', 'Roof inverter', ['measure_power', 'meter_power', 'target_power',
+      ...(mode === 'switchable' ? ['target_power_mode'] : [])], 'solarpanel');
+    solar.setCapabilityMetadata('target_power', { min: 0, max: 6000, step: 1, setable: true });
+    return solar;
+  }
+
+  async function boot(exportPrice: number, enabled = true, simulation = false, tank?: MockDevice, solar = createSolar()) {
     await solar.setCapabilityValue('measure_power', 5000);
     await solar.setCapabilityValue('meter_power', 42);
-    await solar.setCapabilityValue('target_power', 6000);
-    solar.setCapabilityMetadata('target_power', { min: 0, max: 6000, step: 1, setable: true });
+    if (await solar.getCapabilityValue('target_power') === undefined) await solar.setCapabilityValue('target_power', 6000);
     setMockDrivers({ solar: new MockDriver('solar', tank ? [solar, tank] : [solar]) });
     const settings = mockHomeyInstance.settings;
     settings.set('power_source', 'homey_energy');
@@ -65,7 +70,7 @@ describe('native inverter curtailment through the Homey SDK', () => {
     await app.onInit();
     for (let i = 0; i < 12; i += 1) await vi.advanceTimersByTimeAsync(10_000);
     await drainPending();
-    return { puts, solar, grid: (watts: number) => { gridW = watts; } };
+    return { puts, solar, app, grid: (watts: number) => { gridW = watts; } };
   }
 
   it('caps only excess output and returns the original limit when the export price turns positive', async () => {
@@ -124,4 +129,38 @@ describe('native inverter curtailment through the Homey SDK', () => {
     await drainPending();
     expect(h.puts).toHaveBeenCalledWith(CAP_PATH, { value: 6000 });
   });
+  it('hands an unavailable inverter back instead of dropping its held claim from the plan', async () => {
+    const h = await boot(-0.05);
+    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, { value: 2050 });
+    h.puts.mockClear();
+    h.solar.setAvailable(false);
+    await h.app.refreshTargetDevicesSnapshot();
+    for (let i = 0; i < 5; i += 1) await vi.advanceTimersByTimeAsync(10_000);
+    await drainPending();
+    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, { value: 6000 });
+  });
+
+  it.each([
+    ['larger range', 6000], ['smaller range', 6000], ['mode options', 6000],
+    ['larger range', 0], ['smaller range', 0], ['mode options', 0],
+  ] as const)('restores production after native %s changes with dormant cap %i', async (change, dormantW) => {
+    const solar = createSolar('switchable');
+    await solar.setCapabilityValue('target_power', dormantW);
+    await solar.setCapabilityValue('target_power_mode', 'device');
+    solar.setCapabilityMetadata('target_power_mode', { setable: true, values: [{ id: 'device' }, { id: 'homey' }] });
+    const h = await boot(-0.05, true, false, undefined, solar);
+    const modePath = 'manager/devices/device/pv/capability/target_power_mode';
+    expect(h.puts).toHaveBeenCalledWith(modePath, { value: 'homey' });
+    h.puts.mockClear();
+    if (change !== 'mode options') solar.setCapabilityMetadata('target_power', {
+      min: 0, max: change === 'smaller range' ? 5000 : 7000, step: 1, setable: true,
+    });
+    else solar.setCapabilityMetadata('target_power_mode', { setable: true, values: [{ id: 'device' }, { id: 'homey' }, { id: 'eco' }] });
+    await h.app.refreshTargetDevicesSnapshot();
+    for (let i = 0; i < 5; i += 1) await vi.advanceTimersByTimeAsync(10_000);
+    await drainPending();
+    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, { value: change === 'smaller range' ? 5000 : 6000 });
+    expect(h.puts.mock.calls.filter(([path]) => path === modePath)).toEqual([]);
+  });
+
 });

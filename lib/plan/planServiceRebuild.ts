@@ -293,6 +293,11 @@ async function maybeApplyPlanChanges(
   observationRevision: number,
   outcome: PlanRebuildOutcome,
 ): Promise<void> {
+  // A build declined at the live-revision gate has not completed its hand-backs.
+  Object.assign(outcome, {
+    pendingInverterReleaseCount: plan.inverterDecisions.filter((decision) => decision.kind === 'release').length,
+    inverterReleaseRecoveryReady: host.deps.planEngine.isInverterReleaseRecoveryReady(),
+  });
   if (!shouldApplyPlan(host, plan, changes, isDryRun, observationRevision)) return;
 
   const applyStart = Date.now();
