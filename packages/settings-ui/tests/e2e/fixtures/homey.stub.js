@@ -1925,6 +1925,8 @@
   // required too; a seeded device is a managed one unless the spec says
   // otherwise, which is how the Overview read a device that left it unset.
   const withResolvedIdentity = (device) => ({
+    // The runtime emits this required list even for a relay with no target.
+    targets: [],
     isEvCharger: device.deviceClass === 'evcharger',
     binaryControllable: false,
     isBatteryOrSolar: BATTERY_OR_SOLAR_CLASS_KEYS.has(device.deviceClass),
