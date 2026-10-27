@@ -114,6 +114,7 @@ describe('homeyApiMock', () => {
       await expect(callHomeyApi(homey, 'GET', SETTINGS_UI_DEVICES_PATH))
         .resolves.toEqual({
           devices: [],
+          inverterDevices: [],
           chargerPhasePresets: { state: 'resolved', presets: {} },
           hasManagedSolarDevice: false,
           hasExhibitedExport: false,
@@ -137,6 +138,7 @@ describe('homeyApiMock', () => {
           { available: true, expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } },
           { available: true, expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev-2', name: 'EV', targets: [], binaryControl: { on: false } },
         ]),
+        inverterDevices: [],
         chargerPhasePresets: { state: 'resolved', presets: {} },
         hasManagedSolarDevice: false,
         hasExhibitedExport: false,
@@ -153,6 +155,7 @@ describe('homeyApiMock', () => {
       await expect(callHomeyApi(homey, 'POST', SETTINGS_UI_REFRESH_DEVICES_PATH))
         .resolves.toEqual({
           devices: withDescriptorIdentities<TargetDeviceSnapshot>([{ available: true, expectedPowerKw: 1, expectedPowerSource: 'default', id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } }]),
+          inverterDevices: [],
           chargerPhasePresets: { state: 'resolved', presets: {} },
           hasManagedSolarDevice: false,
           hasExhibitedExport: false,
@@ -173,6 +176,7 @@ describe('homeyApiMock', () => {
           devices: [
             { id: 'legacy-1', name: 'Legacy', targets: [], binaryControl: { on: true } },
           ],
+          inverterDevices: [],
           chargerPhasePresets: { state: 'resolved', presets: {} },
           hasManagedSolarDevice: false,
           hasExhibitedExport: false,
@@ -198,6 +202,7 @@ describe('homeyApiMock', () => {
           devices: withDescriptorIdentities<TargetDeviceSnapshot>([
             { available: true, expectedPowerKw: 1, expectedPowerSource: 'default', id: 'served', name: 'Live', targets: [], binaryControl: { on: false } },
           ]),
+          inverterDevices: [],
           chargerPhasePresets: { state: 'resolved', presets: {} },
           hasManagedSolarDevice: false,
           hasExhibitedExport: false,

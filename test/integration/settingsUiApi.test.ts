@@ -1,3 +1,5 @@
+import type { DeviceTransport } from '../../lib/device/deviceTransport';
+import { partialDouble } from '../helpers/partialDouble';
 import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { pelsHostDouble } from '../helpers/pelsHostDouble';
@@ -281,6 +283,9 @@ describe('settingsUiApi', () => {
       get latestTargetSnapshot() {
         return latestDevices;
       },
+      deviceManager: partialDouble<DeviceTransport>({
+        getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, hasWarmSnapshot: () => true, readInverterControlOptions: () => [],
+      }),
       getSettingsUiManagedDevices: () => latestDevices,
       getUiPickerDevices: () => options.uiPickerDevices ?? [],
       // The payload refresh reads the whole observed record through its own
@@ -356,6 +361,37 @@ describe('settingsUiApi', () => {
     });
     expect(result.prices.combinedPrices).toEqual({ prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] });
     expect(result.prices.homeyCurrency).toBe('NOK');
+  });
+
+  it('resolves never-written inverter settings at the owner, refusing a missing or malformed existing value', async () => {
+    const key = 'inverter_curtailment_devices';
+    const absent = await buildSettingsUiBootstrap({ homey: createHomey() as never });
+    expect(absent.settings.inverter_curtailment_devices).toEqual({});
+    for (const value of [null, { pv: 'yes' }]) {
+      const invalid = await buildSettingsUiBootstrap({ homey: createHomey({ settings: { [key]: value } }) as never });
+      expect(invalid.settings.inverter_curtailment_devices).toBeNull();
+    }
+    const valid = await buildSettingsUiBootstrap({
+      homey: createHomey({ settings: { [key]: { pv: true, invisible: false } } }) as never,
+    });
+    expect(valid.settings.inverter_curtailment_devices).toEqual({ pv: true, invisible: false });
+  });
+
+  it('carries Main inverter controls on ui_devices without adding solar devices to the managed list', () => {
+    const homey = createHomey();
+    Object.assign(homey.app, {
+      deviceManager: partialDouble<DeviceTransport>({
+        getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, hasWarmSnapshot: () => true,
+        readInverterControlOptions: () => [{ id: 'pv-main', name: 'Roof' }, { id: 'pv-area', name: 'Garage' }],
+      }),
+      homeMembership: {
+        filterDevicesForHome: (devices: { id: string }[]) => devices.filter((device) => device.id === 'pv-main'),
+        getHomeIdForDevice: () => MAIN_HOME_ID, isOwnershipReady: () => true,
+        hasPendingOwnershipGeneration: () => false, isDeviceZoneUnknown: () => false,
+      },
+    });
+    expect(getSettingsUiDevicesPayload({ homey: homey as never }).inverterDevices)
+      .toEqual([{ id: 'pv-main', name: 'Roof' }]);
   });
 
   it('serves the running Main simulation posture even when its setting is absent', () => {
@@ -628,6 +664,7 @@ describe('settingsUiApi', () => {
         },
       ],
       // The fixture's trusted app seam reports a warm snapshot with no charger wiring.
+      inverterDevices: [],
       chargerPhasePresets: { state: 'resolved', presets: {} },
       hasManagedSolarDevice: false,
       hasExhibitedExport: false,

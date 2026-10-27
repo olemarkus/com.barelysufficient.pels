@@ -15,6 +15,8 @@ export type PlanActuationResult = {
    * fail-closed pass on such an outcome.
    */
   deviceApplyFailureCount: number;
+  /** Durable inverter hand-backs still awaiting matching device telemetry. */
+  pendingInverterReleaseCount: number;
 };
 
 /**
@@ -23,6 +25,8 @@ export type PlanActuationResult = {
  * the silence escalation, and the rebuild trace (`lib/utils/planRebuildTrace.ts`).
  */
 export type PlanRebuildOutcome = PlanActuationResult & {
+  /** False while durable inverter ownership cannot be resolved at its owner. */
+  inverterReleaseRecoveryReady: boolean;
   buildMs: number;
   changeMs: number;
   snapshotMs: number;

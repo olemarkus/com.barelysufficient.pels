@@ -1,5 +1,5 @@
 import type { InverterDecision } from '../planContract/inverterDecision';
-import type { InverterPlanInput, InverterPlanner } from '../ports/inverterControl';
+import type { InverterControllableInput, InverterPlanInput, InverterPlanner } from '../ports/inverterControl';
 
 export type InverterPlanningSource = {
   inputs(): readonly InverterPlanInput[];
@@ -7,11 +7,11 @@ export type InverterPlanningSource = {
 };
 
 function releasesFor(inputs: readonly InverterPlanInput[]): InverterDecision[] {
-  return inputs.flatMap((input) => input.ownership.kind === 'held'
+  return inputs.flatMap((input) => input.kind === 'hand_back' || input.ownership.kind === 'held'
     ? [{ kind: 'release' as const, deviceId: input.deviceId }] : []);
 }
 
-function ceiling(input: InverterPlanInput): number {
+function ceiling(input: InverterControllableInput): number {
   if (input.ownership.kind === 'free') {
     return input.observation.mode.kind === 'autonomous' ? input.surface.maxW
       : Math.min(input.surface.maxW, input.observation.limit.value);
@@ -35,12 +35,13 @@ export class InverterCurtailmentPlanner implements InverterPlanner {
 
   decide(netImportW: number, nowMs: number): InverterDecision[] {
     const inputs = this.source.inputs();
-    if (!inputs.some((input) => input.enabled)) return releasesFor(inputs);
+    if (!inputs.some((input) => input.kind === 'controllable' && input.enabled)) return releasesFor(inputs);
     const costly = this.source.exportCostly(nowMs);
-    const eligible = inputs.filter((input) => costly && input.enabled
+    const eligible = inputs.filter((input): input is InverterControllableInput => input.kind === 'controllable'
+      && costly && input.enabled
       && !(input.ownership.kind === 'held' && input.ownership.recovering));
     const releases: InverterDecision[] = inputs.flatMap((input) => (
-      !eligible.includes(input) && input.ownership.kind === 'held'
+      input.kind === 'hand_back' || (!eligible.includes(input) && input.ownership.kind === 'held')
         ? [{ kind: 'release' as const, deviceId: input.deviceId }] : []
     ));
     const totalProductionW = eligible.reduce((sum, input) => sum + input.observation.production.value, 0);
@@ -59,7 +60,8 @@ export class InverterCurtailmentPlanner implements InverterPlanner {
       const limitW = Math.min(ceiling(input), Math.ceil(rawW / input.surface.stepW) * input.surface.stepW);
       // Do not take control just to reassert an already unrestricted inverter.
       if (input.ownership.kind === 'free' && limitW >= ceiling(input)) continue;
-      releases.push({ kind: 'limit', deviceId: input.deviceId, limitW, observation: input.observation });
+      releases.push({ kind: 'limit', deviceId: input.deviceId, limitW,
+        binding: input.surface, observation: input.observation });
     }
     return releases;
   }

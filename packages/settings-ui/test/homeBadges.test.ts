@@ -406,6 +406,7 @@ describe('devices list home badges', () => {
       apiHandlers: {
         'GET /ui_devices': () => ({
           devices: THREE_DEVICES,
+          inverterDevices: [],
           chargerPhasePresets: {
             state: 'resolved', presets: { 'easee-1': 'ev_charger_3_phase' },
           },
@@ -414,6 +415,7 @@ describe('devices list home badges', () => {
           refreshes += 1;
           return {
             devices: THREE_DEVICES,
+            inverterDevices: [],
             chargerPhasePresets: refreshes === 1
               ? { state: 'unavailable' }
               : { state: 'resolved', presets: { 'easee-1': 'invalid-preset' } },
@@ -438,6 +440,7 @@ describe('devices list home badges', () => {
       apiHandlers: {
         'GET /ui_devices': () => ({
           devices: THREE_DEVICES,
+          inverterDevices: [],
           chargerPhasePresets: { state: 'unavailable' },
         }),
       },

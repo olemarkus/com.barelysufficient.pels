@@ -216,6 +216,7 @@ export type SettingsUiBootstrapKey =
   | 'pv_forecast_source'
   | 'power_source'
   | 'battery_control_devices'
+  | 'inverter_curtailment_devices'
   | 'mode_catalog_initialized'
   | 'homes_config'
   | 'homes_config_initialized'
@@ -489,6 +490,8 @@ export type SettingsUiDevicesPayload = {
   // type is the point — while the payload merely carried the bag, the settings
   // UI's own device type widened straight back to it and read the raw report.
   devices: SettingsUiDeviceSnapshot[];
+  /** Main-home native solar controls; solar telemetry stays outside `devices`. */
+  inverterDevices: { id: string; name: string }[];
   // Read from the same device list `devices` comes from, unmanaged chargers
   // included (the opt-in it serves happens before a charger is managed). The
   // tagged read keeps an unavailable device snapshot distinct from a trusted

@@ -48,6 +48,7 @@ export type PlanEngineComposition = {
     | 'applyPlanActions'
     | 'hasStablePlanActuation'
     | 'hasInverterWork'
+    | 'isInverterReleaseRecoveryReady'
     | 'handleConfirmedBinaryCommand'
     | 'driftObservationDeps'
     | 'getObservationRevision'
@@ -185,6 +186,8 @@ export class ComposedPlanEngine implements PlanEngine {
   public hasPendingTargetCommands(): boolean {
     return Object.keys(this.state.pendingTargetCommands).length > 0;
   }
+
+  public isInverterReleaseRecoveryReady(): boolean { return this.executor.isInverterReleaseRecoveryReady(); }
 
   public hasPendingTargetCommandsOlderThan(thresholdMs: number): boolean {
     const nowMs = Date.now();

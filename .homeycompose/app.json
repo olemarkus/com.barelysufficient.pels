@@ -586,10 +586,6 @@
     "ui_charging_current_save": {
       "method": "PUT",
       "path": "/ui_charging_current/:deviceId"
-    },
-    "ui_inverter_curtailment": {
-      "method": "GET",
-      "path": "/ui_inverter_curtailment"
     }
   },
   "images": {

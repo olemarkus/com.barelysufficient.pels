@@ -355,7 +355,8 @@ export class DeviceTransport {
     /** Whether ANY home battery is currently detected (incl. offline). */
     hasBatteryDevices(): boolean { return this.observationProducers.battery.hasBatteryDevices(); }
     readInverterControlOptions(): { id: string; name: string }[] {
-        return this.snapshotStore.getSnapshot().filter((device) => device.inverterControl !== undefined)
+        return this.snapshotStore.getSnapshot()
+            .filter((device) => device.inverterControl?.authority === 'limit_and_release')
             .map((device) => ({ id: device.id, name: device.name }));
     }
 

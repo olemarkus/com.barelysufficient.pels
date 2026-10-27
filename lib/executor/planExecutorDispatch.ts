@@ -374,6 +374,7 @@ export const dispatchPlanActions = async (
   const storageResult = await dispatchStorageDecisions(storage, plan);
   return {
     deviceWriteCount,
+    pendingInverterReleaseCount: 0,
     commandRequestCount: commandRequestCount + storageResult.commandRequestCount,
     deviceApplyFailureCount: deviceApplyFailureCount + storageResult.failureCount,
   };

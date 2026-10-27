@@ -1,8 +1,12 @@
 /** Standard Homey solar production cap. Resolved by the device owner. */
-export type InverterControlSurface = {
+export type InverterControlBinding = {
   maxW: number;
   stepW: number;
-  mode: 'direct' | 'switchable';
+} & ({ mode: 'direct' } | { mode: 'switchable'; modeValues: readonly string[] });
+
+/** A retained binding authorizes hand-back, never another production cap. */
+export type InverterControlSurface = InverterControlBinding & {
+  authority: 'limit_and_release' | 'release_only';
 };
 
 /** Independently dated reports; a successful command never updates these. */

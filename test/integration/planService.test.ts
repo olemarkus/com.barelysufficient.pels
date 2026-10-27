@@ -75,7 +75,7 @@ const stubDepsHomey = (parts: { set?: Mock; realtime?: Mock } = {}): PlanService
 const actuation = (counts: Partial<PlanActuationResult> = {}): PlanActuationResult => ({
   deviceWriteCount: 0,
   commandRequestCount: 0,
-  deviceApplyFailureCount: 0,
+  deviceApplyFailureCount: 0, pendingInverterReleaseCount: 0,
   ...counts,
 });
 
@@ -2082,6 +2082,28 @@ describe('PlanService', () => {
     await service.rebuildPlanFromCache('power_delta', { detail: 'test_identical.second' });
 
     expect(applyPlanActions).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports unresolved inverter ownership even when an unchanged plan needs no apply', async () => {
+    const applyPlanActions = vi.fn().mockResolvedValue(actuation());
+    const isInverterReleaseRecoveryReady = vi.fn(() => false);
+    const planEngine = {
+      ...createMockPlanEngine(), buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep')),
+      applyPlanActions, isInverterReleaseRecoveryReady,
+    };
+    const service = new PlanService({
+      ...planServiceDeps(), homey: stubDepsHomey(),
+      planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
+      getPlanDevices: () => [], getSettleDevices: () => [],
+    });
+    await service.rebuildPlanFromCache('power_delta', { detail: 'ownership_read_first' });
+    const unresolved = await service.rebuildPlanFromCache('power_delta', { detail: 'ownership_read_unavailable' });
+    expect(applyPlanActions).toHaveBeenCalledTimes(1);
+    expect(unresolved).toMatchObject({ inverterReleaseRecoveryReady: false,
+      deviceApplyFailureCount: 0, pendingInverterReleaseCount: 0 });
+    isInverterReleaseRecoveryReady.mockReturnValue(true);
+    const recovered = await service.rebuildPlanFromCache('power_delta', { detail: 'ownership_read_recovered' });
+    expect(recovered.inverterReleaseRecoveryReady).toBe(true);
   });
 
   // A rebuild whose ACTION signature is unchanged must still actuate when the
