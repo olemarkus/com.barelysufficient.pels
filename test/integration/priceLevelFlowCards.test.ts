@@ -148,6 +148,7 @@ describe('Price level flow cards', () => {
     planService.updatePelsStatus({
       meta: buildPlanMeta({ totalKw: 0, softLimitKw: 0, headroomKw: 0 }),
       devices: [],
+      inverterDecisions: [],
       storageReleases: [],
     });
 

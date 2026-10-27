@@ -71,7 +71,7 @@ import {
   invalidateApiCacheForScopedHomes,
   invalidateSettingCache,
 } from './homey.ts';
-import { reloadPriceConfigSettings } from './priceConfig.ts';
+import { notifyInverterCurtailmentSettingChanged, reloadPriceConfigSettings } from './priceConfig.ts';
 import { refreshBudgetAdjust } from './budgetAdjustController.ts';
 import { refreshDailyBudgetPlan } from './dailyBudget.ts';
 import {
@@ -474,6 +474,7 @@ export const createSettingsUnsetHandler = () => (key: string) => {
   // Clears `unset` the per-device key; reload objectives so a cleared task drops out
   // of an already-open WebView (Homey may deliver clears as an unset event).
   invalidateSettingCache(key);
+  notifyInverterCurtailmentSettingChanged(key);
   // Main capacity settings retain the runtime's last-good values when absent.
   // Route the bare key through the full loader so it can preserve and repaint
   // that posture instead of fabricating a boot default.
@@ -554,6 +555,7 @@ const reloadDeviceSettingIfKey = (key: string): void => {
 
 export const createSettingsSetHandler = () => (key: string) => {
   invalidateSettingCache(key);
+  notifyInverterCurtailmentSettingChanged(key);
 
   reloadObjectivesIfObjectiveKey(key, 'settings.set');
   reloadActivePlansIfActivePlansKey(key, 'settings.set');

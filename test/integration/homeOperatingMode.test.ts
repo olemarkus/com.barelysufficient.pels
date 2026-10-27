@@ -95,6 +95,7 @@ const buildRig = (): Rig => {
     // Built with the device transport in production, before the settings handler.
     externalOffHold: createExternalOffHoldPolicy(homeyLike.settings),
     deviceManager: {
+requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
       getSnapshot: () => [],
       getBinaryCommandConfirmationSnapshot: () => [],
       getAssociatedCar: () => undefined,

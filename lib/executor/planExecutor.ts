@@ -94,6 +94,7 @@ export type PlanExecutorDeps = ShortfallExecutorDeps & ExecutorDeviceReadDeps & 
    * no storage lane at all.
    */
   storageLane: StorageLaneBinding;
+  inverterLane: import('../ports/inverterControl').InverterExecution;
 };
 
 export class PlanExecutor {
@@ -334,6 +335,10 @@ export class PlanExecutor {
     });
   }
 
+  public hasInverterWork(plan: DevicePlan): boolean {
+    return this.deps.inverterLane.hasWork(plan.inverterDecisions);
+  }
+
   public async handleShortfall(deficitKw: number): Promise<void> {
     await this.shortfallExecutor.handleShortfall(deficitKw);
   }
@@ -347,12 +352,25 @@ export class PlanExecutor {
       return { deviceWriteCount: 0, commandRequestCount: 0, deviceApplyFailureCount: 0 };
     }
 
+    if (this.deps.getCapacityDryRun()) {
+      const release = await this.deps.inverterLane.apply(
+        plan.inverterDecisions.filter((decision) => decision.kind === 'release'),
+      );
+      return { deviceWriteCount: 0, commandRequestCount: release.commandRequestCount,
+        deviceApplyFailureCount: release.failureCount };
+    }
+
     this.nonCapacityHoldShedIds = new Set(
       plan.devices.filter((device) => device.nonCapacityHoldShed === true).map((device) => device.id),
     );
     this.controlPersistenceBatchDepth += 1;
     try {
-      return await dispatchPlanActions(this.ctx, plan, readExecutorDevices(this.deps), this.storage);
+      const result = await dispatchPlanActions(this.ctx, plan, readExecutorDevices(this.deps), this.storage);
+      const inverterResult = await this.deps.inverterLane.apply(plan.inverterDecisions);
+      return { ...result,
+        commandRequestCount: result.commandRequestCount + inverterResult.commandRequestCount,
+        deviceApplyFailureCount: result.deviceApplyFailureCount + inverterResult.failureCount,
+      };
     } finally {
       this.controlPersistenceBatchDepth = Math.max(0, this.controlPersistenceBatchDepth - 1);
       this.flushLastControlledPersistence();

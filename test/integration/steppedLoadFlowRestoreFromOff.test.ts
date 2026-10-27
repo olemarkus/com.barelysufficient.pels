@@ -1,3 +1,4 @@
+import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
 import { withDeviceConfiguration } from '../utils/planTestUtils';
 /**
  * Flow-boundary integration coverage for flow-backed stepped-load
@@ -184,6 +185,7 @@ const buildRestoreTo6aPlan = (
       binaryControl: { on: false },
     }),
   ],
+  inverterDecisions: [],
   storageReleases: [],
 });
 
@@ -215,6 +217,7 @@ const buildRunningTo8aPlan = (decorated: DecoratedDeviceSnapshot): DevicePlan =>
       binaryControl: { on: true },
     }),
   ],
+  inverterDecisions: [],
   storageReleases: [],
 });
 
@@ -288,6 +291,7 @@ const buildHarness = (
     getObservationRevision: () => 0,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     actuator: createDeviceActuator({
+requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
       canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId, desired) => desired,
       requestBinaryControl: async (deviceId, desired) => {
@@ -313,6 +317,7 @@ const buildHarness = (
     getSteppedLoadCommandSession: (deviceId) => helpers.getSteppedLoadCommandSession(deviceId),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
     storageLane: { kind: 'none' },
+    inverterLane: NO_INVERTER_EXECUTION,
   };
   return {
     executor: new PlanExecutor(deps, state),

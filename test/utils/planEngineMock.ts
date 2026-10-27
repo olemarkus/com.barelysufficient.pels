@@ -48,6 +48,7 @@ export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
       softLimitKw: 0,
       headroomKw: 0}),
     devices: [],
+    inverterDecisions: [],
     storageReleases: [],
   } satisfies DevicePlan),
   computePhysicalPowerLimit: vi.fn(() => 0),

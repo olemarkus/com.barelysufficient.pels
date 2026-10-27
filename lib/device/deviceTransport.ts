@@ -354,6 +354,15 @@ export class DeviceTransport {
     }
     /** Whether ANY home battery is currently detected (incl. offline). */
     hasBatteryDevices(): boolean { return this.observationProducers.battery.hasBatteryDevices(); }
+    readInverterControlOptions(): { id: string; name: string }[] {
+        return this.snapshotStore.getSnapshot().filter((device) => device.inverterControl !== undefined)
+            .map((device) => ({ id: device.id, name: device.name }));
+    }
+
+    requestProductionControl(command: import('../ports/inverterControl').InverterCommand): Promise<void> {
+        return this.writeService.requestProductionControl(command);
+    }
+
     /** Whether `deviceId` is a currently-detected solar device (incl. offline). */
     isSolarDevice(id: string): boolean { return this.observationProducers.solar.isSolarDevice(id); }
     /**

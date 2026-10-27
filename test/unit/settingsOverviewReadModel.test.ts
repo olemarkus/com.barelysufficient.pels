@@ -73,6 +73,7 @@ describe('settingsOverviewReadModel', () => {
         capacityLimitKw: 5,
         dailyBudgetHourKWh: 12}),
       devices: [device],
+      inverterDecisions: [],
       storageReleases: [],
     }, absentTemperature);
 
@@ -137,6 +138,7 @@ describe('settingsOverviewReadModel', () => {
         capacityLimitKw: 5,
         dailyBudgetHourKWh: 12}),
       devices: [heater, battery, solar],
+      inverterDecisions: [],
       storageReleases: [],
     }, absentTemperature);
 
@@ -162,6 +164,7 @@ describe('settingsOverviewReadModel', () => {
         capacityLimitKw: 5,
         dailyBudgetHourKWh: 4.25}),
       devices: [device],
+      inverterDecisions: [],
       storageReleases: [],
     }, absentTemperature);
 
@@ -525,7 +528,7 @@ describe('settingsOverviewReadModel', () => {
 
   it('anchors a countdown to the decision when refreshing presentation later', () => {
     const device = buildPlanDevice({ reason: { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: 42 } });
-    const wire = buildPlan({ generatedAtMs: 1_000, meta: buildPlanMeta({}), devices: [device], storageReleases: [] }, {
+    const wire = buildPlan({ generatedAtMs: 1_000, meta: buildPlanMeta({}), devices: [device], inverterDecisions: [], storageReleases: [] }, {
       ...overviewReadModelWiring(),
       ...absentTemperature, dryRun: false, nowMs: 11_000,
       getDeviceExecutionState: () => executionStateFixture(device),
@@ -791,6 +794,7 @@ describe('settingsOverviewReadModel home battery card', () => {
         batteryDevice({ kind: 'relief' }),
         buildPlanDevice({ id: 'pv-1', name: 'Roof', isBatteryOrSolar: true }),
       ],
+      inverterDecisions: [],
       storageReleases: [],
     }, battery());
     expect(readModel?.devices?.map((device) => device.id)).toEqual(['battery-1']);

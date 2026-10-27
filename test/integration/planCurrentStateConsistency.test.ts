@@ -55,6 +55,7 @@ const buildPlan = (
     binaryCapabilityId: 'onoff',
     ...overrides,
   }))) as DevicePlanDevice],
+  inverterDecisions: [],
   storageReleases: [],
 });
 

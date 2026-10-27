@@ -272,7 +272,7 @@ function shouldApplyPlan(
   isDryRun: boolean,
   observationRevision: number,
 ): boolean {
-  if (isDryRun) return false;
+  if (isDryRun) return plan.inverterDecisions.some((decision) => decision.kind === 'release');
   if (changes.actionChanged) return true;
   if (host.deps.planEngine.shouldApplyStablePlanActions(plan)) return true;
   return host.deps.planEngine.hasExecutionWorkOutstanding(plan, observationRevision);

@@ -452,6 +452,10 @@ export class PriceCoordinator {
     return this.deps.priceDataStore.readCombinedRaw();
   }
 
+  isExportCostly(nowMs: number): boolean {
+    try { return this.priceService.isExportCostly(nowMs); } catch { return false; }
+  }
+
   getCombinedHourlyPrices(): CombinedHourlyPrice[] {
     return this.priceService.getCombinedHourlyPrices();
   }

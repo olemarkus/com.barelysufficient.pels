@@ -666,7 +666,7 @@ describe('surplus by priority without a battery (byte-identity)', () => {
     const withoutBattery = (plan: DevicePlan): string => JSON.stringify({
       meta: plan.meta,
       devices: plan.devices.filter((device) => device.id !== 'battery'),
-      storageReleases: plan.storageReleases,
+      inverterDecisions: [], storageReleases: plan.storageReleases,
     });
     const run = async (battery: PlanInputDevice[]) => {
       vi.setSystemTime(new Date('2026-07-01T10:30:00.000Z'));
@@ -724,6 +724,7 @@ const buildExecutorCtx = (snapshot: TargetDeviceSnapshot, state: PlanEngineState
     readDevice: observation.getSnapshotByDeviceId,
     getObservedState: observation.getSnapshotByDeviceId,
     actuator: createDeviceActuator({
+requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
       canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId, desired) => desired,
       requestSteppedLoadStep: async () => ({ requested: false }),

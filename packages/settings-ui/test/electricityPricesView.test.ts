@@ -66,6 +66,7 @@ const buildProps = (
   config: Partial<PriceConfigState> = {},
   overrides: Partial<ElectricityPricesViewProps> = {},
 ): ElectricityPricesViewProps => ({
+  inverterControl: { read: null, busy: false, error: '', onEnabledChange: () => {}, onRetry: () => {} },
   config: buildConfig(config),
   handlers: buildHandlers(),
   gridCompanyOptions: [

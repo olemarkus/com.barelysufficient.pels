@@ -36,6 +36,7 @@ export const isStarvationSupportedDeviceClass = (deviceClass: string): boolean =
 
 const resolveConfiguration = (snapshot: TransportDeviceSnapshot): DeviceConfigurationRead => {
   const fields = {
+    inverterControl: snapshot.inverterControl,
     id: snapshot.id,
     name: snapshot.name,
     controlAdapter: snapshot.controlAdapter,

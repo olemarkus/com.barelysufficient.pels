@@ -74,6 +74,7 @@ export const buildDeviceActuator = (ctx: AppContext): Actuator | null => {
   const transport = ctx.deviceManager;
   if (!transport) return null;
   const actuatorTransport: ActuatorTransport = {
+    requestProductionControl: (command) => transport.requestProductionControl(command),
     canTurnOnDevice: (deviceId) => transport.canTurnOnDevice(deviceId),
     requestBinaryControl: (deviceId, desired) => transport.requestBinaryControl(
       deviceId,

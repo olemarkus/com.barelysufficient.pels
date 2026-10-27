@@ -1,3 +1,4 @@
+import { updateInverterObservation } from './solarInverterObservation';
 /** Reconciles pushed capability values into transport state and observer events. */
 import { formatBinaryState, formatTargetValue } from './managerRealtimeSupport';
 import { applyFreshnessOnlyCapabilityUpdate } from './managerFreshness';
@@ -333,6 +334,10 @@ function handleObservedOnlyCapabilityUpdate(
     capabilityId: string,
     value: unknown,
 ): boolean {
+    if (updateInverterObservation(snapshot, capabilityId, value, Date.now())) {
+        dispatchRealtimeObservation(ingest, snapshot.id, capabilityId);
+        if (capabilityId !== 'measure_power') return true;
+    }
     const nextCursor = (id: string) => ingest.observationBridge.nextCursor(id);
     const dispatchStateChanged = (event: ObservedStateChangedEvent) => (
         ingest.observationBridge.dispatchStateChanged(event)

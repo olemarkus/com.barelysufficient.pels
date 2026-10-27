@@ -60,6 +60,7 @@ import {
 import { applyStorageHandBacks, applyStorageLimits, withoutStorageWithheld } from './battery/storageLimit';
 import { buildSheddingDeps, SilentMeterPlanBuilder } from './planBuilderSilentMeter';
 import {
+  retainSolarWhileDemandSettles,
   resolvePostureExcludeIds,
   runStandingPostureHolds,
   withHeldOffOnRelease,
@@ -389,6 +390,10 @@ export class PlanBuilder {
     return {
       meta,
       devices: decidedDevices,
+      inverterDecisions: retainSolarWhileDemandSettles(
+        this.deps.inverterCurtailment.decide(power.drawKw * 1000, nowTs),
+        this.state, decidedDevices, restoreResult.restoredThisCycle,
+      ),
       storageReleases: collectAbsentStorageReleases(decidedDevices, storageRelief),
     };
   }

@@ -7,6 +7,10 @@ import type { HomeyDeviceLike } from './lib/utils/types';
 import { normalizeError } from './lib/utils/errorUtils';
 import { ApiRequestError } from './lib/utils/apiRequestError';
 import { hasPowerCapability } from './lib/device/transport/managerParse';
+import { MAIN_HOME_ID } from './lib/utils/settingsKeys';
+import {
+  INVERTER_CURTAILMENT_DEVICES, parseInverterCurtailmentDevices,
+} from './packages/shared-domain/src/settings/inverterCurtailment';
 import { readCarAssociationCandidatesFromHomey } from './lib/device/settingsUiDeviceReads';
 import { readHubMarket } from './lib/home/hubMarket';
 import { WEB_APP_CLOUD_HOST } from './packages/shared-domain/src/settings/settingsKeys';
@@ -197,6 +201,20 @@ export = {
   ui_bootstrap: withApiLogging('ui_bootstrap', ({ homey }: ApiContext) => (
     buildSettingsUiBootstrap({ homey })
   )),
+  ui_inverter_curtailment: withApiLogging('ui_inverter_curtailment', ({ homey }: ApiContext) => {
+    const host = readPelsHost(homey);
+    const transport = host?.deviceManager;
+    const membership = host?.homeMembership;
+    if (!transport || !membership || !transport.hasWarmSnapshot()) throw new Error(STARTING);
+    const saved: unknown = homey.settings.get(INVERTER_CURTAILMENT_DEVICES);
+    const keys = homey.settings.getKeys();
+    const selected = saved == null && !keys.includes(INVERTER_CURTAILMENT_DEVICES)
+      ? {} : parseInverterCurtailmentDevices(saved);
+    if (selected === null) throw new Error('Inverter settings could not be read.');
+    return {
+      devices: membership.filterDevicesForHome(transport.readInverterControlOptions(), MAIN_HOME_ID), selected,
+    };
+  }),
   // The three `?homeId=`-aware reads. The app-API transport hands every handler
   // `{ query, params, body }` alongside `homey` (the same seam `body` already
   // arrives on for ui_homes_save); `setup/settingsUiHomeScope.ts` owns the

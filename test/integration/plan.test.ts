@@ -69,6 +69,7 @@ const binaryShedPlan = (id: string, name: string): DevicePlan => ({
     controllable: true,
     reason: fixtureDeviceReason('shed due to capacity'),
   })],
+  inverterDecisions: [],
   storageReleases: [],
 });
 
@@ -1304,6 +1305,7 @@ describe('Device plan snapshot', () => {
           reason: fixtureDeviceReason('keep'),
         }),
       ],
+      inverterDecisions: [],
       storageReleases: [],
     };
 
@@ -1867,6 +1869,7 @@ describe('Device plan snapshot', () => {
           reason: fixtureDeviceReason('keep'),
         }),
       ],
+      inverterDecisions: [],
       storageReleases: [],
     };
 
@@ -1917,6 +1920,7 @@ describe('Device plan snapshot', () => {
           reason: fixtureDeviceReason('keep'),
         }),
       ],
+      inverterDecisions: [],
       storageReleases: [],
     };
 
@@ -3193,11 +3197,13 @@ describe('Dry run mode', () => {
 
     mockHomeyInstance.settings.set('capacity_limit_kw', 10);
     mockHomeyInstance.settings.set('capacity_margin_kw', 0.3);
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1 } });
     setManagedControllableDevices({ 'dev-1': true });
 
-    const app = createApp();
+    const app = createApp({ withoutPowerMeasurement: true });
     await app.onInit();
+    expect(await dev1.getCapabilityValue('onoff')).toBe(false);
 
     // Set a soft limit of 6.5 kW
     steerCapacityPace(app, 6.5);
@@ -3211,8 +3217,11 @@ describe('Dry run mode', () => {
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     app.planEngine.state.actuation.lastRestoreMs = null;
 
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+
     // Report 4.3 kW power - gives 2.2 kW headroom (6.5 - 4.3 = 2.2)
     await app['powerSamplePipeline'].recordPowerSample(4300);
+    await flushPromises();
 
     const plan = getLatestPlanSnapshotForTests();
     const dev1Plan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
@@ -3220,22 +3229,16 @@ describe('Dry run mode', () => {
     expect(dev1Plan.currentState).toBe('off');
     expect(reasonText(dev1Plan.reason)).toBe('keep');
 
-    // Now try to apply the plan
-    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
-
-    await app.planEngine.applyPlanActions(plan);
-
     // The device should be restored because:
     // - Headroom: 2.2 kW
     // - Device needs: 1.3 kW (+ buffers ~1.6 kW)
     // - 2.2 > 1.6, so there's enough headroom
-    // But the 50% budget (1.1 kW) blocks it because 1.3 > 1.1
     const restoreCall = putSpy.mock.calls.find(
       (call) => call[0] === 'manager/devices/device/dev-1/capability/onoff' && (call[1] as { value?: unknown } | undefined)?.value === true,
     );
 
-    // This SHOULD pass but will FAIL due to the 50% budget bug
     expect(restoreCall).toBeDefined();
+    expect(await dev1.getCapabilityValue('onoff')).toBe(true);
   });
 
   it('restores when headroom meets minimum hysteresis with small margin', async () => {
@@ -3521,6 +3524,7 @@ describe('Dry run mode', () => {
           expectedPowerKw: 0.2,
         }),
       ],
+      inverterDecisions: [],
       storageReleases: [],
     };
 
@@ -3574,6 +3578,7 @@ describe('Dry run mode', () => {
           controllable: true,
         }),
       ],
+      inverterDecisions: [],
       storageReleases: [],
     };
 
@@ -3634,6 +3639,7 @@ describe('Dry run mode', () => {
           controllable: true,
         }),
       ],
+      inverterDecisions: [],
       storageReleases: [],
     };
 
@@ -3682,6 +3688,7 @@ describe('Dry run mode', () => {
           reason: fixtureDeviceReason('shed due to capacity'),
         }),
       ],
+      inverterDecisions: [],
       storageReleases: [],
     };
 

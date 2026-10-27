@@ -258,6 +258,29 @@ export class DeviceWriteService {
     return { kind: 'written', setpointW };
   }
 
+  /** Native solar production caps and their hand-back, without synthetic telemetry. */
+  async requestProductionControl(command: import('../../ports/inverterControl').InverterCommand): Promise<void> {
+    const snapshot = this.snapshotStore.getSnapshotByDeviceId(command.deviceId);
+    if (!snapshot?.inverterControl || snapshot.available === false) throw new Error('Inverter is unavailable.');
+    const { deviceId } = command;
+    const surface = snapshot.inverterControl;
+    if (command.kind === 'production_limit') {
+      if (surface.mode === 'switchable' && snapshot.inverterObservation?.mode.kind !== 'controlled') {
+        await this.setCapability(deviceId, 'target_power_mode', 'homey');
+      }
+      await this.setCapability(deviceId, 'target_power', command.limitW);
+    } else {
+      const previousMode = command.claim.previousMode;
+      if ((surface.mode === 'direct') !== (previousMode.kind === 'direct')) {
+        throw new Error('The inverter control binding changed before hand-back.');
+      }
+      await this.setCapability(deviceId, 'target_power', command.claim.previousLimitW);
+      if (previousMode.kind !== 'direct') {
+        await this.setCapability(deviceId, 'target_power_mode', previousMode.value);
+      }
+    }
+  }
+
   /**
    * Hand a battery back: `target_power` 0 first, so the battery is idle before
    * anyone else holds it, then the claim capability is restored to the value

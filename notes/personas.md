@@ -221,8 +221,10 @@ flips the objective from "minimize grid draw under a cap" to "soak up my own
 surplus"), which is why it earns its own persona once solar lands rather than
 folding into Cost/Climate. The first solar surfaces have now **shipped** (see the
 Today column below), so this is no longer a pure placeholder — but the headline
-*self-consumption maximiser* (export-to-zero, inverter control) is still
-roadmap. A home battery PELS can set the power of is now controlled (Main home):
+*self-consumption maximiser* (export-to-zero) is still roadmap. Native inverter
+control now reduces excess production when the configured export value is
+negative, with an explicit opt-in under Electricity prices. A home battery PELS
+can set the power of is now controlled (Main home):
 it takes surplus and is limited at its own place in the priority order (last
 by default: it stores what the willing devices leave, and covers the house
 before any device is limited), and is handed back to its own mode through the
@@ -239,15 +241,14 @@ NL (net-metering phase-out) and DE; nascent in NO.
 | Budget | Solar-aware budget (own production isn't "spend"). | ✅ — net-import budget, `Before solar:` split, `Export price now` subline, and planning-price scheduling that steers flexible load into sunny hours. |
 | Usage | kWh self-consumed vs exported. | ✅ — the Solar card shows Produced · Used at home (kWh + %) · Exported, plus `Grid cost avoided` / `Earned from export` (today-only). |
 | Smart tasks | "Charge from your own surplus by deadline." | ✅ — the planning price steers deadline EV/heat load into surplus hours, and the create-task preview draws its price curve at that same price. A charger can also match surplus directly (`Charge on solar surplus`); while a smart task is active, the task decides when the device runs (owner ruling 2026-09-25). |
-| Settings | PV/inverter source + self-consume-vs-price honesty when they conflict. | ◐ — export-price config (share % / fixed) + the `using your solar` reason line on the Budget and smart-task charts + surplus-outranks-price honesty all ship; the inverter stays read-only (auto-detected, not a source picker); battery control and takeover opt-out ship: a Main-home battery appears as a regular device with Managed as its off switch, its own Overview card, and a place in the priority order; a meter area's battery is not controlled. |
+| Settings | PV/inverter source + self-consume-vs-price honesty when they conflict. | ◐ — export-price config (share % / fixed) + the `using your solar` reason line on the Budget and smart-task charts + surplus-outranks-price honesty all ship; solar production is auto-detected, and compatible native inverter production limits are opt-in under Electricity prices to avoid paying to export; battery control and takeover opt-out ship: a Main-home battery appears as a regular device with Managed as its off switch, its own Overview card, and a place in the priority order; a meter area's battery is not controlled. |
 
 > The first solar surfaces have shipped, so `pels-ux-fit` **may** now grade the
 > solar surfaces (Usage Solar card, Overview "Solar now" subline, per-device
 > "Use solar surplus" control, export-price settings) against this persona.
 > **Still roadmap** (keep as untrimmed needs, do not grade as served): the
 > export-to-zero self-consumption maximiser, a self-consumption-rate **KPI**
-> surfaced as a headline number, month-by-month solar-money history, and any
-> inverter **control**.
+> surfaced as a headline number, and month-by-month solar-money history.
 
 ---
 
@@ -336,8 +337,9 @@ persona ordering. P0/P1 weight goes to the highest-emotion, least-served cells
 6. **Solar self-consumption** (Prosumer) — the first surfaces shipped (Usage Solar
    card, Overview "Solar now" subline, "Use solar surplus" boost, export-price
    config + planning-price scheduling, and home-battery charge from surplus and
-   discharge on its turn in the priority order); the export-to-zero **maximiser**, a
-   self-consumption-rate KPI, month-money history, and inverter control remain.
+   discharge on its turn in the priority order, plus native inverter limits when
+   export costs money); the export-to-zero **maximiser**, a self-consumption-rate
+   KPI, and month-money history remain.
    *roadmap (partially shipped).*
 
 ---

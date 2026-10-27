@@ -119,7 +119,8 @@ const STATE_OF_CHARGE_CLASS_KEYS: ReadonlySet<string> = new Set(['evcharger', 'b
  * as one. A home battery's `target_power` is read only to classify how PELS
  * could drive it (`batteryControlWiring.ts`), and that reads the declared
  * options, not the value: a battery whose setpoint Homey never set is still
- * readable.
+ * readable. A panel's production-cap reports are accepted separately by
+ * `solarInverterObservation.ts`, retaining accepted reports on a missing read.
  *
  * Its claim capability is outside this all-or-nothing contract, though its
  * value and stamp ARE read: they are resolved at their own boundary

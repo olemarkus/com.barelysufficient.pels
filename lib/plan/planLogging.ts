@@ -276,6 +276,8 @@ export function buildPlanSignature(plan: DevicePlan): string {
   return JSON.stringify(
     [
       ...plan.devices.map((device) => buildPlanSignatureDevice(device)),
+      ...plan.inverterDecisions.map((decision) => decision.kind === 'limit'
+        ? { kind: decision.kind, deviceId: decision.deviceId, limitW: decision.limitW } : decision),
       ...plan.storageReleases.map((intent) => ({
         id: intent.deviceId, storageDecision: { kind: 'release', reason: intent.reason },
       })),

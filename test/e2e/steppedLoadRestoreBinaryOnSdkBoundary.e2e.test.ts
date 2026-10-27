@@ -1,3 +1,4 @@
+import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
 import { withDeviceConfiguration } from '../utils/planTestUtils';
 /**
  * SDK-boundary e2e: drives the REAL PELS executor pipeline (PlanExecutor →
@@ -194,6 +195,7 @@ const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) 
     // Route step writes through the actuator over the SAME device-manager stepped
     // method, preserving the SDK-boundary behavior this e2e asserts.
     actuator: createDeviceActuator({
+requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
       canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId, desired) => desired,
       requestBinaryControl: async (deviceId, desired) => {
@@ -219,6 +221,7 @@ const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) 
     }),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
     storageLane: { kind: 'none' },
+    inverterLane: NO_INVERTER_EXECUTION,
   };
   return {
     executor: new PlanExecutor(deps, state),
@@ -266,6 +269,7 @@ const buildRestoreToLowPlan = (): DevicePlan => ({
     desiredStepId: 'low',
     reason: KEEP_REASON,
   })))) as DevicePlan['devices'][number]],
+  inverterDecisions: [],
   storageReleases: [],
 });
 

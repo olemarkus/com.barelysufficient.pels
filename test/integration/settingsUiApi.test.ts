@@ -37,7 +37,7 @@ describe('settingsUiApi', () => {
   const overviewFixture = (
     device: Parameters<typeof executionStateFixture>[0],
     meta = buildPlanMeta(),
-  ) => buildSettingsOverviewReadModel({ generatedAtMs: 123456789, meta, devices: [device], storageReleases: [] }, {
+  ) => buildSettingsOverviewReadModel({ generatedAtMs: 123456789, meta, devices: [device], inverterDecisions: [], storageReleases: [] }, {
     ...overviewReadModelWiring(),
     nowMs: 123456789,
     dryRun: false,

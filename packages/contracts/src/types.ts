@@ -373,6 +373,8 @@ export type BinaryControlObservation = {
  * as the join key.
  */
 export type DeviceDescriptor = {
+    /** A native solar production cap, independent of load control. */
+    inverterControl?: import('./inverterControl.js').InverterControlSurface;
     id: string;
     name: string;
     /**
@@ -1022,6 +1024,7 @@ export type HomeBatteryObservedProbe = {
 
 /** Observer-maintained value after transport has projected every observed cluster. */
 export type ProjectedObservedDeviceState = ObservedDeviceState
+    & { inverterObservation?: import('./inverterControl.js').InverterObservation }
     & EvObservedProbe
     & ThermostatModeObservedProbe
     & TemperatureObservedProbe

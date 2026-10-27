@@ -87,4 +87,5 @@ export type TransportDeviceSnapshot =
   & StateOfChargeObservedProbe & MeasuredPowerObservedProbe
   & SteppedLoadDescriptorProbe & ReportedStepObservedProbe
   & HomeBatteryDescriptorProbe & HomeBatteryObservedProbe
-  & TransportControlBindingProbe;
+  & TransportControlBindingProbe
+  & { inverterObservation?: import('../../packages/contracts/src/inverterControl').InverterObservation };

@@ -22,6 +22,7 @@ import type { ResolveTemperatureSetpoints } from '../../packages/planner-types/s
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 
 export type PlanBuilderDeps = {
+  inverterCurtailment: import('../ports/inverterControl').InverterPlanner;
   setCapacityInShortfall: (inShortfall: boolean) => void;
   /** Per-home dry-run posture — the same fact `shouldApplyPlan` consults
    * before actuating. */

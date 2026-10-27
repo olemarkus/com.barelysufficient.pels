@@ -58,6 +58,7 @@ import type {
 } from './managerParseDevice';
 import { resolveDevicePowerState } from './managerParsePowerState';
 import { resolveLastFreshDataMs } from './managerParseFreshness';
+import { withInverterParseFields } from './solarInverterObservation';
 import { withHomeBatteryParseFields } from './homeBatteryObservation';
 import {
     resolveTargetDeviceType,
@@ -306,7 +307,10 @@ export function assembleDeviceSnapshot(params: {
         lastFreshDataMs,
         lastUpdated: lastFreshDataMs,
     };
-    return withHomeBatteryParseFields(parsed, effectiveDevice, deviceClassKey, overlay, previousSnapshot);
+    return withInverterParseFields(
+        withHomeBatteryParseFields(parsed, effectiveDevice, deviceClassKey, overlay, previousSnapshot),
+        effectiveDevice, overlay.capabilityObj, previousSnapshot,
+    );
 }
 
 function resolveParsedDeviceSettings(
