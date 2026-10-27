@@ -34,13 +34,14 @@ const overviewLogDevice = (
 ): OverviewLogDevice => asOverviewLogDevice(buildPlanDevice(overrides));
 
 // The signature with the device's own reason, as the log compares it outside a countdown wait.
-const signatureOf = (device: OverviewLogDevice): string => (
-  buildSignatureWithReason(device, buildLoggedReasonShape(device.status.reason)));
+const signatureOf = (
+  device: OverviewLogDevice, reasonCode: OverviewDecisionFacts['reasonCode'] = 'keep', stepCommandUnanswered = false,
+): string => buildSignatureWithReason(device, buildLoggedReasonShape(device.status, { reasonCode, stepCommandUnanswered }));
 
 // The debug event's decision facts; these tests assert the presented fields.
 const decision: OverviewDecisionFacts = {
   reasonCode: 'keep', plannedState: 'keep', desiredStepId: null, observedStepId: null,
-  binaryProgress: 'settled', stepProgress: 'undriven', targetProgress: 'undriven',
+  binaryProgress: 'settled', stepProgress: 'undriven', targetProgress: 'undriven', stepCommandUnanswered: false,
 };
 
 describe('buildOverviewSignatureForDevice', () => {
@@ -97,6 +98,16 @@ describe('buildOverviewSignatureForDevice', () => {
     expect(signatureOf(otherCause)).not.toBe(signatureOf(base));
   });
 
+  it('ignores a hold length reworded as it passes an hour', () => {
+    // Prod 2026-10-26: "Held 1 h 59 min" → "Held 2 h" → "Held 2 h 1 min", a row each.
+    const held = (text: string) => withStatus(overviewLogDevice(), { kind: 'held', label: 'Limited · Off',
+      reason: { text } });
+    const before = signatureOf(held('Held 1 h 59 min — 1.0 kW more needed'));
+    expect(signatureOf(held('Held 2 h — 1.0 kW more needed'))).toBe(before);
+    expect(signatureOf(held('Held 2 h 1 min — 1.1 kW more needed'))).toBe(before);
+    expect(signatureOf(held('Held 45 min — 1.1 kW more needed'))).toBe(before);
+  });
+
   it('treats a countdown re-anchored on a later rebuild as the same countdown', () => {
     const countdown = { kind: 'in_text' as const, endsAtMs: 60_000, totalSec: 60,
       prefix: 'Waiting after limiting a device (', suffix: ')' };
@@ -126,6 +137,26 @@ describe('what the activity log keeps of a device PELS leaves on, and of a count
       .not.toBe(signatureOf(resting));
     expect(signatureOf(withStatus(resting, { kind: 'held', tone: 'held', label: 'Limited' })))
       .not.toBe(signatureOf(resting));
+  });
+
+  it('records no row for a running device waiting to step up', () => {
+    // Prod 2026-10-26: a water heater running at Low gained and lost "Waiting to
+    // increase — other devices are ahead" every minute or two.
+    const running = withStatus(overviewLogDevice(), { kind: 'active', tone: 'active', label: 'Running' });
+    const waiting = withStatus(running, { reason: { text: 'Waiting to increase — other devices are ahead' } });
+    expect(signatureOf(waiting, 'waiting_for_other_devices')).toBe(signatureOf(running));
+    // The same wait on a held device is a reason, kept as the wait for power.
+    const held = withStatus(waiting, { kind: 'held', tone: 'held', label: 'Limited · Low' });
+    expect(signatureOf(held, 'waiting_for_other_devices'))
+      .toBe(signatureOf(withStatus(held, { reason: { text: 'Waiting to increase — 1.6 kW more needed' } }), 'capacity'));
+    expect(signatureOf(held, 'waiting_for_other_devices'))
+      .not.toBe(signatureOf(withStatus(held, { reason: { text: 'Waiting for cheaper hours' } }), 'deferred_objective_avoid'));
+    // A step command the device never answered replaces the wait on the card, and is a row of its own.
+    const unanswered = withStatus(held, {
+      reason: { text: 'Level change not confirmed — check the Flow that reports the level back' } });
+    expect(signatureOf(unanswered, 'capacity', true)).not.toBe(signatureOf(held, 'waiting_for_other_devices'));
+    expect(signatureOf(withStatus(unanswered, { kind: 'active', tone: 'active', label: 'Running' }), 'capacity', true))
+      .not.toBe(signatureOf(running));
   });
 
   it('stores a countdown wait without its countdown', () => {

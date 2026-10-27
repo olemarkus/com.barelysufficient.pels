@@ -41,7 +41,7 @@ describe('the log PELS keeps for problem reports', () => {
     logger.info({ event: 'plan_rebuild_completed', homeId: 'main' });
     logger.warn({ event: 'meter_stale' });
     logger.error({ event: 'device_write_failed', deviceId: 'heater' });
-    expect(store.read(NOW - HOUR_MS, NOW, BUDGET)).toEqual({
+    expect(store.read(NOW - HOUR_MS, NOW, BUDGET, [])).toEqual({
       lines: [
         { atMs: NOW, level: 'info', entry: { event: 'plan_rebuild_completed', homeId: 'main' } },
         { atMs: NOW, level: 'warn', entry: { event: 'meter_stale' } },
@@ -58,7 +58,7 @@ describe('the log PELS keeps for problem reports', () => {
     loggerWith(recorder).info({ event: 'app_initialized' });
     const store = createLogTailStore(open());
     recorder.attach(store);
-    expect(store.read(NOW - HOUR_MS, NOW, BUDGET).lines.map((line) => line.entry.event)).toEqual(['app_initialized']);
+    expect(store.read(NOW - HOUR_MS, NOW, BUDGET, []).lines.map((line) => line.entry.event)).toEqual(['app_initialized']);
   });
 
   it('cuts a flood per event and device per hour, counts what it cut, and leaves other devices alone', () => {
@@ -70,7 +70,7 @@ describe('the log PELS keeps for problem reports', () => {
     logger.info({ event: 'binary_command_applied', deviceId: 'charger' });
     vi.setSystemTime(NOW + HOUR_MS);
     logger.info({ event: 'binary_command_applied', deviceId: 'heater' });
-    const read = store.read(NOW - HOUR_MS, NOW + HOUR_MS, BUDGET);
+    const read = store.read(NOW - HOUR_MS, NOW + HOUR_MS, BUDGET, []);
     const devices = read.lines.map((line) => line.entry.deviceId);
     expect(devices.filter((device) => device === 'heater')).toHaveLength(LOG_TAIL_MAX_LINES_PER_EVENT_HOUR + 1);
     expect(devices).toContain('charger');
@@ -88,7 +88,7 @@ describe('the log PELS keeps for problem reports', () => {
     restartedLogger.error({ event: 'crash_loop' });
     restarted.attach(createLogTailStore(db));
     restartedLogger.error({ event: 'crash_loop' });
-    expect(store.read(NOW - HOUR_MS, NOW, BUDGET).lines).toHaveLength(LOG_TAIL_MAX_LINES_PER_EVENT_HOUR + 1);
+    expect(store.read(NOW - HOUR_MS, NOW, BUDGET, []).lines).toHaveLength(LOG_TAIL_MAX_LINES_PER_EVENT_HOUR + 1);
   });
 
   it('reads the newest lines that fit the budget and says how many older ones it left out', () => {
@@ -96,9 +96,23 @@ describe('the log PELS keeps for problem reports', () => {
     const { store, logger } = attached();
     for (let index = 0; index < 10; index += 1) logger.info({ event: `line-${index}`, filler: 'x'.repeat(100) });
     const lineBytes = JSON.stringify({ event: 'line-0', filler: 'x'.repeat(100) }).length;
-    const read = store.read(NOW - HOUR_MS, NOW, lineBytes * 3 + 5);
+    const read = store.read(NOW - HOUR_MS, NOW, lineBytes * 3 + 5, []);
     expect(read.lines.map((line) => line.entry.event)).toEqual(['line-7', 'line-8', 'line-9']);
     expect(read.leftOut).toBe(7);
+  });
+
+  it('leaves out the lines of omitted events, spending the budget only on the lines it keeps', () => {
+    vi.useFakeTimers({ now: NOW });
+    const { store, logger } = attached();
+    for (let index = 0; index < 4; index += 1) {
+      logger.info({ event: `line-${index}`, filler: 'x'.repeat(100) });
+      logger.info({ event: 'binary_command_applied', deviceId: 'heater', filler: 'x'.repeat(100) });
+    }
+    const lineBytes = JSON.stringify({ event: 'line-0', filler: 'x'.repeat(100) }).length;
+    const read = store.read(NOW - HOUR_MS, NOW, lineBytes * 3 + 5, ['binary_command_applied']);
+    expect(read.lines.map((line) => line.entry.event)).toEqual(['line-1', 'line-2', 'line-3']);
+    // Only the kept event's oldest line counts as left out for size.
+    expect(read.leftOut).toBe(1);
   });
 
   it('keeps a line logged inside another store\'s transaction for the next write', () => {
@@ -106,7 +120,7 @@ describe('the log PELS keeps for problem reports', () => {
     const { db, store, logger } = attached();
     db.transaction(() => { logger.error({ event: 'userdata_row_quarantined' }); });
     logger.info({ event: 'after' });
-    expect(store.read(NOW - HOUR_MS, NOW, BUDGET).lines.map((line) => line.entry.event))
+    expect(store.read(NOW - HOUR_MS, NOW, BUDGET, []).lines.map((line) => line.entry.event))
       .toEqual(['userdata_row_quarantined', 'after']);
   });
 
@@ -120,7 +134,7 @@ describe('the log PELS keeps for problem reports', () => {
     }
     expect(rows()).toBeGreaterThan(LOG_TAIL_MAX_ROWS);
     expect(rows()).toBeLessThanOrEqual(LOG_TAIL_MAX_ROWS + 100);
-    const newest = store.read(0, NOW, BUDGET).lines.at(-1)?.entry;
+    const newest = store.read(0, NOW, BUDGET, []).lines.at(-1)?.entry;
     expect(newest).toEqual({ event: 'line', index: LOG_TAIL_MAX_ROWS + 249 });
   });
 
@@ -131,7 +145,7 @@ describe('the log PELS keeps for problem reports', () => {
     store.append({ atMs: Date.now(), level: 30, key: 'old', line: '{"event":"old"}' });
     vi.setSystemTime(NOW);
     store.append({ atMs: NOW, level: 30, key: 'new', line: '{"event":"new"}' });
-    expect(store.read(0, NOW, BUDGET).lines.map((line) => line.entry.event)).toEqual(['new']);
+    expect(store.read(0, NOW, BUDGET, []).lines.map((line) => line.entry.event)).toEqual(['new']);
     db.close();
     databases.splice(databases.indexOf(db), 1);
     expect(() => store.append({ atMs: NOW, level: 30, key: 'late', line: '{}' })).not.toThrow();

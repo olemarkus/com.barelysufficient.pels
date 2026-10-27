@@ -16,7 +16,7 @@ const evidence = (): SupportReportEvidence => ({
   subjectName: 'Hall heater', appVersion: '3.21.0', homeyVersion: '12.3.0',
   activity: { state: 'unavailable', reason: 'No retained history for this home.' },
   deviceEvents: { state: 'unavailable', reason: 'No kept device events.' },
-  log: { state: 'available', lines: [], overflow: [], fromMs: now - 60 * 60_000, toMs: now, leftOutForSize: 0 },
+  log: { state: 'available', lines: [], overflow: [], fromMs: now - 60 * 60_000, toMs: now, leftOutForSize: 0, omittedEvents: [] },
   sections: [{ title: 'Current device state', values: { target: 22 } }], omissions: [],
 });
 const transport = (): SupportReportTransport => ({
@@ -83,7 +83,7 @@ describe('manual support reporting', () => {
     const lines = Array.from({ length: 2_000 }, (_, index) => ({
       atMs: now - 2_000 + index, level: 'info' as const, entry: { event: `line-${index}`, filler: 'x'.repeat(400) },
     }));
-    live.log = { state: 'available', lines, overflow: [], fromMs: now - 3_600_000, toMs: now, leftOutForSize: 0 };
+    live.log = { state: 'available', lines, overflow: [], fromMs: now - 3_600_000, toMs: now, leftOutForSize: 0, omittedEvents: [] };
     const service = new SupportReportService({ capture: async () => live }, transport());
     const prepared = report(await service.prepare(request));
     expect(Buffer.byteLength(prepared.message, 'utf8')).toBeLessThanOrEqual(SUPPORT_REPORT_MAX_BYTES);
@@ -100,7 +100,7 @@ describe('manual support reporting', () => {
     const lines = Array.from({ length: 1_000 }, (_, index) => ({
       atMs: now - 1_000 + index, level: 'info' as const, entry: { event: `line-${index}`, filler: 'x'.repeat(250) },
     }));
-    live.log = { state: 'available', lines, overflow: [], fromMs: now - 86_400_000, toMs: now, leftOutForSize: 0 };
+    live.log = { state: 'available', lines, overflow: [], fromMs: now - 86_400_000, toMs: now, leftOutForSize: 0, omittedEvents: [] };
     // Newest first, as the activity history keeps them.
     const entries = Array.from({ length: 1_000 }, (_, index) => reportActivityFixture({
       id: `activity-${index}`, atMs: now - index, deviceId: `device-${index % 30}`,
@@ -108,7 +108,7 @@ describe('manual support reporting', () => {
     }));
     live.activity = {
       state: 'available', entries, fromMs: now - 86_400_000, toMs: now, retentionDays: 7, maxEntries: 1_000,
-      maxEntriesPerDevice: 100, persistence: 'stored', leftOutForSize: 0,
+      maxEntriesPerDevice: 100, persistence: 'stored', leftOutForSize: 0, recordingsStartedAtMs: [],
     };
     const delivery = transport();
     const service = new SupportReportService({ capture: async () => live }, delivery);
@@ -124,7 +124,7 @@ describe('manual support reporting', () => {
     const { leftOutForSize } = sent.document.activity;
     expect(leftOutForSize).toBeGreaterThan(0);
     expect(sent.document.activity.entries).toHaveLength(1_000 - leftOutForSize);
-    expect(sent.document.activity.entries[0]?.id).toBe('activity-0');
+    expect(sent.document.activity.entries[0]?.atMs).toBe(now);
     expect(sent.submission).toEqual({ state: 'sent', reference: 'homey-reference' });
   });
 
@@ -145,7 +145,7 @@ describe('manual support reporting', () => {
     const live = evidence();
     live.activity = {
       state: 'available', fromMs: now - 3_600_000, toMs: now, retentionDays: 7, maxEntries: 1_000,
-      maxEntriesPerDevice: 100, persistence: 'stored', leftOutForSize: 0,
+      maxEntriesPerDevice: 100, persistence: 'stored', leftOutForSize: 0, recordingsStartedAtMs: [],
       entries: Array.from({ length: 1_000 }, (_, index) => reportActivityFixture({
         id: `activity-${index}`, atMs: now - index, statusMsg: 'Waiting for a car to be identified. '.repeat(12),
       })),

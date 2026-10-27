@@ -22,10 +22,25 @@ export type SupportReportSection = {
   values: { readonly [key: string]: SupportReportValue };
 };
 
+/**
+ * One activity row as a report carries it. The row id, the recording session
+ * and the tone (which follows the state) are left out: the section states the
+ * sessions once, in `recordingsStartedAtMs`.
+ */
+export type SupportReportActivityEntry = Omit<
+  SettingsUiDeviceActivityEntry, 'id' | 'recordingStartedAtMs' | 'stateTone'
+>;
+
 export type SupportReportActivity =
   | {
     state: 'available';
-    entries: readonly SettingsUiDeviceActivityEntry[];
+    entries: readonly SupportReportActivityEntry[];
+    /**
+     * When each recording session behind the window's entries started, oldest
+     * first: a new one follows a restart. Entries left out for size may take a
+     * session's last row with them.
+     */
+    recordingsStartedAtMs: readonly number[];
     fromMs: number;
     toMs: number;
     retentionDays: number;
@@ -90,6 +105,12 @@ export type SupportReportLog =
     toMs: number;
     /** Kept lines in the window left out, the oldest first, so the report fits its size limit. */
     leftOutForSize: number;
+    /**
+     * Events whose lines, and per-hour cut counts, the report leaves out
+     * because its activity rows record the same facts, such as each command
+     * PELS sent; empty when it keeps every line.
+     */
+    omittedEvents: readonly string[];
   }
   | { state: 'unavailable'; reason: string };
 

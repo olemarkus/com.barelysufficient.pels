@@ -11,6 +11,12 @@ const request: SupportReportRequest = {
   occurredAtMs: now - 2 * hour, historyWindow: 'incident',
 };
 
+// A report row carries no id: name each by the fixture it came from.
+const fixtureIds = (fixtures: ReturnType<typeof reportActivityFixture>[]) => (
+  entry: { deviceId: string; atMs: number },
+): string | undefined => fixtures.find((fixture) => (
+  fixture.deviceId === entry.deviceId && fixture.atMs === entry.atMs))?.id;
+
 describe('support report incident activity selection', () => {
   it('includes the hour before the incident through capture, and the nearest preceding state', () => {
     const entries = [
@@ -29,7 +35,7 @@ describe('support report incident activity selection', () => {
       retentionDays: 7, maxEntries: 1000, maxEntriesPerDevice: 100, persistence: 'stored',
     });
     if (result.state !== 'available') throw new Error('Expected available activity');
-    expect(result.entries.map((entry) => entry.id)).toEqual(['after', 'end', 'incident', 'start', 'previous']);
+    expect(result.entries.map(fixtureIds(entries))).toEqual(['after', 'end', 'incident', 'start', 'previous']);
     expect(entries).toEqual(before);
   });
 
@@ -42,9 +48,10 @@ describe('support report incident activity selection', () => {
     const result = selectSupportReportActivity(reportHistoryFixture(entries), { ...request, occurredAtMs: now }, now);
     expect(result).toMatchObject({ state: 'available', fromMs: now - hour, toMs: now });
     if (result.state !== 'available') throw new Error('Expected available activity');
-    expect(result.entries.map((entry) => [entry.id, entry.recordingStartedAtMs])).toEqual([
-      ['after-restart', now], ['before-restart', now - 20 * hour],
-    ]);
+    expect(result.entries.map(fixtureIds(entries))).toEqual(['after-restart', 'before-restart']);
+    // The rows leave the session out; the section names each session once, oldest first.
+    expect(result.recordingsStartedAtMs).toEqual([now - 20 * hour, now]);
+    expect(result.entries[0]).not.toHaveProperty('recordingStartedAtMs');
   });
 
   it('selects a preceding record for each device in an app report, including removed devices', () => {
@@ -60,7 +67,7 @@ describe('support report incident activity selection', () => {
       ...request, subject: { kind: 'app', homeId: 'main' },
     }, now);
     if (result.state !== 'available') throw new Error('Expected available activity');
-    expect(new Set(result.entries.map((entry) => entry.id))).toEqual(new Set([
+    expect(new Set(result.entries.map(fixtureIds(entries)))).toEqual(new Set([
       'heater-previous', 'heater-window', 'charger-previous', 'charger-window', 'removed-previous',
     ]));
     expect(result.entries.find((entry) => entry.deviceId === 'removed')?.deviceName).toBe('Old heater');
@@ -80,7 +87,7 @@ describe('support report incident activity selection', () => {
     }, incident + hour);
     expect(result).toMatchObject({ state: 'available', fromMs: incident - 24 * hour, toMs: incident + hour });
     if (result.state !== 'available') throw new Error('Expected available activity');
-    expect(result.entries.map((entry) => entry.id)).toEqual(['after', 'incident', 'first-0230', 'start', 'prior']);
+    expect(result.entries.map(fixtureIds(entries))).toEqual(['after', 'incident', 'first-0230', 'start', 'prior']);
   });
 
   it('retains persistence metadata and projects only disclosed history fields', () => {
@@ -95,7 +102,7 @@ describe('support report incident activity selection', () => {
     expect(selectSupportReportActivity(reportHistoryFixture(), {
       ...request, occurredAtMs: 1, historyWindow: 'day',
     }, now)).toEqual({
-      state: 'available', entries: [], fromMs: 0, toMs: now,
+      state: 'available', entries: [], recordingsStartedAtMs: [], fromMs: 0, toMs: now,
       retentionDays: 7, maxEntries: 1000, maxEntriesPerDevice: 100, persistence: 'stored', leftOutForSize: 0,
     });
   });

@@ -11,11 +11,11 @@ export const supportReportFixture = (): PreparedSupportReport => ({
     },
     activity: {
       state: 'available', entries: [{
-        id: 'activity-1', deviceId: 'heater', deviceName: 'Hall heater',
-        atMs: 1700000000000, recordingStartedAtMs: 1699990000000,
-        stateMsg: 'Limited', stateKind: 'held', stateTone: 'held', powerMsg: null,
+        deviceId: 'heater', deviceName: 'Hall heater', atMs: 1700000000000,
+        stateMsg: 'Limited', stateKind: 'held', powerMsg: null,
         usageMsg: '18 °C · target 22 °C', statusMsg: 'Waiting for capacity',
       }],
+      recordingsStartedAtMs: [1699990000000],
       fromMs: 1699996400000, toMs: 1700000100000, retentionDays: 7,
       maxEntries: 1000, maxEntriesPerDevice: 100, persistence: 'stored', leftOutForSize: 0,
     },
@@ -25,6 +25,7 @@ export const supportReportFixture = (): PreparedSupportReport => ({
     },
     log: {
       state: 'available', lines: [], overflow: [], fromMs: 1699996400000, toMs: 1700000100000, leftOutForSize: 0,
+      omittedEvents: [],
     },
     trigger: 'owner',
     sections: [{ title: 'Current device state', values: { powerW: 0 } }], omissions: [],
