@@ -521,7 +521,8 @@ export class PlanBuilder {
     nowTs: number,
   ): StorageRelief {
     const storageRelief = resumeContinuousStorage(
-      applyStorageHandBacks(limitedStorage, restoreResult.storageHandedBack), devices, power, surplusOffers, nowTs,
+      applyStorageHandBacks(limitedStorage, restoreResult.storageHandedBack), limitedStorage,
+      devices, power, surplusOffers, nowTs,
     );
     this.state.storageLeverByDevice = storageRelief.levers;
     this.logStorageRelief(storageRelief, power, surplusOffers);

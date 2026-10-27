@@ -23,6 +23,7 @@ type BatteryPlanSession = {
   busy: boolean;
   error: string;
   loading: boolean;
+  previewAvailable: boolean;
   generation: number;
 };
 
@@ -47,7 +48,8 @@ function display(current: BatteryPlanSession): void {
   }
   render(<ContinuousBatteryPlanView key={current.deviceId} read={current.read} priceUnit={current.priceUnit}
     timeZone={getHomeyTimezone()} blockedReason={current.blockedReason} busy={current.busy}
-    error={current.error} onSave={config => save(current, config)} onRefresh={() => load(current)} />, mount);
+    error={current.error} previewAvailable={current.previewAvailable}
+    onSave={config => save(current, config)} onRefresh={() => load(current)} />, mount);
 }
 
 async function load(current: BatteryPlanSession): Promise<void> {
@@ -60,6 +62,7 @@ async function load(current: BatteryPlanSession): Promise<void> {
     ]);
     if (session !== current || generation !== current.generation) return;
     current.read = read;
+    current.previewAvailable = true;
     const combined = prices?.combinedPrices;
     current.priceUnit = 'price units';
     if (read.status === 'planned') current.priceUnit = read.priceUnit;
@@ -84,10 +87,13 @@ const save = (current: BatteryPlanSession, config: ContinuousBatteryPlanConfig):
   current.error = '';
   display(current);
   try {
-    await callApi<ContinuousBatteryPlanConfig>('PUT', pathFor(current.deviceId), config);
+    const saved = await callApi<ContinuousBatteryPlanConfig>('PUT', pathFor(current.deviceId), config);
+    if (current.read !== null) current.read = { ...current.read, config: saved };
+    current.previewAvailable = false;
     await load(current);
+    if (current.error) current.error = `Battery plan saved. ${current.error}`;
     document.dispatchEvent(new Event('continuous-battery-plan-changed'));
-    return current.error === '';
+    return true;
   } catch (error) {
     current.error = formatSettingsError(error, 'Battery plan could not be saved. Try again.');
     return false;
@@ -125,7 +131,7 @@ export function setContinuousBatteryPlanDevice(device: SettingsUiDeviceDetailIte
     return;
   }
   session = { deviceId: device.id, drivable: device.batteryControl === 'drivable', blockedReason, read: null, priceUnit: 'price units', busy: false,
-    error: '', loading: false, generation: 0 };
+    error: '', loading: false, previewAvailable: true, generation: 0 };
   display(session);
   void load(session);
 }

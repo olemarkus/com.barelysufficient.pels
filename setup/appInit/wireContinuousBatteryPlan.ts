@@ -4,7 +4,7 @@ import { ContinuousBatteryPlanService } from '../../lib/battery/continuousBatter
 import {
   createContinuousBatteryPlanSource, type ContinuousBatteryHorizonSources,
 } from '../../lib/planInput/continuousBatteryHorizon';
-import { requireBatteryControl } from './contextGuards';
+import { requireBatteryControl, requireHomeMembership } from './contextGuards';
 
 /** The selector is ready here; setup only connects the source and owner. */
 export function wireContinuousBatteryPlan(
@@ -12,8 +12,11 @@ export function wireContinuousBatteryPlan(
   getActiveTasks: ContinuousBatteryHorizonSources['getActiveTasks'],
   getSolarForecast: ContinuousBatteryHorizonSources['getSolarForecast'],
 ): void {
+  requireHomeMembership(ctx);
   const source = createContinuousBatteryPlanSource({
     getNowMs: () => ctx.getNow().getTime(),
+    // Membership exists for the active lifetime; runUninit clears it before
+    // retained settings readers are detached, when no devices is intentional.
     getDevices: () => ctx.homeMembership?.filterDevicesForHome(ctx.getPlanInputSnapshot(), MAIN_HOME_ID) ?? [],
     getControl: () => requireBatteryControl(ctx),
     getControllableDevices: () => ctx.deviceControlSettings.controllableDevices,

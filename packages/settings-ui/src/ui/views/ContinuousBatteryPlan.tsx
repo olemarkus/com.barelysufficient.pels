@@ -12,6 +12,7 @@ export type ContinuousBatteryPlanProps = {
   blockedReason: string;
   busy: boolean;
   error: string;
+  previewAvailable: boolean;
   onSave: (config: ContinuousBatteryPlanConfig) => Promise<boolean>;
   onRefresh: () => Promise<void>;
 };
@@ -202,7 +203,8 @@ export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
       <MdOutlinedButton disabled={props.busy} onClick={props.onRefresh}>Refresh plan</MdOutlinedButton>
     </div>
     <div aria-live="polite">
-      <BatteryPlanPreview read={props.read} timeZone={props.timeZone} />
+      {props.previewAvailable ? <BatteryPlanPreview read={props.read} timeZone={props.timeZone} />
+        : <p class="field__hint">Refresh plan to load the updated battery plan.</p>}
     </div>
   </div>;
 }

@@ -218,10 +218,24 @@ export class BatteryExecutor {
     // A released battery has no setpoint left to judge.
     if (decision.kind === 'release') this.commands.delete(device.id);
     const control = this.resolveDrift(device);
-    if (control === 'no_drift') return false;
+    if (control === 'no_drift') {
+      this.recordConvergedRestore(device);
+      return false;
+    }
     return decision.kind === 'release'
       ? this.release(device, decision)
       : this.sendSetpoint(device, decision, control);
+  }
+
+  private recordConvergedRestore(device: StorageDecidedDevice): void {
+    const decision = device.storageDecision;
+    if (decision.kind !== 'setpoint' || !decision.restored
+      || this.commands.get(device.id)?.setpointW !== decision.setpointW) return;
+    const control = this.owner.readControl(device.id);
+    if (control.kind === 'setpoint' && control.claimHeld && !control.handBackDeferred
+      && control.admissible && !isBlockedVerdict(control)) {
+      this.recordRestore(device.id, device.name, Date.now());
+    }
   }
 
   hasReleaseDrift(intent: StorageReleaseIntent): boolean {
