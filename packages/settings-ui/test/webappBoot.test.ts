@@ -1,8 +1,12 @@
 import type { HomeySettingsClient } from '../src/ui/homey.ts';
+import type { connectRemoteRealtime } from '../src/remote/remoteRealtime.ts';
 
 const boot = vi.fn().mockResolvedValue(undefined);
+const connectRealtime = vi.fn<typeof connectRemoteRealtime>(() => () => {});
 vi.mock('../src/ui/boot.ts', () => ({ boot: (...args: unknown[]) => boot(...args) }));
-vi.mock('../src/remote/remoteRealtime.ts', () => ({ connectRemoteRealtime: () => () => {} }));
+vi.mock('../src/remote/remoteRealtime.ts', () => ({
+  connectRemoteRealtime: (...args: Parameters<typeof connectRemoteRealtime>) => connectRealtime(...args),
+}));
 
 const HOMEY_ID = '111111111111111111111111';
 const VERSION = '3.23.4';
@@ -12,7 +16,8 @@ const respond = (body: unknown) => new Response(JSON.stringify(body));
 describe('web app startup', () => {
   beforeEach(() => {
     vi.resetModules();
-    boot.mockClear();
+    boot.mockReset().mockResolvedValue(undefined);
+    connectRealtime.mockReset().mockImplementation(() => () => {});
     document.body.innerHTML = '';
     window.sessionStorage.clear();
     window.localStorage.setItem('pels.webapp.homeys.v1', JSON.stringify({
@@ -20,6 +25,56 @@ describe('web app startup', () => {
       lastHomeyId: HOMEY_ID,
     }));
     vi.stubGlobal('__PELS_WEB_APP_VERSION__', VERSION);
+  });
+
+  it('catches settings changed during the version gate after boot finishes', async () => {
+    let answerVersion!: (response: Response) => void;
+    const version = new Promise<Response>((resolve) => { answerVersion = resolve; });
+    let finishBoot!: () => void;
+    const loading = new Promise<void>((resolve) => { finishBoot = resolve; });
+    const settingsPath = '/api/manager/apps/app/com.barelysufficient.pels/setting';
+    const fetch = vi.fn(async (input: string) => {
+      const path = new URL(input).pathname;
+      if (path.endsWith('/ui_version')) return version;
+      if (path.endsWith('/ui_bootstrap')) return respond({ settings: { operating_mode: 'Home' } });
+      if (path === settingsPath) return respond({ operating_mode: 'Away' });
+      return respond('Away');
+    });
+    vi.stubGlobal('fetch', fetch);
+    const ready = vi.fn();
+    vi.stubGlobal('onHomeyReady', ready);
+    connectRealtime.mockImplementation((_connection, _socket, _event, onStatus) => {
+      onStatus('live');
+      return () => {};
+    });
+    let mode: unknown;
+    let bootFinished = false;
+    const changed = vi.fn();
+    boot.mockImplementationOnce(async () => {
+      const client = ready.mock.calls[0]?.[0] as HomeySettingsClient;
+      const data = await new Promise<{ settings: { operating_mode: string } }>((resolve, reject) => {
+        client.api?.('GET', '/ui_bootstrap', (error: Error | null, value?: unknown) => (
+          error ? reject(error) : resolve(value as { settings: { operating_mode: string } })
+        ));
+      });
+      mode = data.settings.operating_mode;
+      client.on?.('settings.set', (key) => {
+        changed(bootFinished, key);
+        client.get(String(key), (_error, value) => { mode = value; });
+      });
+      await loading;
+      bootFinished = true;
+    });
+
+    await import('../src/remote/remoteEntry.ts');
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    answerVersion(respond({ version: VERSION, timeZone: 'Europe/Oslo' }));
+    await vi.waitFor(() => expect(mode).toBe('Home'));
+    expect(fetch).toHaveBeenCalledTimes(2);
+
+    finishBoot();
+    await vi.waitFor(() => expect(mode).toBe('Away'));
+    expect(changed).toHaveBeenCalledExactlyOnceWith(true, 'operating_mode');
   });
 
   afterEach(() => {

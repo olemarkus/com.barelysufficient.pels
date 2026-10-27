@@ -6,11 +6,11 @@ import type { RemoteRequest } from '../src/remote/remoteHomeyClient.ts';
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-const setup = () => {
+const setup = (bootstrapped: Promise<unknown> = Promise.resolve(null)) => {
   let settings: Record<string, unknown> = {};
   const request = vi.fn(async () => settings) as unknown as RemoteRequest;
   const dispatch = vi.fn();
-  const resync = createSettingsResync(request, dispatch);
+  const resync = createSettingsResync(request, dispatch, bootstrapped);
   const store = (next: Record<string, unknown>) => {
     settings = next;
   };
@@ -25,6 +25,61 @@ const reconnect = async (resync: ReturnType<typeof createSettingsResync>) => {
 };
 
 describe('settings resync after a dropped socket', () => {
+  it('reconciles prefetched settings only after boot is ready', async () => {
+    let finishBoot!: (bootstrap: unknown) => void;
+    const bootstrapped = new Promise((resolve) => { finishBoot = resolve; });
+    const { resync, dispatch, store, request } = setup(bootstrapped);
+    store({ mode: 'Away', kept: 1, added: true, other: 'baseline' });
+    resync.onStatus('live');
+    resync.onStatus('offline');
+    resync.onStatus('live');
+    await flush();
+    expect(request).not.toHaveBeenCalled();
+
+    finishBoot({ settings: { mode: 'Home', kept: 1, removed: true, absent: null, added: null } });
+    await flush();
+
+    expect(dispatch.mock.calls).toEqual([
+      ['settings.set', 'mode'],
+      ['settings.unset', 'removed'],
+      ['settings.set', 'added'],
+    ]);
+    expect(request).toHaveBeenCalledTimes(1);
+    store({ mode: 'Away', kept: 1, added: true, other: 'changed' });
+    await reconnect(resync);
+    expect(dispatch).toHaveBeenLastCalledWith('settings.set', 'other');
+  });
+
+  it('discards a snapshot from a superseded connection', async () => {
+    let finishOldRead!: (settings: unknown) => void;
+    const oldRead = new Promise((resolve) => { finishOldRead = resolve; });
+    const { resync, dispatch, store, request } = setup(Promise.resolve({ settings: { mode: 'Home' } }));
+    vi.mocked(request).mockReturnValueOnce(oldRead);
+    resync.onStatus('live');
+    await flush();
+
+    store({ mode: 'Away' });
+    await reconnect(resync);
+    expect(dispatch).toHaveBeenCalledExactlyOnceWith('settings.set', 'mode');
+
+    finishOldRead({ mode: 'Home' });
+    await flush();
+    await reconnect(resync);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('establishes a live baseline when the bootstrap failed', async () => {
+    const { resync, dispatch, store } = setup(Promise.reject(new Error('bootstrap failed')));
+    store({ mode: 'Away' });
+    resync.onStatus('live');
+    await flush();
+    expect(dispatch).not.toHaveBeenCalled();
+
+    store({ mode: 'Home' });
+    await reconnect(resync);
+    expect(dispatch).toHaveBeenCalledWith('settings.set', 'mode');
+  });
+
   it('only takes a copy on the first live status', async () => {
     const { resync, dispatch, store, request } = setup();
     store({ a: 1 });

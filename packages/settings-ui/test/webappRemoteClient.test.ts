@@ -72,7 +72,7 @@ describe('remote Homey client', () => {
     const bootstrap = new Promise((resolve, reject) => { finish = resolve; fail = reject; });
     const request = vi.fn().mockReturnValueOnce(bootstrap)
       .mockResolvedValue({ settings: { operating_mode: 'Away' } });
-    const client = createRemoteHomeyClient(prefetchRemoteBootstrap(request), createRemoteEventHub(), 'Europe/Oslo');
+    const client = createRemoteHomeyClient(prefetchRemoteBootstrap(request).request, createRemoteEventHub(), 'Europe/Oslo');
     const initial = callApi(client, 'GET', '/ui_bootstrap');
     expect(request).toHaveBeenCalledTimes(1);
     if (outcome === 'success') {
