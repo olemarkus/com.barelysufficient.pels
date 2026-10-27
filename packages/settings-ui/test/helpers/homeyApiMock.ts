@@ -428,6 +428,9 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
     plan: await buildUiPlan(homey),
   }),
   [buildRouteKey('GET', SETTINGS_UI_POWER_PATH)]: (homey) => async ({ uri }) => buildUiPower(homey, scopedHomeIdOf(uri)),
+  [buildRouteKey('GET', '/ui_inverter_curtailment')]: (homey) => async () => ({
+    devices: [], selected: homey.__settingsStore.inverter_curtailment_devices ?? {},
+  }),
   [buildRouteKey('GET', SETTINGS_UI_PRICES_PATH)]: (homey) => async () => buildUiPrices(homey),
   [buildRouteKey('GET', SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH)]: (homey) => async () => buildUiDiagnostics(homey),
   [buildRouteKey('GET', SETTINGS_UI_DEVICE_LOG_PATH)]: (homey) => async () => (
