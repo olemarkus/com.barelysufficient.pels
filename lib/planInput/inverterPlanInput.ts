@@ -41,8 +41,8 @@ export function readInverterPlanInputs(source: InverterPlanInputSource): Inverte
   });
   const heldIds = source.execution.heldDeviceIds();
   const representedIds = new Set(inputs.map((input) => input.deviceId));
-  // An absent device does not erase its durable authority. Keep the release
-  // pending so a silent-meter pass can converge when the device returns.
+  // An absent device does not erase its durable authority. Keep a release
+  // candidate so a later meter-driven plan can hand back when it returns.
   return [...inputs, ...heldIds.filter((id) => !representedIds.has(id))
     .map((deviceId): InverterPlanInput => ({ kind: 'hand_back', deviceId }))];
 }

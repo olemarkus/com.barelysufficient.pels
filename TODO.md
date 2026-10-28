@@ -176,14 +176,13 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Solar inverters and home battery
 
-- [ ] **An inverter release PELS cannot attempt keeps the meter-outage pass pending.**
-      `meterSilenceEscalation.ts:174` waits on `inverterExecutor.ts:85,107`, which counts releases
-      for an unavailable inverter, an absent but unconfirmed one, and a blocked claim; the pass then
-      rebuilds every ~30 s for the whole outage, and `hasWork` reapplies the plan on every reading.
-      **What changes:** exclude releases that cannot be attempted from pending work, and cache the
-      blocked claim set until settings change (`inverterExecutor.ts:65,70`). **Done when** an outage
-      test with an unavailable held inverter settles the fail-closed pass once. *(v3.24.1..e6e399a86
-      release review, 2026-10-28.)* [P2]
+- [ ] **Blocked inverter claims rescan settings on every planner read.** `ready` and
+      `heldDeviceIds` in `lib/executor/inverterExecutor.ts` call `readClaims` again whenever the
+      blocked set is nonempty. **What changes:** cache the blocked claim set until settings
+      change, while preserving recovery from a transient failed settings read and never treating
+      unreadable ownership as free. **Done when** repeated reads of an unchanged blocked claim do
+      not rescan settings, and repairing its settings record allows hand-back again.
+      *(v3.24.1..e6e399a86 release review, 2026-10-28.)* [P2]
 
 - [ ] **An inverter that reports its own mode switches curtailment off silently.**
       `inverterExecutor.ts:145-152` turns the opt-in off on any `device` mode report while held,
