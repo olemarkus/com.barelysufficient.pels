@@ -5,6 +5,11 @@ import { InverterClaimStore, INVERTER_CLAIM_PREFIX } from '../../lib/executor/in
 import type { SettingsPort } from '../../lib/ports/homeyRuntime';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import { partialDouble } from '../helpers/partialDouble';
+import { MeterSilenceEscalation } from '../../lib/power/meterSilenceEscalation';
+import { MeterSilenceMonitor } from '../../lib/power/meterSilence';
+import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../../lib/power/sampleFreshness';
+import { TimerRegistry } from '../../lib/utils/timerRegistry';
+import { testLogger } from '../utils/testLogger';
 
 const NOW = 1_800_000_000_000;
 describe('inverter convergence and durable hand-back', () => {
@@ -288,17 +293,21 @@ describe('inverter convergence and durable hand-back', () => {
     expect(h.apply).not.toHaveBeenCalled();
   });
 
-  it('retains a missing device as pending hand-back without attempting an unreachable write', async () => {
+  it('retains a missing device claim without keeping an unattemptable hand-back pending', async () => {
     const h = setup();
     await h.executor.apply([{ kind: 'limit', deviceId: 'pv', limitW: 2050,
       binding: h.control(), observation: h.observed() }]);
     h.source.exists = () => false;
     h.apply.mockClear();
+    expect(h.executor.hasWork([{ kind: 'release', deviceId: 'pv' }])).toBe(false);
+    expect(h.executor.pendingReleaseCount([{ kind: 'release', deviceId: 'pv' }])).toBe(0);
     expect(await h.executor.apply([{ kind: 'release', deviceId: 'pv' }]))
-      .toEqual({ commandRequestCount: 0, failureCount: 0, pendingInverterReleaseCount: 1 });
+      .toEqual({ commandRequestCount: 0, failureCount: 0, pendingInverterReleaseCount: 0 });
     expect(h.executor.heldDeviceIds()).toEqual(['pv']);
     expect(h.apply).not.toHaveBeenCalled();
     h.source.exists = () => true;
+    expect(h.executor.hasWork([{ kind: 'release', deviceId: 'pv' }])).toBe(true);
+    expect(h.executor.pendingReleaseCount([{ kind: 'release', deviceId: 'pv' }])).toBe(1);
     await h.executor.apply([{ kind: 'release', deviceId: 'pv' }]);
     expect(h.apply).toHaveBeenCalledWith(expect.objectContaining({ kind: 'production_release' }));
   });
@@ -310,11 +319,47 @@ describe('inverter convergence and durable hand-back', () => {
     h.source.exists = () => false;
     h.source.confirmedRemoved = () => true;
     h.apply.mockClear();
+    expect(h.executor.hasWork([{ kind: 'release', deviceId: 'pv' }])).toBe(true);
     expect(await h.executor.apply([{ kind: 'release', deviceId: 'pv' }]))
       .toEqual({ commandRequestCount: 0, failureCount: 0, pendingInverterReleaseCount: 0 });
     expect(h.executor.heldDeviceIds()).toEqual([]);
     expect(h.saved.has(`${INVERTER_CLAIM_PREFIX}pv`)).toBe(false);
     expect(h.apply).not.toHaveBeenCalled();
+  });
+
+  it('settles the meter-outage pass once while retaining a missing inverter claim', async () => {
+    const h = setup();
+    await h.executor.apply([{ kind: 'limit', deviceId: 'pv', limitW: 2050,
+      binding: h.control(), observation: h.observed() }]);
+    h.source.exists = () => false;
+    h.apply.mockClear();
+    const tracker = { lastTimestamp: NOW, lastPowerW: 1000 };
+    const meterSilence = new MeterSilenceMonitor({
+      homeId: 'main', getPowerTracker: () => tracker, nowMs: Date.now, structuredLog: () => testLogger,
+    });
+    const rebuild = vi.fn(async () => {
+      const result = await h.executor.apply(h.executor.heldDeviceIds().map((deviceId) => ({ kind: 'release', deviceId })));
+      return { failed: false, isDryRun: false, gated: false, deviceApplyFailureCount: result.failureCount,
+        pendingInverterReleaseCount: result.pendingInverterReleaseCount,
+        inverterReleaseRecoveryReady: h.executor.releaseRecoveryReady() };
+    });
+    const timers = new TimerRegistry();
+    new MeterSilenceEscalation({
+      homeId: 'main', timers, timerKey: 'inverterOutage', logger: () => testLogger,
+      rebuild, meterSilence, isTornDown: () => false, isMeterSampled: () => true,
+      isSnapshotWarm: () => true, isActuationFenced: () => false,
+    }).start();
+    try {
+      await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS + 30_000);
+      expect(meterSilence.isBlocked()).toBe(true);
+      expect(rebuild).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(rebuild).toHaveBeenCalledTimes(1);
+      expect(h.saved.has(`${INVERTER_CLAIM_PREFIX}pv`)).toBe(true);
+      expect(h.apply).not.toHaveBeenCalled();
+    } finally {
+      timers.clearAll();
+    }
   });
 
   it('does not confirm an autonomous dormant zero after a binding change', async () => {

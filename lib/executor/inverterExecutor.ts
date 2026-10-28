@@ -80,9 +80,19 @@ export class InverterExecutor implements InverterExecution {
 
   notBeforeMs(deviceId: string): number { return this.notBefore.get(deviceId) ?? 0; }
 
+  // An absent device keeps its durable claim for a later plan, but cannot
+  // keep the meter-outage pass waiting on a hand-back it cannot attempt.
+  pendingReleaseCount(decisions: readonly InverterDecision[]): number {
+    return decisions.filter((decision) => decision.kind === 'release'
+      && this.claims.has(decision.deviceId) && this.source.exists(decision.deviceId)).length;
+  }
+
   hasWork(decisions: readonly InverterDecision[]): boolean {
     return decisions.some((decision) => {
-      if (decision.kind === 'release') return this.claims.has(decision.deviceId);
+      if (decision.kind === 'release') {
+        return this.claims.has(decision.deviceId)
+          && (this.source.exists(decision.deviceId) || this.source.confirmedRemoved(decision.deviceId));
+      }
       const observed = this.source.observation(decision.deviceId);
       const control = this.source.control(decision.deviceId);
       return observed !== undefined && control !== undefined
@@ -104,8 +114,7 @@ export class InverterExecutor implements InverterExecution {
         logger.error({ event: 'inverter_command_failed', deviceId: decision.deviceId, err: error });
       }
     }
-    const pendingInverterReleaseCount = decisions.filter((decision) => decision.kind === 'release'
-      && this.claims.has(decision.deviceId)).length;
+    const pendingInverterReleaseCount = this.pendingReleaseCount(decisions);
     return { commandRequestCount, failureCount, pendingInverterReleaseCount };
   }
 

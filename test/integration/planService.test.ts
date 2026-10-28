@@ -2106,6 +2106,24 @@ describe('PlanService', () => {
     expect(recovered.inverterReleaseRecoveryReady).toBe(true);
   });
 
+  it.each([0, 1])('reports %i pending inverter releases from the executor when an unchanged plan needs no apply', async (pendingCount) => {
+    const plan = { ...buildPlan(20, 'keep'), inverterDecisions: [{ kind: 'release' as const, deviceId: 'pv' }] };
+    const applyPlanActions = vi.fn().mockResolvedValue(actuation());
+    const getPendingInverterReleaseCount = vi.fn(() => pendingCount);
+    const service = new PlanService({
+      ...planServiceDeps(), homey: stubDepsHomey(),
+      planEngine: {
+        ...createMockPlanEngine(), buildDevicePlanSnapshot: vi.fn().mockResolvedValue(plan),
+        applyPlanActions, getPendingInverterReleaseCount,
+      },
+      getPlanDevices: () => [], getSettleDevices: () => [],
+    });
+    await service.rebuildPlanFromCache('power_delta', { detail: 'inverter_release_first' });
+    const unchanged = await service.rebuildPlanFromCache('power_delta', { detail: 'inverter_release_unchanged' });
+    expect(applyPlanActions).toHaveBeenCalledTimes(1);
+    expect(unchanged.pendingInverterReleaseCount).toBe(pendingCount);
+  });
+
   // A rebuild whose ACTION signature is unchanged must still actuate when the
   // device has drifted away from what that plan wants. Before the apply gate
   // widened, this case fell through to the reconcile lane, which re-asserted a

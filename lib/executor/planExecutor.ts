@@ -341,6 +341,10 @@ export class PlanExecutor {
 
   public isInverterReleaseRecoveryReady(): boolean { return this.deps.inverterLane.releaseRecoveryReady(); }
 
+  public getPendingInverterReleaseCount(plan: DevicePlan): number {
+    return this.deps.inverterLane.pendingReleaseCount(plan.inverterDecisions);
+  }
+
   public async handleShortfall(deficitKw: number): Promise<void> {
     await this.shortfallExecutor.handleShortfall(deficitKw);
   }

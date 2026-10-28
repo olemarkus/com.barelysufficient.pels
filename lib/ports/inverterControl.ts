@@ -62,6 +62,8 @@ export type InverterPlanner = {
 
 export type InverterExecution = {
   releaseRecoveryReady(): boolean;
+  /** Retained claims whose devices are present and can still need hand-back. */
+  pendingReleaseCount(decisions: readonly InverterDecision[]): number;
   hasWork(decisions: readonly InverterDecision[]): boolean;
   apply(decisions: readonly InverterDecision[]): Promise<{
     commandRequestCount: number; failureCount: number; pendingInverterReleaseCount: number;
@@ -73,6 +75,7 @@ export const NO_INVERTER_PLANNER: InverterPlanner = {
 };
 export const NO_INVERTER_EXECUTION: InverterExecution = {
   releaseRecoveryReady: () => true,
+  pendingReleaseCount: () => 0,
   hasWork: () => false,
   apply: async () => ({ commandRequestCount: 0, failureCount: 0, pendingInverterReleaseCount: 0 }),
 };

@@ -32,6 +32,7 @@ export type PlanEngine = {
   handleShortfallCleared: () => Promise<void>;
   applyPlanActions: (plan: DevicePlan) => Promise<PlanActuationResult>;
   isInverterReleaseRecoveryReady: () => boolean;
+  getPendingInverterReleaseCount: (plan: DevicePlan) => number;
   shouldApplyStablePlanActions: (plan: DevicePlan) => boolean;
   /**
    * Does the executor still have work to do against this plan?

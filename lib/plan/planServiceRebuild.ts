@@ -293,9 +293,10 @@ async function maybeApplyPlanChanges(
   observationRevision: number,
   outcome: PlanRebuildOutcome,
 ): Promise<void> {
-  // A build declined at the live-revision gate has not completed its hand-backs.
+  // Only the executor knows which retained claims can still need a hand-back,
+  // including when an unchanged plan or the live-revision gate skips apply.
   Object.assign(outcome, {
-    pendingInverterReleaseCount: plan.inverterDecisions.filter((decision) => decision.kind === 'release').length,
+    pendingInverterReleaseCount: host.deps.planEngine.getPendingInverterReleaseCount(plan),
     inverterReleaseRecoveryReady: host.deps.planEngine.isInverterReleaseRecoveryReady(),
   });
   if (!shouldApplyPlan(host, plan, changes, isDryRun, observationRevision)) return;
