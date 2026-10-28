@@ -176,18 +176,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Solar inverters and home battery
 
-- [ ] **Battery horizon construction sits in `lib/planInput/` but serves the battery owner.**
-      `lib/planInput/continuousBatteryHorizon.ts` builds the input for
-      `lib/battery/continuousBatteryPlanService.ts` (joined in
-      `setup/appInit/wireContinuousBatteryPlan.ts`) and decides terminal value, charge room and
-      standing managed load; `lib/planInput/AGENTS.md` names only two projections for non-planner
-      consumers. **What changes:** move horizon construction into `lib/battery/`, reading device
-      surfaces as `BatteryDemandForecaster` does; planInput only consumes
-      `ContinuousBatteryPlanRead`. Move `reserveCeilingWFor` (`lib/planInput/storageProjection.ts:12-20`)
-      onto the battery owner's read at the same time, and drop the `?? []` membership stand-in in
-      `wireContinuousBatteryPlan.ts:20`. **Done when** nothing under `lib/battery/` is fed from
-      `lib/planInput/`. *(v3.24.1..e6e399a86 release review, 2026-10-28.)* [P1]
-
 - [ ] **Missing regression coverage for the battery plan and inverter hold.** No test covers an
       app restart while a continuous battery claim is held, prices going stale mid-plan through
       the executor, or restart and meter outage with a held inverter at the SDK boundary.
