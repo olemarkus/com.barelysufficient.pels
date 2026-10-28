@@ -92,6 +92,13 @@ test('renders the real trajectory and combines adjacent charge periods into one 
   expect(document.getElementById('device-detail-managed-hint')?.textContent).toContain('PELS plans charging and household supply');
 });
 
+test('a saved plan that cannot run keeps the managed hint', async () => {
+  powerLimit = false;
+  await openBattery();
+  expect(document.body.textContent).toContain('Turn on Power-limit control to let PELS execute the battery plan.');
+  expect(document.getElementById('device-detail-managed-hint')?.textContent).not.toContain('PELS plans');
+});
+
 test('a plan refresh keeps an unsaved reserve edit and saves through the settings channel', async () => {
   await openBattery();
   await act(async () => { field('Minimum reserve (%)').value = '35'; field('Minimum reserve (%)').dispatchEvent(new Event('input')); });

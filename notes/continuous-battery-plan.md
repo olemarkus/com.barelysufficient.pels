@@ -69,23 +69,15 @@ control rules may reduce a current setpoint; Overview continues to report actual
 observed activity. Unknown or infeasible planning inputs produce a reason on the
 battery page rather than fabricated prices, production or consumption.
 
-## Reproducing the comparison
+## Checking the planner
 
-Run the pure planner specs and the optional external-source benchmark:
+Run the pure planner specs:
 
 ```sh
 PELS_TEST_WORKERS=1 PELS_PLAYWRIGHT_WORKERS=1 npm run test:unit -- test/unit/batteryEnergyPlan.test.ts
-npm run bench:battery-plan -- /path/to/ultimate-ems-2.5.119
 ```
 
-The benchmark loads the supplied `_computeChargeBlocks` method without copying
-competitor source. It replays those charge windows using the same capacity,
-reserve, conversion losses, prices, wear and terminal energy value as PELS. It
-prints the inspected source SHA-256, modeled objectives and solver times.
-
-This compares the charging-window method under deterministic fixture forecasts.
-It does not compare complete EMS dispatch, forecast accuracy, annual savings or
-household field performance. Use the SDK-boundary tests for the actual PELS
+They cover the planner under deterministic fixture forecasts. Use the SDK-boundary tests for the actual PELS
 command path, including zero-power ownership, reserve protection, no battery
 export, permission changes and manual takeover.
 

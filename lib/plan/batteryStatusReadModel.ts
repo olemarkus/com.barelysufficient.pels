@@ -74,9 +74,9 @@ export const BATTERY_REASON_LINES = {
   cap_for_device: 'Charging less so a device can use the solar',
   none: 'PELS takes over when your limit or solar needs it',
   power_limit_off: 'Power-limit control is off: its own app is in charge',
-  plan_charge: 'Buying lower-priced electricity for later',
+  plan_charge: 'Buying cheap electricity for later',
   plan_solar: 'Storing solar for later household use',
-  plan_supply: 'Using stored energy during higher prices',
+  plan_supply: 'Using stored energy while power is expensive',
   plan_wait: 'Keeping stored energy for later',
 } as const satisfies Record<StorageHoldKind, string>;
 
