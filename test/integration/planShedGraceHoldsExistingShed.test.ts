@@ -12,6 +12,10 @@ import {
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { withCapacityPace } from '../helpers/capacityPaceFixture';
 
+const CAPACITY_SETTINGS = {
+  capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 as const,
+};
+
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & MeteredDiscriminantProbe = {},
 ): MeteredPlanInputDevice => {
@@ -38,7 +42,7 @@ const buildDevice = (
 /**
  * Regression cover for the 2026-08-16 restore-all.
  *
- * The shed grace defers a shed while a restore PELS issued may still be ramping.
+ * Funded shed grace defers a restriction while observed pressure may still clear.
  * It was wired so that deferring the shed also left the shedding-active latch
  * off — and the latch is what every restore-side lane consults to hold a device
  * that is already limited. While headroom is negative both reason ladders stand
@@ -48,9 +52,9 @@ const buildDevice = (
  * the executor turned every one of them back on, straight into a hard-cap
  * crossing.
  *
- * The shape below is the production one at 04:42:37Z: a charger restored ~30 s
- * ago (open activation attempt, inside the restore cooldown), five thermostats
- * held off from an earlier shed, and the house 3.5 kW past its pace.
+ * Retain the restore-cooldown and already-OFF device shape with a funded
+ * 160 W deficit. The historical 3.5 kW deficit with no margin now correctly
+ * receives no additional patience.
  */
 describe('shed grace', () => {
   beforeEach(() => {
@@ -63,31 +67,43 @@ describe('shed grace', () => {
   });
 
   /**
-   * One graced rebuild: the charger was restored 30 s ago, so its activation
-   * attempt is open (the grace engages) and the global restore cooldown is still
-   * running; the thermostat is off from an earlier shed; the house sits 3.5 kW
-   * past its pace.
+   * One funded rebuild: observe the period boundary and a 10-second meter
+   * interval, then pressure that leaves the protected response reserve intact.
+   * A recent charger restore and an OFF thermostat retain the original hold
+   * regression; activation attribution does not grant the patience.
    */
   async function buildGracedPlan(): Promise<DevicePlan> {
     const state = createPlanEngineState();
+    const nowTs = Date.now();
+    const periodStartMs = Math.floor(nowTs / 3_600_000) * 3_600_000;
+    let powerW = 0;
+    const builder = buildBuilder(state, () => powerW);
+    for (const atMs of [periodStartMs - 20_000, periodStartMs - 10_000, periodStartMs, nowTs - 10_000]) {
+      vi.setSystemTime(atMs);
+      await builder.buildDevicePlanSnapshot([]);
+    }
+    vi.setSystemTime(nowTs);
+    powerW = 2000;
     recordActivationAttemptStart(state, 'charger', Date.now() - 30_000);
     state.actuation.lastRestoreMs = Date.now() - 30_000;
 
-    return buildBuilder(state).buildDevicePlanSnapshot([
-      buildDevice({ id: 'charger', name: 'Charger', currentDrawKw: 5.2, binaryControl: { on: true } }),
+    const plan = await builder.buildDevicePlanSnapshot([
+      buildDevice({ id: 'charger', name: 'Charger', currentDrawKw: 1.8, binaryControl: { on: true } }),
       buildDevice({ id: 'thermostat', name: 'Thermostat', currentDrawKw: 0, binaryControl: { on: false } }),
     ]);
+    expect(state.sheddingActive).toBe(true);
+    return plan;
   }
 
-  function buildBuilder(state: ReturnType<typeof createPlanEngineState>): PlanBuilder {
+  function buildBuilder(state: ReturnType<typeof createPlanEngineState>, getPowerW: () => number): PlanBuilder {
     const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
     return new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard,
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0, periodMinutes: 60 }),
-      getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now(), lastPowerW: 5.4 * 1000 }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0, periodMinutes: 60 }), 1.84),
-      // The binding pace, well under the 6 kW hard cap — the deficit is real and
-      // far above the soft-overshoot deadband.
+      getCapacitySettings: () => CAPACITY_SETTINGS,
+      getPowerTracker: () => withCapacityPace(
+        { lastTimestamp: Date.now(), lastPowerW: getPowerW() }, CAPACITY_SETTINGS, 1.84,
+      ),
     }, state);
   }
 

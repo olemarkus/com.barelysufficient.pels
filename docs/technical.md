@@ -171,6 +171,30 @@ When a high-priority device is off and there isn't enough available power to res
 
 ---
 
+## Brief Power Spikes and Slow Devices
+
+PELS can leave devices running through a brief rise above safe pace. With
+Capacity limit enabled, it funds this waiting from half the selected period's
+safety margin. The consumption projection must leave the other half available
+for device response.
+A 0.2 kW safety margin provides a 100 Wh waiting allowance in an hour, or
+25 Wh in a quarter-hour. Waiting also requires enough room below the hard cap
+on the current consumption projection; a safety margin already being used by
+that projection cannot be spent again.
+
+PELS reassesses on whole-home readings. Each pressure episode has a 60-second
+deadline, and subsequent spikes share the same period allowance. A late reading
+charges the whole waiting interval. After a restart, additional capacity waiting
+begins with the next observed capacity period. With Capacity limit disabled,
+daily-budget pressure uses the bounded wait without a capacity allowance.
+
+Grid import pressure and a projected hard-cap breach receive an immediate
+response. Lowering a heat pump's target requests less heating; PELS continues
+to read its electrical draw separately. When immediate electrical reductions
+are needed, it continues through the priority order to devices that can provide
+them. Resuming a limited temperature device keeps the shared power admission
+and pacing rules, including when the device also has an on/off control.
+
 ## Limiting Order
 
 When power exceeds the safe pace, devices are limited in priority order:

@@ -1,3 +1,4 @@
+import { resolveSoftOvershootDecision } from '../../lib/plan/planOvershoot';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import type { Logger as PinoLogger } from '../../lib/logging/logger';
 import { partialDouble } from '../helpers/partialDouble';
@@ -168,7 +169,7 @@ describe('buildSheddingPlan', () => {
       softLimitSource: 'capacity',
     });
 
-    const overshootDecision = state.overshoot.decideSoft(power.headroomKw ?? 0, 4.7, false, Date.now());
+    const overshootDecision = resolveSoftOvershootDecision(power.headroomKw ?? 0, false, null, Date.now());
 
     const result = await buildSheddingPlanForSpec(
       context,
@@ -238,7 +239,6 @@ describe('buildSheddingPlan', () => {
 
   it('sheds after a tiny negative headroom persists past the soft overshoot dwell time', async () => {
     const state = createPlanEngineState();
-    state.overshoot['softPendingSinceMs'] = Date.now() - SOFT_OVERSHOOT_PERSIST_MS;
     const capacityGuard = capacityGuardSpy();
 
     const { context, power } = buildContext({
@@ -259,7 +259,10 @@ describe('buildSheddingPlan', () => {
       softLimitSource: 'capacity',
     });
 
-    const overshootDecision = state.overshoot.decideSoft(power.headroomKw ?? 0, 4.7, false, Date.now());
+    const nowTs = Date.now();
+    const overshootDecision = resolveSoftOvershootDecision(
+      power.headroomKw ?? 0, false, nowTs - SOFT_OVERSHOOT_PERSIST_MS, nowTs,
+    );
 
     const result = await buildSheddingPlanForSpec(
       context,
@@ -298,7 +301,7 @@ describe('buildSheddingPlan', () => {
       softLimitSource: 'capacity',
     });
 
-    const overshootDecision = state.overshoot.decideSoft(power.headroomKw ?? 0, 4.7, false, Date.now());
+    const overshootDecision = resolveSoftOvershootDecision(power.headroomKw ?? 0, false, null, Date.now());
 
     const result = await buildSheddingPlanForSpec(
       context,

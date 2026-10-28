@@ -1,21 +1,11 @@
-import {
-  pricedShedGrace,
-  resolveSoftOvershootDecision,
-  unpricedShedGrace,
-  type SoftOvershootDecision,
-} from './planOvershoot';
+import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
+import type { LatchedMeterReading } from '../power/lastTotalPower';
+import type { MeasuredPower, PlanContext } from './planContext';
+import type { SoftOvershootDecision } from './planOvershoot';
+import type { StorageShedTerm } from './shedding/types';
+import { PacingGrace } from './pacingGrace';
 
 const OVERSHOOT_ESCALATION_INTERVAL_MS = 30 * 1000;
-
-/**
- * Over the grid import target: act at once. A grid breach bypasses the shed
- * grace (`docs/technical.md` § "Grid import limit"), and it times no soft
- * deficit, so it carries no deficit clock.
- */
-const GRID_BREACH_DECISION: SoftOvershootDecision = { actionable: true, shedActionable: true, pendingSinceMs: null };
-
-/** No limit is enabled this build: there is nothing to be over. */
-const NO_LIMIT_DECISION: SoftOvershootDecision = { actionable: false, shedActionable: false, pendingSinceMs: null };
 
 /**
  * The overshoot incident the planner is in, if any — when it started, and when
@@ -25,9 +15,8 @@ const NO_LIMIT_DECISION: SoftOvershootDecision = { actionable: false, shedAction
  * another pass and stamps the pass it takes, and the rebuild scheduler asks
  * whether one is open at all. In-memory: a restart starts outside any incident.
  *
- * The soft-overshoot deficit clock (`softPendingSinceMs`) lives here too: it is
- * the one piece of memory `resolveSoftOvershootDecision` carries between builds,
- * and it belongs to the same question ("is the house over, and for how long").
+ * Its pacing grace keeps the episode clock and period exposure allowance;
+ * clearing a short pressure episode never replenishes that allowance.
  */
 /** The read a consumer that only asks "is one open?" is handed — the rebuild posture, not the mutators. */
 export type OvershootIncidentRead = Pick<OvershootIncident, 'isActive'>;
@@ -41,68 +30,22 @@ export class OvershootIncident {
 
   private lastMitigationMs: number | null = null;
 
-  private softPendingSinceMs: number | null = null;
+  private readonly pacingGrace = new PacingGrace();
 
   isActive(): boolean {
     return this.active;
   }
 
-  /**
-   * This build's soft-overshoot verdict, with the deficit clock carried across
-   * builds: Capacity limit on, so the wait is priced against the period's
-   * remaining allowance (`pricedShedGrace`).
-   */
-  decideSoft(
-    headroomKw: number,
-    hourRemainingKWh: number,
-    restoreTransientPossible: boolean,
-    nowTs: number,
+  /** One measured pacing decision, independent of activation attribution. */
+  decidePacing(
+    context: PlanContext,
+    power: MeasuredPower,
+    settings: PowerLimitSettings,
+    storage: StorageShedTerm,
+    shortfallThresholdKw: number | null,
+    reading: LatchedMeterReading,
   ): SoftOvershootDecision {
-    return this.remember(resolveSoftOvershootDecision(
-      headroomKw, pricedShedGrace(hourRemainingKWh), restoreTransientPossible, this.softPendingSinceMs, nowTs,
-    ));
-  }
-
-  /**
-   * The same verdict with Capacity limit off: no period prices the wait, so a
-   * real deficit PELS may be driving gets the bounded maximum (`unpricedShedGrace`).
-   */
-  decideSoftUnpriced(headroomKw: number, restoreTransientPossible: boolean, nowTs: number): SoftOvershootDecision {
-    return this.remember(resolveSoftOvershootDecision(
-      headroomKw, unpricedShedGrace, restoreTransientPossible, this.softPendingSinceMs, nowTs,
-    ));
-  }
-
-  /**
-   * This build's verdict when the house is over its grid import target: shed
-   * now, without the grace.
-   *
-   * It also ENDS the soft-deficit clock. The clock times one soft deficit — a
-   * draw over the capacity or daily pace the grace is priced against — from the
-   * first build that saw it. A grid-breach build never judges that deficit, and
-   * its shed changes the draw the next soft decision reads, so carrying the
-   * pre-breach start across the breach would claim a continuity no build
-   * observed: a capacity deficit right after the breach would inherit the older
-   * start and could skip the grace it is owed. The soft deficit that remains
-   * once the house is back under its grid target is timed from the build that
-   * first sees it.
-   */
-  decideGridBreach(): SoftOvershootDecision {
-    return this.remember(GRID_BREACH_DECISION);
-  }
-
-  /**
-   * This build's verdict when no limit is enabled (no binding pace at all):
-   * nothing is over, and the soft-deficit clock ends, so a deficit after a
-   * limit is turned back on is timed from its own first build.
-   */
-  decideWithoutLimit(): SoftOvershootDecision {
-    return this.remember(NO_LIMIT_DECISION);
-  }
-
-  private remember(decision: SoftOvershootDecision): SoftOvershootDecision {
-    this.softPendingSinceMs = decision.pendingSinceMs;
-    return decision;
+    return this.pacingGrace.decide(context, power, settings, storage, shortfallThresholdKw, reading);
   }
 
   /** Open the incident: the house just went over. */

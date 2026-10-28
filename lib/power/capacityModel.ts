@@ -42,6 +42,11 @@ export function resolveHardCapacityKWh(capacitySettings: CapacitySettings): numb
   return capacityPeriodEnergyKWh(Math.max(0, capacitySettings.limitKw), capacitySettings.periodMinutes);
 }
 
+/** The configured cushion below the hard-cap energy boundary, in this tariff period. */
+export function resolveCapacityMarginKWh(capacitySettings: CapacitySettings): number {
+  return resolveHardCapacityKWh(capacitySettings) - resolveUsableCapacityKWh(capacitySettings);
+}
+
 /**
  * Owner of the house planning ceiling (`planningCeiling` in
  * `notes/safe-pace-two-constraints.md`): the import rate the daily budget's

@@ -489,7 +489,7 @@ describe('storage relief in the plan build', () => {
     expect(plannedState(lampPlan, 'lamp')).toBe('keep');
   });
 
-  it('limits nothing during the shed grace when a device ranks below the battery', async () => {
+  it('does not grant activation grace without margin when a device ranks below the battery', async () => {
     const { build, state } = buildHarness({ paceKw: 3 });
     state.activationAttemptByDevice.heater = {
       startedMs: START_MS - 10_000, cleanWholeHomeSampleSeen: false,
@@ -497,7 +497,7 @@ describe('storage relief in the plan build', () => {
     const plan = await build(4200, [heater(true, 2, 'heater', 5), battery({}, { priority: 1 })]);
 
     expect(storageDecision(plan)).toBeUndefined();
-    expect(plannedState(plan, 'heater')).toBe('keep');
+    expect(plannedState(plan, 'heater')).toBe('shed');
   });
 
   it('sizes the hand-back of a battery idle at the claim on its charge ceiling, and caps it first when its own mode charges', async () => {

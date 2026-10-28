@@ -1,22 +1,5 @@
 import { NO_INVERTER_PLANNER } from '../../lib/ports/inverterControl';
-/**
- * The shed grace across the power-limit modes, driven through the plan build.
- *
- * The grace defers a shed while the deficit may be a restore PELS itself is
- * driving (an activation attempt is open), and prices the wait against the
- * capacity period's remaining allowance (`resolveShedGraceMs`). Two ways the
- * independent grid import limit (PR #2668) broke that:
- *
- * - With Capacity limit off the build used to stamp a remaining allowance of
- *   0 kWh — "the period is spent" — so a restore-caused overshoot of the daily
- *   pace got no grace at all. The remaining allowance is now stamped as the
- *   fact it is (period tracking continues), and the decisions gate on Capacity
- *   limit being on: the grace is unpriced (its bounded maximum), and a tracked
- *   period that is spent sheds, holds and labels nothing.
- * - A grid breach sheds without the grace, but left the soft-deficit clock
- *   untouched, so a capacity deficit right after the breach inherited the clock
- *   started before it and could skip its grace.
- */
+/** Period-funded pressure persistence across capacity, daily and grid control. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
@@ -128,7 +111,13 @@ const buildHarness = (scenario: Scenario) => {
     tracker.lastPowerW = houseW;
     return builder.buildDevicePlanSnapshot(devices);
   };
-  return { build, state };
+  const warm = async (): Promise<void> => {
+    const periodStartMs = Math.floor(START_MS / 3_600_000) * 3_600_000;
+    for (const atMs of [periodStartMs - 20_000, periodStartMs - 10_000, periodStartMs, START_MS - 10_000]) {
+      await build(0, [], atMs - START_MS);
+    }
+  };
+  return { build, state, warm };
 };
 
 const load = (id: string, priority: number, on = true) => buildPlanInputDevice({
@@ -168,7 +157,8 @@ describe('shed grace by power-limit mode', () => {
     };
 
     it('grants a restore transient the unpriced grace, the period still tracked', async () => {
-      const { build, state } = buildHarness(scenario);
+      const { build, state, warm } = buildHarness(scenario);
+      await warm();
       // The charger was resumed 10 s ago and may still be ramping.
       recordActivationAttemptStart(state, 'charger', START_MS - 10_000);
       const devices = [load('charger', 1), load('heater', 2)];
@@ -193,13 +183,64 @@ describe('shed grace by power-limit mode', () => {
       expect(after.devices.some((device) => device.plannedState === 'shed')).toBe(true);
     });
 
-    it('still sheds a deficit at once when no restore of its own is in flight', async () => {
-      const { build, state } = buildHarness(scenario);
+    it('gives daily-only pressure the dwell even with no restore in flight', async () => {
+      const { build, state, warm } = buildHarness(scenario);
+      await warm();
       const plan = await build(2500, [load('charger', 1), load('heater', 2)], 0);
       expect(state.hourlyRemainingKWh).toBe(0);
-      // Shed for the daily pace, never as a spent capacity period.
-      expect(plan.devices.some((device) => device.plannedState === 'shed')).toBe(true);
+      expect(plan.devices.every((device) => device.plannedState === 'keep')).toBe(true);
       expect(plan.devices.every((device) => device.reason.code !== 'hourly_budget')).toBe(true);
+      const after = await build(2500, [load('charger', 1), load('heater', 2)], SHED_GRACE_MAX_MS);
+      expect(after.devices.some((device) => device.plannedState === 'shed')).toBe(true);
+    });
+  });
+
+  it('waits for ordinary daily pressure but acts on a projected actual-cap breach', async () => {
+    const { build, warm } = buildHarness({
+      settings: { capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
+      dailyBudget: true,
+      capacityPaceKw: 5,
+      hourUsedKWh: 0,
+    });
+    await warm();
+    const devices = [load('charger', 1), load('heater', 2)];
+    const first = await build(2500, devices, 0);
+    expect(first.meta.softLimitSource).toBe('daily');
+    expect(first.devices.every((device) => device.plannedState === 'keep')).toBe(true);
+    const capacityBreach = await build(8500, devices, 10_000);
+    expect(capacityBreach.devices.some((device) => device.plannedState === 'shed')).toBe(true);
+  });
+
+  it('keeps devices running when a short daily-only background spike clears', async () => {
+    const { build, warm } = buildHarness({
+      settings: { capacityEnabled: true, gridImportLimitKw: 10, limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
+      dailyBudget: true,
+      capacityPaceKw: 5,
+      hourUsedKWh: 0,
+    });
+    await warm();
+    const devices = [load('heater', 1)];
+    const first = await build(2500, devices, 0);
+    expect(first.devices[0]?.plannedState).toBe('keep');
+    const cleared = await build(1000, devices, 20_000);
+    expect(cleared.devices[0]?.plannedState).toBe('keep');
+  });
+
+  it('holds an already limited device through daily grace and bypasses it for a new grid breach', async () => {
+    const { build, warm } = buildHarness({
+      settings: { capacityEnabled: true, gridImportLimitKw: 4, limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
+      dailyBudget: true,
+      capacityPaceKw: 5,
+      hourUsedKWh: 0,
+    });
+    await warm();
+    const devices = [load('charger', 1), load('heater', 2, false)];
+    const first = await build(2500, devices, 0);
+    expect(plannedState(first, 'heater')).toBe('shed');
+    expect(plannedState(first, 'charger')).toBe('keep');
+    const gridBreach = await build(4000, devices, 10_000);
+    expect(gridBreach.devices.find((device) => device.id === 'charger')).toMatchObject({
+      plannedState: 'shed', reason: { code: 'grid_import' },
     });
   });
 
@@ -208,12 +249,13 @@ describe('shed grace by power-limit mode', () => {
   // other limit either — the spent period sheds nothing, latches nothing, and
   // publishes no spent period, exactly as before the facts were stamped.
   it('Capacity limit off: a spent tracked period sheds, holds and labels nothing', async () => {
-    const { build, state } = buildHarness({
+    const { build, state, warm } = buildHarness({
       settings: { capacityEnabled: false, gridImportLimitKw: null, limitKw: 10, marginKw: 0, periodMinutes: 60 },
       dailyBudget: false,
       capacityPaceKw: null,
       hourUsedKWh: 12,
     });
+    await warm();
     const plan = await build(1000, [load('heater', 1), load('lamp', 2, false)], 0);
     expect(state.hourlyBudgetExhausted).toBe(true);
     expect(state.hourlyRemainingKWh).toBe(0);
@@ -224,12 +266,13 @@ describe('shed grace by power-limit mode', () => {
   });
 
   it('Capacity limit on: the same spent period sheds everything and publishes it', async () => {
-    const { build, state } = buildHarness({
+    const { build, state, warm } = buildHarness({
       settings: { capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0, periodMinutes: 60 },
       dailyBudget: false,
       capacityPaceKw: null,
       hourUsedKWh: 12,
     });
+    await warm();
     const plan = await build(1000, [load('heater', 1), load('lamp', 2, false)], 0);
     expect(state.hourlyBudgetExhausted).toBe(true);
     expect(plan.meta.hourlyBudgetExhausted).toBe(true);
@@ -237,39 +280,34 @@ describe('shed grace by power-limit mode', () => {
     expect(plan.devices.find((device) => device.id === 'heater')?.reason.code).toBe('hourly_budget');
   });
 
-  // Capacity limit on keeps pricing the wait against the period it has left:
-  // 0.05 kWh of a 10 kWh hour at a 2.44 kW deficit buys about 1.5 s, not the cap.
-  it('Capacity limit on: still prices the grace from the remaining period allowance', async () => {
-    const { build, state } = buildHarness({
+  it('does not buy capacity grace from a recent restore when no configured margin remains', async () => {
+    const { build, state, warm } = buildHarness({
       settings: { capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0, periodMinutes: 60 },
       dailyBudget: false,
       capacityPaceKw: null,
       hourUsedKWh: 9.95,
     });
+    await warm();
     recordActivationAttemptStart(state, 'charger', START_MS - 10_000);
-    const devices = [load('charger', 1), load('heater', 2)];
-
-    const first = await build(2500, devices, 0);
+    const first = await build(2500, [load('charger', 1), load('heater', 2)], 0);
     expect(state.hourlyRemainingKWh).toBeCloseTo(0.05, 9);
     expect(first.meta.softLimitSource).toBe('capacity');
-    expect(first.devices.every((device) => device.plannedState === 'keep')).toBe(true);
-
-    const after = await build(2500, devices, 2_000);
-    expect(after.devices.some((device) => device.plannedState === 'shed')).toBe(true);
+    expect(first.devices.some((device) => device.plannedState === 'shed')).toBe(true);
   });
 
   it('a grid breach ends the soft-deficit clock, so a capacity deficit after it gets its own grace', async () => {
-    const { build, state } = buildHarness({
+    const { build, state, warm } = buildHarness({
       // A 3.5 kW capacity pace under a 3.8 kW grid target (4 kW limit).
-      settings: { capacityEnabled: true, gridImportLimitKw: 4, limitKw: 10, marginKw: 0, periodMinutes: 60 },
+      settings: { capacityEnabled: true, gridImportLimitKw: 4, limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       dailyBudget: false,
       capacityPaceKw: 3.5,
       hourUsedKWh: 0,
     });
+    await warm();
     recordActivationAttemptStart(state, 'charger', START_MS - 10_000);
 
-    // A capacity deficit (0.2 kW) while the charger may still be ramping: in grace.
-    const first = await build(3700, [load('charger', 1), load('heater', 2)], 0);
+    // A capacity deficit (0.06 kW) while the charger may still be ramping: in grace.
+    const first = await build(3560, [load('charger', 1), load('heater', 2)], 0);
     expect(first.devices.every((device) => device.plannedState === 'keep')).toBe(true);
 
     // Over the grid target: shed at once, without the grace — one device covers it.
@@ -281,9 +319,9 @@ describe('shed grace by power-limit mode', () => {
 
     // Back under the grid target, over the capacity pace again, 70 s after the
     // first deficit: past the grace that deficit had, but this is a new soft
-    // deficit and the charger's restore is still in flight, so nothing more is
-    // limited yet.
-    const after = await build(3700, [
+    // deficit with remaining margin allowance, so no additional device is
+    // limited yet. Activation attribution is not the permission to wait.
+    const after = await build(3560, [
       ...stillOn.map((id) => load(id, id === 'charger' ? 1 : 2)),
       ...shedIds.map((id) => load(id, id === 'charger' ? 1 : 2, false)),
     ], 70_000);

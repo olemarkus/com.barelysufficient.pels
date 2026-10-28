@@ -4,7 +4,6 @@
 // directly, keeping the barrel honest about the public API.
 
 export {
-  ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
   ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
   ACTIVATION_BACKOFF_MAX_LEVEL,
   applyActivationPenalty,

@@ -19,6 +19,17 @@
 - Shedding selects devices only in `shedding/`. Plan materialization copies decisions; it does not invent new selection. Shed cooldown is at least 60 seconds; restore cooldown is 300–600 seconds, and the ordinary 300-second wait can end early once every restored device has started drawing from idle and a whole-home value measured after that draw is in (`restore/timing.ts`).
 - Deferred-objective decoration can change numeric admission inputs but cannot select other devices or produce actuation intent. `forceShedSet` is the narrow contract for a smart task to hold its own device off during a deferred hour. A reserve may prevent another device's restore, and its release needs evidence from its holder rather than an unattributable whole-home sum. See `notes/deferred-load-objectives/preemptive-power-reservation.md`.
 
+## Pressure persistence
+
+`PacingGrace` owns discretionary waiting and its per-period expenditure. It
+allocates half the configured period margin and requires the observed
+trajectory to retain the other half as response reserve. A new pressure episode
+never refills the allowance; the first partial period after restart cannot
+open one. Grid pressure, projected actual-cap pressure, exhausted allowance,
+and period-end control bypass waiting. Activation attribution remains a
+restore-penalty input, not a permission to ignore background-driven transients.
+See `notes/slow-response-control.md` for sampling assumptions and regressions.
+
 ## Terminology: the safe-pace family
 
 `notes/safe-pace-two-constraints.md` defines canonical pace, limit, and exempt quantities. Read it when naming or comparing them. Capacity pace and budget pace use different power axes and require an explicit exempt-load rebase. The build alone stamps period fields through `PlanBuilder.stampCapacityPace`; other readers use the side-effect-free `PlanBuilder.computeCapacityPace` (the capacity axis) or `PlanBuilder.computePhysicalPowerLimit` (the lower of the capacity pace and the grid import target).

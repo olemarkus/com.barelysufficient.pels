@@ -12,6 +12,9 @@ const START_HOUR_MS = Date.UTC(2026, 0, 1);
 /** One exact, cumulative-energy meter report from the synthetic plant. */
 export type SimulatedPressureReading = {
   atMs: number;
+  settings: CapacitySettings;
+  managedKw: number;
+  usedKWh: number;
   powerKw: number;
   capacityPaceKw: number;
   dailyPaceKw: number | null;
@@ -71,12 +74,16 @@ export const forecastGuardedGracePolicy: SimulatedPressurePolicyFactory = () => 
 
 /** Conservative final candidate: only daily pressure can receive additional patience. */
 export const dailyOnlyGracePolicy: SimulatedPressurePolicyFactory = () => {
-  const softDecision = referenceGracePolicy(true)();
-  const capacityDecision = referenceGracePolicy(false)();
+  const immediateDecision = referenceGracePolicy(false)();
   return (reading) => {
-    const decision = softDecision(reading);
-    const capacity = capacityDecision({ ...reading, dailyPaceKw: null });
-    return capacity.actionable ? { ...decision, actionable: true, shedActionable: true } : decision;
+    const decision = immediateDecision(reading);
+    if (decision.pendingSinceMs === null || reading.powerKw > reading.capacityPaceKw || reading.dailyPaceKw === null) {
+      return decision;
+    }
+    // One episode clock, and raw capacity pressure: even a tiny capacity breach
+    // withdraws daily grace when the binding daily deficit is meaningful.
+    if (reading.powerKw - reading.dailyPaceKw < 0.05) return decision;
+    return { ...decision, shedActionable: reading.atMs - decision.pendingSinceMs >= 60_000 };
   };
 };
 
@@ -99,6 +106,8 @@ export type SlowResponseScenario = {
   response: SimulatedShedResponse;
   gridTargetKw: number | null;
   dailyPaceKw: number | null;
+  /** Warm controller by default; false reproduces a restart in the current period. */
+  controllerWarmStart?: boolean;
 };
 
 export type SimulatedPeriodResult = {
@@ -157,6 +166,14 @@ export function runSlowResponseSimulation(
     peakPowerKw: 0,
     periodEnergyKWh: new Map([[firstPeriodMs, scenario.usedBeforeKWh]]),
   };
+  // The household has already been observed before these pressure scenarios.
+  // Prime every policy equally; the restart cases deliberately omit this phase.
+  if (scenario.controllerWarmStart !== false) {
+    for (const atMs of [firstPeriodMs - 20_000, firstPeriodMs - 10_000, startMs - 10_000]) {
+      const frameMs = Math.floor(atMs / periodMs) * periodMs;
+      policy({ ...readPlant(scenario, plant, drain, atMs, 0, frameMs), managedKw: 0 });
+    }
+  }
   for (let second = 0; second < scenario.durationSeconds; second += 1) {
     plant = deliverShed(scenario, plant, second);
     const atMs = startMs + second * SECOND_MS;
@@ -200,6 +217,9 @@ function readPlant(
   const pace = computeDynamicSoftLimit(scenario.settings, tracker, atMs, drain.startFor(scenario.settings, tracker, atMs));
   return {
     atMs,
+    settings: scenario.settings,
+    managedKw: plant.managedKw,
+    usedKWh: energyKWh,
     powerKw,
     capacityPaceKw: pace.allowedKw,
     dailyPaceKw: scenario.dailyPaceKw,
