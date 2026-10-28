@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Schedule, SchedulesSnapshot } from '../../contracts/src/schedules.ts';
+import type { SmartTaskCandidateDevice } from '../../contracts/src/smartTaskEdit.ts';
 import type { SchedulesViewSnapshot } from '../src/ui/schedulesTypes.ts';
 import type { SchedulesActions } from '../src/ui/views/Schedules.tsx';
 import { SETTINGS_UI_DEVICES_PATH, SETTINGS_UI_SMART_TASK_DEVICES_PATH } from '../../contracts/src/settingsUi/paths.ts';
@@ -27,7 +28,7 @@ const schedule: Schedule = {
 const ownerRead = (): SchedulesSnapshot => ({
   timeZone: 'Europe/Oslo', modes: ['Home', 'Night'],
   controls: { modeChangesEnabled: true, disabledTaskDeviceIds: [] },
-  entries: [{ schedule: structuredClone(schedule), state: 'on', reason: '', nextAtMs: 1, nextLabel: 'Tomorrow 22:00', lastResult: '' }],
+  entries: [{ schedule: structuredClone(schedule), modeReferences: [], state: 'on', reason: '', nextAtMs: 1, nextLabel: 'Tomorrow 22:00', lastResult: '' }],
 });
 let read = ownerRead();
 
@@ -47,6 +48,55 @@ beforeEach(() => {
 });
 
 describe('Schedule settings bridge', () => {
+  it('keeps a valid task device, target and permissions when its action is selected again', async () => {
+    const heater: SmartTaskCandidateDevice = {
+      deviceId: 'heater', deviceName: 'Water heater', kind: 'temperature', group: 'heating',
+      unitSymbol: '°C', goalMin: 30, goalMax: 75, goalStep: 0.5, defaultGoal: 65, currentValue: 40,
+      supportsLimitLowerPriority: false, offersQuickTargets: false,
+    };
+    const entry = read.entries[0];
+    if (!entry) throw new Error('Missing fixture entry');
+    entry.schedule = {
+      ...schedule, id: 'water', name: 'Hot water',
+      action: { type: 'task', task: {
+        deviceId: heater.deviceId, kind: heater.kind, target: 70, readyByLocalTime: '07:00',
+        exemptFromBudget: true, limitLowerPriorityDevices: false, pauseLowerPriorityDevices: true,
+      } },
+    };
+    callApiMock.mockImplementation(async (_method: string, path: string) => {
+      if (path === SETTINGS_UI_DEVICES_PATH) return { schedules: { ok: true, data: structuredClone(read) } };
+      if (path === SETTINGS_UI_SMART_TASK_DEVICES_PATH) return { state: 'ready', devices: [heater] };
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    window.history.replaceState({}, '', '/?page=settings/schedules&schedule=water');
+    await controller.refreshSchedules();
+    controller.changeScheduleDraft({ target: '72' });
+    const expected = {
+      deviceId: heater.deviceId, target: '72', readyBy: '07:00', actionType: 'task',
+      permissions: { exemptFromBudget: true, limitLowerPriorityDevices: false, pauseLowerPriorityDevices: true },
+    };
+    renders.at(-1)?.actions.onSelectAction('task');
+    expect(renders.at(-1)?.snapshot.editor?.draft).toMatchObject(expected);
+    renders.at(-1)?.actions.onSelectAction('mode');
+    renders.at(-1)?.actions.onSelectAction('task');
+    expect(renders.at(-1)?.snapshot.editor?.draft).toMatchObject(expected);
+  });
+
+  it('does not borrow a renamed mode reference from another schedule', async () => {
+    const original = read.entries[0];
+    if (!original) throw new Error('Missing fixture entry');
+    read.entries.push({ ...original,
+      schedule: { ...schedule, id: 'renamed', action: { type: 'mode', mode: 'Old Home' } },
+      modeReferences: [{ stored: 'Old Home', resolved: 'Home' }],
+    });
+    window.history.replaceState({}, '', '/?page=settings/schedules&schedule=night');
+    await controller.refreshSchedules();
+    controller.changeScheduleDraft({ mode: 'Old Home' });
+    renders.at(-1)?.actions.onSave();
+    await vi.waitFor(() => expect(renders.at(-1)?.snapshot.error).toBe('Choose an available mode.'));
+    expect(setSettingMock).not.toHaveBeenCalled();
+  });
+
   it('does not turn an unavailable device deep link into an unrelated mode schedule', async () => {
     window.history.replaceState({}, '', '/?page=settings/schedules&schedule=new&scheduleDevice=missing');
     await controller.refreshSchedules();

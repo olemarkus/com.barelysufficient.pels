@@ -631,6 +631,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
       receipts: createScheduleReceiptStore(this.getUserdataDatabase()),
       getNowMs: () => this.getNow().getTime(),
       listModes: () => Array.from(this.getHomeModeNames()),
+      resolveModeName: this.resolveHomeModeName,
       currentMode: this.getHomeOperatingMode,
       listTaskDevices,
       execute: (schedule, at) => executor.execute(schedule, at),
