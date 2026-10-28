@@ -19,6 +19,8 @@ export type ScheduleControls = { modeChangesEnabled: boolean; disabledTaskDevice
 /** Resolved display state from the schedule owner; paused keeps the individual enabled preference. */
 export type ScheduleEntry = {
   schedule: Schedule;
+  /** Valid retained mode names and their current destination; commands keep the stored name. */
+  modeReferences: { stored: string; resolved: string }[];
   state: 'on' | 'off' | 'paused' | 'invalid' | 'finished';
   reason: string;
   nextAtMs: number | null;

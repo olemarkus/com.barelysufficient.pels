@@ -1,6 +1,6 @@
 import { render } from 'preact';
 import type { ComponentChildren } from 'preact';
-import type { Schedule, ScheduleEntry } from '../../../../contracts/src/schedules.ts';
+import type { ScheduleEntry } from '../../../../contracts/src/schedules.ts';
 import type { SmartTaskCandidateDevice } from '../../../../contracts/src/smartTaskEdit.ts';
 import {
   formatSmartTaskGoalRangeHint,
@@ -9,6 +9,7 @@ import {
   SMART_TASK_EXTRA_PERMISSIONS_TITLE,
 } from '../../../../shared-domain/src/deadlineLabels.ts';
 import type { ScheduleDraft, ScheduleRepeatChoice } from '../scheduleDraft.ts';
+import { scheduleModeLabel, scheduleModeOptions } from '../scheduleModeReferences.ts';
 import { SCHEDULE_DAYS, scheduleReadyByDay, scheduleRepeatLabel } from '../scheduleDraft.ts';
 import type { SchedulesViewSnapshot } from '../schedulesTypes.ts';
 import { SmartTaskPermissionRow } from './DeadlinePlan.tsx';
@@ -48,8 +49,11 @@ const REPEATS: { value: ScheduleRepeatChoice; label: string }[] = [
 const Choice = ({ value, children }: { value: string; children: ComponentChildren }) => (
   <MdSelectOption value={value}><span slot="headline">{children}</span></MdSelectOption>
 );
-const actionSummary = (schedule: Schedule, devices: readonly SmartTaskCandidateDevice[]): string => {
-  if (schedule.action.type === 'mode') return `Set mode to ${schedule.action.mode}`;
+const actionSummary = (entry: ScheduleEntry, devices: readonly SmartTaskCandidateDevice[]): string => {
+  const { schedule } = entry;
+  if (schedule.action.type === 'mode') {
+    return `Set mode to ${scheduleModeLabel(schedule.action.mode, entry.modeReferences)}`;
+  }
   const { task } = schedule.action;
   const device = devices.find((candidate) => candidate.deviceId === task.deviceId);
   const unit = { temperature: '°C', ev_soc: '%', energy: 'kWh' }[task.kind];
@@ -66,9 +70,10 @@ const ScheduleRow = ({ entry, view }: { entry: ScheduleEntry; view: View }) => {
           onClick={() => view.actions.onEdit(schedule.id)}>
           <h3 class="pels-text-card-title">{schedule.name}</h3>
           <p class="pels-card-supporting">{scheduleRepeatLabel(schedule.repeat)} at {schedule.at}</p>
-          <p>{actionSummary(schedule, view.snapshot.devices)}</p>
+          <p>{actionSummary(entry, view.snapshot.devices)}</p>
           {schedule.condition.type !== 'any' && <p class="pels-card-supporting">
-            {schedule.condition.type === 'include' ? 'Only in' : 'Except'} {schedule.condition.modes.join(', ')}
+            {schedule.condition.type === 'include' ? 'Only in' : 'Except'}{' '}
+            {schedule.condition.modes.map((mode) => scheduleModeLabel(mode, entry.modeReferences)).join(', ')}
           </p>}
         </button>
         <div class="schedule-row__switch">
@@ -133,7 +138,7 @@ const List = (view: View) => {
     .sort((a, b) => (a.nextAtMs as number) - (b.nextAtMs as number))[0];
   return (
     <>
-      <div class="pels-appbar"><MdIconButton data-settings-target="settings" aria-label="Back to Settings"><ArrowBackIcon /></MdIconButton>
+      <div class="pels-appbar"><MdIconButton class="pels-appbar__back" data-settings-target="settings" aria-label="Back to Settings"><ArrowBackIcon /></MdIconButton>
         <h2 class="pels-appbar__title" id="schedules-title">Schedules</h2></div>
       <p class="pels-card-supporting">Create Smart tasks and change mode at the times you choose.</p>
       <div class="schedules-toolbar">
@@ -202,6 +207,9 @@ const Editor = (view: View) => {
   if (!snapshot.editor || !snapshot.read) return null;
   const { draft, kind } = snapshot.editor;
   const disabled = snapshot.busy || snapshot.load !== 'ready';
+  const editedEntry = snapshot.read.entries.find((entry) => entry.schedule.id === draft.id);
+  const references = kind === 'existing' && editedEntry ? editedEntry.modeReferences : [];
+  const modeOptions = scheduleModeOptions(snapshot.read.modes, references);
   const groupOff = draft.actionType === 'mode' ? !snapshot.read.controls.modeChangesEnabled
     : snapshot.read.controls.disabledTaskDeviceIds.includes(draft.deviceId);
   const pausedReason = draft.actionType === 'mode' ? 'Scheduled mode changes are off.' : 'Scheduled tasks for this device are off.';
@@ -232,8 +240,9 @@ const Editor = (view: View) => {
             <label class="field"><span class="field__label pels-text-settings-label">Set mode to</span>
               <MdFilledSelect value={draft.mode} aria-label="Set mode to" disabled={disabled}
                 onChange={(event: Event) => actions.onDraftChange({ mode: inputValue(event) })}>
-                {!snapshot.read.modes.includes(draft.mode) && <Choice value={draft.mode}>Choose an available mode</Choice>}
-                {snapshot.read.modes.map((mode) => <Choice key={mode} value={mode}>{mode}</Choice>)}
+                {!modeOptions.some((option) => option.value === draft.mode)
+                  && <Choice value={draft.mode}>Choose an available mode</Choice>}
+                {modeOptions.map((option) => <Choice key={option.value} value={option.value}>{option.label}</Choice>)}
               </MdFilledSelect>
             </label><p class="pels-card-supporting">The mode changes once. Later manual or Flow changes take effect normally.</p>
           </>}
@@ -268,9 +277,10 @@ const Editor = (view: View) => {
             </MdFilledSelect>
           </label>
           {draft.conditionType !== 'any' && <div class="schedule-mode-choices">
-            {snapshot.read.modes.map((mode) => <label class="schedule-mode-choice" key={mode}>
-              <MdCheckbox checked={draft.conditionModes.includes(mode)} disabled={disabled}
-                aria-label={mode} onChange={() => actions.onConditionMode(mode)} /><span>{mode}</span></label>)}
+            {modeOptions.map((option) => <label class="schedule-mode-choice" key={option.value}>
+              <MdCheckbox checked={draft.conditionModes.includes(option.value)} disabled={disabled}
+                aria-label={option.label} onChange={() => actions.onConditionMode(option.value)} />
+              <span>{option.label}</span></label>)}
           </div>}
           <p class="section-hint">If the condition does not match at that time, this occurrence is skipped.</p>
         </section>

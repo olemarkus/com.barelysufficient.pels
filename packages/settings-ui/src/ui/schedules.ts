@@ -182,8 +182,9 @@ export const changeScheduleDraft = (patch: Partial<ScheduleDraft>): void => {
 const selectScheduleAction = (actionType: 'mode' | 'task'): void => {
   if (!view.editor || !view.read) return;
   const draft = view.editor.draft;
-  const device = view.devices.find((candidate) => candidate.deviceId === draft.deviceId) ?? view.devices[0];
-  if (actionType === 'task' && device) selectScheduleDevice(device.deviceId);
+  const current = view.devices.find((candidate) => candidate.deviceId === draft.deviceId);
+  const fallback = current ?? view.devices[0];
+  if (actionType === 'task' && !current && fallback) selectScheduleDevice(fallback.deviceId);
   changeScheduleDraft({ actionType, mode: draft.mode || view.read.modes[0] || '' });
 };
 const selectScheduleDevice = (deviceId: string): void => {
@@ -212,7 +213,9 @@ const toggleScheduleConditionMode = (mode: string): void => {
 };
 const saveScheduleDraft = async (): Promise<void> => {
   if (!view.editor || !view.read || view.busy) return;
-  const result = buildScheduleFromDraft(view.editor.draft, view.devices, view.read.modes);
+  const editedEntry = view.read.entries.find((entry) => entry.schedule.id === view.editor?.draft.id);
+  const references = view.editor.kind === 'existing' && editedEntry ? editedEntry.modeReferences : [];
+  const result = buildScheduleFromDraft(view.editor.draft, view.devices, view.read.modes, references);
   if (!result.ok) { view = { ...view, error: result.error }; paint(); return; }
   if (await writeCommand({ type: 'save', schedule: result.schedule })) backFromScheduleEditor();
 };

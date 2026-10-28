@@ -9262,7 +9262,7 @@ md-switch {
   flex: 1;
   min-width: 0;
   display: grid;
-  gap: 6px;
+  gap: calc(var(--spacing-1) * 1.5);
   text-align: start;
   color: var(--text);
   cursor: pointer;
@@ -9282,7 +9282,7 @@ md-switch {
 
 #schedules-panel .schedule-row__switch {
   flex-direction: column;
-  gap: 2px;
+  gap: calc(var(--spacing-1) / 2);
   min-width: 58px;
 }
 
@@ -9297,7 +9297,7 @@ md-switch {
 
 #schedules-panel .schedule-row__footer {
   border-top: 1px solid var(--panel-border);
-  padding: 8px 16px;
+  padding: var(--spacing-2) var(--spacing-4);
   display: grid;
   gap: var(--spacing-1);
   font-size: var(--font-size-xs);
@@ -9343,10 +9343,10 @@ md-switch {
 }
 
 #schedules-panel .schedule-days md-outlined-button {
-  min-height: 44px;
-  --md-outlined-button-container-height: 44px;
-  --md-outlined-button-leading-space: 8px;
-  --md-outlined-button-trailing-space: 8px;
+  min-height: 48px;
+  --md-outlined-button-container-height: 48px;
+  --md-outlined-button-leading-space: var(--spacing-2);
+  --md-outlined-button-trailing-space: var(--spacing-2);
 }
 
 #schedules-panel .schedule-mode-choices {
@@ -9366,7 +9366,7 @@ md-switch {
 }
 
 #schedules-panel .schedule-delete summary {
-  padding-block: 12px;
+  padding-block: var(--spacing-3);
   cursor: pointer;
 }
 

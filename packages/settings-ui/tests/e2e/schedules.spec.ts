@@ -48,7 +48,7 @@ const installSchedules = async (page: Page): Promise<void> => {
           ? !controls.modeChangesEnabled
           : controls.disabledTaskDeviceIds.includes(schedule.action.task.deviceId);
         const state = !schedule.enabled ? 'off' : paused ? 'paused' : 'on';
-        return [{ schedule, state,
+        return [{ schedule, modeReferences: [], state,
           reason: !schedule.enabled ? 'No future actions.' : paused ? schedule.action.type === 'mode'
             ? 'Scheduled mode changes are off.' : 'Scheduled tasks for Water heater are off.' : '',
           nextAtMs: state === 'on' ? Date.now() + 3_600_000 : null,
@@ -97,6 +97,12 @@ for (const width of [320, 480]) {
         await page.locator('.settings-nav-card[data-settings-target="schedules"]').click();
         const panel = page.locator('#schedules-panel');
         await expect(panel.getByRole('heading', { name: 'Schedules', exact: true })).toBeVisible();
+        const historyLength = await page.evaluate(() => window.history.length);
+        await panel.getByRole('button', { name: 'Back to Settings', exact: true }).click();
+        await expect(page.locator('#settings-panel')).toBeVisible();
+        expect(await page.evaluate(() => window.history.length)).toBe(historyLength);
+        await page.goForward();
+        await expect(panel.getByRole('heading', { name: 'Schedules', exact: true })).toBeVisible();
         const night = panel.locator('[data-schedule-id="night"]');
         const morning = panel.locator('[data-schedule-id="morning"]');
         await expect(night.locator('.schedule-row__state')).toHaveText('On');
@@ -128,12 +134,22 @@ for (const width of [320, 480]) {
         await panel.locator('[data-schedule-id="water"]').getByRole('button', { name: 'Edit', exact: true }).click();
         await expect(panel.getByRole('heading', { name: 'Edit schedule', exact: true })).toBeVisible();
         await expect(panel).toContainText('ready by 06:00 the following day');
+        await panel.getByRole('combobox', { name: 'Repeat', exact: true }).click();
+        await page.getByRole('option', { name: 'Choose days', exact: true }).click();
+        const dayTarget = await panel.getByRole('button', { name: 'Mon', exact: true }).boundingBox();
+        expect(dayTarget).not.toBeNull();
+        expect(dayTarget?.height).toBeGreaterThanOrEqual(48);
         await panel.getByRole('combobox', { name: 'Mode condition', exact: true }).click();
         await page.getByRole('option', { name: 'Only these modes', exact: true }).click();
         await panel.getByRole('checkbox', { name: 'Home', exact: true }).click();
         await panel.getByRole('textbox', { name: 'Schedule name', exact: true }).fill('Morning hot water');
         await panel.locator('summary').filter({ hasText: 'Extra permissions' }).click();
         await panel.getByRole('switch', { name: 'May go over daily budget', exact: true }).click();
+        const targetField = panel.getByRole('spinbutton', { name: 'Target (°C)', exact: true });
+        await targetField.fill('70');
+        await panel.getByRole('button', { name: 'Create Smart task', exact: true }).click();
+        await expect(targetField).toHaveValue('70');
+        await expect(panel.getByRole('switch', { name: 'May go over daily budget', exact: true })).toBeChecked();
         await page.evaluate(() => window.scrollTo(0, 0));
         await page.screenshot({ path: testInfo.outputPath(`schedules-editor-${width}-${mobile ? 'dark' : 'light'}.png`), fullPage: !mobile });
         const editorLayout = await panel.evaluate((element) => ({ width: element.clientWidth, scrollWidth: element.scrollWidth }));
@@ -142,7 +158,7 @@ for (const width of [320, 480]) {
         await expect(panel.getByRole('heading', { name: 'Schedules', exact: true })).toBeVisible();
         await expect.poll(() => readStored(page, 'schedule.water')).toMatchObject({
           id: 'water', name: 'Morning hot water', condition: { type: 'include', modes: ['Home'] },
-          action: { type: 'task', task: { exemptFromBudget: true, readyByLocalTime: '06:00' } },
+          action: { type: 'task', task: { target: 70, exemptFromBudget: true, readyByLocalTime: '06:00' } },
         });
       });
     });

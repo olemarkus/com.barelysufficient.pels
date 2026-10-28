@@ -22,7 +22,7 @@ const taskSchedule = (id = 'morning-water'): Schedule => ({
   },
 });
 const entry = (schedule: Schedule, state: ScheduleEntry['state'] = 'on'): ScheduleEntry => ({
-  schedule, state, reason: '', nextAtMs: 1, nextLabel: 'Tomorrow 21:00', lastResult: '',
+  schedule, modeReferences: [], state, reason: '', nextAtMs: 1, nextLabel: 'Tomorrow 21:00', lastResult: '',
 });
 const waterHeater = (): SmartTaskCandidateDevice => partialDouble<SmartTaskCandidateDevice>({
   deviceId: 'water-heater', deviceName: 'Water heater', unitSymbol: '°C',
@@ -33,16 +33,21 @@ function register(entries: ScheduleEntry[] = [entry(modeSchedule()), entry(taskS
     timeZone: 'Europe/Oslo', modes: ['Home', 'Night'], entries,
     controls: { modeChangesEnabled: true, disabledTaskDeviceIds: [] },
   };
-  const read = vi.fn(() => snapshot);
-  const write = vi.fn(() => snapshot);
-  const owner: Pick<ScheduleService, 'read' | 'write'> = { read, write };
+  const definitions = vi.fn(() => snapshot.entries.map(({ schedule }) => schedule));
+  const lookup = vi.fn((id: string) => {
+    const found = snapshot.entries.find(({ schedule }) => schedule.id === id);
+    if (!found) throw new Error('This schedule no longer exists. Select a saved schedule.');
+    return found.schedule;
+  });
+  const write = vi.fn(() => {});
+  const owner: Pick<ScheduleService, 'definitions' | 'lookup' | 'write'> = { definitions, lookup, write };
   const getTaskDevices = vi.fn(() => [waterHeater()]);
   registerScheduleFlowCards(mockHomeyInstance as unknown as FlowHomeyLike, owner, getTaskDevices);
   const run = (id: string, args: unknown = {}) => mockHomeyInstance.flow._actionCardListeners[id](args);
   const autocomplete = (id: string, arg: string, query = '') => (
     mockHomeyInstance.flow._actionCardAutocompleteListeners[id][arg](query)
   );
-  return { snapshot, read, write, run, autocomplete, getTaskDevices };
+  return { snapshot, definitions, lookup, write, run, autocomplete, getTaskDevices };
 }
 
 describe('schedule Flow cards', () => {
@@ -124,21 +129,37 @@ describe('schedule Flow cards', () => {
     await expect(condition({ schedule: { id: 'night-mode' } })).resolves.toBe(false);
   });
 
-  it('propagates an unavailable device read instead of presenting an empty autocomplete', async () => {
+  it('keeps configured devices selectable with an explicit unavailable-details label', async () => {
     const { autocomplete, getTaskDevices } = register();
     getTaskDevices.mockImplementation(() => { throw new Error('Scheduled task devices are unavailable. Try again.'); });
 
-    await expect(autocomplete('disable_device_task_schedules', 'device')).rejects.toThrow('devices are unavailable');
+    await expect(autocomplete('disable_device_task_schedules', 'device')).resolves.toEqual([
+      { id: 'water-heater', name: 'Device details unavailable · water-heater' },
+    ]);
   });
 
   it('rejects missing selections and preserves owner read/write errors', async () => {
-    const { run, read, write } = register();
+    const { run, lookup, write } = register();
     await expect(run('enable_schedule')).rejects.toThrow('Select a schedule');
     await expect(run('disable_device_task_schedules', { device: {} })).rejects.toThrow('Select a device');
 
-    read.mockImplementation(() => { throw new Error('Schedules are unavailable. Try again.'); });
+    lookup.mockImplementation(() => { throw new Error('Schedules are unavailable. Try again.'); });
     await expect(run('enable_schedule', { schedule: 'night-mode' })).rejects.toThrow('Schedules are unavailable');
     write.mockImplementation(() => { throw new Error('Schedules could not be saved. Try again.'); });
     await expect(run('enable_mode_schedules')).rejects.toThrow('could not be saved');
   });
+
+  it('selects and checks mode schedules alongside an unavailable task device', async () => {
+    const { autocomplete, getTaskDevices, run, lookup, definitions } = register();
+    getTaskDevices.mockImplementation(() => { throw new Error('Unavailable devices'); });
+    await expect(autocomplete('enable_schedule', 'schedule', 'night')).resolves.toEqual([
+      expect.objectContaining({ id: 'night-mode', name: 'Night mode' }),
+    ]);
+    await expect(run('disable_schedule', { schedule: 'night-mode' })).resolves.toBe(true);
+    await expect(mockHomeyInstance.flow._conditionCardListeners.schedule_is_enabled({ schedule: 'night-mode' }))
+      .resolves.toBe(true);
+    expect(lookup).toHaveBeenCalledWith('night-mode');
+    expect(definitions).toHaveBeenCalledTimes(1);
+  });
+
 });

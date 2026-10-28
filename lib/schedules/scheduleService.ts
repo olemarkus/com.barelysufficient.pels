@@ -1,7 +1,9 @@
 import type {
   Schedule, ScheduleCommand, ScheduleControls, ScheduleEntry, SchedulesSnapshot,
 } from '../../packages/contracts/src/schedules';
-import type { SmartTaskCandidateDevice } from '../../packages/contracts/src/smartTaskEdit';
+import type {
+  SettingsUiSmartTaskDevicesResponse, SmartTaskCandidateDevice,
+} from '../../packages/contracts/src/smartTaskEdit';
 import {
   MAX_SCHEDULES, isScheduleDeletion, isScheduleId, parseSchedule, parseScheduleCommand,
   scheduleConflict, scheduleConflictOnDate, scheduleEligibilityReason,
@@ -9,13 +11,16 @@ import {
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { getLogger } from '../logging/logger';
 import type { TimerRegistry } from '../utils/timerRegistry';
-import type { ScheduleReceiptStore } from './scheduleReceipts';
+import type { ScheduleReceipt, ScheduleReceiptStore } from './scheduleReceipts';
 import { dueScheduleOccurrence, nextScheduleOccurrence, scheduleInstant } from './scheduleTime';
 
 export const SCHEDULE_PREFIX = 'schedule.';
 export const SCHEDULE_MODES_ENABLED = 'schedule_modes_enabled';
 export const SCHEDULE_TASK_ENABLED_PREFIX = 'schedule_task_enabled.';
 const logger = getLogger('schedules');
+
+/** One catalog generation for a complete settings projection. */
+type ScheduleCatalog = { modes: string[]; taskDevices: SettingsUiSmartTaskDevicesResponse };
 
 /** Complete runtime collaborators; the owner resolves every SDK/config read before execution. */
 export type ScheduleRuntimePort = {
@@ -25,6 +30,7 @@ export type ScheduleRuntimePort = {
   receipts: ScheduleReceiptStore;
   getNowMs(): number;
   listModes(): string[];
+  resolveModeName(raw: string): string;
   currentMode(): string;
   listTaskDevices(): SmartTaskCandidateDevice[];
   execute(schedule: Schedule, scheduledAtMs: number): Promise<void>;
@@ -125,26 +131,63 @@ export class ScheduleService {
     }
   }
 
+  /** Configuration-only reads for Flow selection and control; no eligibility or receipt projection. */
+  definitions(): Schedule[] {
+    this.load();
+    return [...this.schedules.values()].map((schedule) => structuredClone(schedule));
+  }
+
+  lookup(id: string): Schedule {
+    this.load();
+    return structuredClone(this.requireSchedule(id));
+  }
+
   read(): SchedulesSnapshot {
     this.load();
-    const timeZone = this.port.clock.getTimezone();
-    const modes = this.port.listModes();
     const schedules = [...this.schedules.values()];
+    const catalog = this.readCatalog(schedules);
     return {
-      timeZone, modes, controls: structuredClone(this.controls),
-      entries: schedules.map((schedule) => this.entry(schedule)),
+      timeZone: this.port.clock.getTimezone(), modes: [...catalog.modes], controls: structuredClone(this.controls),
+      entries: schedules.map((schedule) => this.entry(schedule, catalog)),
     };
   }
 
-  private entry(schedule: Schedule): ScheduleEntry {
+  private readCatalog(schedules: readonly Schedule[]): ScheduleCatalog {
+    const modes = this.port.listModes();
+    if (!schedules.some((schedule) => schedule.enabled && schedule.action.type === 'task')) {
+      return { modes, taskDevices: { state: 'ready', devices: [] } };
+    }
+    try {
+      return { modes, taskDevices: { state: 'ready', devices: this.port.listTaskDevices() } };
+    } catch (error) {
+      logger.error({ event: 'schedule_task_catalog_unavailable', err: error });
+      return { modes, taskDevices: { state: 'unavailable' } };
+    }
+  }
+
+  private entry(schedule: Schedule, catalog: ScheduleCatalog): ScheduleEntry {
+    try { return this.projectEntry(schedule, catalog); } catch (error) {
+      logger.error({ event: 'schedule_entry_unavailable', scheduleId: schedule.id, err: error });
+      return {
+        schedule: structuredClone(schedule), modeReferences: [],
+        state: 'invalid', nextAtMs: null, nextLabel: '', lastResult: '',
+        reason: 'Schedule details are temporarily unavailable. Try again.',
+      };
+    }
+  }
+
+  private projectEntry(schedule: Schedule, catalog: ScheduleCatalog): ScheduleEntry {
     const now = this.port.getNowMs();
     const timeZone = this.port.clock.getTimezone();
     const receipt = this.port.receipts.read(schedule.id);
     const lastResult = receipt?.lastResult ?? '';
-    const base = { schedule: structuredClone(schedule), nextAtMs: null, nextLabel: '', lastResult };
+    const base = {
+      schedule: structuredClone(schedule), modeReferences: this.modeReferences(schedule, catalog.modes),
+      nextAtMs: null, nextLabel: '', lastResult,
+    };
     if (!schedule.enabled) return { ...base, state: 'off', reason: 'No future triggers' };
     const next = nextScheduleOccurrence(schedule, now, timeZone, receipt?.localOccurrence);
-    const invalid = this.eligibility(schedule);
+    const invalid = this.catalogEligibility(this.resolveModes(schedule), catalog);
     const conflict = next !== undefined
       && scheduleConflictOnDate(schedule, [...this.schedules.values()], next.key.slice(0, 10));
     if (invalid || conflict) {
@@ -165,7 +208,7 @@ export class ScheduleService {
     };
   }
 
-  write(raw: unknown): SchedulesSnapshot {
+  write(raw: unknown): void {
     const command = parseScheduleCommand(raw);
     this.load();
     if (command.type === 'save') this.save(command.schedule);
@@ -178,7 +221,6 @@ export class ScheduleService {
       if (command.enabled) this.save(schedule);
       else this.port.settings.set(`${SCHEDULE_PREFIX}${command.id}`, schedule);
     } else this.writeGroup(command);
-    return this.read();
   }
 
   private requireSchedule(id: string): Schedule {
@@ -187,9 +229,35 @@ export class ScheduleService {
     return schedule;
   }
 
+  private resolveModes(schedule: Schedule): Schedule {
+    const condition = schedule.condition.type === 'any' ? schedule.condition : {
+      type: schedule.condition.type,
+      modes: [...new Set(schedule.condition.modes.map((mode) => this.port.resolveModeName(mode)))],
+    };
+    const action = schedule.action.type === 'mode'
+      ? { type: 'mode' as const, mode: this.port.resolveModeName(schedule.action.mode) } : schedule.action;
+    return { ...schedule, condition, action };
+  }
+
+  private modeReferences(schedule: Schedule, modes: readonly string[]): ScheduleEntry['modeReferences'] {
+    const names = schedule.condition.type === 'any' ? [] : [...schedule.condition.modes];
+    if (schedule.action.type === 'mode') names.push(schedule.action.mode);
+    return [...new Set(names)].flatMap((stored) => {
+      const resolved = this.port.resolveModeName(stored);
+      return stored !== resolved && modes.includes(resolved) ? [{ stored, resolved }] : [];
+    });
+  }
+
+  private catalogEligibility(schedule: Schedule, catalog: ScheduleCatalog): string {
+    if (schedule.action.type === 'mode') return scheduleEligibilityReason(schedule, catalog.modes, []);
+    return catalog.taskDevices.state === 'ready'
+      ? scheduleEligibilityReason(schedule, catalog.modes, catalog.taskDevices.devices)
+      : 'Device details are temporarily unavailable. Try again.';
+  }
+
   private eligibility(schedule: Schedule): string {
     const devices = schedule.action.type === 'task' ? this.port.listTaskDevices() : [];
-    return scheduleEligibilityReason(schedule, this.port.listModes(), devices);
+    return scheduleEligibilityReason(this.resolveModes(schedule), this.port.listModes(), devices);
   }
 
   private save(schedule: Schedule): void {
@@ -215,10 +283,9 @@ export class ScheduleService {
       this.port.settings.set(SCHEDULE_MODES_ENABLED, command.enabled);
       return;
     }
-    const known = this.port.listTaskDevices().some((device) => device.deviceId === command.deviceId)
-      || [...this.schedules.values()].some((schedule) => (
-        schedule.action.type === 'task' && schedule.action.task.deviceId === command.deviceId
-      ));
+    const known = [...this.schedules.values()].some((schedule) => (
+      schedule.action.type === 'task' && schedule.action.task.deviceId === command.deviceId
+    )) || this.port.listTaskDevices().some((device) => device.deviceId === command.deviceId);
     if (!known) throw new Error('This device is not available for scheduled Smart tasks.');
     this.port.settings.set(`${SCHEDULE_TASK_ENABLED_PREFIX}${command.deviceId}`, command.enabled);
   }
@@ -238,7 +305,9 @@ export class ScheduleService {
     this.load();
     for (const schedule of [...this.schedules.values()]) {
       if (!this.running) break;
-      await this.runDue(schedule, after);
+      try { await this.runDue(schedule, after); } catch (error) {
+        logger.error({ event: 'schedule_run_failed', scheduleId: schedule.id, err: error });
+      }
     }
   }
 
@@ -263,9 +332,24 @@ export class ScheduleService {
     this.port.receipts.write(schedule.id, consumed);
     if (lastResult) return;
     const result = await this.execute(schedule, occurrence.atMs);
-    this.load();
-    if (JSON.stringify(this.schedules.get(schedule.id)) === JSON.stringify(schedule)) {
+    this.finalize(schedule, consumed, result);
+  }
+
+  private finalize(schedule: Schedule, consumed: ScheduleReceipt, result: string): void {
+    try {
+      const keys = this.port.settings.getKeys();
+      if (!Array.isArray(keys) || keys.length === 0) throw new Error('Schedule settings are unavailable');
+      const key = `${SCHEDULE_PREFIX}${schedule.id}`;
+      if (!keys.includes(key)) return;
+      const raw = this.port.settings.get(key);
+      if (isScheduleDeletion(raw) || JSON.stringify(parseSchedule(raw)) !== JSON.stringify(schedule)) return;
+      const receipt = this.port.receipts.read(schedule.id);
+      if (!receipt || receipt.localOccurrence !== consumed.localOccurrence
+        || receipt.consumedAtMs !== consumed.consumedAtMs) return;
       this.port.receipts.write(schedule.id, { ...consumed, lastResult: result });
+    } catch (error) {
+      // The pre-action receipt remains durable; failure here can never authorise a replay.
+      logger.error({ event: 'schedule_finalize_failed', scheduleId: schedule.id, err: error });
     }
   }
 
@@ -275,7 +359,7 @@ export class ScheduleService {
     if (scheduleConflictOnDate(schedule, [...this.schedules.values()], date)) {
       return 'Skipped: another schedule has the same time and target.';
     }
-    const condition = schedule.condition;
+    const condition = this.resolveModes(schedule).condition;
     if (condition.type === 'any') return '';
     const selected = condition.modes.includes(this.port.currentMode());
     const matches = condition.type === 'include' ? selected : !selected;

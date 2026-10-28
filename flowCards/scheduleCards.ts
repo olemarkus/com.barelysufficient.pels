@@ -1,28 +1,30 @@
 import type { ScheduleService } from '../lib/schedules/scheduleService';
 import type { FlowAutocompleteResult, FlowHomeyLike } from '../lib/utils/types';
 import type { Schedule } from '../packages/contracts/src/schedules';
-import type { SmartTaskCandidateDevice } from '../packages/contracts/src/smartTaskEdit';
+import type {
+  SettingsUiSmartTaskDevicesResponse, SmartTaskCandidateDevice,
+} from '../packages/contracts/src/smartTaskEdit';
 import { buildDeviceAutocompleteOptions } from './deviceArgs';
 import { readFlowDeviceArg, readFlowStringArg } from './flowArgParsers';
 
-type ScheduleCardsOwner = Pick<ScheduleService, 'read' | 'write'>;
+type ScheduleCardsOwner = Pick<ScheduleService, 'definitions' | 'lookup' | 'write'>;
 type ScheduleOption = FlowAutocompleteResult & { description: string };
 
 function selectedSchedule(owner: ScheduleCardsOwner, args: unknown): Schedule {
   const id = readFlowStringArg(args, 'schedule');
   if (!id) throw new Error('Select a schedule.');
-  const entry = owner.read().entries.find((candidate) => candidate.schedule.id === id);
-  if (!entry) throw new Error('This schedule no longer exists. Select a saved schedule.');
-  return entry.schedule;
+  return owner.lookup(id);
 }
 
-function scheduleDescription(schedule: Schedule, devices: readonly SmartTaskCandidateDevice[]): string {
+function scheduleDescription(schedule: Schedule, catalog: SettingsUiSmartTaskDevicesResponse): string {
   if (schedule.action.type === 'mode') return `Change mode to ${schedule.action.mode} at ${schedule.at}`;
   const task = schedule.action.task;
-  const device = devices.find((candidate) => candidate.deviceId === task.deviceId);
+  const device = catalog.state === 'ready'
+    ? catalog.devices.find((candidate) => candidate.deviceId === task.deviceId) : undefined;
   const target = task.target;
   const goal = device ? `${target}${device.unitSymbol}` : `${target}`;
-  return `${device ? device.deviceName : 'Unavailable device'} · ${goal} · Create at ${schedule.at}`;
+  const name = device?.deviceName ?? (catalog.state === 'ready' ? 'Unavailable device' : 'Device details unavailable');
+  return `${name} · ${goal} · Create at ${schedule.at}`;
 }
 
 /** Flow controls use the same named schedules and enable flags as the settings UI. */
@@ -31,14 +33,18 @@ export function registerScheduleFlowCards(
   schedules: ScheduleCardsOwner,
   getTaskDevices: () => readonly SmartTaskCandidateDevice[],
 ): void {
+  const taskDeviceLabels = (): SettingsUiSmartTaskDevicesResponse => {
+    try { return { state: 'ready', devices: [...getTaskDevices()] }; } catch { return { state: 'unavailable' }; }
+  };
   const scheduleOptions = async (query: string): Promise<ScheduleOption[]> => {
-    const entries = schedules.read().entries;
-    const devices = entries.some(({ schedule }) => schedule.action.type === 'task') ? getTaskDevices() : [];
+    const definitions = schedules.definitions();
+    const catalog: SettingsUiSmartTaskDevicesResponse = definitions.some((schedule) => schedule.action.type === 'task')
+      ? taskDeviceLabels() : { state: 'ready', devices: [] };
     const search = query.trim().toLocaleLowerCase();
-    return entries.map(({ schedule }) => ({
+    return definitions.map((schedule) => ({
       id: schedule.id,
       name: schedule.name,
-      description: scheduleDescription(schedule, devices),
+      description: scheduleDescription(schedule, catalog),
     })).filter((option) => `${option.name} ${option.description}`.toLocaleLowerCase().includes(search))
       .sort((a, b) => a.name.localeCompare(b.name));
   };
@@ -61,12 +67,15 @@ export function registerScheduleFlowCards(
   }
 
   const deviceOptions = async (query: string): Promise<FlowAutocompleteResult[]> => {
-    const scheduled = new Set(schedules.read().entries.flatMap(({ schedule }) => (
+    const scheduled = new Set(schedules.definitions().flatMap((schedule) => (
       schedule.action.type === 'task' ? [schedule.action.task.deviceId] : []
     )));
-    return buildDeviceAutocompleteOptions(getTaskDevices()
-      .filter((device) => scheduled.has(device.deviceId))
-      .map((device) => ({ id: device.deviceId, name: device.deviceName })), query);
+    if (scheduled.size === 0) return [];
+    const catalog = taskDeviceLabels();
+    return buildDeviceAutocompleteOptions([...scheduled].map((id) => {
+      const device = catalog.state === 'ready' ? catalog.devices.find((entry) => entry.deviceId === id) : undefined;
+      return { id, name: device?.deviceName || `Device details unavailable · ${id}` };
+    }), query);
   };
   for (const [id, enabled] of [
     ['enable_device_task_schedules', true], ['disable_device_task_schedules', false],

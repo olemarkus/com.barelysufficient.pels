@@ -1,6 +1,7 @@
-import type { Schedule, ScheduleAction, ScheduleRepeat } from '../../../contracts/src/schedules.ts';
+import type { Schedule, ScheduleAction, ScheduleEntry, ScheduleRepeat } from '../../../contracts/src/schedules.ts';
 import type { SmartTaskCandidateDevice } from '../../../contracts/src/smartTaskEdit.ts';
 import type { SmartTaskEditPermissions } from './smartTaskEdit.ts';
+import { isScheduleModeAvailable } from './scheduleModeReferences.ts';
 import { parseSmartTaskGoal, SMART_TASK_READY_BY_PATTERN } from './smartTaskDraft.ts';
 
 export const SCHEDULE_DAYS = [
@@ -125,6 +126,7 @@ export const buildScheduleFromDraft = (
   draft: ScheduleDraft,
   devices: readonly SmartTaskCandidateDevice[],
   modes: readonly string[],
+  modeReferences: Readonly<ScheduleEntry['modeReferences']>,
 ): ScheduleDraftResult => {
   if (!draft.name.trim()) return { ok: false, error: 'Give this schedule a name.' };
   if (!SMART_TASK_READY_BY_PATTERN.test(draft.at)) return { ok: false, error: 'Choose a valid trigger time.' };
@@ -132,8 +134,10 @@ export const buildScheduleFromDraft = (
     return { ok: false, error: 'Choose a date.' };
   }
   if (draft.repeat !== 'once' && draft.days.length === 0) return { ok: false, error: 'Choose at least one day.' };
-  if (draft.conditionType !== 'any'
-    && (draft.conditionModes.length === 0 || draft.conditionModes.some((mode) => !modes.includes(mode)))) {
+  if (draft.conditionType !== 'any' && (
+    draft.conditionModes.length === 0
+    || draft.conditionModes.some((mode) => !isScheduleModeAvailable(mode, modes, modeReferences))
+  )) {
     return { ok: false, error: 'Choose the modes this condition should use.' };
   }
   const common = {
@@ -146,7 +150,9 @@ export const buildScheduleFromDraft = (
       : { type: draft.conditionType, modes: [...draft.conditionModes] },
   };
   if (draft.actionType === 'mode') {
-    if (!modes.includes(draft.mode)) return { ok: false, error: 'Choose an available mode.' };
+    if (!isScheduleModeAvailable(draft.mode, modes, modeReferences)) {
+      return { ok: false, error: 'Choose an available mode.' };
+    }
     return { ok: true, schedule: { ...common, action: { type: 'mode', mode: draft.mode } } };
   }
   const task = taskActionFromDraft(draft, devices);

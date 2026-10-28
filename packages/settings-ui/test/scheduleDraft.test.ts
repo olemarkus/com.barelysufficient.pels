@@ -19,7 +19,7 @@ describe('Schedule composition', () => {
     draft.days = [1, 3];
     draft.at = '21:00';
     draft.readyBy = '06:00';
-    const result = buildScheduleFromDraft(draft, [HEATER], MODES);
+    const result = buildScheduleFromDraft(draft, [HEATER], MODES, []);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.schedule.repeat).toEqual({ type: 'weekly', days: [1, 3] });
@@ -36,9 +36,9 @@ describe('Schedule composition', () => {
   it('requires selected modes for a condition and retains the exact include/exclude choice', () => {
     const draft = createScheduleDraft(undefined, 'Home', '2026-11-02');
     draft.conditionType = 'exclude';
-    expect(buildScheduleFromDraft(draft, [HEATER], MODES)).toEqual({ ok: false, error: 'Choose the modes this condition should use.' });
+    expect(buildScheduleFromDraft(draft, [HEATER], MODES, [])).toEqual({ ok: false, error: 'Choose the modes this condition should use.' });
     draft.conditionModes = ['Away'];
-    const result = buildScheduleFromDraft(draft, [HEATER], MODES);
+    const result = buildScheduleFromDraft(draft, [HEATER], MODES, []);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.schedule.condition).toEqual({ type: 'exclude', modes: ['Away'] });
   });
@@ -46,7 +46,7 @@ describe('Schedule composition', () => {
   it('keeps a stable schedule identity and permission snapshots across edits', () => {
     const draft = createScheduleDraft(HEATER, 'Home', '2026-11-02');
     draft.permissions.exemptFromBudget = true;
-    const result = buildScheduleFromDraft(draft, [HEATER], MODES);
+    const result = buildScheduleFromDraft(draft, [HEATER], MODES, []);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const edited = editScheduleDraft(result.schedule, '2026-11-03');
@@ -54,7 +54,7 @@ describe('Schedule composition', () => {
     edited.permissions.limitLowerPriorityDevices = true;
     edited.permissions.exemptFromBudget = false;
     expect(edited.id).toBe(draft.id);
-    const rebuilt = buildScheduleFromDraft(edited, [HEATER], MODES);
+    const rebuilt = buildScheduleFromDraft(edited, [HEATER], MODES, []);
     expect(rebuilt.ok && rebuilt.schedule.action).toMatchObject({
       type: 'task', task: { limitLowerPriorityDevices: true },
     });
@@ -63,8 +63,22 @@ describe('Schedule composition', () => {
 
   it('rejects unavailable devices and out-of-range targets without inventing defaults', () => {
     const draft = createScheduleDraft(HEATER, 'Home', '2026-11-02');
-    expect(buildScheduleFromDraft(draft, [], MODES).ok).toBe(false);
+    expect(buildScheduleFromDraft(draft, [], MODES, []).ok).toBe(false);
     draft.target = '76';
-    expect(buildScheduleFromDraft(draft, [HEATER], MODES).ok).toBe(false);
+    expect(buildScheduleFromDraft(draft, [HEATER], MODES, []).ok).toBe(false);
   });
+  it('preserves retained names only when the owner resolves those references', () => {
+    const draft = createScheduleDraft(undefined, 'Old Home', '2026-11-02');
+    draft.conditionType = 'include';
+    draft.conditionModes = ['Old Night'];
+    const references = [{ stored: 'Old Home', resolved: 'Home' }, { stored: 'Old Night', resolved: 'Night' }];
+    const result = buildScheduleFromDraft(draft, [], MODES, references);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.schedule.action).toEqual({ type: 'mode', mode: 'Old Home' });
+      expect(result.schedule.condition).toEqual({ type: 'include', modes: ['Old Night'] });
+    }
+    expect(buildScheduleFromDraft(draft, [], MODES, []).ok).toBe(false);
+  });
+
 });
