@@ -174,6 +174,77 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       reading in between, and that e2e's shed ladder is unchanged. *(Codex review on #2434,
       2026-09-17.)* [P2]
 
+## Solar inverters and home battery
+
+- [ ] **Battery horizon construction sits in `lib/planInput/` but serves the battery owner.**
+      `lib/planInput/continuousBatteryHorizon.ts` builds the input for
+      `lib/battery/continuousBatteryPlanService.ts` (joined in
+      `setup/appInit/wireContinuousBatteryPlan.ts`) and decides terminal value, charge room and
+      standing managed load; `lib/planInput/AGENTS.md` names only two projections for non-planner
+      consumers. **What changes:** move horizon construction into `lib/battery/`, reading device
+      surfaces as `BatteryDemandForecaster` does; planInput only consumes
+      `ContinuousBatteryPlanRead`. Move `reserveCeilingWFor` (`lib/planInput/storageProjection.ts:12-20`)
+      onto the battery owner's read at the same time, and drop the `?? []` membership stand-in in
+      `wireContinuousBatteryPlan.ts:20`. **Done when** nothing under `lib/battery/` is fed from
+      `lib/planInput/`. *(v3.24.1..e6e399a86 release review, 2026-10-28.)* [P1]
+
+- [ ] **Missing regression coverage for the battery plan and inverter hold.** No test covers an
+      app restart while a continuous battery claim is held, prices going stale mid-plan through
+      the executor, or restart and meter outage with a held inverter at the SDK boundary.
+      **What changes:** add those cases to `test/e2e/continuousBatteryPlan.e2e.test.ts` and
+      `test/e2e/inverterCurtailmentSdkE2E.test.ts`. **Done when** each case asserts the hand-back
+      or resumed plan. *(v3.24.1..e6e399a86 release review, 2026-10-28.)* [P1]
+
+- [ ] **An inverter release PELS cannot attempt keeps the meter-outage pass pending.**
+      `meterSilenceEscalation.ts:174` waits on `inverterExecutor.ts:85,107`, which counts releases
+      for an unavailable inverter, an absent but unconfirmed one, and a blocked claim; the pass then
+      rebuilds every ~30 s for the whole outage, and `hasWork` reapplies the plan on every reading.
+      **What changes:** exclude releases that cannot be attempted from pending work, and cache the
+      blocked claim set until settings change (`inverterExecutor.ts:65,70`). **Done when** an outage
+      test with an unavailable held inverter settles the fail-closed pass once. *(v3.24.1..e6e399a86
+      release review, 2026-10-28.)* [P2]
+
+- [ ] **An inverter that reports its own mode switches curtailment off silently.**
+      `inverterExecutor.ts:145-152` turns the opt-in off on any `device` mode report while held,
+      with no UI or activity trace. **What changes:** record the switch-off as an activity row for
+      the inverter and show it under Avoid paying to export. **Done when** the switch-off is visible
+      in both places. *(v3.24.1..e6e399a86 release review, 2026-10-28.)* [P2]
+
+- [ ] **Quiet shedding cycles now retire recent shed credit for every home.** `buildSheddingPlan`
+      (`lib/plan/shedding/buildSheddingPlan.ts:122,132`) commits a pruned latch on cycles with no
+      deficit, where it used to return `NO_SHEDDING_OUTCOME` and leave the latch alone
+      (`planState.ts:416`). **What changes:** scope the pruning to continuous levers, or pin the new
+      behaviour with a focused test. **Done when** a shedding test covers a deficit that returns
+      inside the window. *(v3.24.1..e6e399a86 release review, 2026-10-28.)* [P2]
+
+- [ ] **The battery demand forecaster runs on every sample with no plan enabled.**
+      `setup/powerSamplePipeline.ts:283` feeds it each reading (a device-list filter and a time-zone
+      lookup) for every home. **What changes:** skip the sample when no continuous plan is enabled.
+      **Done when** a test with planning off shows no forecaster work per sample. *(v3.24.1..e6e399a86
+      release review, 2026-10-28.)* [P2]
+
+- [ ] **Battery plan waiting and infeasible states are never logged.** The reason reaches only the
+      battery page, so a support report cannot show why a plan is idle. **What changes:** emit a
+      structured event through `getDebugEmitter` when the read's status or reason changes in
+      `continuousBatteryPlanService.ts`. **Done when** a reason change produces one event.
+      *(v3.24.1..e6e399a86 release review, 2026-10-28.)* [P2]
+
+- [ ] **Doc comments dropped in the `storageRelief.ts` split.** The explanations on
+      `resolveOwnModeChargeW`, `StorageClaimReason`, `StorageBalance`, `claimSurplusLever`,
+      `resolveWithheldW` and `resolveHeldBackChargeW` were lost moving into
+      `lib/plan/battery/storageHold.ts` and `storageReliefTypes.ts`. **What changes:** restore them
+      from `2dc5d3a5a:lib/plan/battery/storageRelief.ts`. **Done when** each symbol carries its
+      comment again. *(v3.24.1..e6e399a86 release review, 2026-10-28.)* [P2]
+
+- [ ] **Inverter and battery plan settings polish.** `views/InverterCurtailmentSettings.tsx` shows
+      no loading state (an empty roster until the read lands), words errors as a plain
+      `<p role="status">` (line 112) instead of `field__hint field__hint--alert`, and gives no
+      Simulation-mode hint; the battery section repeats "Battery plan" (`public/index.html:1294`
+      and `ContinuousBatteryPlan.tsx:925`), and the wear validation message (`:989`) has no price
+      unit. **What changes:** add "Loading inverters…", the alert hint class and a simulation hint;
+      drop the inner heading; put the unit in the message. **Done when** each surface reads as
+      described. *(v3.24.1..e6e399a86 release review, 2026-10-28.)* [P2]
+
 ## Device observation and transport
 
 - [ ] **The zone tree is refetched on every snapshot refresh — 538 Homey round-trips per 12 h for
