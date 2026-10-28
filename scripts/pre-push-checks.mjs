@@ -175,6 +175,20 @@ const announce = (commands) => {
   }
 };
 
+// Report-only: the owner accepts an Athom review wait with a PR label, which a
+// push cannot see. The PR's athom-review check enforces it.
+const reportAthomReview = (pushRefs) => {
+  const baseRef = getDefaultBaseRef();
+  for (const { localSha } of pushRefs) {
+    if (!localSha || ZERO_SHA_PATTERN.test(localSha)) continue;
+    try {
+      execFileSync('node', ['scripts/check-athom-review.mjs', '--report', baseRef, localSha], { stdio: 'inherit' });
+    } catch {
+      console.log('pre-push: athom-review report failed; the PR check still runs');
+    }
+  }
+};
+
 const main = async () => {
   const pushRefs = parsePushRefs();
   if (pushRefs.length === 0) {
@@ -203,6 +217,7 @@ const main = async () => {
   if (DRY_RUN) return;
 
   await runSequential(commands.map(resolveCommand));
+  reportAthomReview(pushRefs);
 };
 
 await main();
