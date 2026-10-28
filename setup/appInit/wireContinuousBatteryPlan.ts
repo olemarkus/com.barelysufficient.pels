@@ -3,7 +3,7 @@ import { MAIN_HOME_ID } from '../../packages/shared-domain/src/settings/settings
 import { ContinuousBatteryPlanService } from '../../lib/battery/continuousBatteryPlanService';
 import {
   createContinuousBatteryPlanSource, type ContinuousBatteryHorizonSources,
-} from '../../lib/planInput/continuousBatteryHorizon';
+} from '../../lib/battery/continuousBatteryHorizon';
 import { requireBatteryControl, requireHomeMembership } from './contextGuards';
 
 /** The selector is ready here; setup only connects the source and owner. */
@@ -17,7 +17,7 @@ export function wireContinuousBatteryPlan(
     getNowMs: () => ctx.getNow().getTime(),
     // Membership exists for the active lifetime; runUninit clears it before
     // retained settings readers are detached, when no devices is intentional.
-    getDevices: () => ctx.homeMembership?.filterDevicesForHome(ctx.getPlanInputSnapshot(), MAIN_HOME_ID) ?? [],
+    getDevices: () => ctx.homeMembership?.filterDevicesForHome(ctx.getDeviceSurfaces(), MAIN_HOME_ID) ?? [],
     getControl: () => requireBatteryControl(ctx),
     getControllableDevices: () => ctx.deviceControlSettings.controllableDevices,
     getPriceTimeline: () => ctx.priceCoordinator.getPriceTimeline(),

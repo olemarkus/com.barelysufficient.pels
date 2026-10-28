@@ -4,7 +4,7 @@ import type {
   DeferredObjectiveActivePlanV1,
   DeferredObjectiveActivePlansV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
-import type { PlanInputSnapshotDevice } from './runtimeDeviceRead';
+import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 
 const HOUR_MS = 3_600_000;
 export type BatteryTaskReservation = { startMs: number; endMs: number; energyKW: number; admissionKW: number };
@@ -13,7 +13,7 @@ type CommittedTask = DeferredObjectiveActivePlanV1 & { latest: DeferredObjective
 /** Paused tasks retain historical bookings, but contribute no current energy or power. */
 export function tasksForDevices(
   active: DeferredObjectiveActivePlansV1,
-  devices: readonly PlanInputSnapshotDevice[],
+  devices: readonly DeviceSurfaces[],
 ): DeferredObjectiveActivePlansV1 {
   const managedIds = new Set(devices.filter(device => device.managed).map(device => device.id));
   return {

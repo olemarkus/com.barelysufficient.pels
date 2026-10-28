@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createContinuousBatteryPlanSource, type ContinuousBatteryHorizonSources } from '../../lib/planInput/continuousBatteryHorizon';
-import type { PlanInputSnapshotDevice } from '../../lib/planInput/runtimeDeviceRead';
+import { createContinuousBatteryPlanSource, type ContinuousBatteryHorizonSources } from '../../lib/battery/continuousBatteryHorizon';
+import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 import type { BatteryControlOwner, BatteryLeverRead } from '../../lib/ports/batteryControlOwner';
 import type { ContinuousBatteryPlanConfig } from '../../packages/contracts/src/continuousBatteryPlan';
 import type { DeferredObjectiveActivePlanV1, DeferredObjectiveActivePlanRevisionV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
@@ -20,10 +20,10 @@ const control: BatteryLeverRead = {
 
 const sources = (overrides: Partial<ContinuousBatteryHorizonSources> = {}): ContinuousBatteryHorizonSources => ({
   getNowMs: () => NOW,
-  getDevices: () => [partialDouble<PlanInputSnapshotDevice>({
+  getDevices: () => [partialDouble<DeviceSurfaces>({
     id: 'battery', managed: true, available: true, isBatteryOrSolar: true,
     batteryLevel: { percent: 40, observedAtMs: NOW }, batteryPower: { signedW: 0, observedAtMs: NOW },
-  }), partialDouble<PlanInputSnapshotDevice>({ id: 'ev', managed: true, isBatteryOrSolar: false })],
+  }), partialDouble<DeviceSurfaces>({ id: 'ev', managed: true, isBatteryOrSolar: false })],
   getControl: () => partialDouble<BatteryControlOwner>({ readControl: () => control }),
   getControllableDevices: () => ({}),
   getPriceTimeline: () => ({

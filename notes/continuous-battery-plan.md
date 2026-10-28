@@ -16,9 +16,11 @@ continuous or forecast-perfect optimality. Both AC conversion directions use the
 square root of round-trip efficiency. Wear is charged per AC kWh supplied.
 Battery-driven export is excluded.
 
-`lib/planInput/continuousBatteryHorizon.ts` projects published import/export price
-periods, selected solar forecasts, battery observations, house limits and existing
-smart-task commitments. It splits partial periods and uses actual UTC durations.
+`lib/battery/continuousBatteryHorizon.ts` builds the horizon from published
+import/export price periods, selected solar forecasts, battery observations, the
+house power limits (through the shared planning-ceiling arithmetic) and existing
+smart-task commitments; setup passes those owner reads in as ports. The battery owner also decides the reserve's
+discharge ceiling (`continuousBatteryReserve.ts`), which planner input copies. It splits partial periods and uses actual UTC durations.
 The economic energy booked by a smart task is distinct from its physical power
 reservation: a final hour requiring 0.5 kWh at a 7 kW step still needs only 0.5 kWh,
 while its booked power limits simultaneous battery charging.

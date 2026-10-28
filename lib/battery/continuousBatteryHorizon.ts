@@ -1,18 +1,17 @@
 import type { BatteryEnergyPeriod } from '../../packages/contracts/src/batteryPlan';
 import type { ContinuousBatteryPlanConfig } from '../../packages/contracts/src/continuousBatteryPlan';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
+import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { PriceTimeline, PriceTimelinePeriod, PriceTimelineRead } from '../../packages/contracts/src/priceTimeline';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { isBatteryPowerLimitEnabled } from '../../packages/shared-domain/src/settings/batteryPowerLimit';
+import { planningPowerCeiling } from '../../packages/shared-domain/src/settings/powerLimits';
 import type { BatteryControlOwner } from '../ports/batteryControlOwner';
-import { resolveBatterySolarScope, type BatterySolarScopeSource } from '../battery/batterySolarScope';
+import { resolveBatterySolarScope, type BatterySolarScopeSource } from './batterySolarScope';
 import type {
   ContinuousBatteryEnergyHorizon, ContinuousBatteryHorizonRead, ContinuousBatteryPlanSource,
 } from '../ports/continuousBatteryPlan';
-import { resolvePlanningCeilingKw } from '../power/capacityModel';
-import type { PvForecastSourcePort } from '../solar/pvForecastSource';
-import type { PlanInputSnapshotDevice } from './runtimeDeviceRead';
 import {
   reservationEnergy, reservationPowerKW, taskReservations, tasksForDevices, type BatteryTaskReservation,
 } from './batteryTaskReservations';
@@ -23,14 +22,15 @@ const HOUR_MS = 60 * 60 * 1000;
 export type ContinuousBatteryHorizonSources = {
   getNowMs(): number;
   /** Main-home members resolved by the membership owner; includes no meter-area devices. */
-  getDevices(): readonly PlanInputSnapshotDevice[];
+  getDevices(): readonly DeviceSurfaces[];
   getControl(): BatteryControlOwner;
   getControllableDevices(): Readonly<Record<string, boolean>>;
   getPriceTimeline(): PriceTimelineRead;
   getPowerLimitSettings(): PowerLimitSettings;
   getActiveTasks(): DeferredObjectiveActivePlansV1;
   solarScope: BatterySolarScopeSource;
-  getSolarForecast(): Pick<PvForecastSourcePort, 'forecast'>;
+  /** The selected solar forecast source's hourly generation. */
+  getSolarForecast(): { forecast(hourStarts: readonly number[]): readonly { generationKwh: number }[] };
   getBackgroundKWh(hourStartMs: number): number | undefined;
 };
 
@@ -38,7 +38,7 @@ export type ContinuousBatteryHorizonSources = {
  * draw uses the accepted current draw as a persistence forecast; smart-task devices use
  * their exact committed reservations instead. Missing reads never become zero demand. */
 function standingManagedKW(
-  devices: readonly PlanInputSnapshotDevice[],
+  devices: readonly DeviceSurfaces[],
   tasks: DeferredObjectiveActivePlansV1,
   nowMs: number,
 ): number {
@@ -163,7 +163,7 @@ function readHour(
 function buildEnergyPeriods(
   sources: ContinuousBatteryHorizonSources,
   prices: PriceTimeline,
-  devices: readonly PlanInputSnapshotDevice[],
+  devices: readonly DeviceSurfaces[],
   hardwareChargeKW: number,
 ): PeriodRead {
   const nowMs = sources.getNowMs();
@@ -173,7 +173,8 @@ function buildEnergyPeriods(
   const reservations = taskReservations(tasks, nowMs);
   if (reservations === 'waiting') return { kind: 'waiting', reason: 'smart_tasks_planning' };
   const standingKW = standingManagedKW(devices, tasks, nowMs);
-  const planningCeiling = resolvePlanningCeilingKw(sources.getPowerLimitSettings());
+  // The power owner's shared arithmetic (`resolvePlanningCeilingKw`): the lower enabled limit, null when none is.
+  const planningCeiling = planningPowerCeiling(sources.getPowerLimitSettings())?.kw ?? null;
   const solarByHour = new Map<number, number | undefined>();
   let periods: BatteryEnergyPeriod[] = [];
   for (const span of priceSpans(prices.periods, nowMs, reservations)) {
