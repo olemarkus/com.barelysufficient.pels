@@ -176,13 +176,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Solar inverters and home battery
 
-- [ ] **Missing regression coverage for the battery plan and inverter hold.** No test covers an
-      app restart while a continuous battery claim is held, prices going stale mid-plan through
-      the executor, or restart and meter outage with a held inverter at the SDK boundary.
-      **What changes:** add those cases to `test/e2e/continuousBatteryPlan.e2e.test.ts` and
-      `test/e2e/inverterCurtailmentSdkE2E.test.ts`. **Done when** each case asserts the hand-back
-      or resumed plan. *(v3.24.1..e6e399a86 release review, 2026-10-28.)* [P1]
-
 - [ ] **An inverter release PELS cannot attempt keeps the meter-outage pass pending.**
       `meterSilenceEscalation.ts:174` waits on `inverterExecutor.ts:85,107`, which counts releases
       for an unavailable inverter, an absent but unconfirmed one, and a blocked claim; the pass then

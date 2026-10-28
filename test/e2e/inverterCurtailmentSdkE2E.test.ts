@@ -57,10 +57,11 @@ describe('native inverter curtailment through the Homey SDK', () => {
       })),
     });
     let gridW = -3000;
+    let meterReporting = true;
     const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
     vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => {
       if (path === 'manager/energy/live') return {
-        items: [{ type: 'cumulative', id: 'meter-main', values: { W: gridW } },
+        items: [...(meterReporting ? [{ type: 'cumulative', id: 'meter-main', values: { W: gridW } }] : []),
           { type: 'solarpanel', id: 'pv', values: { W: 5000 } }],
       };
       return originalGet(path);
@@ -70,7 +71,11 @@ describe('native inverter curtailment through the Homey SDK', () => {
     await app.onInit();
     for (let i = 0; i < 12; i += 1) await vi.advanceTimersByTimeAsync(10_000);
     await drainPending();
-    return { puts, solar, app, grid: (watts: number) => { gridW = watts; } };
+    return {
+      puts, solar, app,
+      grid: (watts: number) => { gridW = watts; },
+      silenceMeter: () => { meterReporting = false; },
+    };
   }
 
   it('caps only excess output and returns the original limit when the export price turns positive', async () => {
@@ -119,6 +124,34 @@ describe('native inverter curtailment through the Homey SDK', () => {
     const curtailIndex = h.puts.mock.calls.findIndex(([path]) => path === CAP_PATH);
     expect(boostIndex).toBeGreaterThanOrEqual(0);
     expect(curtailIndex).toBeGreaterThan(boostIndex);
+  });
+
+  it('hands a held inverter back after a restart before limiting it again', async () => {
+    const h = await boot(-0.05);
+    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, { value: 2050 });
+    await h.solar.setCapabilityValue('measure_power', 2050);
+    await h.app.onUninit();
+    h.puts.mockClear();
+    const restarted = createApp();
+    await restarted.onInit();
+    for (let i = 0; i < 12; i += 1) await vi.advanceTimersByTimeAsync(10_000);
+    await drainPending();
+    const caps = h.puts.mock.calls.filter(([path]) => path === CAP_PATH).map(([, body]) => body);
+    // The restarted executor recovers the saved claim and returns the prior
+    // limit before it admits any new curtailment.
+    expect(caps[0]).toEqual({ value: 6000 });
+  });
+
+  it('hands a held inverter back when the meter stops reporting', async () => {
+    const h = await boot(-0.05);
+    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, { value: 2050 });
+    h.puts.mockClear();
+    h.silenceMeter();
+    // Past the 10-minute silence, the power owner's fail-closed pass releases it.
+    for (let i = 0; i < 70; i += 1) await vi.advanceTimersByTimeAsync(10_000);
+    await drainPending();
+    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, { value: 6000 });
+    expect(h.puts.mock.calls.filter(([path]) => path === CAP_PATH)).toEqual([[CAP_PATH, { value: 6000 }]]);
   });
 
   it('hands an already limited inverter back when Simulation mode is enabled', async () => {
