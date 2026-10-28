@@ -11,6 +11,8 @@ test.each([
   "const driver = 'homey:app:com.tesla.car:battery';",
   "import { adapter } from './enua';",
   "const driver = 'homey:app:no.enua:enua-charger';",
+  "import { adapter } from './knx';",
+  "const driver = 'homey:app:org.knx:knx_light';",
 ])('rejects downstream integration coupling: %s', (source) => {
   expect(findDeviceAdapterViolations('lib/device/common.ts', source)).not.toEqual([]);
 });
