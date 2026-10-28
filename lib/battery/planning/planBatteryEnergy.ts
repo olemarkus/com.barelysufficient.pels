@@ -21,11 +21,43 @@ type Route =
     previous: Route;
   };
 
-const energyStates = (battery: BatteryEnergyModel): readonly number[] => Array.from(new Set([
-  ...Array.from({ length: ENERGY_INTERVALS + 1 }, (_, index) => battery.capacityKWh * index / ENERGY_INTERVALS),
-  battery.storedEnergyKWh,
-  battery.minimumEnergyKWh,
-]));
+/**
+ * The represented stored-energy states: the even grid (capacity / 200 kWh,
+ * ascending) and then the exact initial energy and reserve when they fall off
+ * it. This order is the visiting order, which settles equal-cost ties.
+ */
+type EnergyStates = { gridStepKWh: number; grid: readonly number[]; extra: readonly number[] };
+
+const energyStates = (battery: BatteryEnergyModel): EnergyStates => {
+  const grid = Array.from(
+    { length: ENERGY_INTERVALS + 1 }, (_, index) => battery.capacityKWh * index / ENERGY_INTERVALS,
+  );
+  const onGrid = new Set(grid);
+  const extra = [...new Set([battery.storedEnergyKWh, battery.minimumEnergyKWh])].filter(value => !onGrid.has(value));
+  return { gridStepKWh: battery.capacityKWh / ENERGY_INTERVALS, grid, extra };
+};
+
+/**
+ * The states one period can reach from `beforeKWh`: a band of the grid wide
+ * enough for its charge and discharge power, plus the extra states. The band
+ * only skips states `batteryEnergyFlow` would reject on power alone; it still
+ * judges every state it visits, in the same order as the full set.
+ */
+function* reachableStates(
+  battery: BatteryEnergyModel,
+  period: BatteryEnergyPeriod,
+  states: EnergyStates,
+  beforeKWh: number,
+): Generator<number> {
+  const hours = period.durationMs / 3_600_000;
+  const efficiency = Math.sqrt(battery.roundTripEfficiency);
+  const chargeKWh = Math.max(0, Math.min(battery.maxChargeKW, period.maxChargeKW)) * hours * efficiency;
+  const dischargeKWh = Math.max(0, battery.maxDischargeKW) * hours / efficiency;
+  const first = Math.max(0, Math.floor((beforeKWh - dischargeKWh) / states.gridStepKWh) - 1);
+  const last = Math.min(states.grid.length - 1, Math.ceil((beforeKWh + chargeKWh) / states.gridStepKWh) + 1);
+  for (const state of states.grid.slice(first, last + 1)) yield state;
+  yield* states.extra;
+}
 
 const energyValue = (battery: BatteryEnergyModel, energyKWh: number): number => (
   Math.max(0, energyKWh - battery.minimumEnergyKWh) * battery.terminalValuePerKWh
@@ -42,12 +74,12 @@ const isBetter = (cost: number, throughputKWh: number, previous: Route | undefin
 function advancePeriod(
   battery: BatteryEnergyModel,
   period: BatteryEnergyPeriod,
-  states: readonly number[],
+  states: EnergyStates,
   current: ReadonlyMap<number, Route>,
 ): ReadonlyMap<number, Route> {
   const next = new Map<number, Route>();
   for (const before of current.values()) {
-    for (const afterKWh of states) {
+    for (const afterKWh of reachableStates(battery, period, states, before.energyKWh)) {
       const flow = batteryEnergyFlow(battery, period, before.energyKWh, afterKWh);
       if (flow === false) continue;
       const cost = before.cost + periodCost(flow);
@@ -109,7 +141,8 @@ function materializePlan(battery: BatteryEnergyModel, terminal: Route): BatteryE
  *
  * The optimum is over this represented grid (capacity / 200 kWh plus exact
  * observed energy/reserve), not a claim of continuous or forecast-perfect
- * optimality. Work is O(periods * 203²), retained routes O(periods * 203).
+ * optimality. Work is O(periods * 203 * reachable states per period), retained
+ * routes O(periods * 203).
  * Short or constrained periods may have no feasible represented transition;
  * that returns an explicit outcome rather than fabricating a battery action.
  */
