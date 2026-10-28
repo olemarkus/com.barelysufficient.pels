@@ -273,6 +273,7 @@ export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {
   // where both hold a charger its reason says what the device needs, where the
   // start policy's says nothing (the posture adoption in `planBuilderSurplus.ts`
   // writes the same precedence for the cycle it is still running).
+  if (dev.operatingPowerHeld) return { code: PLAN_REASON_CODES.powerLimitBelowMinimum };
   if (dev.chargeTargetHeld) return buildChargeTargetHoldReason(dev.chargeTargetHeld);
   if (dev.startPolicyHoldActive === true) return { code: PLAN_REASON_CODES.awaitingPelsStart };
 

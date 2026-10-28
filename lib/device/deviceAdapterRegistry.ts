@@ -2,6 +2,7 @@ import type { ChargingCurrentSetup } from '../../packages/contracts/src/charging
 import type { HubHomeLocation } from './hubHomeLocation';
 import { teslaAdapter } from './tesla';
 import { easeeAdapter } from './easee';
+import { enuaAdapter } from './enua';
 import { zaptecAdapter } from './zaptec';
 import { futurehomeAdapter } from './futurehome';
 import { smaAdapter } from './sma';
@@ -12,7 +13,7 @@ import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../utils/types';
 
 const adapters: readonly DeviceAdapter[] = [
-  teslaAdapter, easeeAdapter, zaptecAdapter, futurehomeAdapter, osoAdapter, smaAdapter,
+  teslaAdapter, easeeAdapter, enuaAdapter, zaptecAdapter, futurehomeAdapter, osoAdapter, smaAdapter,
 ];
 
 export function getDeviceAdapter(device: HomeyDeviceLike): DeviceAdapter {

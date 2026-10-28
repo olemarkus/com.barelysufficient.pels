@@ -82,6 +82,7 @@ const DEFERRED_RESTORE_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
   // under either code would come from a task that is not driving the charger.
   PLAN_REASON_CODES.chargeTargetReached,
   PLAN_REASON_CODES.awaitingBatteryLevel,
+  PLAN_REASON_CODES.powerLimitBelowMinimum,
   // One smart task's binary_restore must not lift another task's startup reservation: the
   // reserving device is higher priority by construction, so resuming here would take exactly
   // the block the reservation exists to protect.

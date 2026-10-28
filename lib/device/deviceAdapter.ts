@@ -1,6 +1,8 @@
 import type { HubHomeLocation } from './hubHomeLocation';
 import type { ChargingCurrentSetup } from '../../packages/contracts/src/chargingControl';
-import type { DeviceControlAdapterSnapshot, SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type { DeviceControlAdapterSnapshot, SteppedLoadProfile, SteppedLoadStep,
+  TargetPowerSteppedLoadConfig } from '../../packages/contracts/src/types';
+import type { TargetPowerConfigWithReachability } from './targetPowerReachability';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { DeviceCapabilityMap } from './managerControl';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
@@ -60,6 +62,13 @@ export type DeviceAdapter = {
   matchesCapabilities(capabilities: readonly string[]): boolean;
   identity(device: HomeyDeviceLike): HomeyDeviceLike;
   overlay(device: HomeyDeviceLike, capabilities: string[], values: DeviceCapabilityMap): DeviceEvOverlay;
+  /** Resolve owner configuration against the physical target-power control. */
+  configureTargetPower(
+    device: HomeyDeviceLike, config: TargetPowerConfigWithReachability,
+  ): TargetPowerConfigWithReachability;
+  /** Convert vendor target watts into the configured planning units. */
+  targetPowerReading(device: HomeyDeviceLike, config: TargetPowerSteppedLoadConfig, value: number): number;
+  stepCommand(device: HomeyDeviceLike, step: SteppedLoadStep, command: CapabilityWrite): CapabilityWrite;
   normalize(snapshot: AdapterSnapshot, capabilityId: string, value: unknown): CapabilityUpdate[];
   observation(device: HomeyDeviceLike): DeviceCapabilityMap;
   finalizeObservation(

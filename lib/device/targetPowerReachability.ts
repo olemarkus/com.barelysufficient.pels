@@ -12,6 +12,14 @@ export type TargetPowerConfigWithReachability = TargetPowerSteppedLoadConfig & {
 
 export type DeviceTargetPowerConfigsWithReachability = Record<string, TargetPowerConfigWithReachability>;
 
+/** Physical configuration is authoritative; saved reachability remains evidence only. */
+export function resolveEffectiveTargetPowerConfig(
+  effective: TargetPowerSteppedLoadConfig | undefined,
+  saved: TargetPowerConfigWithReachability | undefined,
+): TargetPowerConfigWithReachability | undefined {
+  return effective ? { ...effective, ...(saved?.reachability ? { reachability: saved.reachability } : {}) } : saved;
+}
+
 const NOMINAL_PHASE_VOLTAGE = 230;
 const EV_CHARGER_AMPS = [6, 8, 10, 12, 14, 16, 20, 24, 28, 32] as const;
 

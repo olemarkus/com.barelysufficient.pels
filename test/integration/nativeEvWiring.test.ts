@@ -203,7 +203,7 @@ describe('native EV wiring shim', () => {
     }));
   });
 
-  it('applies a realtime current above the preset maximum as the nearest rung, without extending the ladder', async () => {
+  it('keeps a realtime current above the preset maximum distinct without extending the ladder', async () => {
     const get = vi.fn(async (path: string) => {
       if (path === 'manager/devices/device') return { 'zaptec-go-1': buildZaptecDevice() };
       throw new Error(`unexpected device fetch: ${path}`);
@@ -234,7 +234,8 @@ describe('native EV wiring shim', () => {
     // poll would have the planner model the wrong rung for minutes.
     await emitCapability('zaptec-go-1', 'available_installation_current', 32);
     expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-      reportedStepId: '16a',
+      reportedStepId: '22080w',
+      reportedStepPowerW: 22080,
       steppedLoadProfile: expect.objectContaining({
         steps: expect.not.arrayContaining([expect.objectContaining({ id: '32a' })]),
       }),

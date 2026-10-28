@@ -1,5 +1,6 @@
 import type { ChargeTargetHold, DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import { NO_SHEDDING_OUTCOME } from '../../lib/plan/planState';
+import { resolveOperatingPowerRange } from '../../lib/device/operatingPowerRange';
 import type { SheddingPlan } from '../../lib/plan/shedding/types';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type {
@@ -46,6 +47,8 @@ import {
 } from '../../lib/plan/planSurplusAbsorb';
 import type {
   DeviceDescriptorRead,
+  DeviceOperatingPowerRange,
+  SteppedLoadDescriptorProbe,
   ObservedCurrentState,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
@@ -340,6 +343,7 @@ export const withMaterializedEvPlugState = <T extends {
   startPolicy: DeviceStartPolicy;
   startPolicyInForce: DeviceStartPolicy;
   chargeTargetHold: ChargeTargetHold;
+  operatingPowerRange: DeviceOperatingPowerRange;
 } => {
   const explicitCommandableNow = (overrides as { commandableNow?: boolean }).commandableNow;
   // The producer-resolved identity the plan device carries, resolved ONCE and
@@ -388,6 +392,8 @@ export const withMaterializedEvPlugState = <T extends {
     startPolicyInForce: fixtureStartPolicyInForce(overrides as Parameters<typeof fixtureStartPolicyInForce>[0]),
     // Mirrors `projectChargeTargetHold`: a device with no charge target holds nothing.
     chargeTargetHold: (overrides as { chargeTargetHold?: ChargeTargetHold }).chargeTargetHold ?? NO_CHARGE_TARGET_HOLD,
+    operatingPowerRange: (overrides as { operatingPowerRange?: DeviceOperatingPowerRange }).operatingPowerRange
+      ?? resolveOperatingPowerRange(overrides as SteppedLoadDescriptorProbe),
     ...(isEvCharger ? { objectiveKind: 'ev_soc' as const } : {}),
     // Mirrors `resolvePlanObjective`: the session question, resolved from the
     // plug-state before the producer strips it. Never `commandableNow`.
@@ -743,6 +749,7 @@ export const withFixtureResidualKw = <T extends object>(
   startPolicy: DeviceStartPolicy;
   startPolicyInForce: DeviceStartPolicy;
   chargeTargetHold: ChargeTargetHold;
+  operatingPowerRange: DeviceOperatingPowerRange;
   currentState: ObservedCurrentState;
   budgetExempt: boolean;
 } => {
@@ -759,6 +766,8 @@ export const withFixtureResidualKw = <T extends object>(
   );
   const chargeTargetHold = (fields as { chargeTargetHold?: ChargeTargetHold }).chargeTargetHold
     ?? NO_CHARGE_TARGET_HOLD;
+  const operatingPowerRange = (fields as { operatingPowerRange?: DeviceOperatingPowerRange }).operatingPowerRange
+    ?? resolveOperatingPowerRange(fields as SteppedLoadDescriptorProbe);
   // Defaulted here for the same reason `priority` is: several local spec helpers
   // build a device literal and pass it straight through this wrapper, so a
   // posture defaulted only in the top-level builders would leave those devices
@@ -779,6 +788,7 @@ export const withFixtureResidualKw = <T extends object>(
       startPolicy,
       startPolicyInForce,
       chargeTargetHold,
+      operatingPowerRange,
       currentState,
       budgetExempt,
       residualKw: { shed: declared.shed, restore: declared.restore },
@@ -792,6 +802,7 @@ export const withFixtureResidualKw = <T extends object>(
     startPolicy,
     startPolicyInForce,
     chargeTargetHold,
+    operatingPowerRange,
     currentState,
     budgetExempt,
     residualKw: {

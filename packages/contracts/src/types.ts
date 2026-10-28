@@ -108,6 +108,9 @@ export type TargetPowerSteppedLoadConfig = {
 
 export type DeviceTargetPowerConfigs = Record<string, TargetPowerSteppedLoadConfig>;
 
+/** Whether the configured ceiling permits any physical active power level. */
+export type DeviceOperatingPowerRange = 'usable' | 'below_minimum';
+
 export type TemperatureBoostConfig = {
     enabled: boolean;
     boostBelowC: number;
