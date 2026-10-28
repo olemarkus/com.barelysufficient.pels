@@ -421,6 +421,24 @@ describe('createStarvationRescue', () => {
     expect(result).toEqual({ ok: true, runsCurrentHour: true });
   });
 
+  it.each(['capacity', 'grid'] as const)('queues the success message when the house is at its %s limit', async (atPowerLimitNow) => {
+    const rescueDeviceWithBudgetExemption = vi.fn(() => ({ ok: true as const }));
+    const previewStarvationRescuePlan = freshPreviewPlan(buildEstimate({
+      scheduledHours: [{ startsAtMs: NOW_MS, plannedKWh: 1.5 }],
+      atPowerLimitNow,
+    }));
+    const result = await createStarvationRescue({
+      ...buildContext({
+        getStarvedRescueDevices: vi.fn(() => [budgetDevice]),
+        rescueDeviceWithBudgetExemption,
+        previewStarvationRescuePlan,
+      }),
+      body: { deviceId: 'heater-1', deadlineAtMs: NOW_MS + RESCUE_HORIZON_MS },
+    });
+    expect(result).toEqual({ ok: true, runsCurrentHour: false });
+    expect(rescueDeviceWithBudgetExemption).toHaveBeenCalledOnce();
+  });
+
   it('recomputes the flash at CREATE time: a confirm across an hour boundary flashes queued, not stale on-the-way', async () => {
     // Preview happened at 04:xx with the 04:00 bucket planned; the user confirms
     // at 05:xx. The create re-derives the plan against the NEW current hour (05:00),

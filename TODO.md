@@ -105,24 +105,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       then add a post-grace preview-parity regression. Source: pels-runtime-reality review of
       the relative-priority PR, 2026-08-08. [P2]
 
-- [ ] **"Power on the way" after a rescue ignores whether the house is at its power limit.**
-      *Persona:* Optimiser (`notes/personas.md`) who taps `Let it run now` on a held-back device.
-      *Hypothesis:* the confirmation picks "Power on the way" from whether the current hour is
-      scheduled alone (`setup/settingsUiStarvationRescueApi.ts`,
-      `widgets/starvation_rescue/src/api.ts`), and ignores `estimate.atPowerLimitNow`, which the
-      preview already resolves (`planPreview.ts`). A device the rescue cannot start right now
-      because the house is at its limit is promised power that does not come. The settings-UI
-      confirm (`PlanDeviceCards.tsx`) also lacks the at-limit note the widget shows
-      (`widgets/starvation_rescue/src/render.ts`). The grant itself is not empty: the budget
-      exemption still matters if the budget binds during the three-hour window, and the gate lives in
-      `lib/objectives/deferredObjectives/limitGrantGate.ts`. **What changes:** one shared-domain
-      helper decides "runs now" as current hour scheduled AND not at the power limit, and both
-      surfaces read it; at the limit they say "Running as soon as there's room", and the settings-UI
-      confirm shows the at-limit note. **Done when** a rescue preview at the power limit flashes the
-      waiting line on both surfaces, pinned in `test/integration/settingsUiStarvationRescueApi.test.ts`
-      and `starvationRescueWidgetApi.test.ts`. Do it after PR #2911, which reworks the settings UI's
-      rescue gate. Source: adversarial review, 2026-08-04. [P3]
-
 - [ ] **Move the settings-UI edit lane and the create_smart_task widget onto lib-owned request lanes.**
       *Persona:* contributor changing how a smart task is previewed or saved.
       *Hypothesis:* the settings UI's create lane is decided in

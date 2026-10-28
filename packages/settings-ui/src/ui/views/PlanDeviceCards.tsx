@@ -126,6 +126,7 @@ export const BudgetExemptChip = ({
   // permission the write will drop nor hide one it will persist (the pause grant
   // holds other devices off, which the user must see before authorising).
   const [permissionsLine, setPermissionsLine] = useState<string | null>(null);
+  const [powerLimitNote, setPowerLimitNote] = useState<string | null>(null);
 
   if (!shouldOfferBudgetExemptCardAction(dev.starvation)) return null;
   if (!isStarvationRescuable(dev.id)) return null;
@@ -154,6 +155,8 @@ export const BudgetExemptChip = ({
       setDeadlineAtMs(response.deadlineAtMs);
       setDeadlineLabel(response.deadlineLabel);
       setPermissionsLine(formatGrantedRescuePermissionsLine(response.estimate.grantedRescuePermissions));
+      const { atPowerLimitNow } = response.estimate;
+      setPowerLimitNote(atPowerLimitNow === undefined ? null : STARVATION_RESCUE_WIDGET_COPY.atPowerLimitNote[atPowerLimitNow]);
       setChipState('armed');
     }).catch(() => setChipState('idle'));
   };
@@ -167,6 +170,7 @@ export const BudgetExemptChip = ({
       setDeadlineAtMs(undefined);
       setDeadlineLabel(undefined);
       setPermissionsLine(null);
+      setPowerLimitNote(null);
     });
   };
 
@@ -212,6 +216,11 @@ export const BudgetExemptChip = ({
       {armed && permissionsLine !== null && (
         <p class="plan-card__rescue-perms" onClick={stopActivation}>
           {permissionsLine}
+        </p>
+      )}
+      {armed && powerLimitNote !== null && (
+        <p class="plan-card__rescue-note" onClick={stopActivation}>
+          {powerLimitNote}
         </p>
       )}
     </span>

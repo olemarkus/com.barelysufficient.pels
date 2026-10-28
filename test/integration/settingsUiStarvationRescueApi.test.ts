@@ -208,6 +208,21 @@ describe('createSettingsUiStarvationRescue', () => {
     expect(candidate.deadlineAtMs).toBe(NOW_MS + RESCUE_HORIZON_MS);
   });
 
+  it.each(['capacity', 'grid'] as const)('queues the success message when the house is at its %s limit', (atPowerLimitNow) => {
+    const previewStarvationRescuePlan = freshPreviewPlan(buildEstimate({ atPowerLimitNow }));
+    const rescueDeviceWithBudgetExemption = vi.fn(() => ({ ok: true }));
+    const result = createSettingsUiStarvationRescue({
+      ...buildContext({
+        getStarvedRescueDevices: vi.fn(() => [budgetDevice]),
+        rescueDeviceWithBudgetExemption,
+        previewStarvationRescuePlan,
+      }),
+      body: { deviceId: 'heater-1' },
+    });
+    expect(result).toEqual({ ok: true, runsCurrentHour: false });
+    expect(rescueDeviceWithBudgetExemption).toHaveBeenCalledOnce();
+  });
+
   it('maps a write_refused app rejection onto the retryable write_conflict reason', () => {
     const rescueDeviceWithBudgetExemption = vi.fn(() => ({ ok: false, reason: 'write_refused' }));
     const result = createSettingsUiStarvationRescue({

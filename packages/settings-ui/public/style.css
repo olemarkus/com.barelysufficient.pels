@@ -1823,12 +1823,13 @@ md-filled-button.is-busy {
   z-index: 1;
 }
 
-/* The permissions this rescue actually grants, listed verbatim under the
+/* The permissions this rescue grants and its power-limit note, under the
    caption. Deliberately muted rather than amber: the caption carries the
-   money-action warning, while this is the factual "what you are allowing"
-   detail — two amber blocks would flatten that hierarchy on a card that already
+   money-action warning, while these are factual details — two amber blocks
+   would flatten that hierarchy on a card that already
    has a chip row and a reason line. */
-.plan-card__rescue-perms {
+.plan-card__rescue-perms,
+.plan-card__rescue-note {
   flex: 1 0 100%;
   margin: var(--spacing-1) 0 0;
   text-align: left;
