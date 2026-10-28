@@ -102,6 +102,12 @@ describe('continuous battery horizon projection', () => {
     }
   });
 
+  it('waits for a participating smart task that has not settled its plan', () => {
+    expect(createContinuousBatteryPlanSource(sources({
+      getActiveTasks: () => ({ version: 1, plansByDeviceId: { ev: { ...task(0.5), pending: true } } }),
+    })).readHorizon('battery', config)).toEqual({ kind: 'waiting', reason: 'smart_tasks_planning' });
+  });
+
   it('splits a fractional-offset price period at UTC forecast boundaries', () => {
     const result = createContinuousBatteryPlanSource(sources({
       getNowMs: () => NOW + HOUR_MS / 2,

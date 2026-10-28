@@ -42,7 +42,7 @@ export async function loadContinuousBatteryPlan(deviceId: string): Promise<Conti
     || parseContinuousBatteryPlanConfig(read.config) === null) throw new Error('Battery planning is unavailable.');
   if (read.status === 'disabled' || (read.status === 'waiting' && [
     'settings_unavailable', 'battery_unavailable', 'prices_unavailable', 'forecast_unavailable', 'solar_scope_shared',
-    'background_unavailable', 'control_unavailable', 'horizon_infeasible', 'price_unit_changed',
+    'background_unavailable', 'control_unavailable', 'smart_tasks_planning', 'horizon_infeasible', 'price_unit_changed',
   ].includes(String(read.reason))) || (read.status === 'planned' && validPlannedRead(read))) {
     return read as ContinuousBatteryPlanRead;
   }

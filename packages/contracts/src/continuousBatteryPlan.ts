@@ -21,6 +21,8 @@ export type ContinuousBatteryPlanWaitReason =
   | 'solar_scope_shared'
   | 'background_unavailable'
   | 'control_unavailable'
+  /** A participating smart task has not settled its plan, so its power is not yet known. */
+  | 'smart_tasks_planning'
   | 'horizon_infeasible'
   | 'price_unit_changed';
 

@@ -48,6 +48,7 @@ const WAITING_COPY: Record<WaitingReason, string> = {
   solar_scope_shared: 'Solar production includes another meter area. PELS needs a forecast for the Main home to plan this battery.',
   background_unavailable: 'Waiting for a household consumption forecast.',
   control_unavailable: 'PELS cannot currently control this battery.',
+  smart_tasks_planning: 'Waiting for smart tasks to finish planning.',
   horizon_infeasible: 'The available power cannot cover this plan. PELS continues normal power-limit control.',
   price_unit_changed: 'The electricity price unit changed. Review the wear allowance and save the battery plan.',
 };
