@@ -2300,6 +2300,58 @@ describe('PlanExecutor stepped loads', () => {
     }))).toBe(true);
   });
 
+  it('does not send a stale lower step through a Flow after command authority is removed', async () => {
+    const plan = steppedPlan({
+      controllable: false,
+      selectedStepId: 'max',
+      reportedStepId: 'max',
+      desiredStepId: 'low',
+      lastDesiredStepId: 'low',
+      reason: { code: PLAN_REASON_CODES.capacityControlOff },
+    });
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(
+      undefined,
+      steppedSnapshot({ reportedStepId: 'max' }),
+    );
+
+    expect(executor.hasStablePlanActuation(plan)).toBe(false);
+    await expect(executor.applyPlanActions(plan)).resolves.toEqual(expect.objectContaining({
+      deviceWriteCount: 0,
+      commandRequestCount: 0,
+    }));
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it('retains an explicit step-only lifecycle release after ordinary authority ends', async () => {
+    const plan = steppedPlan({
+      controllable: false,
+      binaryCapabilityId: undefined,
+      selectedStepId: 'max',
+      reportedStepId: 'max',
+      desiredStepId: 'max',
+      releaseShedStepId: 'low',
+      deferredReleaseIntent: 'shed_release',
+      reason: { code: PLAN_REASON_CODES.capacityControlOff },
+    });
+    const { executor, desiredSteppedTrigger } = buildExecutor(
+      undefined,
+      steppedSnapshot({
+        binaryCapabilityId: undefined,
+        binaryControl: undefined,
+        reportedStepId: 'max',
+      }),
+      { getShedBehavior: () => ({ action: 'set_step' }) },
+    );
+
+    await executor.applyPlanActions(plan);
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
+      { deviceId: 'dev-1' },
+    );
+  });
+
   // A kept device's plan reason other than keep / restore need: a restore held
   // on headroom (not a restore-admission hold), and a restore-admission hold.
   const keptDeviceHoldReasons = [

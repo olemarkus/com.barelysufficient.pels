@@ -1469,6 +1469,35 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       expect(stepped.desiredStepId).toBe('low');
     });
 
+    it.each([undefined, 'low'])('leaves a Manual step alone when another device is shed (previous command %s)', (desiredStepId) => {
+      const [stepped] = buildInitialPlanDevicesForSpec({
+        context: buildContext([
+          buildStepped({ controllable: false, desiredStepId }),
+          buildBinary('thermostat'),
+        ]),
+        sheddingPlan: sheddingPlanFixture({ shedSet: new Set(['thermostat']) }),
+        deps: defaultDeps,
+      });
+
+      expect(stepped.control.commandAuthority).toBe(false);
+      expect(stepped.reason.code).toBe('capacity_control_off');
+      expect(stepped.desiredStepId).toBe('medium');
+    });
+
+    it('still limits a step when a smart task grants authority with power limiting off', () => {
+      const [stepped] = buildInitialPlanDevicesForSpec({
+        context: buildContext([
+          buildStepped({ controllable: false, commandAuthority: true }),
+          buildBinary('thermostat'),
+        ]),
+        sheddingPlan: sheddingPlanFixture({ shedSet: new Set(['thermostat']) }),
+        deps: defaultDeps,
+      });
+
+      expect(stepped.control.commandAuthority).toBe(true);
+      expect(stepped.desiredStepId).toBe('low');
+    });
+
     it('preserves each admitted boost rung across rebuilds, then releases to the configured step', () => {
       const state = createPlanEngineState();
       const thermostat = buildBinary('thermostat');
