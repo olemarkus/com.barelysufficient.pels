@@ -1,7 +1,9 @@
 import { isUnknownRecord } from './recordGuards';
 
-// Single source of truth for the TOP-LEVEL shape/version guard of the persisted
-// `deferred_objective_active_plans` setting. Two surfaces normalise this blob:
+// Single source of truth for the TOP-LEVEL shape/version guard of the smart-task
+// active plans envelope: as the userdata store and the legacy settings key hold
+// it, and as the `deferred_objective_active_plans_updated` push carries it. Two
+// surfaces normalise it:
 //
 //   • the runtime recorder (`lib/objectives/deferredObjectives/activePlanSettings.ts`,
 //     `normalizeDeferredObjectiveActivePlans`) — deep per-device validation, and

@@ -423,9 +423,9 @@ const loadBootstrapData = async (): Promise<SettingsUiBootstrap | null> => {
     primeApiCache(SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH, bootstrap.deferredObjectives);
     // Persist active plans so device cards can read EV schedule state without
     // re-fetching the full bootstrap on every render cycle. Realtime replans
-    // refresh this same state via `reloadDeferredObjectiveActivePlans` on the
-    // `deferred_objective_active_plans` settings event; both paths funnel
-    // through the shared shape guard so the seed and the re-read can't drift.
+    // refresh this same state via `applyDeferredObjectiveActivePlansPush` on the
+    // `deferred_objective_active_plans_updated` push; both paths funnel
+    // through the shared shape guard so the seed and the push can't drift.
     state.deferredObjectiveActivePlans = coerceDeferredObjectiveActivePlans(
       bootstrap.deferredObjectiveActivePlans,
     );

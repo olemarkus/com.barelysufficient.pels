@@ -63,7 +63,6 @@ export {
   readCreateSmartTaskCandidates,
   resolveDeviceSmartTaskHomeScope,
 } from './smartTaskHomeScope';
-export { normalizeDeferredObjectiveActivePlans } from './activePlanSettings';
 export { formatDeadlineLocalTime, resolveDeferredObjectiveDeadline } from './deadline';
 export {
   buildValidSmartTaskCandidate,

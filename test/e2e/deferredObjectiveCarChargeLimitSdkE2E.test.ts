@@ -14,12 +14,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../../api';
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
+import { createActivePlanStore } from '../../lib/objectives/deferredObjectives/activePlanStore';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CONTROLLABLE_DEVICES,
-  DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
   EV_CAR_ASSOCIATIONS,
   EV_CAR_LINK_STATE,
   MANAGED_DEVICES,
@@ -141,9 +141,7 @@ describe('EV smart task capped at the car\'s own charge limit (SDK-boundary e2e)
     // cap, so they can say why the plan stops short of the 80 % shown.
     await pumpMinutes(1);
     expect(
-      (settings.get(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING) as {
-        plansByDeviceId?: Record<string, { carChargeLimit?: { limitValue: number; reached: boolean } }>;
-      } | undefined)?.plansByDeviceId?.[CHARGER_ID],
+      createActivePlanStore(app.getUserdataDatabase()).read()?.plansByDeviceId[CHARGER_ID],
     ).toMatchObject({ carChargeLimit: { limitValue: 70, reached: false } });
 
     // The car reaches its limit. The requested 80% remains unmet, and PELS

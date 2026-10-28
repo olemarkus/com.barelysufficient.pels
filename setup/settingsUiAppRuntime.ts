@@ -1,8 +1,10 @@
 import type {
+  DeferredObjectiveActivePlansUpdatedPayload,
   PlanStatusPublishedPayload,
   PowerTrackerPersistedPayload,
 } from '../packages/contracts/src/realtimeEventPayloads';
 import {
+  DEFERRED_OBJECTIVE_ACTIVE_PLANS_UPDATED_EVENT,
   MAIN_HOME_ID,
   PLAN_STATUS_PUBLISHED_EVENT,
   POWER_TRACKER_PERSISTED_EVENT,
@@ -178,6 +180,24 @@ export const emitPlanStatusPublishedForApp = (
   const payload: PlanStatusPublishedPayload = { homeId };
   realtime.call(api, PLAN_STATUS_PUBLISHED_EVENT, payload)
     .catch((error: unknown) => onError('Failed to emit plan_status_published event', error as Error));
+};
+
+/**
+ * The smart-task active plans saved (`deferred_objective_active_plans_updated`).
+ * The plans live in the userdata store — no settings key, no `settings.set`
+ * echo — so the push carries the resolved view itself, the one the bootstrap
+ * gives, and the WebView applies it without a route call.
+ */
+export const emitDeferredObjectiveActivePlansUpdatedForApp = (
+  homey: Homey.App['homey'],
+  payload: DeferredObjectiveActivePlansUpdatedPayload,
+  onError: (message: string, error: Error) => void,
+): void => {
+  const api = homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
+  const realtime = api?.realtime;
+  if (typeof realtime !== 'function') return;
+  realtime.call(api, DEFERRED_OBJECTIVE_ACTIVE_PLANS_UPDATED_EVENT, payload)
+    .catch((error: unknown) => onError('Failed to emit deferred_objective_active_plans_updated event', error as Error));
 };
 
 /**

@@ -1,6 +1,7 @@
 import {
   PLAN_STATUS_PUBLISHED_EVENT,
   POWER_TRACKER_PERSISTED_EVENT,
+  DEFERRED_OBJECTIVE_ACTIVE_PLANS_UPDATED_EVENT,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { syncSettingsHubChips } from './settingsHubChips.ts';
 import { classifyPowerReadingsFact } from '../../../shared-domain/src/powerReadingsBanner.ts';
@@ -38,6 +39,7 @@ import {
   createSettingsUnsetHandler,
   handlePlanStatusPublished,
   handlePowerTrackerPersisted,
+  handleDeferredObjectiveActivePlansUpdated,
 } from './settingsChangeRouter.ts';
 import {
   isPanelVisible,
@@ -217,6 +219,7 @@ export const initRealtimeListeners = () => {
   homey.on('power_updated', handlePowerUpdated);
   homey.on(POWER_TRACKER_PERSISTED_EVENT, handlePowerTrackerPersisted);
   homey.on(PLAN_STATUS_PUBLISHED_EVENT, handlePlanStatusPublished);
+  homey.on(DEFERRED_OBJECTIVE_ACTIVE_PLANS_UPDATED_EVENT, handleDeferredObjectiveActivePlansUpdated);
   homey.on('settings.set', withSettingsKey('settings.set', createSettingsSetHandler()));
   homey.on('settings.unset', withSettingsKey('settings.unset', createSettingsUnsetHandler()));
 

@@ -261,7 +261,11 @@ carries it, where the userdata store would need an API route of its own
   five-minute persist writes the hour that changed), and when PELS last controlled each device
   (`lib/plan/lastControlledStore.ts`, one row per home and device, diffed;
   owner, 2026-10-24: actuation history, so it left settings, where one
-  transient boot read could wipe it). A cache belongs here whatever its size (owner, 2026-09-27):
+  transient boot read could wipe it), and the smart-task active plans
+  (`lib/objectives/deferredObjectives/activePlanStore.ts`, one row per device,
+  diffed; once `deferred_objective_active_plans`, re-plannable state the
+  recorder saved on every revision, and the settings UI now hears each save as
+  the `deferred_objective_active_plans_updated` push carrying the plans). A cache belongs here whatever its size (owner, 2026-09-27):
   shrinking one does not make it configuration.
 - **Nowhere** — a value that is a fact of the running app and nothing else. The
   live status (`PelsStatus`, once the `pels_status` / `pels_status:<homeId>`

@@ -1,23 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DeferredObjectiveActivePlansV1 } from '../../contracts/src/deferredObjectiveActivePlans.ts';
-import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING } from '../../shared-domain/src/settings/settingsKeys.ts';
 
-// The active-plans recorder persists every replan/session change via
-// `settings.set(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING)`. The realtime handler
-// must drain that key back into `state.deferredObjectiveActivePlans` (read by
-// the Overview EV state line) and repaint, or revised schedules stay frozen at
-// their bootstrap value until the WebView reloads.
+// The active-plans recorder pushes every replan/session change as a
+// `deferred_objective_active_plans_updated` realtime event carrying the
+// resolved view. The handler must apply that payload to
+// `state.deferredObjectiveActivePlans` (read by the Overview EV state line) and
+// repaint, or revised schedules stay frozen at their bootstrap value until the
+// WebView reloads.
 
-const getSettingMock = vi.fn();
 const bumpPlanSurfaceMock = vi.fn();
-
-vi.mock('../src/ui/homey.ts', async () => {
-  const actual = await vi.importActual<typeof import('../src/ui/homey.ts')>('../src/ui/homey.ts');
-  return {
-    ...actual,
-    getSetting: (...args: unknown[]) => getSettingMock(...args),
-  };
-});
 
 vi.mock('../src/ui/planRedesign.ts', async () => {
   const actual = await vi.importActual<typeof import('../src/ui/planRedesign.ts')>(
@@ -31,7 +22,7 @@ vi.mock('../src/ui/planRedesign.ts', async () => {
 
 import {
   coerceDeferredObjectiveActivePlans,
-  reloadDeferredObjectiveActivePlans,
+  applyDeferredObjectiveActivePlansPush,
 } from '../src/ui/deferredObjectiveActivePlans.ts';
 import { state } from '../src/ui/state.ts';
 
@@ -63,7 +54,6 @@ const planFor = (deviceId: string, revision: number): DeferredObjectiveActivePla
 });
 
 beforeEach(() => {
-  getSettingMock.mockReset();
   bumpPlanSurfaceMock.mockReset();
   state.deferredObjectiveActivePlans = null;
 });
@@ -137,47 +127,29 @@ describe('coerceDeferredObjectiveActivePlans', () => {
   });
 });
 
-describe('reloadDeferredObjectiveActivePlans', () => {
-  it('re-reads the persisted setting into state and repaints the plan surface', async () => {
-    getSettingMock.mockResolvedValue(planFor('ev-1', 3));
-    await reloadDeferredObjectiveActivePlans();
-    expect(getSettingMock).toHaveBeenCalledWith(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING);
+describe('applyDeferredObjectiveActivePlansPush', () => {
+  it('applies the pushed plans to state and repaints the plan surface, without a read', () => {
+    applyDeferredObjectiveActivePlansPush(planFor('ev-1', 3));
     expect(state.deferredObjectiveActivePlans?.plansByDeviceId['ev-1']?.latest?.revision).toBe(3);
     expect(bumpPlanSurfaceMock).toHaveBeenCalledTimes(1);
   });
 
-  it('replaces a stale bootstrap value with the freshly revised plan', async () => {
+  it('replaces a stale bootstrap value with the freshly revised plan', () => {
     state.deferredObjectiveActivePlans = planFor('ev-1', 1);
-    getSettingMock.mockResolvedValue(planFor('ev-1', 4));
-    await reloadDeferredObjectiveActivePlans();
+    applyDeferredObjectiveActivePlansPush(planFor('ev-1', 4));
     expect(state.deferredObjectiveActivePlans?.plansByDeviceId['ev-1']?.latest?.revision).toBe(4);
   });
 
-  it('clears state when the setting was unset / cleared', async () => {
+  it('drops the plan of a task that ended when the push no longer carries it', () => {
     state.deferredObjectiveActivePlans = planFor('ev-1', 1);
-    getSettingMock.mockResolvedValue(undefined);
-    await reloadDeferredObjectiveActivePlans();
-    expect(state.deferredObjectiveActivePlans).toBeNull();
-    expect(bumpPlanSurfaceMock).toHaveBeenCalledTimes(1);
+    applyDeferredObjectiveActivePlansPush({ version: 1, plansByDeviceId: {} });
+    expect(state.deferredObjectiveActivePlans?.plansByDeviceId).toEqual({});
   });
 
-  it('last write wins when a stale read resolves after a newer one (no clobber)', async () => {
-    // Event A launches first and its read resolves LAST; event B launches second
-    // and resolves first. The sequence guard must keep B's (newer) value.
-    let resolveA: (value: DeferredObjectiveActivePlansV1) => void = () => {};
-    const readA = new Promise<DeferredObjectiveActivePlansV1>((resolve) => {
-      resolveA = resolve;
-    });
-    getSettingMock.mockReturnValueOnce(readA);
-    getSettingMock.mockResolvedValueOnce(planFor('ev-1', 9));
-
-    const pendingA = reloadDeferredObjectiveActivePlans(); // launched first (stale)
-    await reloadDeferredObjectiveActivePlans(); // launched second, resolves first (fresh)
-    expect(state.deferredObjectiveActivePlans?.plansByDeviceId['ev-1']?.latest?.revision).toBe(9);
-
-    resolveA(planFor('ev-1', 1)); // older read resolves late — must be ignored
-    await pendingA;
-    expect(state.deferredObjectiveActivePlans?.plansByDeviceId['ev-1']?.latest?.revision).toBe(9);
+  it('validates the payload as it validates the bootstrap: a malformed push clears state', () => {
+    state.deferredObjectiveActivePlans = planFor('ev-1', 1);
+    applyDeferredObjectiveActivePlansPush({ version: 2, plansByDeviceId: {} });
+    expect(state.deferredObjectiveActivePlans).toBeNull();
     expect(bumpPlanSurfaceMock).toHaveBeenCalledTimes(1);
   });
 });

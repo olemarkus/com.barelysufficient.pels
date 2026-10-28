@@ -24,15 +24,14 @@ test('cannot-finish outranks steady and swaps Ready by → Due', async ({ page }
     const homey = (window as unknown as {
       Homey: {
         __stub: {
-          setSetting: (k: string, v: unknown) => void;
-          emitSettingsSet: (k: string) => void;
+          emitHomeyEvent: (event: string, ...args: unknown[]) => void;
         };
       };
     }).Homey;
-    // Write the raw persisted active-plans setting (the Overview reloads it on
-    // the settings.set realtime event) with the fixture task flipped to a
-    // cannot-finish verdict.
-    homey.__stub.setSetting('deferred_objective_active_plans', {
+    // Push the active plans as the runtime does on a save (the Overview
+    // applies the `deferred_objective_active_plans_updated` payload directly)
+    // with the fixture task flipped to a cannot-finish verdict.
+    homey.__stub.emitHomeyEvent('deferred_objective_active_plans_updated', {
       version: 1,
       plansByDeviceId: {
         dev_connected300: {
@@ -47,7 +46,6 @@ test('cannot-finish outranks steady and swaps Ready by → Due', async ({ page }
         },
       },
     });
-    homey.__stub.emitSettingsSet('deferred_objective_active_plans');
   });
   const row = page.locator(ROW);
   await expect(row).toHaveAttribute('data-variant', 'cannot_finish');

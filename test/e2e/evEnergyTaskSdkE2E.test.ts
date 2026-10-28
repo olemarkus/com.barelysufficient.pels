@@ -1,13 +1,12 @@
-import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../../api';
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
+import { createActivePlanStore } from '../../lib/objectives/deferredObjectives/activePlanStore';
 import { drainPending } from '../utils/asyncDrain';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW,
-  COMBINED_PRICES, CONTROLLABLE_DEVICES, DAILY_BUDGET_ENABLED,
-  DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING, DEVICE_TARGET_POWER_CONFIGS,
+  COMBINED_PRICES, CONTROLLABLE_DEVICES, DAILY_BUDGET_ENABLED, DEVICE_TARGET_POWER_CONFIGS,
   MANAGED_DEVICES, NATIVE_EV_WIRING_DEVICES, OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
 
@@ -32,6 +31,8 @@ describe('EV energy task through Homey SDK', () => {
     vi.restoreAllMocks();
     vi.useRealTimers();
   });
+
+  let app: ReturnType<typeof createApp>;
 
   async function boot(stepped = false) {
     const charger = new MockDevice(DEVICE_ID, 'Energy charger',
@@ -73,7 +74,7 @@ describe('EV energy task through Homey SDK', () => {
         } }] }
         : originalGet(path)
     ));
-    const app = createApp();
+    app = createApp();
     await app.onInit();
     await mockHomeyInstance.flow._actionCardListeners.set_energy_deadline({
       device: DEVICE_ID, target_kwh: 0.5, ready_by: '22:00',
@@ -88,11 +89,7 @@ describe('EV energy task through Homey SDK', () => {
     }
   };
 
-  const active = () => {
-    const stored = mockHomeyInstance.settings.get(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING) as
-      DeferredObjectiveActivePlansV1 | null;
-    return stored?.plansByDeviceId[DEVICE_ID];
-  };
+  const active = () => createActivePlanStore(app.getUserdataDatabase()).read()?.plansByDeviceId[DEVICE_ID];
 
   it.each([false, true])('delivers energy without SoC across unplugging and editing (stepped=%s)', async (stepped) => {
     const charger = await boot(stepped);
@@ -104,6 +101,15 @@ describe('EV energy task through Homey SDK', () => {
     await api.ui_refresh_devices(context());
     await pump(6);
     expect(active()?.objectiveKind).toBe('energy');
+    // The settings UI hears each save as a push carrying the resolved view,
+    // the energy task's delivered kWh included; no settings key is written.
+    const pushes = mockHomeyInstance.api._realtimeEvents
+      .filter(({ event }) => event === 'deferred_objective_active_plans_updated');
+    expect(pushes.at(-1)?.data).toMatchObject({
+      version: 1,
+      plansByDeviceId: { [DEVICE_ID]: { objectiveKind: 'energy', deliveredKWh: expect.any(Number) } },
+    });
+    expect(mockHomeyInstance.settings.getKeys()).not.toContain('deferred_objective_active_plans');
 
     // The same UI editor used for existing energy tasks must accept a charger.
     expect(await api.ui_smart_task_update({ ...context(), body: {

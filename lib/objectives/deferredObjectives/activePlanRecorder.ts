@@ -15,12 +15,14 @@ import { hoursWithPlannedEnergy } from '../../../packages/shared-domain/src/defe
  * bounded revision history, and the pending-record lifecycle that the
  * settings UI and the public Flow status read.
  *
- * Persistence caveat: Homey settings reads can transiently return
- * missing/empty data, so a persisted plan is never dropped on a single cycle
- * without its diagnostic — `dropExpiredAndAbandoned` waits `ABANDON_GRACE_MS`
- * (one hour) since the device was last seen, and `lastSeenAtMs` is seeded to
- * construction time on reload so a miss right after restart cannot delete
- * persisted plans. Preserve that property when changing load/drop paths.
+ * Persistence caveat: the plans persist to the userdata store
+ * (`./activePlanStore.ts`), and a store that cannot be read seeds zero plans,
+ * while a plan cycle can transiently produce no diagnostic for a device, so a
+ * persisted plan is never dropped on a single cycle without its diagnostic —
+ * `dropExpiredAndAbandoned` waits `ABANDON_GRACE_MS` (one hour) since the
+ * device was last seen, and `lastSeenAtMs` is seeded to construction time on
+ * reload so a miss right after restart cannot delete persisted plans.
+ * Preserve that property when changing load/drop paths.
  */
 import type {
   DeferredObjectiveActivePlanHourV1,
