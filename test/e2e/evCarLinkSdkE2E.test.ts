@@ -22,11 +22,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
+import { createActivePlanStore } from '../../lib/objectives/deferredObjectives/activePlanStore';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
-  DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
   EV_CAR_ASSOCIATIONS,
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
@@ -476,12 +476,13 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
 
     // The user accepts the notification. No car plug-in event is invented, and
     // this Flow action has no meter-reading or direct plan-rebuild side effect.
-    const planBeforeConfirmation = JSON.stringify(settings.get(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING));
+    const storedPlans = () => createActivePlanStore(app.getUserdataDatabase()).read();
+    const planBeforeConfirmation = JSON.stringify(storedPlans());
     await expect(flow._actionCardListeners.confirm_ev_car_association({
       charger: { id: CHARGER_ID }, car: { id: CAR_ID },
     })).resolves.toBe(true);
     await flushDetached();
-    expect(JSON.stringify(settings.get(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING))).toBe(planBeforeConfirmation);
+    expect(JSON.stringify(storedPlans())).toBe(planBeforeConfirmation);
     await expect(isWaiting({ charger: CHARGER_ID })).resolves.toBe(false);
     expect(socOf(getLatestTargetSnapshotForTests())).toMatchObject({
       source: { kind: 'car', carId: CAR_ID },
@@ -497,10 +498,7 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     // adopted level and book energy for the still-requested 80% target.
     const emittedBefore = crossings.length;
     await pumpMinutes(2);
-    const activePlans = settings.get(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING) as {
-      plansByDeviceId?: Record<string, { latest: { energyNeededKWh: number } | null }>;
-    } | null;
-    expect(activePlans?.plansByDeviceId?.[CHARGER_ID]?.latest?.energyNeededKWh).toBeGreaterThan(0);
+    expect(storedPlans()?.plansByDeviceId[CHARGER_ID]?.latest?.energyNeededKWh).toBeGreaterThan(0);
     expect(flow._triggerCardTriggers.ev_car_association_waiting).toHaveLength(emittedBefore);
     expect(putSpy.mock.calls.filter(([path]: unknown[]) => (
       typeof path === 'string' && path.startsWith(`manager/devices/device/${CAR_ID}/capability/`)

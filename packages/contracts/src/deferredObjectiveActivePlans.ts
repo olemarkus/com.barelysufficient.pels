@@ -497,11 +497,9 @@ export type ResolvedDeferredObjectiveActivePlansV1 = {
 // `latest.planStatus` for `resolveSmartTaskListStatus`, plus
 // `deviceName`/`deadlineAtMs` for its copy).
 // That state is seeded once from the resolved bootstrap payload and then
-// re-read from the raw persisted setting on every realtime change, so the two
-// shapes differ on the kind-split value columns — but neither the Overview
-// path NOR this type touches them. Typing the Overview state to this narrow
-// shape makes reading a value column there a compile error and removes the
-// resolved-vs-raw divergence (both satisfy this subset). The deadline-plan
+// replaced by the same resolved view on every
+// `deferred_objective_active_plans_updated` push. Typing the Overview state to
+// this narrow shape makes reading a value column there a compile error. The deadline-plan
 // surfaces read the fully-resolved `bootstrap.deferredObjectiveActivePlans`
 // instead, never this state.
 export type OverviewDeferredObjectiveActivePlan = Pick<

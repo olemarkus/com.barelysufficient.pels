@@ -2406,9 +2406,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     // Regression for the active-plan recorder settings churn bug: an actively
     // charging EV reports a monotonically decreasing `energyNeededKWh` every
     // ~30s plan cycle. Persisting that drift across an unchanged schedule
-    // wrote `DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING` every cycle, which is
-    // wasted Homey settings I/O — the user-visible plan (set of charging
-    // hours) hasn't changed.
+    // saved the active plans every cycle, which is wasted I/O and a realtime
+    // push per cycle — the user-visible plan (set of charging hours) hasn't
+    // changed.
     const events: Array<{ deviceId: string; reason: string }> = [];
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder({

@@ -2,10 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../../api';
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
+import { createActivePlanStore } from '../../lib/objectives/deferredObjectives/activePlanStore';
 import { drainPending } from '../utils/asyncDrain';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW,
-  CONTROLLABLE_DEVICES, DAILY_BUDGET_ENABLED, DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
+  CONTROLLABLE_DEVICES, DAILY_BUDGET_ENABLED,
   MANAGED_DEVICES, OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
 
@@ -77,7 +78,7 @@ describe('thermal task completion without initial prices through the Homey SDK',
     await vi.advanceTimersByTimeAsync(30_000);
     await drainPending();
     const expectLiveCompletion = (kind: 'unavailable' | 'satisfied') => {
-      expect(settings.get(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING)).toMatchObject({
+      expect(createActivePlanStore(app.getUserdataDatabase()).read()).toMatchObject({
         plansByDeviceId: { [DEVICE_ID]: { latest: null, liveCompletion: { kind } } },
       });
     };

@@ -1,5 +1,7 @@
 import { createSettingsResync } from '../src/remote/remoteSettingsResync.ts';
 import type { RemoteRequest } from '../src/remote/remoteHomeyClient.ts';
+import { SETTINGS_UI_BOOTSTRAP_PATH } from '../../contracts/src/settingsUiApi.ts';
+import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_UPDATED_EVENT } from '../../shared-domain/src/settings/settingsKeys.ts';
 
 // Homey only sends settings events while the socket is up; after a drop the
 // web app compares settings and announces what it missed.
@@ -8,13 +10,21 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const setup = (bootstrapped: Promise<unknown> = Promise.resolve(null)) => {
   let settings: Record<string, unknown> = {};
-  const request = vi.fn(async () => settings) as unknown as RemoteRequest;
+  // No bootstrap answer unless a test publishes active plans.
+  let activePlans: unknown;
+  const request = vi.fn(async (_method: string, path: string) => {
+    if (!path.endsWith(SETTINGS_UI_BOOTSTRAP_PATH)) return settings;
+    return activePlans === undefined ? null : { deferredObjectiveActivePlans: activePlans };
+  }) as unknown as RemoteRequest;
   const dispatch = vi.fn();
   const resync = createSettingsResync(request, dispatch, bootstrapped);
   const store = (next: Record<string, unknown>) => {
     settings = next;
   };
-  return { resync, dispatch, store, request };
+  const planActive = (next: unknown) => {
+    activePlans = next;
+  };
+  return { resync, dispatch, store, request, planActive };
 };
 
 const reconnect = async (resync: ReturnType<typeof createSettingsResync>) => {
@@ -134,5 +144,17 @@ describe('settings resync after a dropped socket', () => {
     vi.mocked(request).mockRejectedValueOnce(new Error('offline'));
     await reconnect(resync);
     expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('replays the active plans from the bootstrap after a reconnect, not on the first connection', async () => {
+    const { resync, dispatch, store, planActive } = setup(Promise.resolve({ settings: {} }));
+    const plans = { version: 1, plansByDeviceId: {} };
+    planActive(plans);
+    store({});
+    resync.onStatus('live');
+    await flush();
+    expect(dispatch).not.toHaveBeenCalledWith(DEFERRED_OBJECTIVE_ACTIVE_PLANS_UPDATED_EVENT, expect.anything());
+    await reconnect(resync);
+    expect(dispatch).toHaveBeenCalledExactlyOnceWith(DEFERRED_OBJECTIVE_ACTIVE_PLANS_UPDATED_EVENT, plans);
   });
 });

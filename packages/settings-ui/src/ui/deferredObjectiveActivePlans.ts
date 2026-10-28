@@ -4,12 +4,10 @@ import type {
   OverviewDeferredObjectiveActivePlan,
   OverviewDeferredObjectiveActivePlans,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
-import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 import {
   normalizeDeferredObjectiveActivePlansShape,
 } from '../../../shared-domain/src/deferredObjectiveActivePlanShape.ts';
-import { getSetting } from './homey.ts';
 import { bumpPlanSurface } from './planRedesign.ts';
 import { state } from './state.ts';
 
@@ -57,7 +55,8 @@ const isOverviewPlanShaped = (plan: unknown): plan is OverviewDeferredObjectiveA
   && isOverviewLatest(plan.latest)
 );
 
-// Browser-safe coercion of the raw `deferred_objective_active_plans` setting.
+// Browser-safe coercion of the active-plans view the bootstrap and the
+// `deferred_objective_active_plans_updated` realtime push carry.
 // The authoritative deep normaliser lives in `lib/objectives/**` (runtime
 // backend) and the settings UI must not import across that architecture
 // boundary, so it delegates the shared top-level shape/version guard
@@ -87,30 +86,15 @@ export const coerceDeferredObjectiveActivePlans = (
   ) };
 };
 
-// Re-read the persisted active-plans setting into `state` and repaint the
-// overview plan surface. Wired into the `settings.set`/`settings.unset` realtime
-// handlers: the recorder persists every replan/session change via
-// `homey.settings.set(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING, …)`, which fires
-// the realtime event this drains so the Overview device-card EV state line
-// reflects revised schedules without a WebView reload. The handler has already
-// invalidated the settings cache for the key, so `getSetting` performs a fresh
-// Homey read. Note: the raw persisted setting carries the committed schedule
-// fields the overview cards read (`latest.hours`, `diagnosticReasonCode`) but
-// not the live-progress fields the bootstrap assembler stitches on — those are
-// only needed by the deadline-plan detail surface, which re-fetches the full
-// bootstrap on navigation.
-//
-// A burst of rapid `settings.set` events (e.g. several replans landing close
-// together) can launch overlapping reads. `getSetting` is async, so without a
-// guard an earlier read resolving after a later one would clobber `state` with
-// stale data. The monotonic sequence counter makes the write last-wins: only
-// the most recently launched read is allowed to commit.
-let reloadSequence = 0;
-export const reloadDeferredObjectiveActivePlans = async (): Promise<void> => {
-  reloadSequence += 1;
-  const sequence = reloadSequence;
-  const raw = await getSetting(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING);
-  if (sequence !== reloadSequence) return;
-  state.deferredObjectiveActivePlans = coerceDeferredObjectiveActivePlans(raw);
+// Apply the active plans the runtime pushed on a save
+// (`deferred_objective_active_plans_updated`) to `state` and repaint the
+// overview plan surface. The plans live in the userdata store, under no
+// settings key, so the push carries the same resolved view the bootstrap's
+// `deferredObjectiveActivePlans` gives, and it passes the same shape guard:
+// without it the Overview device-card EV state line would show the
+// pre-revision schedule until the WebView reloads. A payload that is not an
+// active-plans view clears the state, as a malformed bootstrap value does.
+export const applyDeferredObjectiveActivePlansPush = (payload: unknown): void => {
+  state.deferredObjectiveActivePlans = coerceDeferredObjectiveActivePlans(payload);
   bumpPlanSurface();
 };

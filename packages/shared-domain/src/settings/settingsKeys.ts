@@ -74,6 +74,9 @@ export const DEVICE_EXPECTED_POWER_OVERRIDES = 'device_expected_power_overrides'
 // settings UI watches the prefix to reload, and creates and ends tasks through
 // the smart-task routes.
 export const PER_DEVICE_OBJECTIVE_KEY_PREFIX = 'deferred_objective.';
+// Legacy key: the smart-task active plans live in the userdata store
+// (`lib/objectives/deferredObjectives/activePlanStore.ts`), which imports this
+// key once at boot and unsets it. Nothing else reads or writes it.
 export const DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING = 'deferred_objective_active_plans';
 export const OVERSHOOT_BEHAVIORS = 'overshoot_behaviors';
 export const PRICE_OPTIMIZATION_SETTINGS = 'price_optimization_settings';
@@ -134,6 +137,13 @@ export const POWER_TRACKER_PERSISTED_EVENT = 'power_tracker_persisted';
 // change capacity status. Payload: `PlanStatusPublishedPayload` in
 // `packages/contracts/src/realtimeEventPayloads.ts`.
 export const PLAN_STATUS_PUBLISHED_EVENT = 'plan_status_published';
+// Realtime push the runtime emits on every save of the smart-task active plans.
+// The plans live in the userdata store, under no settings key, so this push
+// carries them: the same resolved view the bootstrap's
+// `deferredObjectiveActivePlans` gives. Payload:
+// `DeferredObjectiveActivePlansUpdatedPayload` in
+// `packages/contracts/src/realtimeEventPayloads.ts`.
+export const DEFERRED_OBJECTIVE_ACTIVE_PLANS_UPDATED_EVENT = 'deferred_objective_active_plans_updated';
 
 // Multi-home roster blob. Read/written by the runtime only through
 // lib/home/homeRegistryStore.ts (ports in lib/home/homeConfig.ts). The per-home

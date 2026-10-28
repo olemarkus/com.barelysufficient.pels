@@ -11,7 +11,6 @@ import type {
 import {
   DeferredObjectiveActivePlanRecorder,
   DeferredObjectivePlanHistoryRecorder,
-  normalizeDeferredObjectiveActivePlans,
   normalizeDeferredObjectivePlanHistory,
   objectiveKeyListIsTrustworthy,
   readAllObjectives,
@@ -21,10 +20,7 @@ import {
   type DeferredObjectiveDeviceWriteDeps,
 } from '../../lib/objectives/deferredObjectives';
 import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
-import {
-  DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
-  DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
-} from '../../lib/utils/settingsKeys';
+import { DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK } from '../../lib/utils/settingsKeys';
 import { resolveSmartTaskHomeScope } from './smartTaskHomeScope';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import { resolveObjectiveTargetValue } from '../../packages/shared-domain/src/deferredObjectiveValues';
@@ -34,6 +30,13 @@ import { createPlanHistoryStoreForApp } from './planHistoryStore';
 import { requireDeviceManager, requirePlanService, requirePriceCoordinator } from './contextGuards';
 import { EnergyTaskDeliveryTracker } from '../../lib/objectives/deferredObjectives/energyDelivery';
 import { createEnergyDeliveryStore } from '../../lib/objectives/deferredObjectives/energyDeliveryStore';
+import {
+  createActivePlanPersistence,
+  createActivePlanStore,
+  importLegacyActivePlans,
+} from '../../lib/objectives/deferredObjectives/activePlanStore';
+import { assembleActivePlansUiView } from '../../lib/objectives/deferredObjectives/activePlansUiView';
+import { emitDeferredObjectiveActivePlansUpdatedForApp } from '../settingsUiAppRuntime';
 
 // How long the deferred-objective observation watermark can be stale before we advance it
 // during normal observe ticks. Without this idle advance the watermark only moves forward
@@ -373,26 +376,20 @@ export function requireDeferredObjectivePlanHistoryRecorder(
 export function createDeferredObjectiveActivePlanRecorder(
   ctx: AppContext,
 ): DeferredObjectiveActivePlanRecorder {
+  const store = createActivePlanStore(ctx.getUserdataDatabase());
+  importLegacyActivePlans(ctx.homey.settings, store);
   return new DeferredObjectiveActivePlanRecorder({
-    // Return `null` (not an empty payload) when the raw boot read is
-    // absent/non-object so the recorder seeds zero plans. A transient-empty
-    // boot read self-heals on the next plan cycle's `observe()`, which
-    // re-derives the live plans from diagnostics.
-    load: () => {
-      const raw: unknown = ctx.homey.settings.get(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING);
-      if (!raw || typeof raw !== 'object') return null;
-      return normalizeDeferredObjectiveActivePlans(raw);
-    },
-    save: (next) => {
-      try {
-        ctx.homey.settings.set(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING, next);
-      } catch (error) {
-        ctx.getStructuredLogger('deferred_objectives').error({
-          event: 'deferred_objective_active_plans_persist_failed',
-          err: normalizeError(error),
-        });
-      }
-    },
+    ...createActivePlanPersistence(store, (plans) => emitDeferredObjectiveActivePlansUpdatedForApp(
+      ctx.homey,
+      // The view the bootstrap serves (`AppSmartTaskPayloads`), so the
+      // WebView applies a push exactly as it applies the bootstrap.
+      assembleActivePlansUiView(
+        plans,
+        ctx.deferredObjectivePlanHistoryRecorder,
+        requireDeferredObjectiveEnergyDelivery(ctx).getDeliveredKWh,
+      ),
+      (message, error) => ctx.error(message, error),
+    )),
     onRevisionWritten: (event) => ctx.deferredObjectivePlanRevisionBus.publish(event),
   });
 }

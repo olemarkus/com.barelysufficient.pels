@@ -1,13 +1,18 @@
 import { SETTINGS_PATH, type RemoteRequest } from './remoteHomeyClient.ts';
 import type { RealtimeStatus } from './remoteRealtime.ts';
 import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
+import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_UPDATED_EVENT } from '../../../shared-domain/src/settings/settingsKeys.ts';
+import { SETTINGS_UI_BOOTSTRAP_PATH } from '../../../contracts/src/settingsUiApi.ts';
+import { PELS_APP_ID } from './remoteConnection.ts';
 
 // Homey only delivers `settings.set` / `settings.unset` while the socket is
 // up, and the settings UI caches settings until one of those events arrives.
 // So the copy of PELS's settings taken while live is compared with a fresh read
 // after every reconnect, and each difference is announced as the event Homey
 // would have sent. Runtime read models (plan, power, devices, prices) catch up
-// on their own refresh timers or with the next event.
+// on their own refresh timers or with the next event. The smart-task active
+// plans have neither: they arrive only as a push on each change, so a reconnect
+// re-reads them from the bootstrap and replays that push.
 
 type SettingsSnapshot = Map<string, string>;
 
@@ -59,6 +64,14 @@ export const createSettingsResync = (
       if (!touched.has(key) && unchanged) continue;
       dispatch(current.has(key) ? 'settings.set' : 'settings.unset', key);
     }
+    if (previous) await catchUpActivePlans(generation);
+  };
+
+  const catchUpActivePlans = async (generation: number) => {
+    const bootstrap = await request('GET', `/api/app/${PELS_APP_ID}${SETTINGS_UI_BOOTSTRAP_PATH}`).catch(() => null);
+    if (generation !== connectionGeneration || !isUnknownRecord(bootstrap)) return;
+    // The UI validates the payload as it validates the push itself.
+    dispatch(DEFERRED_OBJECTIVE_ACTIVE_PLANS_UPDATED_EVENT, bootstrap.deferredObjectiveActivePlans);
   };
 
   return {

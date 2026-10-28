@@ -181,12 +181,13 @@ describe('Overview refresh cadence', () => {
 
   it('reads the smart-task history when a task\'s active plan changes on a visible Overview', async () => {
     await install('overview');
-    emitHomeyEvent(homey, 'settings.set', 'deferred_objective_active_plans');
+    const pushed = { version: 1, plansByDeviceId: {} };
+    emitHomeyEvent(homey, 'deferred_objective_active_plans_updated', pushed);
     await vi.advanceTimersByTimeAsync(0);
     expect(getCount(homey, SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH)).toBe(1);
 
     document.getElementById('overview-panel')?.classList.add('hidden');
-    emitHomeyEvent(homey, 'settings.set', 'deferred_objective_active_plans');
+    emitHomeyEvent(homey, 'deferred_objective_active_plans_updated', pushed);
     await vi.advanceTimersByTimeAsync(0);
     expect(getCount(homey, SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH)).toBe(1);
   });

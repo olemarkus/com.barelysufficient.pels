@@ -219,7 +219,10 @@ recorder captures sealed outcomes (met/missed/abandoned), the active-plan record
 captures the plan that is *being executed right now* so the Settings UI and any
 downstream consumer reads a stable allocation rather than re-deriving one on every load.
 
-Persisted shape (`deferred_objective_active_plans` settings key, V1). This is an abbreviated
+Persisted shape (V1, one row per device in the userdata store's
+`deferred_objective_active_plans` table, `lib/objectives/deferredObjectives/activePlanStore.ts`,
+which imports the legacy `deferred_objective_active_plans` settings key once at boot; the
+settings UI hears each save as the `deferred_objective_active_plans_updated` push). This is an abbreviated
 sketch; `DeferredObjectiveActivePlanV1` in `packages/contracts/src/deferredObjectiveActivePlans.ts`
 is the full contract:
 

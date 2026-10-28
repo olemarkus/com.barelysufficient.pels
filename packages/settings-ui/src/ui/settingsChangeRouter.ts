@@ -18,7 +18,6 @@ import {
   POWER_SOURCE,
   BATTERY_CONTROL_DEVICES,
   BUDGET_EXEMPT_DEVICES,
-  DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
   PER_DEVICE_OBJECTIVE_KEY_PREFIX,
   DEVICE_CONTROL_PROFILES,
   DEVICE_TARGET_POWER_CONFIGS,
@@ -93,7 +92,7 @@ import {
 import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
 import { refreshDeadlinesList } from './deadlinesList.ts';
 import { loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
-import { reloadDeferredObjectiveActivePlans } from './deferredObjectiveActivePlans.ts';
+import { applyDeferredObjectiveActivePlansPush } from './deferredObjectiveActivePlans.ts';
 import { handleWeatherAdvisorSettingsChanged } from './weatherInsight.ts';
 import { DAILY_BUDGET_REFRESH_KEYS, DAILY_BUDGET_SETTINGS_KEYS } from './realtimeDailyBudgetKeys.ts';
 import {
@@ -402,21 +401,17 @@ const reloadObjectivesIfObjectiveKey = (key: string, context: string): void => {
   }
 };
 
-// The active-plans recorder persists every replan / session change / updated
-// start-finish hour via `settings.set(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING)`.
-// Without draining that key here, `state.deferredObjectiveActivePlans` stays
-// frozen at its bootstrap value and the Overview device cards' EV state line
-// (`EvDeadlineStateLine`) shows the pre-revision schedule until the user reloads
-// the WebView. Re-read the fresh setting into state and repaint the overview.
-// Fires for BOTH `settings.set` (revision) and `settings.unset` (task ended →
-// recorder drops the plan).
-const reloadActivePlansIfActivePlansKey = (key: string, context: string): void => {
-  if (key !== DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING) return;
-  runLoggedTask(
-    reloadDeferredObjectiveActivePlans(),
-    'Failed to reload deferred objective active plans',
-    context,
-  );
+/**
+ * The runtime saved the smart-task active plans
+ * (`deferred_objective_active_plans_updated`). They live in the userdata
+ * store — no settings key, no `settings.set` echo — so the push carries the
+ * resolved view, applied to `state.deferredObjectiveActivePlans` directly.
+ * Without it the Overview device cards' EV state line (`EvDeadlineStateLine`)
+ * shows the pre-revision schedule until the user reloads the WebView. A save
+ * that dropped a plan (the task ended) arrives the same way.
+ */
+export const handleDeferredObjectiveActivePlansUpdated = (payload: unknown): void => {
+  applyDeferredObjectiveActivePlansPush(payload);
   // A run that ended can extend or break a miss streak on the Overview row.
   refreshPlanHistoryIfVisible();
 };
@@ -485,7 +480,6 @@ export const createSettingsUnsetHandler = () => (key: string) => {
   // re-resolves it.
   notifyAreaSimulationSettingChanged(key);
   reloadObjectivesIfObjectiveKey(key, 'settings.unset');
-  reloadActivePlansIfActivePlansKey(key, 'settings.unset');
   reloadWeatherInsightIfWeatherKey(key, 'settings.unset');
   reloadRecommendationsIfKey(key, 'settings.unset');
   refreshModeCatalogSurfaces(key, 'settings.unset');
@@ -558,7 +552,6 @@ export const createSettingsSetHandler = () => (key: string) => {
   notifyInverterCurtailmentSettingChanged(key);
 
   reloadObjectivesIfObjectiveKey(key, 'settings.set');
-  reloadActivePlansIfActivePlansKey(key, 'settings.set');
   reloadWeatherInsightIfWeatherKey(key, 'settings.set');
   reloadRecommendationsIfKey(key, 'settings.set');
 

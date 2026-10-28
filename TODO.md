@@ -323,35 +323,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       satisfy it. **Done when:** `lib/utils/settingsHandlers.ts` imports nothing from
       `lib/dailyBudget/`. [P2]
 
-- [ ] **P1 — the remaining history keys still ride `homey.settings`, and every write of any key
-      pays for all of them.** The SDK's `ManagerSettings.set` ships the ENTIRE settings object to
-      core on every write of any key (`notes/settings-key-ownership.md` § "Which store"), so each
-      write costs what the whole object weighs. The power tracker (`lib/power/trackerStore.ts`),
-      the weather history (`lib/weather/weatherHistoryStore.ts`), the smart-task plan history
-      (`lib/objectives/deferredObjectives/planHistoryStore.ts`), the device diagnostics
-      (`lib/diagnostics/deviceDiagnosticsStateStore.ts`), the price caches
-      (`lib/price/priceCacheStore.ts`), the daily budget's plan and learned profiles
-      (`lib/dailyBudget/dailyBudgetStateStore.ts`), the per-step power calibration
-      (`lib/device/devicePowerCalibrationStore.ts`), the EV car-link probe
-      (`lib/device/evCarLinkStore.ts`) and the learned power peaks
-      (`lib/device/learnedPowerPeakStore.ts`) moved to the userdata store
-      (`lib/store/userdataDatabase.ts`). The learned solar forecast's generation history
-      (`lib/solar/pvForecastStateStore.ts`) and when PELS last controlled each device
-      (`lib/plan/lastControlledStore.ts`) followed. One has not: `deferred_objective_active_plans`
-      (`setup/appInit/deferredRecorders.ts`; the settings UI reads it live through a settings
-      event, so its move replaces that with an `api.realtime` push). The size is what
-      matters, because the small live latches stay in settings by ruling and keep writing:
-      measured on production on 2026-09-26, `deferred_objective_observation_watermark` writes 12
-      times an hour (`setup/appInit/deferredRecorders.ts`).
-      Change: one repository per family beside its domain, taking the
-      open database (the tracker and weather stores are the pattern: rows or one JSON row per
-      event, diffed writes, the legacy key imported once at boot through
-      `lib/store/legacySettingsImport.ts` and unset, and the settings UI served through `api.js`).
-      Done when that key is not left in
-      `GET /api/manager/apps/app/com.barelysufficient.pels/setting` on the production Homey, which
-      leaves about 16 kB of configuration and live latches. Count writes by diffing successive reads of that endpoint, not with
-      the `settings_set.*` perf counter, which covers only `capacity_in_shortfall`.
-
 - [ ] **Each power limit is a loose nullable, and readers re-derive which nulls mean "off".**
       The capacity, grid and daily axes and the binding limit travel as separate `number | null`
       fields: `PlanLimits` (`softLimit`, `softLimitSource`, `capacitySoftLimit`,
