@@ -69,8 +69,14 @@ const newScheduleDevice = (params: URLSearchParams): SmartTaskCandidateDevice | 
 const hydrateEditor = (id: string, read: SchedulesSnapshot, params: URLSearchParams): void => {
   const today = localToday(read.timeZone);
   if (id === 'new') {
+    const device = newScheduleDevice(params);
+    const requested = params.get(DEVICE_PARAM);
+    if (requested !== null && device?.deviceId !== requested) {
+      view = { ...view, editor: null, error: 'This device is not available for a scheduled Smart task.' };
+      return;
+    }
     view = { ...view, editor: {
-      kind: 'new', draft: createScheduleDraft(newScheduleDevice(params), read.modes[0] ?? '', today),
+      kind: 'new', draft: createScheduleDraft(device, read.modes[0] ?? '', today),
     } };
     return;
   }

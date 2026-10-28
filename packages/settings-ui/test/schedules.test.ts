@@ -47,6 +47,14 @@ beforeEach(() => {
 });
 
 describe('Schedule settings bridge', () => {
+  it('does not turn an unavailable device deep link into an unrelated mode schedule', async () => {
+    window.history.replaceState({}, '', '/?page=settings/schedules&schedule=new&scheduleDevice=missing');
+    await controller.refreshSchedules();
+    expect(renders.at(-1)?.snapshot).toMatchObject({
+      load: 'ready', editor: null, error: 'This device is not available for a scheduled Smart task.',
+    });
+  });
+
   it('rejects an owner acknowledgement that still carries the previous definition', async () => {
     await expect(controller.persistScheduleCommand({
       type: 'save', schedule: { ...schedule, name: 'Changed name' },
