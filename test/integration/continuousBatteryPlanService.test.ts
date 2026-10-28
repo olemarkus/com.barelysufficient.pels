@@ -95,6 +95,41 @@ describe('continuous battery plan owner', () => {
     expect(owner.read('battery')).toEqual({ status: 'waiting', config, reason: 'forecast_unavailable' });
   });
 
+  it('reuses a plan while live device draw moves within its tolerance', () => {
+    const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { battery: config } });
+    let nowMs = NOW;
+    let managedKWh = 0;
+    let readings = 0;
+    const owner = new ContinuousBatteryPlanService(store.settings, {
+      getNowMs: () => nowMs,
+      readHorizon: () => {
+        readings += 1;
+        const durationMs = NOW + 3_600_000 - nowMs;
+        return { kind: 'ready', priceUnit: 'EUR/kWh', horizon: { ...horizon, periods: [{
+          ...horizon.periods[0], startsAtMs: nowMs, durationMs,
+          householdDemandKWh: 0.5 * durationMs / 3_600_000,
+          otherManagedDemandKWh: managedKWh * durationMs / 3_600_000,
+          maxChargeKW: 2.5 - managedKWh,
+        }] } };
+      },
+    });
+    const first = owner.read('battery');
+    expect(first.status).toBe('planned');
+    for (const [stepMs, drawKW] of [[5_000, 0.1], [10_000, 0.05], [15_000, 0.2]] as const) {
+      nowMs = NOW + stepMs;
+      managedKWh = drawKW;
+      expect(owner.read('battery')).toBe(first);
+    }
+    managedKWh = 0.4;
+    const replanned = owner.read('battery');
+    expect(replanned).not.toBe(first);
+    // The replan at 15 s ages out after its own 30 s, whatever the draw.
+    nowMs = NOW + 46_000;
+    managedKWh = 0.45;
+    expect(owner.read('battery')).not.toBe(replanned);
+    expect(readings).toBe(6);
+  });
+
   it('strictly rejects malformed capacity, reserve, efficiency, price unit and wear', () => {
     for (const invalid of [
       { ...config, usableCapacityKWh: Number.NaN }, { ...config, minimumReservePercent: 100 },
