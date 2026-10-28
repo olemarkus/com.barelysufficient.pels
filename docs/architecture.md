@@ -199,7 +199,8 @@ thermostat → price
 device → power      (type-only: sole-meter adoption)
 objectives → {power, home}   (home is a pure leaf; smart-task Main-home scope reads the membership port)
 diagnostics → {plan, power, home}
-planInput → {plan, observer, device, executor, objectives, price, home}
+planInput → {plan, observer, device, executor, objectives, price, home, battery, power}
+planInput → solar   (type-only: the PV forecast port)
 leaves: power, price, observer, actuator, battery, weather, solar, home
 ```
 
