@@ -251,6 +251,26 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       per-call locals. **Done when:** the guard fails on a new reassigned closure `let` in a
       `setup/` factory and the allowlist names each existing one. [P2]
 
+- [ ] **`lib/app/appContext.ts` type-imports `setup/`, against `no-lib-to-setup`.** It imports
+      `DeviceControlHelpers` from `setup/appDeviceControlHelpers.ts` and `AppSnapshotHelpers` from
+      `setup/appSnapshotHelpers.ts` for the `deviceControlHelpers` and `snapshotHelpers` fields of
+      `AppContext`. The cruise runs without `tsPreCompilationDeps`, so type-only edges are erased
+      and the rule never sees these. **What changes:** give each helper bundle a named interface in
+      the `lib/` module that owns its behaviour (or narrow `AppContext` to the members its readers
+      use), and have the `setup/` factories return that type. **Done when:** no file under `lib/`
+      or `packages/` has an `import type` from `setup/` (`grep -rn "from '.*setup/" lib packages`
+      is empty). [P2]
+
+- [ ] **`lib/utils/settingsHandlers.ts` type-imports `lib/dailyBudget`.** `lib/utils` sits below
+      the domain peers in `docs/architecture.md`, but this file takes `DailyBudgetUpdateStateOptions`
+      from `lib/dailyBudget/dailyBudgetTypes.ts` for its `updateDailyBudgetState` dependency and
+      the `FORCE_DAILY_BUDGET_STATE_PERSIST` constant. No cruiser rule covers `lib/utils` →
+      `lib/dailyBudget`, and a rule would miss a type-only edge anyway. **What changes:** move the
+      daily-budget settings handling (the sync scheduler and the forced-persist call) into
+      `lib/dailyBudget/`, or declare the options shape in `lib/utils` and let `lib/dailyBudget`
+      satisfy it. **Done when:** `lib/utils/settingsHandlers.ts` imports nothing from
+      `lib/dailyBudget/`. [P2]
+
 - [ ] **P1 — the remaining history keys still ride `homey.settings`, and every write of any key
       pays for all of them.** The SDK's `ManagerSettings.set` ships the ENTIRE settings object to
       core on every write of any key (`notes/settings-key-ownership.md` § "Which store"), so each

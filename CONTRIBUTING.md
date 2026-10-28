@@ -1,22 +1,20 @@
-# Contributing to Athom and Homey
+# Contributing to PELS
 
-First off all, thank you for taking the time to contribute!
+Thank you for taking the time to contribute!
 
-The following is a set of guidelines for contributing to Athom and its packages, which are hosted in the [Athom Organization](https://github.com/athombv) on GitHub. These are just guidelines, not rules. Use your best judgment, and feel free to contact us if you have any questions.
+These are guidelines for contributing to PELS, the Homey Pro app for electricity capacity control, hosted at [olemarkus/com.barelysufficient.pels](https://github.com/olemarkus/com.barelysufficient.pels) on GitHub. They are guidelines, not rules. Use your best judgment, and contact olemarkus@gmail.com if you have any questions.
 
-Please join our [community slack](https://slack.athom.com), if you have not done so already.
-We also have a [community forum](https://community.homey.app) for general discussions.
-
+The user documentation is at [pels.barelysufficient.org](https://pels.barelysufficient.org/).
 
 ## Before submitting a bug or feature request
 
-* **Have you actually read the error message**?
-* Have you searched for similar issues?
-* Have you updated homey, all apps, and the development tools (if applicable)?
-* Have you checked that it's not a problem with one of the apps you're using, rather than Homey itself?
-* Have you looked at what's involved in fixing/implementing this?
- 
-Capable programmers should always attempt to investigate and fix problems themselves before asking for others to help. Submit a pull request instead of an issue!
+* Have you read the error message, or the device's status in PELS?
+* Have you searched the [existing issues](https://github.com/olemarkus/com.barelysufficient.pels/issues)?
+* Have you updated Homey and PELS to the latest versions?
+* Have you checked that the problem is in PELS, rather than in the app that drives the device?
+* Have you looked at what's involved in fixing or implementing this?
+
+If you can, investigate the problem and open a pull request with the fix.
 
 ## A great bug report contains
 
