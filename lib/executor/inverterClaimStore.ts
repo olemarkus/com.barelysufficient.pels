@@ -28,11 +28,7 @@ function parseBinding(raw: unknown): InverterControlBinding | null {
 }
 
 function parseRestoration(raw: unknown): InverterClaim['restoration'] | null {
-  // Older claims did not record the binding. Their saved limit remains safe to
-  // request, but they cannot authorize writing an enum that may have changed.
-  if (raw === undefined) return { kind: 'limit_only' };
   if (!isUnknownRecord(raw)) return null;
-  if (raw.kind === 'limit_only') return { kind: 'limit_only' };
   const binding = parseBinding(raw.binding);
   return raw.kind === 'native' && binding ? { kind: 'native', binding } : null;
 }

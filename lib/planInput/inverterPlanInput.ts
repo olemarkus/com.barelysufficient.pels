@@ -28,8 +28,7 @@ export function readInverterPlanInputs(source: InverterPlanInputSource): Inverte
     const surface = configuration.inverterControl;
     const state = source.observed(configuration.id);
     if (!surface || surface.authority === 'release_only' || !state?.inverterObservation || state.available === false
-      || (ownership.kind === 'held' && (ownership.claim.restoration.kind === 'limit_only'
-        || !inverterBindingsMatch(ownership.claim.restoration.binding, surface)))) {
+      || (ownership.kind === 'held' && !inverterBindingsMatch(ownership.claim.restoration.binding, surface))) {
       return ownership.kind === 'held' ? [{ kind: 'hand_back', deviceId: configuration.id }] : [];
     }
     const inMainHome = membership.filterDevicesForHome([{ id: configuration.id }], MAIN_HOME_ID).length === 1;

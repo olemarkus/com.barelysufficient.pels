@@ -29,16 +29,10 @@ describe('inverter hand-back targets', () => {
       .toEqual({ kind: 'watts_only', limitW: 6000 });
   });
 
-  it('resolves a legacy autonomous ceiling only from an accepted current binding', () => {
-    const legacy: InverterClaim = { ...autonomous, restoration: { kind: 'limit_only' } };
-    expect(resolveInverterReleaseTarget(legacy, control)).toEqual({ kind: 'watts_only', limitW: 6000 });
-    expect(resolveInverterReleaseTarget(legacy, undefined)).toBeNull();
-  });
-
   it.each(['direct', 'controlled'] as const)('preserves the saved active zero for prior %s control', (kind) => {
     const previousMode: InverterClaim['previousMode'] = kind === 'direct' ? { kind }
       : { kind, value: 'homey', observedAtMs: 0 };
-    expect(resolveInverterReleaseTarget({ ...autonomous, previousMode, restoration: { kind: 'limit_only' } }, control))
+    expect(resolveInverterReleaseTarget({ ...autonomous, previousMode, restoration: { kind: 'native', binding: { ...control, maxW: 7000 } } }, control))
       .toEqual({ kind: 'watts_only', limitW: 0 });
   });
 

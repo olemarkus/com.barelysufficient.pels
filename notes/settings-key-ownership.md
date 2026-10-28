@@ -324,7 +324,9 @@ map, and a missing WebView value needs a fresh owner-resolved bootstrap read.
 and mode, plus the native binding, before the first command. These small, mission-critical hand-back
 records stay in Homey settings until the observer confirms release. A restarted
 executor recovers them before admitting new curtailment.
-An older record without binding metadata authorizes a saved-limit-only hand-back.
+A record without its binding is unreadable and blocks that inverter's recovery.
+A hand-back to a prior autonomous mode writes only the mode: its saved setpoint
+may be a dormant zero that would cap production while PELS's mode still applies.
 After a binding change, PELS restores only watts, using the current range and step
 when the saved value no longer fits; it does not write the old mode enum. For a
 prior autonomous mode, its accepted native maximum is the production ceiling;

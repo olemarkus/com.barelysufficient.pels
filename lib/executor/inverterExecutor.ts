@@ -146,7 +146,7 @@ export class InverterExecutor implements InverterExecution {
     if (observed.mode.kind !== 'autonomous' || observed.mode.observedAtMs <= claim.claimedAtMs) return false;
     const control = this.source.control(deviceId);
     if (control?.authority !== 'limit_and_release') return false;
-    if (claim.restoration.kind === 'native' && !inverterBindingsMatch(claim.restoration.binding, control)) return false;
+    if (!inverterBindingsMatch(claim.restoration.binding, control)) return false;
     if (this.recovering.has(deviceId) && sameMode(observed.mode, claim.previousMode)) return false;
     return !(this.releaseRequests.has(deviceId) && sameMode(observed.mode, claim.previousMode));
   }
@@ -219,7 +219,6 @@ export class InverterExecutor implements InverterExecution {
     const claim = this.claims.get(deviceId);
     if (!claim) return null;
     const target = resolveInverterReleaseTarget(claim, this.source.control(deviceId));
-    if (target === null) return null;
     const request = this.releaseRequests.get(deviceId);
     const sameTarget = request !== undefined && this.sameReleaseTarget(request.target, target);
     const observed = this.source.observation(deviceId);
