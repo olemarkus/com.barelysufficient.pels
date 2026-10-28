@@ -755,11 +755,16 @@ keeps the word for what PELS holds it to do.
 | State while PELS holds it and it discharges | `Supplying` |
 | State while PELS holds it and it charges | `Charging` |
 | State while it runs the mode chosen in its own app | `Own mode` |
+| State while the battery plan keeps its stored energy for later | `Waiting` |
 | State while PELS caps its charge at its place in the priority order | `Limited · Charging` (the load's `Limited` word) |
 | Reason while PELS holds it to hold the limit | `Holding your limit so your devices keep running` |
 | Reason while PELS holds it to store solar the devices leave | `Storing the solar power your devices leave` |
 | Reason while PELS caps its charge so a device can use the solar | `Charging less so a device can use the solar` |
 | Reason while PELS caps its charge | `Waiting to charge faster · 2.4 kW more needed` (the charge its own mode would take that the cap holds back; `Waiting to charge faster` alone under 0.05 kW) |
+| Reason while the battery plan charges from the grid | `Buying cheap electricity for later` |
+| Reason while the battery plan stores solar | `Storing solar for later household use` |
+| Reason while the battery plan supplies the home | `Using stored energy while power is expensive` |
+| Reason while the battery plan keeps its charge | `Keeping stored energy for later` |
 | Reason in its own mode (a battery PELS can drive) | `PELS takes over when your limit or solar needs it` |
 | Reason in its own mode, Power-limit control off (PELS never takes it over: no charge cap, no discharge, no surplus claim) | `Power-limit control is off: its own app is in charge` |
 | Reason in its own mode, its app rejected PELS's claim (a Sessy on its cloud login), for 6 h, or until PELS restarts or its controls change | `PELS can only watch it: its app does not accept control` |
