@@ -44,6 +44,28 @@ const settingsStore = (initial: Record<string, unknown> = {}) => {
 };
 
 describe('continuous battery plan owner', () => {
+  it('reports whether accepted settings enable any plan as settings change', () => {
+    const store = settingsStore();
+    const owner = new ContinuousBatteryPlanService(store.settings, source);
+    expect(owner.hasEnabledPlan()).toBe(false);
+    store.settings.set(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, { battery: { ...config, enabled: false } });
+    expect(owner.hasEnabledPlan()).toBe(false);
+    store.settings.set(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, { battery: config });
+    expect(owner.hasEnabledPlan()).toBe(true);
+    store.settings.unset(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY);
+    expect(owner.hasEnabledPlan()).toBe(false);
+  });
+
+  it('retains accepted plan enablement through failed reads without enabling a first unreadable plan', () => {
+    const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { battery: config } });
+    const owner = new ContinuousBatteryPlanService(store.settings, source);
+    expect(owner.hasEnabledPlan()).toBe(true);
+    store.loseReads();
+    expect(owner.hasEnabledPlan()).toBe(true);
+    const unread = new ContinuousBatteryPlanService(store.settings, source);
+    expect(unread.hasEnabledPlan()).toBe(false);
+  });
+
   it('defaults to disabled only for a genuinely never-written setting', () => {
     const store = settingsStore();
     const owner = new ContinuousBatteryPlanService(store.settings, source);

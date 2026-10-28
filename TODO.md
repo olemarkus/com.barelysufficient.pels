@@ -197,12 +197,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       behaviour with a focused test. **Done when** a shedding test covers a deficit that returns
       inside the window. *(v3.24.1..e6e399a86 release review, 2026-10-28.)* [P2]
 
-- [ ] **The battery demand forecaster runs on every sample with no plan enabled.**
-      `setup/powerSamplePipeline.ts:283` feeds it each reading (a device-list filter and a time-zone
-      lookup) for every home. **What changes:** skip the sample when no continuous plan is enabled.
-      **Done when** a test with planning off shows no forecaster work per sample. *(v3.24.1..e6e399a86
-      release review, 2026-10-28.)* [P2]
-
 - [ ] **Battery plan waiting and infeasible states are never logged.** The reason reaches only the
       battery page, so a support report cannot show why a plan is idle. **What changes:** emit a
       structured event through `getDebugEmitter` when the read's status or reason changes in

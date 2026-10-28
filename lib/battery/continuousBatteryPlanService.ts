@@ -81,6 +81,12 @@ export class ContinuousBatteryPlanService {
     return this.lastSettings;
   }
 
+  /** An accepted enabled plan starts sampling; failed reads retain the last accepted configuration. */
+  hasEnabledPlan(): boolean {
+    const accepted = this.acceptedSettings();
+    return accepted.kind === 'resolved' && Object.values(accepted.configs).some(config => config.enabled);
+  }
+
   read(deviceId: string): ContinuousBatteryPlanRead {
     const accepted = this.acceptedSettings();
     if (accepted.kind === 'unavailable') {

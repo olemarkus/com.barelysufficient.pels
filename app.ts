@@ -305,6 +305,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     () => this.context.homeMembership?.filterDevicesForHome(this.getDeviceSurfaces(), MAIN_HOME_ID) ?? [],
     () => this.getTimeZone(),
     this.batterySolarScope,
+    () => this.hasEnabledContinuousBatteryPlan(),
   );
 
   public forecastBatteryBackgroundKWh(hourStartMs: number): number | undefined {
@@ -350,6 +351,8 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   public readContinuousBatteryPlan: (deviceId: string) => ContinuousBatteryPlanRead = () => ({
     status: 'waiting', config: DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, reason: 'settings_unavailable',
   });
+  // Sampling waits for the battery-plan owner to confirm enabled planning.
+  public hasEnabledContinuousBatteryPlan: () => boolean = () => false;
 
 
   // Whether the owner's Homey price setup can be read — the settings UI's only

@@ -130,6 +130,19 @@ describe('continuous battery plan through the Homey SDK', () => {
     expect(setpoints(home).every(watts => watts <= 2500)).toBe(true);
   });
 
+  it('starts planning from meter samples after the owner enables a previously disabled plan', async () => {
+    const home = await startHome();
+    mockHomeyInstance.settings.set(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, { [BATTERY]: { ...CONFIG, enabled: false } });
+    await home.advance(4);
+    expect(((await api.ui_devices(context())).continuousBatteryPlans[BATTERY]).status).toBe('disabled');
+    mockHomeyInstance.settings.set(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, { [BATTERY]: CONFIG });
+    home.setHouseW(2100);
+    await home.advance(4);
+    expect(((await api.ui_devices(context())).continuousBatteryPlans[BATTERY]).status).toBe('planned');
+    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
+    expect(setpoints(home).some(watts => watts > 0)).toBe(true);
+  });
+
   it('holds control at zero while waiting for cheaper prices, without the native schedule taking over', async () => {
     const home = await startHome(true);
     await home.advance(8);
