@@ -457,12 +457,13 @@ reintroduce the ambiguity.
 
 ## What ships today: one scalar via a rebase
 
-`PlanBuilder.computeDailySoftLimit` (`lib/plan/planBuilder.ts`) collapses
-the two constraints into a single threshold on `P_import`:
+`PlanBuilder.computeDailySoftLimit` (`lib/plan/planBuilder.ts`) rebases the
+budget pace onto `P_import`, and `buildPlanLimits` (`lib/plan/planContext.ts`)
+collapses the two constraints into a single threshold:
 
 ```text
 budgetPaceImportKw = budgetPaceKw + exemptKw          // dailySoftLimitKw, computeDailySoftLimit
-bindingPaceKw      = min(capacityPaceKw, budgetPaceImportKw)
+bindingPaceKw      = min(capacityPaceKw, budgetPaceImportKw)  // buildPlanLimits
 ```
 
 The `+ exemptKw` term moves the budget pace from the `P_nonExempt` axis to the
