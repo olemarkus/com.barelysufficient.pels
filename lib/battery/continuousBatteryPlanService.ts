@@ -99,9 +99,10 @@ export class ContinuousBatteryPlanService {
       this.plans.delete(deviceId);
       return { status: 'waiting', config, reason: input.reason };
     }
-    // Every consumed input participates: current SoC, partial period, prices,
-    // forecasts and task commitments cannot leave an old command alive, and
-    // live power only within its tolerance and the memo's age.
+    // Every consumed input participates: current SoC, partial period, prices and
+    // forecasts must match exactly. Live device draw, task reservations and the
+    // charge room and import limit they leave may move within the tolerance, for
+    // at most the memo's age; storage rules cap each command by live headroom.
     // One entry per configured device; no accumulated revision history.
     const inputs = planInputs(input);
     const nowMs = this.source.getNowMs();

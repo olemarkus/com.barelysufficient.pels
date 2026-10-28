@@ -165,6 +165,12 @@ describe('native inverter curtailment through the Homey SDK', () => {
     await drainPending();
     expect(h.puts).toHaveBeenCalledWith(modePath, { value: 'device' });
     expect(h.puts.mock.calls.filter(([path]) => path === CAP_PATH)).toEqual([]);
+    // The inverter's own mode report alone confirms the hand-back.
+    expect(mockHomeyInstance.settings.get(`${INVERTER_CLAIM_PREFIX}pv`)).toBeFalsy();
+    h.puts.mockClear();
+    for (let i = 0; i < 5; i += 1) await vi.advanceTimersByTimeAsync(10_000);
+    await drainPending();
+    expect(h.puts.mock.calls.filter(([path]) => path === modePath || path === CAP_PATH)).toEqual([]);
   });
 
   it.each([

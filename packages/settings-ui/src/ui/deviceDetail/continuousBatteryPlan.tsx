@@ -38,8 +38,8 @@ function display(current: BatteryPlanSession): void {
   if (!mount || session !== current) return;
   const managedHint = document.getElementById('device-detail-managed-hint');
   if (managedHint && current.drivable && current.read !== null) {
-    // A blocked plan says so below; the hint never claims planning that cannot run.
-    managedHint.textContent = current.read.config.enabled && current.blockedReason === ''
+    // A blocked or waiting plan says so below; the hint claims planning only while a plan runs.
+    managedHint.textContent = current.read.status === 'planned' && current.blockedReason === ''
       ? 'PELS plans charging and household supply, and holds your power limit. Turn off battery planning to return to its own schedule.'
       : BATTERY_MANAGED_HINT;
   }
