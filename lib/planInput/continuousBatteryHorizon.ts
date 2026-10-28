@@ -171,7 +171,7 @@ function buildEnergyPeriods(
   const solarScope = resolveBatterySolarScope(sources.solarScope);
   if (solarScope === 'shared') return { kind: 'waiting', reason: 'solar_scope_shared' };
   const reservations = taskReservations(tasks, nowMs);
-  if (reservations === 'waiting') return { kind: 'waiting', reason: 'control_unavailable' };
+  if (reservations === 'waiting') return { kind: 'waiting', reason: 'smart_tasks_planning' };
   const standingKW = standingManagedKW(devices, tasks, nowMs);
   const planningCeiling = resolvePlanningCeilingKw(sources.getPowerLimitSettings());
   const solarByHour = new Map<number, number | undefined>();

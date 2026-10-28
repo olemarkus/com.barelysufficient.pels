@@ -20,6 +20,12 @@ beforeEach(() => {
   invalidateApiCache.mockClear();
 });
 
+test('accepts the smart-task planning wait reason', async () => {
+  const pendingTasks = { ...waiting, reason: 'smart_tasks_planning' };
+  getApiReadModel.mockResolvedValue({ inverterDevices: [], continuousBatteryPlans: { battery: pendingTasks } });
+  expect(await loadContinuousBatteryPlan('battery')).toEqual(pendingTasks);
+});
+
 test('reads the owner result from the existing shared device read model', async () => {
   expect(await loadContinuousBatteryPlan('battery')).toEqual(waiting);
   expect(getApiReadModel).toHaveBeenCalledExactlyOnceWith('/ui_devices');
