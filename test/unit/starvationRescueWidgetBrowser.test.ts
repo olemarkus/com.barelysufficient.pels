@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { STARVATION_RESCUE_WIDGET_COPY } from '../../packages/shared-domain/src/planStarvation';
 import { SMART_TASK_EXTRA_PERMISSION_LABELS } from '../../packages/shared-domain/src/deadlineLabels';
-import { installWidget } from '../../widgets/starvation_rescue/src/public/widgetApp';
+import { installWidget as installWidgetApp } from '../../widgets/starvation_rescue/src/public/widgetApp';
 import type { WidgetHomey, WidgetWindow } from '../../widgets/starvation_rescue/src/public/widgetApp';
 import type {
   StarvationRescueDevicesPayload,
@@ -119,6 +119,15 @@ const OK_PREVIEW = {
   },
 };
 
+// Every widget a test starts is destroyed after it, so no refresh or done-flash
+// timer outlives the test's document and fires into a later test file.
+const installed: NonNullable<ReturnType<typeof installWidgetApp>>[] = [];
+const installWidget = (...args: Parameters<typeof installWidgetApp>): ReturnType<typeof installWidgetApp> => {
+  const controller = installWidgetApp(...args);
+  if (controller) installed.push(controller);
+  return controller;
+};
+
 const buildHomey = (overrides: Partial<Record<string, unknown>> = {}): WidgetHomey => ({
   ready: vi.fn(),
   api: vi.fn(async (method: string, path: string) => {
@@ -140,6 +149,7 @@ describe('starvation rescue widget browser', () => {
   });
 
   afterEach(() => {
+    for (const controller of installed.splice(0)) controller.destroy();
     document.body.className = '';
     document.body.innerHTML = '';
     vi.restoreAllMocks();
