@@ -1,5 +1,8 @@
 import { writeFileSync } from 'node:fs';
 import { OvershootIncident } from '../../lib/plan/overshootIncident';
+import { buildPlanContext, buildPlanLimits, resolveMeasuredPower } from '../../lib/plan/planContext';
+import { NO_STORAGE_SHED_TERM } from '../../lib/plan/shedding/types';
+import { buildPlanInputDevice } from '../utils/planTestUtils';
 import {
   dailyOnlyGracePolicy,
   forecastGuardedGracePolicy,
@@ -12,11 +15,43 @@ import {
 
 const SHIPPED = referenceGracePolicy(false);
 const ORIGINAL_PROPOSAL = referenceGracePolicy(true);
+const RUNTIME_CANDIDATE: SimulatedPressurePolicyFactory = () => {
+  const incident = new OvershootIncident();
+  return (reading) => {
+    const settings = {
+      ...reading.settings, capacityEnabled: true,
+      gridImportLimitKw: reading.gridTargetKw === null ? null : reading.gridTargetKw / 0.95,
+    };
+    const devices = [buildPlanInputDevice({ id: 'managed', currentDrawKw: reading.managedKw })];
+    const tracker = {
+      lastTimestamp: reading.atMs, lastPowerW: reading.powerKw * 1000,
+      buckets: { [new Date(Math.floor(reading.atMs / 3_600_000) * 3_600_000).toISOString()]: reading.usedKWh },
+      capacityQuarter: {
+        startMs: reading.periodStartMs, energyKWh: reading.usedKWh,
+        trackedMs: settings.periodMinutes * 60_000 - reading.periodRemainingMs,
+      },
+    };
+    const daily = reading.dailyPaceKw === null ? null : {
+      dailySoftLimitKw: reading.dailyPaceKw, budgetPaceKw: reading.dailyPaceKw, projectedExemptKw: 0,
+    };
+    const context = buildPlanContext(
+      devices, settings, tracker, buildPlanLimits(settings, reading.capacityPaceKw, daily), new Map(), reading.atMs,
+    );
+    const power = resolveMeasuredPower({
+      isMeasured: true, totalKw: reading.powerKw, lastPowerUpdateMs: reading.atMs,
+      headroomKw: (limitKw) => limitKw - reading.powerKw,
+    }, context, devices);
+    return incident.decidePacing(context, power, settings, NO_STORAGE_SHED_TERM, reading.shortfallThresholdKw, {
+      atMs: reading.atMs, powerW: reading.powerKw * 1000,
+    });
+  };
+};
 const POLICIES: Readonly<Record<string, SimulatedPressurePolicyFactory>> = {
   shipped: SHIPPED,
   originalProposal: ORIGINAL_PROPOSAL,
   forecastGuardedProposal: forecastGuardedGracePolicy,
   dailyOnlyProposal: dailyOnlyGracePolicy,
+  runtimeCandidate: RUNTIME_CANDIDATE,
 };
 const SETTINGS = { limitKw: 10, marginKw: 0.1, periodMinutes: 60 } as const;
 
@@ -81,7 +116,29 @@ const MARGIN_200_WH_SLOW_RESPONSE = scenario({
   response: { kind: 'delayed', seconds: 130, remainingFraction: 0 },
 });
 
+const AFFORDABLE_CAPACITY_SPIKE = scenario({
+  id: 'affordable-capacity-background-spike',
+  managedKw: 2,
+  usedBeforeKWh: 4.9,
+  background: [{ atSecond: 0, kw: 8.06 }, { atSecond: 20, kw: 2 }],
+});
+
+const QUARTER_OCCUPIED_MARGIN = scenario({
+  id: 'quarter-margin-already-occupied',
+  settings: { ...HOURLY_MARGIN_200_WH, periodMinutes: 15 },
+  startSecond: 720,
+  durationSeconds: 180,
+  usedBeforeKWh: 2,
+  managedKw: 6,
+  background: [{ atSecond: 0, kw: 3.9 }, { atSecond: 10, kw: 9.9 }],
+  meterCadenceSeconds: 10,
+  response: { kind: 'delayed', seconds: 10, remainingFraction: 0 },
+});
+
 const SCENARIOS: SlowResponseScenario[] = [
+  QUARTER_OCCUPIED_MARGIN,
+  AFFORDABLE_CAPACITY_SPIKE,
+  { ...AFFORDABLE_CAPACITY_SPIKE, id: 'restart-during-capacity-spike', controllerWarmStart: false },
   SECOND_BACKGROUND_LOAD,
   DAILY_THEN_CAPACITY_PRESSURE,
   scenario({
@@ -167,15 +224,14 @@ const SCENARIOS: SlowResponseScenario[] = [
 ];
 
 describe('slow response pressure-policy simulation', () => {
-  it('pins the frozen references to the shipped incident decisions on this baseline', () => {
+  it('pins the frozen reference outputs independently of later runtime changes', () => {
     const times = [0, 10_000, 30_000, 60_000, 70_000, 80_000];
     const headroom = [-1, -2, -0.1, -0.1, 1, -1];
     for (const universal of [false, true]) {
-      const incident = new OvershootIncident();
       const reference = referenceGracePolicy(universal)();
       times.forEach((atMs, index) => {
         const reading: SimulatedPressureReading = {
-          atMs,
+          atMs, settings: SETTINGS, managedKw: 6, usedKWh: 0,
           powerKw: 10 - headroom[index]!,
           capacityPaceKw: 10,
           dailyPaceKw: null,
@@ -185,7 +241,9 @@ describe('slow response pressure-policy simulation', () => {
           periodStartMs: 0,
           periodRemainingMs: 1_800_000 - atMs,
         };
-        expect(reference(reading)).toEqual(incident.decideSoft(headroom[index]!, 2, universal, atMs));
+        expect(reference(reading).shedActionable).toBe(
+          universal ? [false, false, false, true, false, false][index] : [true, true, true, true, false, true][index],
+        );
       });
     }
   });
@@ -308,6 +366,29 @@ describe('slow response pressure-policy simulation', () => {
     expect(runSlowResponseSimulation(sustained, dailyOnlyGracePolicy).firstShedSecond).toBe(60);
   });
 
+  it('does not add waiting during the existing end-of-hour drain or urgent pressure', () => {
+    for (const input of [LAST_TWO_MINUTES, SECOND_BACKGROUND_LOAD, DAILY_THEN_CAPACITY_PRESSURE, MARGIN_200_WH_SLOW_RESPONSE]) {
+      expect(runSlowResponseSimulation(input, RUNTIME_CANDIDATE)).toEqual(runSlowResponseSimulation(input, SHIPPED));
+    }
+  });
+
+  it('refuses a quarter wait when the measured trajectory already occupies the margin', () => {
+    const shipped = runSlowResponseSimulation(QUARTER_OCCUPIED_MARGIN, SHIPPED);
+    const projectedOnly = runSlowResponseSimulation(QUARTER_OCCUPIED_MARGIN, forecastGuardedGracePolicy);
+    const runtime = runSlowResponseSimulation(QUARTER_OCCUPIED_MARGIN, RUNTIME_CANDIDATE);
+    expect(shipped.importedWh).toBeCloseTo(495, 6);
+    expect(shipped.periods[0]!.aboveHardCapWh).toBe(0);
+    expect(projectedOnly.importedWh).toBeCloseTo(511.666667, 5);
+    expect(projectedOnly.periods[0]!.aboveHardCapWh).toBeCloseTo(11.666667, 5);
+    expect(runtime).toEqual(shipped);
+  });
+
+  it('prevents a brief capacity spike from restricting a slow device after the controller is warm', () => {
+    const input = AFFORDABLE_CAPACITY_SPIKE;
+    expect(runSlowResponseSimulation(input, RUNTIME_CANDIDATE).commandCount).toBe(0);
+    expect(runSlowResponseSimulation({ ...input, controllerWarmStart: false }, RUNTIME_CANDIDATE).firstShedSecond).toBe(0);
+  });
+
   it('exports reproducible evidence for every policy without asserting the candidate is universally safe', () => {
     const evidence = SCENARIOS.map((input) => ({
       scenario: input,
@@ -324,7 +405,9 @@ describe('slow response pressure-policy simulation', () => {
         'Shipped comparison has no open activation attempt; an open attempt can also give shipped behavior grace.',
         'One-second plant integration; exact cumulative energy at meter samples.',
         'Response delay describes electrical relief, not capability confirmation.',
-        'Guarded and daily-only proposals are test-only candidates, not safety guarantees.',
+        'Guarded and daily-only proposals are frozen test-only references; runtime uses its period-margin allowance.',
+        'Warm controllers receive equally primed calm observations before the pressure scenario; restart cases omit them.',
+        'Runtime grace is estimated discretionary exposure, not a guarantee against unseen loads or late observations.',
       ],
       evidence,
     }, null, 2)}\n`);

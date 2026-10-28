@@ -144,8 +144,8 @@ export function computeDynamicSoftLimit(
   const drainCeilingKw = sustainableRateKw + excessKw * shareLeft;
   const allowedKw = Math.min(burstRateKw, drainCeilingKw);
 
-  // `remainingKWh` travels out because it is the only honest price of waiting:
-  // the shed grace spends it, and it is already computed here.
+  // The remaining allowance is a period fact used for exhaustion and display.
+  // Discretionary pacing patience has its own configured-margin allowance.
   return { allowedKw, hourlyBudgetExhausted, remainingKWh };
 }
 

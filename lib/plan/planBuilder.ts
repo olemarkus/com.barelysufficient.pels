@@ -26,7 +26,7 @@
  * the builder only through the injected `decorateDeferredObjectives` seam.
  * Capacity-model internals: `docs/technical.md`.
  */
-import CapacityGuard from '../power/capacityGuard';
+import type CapacityGuard from '../power/capacityGuard';
 import { resolvePriceOptimizationConfig } from '../price/priceOptimizer';
 import type { PowerTrackerState } from '../power/tracker';
 import type { PlanBuilderDeps } from './planBuilderDeps';
@@ -48,7 +48,7 @@ import {
   type MeasuredPower,
   type PlanContext,
 } from './planContext';
-import { buildSheddingPlan, type SheddingPlan, type StorageShedTerm } from './shedding';
+import { buildSheddingPlan, type SheddingPlan } from './shedding';
 import {
   NO_STORAGE_RELIEF,
   attachStorageDecisions,
@@ -76,10 +76,8 @@ import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
 import { incPerfCounter } from '../utils/perfCounters';
 import { resolveDailySoftLimitBucket } from './planDailyBudgetWindow';
-import {
-  ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
-  recordCleanWholeHomeSample,
-} from './admission';
+import { recordCleanWholeHomeSample } from './admission';
+import { requireLatchedMeterReading } from '../power/lastTotalPower';
 import type { SoftOvershootDecision } from './planOvershoot';
 import { OvershootTracker } from './planBuilderOvershoot';
 import { buildPlanMeta, type PlanMetaCycleFacts } from './planBuilderMeta';
@@ -189,7 +187,7 @@ export class PlanBuilder {
    * on: period tracking continues when it is off. Only the returned pace says
    * whether the capacity axis is in force — `null` with Capacity limit off — and
    * every decision gates on that (`PlanEngineState.capacityPeriodSpentFor`,
-   * `decideOvershoot`), never on a fact forced to a stand-in.
+   * `PacingGrace`), never on a fact forced to a stand-in.
    */
   private stampCapacityPace(settings: PowerLimitSettings, nowTs: number): number | null {
     const resolved = this.resolveCapacityPace(settings, nowTs);
@@ -318,7 +316,7 @@ export class PlanBuilder {
     // is running, it does not make room for more.
     const {
       sheddingPlan, overshootDecision, storageRelief: limitedStorage, admissionPower,
-    } = await this.decideShedding(context, power, surplusOffers, shortfallBudgetThresholdKw, nowTs);
+    } = await this.decideShedding(context, power, surplusOffers, shortfallBudgetThresholdKw, settings);
     // The "Run on solar surplus" dump-load hold + the post-shedding hold
     // merges; returns the dump-load reason map for reason normalization.
     const postureHolds = trackPlanStage('plan_posture_holds_ms', () => runStandingPostureHolds(
@@ -436,13 +434,14 @@ export class PlanBuilder {
     power: MeasuredPower,
     surplusOffers: ReadonlyMap<string, StorageSurplusOffer>,
     shortfallBudgetThresholdKw: number | null,
-    nowTs: number,
+    settings: PowerLimitSettings,
   ): Promise<{
     sheddingPlan: SheddingPlan;
     overshootDecision: SoftOvershootDecision;
     storageRelief: StorageRelief;
     admissionPower: MeasuredPower;
   }> {
+    const { nowTs } = context;
     // The batteries' holds as this reading leaves them, and the surplus each
     // battery stores from its offer (`lib/plan/battery/storageRelief.ts`). A held discharge
     // still settling is credited as a decision, not a measurement: shedding and
@@ -452,7 +451,10 @@ export class PlanBuilder {
     const heldStorage = this.deps.getCapacityDryRun()
       ? NO_STORAGE_RELIEF
       : decideStorageRelief(context.devices, power, this.state.storageLeverByDevice, surplusOffers, nowTs);
-    const overshootDecision = this.decideOvershoot(context, power, heldStorage.shed, nowTs);
+    const overshootDecision = this.state.overshoot.decidePacing(
+      context, power, settings, heldStorage.shed, shortfallBudgetThresholdKw,
+      requireLatchedMeterReading(this.powerTracker),
+    );
     // A clean whole-home sample: the house is under its pace, and the hour is
     // not spent (an exhausted hour admits nothing, however the draw reads).
     if ((power.headroomKw === null || power.headroomKw >= 0) && !this.state.capacityPeriodSpentFor(context)) {
@@ -480,28 +482,6 @@ export class PlanBuilder {
     return {
       sheddingPlan, overshootDecision, storageRelief, admissionPower: withoutStorageWithheld(power, storageRelief),
     };
-  }
-
-  /**
-   * This build's overshoot verdict, always through the incident, so its
-   * soft-deficit clock reflects the build that just ran: a grid breach sheds at
-   * once and ends the clock, no limit at all ends it, and only a soft deficit
-   * is timed against the grace. The grace is priced against the capacity
-   * period's remaining allowance while Capacity limit is on; with it off
-   * (`capacitySoftLimit` null) nothing prices the wait, and it is the bounded
-   * maximum (`unpricedShedGrace`).
-   */
-  private decideOvershoot(
-    context: PlanContext, power: MeasuredPower, storage: StorageShedTerm, nowTs: number,
-  ): SoftOvershootDecision {
-    const incident = this.state.overshoot;
-    if (power.gridBreached) return incident.decideGridBreach();
-    if (power.headroomKw === null) return incident.decideWithoutLimit();
-    const headroomKw = power.headroomKw + storage.netCreditKw;
-    const restoreTransientPossible = this.hasOpenActivationAttempt(nowTs);
-    return context.capacitySoftLimit === null
-      ? incident.decideSoftUnpriced(headroomKw, restoreTransientPossible, nowTs)
-      : incident.decideSoft(headroomKw, this.state.hourlyRemainingKWh, restoreTransientPossible, nowTs);
   }
 
   /**
@@ -574,21 +554,6 @@ export class PlanBuilder {
       heldChargeKw: relief.batteries.reduce((totalW, battery) => totalW + Math.max(0, battery.setpointW), 0) / 1000,
       surplusOffers: surplusOffersLog,
     });
-  }
-
-  /**
-   * Is any activation attempt still open — i.e. did PELS restore a device
-   * recently enough that its draw may still be ramping? This is the signal that
-   * a capacity deficit right now might be a transient of PELS's own making
-   * rather than a settled rate. Bounded by the attribution window, which
-   * `syncActivationPenaltyState` also uses to close a stalled attempt.
-   */
-  private hasOpenActivationAttempt(nowTs: number): boolean {
-    for (const attempt of Object.values(this.state.activationAttemptByDevice)) {
-      const elapsed = nowTs - attempt.startedMs;
-      if (elapsed >= 0 && elapsed < ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS) return true;
-    }
-    return false;
   }
 
   private recordCleanWholeHomeSample(devices: PlanInputDevice[], sampleAtMs: number | undefined): void {

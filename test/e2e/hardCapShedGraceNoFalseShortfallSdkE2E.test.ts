@@ -1,21 +1,8 @@
-// SDK-boundary e2e: a shed grace is not "out of options".
-//
-// Production, 2026-09-09 20:00:13: a restore PELS issued pushed the house over
-// the hard cap. The planner deliberately waited (the shed grace holds while a
-// restore it issued settles) with 2.5 kW still reducible, so that rebuild changed
-// nothing — and the rebuild throttle read "changed nothing" as "nothing left to
-// shed", opened a hard-cap incident with an all-null summary and fired the
-// owner's `capacity_shortfall` Flow. 80 s later PELS shed the charger. 9 of 23
-// incidents that week were opened that way.
-//
-// The inverse holds too: when nothing left over the cap can actually be shed,
-// the alert must still fire, even though a naive count of "load on managed
-// devices" says there is something to shed.
-//
-// Nothing internal is mocked: power enters through the Homey Energy poll, PELS's
-// commands leave through `api.put`, and the alert is observed where the owner
-// sees it — the trigger card — with the breach itself read off the structured
-// rebuild record.
+// SDK-boundary e2e: urgent capacity pressure bypasses discretionary waiting.
+// A newly commanded electrical reduction remains pending until observed; it
+// must not raise an out-of-options alert merely because the meter still shows
+// the pre-command draw. Once every useful reduction has delivered and the
+// measured breach remains, the alert must fire.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
@@ -86,7 +73,7 @@ const pollUntil = async (done: () => boolean, maxPolls: number): Promise<void> =
   expect(done()).toBe(true);
 };
 
-describe('Hard-cap alert during a shed grace (SDK-boundary e2e)', () => {
+describe('Hard-cap alert while electrical relief is pending (SDK-boundary e2e)', () => {
   beforeEach(() => {
     vi.useFakeTimers({
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'],
@@ -101,7 +88,7 @@ describe('Hard-cap alert during a shed grace (SDK-boundary e2e)', () => {
     vi.useRealTimers();
   });
 
-  it('fires no hard-cap alert while PELS waits out a restore or its own limit lands, and one once it is out of options', async () => {
+  it('answers an actual-cap breach immediately, alerts only after its electrical options are exhausted', async () => {
     const heater = new MockDevice(DEVICE_ID, 'Heater', ['onoff', 'measure_power', 'meter_power'], 'heater');
     await heater.setCapabilityValue('onoff', true);
     await heater.setCapabilityValue('measure_power', 2000);
@@ -124,34 +111,17 @@ describe('Hard-cap alert during a shed grace (SDK-boundary e2e)', () => {
     homePowerW = 1500;
     await pollUntil(() => onoffWrites(true) === 1, 60);
 
-    // 3. The resumed heater draws, and the house lands over the hard cap. The
-    //    breach is PELS's own restore still settling, so the planner waits
-    //    before limiting again, with the heater's 2 kW still reducible. Every
-    //    reading in that wait is a rebuild that changes nothing; none of them
-    //    may tell the owner PELS is out of options.
+    //3. A new actual-cap breach gets no discretionary waiting, even after
+    // PELS's own resume. The requested2kW electrical reduction is still a real
+    // pending option until the device and whole-home meter can show its effect.
     await heater.setCapabilityValue('measure_power', 2000);
-    // Far over the hard-cap pace for the whole of this early hour, so the grace
-    // below is a wait over the cap and not merely over the soft limit.
     homePowerW = 12_000;
     const recordsBeforeBreach = records.length;
-    let gracedPolls = 0;
-    for (let poll = 0; poll < 12 && onoffWrites(false) === 1; poll += 1) {
-      await vi.advanceTimersByTimeAsync(POLL_MS);
-      await drainPending();
-      if (onoffWrites(false) > 1) break;
-      gracedPolls += 1;
-      expect(shortfallAlerts()).toEqual([]);
-    }
-
-    // 4. The grace ends and PELS limits the heater, which is what proves the
-    //    wait was a choice. The build that limits it has not run out of options
-    //    either: it has just used its last one, on a reading that predates it.
-    expect(gracedPolls).toBeGreaterThan(0);
+    await pollUntil(() => onoffWrites(false) === 2, 6);
     expect(hardCapBreachRecordsSince(records, recordsBeforeBreach)).not.toEqual([]);
-    expect(onoffWrites(false)).toBe(2);
     expect(shortfallAlerts()).toEqual([]);
 
-    // 5. The limit landed and the house is still over the cap: now PELS is out
+    //4. The limit landed and the house is still over the cap: now PELS is out
     //    of options, and says so once.
     await heater.setCapabilityValue('measure_power', 0);
     await pollUntil(() => shortfallAlerts().length > 0, 6);
