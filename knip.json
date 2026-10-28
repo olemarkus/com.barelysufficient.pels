@@ -63,7 +63,7 @@
     "scripts/with-validation-lock.d.mts"
   ],
   "ignoreDependencies": [
-    "homey",
+    "@types/homey",
     "homey-api",
     "playwright",
     "lint-staged"
