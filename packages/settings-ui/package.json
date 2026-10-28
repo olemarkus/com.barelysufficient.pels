@@ -4,7 +4,7 @@
   "type": "module",
   "dependencies": {
     "@material/web": "^2.4.1",
-    "preact": "^11.0.0",
+    "preact": "^11.0.2",
     "socket.io-client": "^2.5.0",
     "uqr": "^0.1.3"
   },
