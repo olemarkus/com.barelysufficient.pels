@@ -317,6 +317,7 @@ export type AppContext = {
   // the battery control owner exists, which delegates to it once it does.
   batteryManaged: BatteryManagedSettings;
   readContinuousBatteryPlan(deviceId: string): ContinuousBatteryPlanRead;
+  hasEnabledContinuousBatteryPlan(): boolean;
   // "Leave off until turned on again": the opt-in config plus the per-device
   // hold state recording that a device was turned off outside PELS, independent
   // of the current plan. ASSIGNED by `AppServiceWiring.initDeviceManager`

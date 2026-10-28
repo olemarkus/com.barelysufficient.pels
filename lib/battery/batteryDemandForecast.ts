@@ -35,10 +35,12 @@ export class BatteryDemandForecaster {
     private readonly getDevices: () => readonly DeviceSurfaces[],
     private readonly getTimeZone: () => string,
     private readonly solarScope: BatterySolarScopeSource,
+    private readonly isPlanningEnabled: () => boolean,
   ) {}
 
   /** Main meter tap. A missing battery or solar read skips learning, retaining accepted history. */
   recordNetSample(netPowerW: number, generationW: number | undefined, atMs: number): void {
+    if (!this.isPlanningEnabled()) return;
     const devices = this.getDevices();
     const batteries = devices.filter((device) => device.deviceClass === 'battery');
     if (batteries.length === 0) return;

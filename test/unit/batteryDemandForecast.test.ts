@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BatteryDemandForecaster } from '../../lib/battery/batteryDemandForecast';
 import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 import { partialDouble } from '../helpers/partialDouble';
@@ -6,10 +6,49 @@ import { partialDouble } from '../helpers/partialDouble';
 const NOW = Date.UTC(2026, 9, 27, 10);
 const HOUR_MS = 3_600_000;
 const forecaster = (): BatteryDemandForecaster => new BatteryDemandForecaster(
-  () => [], () => 'Europe/Oslo', { mainDevices: () => [], allDevices: () => [] },
+  () => [], () => 'Europe/Oslo', { mainDevices: () => [], allDevices: () => [] }, () => true,
 );
 
 describe('battery-neutral household demand forecast', () => {
+  it('skips device and solar reads while no continuous battery plan is enabled', () => {
+    const getDevices = vi.fn(() => []);
+    const getTimeZone = vi.fn(() => 'Europe/Oslo');
+    const solarScope = { mainDevices: vi.fn(() => []), allDevices: vi.fn(() => []) };
+    const model = new BatteryDemandForecaster(getDevices, getTimeZone, solarScope, () => false);
+    model.recordNetSample(1000, undefined, NOW);
+    expect(getDevices).not.toHaveBeenCalled();
+    expect(getTimeZone).not.toHaveBeenCalled();
+    expect(solarScope.mainDevices).not.toHaveBeenCalled();
+    expect(solarScope.allDevices).not.toHaveBeenCalled();
+  });
+
+  it('starts learning when planning is enabled and retains accepted history while disabled', () => {
+    const battery = partialDouble<DeviceSurfaces>({
+      id: 'battery', deviceClass: 'battery', available: true, isBatteryOrSolar: true,
+      batteryPower: { signedW: 0, observedAtMs: NOW },
+    });
+    let enabled = false;
+    const getDevices = vi.fn(() => [battery]);
+    const getTimeZone = vi.fn(() => 'Europe/Oslo');
+    const model = new BatteryDemandForecaster(getDevices, getTimeZone,
+      { mainDevices: () => [], allDevices: () => [] }, () => enabled);
+    model.recordNetSample(9000, undefined, NOW - HOUR_MS);
+    expect(getDevices).not.toHaveBeenCalled();
+    enabled = true;
+    model.recordNetSample(1000, undefined, NOW);
+    expect(model.forecast(NOW)).toBe(1);
+    enabled = false;
+    getDevices.mockClear();
+    getTimeZone.mockClear();
+    model.recordNetSample(9000, undefined, NOW + HOUR_MS);
+    expect(getDevices).not.toHaveBeenCalled();
+    expect(getTimeZone).not.toHaveBeenCalled();
+    expect(model.forecast(NOW + HOUR_MS)).toBe(1);
+    enabled = true;
+    model.recordNetSample(2000, undefined, NOW + HOUR_MS);
+    expect(model.forecast(NOW + HOUR_MS)).toBe(2);
+  });
+
   it('ignores foreign aggregate generation without Main panels and skips mixed PV samples', () => {
     const battery = partialDouble<DeviceSurfaces>({
       id: 'battery', deviceClass: 'battery', available: true, isBatteryOrSolar: true,
@@ -20,7 +59,7 @@ describe('battery-neutral household demand forecast', () => {
     let mainDevices: { id: string; deviceClass: string }[] = [];
     const model = new BatteryDemandForecaster(() => [battery], () => 'Europe/Oslo', {
       mainDevices: () => mainDevices, allDevices: () => [foreign, ...mainDevices],
-    });
+    }, () => true);
     model.recordNetSample(1000, 5000, NOW);
     expect(model.forecast(NOW)).toBe(1);
     mainDevices = [main];
