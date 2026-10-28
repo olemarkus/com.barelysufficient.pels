@@ -144,6 +144,18 @@ export const revealDeviceDetailFocus = (focus: DeviceDetailFocus): void => {
   if (focus === 'start-policy') revealStartPolicyRow();
   if (focus === 'power-limit') revealPowerLimitRow();
   if (focus === 'shed-limit') revealShedLimitRow();
+  const prerequisiteControls: Partial<Record<DeviceDetailFocus, string>> = {
+    'control-model': 'device-detail-control-model',
+    managed: 'device-detail-managed',
+    'native-control': 'device-detail-native-wiring',
+    'temperature-policy': 'device-detail-temperature-control-disabled',
+  };
+  const id = prerequisiteControls[focus];
+  if (id) {
+    const control = document.getElementById(id);
+    revealDetailRow(document.getElementById(`${id}-row`));
+    control?.focus({ preventScroll: true });
+  }
   if (focus === 'solar') {
     const row = ['device-detail-surplus-opt-row', 'device-detail-dump-load-row', 'device-detail-surplus-track-row']
       .map((id) => document.getElementById(id))

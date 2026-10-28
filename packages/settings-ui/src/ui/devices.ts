@@ -460,7 +460,7 @@ const renderSetupDevices = (devices: SettingsUiDeviceListItem[], target: HTMLEle
         .catch((error) => showToastError(error, 'Could not save the device.'))
         .finally(() => { renderDevices(state.latestDevices); notifySetupPathChange(); });
     },
-    onOpen: (id) => dispatchOpenDeviceDetail(id, solar && solarReady ? 'solar' : 'top'),
+    onOpen: dispatchOpenDeviceDetail,
     onRetry: () => { void refreshHomeScopeAndNotify(); },
   }), target);
 };

@@ -1,9 +1,12 @@
+import type { DeviceDetailFocus } from './cardActivation.ts';
 import { readHomeMembership } from './homeScope.ts';
 import { setupSavePending } from './setupJourneyState.ts';
 import { resolveDeviceManageability } from './deviceListPresentation.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import type { SetupDeviceChoices } from './views/SetupJourney.tsx';
-import { supportsTemperatureDevice, supportsPowerDevice, type SettingsUiDeviceListItem } from './deviceUtils.ts';
+import {
+  requiresNativeWiringForActivation, supportsTemperatureDevice, supportsPowerDevice, type SettingsUiDeviceListItem,
+} from './deviceUtils.ts';
 import { resolveDeviceDetailControlMode, resolveDeviceDetailKind } from './deviceKind.ts';
 import { resolveDeviceDetailControlState } from './deviceDetail/controlState.ts';
 import { isSurplusTrackingDeviceShape } from './deviceDetail/solarSurplusTracking.ts';
@@ -14,6 +17,8 @@ import { SURPLUS_TRACKING_LABELS } from '../../../shared-domain/src/solarSurplus
 export type SolarSetupAction = {
   label: string;
   hint: string | null;
+  actionLabel: string;
+  focus: DeviceDetailFocus;
   configured: boolean;
 };
 
@@ -30,34 +35,56 @@ const solarSetupLabel = (device: SettingsUiDeviceListItem): string | null => {
   return device.binaryControllable ? 'Run on solar surplus' : null;
 };
 
-const solarSetupHint = (device: SettingsUiDeviceListItem): string | null => {
+type SolarSetupPrerequisite = { hint: string; focus: DeviceDetailFocus };
+
+const solarSetupPrerequisite = (device: SettingsUiDeviceListItem): SolarSetupPrerequisite | null => {
   const control = resolveDeviceDetailControlState(device, device.id);
-  if (!control.canManageDevice) return 'Open Setup to enable device control.';
-  if (!supportsPowerDevice(device)) return 'This device needs a power reading.';
-  if (!control.isManaged) return 'Turn on Managed by PELS first.';
+  if (requiresNativeWiringForActivation(device)) {
+    return { hint: 'Turn on Use built-in device control in Setup.', focus: 'native-control' };
+  }
+  if (!supportsPowerDevice(device)) return { hint: 'This device needs a power reading.', focus: 'top' };
+  if (!control.isManaged) return { hint: 'Turn on Managed by PELS first.', focus: 'managed' };
   if (supportsTemperatureDevice(device)) {
-    if (!control.canControlTemperature) {
-      return 'Choose Return to mode target under When the temperature changes outside PELS.';
-    }
-  } else {
-    if (!isSurplusTrackingDeviceShape(device, control) && !isDumpLoadDeviceShape(device, control)) {
-      return 'Choose a suitable control model in Setup.';
-    }
-    if (state.controllableMap[device.id] !== true) return 'Turn on Power-limit control in Setup.';
-    if (hasActiveDeadlineObjective(device.id)) {
-      return 'Solar-only control can be changed after the active Smart task ends.';
-    }
+    return control.canControlTemperature ? null : {
+      hint: 'Choose Return to mode target under When the temperature changes outside PELS.',
+      focus: 'temperature-policy',
+    };
+  }
+  if (!isSurplusTrackingDeviceShape(device, control) && !isDumpLoadDeviceShape(device, control)) {
+    return {
+      hint: resolveDeviceDetailKind(device) === 'ev_charger'
+        ? 'Choose EV 1-phase or EV 3-phase under Control model to match the charger’s connection.'
+        : 'Choose a suitable control model in Setup.',
+      focus: 'control-model',
+    };
+  }
+  if (state.controllableMap[device.id] !== true) {
+    return { hint: 'Turn on Power-limit control in Setup.', focus: 'power-limit' };
+  }
+  if (hasActiveDeadlineObjective(device.id)) {
+    return { hint: 'Solar-only control can be changed after the active Smart task ends.', focus: 'solar' };
   }
   // Waiting for the first surplus is not a prerequisite the owner can meet; the
   // step's header says it once instead of every card repeating it.
   return null;
 };
 
+const solarSetupActionLabel = (prerequisite: SolarSetupPrerequisite | null, label: string): string => {
+  if (!prerequisite) return label;
+  if (prerequisite.focus === 'top') return 'Device settings';
+  if (prerequisite.focus === 'solar') return 'Solar settings';
+  return 'Set up solar control';
+};
+
 export const resolveSolarSetupAction = (device: SettingsUiDeviceListItem): SolarSetupAction | null => {
   const label = solarSetupLabel(device);
   if (!label) return null;
+  const prerequisite = solarSetupPrerequisite(device);
   return {
-    label, hint: solarSetupHint(device),
+    label,
+    hint: prerequisite?.hint ?? null,
+    actionLabel: solarSetupActionLabel(prerequisite, label),
+    focus: prerequisite?.focus ?? 'solar',
     configured: state.priceOptimizationSettings[device.id]?.surplusWilling === true,
   };
 };
