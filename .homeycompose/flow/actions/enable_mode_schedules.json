@@ -1,0 +1,11 @@
+{
+  "title": {
+    "en": "Enable scheduled mode changes"
+  },
+  "titleFormatted": {
+    "en": "Enable scheduled mode changes"
+  },
+  "hint": {
+    "en": "Allow future scheduled mode changes. Individual schedules that are off stay off. The current mode is unchanged."
+  }
+}

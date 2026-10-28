@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "Disable scheduled Smart tasks for device"
+  },
+  "titleFormatted": {
+    "en": "Disable scheduled Smart tasks for [[device]]"
+  },
+  "hint": {
+    "en": "Pause scheduled task creation for this device and keep each schedule's On/Off setting. Existing tasks continue, and Flows can still create tasks."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select a device"
+      }
+    }
+  ]
+}

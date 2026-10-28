@@ -25,6 +25,7 @@ export const SETTINGS_SUB_PANELS = [
   'limits',
   'devices',
   'modes',
+  'schedules',
   'electricity-prices',
   'price-aware-devices',
   'weather',
@@ -41,7 +42,7 @@ const PAGE_PARAM = 'page';
 // Parameters that belong to a route and must not leak into the next one.
 const ROUTE_PARAMS = [
   'deviceId', 'historyId', 'edit', 'date', 'reportId', 'reportHomeId', 'reportDeviceId', 'reportAtMs',
-  'setup',
+  'setup', 'schedule', 'scheduleDevice', 'scheduleFilter',
 ];
 
 const isTopLevel = (id: string): boolean => (TOP_LEVEL_PANELS as readonly string[]).includes(id);

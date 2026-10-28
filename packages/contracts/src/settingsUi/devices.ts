@@ -1,6 +1,7 @@
 import type { ContinuousBatteryPlanRead } from '../continuousBatteryPlan.js';
 import type { DeviceOverviewStrings } from '../deviceOverview.js';
 import type { SettingsUiHomeScope } from '../homeScopedRead.js';
+import type { SchedulesResponse } from '../schedules.js';
 import type {
   DecoratedDeviceSnapshot,
   HomeBatteryControlCapability,
@@ -51,6 +52,8 @@ export type ChargerPhasePresetsRead =
   | { state: 'unavailable' };
 
 export type SettingsUiDevicesPayload = {
+  /** Owner-resolved schedules for Main; unavailable for a scoped read. */
+  schedules: SchedulesResponse;
   // Served from the app-layer managed-device join of DeviceReads metadata,
   // Observer state, and stepped-load decoration,
   // so the payload carries the stepped-load step-command/planning decoration

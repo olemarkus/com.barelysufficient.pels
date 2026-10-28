@@ -1,3 +1,4 @@
+import { notifySchedulesSettingChanged } from './schedules.ts';
 import { syncSettingsHubChips } from './settingsHubChips.ts';
 import {
   SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH,
@@ -470,6 +471,7 @@ export const createSettingsUnsetHandler = () => (key: string) => {
   // of an already-open WebView (Homey may deliver clears as an unset event).
   invalidateSettingCache(key);
   notifyInverterCurtailmentSettingChanged(key);
+  notifySchedulesSettingChanged(key);
   // Main capacity settings retain the runtime's last-good values when absent.
   // Route the bare key through the full loader so it can preserve and repaint
   // that posture instead of fabricating a boot default.
@@ -550,6 +552,7 @@ const reloadDeviceSettingIfKey = (key: string): void => {
 export const createSettingsSetHandler = () => (key: string) => {
   invalidateSettingCache(key);
   notifyInverterCurtailmentSettingChanged(key);
+  notifySchedulesSettingChanged(key);
 
   reloadObjectivesIfObjectiveKey(key, 'settings.set');
   reloadWeatherInsightIfWeatherKey(key, 'settings.set');

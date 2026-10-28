@@ -788,11 +788,14 @@ export default tseslint.config(
   // main meter pipeline can sample, and the shared form defaults give the
   // pre-wiring API an explicit waiting read. Setup retains neither domain state.
   // This exact-current 36 ceiling is the single backend exception over 20.
+  // Raised 36 -> 38 for the scheduled-action owner and its Flow registration.
+  // Both are wired here after userdata/startup is ready; timed actions reuse
+  // the existing task/mode command owners and drain before userdata closes.
   {
     files: ['app.ts'],
     plugins: { 'import-x': importX },
     rules: {
-      'import-x/max-dependencies': ['error', { max: 36, ignoreTypeImports: true }],
+      'import-x/max-dependencies': ['error', { max: 38, ignoreTypeImports: true }],
     },
   },
   // lib/store is the one place `node:sqlite` is named (dependency-cruiser's

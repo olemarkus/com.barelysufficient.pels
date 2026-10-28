@@ -26,6 +26,7 @@ describe('shell routes', () => {
     ['?page=budget', 'budget'],
     ['?page=settings/limits', 'limits'],
     ['?page=settings/web-app', 'web-app'],
+    ['?page=settings/schedules', 'schedules'],
     ['?page=settings', 'settings'],
     ['', null],
     ['?page=limits', null],

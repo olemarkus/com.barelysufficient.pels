@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "Disable schedule"
+  },
+  "titleFormatted": {
+    "en": "Disable [[schedule]]"
+  },
+  "hint": {
+    "en": "Stop future occurrences of this schedule. Tasks already created and the current mode are unchanged."
+  },
+  "args": [
+    {
+      "name": "schedule",
+      "type": "autocomplete",
+      "title": {
+        "en": "Schedule"
+      },
+      "placeholder": {
+        "en": "Select a schedule"
+      }
+    }
+  ]
+}

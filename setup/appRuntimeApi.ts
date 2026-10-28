@@ -77,8 +77,12 @@ abstract class AppRuntimeApi extends Base {
   public getPowerCalibrationSnapshot(): PowerCalibrationSnapshot {
     return this.getPowerCalibrationStore().getSnapshot();
   }
+  protected abstract startSchedules(): void;
+  protected abstract stopSchedules(): Promise<void>;
+
   public async onInit(): Promise<void> {
     await this.serviceWiring.runInit(this.supportReports);
+    this.startSchedules();
     await notifySetupOnce(this.homey.settings, this.homey.notifications);
   }
   public refreshFlowConflictsForUi(): Promise<FlowConflictRefreshResult> {
@@ -87,7 +91,7 @@ abstract class AppRuntimeApi extends Base {
   public readChargingCurrentForUi(): Promise<ChargingCurrentRead[]> {
     return this.builtInControlFlowConflicts.readChargingCurrent();
   }
-  public async onUninit(): Promise<void> { await this.serviceWiring.runUninit(); }
+  public async onUninit(): Promise<void> { await this.stopSchedules(); await this.serviceWiring.runUninit(); }
   public getStructuredLogger(component: string): PinoLogger { return getComponentLogger(component); }
   public getApiStructuredLogger(): PinoLogger { return this.getStructuredLogger('api'); }
   public get priceOptimizationSettings() {

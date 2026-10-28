@@ -305,6 +305,7 @@ export type DeadlinePlanPendingPayload = {
 // controller's actions, threaded as props per views/AGENTS.md.
 export type SmartTaskEditProps = {
   mode: DeadlinePlanPendingPayload['actionMode'];
+  sourceSchedule?: { id: string; name: string };
   snapshot: SmartTaskEditSnapshot | null;
   onOpen: () => void;
   onClose: () => void;
@@ -1413,6 +1414,10 @@ const SmartTaskEditSection = ({ edit, inputs }: {
   const formOpen = s !== null && !s.clearOnly && edit.mode === 'edit_and_clear';
   return (
     <>
+      {edit.sourceSchedule && <p class="pels-card-supporting">
+        Created by {edit.sourceSchedule.name}
+        <MdTextButton data-open-schedules data-schedule-id={edit.sourceSchedule.id}>View schedule</MdTextButton>
+      </p>}
       <div class="smart-task-actions">
         {edit.mode === 'edit_and_clear' && <MdFilledTonalButton disabled={formOpen || busyClearing}
           onClick={() => { setReviewGuarantee(true); edit.onOpen(); }}>{inputs ? SMART_TASK_GUARANTEE_COPY.review : SMART_TASK_EDIT_COPY.editButton}</MdFilledTonalButton>}
