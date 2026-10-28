@@ -37,6 +37,7 @@ import {
   runLoggedTask,
 } from './uiRefreshTasks.ts';
 import { loadModeAndPriorities, renderPriorities } from './modes.ts';
+import { refreshSchedules } from './schedules.ts';
 import { refreshWebAppLink } from './webAppLink.ts';
 import { isDeadlinePlanRoute } from './deadlineUrls.ts';
 import {
@@ -94,6 +95,7 @@ const SINGLE_REFRESH_PANELS: Record<string, { refresh: () => Promise<void>; fail
   advanced: { refresh: refreshAdvancedDeviceLogger, failure: 'Failed to load Homey devices' },
   'report-problem': { refresh: refreshSupportReport, failure: 'Failed to load report form' },
   deadlines: { refresh: refreshDeadlinesList, failure: 'Failed to load deadlines list' },
+  schedules: { refresh: refreshSchedules, failure: 'Failed to load schedules' },
   weather: { refresh: refreshWeatherInsightOnWeatherPanel, failure: 'Failed to refresh weather insight' },
   'web-app': { refresh: refreshWebAppLink, failure: 'Failed to prepare the web app link' },
 };

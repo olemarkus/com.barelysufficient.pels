@@ -146,6 +146,7 @@ import {
 } from './tabNavigation.ts';
 import { panelFromSearch } from './shellRoutes.ts';
 import { initDeadlinePlanRouter } from './deadlinePlanRouter.ts';
+import { initSchedulesNavigation } from './schedules.ts';
 import { initSmartTaskCreateController } from './smartTaskCreate.ts';
 import { keepPriceSourceForSetupTask } from './setupGoalsRender.ts';
 import { liveStatusOrNull } from './powerStatusRead.ts';
@@ -508,6 +509,7 @@ const initializeBootHandlers = () => {
     useQuarterHour: () => saveCapacityPeriodSettings(15),
   });
   initSmartTaskCreateController(showTab, keepPriceSourceForSetupTask);
+  initSchedulesNavigation(showTab, closeDeviceDetail);
   initSetupJourney();
   renderPanel('overview');
   initTabHandlers();

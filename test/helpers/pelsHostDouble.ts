@@ -23,6 +23,7 @@ const notWired = (member: string) => (): never => {
  */
 export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
   const defaults: PelsHost = {
+    readSchedules: () => ({ ok: false, error: 'Schedules are unavailable for this home.' }),
     supportReports: {
       prepare: notWired('supportReports.prepare'),
       get: notWired('supportReports.get'),

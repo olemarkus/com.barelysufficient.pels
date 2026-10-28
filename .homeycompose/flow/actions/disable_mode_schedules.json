@@ -1,0 +1,11 @@
+{
+  "title": {
+    "en": "Disable scheduled mode changes"
+  },
+  "titleFormatted": {
+    "en": "Disable scheduled mode changes"
+  },
+  "hint": {
+    "en": "Pause scheduled mode changes and keep each schedule's On/Off setting. Manual and Flow mode changes still work."
+  }
+}

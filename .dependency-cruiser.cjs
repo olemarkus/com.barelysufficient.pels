@@ -2,6 +2,13 @@
 module.exports = {
   forbidden: [
     {
+      name: 'no-schedules-to-control-or-wiring',
+      comment: 'Timed actions call existing task/mode commands; the scheduler never reaches planner/device control or setup.',
+      severity: 'error',
+      from: { path: '^lib/schedules/' },
+      to: { path: '^(setup/|app\\.ts|lib/(app|plan|planInput|observer|device|executor|actuator|power|home)/)' },
+    },
+    {
       name: 'no-circular',
       comment: 'Prevent circular dependencies.',
       severity: 'error',

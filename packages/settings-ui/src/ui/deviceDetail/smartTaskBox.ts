@@ -34,7 +34,7 @@ let readGeneration = 0;
 
 const box = (): HTMLElement | null => document.getElementById('device-detail-smart-task');
 
-const paint = (body: string, action: HTMLElement): void => {
+const paint = (body: string, action: HTMLElement, deviceId: string): void => {
   const root = box();
   if (!root) return;
   const heading = document.createElement('h3');
@@ -44,6 +44,7 @@ const paint = (body: string, action: HTMLElement): void => {
   supporting.className = 'pels-card-supporting';
   supporting.textContent = body;
   root.replaceChildren(heading, supporting, action);
+  root.append(textButton('Schedule a task', { openSchedules: '', scheduleDevice: deviceId }));
   root.hidden = false;
 };
 
@@ -69,6 +70,7 @@ const paintOpenTask = (deviceId: string, entry: DeferredObjectiveSettingsEntry):
   paint(
     formatOpenSmartTaskLine(entry),
     textButton(SMART_TASK_CREATE_PAGE_COPY.viewTask, { smartTaskView: deviceId }),
+    deviceId,
   );
 };
 
@@ -114,6 +116,7 @@ export const renderDeviceSmartTaskBox = (deviceId: string): void => {
     paint(
       SMART_TASK_CREATE_PAGE_COPY.addTaskHint,
       textButton(SMART_TASK_CREATE_PAGE_COPY.addTask, { smartTaskCreate: deviceId }),
+      deviceId,
     );
     return;
   }

@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "Enable schedule"
+  },
+  "titleFormatted": {
+    "en": "Enable [[schedule]]"
+  },
+  "hint": {
+    "en": "Allow future occurrences of this schedule. It stays paused while its group is off. Enabling it does not run it now."
+  },
+  "args": [
+    {
+      "name": "schedule",
+      "type": "autocomplete",
+      "title": {
+        "en": "Schedule"
+      },
+      "placeholder": {
+        "en": "Select a schedule"
+      }
+    }
+  ]
+}

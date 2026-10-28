@@ -152,6 +152,10 @@
       </div>
     </section>
 
+    <section class="card panel hidden" id="schedules-panel" data-panel="schedules" aria-label="Schedules">
+      <div id="schedules-root"></div>
+    </section>
+
     <section class="card panel hidden" id="modes-panel" data-panel="modes" aria-labelledby="modes-title">
       <div class="pels-appbar">
         <md-icon-button type="button" class="pels-appbar__back" data-settings-target="settings" aria-label="Back to Settings">
@@ -159,6 +163,7 @@
         </md-icon-button>
         <h2 class="pels-appbar__title" id="modes-title">Modes</h2>
       </div>
+      <md-text-button data-open-schedules data-schedule-filter="mode">Mode schedules</md-text-button>
       <form id="priority-form" class="form-grid">
         <div class="field">
           <label class="field__label pels-text-settings-label" for="mode-select">Edit mode</label>
@@ -484,6 +489,12 @@
           <svg slot="start" class="settings-nav-card__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 6h8M16 6h3M5 18h3M11 18h8M5 12h12M19 12h0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="14.5" cy="6" r="2.2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9.5" cy="18" r="2.2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="17.5" cy="12" r="2.2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
           <span slot="headline" class="settings-nav-card__title pels-text-card-title">Modes</span>
           <span slot="supporting-text" class="settings-nav-card__description">Priorities and temperatures</span>
+          <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
+        </md-list-item>
+        <md-list-item type="button" class="settings-nav-card" data-settings-target="schedules">
+          <svg slot="start" class="settings-nav-card__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          <span slot="headline" class="settings-nav-card__title pels-text-card-title">Schedules</span>
+          <span slot="supporting-text" class="settings-nav-card__description">Timed Smart tasks and mode changes</span>
           <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
         </md-list-item>
         <md-list-item type="button" class="settings-nav-card" data-settings-target="electricity-prices">

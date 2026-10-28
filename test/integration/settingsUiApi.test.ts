@@ -681,7 +681,7 @@ describe('settingsUiApi', () => {
         },
       ],
       // The fixture's trusted app seam reports a warm snapshot with no charger wiring.
-      inverterDevices: [], continuousBatteryPlans: {},
+      inverterDevices: [], continuousBatteryPlans: {}, schedules: { ok: false, error: 'Schedules are unavailable for this home.' },
       chargerPhasePresets: { state: 'resolved', presets: {} },
       hasManagedSolarDevice: false,
       hasExhibitedExport: false,

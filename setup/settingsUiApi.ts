@@ -459,6 +459,7 @@ const UNAVAILABLE_POWER_PAYLOAD: SettingsUiPowerPayload = {
 };
 const UNAVAILABLE_DEVICES_PAYLOAD: SettingsUiDevicesPayload = {
   devices: [], inverterDevices: [], continuousBatteryPlans: {},
+  schedules: { ok: false, error: 'Schedules are unavailable for this home.' },
   chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
 };
 
@@ -538,6 +539,7 @@ const devicesPayloadForHome = (
     // not control a battery outside the Main home.
     devices: members.filter((device) => !device.isBatteryOrSolar),
     inverterDevices: [], continuousBatteryPlans: {},
+    schedules: { ok: false, error: 'Schedules are unavailable for this home.' },
     // Keyed by device id and consulted only for a device the owner is looking
     // at, so the whole-home map serves a sub-home unchanged: a charger outside
     // this home is never looked up here.
@@ -576,6 +578,7 @@ const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPay
     return {
       devices: [],
       inverterDevices: [], continuousBatteryPlans: {},
+      schedules: { ok: false, error: 'Schedules are unavailable for this home.' },
       chargerPhasePresets: readChargerPhasePresetsFromHomey(homey),
       hasManagedSolarDevice: false,
       hasExhibitedExport: false,
@@ -591,6 +594,7 @@ const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPay
     devices,
     continuousBatteryPlans: readSettingsUiBatteryPlans(host, devices),
     inverterDevices: readSettingsUiInverterDevices(host),
+    schedules: host.readSchedules(),
     chargerPhasePresets: readChargerPhasePresetsFromHomey(homey),
     // A solar/PV device is always read and excluded from `devices`, so its presence
     // is the only home-level signal the settings UI gets that the home has solar. The

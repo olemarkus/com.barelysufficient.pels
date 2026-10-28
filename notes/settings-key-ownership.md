@@ -341,3 +341,22 @@ After a binding change, PELS restores only watts, using the current range and st
 when the saved value no longer fits; it does not write the old mode enum. For a
 prior autonomous mode, its accepted native maximum is the production ceiling;
 a dormant zero setpoint does not mean that production should stop.
+
+## Simple schedules
+
+`lib/schedules/scheduleService.ts` owns named scheduled actions. Each definition
+is configured under `schedule.<id>`; `schedule_modes_enabled` and
+`schedule_task_enabled.<deviceId>` independently pause groups. The shared parser
+in `packages/shared-domain/src/settings/schedules.ts` is used by the settings UI
+and runtime. The UI uses the existing settings bridge, and `ui_devices.schedules`
+serves the owner's resolved state. A `{ deleted: true }` value is an explicit
+UI deletion request: the owner removes the key and its receipt. A listed key
+returning null is an unavailable read, never a deletion.
+
+The userdata `schedule_receipts` table stores the latest consumed local occurrence
+and its result per schedule. Consumption is committed before the action, so a
+restart cannot replay the same occurrence. Startup, edits and enabling schedules
+arm future triggers; old triggers are skipped. A trigger may create a fresh Smart
+task or invoke a mode change; it never holds a mode, cancels an existing task, or
+replaces an open task. Task definitions snapshot their Extra permissions and each
+created task carries its source schedule ID/name independently of later edits.

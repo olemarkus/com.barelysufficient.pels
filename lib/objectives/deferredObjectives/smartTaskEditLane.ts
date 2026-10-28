@@ -173,13 +173,17 @@ export const updateSmartTask = (
   // upgraded to `'always'`, and a `false` revokes.
   const candidate = buildValidSmartTaskCandidate(request, deadline.deadlineAtMs, gate.entry.rescue);
   if (!candidate) return updateReject('invalid_candidate');
+  // A revision keeps the run's trusted origin; request bodies cannot supply one.
+  const candidateWithSource = gate.entry.scheduleSource
+    ? { ...candidate, scheduleSource: gate.entry.scheduleSource }
+    : candidate;
   // `'replace'` because that merge already happened here. The write layer's
   // `'preserve'` is a WHOLE-OBJECT fallback — it only fires when the entry
   // carries no rescue at all — so leaving it on would drop every standing
   // permission the moment the request granted any one of them.
   const result = host.createDeferredObjective(
     request.deviceId,
-    candidate,
+    candidateWithSource,
     'replace',
   );
   if (result.ok) return { ok: true };

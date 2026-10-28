@@ -4,6 +4,7 @@ import type {
   DeferredObjectiveGoal,
   DeferredObjectiveRescueMode,
   DeferredObjectiveRescuePermissions,
+  DeferredObjectiveScheduleSource,
   DeferredObjectiveSettingsEntry,
   DeferredObjectiveRoster,
   DeferredObjectiveTemperatureGoal,
@@ -57,8 +58,19 @@ export const normalizeDeferredObjectiveSettingsEntry = (
 ): DeferredObjectiveSettingsEntry | null => {
   const base = normalizeEntryBase(raw);
   if (!base) return null;
+  const source = (raw as { scheduleSource?: unknown }).scheduleSource;
+  const scheduleSource = normalizeScheduleSource(source);
+  if (Object.prototype.hasOwnProperty.call(raw, 'scheduleSource') && !scheduleSource) return null;
   const rescue = normalizeRescuePermissions((raw as { rescue?: unknown }).rescue);
-  return rescue ? { ...base, rescue } : base;
+  return { ...base, ...(rescue ? { rescue } : {}), ...(scheduleSource ? { scheduleSource } : {}) };
+};
+
+const normalizeScheduleSource = (raw: unknown): DeferredObjectiveScheduleSource | null => {
+  if (!isUnknownRecord(raw)) return null;
+  if (typeof raw.id !== 'string' || typeof raw.name !== 'string') return null;
+  const id = raw.id.trim();
+  const name = raw.name.trim();
+  return id && name ? { id, name } : null;
 };
 
 const isRescueMode = (value: unknown): value is DeferredObjectiveRescueMode => (

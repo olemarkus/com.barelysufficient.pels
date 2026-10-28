@@ -1,5 +1,5 @@
 import { render, type ComponentChildren } from 'preact';
-import { MdElevation, MdFilledTonalButton, MdRipple } from './materialWebJSX.tsx';
+import { MdElevation, MdFilledTonalButton, MdRipple, MdTextButton } from './materialWebJSX.tsx';
 import { ChevronRightIcon } from './icons.tsx';
 import {
   SMART_TASK_CREATE_PAGE_COPY,
@@ -421,6 +421,7 @@ const DeadlinesListRoot = ({ state, actions }: { state: DeadlinesListState; acti
       <MdFilledTonalButton onClick={actions.onNewTask}>
         {SMART_TASK_CREATE_PAGE_COPY.newTaskAction}
       </MdFilledTonalButton>
+      <MdTextButton data-open-schedules data-schedule-filter="task">Task schedules</MdTextButton>
     </div>
   );
   if (state.status === 'loading') {

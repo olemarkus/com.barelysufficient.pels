@@ -1,4 +1,7 @@
 import type { SettingsUiTaskPricePeriod } from './packages/contracts/src/settingsUi/prices';
+import { ScheduleService, createScheduleReceiptStore, ScheduleActionExecutor } from './lib/schedules';
+import { registerScheduleFlowCards } from './flowCards/scheduleCards';
+import type { SchedulesResponse } from './packages/contracts/src/schedules';
 import { createHomeModeCatalog } from './lib/home/homeModeCatalog';
 import type {
   ContinuousBatteryPlanRead,
@@ -22,6 +25,7 @@ import type { PriceCoordinator } from './lib/price/priceCoordinator';
 import type { PriceFlowTagPublisher } from './lib/price/priceFlowTags';
 import type { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
 import {
+  buildSmartTaskCandidateDevices,
   createDeferredObjectiveEndedBus,
   createDeferredObjectiveHoursRemainingBus,
   createDeferredObjectiveHoursRemainingTracker,
@@ -600,6 +604,49 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   // payload bodies. Declared after `serviceWiring`, which builds the main
   // home's evaluation source the preview shares with the live lanes.
   protected readonly smartTaskApi = new AppSmartTaskApi(this.ctx, this.serviceWiring.taskEvaluationSource);
+
+  private scheduleService?: ScheduleService;
+
+  public readSchedules(): SchedulesResponse {
+    if (!this.scheduleService) return { ok: false, error: 'Schedules are starting. Try again.' };
+    try { return { ok: true, data: this.scheduleService.read() }; }
+    catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Schedules are unavailable. Try again.' };
+    }
+  }
+
+  private readonly scheduleSettingsChanged = (key: string): void => { this.scheduleService?.onSettingsChanged(key); };
+
+  protected startSchedules(): void {
+    const executor = new ScheduleActionExecutor(this, this.homey.clock);
+    const listTaskDevices = () => {
+      const read = this.getCreateSmartTaskCandidateDevices();
+      if (read.state !== 'ready') throw new Error('Smart-task devices are temporarily unavailable.');
+      return buildSmartTaskCandidateDevices(read.devices);
+    };
+    const schedules = new ScheduleService({
+      settings: this.homey.settings,
+      clock: this.homey.clock,
+      timers: this.timers,
+      receipts: createScheduleReceiptStore(this.getUserdataDatabase()),
+      getNowMs: () => this.getNow().getTime(),
+      listModes: () => Array.from(this.getHomeModeNames()),
+      currentMode: this.getHomeOperatingMode,
+      listTaskDevices,
+      execute: (schedule, at) => executor.execute(schedule, at),
+    });
+    this.scheduleService = schedules;
+    this.homey.settings.on('set', this.scheduleSettingsChanged);
+    this.homey.settings.on('unset', this.scheduleSettingsChanged);
+    registerScheduleFlowCards(this.homey, schedules, listTaskDevices);
+    schedules.start();
+  }
+
+  protected async stopSchedules(): Promise<void> {
+    this.homey.settings.removeListener('set', this.scheduleSettingsChanged);
+    this.homey.settings.removeListener('unset', this.scheduleSettingsChanged);
+    await this.scheduleService?.stop();
+  }
 
   public readonly observedTemperatureModeUpdates = this.serviceWiring.createObservedTemperatureModeUpdates();
   public readonly supportReports = this.serviceWiring.createSupportReports(this);

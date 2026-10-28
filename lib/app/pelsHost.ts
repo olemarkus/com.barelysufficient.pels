@@ -1,3 +1,4 @@
+import type { SchedulesResponse } from '../../packages/contracts/src/schedules';
 import type { AppContext } from './appContext';
 import type { SupportReportService } from '../diagnostics/supportReportService';
 import type { Logger as PinoLogger } from '../logging/logger';
@@ -65,6 +66,7 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
   | 'getHomeyPriceFormulaUiStatus'
   | 'getPowerhourSourceUiStatus'
 > & {
+  readSchedules(): SchedulesResponse;
   readonly supportReports: Pick<SupportReportService, 'prepare' | 'get' | 'send'>;
   getModePrioritiesForUi(deviceIds: readonly string[]): ModePriorityOrder;
   getSettingsUiManagedDevices(): DecoratedDeviceSnapshot[];

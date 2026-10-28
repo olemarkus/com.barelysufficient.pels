@@ -356,8 +356,13 @@ const buildSmartTaskEditProps = (
   const context = buildSmartTaskEditContext(m);
   if (!context) return undefined;
   const snapshot = getSmartTaskEditSnapshot();
+  const source = m.deviceId !== null && m.lastBoot
+    ? normalizeDeferredObjectiveRoster(m.lastBoot.bootstrap.deferredObjectives)
+      .objectivesByDeviceId[m.deviceId]?.scheduleSource
+    : undefined;
   return {
     mode,
+    ...(source ? { sourceSchedule: source } : {}),
     // An open editor for a DIFFERENT device (SPA navigation between tasks), or
     // for a task since replaced on this one, must not leak into this page — it
     // renders as closed here, and the next open replaces it.

@@ -26,6 +26,10 @@ export const readSwitchSelected = (event: Event): boolean => (
   (event.currentTarget as MdSwitchElement).selected
 );
 
+export const MdCheckbox = (props: MdBaseProps) => (
+  h('md-checkbox', props as Record<string, unknown>)
+);
+
 export const MdFilledTextField = (props: MdBaseProps) => (
   h('md-filled-text-field', props as Record<string, unknown>)
 );

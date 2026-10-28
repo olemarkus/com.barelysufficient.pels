@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "Schedule is enabled"
+  },
+  "titleFormatted": {
+    "en": "[[schedule]] is enabled"
+  },
+  "hint": {
+    "en": "Check this schedule's own On/Off setting. An enabled schedule can still be paused by the mode-schedules or device-schedules group control."
+  },
+  "args": [
+    {
+      "name": "schedule",
+      "type": "autocomplete",
+      "title": {
+        "en": "Schedule"
+      },
+      "placeholder": {
+        "en": "Select a schedule"
+      }
+    }
+  ]
+}

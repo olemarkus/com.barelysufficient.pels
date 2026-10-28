@@ -43,10 +43,17 @@ export type DeferredObjectiveSettingsKind = 'ev_soc' | 'temperature' | 'energy';
 /** The unit a task's values are in: °C for temperature, % for EV SoC, kWh for energy. */
 export type DeferredObjectiveUnit = '°C' | '%' | 'kWh';
 
+/** The saved schedule that created this run, with its name captured at creation. */
+export type DeferredObjectiveScheduleSource = {
+  id: string;
+  name: string;
+};
+
 type DeferredObjectiveSettingsEntryBase = {
   enabled: boolean;
   deadlineAtMs: number;
   rescue?: DeferredObjectiveRescuePermissions;
+  scheduleSource?: DeferredObjectiveScheduleSource;
 };
 
 /**

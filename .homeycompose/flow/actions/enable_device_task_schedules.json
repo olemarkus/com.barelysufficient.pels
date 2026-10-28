@@ -1,0 +1,23 @@
+{
+  "title": {
+    "en": "Enable scheduled Smart tasks for device"
+  },
+  "titleFormatted": {
+    "en": "Enable scheduled Smart tasks for [[device]]"
+  },
+  "hint": {
+    "en": "Allow future scheduled tasks for this device. Individual schedules that are off stay off. Enabling them does not create a task now."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select a device"
+      }
+    }
+  ]
+}
