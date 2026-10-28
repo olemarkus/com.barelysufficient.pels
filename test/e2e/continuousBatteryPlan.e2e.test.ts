@@ -27,13 +27,16 @@ function importPrice(hour: number, cheapLater: boolean): number {
 }
 
 type Home = {
+  app: ReturnType<typeof createApp>;
   battery: MockDevice;
   put: MockInstance<typeof mockHomeyInstance.api.put>;
   advance(polls: number): Promise<void>;
   setHouseW(watts: number): void;
 };
 
-async function startHome(cheapLater = false, initialPercent = 20, solar?: MockDevice): Promise<Home> {
+async function startHome(
+  cheapLater = false, initialPercent = 20, solar?: MockDevice, pricesEndAtMs = Number.POSITIVE_INFINITY,
+): Promise<Home> {
   const battery = buildSetpointBatteryDevice({ id: BATTERY, claimValue: 'anti_feed', stepW: 5 });
   battery.setActualCapabilityValue('measure_battery', initialPercent);
   const heater = new MockDevice('heater', 'Heater', ['onoff', 'measure_power'], 'socket');
@@ -56,7 +59,7 @@ async function startHome(cheapLater = false, initialPercent = 20, solar?: MockDe
       interval: 60, priceUnit: 'EUR', pricesPerInterval: Array.from({ length: 24 }, (_, hour) => ({
         periodStart: new Date(Date.parse(`${date}T00:00:00Z`) + hour * HOUR_MS).toISOString(),
         value: importPrice(hour, cheapLater),
-      })),
+      })).filter(price => Date.parse(price.periodStart) < pricesEndAtMs),
     }),
   };
   mockHomeyInstance.api._dynamicElectricityPrices = prices.fetchDynamicElectricityPrices;
@@ -77,7 +80,7 @@ async function startHome(cheapLater = false, initialPercent = 20, solar?: MockDe
   const app = createApp();
   await app.onInit();
   return {
-    battery, put,
+    app, battery, put,
     setHouseW: watts => { houseW = watts; },
     advance: async polls => {
       for (let poll = 0; poll < polls; poll += 1) {
@@ -213,6 +216,43 @@ describe('continuous battery plan through the Homey SDK', () => {
     await home.advance(6);
     expect(batteryReadingsAtCurtail.length).toBeGreaterThan(0);
     expect(batteryReadingsAtCurtail.every(watts => watts > 0)).toBe(true);
+  });
+
+  it('hands the battery back on restart, then resumes its plan', async () => {
+    const home = await startHome(true);
+    await home.advance(8);
+    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
+    await home.app.onUninit();
+    home.put.mockClear();
+    const restarted = createApp();
+    await restarted.onInit();
+    const modeWrites = () => home.put.mock.calls.flatMap(([path, body]) => (
+      path === `manager/devices/device/${BATTERY}/capability/target_power_mode` ? [(body as { value: unknown }).value] : []
+    ));
+    // Boot recovery hands back every battery the last run held, as docs/solar.md says.
+    await home.advance(1);
+    expect(modeWrites()).toEqual(['anti_feed']);
+    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('anti_feed');
+    // The plan then takes the battery over again from its own mode.
+    await home.advance(40);
+    const resumed = (await api.ui_devices(context())).continuousBatteryPlans[BATTERY];
+    expect(resumed.status, JSON.stringify(resumed)).toBe('planned');
+    expect(modeWrites()).toEqual(['anti_feed', 'homey']);
+    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
+  });
+
+  it('hands the battery back when the plan runs out of published prices', async () => {
+    vi.setSystemTime(Date.UTC(2026, 9, 27, 1, 40));
+    const home = await startHome(true, 20, undefined, Date.UTC(2026, 9, 27, 2));
+    await home.advance(8);
+    const before = (await api.ui_devices(context())).continuousBatteryPlans[BATTERY];
+    expect(before.status, JSON.stringify(before)).toBe('planned');
+    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
+    // Past 02:00 no published price covers the hour, so no plan can run.
+    await home.advance(150);
+    expect((await api.ui_devices(context())).continuousBatteryPlans[BATTERY])
+      .toMatchObject({ status: 'waiting', reason: 'prices_unavailable' });
+    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('anti_feed');
   });
 
   it('respects a manual mode change in the battery app', async () => {
