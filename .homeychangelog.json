@@ -712,5 +712,8 @@
   },
   "3.25.0": {
     "en": "PELS can now keep you from paying to export solar. If your contract charges for exported electricity in some periods, enter your export price under Electricity prices and choose your inverters under Avoid paying to export. PELS lowers excess production while the export price is below zero, and returns the inverter to its previous limit and mode once exporting no longer costs. Home batteries can also be planned by PELS: turn on Plan charging with PELS on the battery's page, and PELS plans charging and household supply from prices, expected use, the solar forecast and your smart tasks, and shows the expected charge levels.\n\nSetup suggestions now offer smart tasks for water heaters on a relay, with a guide that opens from Homey. The daily diagnostics report keeps a full day of activity and log. The web app opens faster and picks up settings changed while it starts."
+  },
+  "3.25.1": {
+    "en": "When PELS hands an inverter back to its own mode after avoiding paid export, it now switches the mode without first writing the inverter's stored limit, so production no longer drops to zero during the hand-back. Battery planning now uses far less processing, replanning only when prices, the forecast, the charge level or your devices' power change noticeably.\n\nThe battery page says PELS plans charging only while the plan actually runs, and explains when it is waiting for smart tasks to finish planning. Battery reasons now say cheap and expensive electricity. Smart-task plans are stored outside the app settings, so saving other settings is lighter for Homey."
   }
 }
