@@ -709,5 +709,8 @@
   },
   "3.24.1": {
     "en": "In the last ten minutes of the hour, PELS now brings the house down to the hour's average target, so the next hour starts at its limit instead of over it. It starts from what the house is drawing at :50 and makes the biggest cuts near the end. In those minutes it turns nothing on or up that the next hour cannot hold, and the device's card says this hour is ending.\n\nLnett customers: weekend hours are now priced at the night rate, and tomorrow's prices use tomorrow's grid tariff. New installs get a one-time reminder that points to the app settings. The Mode temperature card lists your modes before a device is picked. A diagnostics report Homey answers with an error is no longer sent again early, since it may have arrived."
+  },
+  "3.25.0": {
+    "en": "PELS can now keep you from paying to export solar. If your contract charges for exported electricity in some periods, enter your export price under Electricity prices and choose your inverters under Avoid paying to export. PELS lowers excess production while the export price is below zero, and returns the inverter to its previous limit and mode once exporting no longer costs. Home batteries can also be planned by PELS: turn on Plan charging with PELS on the battery's page, and PELS plans charging and household supply from prices, expected use, the solar forecast and your smart tasks, and shows the expected charge levels.\n\nSetup suggestions now offer smart tasks for water heaters on a relay, with a guide that opens from Homey. The daily diagnostics report keeps a full day of activity and log. The web app opens faster and picks up settings changed while it starts."
   }
 }
