@@ -85,7 +85,7 @@ Below that, a chart plots every day of the last year so you can see the pattern 
 
 ## When tomorrow needs more than your hard cap
 
-If tomorrow's expected usage is more than your [hard cap](getting-started.md#terminology-and-units) could deliver across a whole day, the Tomorrow card replaces the calm verdict with a warning.
+If tomorrow's expected usage is more than your [hard cap](/glossary#hard-cap) could deliver across a whole day, the Tomorrow card replaces the calm verdict with a warning.
 
 ![PELS Tomorrow card with a warning banner: "Tomorrow may need more than your hard cap allows — Tomorrow's expected usage is higher than your hard cap can deliver in a day. PELS will hold the cap, so some managed usage may be limited in the coldest hours."](screenshots/weather-insight/over-cap-warning.png)
 *Figure 6. When the suggestion bumps against the hard cap, PELS warns you plainly and tells you what will happen: it holds the cap and limits some managed usage in the coldest hours.*
@@ -122,7 +122,7 @@ So the chain is: weather insight suggests a number → the [daily budget](daily-
 
 ## Terminology
 
-Shared capacity terminology and units are defined in [Getting Started: Terminology and Units](getting-started.md#terminology-and-units). Weather-insight-specific terms:
+Shared capacity terminology and units are defined in the [Glossary](/glossary). Weather-insight-specific terms:
 
 - **Balance point** ("Heating kicks in below") — the outdoor temperature where your home starts spending extra energy on heating. Above it, usage is roughly flat; below it, usage climbs with the cold.
 - **Warm-day usage** — the roughly flat daily energy your home uses when it isn't heating: lights, appliances, hot water, standby. Distinct from "background usage" in the daily budget, which is about devices PELS doesn't manage. Once PELS has seen both summer and winter, it also learns whether your home uses more in the dark half of the year at the same temperature (more lighting, more time indoors, less sun through the windows). If it does, warm-day usage and the estimate line are shown for tomorrow's time of year.

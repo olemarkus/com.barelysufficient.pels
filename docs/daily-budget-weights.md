@@ -35,7 +35,7 @@ For each local hour `h` (0-23), PELS works with:
 - `qMax`: upper quantile for observed caps (current implementation: `0.90`)
 - `qMin`: lower quantile for observed minimums (current implementation: `0.25`)
 - `Nq`: minimum samples per hour before quantiles are used (current implementation: `5`)
-- `price[b]`: combined price for each plan bucket
+- `price[b]`: planning price for each plan bucket (the import price, or the import/export blend when an export price is configured)
 - `pricePosition[b]`: normalized position within the remaining price range
   (`0 = cheapest`, `1 = most expensive`)
 

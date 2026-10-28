@@ -21,7 +21,7 @@ have been removed from this folder when the code they described landed.
 Homey composition root while `setup/appRuntimeApi.ts` and `setup/appHostApi.ts` supply its runtime
 and host API behavior without importing the Homey SDK value. The adapter has since moved out of
 `lib/app/` entirely — it is `setup/appInit.ts` plus the `setup/appInit/` directory, and `lib/app/`
-is down to `appContext.ts`. `resolveHasBinaryControl` is gone with it.
+holds `appContext.ts`, `pelsHost.ts` and `setupNotification.ts`. `resolveHasBinaryControl` is gone with it.
 
 Remaining work:
 
@@ -50,13 +50,13 @@ Remaining work:
 
 ### `planService.ts`
 
-Plan snapshots are in-memory/realtime only, but `planService.ts` still mixes rebuild orchestration
-with perf aggregation, trace recording, and completion logging.
+Plan snapshots are in-memory/realtime only. Rebuild metrics and tracing live in
+`lib/plan/planRebuildMetrics.ts`, and rebuild execution with its completion logging in
+`lib/plan/planServiceRebuild.ts`; `planService.ts` still records some perf counters itself.
 
 Remaining work:
 
-- extract rebuild-metrics/tracing helpers into a focused module
-- fold or delete `planServiceInternals.ts` if the remaining helper surface no longer pays for
+- fold or delete the 7-line `planServiceInternals.ts` if its helper surface no longer pays for
   itself
 
 ### Restore and reason boundaries
@@ -79,7 +79,7 @@ parse pipeline lives under `lib/device/transport/`; plan and executor read obser
 observer projection, not from transport. See `notes/state-management/observer-transport-split.md` for the
 layering rationale, and `notes/state-management/README.md` + `docs/architecture.md` for the current
 contract. One deferred cleanup remains: a file-rename sweep aligning the surviving `manager*.ts`
-filenames + `device/manager-*` logger tags with the `DeviceTransport` rename.
+filenames with the `DeviceTransport` rename.
 
 Remaining work:
 
@@ -106,4 +106,3 @@ The following ideas remain deferred until a concrete bug or ownership problem ju
 - load-reduction strategy interfaces
 - broad price/source abstraction layers
 - a generic state-publisher utility
-- splitting `registerFlowCards.ts` purely because it is long

@@ -45,12 +45,8 @@ hides the next real defect.
 
 Knip honours the `@public` JSDoc tag. It is the repo's mechanism for an export
 that is deliberately kept without an importer; every use carries a one-line
-reason. Current holders:
-
-- `lib/utils/settingsKeys.ts`,
-  `packages/shared-domain/src/commandableNow.ts` — curated "parked" entries
-  inherited from the old `check-dead-code.mjs` list.
-- `packages/settings-ui/src/ui/utils.ts` — test-only API.
+reason. Current holders: none. The last ones were dropped with the exports they
+kept; the mechanism remains available.
 
 Also still true: `test/mocks/echarts-subpath-shim.ts` is referenced as a vitest
 `moduleNameMapper` resolve path, not an import — it stays in `ignore`.

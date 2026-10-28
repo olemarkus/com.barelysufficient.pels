@@ -41,7 +41,7 @@ Three asymmetric hero affordances were folded in on top of the chart policy:
 
 - **Succeeded — 3-row receipt timeline.** Producer
   `formatPlanHistoryReceiptTimeline` resolves up to three rows (`Started`,
-  `Cheapest planned hour`, `Ready`) from `progressSamples`, the largest
+  `Largest planned hour`, `Ready`) from `progressSamples`, the largest
   recorded planned hour, and `metAtMs`/`deadlineAtMs`. Suppressed when
   fewer than two rows can be composed honestly — a one-row "timeline"
   reads as a fragmentary log. Rendered beneath the outcome headline.
@@ -62,26 +62,28 @@ Three asymmetric hero affordances were folded in on top of the chart policy:
 
 All four helpers live in `packages/shared-domain/src/deferredPlanHistoryReceipt.ts`
 so the runtime log breadcrumbs can read the same strings (per
-`feedback_ui_text_shared_with_logs.md`).
+`notes/ui-terminology.md` § "Smart task history detail (receipt-first)").
 
 ## v2.7.3 past-tasks list — weekly archive
 
-`groupPlanHistoryByIsoWeek` (same file) groups the past-tasks list into
+`groupPlanHistoryByIsoWeek` (`packages/shared-domain/src/deferredPlanHistoryIsoWeekArchive.ts`,
+re-exported from the receipt file) groups the past-tasks list into
 ISO-week sections. Each section renders a quiet heading
-("Week 20 · 4 deadlines met · ≈ 41 kr.") above the existing card list.
+("This week · 4 succeeded · ≈ 41 kr") above the existing card list: `This week`,
+`Last week` or `Week of <date>`, then the non-zero outcome counts.
 The grouping uses ISO-8601 week numbering anchored to the user's time
 zone so a Sunday-night deadline in Europe doesn't shift to the previous
-ISO week the UTC date would imply. Cost roll-up suppresses cleanly when
-the cost-unit suffix is empty (the past-tasks list mount doesn't fetch a
-display unit today; the section heading still renders the met-count
-fragment).
+ISO week the UTC date would imply. Cost roll-up takes its unit from each
+entry's own recorded display provenance (`resolveWeekHeadingUnit`) and
+suppresses cleanly when that unit is empty; the section heading still
+renders the outcome counts.
 
 ## Why the asymmetry
 
 The two pages answer different questions:
 
 - **Active** answers "what is the plan?" The chart is a planning instrument; hiding it would defeat the page's reason for existing.
-- **Historic** answers "what was the outcome of this run?" The one-sentence outcome headline (`hero.lead.sentence`, producer-resolved in `packages/shared-domain/src/deferredPlanHistory.ts`) is the page's primary content. The chart serves evidence/diagnosis, not framing.
+- **Historic** answers "what was the outcome of this run?" The one-sentence outcome headline (`hero.lead.sentence`, producer-resolved in `packages/shared-domain/src/deferredPlanHistoryPostmortem.ts`) is the page's primary content. The chart serves evidence/diagnosis, not framing.
 
 Treating them symmetrically (chart-on-default everywhere) hides the outcome under a chart on succeeded runs — the chart is the loudest element by area, and the user looking up a past run wants the receipt first, the chart only if they're auditing.
 

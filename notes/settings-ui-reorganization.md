@@ -1,8 +1,8 @@
 # Settings UI Reorganization
 
 > **Status: partially shipped.** The nav shell, Budget (Plan/Adjust), Smart tasks
-> list, and the Settings card/list are in place; remaining work is Usage cleanup,
-> per-device price ownership, Material consolidation, and polish. This note still
+> list, the Settings card/list, Usage cleanup, and per-device price ownership are in
+> place; remaining work is Material consolidation and polish. This note still
 > governs the ownership boundaries for the in-flight PRs — read it as the target
 > model, not a wholly-future plan.
 
@@ -66,14 +66,21 @@ contains configuration areas.
 `Settings` should be presented as a card/list navigation page, not nested horizontal tabs.
 This fits the Homey narrow viewport better than a second tab row.
 
-Recommended order:
+Current order:
 
+- `Setup & recommendations`
 - `Limits & safety`
+- `Daily budget`
 - `Devices`
 - `Modes`
 - `Electricity prices`
 - `Price-aware devices`
+- `Weather insight`
+- `Multiple meters`
 - `Simulation mode`
+- `Open in a browser`
+- `Activity`
+- `Report a problem`
 - `Advanced`
 
 Each row/card opens a detail page.
@@ -84,13 +91,13 @@ Example:
 Settings
 
 [ Limits & safety ]
-Hard cap, safety margin, power source
+Grid import, capacity limits, power source
 
 [ Devices ]
 Managed devices and per-device behavior
 
 [ Modes ]
-Mode behavior and priorities
+Priorities and temperatures
 
 [ Electricity prices ]
 Source, tariffs, cheap and expensive hours
@@ -99,7 +106,7 @@ Source, tariffs, cheap and expensive hours
 Devices that respond to cheap and expensive hours
 
 [ Simulation mode ]
-Test behavior without controlling devices
+Test behavior without switching devices
 
 [ Advanced ]
 Diagnostics, cleanup, logs, experiments
@@ -206,7 +213,7 @@ It answers:
 
 Recommended local Budget views:
 
-- `Plan` (with candidate overlay while a preview is pending)
+- `Plan`
 - `Adjust` (hosts edits, comparison, and Apply/Discard)
 
 Price is not a Budget sub-page in the target navigation because price can be used without daily
@@ -302,11 +309,11 @@ Owns normal daily-planning controls:
 - managed device flexibility
 - future daily-budget auto-adjust controls, when implemented
 
-Planning behavior should be collapsed by default with a useful summary, for example:
+`Budget shaping` is open by default, with a summary line, for example:
 
 ```text
-Planning behavior
-Conservative reserve - Low flexibility
+Budget shaping
+Conservative reserve · Low flexibility
 ```
 
 Expanded fields:
@@ -317,22 +324,20 @@ Expanded fields:
 `Budget > Adjust` also owns the full `Preview changes` / `Apply changes` / `Discard preview`
 workflow. When the draft is dirty, an action row appears with `Preview changes`. After preview, a
 `Compare with current` card lists only the fields that differ (current → candidate) and `Apply
-changes` / `Discard preview` actions are surfaced in the same view. While a preview is pending,
-`Budget > Plan` overlays the candidate plan as a dashed `Candidate` series alongside the active
-`Plan` line on the chart.
+changes` / `Discard preview` actions are surfaced in the same view. The comparison renders stacked
+`Current` / `Preview` charts on a shared scale inside `Budget > Adjust`.
 
 `Budget > Adjust` may show the current hard cap and safety margin when explaining the plan, but
 editing the global safety/source controls belongs in `Settings > Limits & safety`.
 
 The earlier plan called for a separate `Budget > Review Changes` tab. That tab is no longer
-needed: the comparison and apply/discard actions live inside `Budget > Adjust` itself, and the
-candidate overlay on `Budget > Plan` covers the chart-comparison need without a temporary view.
+needed: the comparison charts and apply/discard actions live inside `Budget > Adjust` itself.
 
 Use the Homey webview layout at 320-480px:
 
 - stacked layout
 - compact comparison table
-- candidate overlay on the existing Plan chart
+- stacked `Current` / `Preview` comparison charts
 - visible `Apply changes` and `Discard preview` actions
 
 Do not design the review flow around side-by-side cards. A wider browser can add breathing room,
@@ -369,7 +374,7 @@ Recommended order:
 
 Data-management actions do not belong to Usage. Usage may link to
 `Settings > Advanced > Data management`, but destructive or maintenance actions such as
-`Reset usage statistics` should live there.
+`Reset usage history` should live there.
 
 ## Smart Tasks
 
@@ -444,10 +449,10 @@ setting.
 
 `Settings > Modes` owns mode configuration.
 
-Overview may show the active mode and provide a fast mode switch. Mode configuration belongs
-under `Settings > Modes`.
+The `Current mode` selector sits at the top of the Settings page, not on the Overview. Mode
+configuration belongs under `Settings > Modes`.
 
-The Overview fast switch changes only the active mode. It must use API/bootstrap state for the
+The `Current mode` selector changes only the active mode. It must use API/bootstrap state for the
 current active mode, not direct settings reads, so the displayed mode stays live when another
 client or Flow changes it.
 
@@ -546,7 +551,7 @@ Use:
 
 - stacked cards
 - single-column layout
-- segmented buttons for local choices such as `Plan | Adjust`, day selection, and chart view
+- segmented buttons for local choices such as day selection and chart view
 - compact comparison tables
 - short chip labels
 - reduced chart axis labels

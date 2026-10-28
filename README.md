@@ -25,8 +25,8 @@ The public docs site publishes three static channels on one GitHub Pages domain:
 - Test: <https://pels.barelysufficient.org/test/>
 - Dev: <https://pels.barelysufficient.org/dev/>
 
-Keep using `homey app version <patch|minor|major> --commit` for the Homey version commit and tag.
-After pushing that tag, promote docs without another source commit:
+Cut a release with `npm run release -- start <patch|minor|major> <changelog-file>`, then `npm run release -- finish` (pushes the tag) and `npm run release -- publish`.
+After `finish` pushes the tag, promote docs without another source commit:
 
 ```bash
 npm run docs:promote:test -- v2.7.0
@@ -35,4 +35,4 @@ npm run docs:promote:live -- v2.7.0
 
 When the ref is omitted, the promotion scripts use `v<app.json version>`.
 
-Homey App Store readmes live in [`README.txt`](./README.txt) (English), [`README.no.txt`](./README.no.txt) (Norwegian), [`README.nl.txt`](./README.nl.txt) (Dutch), and [`README.fr.txt`](./README.fr.txt) (French); one-line descriptions and tags live in [`.homeycompose/app.json`](./.homeycompose/app.json).
+Homey App Store readmes live in [`README.txt`](./README.txt) (English) and one `README.<lang>.txt` per store language: [Danish](./README.da.txt), [Dutch](./README.nl.txt), [Finnish](./README.fi.txt), [French](./README.fr.txt), [German](./README.de.txt), [Italian](./README.it.txt), [Norwegian](./README.no.txt), [Polish](./README.pl.txt), and [Swedish](./README.sv.txt); one-line descriptions and tags live in [`.homeycompose/app.json`](./.homeycompose/app.json).

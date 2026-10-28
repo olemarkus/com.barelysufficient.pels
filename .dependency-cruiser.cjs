@@ -399,7 +399,7 @@ module.exports = {
         + 'appliers + objective eval moved onto the DeferredObjectiveDecorationController in PR-D2; '
         + 'lib/plan now consumes only the flat DeferredDecorationBundle (@pels/planner-types) through '
         + 'the injected `decorateDeferredObjectives` seam, constructed in the app-wiring layer '
-        + '(lib/app/appInit.ts). CAVEAT (still true): this config runs post-compilation '
+        + '(setup/appInit/createPlanEngine.ts). CAVEAT (still true): this config runs post-compilation '
         + '(tsPreCompilationDeps unset), so `import type` edges are INVISIBLE — this rule counts only '
         + 'VALUE imports. The type-edge gap is now closed by an enforced grep guard '
         + '(`npm run arch:grep` → scripts/check-plan-objectives-edge.mjs), wired into ci:checks and '

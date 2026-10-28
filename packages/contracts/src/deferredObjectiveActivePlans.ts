@@ -23,11 +23,9 @@ export type DeferredObjectiveActivePlanRevisionReason =
   | 'rate_refined'
   | 'device_unavailable'
   | 'measured_deviation'
-  // `flow_permission_changed` is reserved for revisions caused by a Flow card toggling
-  // a smart task's rescue permission. Like `device_unavailable` / `measured_deviation`,
-  // it is forward-declared: the label + persistence allowlist are ready, but the
-  // recorder does not emit it yet (rescue-change detection lands in a follow-up; today
-  // a rescue toggle surfaces as `schedule_revised`). Distinct from `objective_changed`.
+  // `flow_permission_changed` marks a revision caused only by a change to a smart
+  // task's rescue permission; `resolveReplanReason` emits it when the rescue
+  // signature is the only thing that changed. Distinct from `objective_changed`.
   | 'flow_permission_changed';
 
 // Identifies whether the kWh-per-unit value used for the revision came from a

@@ -115,7 +115,7 @@ Four places set these permissions:
 | --- | --- |
 | **Smart task page → Edit task → Extra permissions** | Turning a permission on **or off** for an existing task, with the estimate re-priced under the change before you save. |
 | **Smart tasks page → New smart task → Extra permissions** | Granting any of the three while creating the task (**limit lower-priority devices** only for devices with power levels). The preview is priced with them. |
-| **Create smart task** widget | Granting **go over today's budget** or **limit lower-priority devices** while creating the task. It has no toggle for the third one. |
+| **Create smart task** widget | Granting any of the three while creating the task (**limit lower-priority devices** only for devices with power levels). |
 | **Set what a smart task may do** action card | Granting a permission from a Flow — for example only once a task reports **At risk**. |
 
 | Permission | What it allows |
@@ -231,7 +231,7 @@ When the **History** view shows a missed entry, PELS surfaces at most one recour
 | Recourse button | What happened | What to do |
 | --- | --- | --- |
 | **Lower daily budget** | The daily energy budget ran out before the ready-by time. PELS had hours scheduled but the budget cap closed those hours down. | Lower the daily budget so future days reserve usable power earlier — in the **Budget** tab or via the **Set daily budget** Flow card. Raising the **hard cap** is not the right answer: the hard cap reflects your grid tariff step, not a tuning knob. |
-| **Review device** | Any other last blocker: the device stopped taking power, not enough available power was left, a higher-priority device took the room, or the plan did not leave enough time. | The button deep-links you to the device-settings overlay. Check stepped-load planning power, target temperature, priority, **When limiting** behavior, and the Flow wiring that reports state back to PELS. |
+| **Review device** | Any other last blocker: the device stopped taking power, not enough available power was left, a higher-priority device took the room, or the plan did not leave enough time. | The button deep-links you to the device-settings overlay. Check stepped-load planning power, target temperature, priority, **What PELS does when limiting this device**, and the Flow wiring that reports state back to PELS. |
 | (no button) | The car stopped at its own charge limit, or delayed charging on its own schedule or smart charging. | Raise the car's charge limit, or turn off its own charging schedule, in the car. |
 
 If the same device misses repeatedly, treat it as a tuning loop:
@@ -293,7 +293,7 @@ This is useful for rooms or water heaters where the exact ready time matters mor
 
 | Problem | What to check |
 | --- | --- |
-| The task stays pending | Check that price optimization is enabled and that prices are available through the ready-by time. |
+| The task stays pending | Check that **Respond to prices** is on under **Price-aware devices** and that prices are available through the ready-by time. |
 | The EV task does not change charger current | Confirm the charger is configured as EV 1-phase or EV 3-phase. For Easee, check the path you chose: **Use built-in device control**, or the existing current-control Flow. For other chargers, check the Flow using **EV charger current (A)**. |
 | The device starts in an hour outside the plotted task plan | The task keeps that hour without planned energy, because it is cheaper than the planned hours or the task cannot finish otherwise, and runs there when power is available. A deferred hour is held off. With no active task controlling the device, **Power-limit control** on allows normal run-when-power-is-available behavior. |
 | The task cannot meet the target | Check target size, ready-by time, planning power/current, daily budget, and device priority. |

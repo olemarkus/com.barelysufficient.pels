@@ -51,8 +51,7 @@ blames a limit does not render. The grid variants are:
 The settings hint is “Reduce flexible loads when household import approaches this
 level.” Net import is the measurement, including negative export with solar. The
 settings explanation names meter cadence, device response and temporary overshoot,
-and says PELS is not a circuit breaker. Italian store copy leads with the benefit:
-“Più comfort, con la potenza che hai.” Do not claim uninterrupted supply.
+and says PELS is not a circuit breaker. Do not claim uninterrupted supply.
 
 ## Core principle
 
@@ -139,7 +138,7 @@ The marker tooltip below keeps the longer explanation for pointer devices.
 
 | Source (`meta.softLimitSource`) | Tooltip (appended after the `Safe pace now N kW —` stem plus a space, so the body separates with a semicolon, not a second em-dash) |
 |---|---|
-| `capacity` | the current capacity period's pace sets this marker; PELS starts reacting here |
+| `capacity` | the hourly pace sets this marker; PELS starts reacting here (15-minute capacity period: `the quarter-hour pace sets this marker; …`) |
 | `daily` | today's budget sets this marker, which may include power allowed beyond today's budget; PELS starts reacting here |
 
 When `daily` is active and the plan supplies a non-zero allowance for devices
@@ -226,7 +225,7 @@ draw is from a device that has Power-limit control turned off. Turn its
 Power-limit control back on so PELS can ease it off.` It names the actual
 control (never an invented feature name) and the user's real recourse — turning
 that device's Power-limit control back on, **not** raising the hard cap (see
-§ "Hard cap is an hourly ceiling"). **`eased off`** / **`ease off`** is the sanctioned verb for
+§ "Hard cap is a capacity-period ceiling"). **`eased off`** / **`ease off`** is the sanctioned verb for
 the hard-cap shed cascade in this decision sentence (it pairs with the default
 `Easing devices off.`); reuse it here rather than reaching for a synonym, and
 keep the chip/secondary-text language (`Limited`, and the per-device reason
@@ -326,7 +325,7 @@ be idle after overshooting far above a lowered target, where “near” is false
 ### EV charger exception labels (stepped card fact line)
 
 An EV charger's exceptional charging states lead the status fact line, before the
-level (source: `resolveSteppedEvExceptionLabel` in `planSteppedCardText.ts`, joined
+level (source: `resolveSteppedEvExceptionLabel` in `packages/shared-domain/src/evChargingStateLabel.ts`, joined
 in `resolveFactText` in `lib/plan/deviceStatusReadModel.ts`): `Paused`,
 `Discharging`, `Unplugged`, and the plugged-in-idle pair below, e.g.
 `Unplugged · Level 16 A`. They are facts about the plug, so they show whatever PELS
@@ -1185,7 +1184,7 @@ widget's field, preview, and error strings (`CREATE_SMART_TASK_WIDGET_COPY`).
 | Task page actions | `Edit task` (tonal) and `Clear task` (destructive text button) |
 | Clear confirmation | `Clear smart task?` / `PELS will stop scheduling the task for {device}. The run so far moves to Past tasks.` / `Keep task` / `Clear task` |
 | Create preview landing line | `Scheduled 02:00–04:00 · Ready by Tomorrow 07:00` (no `If you save:`: there is no current plan beside it) |
-| After-task card (task page, below `What PELS uses`) and block (create preview) | `When the task is done` / the start rule with the device's name / `Change` |
+| After-task card (task page, below `About this estimate`) and block (create preview) | `When the task is done` / the start rule with the device's name / `Change` |
 
 A device carries one task at a time: creating never replaces an open task, and
 choosing a device that has one opens that task instead.
@@ -1193,38 +1192,15 @@ choosing a device that has one opens that task instead.
 ### Past-task "Why:" sentences
 
 A missed run's one-line explanation. Source of truth: `formatRefinedMissCause` in
-`packages/shared-domain/src/deferredPlanHistoryAttribution.ts` (the attributed
-causes), falling through to `formatPlanHistoryMissedReason` in
-`deferredPlanHistory.ts` for the residual branches. Rendered on the past-tasks
-list card, the history-detail hero, and the smart-tasks widget row, always
-prefixed `Why:`.
+`packages/shared-domain/src/deferredPlanHistoryAttribution.ts`, which
+`formatPlanHistoryMissedReason` in `deferredPlanHistory.ts` returns for every missed run.
+Rendered on the past-tasks list card, the history-detail hero, and the smart-tasks widget
+row, always prefixed `Why:`. Every cause renders its `CAUSE_COPY` sentence; for example
+`budget_limited` reads `The daily budget held delivery back.` None of them may name a
+remedy (the recourse button owns that), and none may suggest raising the hard cap or the
+daily budget.
 
-| Cause | Sentence |
-|---|---|
-| `budget_limited` | `Daily budget filled before the deadline.` |
-| `no_delivery` (temperature) | `Delivered almost no heat before the deadline.` |
-| `no_delivery` (EV) | `Delivered almost no charge before the deadline.` |
-| `no_delivery` (energy) | `Delivered almost no energy before the deadline.` |
-| `capacity_shortfall` | `Not enough power or time before the deadline.` |
-| `energy_underestimate` | `Target needed more energy than estimated.` |
-| `low_confidence` | `Still learning this device's energy use.` |
-
-An energy task never gets `energy_underestimate` or `low_confidence`: its requirement is its
-target and its rate is exact, so nothing was estimated or learned, and those misses read as
-`capacity_shortfall`.
-
-The residual sentences in the table above stay fragment-shaped, blameless, and ≤ ~48 characters
-so they fit one row at 320 px. None of them may name a remedy — the recourse button owns that — and
-per `feedback_hard_cap_is_physical` none may suggest raising the hard cap or the daily budget.
-
-`capacity_shortfall` names **power or time** deliberately: its producer cause
-`time_capacity` is defined as "physical/time even uncapped" and is fed by both
-`target_cannot_be_met` and `limited_by_higher_priority_task`, so a deadline that
-was simply too soon lands in the same bucket as a power-starved run and the
-persisted data cannot separate them. A power-only sentence would send an owner
-hunting for power they never needed.
-
-A run with recorded delivery evidence names its last blocker instead, as a full sentence from
+A run names its last blocker as a full sentence from
 `CAUSE_COPY` in `deferredPlanHistoryAttribution.ts`, then `Earlier:` with at most ONE earlier
 blocker: the one that held delivery back longest. Two sentences already wrap to about three lines
 on a 320 px widget row. A momentary settle (`control_pending`, `Delivery was waiting for device
@@ -1233,8 +1209,7 @@ limiting reads `Not enough available power held delivery back.`, never the per-d
 `Power-limit control` toggle's name. The car causes name the car, as the live copy does: `The car
 stopped at its own charge limit, below this smart task’s target.` and `The car delayed charging on
 its own schedule or smart charging.`; a device that stopped reads `The device stopped taking power
-before reaching the target.` These sentences are not bound by the 48-character rule, and they name
-no remedy either.
+before reaching the target.`
 
 ### Past-task outcome chips
 
@@ -1330,7 +1305,7 @@ character-identical.
 Copy says PELS can let a task go over today's budget, limit lower-priority devices, or reserve power so the task can
 start sooner. Stay forward: action verbs over hedge phrasing, no "does not
 guarantee" disclaimer (raising the hard cap is never a remedy — see § "Hard cap
-is an hourly ceiling"; every smart-task surface doesn't need to repeat the
+is a capacity-period ceiling"; every smart-task surface doesn't need to repeat the
 disclaimer).
 
 **Never say the pause permission turns anything off.** It reserves power; it does not switch devices off, and a device that is already off just waits a little longer before resuming. Copy that promises devices are "held off up front" or "paused, including idle ones" describes the retired implementation and is now untrue — see `notes/deferred-load-objectives/preemptive-power-reservation.md`.
@@ -1413,7 +1388,7 @@ The smart-task detail page renders a `Recent plan changes` panel (live runs) and
 | `schedule_revised` | `Schedule revised` (live-task surface may render one of three disambiguated variants — see below) | Internal replan changed which hours run (budget/risk/expansion). |
 | `rate_refined` | `Rate estimate refined` | Learned delivery rate adjusted the plan length. |
 | `objective_changed` | `Smart task settings changed` | User edited target / deadline / device. |
-| `device_unavailable` | `Device was unreachable` | Names the *event the recorder saw* — a single SDK read miss per `feedback_homey_sdk_unreliable`, not a sustained offline state. |
+| `device_unavailable` | `Device was unreachable` | Names the *event the recorder saw* — a single SDK read miss, not a sustained offline state. |
 | `measured_deviation` | `Measured rate differed from plan` | Names the cause-effect; "rate updated" was rejected as ambiguous. |
 | `flow_permission_changed` | `Flow changed what this smart task may do` | Rescue permission toggle (e.g. exempt-from-budget). |
 
@@ -1423,7 +1398,7 @@ Fallback for an unmapped reason code: `Plan refreshed (details unavailable)`. Us
 
 | Variant label | Trigger signal | Notes |
 |---|---|---|
-| `Schedule revised — daily budget shifted` | `dailyBudgetExhaustedBucketCount > 0` OR `floorShortfallCause === 'budget'` | Strongest signal; the most actionable explanation for the user. Wins ties against the other two. |
+| `Schedule revised — daily budget shifted` | `floorShortfallCause === 'budget'` | Strongest signal; the most actionable explanation for the user. Wins ties against the other two. |
 | `Schedule revised — risk changed` | Prior revision's `planStatus` differed from this revision's (and no budget signal) | E.g. `on_track` → `at_risk` or the reverse. |
 | `Schedule revised — cheaper hour opened` | Hours grew vs the prior revision (`hoursAdded > 0 && hoursRemoved === 0`) with no budget or risk signal | Optimizer found new affordable space. |
 | `Schedule revised` (bare) | None of the above conclusive | Under-promise rather than mislabel. Mixed-diff swaps (`hoursAdded > 0 && hoursRemoved > 0`) also fall through. |
@@ -1467,7 +1442,7 @@ The live smart-task detail page renders two question-titled chart cards. All str
 
 ### Smart task history detail (receipt-first)
 
-The finalized-run detail page (chart-overhaul Phase 1B). All strings live in `packages/shared-domain/src/deferredPlanHistoryDetailInteraction.ts`, `deferredPlanHistoryChartData.ts` (`historyDetailChartLabels`), and `deferredPlanHistoryReceipt.ts` so the UI and runtime log breadcrumbs share one vocabulary.
+The finalized-run detail page (chart-overhaul Phase 1B). All strings live in `packages/shared-domain/src/deferredPlanHistoryDetailInteraction.ts`, `deferredPlanHistoryChartLabels.ts` (`historyDetailChartLabels`), and `deferredPlanHistoryReceipt.ts` so the UI and runtime log breadcrumbs share one vocabulary.
 
 **Card titles** (question-shaped, like the live page):
 
@@ -1679,7 +1654,7 @@ Shipped solar control labels stay canonical (device-detail surface):
 | Control | Label |
 |---|---|
 | Per-device opt-in to absorb exported solar | **Use solar surplus** |
-| The setpoint lift applied while the home exports | **Solar-surplus boost (°C)** |
+| The setpoint lift applied while the home exports | **Solar-surplus boost** |
 
 `feed-in`, `plusskunde`, `self-consume`, `curtail`, and `surplus-absorb` are
 internal/market terms — user-facing copy says what happens (e.g. "use your own
@@ -2404,9 +2379,9 @@ The Overview hero does not chip the mode — see
 ## Style rules
 
 1. **Concrete action words.** `limited`, not `shed`. `resume`, not `restore`. `available power`, not `headroom`.
-2. **Units in labels.** `Hard cap (kW)`, `Daily budget (kWh)`, `Cheap-hour boost (°C)`.
+2. **Units in the field suffix, not the label.** `Hard cap` with suffix `kW`, `Cheap-hour boost` with suffix `°C`.
 3. **No abbreviations in visible labels.** No bare `Cap`, no `delta`.
-4. **Chips are short; reason lines are longer.** Chip: `Limited`. Reason: `by today's daily budget`.
+4. **Chips are short; reason lines are longer.** Chip: `Limited`. Reason: `Waiting to resume — 0.8 kW more needed`.
 5. **No internal planner terms in normal live status.** `backoff`, `invariant`, `shortfall`, `swap` belong in advanced diagnostics only.
 6. **Don't rename established user-facing terms unless the change is clearly better.** Confusion from renaming has a cost too. `Budget`, `Managed`/`Unmanaged`, `Capacity`, `Priority`, `Mode` stay.
 

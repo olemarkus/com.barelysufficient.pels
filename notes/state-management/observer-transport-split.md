@@ -5,7 +5,8 @@ separate modules. **The split shipped** across a 6-PR train (PRs #1095, #1102,
 #1107, #1140, #1148, #1158); `DeviceManager` was renamed to `DeviceTransport`
 and the observer now owns the typed-event emitter. A later follow-up (PR2a of the
 actuator-write-seam train) moved the home-power read scalar onto the observer
-(`lib/observer/observedHomePower.ts`, class `ObservedHomePower`); the snapshot
+(`lib/observer/observedHomePower.ts`, class `ObservedHomePower`; its net half was
+removed 2026-09-01 and it now holds generation only); the snapshot
 store — `latestSnapshot` / `latestSnapshotById` — deliberately stays on
 `DeviceTransport`; see the "Shipped vs original target" callout below. The note
 is kept as the single source for "why is it shaped like this" — runtime code in
@@ -51,10 +52,8 @@ the cruiser rule promote to error.
 > abstract `write(intent)` API never landed, but it is not needed and is not
 > deferred: the actuator-write-seam train made `lib/actuator/` the single write
 > seam, and the executor holds no transport write surface at all — it calls
-> `actuator.apply({kind})`. The one apparent exception,
-> `ctx.requestSteppedLoadStep` in `lib/executor/steppedLoadExecutorCommand.ts`,
-> is a context callback that `planExecutor.ts` binds to
-> `actuator.apply({ kind: 'step', … })`. See
+> `actuator.apply({kind})`, the stepped lane included
+> (`lib/executor/steppedLoadExecutorCommand.ts`). See
 > `notes/state-management/actuator-write-seam.md`.
 >
 > **The read half is DONE, likewise by a different route** (stage 7 of
@@ -169,9 +168,9 @@ Owns the stored view, not the parse pipeline:
   importing `lib/device/` or `lib/power/`. **Since removed (2026-09-01, see the
   callout above):** the net half proved write-only once wiring took the sample
   as a parameter; the holder now carries generation only.
-- Today's pure interpretation helpers (`observedState.ts`,
-  `observationTrust.ts`, `observedPower.ts`,
-  `idleDetector.ts`, `devicePowerCalibration.ts`)
+- Today's pure interpretation helpers (`observedState.ts`, `observedPower.ts`,
+  `idleDetector.ts`). *(`observationTrust.ts` has since been deleted, and
+  `devicePowerCalibration.ts` lives in `lib/device/`.)*
 
 Model-agnostic. Never branches on native vs flow.
 
@@ -257,7 +256,7 @@ resolution mechanism for a write whose HTTP call timed out. Such a write is
 neither accepted nor rejected — the socket was abandoned at our end while Homey
 may still have been delivering it — so the dispatcher keeps the entry armed and
 treats it as accepted rather than clearing it (`binaryControlDispatch.ts`). The
-90 s window comfortably outlasts the transport's own 30 s timeout, so telemetry
+90 s window comfortably outlasts the transport's own 15 s timeout, so telemetry
 still has room to settle it; if nothing arrives, the ordinary expiry fires
 `onTimedOut` and the reachability backoff escalates as a dispatch failure would
 have. Note this means the early-echo gate refuses settlement only for a

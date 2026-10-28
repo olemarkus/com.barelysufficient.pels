@@ -29,16 +29,17 @@ Whole-home power data is what unlocks every other planner feature — the meter 
 | --- | --- |
 | **Hard cap breach imminent — manual action needed** | Fires when PELS projects that the current capacity period's hard-cap budget will be breached at the current run rate and no more devices can be limited. Exposes a `Home` tag naming which part of the home it came from: `Main home`, or the name of the [meter area](/meter-areas). Put it in the notification so you know where to go. |
 | **Hard cap breach imminent for at least... — manual action needed** | The same situation, but only once it has lasted the time you choose (from 10 seconds up to 10 minutes, in 10-second steps). If the situation clears inside that time, nothing fires. Exposes the same `Home` tag. Use it when a brief spike is not worth a notification. |
-| **Operating mode changed to...** | Fires when the current PELS operating mode changes to the selected mode. |
-| **Price level changed to...** | Fires when the price level changes between Cheap, Normal, Expensive, or Unknown. |
+| **Operating mode changed to** | Fires when the current PELS operating mode changes to the selected mode. |
+| **Price level changed to** | Fires when the price level changes between Cheap, Normal, Expensive, or Unknown. |
 | **Current price is one of today's lowest** | Fires when the current hour is among the selected number of cheapest hours today. |
 | **Current price is one of the lowest before a time** | Fires when the current hour is among the selected number of cheapest hours in a window before a chosen end hour. |
 | **Stepped device target changed** | Fires when PELS wants a stepped-load device, including EV charger control modes, to move to another configured step. |
 | **Smart task status changed** | Fires when PELS saves a new Smart task status for a device, such as **On track** to **At risk**. Short mid-hour recalculations do not fire it, and PELS limiting the device for the grid import limit, the hard cap, the daily budget or a higher-priority device does not change the status on its own. Once PELS has confirmed that a device stopped taking power, it stays **At risk** through such limiting and fires again only when the device draws power. |
-| **Smart task plan changed** | Fires when the scheduled hours for a Smart task are revised, for example after new prices arrive. |
+| **Smart task schedule changed** | Fires when the task is rescheduled with a different number of hours, for example after new prices arrive. Swapping hours with the same total does not fire it. |
 | **Smart task ended** | Fires once when a task run concludes. The **Outcome** tag is `succeeded`, `missed`, or `abandoned`. Filter on the tag downstream — for example, send a notification only when `Outcome = missed`. |
 | **Smart task time is running low** | Fires once when the time left before a task's ready-by drops to or below a chosen number of hours, re-arming if the ready-by is rescheduled. Exposes an `hours_remaining` tag. Use it to act a fixed lead-time before a deadline, such as 2 hours left. |
 | **PELS price list was updated** | Fires when today's or tomorrow's adjusted prices change in a way that matters (new day-ahead prices arrived, grid tariffs re-fetched, local midnight rollover). Exposes a `prices_json` token with the full hourly array. See [Price Tags in Flow & HomeyScript](/price-tags). |
+| **No car matched to a charger after…** | Fires once when a connected charger with selected cars has waited the chosen number of minutes (1 to 60) without a car match. Exposes a `Charger name` tag. Automatic matching continues, and a match or unplug ends the wait. Use 1 minute to send a notification asking which car is connected. See [EV charger battery reporting](/ev-charger#step-5-configure-boost-mode-battery-reporting). |
 | **Daily budget adjusted for the weather forecast** | Fires once a day when PELS sets your daily budget from the weather forecast (requires the weather insight's automatic apply to be turned on). Exposes a `budget_kwh` token (the new daily budget) and a `forecast_temperature` token (the forecast °C that set it). Manual and Flow budget changes do not fire it. |
 
 Use either hard cap card for urgent notifications, not for normal daily pacing. Pick
@@ -56,7 +57,7 @@ passes without a reading. To use the longer durations there, have your Flow repo
 | Card | What it does |
 | --- | --- |
 | **Is there enough available power?** | Checks whether current available power can fit a specified extra load in kW. |
-| **Is there available power for device?** | Checks whether current available power can fit the selected device's estimated draw plus a specified extra load. Useful for stepped devices. |
+| **Is there available power for device?** | Checks whether the house has room for the selected device to draw the requested kW, counting what the device already draws. Useful for stepped devices. |
 | **Operating mode is...** | Checks which mode is active. |
 | **Price level is...** | Checks the current price bucket. |
 | **Price level changes to... within...** | True when a coming price period switches to the chosen level within the number of hours you set. Only a switch counts: if the price is already at that level, a following period at the same level is not a change. The first period after missing prices counts as a change too. Use it to start heating ahead of expensive hours. It reads the prices PELS has now, so the answer can change when tomorrow's prices arrive or a new day starts. If PELS has no price for the current period, the Flow fails instead of answering. |
@@ -65,8 +66,9 @@ passes without a reading. To use the longer durations there, have your Flow repo
 | **Is device managed by PELS?** | Checks whether PELS currently manages the selected device. |
 | **Is power-limit control enabled for device?** | Checks whether power-limit control is enabled for the selected device. |
 | **Does device have budget exemption?** | Checks whether the selected device is ignored by daily-budget control while still counting in real usage and hard-cap protection. |
-| **Smart task status is...** | True when the saved Smart task status for the chosen device matches **Waiting**, **On track**, **At risk**, **Cannot finish**, or **Satisfied**. |
+| **Smart task status is** | True when the saved Smart task status for the chosen device matches **Waiting**, **On track**, **At risk**, **Cannot finish**, or **Satisfied**. |
 | **Has smart task** | True when the device has a stored Smart task. |
+| **A charger is waiting to match a car** | True while the charger is connected, has cars selected in its **Car** section, and has no car matched. |
 
 The device-aware available-power condition includes built-in hysteresis after recent limiting or resume events on the same device.
 
@@ -92,6 +94,7 @@ The device-aware available-power condition includes built-in hysteresis after re
 | **Report stepped load** matching **power** | Reports a power value and lets PELS match it to the configured stepped-load planning power. Accepts values such as `1750` or `1750 W`. |
 | **Report battery level for charger** | Stores battery percentage for a managed charger when the car or charger app exposes that value. Used by charge boost and charging Smart tasks. |
 | **Set EV charging phase** | Tells PELS the charger or car is now in **1-phase** or **3-phase** mode so power calculations match reality. Use it after the phase has already switched — this card does not switch the charger hardware. |
+| **Associate a car with a charger for this connection** | Matches the chosen car to the charger for the current connection and uses that car's battery level, even if the car's app has not reported it plugged in. The car must already be selected in the charger's **Car** section. |
 | **Add heating task** | Stores a target temperature and ready-by time for a temperature device. PELS picks useful cheaper hours before the ready-by time. |
 | **Add charging task** | Stores a target battery percentage and ready-by time for an EV charger. |
 | **Add energy task** | Stores an amount of energy (kWh) and ready-by time for an on/off device with a live power reading, such as a water heater switched by a relay. PELS delivers that energy in the cheapest hours before the ready-by time. See [Energy tasks](/smart-tasks#energy-tasks). |
@@ -157,7 +160,7 @@ Use Smart task cards when one device should reach a target by a ready-by time.
 | Deliver an amount of energy to an on/off device, for example a water heater on a relay | **Add energy task** |
 | Remove the current task for a device | **Clear smart task** |
 
-Use **Smart task status changed** for notifications after the task status has settled, **Smart task plan changed** when you care that the scheduled hours moved, and **Has smart task** when another Flow should behave differently while a task is active.
+Use **Smart task status changed** for notifications after the task status has settled, **Smart task schedule changed** when you care that the number of scheduled hours changed, and **Has smart task** when another Flow should behave differently while a task is active.
 
 To give a task more room when a deadline matters, use **Set what a smart task may do** to let it go over today's budget, limit lower-priority devices, or reserve power so it can start sooner, while it is scheduled to run. Use **Smart task time is running low** to act a fixed lead-time before the ready-by — for example, to grant that leeway only when little time remains.
 

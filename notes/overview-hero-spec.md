@@ -25,7 +25,7 @@ One elevated Material 3 card with tonal background that shifts with state.
 
 ```
 ┌──────────────────────────────────────────────┐
-│ [On track]                                ⓘ  │
+│                                           ⓘ  │
 │                                              │
 │ Power now                                    │
 │ 7.0 kW                                      │
@@ -37,9 +37,9 @@ One elevated Material 3 card with tonal background that shifts with state.
 │ ▮ Safe pace now 12.0 kW                       │
 │ Managed 3.2 kW · Background 3.8 kW          │
 │                                              │
-│ Energy this hour                             │
-│ 1.0 of 5.0 kWh used · projected 4.4 kWh    │
-│ 38 min left                                  │
+│ Energy used this hour                        │
+│ 1.0 of 5.0 kWh used                          │
+│ projected 4.4 kWh                            │
 │ [====used====|projected|...............]     │
 │                                              │
 │ No action needed — this hour is on track.   │
@@ -80,18 +80,20 @@ numbers it prints, `totalKw` against `softLimitKw` (see "Power now" below).
 
 | Condition | Label | Tone |
 |---|---|---|
-| Power below safe pace, projected hour below budget | `On track` | success |
 | Power above safe pace | `Above safe pace` | warning |
 | Power above the grid import limit's working target while that target binds | `Grid import pressure` | warning |
 | Projected hour above budget (but not past the cap) | `Above budget` | warning |
 | Projected hour above the hard cap's kWh | `Above hard cap` | error |
 | Simulation mode enabled and PELS would act | `Simulation mode` | warning |
 
+When power is below safe pace and the projected hour is below budget, no chip
+renders.
+
 `Above hard cap` is a **trajectory** judgement (projection tone `critical`),
 never instantaneous kW vs the cap: the cap is an hourly-average tariff-step
 ceiling, a momentary excursion above it is not a breach, and the dynamic safe
 pace legitimately exceeds the cap late in an under-used hour (see
-`notes/ui-terminology.md` § "Hard cap is an hourly ceiling").
+`notes/ui-terminology.md` § "Hard cap is a capacity-period ceiling").
 
 ### Mode (page chrome, not hero chip)
 
@@ -179,7 +181,7 @@ Vocabulary registered in `notes/ui-terminology.md` § Solar.
 ### Power bar
 
 Threshold gauge, not a progress bar. It shows the safe pace where PELS starts
-reacting to current draw. Scale tracks `max(safe pace × 1.2, draw × 1.05)` so
+reacting to current draw. Scale tracks `max(safe pace × 1.2, grid import limit × 1.2 when set, draw × 1.05)` so
 the pace tick stays on-scale. The hard cap is an average over the selected
 capacity period, so it is not a threshold on this instantaneous-power gauge;
 its kWh equivalent belongs on the energy bar.
@@ -294,9 +296,8 @@ Additions (v2.7.3 loveable batch):
   next. It is suppressed when no
   upcoming price data exists or when the payload is stale (latest entry
   more than 6h in the past). The helper
-  (`formatCheapestUpcomingHour`) currently lives in shared-domain, but only the
-  settings UI imports it. That placement is debt under `AGENTS.md` § "Packages
-  (shared)": a hypothetical runtime log does not justify a shared-domain home.
+  (`formatCheapestUpcomingHour`) lives in
+  `packages/settings-ui/src/ui/planHeroSummary.ts`.
 
 Projection formula: `projectedKWh = usedKWh + (currentKw × minutesRemaining / 60)`
 
@@ -377,7 +378,7 @@ Priority order (first matching condition wins):
    that has Power-limit control turned off. Turn its Power-limit control back
    on so PELS can ease it off.` The recourse pluralises when several
    control-off devices breach; the hard cap is never offered as a remedy
-   (see `notes/ui-terminology.md` § "Hard cap is an hourly ceiling").
+   (see `notes/ui-terminology.md` § "Hard cap is a capacity-period ceiling").
 2. Simulation mode would act: `2 devices would be limited right now.`
    The slim simulation banner and the `Simulation mode` status chip already
    name simulation on the Overview, so this conclusion drops the redundant
@@ -493,7 +494,7 @@ currentPowerKw          meta.totalKw
 managedPowerKw          meta.controlledKw
 backgroundPowerKw       meta.uncontrolledKw
 safePaceKw              meta.softLimitKw
-softLimitSource         meta.softLimitSource  (capacity | daily)
+softLimitSource         meta.softLimitSource  (capacity | daily | grid | null)
 hardCapKw               meta.hardCapLimitKw
 hourUsedKWh             meta.usedKWh
 hourBudgetKWh           meta.hourBudgetKWh
@@ -513,9 +514,7 @@ dailyBudgetHoldCount    count limited devices where status.holdCause=daily_budge
 
 ## Debug logging
 
-The overview redesign should have its own debug topic (e.g. `overview2`) separate from any existing overview topic. This enables viewing the history of hero, device summary, and device card changes independently without noise from other subsystems.
-
-Log on every render cycle: hero inputs, computed values (projected kWh, safe pace source), decision sentence chosen, device counts.
+The hero has no render logging. Per-device overview transitions log under the `overview` debug topic (`DEBUG_LOGGING_TOPICS` in `packages/shared-domain/src/utils/debugLogging.ts`).
 
 ---
 

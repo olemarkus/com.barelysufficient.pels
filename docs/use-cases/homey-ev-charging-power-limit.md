@@ -19,13 +19,13 @@ Use this setup when you want to:
 - use peak shaving to keep short high-load periods below the hard cap
 - keep EV charging from competing blindly with heating or hot water
 - let higher-priority devices win when available power is limited
-- control an Easee charger directly, or use Homey Flows to connect PELS to a charger app such as Zaptec or another charger integration
+- control an Easee, Zaptec or Futurehome charger or a Tesla directly, or use Homey Flows to connect PELS to another charger integration
 
 PELS plays the brain role and lets your charger app keep doing what it does best: PELS decides the desired charging current or available power based on price, total power, and priorities; the charger app delivers it to the charger.
 
 ## How it works
 
-A Flow-controlled Homey EV charging setup, such as Zaptec, looks like this. New Easee setups can use the direct path described in the [Easee guide](../easee-ev-charger.md); existing Easee current-control Flows remain supported.
+A Flow-controlled Homey EV charging setup looks like this. New Easee setups, and Zaptec, Futurehome and Tesla, can use the direct path described in their guides, such as the [Easee guide](../easee-ev-charger.md); existing current-control Flows remain supported.
 
 1. Homey receives whole-home power from Homey Energy, Tibber Pulse, AMS/HAN/P1, or Flow data.
 2. PELS reads the current house load and configured hard cap.
@@ -40,7 +40,7 @@ The important split is:
 
 <figure class="docs-figure">
   <img class="docs-diagram" src="/diagrams/ev-charging-handoff.svg" alt="Diagram showing power data flowing into PELS, PELS sending desired charging current to a Homey Flow, and the charger app applying it to the EV charger." />
-  <figcaption>For Flow-controlled chargers, PELS calculates the desired current and the charger app sends the command. New Easee setups can use built-in control instead.</figcaption>
+  <figcaption>For Flow-controlled chargers, PELS calculates the desired current and the charger app sends the command. New Easee setups, and Zaptec, Futurehome and Tesla, can use built-in control instead.</figcaption>
 </figure>
 
 ## Example: EV charging has lower priority than heating and hot water
@@ -122,7 +122,7 @@ With the Easee app for Homey, PELS sets the charging current itself and reads it
 
 ## Zaptec example
 
-Zaptec chargers are a good example because the Zaptec Homey app can expose actions for available charging current. PELS can calculate the desired current, and a Flow can pass that value to Zaptec.
+With the Zaptec app for Homey, PELS can set the charging current itself through built-in current control. If you prefer a Flow, PELS calculates the desired current and a Flow passes that value to Zaptec.
 
 Start here:
 

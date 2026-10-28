@@ -42,12 +42,12 @@ Begynn enkelt. Koble til totalforbruket, velg en realistisk grense og la PELS st
 
 ## Effektledd, kapasitetsledd og effektgrense
 
-I PELS setter du grensen som **Hard cap (kW)**. Det er den øvre grensen PELS prøver å holde boligen under. Hvis du for eksempel setter grensen til 5 kW, begynner PELS å begrense fleksibelt forbruk før timesnittet blir for høyt.
+I PELS setter du grensen som **Hard cap**. Det er den øvre grensen PELS prøver å holde boligen under. Hvis du for eksempel setter grensen til 5 kW, begynner PELS å begrense fleksibelt forbruk før timesnittet blir for høyt.
 
 To innstillinger er sentrale:
 
-- **Hard cap (kW)**: den øvre grensen PELS prøver å holde boligen under.
-- **Safety margin (kW)**: sikkerhetsmarginen under grensen, slik at PELS rekker å reagere før timen kan telle mot et høyere kapasitetstrinn.
+- **Hard cap**: den øvre grensen PELS prøver å holde boligen under.
+- **Safety margin**: sikkerhetsmarginen under grensen, slik at PELS rekker å reagere før timen kan telle mot et høyere kapasitetstrinn.
 
 ## Elbillading
 
@@ -57,7 +57,7 @@ For ladere med strømkontroll beregner PELS ønsket ladestrøm i ampere. En Home
 
 Vanlig oppsett:
 
-- slå på **Managed** for laderen
+- slå på **Managed by PELS** for laderen
 - velg **EV 1-phase** eller **EV 3-phase** etter hvordan laderen er installert
 - send ønsket ladestrøm fra PELS til laderappen med Flow
 - bruk Smart tasks når bilen skal være klar til et bestemt tidspunkt

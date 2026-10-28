@@ -143,8 +143,8 @@ The original audit checked only the **transport** parse/merge/realtime pipeline 
 concluded the step-command/planning fields were dead. **That was wrong.** A second
 producer writes them onto the snapshot *after* `getSnapshot()`:
 
-`setup/appDeviceControlHelpers.ts`'s `decorateSnapshotWithDeviceControl`
-returns a `TargetDeviceSnapshot` with `targetStepId`, `selectedStepId`,
+`setup/appDeviceControlHelpers.ts`'s `decorateSnapshotWithDeviceControl` (since
+moved to `lib/planInput/deviceControlProjection.ts`) returns a `TargetDeviceSnapshot` with `targetStepId`, `selectedStepId`,
 `desiredStepId`, `previousStepId`, `planningPowerKw`, `lastStepCommandIssuedAt`,
 `stepCommandRetryCount`, `nextStepCommandRetryAtMs`, `stepCommandPending`,
 `stepCommandStatus`, `lastDesiredStepChangeAt` written on it for stepped-load devices.
@@ -385,8 +385,8 @@ store, because:
    The "explicit copies instead of `...device`" half is NOT done and is no longer
    the point: with the input physically bounded and the carried set pinned by the
    type-level equality (`test/unit/planDeviceCarriedFields.test.ts`), the rest-spread
-   carries exactly the declared 47 keys, and 47 explicit copies would restate the
-   gate by hand. The signature stays `(ctx, device, opts)`; what changed is what
+   carries exactly the declared `PlanDeviceCarriedKey` set, and explicit copies of
+   each would restate the gate by hand. The signature stays `(ctx, device, opts)`; what changed is what
    `device` is.
    At this stage, the plan input and settings-UI list shared this fallback: a
    tracked device with no Observer record used state projected from the accepted

@@ -50,7 +50,7 @@ You do not need to configure PELS modes for this guide.
 You need:
 
 - PELS installed and receiving live whole-home power data.
-- Price-aware planning enabled, with prices available through the ready-by time.
+- **Respond to prices** turned on under **Price-aware devices**, with prices available through the ready-by time.
 - An EV charger paired in Homey.
 - A Homey charger app or Flow action that can set available current or available power for the charger.
 - A car or charger app that can expose battery percentage in Homey, or a Flow that can send that percentage to PELS.

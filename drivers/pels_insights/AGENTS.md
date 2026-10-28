@@ -17,6 +17,6 @@ the **whole app's** `minCompatibility`, not just this driver's.
 
 ## Retired capabilities
 
-Capabilities removed from this driver stay listed in `RETIRED_CAPABILITIES` (`device.ts:70`) and are
+Capabilities removed from this driver stay listed in `RETIRED_CAPABILITIES` (`device.ts`) and are
 never pruned on install age — a removal that fails is swallowed, so the list *is* the retry. Do not
 "clean it up" because an entry looks long-dead.

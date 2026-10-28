@@ -82,7 +82,7 @@ Daily-budget-specific terms:
 - Tracks how much energy has been used since local midnight.
 - Computes how much is "allowed by now" based on the plan.
 - Computes a daily pace for the current hour from the plan.
-- Freezes the plan for the rest of the day if the budget is overspent. If the day is underspent, the plan can still rebalance.
+- Freezes the plan while usage is over plan, and rebalances once usage is back under plan.
 - Uses the tighter of the capacity-period pace and the daily pace.
 
 ## How the Daily Pace is Applied
@@ -120,12 +120,13 @@ Daily budget disabled means PELS uses only selected-period capacity control and 
 
 The main daily budget surface is the **Budget** page. You can reach its settings two ways: the **Adjust** button on the Budget page header, or the **Daily budget** row on the Settings page — both open the same Adjust view. When you arrive from Settings, **Done** takes you back to Settings.
 
-The page has two local views:
+The page has three local views:
 
 | View | What it does |
 | --- | --- |
 | **Plan** | Shows the selected day's progress, hourly plan, confidence, and current status. |
 | **Adjust** | Lets you preview and apply daily-budget changes before they become active. |
+| **Weather insight** | Opens from the Plan view's weather card and shows how tomorrow's forecast compares with your budget. See [Weather Insight](/weather-insight). |
 
 The **Adjust** view includes:
 
@@ -153,13 +154,12 @@ For exact formulas and worked examples, see [Daily Budget Weighting Math (Advanc
 
 The **Plan** view shows a selected-day chart and live stats:
 
-- **Used**: kWh used so far today (local time).
-- **Allowed now** or **Budget this hour**: cumulative or hourly kWh that the plan allows up to the current hour.
-- **Remaining**: daily budget minus used (can be negative).
-- **Deviation**: used minus allowed so far (positive means over plan).
+- **Projected today**: the day's projected kWh against the daily budget, for example `38 / 50 kWh`, with a chip saying **N kWh to spare**, **Close to budget** or **Over by N kWh**.
+- **Estimated cost**: the projected cost of the day, shown beside the comparison when prices are available.
+- **kWh used so far today**: energy used since local midnight.
+- **Managed** and **Background**: how today's usage splits between managed devices and the rest of the home.
+- **Using cheaper hours**: shows whether price-aware shaping is active.
 - **Budget confidence**: backtested forecast-skill score - how regular the home's hourly usage is, and how well it follows shifted budget plans when managed load exists.
-- **Use cheaper hours**: shows whether price-aware shaping is active.
-- **Plan frozen**: appears while budget-managed load is over plan; exempt devices can leave reporting over plan without freezing the daily plan.
 
 The chart can show **Progress** or **Hourly plan**. Progress focuses on whether the selected day is on track. Hourly plan shows the planned kWh per hour, with actual kWh for completed hours when available.
 

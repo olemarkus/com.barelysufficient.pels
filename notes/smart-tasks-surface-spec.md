@@ -20,23 +20,26 @@ cadence — run it at every workstream-PR boundary and at train end, not per chi
    `deadlinesList.ts` `renderHistorySurface`). The active list must branch on
    **whether history exists**, not only on `cards.length === 0`:
    - **First run** (no active cards AND no history): keep "Add your first smart
-     task" + the Flow instructions.
+     task" + the create hint (`SMART_TASK_LIST_CREATE_HINT`) beside the
+     `New smart task` action.
    - **Between runs** (no active cards, history exists): headline
      "No smart tasks scheduled", body points down to Past tasks — never
      "first" / "No smart tasks yet". Thread a `historyPresent` signal into the
      active-list state; add the new copy to `deadlinesListHero.ts`
      (`DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE`) + `deadlineLabels.ts` — not
-     inlined in the view (Rule 4: log strings track UI strings).
+     inlined in the view (Rule 4: log strings track UI strings). Shipped:
+     `empty_between_runs` in `deadlinesListHero.ts`.
 2. **Hit-rate legibility.** The strip excludes abandoned from the denominator
-   (`deferredPlanHistoryReceipt.ts`: `succeeded/(succeeded+missed)`). Make the
+   (`deferredPlanHistory7DayStrip.ts`: `succeeded/(succeeded+missed)`). Make the
    denominator legible — e.g. "50 % of 4 finished" / "50 % on-track (finished
    runs)" — so the percent reconciles with the counts beside it. Don't change
-   the math.
+   the math. Shipped: `… 73% of 11 finished`.
 3. **Plain copy, no internal phrasing.** Replace the Flow-card placeholder
    "… by Ready by" with the user outcome ("heat a device to a target by a time"
    / "charge a device to a target % by a time").
 4. **Scope cue.** The 7-day strip is all-device + rolling; the week dividers are
-   calendar. Label so the two windows don't read as a contradiction.
+   calendar. Label so the two windows don't read as a contradiction. Shipped:
+   `Last 7 days, all devices` (`SMART_TASK_LIST_7DAY_HIT_RATE_LABEL`).
 
 ## Look (the M3 system) — PR2 "Apply the M3 system"
 

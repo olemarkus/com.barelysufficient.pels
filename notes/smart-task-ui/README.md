@@ -94,8 +94,8 @@ already captured:
   `cannotMeetDailyBudgetExhausted`, `dailyBudgetExhaustedBucketCount`,
   shortfall, `objective_invalid_session`, abandoned-by-user. The
   postmortem sentence can be composed from these without a contract
-  change. (A future polish adds `deliveredKWh` and `totalCost` to the
-  entry to make this round-trip cheaper.)
+  change. (`deliveredKWh` and `totalCost` have since shipped on the
+  entry; see below.)
 - **Overshoot line on Succeeded** — `startProgressC`, `finalProgressC`,
   `targetTemperatureC` already on the entry. `finalProgressC - target
   > 5 °C` is a one-line resolver.
@@ -107,14 +107,13 @@ already captured:
 - **Confidence chip tooltip** — the chip already exists on the hero;
   a popover with one-line explanation is pure rendering.
 
-What needs *new* data (contract additions, none of them made yet):
+What needed *new* data (contract additions, all shipped in schema v4,
+`packages/contracts/src/deferredObjectivePlanHistory.ts`):
 
-- Per-revision reason list on the history entry (currently only count
-  is persisted, not the reasons).
-- `deliveredKWh` and `totalCost` aggregated on the history entry (so
-  list rows can show them without re-deriving on every render).
-- Per-hour `deliveredKWh` on the history entry (so planned-vs-delivered
-  overlay bars replace today's binary observation scatter).
+- Per-revision reason list on the history entry (`revisions`, each with
+  a `reasonId`).
+- `deliveredKWh` and `totalCost` aggregated on the history entry.
+- Per-hour `deliveredKWh` on the history entry (`hourlyContributions`).
 
 ## Asymmetric treatment of failure
 
@@ -236,11 +235,12 @@ The work splits (loosely):
 ## Addendum — 2026-07-26: creation and immediate intent
 
 The Smart tasks destination in the settings UI is the aggregate place to
-understand active and past tasks, but it cannot create one. Its first-run state
-sends the user to a Flow action or the separate New smart task dashboard
-widget. That split is no longer the target product shape: the Smart tasks page
-should be a complete route for creating, inspecting, editing, and cancelling a
-task.
+understand active and past tasks. When this addendum was written it could not
+create one, and its first-run state sent the user to a Flow action or the
+separate dashboard widget (now named Create smart task). The page is now a
+complete route for creating, inspecting, editing, and clearing a task: the
+`New smart task` flow (`SmartTaskCreate.tsx`) shipped 2026-10-13. The
+`Start now` intent below remains the target.
 
 Reuse the existing candidate-device, goal-bound, preview, and device-scoped
 write paths. Do not introduce a page-specific persistence lane. After choosing

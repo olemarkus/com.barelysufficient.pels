@@ -141,8 +141,9 @@ Executor boundary:
   `shouldReconcilePlan`, which read as a producer naming a plan operation; the producer knows which
   capabilities are control-relevant, and nothing more.
 - Realtime event flow (post-PR #5 of the observer/transport split): transport translates the
-  raw Homey event, observer's emitter fans out the typed `observed-state-changed` /
-  `observed-control-state-changed` events (via a dispatcher callback injected into transport at
+  raw Homey event, observer's emitter fans out the typed `OBSERVED_STATE_CHANGED_EVENT` /
+  `OBSERVED_CONTROL_STATE_CHANGED_EVENT` events, plus `OBSERVED_STATE_REFRESH_EVENT` once per
+  full snapshot refresh (`lib/observer/observedStateEvents.ts`; via a dispatcher callback injected into transport at
   construction time so transport never imports observer), and wiring (`setup/`) updates observed
   state, the external-off hold, and the rebuild suppression latches. See
   `notes/state-management/observer-transport-split.md`.

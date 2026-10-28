@@ -44,7 +44,7 @@ reporting an integer percent that bounces 79 -> 80 -> 79 can alternate the
 saved public status across revisions even though no meaningful progress changed.
 
 The fix is an **asymmetric satisfied-gate** at the task-evaluation boundary in
-`lib/objectives/deferredObjectives/taskEvaluationCoordinator.ts`, where completion is resolved once
+`lib/objectives/deferredObjectives/taskEvaluationProducer.ts`, where completion is resolved once
 by `resolveTaskCompletion` (`taskCompletion.ts`):
 
 - **Entering `satisfied`** requires `current >= target` exactly (no
@@ -120,9 +120,9 @@ landing `likely_to_meet` when they should land `at_risk`.
 
 The shipped status values are `DeferredObjectiveHorizonStatus`
 (`lib/objectives/deferredObjectives/types.ts`), carried as the diagnostic's `trajectory`
-(`diagnosticTypes.ts`) and produced by `taskEvaluationCoordinator.ts`:
+(`diagnosticTypes.ts`) and produced by `horizonPlanner.ts`:
 
-- `unknown` — required inputs missing, stale, invalid, or impossible to
+- `invalid` — required inputs missing, stale, invalid, or impossible to
   evaluate.
 - `on_track` — conservative projected completion is before the deadline
   minus the (flat) deadline-reserve margin.

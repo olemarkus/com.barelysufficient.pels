@@ -27,8 +27,8 @@ Realtime observations update the observed view before any convergence decision. 
 
 ## Integration adapters
 
-Tesla vehicle charging, Easee, Zaptec, Futurehome and OSO interpretation belongs in
-`tesla/`, `easee/`, `zaptec/`, `futurehome/` and `oso/`. Each implements the common `DeviceAdapter` interface;
+Tesla vehicle charging, Easee, Zaptec, Futurehome, OSO and SMA interpretation belongs in
+`tesla/`, `easee/`, `zaptec/`, `futurehome/`, `oso/` and `sma/`. Each implements the common `DeviceAdapter` interface;
 only `deviceAdapterRegistry.ts` imports their entrypoints. Integrations do not
 import each other. Common transport dispatches adapter operations and publishes
 existing device observations; it does not inspect vendor identities or capability

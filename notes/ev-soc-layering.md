@@ -99,7 +99,8 @@ need forces a split. Reasons:
 ## Amendment (2026-08-03): a `car` source is a different question
 
 `DeviceStateOfChargeSnapshot` now carries `source: { kind: 'charger' } | { kind:
-'car'; carId }` (PR #1975; shape corrected 2026-09-06). That is not a reversal of
+'car'; carId; chargeLimitPercent }` (PR #1975; shape corrected 2026-09-06; the car's
+learned charge limit, `number | null`, rides on the car arm). That is not a reversal of
 the decision above, and the distinction is worth stating so neither rule gets
 applied to the other case.
 

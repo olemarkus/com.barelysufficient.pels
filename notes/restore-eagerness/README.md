@@ -110,7 +110,7 @@ separate from same-cycle batching, which accounts for each admission against one
    only thing standing between a restore and a re-shed: the shedding latch will not release until
    capacity headroom clears `SHEDDING_CLEAR_THRESHOLD_KW` (0.4 kW), a freshly restored device is
    deprioritised from shedding for `RECENT_RESTORE_SHED_GRACE_MS` (3 min) unless the deficit
-   exceeds `RECENT_RESTORE_OVERSHOOT_BYPASS_KW`, and the restore cooldown doubles 60 → 300 s on any
+   exceeds `RECENT_RESTORE_OVERSHOOT_BYPASS_KW`, and the restore cooldown doubles 300 → 600 s on any
    instability inside 5 minutes of a restore.
 3. Do the existing structured events make it obvious which restore was admitted on stale data?
 

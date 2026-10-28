@@ -127,8 +127,8 @@ hour, while shedding keeps reading the falling pace.
 `hardCapKw` is a partial exception: the name is already in wide use across the
 settings UI, so adopting it in the capacity and plan paths is a rename onto a
 name the codebase already carries rather than a new coinage. It used to be in
-equally wide use across `lib/objectives/deferredObjectives/**` and
-`homeScope.getSustainableRateKw()`, where it named the ceiling the feasibility probes
+equally wide use across `lib/objectives/deferredObjectives/**`, where it named the
+ceiling the feasibility probes
 paced against — but that ceiling was the raw `limitKw` while the guard sheds
 against `limitKw - marginKw`, so the probes ran one safety margin optimistic.
 Both the value and the name were corrected to `sustainableRateKw`.
@@ -150,8 +150,8 @@ pre-empting that migration.
 
 `hourlyAllowanceKWh` is settings all the way down: a pure function of two settings
 values with no runtime state. It belongs to whoever owns `capacitySettings` and
-should be handed out as a resolved value, exactly like `homeScope.getSustainableRateKw()`
-already does for the cap itself. No consumer should ever perform the subtraction, including
+should be handed out as a resolved value, exactly like `resolveUsableCapacityKw`
+(`lib/power/capacityModel.ts`) already does for `sustainableRateKw`. No consumer should ever perform the subtraction, including
 the settings UI, which should receive it through the contract rather than
 recomputing it in the browser.
 
@@ -163,7 +163,7 @@ for the build, `computeCapacityPace` for every other reader) is the home's only
 have one owner *within a home scope* and N instances across a multi-home install.
 The budget rows are different: sub-home bundles are constructed with
 `getDailyBudgetSnapshot: () => null` (`createHomeCapacityBundle.ts`), matching
-`notes/multi-home-model.md:129`, which makes the daily budget deliberately
+`notes/multi-home-model.md` § "Per-home runtime bundles (R7b)", which makes the daily budget deliberately
 main-only. So a sub-home has no `budgetPaceKw` at all.
 
 Two consequences worth stating, because they are invisible from the table alone:
@@ -228,7 +228,7 @@ consistent with what an exemption is for: an exempt device must not cause the
 budget to shed other things.
 
 The *energy* axis performs the same subtraction but does floor it.
-`resolveDailySoftLimitBucket` (`lib/plan/planDailyBudgetWindow.ts:90-94`) reduces
+`resolveDailySoftLimitBucket` (`lib/plan/planDailyBudgetWindow.ts`) reduces
 to `max(0, meteredUsedKWh - exemptUsedKWh)`. That asymmetry is deliberate rather
 than drift: instantaneous power is a signed rate and can legitimately point
 backwards, while cumulative billed usage cannot, which is the same reason
@@ -293,8 +293,8 @@ runtime owner has never seen:
 | Site | Reads |
 |---|---|
 | `reactionKwLabel` (`homeLimits.ts`) | `editor.hardCapValue` — unsaved meter-area form text, parsed mid-keystroke |
-| `BudgetAdjustView` (`views/BudgetOverview.tsx`) | `adjust.hardCapKw`, built at `budgetRedesign.ts` from `Number.parseFloat(settingsCapacityLimitInput?.value)` — the live DOM input, which is why the `Number.isFinite` guard is there |
-| `updateCapacityReactionHint` (`capacity.ts`) | the same Main capacity form's `limit`/`margin` |
+| `BudgetAdjustView` (`views/BudgetOverview.tsx`) | `adjust.powerLimitForm.limitKw`/`marginKw`, built by `readPowerLimitFormView()` (`powerLimitControls.ts`) from the live DOM inputs, `null` when an input is not a finite number |
+| `syncCapacityReactionHint` (`powerLimitControls.ts`) | the same Main capacity form's `limit`/`margin` |
 
 No contract scalar can answer any of them, because the number exists nowhere but in the
 input box. Everything derived from *persisted* settings still goes through the runtime
@@ -303,7 +303,8 @@ rule stated too strongly is how a duplicate gets re-added later with a good excu
 
 That is not hypothetical: the first pass at this converted `homeLimits.ts` and
 `BudgetOverview.tsx`, declared the subtraction to exist "exactly once", and left
-`capacity.ts` inline — a site whose sweep the grep missed because it spells its operands
+the capacity form's reaction hint inline (then in `capacity.ts`, now
+`syncCapacityReactionHint` in `powerLimitControls.ts`) — a site whose sweep the grep missed because it spells its operands
 `limit`/`margin`. Three surfaces render one sentence; all three now go through the
 helper.
 
@@ -363,8 +364,8 @@ obvious:
   conditional transition on tight-capacity hours, not a guaranteed hourly one. It
   is still worth designing for, because when it does fire it moves everything
   downstream of `softLimitSource` at once (the reason copy, `resolveLimitReason`,
-  the starvation cause attribution, and the startup stabilization gate at
-  `lib/plan/restore/index.ts:55`), and unlike the open hysteresis item it is a real
+  the starvation cause attribution, and the startup stabilization gate in
+  `resolveEffectiveTiming`, `lib/plan/restore/index.ts`), and unlike the open hysteresis item it is a real
   transition rather than epsilon jitter.
 - **The drain is why the fallbacks had to go rather than be tidied.** `capacityGuard.ts`,
   the power-sample rebuild seam (now `throttle.ts`) and `periodicStatus.ts` used to fall back to `sustainableRateKw` and
@@ -375,7 +376,7 @@ obvious:
   accessor that can answer with a non-decaying substitute reintroduces this.
 - **The drain is only applied when a plan is rebuilt, and a reading is what rebuilds.**
   There is no hour-boundary tick in `lib/plan/rebuildScheduler/**`. Under
-  `power_source = homey_energy` the 10 s poll (`lib/power/sources/homeyEnergyPoll.ts:5`)
+  `power_source = homey_energy` the 10 s poll (`HOMEY_ENERGY_POLL_INTERVAL_MS`, `lib/power/sources/homeyEnergyPoll.ts`)
   drives rebuilds, so the wind-down is recomputed every poll. Under
   `power_source = flow` it is recomputed when the owner's Flow reports power, and
   not between reports: a home whose Flow falls silent near the boundary holds the
@@ -400,8 +401,8 @@ budget*, never from the capacity side.
 and is easy to get wrong. `recordPowerSampleForApp` derives `grossConsumptionW =
 net + generation`, but that gross value "feeds ONLY the managed/unmanaged split
 attribution, never the hard-cap import path or the billed-kWh total bucket, which
-both stay on the net `currentPowerW`" (`lib/power/sampleIngest.ts:113-123`,
-restated at `lib/power/tracker.ts:430-435`). So the hourly bucket and the capacity
+both stay on the net `currentPowerW`" (`recordPowerSampleForApp`, `lib/power/sampleIngest.ts`,
+restated in `recordPowerSample`, `lib/power/tracker.ts`). So the hourly bucket and the capacity
 guard are net import, which is right: the tariff meters the grid, and self-consumed
 PV is not billed.
 
@@ -411,7 +412,7 @@ exceed `P_import`, which is exactly when `P_nonExempt` goes negative. That is th
 axis behaving correctly, not mixing.
 
 Note the window on the second row. `resolveDailySoftLimitWindow`
-(`lib/plan/planDailyBudgetWindow.ts:132-142`) spans `bucketStartIso` to
+(`lib/plan/planDailyBudgetWindow.ts`) spans `bucketStartIso` to
 `nextBucketStartIso` (defaulting to one hour), so `remainingKWh / remainingHours`
 in `computeDailyUsageSoftLimit` paces the *current bucket's* share of the daily
 plan. It is not a whole-day burst rate. Both paces run on roughly hourly windows;
@@ -422,8 +423,8 @@ settings change, runs against the snapshot the last reading computed, which in
 the first moments of a new bucket still names the one just ended. Until the
 first reading in the new bucket recomputes it, capacity alone binds.
 
-Exempt netting happens at `lib/plan/planDailyBudgetWindow.ts:90-94`: the bucket's
-`usedKWh` is `meteredUsedKWh - exemptUsedKWh`. (`lib/dailyBudget/dailyBudgetState.ts:139-147`
+Exempt netting happens in `resolveDailySoftLimitBucket` (`lib/plan/planDailyBudgetWindow.ts`): the bucket's
+`usedKWh` is `meteredUsedKWh - exemptUsedKWh`. (`buildBudgetUsageViews` in `lib/dailyBudget/dailyBudgetState.ts`
 performs the same subtraction for the daily-budget state and UI view; that is a
 parallel path, not the one the planner paces on.)
 
@@ -456,11 +457,11 @@ reintroduce the ambiguity.
 
 ## What ships today: one scalar via a rebase
 
-`planBuilder.buildContextAndShedding` (`lib/plan/planBuilder.ts:309-312`) collapses
+`PlanBuilder.computeDailySoftLimit` (`lib/plan/planBuilder.ts`) collapses
 the two constraints into a single threshold on `P_import`:
 
 ```text
-budgetPaceImportKw = budgetPaceKw + exemptKw          // planBuilder.ts:528-539
+budgetPaceImportKw = budgetPaceKw + exemptKw          // dailySoftLimitKw, computeDailySoftLimit
 bindingPaceKw      = min(capacityPaceKw, budgetPaceImportKw)
 ```
 
@@ -507,7 +508,7 @@ budget number up and biases the source toward `'capacity'`.
 
 It is tempting to conclude that this strips the exemption's shedding protection,
 since `'capacity'` satisfies the `limitSource !== 'daily'` clause at
-`lib/plan/shedding/candidates.ts:110` and `lib/plan/planRemainingSheddableLoad.ts:243`.
+`allowedByLimitPolicy` (`lib/plan/shedding/candidates.ts`) and `lib/plan/planRemainingSheddableLoad.ts`.
 In the ordinary case it does not, and the reasoning is worth recording so nobody
 "fixes" it twice: whenever the source is `'capacity'`, `bindingPaceKw ==
 capacityPaceKw`, so `headroom < 0` implies `P_import > capacityPaceKw`, which makes
@@ -518,16 +519,18 @@ grid breach makes it true the same way, and sheds under the `'grid'` source).
 while `P_import > capacityPaceKw` is false, so shedding runs with
 `overCapacityPace` false and the predicate has to carry it explicitly:
 
-- **Exhausted hour.** `buildSheddingPlan.ts:44` deliberately
-  overrides the source to `'daily'` (`sheddingLimitSource = hourlyBudgetExhausted
+- **Exhausted hour.** `resolveShedLimitSource` (`lib/plan/shedding/candidates.ts`)
+  deliberately overrides the source to `'daily'` (`hourlyBudgetExhausted
   ? 'daily' : context.softLimitSource`) precisely so exempt devices stay
-  protected, and `test/integration/planShedding.test.ts:4089` pins that only
+  protected, and `test/integration/planShedding.test.ts` ("sheds all eligible
+  non-exempt devices through the shedding planner when hourly budget is
+  exhausted") pins that only
   non-exempt devices are selected even when the context source is capacity. Adding
   this branch to a forced-breach term would let `shedAllCandidates` shed "Get power
   now" devices, which is a behaviour change, not a preservation.
 
 So the rule is: carry the exhausted-hour term into the predicate, and leave the
-override in `buildSheddingPlan.ts` exactly where it is. Note what the rule may NOT
+override in `resolveShedLimitSource` exactly where it is. Note what the rule may NOT
 be written as any more — "carry `stale_fail_closed` into the predicate", its
 original wording. That name does not exist inside `lib/plan`, by design: a
 planner branch on a freshness label is the provenance branch the root
@@ -600,8 +603,9 @@ So the split is:
 - **Display source** (`softLimitSource`) stays the common-axis argmin over
   `capacityPaceKw` and `budgetPaceImportKw`, and stays exempt-coupled. It answers
   "which pace is setting the tick", which is always defined, including when
-  neither predicate has fired. It must not grow a `'none'` variant: below both
-  paces the hero still draws a tick and still owes the user a source for it.
+  neither predicate has fired. The safe-pace tick must not grow a `'none'` variant:
+  below both paces the hero still draws a tick and still owes the user a source for
+  it. (`null` on the wire means no limit is on at all, and then no tick is drawn.)
 - **Consumers that want "is the non-exempt house over budget"** must read
   `overBudgetPace` rather than infer it from the source string. A restore blocked
   on headroom no longer does: whether the budget alone holds it is judged per
@@ -616,8 +620,9 @@ Given the argmin stays common-axis, let `'both'` mean the two common-axis
 thresholds agree within `SOFT_LIMIT_EPSILON`.
 
 **Introducing `'both'` is not a display-only change.** `softLimitSource` is read as
-a control input in at least one place: `lib/plan/restore/index.ts:55` gates startup
-stabilization on `context.softLimitSource === 'capacity'`, so a `'both'` value in
+a control input in at least one place: `resolveEffectiveTiming`
+(`lib/plan/restore/index.ts`) gates startup stabilization on
+`context.softLimitSource === 'capacity'` (or a grid import limit), so a `'both'` value in
 the epsilon band would disable that gate and permit restores during the startup
 window. Either update every source consumer, or keep a `capacityActive` predicate
 separate from the display source and let the runtime gates read that. Audit the
@@ -641,12 +646,13 @@ Two further consequences:
 
 - `softLimitSource` could emit `'both'`. It cannot today, and reviving it is a
   separate decision: the member was deleted on 2026-08-15 for having no producer at
-  any layer, and both the contract (`packages/contracts/src/settingsUiApi.ts`) and
-  the tooltip map (`packages/settings-ui/src/ui/planHeroTooltips.ts`) are now
-  two-member. `notes/ui-terminology.md` rules there are exactly two, never a third.
+  any layer. The contract (`SoftLimitSource`, `packages/contracts/src/settingsUiApi.ts`)
+  carries `'capacity' | 'daily' | 'grid' | null` (`null` when no limit is on); the
+  safe-pace tooltip map (`SAFE_PACE_TOOLTIP_BY_SOURCE`,
+  `packages/settings-ui/src/ui/planHeroTooltips.ts`) is two-member. `notes/ui-terminology.md` rules there are exactly two, never a third.
 
   Do not build a second fold for it. `resolveLimitReason`
-  (`lib/plan/pelsStatus.ts:265-291`) already computes a three-way
+  (`lib/plan/pelsStatus.ts`) already computes a three-way
   `'none' | 'hourly' | 'daily' | 'both'` for the separate `limitReason` field on
   PelsStatus, the insights device, and `packages/settings-ui/src/ui/homeLimitsStatus.ts`,
   and it does return `'both'`. It derives that from `softLimitSource` plus shed
@@ -703,7 +709,7 @@ direct rendering of `overBudgetPace`.
 `computeDailySoftLimit` uses is the projected one: `resolveBudgetExemptProjectedKw`
 falls through to `getHighestKnownPowerKw` for an observed-off device, so an off
 charger contributes its configured power. The hero's managed and background segments are defined as
-current load (`notes/overview-hero-spec.md:158-164`), so painting a slab from the
+current load (`notes/overview-hero-spec.md` § "Power bar"), so painting a slab from the
 projected value would show kilowatts the device is not drawing, and in the solar
 case could paint the entire bar as exempt. The geometry needs a measured-only
 exempt sum carried alongside the projected one; control keeps the projection.
@@ -798,8 +804,8 @@ defect. Two further facts point the same way:
 
 That last point matters more than it looks. `measured` is true only inside the
 60 s `fresh` band (`POWER_SAMPLE_STALE_THRESHOLD_MS`), and the measurement gate
-is a once-ever latch, not a freshness gate — so plans keep building right through
-`stale_hold`. Under `power_source = flow`, where a gap between events is ordinary
+is a once-ever latch, not a freshness gate — so plans keep building on the held
+reading between readings. Under `power_source = flow`, where a gap between events is ordinary
 cadence rather than a fault, a plan-side nullable would be absent most of the
 time while `totalKw` showed a held value beside it.
 

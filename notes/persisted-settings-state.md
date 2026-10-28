@@ -132,7 +132,7 @@ Each carries roughly the same shape:
 - a `dirty` flag flipped on every accepted mutation
 - a debounce window so `homey.settings.set` is not called per-mutation
 - an abandon-grace window so a single transient corrupt SDK read on startup does
-  not wipe persisted history (per `feedback_homey_sdk_unreliable`)
+  not wipe persisted history (per `docs/architecture.md` § "Clean and trusted interfaces between layers")
 - a "load" path that normalises the persisted value into a typed shape
 - a "plausibility" check that decides whether the loaded shape is good enough
   to skip the grace window

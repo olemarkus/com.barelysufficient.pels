@@ -19,8 +19,9 @@ device is shed" gate (no such gate exists).
 
 Starvation counts only when PELS's **commanded** effective target sits **below**
 the device's intended/mode target (`commandedTargetC < intendedTarget.targetTemperatureC`;
-see README § Core Rule). The surplus lift is **raise-only** — it applies
-`max(pricedTarget, baseTarget + surplusDelta)` (`applySurplusAbsorbDelta`), so the
+see README § Core Rule). The surplus lift is **raise-only** — it commands the more demanding of the
+priced setpoint and the mode target moved toward demand by the lift
+(`resolveSurplusRawC`, `lib/thermostat/temperatureSetpoints.ts`), so the
 commanded target is at or **above** the mode target while engaged. A device
 being lifted for surplus is therefore, by construction, never below its mode
 target on that account, so it can never enter a starvation episode because of the
@@ -30,7 +31,7 @@ A **willing-but-not-engaged** device ("awaiting solar surplus" — willing, but 
 allocator has reserved it no surplus this cycle) is **starvation-exempt by
 design** with respect to the surplus mechanism: when not eligible the delta is
 not applied and the device falls back to its **normal** priced/mode target
-(`applySurplusAbsorbDelta` returns `pricedTarget` unchanged). The surplus feature
+(the planner commands `keepC`, not `surplusC`, in `lib/plan/planDevices.ts`). The surplus feature
 never drops it below its mode target while it waits. (It can, of course, still be
 shed below target by ordinary capacity/budget suppression — but that is normal
 starvation, not caused by, and not masked by, the surplus feature.)
@@ -84,7 +85,7 @@ B, C — starving them. The **fit-test** forecloses this:
   (capping its charge, then discharging it) is shedding's choice at the
   battery's own place in the priority order, never a surplus decision.
 - The capacity shed layer remains the ceiling regardless: the lift is
-  **capacity-independent** (`applySurplusAbsorbDelta` is documented as such), so
+  **capacity-independent** (`resolveSurplusRawC` reads no capacity input), so
   if the home genuinely were near the cap, capacity shedding still applies on top
   — the lift never bypasses it.
 

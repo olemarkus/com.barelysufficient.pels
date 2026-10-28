@@ -40,15 +40,16 @@ Semantics (`lib/objectives/noPowerSourceDiagnostic.ts`):
 - **Tracks the sample's own `crediblePowerW`, not the just-closed window's `kwhPerUnit`** — the sample's `crediblePowerW` becomes the *next* window's left-edge power, so a single valid sample after a silent run is the first one that lets training resume going forward. Tracking the closed window's `kwhPerUnit` would never reset because the closed window still bills at the silent baseline.
 - **One-shot per device per process** — the diagnostic fires at most once per device per app start. A device that flips from "silent" to "valid" and back doesn't re-emit during the same process lifetime. An app restart re-arms.
 - **Counter resets on any valid `crediblePowerW`** — an intermittent SDK gap does not lock the device into "perpetually silent"; if power readings start arriving the counter drops back to zero and the threshold has to be crossed again from scratch.
-- **No persisted state** — per `feedback_homey_sdk_unreliable`, the counter and emitted flag live in process memory only. A transient SDK outage that drops the meter reading (and so resolves `currentDrawKw` to 0) should not have to fight stale persisted state on restart.
+- **No persisted state** — Homey SDK reads fail transiently, so the counter and emitted flag live in process memory only. A transient SDK outage that drops the meter reading (and so resolves `currentDrawKw` to 0) should not have to fight stale persisted state on restart.
 
 ### Adaptive band fitter
 
 `fitBandsFromSamples` runs on every accepted sample once the buffer has `OBJECTIVE_PROFILE_MIN_BAND_SAMPLES * 2 = 16` rows:
 
 1. **Initial state**: one band covering the full observed range.
-2. **EV anchor (ev_soc only)**: if data straddles 80% with at least `OBJECTIVE_PROFILE_MIN_BAND_SAMPLES = 8` on each side, force a band edge at 80. This guarantees the CV-taper region is never averaged with the constant-power region below it, even when both sides are individually uniform and greedy splitting would find no signal.
-3. **Greedy variance-reduction splits**: repeatedly pick the band whose best internal split point yields the largest SSE reduction. Commit the split if reduction ≥ `MIN_SSE_REDUCTION_FRACTION = 0.1` of the parent SSE AND both children meet the min-sample floor. Stop at `OBJECTIVE_PROFILE_MAX_BANDS = 4`.
+2. **Greedy variance-reduction splits**: repeatedly pick the band whose best internal split point yields the largest SSE reduction. Commit the split if reduction ≥ `MIN_SSE_REDUCTION_FRACTION = 0.1` of the parent SSE AND both children meet the min-sample floor. Stop at `OBJECTIVE_PROFILE_MAX_BANDS = 4`.
+
+There is no forced band edge. An EV anchor at 80% was removed on 2026-09-04: the taper knee varies car to car, so greedy splitting learns it from each device's samples (`lib/objectives/bands.ts`).
 
 The `MIN_SSE_REDUCTION_FRACTION` floor prevents fragmenting bands that are already homogeneous. The `OBJECTIVE_PROFILE_MIN_BAND_SAMPLES` floor prevents a freshly-split low-data band from dominating the estimate before it has enough evidence.
 
@@ -85,7 +86,7 @@ The band replaced a recovery window (#775): a sharp fall used to arm a period in
 
 - **Distance-to-target bands** (last 2°C, last 5°C, etc.): doesn't model EV taper (anchored to absolute SoC), and shifts every time the user changes setpoint.
 - **Three fixed zones (cold-start / main / near-target)**: thresholds would have to be device-specific anyway, at which point absolute bands are barely more code.
-- **Welford-only adaptive trees with no sample buffer**: splits would have to inherit half the parent's variance approximations because there are no raw samples to re-bucket. Buffer is ~5 KB per device × 64 devices ≈ 320 KB total, well inside the 30 MB headroom (`project_homey_rss_limit`).
+- **Welford-only adaptive trees with no sample buffer**: splits would have to inherit half the parent's variance approximations because there are no raw samples to re-bucket. Buffer is ~5 KB per device × 64 devices ≈ 320 KB total, well inside the 30 MB headroom.
 - **Pure tree (no SSE floor)**: would over-fragment on noisy data with a single outlier.
 
 ## What `kWhPerUnit` means in plan provenance now
@@ -110,7 +111,7 @@ The active-plan provenance carries two confidence values:
 3. Bands don't fully cover `[current, target]` (within a 1e-6 tolerance) → fall back to global.
 4. Otherwise → `min(confidence)` across overlapping bands.
 
-Every smart-task surface (the live-task hero, the deadlines list, the Smart tasks widget) reads the chip through `resolveChipConfidence` in `packages/shared-domain/src/deadlineLabels.ts`: `provenance.displayConfidence` first, then `provenance.confidence`, else no chip. The plan's own provenance only, never the live profile, so all surfaces agree for one plan. Producer-resolved per `feedback_layering_resolution_in_producer.md`: the UI never branches on bands or per-band fields.
+Every smart-task surface (the live-task hero, the deadlines list, the Smart tasks widget) reads the chip through `resolveChipConfidence` in `packages/shared-domain/src/deadlineLabels.ts`: `provenance.displayConfidence` first, then `provenance.confidence`, else no chip. The plan's own provenance only, never the live profile, so all surfaces agree for one plan. Producer-resolved per `docs/architecture.md` § "Clean and trusted interfaces between layers": the UI never branches on bands or per-band fields.
 
 ## Tunables
 
@@ -122,7 +123,6 @@ If estimation regresses for a specific device shape, the relevant constants are:
 | `OBJECTIVE_PROFILE_MIN_BAND_SAMPLES` | `lib/objectives/bands.ts` | Floor for any produced band (also gates band-fitting on the full buffer) |
 | `OBJECTIVE_PROFILE_MAX_BANDS` | `lib/objectives/bands.ts` | Upper cap on band count |
 | `MIN_SSE_REDUCTION_FRACTION` | `lib/objectives/bands.ts` | Minimum relative variance reduction to commit a split |
-| `EV_SOC_TAPER_ANCHOR` | `lib/objectives/bands.ts` | Forced band edge for EV profiles |
 | `MIN_BAND_SAMPLES_FOR_INTEGRATION` | `lib/objectives/deferredObjectives/profileEnergyResolution.ts` | Below this, integrator uses the global mean for that portion |
 
 No settings UI surface yet — banded estimation is on by default with no gate.

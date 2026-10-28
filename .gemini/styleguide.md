@@ -7,4 +7,4 @@ See `AGENTS.md` at the repo root for repo conventions, build commands, and UI te
 - ARIA attributes, roles, or landmarks
 - Screen-reader support and other assistive-technology-specific behaviors
 
-**Reason:** the user-facing UI runs only inside Homey's WebView, which does not expose accessibility APIs to assistive technologies. Comments targeting those APIs are not actionable here. Sighted-user concerns — semantic HTML element choice, color contrast, and keyboard navigation — remain in scope and welcome.
+**Reason:** the user-facing UI runs mainly inside Homey's WebView, which does not expose accessibility APIs to assistive technologies (the standalone web app at `/app/` serves the same build). Comments targeting those APIs are not actionable here. Sighted-user concerns — semantic HTML element choice, color contrast, and keyboard navigation — remain in scope and welcome.
