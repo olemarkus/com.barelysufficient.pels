@@ -366,7 +366,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     expect(decisions.get('heater2')).toEqual({ kind: 'idle', budgetExempt: false, holdCause: 'task_done', deadlineFloorTargetC: 65 });
     const applied = applyDeferredAdmissionToInput([device], decisions);
     expect(applied.forceShedSet.has('heater2')).toBe(true);
-    expect(applied.devices[0]).toMatchObject({ deferredHoldActive: true, deadlineFloorTargetC: 65 });
+    expect(applied.devices[0]).toMatchObject({ deferredHold: 'off', deadlineFloorTargetC: 65 });
   });
 
   it('lets a satisfied task top up in an hour it booked, without its rescue permissions', () => {

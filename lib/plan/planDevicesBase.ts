@@ -407,7 +407,7 @@ function resolveEffectiveShedBehavior(
   // whether the shed counts as capacity pressure).
   const heldOff = isStartPolicyHoldShed(dev, shedReasons) || isChargeTargetHeldDevice(dev)
     || isOperatingPowerHeldDevice(dev)
-    || isDeferredHoldShed(dev, shedReasons);
+    || (dev.deferredHold === 'off' && isDeferredHoldShed(dev, shedReasons));
   const canTurnOff = isBinaryPlanDevice(dev) || isSteppedLoadDevice(dev);
   return shouldShed && heldOff && canTurnOff ? TURN_OFF_SHED_BEHAVIOR : configured;
 }

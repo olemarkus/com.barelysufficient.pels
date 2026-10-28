@@ -86,7 +86,7 @@ const buildBuilder = (decision: DeferredAdmissionDecision): PlanBuilder => (
 );
 
 /** Power-limited stepped charger (Elbillader's shape), running at its top rung. */
-const steppedCharger = (): PlanInputDevice => inputDevice({
+const steppedCharger = (controllable = true): PlanInputDevice => inputDevice({
   id: 'charger',
   name: 'Charger',
   binaryCapabilityId: 'onoff',
@@ -97,11 +97,11 @@ const steppedCharger = (): PlanInputDevice => inputDevice({
   steppedLoadProfile: steppedProfile,
   selectedStepId: 'max',
   desiredStepId: 'max',
-  controllable: true,
+  controllable,
   managed: true,
 });
 
-describe('a smart task’s deferred hour on a power-limited device', () => {
+describe('a smart task’s deferred hour', () => {
   it('turns a running stepped device off, not down to its limiting floor', async () => {
     const plan = await buildBuilder(idleDecision).buildDevicePlanSnapshot([steppedCharger()]);
 
@@ -138,7 +138,7 @@ describe('a smart task’s deferred hour on a power-limited device', () => {
     expect(hasBinaryCommand(intent) ? intent.binary.desiredOn : false).toBe(false);
   });
 
-  it('does not cap another stepped device at its lowest step as if capacity were short', async () => {
+  it.each([true, false])('does not cap another stepped device when the task device has power limiting %s', async (controllable) => {
     // The hold is the task's schedule, not capacity pressure: the keep-invariant
     // stepped clamp and the restore-side shed invariant must not read it as a
     // device "limited" for power.
@@ -156,20 +156,32 @@ describe('a smart task’s deferred hour on a power-limited device', () => {
       controllable: true,
       managed: true,
     });
-    const plan = await buildBuilder(idleDecision).buildDevicePlanSnapshot([steppedCharger(), heater]);
+    const decision: DeferredAdmissionDecision = controllable
+      ? idleDecision : { ...idleDecision, releaseIntent: 'shed_release' };
+    const manual = { ...steppedCharger(false), id: 'manual', name: 'Manual heater' };
+    const plan = await buildBuilder(decision).buildDevicePlanSnapshot([steppedCharger(controllable), heater, manual]);
 
     const held = plan.devices.find((entry) => entry.id === 'charger');
     expect(held?.plannedState).toBe('shed');
+    // Borrowed authority keeps the owner's release floor; standing authority
+    // still holds the task device fully off.
+    expect(held?.plannedShedTargetKind).toBe(controllable ? 'binary_off' : 'step');
+    expect(held?.nonCapacityHoldShed).toBe(true);
     const other = plan.devices.find((entry) => entry.id === 'heater');
     expect(other?.plannedState).toBe('keep');
     expect(other?.reason?.code).not.toBe(PLAN_REASON_CODES.shedInvariant);
     expect(other?.desiredStepId).toBe('max');
+    expect(plan.devices.find((entry) => entry.id === 'manual')).toMatchObject({
+      desiredStepId: 'max',
+      control: { commandAuthority: false },
+      reason: { code: PLAN_REASON_CODES.capacityControlOff },
+    });
     // And the executor's own keep-invariant gate agrees, so it does not hold the
     // heater at `low` against a plan that says `max`.
     expect(hasExecutableShedDevices(plan, buildExecutablePlan(plan))).toBe(false);
   });
 
-  it('limits another stepped device one rung, not to its lowest step, while the task holds a binary device off', async () => {
+  it.each([true, false])('limits one rung while a binary task device waits with power limiting %s', async (controllable) => {
     // A binary device off because PELS shed it and not yet restored forces a
     // `set_step` device straight to its lowest active step when it is shed
     // (`isNonSteppedDeviceRecovering`): power it is waiting for must not sit at a
@@ -206,7 +218,7 @@ describe('a smart task’s deferred hour on a power-limited device', () => {
       currentState: on ? 'on' : 'off',
       currentDrawKw: on ? 1 : 0,
       expectedPowerKw: 1,
-      controllable: true,
+      controllable,
       managed: true,
     });
     let powerW = 4000;
@@ -229,14 +241,14 @@ describe('a smart task’s deferred hour on a power-limited device', () => {
     expect(limited?.desiredStepId).toBe('mid');
   });
 
-  it('still counts the device as limited when capacity sheds it as well', async () => {
+  it.each([true, false])('still counts a fresh capacity shed with task-device power limiting %s', async (controllable) => {
     // A fresh capacity reason is pressure: the hold alone is what is excluded.
     const tight = new PlanBuilder({
       ...buildBuilderDeps(idleDecision),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 1, marginKw: 0.2, periodMinutes: 60 }),
       getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now(), lastPowerW: 4500 }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 1, marginKw: 0.2, periodMinutes: 60 }), 0.8),
     }, createPlanEngineState());
-    const plan = await tight.buildDevicePlanSnapshot([steppedCharger()]);
+    const plan = await tight.buildDevicePlanSnapshot([steppedCharger(controllable)]);
 
     const held = plan.devices.find((entry) => entry.id === 'charger');
     expect(held?.plannedState).toBe('shed');

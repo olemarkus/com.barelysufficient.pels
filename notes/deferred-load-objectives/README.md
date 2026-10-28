@@ -420,9 +420,11 @@ reserved. A 0 kWh booking runs on capacity that turns out to be free.
 (owner ruling 2026-09-25). A task can aim higher than the mode would (a water heater at 65 °C where
 the mode says 45 °C), so running as normal in a `released` hour spends energy the task scheduled
 for a cheaper one. A power-limited device used to stay on "the planner's normal lane" there, which
-had nothing to hold a stepped device with. Now admission force-sheds it and stamps
-`deferredHoldActive`, and the planner sheds it to OFF, not to the owner's limiting floor, without
-counting the hold as capacity pressure or starvation (`lib/objectives/deferredObjectives/AGENTS.md`
+had nothing to hold a stepped device with. Admission force-sheds it with `deferredHold: 'off'`,
+and the planner sheds it to OFF, not to the owner's limiting floor. A device the task lends
+authority to receives `deferredHold: 'configured'` and keeps its configured release posture.
+Neither hold counts as capacity pressure or starvation, or clamps unrelated stepped devices
+(`lib/objectives/deferredObjectives/AGENTS.md`
 § "During an active smart task, the task decides whether the device runs").
 
 A task that falls short books every hour, and the claim reads the settled `floorShortfallCause` as a

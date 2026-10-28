@@ -730,26 +730,24 @@ export type PlanInputDeviceBase = {
   startPolicyHoldLifted?: true;
   /**
    * The device's smart task is deferring this hour (an `idle` admission
-   * decision: nothing booked here, or a later hour is cheaper) and the device
-   * has command authority of its own, so the task holds it OFF this cycle.
+   * decision: nothing booked here, or a later hour is cheaper).
+   * `off` holds a device with standing command authority OFF; `configured`
+   * holds a device the task lends authority to at its configured release posture.
    *
    * During an active smart task the task decides whether the device runs, also
    * with Power-limit control on (owner ruling, 2026-09-25): the task may aim
    * higher than the mode would (a water heater at 65 °C where the mode says
    * 45 °C), so running as normal in an hour the task skipped spends energy the
-   * task has scheduled for a cheaper one. The hold sheds to OFF, not to the
-   * owner's limiting floor, which answers capacity pressure and still draws.
+   * task has scheduled for a cheaper one. Neither hold is capacity pressure.
    *
    * Stamped by `applyDeferredAdmissionToInput`, and only there, together with
-   * the device's membership of the admission's `forceShedSet`. A device the task
-   * lends authority to (Power-limit control off) keeps its own route, a release
-   * to its configured posture, and is not stamped. A reader asking whether this
+   * the device's membership of the admission's `forceShedSet`. A reader asking whether this
    * cycle's shed is the hold alone goes through `isDeferredHoldShed`
    * (`lib/plan/shedding/deferredHold.ts`); a reader asking whether the hold is
-   * active reads the flag (starvation eligibility, and the shed side's recovery
+   * active reads its presence (starvation eligibility, and the shed side's recovery
    * rule `isNonSteppedDeviceRecovering`).
    */
-  deferredHoldActive?: true;
+  deferredHold?: 'off' | 'configured';
   /**
    * The charger's target battery level, resolved against what PELS knows about
    * the car right now: does the target ask PELS to hold this device OFF, and is

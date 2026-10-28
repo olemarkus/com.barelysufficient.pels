@@ -453,7 +453,7 @@ describe('plan diagnostics observations', () => {
         binaryControl: { on: false },
         chargeTargetHold: { kind: 'below_target', targetPercent: 80 },
         // Its smart task deferred this hour: not PELS's hold, and not "no target".
-        deferredHoldActive: true,
+        deferredHold: 'off',
         managed: true,
         controllable: true,
         available: true,

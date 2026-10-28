@@ -2,24 +2,23 @@ import type { PlanInputDevice } from '../planTypes';
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 
 /**
- * Is THIS CYCLE's shed of this device its smart task holding it off in a deferred
+ * Is THIS CYCLE's shed of this device its smart task holding it in a deferred
  * hour, rather than capacity pressure?
  *
- * The hold is decided by the task (`deferredHoldActive`, stamped by deferred
+ * The hold is decided by the task (`deferredHold`, stamped by deferred
  * admission together with the device's `forceShedSet` membership). A fresh shed
  * decision (`shedReasons`) means capacity took the device down as well, and that
  * is real pressure: it keeps the owner's configured limiting floor and counts
  * toward the keep-invariant stepped clamp. A device shed with no fresh reason is
- * held by its task, and the task wants it off (owner ruling, 2026-09-25) — not
- * at the limiting floor, which still draws, and not as pressure that caps
- * unrelated stepped loads at their lowest step.
+ * held by its task, whether OFF under standing authority or at its configured
+ * release posture under borrowed authority. Neither caps unrelated stepped loads.
  *
  * The same shape as `isStartPolicyHoldShed` (`./startPolicyHold.ts`), for the
  * same reason: one definition read by the shed-behaviour override in
  * `planDevicesBase`, the keep-invariant exclusion in `planDevices`, and through
  * `nonCapacityHoldShed` the restore side and the executor. The shed side's
- * recovery rule (`isNonSteppedDeviceRecovering`) reads `deferredHoldActive` with
- * no shed-reason arm: a held device stays off this hour either way.
+ * recovery rule (`isNonSteppedDeviceRecovering`) reads `deferredHold` with
+ * no shed-reason arm: spare capacity does not release a task's hold.
  *
  * Unlike the start-policy predicate it has no "own reason" arm, so on the
  * silent-meter fail-closed pass (`planBuilderSilentMeter.ts`), which gives every
@@ -31,5 +30,5 @@ export function isDeferredHoldShed(
   device: PlanInputDevice,
   shedReasons: ReadonlyMap<string, DeviceReason>,
 ): boolean {
-  return device.deferredHoldActive === true && !shedReasons.has(device.id);
+  return device.deferredHold !== undefined && !shedReasons.has(device.id);
 }

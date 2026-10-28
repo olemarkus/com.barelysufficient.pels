@@ -111,9 +111,8 @@ export function hasExecutableShedDevices(
 // `capacity` reason and MUST still block, whatever its posture settings say.
 //
 // A smart task's deferred-hour hold is read off the plan's decided flag
-// (`nonCapacityHoldShed`) instead: its reason, `deferredObjectiveAvoid`, is shared
-// with a device the task lends authority to, so the code cannot tell the two
-// apart. The flag carries the same "no fresh capacity reason" rule.
+// (`nonCapacityHoldShed`) instead: it covers both standing and borrowed authority,
+// while preserving the same "no fresh capacity reason" rule.
 const isPostureHoldShed = (planDevice: PlanDevice): boolean => (
   planDevice.reason?.code === PLAN_REASON_CODES.awaitingSolarSurplus
   || planDevice.reason?.code === PLAN_REASON_CODES.awaitingPelsStart
