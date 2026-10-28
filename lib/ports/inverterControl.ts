@@ -26,7 +26,7 @@ export type InverterClaim = {
   previousLimitW: number;
   previousMode: InverterObservation['mode'];
   claimedAtMs: number;
-  restoration: { kind: 'limit_only' } | { kind: 'native'; binding: InverterControlBinding };
+  restoration: { kind: 'native'; binding: InverterControlBinding };
 };
 
 /** Device, settings and executor facts resolved at the planner-input boundary. */

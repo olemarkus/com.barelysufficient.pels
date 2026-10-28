@@ -271,15 +271,12 @@ describe('inverter convergence and durable hand-back', () => {
     expect(h.apply).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'production_release' }));
   });
 
-  it('recovers a legacy claim as saved-limit-only authority', () => {
+  it('blocks a claim saved without its native binding', () => {
     const h = setup();
     h.saved.set(`${INVERTER_CLAIM_PREFIX}pv`, {
       previousLimitW: 6000, previousMode: { kind: 'direct' }, claimedAtMs: NOW - 60_000,
     });
-    const restarted = new InverterExecutor(h.store, h.actuator, h.source);
-    restarted.ready('pv');
-    expect(restarted.ownership('pv')).toMatchObject({ kind: 'held',
-      claim: { restoration: { kind: 'limit_only' } } });
+    expect(h.store.readAll()?.blocked).toEqual(new Set(['pv']));
   });
 
   it('declines a limit after its native binding changes while reports stay the same', async () => {
@@ -339,19 +336,6 @@ describe('inverter convergence and durable hand-back', () => {
     vi.setSystemTime(NOW + 62_000);
     expect((await h.executor.apply([{ kind: 'release', deviceId: 'pv' }])).pendingInverterReleaseCount).toBe(0);
     expect(h.executor.ownership('pv')).toEqual({ kind: 'free' });
-  });
-
-  it('retains a legacy autonomous claim when no accepted binding proves its ceiling', async () => {
-    const h = setup();
-    h.saved.set(`${INVERTER_CLAIM_PREFIX}pv`, { previousLimitW: 0,
-      previousMode: { kind: 'autonomous', value: 'eco', observedAtMs: NOW - 1000 }, claimedAtMs: NOW });
-    h.source.control = () => undefined;
-    const restarted = new InverterExecutor(h.store, h.actuator, h.source);
-    restarted.ready('pv');
-    expect(await restarted.apply([{ kind: 'release', deviceId: 'pv' }]))
-      .toEqual({ commandRequestCount: 0, failureCount: 0, pendingInverterReleaseCount: 1 });
-    expect(h.apply).not.toHaveBeenCalled();
-    expect(h.saved.has(`${INVERTER_CLAIM_PREFIX}pv`)).toBe(true);
   });
 
   it.each(['key list', 'listed claim'] as const)('keeps ownership unresolved across an unreadable %s until it recovers', async (unreadable) => {

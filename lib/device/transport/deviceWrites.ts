@@ -11,7 +11,7 @@ import { resolveChargingCurrentAdapter } from '../chargingCurrentAdapter';
 import type { SteppedLoadWrite, SteppedLoadStepRequestResult } from '../../ports/steppedLoadWrite';
 import type { StoragePowerCommand, StoragePowerWrite, StorageReleaseCommand } from '../../ports/storageCommand';
 import type { HomeBatteryControlSurface } from '../../../packages/contracts/src/types';
-import type { InverterControlBinding } from '../../../packages/contracts/src/inverterControl';
+import type { InverterControlBinding, InverterControlSurface } from '../../../packages/contracts/src/inverterControl';
 import { getDebugEmitter } from '../../logging/logger';
 import { incPerfCounter } from '../../utils/perfCounters';
 import { normalizeError } from '../../utils/errorUtils';
@@ -276,18 +276,32 @@ export class DeviceWriteService {
       }
       await this.setCapability(deviceId, 'target_power', command.limitW);
     } else {
-      const { target } = command;
-      if (target.kind === 'watts_and_mode') this.requireInverterBinding(deviceId, target.binding);
-      const current = snapshot.inverterControl;
-      if (current?.authority === 'limit_and_release'
-        && inverterRestorationLimitW(target.limitW, current) !== target.limitW) {
-        throw new Error('The inverter production range changed before hand-back.');
-      }
-      await this.setCapability(deviceId, 'target_power', target.limitW);
-      if (target.kind === 'watts_and_mode') {
-        this.requireInverterBinding(deviceId, target.binding);
-        await this.setCapability(deviceId, 'target_power_mode', target.mode.value);
-      }
+      await this.releaseProduction(deviceId, snapshot.inverterControl, command.target);
+    }
+  }
+
+  private async releaseProduction(
+    deviceId: string,
+    current: InverterControlSurface | undefined,
+    target: import('../../ports/inverterControl').InverterReleaseTarget,
+  ): Promise<void> {
+    if (target.kind === 'watts_and_mode') this.requireInverterBinding(deviceId, target.binding);
+    if (current?.authority === 'limit_and_release'
+      && inverterRestorationLimitW(target.limitW, current) !== target.limitW) {
+      throw new Error('The inverter production range changed before hand-back.');
+    }
+    if (target.kind === 'watts_and_mode' && target.mode.kind === 'autonomous') {
+      // In its own mode the saved target_power may be a dormant zero. Written
+      // first, while PELS's mode still applies, it would cap production at
+      // that value, and stay so if the mode write then failed. The mode alone
+      // returns the inverter to its own control and confirms the hand-back.
+      await this.setCapability(deviceId, 'target_power_mode', target.mode.value);
+      return;
+    }
+    await this.setCapability(deviceId, 'target_power', target.limitW);
+    if (target.kind === 'watts_and_mode') {
+      this.requireInverterBinding(deviceId, target.binding);
+      await this.setCapability(deviceId, 'target_power_mode', target.mode.value);
     }
   }
 

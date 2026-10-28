@@ -140,6 +140,33 @@ describe('native inverter curtailment through the Homey SDK', () => {
     expect(h.puts).toHaveBeenCalledWith(CAP_PATH, { value: 6000 });
   });
 
+  it('hands an inverter back to its own mode without writing its dormant zero cap', async () => {
+    const solar = createSolar('switchable');
+    await solar.setCapabilityValue('target_power', 0);
+    await solar.setCapabilityValue('target_power_mode', 'device');
+    solar.setCapabilityMetadata('target_power_mode', { setable: true, values: [{ id: 'device' }, { id: 'homey' }] });
+    const realPut = mockHomeyInstance.api.put;
+    const h = await boot(-0.05, true, false, undefined, solar);
+    const modePath = 'manager/devices/device/pv/capability/target_power_mode';
+    expect(h.puts).toHaveBeenCalledWith(modePath, { value: 'homey' });
+    h.puts.mockClear();
+    let failModeWrites = true;
+    h.puts.mockImplementation(async (path: string, body?: unknown) => {
+      if (path === modePath && failModeWrites) throw new Error('inverter app rejected the mode');
+      return realPut(path, body);
+    });
+    mockHomeyInstance.settings.set('export_fixed', 0.08);
+    for (let i = 0; i < 5; i += 1) await vi.advanceTimersByTimeAsync(10_000);
+    await drainPending();
+    expect(h.puts.mock.calls.some(([path]) => path === modePath)).toBe(true);
+    expect(h.puts.mock.calls.filter(([path]) => path === CAP_PATH)).toEqual([]);
+    failModeWrites = false;
+    for (let i = 0; i < 5; i += 1) await vi.advanceTimersByTimeAsync(10_000);
+    await drainPending();
+    expect(h.puts).toHaveBeenCalledWith(modePath, { value: 'device' });
+    expect(h.puts.mock.calls.filter(([path]) => path === CAP_PATH)).toEqual([]);
+  });
+
   it.each([
     ['larger range', 6000], ['smaller range', 6000], ['mode options', 6000],
     ['larger range', 0], ['smaller range', 0], ['mode options', 0],
