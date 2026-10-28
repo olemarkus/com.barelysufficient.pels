@@ -88,7 +88,9 @@ const ScheduleRow = ({ entry, view }: { entry: ScheduleEntry; view: View }) => {
     </article>
   );
 };
-const Group = ({ id, entries, view }: { id: string; entries: ScheduleEntry[]; view: View }) => {
+type ScheduleGroup = readonly [id: string, entries: ScheduleEntry[]];
+const Group = ({ group, view }: { group: ScheduleGroup; view: View }) => {
+  const [id, entries] = group;
   const { read } = view.snapshot;
   if (!read) return null;
   const modeGroup = id === 'mode';
@@ -153,7 +155,7 @@ const List = (view: View) => {
         <h3 class="pels-text-card-title">No schedules yet</h3>
         <p class="pels-card-supporting">Choose when to create a task or change mode.</p>
       </section>}
-      {Array.from(groups, ([id, members]) => <Group key={id} id={id} entries={members} view={view} />)}
+      {Array.from(groups, (group) => <Group key={group[0]} group={group} view={view} />)}
       {snapshot.read && <p class="section-hint">Each scheduled action runs once. Switching schedules off stops future actions; existing tasks and the current mode are unchanged.</p>}
     </>
   );
