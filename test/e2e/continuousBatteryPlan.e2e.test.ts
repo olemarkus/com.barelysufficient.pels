@@ -89,9 +89,10 @@ async function startHome(
         if (battery.getActualCapabilityValue('target_power_mode') === 'homey') {
           const target = battery.getActualCapabilityValue('target_power');
           battery.setActualCapabilityValue('measure_power', target);
-          // The real UI refresh route publishes the simulated device's new observation.
-          await api.ui_refresh_devices(context());
         }
+        // The real UI refresh route publishes the simulated battery's current
+        // report, its own mode included, as the battery's reports would.
+        await api.ui_refresh_devices(context());
       }
     },
   };
@@ -233,8 +234,8 @@ describe('continuous battery plan through the Homey SDK', () => {
     await home.advance(1);
     expect(modeWrites()).toEqual(['anti_feed']);
     expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('anti_feed');
-    // The plan then takes the battery over again from its own mode.
-    await home.advance(40);
+    // Once the battery reports its own mode, the plan takes it over again.
+    await home.advance(3);
     const resumed = (await api.ui_devices(context())).continuousBatteryPlans[BATTERY];
     expect(resumed.status, JSON.stringify(resumed)).toBe('planned');
     expect(modeWrites()).toEqual(['anti_feed', 'homey']);
