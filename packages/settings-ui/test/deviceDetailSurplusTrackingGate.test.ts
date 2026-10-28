@@ -212,6 +212,59 @@ describe('device detail solar-surplus tracking gating', () => {
     expect(trackSwitch()?.disabled).toBe(false);
   });
 
+  it('takes a charger missing solar control to its Control model setting', async () => {
+    const device = buildCharger({ controlModel: 'binary_power', steppedLoadProfile: undefined });
+    await openPanel({ device });
+    const { resolveSolarSetupAction } = await import('../src/ui/setupDevices.ts');
+    const { dispatchOpenDeviceDetail } = await import('../src/ui/cardActivation.ts');
+    const action = resolveSolarSetupAction(device);
+
+    expect(trackRow()?.hidden).toBe(true);
+    expect(action).toMatchObject({
+      label: 'Charge on solar surplus',
+      actionLabel: 'Set up solar control',
+      focus: 'control-model',
+    });
+    expect(action?.hint).toContain('EV 1-phase or EV 3-phase');
+    expect(action?.hint).toContain('Control model');
+
+    const controlRow = document.querySelector<HTMLElement>('#device-detail-control-model-row')!;
+    const scrolled = vi.fn();
+    controlRow.scrollIntoView = scrolled;
+    dispatchOpenDeviceDetail(device.id, action!.focus);
+    expect(document.querySelector<HTMLDetailsElement>('#device-detail-setup-disclosure')?.open).toBe(true);
+    expect(scrolled).toHaveBeenCalled();
+    expect(document.activeElement).toBe(document.querySelector('#device-detail-control-model'));
+  });
+
+  it('takes a charger with an EV preset to its available solar control', async () => {
+    const device = buildCharger({ controlModel: 'binary_power', steppedLoadProfile: undefined });
+    await openPanel({ device, storedTargetPowerConfig: { preset: 'ev_charger_1_phase', enabled: true } });
+    const { resolveSolarSetupAction } = await import('../src/ui/setupDevices.ts');
+
+    expect(resolveSolarSetupAction(device)).toMatchObject({
+      actionLabel: 'Charge on solar surplus',
+      hint: null,
+      focus: 'solar',
+    });
+    expect(trackRow()?.hidden).toBe(false);
+    expect(trackSwitch()?.disabled).toBe(false);
+  });
+
+  it('keeps solar available on a default-mode charger with a usable ladder', async () => {
+    const device = buildCharger({ controlModel: 'binary_power' });
+    await openPanel({ device });
+    const { resolveSolarSetupAction } = await import('../src/ui/setupDevices.ts');
+
+    expect(resolveSolarSetupAction(device)).toMatchObject({
+      actionLabel: 'Charge on solar surplus',
+      hint: null,
+      focus: 'solar',
+    });
+    expect(trackRow()?.hidden).toBe(false);
+    expect(trackSwitch()?.disabled).toBe(false);
+  });
+
   // Switching a charger to an EV amp preset clears its local step profile
   // (`applyLocalDeviceControlProfile(id, null)`) until the next refetch; the
   // runtime builds the ladder from the preset, so the control stays.
@@ -250,8 +303,15 @@ describe('device detail solar-surplus tracking gating', () => {
   });
 
   it('hides the row on an unmanaged device', async () => {
-    await openPanel({ device: buildCharger(), managed: false });
+    const device = buildCharger();
+    await openPanel({ device, managed: false });
+    const { resolveSolarSetupAction } = await import('../src/ui/setupDevices.ts');
     expect(trackRow()?.hidden).toBe(true);
+    expect(resolveSolarSetupAction(device)).toMatchObject({
+      actionLabel: 'Set up solar control',
+      hint: 'Turn on Managed by PELS first.',
+      focus: 'managed',
+    });
   });
 
   it('hides the row on a plain binary device — that is the dump load\'s modality', async () => {
@@ -260,9 +320,33 @@ describe('device detail solar-surplus tracking gating', () => {
   });
 
   it('disables the switch while Power-limit control is off, and says why', async () => {
-    await openPanel({ device: buildCharger(), controllable: false });
+    const device = buildCharger();
+    await openPanel({ device, controllable: false });
+    const { resolveSolarSetupAction } = await import('../src/ui/setupDevices.ts');
     expect(trackSwitch()?.disabled).toBe(true);
     expect(powerLimitHint()?.hidden).toBe(false);
+    expect(resolveSolarSetupAction(device)).toMatchObject({
+      actionLabel: 'Set up solar control',
+      hint: 'Turn on Power-limit control in Setup.',
+      focus: 'power-limit',
+    });
+  });
+
+  it('takes a heater following manual temperature changes to its temperature policy', async () => {
+    const device = buildSteppedHeater({
+      deviceType: 'temperature', controlModel: 'temperature_target',
+      targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
+    });
+    const { state } = await openPanel({ device });
+    state.temperatureControlModes = { [device.id]: 'update_mode' };
+    const { resolveSolarSetupAction } = await import('../src/ui/setupDevices.ts');
+
+    expect(resolveSolarSetupAction(device)).toMatchObject({
+      label: 'Use solar surplus',
+      actionLabel: 'Set up solar control',
+      hint: 'Choose Return to mode target under When the temperature changes outside PELS.',
+      focus: 'temperature-policy',
+    });
   });
 
   it('disables the switch while a smart task governs the device, and says why', async () => {

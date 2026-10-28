@@ -1,3 +1,4 @@
+import type { DeviceDetailFocus } from '../cardActivation.ts';
 import type { SetupPath } from '../setupPathModel.ts';
 import type { SolarSetupAction } from '../setupDevices.ts';
 import { AppBar } from './AppBar.tsx';
@@ -25,7 +26,7 @@ type SetupDevicePickerProps = {
   // page has none, so the card opens it as plain Device settings.
   solarReady: boolean;
   onManaged: (id: string, value: boolean) => void;
-  onOpen: (id: string) => void;
+  onOpen: (id: string, focus: DeviceDetailFocus) => void;
   onRetry: () => void;
 };
 
@@ -46,8 +47,10 @@ export const SetupDevicePicker = (props: SetupDevicePickerProps) => (
           <span class="md-switch-row__label pels-text-settings-label">Managed by PELS</span>
         </label>
         {device.hint && <p class="pels-card-supporting">{device.hint}</p>}
-        <MdTextButton type="button" onClick={() => props.onOpen(device.id)}>
-          {props.solar && props.solarReady && device.solar ? device.solar.label : 'Device settings'}
+        <MdTextButton type="button" onClick={() => props.onOpen(
+          device.id, props.solar && props.solarReady && device.solar ? device.solar.focus : 'top',
+        )}>
+          {props.solar && props.solarReady && device.solar ? device.solar.actionLabel : 'Device settings'}
         </MdTextButton>
         {props.solar && device.solar?.hint && <p class="pels-card-supporting">{device.solar.hint}</p>}
       </section>
