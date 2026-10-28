@@ -7,13 +7,13 @@ import ts from 'typescript';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const registry = 'lib/device/deviceAdapterRegistry.ts';
-const integration = /^lib\/device\/(tesla|easee|enua|zaptec|futurehome|oso|sma)\//u;
+const integration = /^lib\/device\/(tesla|easee|enua|zaptec|futurehome|oso|sma|knx)\//u;
 const rawCapabilities = new Set([
   'charging_on', 'charging_button', 'charge_mode', 'target_charger_current',
   'measure_charge_current_max', 'measure_charge_current', 'measure_charge_power',
   'measure_charge_power_dc', 'charging_port_cable', 'car_shift_state', 'car_state',
 ]);
-const vendorDriver = /^(?:homey:app:)?(?:com\.tesla\.car|com\.zaptec|no\.easee|no\.enua|no\.futurehome|no\.osoincharge|sma\.modbus)(?::|$)/u;
+const vendorDriver = /^(?:homey:app:)?(?:com\.tesla\.car|com\.zaptec|no\.easee|no\.enua|no\.futurehome|no\.osoincharge|sma\.modbus|org\.knx)(?::|$)/u;
 
 /** Pure source check, also exercised with adversarial source fixtures. */
 export function findDeviceAdapterViolations(file, source) {
