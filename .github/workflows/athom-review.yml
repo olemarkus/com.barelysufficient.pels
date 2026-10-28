@@ -1,0 +1,35 @@
+name: Athom review
+
+# A build whose app.json or store page differs from Live waits for Athom's
+# manual review instead of releasing at once. This gate makes that a choice the
+# owner makes per PR, with the `athom-review` label.
+on:
+  pull_request:
+    # edited covers a stacked PR retargeted to another base.
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: athom-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  athom-review:
+    name: athom-review
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Check for changes that need Athom review
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          ATHOM_REVIEW_ACCEPTED: ${{ contains(github.event.pull_request.labels.*.name, 'athom-review') }}
+        run: node scripts/check-athom-review.mjs "$BASE_SHA" "$HEAD_SHA"

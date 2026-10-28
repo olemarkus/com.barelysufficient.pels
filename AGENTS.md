@@ -41,6 +41,7 @@ Execution uses the actuator seam and has no apply-without-decide reconciliation 
 ## Working in this repository
 
 - `app.json` and `settings/` are generated. Change `.homeycompose/` or `packages/settings-ui/src/` respectively. After `.homeycompose/` changes, run `homey app validate` and commit the regenerated `app.json`.
+- A build whose `app.json` (apart from its version) or store page (`README*.txt`, app, driver and widget preview images) differs from the Live build waits days for Athom's manual review; otherwise it releases at once. The `athom-review` check fails such a PR until the owner adds the `athom-review` label. Only the owner adds it; prefer reusing existing routes, flow cards and settings over a change that needs it.
 - `homey app validate` is the only Homey CLI command authorized by default. Run, install, and publish commands require an explicit user request.
 - For UI work, use Material Web when a matching component fits; otherwise use a shared PELS primitive and existing design tokens. Read `notes/ui-terminology.md` when changing user-facing wording.
 - For settings keys, use `notes/settings-key-ownership.md`; for planner capacity and safe pace, use `docs/technical.md` and `notes/safe-pace-two-constraints.md`; for test placement, use `notes/testing-taxonomy.md`.
