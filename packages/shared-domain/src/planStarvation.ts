@@ -388,10 +388,9 @@ export const starvationRowIsRescuable = (
   && intendedTarget !== null
 );
 
-// Whether the scheduled plan actually runs the device in the CURRENT clock hour
-// (vs only in a later, cheaper hour). Drives the rescue success flash: "Power on
-// the way" only when the current hour is planned, otherwise "Running as soon as
-// there's room". `startsAtMs` values are epoch-hour-floored absolute ms (the same
+// Whether a schedule includes the CURRENT clock hour, rather than only a later
+// hour. This answers schedule membership, not whether power is available now.
+// `startsAtMs` values are epoch-hour-floored absolute ms (the same
 // basis the preview joins price/scheduled hours on), so we compare against the
 // epoch-hour floor of `nowMs` — never the plan's earliest hour, which is the
 // cheapest scheduled hour and is routinely in the future.

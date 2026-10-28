@@ -143,8 +143,8 @@ export type SettingsUiStarvationRescuePreviewResponse = {
 
 export type SettingsUiStarvationRescueCreateResponse = {
   ok: true;
-  // Whether the just-persisted plan runs the device in the CURRENT clock hour
-  // (vs only later, cheaper hours) — drives the honest success flash.
+  // Whether the just-persisted plan schedules the CURRENT clock hour without
+  // reporting a pressed house power limit — drives the honest success flash.
   runsCurrentHour: boolean;
 } | {
   ok: false;

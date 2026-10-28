@@ -11,7 +11,7 @@ import {
   RESCUE_DEADLINE_HORIZON_MS,
 } from '../packages/shared-domain/src/starvationRescueShared';
 import { formatSmartTaskDeadlineLong } from '../packages/shared-domain/src/smartTaskDeadlineFormat';
-import { scheduledHoursIncludeCurrentHour } from '../packages/shared-domain/src/planStarvation';
+import { canRescueRunCurrentHour } from '../lib/objectives/deferredObjectives/starvationRescueConfirmation';
 import { resolveRescuableSettingsDevice } from './settingsUiStarvationRescueScope';
 import { readPelsHost } from '../lib/app/pelsHost';
 
@@ -94,6 +94,6 @@ export const createSettingsUiStarvationRescue = (
   const post = host.previewStarvationRescuePlan(request.deviceId, candidate);
   return {
     ok: true,
-    runsCurrentHour: scheduledHoursIncludeCurrentHour(post.estimate.scheduledHours, nowMs),
+    runsCurrentHour: canRescueRunCurrentHour(post.estimate, nowMs),
   };
 };

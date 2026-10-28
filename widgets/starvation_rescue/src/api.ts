@@ -1,8 +1,6 @@
 import { handleWidgetClientLog, type WidgetClientLogContext } from '../../_shared/widgetClientLogApi';
 import type { StarvationRescueHostApi } from '../../../packages/contracts/src/widgetHostApi';
-import {
-  scheduledHoursIncludeCurrentHour,
-} from '../../../packages/shared-domain/src/planStarvation';
+import { canRescueRunCurrentHour } from '../../../lib/objectives/deferredObjectives/starvationRescueConfirmation';
 import {
   buildRescueCandidate,
   mapAppRescueReason,
@@ -175,7 +173,7 @@ export const createStarvationRescue = async (
   const post = homey.app.previewStarvationRescuePlan?.(request.deviceId, candidate);
   return {
     ok: true,
-    runsCurrentHour: post ? scheduledHoursIncludeCurrentHour(post.estimate.scheduledHours, nowMs) : false,
+    runsCurrentHour: post ? canRescueRunCurrentHour(post.estimate, nowMs) : false,
   };
 };
 

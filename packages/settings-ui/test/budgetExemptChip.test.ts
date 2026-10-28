@@ -158,6 +158,26 @@ describe('BudgetExemptChip', () => {
     expect(caption?.textContent).toContain(`${STARVATION_RESCUE_WIDGET_COPY.byLabel} Today 17:00`);
   });
 
+  it.each(['capacity', 'grid'] as const)('shows the existing %s limit note before confirming a rescue', async (atPowerLimitNow) => {
+    callApi.mockResolvedValue({
+      ok: true,
+      deadlineAtMs: 1_000,
+      deadlineLabel: 'Today 17:00',
+      estimate: {
+        status: 'on_track',
+        scheduledHours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+        atPowerLimitNow,
+      },
+    });
+    const mount = renderChip(buildDevice());
+    const button = mount.querySelector('button') as HTMLButtonElement;
+    await act(async () => { button.click(); });
+    await act(async () => { await Promise.resolve(); });
+    expect(mount.textContent).toContain(STARVATION_RESCUE_WIDGET_COPY.atPowerLimitNote[atPowerLimitNow]);
+    expect(button.textContent).toContain('Confirm');
+    expect(button.disabled).toBe(false);
+  });
+
   it('drops back to idle — never to a committable confirm — when the preview is rejected', async () => {
     // The preview is what resolves the GATED permission set the card must
     // disclose. Without it the rescue would persist grants (including the
