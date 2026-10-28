@@ -2664,7 +2664,7 @@ describe('restore admission — headroom and penalty gates', () => {
 
     const stepped = result.planDevices.find((device) => device.id === 'stepped-first');
     expect(stepped?.desiredStepId).toBe('low');
-    expect(result.restoredThisCycle).toEqual(new Set(['binary-second', 'binary-third']));
+    expect(result.restoredThisCycle).toEqual(new Set(['stepped-first', 'binary-second', 'binary-third']));
     expect(result.planDevices.find((device) => device.id === 'binary-second')?.plannedState).toBe('keep');
     expect(result.planDevices.find((device) => device.id === 'binary-third')?.plannedState).toBe('keep');
     const fourth = result.planDevices.find((device) => device.id === 'binary-fourth');
@@ -2703,7 +2703,7 @@ describe('restore admission — headroom and penalty gates', () => {
     });
 
     const stepped = result.planDevices.find((device) => device.id === 'stepped-second');
-    expect(result.restoredThisCycle).toEqual(new Set(['binary-first', 'binary-third']));
+    expect(result.restoredThisCycle).toEqual(new Set(['binary-first', 'stepped-second', 'binary-third']));
     expect(stepped?.desiredStepId).toBe('low');
     expect(stepped?.reason?.code).toBe(PLAN_REASON_CODES.restoreNeed);
     const fourth = result.planDevices.find((device) => device.id === 'binary-fourth');

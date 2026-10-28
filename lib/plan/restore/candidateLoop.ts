@@ -1,5 +1,7 @@
 import type { DevicePlanDevice, MeteredKind, SteppedPlanDevice } from '../planTypes';
 import { isMeteredPlanDevice } from '../planMeteredDevice';
+import { isTemperaturePlanDevice } from '../planTemperatureDevice';
+import { temperatureSetpointsFor, unlimitedSetpointAddsDemand } from '../planTemperatureSetpoints';
 import {
   getSteppedRestoreCandidates,
   isActiveSteppedRestoreCandidate,
@@ -30,6 +32,7 @@ export function applyRestoreCandidates(
 ): { restoredOneThisCycle: boolean } {
   let restoredOne = restoredOneThisCycle;
   for (const candidate of restoreCandidates) {
+    if (candidate.kind !== 'storage') closeBatchAtSetpointResume(cycle, candidate.device);
     // Ledger translation: the inner gates keep their single availableKw scalar;
     // the axis choice (exempt → capacity, else min with the measured-exempt
     // budget axis) and the per-axis debit live here.
@@ -78,6 +81,7 @@ export function applyActiveSteppedRestoreCandidates(
     .filter((dev) => !isBehindWaitingHandBack(cycle, dev))
     .filter((dev) => candidateFilter?.(dev) ?? true);
   for (const dev of activeSteppedDevices) {
+    closeBatchAtSetpointResume(cycle, dev);
     const availableForCandidate = ledger.availableFor(dev);
     const result = planSteppedRestoreThroughSourceHold(cycle, lane, dev, {
       availableHeadroom: availableForCandidate,
@@ -123,4 +127,19 @@ function applyRestoreCandidate(
     return planSteppedRestoreThroughSourceHold(cycle, lane, dev, loop);
   }
   return loop;
+}
+
+/** A setpoint demand raise ends batch continuation at its place in the priority walk. */
+function closeBatchAtSetpointResume(cycle: RestoreCycle, dev: DevicePlanDevice): void {
+  if (!isTemperaturePlanDevice(dev)) return;
+  const setpoints = cycle.deps.temperatureSetpoints;
+  if (
+    temperatureSetpointsFor(setpoints, dev.id).shed.action !== 'set_temperature'
+    || !unlimitedSetpointAddsDemand(setpoints, dev)
+  ) return;
+  // Keep the candidate in its electrical admission lane: an OFF start and a
+  // stepped increase must still be priced. Only continuation across this
+  // slower demand change is closed for the remainder of the cycle.
+  // eslint-disable-next-line functional/immutable-data -- The restore cycle owns its batch admission state.
+  Object.assign(cycle.batchState, { enabled: false });
 }

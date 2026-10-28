@@ -1,7 +1,6 @@
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
 import { resolveSameMeasurementSheddingDecision } from '../../lib/plan/shedding/overshoot';
-import { buildMeasuredPower } from '../utils/planContextPowerFixture';
 import type { ShedPlanLatch } from '../../lib/plan/planState';
 
 const NOW = 1_000_000;
@@ -32,7 +31,7 @@ const shedState = (overrides: {
     ? null
     : {
       powerW: READING_W,
-      decisions: new Map([['vvb', [{ decidedAtMs: NOW - 10_000, creditedKw: 2 }]]]),
+      decisions: new Map([['vvb', [{ kind: 'electrical' as const, decidedAtMs: NOW - 10_000, creditedKw: 2 }]]]),
       stepTargets: new Map(),
       ...overrides.latch,
     };
@@ -48,12 +47,12 @@ const shedState = (overrides: {
 };
 
 const decidedAt = (decidedAtMs: number): Partial<ShedPlanLatch> => ({
-  decisions: new Map([['vvb', [{ decidedAtMs, creditedKw: 2 }]]]),
+  decisions: new Map([['vvb', [{ kind: 'electrical' as const, decidedAtMs, creditedKw: 2 }]]]),
 });
 
 const decide = (state: ReturnType<typeof shedState>, atMs: number, powerW: number) => (
   resolveSameMeasurementSheddingDecision(
-    state, devices, { atMs, powerW }, NOW, buildMeasuredPower({ capacityBreached: true }), {}, state.shedPlanLatch,
+    state, devices, { atMs, powerW }, NOW, { kind: 'capacity' }, {}, state.shedPlanLatch,
   )
 );
 
@@ -132,7 +131,7 @@ describe('resolveSameMeasurementSheddingDecision', () => {
         devices,
         { atMs: SAMPLE_TS, powerW: READING_W },
         NOW,
-        buildMeasuredPower(),
+        { kind: 'soft' },
         {},
         state.shedPlanLatch,
       );

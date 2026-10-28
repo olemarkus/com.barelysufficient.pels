@@ -3013,7 +3013,7 @@ describe('buildSheddingPlan', () => {
     expect(state.lastShedPlanMeasurementTs).toBe(501);
     expect(state.restoreBackoff.lastInstabilityMs).toBe(firstDecisionAtMs);
     expect(state.shedPlanLatch?.decisions.get('dev-fresh')).toEqual([
-      { decidedAtMs: firstDecisionAtMs, creditedKw: 0.8 },
+      { kind: 'electrical' as const, decidedAtMs: firstDecisionAtMs, creditedKw: 0.8 },
     ]);
     expect(state.overshoot.shouldEscalate(firstDecisionAtMs + 30_000)).toBe(true);
     expect(capture.events).toContainEqual(expect.objectContaining({ event: 'plan_shed_skipped_awaiting_measurement' }));
@@ -3426,8 +3426,8 @@ describe('buildSheddingPlan', () => {
       // stamp, still outstanding against this reading, and the 10 A step gets a
       // decision of its own.
       expect(result.outcome.latch.decisions.get('ev')).toEqual([
-        { decidedAtMs: Date.now() - 3_000, creditedKw: expect.closeTo(CHARGER_DRAW_KW - 3.22, 6) },
-        { decidedAtMs: Date.now(), creditedKw: expect.closeTo(3.07 - 2.3, 6) },
+        { kind: 'electrical' as const, decidedAtMs: Date.now() - 3_000, creditedKw: expect.closeTo(CHARGER_DRAW_KW - 3.22, 6) },
+        { kind: 'electrical' as const, decidedAtMs: Date.now(), creditedKw: expect.closeTo(3.07 - 2.3, 6) },
       ]);
       expect(result.outcome.latch.stepTargets.get('ev')?.stepId).toBe('10a');
     });
@@ -3558,7 +3558,7 @@ describe('buildSheddingPlan', () => {
       // as still to come.
       expect(result.outcome.latch.stepTargets.get('ev')?.stepId).toBe('6a');
       expect(result.outcome.latch.decisions.get('ev')).toEqual([
-        { decidedAtMs: expect.any(Number), creditedKw: expect.closeTo(CHARGER_DRAW_KW - 1.38, 6) },
+        { kind: 'electrical' as const, decidedAtMs: expect.any(Number), creditedKw: expect.closeTo(CHARGER_DRAW_KW - 1.38, 6) },
       ]);
     });
 
@@ -4389,7 +4389,7 @@ describe('buildSheddingPlan', () => {
       event: 'capacity_overshoot_escalation_blocked',
       incidentId: 'inc-77',
       reasonCode: 'no_candidates',
-      neededKw: 0.8,
+      neededKw: expect.closeTo(0.8, 10),
       remainingCandidates: 0,
       measurementAgeMs: Date.now() - 500,
     });
@@ -4473,7 +4473,7 @@ describe('buildSheddingPlan', () => {
       {
         ...sheddingWiring(state),
         capacityGuard,
-        shortfallThresholdKw: 4,
+        shortfallThresholdKw: 5,
         powerTracker: { lastTimestamp: 500, lastPowerW: 4_800 } as PowerTrackerState,
       },
     );

@@ -32,6 +32,7 @@ import {
 } from './storageCandidate';
 import { drawMarginWFor } from '../battery/storageLadder';
 import type { StorageRelief } from '../battery/storageRelief';
+import { resolveShedNeedKw, resolveShedPressure } from './pressure';
 
 /** One build's shed candidate walk, as selection and the shortfall verdict both ask it. */
 /**
@@ -100,7 +101,11 @@ export function buildShedCandidateParams(
 ): ShedCandidateParams {
   const hour = resolveExhaustedHourAnswer(context, state, power, storage.shed);
   const hourlyBudgetExhausted = hour.kind !== 'not_exhausted';
-  const needed = hour.kind === 'import_target' ? hour.importKw : resolveStorageAdjustedDeficitKw(power, storage.shed);
+  const bindingDeficitKw = hour.kind === 'import_target'
+    ? hour.importKw : resolveStorageAdjustedDeficitKw(power, storage.shed);
+  const needed = hourlyBudgetExhausted ? bindingDeficitKw : resolveShedNeedKw(
+    resolveShedPressure(power, deps.shortfallThresholdKw, storage.shed), bindingDeficitKw,
+  );
   return {
     devices: context.devices,
     needed: hourlyBudgetExhausted ? Number.POSITIVE_INFINITY : needed,

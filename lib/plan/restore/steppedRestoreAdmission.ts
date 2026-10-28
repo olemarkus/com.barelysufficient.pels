@@ -131,6 +131,9 @@ export function admitSteppedRestore(
   } else {
     recordShedPostureRestoreBatchAdmission(batchState, state.shedDecisions, dev.id, needed);
   }
+  // Its setpoint is part of this priced restoration, just as for binary
+  // admission; the hold lane must not throttle the device against itself.
+  cycle.restoredThisCycle.add(dev.id);
   return { availableHeadroom: spendPowerHeadroom(availableHeadroom, needed), restoredOneThisCycle: true };
 }
 

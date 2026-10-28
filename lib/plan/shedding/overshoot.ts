@@ -2,13 +2,13 @@ import type CapacityGuard from '../../power/capacityGuard';
 import type { LatchedMeterReading } from '../../power/lastTotalPower';
 import type { Logger as PinoLogger } from '../../logging/logger';
 import type { PlanEngineState, ShedPlanLatch, StorageLeverState } from '../planState';
-import type { MeasuredPower } from '../planContext';
 import type { PlanInputDevice } from '../planTypes';
 import {
   RECENT_RESTORE_OVERSHOOT_BYPASS_KW,
   RECENT_RESTORE_SHED_GRACE_MS,
 } from '../planConstants';
 import { PENDING_RELIEF_EPSILON_KW, resolvePendingShedRelief, type PendingShedRelief } from './pendingRelief';
+import type { ShedPressure } from './pressure';
 
 /**
  * Whether this cycle's measurement may drive a shed: it may (`proceed`,
@@ -34,14 +34,14 @@ export function resolveSameMeasurementSheddingDecision(
   devices: readonly PlanInputDevice[],
   measurement: LatchedMeterReading,
   nowTs: number,
-  power: MeasuredPower,
+  pressure: ShedPressure,
   /** The holds this cycle's storage stage left (`StorageRelief.levers`). */
   storageLevers: Readonly<Record<string, StorageLeverState>>,
   latch: ShedPlanLatch | null,
 ): SameMeasurementSheddingDecision {
   const alreadyShedThisSample = measurement.atMs === state.lastShedPlanMeasurementTs;
   const pending = resolvePendingShedRelief(
-    latch, devices, measurement.powerW, nowTs, storageLevers, !power.gridBreached,
+    latch, devices, measurement.powerW, nowTs, storageLevers, pressure,
   );
   if (!alreadyShedThisSample) {
     // With nothing outstanding the reading is believed as it stands; the pending
@@ -50,7 +50,7 @@ export function resolveSameMeasurementSheddingDecision(
       ? { kind: 'credit_pending_relief', pending }
       : { kind: 'proceed', escalatedSameSample: false, pending };
   }
-  if (power.physicalLimitBreached && state.overshoot.shouldEscalate(nowTs)) {
+  if (pressure.kind !== 'soft' && state.overshoot.shouldEscalate(nowTs)) {
     return { kind: 'proceed', escalatedSameSample: true, pending: null };
   }
   return { kind: 'skip_same_sample', pending };

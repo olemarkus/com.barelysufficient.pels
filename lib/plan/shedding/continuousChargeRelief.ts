@@ -1,10 +1,10 @@
 import type { LatchedMeterReading } from '../../power/lastTotalPower';
-import type { PlanEngineState, ShedPlanLatch, StorageLeverState } from '../planState';
-import type { MeasuredPower } from '../planContext';
+import type { PlanEngineState, ShedPlanLatch, ShedRelief, StorageLeverState } from '../planState';
 import type { PlanInputDevice } from '../planTypes';
 import { isStorageReliefCreditable, type StorageRelief } from '../battery/storageRelief';
 import type { StorageSetpoint } from './types';
 import { isStorageLimitScope, type LimitableStorageDevice } from './storageCandidate';
+import type { ShedPressure } from './pressure';
 import {
   latchShedDecision, PENDING_RELIEF_EPSILON_KW, resolvePendingShedRelief, type PendingShedRelief,
 } from './pendingRelief';
@@ -17,7 +17,7 @@ function cancelChargeRaise(latch: ShedPlanLatch | null, deviceId: string, raised
   const retained = previous.map(decision => {
     newerKw -= decision.creditedKw;
     const cancelled = Math.min(decision.creditedKw, Math.max(0, raisedKw - newerKw));
-    return { decidedAtMs: decision.decidedAtMs, creditedKw: decision.creditedKw - cancelled };
+    return { ...decision, creditedKw: decision.creditedKw - cancelled };
   }).filter(decision => decision.creditedKw > PENDING_RELIEF_EPSILON_KW);
   const decisions = new Map(latch.decisions);
   if (retained.length > 0) decisions.set(deviceId, retained);
@@ -47,7 +47,7 @@ export function resolveContinuousChargeRelief(
   state: PlanEngineState,
   devices: readonly PlanInputDevice[],
   storage: StorageRelief,
-  power: MeasuredPower,
+  pressure: ShedPressure,
   measurement: LatchedMeterReading,
   nowTs: number,
 ) {
@@ -61,10 +61,10 @@ export function resolveContinuousChargeRelief(
     return [deviceId, next];
   }));
   const carried = resolvePendingShedRelief(
-    priorLatch, devices, measurement.powerW, nowTs, priorLevers, !power.gridBreached,
+    priorLatch, devices, measurement.powerW, nowTs, priorLevers, pressure,
   );
   const storageSetpoints = new Map<string, StorageSetpoint>();
-  const creditedKw = new Map<string, number>();
+  const reliefByDevice = new Map<string, ShedRelief>();
   for (const device of devices) {
     const next = storage.levers[device.id];
     if (next?.purpose !== 'continuous' || !isStorageLimitScope(device)
@@ -73,11 +73,11 @@ export function resolveContinuousChargeRelief(
     const newKw = newStoppedChargeKw(device, previous, next, carried);
     if (newKw <= PENDING_RELIEF_EPSILON_KW) continue;
     storageSetpoints.set(device.id, { setpointW: next.setpointW, banked: true, storage: device.storage });
-    creditedKw.set(device.id, newKw);
+    reliefByDevice.set(device.id, { kind: 'electrical', creditedKw: newKw });
   }
   if (storageSetpoints.size === 0) return carried;
   const latch = latchShedDecision({
-    shedSet: new Set(), shedReasons: new Map(), shedStepTargets: new Map(), storageSetpoints, creditedKw,
+    shedSet: new Set(), shedReasons: new Map(), shedStepTargets: new Map(), storageSetpoints, reliefByDevice,
   }, carried, measurement.powerW, nowTs, devices);
-  return resolvePendingShedRelief(latch, devices, measurement.powerW, nowTs, storage.levers, !power.gridBreached);
+  return resolvePendingShedRelief(latch, devices, measurement.powerW, nowTs, storage.levers, pressure);
 }

@@ -237,6 +237,7 @@ export class SilentMeterPlanBuilder {
       Number.POSITIVE_INFINITY,
       this.directiveReason(),
       true,
+      { kind: 'directive' },
     );
     // Every controllable device the candidate walk did not pick is shed too:
     // a device already off, a thermostat already at its shed setpoint, a

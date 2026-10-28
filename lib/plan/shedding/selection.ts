@@ -4,6 +4,8 @@ import type { PlanContext } from '../planContext';
 import { chooseShedRung } from './steppedCandidates';
 import { resolveStorageSpend } from './storageCandidate';
 import type { LoadShedCandidate, ShedCandidate, StorageSetpoint, StorageShedCandidate } from './types';
+import type { ShedRelief } from '../planState';
+import { permitsDemandRelief, type ShedPressure } from './pressure';
 
 const debug = getDebugEmitter('plan', 'plan');
 
@@ -41,9 +43,10 @@ const debug = getDebugEmitter('plan', 'plan');
  * loop: membership (`shedSet`), why (`shedReasons`), — for a stepped step-down —
  * WHERE the device is parked (`shedStepTargets`), the setpoint a home battery
  * is held at (`storageSetpoints`), and how much relief each banked
- * (`creditedKw`). The third and fourth are what make the credited relief the
- * delivered relief: materialization commands the step, and the battery stage
- * the setpoint, these maps name. The last is what the next cycle credits while
+ * (`reliefByDevice`). The third and fourth name the requested electrical relief:
+ * materialization commands their step or battery setpoint. Temperature restrictions
+ * have no promised electrical target and bank nothing under urgent pressure.
+ * The last is what the next cycle credits while
  * the meter has not caught up; for a battery only its stopped charge, which its
  * own reading shows falling (its discharge is the storage term's credit).
  *
@@ -55,35 +58,36 @@ export function selectShedDevices(
   needed: number,
   reason: DeviceReason,
   shedAllCandidates: boolean,
+  pressure: ShedPressure,
 ): ShedSelection {
-  const shedSet = new Set<string>();
-  const shedReasons = new Map<string, DeviceReason>();
-  const shedStepTargets = new Map<string, string>();
-  const storageSetpoints = new Map<string, StorageSetpoint>();
-  const creditedKw = new Map<string, number>();
+  const selection: ShedSelection = {
+    shedSet: new Set<string>(),
+    shedReasons: new Map<string, DeviceReason>(),
+    shedStepTargets: new Map<string, string>(),
+    storageSetpoints: new Map<string, StorageSetpoint>(),
+    reliefByDevice: new Map<string, ShedRelief>(),
+  };
   let remaining = needed;
   for (const nextCandidate of candidates) {
     if (shouldStopSelection(shedAllCandidates, remaining)) break;
     if (nextCandidate.effectivePower <= 0) continue;
     if (nextCandidate.kind === 'storage') {
-      const spent = spendStorageCandidate(nextCandidate, remaining, storageSetpoints);
-      if (spent === null || nextCandidate.unconfirmedRelief) continue;
-      remaining -= spent.reliefKw;
-      creditedKw.set(nextCandidate.id, spent.chargeReliefKw);
+      remaining -= spendStorageCandidate(nextCandidate, remaining, selection);
       continue;
     }
-    const spend = resolveCandidateSpend(nextCandidate, remaining);
-    shedSet.add(nextCandidate.id);
-    shedReasons.set(nextCandidate.id, reason);
-    if (spend.toStepId !== undefined) shedStepTargets.set(nextCandidate.id, spend.toStepId);
+    const spend = resolveCandidateSpend(nextCandidate, remaining, pressure);
+    selection.shedSet.add(nextCandidate.id);
+    selection.shedReasons.set(nextCandidate.id, reason);
+    if (spend.toStepId !== undefined) selection.shedStepTargets.set(nextCandidate.id, spend.toStepId);
     logSelectedCandidate(nextCandidate, spend);
-    if (nextCandidate.unconfirmedRelief) continue;
-    remaining -= spend.reliefKw;
-    creditedKw.set(nextCandidate.id, spend.reliefKw);
+    const relief: ShedRelief = {
+      kind: nextCandidate.kind === 'temperature' ? 'demand' : 'electrical',
+      creditedKw: nextCandidate.unconfirmedRelief ? 0 : spend.reliefKw,
+    };
+    selection.reliefByDevice.set(nextCandidate.id, relief);
+    remaining -= relief.creditedKw;
   }
-  return {
-    shedSet, shedReasons, shedStepTargets, storageSetpoints, creditedKw,
-  };
+  return selection;
 }
 
 /** One selection's decision — see `selectShedDevices` for what each map carries. */
@@ -92,7 +96,7 @@ export type ShedSelection = {
   shedReasons: Map<string, DeviceReason>;
   shedStepTargets: Map<string, string>;
   storageSetpoints: Map<string, StorageSetpoint>;
-  creditedKw: Map<string, number>;
+  reliefByDevice: Map<string, ShedRelief>;
 };
 
 /**
@@ -105,16 +109,20 @@ export type ShedSelection = {
 function spendStorageCandidate(
   candidate: StorageShedCandidate,
   remainingKw: number,
-  storageSetpoints: Map<string, StorageSetpoint>,
-): ReturnType<typeof resolveStorageSpend> {
+  selection: ShedSelection,
+): number {
   const banked = !candidate.unconfirmedRelief;
   if (!banked && candidate.hold.kind === 'limit') {
-    storageSetpoints.set(candidate.id, { setpointW: candidate.hold.setpointW, banked, storage: candidate.storage });
-    return null;
+    selection.storageSetpoints.set(candidate.id, {
+      setpointW: candidate.hold.setpointW, banked, storage: candidate.storage,
+    });
+    selection.reliefByDevice.set(candidate.id, { kind: 'electrical', creditedKw: 0 });
+    return 0;
   }
   const spend = resolveStorageSpend(candidate, remainingKw);
-  if (spend === null) return null;
-  storageSetpoints.set(candidate.id, { setpointW: spend.setpointW, banked, storage: candidate.storage });
+  if (spend === null) return 0;
+  selection.storageSetpoints.set(candidate.id, { setpointW: spend.setpointW, banked, storage: candidate.storage });
+  selection.reliefByDevice.set(candidate.id, { kind: 'electrical', creditedKw: banked ? spend.chargeReliefKw : 0 });
   debug({
     event: 'plan_shed_storage_limit',
     deviceId: candidate.id,
@@ -125,7 +133,7 @@ function spendStorageCandidate(
     chargeReliefKw: spend.chargeReliefKw,
     banked,
   });
-  return spend;
+  return banked ? spend.reliefKw : 0;
 }
 
 /** What this candidate is taken FOR: how much it frees, and where it parks. */
@@ -141,7 +149,12 @@ type CandidateSpend = {
   toStepId?: string;
 };
 
-function resolveCandidateSpend(candidate: LoadShedCandidate, remainingKw: number): CandidateSpend {
+function resolveCandidateSpend(
+  candidate: LoadShedCandidate, remainingKw: number, pressure: ShedPressure,
+): CandidateSpend {
+  // A temperature target requests less demand, not an electrical ceiling. Under
+  // urgent pressure it is still requested in order, but cannot cover the deficit.
+  if (candidate.kind === 'temperature' && !permitsDemandRelief(pressure)) return { reliefKw: 0 };
   if (candidate.kind !== 'stepped') return { reliefKw: candidate.effectivePower };
   const rung = chooseShedRung(candidate.rungs, remainingKw);
   if (!rung) return { reliefKw: candidate.effectivePower };

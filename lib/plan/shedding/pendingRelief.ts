@@ -25,11 +25,14 @@
  * device responded is read from that device, never from the whole-home sum):
  *
  * - **Undelivered** relief is the draw still above the state the decision put the
- *   device in: above the held rung for a step-down, all of it for a turn-off or
- *   a setback. It counts in full whatever the whole-home reading does — the
+ *   device in: above the held rung for a step-down, all of it for a turn-off.
+ *   It counts in full whatever the whole-home reading does — the
  *   command, once it lands, removes that draw however it got there. A charger
  *   rung's nameplate is its current at nominal mains, so a charger that reads a
  *   little over its held rung has landed there (`resolveLandedRungAllowanceKw`).
+ *   A temperature restriction has no electrical target. Ordinary pacing may
+ *   credit its draw as a bounded opportunity to respond; grid pressure and an
+ *   actual-cap projection retire that demand credit permanently.
  * - **Delivered** relief is the rest of what was credited. It counts only until
  *   the whole-home reading has fallen by half of it: a lagging aggregate shows a
  *   switch not at all, or (averaged across its interval) in part, while jitter
@@ -89,7 +92,7 @@
  * executor still owns settle.
  */
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
-import type { ShedLatchDecision, ShedPlanLatch, ShedStepTarget, StorageLeverState } from '../planState';
+import type { ShedLatchDecision, ShedPlanLatch, ShedRelief, ShedStepTarget, StorageLeverState } from '../planState';
 import type { MeteredPlanInputDevice, PlanInputDevice, SteppedPlanInputDevice } from '../planTypes';
 import { isMeteredPlanDevice } from '../planMeteredDevice';
 import {
@@ -97,6 +100,7 @@ import {
 } from '../planSteppedLoad';
 import { getSteppedLoadStep, sortSteppedLoadSteps } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import type { ShedSelection } from './selection';
+import { permitsDemandRelief, type ShedPressure } from './pressure';
 import { chooseShedRung } from './steppedCandidates';
 import type { ShedCandidate, StorageSetpoint, SteppedShedCandidate } from './types';
 import { hasStorageInput } from '../battery/storageLadder';
@@ -184,10 +188,9 @@ type ReliefShare = {
  * against this cycle's reading — or null when there is no latch. Nothing
  * standing is an answer too: its `retained` latch retires the rest for good.
  *
- * `creditDelivered` says whether relief a device's meter shows delivered keeps
- * its credit until the whole-home reading shows it. The one production caller
- * answers `false` under grid pressure, where delivered relief is retired on the
- * next reading (`shedding/AGENTS.md` § "Grid import pressure").
+ * Grid pressure retires delivered relief on the next reading. Grid pressure and
+ * an actual-cap projection also retire demand restrictions: their targets do
+ * not promise an electrical reduction (`shedding/AGENTS.md` § "Grid import pressure").
  */
 export function resolvePendingShedRelief(
   latch: ShedPlanLatch | null,
@@ -195,7 +198,7 @@ export function resolvePendingShedRelief(
   powerW: number,
   nowTs: number,
   storageLevers: StorageLevers,
-  creditDelivered: boolean,
+  pressure: ShedPressure,
 ): PendingShedRelief | null {
   if (latch === null) return null;
   const devicesById = new Map(devices.map((device) => [device.id, device]));
@@ -204,7 +207,13 @@ export function resolvePendingShedRelief(
   // decisions. Accepted — there is nothing left to read the claim from.
   const shares = [...latch.decisions].flatMap(([deviceId, decisions]) => {
     const device = devicesById.get(deviceId);
-    const taken = decisions.filter((decision) => decision.decidedAtMs <= nowTs);
+    // Withdraw usable demand credit without losing its earlier claim on a
+    // meter fall. Otherwise a fall showing this demand restriction would retire
+    // a later electrical command's credit. Withdrawal is one-way.
+    const taken = decisions.filter((decision) => decision.decidedAtMs <= nowTs).map((decision) => (
+      !permitsDemandRelief(pressure) && decision.kind === 'demand'
+        ? { ...decision, kind: 'withdrawn_demand' as const } : decision
+    ));
     const storageUndeliveredKw = resolveStorageUndeliveredKw(device, storageLevers[deviceId]);
     if (storageUndeliveredKw === 'gone') return [];
     if (storageUndeliveredKw !== 'not_storage') return splitDeviceRelief(deviceId, taken, storageUndeliveredKw);
@@ -216,7 +225,7 @@ export function resolvePendingShedRelief(
   const attribution = attributeRealisedRelief(shares, realisedKw);
   const assessed = shares.map((share) => {
     const { unseenShare } = attribution.get(share.decision.decidedAtMs) ?? NOTHING_ATTRIBUTED;
-    const unshownDeliveredKw = creditDelivered ? share.deliveredKw * unseenShare : 0;
+    const unshownDeliveredKw = pressure.kind !== 'grid' ? share.deliveredKw * unseenShare : 0;
     return {
       share,
       live: isWithinWindow(share.decision, nowTs),
@@ -230,18 +239,21 @@ export function resolvePendingShedRelief(
   const standing = assessed.filter(({ share, live, outstandingKw }) => (
     share.decision.creditedKw <= 0 ? live : outstandingKw > PENDING_RELIEF_EPSILON_KW
   ));
-  const crediting = standing.filter(({ live }) => live);
+  const crediting = standing.filter(({ live, share }) => live && share.decision.kind !== 'withdrawn_demand');
   // An expired decision credits nothing, but while a newer one stands on the
   // same reading it keeps the fall its own step can claim: a lagging meter that
   // shows the older step late must not retire the newer one's credit.
-  const kept = crediting.length > 0 ? standing : [];
+  const liveHistoricalClaim = standing.some(({ live, share }) => live && share.decision.kind === 'withdrawn_demand');
+  const kept = crediting.length > 0 || liveHistoricalClaim ? standing : [];
   const held = groupByDevice(crediting.map(({ share }) => [share.deviceId, share.decision] as const));
   const outstandingKw = sumByDevice(crediting
     .filter(({ share }) => share.decision.creditedKw > 0)
     .map(({ share, outstandingKw: kw }) => [share.deviceId, kw] as const));
-  const liveShares = assessed.filter(({ live }) => live).map(({ share }) => share);
+  const liveShares = assessed
+    .filter(({ live, share }) => live && share.decision.kind !== 'withdrawn_demand')
+    .map(({ share }) => share);
   const retainedDecisions = groupByDevice(kept.map(({ share, seen }) => [share.deviceId, seen
-    ? { decidedAtMs: share.decision.decidedAtMs, creditedKw: Math.min(share.decision.creditedKw, share.undeliveredKw) }
+    ? { ...share.decision, creditedKw: Math.min(share.decision.creditedKw, share.undeliveredKw) }
     : share.decision] as const));
   return {
     latch,
@@ -254,7 +266,7 @@ export function resolvePendingShedRelief(
     },
     // A decision that banked nothing has nothing outstanding, so it carries 0.
     rebased: groupByDevice(kept.map(({ share, outstandingKw: kw, unshownDeliveredKw }) => [
-      share.deviceId, { decidedAtMs: share.decision.decidedAtMs, creditedKw: kw, unshownDeliveredKw },
+      share.deviceId, { ...share.decision, creditedKw: kw, unshownDeliveredKw },
     ] as const)),
     outstandingKw,
     undeliveredKwByDevice: sumByDevice(crediting
@@ -468,7 +480,7 @@ export function holdPendingShedDecision(
   candidates: readonly ShedCandidate[],
   pending: PendingShedRelief,
   reason: DeviceReason,
-): Omit<ShedSelection, 'creditedKw'> {
+): Omit<ShedSelection, 'reliefByDevice'> {
   const shedSet = new Set<string>();
   const shedReasons = new Map<string, DeviceReason>();
   const shedStepTargets = new Map<string, string>();
@@ -609,24 +621,44 @@ export function latchShedDecision(
   devices: readonly PlanInputDevice[],
 ): ShedPlanLatch {
   const rebased = carried?.rebased ?? new Map<string, readonly RebasedDecision[]>();
-  const decisions = new Map([...rebased].map(([deviceId, standing]) => [
-    deviceId, standing.map(({ decidedAtMs, creditedKw }) => ({ decidedAtMs, creditedKw })),
+  const decisions = new Map<string, readonly ShedLatchDecision[]>([...rebased].map(([deviceId, standing]) => [
+    deviceId, standing.map(({ kind, decidedAtMs, creditedKw }) => ({ kind, decidedAtMs, creditedKw })),
   ] as const));
   // A battery chosen is latched like a shed device: its stopped charge is what it banked.
-  const chosenIds = [...chosen.shedSet, ...chosen.storageSetpoints.keys()];
-  for (const deviceId of chosenIds) {
+  for (const [deviceId, relief] of chosen.reliefByDevice) {
     const standing = decisions.get(deviceId) ?? [];
-    const newest = standing[standing.length - 1];
-    const newKw = chosen.creditedKw.get(deviceId) ?? 0;
-    const stillUndelivered = (carried?.undeliveredKwByDevice.get(deviceId) ?? 0) > PENDING_RELIEF_EPSILON_KW;
-    const offDevice = (rebased.get(deviceId) ?? [])
-      .map(({ decidedAtMs, unshownDeliveredKw }) => ({ decidedAtMs, creditedKw: unshownDeliveredKw }))
-      .filter((decision) => decision.creditedKw > PENDING_RELIEF_EPSILON_KW);
-    decisions.set(deviceId, newest !== undefined && stillUndelivered
-      ? standing.slice(0, -1).concat([{ decidedAtMs: newest.decidedAtMs, creditedKw: newest.creditedKw + newKw }])
-      : offDevice.concat([{ decidedAtMs: nowTs, creditedKw: newKw }]));
+    decisions.set(deviceId, extendShedHistory(deviceId, standing, relief, carried, nowTs));
   }
   return { powerW, decisions, stepTargets: latchSteppedShedTargets(chosen, carried, devices) };
+}
+
+/** One device's new decision preserves the stamps and claims its earlier actions still own. */
+function extendShedHistory(
+  deviceId: string,
+  standing: readonly ShedLatchDecision[],
+  relief: ShedRelief,
+  carried: PendingShedRelief | null,
+  nowTs: number,
+): readonly ShedLatchDecision[] {
+  const newest = standing[standing.length - 1];
+  const newKw = relief.creditedKw;
+  // A zero-credit reassertion cannot renew or erase a withdrawn claim.
+  if (newest?.kind === 'withdrawn_demand' && relief.kind === 'demand' && newKw === 0) return standing;
+  const stillUndelivered = (carried?.undeliveredKwByDevice.get(deviceId) ?? 0) > PENDING_RELIEF_EPSILON_KW;
+  const offDevice = (carried?.rebased.get(deviceId) ?? [])
+    .map(({ kind, decidedAtMs, unshownDeliveredKw }) => ({ kind, decidedAtMs, creditedKw: unshownDeliveredKw }))
+    .filter((decision) => decision.creditedKw > PENDING_RELIEF_EPSILON_KW);
+  const carriedHistory = relief.kind === 'demand' && newKw === 0
+    ? standing.filter((decision) => decision.kind === 'withdrawn_demand').concat(
+      offDevice.filter((decision) => decision.kind !== 'withdrawn_demand'),
+    )
+    : offDevice;
+  if (newest !== undefined && newest.kind === relief.kind && stillUndelivered) {
+    return standing.slice(0, -1).concat([{
+      kind: relief.kind, decidedAtMs: newest.decidedAtMs, creditedKw: newest.creditedKw + newKw,
+    }]);
+  }
+  return carriedHistory.concat([{ kind: relief.kind, creditedKw: newKw, decidedAtMs: nowTs }]);
 }
 
 /** Retain the physical estimate separately from later telemetry of the selected rung. */
