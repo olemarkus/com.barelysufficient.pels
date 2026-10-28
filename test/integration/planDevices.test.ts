@@ -1291,7 +1291,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     // active task the task's setpoint is the device's (owner ruling 2026-10-17).
     it('holds a device off in an hour its task skipped, at the task setpoint', () => {
       const device = tempInputDevice({
-        binaryControl: { on: true }, deadlineFloorTargetC: 65, deferredHoldActive: true,
+        binaryControl: { on: true }, deadlineFloorTargetC: 65, deferredHold: 'off',
       });
       const [planDevice] = buildInitialPlanDevicesForSpec({
         context: buildContext([device], tankTargets(40)),
@@ -1315,7 +1315,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         // No on/off axis: the builder reads an explicitly absent capability as none.
         binaryCapabilityId: undefined,
         deadlineFloorTargetC: 65,
-        deferredHoldActive: true,
+        deferredHold: 'off',
       });
       const [planDevice] = buildInitialPlanDevicesForSpec({
         context: buildContext([device], tankTargets(40)),

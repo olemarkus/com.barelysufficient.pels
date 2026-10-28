@@ -8,7 +8,7 @@ The allocator books an hour when it carries energy, when it is meaningfully chea
 
 ## During an active smart task, the task decides whether the device runs
 
-A `released` hour stands the task's device down even when Power-limit control is on. With standing command authority, `admission.ts` holds that device off without classifying the hold as capacity pressure; a temperature-only device with no off command keeps its configured setback. `claimed` hours continue through normal planning. Do not infer the release rule from task status text or stored start policy; use the resolved active claim and authority.
+A `released` hour stands the task's device down even when Power-limit control is on. With standing command authority, `admission.ts` holds that device off; a temperature-only device with no off command keeps its configured setback. With borrowed authority, it keeps its configured release posture. Both are deferred holds, not capacity pressure, and must not clamp unrelated stepped devices. `claimed` hours continue through normal planning. Do not infer the release rule from task status text or stored start policy; use the resolved active claim and authority.
 
 The task governs until its deadline, also once satisfied (owner ruling 2026-10-17). Satisfaction strips the rescue permissions; it does not hand the device back to normal running, and it has no lifecycle fallback of its own. A temperature task's setpoint rides every decision as `deadlineFloorTargetC`, so neither satisfaction nor a mode change writes a mode target below the task's mid-task (a more demanding one still wins, as the floor has always worked); a released hour's shed posture carries its own limit.
 

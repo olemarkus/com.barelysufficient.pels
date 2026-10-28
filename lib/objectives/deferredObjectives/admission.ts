@@ -90,13 +90,13 @@ const resolveDecision = (
     //
     // Binary-controlled devices (cap-on or cap-off): always release the binary control.
     // A device with authority of its own is ALSO held off through the planner
-    // (`holdsDeviceOff`), so the plan's shed and this release agree: the smart task's
+    // (`resolveDeferredHold`), so the plan's shed and this release agree: the smart task's
     // whole point is not to run outside planned hours.
     //
     // Non-binary cap-off: emit shed_release once so the configured shedBehavior fires. Cap-on
     // non-binary gets no release intent — emitting shed_release there would race the
     // planner's own decisions — and is held off through the planner instead
-    // (`holdsDeviceOff`, `deferredHoldActive`).
+    // (`resolveDeferredHold`, `deferredHold`).
     const releaseIntent = resolveReleaseIntent(releasesViaBinary, device);
     const holdCause: DeferredHoldCause = isTaskSatisfied(evaluation.completion) ? 'task_done' : 'cheaper_hours';
     return {
@@ -197,13 +197,17 @@ const contributesCommandAuthority = (
  * lane", which had nothing to hold a stepped device with, so it ran on spare
  * capacity, and released a binary one by command while the plan kept it on.
  *
- * A device the task lends authority to (`contributesCommandAuthority`) keeps its
- * own route: force-shed with a release to its configured posture.
+ * A device the task lends authority to keeps its configured release posture.
+ * Both holds are task scheduling, not capacity pressure.
  */
-const holdsDeviceOff = (
+const resolveDeferredHold = (
   decision: DeferredAdmissionDecision,
   device: PlanInputDevice,
-): boolean => decision.kind === 'idle' && device.control.commandAuthority === true;
+): PlanInputDevice['deferredHold'] => {
+  if (decision.kind !== 'idle') return undefined;
+  if (device.control.commandAuthority) return 'off';
+  return contributesCommandAuthority(decision, device) ? 'configured' : undefined;
+};
 
 export type DeferredAdmissionInput = {
   devices: PlanInputDevice[];
@@ -332,14 +336,14 @@ export const applyDeferredAdmissionToInput = (
     const hasDeadlineFloor = typeof deadlineFloorTargetC === 'number';
     const override = contributesCommandAuthority(decision, device);
     if (override) lentAuthorityDeviceIds.add(device.id);
-    const holdsOwnAuthorityOff = holdsDeviceOff(decision, device);
-    if ((override && decision.kind === 'idle') || holdsOwnAuthorityOff) forceShedSet.add(device.id);
+    const deferredHold = resolveDeferredHold(decision, device);
+    if (deferredHold) forceShedSet.add(device.id);
     const claims = resolveHourClaims(decision, device);
-    if (!override && !holdsOwnAuthorityOff && !hasDeadlineFloor && !claimsAnything(claims)) return device;
+    if (!override && !deferredHold && !hasDeadlineFloor && !claimsAnything(claims)) return device;
     return {
       ...device,
       ...buildAdmissionDecoration(device, override, claims, deadlineFloorTargetC),
-      ...(holdsOwnAuthorityOff ? { deferredHoldActive: true as const } : {}),
+      ...(deferredHold ? { deferredHold } : {}),
     };
   });
   return {
