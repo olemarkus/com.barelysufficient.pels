@@ -4,9 +4,9 @@ import { resolveSteppedEvExceptionLabel } from '../../packages/shared-domain/src
  * The card must not assert a cause it cannot observe. Matrix of record:
  * `notes/ev-charger-state-copy.md`.
  *
- * `currentState` is signal 2 — the `evcharger_charging` read-back. `on` means
- * the charger has been told to deliver current (by PELS or anyone else), which
- * is the precondition for anything being able to wait on the car.
+ * `currentState` reports whether current is on offer: `off` when the
+ * binary command is off or the reported step is 0 W. `on` is the precondition
+ * for anything being able to wait on the car.
  */
 
 type EvCard = Parameters<typeof resolveSteppedEvExceptionLabel>[0];
@@ -52,6 +52,14 @@ describe('EV card label with an associated car', () => {
     expect(resolveSteppedEvExceptionLabel(card({
       evChargingState: 'plugged_in_paused', carChargingState: 'plugged_in_charging',
     }))).toBe('Car and charger disagree');
+  });
+
+  it('keeps a paused charger neutral while the car lags behind an off command', () => {
+    expect(resolveSteppedEvExceptionLabel(card({
+      currentState: 'off',
+      evChargingState: 'plugged_in_paused',
+      carChargingState: 'plugged_in_charging',
+    }))).toBe('Paused');
   });
 
   it('attributes a pause to the car when both agree on it', () => {

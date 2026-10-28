@@ -117,9 +117,9 @@ const resolveEvCarExceptionLabel = (
     return EV_IDLE_COMMANDED_LABEL;
   }
   if (state === 'plugged_in_paused') {
-    // Same contradiction as the idle case, and reported for the same reason: the
-    // charger says it halted while the car says current is flowing.
-    if (carState === EV_ROUTINE_STATE) return EV_CAR_DISAGREES_LABEL;
+    // As with idle, a car still reporting charge after current was switched off
+    // is expected lag. Only call it a contradiction while current is on offer.
+    if (commandedOn && carState === EV_ROUTINE_STATE) return EV_CAR_DISAGREES_LABEL;
     if (carState === 'plugged_in_paused') return EV_CAR_PAUSED_LABEL;
   }
   return null;

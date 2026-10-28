@@ -85,25 +85,28 @@ charger's SDK binding and exposes only normalized binary observation inward, so
 the observer always resolves a concrete `on`/`off`, never `not_applicable`.
 There is no step-only-charger case needing a fallback.
 
-Car rows — these refine only the cells the charger leaves ambiguous, and all of
-them require signal 2 `true`:
+Car rows refine only the cells the charger leaves ambiguous. **Current on
+offer** is the observer-resolved `currentState`: `off` when the binary command
+is off or the reported step is 0 W.
 
-| Charger state | Command | Car says | Reading | Copy |
+| Charger state | Current on offer | Car says | Reading | Copy |
 |---|---|---|---|---|
-| `plugged_in` | `true` | *no association* | The charger was told to charge and no current flows | **Waiting for car** |
-| `plugged_in` | `true` | `plugged_in` / `plugged_in_paused` | The car is declining to draw — confirmed by the car | **Waiting for car** |
-| `plugged_in` | `true` | `plugged_in_charging` | Charger sees nothing, car thinks it is charging | **Car and charger disagree** |
-| `plugged_in` | `true` | `plugged_out` | The car says it is not plugged in at all | **Not charging** + the association is suspect; drop it |
-| `plugged_in` | `false` | any, incl. `plugged_in_charging` | Switched off; a car still reporting charge is lagging the off command, not contradicting it | **Not charging** |
+| `plugged_in` | `on` | *no association* | The charger was told to charge and no current flows | **Waiting for car** |
+| `plugged_in` | `on` | `plugged_in` / `plugged_in_paused` | The car is declining to draw — confirmed by the car | **Waiting for car** |
+| `plugged_in` | `on` | `plugged_in_charging` | Charger sees nothing, car thinks it is charging | **Car and charger disagree** |
+| `plugged_in` | `on` | `plugged_out` | The car says it is not plugged in at all | **Not charging** + the association is suspect; drop it |
+| `plugged_in` | `off` | any, incl. `plugged_in_charging` | Switched off; a car still reporting charge is lagging the off command, not contradicting it | **Not charging** |
+| `plugged_in_paused` | `on` | `plugged_in_charging` | Charger halted while offering current, car thinks it is charging | **Car and charger disagree** |
+| `plugged_in_paused` | `off` | `plugged_in_charging` | Current is switched off; the car is lagging the pause | **Paused** |
 | `plugged_in_paused` | any | `plugged_in_paused` | Both agree the car paused itself | **Paused by the car** |
 | `plugged_in_paused` | any | `plugged_in` | Charger halted, car merely idle | **Paused** |
 
-The `false` row deliberately withholds the contradiction label: right after an
+The `off` rows deliberately withhold the contradiction label: right after an
 off command a car app that still says `plugged_in_charging` is the expected lag,
-and reporting it would print "Car and charger disagree" on every shed until the
-car catches up. The paused rows do not consult the command at all — they
-discriminate signal 3 against signal 4, and an Easee leaves the boolean `true`
-across a pause anyway.
+and reporting it would print "Car and charger disagree" on every pause until the
+car catches up. This applies to both idle and paused charger states. An Easee
+can leave its boolean command `true` across a pause, but the observer still
+resolves `off` at a 0 W step.
 
 Nothing here depends on PELS controlling the device. An unmanaged charger can be
 charging or idling exactly as a managed one can; it simply is not PELS's
