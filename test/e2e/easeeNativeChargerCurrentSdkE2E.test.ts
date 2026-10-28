@@ -252,6 +252,33 @@ describe('built-in Easee charger current (SDK-boundary e2e)', () => {
     expect(mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed ?? []).toEqual([]);
   });
 
+  it('leaves a Manual charger at its reported current when another device is limited', async () => {
+    const charger = await buildEaseeCharger();
+    const heater = new MockDevice('heater', 'Heater', ['onoff', 'measure_power'], 'socket');
+    await heater.setCapabilityValue('onoff', true);
+    await heater.setCapabilityValue('measure_power', 2_000);
+    setMockDrivers({ driverA: new MockDriver('driverA', [charger, heater]) });
+    configureRuntime(true);
+    mockHomeyInstance.settings.set(MANAGED_DEVICES, { [CHARGER_ID]: true, heater: true });
+    mockHomeyInstance.settings.set(CONTROLLABLE_DEVICES, { [CHARGER_ID]: false, heater: true });
+    reportHomePower(RESET_POWER_W + 2_000, false);
+
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+    const heaterPath = 'manager/devices/device/heater/capability/onoff';
+    const app = createApp();
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await drainUntil(() => putSpy.mock.calls.some(([path]) => path === heaterPath));
+
+    // The other load was actually limited: this exercises the same fairness
+    // clamp that must leave the Manual charger's current alone.
+    expect(putSpy).toHaveBeenCalledWith(heaterPath, { value: false });
+    expect(putSpy.mock.calls.filter(([path]) => path === CHARGER_CURRENT_PATH)).toEqual([]);
+    expect(putSpy.mock.calls.filter(([path]) => path === SWITCH_PATH)).toEqual([]);
+    expect(mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed ?? []).toEqual([]);
+    expect(charger.getActualCapabilityValue('target_charger_current')).toBe(RESET_CURRENT_A);
+  });
+
   it('pauses at 0 A and resumes by current, never through the charging switch', async () => {
     const charger = await buildChargingEasee();
     setMockDrivers({ driverA: new MockDriver('driverA', [charger]) });

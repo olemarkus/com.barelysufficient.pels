@@ -127,10 +127,15 @@ function resolvePlannedDeviceDecision(inputs: BasePlanDeviceInputs): PlannedDevi
   const { shedAction, shedTemperature, releaseShedStepId } = resolveShedAction(dev, shouldShed, shedBehavior);
   return {
     plannedState,
-    effectiveDesiredStepId: resolveSteppedKeepDesiredStepIdFor(
-      dev, plannedState, shedDesiredStepId ?? runtimeDesiredStepId,
-      inputs.anyOtherDeviceLimited, boostActive, surplusCeilingStepId,
-    ),
+    // A Manual device keeps its current rung. Neither another device's shed nor
+    // an old command grants authority to change it. Explicit lifecycle releases
+    // are attached separately after the ordinary plan has been built.
+    effectiveDesiredStepId: control.commandAuthority
+      ? resolveSteppedKeepDesiredStepIdFor(
+        dev, plannedState, shedDesiredStepId ?? runtimeDesiredStepId,
+        inputs.anyOtherDeviceLimited, boostActive, surplusCeilingStepId,
+      )
+      : resolveSteppedLoadInitialDesiredStepId(dev),
     shedDesiredStepId,
     // Keyed on AUTHORITY, not on power limiting. `capacityControlOff` says "PELS is
     // not controlling this device" — false the moment a smart task has contributed
