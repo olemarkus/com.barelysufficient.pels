@@ -258,6 +258,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
         // only honest value an unservable home can carry.
         expect(getSettingsUiDevicesPayload({ homey, query })).toEqual({
           inverterDevices: [], continuousBatteryPlans: {},
+          schedules: { ok: false, error: expect.any(String) },
           devices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
         });
 
@@ -333,6 +334,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
       const { homey } = installBoundary({ hasMembership: false });
       expect(getSettingsUiDevicesPayload({ homey, query: { homeId: AREA_ID } })).toEqual({
         inverterDevices: [], continuousBatteryPlans: {},
+          schedules: { ok: false, error: expect.any(String) },
         devices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
       });
       expect(getSettingsUiPowerPayload({ homey, query: { homeId: AREA_ID } })).toEqual({
@@ -357,6 +359,7 @@ describe('settings-UI `?homeId=` endpoints', () => {
       const query = { homeId: AREA_ID };
       expect(getSettingsUiDevicesPayload({ homey, query })).toEqual({
         inverterDevices: [], continuousBatteryPlans: {},
+          schedules: { ok: false, error: expect.any(String) },
         devices: [], chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
       });
       expect(getSettingsUiPowerPayload({ homey, query })).toEqual({
