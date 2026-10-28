@@ -286,10 +286,6 @@ export class DeviceWriteService {
     target: import('../../ports/inverterControl').InverterReleaseTarget,
   ): Promise<void> {
     if (target.kind === 'watts_and_mode') this.requireInverterBinding(deviceId, target.binding);
-    if (current?.authority === 'limit_and_release'
-      && inverterRestorationLimitW(target.limitW, current) !== target.limitW) {
-      throw new Error('The inverter production range changed before hand-back.');
-    }
     if (target.kind === 'watts_and_mode' && target.mode.kind === 'autonomous') {
       // In its own mode the saved target_power may be a dormant zero. Written
       // first, while PELS's mode still applies, it would cap production at
@@ -297,6 +293,10 @@ export class DeviceWriteService {
       // returns the inverter to its own control and confirms the hand-back.
       await this.setCapability(deviceId, 'target_power_mode', target.mode.value);
       return;
+    }
+    if (current?.authority === 'limit_and_release'
+      && inverterRestorationLimitW(target.limitW, current) !== target.limitW) {
+      throw new Error('The inverter production range changed before hand-back.');
     }
     await this.setCapability(deviceId, 'target_power', target.limitW);
     if (target.kind === 'watts_and_mode') {

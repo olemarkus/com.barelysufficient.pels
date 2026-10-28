@@ -99,6 +99,12 @@ test('a saved plan that cannot run keeps the managed hint', async () => {
   expect(document.getElementById('device-detail-managed-hint')?.textContent).not.toContain('PELS plans');
 });
 
+test('a waiting plan keeps the managed hint', async () => {
+  callApi.mockResolvedValue({ status: 'waiting', config, reason: 'prices_unavailable' });
+  await openBattery();
+  expect(document.getElementById('device-detail-managed-hint')?.textContent).not.toContain('PELS plans');
+});
+
 test('a plan refresh keeps an unsaved reserve edit and saves through the settings channel', async () => {
   await openBattery();
   await act(async () => { field('Minimum reserve (%)').value = '35'; field('Minimum reserve (%)').dispatchEvent(new Event('input')); });
