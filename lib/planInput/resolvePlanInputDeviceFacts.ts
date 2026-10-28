@@ -33,9 +33,12 @@ import {
   resolveSteppedLadderMissing,
   resolveSurplusPostureForDevice,
 } from './planInputDeviceHelpers';
-import { resolveEvTargetPowerPlannerProfile } from '../device/targetPowerReachability';
+import {
+  resolveEffectiveTargetPowerConfig, resolveEvTargetPowerPlannerProfile,
+} from '../device/targetPowerReachability';
 import { resolveStorageCluster } from './storageProjection';
 import { projectChargeTargetHold } from './chargeTargetHold';
+import { resolveOperatingPowerRange } from '../device/operatingPowerRange';
 
 /**
  * The owner's standing grants for a device, read from the same settings the
@@ -71,7 +74,7 @@ export const resolvePlanInputDeviceFacts = (
   const isSteppedDevice = isSteppedLoadSnapshot(device);
   const plannerSteppedLoadProfile = isSteppedDevice
     ? resolveEvTargetPowerPlannerProfile({
-      config: source.getTargetPowerConfig(device.id) ?? device.targetPowerConfig,
+      config: resolveEffectiveTargetPowerConfig(device.targetPowerConfig, source.getTargetPowerConfig(device.id)),
       confirmedProfile: device.steppedLoadProfile,
       nowMs: source.getNow().getTime(),
     })
@@ -156,6 +159,7 @@ export const resolvePlanInputDeviceFacts = (
     control,
     startPolicyInForce,
     chargeTargetHold: projectChargeTargetHold(source.getEvChargeTargetConfig(device.id), device, control),
+    operatingPowerRange: resolveOperatingPowerRange(device),
     surplusTracking,
     hasStandingDemand,
     residualKw,

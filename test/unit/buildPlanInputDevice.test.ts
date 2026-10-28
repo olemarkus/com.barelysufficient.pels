@@ -34,6 +34,7 @@ describe('buildPlanInputDevice', () => {
       startPolicyInForce: 'unrestricted',
       // Required: the producer resolves "no target" to no hold.
       chargeTargetHold: { kind: 'none' },
+      operatingPowerRange: 'usable',
       available: true,
       id: 'dev-1',
       name: 'Device',

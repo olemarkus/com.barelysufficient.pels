@@ -63,6 +63,7 @@ type StaticReason = Extract<
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
   | { code: typeof PLAN_REASON_CODES.awaitingPelsStart }
   | { code: typeof PLAN_REASON_CODES.awaitingBatteryLevel }
+  | { code: typeof PLAN_REASON_CODES.powerLimitBelowMinimum }
 >;
 
 function formatSignedKw(value: number, digits: number): string {
@@ -94,6 +95,7 @@ const STATIC_REASON_CODES = new Set<string>([
   PLAN_REASON_CODES.awaitingSolarSurplus,
   PLAN_REASON_CODES.awaitingPelsStart,
   PLAN_REASON_CODES.awaitingBatteryLevel,
+  PLAN_REASON_CODES.powerLimitBelowMinimum,
 ]);
 
 function isStaticReason(reason: DeviceReason): reason is StaticReason {
@@ -119,6 +121,7 @@ const STATIC_REASON_TEXT: Record<StaticReason['code'], string> = {
   [PLAN_REASON_CODES.awaitingSolarSurplus]: 'waiting for solar surplus',
   [PLAN_REASON_CODES.awaitingPelsStart]: 'waiting for a smart task to start it',
   [PLAN_REASON_CODES.awaitingBatteryLevel]: 'waiting for battery level',
+  [PLAN_REASON_CODES.powerLimitBelowMinimum]: 'configured power limit below the minimum operating power',
 };
 
 function formatStaticReason(reason: StaticReason): string {
@@ -483,6 +486,7 @@ const STATIC_REASON_USER_TEXT: Record<StaticReason['code'], string> = {
   [PLAN_REASON_CODES.awaitingPelsStart]: '',
   // States what the charger needs: a battery level. Shared with the card.
   [PLAN_REASON_CODES.awaitingBatteryLevel]: PLAN_STATE_AWAITING_BATTERY_LEVEL_STATUS,
+  [PLAN_REASON_CODES.powerLimitBelowMinimum]: "Configured power limit is below this device's minimum",
 };
 
 function formatStaticReasonUserFacing(reason: StaticReason): string {
