@@ -24,16 +24,18 @@ EV-percent-centric.
 As of this note, PELS already has internal/native EV state-of-charge plumbing:
 
 - native EV SoC capabilities can appear on snapshots as `stateOfCharge`
-- SoC carries freshness and EV session validity
-- stale or invalid SoC is available for diagnostics but must not drive planning
+- SoC carries EV session validity; the producer resolves the level (`known` or not) and PELS
+  applies no age gate on top
+- a level that is not `known`, or one outside a live session, must not drive planning
 - learned EV objective profiles can supply kWh per 1% SoC
 - learned temperature objective profiles can supply kWh per 1 C
 - a versioned settings payload can define soft EV SoC or temperature objectives
 - the diagnostics bridge can read persisted EV SoC and temperature objectives and run them through horizon planning
 - the bridge is gated on the price feature and requires complete price buckets through the deadline
 - public flow cards expose deadline creation, clearing, status conditions, and status-change /
-  missed-deadline triggers; the earlier device-detail Settings UI card has been removed in favor of
-  the flow-card surface (see `docs/flow-cards.md`)
+  missed-deadline triggers (see `docs/flow-cards.md`); tasks are also created and edited from the
+  Smart tasks page (New smart task, also reachable from a device page) and the Create smart task
+  widget
 - an internal status bus publishes live status transitions before expiry; terminal outcomes
   are recorded in history and published through the ended-event bus, while public status Flow
   cards read the settled active-plan status
@@ -96,7 +98,7 @@ Storage rules:
   rolls forward on its own. When the lifecycle emitter observes the deadline transition, setup's
   `handleDeferredDeadlineReached` converges the configured fallback and then auto-disables the
   entry (`enabled: false`), so the same deadline never replans for the next day. Users re-arm by
-  firing the flow card again.
+  creating a new task (Smart tasks page, widget or Flow card).
 - Deadlines are soft-only. The Settings UI must not expose a `'hard'` enforcement mode.
 - `enforcement` is persisted on EV entries (`'soft' | 'hard'`), but no flow card sets `'hard'` (the
   EV card hardcodes `'soft'`) and there is no deadline-first admission mode — so deadlines are
@@ -160,9 +162,11 @@ fallback actuation stays on the independent lifecycle clock:
   and diagnostics; the recorded terminal outcome remains authoritative.
 - For each live objective whose status is `on_track`, `at_risk`, or `cannot_meet`, an admission
   decision maps the resolved hour claim: `claimed` becomes `planned`, `released` becomes `idle`,
-  and a claimed hour booked at 0 kWh is driven on free capacity only. `satisfied`, `unknown`, and
-  `invalid` resolve to `inactive` so the device returns to
-  its normal behavior once the goal is met or the objective cannot be trusted.
+  and a claimed hour booked at 0 kWh is driven on free capacity only. Only an evaluation whose
+  planning is `inactive` (an `unknown` or `invalid` objective, or any task while price optimization
+  is off) resolves to `inactive`, returning the device to its normal behavior. A `satisfied` task
+  keeps governing its device until the deadline: its booked hours stay as top-ups and every
+  unbooked hour holds the device off (`holdCause: 'task_done'`, owner ruling 2026-10-17).
 - Capacity-based control on/off is treated purely as device visibility for the planner: cap-on
   devices are always managed; a device the owner has not opted into power limiting is
   normally invisible to PELS (an externally toggled one runs undisturbed). When such a
@@ -197,7 +201,7 @@ fallback actuation stays on the independent lifecycle clock:
   `buildBasePlanDevice` overwrites `plannedTarget` with the shed temperature when the device is
   in the shed-set.
 
-Cap-on temperature admission is still future work. Priority-ordered contention across multiple
+Priority-ordered contention across multiple
 deferred objectives and EV pause/resume admission are shipped — see `notes/ev-ready-by/README.md`.
 
 EV admission has one additional safety gate beyond the temperature path: `binary_restore` is the
@@ -215,19 +219,23 @@ recorder captures sealed outcomes (met/missed/abandoned), the active-plan record
 captures the plan that is *being executed right now* so the Settings UI and any
 downstream consumer reads a stable allocation rather than re-deriving one on every load.
 
-Persisted shape (`deferred_objective_active_plans` settings key, V1):
+Persisted shape (`deferred_objective_active_plans` settings key, V1). This is an abbreviated
+sketch; `DeferredObjectiveActivePlanV1` in `packages/contracts/src/deferredObjectiveActivePlans.ts`
+is the full contract:
 
 ```ts
 type ActivePlan = {
   deviceId: string;
   deviceName: string | null;
-  objectiveKind: 'temperature' | 'ev_soc';
-  targetTemperatureC: number | null;
-  targetPercent: number | null;
+  objectiveKind: 'temperature' | 'ev_soc' | 'energy';
+  targetValue: number;         // in the task's own unit (°C, % or kWh)
   deadlineAtMs: number;
   startedAtMs: number;
-  pending: boolean;            // flow card fired, no revision yet
-  pendingReason?: 'awaiting_horizon_plan' | 'price_feature_disabled' | 'device_data_missing';
+  liveCompletion: DeferredObjectiveLiveCompletion;
+  pending: boolean;            // task created or edited, no revision yet
+  pendingReason?: 'not_yet_planned' | 'awaiting_horizon_plan' | 'price_feature_disabled'
+                | 'device_data_missing' | 'waiting_for_car' | 'invalid_session'
+                | 'missing_capacity' | 'device_in_sub_home' | 'device_unmanaged';
   objectiveSignature: string;  // hash of (kind, targets, deadline, enforcement, rescue permissions)
   commitment?: {               // first full-horizon allocation accepted for runtime execution
     committedAtMs: number;
@@ -235,19 +243,20 @@ type ActivePlan = {
   };
   original: Revision | null;   // first non-pending revision
   latest:   Revision | null;   // current revision (== original until replanned)
+  history?: Revision[];         // bounded revision log
 };
 
 type Revision = {
   revision: number;
   revisedAtMs: number;
   computedFromPricesUpTo: number | null;
-  reason: 'flow_card' | 'prices_arrived' | 'objective_changed'
+  reason: 'flow_card' | 'prices_arrived' | 'objective_changed' | 'direction_changed'
         | 'prices_revised' | 'schedule_revised' | 'rate_refined'
-        | 'device_unavailable' | 'measured_deviation';
+        | 'device_unavailable' | 'measured_deviation' | 'flow_permission_changed';
   hours: { startsAtMs: number; plannedKWh: number }[];
   energyNeededKWh: number;
   planStatus: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied';
-  kwhPerUnitSource?: 'learned' | 'bootstrap';
+  kwhPerUnitSource?: 'learned' | 'bootstrap' | 'exact';
 };
 ```
 
@@ -484,6 +493,10 @@ these triggers:
 7. **`measured_deviation`** — A learned per-unit energy rate has drifted far enough from the
    committed plan baseline that the plan's energy basis changed. Emitted by the active-plan
    recorder; richer Flow tokens for this reason remain deferred.
+8. **`direction_changed`** — The thermostat's resolved progress direction (heating or cooling)
+   changed while every user-owned objective field and Flow permission stayed the same.
+9. **`flow_permission_changed`** — Only the task's rescue permissions changed (the signature
+   differs only in its rescue segment, `compareObjectiveSignatures` in `activePlanSignature.ts`).
 
 A normal plan cycle whose output does not change committed-plan metadata does **not** mutate
 the record. This is what makes the plan stable: the runtime can re-evaluate every cycle, but
@@ -492,7 +505,7 @@ until the user clears/replaces the objective or the deadline passes.
 
 **Revision history (`history[]`).** Each replan that writes a new `latest` revision also
 prepends the prior `latest` onto a bounded `history[]` array, FIFO-pruned to
-`MAX_HISTORY_REVISIONS = 20` entries (in `activePlanRecorder.ts`). The head of the array is
+`MAX_HISTORY_REVISIONS = 20` entries (in `activePlanRevisionBuild.ts`). The head of the array is
 always the revision immediately before the current `latest`. The cap covers any realistic
 smart-task lifecycle — schedule-changing replans are typically single-digit per task — while
 keeping per-device persistence ≈60 KB worst case (48-bucket horizon × 20 revisions × ~50 B
@@ -616,9 +629,9 @@ as an in-page route off `index.html`.):
   per-device cards in the History tab next to the existing current-plan view.
 
 End-of-run events for smart tasks are surfaced via the unified `deadline_ended` flow trigger,
-published by the plan history recorder at finalization. The trigger carries an `outcome` arg
-(`succeeded` / `missed` / `abandoned`) and corresponding tokens (target text, deadline local time,
-finished-at local time when succeeded, shortfall text when missed). `replaced` (user changed the
+published by the plan history recorder at finalization. The trigger has a `device` arg and carries
+`device_name`, `outcome` (stable id: `succeeded` / `missed` / `abandoned`), `shortfall` and
+`shortfall_known` tokens. `replaced` (user changed the
 deadline) and `unknown` (PELS never observed enough to classify) outcomes are intentionally
 suppressed — they do not fire the trigger. Backfill entries reconstructed from settings after a
 PELS-off window also stay quiet so users do not receive retroactive notifications.
@@ -685,9 +698,8 @@ This gives PELS one planner contract for both EVs and heaters:
 - What is the minimum step/mode/action required to remain on plan?
 
 Trustworthiness is deliberately NOT on this contract: admission
-(`lib/objectives/deferredObjectives/admission.ts`, `resolveDecision`) maps the task evaluation's
-`completion` (`target_reached` / `accepted_near_target`) and `planning.kind === 'inactive'` to
-`inactive` before the plan build, so nothing untrusted reaches the planner to judge.
+(`lib/objectives/deferredObjectives/admission.ts`, `resolveDecision`) maps
+`planning.kind === 'inactive'` to `inactive` before the plan build, so nothing untrusted reaches the planner to judge.
 
 ## State vs Evaluation
 
@@ -712,7 +724,7 @@ named and were drifting from reality. The shipped equivalents are:
 
 - **Persisted state**: `DeferredObjectiveSettingsEntry`, one per device key (`packages/contracts/src/deferredObjectiveSettings.ts`).
 - **Evaluation**: `DeferredObjectiveDiagnostic` (`lib/objectives/deferredObjectives/diagnosticTypes.ts`,
-  produced by `taskEvaluationCoordinator.ts`), status enum `unknown | on_track | at_risk | cannot_meet`.
+  produced by `taskEvaluationCoordinator.ts`), status enum `unknown | on_track | at_risk | cannot_meet | satisfied`.
 - **Rate estimate**: the learned-profile model in `lib/objectives/` (see §"Learned Profiling First").
 
 The enduring design rule still holds: the planner consumes a generic objective evaluation in
@@ -737,7 +749,6 @@ Future generic inputs may include:
 - report remaining objective energy in kWh
 - report measured storage temperature
 - set target percent
-- set target energy in kWh
 - set target temperature
 - set capacity in kWh
 - set soft deadline
@@ -923,8 +934,8 @@ EV progress belongs to the charger session:
 
 - disconnect or unplug invalidates effective progress
 - reconnect starts a new session boundary
-- planning requires a fresh progress sample newer than the reconnect/session start
-- stale or invalid SoC must not drive scheduling
+- planning uses only a `known` level within a live session; there is no age gate
+- a level that is not `known`, or an invalid session, must not drive scheduling
 - previous raw SoC may remain visible only for diagnostics
 
 For the first EV objective implementation, actuation should remain pause/resume unless a
@@ -989,8 +1000,8 @@ requiredAverageKw = energyNeededKwh / availableHours;
 If `energyNeededKwh <= 0`, the objective is met (status `satisfied` via `energy_already_met`).
 
 Missing, invalid, or impossible inputs produce `unknown` or `cannot_meet`, never
-optimistic planning. For EV SoC, stale progress also collapses to `unknown` because
-charger session validity requires per-session telemetry. For temperature, stale
+optimistic planning. For EV SoC, a level the producer does not report as `known`, or an
+inactive session, collapses to `unknown`; PELS applies no age gate. For temperature, stale
 (aged-out) progress is **not** stale-by-trust — Homey thermostat drivers only push
 capability updates on value change, so a healthy device steady at setpoint
 legitimately goes silent for hours; the last-seen temperature is credited as long
@@ -1003,14 +1014,16 @@ energy" mode below, with no level of the device's own: `currentEnergyKwh` is the
 has taken since the task started, and `targetEnergyKwh` is the task's target. It exists for a
 relay-switched water heater, which has neither a temperature nor a battery level.
 
-- **Which devices**: only pure on/off devices (`resolveSmartTaskDeviceKind` in
-  `packages/shared-domain/src/smartTaskDeviceKind.ts`): an on/off axis, and no charger role,
-  temperature target or stepped ladder. Such a device had no smart-task kind before, so `energy` is
-  its only kind and "which kind can this device take" still has one answer per device. Creating a
+- **Which devices**: pure on/off devices (an on/off axis, and no charger role, temperature target
+  or stepped ladder) and EV chargers (`resolveDefaultSmartTaskKind` / `supportsSmartTaskKind` in
+  `packages/shared-domain/src/smartTaskDeviceKind.ts`). For a pure on/off device `energy` is its
+  only kind; a charger defaults to a battery target, and the Smart tasks page and widget offer an
+  energy task instead for a plugged-in charger with no battery level
+  (`resolveSmartTaskCreationKind`). Creating a
   task also needs a live power reading (`supportsSmartTaskKind`): the device's own `measure_power`
   or Homey Energy's live figure. A rate the device layer derived from a cumulative meter lingers
   after the device switches off and would count energy never taken, so meter-only devices are not
-  offered. The create widget does not offer energy tasks yet; the Flow card does.
+  offered.
 - **Progress** is counted by `EnergyTaskDeliveryTracker` (`energyDelivery.ts`) on the lifecycle
   clock and read by the bridge through an injected reader, so `resolveObjectiveProgress` stays a
   value question. The draw each tick saw is booked over the time until the next tick, however long
@@ -1048,9 +1061,8 @@ delivered); the active plan stores `targetValue` (a plan stored before it carrie
 `targetTemperatureC` / `targetPercent`, read into `targetValue` once on load); the in-flight
 history record holds `targetValue` / `startProgressValue` / `finalProgressValue` and unit-agnostic
 samples, and finalizes straight into the compact row, whose kind comes from the device at the API
-boundary as for every other kind. The UI view of an active plan says where its reading comes from
-(`progressSource`: a level on the device, or an energy task's delivered energy), so no surface
-branches on the kind to find the number. The kWh target is appended to the objective signature
+boundary as for every other kind. The resolved active plan carries `deliveredKWh` on its `energy`
+arm (`ResolvedDeferredObjectiveActivePlanV1`). The kWh target is appended to the objective signature
 only for energy tasks, so temperature and EV signatures are unchanged.
 
 #### Future input modes (not the v1 path)
@@ -1204,8 +1216,8 @@ device settings:
 Changing a rescue permission changes the authority of the active objective.
 Treat it like an objective input change for commitment/history purposes:
 active commitments must be reset or versioned instead of silently reusing old
-committed hours under new authority. The reserved `flow_permission_changed`
-revision reason is the intended history/log surface for that distinction.
+committed hours under new authority. The `flow_permission_changed` revision
+reason is written when only a rescue permission changes, so history names that distinction.
 
 The `at_risk` rescue timing option is not shipped behavior yet. If it is
 implemented later, it must be sticky/debounced: engage once the plan is at risk
@@ -1254,8 +1266,8 @@ first time it observes the source flip from `bootstrap` to `learned` after the i
 
 Temperature objectives do not get a bootstrap default. Thermal mass varies by orders of magnitude
 across devices (a small radiator vs a 200 L water tank), so no single constant is safe. Temperature
-profiles also start learning on day one for any device with `measure_power` (or a configured
-stepped-load profile with `planningPowerW`), because `updateObjectiveProfilesFromSnapshot` runs
+profiles also start learning on day one for any device with `measure_power` (a step's configured
+power is never credited), because `updateObjectiveProfilesFromSnapshot` runs
 every power sample on the whole device snapshot — not gated on an objective being set.
 
 ## Deadline Plan Visibility
@@ -1273,12 +1285,12 @@ For EV chargers, the page should make the plan answer concrete questions from is
 - which hours are kept as backup because charging may be blocked
 - what assumptions affect backup hours and confidence
 
-The shipped chart uses two stacked ECharts grids: the upper grid shows hourly electricity prices
-tone-coded (cheap / normal / expensive); the lower grid stacks background usage, current planned
-charge, and an overlay of the *original* planned charge (dashed border) for hours where the plan
-revised. A progress target line sits on the left Y axis in the device's display unit (°C for
-temperature, % for EV), and observed device delivery is rendered as a dotted line when
-available. This keeps the behavior recognizable as cheapest-hour EV planning while showing the
+The shipped page draws two ECharts charts (`packages/settings-ui/src/ui/views/DeadlinePlan.tsx`).
+The schedule chart (`buildScheduleChartOption`) is one grid of hourly price bars: picked hours are
+filled, other hours are the same hue dimmed, a dot marks hours the plan changed, and now/deadline
+lines sit at their true positions. The trajectory chart (`buildTrajectoryChartOption`) shows the
+measured progress so far, the planned staircase ahead, scheduled-run bands, a dashed target line in
+the device's display unit (°C, % or kWh) and the deadline line. This keeps the behavior recognizable as cheapest-hour EV planning while showing the
 PELS difference: priority and background usage risk widen the plan or add backup hours, but
 they do not make expensive hours look cheap.
 
@@ -1323,8 +1335,10 @@ Log events:
 - `deferred_objective_goal_met`
 - `deferred_objective_deadline_missed`
 
-Lifecycle events (target met, deadline missed) are currently surfaced through status transitions
-and the `deadline_ended` flow trigger outcome rather than as their own structured log events.
+Lifecycle events (target met, deadline missed) are surfaced through status transitions, the
+`deadline_ended` flow trigger outcome, and the `deferred_objective_history_finalized` structured
+debug event (`buildFinalizedAttributionEvent` in `planHistoryV4Helpers.ts`), which carries the
+outcome and its miss attribution.
 Milestone-status logging is deferred — see
 [`notes/planning-horizon-milestones/README.md`](../planning-horizon-milestones/README.md).
 
@@ -1358,9 +1372,8 @@ Useful fields:
 - `deadlineMarginMs`
 - `projectedCompletionAtMs`
 - `expectedStepId`
-- `dailyBudgetExhaustedBucketCount` (public diagnostic — number of horizon buckets the daily
-  budget reports as exhausted; UI consumes to explain `cannot_meet` outcomes due to budget vs.
-  device limits)
+- `dailyBudgetExhaustedBucketCount` (retired: nothing writes it any more and it is read only
+  from older history; budget attribution is `budgetRole` / `budgetContributedToShortfall`)
 
 Log the full bucket plan only when the debug topic is enabled. Normal structured info logs should
 be limited to lifecycle events such as target met, deadline missed, or a stable transition to
@@ -1391,7 +1404,7 @@ Inputs:
 Outputs:
 
 ```ts
-objectiveEvaluation: DeviceObjectiveEvaluation;
+evaluation: TaskEvaluation; // on DeferredObjectiveDiagnostic
 ```
 
 Planner behavior:
@@ -1403,7 +1416,7 @@ Planner behavior:
 
 ### Shipped today
 
-Three trigger cards registered in `flowCards/deadlineObjectiveCards.ts`:
+Four trigger cards registered in `flowCards/deadlineObjectiveCards.ts`:
 
 - **`deadline_status_changed`** — fires when the active-plan recorder publishes a saved status
   transition between `waiting` / `on_track` / `at_risk` / `unachievable` / `satisfied`. Replacing
@@ -1414,11 +1427,14 @@ Three trigger cards registered in `flowCards/deadlineObjectiveCards.ts`:
   surfaced via `deadline_ended` instead.
 - **`deadline_ended`** — fires once per run conclusion with `outcome` = `succeeded` /
   `missed` / `abandoned` (stable lowercase id). Tokens: `device_name`, `outcome`, `shortfall`
-  (number, 0 when succeeded; flow UI label "Gap to target"). `replaced` and `unknown`
+  (number, 0 when succeeded; flow UI label "Gap to target"), `shortfall_known` (false when the
+  device-side delta was not observable and `shortfall` fell back to 0). `replaced` and `unknown`
   outcomes are intentionally suppressed.
 - **`deadline_plan_changed`** — fires when a replan changes the number of planned hours.
   Tokens: `device_name`, `remaining_kwh`, `planned_hours`, `projected_finish_local_time`.
   Trigger title is "Smart task schedule changed".
+- **`smart_task_hours_remaining`** — "Smart task time is running low". Args `device`, `hours`;
+  tokens `device_name`, `hours_remaining`.
 
 Plus two condition cards:
 
@@ -1434,21 +1450,13 @@ The `clear_deadline` action card's device autocomplete is filtered to devices wi
 task; if no enabled tasks exist, it falls back to the full device list so the card remains
 usable.
 
-### Pending — proposed redesign
+### Trigger redesign (shipped 2026-05-15)
 
-The trigger cards above ship with `outcome` and `status` dropdown args that filter at trigger
-time. That design forces users into one flow per filtered value and makes the tokens emit
-English display labels rather than stable ids — awkward for condition logic. A proposed
-redesign drops the dropdown args, exposes stable-id tokens (`outcome_id`, `status_id`,
-`previous_status_id`, `change_reason_id`) as public-API contract, and adds numeric tokens for
-math/comparison. Notification-text composition stays in the user's flow — PELS does not emit
-a `notification_text` token on any trigger. See
-[`notes/smart-task-flow-cards/README.md`](../smart-task-flow-cards/README.md) Rule 4 for
-the full proposal.
-
-The richer-tokens slice originally drafted as `ev-ready-by/README.md` §P2.3
-(`planned_start_local`, `planned_finish_local`, `required_kwh`, `planning_speed_kw`,
-`estimated_duration_text`, `risk_reason`) is part of the same redesign.
+The proposed redesign shipped: the triggers carry no dropdown args, and their tokens are stable
+ids plus numeric values. See
+[`notes/smart-task-flow-cards/README.md`](../smart-task-flow-cards/README.md) for the token
+contract, and `ev-ready-by/README.md` § "Observability: expanded trigger tokens" for the richer
+token slice.
 
 ## Reason Codes
 
@@ -1470,8 +1478,13 @@ Task evaluation (`diagnosticTypes.ts`, produced by `taskEvaluationCoordinator.ts
 - `objective_missing_temperature`
 - `objective_missing_charge_rate`
 - `objective_missing_capacity`
+- `objective_waiting_for_car`
+- `objective_not_accepting_energy`, `objective_device_limit`, `objective_device_schedule` —
+  confirmed device-side delivery causes set by the live overlay (`deliveryEvidence.ts`)
+- `objective_stalled_near_target`, `objective_stalled_device_capped` — live status resolved to
+  `satisfied` because the device parked in a stall classification
 
-The last two are DURABLE EXCLUSIONS, resolved by the wiring layer through one
+`objective_device_in_sub_home` and `objective_device_unmanaged` are DURABLE EXCLUSIONS, resolved by the wiring layer through one
 seam (`deviceExclusion.ts`, wired from `resolveSmartTaskDeviceExclusion`): the
 device exists but is out of the main planning lane, either because it belongs to
 a separately-metered home or because the owner turned "Managed by PELS" off.
@@ -1493,9 +1506,17 @@ Horizon planner result (`horizonPlanner.ts`):
 - `planned_using_deadline_reserve`
 - `target_cannot_be_met`
 - `no_bucket_capacity`
+- `deadline_passed`, `estimate_uncertain`, `feasible_above_floor`, `limited_by_daily_budget`,
+  `limited_by_higher_priority_task`, `missing_active_step`
+- `invalid_bucket_plan`, `invalid_deadline`, `invalid_energy`, `invalid_now`
 
-Plus the generic `status: 'unknown' | 'on_track' | 'at_risk' | 'cannot_meet' | 'satisfied'`
-status field on the diagnostic — note that status is a separate field from the reason code.
+(The full union is `DeferredObjectiveHorizonStatusDetail` in `types.ts`.)
+
+Plus the `trajectory` field on the diagnostic: `{ kind: 'resolved'; status }` with a horizon
+status (`on_track` / `at_risk` / `cannot_meet` / `satisfied` / `invalid`), or
+`{ kind: 'unavailable'; reasonCode }` when no verdict can be computed. Read it through
+`resolvedTrajectoryStatus`; the `'unknown'` arm exists only on the published status
+(`DeferredObjectivePublishedStatus`, `statusBus.ts`). The trajectory is separate from the reason code.
 
 ### Reserved for pending slices
 
@@ -1522,24 +1543,21 @@ cover their cases (or because the slice they belong to is deferred):
 **Shipped (v1):** learned objective profiling, versioned EV-SoC + soft-temperature settings,
 write-time `deadlineAtMs` resolution, price-feature-gated soft-temperature admission/target
 overrides, the horizon scheduler (budget-friendly buckets with deadline margin), stepped
-`expectedStepId` selection, EV admission (disconnect invalidation, fresh-progress gating,
+`expectedStepId` selection, EV admission (disconnect invalidation, `known`-level gating,
 `satisfied`→pause in every unbooked hour through admission), deadline auto-disable on pass
 (`statusTransitions.ts` + `handleDeferredDeadlineReached`), and the Smart-tasks + per-device plan/history UI with public flow-card
 creation/clearing. The freshness doctrine — credit a long-silent temperature (thermostats fall silent
-at setpoint; nothing ages a device observation out) but require strictly-fresh EV SoC — lives in
+at setpoint; nothing ages a device observation out) and plan EV SoC only from a `known` level
+within a live session, with no age gate — lives in
 `lib/observer/AGENTS.md` and `lib/objectives/deferredObjectives/diagnosticProgress.ts`.
 
 **Deferred to dedicated notes:** confidence-adjusted status
 margin and transition hysteresis ([`notes/status-hysteresis/README.md`](../status-hysteresis/README.md));
 energy-milestone logging ([`notes/planning-horizon-milestones/README.md`](../planning-horizon-milestones/README.md)).
 
-**Genuinely open here:** when Power-limit control is *on*, normal managed charging may continue
-after the EV deadline target is met (especially below 100%) — this follows from normal admission
-resuming, but is not specifically tested.
-
-**Out of scope unless explicitly included:** automatic EV/car polling, a full settings-UI editor,
-calendar/recurrence UI, EV current/phase control, automatic battery-capacity learning, thermal
-temperature-to-energy learning, charge curves by SoC band, public generic-objective flow cards,
+**Out of scope unless explicitly included:** automatic EV/car polling,
+calendar/recurrence UI, automatic battery-capacity learning,
+charge curves by SoC band, public generic-objective flow cards,
 and multi-device global optimization across objectives.
 
 ## Test coverage

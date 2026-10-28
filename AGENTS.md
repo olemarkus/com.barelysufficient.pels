@@ -26,7 +26,7 @@ Use this file for project-wide rules. Read a nested `AGENTS.md` when doing subst
 
 ### Packages (shared)
 
-`packages/contracts/` shares types; `packages/shared-domain/` holds logic with real browser and Node consumers; `packages/settings-ui/` owns browser-only code. The placement rule above governs new modules.
+`packages/contracts/` shares types; `packages/planner-types/` holds the planner input and output contracts (`PlanInputDevice`); `packages/shared-domain/` holds logic with real browser and Node consumers; `packages/settings-ui/` owns browser-only code. The placement rule above governs new modules.
 
 ## Clean and trusted interfaces between layers
 

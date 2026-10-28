@@ -1840,7 +1840,7 @@ describe('planDeferredObjectiveHorizon', () => {
   });
 });
 
-// Booking is decided by price, not by forecast room (`resolveBookedBucketIds`).
+// Booking is decided by price, not by forecast room (`bookBuckets`).
 describe('booking hours by price', () => {
   const bookedIds = (plan: ReturnType<typeof planDeferredObjectiveHorizon>): string[] => (
     plan.plannedBuckets.filter((bucket) => bucket.booked).map((bucket) => bucket.sourceBucketId)

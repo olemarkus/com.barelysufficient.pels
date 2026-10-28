@@ -149,7 +149,7 @@ Start with **Simulation mode** if you are still tuning the rest of PELS. Then ve
 
 1. The charger is visible as a managed device in PELS.
 2. The charger uses **EV 1-phase** or **EV 3-phase** control mode.
-3. Current control matches the charger: a new Easee setup uses **Use built-in device control**, while an existing Easee current-control Flow remains supported. Other chargers receive **EV charger current (A)** in their current-control Flow.
+3. Current control matches the charger: a new Easee setup uses **Use built-in device control**, while an existing Easee current-control Flow remains supported. A Zaptec, Futurehome or Tesla with built-in control shows **Built-in current control is selected** under **Setup → Charging current**. Other chargers, and any charger you chose to keep on a Flow, receive **EV charger current (A)** in their current-control Flow.
 4. Charging current changes in the charger app when PELS asks for a lower or higher level.
 5. If you configured battery reporting, the charger's **Car** section or charging readout shows the battery percentage from your chosen source.
 
@@ -157,8 +157,8 @@ Start with **Simulation mode** if you are still tuning the rest of PELS. Then ve
 
 | Problem | What to check |
 | --- | --- |
-| The charger is not listed in PELS | Confirm the charger is paired in Homey and refresh the Devices tab. |
-| The Flow does not trigger | For a Flow-controlled charger, including an Easee setup you chose to keep, confirm it is managed, power-limit control is enabled, and PELS has live whole-home power data. A new Easee setup can use built-in device control instead. |
+| The charger is not listed in PELS | Confirm the charger is paired in Homey and choose **Refresh devices** under **Settings → Devices**. |
+| The Flow does not trigger | For a Flow-controlled charger, including an Easee setup you chose to keep, confirm it is managed, power-limit control is enabled, and PELS has live whole-home power data. A new Easee setup, or a Zaptec, Futurehome or Tesla, can use built-in control instead. |
 | The charger receives the wrong current | Check that the device uses the correct **EV 1-phase** or **EV 3-phase** control mode. |
 | Battery level does not update in PELS | If a car is selected, check whether PELS has matched it to the charger and whether that car is available in Homey. Otherwise, check the charger's own reading or that your battery-reporting Flow selects the correct charger. |
 | PELS never limits the charger | Check the charger priority, your limits in **Limits & safety**, and whether Simulation mode is still enabled. |

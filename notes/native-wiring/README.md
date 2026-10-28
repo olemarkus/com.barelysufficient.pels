@@ -324,7 +324,7 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
    **class-agnostic**: the caller passes already-resolved owned capabilities,
    so `lib/flowApi` keeps no per-class capability constants and no cross-peer
    dependency on `lib/device`. Resolving each device's owned native-write set
-   (`charging_button`; `max_power_3000`/`max_power_2000`/`max_power`/`onoff`;
+   (`charging_button`; `max_power_3000`/`max_power_2000`/`max_power`;
    `target_power`) is PR3's job, at the entry layer where importing
    `lib/device` is allowed. No wiring/behaviour change yet.
 3. **PR3 (shipped):** resolve each native stepped-load device's owned
@@ -361,9 +361,10 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
      capacity control is otherwise unaffected, so this is accepted rather than
      given a dedicated recovery path; the re-query follow-up below closes it.
 5. **PR5 (shipped):** device-detail conflict banner. The per-device verdict is
-   surfaced on the snapshot as `flowConflict.conflictingCapabilities` (app
-   stores `flowConflictsByDevice`, exposed via the `getFlowConflict` parse
-   provider, attached in `resolveParsedDeviceSettings`); the settings-UI
+   surfaced on the snapshot as `flowConflict.conflictingCapabilities`
+   (`BuiltInControlFlowConflicts` holds the accepted conflicts and serves them
+   through the `getFlowConflict` parse provider, attached in
+   `resolveParsedDeviceSettings`); the settings-UI
    `syncFlowConflictNotice` shows a non-interactive banner when it is set.
    Browser-only copy lives beside its consumer in
    `packages/settings-ui/src/ui/deviceDetail/nativeWiringCopy.ts`. It names a

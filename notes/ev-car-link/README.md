@@ -387,8 +387,9 @@ poll and the dwell).
 
 **The charge limit** (`resolveEvCarChargeLimit`) is the lowest of the newest three banked
 stops (or two, while only two exist), once every one of them lies within 2 percentage points.
-The lowest, because a smart task is capped at it and met on reaching it: a car that stops a
-point either side of its setting must reach its own limit every time.
+The lowest, because a smart task reports the car's limit as the cause of a shortfall (it never
+caps the task's target): a car that stops a point either side of its setting must reach its own
+limit every time.
 Judging only the newest stops is what lets a changed limit be relearned instead of outvoted.
 A car seen charging past its qualified limit + 1 on this charger, having been at or below it
 earlier in the same session, disproves it: its samples are dropped

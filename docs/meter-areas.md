@@ -42,12 +42,12 @@ entirely remotely.
 
 ## What you'll need
 
-- **Homey Energy as your power source.** Meter areas rely on each meter
+- **The Power meter power source** (read through Homey Energy). Meter areas rely on each meter
   reporting its own live power to Homey. This is the [Homey
   Energy](homey-energy.md) setup, not the Flow-driven power source: a Flow power
   reading has no meter identity, so PELS can't tell which area it belongs to.
   PELS enforces this both ways: saving a meter area is refused while your power
-  source is Flow, and switching the source to Flow is refused while meter areas
+  source is **Flow card**, and switching the source to **Flow card** is refused while meter areas
   are running. Removing an area works on any source.
 - **A meter for the area, already added to Homey.** Each meter area is built
   around one power **meter** that Homey reads as that area's total: a HAN/P1
@@ -247,7 +247,7 @@ you *where* to go and switch something off.
   swapped out). Edit the area and re-pick the current meter or zone.
 - **The apartment's devices aren't being limited.** Check that **"Control
   devices in this area"** is on for that area; a new area simulates until you
-  turn control on. Also confirm your power source is **Homey Energy**.
+  turn control on. Also confirm your power source is **Power meter**.
 - **Saving the first area asks for the Main home's meter.** Set the Main home's
   **Whole-home meter** (see above), then save the area again. PELS will not save
   the meter area while the Main home has no meter of its own.

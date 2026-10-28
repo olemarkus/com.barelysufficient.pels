@@ -1,6 +1,6 @@
 # Execution Adaptation: trajectory rebase + mid-execution price deferral
 
-Status (2026-06-02): **three work items shipped.** WI-1 (trajectory rebase) merged earlier; WI-2
+Status (2026-06-02): **four work items shipped.** WI-1 (trajectory rebase) merged earlier; WI-2
 (mid-execution price deferral) ships on top of the **hourly-settle foundation** (the active-plan
 recorder now writes once per hour at `:58`, driven by the lifecycle clock), which is what makes
 the per-cycle release clean — admission's override is structurally insulated from the
@@ -110,14 +110,14 @@ computed.
   history snapshot via the existing `{ ...hour }` copy; `sameHourSchedule` ignores it (no
   revision churn). This touches **persisted state** (active-plan / history snapshot) but is
   back-compatible: legacy entries without the field read as full-hour (today's behavior).
-- The **Initial schedule** (`originalPlan`) stays anchored at `startProgressC` — the
+- The **Initial schedule** (`originalPlan`) stays anchored at the start progress (`startProgressValue`) — the
   original-intent reference, unchanged.
 - The recorded `startProgress` is seeded as the first interpolation bracket, so a replan in the
   task's first hour (whose seeded start sample the recorder may have overwritten) still
   interpolates from start. The revised staircase falls back to the fully start-anchored plan only
   when the revision is at/before the window start (no real replan) — so brand-new runs render
   exactly as before.
-- Producer-side per `feedback_layering_resolution_in_producer`: the re-anchoring + coverage
+- Producer-side per `docs/architecture.md` § "Clean and trusted interfaces between layers": the re-anchoring + coverage
   resolution live in the producer layers; the settings-UI consumes flat points and never
   branches on the anchor or `coversFromMs`.
 
@@ -210,7 +210,7 @@ the cheaper hours at the next `:58` settle — one honest revision, not churn.
    commitments are unchanged. Display is untouched — the chart still builds its own (identical)
    staircase; the persisted milestone feeds only the gate.
 2. **Relative-price gate.** A later, **non-reserve** hour must be cheaper than the current hour by
-   more than `PRICE_DEFERRAL_MARGIN` (~5%), tested on the **raw price ratio**
+   more than `PRICE_BAND_MARGIN` (5%, `priceBand.ts`; named `PRICE_DEFERRAL_MARGIN` until 2026-06-03), tested on the **raw price ratio**
    (`later ≤ current × (1 − margin)`). Pure ratio ⇒ unit-invariant across currencies (the price
    series carries no currency at this layer). Requires `current price > 0` (free/negative current →
    heat now). Deadline-reserve hours are excluded so we never defer into the reserve; a negative
@@ -256,7 +256,7 @@ the test passes, idles the device this cycle.
    ("early is safer") and absorbing threshold jitter; the shed/restore cooldowns (60–300 s) backstop
    any residual control flap. A rate drift between commit and now only shifts the comparison toward
    keeping the device running (safe).
-2. **Relative price, not an absolute band or knob.** `PRICE_DEFERRAL_MARGIN` (~5%) on the raw
+2. **Relative price, not an absolute band or knob.** `PRICE_BAND_MARGIN` (5%) on the raw
    price ratio; near-equal hours keep the safer earlier slot. A flat curve never beats the margin,
    so it never fires. No absolute price floor — that would be currency-unsafe (the series is
    unit-blind at this layer); the `current > 0` sign guard handles the free/negative case.

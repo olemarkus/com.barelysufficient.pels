@@ -55,7 +55,7 @@ integration gaps should still follow this note.
 > room UP TO, never above, the hard cap. So the rescue already worked on a
 > capacity-held device; the gate withheld a working action on the strength of a
 > bucket that flipped mid-hold. The hard cap is still never raised and never
-> suggested as a remedy (`feedback_hard_cap_is_physical`).
+> suggested as a remedy.
 >
 > The widget's row status chip shows the live duration: `Held back · N min`,
 > rolling over into hours past 60 minutes (`Held back · 2 h 15 min`). The "do not
@@ -132,7 +132,7 @@ decision (restore or shed cooldown, meter settling, a throttled or queued
 restore, startup stabilization) but also `no_decision`, unobserved actuator axes
 and convergence that never completes, so it is excused only on interval
 evidence: every recorded `control_pending` interval is at most 5 minutes (the
-planner's longest settle window, `RESTORE_COOLDOWN_MAX_MS`) and together they
+classifier's settle bound, `MAX_SETTLE_INTERVAL_MS`) and together they
 cover at most 15 minutes. A listed `control_pending` contributor with no
 recorded interval, or any longer stretch, disqualifies the miss. A
 `legacy_unrecorded` contributor (a run that crossed the upgrade) disqualifies
@@ -203,7 +203,7 @@ vendor-specific diagnostic quirks.
 A device is starved only when both are true:
 
 1. PELS's COMMANDED effective target is below the device's intended/mode target
-   (`commandedTargetC < intendedTarget.targetTemperatureC`, by at least the target step) —
+   (`commandedTargetC < intendedTarget.targetTemperatureC`, by more than half the target step) —
    i.e. PELS is actively limiting the device, not waiting for it to reach a
    target it is already commanding in full.
 2. a real counting suppression (capacity/budget/shortfall/…) is active.
@@ -214,7 +214,8 @@ physically is — that is the device not reaching its own target, not PELS holdi
 it back.
 
 A hold PELS did not impose — `keep`, `inactive`, a step-up `restore_need` — and
-the owner-set holds (`deferred_objective_avoid`, `awaiting_solar_surplus`) PAUSE
+the owner-set holds (`deferred_objective_avoid`, `deferred_objective_satisfied`,
+`awaiting_solar_surplus`, `awaiting_pels_start`) PAUSE
 a latched episode: they do not start one and they do not add counted time. PELS's
 own cooldowns, retry backoff, pending restores and startup reservations do NOT
 pause — since 2026-08-08 they count, because the device is still off and PELS is
@@ -248,7 +249,7 @@ Each eligible plan sample must normalize into:
 - `intendedTarget: StarvationTarget | null` (`{ kind: 'temperature', targetTemperatureC }`
   or a charger's `{ kind: 'ev_soc', targetPercent }`)
 - `commandedTargetC: number | null` (the effective target PELS is commanding now:
-  `plannedTarget ?? currentTarget`)
+  `plannedTarget`)
 - `targetStepC: number | null` (used as the below-target epsilon, not for a deficit threshold)
 - `suppressionState: 'counting' | 'paused' | 'none'`
 - `countingCause`
@@ -275,7 +276,9 @@ Each eligible plan sample must normalize into:
 - `inactive`
 - `restore`
 - `deferred_objective_avoid`
+- `deferred_objective_satisfied`
 - `awaiting_solar_surplus`
+- `awaiting_pels_start`
 - `invalid_observation`
 - `sample_gap`
 - `suppression_none`
@@ -302,8 +305,7 @@ The intended normal target is the user's normal comfort/storage target:
 - do not include optional cheap/expensive price-optimization deltas in the starvation baseline
 
 The COMMANDED target is what PELS is applying right now: the planned setpoint this
-cycle when PELS is applying one, otherwise the held current setpoint
-(`commandedTargetC = plannedTarget ?? currentTarget`). When PELS sheds a
+cycle (`commandedTargetC = plannedTarget`). When PELS sheds a
 thermostat it lowers the commanded target below the intended target; that gap is
 the starvation signal.
 
@@ -320,11 +322,18 @@ Starvation no longer derives a physical-temperature deficit threshold from an
 anchor table. The single comparison is commanded-vs-intended:
 
 ```text
-epsilon = targetStepC > 0 ? targetStepC / 2 : 0.25
-pelsHoldsBelowTarget = commandedTargetC < intendedTarget.targetTemperatureC - epsilon
+toleranceC = targetStepC / 2
+pelsHoldsBelowTarget = demandShortfallC(direction, commandedTargetC, intendedTarget.targetTemperatureC) > toleranceC
 ```
 
-- the half-step epsilon keeps float/quantization noise from reading an equal
+The setpoint resolver (`resolveDeviceSetpoints`, `lib/thermostat/temperatureSetpoints.ts`)
+makes this comparison and hands it to `lib/plan/planDiagnostics.ts` as
+`asksLessThanIntended` / `keepAsksLessThanIntended`. `targetStepC` is the target
+capability's step, or the default low/high temperature step when the capability
+has none. The shortfall is direction-aware, so a cooling device is held below
+target when its commanded setpoint sits above the intended one.
+
+- the half-step tolerance keeps float/quantization noise from reading an equal
   command as "below"
 - `commandedTargetC == intendedTarget.targetTemperatureC` is never below — a device PELS
   commands in full is never starved
@@ -492,15 +501,19 @@ The one question is **who is the reason the device is down**:
   device detail can still tell a cooldown from a reservation.
 - **The owner or the device is the reason → the clock pauses.**
 
-Three PELS-commanded holds are a deliberate carve-out from a literal reading of
+Five PELS-commanded holds are a deliberate carve-out from a literal reading of
 the rule. PELS did turn these devices off, but at the owner's explicit request,
 so flagging `Held back` and offering `Let it run now` would be telling the owner
 their own setting is a problem:
 
 - `deferred_objective_avoid` — the device's own smart task is deferring it to a
   cheaper or reserved hour.
+- `deferred_objective_satisfied` — the device's smart task reached its target
+  and holds it until the ready-by time.
 - `awaiting_solar_surplus` — the opted-in dump-load posture, whose baseline IS
   off, waiting for export.
+- `awaiting_pels_start` — the opted-in "Only PELS starts this device" posture,
+  whose baseline IS off.
 - `external_off_hold` — the owner turned the device off outside PELS. Handled one
   level up: it is excluded from starvation ELIGIBILITY
   (`resolveEligibleForStarvation`), which resets accrual rather than latching a
@@ -658,7 +671,7 @@ Do not add a top-level overview count.
 
 For each starved device:
 
-- show a `Starved` badge/chip
+- show a `Held back` badge/chip
 - do not append `starvedAccumulatedMs` to the primary badge or status text
 - show the current starvation duration in detail diagnostics
 - show broader unmet-demand window counters as time not served, not as the live starvation duration
@@ -666,7 +679,7 @@ For each starved device:
 Example:
 
 ```text
-Starved · waiting for available power
+Held back · waiting for available power
 ```
 
 ## Insights, Diagnostics, And Logs
@@ -712,7 +725,8 @@ Logs should include:
 - every hold PELS imposes counts, including its own cooldowns, retry backoff, pending restores
   and startup reservations (the 2026-08-08 rule)
 - holds PELS did not impose (`keep`/`inactive`/`restore_need`) and the owner-set holds
-  (`deferred_objective_avoid`/`awaiting_solar_surplus`) cannot start starvation and pause a
+  (`deferred_objective_avoid`/`deferred_objective_satisfied`/`awaiting_solar_surplus`/
+  `awaiting_pels_start`) cannot start starvation and pause a
   latched episode, retaining its counting cause
 - the overview/badge carries NO cause bucket (removed 2026-08-04); the granular
   counting cause serves device detail and the logs

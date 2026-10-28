@@ -281,7 +281,7 @@ Tomorrow slot); detail view unreachable.
 **S3 — learning (< 21 usable days).**
 > Budget card: title `Learning your home`, body `PELS has 9 days of usage and temperature so far. The first estimate appears after about 21 days.` Button: `Weather details`.
 > Stuck note (warn, `.field__hint--alert`) when the configured outdoor device
-> reads `unreadable`: `PELS can’t read your outdoor device right now — if this keeps up, learning will stall. Check it in Settings.`
+> reads `unreadable`: `PELS can’t read your outdoor device right now — if this keeps up, learning will stall. Check the Outdoor temperature device in Settings.`
 > Conditional wording because the trigger is a single live read that may be a
 > transient miss — it must not assert the feature is broken on one failed read.
 > Detail view: summary and numbers cards hidden; scatter card renders with

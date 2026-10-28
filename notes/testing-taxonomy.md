@@ -107,7 +107,7 @@ classification cases stay in `integration/`. Don't force-convert a whole file.
 
 ### Device-suite disposition (worked example)
 
-Surveying the seven device integration suites against this rule:
+Surveying the eight device integration suites against this rule:
 
 | Suite | Outcome |
 |---|---|
@@ -116,7 +116,7 @@ Surveying the seven device integration suites against this rule:
 | `vthermo` | **Stays integration** — its one effect case is price-only mode-setpoint application, not capacity shedding. |
 | `ev` | **Stays integration** — the charger command log is already device-observable, but the suite's purpose is shed→cooldown→restore *hysteresis*, which it tests by manipulating `planEngine.state.restoreBackoff.lastRecoveryMs` / `planEngine.state.sheddingActive` and asserting `plannedState`. That is intrinsically white-box (the `plan.test.ts` category). |
 
-So even across a whole family, the reshape touched 3 of 7 suites — the count of genuinely
+So even across a whole family, the reshape touched 3 of 8 suites — the count of genuinely
 e2e-able specs is "scenarios with an observable effect," which is much smaller than "specs
 that spin up the app via the SDK mock."
 

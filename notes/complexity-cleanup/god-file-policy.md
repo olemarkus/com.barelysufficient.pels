@@ -57,7 +57,8 @@ exception today. Five have shrunk under 500 and need none (`deviceDiagnosticsSer
 `deviceTransport.ts` 714 (down from 2299), `planExecutor.ts` 541 (from 822), `profiles.ts` 586
 (from 590, essentially unchanged) and `priceService.ts` 566, which has *grown* from 531 — the one
 row that got worse rather than better. `lib/price/nettleieFallbackData.generated.ts` (1698) is
-generated and eslint-ignored.
+generated and eslint-ignored. (2026-10-27: `planExecutor.ts` has since shrunk to 379 and
+left this list.)
 
 Everything else over 500 is Bucket A: shrink and drop the file-level pragma when the file is next
 touched. Use the regen command above rather than maintaining a frozen Bucket A list here.

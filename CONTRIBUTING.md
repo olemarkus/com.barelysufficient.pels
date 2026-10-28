@@ -37,7 +37,7 @@ Capable programmers should always attempt to investigate and fix problems themse
 
 * Minimal changes. Only submit code relevant to the current issue. Other changes should go in new pull requests.
 * Minimal commits. Please squash to a single commit before sending your pull request.
-* No conflicts. Please rebase off the latest master before submitting.
+* No conflicts. Please rebase off the latest main before submitting.
 * Code conforming to the existing conventions and formats. i.e. Please don't reformat whitespace.
 * Passing tests in the test folder (if applicable). Use existing tests as a reference.
 * Relevant documentation.
@@ -51,6 +51,6 @@ Merging pull requests takes time. While we always try to merge your pull request
 
 ## Local CI
 
-* `npm test` runs the local CI checks used by the pre-commit hook: build, lint, runtime tests, and settings UI Jest suites.
+* `npm test` (alias of `npm run ci`) runs the static checks (`ci:checks`), the runtime Vitest tiers, and the settings UI suite (build, Vitest unit tests, Playwright layout spec). The pre-commit hook runs only lint-staged and a few extra staged-file checks.
 * `npm run ci:full` adds the local Playwright browser matrix and is the closest match to the GitHub Actions workflow.
-* The `pre-push` hook adds targeted browser coverage when the pushed diff touches settings UI, Playwright, or CI wiring files.
+* The `pre-push` hook runs `ci:checks`, the runtime and settings UI unit tests related to the pushed diff, and `npm run validate` when manifest files change. Browser suites run in CI.

@@ -14,8 +14,8 @@ If you arrived from a Homey notification, jump straight to the matching section:
 or [a budget overshoot](#i-went-over-my-daily-budget).
 
 ::: tip One rule worth knowing up front
-The **hard cap** is your grid tariff step (effekttrinn) — the hourly average
-you've decided no hour should exceed, not a tuning knob. When PELS runs short of
+The **hard cap** is your grid tariff step (effekttrinn) — the average power
+you've decided no capacity period (hour or quarter-hour) should exceed, not a tuning knob. When PELS runs short of
 room, the answer is to give it *less* to do (a lower daily budget, fewer competing
 devices), **never** to raise the hard cap. Raising it just moves you into a more
 expensive tariff step. See [hard cap](/glossary#hard-cap).
@@ -27,7 +27,8 @@ PELS only acts on devices it is allowed to act on. For a managed device to be
 lowered, paused, or turned off, three things must all be true:
 
 1. **Managed by PELS** is on for the device (Settings → Devices).
-2. **Power-limit control** is on (Settings → Devices → the device → Setup).
+2. **Power-limit control** is on (Settings → Devices → the device → Setup;
+   **Power limiting** on an EV charger, **Battery** on a home battery).
 3. The device's home isn't simulating. For a Main-home device that means
    **Simulation mode** is off (Settings → Simulation mode) — in simulation PELS
    calculates what it *would* do but never switches anything. For a device in a
@@ -53,7 +54,8 @@ What to do, in order:
 
 - **Look for a device with Power-limit control turned off.** The most common
   cause is that a large load PELS *could* have eased off is excluded. Turn its
-  **Power-limit control** back on (Settings → Devices → the device → Setup) so
+  **Power-limit control** back on (Settings → Devices → the device → Setup, or
+  **Power limiting** on an EV charger) so
   PELS can lower it next time.
 - **Reduce fixed load you're running by hand.** If the breach is from
   unmanaged usage (an oven, a kettle, a charger PELS doesn't control), the only
@@ -96,7 +98,8 @@ buttons that tell you what to investigate:
   not enough available power was left, a higher-priority device took the room, or
   the plan did not leave enough time. The cause sentence on the entry names it.
   The button deep-links to the device settings; check stepped-load planning power,
-  target temperature, priority, **When limiting** behaviour, and the Flow that
+  target temperature, priority, **Power limiting** (*What PELS does when limiting
+  this device*), and the Flow that
   reports state back to PELS. A device that stopped taking power may also have
   switched itself off, which no PELS setting changes.
 - **No button** — the car itself held the run back: it stopped at its own charge
@@ -166,7 +169,7 @@ worth fixing promptly.
 A meter that keeps reporting exactly the same number can count as stopped too,
 when your devices show it should have moved. PELS watches the managed devices
 that report their power. If their combined draw changes by a kilowatt or more
-and stays that way while the whole-home reading keeps exactly the same value,
+(or a quarter of the reading, on a home drawing more than 4 kW) and stays that way while the whole-home reading keeps exactly the same value,
 the banner warns you after two minutes, and after ten minutes PELS treats the
 meter as stopped. That is a meter that has stopped updating, for example a
 HAN/P1 reader that lost contact with the electricity meter while its app keeps

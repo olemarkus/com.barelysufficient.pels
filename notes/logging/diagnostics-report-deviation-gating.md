@@ -33,7 +33,7 @@ the measurement, not something re-derivable from the file today:
 
   | lines (86 h) | event | note |
   |---:|---|---|
-  | 4335 | `plan_rebuild_completed` | already gated to actioned/failed/slow/startup (`getPlanRebuildLogLevel`). The command record — keep. |
+  | 4335 | `plan_rebuild_completed` | already gated to actioned/failed/slow/startup (`shouldLogPlanRebuildAtInfo`). The command record — keep. |
   | 1798 | `device_near_target_idle_started`/`_cleared` | the dominant non-command flood; thermostat flap. **Demoted to debug — see below.** |
   | 1248 | `stale_device_observation_refresh` | **Gone (2026-08-29)** — timeout-based device staleness was removed outright; see `lib/observer/AGENTS.md`. |
   | 636 | `device_became_stale`/`_fresh` | **Gone (2026-08-29)** — same removal. Together these two were ~19% of default-visible volume. |
@@ -81,7 +81,7 @@ state). Dedupe maps prune via `shouldEmitOnChange` (160 MB RSS ceiling).
    below target by the cap) stay on the info sink with a `reasonCode`. This removes the
    dominant non-command flood from the default report without dropping the signals.
 
-2. **EV / stepped-load clamp** (`flowCards/registerFlowCards.ts`,
+2. **EV / stepped-load clamp** (`flowCards/steppedLoadReport.ts`,
    `stepped_load_report_clamp_detected`). `report_stepped_load_*` was never a flooder
    (~80 lines/86 h), so the routine accepted/unchanged report stays at info; this **adds**
    one self-contained `warn` joining the **commanded** step (`desiredStepId` off the

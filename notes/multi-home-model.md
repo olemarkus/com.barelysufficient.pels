@@ -86,13 +86,17 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
 ## Authority and unreliable settings reads
 
 - Raw Homey settings shapes stop at their adapter. In particular,
-  `setup/mainMeterSettings.ts` owns `get`/`getKeys`, including
+  `lib/home/mainMeterSelection.ts` owns `get`/`getKeys`, including
   `undefined`, `null`, an empty key list, malformed values, and thrown SDK
-  errors. Every downstream consumer sees only the semantic
-  `MainMeterSelection` contract: a resolved explicit meter id, or
-  `unavailable`. Absence is no longer a value — every non-string read
-  (including Homey's transient `null`) classifies as `unavailable`, which
-  consumers treat as a no-op, never as a different selection. The old P1
+  errors (`setup/mainMeterSettings.ts` only re-exports its reader). Every
+  downstream consumer sees only the semantic `MainMeterSelection` contract:
+  `resolved` (an explicit meter id), `unavailable`, or `unconfigured`.
+  Absence is no longer a value — a non-string read classifies as
+  `unavailable`, which consumers treat as a no-op, never as a different
+  selection. Only a key that is empty and missing from `getKeys()` proves
+  nothing was ever chosen (`unconfigured`); a listed key that reads empty is
+  `unavailable`, and only the graced reader the home-membership factory uses
+  settles it as `unconfigured`, after 90 s of agreeing empty reads. The old P1
   (a transient `null` momentarily read as the stored-Automatic arm) dissolved
   with the Automatic selection itself; nothing in the runtime discriminates
   stored-null any more.
@@ -218,8 +222,8 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
 
 ## v1 scope boundary (do not widen without a scope decision)
 
-Per-meter: **hard cap, safety margin, dry-run (control on/off), device
-priorities, real-time limit/resume.** These are genuinely per-meter.
+Per-meter: **hard cap, safety margin, capacity period, dry-run (control
+on/off), device priorities, real-time limit/resume.** These are genuinely per-meter.
 
 **Modes are independent per home.** Main keeps the historical unsuffixed
 `operating_mode`, `mode_aliases`, `capacity_priorities`, and
@@ -277,8 +281,8 @@ so an 18→22 raise is not a restore.
 
 There is no per-home "hold raises while power is unknown" posture. One was
 described here against `context.planningTotalKw`; neither that field nor the
-posture exists, and `applyModeSeedModulation` (`lib/plan/planDevices.ts`) applies
-price and surplus deltas only. Do not reintroduce one: an unmeasured cycle is not
+posture exists, and `resolveDeviceSetpoints` (`lib/thermostat/temperatureSetpoints.ts`)
+applies price and surplus deltas only. Do not reintroduce one: an unmeasured cycle is not
 a state the ordinary pipeline can be in, and withholding a write because a sample
 went missing is the transient-gap hedge the root `AGENTS.md` forbids.
 

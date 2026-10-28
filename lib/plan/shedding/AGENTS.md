@@ -1,6 +1,6 @@
 # Shedding Planner
 
-`lib/plan/shedding/` is the sole owner of selecting devices to limit for grid import, capacity, daily budget, and hourly budget. `planDevices.ts` materializes its `shedSet`, reasons, and step targets; it does not select additional devices. Execution and transport remain outside this module.
+`lib/plan/shedding/` is the sole owner of selecting devices to limit for grid import, capacity, daily budget, and hourly budget. `lib/plan/planDevices.ts` materializes its `shedSet`, reasons, and step targets; it does not select additional devices. Execution and transport remain outside this module.
 
 ## Candidate and step decisions
 

@@ -15,7 +15,7 @@ The PELS settings UI is organized around five top-level destinations:
 | **Smart tasks** | Current and past ready-by tasks. |
 | **Settings** | Limits, devices, modes, prices, simulation, and advanced tools. |
 
-Most configuration starts in **Settings**. The Settings landing page links to **Setup & recommendations**, **Limits & safety**, **Devices**, **Modes**, **Electricity prices**, **Price-aware devices**, **Multiple meters**, **Simulation mode**, and **Advanced**.
+Most configuration starts in **Settings**. The Settings landing page links to **Setup & recommendations**, **Limits & safety**, **Daily budget**, **Devices**, **Modes**, **Electricity prices**, **Price-aware devices**, **Weather insight**, **Multiple meters**, **Simulation mode**, **Open in a browser**, **Activity**, **Report a problem**, and **Advanced**.
 
 ## Overview
 
@@ -37,14 +37,14 @@ For the planner-state mapping, see [Plan States](/plan-states).
 
 The Budget page is the daily planning surface. It shows whether the selected day is on plan (**Plan** view) and lets you preview and apply changes to the daily budget model (**Adjust** view).
 
-See [Daily Energy Budget](/daily-budget#where-to-configure-it) for the full description of each view and setting (Enable daily budget, Daily budget kWh, Use cheaper hours, Background usage reserve, Managed device flexibility). Read it before changing the advanced tuning values.
+See [Daily Energy Budget](/daily-budget#where-to-configure-it) for the full description of each view and setting (Enable daily budget, Daily budget, Use cheaper hours, Background usage reserve, Managed device flexibility). Read it before changing the advanced tuning values.
 
 ## Usage
 
 The Usage page helps you understand what PELS has observed.
 
 - **Today so far** shows hourly kWh for the selected local day.
-- **Last 7 days** shows recent daily totals.
+- **Daily usage** shows daily totals for the last 14 days.
 - **Typical day** shows historical hourly patterns.
 - **Detailed hourly view** shows lower-level hourly buckets.
 - **Solar** (shown when PELS has a solar signal) shows today's **Produced**, **Used at home**, and **Exported**, with the grid cost you avoided and what you earned from export. See [Solar and Self-Consumption](/solar).
@@ -55,12 +55,13 @@ Hourly data is kept for 30 days. Daily totals are kept for one year. Resetting u
 
 ## Smart Tasks
 
-Smart tasks show devices with an active target and ready-by time. Tasks are created from Homey Flow cards or the **Create smart task** dashboard widget, then shown in the settings UI so you can inspect the current plan and history.
+Smart tasks show devices with an active target and ready-by time. Tasks are created with **New smart task** on the Smart tasks page, **Add smart task** on a device page, Homey Flow cards, or the **Create smart task** dashboard widget, then shown in the settings UI so you can inspect the current plan and history.
 
 | Card or view | What it does |
 | --- | --- |
 | **Add charging task** | Plans EV charging toward a target battery percentage by a ready-by time. |
 | **Add heating task** | Plans heating toward a target temperature by a ready-by time. |
+| **Add energy task** | Delivers a set amount of energy (kWh) to a device by a ready-by time. |
 | **Create smart task widget** | Creates a task from a Homey dashboard, without a Flow. |
 | **Smart tasks list** | Shows current tasks, targets, and ready-by times. |
 | **Task plan page** | Shows selected hours, price context, expected work, background usage, and progress. |
@@ -113,10 +114,12 @@ Device detail sections. The page composes per device kind — an EV charger, a t
 | **Car** | EV chargers | Which cars charge here, the battery level PELS reads from the car, and where the level comes from. |
 | **Temperature per mode** | Temperature devices | Per-mode target temperatures, with each mode's resume priority (reordered in Modes). |
 | **Price response** | Temperature devices | Cheap-hour boost and expensive-hour reduction. Stays visible with a hint naming the switch that enables it when price control is off. |
-| **Solar surplus** (prosumer) | Homes with solar | **Use solar surplus** lifts a device's target while your panels are exporting, and **Run on solar surplus** runs an on/off device only while there is surplus. See [Solar and Self-Consumption](/solar). |
+| **Solar surplus** (prosumer) | Temperature devices in homes with solar | **Solar-surplus boost**: how far the target rises while your panels are exporting. Switch it on with **Use solar surplus** in Setup. See [Solar and Self-Consumption](/solar). |
 | **Stepped load profile** | Stepped loads | Step names, planning power values, target-power range, and temperature boost. Hidden for EV chargers using an EV preset, because the preset owns the steps. On any other EV charger it follows Setup, collapsed, with the number of steps and the highest power in its header. |
 | **Power limiting** | All devices PELS can limit | On an EV charger it also holds **Power-limit control**, **Only PELS starts this device** and **Leave off until turned on again**, and is hidden while the charger is not managed. How far PELS may go when limiting this device — off, a limited temperature, or a lowest step — when there is a real choice; a device with only one possible limit gets a statement of what PELS does instead of a one-button choice. PELS goes only as deep as it needs. A device that reports whether it is heating or cooling gets a second limit, **Limited temperature when cooling**; see [Limited temperature for a heating and cooling device](/technical#limited-temperature-for-a-heating-and-cooling-device). |
-| **Setup** | All devices | Managed by PELS, power-limit control, only PELS starts this device and leave off until turned on again (all three in **Power limiting** on an EV charger), **When the temperature changes outside PELS**, price-based control, budget exemption, built-in device control, control model, and **Power when running**. Opens automatically for devices that are not set up yet. |
+| **Battery** | Home batteries | Managed by PELS, power-limit control, and the battery's place in the priority order (**Reorder**). |
+| **Setup** | All devices except home batteries | Managed by PELS, power-limit control, only PELS starts this device and leave off until turned on again (all three in **Power limiting** on an EV charger), **When the temperature changes outside PELS**, price-based control, **Use solar surplus**, **Run on solar surplus** or **Match solar surplus** (**Charge on solar surplus**, in Charging, on an EV charger), budget exemption, built-in device control, control model, and **Power when running**. Opens automatically for devices that are not set up yet. |
+| **Smart task** | Devices that can take a task | **Add smart task**, or **View task** when one is scheduled. |
 | **Activity log** | All devices | Recent state changes PELS recorded for this device. |
 | **Advanced diagnostics** | All devices | Read-only history of waiting time, failed restarts, and restart backoff. |
 
@@ -328,7 +331,8 @@ Advanced is for diagnostics, cleanup, and expert tuning.
 
 | Setting | What it does |
 | --- | --- |
-| **Debug logging topics** | Chooses which internal topics emit debug logs. |
+| **Debug logging** | Turns on the log streams for the scenarios you are investigating. |
+| **Diagnostics reports** | **Send a daily diagnostics report**, or **Send a report on specific events**, to the developer. |
 | **Reset usage history** | Clears hourly samples, daily totals, and weekday/weekend averages. |
 | **Clear device data** | Removes stored PELS metadata for one selected device. |
 | **Device log** | Writes a selected Homey device payload to the app logs for inspection. |
@@ -339,11 +343,11 @@ For the exact formulas, see [Daily Budget Weighting Math](/daily-budget-weights)
 
 ## Suggested setup order
 
-1. Get the meter Flow working.
+1. Connect your power meter (**Power meter** or **Flow card**).
 2. Enable management on a small set of obvious devices.
 3. Tune priorities and limits.
 4. Add price-aware devices.
 5. Add daily budget pacing if you want whole-day guidance.
 6. Add Smart tasks for devices that must reach a target by a ready-by time.
 
-For EV charging, add [EV charger current control](/ev-charger) after the meter Flow and capacity settings are working.
+For EV charging, add [EV charger current control](/ev-charger) after the power meter and capacity settings are working.

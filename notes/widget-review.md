@@ -8,13 +8,16 @@ configs/CSS, [Homey widget styling guidelines](https://apps.developer.homey.app/
 + pels-ux-fit + pels-copy-and-terminology** (they corrected two findings in the
 first inline pass — noted inline below).
 
-Widgets (compose `name`): `create_smart_task` → **New smart task**; `headroom` →
-**Available power**; `plan_budget` → **Budget and Price**; `smart_tasks` →
-**Smart tasks**; `starvation_rescue` → **Get power now** (renamed → **Held-back devices**).
+Widgets (compose `name`): `create_smart_task` → **New smart task** (renamed →
+**Create smart task**); `headroom` → **Available power**; `plan_budget` →
+**Budget and Price**; `smart_tasks` → **Smart tasks** (renamed → **Smart task
+list**); `starvation_rescue` → **Get power now** (renamed → **Held-back devices**).
+The set has since grown to seven with `device` (**Device insight**) and `price`
+(**Electricity price**), which this review predates.
 
 > **Status: SHIPPED (widget-polish train, 2026-05-30).** All five findings areas
 > were addressed across PRs #1313–#1317 (enforcement #1305). See
-> [§ Shipped](#shipped-widget-polish-train-2026-05-30) at the foot of this doc for
+> [§ Shipped](#shipped-widget-polish-train--2026-05-30) at the foot of this doc for
 > the finding → PR mapping and what was deliberately deferred. The body below is
 > the original review, kept as the record.
 
@@ -59,8 +62,7 @@ of …" → "Power now … / Safe pace …").
 
 ### P1 — Passive widgets bypass the shared-domain copy contract (UI text must match logs)
 `smart_tasks`, `starvation_rescue`, `create_smart_task` correctly source copy
-from `packages/shared-domain/**` (so UI strings match runtime logs —
-`feedback_ui_text_shared_with_logs`). The two read-out widgets **hardcode** theirs:
+from `packages/shared-domain/**` (so UI strings match runtime logs). The two read-out widgets **hardcode** theirs:
 - `headroom` (`render.ts`): `cheap/normal/expensive`, `N kW available`, `N paused`, `No data yet`, the aria summary.
 - `plan_budget` (`chart.ts`): `Budget and Price`, `No plan data available`, `Price data missing`, legend `Plan/Actual/Price`, aria-label.
 → Lift into `HEADROOM_WIDGET_COPY` / `PLAN_PRICE_WIDGET_COPY` shared-domain consts
@@ -182,7 +184,7 @@ The product owner reviewing the render, in their words + the code reality:
 - Consistent dark cards, green accent, 48 px touch rows; honest naming.
 - `Smart tasks` "On track · Ready by 16:00" with whyLabel/planMeta deliberately
   deferred to the interactive detail (correct progressive disclosure).
-- `Get power now` never suggests raising the hard cap (`feedback_hard_cap_is_physical`).
+- `Get power now` never suggests raising the hard cap (`notes/ui-terminology.md` § "Hard cap is a capacity-period ceiling").
 - Numbers reconcile (Available power: 4.9 − 2.3 = 2.6 exact).
 
 ## Shipped (widget-polish train — 2026-05-30)
@@ -192,7 +194,7 @@ bot findings (incl. several genuine bugs, noted below) were fixed in-PR.
 
 | PR | Surface | Shipped |
 |----|---------|---------|
-| #1313 | `starvation_rescue` → **Held-back devices** | Owner-confirmed rename (the old "Get power now" implied conjuring house power; the widget only releases one budget-held device). Per-device **Let it run now**. Codex caught that the `Held back · N min` chip was stamped on every cause; made it cause-specific (**Held back** = budget/releasable, **Waiting** = capacity/external/physical, **On hold** = manual) so it never overclaims against the hard-cap-is-physical rule. |
+| #1313 | `starvation_rescue` → **Held-back devices** | Owner-confirmed rename (the old "Get power now" implied conjuring house power; the widget only releases one budget-held device). Per-device **Let it run now**. Codex caught that the `Held back · N min` chip was stamped on every cause; made it cause-specific (**Held back** = budget/releasable, **Waiting** = capacity/external/physical, **On hold** = manual) so it never overclaims against the hard-cap-is-physical rule (later collapsed to a single **Held back** chip, 2026-08-04). |
 | #1314 | `smart_tasks` tile | Dropped the leaked `←` back-arrow nav chrome; recap line led with an **Estimate** label + lifted to full contrast (label sourced from `deadlineLabels.ts`, not inlined). |
 | #1316 | `plan_budget` **Budget and Price** (the P0) | Interactive **AM/PM tabs** (≈12 bars/view) kill the green-wall render; labeled dual axes (kWh + the scheme's rate unit); **projected kWh + kr + on-track/over** summary; de-cluttered bars + haloed actual-dots + tamed price line. Codex/bot fixes: projection now uses **actual-to-date + planned-remainder** (no more "On track" after the budget is already blown); AM/PM split by **local hour** (DST 23/25-hour-safe); partial-price-horizon **cost suppression**; rate-suffix strip so a total reads `kr` not `kr/kWh` (spaced `NOK / kWh` too); controller `destroyed` guard against late async renders. |
 | #1317 | `headroom` **Available power** | Labeled the pair **Power now / Safe pace now** (canonical; the right number is the dynamic hourly threshold, *not* the fixed hard cap); amber **At safe pace** state for at-limit-but-managed, red reserved for **Over hard cap**; lifted all strings into `headroomWidgetCopy.ts`; unified the `--homey-text-color-success` fallback; `--homey-su-1` typo fix. Codex caught a **production-breaking** missing `bundleApi: true` (the API couldn't load the shared-domain value import — MODULE_NOT_FOUND) — fixed. (Historical: api bundling was later removed entirely — widget API sources now compile through the root tsc build and load shared-domain once per process; see scripts/build-widgets.mjs.) |
@@ -212,5 +214,5 @@ cover all five widgets.
 ### Deliberately deferred
 - **`plan_budget` `--pels-*` namespace divergence** (P3) — ~~it defines its own token layer + a `.homey-dark-mode` block while the other four consume `--homey-*` directly.~~ RESOLVED 2026-05-31 (widget token-strategy train): all five widgets now share `widgets/_shared/widget-tokens.css` (`--pw-*`, composed only from Homey base tokens); plan_budget's local layer + dark-mode block retired onto the sibling translucent-tint recipe, enforced by a stylelint font-token guard.
 - **Flat-surface / height-adaptive / one focal tile** (P1-new from the fresh render) — the chart refresh + amber at-limit added some colour energy, but the five-near-identical-dark-cards gestalt and the fixed-240 px dead space on passive tiles were not tackled.
-- **Device-detail diagnostics still says "Starved"** — `notes/ui-terminology.md` records this as a deliberate advanced-surface fork vs the widget's "Held back"; decide explicitly later.
+- ~~**Device-detail diagnostics still says "Starved"** — `notes/ui-terminology.md` records this as a deliberate advanced-surface fork vs the widget's "Held back"; decide explicitly later.~~ RESOLVED: device-detail diagnostics now says **Held back** (`notes/ui-terminology.md` § "Held back").
 - **`settings.test.ts` full-suite flake** — "renders devices with target temperature capabilities" fails intermittently under full-suite load (passes in isolation); cost three pre-push retries this train.

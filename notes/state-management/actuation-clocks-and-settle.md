@@ -22,8 +22,9 @@ model and the `planned / commanded / observed / pending` vocabulary.
 | **Settle** — has my write landed, and has the meter seen it? | `lib/executor` | Per device, **evidence-driven**: ends the moment a measurement taken after the write arrives. The window is a *ceiling* on the wait, not the wait. |
 | **Cooldown** — may I decide another change yet? | `lib/plan` | Global admission, **policy**: flat window plus an instability backoff, gating `shouldPlanRestores`. |
 
-They look redundant because they are stamped off the same clock and the constant says
-*"Base cooldown after restore for power to stabilize"*. They are not. One is a fact about a
+They look redundant because they are stamped off the same clock and the constant used to say
+*"Base cooldown after restore for power to stabilize"* (its comment now calls it home-wide pacing,
+"not proof that a device started drawing"). They are not. One is a fact about a
 write; the other is a decision about the next one.
 
 This matches the rule already written in [`notes/AGENTS.md`](../AGENTS.md): *"planner decides
@@ -52,9 +53,10 @@ Before this arc, each layer implemented the other's question.
   per-device throttle **inside the write path**, vetoing a shed the planner had already
   decided (PR 1).
 
-The meter-settle question (`measurementTs` vs the write clock) is still in the planner —
-`restore/support.ts:computePendingRestorePowerKw`, `restore/accounting.ts`, and the power-settle
-branch of `planSteppedRestorePending.ts`. That is a crossing and it moves in PR 3. An earlier
+The meter-settle question (`measurementTs` vs the write clock) is still in the planner, in the
+power-settle branch of `planSteppedRestorePending.ts` (`resolveSteppedRestorePowerSettleRemainingSec`);
+the binary-side `computePendingRestorePowerKw` was removed 2026-08-28 (below). That is a crossing
+and it moves in PR 3. An earlier
 draft of this note argued it rightly stayed because it sits next to the restore reservation it
 qualifies; **OWNER RULING (2026-08-27) overrides that**: *"if they are related to settlement, then
 planner has no business with them. if they are related to cooldowns, they belong in planner
@@ -153,9 +155,13 @@ its title and comments were corrected in the same PR.
 ## The pending-restore reservation, and why it was removed
 
 Removed 2026-08-28, with nothing put in its place. `reserveHeadroomForPendingRestores`
-(`lib/plan/restore/support.ts`), `computePendingRestorePowerKw` (`restore/accounting.ts`) and the
-stepped power-settle branch of `planSteppedRestorePending.ts` all held headroom back for a device
-that had been restored but had not yet drawn.
+(`lib/plan/restore/support.ts`) and `computePendingRestorePowerKw` (`restore/accounting.ts`) held
+headroom back for a device that had been restored but had not yet drawn.
+
+The stepped power-settle branch of `planSteppedRestorePending.ts` was not removed. A stepped
+restore whose step command succeeded still reports `awaiting_power_settle` until a sample measured
+after the restore arrives, and `planSteppedRestoreHold.ts` holds `deltaKw` plus the restore buffer
+back from headroom as a `meter_settling` hold until then.
 
 **The reason is not tuning.** It is that the release condition cannot be evidenced.
 
@@ -163,9 +169,9 @@ that had been restored but had not yet drawn.
   charger starts nets to roughly nothing on the main meter — indistinguishable from the charger
   never starting. No window length fixes that; the signal is absent, not attenuated. Any
   settle rule keyed on the whole-home reading is unsound *in principle*.
-- **The stepped branch was inert anyway.** It released on `measurementTs > lastRestoreMs` — the
+- **The stepped branch is inert anyway.** It releases on `measurementTs > lastRestoreMs` — the
   next sample. Samples arrive every 3–4 s; an EV charger takes 14–30 s just to apply the step. The
-  reserve was gone before the device had begun.
+  reserve is gone before the device has begun.
 - **The binary branch's confirm-on-draw was sound but was not the protection.**
   `actualKw >= expectedKw * PENDING_RESTORE_CONFIRMED_FRACTION` reads the DEVICE's own
   `measure_power`, which is attributable. But it only ever released *early*; what actually held

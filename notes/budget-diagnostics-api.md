@@ -89,6 +89,7 @@ budget-attributed heater demand after physical recovery accounting. Older rows
 lack this field; do not substitute their cumulative `budgetDeniedKwh`.
 `would_lower_while_limiting` remains a readable historical journal outcome;
 new decisions allow decreases and no longer emit it. Budget pressure state
-carries `algorithmVersion: 2`; the old cumulative-hold accumulator is discarded.
+carries `algorithmVersion: 3` (budget-counted energy); state from earlier versions,
+including the old cumulative-hold accumulator, is discarded on load.
 
 New advice decisions carry `budgetAlgorithmVersion: 2`; older journal rows keep the field absent.

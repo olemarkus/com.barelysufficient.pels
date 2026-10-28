@@ -74,10 +74,15 @@ from outside PELS.
 - A caller that needs to know how the bytes are shaped is a caller that should be
   asking the owner.
 
-Keys with owners so far: `mode_aliases`, `mode_device_targets`, `pv_forecast_source`,
+Keys with owners so far include `mode_aliases`, `mode_device_targets`, `pv_forecast_source`,
 `ev_charge_target_settings`,
 `homey_price_formula`, `price_scheme` + `powerhour_device_id`, `web_app_cloud_host`,
-`daily_diagnostics_report`, `event_diagnostics_reports`.
+`daily_diagnostics_report`, `event_diagnostics_reports`, `device_start_policies`
+(`deviceStartPolicy.ts`), `ev_car_associations` (`evCarAssociations.ts`),
+`export_price_source` (`exportPriceSource.ts`), `overshoot_behaviors`
+(`shedBehaviors.ts`), and the daily-budget option and switch keys
+(`dailyBudgetSettings.ts`), all in `packages/shared-domain/src/settings/`, plus
+the keys covered below.
 `price_optimization_settings` has one shared parser for device entries, legacy defaults,
 and provenance in `packages/shared-domain/src/settings/priceOptimization.ts`.
 The same owner defines the adjustment range and stored sign. The runtime and settings

@@ -4,7 +4,7 @@ Smart tasks use two clocks: the allocator settles at `:58` or bootstrap, while `
 
 ## Booking is decided by price, not by forecast room
 
-The allocator books an hour when it carries energy, when it is meaningfully cheaper than the dearest hour carrying energy, or when the task falls short (`resolveBookedBucketIds`). A booked hour the forecast left no room for carries 0 kWh. The saved plan's `hours` are the bookings; readers that mean "the hours the device runs" use `hoursWithPlannedEnergy`, and only hours with energy are commitment floors. `currentHourClaim.ts` resolves `claimed` or `released` once; a 0 kWh booking is claimed but carries no escalation permission (boost, startup reservation), so it runs only on capacity that is actually free. The frozen read replays the settled bookings and `floorShortfallCause` rather than recomputing them from live drift.
+The allocator books an hour when it carries energy, when it is meaningfully cheaper than the dearest hour carrying energy, or when the task falls short (`bookBuckets` in `priceBand.ts`). A booked hour the forecast left no room for carries 0 kWh. The saved plan's `hours` are the bookings; readers that mean "the hours the device runs" use `hoursWithPlannedEnergy`, and only hours with energy are commitment floors. `currentHourClaim.ts` resolves `claimed` or `released` once; a 0 kWh booking is claimed but carries no escalation permission (boost, startup reservation), so it runs only on capacity that is actually free. The frozen read replays the settled bookings and `floorShortfallCause` rather than recomputing them from live drift.
 
 ## During an active smart task, the task decides whether the device runs
 

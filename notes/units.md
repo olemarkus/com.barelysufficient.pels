@@ -48,5 +48,5 @@ pragmatic rule until then:
 
 `packages/shared-domain/src/planReasonComparable.ts` — `quantizeKwToW` rounds
 kW into 100 W buckets and emits integer W. The comparable shape uses `needW`,
-`headroomW`, etc. Consumers reading the source `DeviceReason` still see the
+`availableW`, etc. Consumers reading the source `DeviceReason` still see the
 original kW fields; only the comparable carries W.

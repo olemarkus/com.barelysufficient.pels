@@ -153,8 +153,8 @@ appetite for any controllable-load tuning.
 
 **Disposition:** hands-on. Wants the engine handed over but still pops every
 hood; owns the policy — per-mode priority order, the managed/exempt device set,
-capacity/margin tuning, Flow-card composition, manual overrides, the "Get power
-now" rescue lane. Distrusts a black box "taking over" a device.
+capacity/margin tuning, Flow-card composition, manual overrides, the Held-back
+devices "Let it run now" rescue. Distrusts a black box "taking over" a device.
 **Dominant job:** the single differentiating job is **control/authorship of the
 safety+cost policy** — Cost and Climate are levers exercised *through* that
 control, not co-equal jobs. Climate rides here as a weak frugality lever (lean the
@@ -173,7 +173,7 @@ build-my-first-Flow-card half of old #2.
 | Usage | Per-device kWh breakdown — *which device, and what can I turn off?* | ○ **gap** — only managed/background aggregate ships. |
 | Smart-tasks list | Status legible at a glance; composable from Flow. | ✅ |
 | Smart-task detail (plan) | "Why these hours?" + the permission matrix (go-over-budget / limit-lower-priority, scoped). | ✅ |
-| Smart-task history detail | Learned-rate row (`Energy needed per °C / %`), per-hour tooltips. | ✅ |
+| Smart-task history detail | Learned-rate row (`Energy for each 1 °C` / `Energy for each 1%`), per-hour tooltips. | ✅ |
 | Settings | Visible reasoning ("defaults to X because Y"); a consolidated manual-control surface. | ◐ (reasoning thin; overrides scattered across Flow/Settings/widget) |
 
 ---
@@ -199,7 +199,7 @@ tolerance; cares about øre/kWh and the capacity-tier penalty equally.
 | Budget | Projected end-of-day cost in **money**, not just kWh. | ○ **gap** |
 | Usage | Per-device **cost** column alongside kWh. | ○ **gap — strongest open ask** |
 | Smart-tasks list | Per-task cost recap on the card. | ✅ |
-| Smart-task detail (plan) | The schedule-trust caption (`Picked N of M hours · avg P kr/kWh`) + the live **Estimated cost** hero stat (`≈ X.XX kr`, planned total; no delivered/planned split). | ✅ |
+| Smart-task detail (plan) | The schedule-trust caption (`Picked N of the M hours it can use · avg P kr/kWh`) + the live **Estimated cost** hero stat (`≈ X.XX kr`, planned total; no delivered/planned split). | ✅ |
 | Smart-task history detail | Receipt: `≈ 3.10 kr · 0.52 kr/kWh on average · 6.0 kWh delivered`. | ✅ |
 | Settings | Price source + currency in one obvious place. | ◐ |
 | *(counterfactual)* | "≈ X kr saved vs not using PELS" — the credibility holy grail. | ○ **gap** — no vs-baseline number exists anywhere (the ingredients do). |

@@ -38,7 +38,12 @@ managed load; its draw landed in main's background usage. R7b closed this
 intermediate state by giving each configured meter area its own capacity
 bundle.
 
-## Combined-meter fallback accounting
+## Combined-meter fallback accounting (legacy, before the explicit meter)
+
+This section records the behavior while Main could still sample Homey's
+whole-home item (the Automatic selection, since removed). Main now needs an
+explicit meter; with none chosen it produces no sample
+(`lib/home/mainMeterSelection.ts`).
 
 With one whole-home meter, main's capacity/daily budgets are enforced against
 a total that INCLUDES sub-home draw main cannot control. The failure direction
@@ -58,9 +63,8 @@ next sample self-heals it.
 
 The remedy for a genuinely two-meter home is the explicit meter picker:
 `homey_energy_meter_device_id` points main's `homey_energy` sampling at main's
-own meter device (absent = Homey's marked whole-home cumulative item). Once a
-sub-home exists, selecting main's own meter is REQUIRED for correct main-side
-accounting; the whole-home default keeps the conservative behavior above.
+own meter device. Once a sub-home exists, selecting main's own meter is
+REQUIRED for correct main-side accounting.
 
 ## Boot window and zone retention
 

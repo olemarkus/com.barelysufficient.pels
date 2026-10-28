@@ -93,7 +93,7 @@ A device that cannot take a Smart task shows its status only. The tile grows and
 
 Answers **"get this device ready by a time — without building a Flow."**
 
-An interactive widget that creates a Smart task in a few taps: pick an eligible device (thermostat, water heater, or EV charger), then tap one of the quick targets, each timed to finish soon after the earliest possible time, or **Customize** to set the goal and a specific **Ready by** time, then preview and confirm. The resolved day is shown so you can check whether the time is today or tomorrow. The preview shows the hours PELS would pick, the estimated cost, and a price curve with the chosen hours highlighted. An optional **Extra permissions** section lets a task go over the daily budget or limit lower-priority devices — both still stay within the hard cap. (A third permission, **reserve power so this task can start sooner**, is available from Flow.)
+An interactive widget that creates a Smart task in a few taps: pick an eligible device (thermostat, water heater, EV charger, or an on/off device with a power reading), then tap one of the quick targets, each timed to finish soon after the earliest possible time, or **Customize** to set the goal and a specific **Ready by** time, then preview and confirm. The resolved day is shown so you can check whether the time is today or tomorrow. The preview shows the hours PELS would pick, the estimated cost, and a price curve with the chosen hours highlighted. An optional **Extra permissions** section lets a task go over the daily budget, limit lower-priority devices (on devices with power levels), or reserve power so it can start sooner. All of them still stay within the hard cap.
 
 ![Create smart task widget, step 1: choosing an eligible device](/screenshots/widgets/new-smart-task-1-pick-device.png)
 *Step 1 — pick an eligible device.*
@@ -111,7 +111,7 @@ The preview is honest about whether the task can be created:
 - **Satisfied** means the device already meets the goal.
 - If PELS cannot preview yet, the widget says which input is missing where possible, such as prices, a current reading, or price-aware planning.
 
-This is the dashboard equivalent of the **Add charging task** / **Add heating task** Flow cards; see [Smart Tasks](/smart-tasks) for how a task behaves once it exists.
+This is the dashboard equivalent of the **Add charging task** / **Add heating task** / **Add energy task** Flow cards; see [Smart Tasks](/smart-tasks) for how a task behaves once it exists.
 
 ## Held-back devices
 

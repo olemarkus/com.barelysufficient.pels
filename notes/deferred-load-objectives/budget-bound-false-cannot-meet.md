@@ -72,7 +72,7 @@ bounds **every step equally**.
   leaves `perBucketBudgetKWh > 0`, so `dailyBudgetExhaustedBucketCount: 0` and the
   surface showed a generic physical "Cannot finish" instead of a budget-attributed
   state. That classifier no longer exists: attribution now runs through
-  `resolveBudgetBoundFeasibility` → `budgetBound` (`horizonPlanner.ts`), which asks
+  `resolveBudgetBoundFeasibility` → `budgetRole` (`'none' | 'contributing' | 'sole'`, `horizonPlanner.ts`), which asks
   whether the soft daily budget is the ONLY binding constraint rather than whether the
   day total is spent, and `dailyBudgetExhaustedBucketCount` is retired — nothing writes
   it, and it is accepted on read only for history persisted by an older build
@@ -89,7 +89,8 @@ turned out to be **config-side, not a wiring bug.** Prod telemetry from PR #977
 the next day shows `rescueExemptMode: "always"`, `budgetExemptApplied: true` on
 Connected 300 — the planner sees and applies the rescue as designed.
 `resolveHorizonPlanWithRescue` (`rescueReplan.ts`) rebuilds the horizon with
-caps lifted only when `objective.rescue?.exemptFromBudget === 'always'`; the
+caps lifted only when the task's `rescuePermissions.budgetExempt` is set (in 2026-05 the
+gate read `objective.rescue?.exemptFromBudget === 'always'`); the
 2026-05-22 trace simply caught the rescue before it had been set to that mode
 (or on the wrong device). No code fix needed.
 

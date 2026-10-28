@@ -62,5 +62,4 @@ The actual Homey saving remains unmeasured until this change is deployed. Compar
 RSS/PSS, post-collection floors, memory-warning-triggered collections, and
 `power_sample_bookkeeping_ms` at matched uptime, history size and device load.
 Restarting alone reduces RSS. Leave the existing collection safeguard in place
-while measuring. The remaining settings-store migrations in `TODO.md` are
-separate work; this change does not complete them.
+while measuring.

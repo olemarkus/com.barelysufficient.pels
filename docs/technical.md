@@ -144,12 +144,10 @@ To prevent rapid on/off cycling that could damage equipment or annoy occupants, 
 - Initial activation, necessary reductions and other devices retain their existing timing. Global cooldowns and admission checks still apply, and an increase is reconsidered on the next meter-driven plan after the hold expires
 - The hold uses in-memory actuation history, so restarting PELS clears it
 
-### Available-Power Flow Card Step-Down Cooldown (60 seconds)
+### Available-Power Flow Card Cooldowns
 
-- The **"Is there available power for device?"** Flow condition checks available power for the selected device. The card tracks the same device's **expected/usable** power estimate (prefers `expectedPowerKw` over raw `measuredPowerKw` when available)
-- If that tracked/expected usable draw drops by at least 0.15 kW, the condition stays `false` for 60 seconds before allowing another increase
-- Pure measurement-only dips that do not change the tracked/expected usable draw do **not** start this cooldown
-- The same card also respects recent same-device PELS limit/resume cooldowns
+- The **"Is there available power for device?"** Flow condition checks available power for the selected device
+- The card respects recent same-device PELS limit/resume cooldowns: it stays `false` for 60 seconds after PELS limits that device and for 5 minutes after PELS resumes it
 - Repeated failed re-activations on the same device also increase the available-power requirement before the card returns `true`
 - This is intended to absorb charger and water-heater step changes without forcing users to build manual hysteresis ladders in Homey flows
 
@@ -190,7 +188,7 @@ When power exceeds the safe pace, devices are limited in priority order:
 When available power returns:
 
 1. **Highest priority first** (lowest number): Priority 1 resumes before priority 3
-2. **One device per cycle**: Wait for power measurement after each resume
+2. **One device per cycle while grid import control is on**: Wait for power measurement after each resume; otherwise a bounded batch of up to three (see [Resume Cooldown](#resume-cooldown-base-5-minutes))
 3. **Hysteresis buffer**: Require extra available power beyond the device's power draw to prevent immediate limiting. The buffer scales with the device: 10% of its draw plus 0.1 kW, bounded to 0.2–0.6 kW.
 4. **Delayed restart after failed activation**: Devices that are resumed and then quickly need to be limited again require increasingly more available power before the next resume attempt
 5. **Respect swap targets**: If a lower-priority device was limited for a higher-priority device, the high-priority one must resume first
@@ -237,7 +235,7 @@ For devices configured with the built-in **stepped load** control model, resume 
 - The selected step, measured power, and planning power are intentionally separate values.
 - `measure_power = 0` does **not** imply the device is set to `off`; it only means the device is not drawing right now.
 - The **Set expected power for device** Flow action is rejected for stepped-load devices.
-- Capacity limiting reads the device's **When limiting** behavior as the *limit* it may go down to — `Turn off` means "as far as off", `Set to step` means "as far as the lowest active step". PELS goes only as deep as the shortfall requires, so a device set to `Turn off` is often left running at a lower step rather than switched off.
+- Capacity limiting reads the device's **What PELS does when limiting this device** setting (under **Power limiting**) as the *limit* it may go down to — `Turn off` means "as far as off", `Set to step` means "as far as the lowest active step". PELS goes only as deep as the shortfall requires, so a device set to `Turn off` is often left running at a lower step rather than switched off.
 - Step resume starts at the lowest active step and only climbs toward the highest step when available power and budget allow it.
 - PELS expects vendor-specific flows to report the selected step back through **Report stepped load for [device] as [step]** or **Report stepped load for [device] matching [power]** unless the device exposes that state generically.
 - For supported stepped-load devices (such as compatible water heaters and Easee chargers), **built-in device control** lets PELS set the level directly instead of routing through your own Flow cards, and is on by default. PELS automatically leaves it off — with a notice on the device — when it detects a Homey Flow already writing that device's level, so the existing setup keeps working. The two would override each other, so built-in control cannot be turned on while that Flow exists, and an earlier choice to turn it on is paused until the Flow is gone. To switch, turn off only the conflicting Flow action, select **Check again**, then enable built-in device control in the device's **Setup** section.
@@ -279,7 +277,7 @@ Blocked unmet-demand time is split into:
 
 ### EV Scope
 
-EV chargers are intentionally excluded from unmet-demand and starvation metrics in v1. EV Smart tasks do know the target SoC and ready-by time, but those belong to the Smart task status and history surfaces, not to per-device starvation diagnostics. See [Deadline Charging With State of Charge](/how-to-deadline-charging-soc) for the user setup.
+EV chargers are measured for unmet demand and starvation when **Charge to a battery level** is on and the car's battery level is known; a charger counts as held back only while the car is below that target and PELS keeps it from full rate. Without a target or a known level it is not measured. EV Smart tasks do know the target SoC and ready-by time, but those belong to the Smart task status and history surfaces, not to per-device starvation diagnostics. See [Deadline Charging With State of Charge](/how-to-deadline-charging-soc) for the user setup.
 
 EV chargers are still included in:
 
@@ -344,7 +342,7 @@ Supporting a device and limiting it are two different things. Energy settings an
 - a temperature device still follows its mode targets and price shift, but PELS does not limit it for power and does not count its draw as managed usage;
 - any other device waits, and PELS starts limiting it once its first reading arrives.
 
-Devices ship **disabled by default**, so you stay in control of what PELS touches — enable management and control device-by-device from the Devices tab. Devices without a usable estimate are listed for visibility and can still run mode/price control on temperature devices. Add an Energy value in Homey, enable **Power-limit control** on the device, and PELS picks it up on the next planning cycle.
+Devices ship **disabled by default**, so you stay in control of what PELS touches — enable management and control device-by-device from **Settings → Devices**. Devices without a usable estimate are listed for visibility and can still run mode/price control on temperature devices. Add an Energy value in Homey, enable **Power-limit control** on the device, and PELS picks it up on the next planning cycle.
 
 For a temperature device that another app or Flow controls, set **When the temperature changes outside PELS** to **Keep the new temperature**. The choice covers one thing: the device's temperature target. PELS continues reading and displaying its measured temperature and target, but does not change the target for modes, prices, Smart tasks, boosts, or power limiting. Every other control the device exposes still works: PELS can turn it off and on, and a device with power levels is still lowered a level at a time rather than only switched off.
 
@@ -377,11 +375,9 @@ Caveats, in the order they tend to matter:
 
 The **"Is there available power for device?"** Flow condition answers "Can this device safely draw another _X_ kW right now?" for chargers, water heaters, and any other power-limit-controlled load. It evaluates:
 
-- Current available power (safe pace minus current load)
-- Same-device cooldown state after recent step-downs or PELS limit/resume events
-- Device's expected usage, from the single ladder in [Power Estimation](#power-estimation): manual override → `settings.load` → measured peak → device Energy settings → Homey Energy metadata → **1 kW** (1.38 kW for an EV charger)
-
-PELS never reports available power against a zero or unknown estimate — the ladder ends on a fallback rather than on absence, so the answer is always grounded in a real number.
+- Current available power (safe pace minus current load) plus the device's own measured draw, which is credited back because it is already inside the whole-home reading
+- The kW you enter in the card, raised by any failed-activation penalty
+- Same-device cooldown after recent PELS limit/resume events
 
 ### Thermostats and Water Heaters
 
@@ -413,11 +409,12 @@ PELS controls devices through Homey's local API where it's available — no clou
 
 ## Pricing Model
 
-PELS supports three price schemes:
+PELS supports four price schemes:
 
 - **Norway** (spot + grid tariff + taxes/fees + support/adjustment)
 - **Homey Energy** (values as provided by Homey)
 - **Flow tag** (values as provided by flows)
+- **Power by the Hour** (prices read from the Power by the Hour app)
 
 ### Norway Price Scheme
 

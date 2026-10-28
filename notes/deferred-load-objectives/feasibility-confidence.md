@@ -45,7 +45,8 @@ Sampled the `objective_profile_*` structured events:
   integrates the full elapsed interval. Energy is not lost.
 - **No-power intervals are already excluded from the energy estimate.** Every
   `powerSource:null` sample logs `kwhPerUnit:null, energyKwh:null`
-  (`calculateEnergyKwh` returns `undefined` when `crediblePowerW` is absent).
+  (`calculateEnergyKwh`, since replaced by `calculateWindowEnergyKwh`, returns `undefined`
+  when the left-edge power is absent or non-positive).
   Idle/coast drift never pollutes kWh/unit. The "if power fell to 0 we can't
   infer kWh/unit" rule is **already implemented** — but only for power = 0, not
   for power *variation* (see the poisoning vector below).
@@ -68,9 +69,9 @@ Historically, `calculateEnergyKwh` billed the **entire baseline→rise interval 
 the baseline sample's single `crediblePowerW`** (`previousSample.crediblePowerW ×
 intervalMs`). That was correct only when power was constant across the interval.
 It was **not** constant for stepped/variable devices. The per-sub-interval billing
-that replaced it now lives in `lib/objectives/energyAccumulator.ts:29-31`
+that replaced it now lives in `lib/objectives/energyAccumulator.ts`
 (`subIntervalEnergyKwh`), composed across the open window by
-`calculateWindowEnergyKwh` (`lib/objectives/energyAccumulator.ts:43-50`).
+`calculateWindowEnergyKwh`.
 
 Evidence (`/tmp/pels` 2026-05-22, the "Connected 300" device): per-interval
 implied power (`energyKwh / intervalHours`) lands on three discrete levels —
@@ -162,7 +163,7 @@ Confidence-aware feasibility shipped in three dependency-ordered steps. The
    wired in `profiles.ts:309`.)
 3. **A continuous `± margin` (`k·SE`) over the 3-level enum.** The producer emits
    `(energyNeededKWh, margin)`; the planner reads only that flat pair (never per-band
-   fields — `feedback_layering_resolution_in_producer`) and treats a shortfall inside
+   fields — `docs/architecture.md` § "Clean and trusted interfaces between layers") and treats a shortfall inside
    the margin as `at_risk` / `estimate_uncertain` rather than a confident verdict. The
    continuous margin avoids the enum's all-or-nothing trap: a tight-but-"low" device
    still reads `on_track`; only real dispersion widens to `at_risk`. This **reuses the

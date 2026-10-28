@@ -93,7 +93,7 @@ no display-label sibling.
 
 ### Rule 3 — Numeric tokens for values users want to compare or compute
 
-Today, `target_text`, `shortfall_text`, etc. are pre-formatted strings.
+Earlier drafts used pre-formatted strings such as `target_text` and `shortfall_text`.
 Expose the underlying numbers as separate tokens so flows can do math
 (`if shortfall > 5: warn loud`) without parsing strings. Shipped
 example: `deadline_ended` emits a `shortfall` number token rather than a
@@ -203,6 +203,6 @@ reopen it.
 
 - `notes/deferred-load-objectives/README.md` — shared objective model,
   reason codes, status semantics.
-- `notes/ev-ready-by/README.md` §P2.3 — the original source of the
+- `notes/ev-ready-by/README.md` § "Observability: expanded trigger tokens" — the original source of the
   extended-tokens proposal (the notification-text portion is deliberately
   not in scope; see Rule 4).

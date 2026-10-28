@@ -35,14 +35,15 @@ trust hidden conversions from "I need X kWh" to "charge for Y hours". When that 
 wrong, the deadline slips and the user wakes up to an under-charged car.
 
 PELS already has the SoC observation, learned charging profile, horizon planner, active-plan
-recorder, and pause/resume actuation needed to make this conversion visible and correct. The
-remaining product gap addressed by the current direction is direct creation on the Smart tasks
-page and a generic immediate intent, alongside the feature extensions listed below.
+recorder, and pause/resume actuation needed to make this conversion visible and correct. Direct
+creation on the Smart tasks page has shipped (New smart task); the remaining product gap addressed
+by the current direction is a generic immediate intent, alongside the feature extensions listed
+below.
 
 ## Product Principles
 
-- **One creation contract, several routes.** The Smart tasks page should join the dashboard
-  widget as a direct creation surface; Flow remains the automation route. Every route must use
+- **One creation contract, several routes.** The Smart tasks page and the dashboard widget are
+  direct creation surfaces; Flow remains the automation route. Every route must use
   the same planner and device-scoped write contract.
 - **No hidden speed assumption.** Required energy, planning speed (kW), and estimated duration
   are visible side by side. The speed source (learned, bootstrap, manual, conservative) is
@@ -57,23 +58,25 @@ page and a generic immediate intent, alongside the feature extensions listed bel
 The deferred-objective subsystem already delivers temperature and SoC-based EV deadline tasks
 end-to-end, including charger pause/resume actuation:
 
-- EV SoC observation with session validity (`lib/device/transport/stateOfCharge.ts`): fresh / stale
-  status, session start on plug-in, invalidation on plug-out.
+- EV SoC observation with session validity (`lib/device/transport/stateOfCharge.ts`): session
+  start on plug-in, invalidation on plug-out.
 - Per-device learned profile (`lib/objectives/profiles.ts`) storing `kwhPerUnit` (kWh per 1%)
-  and `unitPerHour` (%/hour) with EMA confidence.
+  and `unitPerHour` (%/hour) as running statistics with sample-count and relative-spread
+  confidence (`resolveProfileConfidence` in `lib/objectives/stats.ts`).
 - Bootstrap kWh-per-percent fallback in
   `packages/shared-domain/src/objectiveProfileBootstrap.ts`: cold-start EV plans produce a useful
   allocation immediately and refine when learning matures; the active-plan recorder emits a
   `rate_refined` revision when the source flips bootstrap → learned.
 - Versioned objective settings (`packages/contracts/src/deferredObjectiveSettings.ts`) with
-  `kind: 'ev_soc' | 'temperature'`, `enforcement: 'soft' | 'hard'` (deadlines are soft-only — no
+  `kind: 'ev_soc' | 'temperature' | 'energy'`, `enforcement: 'soft' | 'hard'` (deadlines are soft-only — no
   flow card sets `'hard'`; a persisted `'hard'` still widens the planner variance buffer, so it is
   preserved rather than treated as dead), keyed per device, absolute
   `deadlineAtMs`.
 - Public flow cards in `flowCards/deadlineObjectiveCards.ts`: `set_ev_charge_deadline`,
   `set_temperature_deadline`, `clear_deadline`; conditions `deadline_status_is`,
   `has_active_deadline`; triggers `deadline_status_changed`, `deadline_ended`,
-  `deadline_plan_changed`.
+  `deadline_plan_changed`, `smart_task_hours_remaining`. The `set_energy_deadline` action
+  (Add energy task) is registered in `flowCards/energyDeadlineCard.ts`.
 - Horizon planner (`lib/objectives/deferredObjectives/horizonPlanner.ts`) selecting budget-friendly
   hours before the deadline, price-gated.
 - Task evaluation (`lib/objectives/deferredObjectives/taskEvaluationCoordinator.ts`) producing
@@ -227,11 +230,11 @@ capped at 60 minutes.
 
 It is also unpaid so far. The back-off arms only through `recordFailure`, and the
 dispatch-failure lane that wraps it is the sole emitter of the plan-rebuild reason
-`binary_command_reachability_changed` — that reason is the one always-logged signal
-it produces, since `binary_command_retry` is a `commandabilityReason` value that
-never reaches a log line. Since 2026-09-03 a TIMEOUT arms the back-off without
-emitting that reason (only the dispatch lane emits it), so read an absence as
-"no transport rejection", not as "the back-off never armed". In the 2026-08-11→23 production log it appears **four times, all on
+`binary_command_reachability_changed`. Since 2026-09-03 a TIMEOUT arms the back-off
+without emitting that reason (only the dispatch lane emits it), so read an absence of
+that reason as "no transport rejection". Arming itself is always logged, from either
+lane, as `binary_command_reachability_backoff_armed` (`lane: 'dispatch' | 'sweep'`,
+`binaryCommandReachability.ts`). In the 2026-08-11→23 production log it appears **four times, all on
 2026-08-13, under commit `748a2337e`** — the pre-unify EV probe, which had its own
 failure-only rebuild request. The unified code first ran on 2026-08-15 (`f09dc988a`,
 the first deploy containing `7edb9517b`), and there has been **no occurrence since**.
@@ -320,8 +323,9 @@ different questions: the second is `isEvSessionInactive`, resolved at
 EV admission to charger actuation has landed, and the two trust-surface
 follow-ups that this note originally flagged have **shipped** (see below): the
 Smart tasks device card now explains charger plan state, and the deadline-plan
-hero surfaces planning speed and estimated duration. The broader product
-follow-ups are direct creation on the Smart tasks page and the generic immediate
+Plan inputs card and the Smart tasks widget surface planning speed and estimated
+duration. Direct creation on the Smart tasks
+page has shipped; the broader product follow-up is the generic immediate
 intent. Energy targets are available through Add energy task; expanded
 observability remains an EV-specific extension described further down.
 
@@ -357,16 +361,15 @@ task the UI already holds for the Smart task chip. Stepped chargers state their
 plug or car exception in the status fact line instead. Start/finish come from the active-plan recorder's `latest.hours`; the
 paused state comes from `isPlugOutPaused` (the `objective_invalid_session`
 reason emitted by `resolveEvObjectiveProgress` in
-`lib/objectives/deferredObjectives/diagnosticProgress.ts`, which fires when the
-observation layer reports `stateOfCharge.status === 'invalid'`).
+`lib/objectives/deferredObjectives/diagnosticProgress.ts`, which fires on an inactive
+session (`objectiveSessionInactive`) or a level the producer reports as `not_connected`).
 
 #### Planning speed and estimated duration — shipped
 
-The deadline-plan hero surfaces "Planning speed: X.X kW" and an estimated
-duration via `planningSpeedKw` / `estimatedDurationText` in
-`packages/settings-ui/src/ui/deadlinePlan.ts` (commit `8720af37`),
-alongside the existing Plan inputs card (`deadlinePlanInputs.ts`) that shows the
-per-unit rate and max power per hour. The planning kW falls back to the
+The Plan inputs card (`packages/settings-ui/src/ui/deadlinePlanInputs.ts`) shows the
+revision's `planningSpeedKw` as "At least X kW" on its Guaranteed power row, alongside
+the per-unit rate. The estimated duration (`estimatedDurationText` on the revision) is shown
+by the Smart tasks widget (`smartTasksWidgetPayload.ts`), not on the settings page. The planning kW falls back to the
 calibration view built from `lib/device/devicePowerCalibration.ts` via
 `buildStepPowerCalibrationView` (`lib/planInput/calibrationViews.ts`), reusing
 `resolveStepDeliveryUsefulKw`.
@@ -387,7 +390,8 @@ cannot run the task. A linked car, SoC, battery capacity and learned kWh/% profi
 are not prerequisites. A car that stops accepting charge can leave the energy
 target unmet.
 
-UI creation still defaults to battery targets for chargers. Flow-created energy
+UI creation still defaults to battery targets for chargers, except a plugged-in charger
+with no battery level, which is offered an energy task (`resolveSmartTaskCreationKind`). Flow-created energy
 tasks use the existing energy display and edit paths. Each charger keeps at most
 one task; existing replacement and same-deadline energy accounting rules apply.
 
@@ -495,7 +499,7 @@ And the failure modes are visible:
 - Charging speed unknown → bootstrap planning produces a useful allocation immediately.
 - Not enough time before deadline → at-risk or cannot-meet status, visible in Smart tasks list
   and trigger surface.
-- Car unplugged mid-plan → "Charging plan paused" state on the device card.
+- Car unplugged mid-plan → "Charging paused — car unplugged" line on the device card.
 - Charger unavailable → "Charger unavailable" state.
 - Price data missing → pending hero copy depends on price source (the actual shipped strings
   branch on whether prices come from an external flow card vs. the managed Nordpool fetch and

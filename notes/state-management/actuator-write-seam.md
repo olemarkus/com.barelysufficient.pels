@@ -13,8 +13,9 @@ box the original split did not name — the actuator.
 > and added the `no-actuator-bypass` cruiser rule). The actuator is now the sole
 > device write path. **PR 2 split:** **PR2a (the `getHomePowerW` read scalar →
 > observer) is shipped** — `lib/observer/observedHomePower.ts` (`ObservedHomePower`)
-> now owns the whole-home power read; transport pushes it via
-> `observedStateDispatcher.setHomePowerW`. **PR2b (snapshot store → observer) is
+> took over the whole-home power read, pushed by transport via
+> `observedStateDispatcher.setHomePowerW`. That net half was later removed as
+> write-only (2026-09-01); the holder now carries only gross PV generation. **PR2b (snapshot store → observer) is
 > DEFERRED BY DECISION** (dual-store risk, no behavior change — see PR 2 below).
 > **PR 3 (tighten) remains outstanding.** Train sequence at the end.
 > Read the device-state invariants digest in [`lib/device/AGENTS.md`](../../lib/device/AGENTS.md) and
@@ -31,7 +32,7 @@ box the original split did not name — the actuator.
 | **transport** (`lib/device/**`) | The only module that talks to the Homey SDK, in **both** directions. Produces normalized snapshots (read) and executes capability/channel writes (write). Resolves native-vs-flow internally because it owns the snapshot + SDK knowledge. | Homey capabilities, channels, flow cards |
 | **observer** (`lib/observer/**`) | Consolidated state: snapshot store, freshness/staleness, alive/idle, settle resolution, and pure plan-blind interpretation. The single place anyone asks "what is true right now?" | `fresh / stale / unknown`, observed draw, observed on/off |
 | **plan** (`lib/plan/**`) | Decides desired state ("what should run") and owns **cooldown admission** (shed/restore windows). | planned state, headroom, cooldowns |
-| **actuator** (`lib/actuator/**`, new) | The single semantic write seam and the only runtime module allowed to request transport writes. It forwards SDK-blind commands; transport privately maps them onto native capabilities or Flow cards. | `{ binary / step / target / storage_power / storage_release }` control intents |
+| **actuator** (`lib/actuator/**`, new) | The single semantic write seam and the only runtime module allowed to request transport writes. It forwards SDK-blind commands; transport privately maps them onto native capabilities or Flow cards. | `{ binary / step / target / storage_power / storage_release / production_limit / production_release }` control intents |
 
 The executor (`lib/executor/**`) keeps its existing mandate — *issue / retry /
 wait / skip + drift* — but on the write side it now hands a `DeviceCommand` to
@@ -48,7 +49,7 @@ would rot. The honest mapping:
 | Conceptual box | Physical home | Caveat |
 |---|---|---|
 | transport | `lib/device/**` (esp. `lib/device/transport/`) | `lib/device/` is **not** purely the SDK seam — it also carries the producer seams (`deviceActionProjection`, `deviceResidualKw`) and per-device runtime (`managerRuntime`). The former `shedBehaviorActuation` write leak is gone. |
-| observer | `lib/observer/**` | Clean. Owns the home-power read scalar (PR2a). The snapshot store stays on transport (PR2b, deferred by decision). |
+| observer | `lib/observer/**` | Clean. Owned the home-power read scalar (PR2a) until its net half was removed (2026-09-01); now holds PV generation only. The snapshot store stays on transport (PR2b, deferred by decision). |
 | plan | `lib/plan/**` | Clean core, but its **inputs** are separate peers: `power`, `price`, `dailyBudget`, `objectives` feed plan but aren't loop stages — they sit *beside* it as producers (`executor > plan > {power, dailyBudget, price, objectives, observer}`). |
 | executor | `lib/executor/**` | Clean. Loses its write half to the actuator. |
 | **actuator** | `lib/actuator/**` | **New** — the only dir this train creates. |
@@ -69,11 +70,13 @@ Dirs that don't belong to any loop stage:
 - **`setup/`** — app wiring; holds `appSnapshotHelpers` (its home-power read was
   re-pointed to the observer in PR2a; it still reads the snapshot store from
   transport, which stays put per PR2b's deferral). It lived in `lib/app/` when
-  this note was written; that directory has since dissolved to `appContext.ts`.
+  this note was written; that directory has since dissolved to `appContext.ts`,
+  `pelsHost.ts` and `setupNotification.ts`.
 
 **Scope discipline:** this train does **not** re-home the producer seams out of
 `lib/device/`, nor split `lib/objectives/`, nor finish `lib/app/` dissolution
-(that one has since landed on its own — `lib/app/` is down to `appContext.ts`).
+(that one has since landed on its own — `lib/app/` holds `appContext.ts`,
+`pelsHost.ts` and `setupNotification.ts`).
 It overlays the *write-path* vocabulary (transport / actuator) and makes three
 bounded moves (actuator box, store→observer, the two leaks). The broader
 dir-vs-loop reconciliation is a separate effort and may not be worth the BC
@@ -144,18 +147,24 @@ actuator's entire reason to exist (otherwise it is a pass-through).
 
 ### Transport write input — semantic request, privately bound
 
-The actuator calls three semantic methods on `DeviceTransport`:
+The actuator calls semantic methods on `DeviceTransport` (the `ActuatorTransport`
+surface in `lib/actuator/deviceCommand.ts`):
 
 ```
 requestBinaryControl(deviceId, desired)
 requestTemperatureTarget(deviceId, desired)
+resolveTemperatureTarget(deviceId, desired)
 requestSteppedLoadStep({ deviceId, profile, desiredStepId,
                          planningPowerW, planningCurrentA, … })
+requestStoragePower(command)
+releaseStorageControl(command)
+requestProductionControl(command)
+canTurnOnDevice(deviceId)
 ```
 
 Transport resolves raw capability IDs and native-vs-Flow routing from its private
-snapshot binding. Binary requests report whether telemetry confirmation must
-precede actuation accounting; temperature requests return the normalized value
+snapshot binding. The actuator resolves a Homey write timeout on a binary request
+into an `acknowledged: false` outcome; temperature requests return the normalized value
 actually sent so pending confirmation cannot wait for an unattainable raw value.
 
 ### Actuator write input — control intent, SDK-blind
@@ -166,12 +175,17 @@ outcome* — never a flow card or synthetic channel:
 ```ts
 type DeviceCommand =
   | { kind: 'binary'; deviceId: string; desired: boolean }
-  | { kind: 'target'; deviceId: string; target: 'temperature'; value: number; contextInfo?: string }
+  | { kind: 'target'; deviceId: string; target: 'temperature'; value: number }
   | { kind: 'step';   deviceId: string; profile: SteppedLoadProfile; desiredStepId: string;
       planningPowerW: number; planningCurrentA: number; previousStepId?: string }
   | { kind: 'storage_power';   deviceId: string; setpointW: number }
-  | { kind: 'storage_release'; deviceId: string; restoreClaimValue: string };
+  | { kind: 'storage_release'; deviceId: string; restoreClaimValue: string }
+  | { kind: 'production_limit';   deviceId: string; limitW: number }
+  | { kind: 'production_release'; deviceId: string; claim: InverterClaim };
 ```
+
+The two production intents cap and hand back a solar inverter; their shapes live
+in `lib/ports/inverterControl.ts` (`InverterCommand`).
 
 The two storage intents drive a home battery. Their shapes live in
 `lib/ports/storageCommand.ts` so the battery control owner (`lib/battery/`),
@@ -209,11 +223,10 @@ No raw capability identifier passes this boundary.
 
 ## EV / binary consolidation
 
-EV start/stop and generic on/off are already **one dispatch path** today,
-distinguished only by `capabilityId: 'onoff' | 'evcharger_charging'`
-(`binaryControlDispatch.ts:52`). The actuator formalizes this: EV is **not** a
-distinct intent — it is a `binary` command whose `control` discriminant is
-`evcharger_charging`.
+EV start/stop and generic on/off are **one dispatch path**. EV is **not** a
+distinct intent: it is a plain `binary` command (`{ kind, deviceId, desired }`)
+with no discriminant, and transport maps it to `evcharger_charging` or `onoff`
+from its snapshot binding (`binaryCapabilityId`).
 
 - **Folds into `binary`:** EV start/stop + every on/off device.
 - **Does *not* fold into `binary`:** EV *amperage stepping* is the `step` kind
@@ -225,7 +238,7 @@ distinct intent — it is a `binary` command whose `control` discriminant is
   command exists, the device is already deemed commandable; the actuator never
   re-checks EV plug state.
 
-So EV-ness shrinks to a `control` discriminant on one command kind.
+So EV-ness never reaches the command; only transport knows it.
 
 ---
 
@@ -235,7 +248,8 @@ Keeping these explicit prevents the seam from accreting policy:
 
 - **Cooldowns** (shed 60 s; restore 300–600 s exponential backoff) are
   **planning constraints** — `lib/plan/planConstants.ts`, enforced in
-  `planHeadroomState.ts:376` and `restore/timing.ts:135`. The actuator sees
+  `lib/plan/restore/timing.ts` (`resolveRestoreCooldown`, and the shed cooldown via
+  `getShedCooldownState`). The actuator sees
   only post-admission intents.
 - **Settle window** is opened inside `transport.setCapability` and resolved by
   observer; the actuator does not open, close, or read it.
@@ -340,8 +354,8 @@ intent union + injected transport surface), so it became the natural seed.
 - New `lib/actuator/`: `deviceCommand.ts` (the `DeviceCommand` union +
   `ActuatorTransport` injected write surface + `ActuatorOutcome`) and
   `deviceActuator.ts` (`createDeviceActuator` → `Actuator.apply`, mapping
-  intent → transport method, routing binary on the producer-resolved `flowBacked`
-  flag).
+  intent → transport method; binary routed on a producer-resolved `flowBacked`
+  flag at the time, since moved into transport's `flowBackedCapabilityIds`).
 - The former terminal-shed leaf was first relocated behind `actuator.apply()`;
   it was later retired when lifecycle fallback adopted the executor's shared
   binary/target/stepped convergence paths.
@@ -390,10 +404,11 @@ Split into sub-PRs so each is independently shippable and behavior-preserving:
   capacity-control-off restore, since folded into `applyUncontrolledBinaryRestore`)
   to decide whether the command was flow-backed when recording confirmation. PR1b-3
   hoisted the *dispatch-path* recompute but left these consumer-side re-resolutions.
-  The decide-and-dispatch wrapper now returns a `BinaryControlOutcome`
-  (`{ applied: false } | { applied: true; flowBacked }`) carrying the
-  producer-resolved flag the command already had, so the three sites read
-  `outcome.flowBacked` and no longer call `isFlowBackedBinaryControl`. The symbol is
+  The decide-and-dispatch wrapper then returned a `BinaryControlOutcome`
+  carrying the producer-resolved `flowBacked` flag, so the three sites read
+  `outcome.flowBacked` and no longer called `isFlowBackedBinaryControl`. Transport
+  has since taken over Flow routing, and the outcome is now
+  `{ applied: false } | { applied: true }`. The symbol is
   gone from `lib/executor/**` entirely; the `binary:seam` guard
   (`scripts/check-binary-seam.mjs`, in `ci:checks`) keeps it that way. This finished
   the planner/executor/device-transport state boundary split.
@@ -403,13 +418,15 @@ Split into sub-PRs so each is independently shippable and behavior-preserving:
 risk profiles.
 
 **PR2a — `getHomePowerW` → observer. *Shipped.***
-- New `lib/observer/observedHomePower.ts` (`ObservedHomePower`) owns the
-  whole-home power scalar. `DeviceTransport` no longer caches `latestHomePowerW`
+- New `lib/observer/observedHomePower.ts` (`ObservedHomePower`) owned the
+  whole-home power scalar *(its net half since removed, 2026-09-01; it holds
+  generation only)*. `DeviceTransport` no longer caches `latestHomePowerW`
   or exposes `getHomePowerW()`; it is removed from the `DeviceObservation`
   interface too (an interface stage 5 of the snapshot decomposition later deleted).
-- `updateHomePowerFromReport` pushes the resolved scalar to the observer via a
+- `updateHomePowerFromReport` pushed the resolved scalar to the observer via a
   new `setHomePowerW(w)` method on the `observedStateDispatcher` callback bag;
-  transport still does not statically import observer.
+  transport still does not statically import observer. *(Both since removed,
+  2026-09-01.)*
 - Re-pointed the sole external reader, `appSnapshotHelpers.ts`
   (`recordImplicitHomeyEnergySample`, then in `lib/app/`, now `setup/`), to a
   `getHomePowerW` dep wired in `app.ts` to read from the observer. *(That

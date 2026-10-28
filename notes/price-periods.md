@@ -25,9 +25,9 @@ whose cheap/normal/expensive verdict differed from its own hour's.
 "starts at a quarter, ends on the hour" rule — the level is what the price is now.
 
 The owner accepted the cost when choosing this: up to four setpoint writes an hour per
-price-aware device, four `price_level` trigger firings, and four insights updates,
+price-aware device, four `price_level_changed` trigger firings, and four insights updates,
 against the previous one per hour. That matters most for cloud-connected thermostats
-(see `project_myuplink_write_failures` — myUplink writes can take 22–60 s). If that
+(myUplink writes can take 22–60 s). If that
 pressure turns out to hurt in production, the fix is a minimum hold on the *level*, not
 a return to hourly prices.
 

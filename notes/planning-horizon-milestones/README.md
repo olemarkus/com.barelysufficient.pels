@@ -1,12 +1,17 @@
 # Planning Horizon and Milestones
 
-Energy-based milestones and the priority-adjusted horizon-planning model are
-**deferred from v1**. What ships today is summarised briefly in
+Priority-adjusted horizon allocation has **shipped**: governing higher-priority
+tasks reserve their booked step and energy, and higher-ranked devices outside
+task control reserve their maximum known step, before a lower-priority task is
+planned (`resolveReservedHeadroomKw` in
+`lib/objectives/deferredObjectives/policyHorizon.ts`). Per-hour unit milestones
+have also shipped (see "Relationship to shipped v1"). Milestone-status logging
+and milestone trigger tokens remain **deferred**. What ships today is summarised briefly in
 `notes/deferred-load-objectives/README.md`: the horizon planner allocates
 buckets from `now → deadline`, prefers cheap windows that fit the daily-budget
 headroom, and resolves status from required-vs-allocated energy with a
 deadline-reserve margin. This note is the longer-form design for the
-milestone-and-priority-aware horizon that v1 did not implement.
+milestone-and-priority-aware horizon.
 
 ## Why milestones
 
@@ -72,8 +77,8 @@ is the mechanism that makes soft objectives budget-aware instead of just
 "boost immediately."
 
 Shipped v1 implements steps 1, 2, 3, 4 (via the deadline-reserve concept),
-5, and 6, but does **not** produce or evaluate energy milestones — see the
-relationship section below.
+5, and 6, and stamps a per-hour unit milestone (below), but does not log
+milestone status or expose milestone tokens — see the relationship section below.
 
 ## Relationship to shipped v1
 
@@ -85,8 +90,15 @@ energy booked into the current hour, so the device idles there while the status
 stays `on_track`. Status resolution uses the planner result codes
 `planned_with_margin` and `planned_using_deadline_reserve`; relative price never
 flips the status (`at_risk` reflects only deadline feasibility). That gives
-approximately the same user-visible behavior without computing explicit
-milestones.
+approximately the same user-visible behavior.
+
+Since 2026-06-03 each committed hour also persists `plannedUnitMilestone`, the
+absolute progress the device should reach by the end of that hour, stamped by
+`stampUnitMilestones` (`activePlanSchedule.ts`). `isAheadOfHourMilestone`
+(`trajectoryMilestone.ts`) compares measured progress against it every cycle to
+gate mid-execution price deferral (see
+`notes/deferred-load-objectives/execution-adaptation.md`). No log event or
+trigger token reports milestone status.
 
 Open question for when this work resumes: are milestones additive on top of
 reason-code precision (e.g. to drive logging and trigger tokens with a
